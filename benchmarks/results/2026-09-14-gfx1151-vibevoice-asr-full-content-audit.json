@@ -1,0 +1,858 @@
+{
+  "status": "diagnostic-unqualified",
+  "date": "2026-09-14",
+  "host": "zbook",
+  "hardware": "Radeon 8060S gfx1151",
+  "model": "/home/lhl/.cache/huggingface/hub/models--microsoft--VibeVoice-ASR-HF/snapshots/f22241c2062b3b25272bf117397e03d73381037a",
+  "quant": "BF16 weights; HIP mixed FP32/BF16; torch CPU FP32; torch GPU BF16 eager",
+  "request": {
+    "model": "/home/lhl/.cache/huggingface/hub/models--microsoft--VibeVoice-ASR-HF/snapshots/f22241c2062b3b25272bf117397e03d73381037a",
+    "revision": "f22241c2062b3b25272bf117397e03d73381037a",
+    "audio_seconds": 11.0,
+    "raw_pcm_sha256": "0635eec826a5b8a2324a120855434f4b0f798a20dd33e1b5868d4705cb446460",
+    "hashes": {
+      "pcm": "a7bb761160e140ba5d87aaca79f20308198118576f113f76433187e871ef7282",
+      "input_ids": "9be3500da5c2adc32dc4fd7845ea9f6d630b3661b72fb8cc691b94b89d39ffbd",
+      "padding_mask": "ea3367db1418e8f511105db187f79ece046f8372f28423ebbf2a879fbfe55a3a",
+      "noise": "248402f2c37fd064edbd62a311606090ab0f493e59b55727d43b14d30a20df72",
+      "base_scale": "0dea42369d2e71e87ea6df30491e502ef2c26251bdc72c8b3cf9dfa7aeb9f958",
+      "scale": "cf16d87b63819170f33a908cd6a0566f7a87f63000b222484d4e73f6485ca0d9"
+    },
+    "seed": 20260914,
+    "context": "John F. Kennedy",
+    "preprocessing_s": 0.04553737101377919
+  },
+  "teacher": {
+    "tokens": [
+      151644,
+      77091,
+      198,
+      58,
+      4913,
+      3479,
+      788,
+      15,
+      1335,
+      3727,
+      788,
+      16,
+      16,
+      13,
+      15,
+      1335,
+      82036,
+      788,
+      15,
+      1335,
+      2762,
+      3252,
+      3036,
+      773,
+      11,
+      847,
+      12357,
+      8877,
+      11,
+      2548,
+      537,
+      1128,
+      697,
+      3146,
+      646,
+      653,
+      369,
+      498,
+      26,
+      2548,
+      1128,
+      498,
+      646,
+      653,
+      369,
+      697,
+      3146,
+      1189,
+      25439,
+      151645
+    ],
+    "text": "assistant\n[{\"Start\":0,\"End\":11.0,\"Speaker\":0,\"Content\":\"And so, my fellow Americans, ask not what your country can do for you; ask what you can do for your country.\"}]",
+    "parsed": [
+      {
+        "Start": 0,
+        "End": 11.0,
+        "Speaker": 0,
+        "Content": "And so, my fellow Americans, ask not what your country can do for you; ask what you can do for your country."
+      }
+    ],
+    "natural_eos": true
+  },
+  "commands": [
+    "python3 scripts/vibevoice_asr_logits.py --request /tmp/vibevoice-jfk-request.npz --teacher /tmp/vibevoice-torch-smoke.json --lane torch-cpu --output /tmp/vibevoice-logits-torch-cpu.npy",
+    "python3 scripts/vibevoice_asr_logits.py --request /tmp/vibevoice-jfk-request.npz --teacher /tmp/vibevoice-torch-smoke.json --lane torch-gpu --output /tmp/vibevoice-logits-torch-gpu.npy",
+    "python3 scripts/vibevoice_asr_logits.py --request /tmp/vibevoice-jfk-request.npz --teacher /tmp/vibevoice-torch-smoke.json --lane hip-strict --output /tmp/vibevoice-logits-hip-strict.npy",
+    "python3 scripts/vibevoice_asr_logits.py --request /tmp/vibevoice-jfk-request.npz --teacher /tmp/vibevoice-torch-smoke.json --lane hip-candidate --output /tmp/vibevoice-logits-hip-candidate.npy"
+  ],
+  "captures": {
+    "torch-cpu": {
+      "request": {
+        "model": "/home/lhl/.cache/huggingface/hub/models--microsoft--VibeVoice-ASR-HF/snapshots/f22241c2062b3b25272bf117397e03d73381037a",
+        "revision": "f22241c2062b3b25272bf117397e03d73381037a",
+        "audio_seconds": 11.0,
+        "raw_pcm_sha256": "0635eec826a5b8a2324a120855434f4b0f798a20dd33e1b5868d4705cb446460",
+        "hashes": {
+          "pcm": "a7bb761160e140ba5d87aaca79f20308198118576f113f76433187e871ef7282",
+          "input_ids": "9be3500da5c2adc32dc4fd7845ea9f6d630b3661b72fb8cc691b94b89d39ffbd",
+          "padding_mask": "ea3367db1418e8f511105db187f79ece046f8372f28423ebbf2a879fbfe55a3a",
+          "noise": "248402f2c37fd064edbd62a311606090ab0f493e59b55727d43b14d30a20df72",
+          "base_scale": "0dea42369d2e71e87ea6df30491e502ef2c26251bdc72c8b3cf9dfa7aeb9f958",
+          "scale": "cf16d87b63819170f33a908cd6a0566f7a87f63000b222484d4e73f6485ca0d9"
+        },
+        "seed": 20260914,
+        "context": "John F. Kennedy",
+        "preprocessing_s": 0.04553737101377919
+      },
+      "teacher_sha256": "d35c0dd89e80169a52cb63afdbf38a5f08689a7f9cbbc0f83717af1be8f0c550",
+      "logits_sha256": "93d7770fe7c16495d3304d46ab86384e659265cfed3ce2baa5520cdfbdfcc0f9",
+      "shape": [
+        50,
+        152064
+      ],
+      "variant_manifest": {
+        "lane": "torch-cpu",
+        "dtype": "torch.float32"
+      }
+    },
+    "torch-gpu": {
+      "request": {
+        "model": "/home/lhl/.cache/huggingface/hub/models--microsoft--VibeVoice-ASR-HF/snapshots/f22241c2062b3b25272bf117397e03d73381037a",
+        "revision": "f22241c2062b3b25272bf117397e03d73381037a",
+        "audio_seconds": 11.0,
+        "raw_pcm_sha256": "0635eec826a5b8a2324a120855434f4b0f798a20dd33e1b5868d4705cb446460",
+        "hashes": {
+          "pcm": "a7bb761160e140ba5d87aaca79f20308198118576f113f76433187e871ef7282",
+          "input_ids": "9be3500da5c2adc32dc4fd7845ea9f6d630b3661b72fb8cc691b94b89d39ffbd",
+          "padding_mask": "ea3367db1418e8f511105db187f79ece046f8372f28423ebbf2a879fbfe55a3a",
+          "noise": "248402f2c37fd064edbd62a311606090ab0f493e59b55727d43b14d30a20df72",
+          "base_scale": "0dea42369d2e71e87ea6df30491e502ef2c26251bdc72c8b3cf9dfa7aeb9f958",
+          "scale": "cf16d87b63819170f33a908cd6a0566f7a87f63000b222484d4e73f6485ca0d9"
+        },
+        "seed": 20260914,
+        "context": "John F. Kennedy",
+        "preprocessing_s": 0.04553737101377919
+      },
+      "teacher_sha256": "d35c0dd89e80169a52cb63afdbf38a5f08689a7f9cbbc0f83717af1be8f0c550",
+      "logits_sha256": "ac04529ee5e65c329fa3551ffd79fd3cfef466ecdff448e7d970744477ad6fe5",
+      "shape": [
+        50,
+        152064
+      ],
+      "variant_manifest": {
+        "lane": "torch-gpu",
+        "dtype": "torch.bfloat16"
+      }
+    },
+    "hip-strict": {
+      "request": {
+        "model": "/home/lhl/.cache/huggingface/hub/models--microsoft--VibeVoice-ASR-HF/snapshots/f22241c2062b3b25272bf117397e03d73381037a",
+        "revision": "f22241c2062b3b25272bf117397e03d73381037a",
+        "audio_seconds": 11.0,
+        "raw_pcm_sha256": "0635eec826a5b8a2324a120855434f4b0f798a20dd33e1b5868d4705cb446460",
+        "hashes": {
+          "pcm": "a7bb761160e140ba5d87aaca79f20308198118576f113f76433187e871ef7282",
+          "input_ids": "9be3500da5c2adc32dc4fd7845ea9f6d630b3661b72fb8cc691b94b89d39ffbd",
+          "padding_mask": "ea3367db1418e8f511105db187f79ece046f8372f28423ebbf2a879fbfe55a3a",
+          "noise": "248402f2c37fd064edbd62a311606090ab0f493e59b55727d43b14d30a20df72",
+          "base_scale": "0dea42369d2e71e87ea6df30491e502ef2c26251bdc72c8b3cf9dfa7aeb9f958",
+          "scale": "cf16d87b63819170f33a908cd6a0566f7a87f63000b222484d4e73f6485ca0d9"
+        },
+        "seed": 20260914,
+        "context": "John F. Kennedy",
+        "preprocessing_s": 0.04553737101377919
+      },
+      "teacher_sha256": "d35c0dd89e80169a52cb63afdbf38a5f08689a7f9cbbc0f83717af1be8f0c550",
+      "logits_sha256": "b8215cdaa0da78d5c570a971475d5590c6651ac898a84e24c10da46b4bfa9cf5",
+      "shape": [
+        50,
+        152064
+      ],
+      "variant_manifest": {
+        "kind": "hipengine_execution_profile_manifest",
+        "schema_version": 1,
+        "execution_profile": "strict",
+        "backend": "hip_gfx1151",
+        "model": "vibevoice_asr",
+        "quant": "bf16",
+        "kv_policy": "uniform_block1_spans",
+        "graph_policy": "eager",
+        "selections": [
+          {
+            "layer": "bf16_to_fp16",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "build_vibevoice_encoder",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "dense_dual_gemv_out_bf16",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "dense_gemv_bf16_f32_out",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "dense_gemv_f32_bf16w_f32_out",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "dense_gemv_out_bf16",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "f32_to_bf16",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "f32_to_fp16",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "qwen35_partial_rotary_f32",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "silu_mul_dual_out_bf16",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "silu_mul_separate_out_bf16",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "vibevoice_prefill",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "vv_add_bias_f32",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "vv_attention_spans",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "vv_kv_write_spans",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "vv_rmsnorm_bf16",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "vv_rope_positions_f32",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "vv_scale_residual_bf16",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          }
+        ]
+      }
+    },
+    "hip-candidate": {
+      "request": {
+        "model": "/home/lhl/.cache/huggingface/hub/models--microsoft--VibeVoice-ASR-HF/snapshots/f22241c2062b3b25272bf117397e03d73381037a",
+        "revision": "f22241c2062b3b25272bf117397e03d73381037a",
+        "audio_seconds": 11.0,
+        "raw_pcm_sha256": "0635eec826a5b8a2324a120855434f4b0f798a20dd33e1b5868d4705cb446460",
+        "hashes": {
+          "pcm": "a7bb761160e140ba5d87aaca79f20308198118576f113f76433187e871ef7282",
+          "input_ids": "9be3500da5c2adc32dc4fd7845ea9f6d630b3661b72fb8cc691b94b89d39ffbd",
+          "padding_mask": "ea3367db1418e8f511105db187f79ece046f8372f28423ebbf2a879fbfe55a3a",
+          "noise": "248402f2c37fd064edbd62a311606090ab0f493e59b55727d43b14d30a20df72",
+          "base_scale": "0dea42369d2e71e87ea6df30491e502ef2c26251bdc72c8b3cf9dfa7aeb9f958",
+          "scale": "cf16d87b63819170f33a908cd6a0566f7a87f63000b222484d4e73f6485ca0d9"
+        },
+        "seed": 20260914,
+        "context": "John F. Kennedy",
+        "preprocessing_s": 0.04553737101377919
+      },
+      "teacher_sha256": "d35c0dd89e80169a52cb63afdbf38a5f08689a7f9cbbc0f83717af1be8f0c550",
+      "logits_sha256": "4f82a726f53d8a9f8b681f428799b2845c1bbf2e9662c2d49e9a6f33c510be72",
+      "shape": [
+        50,
+        152064
+      ],
+      "variant_manifest": {
+        "kind": "hipengine_execution_profile_manifest",
+        "schema_version": 1,
+        "execution_profile": "production",
+        "backend": "hip_gfx1151",
+        "model": "vibevoice_asr",
+        "quant": "bf16",
+        "kv_policy": "uniform_block1_spans",
+        "graph_policy": "eager",
+        "selections": [
+          {
+            "layer": "bf16_to_fp16",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "build_vibevoice_encoder",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "dense_dual_gemv_out_bf16",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "dense_gemv_bf16_f32_out",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "dense_gemv_f32_bf16w_f32_out",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "dense_gemv_out_bf16",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "f32_to_bf16",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "f32_to_fp16",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "qwen35_partial_rotary_f32",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "silu_mul_dual_out_bf16",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "silu_mul_separate_out_bf16",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "vibevoice_prefill",
+            "scope": "decoder",
+            "selected_variant": "hipblaslt",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "vv_add_bias_f32",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "vv_attention_spans",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "vv_kv_write_spans",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "vv_rmsnorm_bf16",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "vv_rope_positions_f32",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          },
+          {
+            "layer": "vv_scale_residual_bf16",
+            "scope": "decoder",
+            "selected_variant": "strict",
+            "strict_fallback_variant": "strict",
+            "evidence_artifact": null,
+            "registry_quant": null
+          }
+        ]
+      }
+    }
+  },
+  "comparisons": {
+    "cpu-strict": {
+      "summary": {
+        "rows": 50,
+        "kl_mean": 2.579045014160207e-06,
+        "kl_p50": 3.1018366622894144e-08,
+        "kl_p95": 4.858941183387548e-06,
+        "kl_p99": 5.5013632472337256e-05,
+        "kl_max": 9.34564535256076e-05,
+        "top1_agreement": 1.0,
+        "top1_matches": 50,
+        "topk_overlap_mean": 0.992,
+        "strict_teacher_nll_mean": 0.03123770015533741,
+        "candidate_teacher_nll_mean": 0.03102617360935822,
+        "teacher_nll_delta": -0.00021152654597918902,
+        "teacher_delta_p_mean": 0.00010518981187762177,
+        "strict_margin_min": 0.7843685150146484,
+        "max_abs_logit_delta": 0.7324873358011246
+      },
+      "hard_gates_passed": true,
+      "requires_outlier_review": false,
+      "by_scope": {
+        "category": {
+          "english": {
+            "rows": 50,
+            "kl_mean": 2.579045014160207e-06,
+            "kl_p50": 3.1018366622894144e-08,
+            "kl_p95": 4.858941183387548e-06,
+            "kl_p99": 5.5013632472337256e-05,
+            "kl_max": 9.34564535256076e-05,
+            "top1_agreement": 1.0,
+            "top1_matches": 50,
+            "topk_overlap_mean": 0.992,
+            "strict_teacher_nll_mean": 0.03123770015533741,
+            "candidate_teacher_nll_mean": 0.03102617360935822,
+            "teacher_nll_delta": -0.00021152654597918902,
+            "teacher_delta_p_mean": 0.00010518981187762177,
+            "strict_margin_min": 0.7843685150146484,
+            "max_abs_logit_delta": 0.7324873358011246,
+            "passed": true
+          }
+        },
+        "shape": {
+          "11.0s": {
+            "rows": 50,
+            "kl_mean": 2.579045014160207e-06,
+            "kl_p50": 3.1018366622894144e-08,
+            "kl_p95": 4.858941183387548e-06,
+            "kl_p99": 5.5013632472337256e-05,
+            "kl_max": 9.34564535256076e-05,
+            "top1_agreement": 1.0,
+            "top1_matches": 50,
+            "topk_overlap_mean": 0.992,
+            "strict_teacher_nll_mean": 0.03123770015533741,
+            "candidate_teacher_nll_mean": 0.03102617360935822,
+            "teacher_nll_delta": -0.00021152654597918902,
+            "teacher_delta_p_mean": 0.00010518981187762177,
+            "strict_margin_min": 0.7843685150146484,
+            "max_abs_logit_delta": 0.7324873358011246,
+            "passed": true
+          }
+        },
+        "transition": {
+          "decode": {
+            "rows": 49,
+            "kl_mean": 2.6316756157992204e-06,
+            "kl_p50": 3.1024691071010245e-08,
+            "kl_p95": 4.8631183039422616e-06,
+            "kl_p99": 5.5798179840771185e-05,
+            "kl_max": 9.34564535256076e-05,
+            "top1_agreement": 1.0,
+            "top1_matches": 49,
+            "topk_overlap_mean": 0.9918367346938776,
+            "strict_teacher_nll_mean": 0.031875204141575575,
+            "candidate_teacher_nll_mean": 0.03165936074823988,
+            "teacher_nll_delta": -0.00021584339333569763,
+            "teacher_delta_p_mean": 0.00010733652180348913,
+            "strict_margin_min": 0.7843685150146484,
+            "max_abs_logit_delta": 0.7324873358011246,
+            "passed": true
+          },
+          "prefill": {
+            "rows": 1,
+            "kl_mean": 1.4553384858174507e-10,
+            "kl_p50": 1.4553384858174507e-10,
+            "kl_p95": 1.4553384858174507e-10,
+            "kl_p99": 1.4553384858174507e-10,
+            "kl_max": 1.4553384858174507e-10,
+            "top1_agreement": 1.0,
+            "top1_matches": 1,
+            "topk_overlap_mean": 1.0,
+            "strict_teacher_nll_mean": 4.829667321065761e-09,
+            "candidate_teacher_nll_mean": 3.804157204226405e-09,
+            "teacher_nll_delta": -1.0255101168393563e-09,
+            "teacher_delta_p_mean": 1.025510121266393e-09,
+            "strict_margin_min": 19.653160095214844,
+            "max_abs_logit_delta": 0.37657737731933594,
+            "passed": true
+          }
+        }
+      },
+      "top1_mismatch_rows": []
+    },
+    "gpu-strict": {
+      "summary": {
+        "rows": 50,
+        "kl_mean": 0.008037362983791936,
+        "kl_p50": 9.685111645648726e-05,
+        "kl_p95": 0.060352417506466374,
+        "kl_p99": 0.11294859961133102,
+        "kl_max": 0.12791553511845707,
+        "top1_agreement": 0.98,
+        "top1_matches": 49,
+        "topk_overlap_mean": 0.8759999999999999,
+        "strict_teacher_nll_mean": 0.025640015618377338,
+        "candidate_teacher_nll_mean": 0.03102617360935822,
+        "teacher_nll_delta": 0.005386157990980883,
+        "teacher_delta_p_mean": 0.0007637423920468744,
+        "strict_margin_min": 0.25,
+        "max_abs_logit_delta": 11.273258209228516
+      },
+      "hard_gates_passed": false,
+      "requires_outlier_review": true,
+      "by_scope": {
+        "category": {
+          "english": {
+            "rows": 50,
+            "kl_mean": 0.008037362983791936,
+            "kl_p50": 9.685111645648726e-05,
+            "kl_p95": 0.060352417506466374,
+            "kl_p99": 0.11294859961133102,
+            "kl_max": 0.12791553511845707,
+            "top1_agreement": 0.98,
+            "top1_matches": 49,
+            "topk_overlap_mean": 0.8759999999999999,
+            "strict_teacher_nll_mean": 0.025640015618377338,
+            "candidate_teacher_nll_mean": 0.03102617360935822,
+            "teacher_nll_delta": 0.005386157990980883,
+            "teacher_delta_p_mean": 0.0007637423920468744,
+            "strict_margin_min": 0.25,
+            "max_abs_logit_delta": 11.273258209228516,
+            "passed": false
+          }
+        },
+        "shape": {
+          "11.0s": {
+            "rows": 50,
+            "kl_mean": 0.008037362983791936,
+            "kl_p50": 9.685111645648726e-05,
+            "kl_p95": 0.060352417506466374,
+            "kl_p99": 0.11294859961133102,
+            "kl_max": 0.12791553511845707,
+            "top1_agreement": 0.98,
+            "top1_matches": 49,
+            "topk_overlap_mean": 0.8759999999999999,
+            "strict_teacher_nll_mean": 0.025640015618377338,
+            "candidate_teacher_nll_mean": 0.03102617360935822,
+            "teacher_nll_delta": 0.005386157990980883,
+            "teacher_delta_p_mean": 0.0007637423920468744,
+            "strict_margin_min": 0.25,
+            "max_abs_logit_delta": 11.273258209228516,
+            "passed": false
+          }
+        },
+        "transition": {
+          "decode": {
+            "rows": 49,
+            "kl_mean": 0.008193612718816514,
+            "kl_p50": 8.276883101469589e-05,
+            "kl_p95": 0.0631431662820318,
+            "kl_p99": 0.1132540472747417,
+            "kl_max": 0.12791553511845707,
+            "top1_agreement": 0.9795918367346939,
+            "top1_matches": 48,
+            "topk_overlap_mean": 0.8775510204081632,
+            "strict_teacher_nll_mean": 0.02616247406962941,
+            "candidate_teacher_nll_mean": 0.03165936074823988,
+            "teacher_nll_delta": 0.005496886678610466,
+            "teacher_delta_p_mean": 0.0007785218914617527,
+            "strict_margin_min": 0.25,
+            "max_abs_logit_delta": 8.895910263061523,
+            "passed": false
+          },
+          "prefill": {
+            "rows": 1,
+            "kl_mean": 0.0003811259675874833,
+            "kl_p50": 0.0003811259675874833,
+            "kl_p95": 0.0003811259675874833,
+            "kl_p99": 0.0003811259675874833,
+            "kl_max": 0.0003811259675874833,
+            "top1_agreement": 1.0,
+            "top1_matches": 1,
+            "topk_overlap_mean": 0.8,
+            "strict_teacher_nll_mean": 3.95515070255544e-05,
+            "candidate_teacher_nll_mean": 3.804157204226405e-09,
+            "teacher_nll_delta": -3.954770286835018e-05,
+            "teacher_delta_p_mean": 3.954692071783672e-05,
+            "strict_margin_min": 11.75,
+            "max_abs_logit_delta": 11.273258209228516,
+            "passed": true
+          }
+        }
+      },
+      "top1_mismatch_rows": [
+        {
+          "scenario_id": "asr-full-content",
+          "scenario_step": 38,
+          "request_id": "recording",
+          "teacher_step": 38,
+          "category": "english",
+          "shape": "11.0s",
+          "transition": "decode",
+          "teacher_token_id": 26,
+          "row_index": 38,
+          "kl": 0.12791553511845707,
+          "top1_equal": false,
+          "strict_top1_token_id": 26,
+          "candidate_top1_token_id": 11,
+          "topk_overlap": 1.0,
+          "strict_margin": 0.25,
+          "strict_top1_candidate_rank": 2,
+          "strict_teacher_nll": 0.9286062304312583,
+          "candidate_teacher_nll": 1.3883632601776665,
+          "teacher_delta_p": -0.14562070082353845,
+          "max_abs_logit_delta": 1.9986608028411865
+        }
+      ]
+    },
+    "strict-candidate": {
+      "summary": {
+        "rows": 50,
+        "kl_mean": 1.987828817676465e-06,
+        "kl_p50": 5.64898330786388e-08,
+        "kl_p95": 1.1493895755607624e-05,
+        "kl_p99": 3.0583029697246413e-05,
+        "kl_max": 4.236348448985923e-05,
+        "top1_agreement": 1.0,
+        "top1_matches": 50,
+        "topk_overlap_mean": 0.992,
+        "strict_teacher_nll_mean": 0.03102617360935822,
+        "candidate_teacher_nll_mean": 0.03118578612106699,
+        "teacher_nll_delta": 0.00015961251170876906,
+        "teacher_delta_p_mean": -7.12129181462906e-05,
+        "strict_margin_min": 0.7783641815185547,
+        "max_abs_logit_delta": 0.6278736740350723
+      },
+      "hard_gates_passed": true,
+      "requires_outlier_review": false,
+      "by_scope": {
+        "category": {
+          "english": {
+            "rows": 50,
+            "kl_mean": 1.987828817676465e-06,
+            "kl_p50": 5.64898330786388e-08,
+            "kl_p95": 1.1493895755607624e-05,
+            "kl_p99": 3.0583029697246413e-05,
+            "kl_max": 4.236348448985923e-05,
+            "top1_agreement": 1.0,
+            "top1_matches": 50,
+            "topk_overlap_mean": 0.992,
+            "strict_teacher_nll_mean": 0.03102617360935822,
+            "candidate_teacher_nll_mean": 0.03118578612106699,
+            "teacher_nll_delta": 0.00015961251170876906,
+            "teacher_delta_p_mean": -7.12129181462906e-05,
+            "strict_margin_min": 0.7783641815185547,
+            "max_abs_logit_delta": 0.6278736740350723,
+            "passed": true
+          }
+        },
+        "shape": {
+          "11.0s": {
+            "rows": 50,
+            "kl_mean": 1.987828817676465e-06,
+            "kl_p50": 5.64898330786388e-08,
+            "kl_p95": 1.1493895755607624e-05,
+            "kl_p99": 3.0583029697246413e-05,
+            "kl_max": 4.236348448985923e-05,
+            "top1_agreement": 1.0,
+            "top1_matches": 50,
+            "topk_overlap_mean": 0.992,
+            "strict_teacher_nll_mean": 0.03102617360935822,
+            "candidate_teacher_nll_mean": 0.03118578612106699,
+            "teacher_nll_delta": 0.00015961251170876906,
+            "teacher_delta_p_mean": -7.12129181462906e-05,
+            "strict_margin_min": 0.7783641815185547,
+            "max_abs_logit_delta": 0.6278736740350723,
+            "passed": true
+          }
+        },
+        "transition": {
+          "decode": {
+            "rows": 49,
+            "kl_mean": 2.028396490194814e-06,
+            "kl_p50": 6.140525915508095e-08,
+            "kl_p95": 1.1745302851441179e-05,
+            "kl_p99": 3.082344714199356e-05,
+            "kl_max": 4.236348448985923e-05,
+            "top1_agreement": 1.0,
+            "top1_matches": 49,
+            "topk_overlap_mean": 0.9918367346938776,
+            "strict_teacher_nll_mean": 0.03165936074823988,
+            "candidate_teacher_nll_mean": 0.031822230657389226,
+            "teacher_nll_delta": 0.00016286990914934907,
+            "teacher_delta_p_mean": -7.26662422488617e-05,
+            "strict_margin_min": 0.7783641815185547,
+            "max_abs_logit_delta": 0.6278736740350723,
+            "passed": true
+          },
+          "prefill": {
+            "rows": 1,
+            "kl_mean": 1.2864277364287791e-11,
+            "kl_p50": 1.2864277364287791e-11,
+            "kl_p95": 1.2864277364287791e-11,
+            "kl_p99": 1.2864277364287791e-11,
+            "kl_max": 1.2864277364287791e-11,
+            "top1_agreement": 1.0,
+            "top1_matches": 1,
+            "topk_overlap_mean": 1.0,
+            "strict_teacher_nll_mean": 3.804157204226405e-09,
+            "candidate_teacher_nll_mean": 3.841277510912847e-09,
+            "teacher_nll_delta": 3.7120306686441756e-11,
+            "teacher_delta_p_mean": -3.712030682834211e-11,
+            "strict_margin_min": 19.95506000518799,
+            "max_abs_logit_delta": 0.3161897659301758,
+            "passed": true
+          }
+        }
+      },
+      "top1_mismatch_rows": []
+    }
+  },
+  "correctness_gate": "50 aligned full-vocabulary positions through transcript content and EOS; canonical execution-profile mean/p95/p99/max KL and top1; diagnostic only",
+  "production_qualified": false,
+  "blockers": [
+    "single English recording; need >=500 rows with required categories and heldouts",
+    "task WER/CER, diarization/timestamp and hotword quality suite missing",
+    "repeat/isolation/sustained concurrency captures missing",
+    "torch GPU BF16 discrepancy needs BF16-relative/task review; CPU and HIP candidate/strict gates pass on this recording",
+    "gfx1100 hardware unmeasured"
+  ],
+  "performance_claim": null
+}

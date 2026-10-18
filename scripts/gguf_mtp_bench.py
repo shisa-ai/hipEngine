@@ -323,7 +323,7 @@ def compute_speculative_metrics(cycles: list[dict]) -> dict:
     A verify cycle always emits one target/corrective token. Accepted draft
     tokens are also visible output tokens, so ``accepted_per_output`` uses
     ``accepted_draft_tokens / visible_output_token_count`` rather than dividing
-    by verify-cycle count. This follows docs/MTP-gguf.md's denominator contract.
+    by verify-cycle count. This follows docs/reference/MTP-gguf.md's denominator contract.
     """
     if not cycles:
         raise ValueError("cycles must be non-empty")

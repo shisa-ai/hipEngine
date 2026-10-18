@@ -4,7 +4,7 @@
 A capacity claim is the largest declared context that **starts a server from
 cold and completes one validated request**, not the largest that allocates.
 This probe enforces that definition with the repairs the 24 GB capacity
-campaign requires (docs/QWEN38-27B-GFX1100-24GB-CAPACITY.md Packet 1):
+campaign requires (docs/campaigns/QWEN38-27B-GFX1100-24GB-CAPACITY.md Packet 1):
 
 - **Live tokens, not declared tokens.** The prompt is fitted to an explicit
   token target through the server tokenizer, and the response usage is

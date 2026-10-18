@@ -37,8 +37,8 @@ def main(argv: list[str]) -> int:
     control = json.load(open(control_path))
     candidate = json.load(open(candidate_path))
     print(
-        f"width C{width}  control={control_path.split("/")[-1]}  "
-        f"candidate={candidate_path.split("/")[-1]}"
+        f"width C{width}  control={control_path.split('/')[-1]}  "
+        f"candidate={candidate_path.split('/')[-1]}"
     )
     for arm in ("ar", "mtp"):
         base, cand = _cells(control, width, arm), _cells(candidate, width, arm)

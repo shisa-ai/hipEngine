@@ -194,6 +194,15 @@ def test_resolve_compiler_version_explicit_becomes_process_default(
     version so later None calls resolve to it and hit ``_LOADED_LIB_CACHE``.
     """
 
+    # This test covers the process default only when no higher-priority
+    # environment override is configured (as in cached-build GPU runners).
+    for name in (
+        "HIPENGINE_COMPILER_VERSION_TEXT",
+        "HIPENGINE_COMPILER_VERSION_FILE",
+        "HIPENGINE_HIPCC_VERSION_TEXT",
+        "HIPENGINE_HIPCC_VERSION_FILE",
+    ):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(build_module, "_COMPILER_VERSION_CACHE", {})
     resolved = build_module._resolve_compiler_version(
         compiler="hipcc", compiler_version="v-pinned 1", dry_run=False
@@ -357,10 +366,10 @@ def _stub_cached_artifact(tmp_path: Path, source: Path, *, version: str, arch: s
     return artifact
 
 
-def test_build_hip_resolution_memo_skips_repeated_environment_derivation(
+def test_build_hip_resolution_memo_skips_repeated_library_loads(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A repeat launch resolves the same library without re-deriving the key.
+    """A repeat launch resolves the same library without loading it again.
 
     The launch path calls ``build_X(load=True)`` with no explicit version,
     target arch or cache root, so every call re-reads the build environment and
@@ -368,6 +377,9 @@ def test_build_hip_resolution_memo_skips_repeated_environment_derivation(
     must turn the repeat call into a lookup while still honouring a changed
     build environment, which is the contract
     ``test_build_hip_loaded_cache_distinguishes_environment_target_arch`` pins.
+
+    The environment identity is a component of the fast key itself, so the work
+    a repeat call must avoid is the library load, not the env read.
     """
 
     source = write_source(tmp_path / "smoke.hip", "extern \"C\" void smoke_host() {}\n")
@@ -379,17 +391,15 @@ def test_build_hip_resolution_memo_skips_repeated_environment_derivation(
 
     monkeypatch.setattr(build_module, "_LOADED_LIB_CACHE", {})
     monkeypatch.setattr(build_module, "_RESOLUTION_CACHE", {})
-    monkeypatch.setattr(build_module.ctypes, "CDLL", lambda path: Path(path))
+    monkeypatch.setattr(build_module, "_FAST_PATH_CACHE", {})
+    loads: list[str] = []
+
+    def counting_cdll(path: str):
+        loads.append(str(path))
+        return Path(path)
+
+    monkeypatch.setattr(build_module.ctypes, "CDLL", counting_cdll)
     monkeypatch.setenv("HIPENGINE_COMPILER_VERSION_TEXT", version)
-
-    derivations = {"count": 0}
-    real_identity = build_module._environment_version_identity
-
-    def counted_identity(compiler: str):
-        derivations["count"] += 1
-        return real_identity(compiler)
-
-    monkeypatch.setattr(build_module, "_environment_version_identity", counted_identity)
 
     def call() -> Path:
         return build_hip(
@@ -404,18 +414,18 @@ def test_build_hip_resolution_memo_skips_repeated_environment_derivation(
 
     monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1100")
     first = call()
-    after_first = derivations["count"]
+    after_first = len(loads)
     assert first == artifacts["gfx1100"].output_path
 
-    # Repeat calls with an unchanged environment must not re-derive the key.
+    # Repeat calls with an unchanged environment must not reload the library.
     assert call() == first
     assert call() == first
-    assert derivations["count"] == after_first
+    assert len(loads) == after_first
 
     # A changed build environment still selects the other artifact.
     monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1151")
     assert call() == artifacts["gfx1151"].output_path
-    assert derivations["count"] > after_first
+    assert len(loads) > after_first
 
 
 def test_build_hip_resolution_memo_does_not_bypass_force(
@@ -480,3 +490,211 @@ def test_invalidate_build_resolution_drops_memoized_libraries(
     build_module.invalidate_build_resolution()
     assert not build_module._RESOLUTION_CACHE
     assert not build_module._LOADED_LIB_CACHE
+
+def _write_fake_cached_artifact(
+    tmp_path: Path, source: Path, *, target_arch: str | None = None, cache_root: Path | None = None
+) -> Path:
+    """Materialise the cached ``.so`` the build machinery expects to find."""
+
+    artifact = plan_hip_build(
+        sources=[source],
+        family="smoke",
+        profile="baseline",
+        cache_root=cache_root or tmp_path / "cache",
+        compiler="definitely-not-a-real-hipcc",
+        compiler_version="hipcc cached test version",
+        target_arch=target_arch,
+    )
+    artifact.cache_dir.mkdir(parents=True, exist_ok=True)
+    artifact.output_path.write_bytes(b"not a real shared object")
+    return artifact.output_path
+
+
+def test_build_hip_per_launch_load_does_not_rederive_its_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Repeated per-launch ``build_hip(load=True)`` must not re-derive its key.
+
+    The kernel launchers resolve their library on every launch (they do not pass
+    ``library=``), so the compiler-version probe, the target-arch read and the
+    cache-root resolution run once per *kernel launch*: measured at 8.0 us of an
+    11.8 us host launch cost, against 1.8 us for the bare ctypes call. The fast
+    path has to short-circuit on the raw call inputs plus the environment values
+    those derivations read, so the derivation runs once per distinct request.
+    """
+
+    source = write_source(tmp_path / "smoke.hip", "extern \"C\" void smoke_host() {}\n")
+    _write_fake_cached_artifact(tmp_path, source)
+    monkeypatch.setattr(build_module, "_LOADED_LIB_CACHE", {})
+    monkeypatch.setattr(build_module, "_FAST_PATH_CACHE", {})
+    monkeypatch.setattr(build_module.ctypes, "CDLL", lambda path: Path(path))
+
+    calls = {"n": 0}
+    real_resolve = build_module._resolve_compiler_version
+
+    def counting_resolve(*args: object, **kwargs: object) -> str:
+        calls["n"] += 1
+        return real_resolve(*args, **kwargs)
+
+    monkeypatch.setattr(build_module, "_resolve_compiler_version", counting_resolve)
+
+    def load() -> object:
+        return build_hip(
+            sources=[source],
+            family="smoke",
+            profile="baseline",
+            cache_root=tmp_path / "cache",
+            compiler="definitely-not-a-real-hipcc",
+            compiler_version="hipcc cached test version",
+            load=True,
+            require_cached=True,
+        )
+
+    first = load()
+    for _ in range(5):
+        assert load() == first
+
+    assert calls["n"] == 1, (
+        "build_hip re-derived its key on a repeated per-launch load; "
+        f"expected 1 derivation, saw {calls['n']}"
+    )
+
+
+def test_build_hip_fast_path_honours_environment_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mid-process environment change must select a fresh resolution.
+
+    The fast path is keyed on the environment values the key derivation reads,
+    so pointing ``HIPENGINE_BUILD_CACHE_ROOT`` at a different cache must not
+    return the previously loaded library.
+    """
+
+    source = write_source(tmp_path / "smoke.hip", "extern \"C\" void smoke_host() {}\n")
+    root_a = tmp_path / "cache-a"
+    root_b = tmp_path / "cache-b"
+    # Clear the arch overrides before the fake artifacts are planned: they are
+    # part of the cache key, and a developer shell that exports
+    # HIPENGINE_HIP_ARCH for a non-native target would otherwise key the
+    # fixtures differently from the build call this test makes below.
+    monkeypatch.delenv("HIPENGINE_HIP_ARCH", raising=False)
+    monkeypatch.delenv("HIPENGINE_HIP_OFFLOAD_ARCH", raising=False)
+    path_a = _write_fake_cached_artifact(tmp_path, source, cache_root=root_a)
+    path_b = _write_fake_cached_artifact(tmp_path, source, cache_root=root_b)
+    monkeypatch.setattr(build_module, "_LOADED_LIB_CACHE", {})
+    monkeypatch.setattr(build_module, "_FAST_PATH_CACHE", {})
+    monkeypatch.setattr(build_module.ctypes, "CDLL", lambda path: Path(path))
+
+    def load() -> object:
+        return build_hip(
+            sources=[source],
+            family="smoke",
+            profile="baseline",
+            compiler="definitely-not-a-real-hipcc",
+            compiler_version="hipcc cached test version",
+            load=True,
+            require_cached=True,
+        )
+
+    monkeypatch.setenv("HIPENGINE_BUILD_CACHE_ROOT", str(root_a))
+    assert load() == path_a
+    monkeypatch.setenv("HIPENGINE_BUILD_CACHE_ROOT", str(root_b))
+    assert load() == path_b
+
+
+def _fast_key(compiler: str = "hipcc", source: str = "a.hip") -> tuple | None:
+    return build_module._build_fast_key(
+        family="smoke",
+        profile="baseline",
+        output_name=None,
+        sources=[source],
+        cache_root=None,
+        compiler=compiler,
+        compiler_version=None,
+        target_arch=None,
+        include_dirs=[],
+        extra_flags=[],
+    )
+
+
+def test_build_fast_key_changes_with_every_build_environment_knob(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each listed knob must actually move the key.
+
+    ``_build_fast_key`` treats an unlisted environment variable as constant for
+    the process lifetime, so a knob that changes what a build resolves to has to
+    change the key. This catches a rename or a typo in ``_BUILD_ENV_KEYS``.
+    """
+
+    for name in build_module._BUILD_ENV_KEYS:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("HIPENGINE_COMPILER_VERSION_TEXT", raising=False)
+    monkeypatch.delenv("HIPENGINE_COMPILER_VERSION_FILE", raising=False)
+    baseline = _fast_key()
+    assert baseline is not None
+
+    for name in build_module._BUILD_ENV_KEYS:
+        monkeypatch.setenv(name, "fast-key-probe")
+        assert _fast_key() != baseline, f"{name} does not affect _build_fast_key"
+        monkeypatch.delenv(name)
+
+    monkeypatch.setenv("HIPENGINE_COMPILER_VERSION_TEXT", "v-probe")
+    assert _fast_key() != baseline, "the version override does not affect _build_fast_key"
+
+
+def test_build_fast_key_lists_every_environment_knob_the_build_path_reads() -> None:
+    """No environment knob may be read by the build path without being listed.
+
+    The fast path assumes an unlisted variable cannot change a build. A new
+    ``HIPENGINE_*`` read anywhere in this module would silently break that, so
+    the module's own source is the oracle.
+    """
+
+    import re
+
+    source = Path(build_module.__file__).read_text()
+    read_names = set(re.findall(r'"(HIPENGINE_[A-Z0-9_]+|HIP_DEVICE_LIB_PATH)"', source))
+    # The compiler-version overrides are dynamic per compiler
+    # (``HIPENGINE_<PREFIX>_VERSION_TEXT``), so they are covered as a family by
+    # ``_environment_version_identity`` rather than named in ``_BUILD_ENV_KEYS``.
+    covered_by_identity = {
+        "HIPENGINE_COMPILER_VERSION_TEXT",
+        "HIPENGINE_COMPILER_VERSION_FILE",
+    }
+    # CUDA-path knobs: read only by ``build_cuda``, which has no fast path, so
+    # they cannot make a HIP key stale.
+    covered_elsewhere = {
+        "HIPENGINE_CUDA_ARCH",
+        "HIPENGINE_CUDA_TARGET_ARCH",
+    }
+    unlisted = (
+        read_names
+        - set(build_module._BUILD_ENV_KEYS)
+        - covered_by_identity
+        - covered_elsewhere
+    )
+    assert not unlisted, (
+        "these environment knobs are read by hipengine/core/build.py but are not in "
+        f"_BUILD_ENV_KEYS, so _build_fast_key would treat them as constant: {sorted(unlisted)}"
+    )
+
+
+def test_env_get_falls_back_when_environ_is_replaced(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fast env read must stay correct if ``os.environ`` is swapped out.
+
+    ``_env_get`` reads the raw dict behind ``os.environ`` to avoid its per-access
+    cost. A caller that replaces ``os.environ`` with a different object (tests do
+    this) must still be read correctly, not through the stale dict.
+    """
+
+    monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx-from-real-environ")
+    assert build_module._env_get("HIPENGINE_HIP_ARCH") == "gfx-from-real-environ"
+
+    monkeypatch.setattr(build_module.os, "environ", {"HIPENGINE_HIP_ARCH": "gfx-from-replacement"})
+    assert build_module._env_get("HIPENGINE_HIP_ARCH") == "gfx-from-replacement"
+    assert build_module._env_get("HIPENGINE_BUILD_CACHE_ROOT") == ""

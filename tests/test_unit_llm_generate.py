@@ -118,6 +118,9 @@ def test_llm_generate_dispatches_through_generation_registry(monkeypatch) -> Non
             calls["request"] = request
             return [prompt + "!" for prompt in request.prompts]
 
+        def speculative_candidate_budget_default(self) -> int:
+            return 3
+
     def factory(**kwargs):
         calls["factory_kwargs"] = kwargs
         generator = FakeGenerator()
@@ -149,7 +152,11 @@ def test_llm_generate_dispatches_through_generation_registry(monkeypatch) -> Non
 
     assert out == ["a!", "b!"]
     assert llm._text_generator._runner.capacity == 8
-    assert calls["generator"].speculative_candidate_budget == 4
+    # An omitted budget resolves from the generator's declared default, and is
+    # published on the resident owner that consumes it.
+    assert calls["generator"].speculative_candidate_budget == 3
+    assert llm.speculative_candidate_budget == 3
+    assert llm.speculative_candidate_budget_source == "generator_default"
     assert llm._text_generator._loop.config.prefix_cache == "radix"
     assert calls["factory_kwargs"] == {
         "model_path": "/tmp/fake-model",
@@ -204,6 +211,70 @@ def test_llm_caps_resident_capacity_to_registered_plain_ar_width(monkeypatch) ->
     assert llm.max_active_requests == 8
     assert llm.server_plain_ar_max_active_requests == 4
     assert llm._text_generator._runner.capacity == 4
+
+
+def test_llm_delegates_the_resident_capacity_estimate(monkeypatch) -> None:
+    """Startup prices its probe through the same object it probes with.
+
+    The scratch probe is reduced by multiplying a per-session price by the width it
+    is about to allocate, and it asks the ``LLM`` it holds for that price. A wrapper
+    that does not delegate leaves the width unreduced and turns the warmup back into
+    the allocation failures the preflight exists to avoid.
+    """
+
+    import hipengine.generation as generation
+    import hipengine.loading as loading
+    import hipengine.models as models
+
+    calls: list[tuple[int, int | None]] = []
+
+    class EstimatingFakeGenerator:
+        def resident_capacity_estimate(
+            self, *, max_batch_size: int = 1, requested_context_tokens: int | None = None
+        ) -> dict[str, int]:
+            calls.append((int(max_batch_size), requested_context_tokens))
+            return {"allocatable_context_tokens": 4096, "max_batch_size": int(max_batch_size)}
+
+        def generate(self, request: GenerationRequest) -> list[str]:
+            return [f"{prompt}!" for prompt in request.prompts]
+
+    class PlainFakeGenerator:
+        def generate(self, request: GenerationRequest) -> list[str]:
+            return [f"{prompt}!" for prompt in request.prompts]
+
+    fake_index = SimpleNamespace(
+        config={"architectures": ["EstimatingFakeForCausalLM"]},
+        model_path="/tmp/fake-model",
+    )
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    monkeypatch.setattr(loading, "load_weight_index", lambda model: fake_index)
+    monkeypatch.setattr(
+        models, "resolve_model", lambda architecture: SimpleNamespace(name="estimating_fake_model")
+    )
+    register_text_generator(
+        model="estimating_fake_model",
+        backend="fake_backend",
+        quant="fake_quant",
+        factory=lambda **kwargs: EstimatingFakeGenerator(),
+        replace=True,
+    )
+
+    llm = LLM("/tmp/fake-model", backend="fake_backend", quant="fake_quant")
+    estimate = llm.resident_capacity_estimate(max_batch_size=4, requested_context_tokens=None)
+
+    assert estimate == {"allocatable_context_tokens": 4096, "max_batch_size": 4}
+    assert calls == [(4, None)]
+
+    register_text_generator(
+        model="estimating_fake_model",
+        backend="fake_backend",
+        quant="fake_quant",
+        factory=lambda **kwargs: PlainFakeGenerator(),
+        replace=True,
+    )
+    plain = LLM("/tmp/fake-model", backend="fake_backend", quant="fake_quant")
+
+    assert plain.resident_capacity_estimate() is None
 
 
 def test_llm_selects_registered_short_context_plain_ar_width(monkeypatch) -> None:
@@ -936,3 +1007,84 @@ def test_llm_resolves_hf_model_id_before_gguf_detection(monkeypatch, tmp_path) -
         "weight_index": fake_index,
         "model_plugin": fake_plugin,
     }
+
+
+def test_llm_engine_command_timeout_defaults_generously_and_respects_env(monkeypatch) -> None:
+    """The command budget guards liveness, so it is generous and configurable."""
+
+    import pytest
+
+    from hipengine.generation import EngineService
+    from hipengine.generation.engine_service import DEFAULT_COMMAND_TIMEOUT_SECONDS
+    from hipengine.llm import _engine_command_timeout_seconds
+
+    assert _engine_command_timeout_seconds({}) == DEFAULT_COMMAND_TIMEOUT_SECONDS
+    assert DEFAULT_COMMAND_TIMEOUT_SECONDS >= 300.0
+    assert (
+        _engine_command_timeout_seconds(
+            {"HIPENGINE_ENGINE_COMMAND_TIMEOUT_SECONDS": "600"}
+        )
+        == 600.0
+    )
+    assert (
+        _engine_command_timeout_seconds(
+            {"HIPENGINE_ENGINE_COMMAND_TIMEOUT_SECONDS": " 12.5 "}
+        )
+        == 12.5
+    )
+    with pytest.raises(ValueError):
+        _engine_command_timeout_seconds(
+            {"HIPENGINE_ENGINE_COMMAND_TIMEOUT_SECONDS": "soon"}
+        )
+    with pytest.raises(ValueError):
+        _engine_command_timeout_seconds(
+            {"HIPENGINE_ENGINE_COMMAND_TIMEOUT_SECONDS": "0"}
+        )
+
+    import hipengine.generation as generation
+    import hipengine.loading as loading
+    import hipengine.models as models
+
+    class NativeRunner:
+        def __init__(self, capacity: int) -> None:
+            self.capacity = capacity
+
+        def prepare(self) -> None:
+            pass
+
+    class NativeGenerator:
+        server_plain_ar_max_active_requests = 4
+
+        def create_resident_model_runner(self, *, capacity):
+            return NativeRunner(int(capacity))
+
+    fake_index = SimpleNamespace(
+        config={"architectures": ["FakeNativeForCausalLM"]},
+        model_path="/tmp/fake-model",
+    )
+    fake_plugin = SimpleNamespace(name="fake_native_service")
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    monkeypatch.setattr(loading, "load_weight_index", lambda model: fake_index)
+    monkeypatch.setattr(models, "resolve_model", lambda architecture: fake_plugin)
+    register_text_generator(
+        model="fake_native_service",
+        backend="fake_backend",
+        quant="fake_quant",
+        factory=lambda **kwargs: NativeGenerator(),
+        replace=True,
+    )
+    monkeypatch.setenv("HIPENGINE_ENGINE_COMMAND_TIMEOUT_SECONDS", "600")
+
+    llm = LLM(
+        "/tmp/fake-model",
+        backend="fake_backend",
+        quant="fake_quant",
+        max_active_requests=4,
+    )
+    try:
+        assert llm.engine_command_timeout_seconds == 600.0
+        service = llm._get_text_generator()
+        assert isinstance(service, EngineService)
+        assert service._command_timeout_seconds == 600.0
+    finally:
+        llm.close()

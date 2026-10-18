@@ -1,0 +1,166 @@
+{
+ "schema": 1,
+ "kind": "gfx1151_prefix_reuse_gate_packed_reference_qualification",
+ "created_at": "2026-09-20T05:45:00.294963+00:00",
+ "host": "hip_gfx1151",
+ "hardware": "AMD Radeon 8060S (gfx1151)",
+ "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "quant": "gguf_q4_k_m",
+ "target_arch": "gfx1151",
+ "workload": {
+  "prompt_source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "prompt_category": "code",
+  "prefix_token_id": 9707,
+  "prefix_tokens": 1024,
+  "suffix_token_id": 9708,
+  "suffix_tokens": 200,
+  "teacher_forced_steps": 128,
+  "max_sequence_length": 2048,
+  "sampling": "greedy_top1_then_reference_teacher_forced",
+  "kv_dtype": "bf16",
+  "source_lifecycle": "active",
+  "processor_forced_token_ids": [],
+  "reference_prefill_mode": "packed",
+  "suites": [
+   "category-code",
+   "category-general_en",
+   "category-general_ja",
+   "category-mixed_ja_en",
+   "heldout-code",
+   "heldout-general_en",
+   "heldout-general_ja",
+   "heldout-mixed_ja_en"
+  ]
+ },
+ "change": "scripts/gguf_prefix_reuse_gate.py now binds the candidate against a reference built by the same prefix-prefill route family. --reference-prefill-mode defaults to 'packed' (prefill_batch_native), which shares the candidate's and the served engine's route; 'native' selects the single-session path, which persists different final-state arithmetic and therefore makes the numerical comparison a cross-route comparison. The gate additionally covers four heldout prompt suites alongside the four natural categories, and each scope is measured over 128 teacher-forced rows (the superseded binding used 4).",
+ "envelope": {
+  "kl_mean_max": 0.001,
+  "kl_p95_max": 0.005,
+  "kl_p99_max": 0.02,
+  "kl_max_max": 0.05,
+  "top1_agreement_min": 0.99,
+  "source": "docs/EXECUTION-PROFILES.md section 6.1"
+ },
+ "scopes": {
+  "category-code": {
+   "passed": true,
+   "teacher_forced_rows": 128,
+   "top1_flips": 1,
+   "top1_agreement": 0.992188,
+   "kl_mean": 0.000148229,
+   "kl_p95": 0.001154007,
+   "kl_p99": 0.001740785,
+   "kl_max": 0.001871398,
+   "semantic_boundary_mismatches": 0
+  },
+  "category-general_en": {
+   "passed": true,
+   "teacher_forced_rows": 128,
+   "top1_flips": 1,
+   "top1_agreement": 0.992188,
+   "kl_mean": 0.000286013,
+   "kl_p95": 0.000996991,
+   "kl_p99": 0.004243942,
+   "kl_max": 0.014417827,
+   "semantic_boundary_mismatches": 0
+  },
+  "category-general_ja": {
+   "passed": true,
+   "teacher_forced_rows": 128,
+   "top1_flips": 0,
+   "top1_agreement": 1.0,
+   "kl_mean": 0.000193978,
+   "kl_p95": 0.001203537,
+   "kl_p99": 0.00342721,
+   "kl_max": 0.005033833,
+   "semantic_boundary_mismatches": 0
+  },
+  "category-mixed_ja_en": {
+   "passed": true,
+   "teacher_forced_rows": 128,
+   "top1_flips": 0,
+   "top1_agreement": 1.0,
+   "kl_mean": 0.000181052,
+   "kl_p95": 0.001119543,
+   "kl_p99": 0.002322602,
+   "kl_max": 0.004565672,
+   "semantic_boundary_mismatches": 0
+  },
+  "heldout-code": {
+   "passed": true,
+   "teacher_forced_rows": 128,
+   "top1_flips": 0,
+   "top1_agreement": 1.0,
+   "kl_mean": 7.9373e-05,
+   "kl_p95": 0.000309906,
+   "kl_p99": 0.001961728,
+   "kl_max": 0.002783054,
+   "semantic_boundary_mismatches": 0
+  },
+  "heldout-general_en": {
+   "passed": true,
+   "teacher_forced_rows": 128,
+   "top1_flips": 0,
+   "top1_agreement": 1.0,
+   "kl_mean": 0.000404729,
+   "kl_p95": 0.001143504,
+   "kl_p99": 0.007477571,
+   "kl_max": 0.019308034,
+   "semantic_boundary_mismatches": 0
+  },
+  "heldout-general_ja": {
+   "passed": true,
+   "teacher_forced_rows": 128,
+   "top1_flips": 0,
+   "top1_agreement": 1.0,
+   "kl_mean": 0.00011428,
+   "kl_p95": 0.000801152,
+   "kl_p99": 0.001429057,
+   "kl_max": 0.001858768,
+   "semantic_boundary_mismatches": 0
+  },
+  "heldout-mixed_ja_en": {
+   "passed": true,
+   "teacher_forced_rows": 128,
+   "top1_flips": 0,
+   "top1_agreement": 1.0,
+   "kl_mean": 6.0262e-05,
+   "kl_p95": 0.000355219,
+   "kl_p99": 0.000928597,
+   "kl_max": 0.001224522,
+   "semantic_boundary_mismatches": 0
+  }
+ },
+ "verdict": {
+  "passed": [
+   "category-code",
+   "category-general_en",
+   "category-general_ja",
+   "category-mixed_ja_en",
+   "heldout-code",
+   "heldout-general_en",
+   "heldout-general_ja",
+   "heldout-mixed_ja_en"
+  ],
+  "failed": [],
+  "all_passed": true,
+  "total_rows": 1024,
+  "total_top1_flips": 2,
+  "total_semantic_boundary_mismatches": 0,
+  "worst_scope_by_kl_mean": "heldout-general_en",
+  "worst_scope_kl_mean": 0.000404729,
+  "note": "Every scope clears every binding term. State is bit-exact against the same-route reference in all eight scopes. The two top-1 flips are one each in code and general_en, the same two scopes that flipped in the two-scope screening run."
+ },
+ "commands": [
+  "/home/lhl/miniforge3/envs/vllm/bin/python scripts/gguf_prefix_reuse_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category code --source-lifecycle active --teacher-forced-steps 128 --json /tmp/t30-calibrated-packed/heldout-code.json",
+  "/home/lhl/miniforge3/envs/vllm/bin/python scripts/gguf_prefix_reuse_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category general_en --source-lifecycle active --teacher-forced-steps 128 --json /tmp/t30-calibrated-packed/heldout-general_en.json",
+  "/home/lhl/miniforge3/envs/vllm/bin/python scripts/gguf_prefix_reuse_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category general_ja --source-lifecycle completed --teacher-forced-steps 128 --json /tmp/t30-calibrated-packed/heldout-general_ja.json",
+  "/home/lhl/miniforge3/envs/vllm/bin/python scripts/gguf_prefix_reuse_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category mixed_ja_en --source-lifecycle active --teacher-forced-steps 128 --json /tmp/t30-calibrated-packed/heldout-mixed_ja_en.json",
+  "/home/lhl/miniforge3/envs/vllm/bin/python scripts/gguf_prefix_reuse_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category code --source-lifecycle active --teacher-forced-steps 128 --json /tmp/t30-calibrated-packed/category-code.json",
+  "/home/lhl/miniforge3/envs/vllm/bin/python scripts/gguf_prefix_reuse_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category general_en --source-lifecycle active --teacher-forced-steps 128 --json /tmp/t30-calibrated-packed/category-general_en.json",
+  "/home/lhl/miniforge3/envs/vllm/bin/python scripts/gguf_prefix_reuse_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category general_ja --source-lifecycle completed --teacher-forced-steps 128 --json /tmp/t30-calibrated-packed/category-general_ja.json",
+  "/home/lhl/miniforge3/envs/vllm/bin/python scripts/gguf_prefix_reuse_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-category mixed_ja_en --source-lifecycle active --teacher-forced-steps 128 --json /tmp/t30-calibrated-packed/category-mixed_ja_en.json"
+ ],
+ "supersedes": "benchmarks/results/2026-09-20-gfx1151-prefix-gate-production-binding.json",
+ "raw_artifacts": "/tmp/t30-calibrated-packed"
+}

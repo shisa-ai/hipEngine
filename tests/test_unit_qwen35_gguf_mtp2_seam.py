@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ctypes
+import inspect
+import os
 from types import SimpleNamespace
 
 import numpy as np
@@ -22,9 +24,12 @@ from hipengine.generation.qwen35_gguf_mtp2 import (
     _MTP2RequestState,
     _PhysicalTargetCommitError,
     _target_verify_mode_for_context,
+    PRIMING_SOURCE_ABSENT,
+    PRIMING_SOURCE_BUFFERED,
+    PRIMING_SOURCE_RESTORED,
 )
 from hipengine.kernels.backends import backend_package_capability
-from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY
+from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY, QWEN35_MOE_H2048_E256_GEOMETRY
 from hipengine.runtime import qwen35_gguf_runner as runner_mod
 from hipengine.runtime.qwen35_gguf_nextn import (
     Qwen35GGUFNextNBatchDeviceProposal,
@@ -36,11 +41,14 @@ from hipengine.speculative import (
     SpeculativeMTPStaticEligibility,
     SpeculativeMTPStaticState,
     SpeculativeRequestSemantics,
+    StagedSpeculativeRunner,
     TargetAcceptSummary,
     TargetVerifyBatch,
     TargetVerifyBuffers,
+    resolve_staged_speculative_runner,
 )
 from hipengine.speculative.ngram_mod import NgramModConfig, RequestLocalNgramMod
+from hipengine.speculative.accounting import speculative_output_accounting
 
 
 class _AdapterDouble:
@@ -105,11 +113,198 @@ def test_gfx1100_target_mode_resolves_before_verifier_construction() -> None:
         "native", backend="hip_gfx1100", end_position=16384, target=target,
     ) == "native"
     assert _target_verify_mode_for_context(
-        "native", backend="hip_gfx1151", end_position=96
+        "native", backend="hip_gfx1151", end_position=96,
+        target=SimpleNamespace(
+            runner=SimpleNamespace(
+                weights=SimpleNamespace(config=SimpleNamespace(is_moe=True)),
+            ),
+        ),
+    ) == "native"
+    assert _target_verify_mode_for_context(
+        "native", backend="hip_gfx1151", end_position=96,
+        target=SimpleNamespace(
+            runner=SimpleNamespace(
+                weights=SimpleNamespace(
+                    config=SimpleNamespace(is_moe=False),
+                    file_type_name="MOSTLY_Q4_K_M",
+                ),
+            ),
+        ),
     ) == "native"
     assert _target_verify_mode_for_context(
         "native", backend="hip_gfx1151", end_position=65545
     ) == "serial_exact"
+
+
+def test_gfx1151_dense_native_selection_ignores_quant_identity() -> None:
+    """Dense gfx1151 selects native from context, never from artifact identity.
+
+    A Q4_K_S target ran the native row verifier before a serial fallback was
+    keyed on its quant name. That fallback gated execution on artifact identity
+    rather than on a kernel capability, so a correctly executable route became
+    slower with no capability reason. Selection must stay identity-free.
+    """
+
+    def _target(*, file_type_name: str, is_moe: bool = False) -> SimpleNamespace:
+        return SimpleNamespace(
+            runner=SimpleNamespace(
+                weights=SimpleNamespace(
+                    config=SimpleNamespace(is_moe=is_moe),
+                    file_type_name=file_type_name,
+                ),
+            ),
+        )
+
+    for file_type_name in (
+        "MOSTLY_Q4_K_M",
+        "MOSTLY_Q4_K_S",
+        "MOSTLY_Q4_K_S\x00garbage",
+        "",
+    ):
+        assert _target_verify_mode_for_context(
+            "native",
+            backend="hip_gfx1151",
+            end_position=96,
+            target=_target(file_type_name=file_type_name),
+        ) == "native", file_type_name
+    # The mode resolver has no quant/identity input at all, so no future
+    # quant-name containment can be reintroduced without changing this seam.
+    signature = inspect.signature(_target_verify_mode_for_context)
+    assert set(signature.parameters) == {
+        "requested",
+        "backend",
+        "end_position",
+        "target",
+    }
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_SPECDEC2_Q4KS_NATIVE_STATE_SAFE", None
+    ) is None
+
+
+@pytest.mark.parametrize("backend,end_position", [
+    ("hip_gfx1100", 17), ("hip_gfx1100", 64), ("hip_gfx1100", 95),
+    ("hip_gfx1151", 17), ("hip_gfx1151", 96), ("hip_gfx1151", 4096),
+])
+def test_moe_native_mode_is_not_blocked_by_cross_path_numerical_drift(
+    backend: str, end_position: int,
+) -> None:
+    """Generated-ID differences do not establish a state-ownership failure."""
+
+    moe = SimpleNamespace(
+        runner=SimpleNamespace(
+            weights=SimpleNamespace(
+                config=SimpleNamespace(is_moe=True),
+                file_type_name="MOSTLY_Q4_K_M",
+            ),
+        ),
+    )
+    assert backend_package_capability(
+        backend, "GGUF_SPECDEC2_MOE_NATIVE_STATE_SAFE", None
+    ) is None
+    assert _target_verify_mode_for_context(
+        "native", backend=backend, end_position=end_position, target=moe,
+    ) == "native"
+    assert _target_verify_mode_for_context(
+        "serial_exact", backend=backend, end_position=end_position, target=moe,
+    ) == "serial_exact"
+
+
+def test_native_chain_accept_commits_the_accepted_row_for_every_bucket() -> None:
+    """Pin the accepted-row offset contract the native accept kernel implements.
+
+    ``dflash_accept_chain_i32_native_cycle`` walks root-first candidate rows and
+    selects the last row whose target top-1 equals the next candidate token. The
+    committed row index, its position, and the published correction must follow
+    that walk for every B1-B7 bucket and at the decode-budget boundary; a
+    mismatch here installs the wrong linear/KV state and the wrong next-root
+    hidden while still emitting plausible tokens.
+    """
+
+    from hipengine.runtime.gguf_native_spec_cycle import build_native_b2_target_batch
+
+    start = 7
+    for rows in range(2, 9):
+        tokens = tuple(100 + index for index in range(rows))
+        batch = build_native_b2_target_batch(tokens, start_position=start, request_id=3)
+        assert batch.positions == tuple(range(start, start + rows))
+        assert batch.parent_rows == (-1, *tuple(range(rows - 1)))
+        assert batch.draft_depths == tuple(range(rows))
+        assert batch.root_rows == (0,)
+        assert batch.candidate_rows == tuple(range(1, rows))
+        # Row ``r`` predicts the token at position ``r + 1``, so full agreement
+        # commits the last candidate row and publishes one further token.
+        agreeing = (*tokens[1:], 999)
+        full = batch.accept_from_top1(agreeing, remaining_decode=(64,))
+        assert full.accepted_counts == (rows - 1,)
+        assert full.accepted_tokens == (tokens[1:],)
+        assert full.selected_candidate_rows == (rows - 1,)
+        assert full.next_tokens == (999,)
+        # A root mismatch commits row 0 and publishes the root row's own
+        # prediction, which is the correction the next root consumes.
+        rejected = batch.accept_from_top1(
+            (777, *agreeing[1:]), remaining_decode=(64,)
+        )
+        assert rejected.accepted_counts == (0,)
+        assert rejected.accepted_tokens == ((),)
+        assert rejected.selected_candidate_rows == (0,)
+        assert rejected.next_tokens == (777,)
+        # The remaining-decode budget caps acceptance at ``budget - 1`` drafts
+        # and never emits the exhausted sentinel, so every cycle publishes at
+        # least its correction token and the target cursor still advances by
+        # the visible count.
+        for budget in (1, 2, 3):
+            capped = batch.accept_from_top1(agreeing, remaining_decode=(budget,))
+            expected = min(budget - 1, rows - 1)
+            assert capped.accepted_counts == (expected,), (rows, budget)
+            assert capped.selected_candidate_rows == (expected,)
+            assert capped.next_tokens is not None
+            assert capped.next_tokens[0] == agreeing[expected]
+
+
+def test_native_accept_commit_result_refuses_a_commit_off_the_accepted_row() -> None:
+    """Pin the commit destination and next-root cursor of an N2 device result."""
+
+    from hipengine.runtime.gguf_native_spec_cycle import (
+        Qwen35GGUFNativeAcceptCommitResult,
+    )
+
+    base = {
+        "input_token_ids": [100, 101, 102],
+        "token_ids": [101, 102, 103],
+        "accepted_draft_tokens": 2,
+        "commit_row": 2,
+        "commit_token": 102,
+        "commit_position": 7,
+        "next_token": 103,
+        "full_accept": True,
+        "start_position": 5,
+        "end_position": 8,
+        "hidden_seed_rows_ptr": 0x1000,
+        "hidden_seed_row_count": 3,
+        "hidden_size": 8,
+        "target_top1": [101, 102, 103],
+    }
+    result = Qwen35GGUFNativeAcceptCommitResult(**base)
+    assert (result.commit_row, result.commit_position, result.end_position) == (2, 7, 8)
+
+    # Selecting an earlier row for the accepted prefix, or reporting a cursor
+    # that is not that row's position + 1, would commit another row's state.
+    with pytest.raises(ValueError, match="commit_row"):
+        Qwen35GGUFNativeAcceptCommitResult(**{**base, "commit_row": 1})
+    with pytest.raises(ValueError, match="commit_position"):
+        Qwen35GGUFNativeAcceptCommitResult(**{**base, "commit_position": 6})
+    with pytest.raises(ValueError, match="end_position"):
+        Qwen35GGUFNativeAcceptCommitResult(**{**base, "end_position": 9})
+    # The published correction is the committed row's own prediction, so a
+    # next-root token that is not the last visible token is a mismatch.
+    with pytest.raises(ValueError, match="next_token"):
+        Qwen35GGUFNativeAcceptCommitResult(**{**base, "next_token": 104})
+    with pytest.raises(ValueError, match="commit_token"):
+        Qwen35GGUFNativeAcceptCommitResult(**{**base, "commit_token": 101})
+    # The commit kernel indexes the hidden/linear row plane by commit_row, so
+    # the result must expose every verifier row, not just the accepted prefix.
+    with pytest.raises(ValueError, match="hidden rows"):
+        Qwen35GGUFNativeAcceptCommitResult(**{**base, "hidden_seed_row_count": 2})
 
 
 def test_backend_packages_expose_independently_qualified_adapter_scopes() -> None:
@@ -126,7 +321,6 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
     ) == {
         "production": (
             *((width, depth) for width in range(1, 5) for depth in range(1, 4)),
-            (8, 3),
         )
     }
     assert backend_package_capability(
@@ -152,7 +346,9 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
         "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
         {},
     ) == {
+        (QWEN35_DENSE_H5120_GEOMETRY, None, "production"): (1, 2, 3, 4),
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (1, 2, 3, 4),
+        (QWEN35_MOE_H2048_E256_GEOMETRY, None, "production"): (1, 2),
     }
     assert backend_package_capability(
         "hip_gfx1151",
@@ -197,6 +393,30 @@ def test_qwen38_production_prompt_streaming_policy_admits_only_physical_c1_c4() 
     assert adapter._physical_prompt_streaming_admitted(3) is True
     assert adapter._physical_prompt_streaming_admitted(4) is True
     assert adapter._physical_prompt_streaming_admitted(5) is False
+
+
+def test_qwen38_q4ks_prompt_streaming_uses_geometry_capability() -> None:
+    owner = SimpleNamespace(
+        generator=SimpleNamespace(
+            backend="hip_gfx1151",
+            execution_profile="production",
+        ),
+        capacity=4,
+        _shared_runner=SimpleNamespace(
+            weights=SimpleNamespace(
+                geometry=QWEN35_DENSE_H5120_GEOMETRY,
+                file_type_name="MOSTLY_Q4_K_S",
+            ),
+        ),
+    )
+    adapter = Qwen35GGUFMTP2Adapter(
+        owner,
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=3,
+    )
+
+    assert adapter.physical_prompt_streaming_widths == (1, 2, 3, 4)
 
 
 def test_qwen_gguf_plugins_select_distinct_mtp2_adapters() -> None:
@@ -305,7 +525,11 @@ def test_physical_width_depth_policy_misconfiguration_fails_closed(
         module.backend_package_capability = real
 
 
-def test_physical_width_depth_policy_admits_only_listed_wide_cell() -> None:
+def test_physical_width_depth_policy_admits_only_listed_cells() -> None:
+    # The gfx1151 C8-K3 cell was withdrawn on 2026-09-19: this backend's
+    # prompt-streaming policy admits widths (1,2,3,4), so an eight-row group is
+    # refused by the provider while the route still ran, and the cell measured
+    # 0.936x of its own AR baseline with 0/10 cells reproducing the AR output.
     adapter = Qwen35GGUFMTP2Adapter(
         _width_bound_owner(profile="production", capacity=8),
         enabled=True,
@@ -313,14 +537,13 @@ def test_physical_width_depth_policy_admits_only_listed_wide_cell() -> None:
         candidate_budget=3,
     )
 
-    assert adapter._max_physical_requests() == 8
-    assert adapter._physical_width_depth_admitted(8, 3) is True
-    for width in (5, 6, 7):
+    assert adapter._max_physical_requests() == 4
+    for width in (5, 6, 7, 8):
         assert adapter._physical_width_depth_admitted(width, 3) is False
     for depth in (1, 2):
         assert adapter._physical_width_depth_admitted(8, depth) is False
     max_rows = adapter._max_physical_requests() * (adapter.candidate_budget + 1)
-    assert max_rows == 32
+    assert max_rows == 16
 
 
 def test_physical_width_depth_policy_gates_capability_and_claims() -> None:
@@ -376,19 +599,17 @@ def test_physical_width_depth_policy_gates_capability_and_claims() -> None:
             for rid in ids[:width]
         )
 
-    for width in (5, 6, 7):
+    for width in (5, 6, 7, 8):
         assert adapter.partition_max_requests(ids[:width]) == 0
         assert adapter.capability(semantics(width)) is None
-    # A zero partition bound preserves one whole due group; C8 then reaches the
-    # explicit capability cell rather than chained subgroups.
+    # A zero partition bound preserves one whole due group, and the group then
+    # takes one full-batch AR step: the wide cell is no longer listed, so
+    # per-row eligibility and capacity 8 cannot widen the group past C4.
     assert adapter.partition_max_requests(ids) == 0
-    c8 = adapter.capability(semantics(8))
-    assert c8 is not None
-    assert c8.max_requests == 8
-    assert c8.max_candidates_per_request == 3
-    assert c8.max_frontier_rows == 32
+    assert adapter.capability(semantics(8)) is None
+    assert adapter.capability(semantics(4)) is not None
 
-    for width in (5, 6, 7):
+    for width in (5, 6, 7, 8):
         assert adapter.claims_fit(
             SimpleNamespace(
                 request_ids=ids[:width],
@@ -398,19 +619,27 @@ def test_physical_width_depth_policy_gates_capability_and_claims() -> None:
         ) is False
     assert adapter.claims_fit(
         SimpleNamespace(
-            request_ids=ids,
-            speculative_request_ids=ids,
-            candidate_counts=(3,) * 8,
+            request_ids=ids[:4],
+            speculative_request_ids=ids[:4],
+            candidate_counts=(3,) * 4,
         )
     ) is True
-    for depth in (1, 2):
+    for depth in (1, 2, 3):
         assert adapter.claims_fit(
             SimpleNamespace(
-                request_ids=ids,
-                speculative_request_ids=ids,
-                candidate_counts=(depth,) * 8,
+                request_ids=ids[:4],
+                speculative_request_ids=ids[:4],
+                candidate_counts=(depth,) * 4,
             )
-        ) is False
+        ) is True
+    # The listed depths stop at 3, and the rows' own candidate bound agrees.
+    assert adapter.claims_fit(
+        SimpleNamespace(
+            request_ids=ids[:4],
+            speculative_request_ids=ids[:4],
+            candidate_counts=(4,) * 4,
+        )
+    ) is False
 
 
 def _gfx1100_screening_owner(*, capacity: int = 8) -> SimpleNamespace:
@@ -667,8 +896,49 @@ def test_resident_runner_resolves_model_plugin_mtp2_adapter_without_model_branch
         unregister_gguf_mtp2_adapter(key)
 
 
-def test_resident_runner_delegates_staged_methods_without_backend_branches() -> None:
+@pytest.mark.parametrize("pinned_budget", [None, 1, 2])
+def test_resident_adapter_uses_generator_default_before_budget_publication(pinned_budget):
+    key = "test_prepublication_nextn"
+    calls = []
+
+    def factory(owner, **kwargs):
+        calls.append(kwargs["candidate_budget"])
+        return _AdapterDouble()
+
+    register_gguf_mtp2_adapter(key, factory)
+    try:
+        runner = object.__new__(Qwen35GGUFResidentModelRunner)
+        runner._mtp2_adapter = None
+        runner._mtp2_adapter_resolved = False
+        runner.capacity = 4
+        runner.generator = SimpleNamespace(
+            backend="hip_gfx1151", target_arch="gfx1151",
+            supports_speculative_mtp=True,
+            speculative_candidate_budget_default=lambda: 2,
+            model_plugin=SimpleNamespace(speculative_mtp2_adapter=key),
+        )
+        if pinned_budget is not None:
+            runner.generator.speculative_candidate_budget = pinned_budget
+        runner._resolved_mtp2_adapter()
+        assert calls == [2 if pinned_budget is None else pinned_budget]
+    finally:
+        unregister_gguf_mtp2_adapter(key)
+
+
+def _bare_runner() -> Qwen35GGUFResidentModelRunner:
+    """A runner built without ``__init__``, carrying its cycle accounting."""
+
     runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._execution_mutation_window = "unknown"
+    runner._execution_step_request_id = None
+    runner._execution_stepped_request_ids = set()
+    runner._execution_committed_request_ids = set()
+    runner._execution_speculative_plan = None
+    return runner
+
+
+def test_resident_runner_delegates_staged_methods_without_backend_branches() -> None:
+    runner = _bare_runner()
     adapter = _AdapterDouble()
     runner._mtp2_adapter = adapter
     runner._mtp2_adapter_resolved = True
@@ -692,6 +962,57 @@ def test_resident_runner_delegates_staged_methods_without_backend_branches() -> 
         4,
     )
     assert runner.speculative_kv_live_spans_owner(SimpleNamespace(operation_id="op"))
+
+
+def test_qwen_runner_opts_into_the_staged_seam_and_preserves_delegation() -> None:
+    runner = _bare_runner()
+    adapter = _AdapterDouble()
+    runner._mtp2_adapter = adapter
+    runner._mtp2_adapter_resolved = True
+    runner.generator = SimpleNamespace(target_arch="gfx1151")
+    runner._rows = {7: SimpleNamespace(mtp2_candidate_budget=0)}
+
+    owner = resolve_staged_speculative_runner(runner)
+
+    assert owner is runner
+    assert isinstance(owner, StagedSpeculativeRunner)
+    assert runner.staged_speculative_owner() is runner
+    assert owner.speculative_capability(("s",)) == "capability"
+    assert owner.speculative_claims_fit("plan") is True
+    assert owner.speculative_component_claims("plan") == {"plan": "plan"}
+    reservation = owner.reserve_speculative_claims("claims")
+    assert reservation == ("reservation", "claims")
+    owner.release_speculative_claims(reservation)
+    owner.prepare_speculative_requests("plan", ("s",), stream=1)
+    assert owner.propose_speculative_batch("plan", ("s",), stream=2) == (
+        "proposal",
+        "plan",
+        ("s",),
+        2,
+    )
+    assert owner.execute_target_frontier(
+        1, 2, 3, commit=True, cancelled_request_ids=()
+    ) == ((1, 2, 3), {"commit": True, "cancelled_request_ids": ()})
+    assert owner.speculative_kv_live_spans_owner(SimpleNamespace(operation_id="op"))
+    owner.rollback_speculative_cycle("plan", None, RuntimeError("boom"))
+    assert adapter.calls[-1][0] == "rollback"
+    assert adapter.calls[-1][1][0] == "plan"
+
+
+def test_dms_runner_keeps_its_named_unsupported_speculative_boundary() -> None:
+    from hipengine.generation.qwen35_gguf_dms import Qwen35GGUFDMSModelRunner
+
+    runner = object.__new__(Qwen35GGUFDMSModelRunner)
+    with pytest.raises(
+        ValueError, match="DMS compact KV has no speculative serving adapter"
+    ):
+        runner.configure_engine_loop(
+            SimpleNamespace(prefix_cache="off", speculative_mtp_serving="on")
+        )
+    with pytest.raises(ValueError, match="prefix-cache"):
+        runner.configure_engine_loop(
+            SimpleNamespace(prefix_cache="radix", speculative_mtp_serving="off")
+        )
 
 
 def test_resident_runner_bounds_cycle_intent_by_static_evidence_k() -> None:
@@ -724,13 +1045,33 @@ def test_resident_runner_delegates_bounded_complete_cycle_when_plugin_selects_it
         staged_frontier=False,
         execute_cycle=lambda plan, commit: (plan, commit),
     )
-    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner = _bare_runner()
     runner._mtp2_adapter = adapter
     runner._mtp2_adapter_resolved = True
     runner.generator = SimpleNamespace(target_arch="gfx1100")
 
     assert runner.speculative_frontier_available("plan") is False
     assert runner.execute_speculative_cycle("plan", commit=True) == ("plan", True)
+
+
+def test_resident_runner_delegates_bounded_complete_cycle_with_gdn_capture(monkeypatch) -> None:
+    observed: list[str | None] = []
+
+    def execute(plan, commit):
+        observed.append(os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"))
+        return plan, commit
+
+    adapter = SimpleNamespace(staged_frontier=False, execute_cycle=execute)
+    runner = _bare_runner()
+    runner._mtp2_adapter = adapter
+    runner._mtp2_adapter_resolved = True
+    runner.generator = SimpleNamespace(target_arch="gfx1100")
+    monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", raising=False)
+
+    assert runner.speculative_frontier_available("plan") is False
+    assert runner.execute_speculative_cycle("plan", commit=True) == ("plan", True)
+    assert observed == ["1"]
+    assert "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN" not in os.environ
 
 
 def test_physical_specdec2_uses_qualified_eager_when_graph_is_uncached() -> None:
@@ -1023,6 +1364,7 @@ def test_gfx1100_capability_owns_one_c8_k3_frontier() -> None:
         _row=lambda request_id: rows[int(request_id)],
     )
     adapter._intents = {request_id: 3 for request_id in request_ids}
+    adapter._sampling_mode_by_request = {}
     adapter._static_eligibility_by_request = {
         request_id: SpeculativeMTPStaticEligibility(
             state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
@@ -1139,7 +1481,11 @@ def test_real_adapter_requires_ar_root_and_exact_prefill_hidden_rows() -> None:
     assert capability.max_requests == 4
     assert capability.max_candidates_per_request == 3
     assert capability.max_frontier_rows == 16
-    assert capability.max_context_tokens == 1023
+    # The advertised bound is the target's allocated capacity, not the retired
+    # 1,023-token evidence window. Admission and per-cycle policy must read the
+    # same value, and prompt context is not an admission axis
+    # (docs/EXECUTION-PROFILES.md section 2.9).
+    assert capability.max_context_tokens == 4096
 
     adapter.register_request(
         7,
@@ -2193,10 +2539,133 @@ def test_model_runner_rebuilds_postcommit_targets_from_canonical_tokens() -> Non
     assert tuple(session.position for session in sessions) == (3, 4)
 
 
-def test_model_runner_production_rebuild_keeps_scheduler_token_on_near_tie() -> None:
+def test_model_runner_rebuilds_postcommit_targets_on_the_strict_route_when_packed_refuses() -> None:
+    """A packed shape refusal must not fail a cycle that already committed.
+
+    The rebuild runs after the cycle published tokens to the client stream, so
+    a ``NotImplementedError`` here used to end a live response with
+    ``unsupported_parameter``. The rows must instead rebuild on the registered
+    strict per-session route with the same tokens and cursors.
+    """
+
+    calls: list[tuple] = []
+
+    class Session:
+        def __init__(self, next_token: int) -> None:
+            self.position = 99
+            self.next_token = int(next_token)
+
+        def reset(self) -> None:
+            calls.append("reset")
+            self.position = 0
+
+        def prefill(self, tokens, *, return_logits=False):
+            calls.append(("prefill", tuple(tokens), bool(return_logits)))
+            self.position = len(tokens)
+            return SimpleNamespace(token_id=self.next_token)
+
+    sessions = (Session(102), Session(202))
+    rows = {
+        10: SimpleNamespace(
+            request_id=10,
+            prompt_ids=(1, 2),
+            slot=SimpleNamespace(
+                generated_ids=[101, 102],
+                prev_token=102,
+                seq_position=3,
+            ),
+            lease=SimpleNamespace(session=sessions[0]),
+        ),
+        20: SimpleNamespace(
+            request_id=20,
+            prompt_ids=(3, 4, 5),
+            slot=SimpleNamespace(
+                generated_ids=[201, 202],
+                prev_token=202,
+                seq_position=4,
+            ),
+            lease=SimpleNamespace(session=sessions[1]),
+        ),
+    }
+
+    class PackedOwner:
+        def prefill_batch_native(self, prompts, **kwargs):
+            calls.append("prefill_batch_native")
+            raise NotImplementedError(
+                "packed paged AR prefill currently requires context < 1024"
+            )
+
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._rows = rows
+    runner._flush_rows = lambda selected: calls.append(
+        ("flush", tuple(row.request_id for row in selected))
+    )
+    runner._packed_execution_owner = lambda session: PackedOwner()
+    plan = SimpleNamespace(speculative_request_ids=(10, 20))
+
+    assert runner.restore_speculative_target_rows(plan) is True
+    assert calls[0] == ("flush", (10, 20))
+    assert calls[1:3] == ["reset", "reset"]
+    assert calls[3:] == [
+        "prefill_batch_native",
+        ("prefill", (1, 2, 101), False),
+        ("prefill", (3, 4, 5, 201), False),
+    ]
+    assert tuple(session.position for session in sessions) == (3, 4)
+
+
+def test_model_runner_postcommit_rebuild_stays_fail_closed_for_block_table_sessions() -> None:
+    """Only the block-table-aware route can serve those sessions, so refuse."""
+
+    calls: list[str] = []
+
+    class Session:
+        kv_attention_source = "int8_direct"
+        position = 0
+
+        def reset(self) -> None:
+            calls.append("reset")
+
+        def prefill(self, tokens, *, return_logits=False):
+            calls.append("prefill")
+            return SimpleNamespace(token_id=1)
+
+    session = Session()
+    rows = {
+        10: SimpleNamespace(
+            request_id=10,
+            prompt_ids=(1, 2),
+            slot=SimpleNamespace(
+                generated_ids=[101, 102],
+                prev_token=102,
+                seq_position=3,
+            ),
+            lease=SimpleNamespace(session=session),
+        ),
+    }
+
+    class PackedOwner:
+        def prefill_batch_native(self, prompts, **kwargs):
+            raise NotImplementedError(
+                "packed paged AR prefill currently requires context < 1024"
+            )
+
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._rows = rows
+    runner._flush_rows = lambda selected: None
+    runner._packed_execution_owner = lambda session: PackedOwner()
+    plan = SimpleNamespace(speculative_request_ids=(10,))
+
+    assert runner.restore_speculative_target_rows(plan) is False
+    assert calls == ["reset"]
+
+
+@pytest.mark.parametrize("sampled", [False, True])
+def test_model_runner_production_rebuild_keeps_scheduler_token_on_near_tie(sampled) -> None:
     session = SimpleNamespace(position=5, reset=lambda: None)
     row = SimpleNamespace(
         request_id=7,
+        native_sampled=sampled,
         prompt_ids=(1, 2),
         slot=SimpleNamespace(
             generated_ids=[101, 102],
@@ -2218,7 +2687,7 @@ def test_model_runner_production_rebuild_keeps_scheduler_token_on_near_tie() -> 
 
     assert runner.restore_speculative_target_request_ids(
         (7,),
-        require_token_match=False,
+        require_token_match=sampled,
     ) is True
     assert row.slot.prev_token == 102
     assert session.position == row.slot.seq_position == 3
@@ -2701,6 +3170,349 @@ def test_k0_catchup_consumes_current_root_before_target_ar() -> None:
     assert row.mtp2_k0_catchups == 1
 
 
+def _prepare_k0_adapter(row: SimpleNamespace) -> Qwen35GGUFMTP2Adapter:
+    """Adapter wired to one resident row, with request 7 owning an intent."""
+
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter._states = {
+        7: _MTP2RequestState(
+            request_id=7,
+            provider=SimpleNamespace(executor=SimpleNamespace()),
+            provider_pool_key=None,
+            provider_group_key=(7,),
+            verifier=SimpleNamespace(),
+            root_hidden_buffer=SimpleNamespace(ptr=1),
+        )
+    }
+    adapter._intents = {7: 3}
+    adapter._prompt_hidden_rows = {}
+    adapter._disabled_requests = set()
+    adapter._post_reject_pending = set()
+    adapter.owner = SimpleNamespace(
+        _row=lambda request_id: row,
+        _flush_row_owner=lambda owned_row: None,
+    )
+    return adapter
+
+
+def _ar_only_k0_plan() -> SimpleNamespace:
+    return SimpleNamespace(
+        request_ids=(7,),
+        reasons=(mtp2_module.SpecPlanReason.TARGET_GRAPH_CONTEXT_BUCKET_MISS,),
+        k0_classes=(mtp2_module.SpecK0Class.PURE,),
+    )
+
+
+def test_prepare_k0_records_no_output_before_the_decode_emits() -> None:
+    """Preparation is not output: only the decode that emits may count a token.
+
+    A mixed group is retried as its speculative subset, so the same row can be
+    prepared twice while one AR decode emits one token. Counting at preparation
+    would report two autoregressive outputs for it.
+    """
+
+    row = SimpleNamespace(
+        first_token_emitted=False,
+        lease=SimpleNamespace(
+            session=SimpleNamespace(position=1022, last_target_hidden=None)
+        ),
+        slot=SimpleNamespace(generated_ids=[90]),
+        mtp2_k0_catchups=0,
+        mtp2_ar_step_reasons={},
+    )
+    adapter = _prepare_k0_adapter(row)
+
+    adapter.prepare_k0(_ar_only_k0_plan(), (), stream=None)
+    adapter.prepare_k0(_ar_only_k0_plan(), (), stream=None)
+
+    # PURE K0 rows never touch provider state, and preparation alone attributes
+    # nothing.
+    assert row.mtp2_k0_catchups == 0
+    assert row.mtp2_ar_step_reasons == {}
+    assert getattr(row, "mtp2_ar_step_output_tokens", None) is None
+    assert getattr(row, "mtp2_first_fallback_position", None) is None
+
+    # The decode that emits the token attributes it, with the plan's reason.
+    adapter.note_speculative_ar_commit(7, mtp2_module.SpecPlanReason.TARGET_GRAPH_CONTEXT_BUCKET_MISS)
+
+    assert row.mtp2_ar_step_output_tokens == 1
+    assert row.mtp2_ar_step_reasons == {"target_graph_context_bucket_miss": 1}
+    # No speculative output yet, so this step is not a fallback.
+    assert getattr(row, "mtp2_first_fallback_position", None) is None
+
+
+def test_ar_commits_locate_the_first_fallback_after_speculative_output() -> None:
+    """An AR-only cycle after MTP cycles reports where speculation stopped."""
+
+    row = SimpleNamespace(
+        first_token_emitted=True,
+        lease=SimpleNamespace(
+            session=SimpleNamespace(position=1022, last_target_hidden=None)
+        ),
+        slot=SimpleNamespace(generated_ids=[90, 91, 92]),
+        mtp2_k0_catchups=0,
+        mtp2_ar_step_reasons={},
+        mtp2_requested_budget=3,
+        mtp2_cycles=1,
+        mtp2_candidate_counts=[3],
+        mtp2_accepted_counts=[2],
+        mtp2_mtp_output_tokens=2,
+    )
+    adapter = _prepare_k0_adapter(row)
+    reason = mtp2_module.SpecPlanReason.TARGET_GRAPH_CONTEXT_BUCKET_MISS
+
+    adapter.prepare_k0(_ar_only_k0_plan(), (), stream=None)
+    # The decode appends the token before the loop attributes it, and the
+    # row's output grows by one for each emitted token.
+    row.slot.generated_ids.append(93)
+    adapter.note_speculative_ar_commit(7, reason)
+    row.slot.generated_ids.append(94)
+    adapter.note_speculative_ar_commit(7, reason)
+
+    # The first AR token after the speculative block lands at index 3 of the
+    # row's output, and each emitted token is counted exactly once.
+    assert row.mtp2_ar_step_output_tokens == 2
+    assert row.mtp2_first_fallback_position == 3
+    assert row.mtp2_ar_step_reasons == {"target_graph_context_bucket_miss": 2}
+    accounting = speculative_output_accounting(row)
+    assert accounting is not None
+    assert accounting["mtp_output_tokens"] == 2
+    assert accounting["ar_output_tokens_in_cycles"] == 2
+    assert accounting["first_fallback_position"] == 3
+
+
+def test_eager_cycle_commit_attributes_visible_tokens_to_their_execution_mode() -> None:
+    row = SimpleNamespace(
+        request=SimpleNamespace(eos_token_id=None, ignore_eos=False, max_tokens=32),
+        slot=SimpleNamespace(
+            generated_ids=[90],
+            prev_token=90,
+            seq_position=5,
+            native_decode_steps=0,
+            done=False,
+        ),
+        mtp2_cycles=0,
+        mtp2_candidate_counts=[],
+        mtp2_accepted_counts=[],
+        mtp2_mtp_output_tokens=0,
+        mtp2_ar_output_tokens=0,
+        mtp2_first_fallback_position=None,
+        mtp2_ar_step_reasons={},
+    )
+
+    # Two depth-3 speculative cycles commit their accepted drafts plus the
+    # target bonus token; the K0 row of the same plan then emits one AR token.
+    assert (
+        mtp2_module._commit_eager_cycle_row(
+            row,
+            visible=(101, 102, 103),
+            accepted=2,
+            candidate_count=3,
+            plan_reason=mtp2_module.SpecPlanReason.SPECULATIVE_QUALIFIED,
+            target_position=6,
+        )
+        is False
+    )
+    assert (
+        mtp2_module._commit_eager_cycle_row(
+            row,
+            visible=(104, 105),
+            accepted=1,
+            candidate_count=3,
+            plan_reason=mtp2_module.SpecPlanReason.SPECULATIVE_QUALIFIED,
+            target_position=8,
+        )
+        is False
+    )
+    assert (
+        mtp2_module._commit_eager_cycle_row(
+            row,
+            visible=(106,),
+            accepted=0,
+            candidate_count=0,
+            plan_reason=mtp2_module.SpecPlanReason.TARGET_GRAPH_CONTEXT_BUCKET_MISS,
+            target_position=9,
+        )
+        is False
+    )
+
+    assert row.slot.generated_ids == [90, 101, 102, 103, 104, 105, 106]
+    assert row.slot.prev_token == 106
+    assert row.slot.seq_position == 9
+    assert row.mtp2_candidate_counts == [3, 3, 0]
+    assert row.mtp2_accepted_counts == [2, 1, 0]
+    accounting = speculative_output_accounting(row)
+    assert accounting is not None
+    assert accounting["cycles"] == 3
+    assert accounting["generated_draft_tokens"] == 6
+    assert accounting["accepted_draft_tokens"] == 3
+    assert accounting["selected_depth_histogram"] == {"0": 1, "3": 2}
+    # The prompt root token at index 0 is not part of this cycle record: only
+    # the cycles' own visible tokens are attributed here.
+    assert accounting["mtp_output_tokens"] == 5
+    assert accounting["ar_output_tokens_in_cycles"] == 1
+    assert accounting["first_fallback_position"] == 6
+    assert accounting["ar_step_reason_counts"] == {
+        "target_graph_context_bucket_miss": 1
+    }
+
+
+def test_eager_cycle_commit_reports_eos_and_max_tokens_completion() -> None:
+    row = SimpleNamespace(
+        request=SimpleNamespace(eos_token_id=2, ignore_eos=False, max_tokens=3),
+        slot=SimpleNamespace(
+            generated_ids=[90],
+            prev_token=90,
+            seq_position=5,
+            native_decode_steps=0,
+            done=False,
+        ),
+        mtp2_cycles=0,
+        mtp2_candidate_counts=[],
+        mtp2_accepted_counts=[],
+        mtp2_mtp_output_tokens=0,
+        mtp2_ar_output_tokens=0,
+        mtp2_first_fallback_position=None,
+        mtp2_ar_step_reasons={},
+    )
+
+    assert (
+        mtp2_module._commit_eager_cycle_row(
+            row,
+            visible=(101,),
+            accepted=0,
+            candidate_count=2,
+            plan_reason=mtp2_module.SpecPlanReason.SPECULATIVE_QUALIFIED,
+            target_position=6,
+        )
+        is False
+    )
+    # A short tail: the last speculative cycle has no bonus token to append.
+    assert (
+        mtp2_module._commit_eager_cycle_row(
+            row,
+            visible=(102,),
+            accepted=0,
+            candidate_count=2,
+            plan_reason=mtp2_module.SpecPlanReason.SPECULATIVE_QUALIFIED,
+            target_position=7,
+        )
+        is False
+    )
+    assert row.slot.done is True
+    assert row.slot.generated_ids == [90, 101, 102]
+
+    eos_row = SimpleNamespace(
+        request=SimpleNamespace(eos_token_id=2, ignore_eos=False, max_tokens=64),
+        slot=SimpleNamespace(
+            generated_ids=[90],
+            prev_token=90,
+            seq_position=5,
+            native_decode_steps=0,
+            done=False,
+        ),
+        mtp2_cycles=0,
+        mtp2_candidate_counts=[],
+        mtp2_accepted_counts=[],
+        mtp2_mtp_output_tokens=0,
+        mtp2_ar_output_tokens=0,
+        mtp2_first_fallback_position=None,
+        mtp2_ar_step_reasons={},
+    )
+    assert (
+        mtp2_module._commit_eager_cycle_row(
+            eos_row,
+            visible=(101, 2),
+            accepted=1,
+            candidate_count=3,
+            plan_reason=mtp2_module.SpecPlanReason.SPECULATIVE_QUALIFIED,
+            target_position=7,
+        )
+        is True
+    )
+    assert eos_row.slot.done is True
+
+
+def _cycle_commit_row(**request_overrides) -> SimpleNamespace:
+    request = {
+        "eos_token_id": None,
+        "ignore_eos": False,
+        "max_tokens": 64,
+        "stop_token_ids": (),
+        "stop_token_sequences": (),
+        "min_tokens": 0,
+    }
+    request.update(request_overrides)
+    return SimpleNamespace(
+        request=SimpleNamespace(**request),
+        slot=SimpleNamespace(
+            generated_ids=[90],
+            prev_token=90,
+            seq_position=5,
+            native_decode_steps=0,
+            done=False,
+        ),
+        mtp2_cycles=0,
+        mtp2_candidate_counts=[],
+        mtp2_accepted_counts=[],
+        mtp2_mtp_output_tokens=0,
+        mtp2_ar_output_tokens=0,
+        mtp2_first_fallback_position=None,
+        mtp2_ar_step_reasons={},
+    )
+
+
+def test_eager_cycle_commit_implements_only_the_greedy_chain_eos_finish_rule() -> None:
+    """The cycle commit's finish rule is why stop-semantics fields are blockers.
+
+    A committed cycle ends a row only when its last visible token is the row's
+    EOS.  Token stops, multi-token stops, and a mid-cycle EOS are therefore not
+    finishes here, which is exactly the divergence
+    ``SAMPLED_MTP_UNSERVABLE_BLOCKERS`` keeps off the route: the greedy route
+    avoids the mid-cycle case by bounding acceptance with
+    ``greedy_chain_eos_limit``, and a stochastic accept has no such bound.  If
+    this test starts failing, the commit path learned the autoregressive finish
+    rule and the blockers are ready to be re-measured.
+    """
+
+    for overrides, visible in (
+        ({"stop_token_ids": (2,)}, (101, 2, 102)),
+        ({"stop_token_sequences": ((2, 3),)}, (101, 2, 3)),
+        ({"eos_token_id": 2, "min_tokens": 8}, (101, 2, 102)),
+    ):
+        row = _cycle_commit_row(**overrides)
+        assert (
+            mtp2_module._commit_eager_cycle_row(
+                row,
+                visible=visible,
+                accepted=len(visible) - 1,
+                candidate_count=len(visible),
+                plan_reason=mtp2_module.SpecPlanReason.SPECULATIVE_QUALIFIED,
+                target_position=6,
+            )
+            is False
+        ), overrides
+        assert row.slot.done is False, overrides
+        # The token past the stop is committed, which is the behavior the
+        # blocker prevents from reaching a client.
+        assert row.slot.generated_ids == [90, *visible], overrides
+
+    # The one finish the commit path does implement: EOS as the last visible
+    # token, which the greedy chain bound makes the only reachable position.
+    trailing = _cycle_commit_row(eos_token_id=2)
+    assert (
+        mtp2_module._commit_eager_cycle_row(
+            trailing,
+            visible=(101, 2),
+            accepted=1,
+            candidate_count=3,
+            plan_reason=mtp2_module.SpecPlanReason.SPECULATIVE_QUALIFIED,
+            target_position=7,
+        )
+        is True
+    )
+
+
 def test_refill_reuses_live_provider_group_before_opening_singleton() -> None:
     provider = SimpleNamespace(executor=SimpleNamespace(max_requests=2))
     group = mtp2_module._MTP2ProviderGroup(
@@ -3076,6 +3888,151 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
     adapter.observe_prefill_result(7, rows[7].prompt_ids, SimpleNamespace(token_id=9))
     assert adapter._states[7].root_hidden_buffer is carried[7]
     assert released_pool == []
+
+
+def test_mtp2_prompt_activation_in_flight_refuses_only_new_rows(monkeypatch) -> None:
+    """A chunked prefill holds its claim across ticks; a second request is refused.
+
+    The refusal must be reported on the refused row instead of failing the
+    engine service, and it must not disturb the activation already streaming.
+    """
+
+    runtime = SimpleNamespace()
+    targets = {
+        rid: SimpleNamespace(
+            runtime=runtime,
+            target_layout=SimpleNamespace(max_sequence_length=1024),
+            runner=SimpleNamespace(
+                hidden_size=4,
+                weights=SimpleNamespace(
+                    root=lambda name: SimpleNamespace(
+                        allocation=lambda: SimpleNamespace(
+                            tensor=SimpleNamespace(ptr=0x6000)
+                        )
+                    ),
+                    config=SimpleNamespace(rms_norm_eps=1e-6),
+                ),
+            ),
+            _prefill_hidden_a=DeviceBuffer(0x5000 + rid * 0x100, 16),
+        )
+        for rid in (7, 8, 9)
+    }
+    rows = {
+        rid: SimpleNamespace(
+            request_id=rid,
+            prompt_ids=(11 + rid, 22 + rid),
+            lease=SimpleNamespace(session=targets[rid]),
+            prefix_reused_tokens=0,
+            mtp2_candidate_budget=3,
+            mtp2_prompt_streaming=False,
+            mtp2_prompt_fallback_reason=None,
+        )
+        for rid in (7, 8, 9)
+    }
+    acquisitions: list[str] = []
+
+    class Executor:
+        hidden_size = 4
+        max_requests = 4
+        runtime = targets[7].runtime
+
+        def enqueue_prompt_rows(self, *args, **kwargs) -> None:
+            pass
+
+    class Provider:
+        executor = Executor()
+
+        def reset_request(self, request_id) -> None:
+            pass
+
+        def release_request(self, request_id) -> None:
+            pass
+
+    provider = Provider()
+    owner = SimpleNamespace(
+        generator=SimpleNamespace(
+            backend="hip_gfx1151",
+            execution_profile="strict",
+            _acquire_dense_mtp_draft_provider=lambda *args, **kwargs: (
+                acquisitions.append("provider"),
+                provider,
+                "pool",
+                False,
+            )[1:],
+            _release_mtp_draft_runner=lambda key, owned: None,
+        ),
+        capacity=4,
+        _shared_runner=SimpleNamespace(hidden_size=4),
+        _row=lambda request_id: rows[int(request_id)],
+    )
+
+    class Sink:
+        hidden_size = 4
+
+        def __init__(self, *, request_id, prompt_tokens, **kwargs) -> None:
+            self.request_id = int(request_id)
+
+        def take_final_pending_buffer(self):
+            return DeviceBuffer(0x7000 + self.request_id * 0x100, 16)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(mtp2_module, "_StreamingNextNPromptSink", Sink, raising=False)
+    monkeypatch.setattr(
+        mtp2_module, "malloc", lambda *args, **kwargs: DeviceBuffer(0x9000, 16)
+    )
+    monkeypatch.setattr(mtp2_module, "free", lambda buffer, **kwargs: None)
+    monkeypatch.setattr(
+        mtp2_module, "gguf_rmsnorm_bf16_f32_weight", lambda *args, **kwargs: None
+    )
+    adapter = Qwen35GGUFMTP2Adapter(
+        owner,
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=3,
+    )
+    adapter.register_request(7, 3)
+    adapter.register_request(8, 3)
+    adapter.register_request(9, 3)
+    adapter.physical_prompt_streaming = True
+
+    # Request 7 opens the activation; its prompt is still being prefilled.
+    sinks = adapter.begin_prompt_streaming((7,), checkpoints={})
+    assert sinks is not None and sinks[0] is not None
+    claim = adapter._active_prompt_claims
+    assert claim is not None
+
+    # Request 8 arrives while 7's activation is open: refused, not fatal.
+    assert adapter.begin_prompt_streaming((8,), checkpoints={}) is None
+    assert rows[8].mtp2_prompt_fallback_reason == "prompt_activation_in_flight"
+    # The refusal is about the activation claim, not about row 8's eligibility:
+    # its speculative intent survives. The sink does not, because the caller
+    # prefills the refused row's chunk without one, so a later chunk could only
+    # add a partial hidden-row buffer.
+    assert rows[8].mtp2_candidate_budget == 3
+    assert 8 in adapter._streaming_refused_requests
+    assert rows[7].mtp2_prompt_fallback_reason is None
+    assert rows[7].mtp2_candidate_budget == 3
+    assert adapter._active_prompt_claims is claim
+    assert adapter._prompt_streaming_sinks[7] is sinks[0]
+    assert 8 not in adapter._prompt_streaming_sinks
+    assert acquisitions == ["provider"]
+
+    # A mixed call keeps the streaming row and refuses only the new one.
+    mixed = adapter.begin_prompt_streaming((7, 8), checkpoints={})
+    assert mixed is not None and mixed[0] is sinks[0] and mixed[1] is None
+    assert acquisitions == ["provider"]
+
+    # Releasing the activation lets an untouched request activate normally.
+    adapter.finish_prompt_streaming((7,), success=True, stream=0)
+    assert adapter._active_prompt_claims is None
+    reopened = adapter.begin_prompt_streaming((9,), checkpoints={})
+    assert reopened is not None and reopened[0] is not None
+    # The released group's provider is reused rather than re-acquired.
+    assert acquisitions == ["provider"]
+    assert adapter._prompt_streaming_group_keys[9] == (7,)
+    adapter.finish_prompt_streaming((9,), success=True, stream=0)
 
 
 def test_mtp2_sequential_physical_admission_reuses_compatible_provider_group() -> None:
@@ -3542,6 +4499,7 @@ def test_mtp2_static_capability_requires_its_qualified_realized_width() -> None:
     )
     adapter.owner = SimpleNamespace(capacity=4, _row=lambda rid: rows[int(rid)])
     adapter._intents = {7: 3, 8: 3}
+    adapter._sampling_mode_by_request = {}
     adapter._static_eligibility_by_request = {
         rid: SpeculativeMTPStaticEligibility(
             state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
@@ -3726,6 +4684,7 @@ def test_mtp2_physical_intent_allows_c1_before_or_after_c2() -> None:
     )
     adapter.owner = SimpleNamespace(capacity=4, _row=lambda rid: row)
     adapter._intents = {7: 1}
+    adapter._sampling_mode_by_request = {}
     adapter._static_eligibility_by_request = {
         7: SpeculativeMTPStaticEligibility(
             state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
@@ -3769,13 +4728,20 @@ def test_mtp2_physical_intent_allows_c1_before_or_after_c2() -> None:
     assert adapter.capability(semantics) is not None
 
 
-def test_mtp2_long_prompt_selects_k0_before_provider_streaming() -> None:
+def test_mtp2_prompt_filling_target_capacity_selects_k0_before_provider_streaming() -> None:
+    """Allocated capacity is the remaining bound, and it is a real one.
+
+    A prompt that leaves no room for even one generated token cannot stream, so
+    it is refused before provider acquisition. This is the resource bound that
+    replaced the retired 1,023-token evidence window.
+    """
+
     target = SimpleNamespace(
         target_layout=SimpleNamespace(max_sequence_length=4096),
         runtime=object(),
     )
     row = SimpleNamespace(
-        prompt_ids=tuple(range(1022)),
+        prompt_ids=tuple(range(4096)),
         lease=SimpleNamespace(session=target),
         prefix_reused_tokens=0,
         mtp2_candidate_budget=2,
@@ -3806,6 +4772,54 @@ def test_mtp2_long_prompt_selects_k0_before_provider_streaming() -> None:
     assert acquired == []
     assert adapter._prompt_streaming_sinks == {}
     assert adapter._states == {}
+
+
+def test_mtp2_prompt_past_the_retired_window_reaches_the_provider() -> None:
+    """A prompt above the retired 1,023 window is admitted, not refused.
+
+    Prompt context is not an admission axis (docs/EXECUTION-PROFILES.md section
+    2.9). This prompt is 1,022 tokens against a 16,384-token target: the fixed
+    window refused it with ``target_context_k0`` and never touched the draft
+    provider. It now reaches provider acquisition, which this fixture signals
+    with a distinctive error because it does not implement the streaming
+    provider ABI.
+    """
+
+    class _ReachedProvider(Exception):
+        pass
+
+    target = SimpleNamespace(
+        target_layout=SimpleNamespace(max_sequence_length=16384),
+        runtime=object(),
+    )
+    row = SimpleNamespace(
+        prompt_ids=tuple(range(1022)),
+        lease=SimpleNamespace(session=target),
+        prefix_reused_tokens=0,
+        mtp2_candidate_budget=2,
+        mtp2_prompt_fallback_reason=None,
+    )
+
+    def acquire(*args, **kwargs):
+        raise _ReachedProvider
+
+    owner = SimpleNamespace(
+        generator=SimpleNamespace(_acquire_dense_mtp_draft_provider=acquire),
+        capacity=1,
+        _shared_runner=SimpleNamespace(hidden_size=4),
+        _row=lambda request_id: row,
+    )
+    adapter = Qwen35GGUFMTP2Adapter(
+        owner,
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=2,
+    )
+    adapter.register_request(7, 2)
+
+    with pytest.raises(_ReachedProvider):
+        adapter.begin_prompt_streaming((7,), checkpoints={})
+    assert row.mtp2_prompt_fallback_reason != "target_context_k0"
 
 
 def test_mtp2_streaming_prompt_failure_drains_provider_and_sink() -> None:
@@ -4259,7 +5273,9 @@ def test_mtp2_production_routes_full_batches_above_the_measured_bound_to_ar() ->
     )
 
     assert GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS["production"] == 4
-    assert GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS["production"][-1] == (8, 3)
+    # The wide cell is withdrawn, so the whole C1-C4 policy sits below the
+    # bound and no listed cell can reach a due group wider than it.
+    assert GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS["production"][-1] == (4, 3)
 
     row = SimpleNamespace(
         native_greedy=True,
@@ -4410,3 +5426,1105 @@ def test_adapter_frontier_geometry_derives_from_declared_budget() -> None:
         assert adapter.physical_accept_max_rows == 66
     finally:
         module.backend_package_capability = real
+
+
+def test_ar_commit_survives_the_decode_that_retires_the_request() -> None:
+    """The token that reaches max_new_tokens is still an attributed AR step."""
+
+    row = SimpleNamespace(
+        first_token_emitted=True,
+        lease=SimpleNamespace(session=SimpleNamespace(position=8)),
+        slot=SimpleNamespace(generated_ids=[90, 91]),
+        mtp2_ar_step_reasons={},
+    )
+    adapter = _prepare_k0_adapter(row)
+    reason = mtp2_module.SpecPlanReason.TARGET_GRAPH_OUTPUT_ROOM_MISS
+    adapter.prepare_k0(_ar_only_k0_plan(), (), stream=None)
+    row.slot.generated_ids.append(92)
+    # The decode that emitted the last token already retired the request from
+    # speculation before the loop observed the commit.
+    adapter._disabled_requests.add(7)
+    adapter._intents.pop(7, None)
+
+    adapter.note_speculative_ar_commit(7, reason)
+
+    assert row.mtp2_ar_step_output_tokens == 1
+    assert row.mtp2_ar_step_reasons == {"target_graph_output_room_miss": 1}
+
+
+def test_ar_commit_is_ignored_for_a_released_or_unknown_row() -> None:
+    """A decode that emitted nothing must not attribute an autoregressive token."""
+
+    released = SimpleNamespace(
+        first_token_emitted=True,
+        lease=None,
+        slot=None,
+        mtp2_ar_step_reasons={},
+    )
+    adapter = _prepare_k0_adapter(released)
+    reason = mtp2_module.SpecPlanReason.TARGET_GRAPH_CONTEXT_BUCKET_MISS
+
+    adapter.note_speculative_ar_commit(7, reason)
+
+    assert released.mtp2_ar_step_reasons == {}
+    assert getattr(released, "mtp2_ar_step_output_tokens", None) is None
+
+    # A row the owner does not know about is a caller/owner disagreement.
+    row = SimpleNamespace(
+        first_token_emitted=True,
+        lease=SimpleNamespace(session=SimpleNamespace(position=8)),
+        slot=SimpleNamespace(generated_ids=[90]),
+        mtp2_ar_step_reasons={},
+    )
+    adapter = _prepare_k0_adapter(row)
+    adapter.owner._rows = {7: row}
+
+    adapter.note_speculative_ar_commit(99, reason)
+
+    assert row.mtp2_ar_step_reasons == {}
+
+
+def test_prompt_activation_available_tracks_the_active_claim() -> None:
+    """The scheduler probe is true exactly while no activation is in flight."""
+
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter._active_prompt_claims = None
+    assert adapter.prompt_activation_available() is True
+
+    adapter._active_prompt_claims = object()
+    assert adapter.prompt_activation_available() is False
+
+
+def test_prefill_activation_ready_defers_only_unstarted_speculative_rows() -> None:
+    """A row forfeits its provider only if its first chunk runs claim-less.
+
+    A row already mid-prompt, a row with no candidate budget, and a
+    prefix-reused row are all ready: none of them needs the prompt sink that the
+    held claim protects.
+    """
+
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    claim_held = {"value": True}
+    runner._mtp2_adapter = SimpleNamespace(
+        prompt_activation_available=lambda: not claim_held["value"]
+    )
+    runner._mtp2_adapter_resolved = True
+    rows = {
+        rid: SimpleNamespace(
+            request_id=rid,
+            prefill_tokens_seen=0,
+            mtp2_candidate_budget=3,
+            prefix_reused_tokens=0,
+        )
+        for rid in (1, 2, 3, 4)
+    }
+    rows[2].prefill_tokens_seen = 256
+    rows[3].mtp2_candidate_budget = 0
+    rows[4].prefix_reused_tokens = 128
+    runner._rows = rows
+
+    assert runner.prefill_activation_ready(1) is False
+    assert runner.prefill_activation_ready(2) is True
+    assert runner.prefill_activation_ready(3) is True
+    assert runner.prefill_activation_ready(4) is True
+
+    claim_held["value"] = False
+    assert runner.prefill_activation_ready(1) is True
+
+
+def test_prefill_activation_ready_without_adapter_is_always_ready() -> None:
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._mtp2_adapter = None
+    runner._mtp2_adapter_resolved = True
+    runner._rows = {
+        1: SimpleNamespace(
+            request_id=1,
+            prefill_tokens_seen=0,
+            mtp2_candidate_budget=3,
+            prefix_reused_tokens=0,
+        )
+    }
+
+    assert runner.prefill_activation_ready(1) is True
+
+
+def test_prefill_needs_activation_marks_only_unstarted_speculative_rows() -> None:
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._rows = {
+        rid: SimpleNamespace(
+            request_id=rid,
+            prefill_tokens_seen=0,
+            mtp2_candidate_budget=3,
+            prefix_reused_tokens=0,
+            slot=None,
+        )
+        for rid in (1, 2, 3, 4)
+    }
+    runner._rows[2].prefill_tokens_seen = 256
+    runner._rows[3].mtp2_candidate_budget = 0
+    runner._rows[4].prefix_reused_tokens = 128
+
+    assert runner.prefill_needs_activation(1) is True
+    assert runner.prefill_needs_activation(2) is False
+    assert runner.prefill_needs_activation(3) is False
+    assert runner.prefill_needs_activation(4) is False
+
+
+def test_sampled_prefill_hands_the_row_to_its_mtp_provider(monkeypatch) -> None:
+    """Both prefill finishes must open provider draft state for a due row.
+
+    `observe_prefill_result` is what records a row's prompt hidden rows, and the
+    provider's capability refuses a row that has neither hidden rows nor a
+    request state. A sampled row finishes prefill through
+    `_finish_sampled_prefill`, which never called the hook, so a sampled request
+    that registered a candidate budget still had no provider on every cycle:
+    the planner reported `no_provider` and the row decoded autoregressively even
+    with the sampled route's evidence row in place.
+    """
+
+    import sys
+    import time
+    from collections import defaultdict
+
+    import hipengine.generation.qwen35_gguf as gguf_module
+
+    observed = []
+
+    class _Provider:
+        def observe_prefill_result(self, request_id, prompt_ids, result):
+            observed.append((int(request_id), tuple(prompt_ids), result))
+
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._mtp2_adapter = _Provider()
+    runner._mtp2_adapter_resolved = True
+    runner.generator = SimpleNamespace(tokenizer=object(), target_arch="gfx1100")
+    runner._route_counts = defaultdict(int)
+    runner._fallback_reasons = defaultdict(int)
+    runner._refresh_prefix_cache = lambda row: None
+    sampling_request = SimpleNamespace(max_tokens=8)
+    runner._prepare_sampled_prefill = lambda row: (sampling_request, object())
+
+    monkeypatch.setattr(
+        gguf_module,
+        "_select_from_gguf_logits",
+        lambda result, request, state, tokenizer: SimpleNamespace(token_id=11),
+    )
+    monkeypatch.setattr(gguf_module, "_gguf_token_text", lambda tokenizer, sample: "x")
+    monkeypatch.setattr(gguf_module, "_gguf_logits_d2h_metadata", lambda result: (False, 0))
+    monkeypatch.setattr(
+        gguf_module, "_gguf_queue_json_object_close_if_needed", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(gguf_module, "_gguf_finished", lambda *args, **kwargs: False)
+    assert sys.modules[Qwen35GGUFResidentModelRunner.__module__] is gguf_module
+
+    def _row(*, budget: int):
+        return SimpleNamespace(
+            request_id=7,
+            prompt_ids=(1, 2, 3),
+            slot=None,
+            lease=SimpleNamespace(session=SimpleNamespace(position=5), pool_key="pool"),
+            native_sampler=False,
+            sampler_plan=SimpleNamespace(fallback_reason=None, mode=SimpleNamespace(value="host")),
+            samples=[],
+            tokenize_ms=0.0,
+            prompt_encode_ms=0.0,
+            render_ms=0.0,
+            admission_prepare_ms=0.0,
+            prefill_ms=0.0,
+            prefill_chunk_count=0.0,
+            submitted_at=time.perf_counter(),
+            request=SimpleNamespace(max_tokens=8),
+            mtp2_candidate_budget=budget,
+        )
+
+    result = SimpleNamespace(token_id=11)
+    row = _row(budget=3)
+    runner._finish_sampled_prefill(row, result, native_compact_prefill=False)
+    assert row.slot is not None
+    assert observed == [(7, (1, 2, 3), result)]
+
+    # A row that registered no candidate budget owns no provider state.
+    observed.clear()
+    runner._finish_sampled_prefill(_row(budget=0), result, native_compact_prefill=False)
+    assert observed == []
+
+    # The hook is also a no-op without a resolved adapter.
+    runner._mtp2_adapter = None
+    runner._observe_mtp2_prefill(_row(budget=3), result)
+    assert observed == []
+
+
+def test_streaming_prompt_refusal_names_a_reused_prefix_row() -> None:
+    """The gate that excludes a reused-prefix row is where its reason is set.
+
+    Such a row is filtered out before any adapter gate sees it, so without this
+    it would carry no activation reason at all and the served response would
+    report only the planner's ``no_provider``.
+    """
+
+    row = SimpleNamespace(
+        request_id=7,
+        mtp2_candidate_budget=3,
+        prefix_reused_tokens=256,
+        mtp2_prompt_fallback_reason=None,
+    )
+    runner = SimpleNamespace()
+
+    sinks = Qwen35GGUFResidentModelRunner._begin_mtp2_prompt_streaming(runner, (row,))
+
+    assert sinks == (None,)
+    assert row.mtp2_prompt_fallback_reason == "prefix_reuse_k0"
+
+    # A row that already recorded a refusal keeps it: the first gate to refuse
+    # a row is the one that explains it.
+    row.mtp2_prompt_fallback_reason = "target_context_k0"
+    Qwen35GGUFResidentModelRunner._begin_mtp2_prompt_streaming(runner, (row,))
+    assert row.mtp2_prompt_fallback_reason == "target_context_k0"
+
+    # A row that owns no candidate budget is not a refusal at all.
+    quiet = SimpleNamespace(
+        request_id=8,
+        mtp2_candidate_budget=0,
+        prefix_reused_tokens=256,
+        mtp2_prompt_fallback_reason=None,
+    )
+    Qwen35GGUFResidentModelRunner._begin_mtp2_prompt_streaming(runner, (quiet,))
+    assert quiet.mtp2_prompt_fallback_reason is None
+
+
+def test_note_speculative_plan_publishes_the_group_decision_on_every_row() -> None:
+    """The loop's plan is the only source of the realized group width.
+
+    A row's response used to carry the route's ``k0_class`` and a serving-key
+    width, so a row that decoded autoregressively for its whole life still read
+    as route-qualified with no group-level decision beside it.
+    """
+
+    rows = {7: SimpleNamespace(), 8: SimpleNamespace()}
+    plan = SimpleNamespace(
+        request_ids=(7, 8),
+        reasons=(
+            mtp2_module.SpecPlanReason.SPECULATIVE_QUALIFIED,
+            mtp2_module.SpecPlanReason.NO_PROVIDER,
+        ),
+        is_ar_only=False,
+    )
+    runner = SimpleNamespace(_row=lambda rid: rows.get(rid))
+
+    Qwen35GGUFResidentModelRunner.note_speculative_plan(runner, plan)
+
+    assert rows[7].mtp2_plan_group_rows == 2
+    assert rows[8].mtp2_plan_group_rows == 2
+    assert rows[7].mtp2_plan_ar_only is False
+    assert rows[7].mtp2_plan_reason == "speculative_qualified"
+    assert rows[8].mtp2_plan_reason == "no_provider"
+
+    # A row that has already left the engine is skipped, not an error.
+    plan.request_ids = (7, 9)
+    plan.reasons = (
+        mtp2_module.SpecPlanReason.POLICY_SELECTED_AR,
+        mtp2_module.SpecPlanReason.POLICY_SELECTED_AR,
+    )
+    plan.is_ar_only = True
+    Qwen35GGUFResidentModelRunner.note_speculative_plan(runner, plan)
+    assert rows[7].mtp2_plan_ar_only is True
+    assert rows[7].mtp2_plan_reason == "policy_selected_ar"
+
+
+def test_sampled_prefill_streams_prompt_hidden_rows_for_a_due_row(monkeypatch) -> None:
+    """A sampled row that owes a draft provider must open the hidden-row sink.
+
+    A sampled row needs its first-token logits on the host, and a packed prefill
+    refuses to return logits and host hidden rows together, so the only route
+    that serves both is the streamed target-hidden sink the greedy path uses.
+    The provider refuses a row with no hidden rows, so without the sink a due
+    sampled row had no provider for its whole lifetime.
+    """
+
+    from collections import defaultdict
+
+    import hipengine.generation.qwen35_gguf as gguf_module
+
+    captured = []
+
+    def _prefill_batch(
+        chunks,
+        sessions=None,
+        full_prompt_lengths=None,
+        return_logits=None,
+        return_hidden_seeds=None,
+        target_hidden_chunk_sinks=None,
+        target_hidden_request_ids=None,
+        target_hidden_chunk_starts=None,
+        **kwargs,
+    ):
+        captured.append(
+            (
+                "batch",
+                return_logits,
+                return_hidden_seeds,
+                None if target_hidden_chunk_sinks is None else len(tuple(target_hidden_chunk_sinks)),
+                None if target_hidden_request_ids is None else tuple(target_hidden_request_ids),
+            )
+        )
+        return [SimpleNamespace(token_id=1)]
+
+    scalar_calls = []
+
+    def _scalar_prefill(token_ids, **kwargs):
+        scalar_calls.append((tuple(token_ids), kwargs.get("return_logits")))
+        return SimpleNamespace(token_id=1)
+
+    monkeypatch.setattr(
+        gguf_module, "_gguf_single_row_block_table_prefill_required", lambda session: False
+    )
+    session = SimpleNamespace(prefill=_scalar_prefill)
+    owner = SimpleNamespace(prefill_batch_native=_prefill_batch)
+    finished = []
+
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._resident_batch_owner = None
+    runner._route_counts = defaultdict(int)
+    runner._packed_execution_owner = lambda lease_session: owner
+    runner._prepare_sampled_prefill = lambda row: (SimpleNamespace(max_tokens=8), object())
+    runner._finish_sampled_prefill = lambda row, result, **kwargs: captured.append(
+        ("finish", row.request_id)
+    )
+    runner._finish_mtp2_prompt_streaming = (
+        lambda rows, sinks, *, success, stream=0: finished.append(
+            (tuple(int(row.request_id) for row in rows), success)
+        )
+    )
+    admitted = [True]
+    runner._begin_mtp2_prompt_streaming = lambda rows: (
+        ("sink",) if admitted[0] else (None,)
+    )
+
+    def _row(budget: int):
+        return SimpleNamespace(
+            request_id=7,
+            prompt_ids=(1, 2, 3),
+            slot=None,
+            lease=SimpleNamespace(session=session, pool_key="pool"),
+            native_sampler=False,
+            prefill_ms=0.0,
+            prefill_chunk_count=0,
+            mtp2_candidate_budget=budget,
+        )
+
+    # A due row with an admitted sink streams its hidden rows and keeps logits.
+    runner._prefill_sampled_row(_row(budget=3))
+    assert captured == [("batch", True, False, 1, (7,)), ("finish", 7)]
+    assert finished == [((7,), True)]
+    assert scalar_calls == []
+
+    # A refused sink keeps the shipped scalar prefill: logits, no provider.
+    captured.clear()
+    finished.clear()
+    admitted[0] = False
+    runner._prefill_sampled_row(_row(budget=3))
+    assert captured == [("finish", 7)]
+    assert finished == []
+    assert scalar_calls == [((1, 2, 3), True)]
+
+    # No candidate budget never opens a sink at all.
+    captured.clear()
+    scalar_calls.clear()
+    runner._begin_mtp2_prompt_streaming = lambda rows: pytest.fail(
+        "a row with no candidate budget must not open a streaming sink"
+    )
+    runner._prefill_sampled_row(_row(budget=0))
+    assert captured == [("finish", 7)]
+    assert scalar_calls == [((1, 2, 3), True)]
+
+
+def test_adapter_refuses_ar_fallback_for_a_committed_cycle() -> None:
+    """A committed eager row cannot fall back: the scheduler is behind it."""
+
+    rows = {
+        10: SimpleNamespace(
+            slot=SimpleNamespace(seq_position=9),
+            lease=SimpleNamespace(session=SimpleNamespace(position=9)),
+            mtp2_recoverable_failures=0,
+            mtp2_failure_reasons=[],
+        ),
+    }
+    committed: set[int] = set()
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(
+        _row=lambda request_id: rows[request_id],
+        execution_committed_request_ids=lambda: frozenset(committed),
+    )
+    plan = SimpleNamespace(speculative_request_ids=(10,))
+
+    # Canonical cursors and no recorded commit: the cycle still falls back to AR.
+    assert adapter.recover_cycle_failure(plan, RuntimeError("precommit")) is True
+    assert rows[10].mtp2_failure_reasons == ["precommit_failure_ar_fallback", "RuntimeError:precommit"]
+
+    committed.add(10)
+    assert adapter.recover_cycle_failure(plan, RuntimeError("postcommit")) is False
+    assert rows[10].mtp2_failure_reasons[-2:] == [
+        "postcommit_eager_commit_ar_fallback_refused",
+        "RuntimeError:postcommit",
+    ]
+
+
+def test_adapter_containment_evidence_maps_commit_and_cursor_state() -> None:
+    rows = {
+        10: SimpleNamespace(
+            slot=SimpleNamespace(seq_position=9),
+            lease=SimpleNamespace(session=SimpleNamespace(position=9)),
+        ),
+        20: SimpleNamespace(
+            slot=SimpleNamespace(seq_position=9),
+            lease=SimpleNamespace(session=SimpleNamespace(position=8)),
+        ),
+        30: SimpleNamespace(slot=None, lease=None),
+    }
+    committed: set[int] = set()
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(
+        _row=lambda request_id: rows[request_id],
+        execution_committed_request_ids=lambda: frozenset(committed),
+    )
+    plan = SimpleNamespace(speculative_request_ids=(10, 20, 30))
+
+    # A row whose cursor moved without a commit, and a row with no device state
+    # to prove, are both retirable; the canonical row is left unnamed.
+    assert adapter.containment_evidence(plan, RuntimeError("late")) == (
+        "partial",
+        (20, 30),
+    )
+    # A recorded commit makes the cycle ``committed`` and names the committed
+    # row alongside the rows that cannot be proven canonical.
+    committed.add(10)
+    assert adapter.containment_evidence(plan, RuntimeError("late")) == (
+        "committed",
+        (10, 20, 30),
+    )
+    # A physical commit that may or may not have landed leaves the window
+    # unresolved: that stays fatal rather than becoming a claim.
+    assert (
+        adapter.containment_evidence(
+            plan,
+            mtp2_module._PhysicalTargetCommitError("selected target state may be committed"),
+        )
+        is None
+    )
+    # A cycle whose rows are all canonical is recovery's business, not
+    # containment's.
+    committed.clear()
+    rows[20].lease.session.position = 9
+    rows[30] = SimpleNamespace(
+        slot=SimpleNamespace(seq_position=4),
+        lease=SimpleNamespace(session=SimpleNamespace(position=4)),
+    )
+    assert adapter.containment_evidence(plan, RuntimeError("late")) is None
+
+
+def _priming_gate_adapter(
+    *,
+    rows: dict[int, SimpleNamespace],
+    prompt_hidden: dict[int, object],
+    budget: int = 3,
+) -> Qwen35GGUFMTP2Adapter:
+    """Adapter whose owner serves the given rows, with no live provider state."""
+
+    adapter = Qwen35GGUFMTP2Adapter(
+        SimpleNamespace(
+            generator=SimpleNamespace(
+                backend="hip_gfx1151",
+                execution_profile="production",
+            ),
+            capacity=1,
+            _shared_runner=None,
+            _row=lambda request_id: rows[int(request_id)],
+        ),
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=budget,
+    )
+    adapter._intents = {rid: budget for rid in rows}
+    adapter._static_eligibility_by_request = {
+        rid: SpeculativeMTPStaticEligibility(
+            state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+            reason="qualified_test_c1_k3",
+            max_candidate_count=budget,
+            max_realized_group_rows=1,
+            automatic_eligible=True,
+            strict_fallback_key="gguf_target_ar",
+            evidence_key=f"test-c1-k3-{rid}",
+            evidence_fingerprint=f"sha256:test-c1-k3-{rid}",
+        )
+        for rid in rows
+    }
+    adapter._prompt_hidden_rows = prompt_hidden
+    adapter._states = {}
+    adapter._disabled_requests = set()
+    adapter._active_claims = None
+    return adapter
+
+
+def _priming_gate_row(
+    *,
+    prompt_tokens: int,
+    generated_tokens: int,
+) -> SimpleNamespace:
+    target = SimpleNamespace(
+        runner=SimpleNamespace(fp16_recurrent_state=False),
+        _target_scratch_owner=SimpleNamespace(slot_count=1),
+        target_layout=SimpleNamespace(max_sequence_length=8192),
+        kv_storage_dtype="bf16",
+    )
+    return SimpleNamespace(
+        native_greedy=True,
+        first_token_emitted=True,
+        lease=SimpleNamespace(session=target),
+        slot=SimpleNamespace(generated_ids=[7] * generated_tokens),
+        prompt_ids=tuple(range(prompt_tokens)),
+        prefix_reused_tokens=0,
+        mtp2_candidate_budget=3,
+        mtp2_prompt_fallback_reason=None,
+    )
+
+
+def test_capability_refuses_a_stale_prompt_buffer_instead_of_drafting_behind() -> None:
+    # The catch-up walk leaves the provider at the row's first draft step: it
+    # hands the target the last prompt hidden row, which the draft step consumes
+    # with the next root token. A row that has generated past that point would be
+    # drafted from the prompt's end while the target is several tokens ahead, and
+    # the target verifies every candidate, so the cost is silent acceptance loss
+    # rather than a wrong answer. Refuse it and serve AR instead.
+    rid = 4
+    row = _priming_gate_row(prompt_tokens=12, generated_tokens=3)
+    adapter = _priming_gate_adapter(
+        rows={rid: row},
+        prompt_hidden={rid: np.zeros((12, 64), dtype=np.float32)},
+    )
+
+    assert adapter.capability(
+        (SpeculativeRequestSemantics(rid, "greedy", "verify_chain", 32, 25),)
+    ) is None
+    assert adapter._states == {}
+    assert adapter._last_capability_silent_reason == "prompt_buffer_stale_k0"
+
+
+def test_capability_refuses_an_incomplete_prompt_buffer_instead_of_raising() -> None:
+    # A prompt that started without a sink can leave a partial buffer behind. The
+    # catch-up walk requires one hidden row per prompt token and raises when the
+    # shape disagrees, so a scheduling outcome used to surface as an engine
+    # execution failure instead of an autoregressive fallback.
+    rid = 5
+    row = _priming_gate_row(prompt_tokens=12, generated_tokens=1)
+    adapter = _priming_gate_adapter(
+        rows={rid: row},
+        prompt_hidden={rid: np.zeros((3, 64), dtype=np.float32)},
+    )
+
+    assert adapter.capability(
+        (SpeculativeRequestSemantics(rid, "greedy", "verify_chain", 32, 25),)
+    ) is None
+    assert adapter._states == {}
+    assert adapter._last_capability_silent_reason == "prompt_buffer_incomplete_k0"
+
+
+def test_capability_admits_a_complete_current_prompt_buffer() -> None:
+    # The valid-buffered-priming class: complete for the whole prompt and at the
+    # row's first draft step. This is the case the refusal rule must not break.
+    rid = 6
+    row = _priming_gate_row(prompt_tokens=12, generated_tokens=1)
+    adapter = _priming_gate_adapter(
+        rows={rid: row},
+        prompt_hidden={rid: np.zeros((12, 64), dtype=np.float32)},
+    )
+
+    assert adapter.capability(
+        (SpeculativeRequestSemantics(rid, "greedy", "verify_chain", 32, 25),)
+    ) is not None
+
+
+def test_capability_refuses_a_row_whose_prompt_sink_was_refused() -> None:
+    # A row whose prompt streaming was refused (the
+    # physical_streaming_category_rejected class) prefills with no hidden-row
+    # buffer at all, so its priming source is absent. Capability must decline
+    # it before any cycle can open a provider: a listed width may never run
+    # draft cycles against a refused prompt sink. This is the fail-closed gate
+    # for the 2026-09-19 width-8 incident (docs/REFACTOR.md wide MTP groups
+    # entry), fixed by routing speculation by priming source in 3edac59c9.
+    rid = 9
+    row = _priming_gate_row(prompt_tokens=12, generated_tokens=1)
+    adapter = _priming_gate_adapter(rows={rid: row}, prompt_hidden={})
+
+    assert adapter.capability(
+        (SpeculativeRequestSemantics(rid, "greedy", "verify_chain", 32, 25),)
+    ) is None
+    assert adapter._states == {}
+    assert adapter._last_capability_silent_reason == "provider_state_absent"
+
+
+def test_capability_no_longer_declines_a_compact_dms_row_for_its_transaction() -> None:
+    # The verifier now journals a compact-DMS row through the store's own
+    # transaction (_DMSStoreJournal selects itself for a session carrying a
+    # _dms_backend), so the named capability miss that used to stand here is
+    # gone: a DMS row is decided by its target execution profile like any other
+    # row, and never by the transaction it uses.
+    rid = 6
+    row = _priming_gate_row(prompt_tokens=12, generated_tokens=1)
+    row.lease.session._dms_backend = object()
+    adapter = _priming_gate_adapter(
+        rows={rid: row},
+        prompt_hidden={rid: np.zeros((12, 64), dtype=np.float32)},
+    )
+    adapter.capability(
+        (SpeculativeRequestSemantics(rid, "greedy", "verify_chain", 32, 25),)
+    )
+    assert (
+        getattr(adapter, "_last_capability_decline", None)
+        != "compact_dms_mtp_transaction_not_implemented"
+    )
+    assert "compact_dms_mtp_transaction_not_implemented" not in inspect.getsource(
+        adapter.capability.__func__
+    )
+
+
+def test_prompt_activation_contention_preserves_speculative_intent() -> None:
+    # Temporary contention is not a property of the row: the refusal is about the
+    # activation claim, and whether this row can speculate is decided by its
+    # priming source. Zeroing the budget here made a transient scheduling outcome
+    # permanent for the row's whole life.
+    rid = 7
+    row = _priming_gate_row(prompt_tokens=12, generated_tokens=0)
+    adapter = _priming_gate_adapter(rows={rid: row}, prompt_hidden={})
+    adapter._active_prompt_claims = object()
+
+    assert adapter.begin_prompt_streaming((rid,)) is None
+    assert row.mtp2_prompt_fallback_reason == "prompt_activation_in_flight"
+    assert row.mtp2_candidate_budget == 3
+
+    # The sink itself is permanently refused for a prompt that already started:
+    # a later chunk must not open a mid-prompt sink that would leave a partial
+    # buffer behind. Intent still survives.
+    row.prefill_tokens_seen = 5
+    assert adapter.begin_prompt_streaming((rid,)) is None
+    adapter._active_prompt_claims = None
+    assert adapter.begin_prompt_streaming((rid,)) is None
+    assert adapter._prompt_streaming_sinks == {}
+    assert adapter._streaming_refused_requests == {rid}
+    assert row.mtp2_candidate_budget == 3
+
+
+class _PrefixCaptureExecutor:
+    """Executor double that records the walk, the snapshot, and the staged rows."""
+
+    hidden_size = 4
+
+    def __init__(self) -> None:
+        self.positions: list[int] = []
+        self.log: list[tuple[str, int]] = []
+        self.snapshots: list[tuple[int, int, int | None]] = []
+        self.staged: list[np.ndarray] = []
+        self.released: list[object] = []
+        self.raise_on_snapshot = False
+
+    def run_step(self, request_id, token, position, hidden, *, return_logits):
+        self.positions.append(int(position))
+        self.log.append(("step", int(position)))
+
+    def advance_state_batch_only(self, request_ids, token_ids, positions, hidden):
+        for position in positions:
+            self.log.append(("step", int(position)))
+        self.batch_steps = getattr(self, "batch_steps", [])
+        self.batch_steps.append(
+            (tuple(int(item) for item in request_ids), tuple(int(p) for p in positions))
+        )
+
+    def snapshot_prefix_state(self, request_id, *, prefix_len, boundary_hidden=None):
+        if self.raise_on_snapshot:
+            raise RuntimeError("snapshot refused")
+        self.log.append(("snapshot", int(prefix_len)))
+        self.snapshots.append(
+            (
+                int(request_id),
+                int(prefix_len),
+                None if boundary_hidden is None else int(boundary_hidden.ptr),
+            )
+        )
+        return f"blob:{int(prefix_len)}"
+
+    def release_prefix_state(self, checkpoint):
+        self.released.append(checkpoint)
+
+
+def _prefix_capture_adapter(monkeypatch, executor, *, capacity=2, block_size=4):
+    monkeypatch.setattr(
+        mtp2_module,
+        "malloc",
+        lambda *args, **kwargs: DeviceBuffer(0x1000, 8),
+    )
+    monkeypatch.setattr(mtp2_module, "free", lambda *args, **kwargs: None)
+
+    def _record_copy(destination, source_ptr, nbytes, **kwargs):
+        executor.staged.append(
+            np.frombuffer(
+                ctypes.string_at(int(source_ptr), int(nbytes)), dtype=np.uint16
+            ).copy()
+        )
+
+    monkeypatch.setattr(mtp2_module, "copy_host_to_device", _record_copy)
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter._prompt_hidden_rows = {}
+    adapter.prefix_checkpoint_capacity = capacity
+    adapter.prefix_checkpoint_block_size = block_size
+    adapter.prefix_checkpoint_key = lambda request_id, prefix_len: (11, 12)
+    adapter._prefix_checkpoint_store_instance = None
+    return adapter
+
+
+def test_prefix_checkpoint_capture_takes_one_snapshot_at_the_aligned_boundary(
+    monkeypatch,
+) -> None:
+    """One capture per walk, at the last full block, with the boundary row.
+
+    The cache matches whole blocks, so the checkpoint has to describe the
+    block-aligned prefix rather than the prompt's end: for a 10-token prompt and
+    a 4-token block that is 8 tokens, taken on the iteration whose run_step
+    brings the cursor there.
+    """
+
+    executor = _PrefixCaptureExecutor()
+    adapter = _prefix_capture_adapter(monkeypatch, executor)
+    key_calls: list[tuple[int, int]] = []
+    adapter.prefix_checkpoint_key = lambda request_id, prefix_len: (
+        key_calls.append((int(request_id), int(prefix_len))) or (11, 12)
+    )
+    rows = np.arange(40, dtype=np.float32).reshape(10, 4)
+    prompt_ids = tuple(range(100, 110))
+    provider = SimpleNamespace(executor=executor)
+    target = SimpleNamespace(runtime=SimpleNamespace())
+
+    buffer = adapter._catch_up_provider(
+        provider, 7, prompt_ids, rows, target
+    )
+
+    assert buffer.ptr == 0x1000
+    assert executor.positions == list(range(10))
+    assert executor.snapshots == [(7, 8, 0x1000)]
+    # The capture happens on the iteration whose step brings the cursor to the
+    # boundary, before the remaining prompt steps: that is what makes the
+    # recurrent state current at exactly prefix_len.
+    assert executor.log[7] == ("step", 7)
+    assert executor.log[8] == ("snapshot", 8)
+    assert executor.log[9:] == [("step", 8), ("step", 9)]
+    # The staged row immediately before the snapshot is the boundary hidden row:
+    # the row that produces the token after the prefix, which is what a restore
+    # hands the first draft step.
+    from hipengine.loading.materialize import float_array_to_bf16_bits
+
+    expected = np.ascontiguousarray(
+        float_array_to_bf16_bits(rows[7]), dtype=np.uint16
+    )
+    # Twelve copies: the ten walk steps, the capture's own boundary copy at
+    # index 8 (the walk staged rows[6] at index 7), and the final root-buffer
+    # copy of rows[9] that the first draft step consumes.
+    assert len(executor.staged) == 12
+    assert np.array_equal(executor.staged[8], expected)
+
+    # The key is asked for the boundary prefix, not the whole prompt: a later
+    # turn matches a shorter prefix, and ids past the match would fail a
+    # validation that should have succeeded.
+    assert key_calls == [(7, 8)]
+
+    store = adapter._prefix_checkpoint_store_instance
+    assert store is not None
+    assert store.get(prompt_ids[:8], (11, 12)) == "blob:8"
+    # A later request whose blocks moved on cannot use the checkpoint.
+    assert store.get(prompt_ids[:8], (99,)) is None
+
+
+def test_prefix_checkpoint_capture_is_off_until_the_runner_configures_it(
+    monkeypatch,
+) -> None:
+    executor = _PrefixCaptureExecutor()
+    adapter = _prefix_capture_adapter(monkeypatch, executor, capacity=0)
+    rows = np.arange(40, dtype=np.float32).reshape(10, 4)
+    provider = SimpleNamespace(executor=executor)
+
+    adapter._catch_up_provider(
+        provider, 7, tuple(range(100, 110)), rows, SimpleNamespace(runtime=SimpleNamespace())
+    )
+
+    assert executor.snapshots == []
+    assert adapter._prefix_checkpoint_store_instance is None
+
+    sized = _PrefixCaptureExecutor()
+    unaligned = _prefix_capture_adapter(monkeypatch, sized, block_size=0)
+    unaligned._catch_up_provider(
+        SimpleNamespace(executor=sized),
+        7,
+        tuple(range(100, 110)),
+        rows,
+        SimpleNamespace(runtime=SimpleNamespace()),
+    )
+    assert sized.snapshots == []
+
+
+def test_prefix_checkpoint_capture_skips_without_a_key_or_a_snapshot_route(
+    monkeypatch,
+) -> None:
+    executor = _PrefixCaptureExecutor()
+    adapter = _prefix_capture_adapter(monkeypatch, executor)
+    rows = np.arange(40, dtype=np.float32).reshape(10, 4)
+    provider = SimpleNamespace(executor=executor)
+    target = SimpleNamespace(runtime=SimpleNamespace())
+
+    adapter.prefix_checkpoint_key = lambda request_id, prefix_len: None
+    adapter._catch_up_provider(provider, 7, tuple(range(100, 110)), rows, target)
+    assert executor.snapshots == []
+
+    adapter.prefix_checkpoint_key = lambda request_id, prefix_len: (11, 12)
+    executor.raise_on_snapshot = True
+    adapter._catch_up_provider(provider, 7, tuple(range(100, 110)), rows, target)
+    assert executor.snapshots == []
+    assert adapter._prefix_checkpoint_store_instance is not None
+    assert len(adapter._prefix_checkpoint_store_instance) == 0
+
+
+def test_prefix_checkpoint_capture_needs_an_executor_that_can_release(monkeypatch) -> None:
+    """A provider that cannot release a checkpoint gets no store at all."""
+
+    executor = _PrefixCaptureExecutor()
+    adapter = _prefix_capture_adapter(monkeypatch, executor)
+    executor.release_prefix_state = None
+    rows = np.arange(40, dtype=np.float32).reshape(10, 4)
+
+    adapter._catch_up_provider(
+        SimpleNamespace(executor=executor),
+        7,
+        tuple(range(100, 110)),
+        rows,
+        SimpleNamespace(runtime=SimpleNamespace()),
+    )
+
+    assert executor.snapshots == []
+    assert adapter._prefix_checkpoint_store_instance is None
+
+
+def test_runner_publishes_the_prefix_capture_key_for_the_boundary_prefix(
+    monkeypatch,
+) -> None:
+    """The runner answers with the ids covering the prefix, not the allocation.
+
+    A later turn matches a shorter prefix than the row it arrived on, so ids
+    past the match would fail a validation that should have succeeded.
+    """
+
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._rows = {
+        7: SimpleNamespace(
+            kv_allocation=SimpleNamespace(block_ids=[41, 42, 43, 44, 45])
+        )
+    }
+    runner._row = lambda request_id: runner._rows.get(int(request_id))
+
+    assert runner._prefix_checkpoint_block_ids(7, 768) == (41, 42, 43)
+    assert runner._prefix_checkpoint_block_ids(7, 256) == (41,)
+    # A prefix below one block has no ids to validate against.
+    assert runner._prefix_checkpoint_block_ids(7, 128) is None
+    # A prefix longer than the allocation cannot be validated either.
+    assert runner._prefix_checkpoint_block_ids(7, 256 * 6) is None
+    # An unknown request, or one whose allocation is gone, is not an error.
+    assert runner._prefix_checkpoint_block_ids(99, 512) is None
+    runner._rows[8] = SimpleNamespace(kv_allocation=None)
+    assert runner._prefix_checkpoint_block_ids(8, 512) is None
+
+
+def test_runner_captures_provider_prefix_when_radix_is_enabled(monkeypatch) -> None:
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._prefix_cache_mode = "radix"
+    runner._prefix_checkpoint_block_ids = lambda request_id, prefix_len: (1,)
+    adapter = SimpleNamespace()
+
+    monkeypatch.delenv("HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES", raising=False)
+    runner._configure_mtp2_prefix_checkpoint_capture(adapter)
+
+    assert adapter.prefix_checkpoint_capacity > 0
+    assert adapter.prefix_checkpoint_block_size == 256
+    assert adapter.prefix_checkpoint_key(7, 256) == (1,)
+
+    monkeypatch.setenv("HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES", "4")
+    runner._configure_mtp2_prefix_checkpoint_capture(adapter)
+
+    assert adapter.prefix_checkpoint_capacity == 4
+    assert adapter.prefix_checkpoint_key(7, 256) == (1,)
+
+    monkeypatch.setenv("HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES", "not-a-number")
+    runner._configure_mtp2_prefix_checkpoint_capture(adapter)
+
+    assert adapter.prefix_checkpoint_capacity > 0
+    assert adapter.prefix_checkpoint_key(7, 256) == (1,)
+
+    monkeypatch.setenv("HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES", "0")
+    runner._configure_mtp2_prefix_checkpoint_capture(adapter)
+    assert adapter.prefix_checkpoint_capacity == 0
+    assert adapter.prefix_checkpoint_key is None
+
+    monkeypatch.setenv("HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES", "4")
+    runner._prefix_cache_mode = "off"
+    runner._configure_mtp2_prefix_checkpoint_capture(adapter)
+    assert adapter.prefix_checkpoint_capacity == 0
+    assert adapter.prefix_checkpoint_key is None
+
+
+def test_batch_catch_up_captures_each_row_at_its_own_boundary(monkeypatch) -> None:
+    """Two rows of different lengths capture at different positions.
+
+    The batch walk packs its active rows into the front of the shared buffer, so
+    the slice a row is staged into is its offset within the active set rather
+    than its own index. Getting that wrong would snapshot one row's boundary
+    hidden row into another row's slice.
+    """
+
+    executor = _PrefixCaptureExecutor()
+    adapter = _prefix_capture_adapter(monkeypatch, executor)
+    key_calls: list[tuple[int, int]] = []
+    adapter.prefix_checkpoint_key = lambda request_id, prefix_len: (
+        key_calls.append((int(request_id), int(prefix_len))) or (request_id,)
+    )
+    monkeypatch.setattr(
+        mtp2_module,
+        "malloc",
+        lambda *args, **kwargs: DeviceBuffer(0x5000, 16),
+    )
+    # Row 7 has 3 tokens (no full block), row 8 has 6 (one full block at 4).
+    hidden = {
+        7: np.arange(12, dtype=np.float32).reshape(3, 4),
+        8: np.arange(24, dtype=np.float32).reshape(6, 4),
+    }
+    adapter._prompt_hidden_rows = hidden
+    provider = SimpleNamespace(executor=executor)
+    rows = (
+        SimpleNamespace(prompt_ids=(10, 11, 12)),
+        SimpleNamespace(prompt_ids=(20, 21, 22, 23, 24, 25)),
+    )
+    targets = (SimpleNamespace(runtime=SimpleNamespace()),) * 2
+
+    roots = adapter._catch_up_provider_batch(provider, (7, 8), rows, targets)
+
+    assert set(roots) == {7, 8}
+    # Only row 8 has a block-aligned prefix, and it is captured once, at 4.
+    assert key_calls == [(8, 4)]
+    assert executor.snapshots == [(8, 4, 0x5000)]
+    assert executor.log.index(("snapshot", 4)) == executor.log.index(("step", 3)) + 1
+    store = adapter._prefix_checkpoint_store_instance
+    assert store is not None
+    assert store.get((20, 21, 22, 23), (8,)) == "blob:4"
+    assert store.get((10, 11, 12), (7,)) is None
+
+
+def _checkpoint_double(*, prefix_len: int = 8, boundary_hidden: object = "row") -> SimpleNamespace:
+    """A portable checkpoint as the priming source reads it."""
+
+    return SimpleNamespace(prefix_len=prefix_len, boundary_hidden=boundary_hidden)
+
+
+def _restored_source_adapter(monkeypatch, *, block_ids=(11,), stored_ids=(11,), checkpoint=None):
+    """Adapter double with a checkpoint store and a block-id key provider.
+
+    ``stored_ids`` is what the store recorded with the checkpoint and
+    ``block_ids`` is what the row's allocation answers with now; they differ
+    when the allocator has moved the row's blocks since the capture.
+    """
+
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter._states = {}
+    adapter._prompt_hidden_rows = {}
+    adapter.prefix_checkpoint_key = lambda request_id, prefix_len: block_ids
+    if checkpoint is None:
+        adapter._prefix_checkpoint_store_instance = None
+    else:
+        store = SimpleNamespace(
+            get=lambda tokens, ids: checkpoint if tuple(ids) == tuple(stored_ids) else None,
+            entries={},
+        )
+        adapter._prefix_checkpoint_store_instance = store
+    return adapter
+
+
+def test_restored_priming_source_needs_a_validated_checkpoint(monkeypatch) -> None:
+    row = SimpleNamespace(prompt_ids=tuple(range(10)), prefix_reused_tokens=8, slot=None)
+    adapter = _restored_source_adapter(monkeypatch)
+    adapter.owner = SimpleNamespace(_row=lambda request_id: row)
+
+    # No capture has happened in this process, so there is nothing to restore
+    # and the row stays autoregressive.
+    assert adapter._priming_source(7) == (
+        PRIMING_SOURCE_RESTORED,
+        "restored_checkpoint_absent_k0",
+    )
+
+    # A captured checkpoint is complete and current, so the row primes: the
+    # sink that streams its suffix is built from this same checkpoint when the
+    # row activates.
+    adapter = _restored_source_adapter(monkeypatch, checkpoint=_checkpoint_double())
+    adapter.owner = SimpleNamespace(_row=lambda request_id: row)
+    assert adapter._priming_source(7) == (PRIMING_SOURCE_RESTORED, None)
+
+    # A checkpoint captured without the boundary row cannot hand the first draft
+    # step the row it consumes, so the row stays autoregressive.
+    adapter = _restored_source_adapter(
+        monkeypatch, checkpoint=_checkpoint_double(boundary_hidden=None)
+    )
+    adapter.owner = SimpleNamespace(_row=lambda request_id: row)
+    assert adapter._priming_source(7) == (
+        PRIMING_SOURCE_RESTORED,
+        "restored_checkpoint_hidden_absent_k0",
+    )
+
+    # A row that has generated past its first draft step has moved on: the
+    # checkpoint's boundary is no longer the row's current position.
+    stale = SimpleNamespace(
+        prompt_ids=tuple(range(10)),
+        prefix_reused_tokens=8,
+        slot=SimpleNamespace(generated_ids=[1, 2]),
+    )
+    adapter.owner = SimpleNamespace(_row=lambda request_id: stale)
+    assert adapter._priming_source(7) == (
+        PRIMING_SOURCE_RESTORED,
+        "restored_checkpoint_stale_k0",
+    )
+
+
+def test_restored_priming_source_misses_are_not_restores(monkeypatch) -> None:
+    row = SimpleNamespace(prompt_ids=tuple(range(10)), prefix_reused_tokens=8, slot=None)
+
+    # Moved block ids are a miss: the allocator reuses freed ids, so a token hit
+    # whose ids differ cannot be validated against the blocks it describes.
+    adapter = _restored_source_adapter(
+        monkeypatch, block_ids=(99,), stored_ids=(11,), checkpoint=_checkpoint_double()
+    )
+    adapter.owner = SimpleNamespace(_row=lambda request_id: row)
+    assert adapter._priming_source(7) == (
+        PRIMING_SOURCE_RESTORED,
+        "restored_checkpoint_absent_k0",
+    )
+
+    # A prefix shorter than one block has no ids to validate with.
+    adapter = _restored_source_adapter(monkeypatch, block_ids=None, checkpoint=_checkpoint_double())
+    adapter.owner = SimpleNamespace(_row=lambda request_id: row)
+    assert adapter._priming_source(7) == (
+        PRIMING_SOURCE_RESTORED,
+        "restored_checkpoint_absent_k0",
+    )
+
+
+def test_restored_source_is_not_reached_without_prefix_reuse(monkeypatch) -> None:
+    """A row with no reused prefix keeps the buffered/absent classification."""
+
+    row = SimpleNamespace(prompt_ids=tuple(range(4)), prefix_reused_tokens=0, slot=None)
+    adapter = _restored_source_adapter(monkeypatch, checkpoint=_checkpoint_double())
+    adapter.owner = SimpleNamespace(_row=lambda request_id: row)
+
+    assert adapter._priming_source(7) == (PRIMING_SOURCE_ABSENT, "provider_state_absent")
+
+    adapter._prompt_hidden_rows[7] = np.zeros((4, 2), dtype=np.float32)
+    assert adapter._priming_source(7) == (PRIMING_SOURCE_BUFFERED, None)

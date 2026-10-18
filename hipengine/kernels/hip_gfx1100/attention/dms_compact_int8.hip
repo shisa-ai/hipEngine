@@ -134,64 +134,73 @@ __global__ void dms_int8_append_kernel(const uint16_t* k, const uint16_t* v,
       __syncthreads();
     }
     const int chunk_n = (n - chunk0 < Threads) ? (n - chunk0) : Threads;
-    for (int tile0 = 0; tile0 < chunk_n; tile0 += kCompactTileSlots) {
-      const int tile_n = (chunk_n - tile0 < kCompactTileSlots)
-                             ? (chunk_n - tile0)
-                             : kCompactTileSlots;
-      const int stage_elems = tile_n * dim;
-      // Stage every source slot of this tile before any write so no thread can
-      // clobber another thread's unread source. Payload bytes and scales move
-      // without requantization, as before.
-      for (int e = tid; e < stage_elems; e += Threads) {
-        const int slot_i = e / dim;
-        const int t_in_chunk = tile0 + slot_i;
-        const bool kept =
-            s_flag[t_in_chunk] > (t_in_chunk > 0 ? s_flag[t_in_chunk - 1] : 0);
-        if (kept) {
+    const int chunk_total = s_flag[Threads - 1];
+    // A keeper shifts when a row before it was dropped -- in this chunk or
+    // any earlier one.  Only a chunk that neither dropped a row nor inherits
+    // an earlier drop leaves every keeper in place, and only that chunk can
+    // skip the staging.  A chunk that does shift stages whole tiles of source
+    // rows before any write, because a thread's destination can be another
+    // thread's unread source.
+    if (chunk_rank != chunk0 || chunk_total != chunk_n) {
+      for (int tile0 = 0; tile0 < chunk_n; tile0 += kCompactTileSlots) {
+        const int tile_n = (chunk_n - tile0 < kCompactTileSlots)
+                               ? (chunk_n - tile0)
+                               : kCompactTileSlots;
+        const int stage_elems = tile_n * dim;
+        // Stage every source slot of this tile before any write so no thread can
+        // clobber another thread's unread source. Payload bytes and scales move
+        // without requantization, as before.
+        for (int e = tid; e < stage_elems; e += Threads) {
+          const int slot_i = e / dim;
+          const int t_in_chunk = tile0 + slot_i;
+          const bool kept =
+              s_flag[t_in_chunk] > (t_in_chunk > 0 ? s_flag[t_in_chunk - 1] : 0);
+          if (kept) {
+            const int src = base + chunk0 + t_in_chunk;
+            const int d = e - slot_i * dim;
+            s_stage[e] = ko[int64_t(src)*dim+d];
+            s_stage[stage_elems + e] = vo[int64_t(src)*dim+d];
+          }
+        }
+        if (tid < tile_n) {
+          const int src = base + chunk0 + tile0 + tid;
+          s_tile_ks[tid] = ks[src];
+          s_tile_vs[tid] = vs[src];
+          s_tile_positions[tid] = positions[src];
+          s_tile_flags[tid] = flags[src];
+        }
+        __syncthreads();
+        for (int e = tid; e < stage_elems; e += Threads) {
+          const int slot_i = e / dim;
+          const int t_in_chunk = tile0 + slot_i;
+          const bool kept =
+              s_flag[t_in_chunk] > (t_in_chunk > 0 ? s_flag[t_in_chunk - 1] : 0);
+          if (!kept) continue;
+          const int dst = base + chunk_rank + s_flag[t_in_chunk] - 1;
           const int src = base + chunk0 + t_in_chunk;
-          const int d = e - slot_i * dim;
-          s_stage[e] = ko[int64_t(src)*dim+d];
-          s_stage[stage_elems + e] = vo[int64_t(src)*dim+d];
+          if (dst != src) {
+            const int d = e - slot_i * dim;
+            ko[int64_t(dst)*dim+d] = s_stage[e];
+            vo[int64_t(dst)*dim+d] = s_stage[stage_elems + e];
+          }
         }
-      }
-      if (tid < tile_n) {
-        const int src = base + chunk0 + tile0 + tid;
-        s_tile_ks[tid] = ks[src];
-        s_tile_vs[tid] = vs[src];
-        s_tile_positions[tid] = positions[src];
-        s_tile_flags[tid] = flags[src];
-      }
-      __syncthreads();
-      for (int e = tid; e < stage_elems; e += Threads) {
-        const int slot_i = e / dim;
-        const int t_in_chunk = tile0 + slot_i;
-        const bool kept =
-            s_flag[t_in_chunk] > (t_in_chunk > 0 ? s_flag[t_in_chunk - 1] : 0);
-        if (!kept) continue;
-        const int dst = base + chunk_rank + s_flag[t_in_chunk] - 1;
-        const int src = base + chunk0 + t_in_chunk;
-        if (dst != src) {
-          const int d = e - slot_i * dim;
-          ko[int64_t(dst)*dim+d] = s_stage[e];
-          vo[int64_t(dst)*dim+d] = s_stage[stage_elems + e];
+        if (tid < tile_n) {
+          const int t_in_chunk = tile0 + tid;
+          const bool kept =
+              s_flag[t_in_chunk] > (t_in_chunk > 0 ? s_flag[t_in_chunk - 1] : 0);
+          const int dst = base + chunk_rank + s_flag[t_in_chunk] - 1;
+          const int src = base + chunk0 + t_in_chunk;
+          if (kept && dst != src) {
+            ks[dst] = s_tile_ks[tid];
+            vs[dst] = s_tile_vs[tid];
+            positions[dst] = s_tile_positions[tid];
+            flags[dst] = s_tile_flags[tid];
+          }
         }
+        __syncthreads();
       }
-      if (tid < tile_n) {
-        const int t_in_chunk = tile0 + tid;
-        const bool kept =
-            s_flag[t_in_chunk] > (t_in_chunk > 0 ? s_flag[t_in_chunk - 1] : 0);
-        const int dst = base + chunk_rank + s_flag[t_in_chunk] - 1;
-        const int src = base + chunk0 + t_in_chunk;
-        if (kept && dst != src) {
-          ks[dst] = s_tile_ks[tid];
-          vs[dst] = s_tile_vs[tid];
-          positions[dst] = s_tile_positions[tid];
-          flags[dst] = s_tile_flags[tid];
-        }
-      }
-      __syncthreads();
     }
-    s_chunk_total = s_flag[Threads - 1];
+    s_chunk_total = chunk_total;
     __syncthreads();
     chunk_rank += s_chunk_total;
     __syncthreads();

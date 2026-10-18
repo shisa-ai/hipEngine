@@ -25,10 +25,16 @@ from hipengine.generation.batch_scheduler import (
     PerRowSamplingParams,
     ResidentBatchScheduler,
 )
-from hipengine.generation.deadline import GenerationCancelled, generation_deadline_expired
+from hipengine.generation.concurrency2 import stream_mailbox_bound
+from hipengine.generation.deadline import (
+    GenerationCancelled,
+    GenerationDeadlineExceeded,
+    generation_deadline_expired,
+)
 from hipengine.kvcache import (
     PREFIX_CACHE_CHOICES,
     ResourceUnavailable,
+    PREFIX_CACHE_DEFAULT,
     resolve_prefix_cache_mode,
 )
 from hipengine.generation.registry import (
@@ -38,14 +44,21 @@ from hipengine.generation.registry import (
     GenerationStreamChunk,
     TextGenerator,
 )
-from hipengine.generation.sampling import speculative_mtp_sampling_blockers
+from hipengine.generation.sampling import (
+    sampler_fast_path_blockers,
+    speculative_mtp_sampling_blockers,
+    supports_sampled_speculative_mtp,
+)
 from hipengine.speculative.frontier import (
     CandidateGraph,
     SpeculativeCapability,
     TargetFrontier,
 )
-from hipengine.speculative.policy import plan_speculative_requests
-from hipengine.speculative.provider import SpeculativeRequestSemantics
+from hipengine.speculative.policy import SpecRequestPlan, plan_speculative_requests
+from hipengine.speculative.provider import (
+    SpeculativeRequestSemantics,
+    resolve_staged_speculative_runner,
+)
 from hipengine.speculative.transaction import (
     SpecCycleResult,
     SpecCycleStage,
@@ -89,12 +102,49 @@ DEFAULT_RESIDENT_STREAM_QUEUE_MAX_CHUNKS = 64
 _REQUEST_LIFETIME_CANCEL_REASONS = frozenset({"cancel", "disconnect", "timeout"})
 
 
+def _resident_stream_queue_bound(state: _ResidentStreamState) -> int:
+    """Resolve one resident stream's chunk-queue bound from its output budget."""
+
+    return stream_mailbox_bound(
+        DEFAULT_RESIDENT_STREAM_QUEUE_MAX_CHUNKS,
+        getattr(state.submission.request, "max_tokens", None),
+    )
+
+
+def _terminal_failure_request_ids(
+    events: Sequence[EngineLoopEvent],
+) -> tuple[int, ...]:
+    """Return the rows one poll ended with an error or refusal event."""
+
+    request_ids: list[int] = []
+    for event in events:
+        if event.kind not in {"failed", "rejected"} or event.request_id is None:
+            continue
+        request_id = int(event.request_id)
+        if request_id not in request_ids:
+            request_ids.append(request_id)
+    return tuple(request_ids)
+
+
 def _speculative_sampling_mode(runner, request_id, params):
     blockers = speculative_mtp_sampling_blockers(params)
     if blockers == ("eos_token_id",):
         supports_eos = getattr(runner, "speculative_eos_supported", None)
         if callable(supports_eos) and supports_eos(int(request_id)):
             return "greedy"
+    if blockers and sampler_fast_path_blockers(params) and supports_sampled_speculative_mtp(params):
+        # Temperature and the other servable processors: the adapter's sampled
+        # route accepts the verified chain by min(1, p/q) instead of raw argmax.
+        # It is admitted only when the capability advertises the mode, which is
+        # itself gated on a qualified evidence row. The fast-path check keeps a
+        # request whose only open fields are finish-rule fields unqualified
+        # rather than labelling it sampled for a temperature it does not have.
+        # A provider that serves the same requests through its own processed
+        # verifier declares that here, so the shared label cannot claim a
+        # min(1, p/q) route it does not implement.
+        declared = getattr(runner, "speculative_sampled_mode_supported", None)
+        if declared is None or bool(declared):
+            return "sampled"
     return "processed" if blockers else "greedy"
 
 
@@ -115,7 +165,7 @@ class EngineLoopConfig:
     kv_pool_memory_budget_mib: int | None = None
     kv_pool_idle_grace_seconds: float = DEFAULT_KV_POOL_IDLE_GRACE_SECONDS
     max_pending_requests: int | None = None
-    prefix_cache: str = "off"
+    prefix_cache: str = PREFIX_CACHE_DEFAULT
     # P4 (roadmap F2): the packed KV plane lease is skipped only when no
     # plane consumer can appear. The MTP verifier is one such consumer,
     # so the serving policy must reach configure_engine_loop - "off"
@@ -194,6 +244,85 @@ class GenerationAdmissionRejected(MemoryError):
             "current_units": self.current_units,
             "capacity_units": self.capacity_units,
         }
+
+
+class GenerationExecutionFailed(RuntimeError):
+    """One contained execution failure: the request dies, the service lives.
+
+    Raised to the caller of the failed request only.  The message names the
+    execution phase, the affected rows, whether the failed step may have
+    mutated device state, and the underlying cause, so a client never has to
+    guess whether a shared-engine fault was its own request's problem.
+    """
+
+    def __init__(
+        self,
+        *,
+        phase: str,
+        request_ids: Sequence[int],
+        work_kind: str,
+        mutation: str,
+        reason: str,
+        error: BaseException | None = None,
+    ) -> None:
+        self.phase = str(phase)
+        self.request_ids = tuple(int(request_id) for request_id in request_ids)
+        self.work_kind = str(work_kind)
+        self.mutation = str(mutation)
+        self.reason = str(reason)
+        self.cause_type = None if error is None else type(error).__name__
+        super().__init__(
+            f"generation execution failed during {self.phase} "
+            f"(request_ids={list(self.request_ids)}, work_kind={self.work_kind}, "
+            f"state_mutation={self.mutation}, "
+            f"cause={self.cause_type}: {self.reason})"
+        )
+
+    def to_json_dict(self) -> dict[str, Any]:
+        return {
+            "phase": self.phase,
+            "request_ids": list(self.request_ids),
+            "work_kind": self.work_kind,
+            "state_mutation": self.mutation,
+            "cause_type": self.cause_type,
+            "reason": self.reason,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionFailure:
+    """Post-recovery containment scope returned by ``contain_execution_failure``.
+
+    Returning an instance asserts two things on behalf of the runner that owns
+    the device: the failed step is quiesced (device work launched before the
+    failure has completed or reported its own device error), and every row named
+    here can be reclaimed.  The loop then fails exactly these rows and keeps
+    serving everything else.  A runner that cannot prove both returns ``None``,
+    and the failure stays fatal for the whole service.
+
+    ``mutation`` records how much of the failed step could have reached device
+    state: ``"none"`` (proven: the step raised before any device call),
+    ``"partial"`` (device work started, no canonical commit claimed),
+    ``"committed"`` (a canonical commit happened and was restored), or
+    ``"unknown"`` (the runner could not narrow the window).  Naming a narrower
+    ``request_ids`` than the failed work item asserts that every unnamed row of
+    that item still holds canonical state.
+    """
+
+    request_ids: tuple[int, ...]
+    phase: str
+    work_kind: str
+    mutation: str
+    reason: str
+    error: BaseException | None = field(default=None, compare=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if not self.request_ids:
+            raise ValueError("execution failure containment must name affected rows")
+        if self.mutation not in {"none", "partial", "committed", "unknown"}:
+            raise ValueError(
+                "execution failure mutation must be none, partial, committed, or unknown"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -327,6 +456,22 @@ class EngineLoopRunner(Protocol):
         commit: bool,
     ) -> SpecCycleResult:
         """Execute exactly one bounded planned cycle."""
+
+    def contain_execution_failure(
+        self,
+        error: BaseException,
+        *,
+        phase: str,
+        request_ids: tuple[int, ...],
+        work_kind: str,
+    ) -> ExecutionFailure | None:
+        """Contain one failed execution step, or return None to fail the service.
+
+        Optional: a runner that does not implement it leaves every execution
+        failure fatal, which is the pre-containment behaviour.  Implementations
+        must not report containment for a failure that could have left shared
+        device or provider state inconsistent.
+        """
 
 
 class SubmitPollTextGenerator:
@@ -463,9 +608,13 @@ class SubmitPollTextGenerator:
     def supports_speculative_mtp(self) -> bool:
         """Whether staged or legacy speculative MTP is available."""
 
+        supports = getattr(self._inner, "supports_speculative_mtp", None)
+        # Staged hooks describe runner mechanics, not the loaded artifact's
+        # tensors. Respect an explicit model capability miss before routing.
+        if supports is not None and not bool(supports):
+            return False
         if self._supports_staged_speculative_mtp:
             return True
-        supports = getattr(self._inner, "supports_speculative_mtp", None)
         return bool(supports) and callable(
             getattr(self._inner, "generate_speculative_mtp_detailed", None)
         )
@@ -474,9 +623,15 @@ class SubmitPollTextGenerator:
     def _supports_staged_speculative_mtp(self) -> bool:
         if not self._has_resident_runner:
             return False
+        # Some native owners compute bounded speculative quanta into private
+        # request buffers, then publish one canonical token per scheduler tick.
+        # They use the same service, cancellation and reclaim path without a
+        # second speculative scheduler or an opaque whole-request call.
+        if bool(getattr(self._runner, "supports_buffered_speculative_decode", False)):
+            return True
         capability = callable(getattr(self._runner, "speculative_capability", None))
         opaque = callable(getattr(self._runner, "execute_speculative_cycle", None))
-        staged = callable(getattr(self._runner, "execute_target_frontier", None))
+        staged = resolve_staged_speculative_runner(self._runner) is not None
         return capability and (opaque or staged)
 
     @property
@@ -494,6 +649,32 @@ class SubmitPollTextGenerator:
                 "speculative MTP generation is not supported by the wrapped generator"
             )
         return list(self._inner.generate_speculative_mtp_detailed(request))
+
+    def stream_speculative_mtp_detailed(
+        self,
+        request: GenerationRequest,
+    ) -> Iterator[GenerationStreamChunk]:
+        """Stream one committed speculative output from a non-resident driver.
+
+        A resident driver streams through the service table instead (its inner
+        generator has no per-request streaming hook); this is the exact
+        pre-launch fallback for a generator that owns its own streaming method,
+        the same shape ``generate_speculative_mtp_detailed`` uses for the
+        blocking call. A generator without it is refused by name rather than
+        silently downgraded to autoregressive streaming.
+        """
+
+        if not self.supports_speculative_mtp:
+            raise NotImplementedError(
+                "speculative MTP generation is not supported by the wrapped generator"
+            )
+        streamer = getattr(self._inner, "stream_speculative_mtp_detailed", None)
+        if not callable(streamer):
+            raise NotImplementedError(
+                "speculative MTP streaming is not supported by the wrapped generator"
+            )
+        for chunk in streamer(request):
+            yield GenerationStreamChunk.from_value(chunk)
 
     def submit_speculative_many_detailed(
         self,
@@ -694,13 +875,20 @@ class SubmitPollTextGenerator:
 
         request_id: int | None = None
         try:
-            request_id = self._loop.submit_speculative(
-                prompt_row,
-                max_new_tokens=max_new_tokens,
-                desired_candidate_count=max(1, desired),
-                cancel_requested=cancel_requested,
-                sampling=PerRowSamplingParams.from_generation_request(request),
-            )
+            if bool(getattr(self._runner, "supports_buffered_speculative_decode", False)):
+                request_id = self._loop.submit(
+                    prompt_row,
+                    max_new_tokens=max_new_tokens,
+                    sampling=PerRowSamplingParams.from_generation_request(request),
+                )
+            else:
+                request_id = self._loop.submit_speculative(
+                    prompt_row,
+                    max_new_tokens=max_new_tokens,
+                    desired_candidate_count=max(1, desired),
+                    cancel_requested=cancel_requested,
+                    sampling=PerRowSamplingParams.from_generation_request(request),
+                )
             runner_request = replace(request, deadline_at=None)
             self._runner.register_batch(
                 (request_id,),
@@ -783,7 +971,7 @@ class SubmitPollTextGenerator:
         """Expose the resident runner's explicit-MTP batch-route width bound."""
 
         return getattr(
-            self._runner,
+            self._runner if self._has_resident_runner else self._inner,
             "server_mtp_batch_max_active_requests",
             None,
         )
@@ -843,6 +1031,9 @@ class SubmitPollTextGenerator:
             return self._submit_detailed_locked(request)
 
     def _submit_detailed_locked(self, request: GenerationRequest) -> GenerationSubmission:
+        validator = getattr(self._inner, "validate_request", None)
+        if callable(validator):
+            validator(request)
         if request.grammar is not None and not getattr(self._inner,"supports_grammar",False):
             raise NotImplementedError("this model does not implement token grammar masking")
         prompts = tuple(request.prompts)
@@ -938,6 +1129,14 @@ class SubmitPollTextGenerator:
                         error=exc,
                     ),
                 )
+            for request_id in _terminal_failure_request_ids(events):
+                # A contained execution failure already reclaimed its rows in the
+                # loop; retire the submission here so the service never waits on
+                # a result that will not arrive.
+                submission = self._submissions_by_request.get(request_id)
+                if submission is not None:
+                    self._abort_submission_locked(submission, reason="cancel")
+                self._loop.release_completed(request_id)
             self._route_stream_events_locked(events)
             return events
 
@@ -1352,7 +1551,7 @@ class SubmitPollTextGenerator:
             if state is None:
                 continue
             for stream_chunk in _stop_safe_resident_stream_chunks(state, event):
-                if len(state.events) >= self._stream_queue_max_chunks:
+                if len(state.events) >= _resident_stream_queue_bound(state):
                     state.overflowed_request_ids.add(request_id)
                     self._loop.cancel(request_id, reason="cancel")
                     break
@@ -1861,7 +2060,9 @@ def engine_loop_config_from_args(args: object) -> EngineLoopConfig:
             if getattr(args, "max_pending_requests") is None
             else int(getattr(args, "max_pending_requests"))
         ),
-        prefix_cache=resolve_prefix_cache_mode(getattr(args, "prefix_cache", "off")),
+        prefix_cache=resolve_prefix_cache_mode(
+            getattr(args, "prefix_cache", PREFIX_CACHE_DEFAULT)
+        ),
         speculative_mtp_serving=str(
             getattr(args, "speculative_mtp_serving", "auto")
         )
@@ -1976,6 +2177,16 @@ class ResidentEngineLoop:
                     raise ValueError("capacity conflicts with config.max_active_requests")
         assert resolved_capacity is not None
         self.runner = runner
+        # A due group the provider refuses as a whole keeps its shipped route:
+        # one batched autoregressive decode. Decomposing it into one provider
+        # cycle per capable row measured 19-26% slower per token even at perfect
+        # depth-3 acceptance, so it stays behind a default-off flag that the
+        # serving ladder can re-open; see docs/REFACTOR.md for the removal
+        # condition.
+        self.speculative_split_refused_groups = (
+            os.environ.get("HIPENGINE_SPEC_MTP_SPLIT_REFUSED_GROUPS", "0").strip()
+            not in {"", "0"}
+        )
         self.prefill_chunk_size = int(resolved_config.max_prefill_chunk_tokens)
         self.config = resolved_config
         self.prefill_decode_policy = resolved_config.prefill_decode_policy
@@ -2006,6 +2217,7 @@ class ResidentEngineLoop:
         self._speculative_cycle_sequence = 0
         self._last_speculative_plan = None
         self._recent_speculative_plans = deque(maxlen=32)
+        self._pending_ar_reasons: dict[int, Any] = {}
 
     def reconfigure(self, config: EngineLoopConfig) -> None:
         """Apply an idle resource/policy generation without replacing the loop."""
@@ -2054,6 +2266,7 @@ class ResidentEngineLoop:
         self._round_decode_rows = 0
         self._last_speculative_plan = None
         self._recent_speculative_plans.clear()
+        self._pending_ar_reasons.clear()
 
     @property
     def last_speculative_plan(self):
@@ -2377,6 +2590,11 @@ class ResidentEngineLoop:
             EngineLoopEvent(kind="admitted", request_id=request_id, request_ids=(request_id,))
             for request_id in admitted
         )
+        events.extend(
+            EngineLoopEvent(kind="completed", request_id=item.request_id,
+                            request_ids=(item.request_id,), completed=item)
+            for item in self.scheduler.finish_zero_token_requests()
+        )
 
         if self.prefill_decode_policy == "token_budget":
             events.extend(self._run_token_budget_round())
@@ -2397,15 +2615,46 @@ class ResidentEngineLoop:
             packed_prefill_rows = int(
                 getattr(self.runner, "packed_prefill_max_rows", 1)
             )
+            # A row whose first chunk would forfeit an unrecoverable resource
+            # (an MTP prompt activation another request holds) is deferred, not
+            # advanced. The claim holder is always ready, so a deferred-only
+            # selection means every remaining row is waiting on a claim that is
+            # about to be released; fall through to decode, and only if there is
+            # no decode work either, run the unfiltered selection so the loop
+            # cannot stall.
+            ready = getattr(self.runner, "prefill_activation_ready", None)
+            if not callable(ready):
+                ready = None
+            needs_activation = getattr(
+                self.runner, "prefill_needs_activation", None
+            )
+            if not callable(needs_activation):
+                needs_activation = None
             if packed_prefill_rows > 1:
                 prefill = self.scheduler.next_prefill_batch_work(
                     chunk_size=self.prefill_chunk_size,
                     max_rows=packed_prefill_rows,
+                    ready=ready,
+                    needs_activation=needs_activation,
                 )
             else:
                 prefill = self.scheduler.next_prefill_work(
-                    chunk_size=self.prefill_chunk_size
+                    chunk_size=self.prefill_chunk_size,
+                    ready=ready,
                 )
+            if prefill is None and decode is not None:
+                events.extend(self._run_decode(decode))
+                return tuple(events)
+            if prefill is None:
+                if packed_prefill_rows > 1:
+                    prefill = self.scheduler.next_prefill_batch_work(
+                        chunk_size=self.prefill_chunk_size,
+                        max_rows=packed_prefill_rows,
+                    )
+                else:
+                    prefill = self.scheduler.next_prefill_work(
+                        chunk_size=self.prefill_chunk_size
+                    )
             assert prefill is not None
             events.extend(self._run_prefill(prefill))
             return tuple(events)
@@ -2414,6 +2663,114 @@ class ResidentEngineLoop:
             return tuple(events)
         events.extend(self._run_decode(decode))
         return tuple(events)
+
+    def _contain_execution_failure(
+        self,
+        error: BaseException,
+        *,
+        phase: str,
+        work: WorkItem,
+    ) -> tuple[EngineLoopEvent, ...] | None:
+        """Fail exactly the rows one recoverable execution failure affected.
+
+        Returns the events for a contained failure, or None when the runner
+        cannot prove the failed step is safe to continue past.  A None result is
+        fatal: the caller re-raises, and the engine service closes rather than
+        keep serving on state nobody can vouch for.
+        """
+
+        contain = getattr(self.runner, "contain_execution_failure", None)
+        if not callable(contain):
+            return None
+        request_ids = tuple(int(request_id) for request_id in work.request_ids)
+        work_kind = work.kind.value if isinstance(work.kind, WorkKind) else str(work.kind)
+        try:
+            failure = contain(
+                error,
+                phase=phase,
+                request_ids=request_ids,
+                work_kind=work_kind,
+            )
+        except BaseException:
+            # A recovery that cannot report its own scope cannot be trusted.
+            return None
+        if failure is None:
+            return None
+        if not isinstance(failure, ExecutionFailure):
+            raise TypeError(
+                "runner contain_execution_failure must return ExecutionFailure or None"
+            )
+        affected = tuple(int(request_id) for request_id in failure.request_ids)
+        outside = tuple(
+            request_id for request_id in affected if request_id not in request_ids
+        )
+        if outside:
+            raise ValueError(
+                "contained execution failure named rows outside the failed work: "
+                f"{list(outside)}"
+            )
+        cause = failure.error if failure.error is not None else error
+        if isinstance(cause, (GenerationCancelled, GenerationDeadlineExceeded)):
+            # A cancellation the step observed before touching device state is a
+            # request outcome, not an engine fault: report it as the
+            # cancellation the caller already expects instead of counting it as
+            # an execution failure.
+            reported: BaseException = cause
+        else:
+            reported = GenerationExecutionFailed(
+                phase=failure.phase,
+                request_ids=affected,
+                work_kind=failure.work_kind,
+                mutation=failure.mutation,
+                reason=failure.reason,
+                error=cause,
+            )
+        events: list[EngineLoopEvent] = [
+            EngineLoopEvent(
+                kind="work",
+                request_ids=request_ids,
+                work_kind=work.kind,
+            )
+        ]
+        for request_id in affected:
+            self.scheduler.cancel(request_id, reason="cancel")
+            events.append(
+                EngineLoopEvent(
+                    kind="failed",
+                    request_id=request_id,
+                    request_ids=(request_id,),
+                    error=reported,
+                )
+            )
+        return tuple(events)
+
+    def _fatal_execution_failure(
+        self,
+        error: BaseException,
+        *,
+        phase: str,
+        work: WorkItem,
+    ) -> GenerationExecutionFailed:
+        """Report a failure nobody could contain, naming its scope.
+
+        The mutation class stays ``unknown``: the service stops precisely
+        because no runner could establish how much of the step reached device
+        state.  Naming the phase, the affected rows, the work kind and the
+        deepest cause is what lets ``health()`` and a later refused submission
+        explain the stop instead of reporting a bare exception.  Callers raise
+        the result, so the step's own handler still re-raises.
+        """
+
+        return GenerationExecutionFailed(
+            phase=str(phase),
+            request_ids=tuple(int(request_id) for request_id in work.request_ids),
+            work_kind=(
+                work.kind.value if isinstance(work.kind, WorkKind) else str(work.kind)
+            ),
+            mutation="unknown",
+            reason=f"{type(error).__name__}: {error}",
+            error=error,
+        )
 
     def _run_token_budget_round(self) -> tuple[EngineLoopEvent, ...]:
         """Run fair prefill quanta and one decode step for every due row."""
@@ -2425,8 +2782,10 @@ class ResidentEngineLoop:
             getattr(self.runner, "supports_multiple_prefill_quanta_per_round", False)
         )
         while prefill_budget > 0 and self.scheduler.has_prefill_work():
+            ready = getattr(self.runner, "prefill_activation_ready", None)
             work = self.scheduler.next_round_robin_prefill_work(
-                chunk_size=min(self.prefill_chunk_size, prefill_budget)
+                chunk_size=min(self.prefill_chunk_size, prefill_budget),
+                ready=ready if callable(ready) else None,
             )
             if work is None:
                 break
@@ -2510,13 +2869,35 @@ class ResidentEngineLoop:
         )
         return self._consecutive_prefill_chunks >= burst_limit
 
+    def _record_contained_decode_step(self, work: WorkItem) -> None:
+        """Keep the loop's step bookkeeping consistent after a contained decode.
+
+        A contained failure ends the step like any other non-prefill step: the
+        policy that picks the next work item reads these fields, so a contained
+        step must not leave prefill-run or cold-cohort state behind.
+        """
+
+        self._last_work_kind = work.kind
+        self._consecutive_prefill_chunks = 0
+        self._cold_prefill_cohort_request_ids = frozenset()
+
     def _run_prefill(self, work: WorkItem) -> tuple[EngineLoopEvent, ...]:
         start = time.perf_counter()
         prefill_batch = getattr(self.runner, "prefill_batch", None)
-        if callable(prefill_batch):
-            prefill_batch(work, commit=True)
-        else:
-            self.runner.prefill(work)
+        try:
+            if callable(prefill_batch):
+                prefill_batch(work, commit=True)
+            else:
+                self.runner.prefill(work)
+        except BaseException as exc:
+            contained = self._contain_execution_failure(exc, phase="prefill", work=work)
+            if contained is None:
+                raise self._fatal_execution_failure(
+                    exc, phase="prefill", work=work
+                ) from exc
+            self._last_work_kind = work.kind
+            self._consecutive_prefill_chunks += 1
+            return contained
         self.scheduler.record_work_duration(work, time.perf_counter() - start)
         self._last_work_kind = work.kind
         self._consecutive_prefill_chunks += 1
@@ -2601,7 +2982,16 @@ class ResidentEngineLoop:
         if not callable(resolve_width):
             return None
         max_requests = int(resolve_width(work))
-        if max_requests <= 0 or len(work.request_ids) <= max_requests:
+        if max_requests <= 0:
+            # RF-M5 (docs/REFACTOR.md): a zero bound is the partition owner's
+            # instruction that this group must not run MTP sub-groups -- it is
+            # over-width, ineligible, or disabled -- so serve the whole item as
+            # one autoregressive batch. Falling through to the speculative
+            # cycle here was the 2026-09-19 width-8 fail-open: the cycle ran
+            # whole-item draft cycles on a group the partition owner had
+            # routed to AR.
+            return tuple(self._run_ar_decode(work))
+        if len(work.request_ids) <= max_requests:
             return None
         events: list[EngineLoopEvent] = []
         for start in range(0, len(work.request_ids), max_requests):
@@ -2654,10 +3044,19 @@ class ResidentEngineLoop:
     def _run_ar_decode(self, work: WorkItem) -> tuple[EngineLoopEvent, ...]:
         start = time.perf_counter()
         decode_batch = getattr(self.runner, "decode_batch", None)
-        if callable(decode_batch):
-            generated = tuple(decode_batch(work, commit=True))
-        else:
-            generated = tuple(self.runner.decode(work))
+        try:
+            if callable(decode_batch):
+                generated = tuple(decode_batch(work, commit=True))
+            else:
+                generated = tuple(self.runner.decode(work))
+        except BaseException as exc:
+            contained = self._contain_execution_failure(exc, phase="decode", work=work)
+            if contained is None:
+                raise self._fatal_execution_failure(
+                    exc, phase="decode", work=work
+                ) from exc
+            self._record_contained_decode_step(work)
+            return contained
         self.scheduler.record_work_duration(work, time.perf_counter() - start)
         cancelled = self._request_lifetime_cancellations(work.request_ids)
         if cancelled:
@@ -2675,6 +3074,7 @@ class ResidentEngineLoop:
             )
         generated_events = self.scheduler.record_generated_events(generated)
         events = self._decode_events(work, generated_events)
+        self._attribute_autoregressive_commits(events)
         if not cancelled:
             return events
         return (
@@ -2682,9 +3082,137 @@ class ResidentEngineLoop:
             *self._reclaim_request_lifetime_cancellations(cancelled),
         )
 
+    def _attribute_autoregressive_commits(
+        self,
+        events: Sequence[EngineLoopEvent],
+    ) -> None:
+        """Attribute AR output at the decode that emitted it, once per token.
+
+        A speculative plan that selects autoregressive decoding can be prepared
+        more than once for the same row within a tick (a mixed group is retried
+        as its speculative subset), so counting at preparation double-counts a
+        single emitted token. The plan's reason is carried here instead, to the
+        decode that actually produced the output.
+        """
+
+        if not self._pending_ar_reasons:
+            return
+        observe = getattr(self.runner, "note_speculative_ar_commit", None)
+        for event in events:
+            if event.kind != "token" or event.request_id is None:
+                continue
+            request_id = int(event.request_id)
+            if request_id not in self._pending_ar_reasons:
+                continue
+            reason = self._pending_ar_reasons.pop(request_id)
+            if callable(observe):
+                observe(request_id, reason)
+
+    def _resolve_speculative_capability(
+        self,
+        semantics: tuple[SpeculativeRequestSemantics, ...],
+    ) -> SpeculativeCapability | None:
+        resolve = getattr(self.runner, "speculative_capability", None)
+        if not callable(resolve):
+            return None
+        capability = resolve(semantics)
+        if capability is not None and not isinstance(capability, SpeculativeCapability):
+            raise TypeError(
+                "runner speculative_capability must return SpeculativeCapability or None"
+            )
+        return capability
+
+    def _compatible_speculative_subset(
+        self,
+        work: WorkItem,
+        semantics: tuple[SpeculativeRequestSemantics, ...],
+        plan: SpecRequestPlan,
+    ) -> tuple[int, ...]:
+        """Return the rows of a refused group the provider can serve on their own.
+
+        The provider runs one target verify shape, so a group that mixes rows it
+        can serve with rows it refuses -- a row that crosses the target's
+        short-context window, a row whose target profile is unsupported, a row
+        out of candidate room -- is planned K0 as a whole. This names the rows
+        that would be served if the group were decomposed.
+        """
+
+        group = tuple(int(value) for value in work.request_ids)
+        candidate = (
+            tuple(int(value) for value in plan.speculative_request_ids)
+            if plan.has_speculative_rows
+            else group
+        )
+        by_id = {int(item.request_id): item for item in semantics}
+        return tuple(
+            request_id
+            for request_id in candidate
+            if request_id in by_id
+            and self._resolve_speculative_capability((by_id[request_id],)) is not None
+        )
+
+    def _record_refused_reasons(
+        self,
+        plan: SpecRequestPlan,
+        request_ids: tuple[int, ...],
+    ) -> None:
+        """Carry a refused row's own plan reason to its AR emission."""
+
+        reason_by_id = dict(zip(plan.request_ids, plan.reasons, strict=True))
+        for request_id in request_ids:
+            reason = reason_by_id.get(int(request_id))
+            if reason is not None:
+                self._pending_ar_reasons[int(request_id)] = reason
+
+    def _run_split_refused_group(
+        self,
+        work: WorkItem,
+        semantics: tuple[SpeculativeRequestSemantics, ...],
+        plan: SpecRequestPlan,
+    ) -> tuple[EngineLoopEvent, ...] | None:
+        """Serve every individually capable row of a refused group separately.
+
+        This is the route the adapter's partition contract deliberately closes
+        (a multi-row due batch of one-row-qualified requests must not decompose
+        into serial singleton cycles), kept behind a flag so the serving ladder
+        can re-measure it on this tree against the whole-group autoregressive
+        route. Each capable row runs the same one-row cycle the scheduler would
+        run for it alone, and any row that is still refused decodes
+        autoregressively in the same tick.
+        """
+
+        eligible = self._compatible_speculative_subset(work, semantics, plan)
+        if not eligible:
+            return None
+        events: list[EngineLoopEvent] = []
+        served: list[int] = []
+        for request_id in eligible:
+            row_events = self._maybe_run_speculative_cycle(
+                self._decode_work_subset(work, (request_id,)),
+                allow_refused_split=False,
+            )
+            if row_events is None:
+                continue
+            served.append(request_id)
+            events.extend(row_events)
+        if not served:
+            return None
+        selected = set(served)
+        remainder = tuple(
+            int(request_id)
+            for request_id in work.request_ids
+            if int(request_id) not in selected
+        )
+        if not remainder:
+            return tuple(events)
+        self._record_refused_reasons(plan, remainder)
+        return (*events, *self._run_ar_decode(self._decode_work_subset(work, remainder)))
+
     def _maybe_run_speculative_cycle(
         self,
         work: WorkItem,
+        *,
+        allow_refused_split: bool = True,
     ) -> tuple[EngineLoopEvent, ...] | None:
         desired = tuple(
             self._speculative_candidate_counts.get(int(request_id), 0)
@@ -2720,12 +3248,10 @@ class ResidentEngineLoop:
             )
         resolve_capability = getattr(self.runner, "speculative_capability", None)
         capability = (
-            resolve_capability(tuple(semantics))
+            self._resolve_speculative_capability(tuple(semantics))
             if callable(resolve_capability)
             else None
         )
-        if capability is not None and not isinstance(capability, SpeculativeCapability):
-            raise TypeError("runner speculative_capability must return SpeculativeCapability or None")
         self._speculative_cycle_sequence += 1
         operation_id = f"specdec2-cycle:{self._speculative_cycle_sequence}"
         graph_available = self._speculative_runner_flag(
@@ -2751,8 +3277,48 @@ class ResidentEngineLoop:
             suppress_speculation=suppression,
             declared_logical_c=work.declared_logical_c,
         )
+        if os.environ.get("HIPENGINE_DEBUG_SAMPLED_ROUTE"):
+            import sys as _sys
+
+            counts = dict(
+                zip(plan.request_ids, plan.candidate_counts, strict=True)
+            )
+            print(
+                f"[plan-debug] cycle={self._speculative_cycle_sequence} "
+                f"capability={'none' if capability is None else 'set'} "
+                + " ".join(
+                    f"rid={item.request_id}({item.sampling_mode})"
+                    f" k={counts.get(item.request_id)}"
+                    f" reason={getattr(reason, 'value', reason)}"
+                    for item, reason in zip(
+                        semantics, plan.reasons, strict=True
+                    )
+                ),
+                file=_sys.stderr,
+                flush=True,
+            )
         claims_fit = getattr(self.runner, "speculative_claims_fit", None)
-        if plan.has_speculative_rows and callable(claims_fit) and not bool(claims_fit(plan)):
+        refused = bool(
+            plan.has_speculative_rows
+            and callable(claims_fit)
+            and not bool(claims_fit(plan))
+        )
+        if refused or not plan.has_speculative_rows:
+            # The provider owns one target verify shape, so a due group that
+            # mixes rows it can serve with rows it refuses is planned K0 as a
+            # whole and the batch decodes autoregressively. The adapter's
+            # partition contract closes the alternative route (one provider
+            # cycle per capable row); the flag re-opens it for measurement, and
+            # the serving ladder measured it slower per token even at perfect
+            # depth-3 acceptance (docs/REFACTOR.md).
+            if (
+                allow_refused_split
+                and self.speculative_split_refused_groups
+            ):
+                split = self._run_split_refused_group(work, tuple(semantics), plan)
+                if split is not None:
+                    return split
+        if refused:
             plan = plan_speculative_requests(
                 capability,
                 tuple(semantics),
@@ -2769,10 +3335,37 @@ class ResidentEngineLoop:
             )
         self._last_speculative_plan = plan
         self._recent_speculative_plans.append(plan)
+        note_plan = getattr(self.runner, "note_speculative_plan", None)
+        if callable(note_plan):
+            # Publish the realized group width and the group-level AR decision on
+            # the rows themselves: the response cannot reconstruct either from
+            # the route-level fields it already reports.
+            note_plan(plan)
         if plan.is_ar_only:
+            # The AR decode that follows emits these rows' tokens; the reason is
+            # carried to that emission instead of counting at preparation.
+            for request_id, reason in zip(
+                plan.request_ids, plan.reasons, strict=True
+            ):
+                self._pending_ar_reasons[int(request_id)] = reason
             prepare_k0 = getattr(self.runner, "prepare_speculative_k0", None)
             if callable(prepare_k0):
-                prepare_k0(plan, tuple(semantics), stream=None)
+                try:
+                    prepare_k0(plan, tuple(semantics), stream=None)
+                except BaseException as exc:
+                    contained = self._contain_execution_failure(
+                        exc,
+                        phase="speculative_prepare",
+                        work=work,
+                    )
+                    if contained is None:
+                        raise self._fatal_execution_failure(
+                            exc,
+                            phase="speculative_prepare",
+                            work=work,
+                        ) from exc
+                    self._record_contained_decode_step(work)
+                    return contained
             return None
         start = time.perf_counter()
         try:
@@ -2792,9 +3385,21 @@ class ResidentEngineLoop:
                 "recover_speculative_cycle_failure",
                 None,
             )
-            if not callable(recover) or not bool(recover(plan, exc)):
-                raise
-            return None
+            if callable(recover) and bool(recover(plan, exc)):
+                return None
+            contained = self._contain_execution_failure(
+                exc,
+                phase="speculative_cycle",
+                work=work,
+            )
+            if contained is None:
+                raise self._fatal_execution_failure(
+                    exc,
+                    phase="speculative_cycle",
+                    work=work,
+                ) from exc
+            self._record_contained_decode_step(work)
+            return contained
         elapsed = time.perf_counter() - start
         if not isinstance(result, SpecCycleResult):
             raise TypeError("execute_speculative_cycle must return SpecCycleResult")
@@ -2899,19 +3504,22 @@ class ResidentEngineLoop:
         semantics: tuple[SpeculativeRequestSemantics, ...],
         capability: SpeculativeCapability,
     ) -> SpecCycleResult | None:
+        staged_owner = resolve_staged_speculative_runner(self.runner)
+        if staged_owner is None:
+            return None
         frontier_available = getattr(
-            self.runner,
+            staged_owner,
             "speculative_frontier_available",
             None,
         )
         if callable(frontier_available) and not bool(frontier_available(plan)):
             return None
-        component_claims = getattr(self.runner, "speculative_component_claims", None)
-        reserve_claims = getattr(self.runner, "reserve_speculative_claims", None)
-        release_claims = getattr(self.runner, "release_speculative_claims", None)
-        prepare = getattr(self.runner, "prepare_speculative_requests", None)
-        propose = getattr(self.runner, "propose_speculative_batch", None)
-        execute_target = getattr(self.runner, "execute_target_frontier", None)
+        component_claims = getattr(staged_owner, "speculative_component_claims", None)
+        reserve_claims = getattr(staged_owner, "reserve_speculative_claims", None)
+        release_claims = getattr(staged_owner, "release_speculative_claims", None)
+        prepare = getattr(staged_owner, "prepare_speculative_requests", None)
+        propose = getattr(staged_owner, "propose_speculative_batch", None)
+        execute_target = getattr(staged_owner, "execute_target_frontier", None)
         required = (
             component_claims,
             reserve_claims,
@@ -2950,7 +3558,7 @@ class ResidentEngineLoop:
             if tuple(root_positions) != candidate_graph.root_positions:
                 raise ValueError("candidate graph root positions must match scheduler state")
             live_spans_owner = getattr(
-                self.runner,
+                staged_owner,
                 "speculative_kv_live_spans_owner",
                 None,
             )
@@ -2968,6 +3576,11 @@ class ResidentEngineLoop:
                 kv_storage_view_key=capability.kv_backend_key,
                 kv_live_spans_owner=str(owner),
                 execution_route=plan.execution_route,
+                kv_binding=(
+                    getattr(capability, "kv_binding", None).with_live_spans_owner(str(owner))
+                    if getattr(capability, "kv_binding", None) is not None
+                    else None
+                ),
             )
             result = execute_target(
                 plan,
@@ -2984,7 +3597,7 @@ class ResidentEngineLoop:
                 raise ValueError("target result must own the complete speculative claims")
             return result
         except BaseException as exc:
-            rollback = getattr(self.runner, "rollback_speculative_cycle", None)
+            rollback = getattr(staged_owner, "rollback_speculative_cycle", None)
             if callable(rollback):
                 rollback(plan, candidate_graph, exc)
             raise
@@ -3030,6 +3643,10 @@ class ResidentEngineLoop:
     def _reclaim_runner_state(self, completed: CompletedRequest) -> None:
         self._speculative_candidate_counts.pop(int(completed.request_id), None)
         self._speculative_cancel_probes.pop(int(completed.request_id), None)
+        # A reason recorded for a plan whose decode never emitted (the request
+        # was cancelled between planning and decoding) must not attribute a
+        # token to a later request that reuses the id.
+        self._pending_ar_reasons.pop(int(completed.request_id), None)
         reclaim = getattr(self.runner, "reclaim", None)
         if callable(reclaim):
             reclaim(completed)
@@ -3042,7 +3659,9 @@ __all__ = [
     "DEFAULT_KV_POOL_LOW_WATER_PAGES",
     "EngineLoopConfig",
     "EngineLoopEvent",
+    "ExecutionFailure",
     "GenerationAdmissionRejected",
+    "GenerationExecutionFailed",
     "GenerationSubmission",
     "EngineLoopRunner",
     "PREFILL_DECODE_POLICIES",

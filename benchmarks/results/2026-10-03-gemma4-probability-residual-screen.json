@@ -1,0 +1,334 @@
+{
+  "kind": "gemma4_probability_residual_screen",
+  "sources": {
+    "gemma4_attention_prefill_wmma.hip": "4be86a121cbf8a381a0cf3ef1081e085594867906be772f7c43fdec1f32a4108",
+    "gemma4_attention_decode_wmma_full.hip": "dcaabb26375e3455e9494046e23e324b39c234160ec57b0a5d985179ce3d18bb",
+    "gemma4_attention_prefill_wmma_full.hip": "87dc7c9769621bbc89dfe04bd5ca7eaedd95b0bb28d4ac06aa03c8e873491eee"
+  },
+  "loading": {
+    "resolve_s": 0.4689483179245144,
+    "load_s": 15.188797437935136,
+    "internal_load_s": 14.945851776981726,
+    "resolution": {
+      "_resolved_backend": "hip_gfx1151",
+      "_resolved_quant": "gguf_q4_k_m",
+      "_resolved_execution_profile": {
+        "profile": "production",
+        "manifest_sha256": "11bd3c240c725a4e9330801feff134153098d7ba2748a39c0fe9548a3a10ccf3",
+        "fell_back_to_strict": false
+      },
+      "generator_type": "SubmitPollTextGenerator"
+    },
+    "context_length": 8255,
+    "runner_capacity": 8255,
+    "max_block": 512
+  },
+  "arms": [
+    {
+      "arm": "residual_full",
+      "cases": [
+        {
+          "id": "code_merge_intervals",
+          "numerical": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.0009091858332379694,
+            "kl_p95": 0.0010074611898140324,
+            "kl_p99": 0.02776986150419359,
+            "kl_max": 0.02776986150419359,
+            "top1_rate": 1.0,
+            "top1_flips": 0,
+            "top1_flip_rows": [],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [
+              "kl_p99"
+            ],
+            "passed": false,
+            "requires_review": true
+          },
+          "position": 576,
+          "calls": 1950
+        },
+        {
+          "id": "general_en_plan",
+          "numerical": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.002415031365867799,
+            "kl_p95": 0.015494429802330434,
+            "kl_p99": 0.027362233610736687,
+            "kl_max": 0.027362233610736687,
+            "top1_rate": 1.0,
+            "top1_flips": 0,
+            "top1_flip_rows": [],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [
+              "kl_mean",
+              "kl_p95",
+              "kl_p99"
+            ],
+            "passed": false,
+            "requires_review": true
+          },
+          "position": 8254,
+          "calls": 2370
+        },
+        {
+          "id": "general_ja_explain",
+          "numerical": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.003238698129579524,
+            "kl_p95": 0.017549959394451684,
+            "kl_p99": 0.06226307306467103,
+            "kl_max": 0.06226307306467103,
+            "top1_rate": 0.984375,
+            "top1_flips": 1,
+            "top1_flip_rows": [
+              3
+            ],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [
+              "kl_mean",
+              "kl_p95",
+              "kl_p99",
+              "kl_max"
+            ],
+            "passed": false,
+            "requires_review": true
+          },
+          "position": 2116,
+          "calls": 2040
+        },
+        {
+          "id": "heldout_mixed_summary",
+          "numerical": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.00892598553417051,
+            "kl_p95": 0.044537848507246874,
+            "kl_p99": 0.21665789715806053,
+            "kl_max": 0.21665789715806053,
+            "top1_rate": 1.0,
+            "top1_flips": 0,
+            "top1_flip_rows": [],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [
+              "kl_mean",
+              "kl_p95",
+              "kl_p99",
+              "kl_max"
+            ],
+            "passed": false,
+            "requires_review": true
+          },
+          "position": 1094,
+          "calls": 1980
+        }
+      ]
+    },
+    {
+      "arm": "residual_both",
+      "cases": [
+        {
+          "id": "code_merge_intervals",
+          "numerical": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.0007473607750855666,
+            "kl_p95": 0.0014921519979214832,
+            "kl_p99": 0.02433001099297407,
+            "kl_max": 0.02433001099297407,
+            "top1_rate": 1.0,
+            "top1_flips": 0,
+            "top1_flip_rows": [],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [
+              "kl_p99"
+            ],
+            "passed": false,
+            "requires_review": true
+          },
+          "position": 576,
+          "calls": 1950
+        },
+        {
+          "id": "general_en_plan",
+          "numerical": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.0010530381115242656,
+            "kl_p95": 0.006090128122489297,
+            "kl_p99": 0.01692414146955047,
+            "kl_max": 0.01692414146955047,
+            "top1_rate": 1.0,
+            "top1_flips": 0,
+            "top1_flip_rows": [],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [
+              "kl_mean",
+              "kl_p95"
+            ],
+            "passed": false,
+            "requires_review": false
+          },
+          "position": 8254,
+          "calls": 2370
+        },
+        {
+          "id": "general_ja_explain",
+          "numerical": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.0026708458124698746,
+            "kl_p95": 0.01811965666426249,
+            "kl_p99": 0.04463422743039257,
+            "kl_max": 0.04463422743039257,
+            "top1_rate": 0.984375,
+            "top1_flips": 1,
+            "top1_flip_rows": [
+              3
+            ],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [
+              "kl_mean",
+              "kl_p95",
+              "kl_p99"
+            ],
+            "passed": false,
+            "requires_review": true
+          },
+          "position": 2116,
+          "calls": 2040
+        },
+        {
+          "id": "heldout_mixed_summary",
+          "numerical": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.015857033672689546,
+            "kl_p95": 0.09151717539080206,
+            "kl_p99": 0.43008007951451854,
+            "kl_max": 0.43008007951451854,
+            "top1_rate": 0.953125,
+            "top1_flips": 3,
+            "top1_flip_rows": [
+              45,
+              46,
+              47
+            ],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 1,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [
+              "kl_mean",
+              "kl_p95",
+              "kl_p99",
+              "kl_max",
+              "top1_rate"
+            ],
+            "passed": false,
+            "requires_review": true
+          },
+          "position": 1094,
+          "calls": 1980
+        }
+      ]
+    }
+  ],
+  "performance_claim": false,
+  "result": "Rejected as a numerical repair: neither full-only nor both-probability-residual arm passes all four saved strict-teacher chains. No kernel shipped.",
+  "parent_commit": "623f0f406d4345a23a3b15ab9c7ca1de0975f3f3",
+  "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_EXECUTION_PROFILE=production .venv/bin/python /tmp/priority_probability_residual.py",
+  "script_sha256": "f1c47268bc85d3ada579928a1ecab765627c650d6d6af27c02201cb53310afd2",
+  "prototype_patches": {
+    "gemma4_attention_prefill_wmma.hip": "--- hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma.hip\n+++ prototype/gemma4_attention_prefill_wmma.hip\n@@ -378,6 +378,7 @@\n     // parity matches its own high bit, so its partner's eight values come back\n     // over one shuffle.\n     half2_t probability_pairs[kKeyTiles][8];\n+    half2_t probability_residual_pairs[kKeyTiles][8];\n     float local_sum = 0.0f;\n #pragma unroll\n     for (int key_tile = 0; key_tile < kKeyTiles; ++key_tile) {\n@@ -394,6 +395,11 @@\n         probability_pairs[key_tile][element] =\n             (lane_hi == 0) ? ordered\n                            : half2_t{ordered[1], ordered[0]};\n+        const half2_t residual = half2_t{\n+            static_cast<half_t>(probability - static_cast<float>(ordered[0])),\n+            static_cast<half_t>(partner - static_cast<float>(ordered[1]))};\n+        probability_residual_pairs[key_tile][element] =\n+            (lane_hi == 0) ? residual : half2_t{residual[1], residual[0]};\n       }\n     }\n     const float batch_sum = local_sum + lane_xor16(local_sum);\n@@ -413,6 +419,8 @@\n     for (int key_tile = 0; key_tile < kKeyTiles; ++key_tile) {\n       const half16_t probability_fragment =\n           *reinterpret_cast<const half16_t*>(probability_pairs[key_tile]);\n+      const half16_t probability_residual_fragment =\n+          *reinterpret_cast<const half16_t*>(probability_residual_pairs[key_tile]);\n #pragma unroll\n       for (int dim_tile = 0; dim_tile < kDimTiles; ++dim_tile) {\n         half16_t value_fragment;\n@@ -423,6 +431,8 @@\n         }\n         accumulator[dim_tile] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(\n             value_fragment, probability_fragment, accumulator[dim_tile]);\n+        accumulator[dim_tile] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(\n+            value_fragment, probability_residual_fragment, accumulator[dim_tile]);\n       }\n     }\n     __syncthreads();\n",
+    "gemma4_attention_prefill_wmma_full.hip": "--- hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.hip\n+++ prototype/gemma4_attention_prefill_wmma_full.hip\n@@ -603,6 +603,7 @@\n     // parity matches its own high bit, so its partner's eight values come back\n     // over one shuffle.\n     bf16x2_t probability_pairs[kKeyTiles][8];\n+    bf16x2_t probability_residual_pairs[kKeyTiles][8];\n     float local_sum = 0.0f;\n #pragma unroll\n     for (int key_tile = 0; key_tile < kKeyTiles; ++key_tile) {\n@@ -618,6 +619,11 @@\n                                           static_cast<bf16_t>(partner)};\n         probability_pairs[key_tile][element] =\n             (lane_hi == 0) ? ordered : bf16x2_t{ordered[1], ordered[0]};\n+        const bf16x2_t residual = bf16x2_t{\n+            static_cast<bf16_t>(probability - static_cast<float>(ordered[0])),\n+            static_cast<bf16_t>(partner - static_cast<float>(ordered[1]))};\n+        probability_residual_pairs[key_tile][element] =\n+            (lane_hi == 0) ? residual : bf16x2_t{residual[1], residual[0]};\n       }\n     }\n     const float batch_sum = local_sum + lane_xor16(local_sum);\n@@ -638,6 +644,8 @@\n     for (int key_tile = 0; key_tile < kKeyTiles; ++key_tile) {\n       const bf16x16_t probability_fragment =\n           *reinterpret_cast<const bf16x16_t*>(probability_pairs[key_tile]);\n+      const bf16x16_t probability_residual_fragment =\n+          *reinterpret_cast<const bf16x16_t*>(probability_residual_pairs[key_tile]);\n #pragma unroll\n       for (int dim_tile = 0; dim_tile < kDimTilesPerWave; ++dim_tile) {\n         const int dim = dim_base + dim_tile * 16 + lane_lo;\n@@ -648,6 +656,8 @@\n         }\n         accumulator[dim_tile] = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(\n             value_fragment, probability_fragment, accumulator[dim_tile]);\n+        accumulator[dim_tile] = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(\n+            value_fragment, probability_residual_fragment, accumulator[dim_tile]);\n       }\n     }\n     __syncthreads();\n"
+  }
+}

@@ -1,0 +1,787 @@
+{
+  "kind": "correctness-diagnostic-not-performance",
+  "arms": [
+    "wave-capture",
+    "dense-context-injection",
+    "shipping-generic"
+  ],
+  "results": [
+    {
+      "model": {
+        "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+      },
+      "metadata": {
+        "path": "/home/lhl/dms-artifacts/qwen38-external-v3-final/qualified-w8192/dms_metadata.json",
+        "sha256": "62c1f2d2c590aff2756796f01bddfaf1b602750ceada4b3ac23639902ff8edfe"
+      },
+      "data_manifest": {
+        "path": "/home/lhl/dms-artifacts/qwen38-external-v2-long/long-data-manifest-32k.json",
+        "sha256": "e0c3ba238ff0adbd55e18998fc23ad2a7c84c8649dcce5523be79daa13ee2ff9",
+        "split": "validation"
+      },
+      "protocol": {
+        "candidate_owner": "integrated compact device route; dense prefill pool released before decode",
+        "categories": [
+          "mixed_ja_en"
+        ],
+        "correlation_note": "rows from correlated groups are repeated-prefix samples and are reported as correlated, not independent prompts",
+        "decode_steps": 2,
+        "diagnostic_injection_dir": null,
+        "expected_sequences_per_category": 1,
+        "modes": [
+          "no_evict"
+        ],
+        "prompt_tokens": 1024,
+        "serving_qualification": false,
+        "teacher": "dense BF16 KV exact-Q4 resident session; one trajectory per sequence",
+        "trajectory": "strict dense-teacher input tokens for every candidate step"
+      },
+      "host": "zbook",
+      "backend": "hip_gfx1151",
+      "gate_verdicts": {
+        "no_evict": {
+          "checks": [
+            {
+              "categories": [
+                "mixed_ja_en"
+              ],
+              "check": "row_coverage",
+              "decode_rows": 2,
+              "per_category": {
+                "mixed_ja_en": {
+                  "decode": 2,
+                  "prefill": 1
+                }
+              },
+              "phase": "coverage",
+              "prefill_rows": 1,
+              "scope": "global"
+            },
+            {
+              "check": "finite_logits",
+              "limit": 1.0,
+              "passed": true,
+              "phase": "combined",
+              "scope": "global",
+              "value": 1.0
+            },
+            {
+              "check": "max_kl",
+              "limit": 0.001,
+              "passed": false,
+              "phase": "combined",
+              "scope": "global",
+              "value": 0.004982890284225346
+            },
+            {
+              "check": "min_top1",
+              "limit": 1.0,
+              "passed": false,
+              "phase": "combined",
+              "scope": "global",
+              "value": 0.6666666666666666
+            },
+            {
+              "check": "finite_logits",
+              "limit": 1.0,
+              "passed": true,
+              "phase": "combined",
+              "scope": "category:mixed_ja_en",
+              "value": 1.0
+            },
+            {
+              "check": "max_kl",
+              "limit": 0.001,
+              "passed": false,
+              "phase": "combined",
+              "scope": "category:mixed_ja_en",
+              "value": 0.004982890284225346
+            },
+            {
+              "check": "min_top1",
+              "limit": 1.0,
+              "passed": false,
+              "phase": "combined",
+              "scope": "category:mixed_ja_en",
+              "value": 0.6666666666666666
+            }
+          ],
+          "failures": [
+            {
+              "check": "max_kl",
+              "limit": 0.001,
+              "passed": false,
+              "phase": "combined",
+              "scope": "global",
+              "value": 0.004982890284225346
+            },
+            {
+              "check": "min_top1",
+              "limit": 1.0,
+              "passed": false,
+              "phase": "combined",
+              "scope": "global",
+              "value": 0.6666666666666666
+            },
+            {
+              "check": "max_kl",
+              "limit": 0.001,
+              "passed": false,
+              "phase": "combined",
+              "scope": "category:mixed_ja_en",
+              "value": 0.004982890284225346
+            },
+            {
+              "check": "min_top1",
+              "limit": 1.0,
+              "passed": false,
+              "phase": "combined",
+              "scope": "category:mixed_ja_en",
+              "value": 0.6666666666666666
+            }
+          ],
+          "gate": "g0",
+          "gate_name": "integrity/control: compact no-evict versus dense",
+          "passed": false,
+          "row_counts": {
+            "correlated_groups": [],
+            "correlation_note": "rows from correlated groups are repeated-prefix samples and are reported as correlated, not independent prompts",
+            "decode_rows": 2,
+            "decode_rows_by_category": {
+              "mixed_ja_en": 2
+            },
+            "decode_rows_by_sequence": {
+              "long-validation-mixed_ja_en-32768": 2
+            },
+            "independent_source_groups": 1,
+            "prefill_rows": 1,
+            "sequence_count": 1
+          },
+          "rows_above_kl_0_02": [],
+          "scope_summaries": {
+            "category:mixed_ja_en": {
+              "decode": {
+                "finite_logits": true,
+                "max_kl": 0.004982890284225346,
+                "mean_kl": 0.002544527448188058,
+                "p95_kl": 0.004739054000621617,
+                "p99_kl": 0.0049341230275046,
+                "rows": 2,
+                "top1_agreement": 0.5
+              },
+              "prefill": {
+                "finite_logits": true,
+                "max_kl": 0.0,
+                "mean_kl": 0.0,
+                "p95_kl": 0.0,
+                "p99_kl": 0.0,
+                "rows": 1,
+                "top1_agreement": 1.0
+              }
+            },
+            "global": {
+              "decode": {
+                "finite_logits": true,
+                "max_kl": 0.004982890284225346,
+                "mean_kl": 0.002544527448188058,
+                "p95_kl": 0.004739054000621617,
+                "p99_kl": 0.0049341230275046,
+                "rows": 2,
+                "top1_agreement": 0.5
+              },
+              "prefill": {
+                "finite_logits": true,
+                "max_kl": 0.0,
+                "mean_kl": 0.0,
+                "p95_kl": 0.0,
+                "p99_kl": 0.0,
+                "rows": 1,
+                "top1_agreement": 1.0
+              }
+            }
+          },
+          "thresholds": {
+            "combined": {
+              "max_kl": 0.001,
+              "min_top1": 1.0
+            },
+            "name": "integrity/control: compact no-evict versus dense"
+          },
+          "top1_mismatches": [
+            {
+              "candidate_top1": 28115,
+              "category": "mixed_ja_en",
+              "diagnostics": {
+                "candidate_rank_of_strict_winner": 1,
+                "max_abs_logit_delta": 0.255509614944458,
+                "strict_margin": 0.1828899383544922,
+                "topk_overlap": 1.0,
+                "winners": {
+                  "candidate": 28115,
+                  "teacher": 303
+                }
+              },
+              "phase": "decode",
+              "sequence_id": "long-validation-mixed_ja_en-32768",
+              "step": 1,
+              "teacher_top1": 303
+            }
+          ]
+        }
+      },
+      "provenance": {
+        "commit": "1b9e41e93b4673cb977f2a94e2f185b56bc12149",
+        "scoped_dirty_diff": [
+          "audit/findings/doc-path-drift.json",
+          "audit/findings/stub.json",
+          "audit/findings/ungoverned-flag-branch.json",
+          "audit/inventory/flags.json",
+          "audit/inventory/kernels.json",
+          "audit/inventory/ledger.json",
+          "audit/inventory/meta.json",
+          "audit/inventory/worklog.json",
+          "audit/triage/axis-branch.jsonl",
+          "audit/triage/stub.jsonl",
+          "udit/findings/axis-branch.json"
+        ]
+      }
+    },
+    {
+      "model": {
+        "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+      },
+      "metadata": {
+        "path": "/home/lhl/dms-artifacts/qwen38-external-v3-final/qualified-w8192/dms_metadata.json",
+        "sha256": "62c1f2d2c590aff2756796f01bddfaf1b602750ceada4b3ac23639902ff8edfe"
+      },
+      "data_manifest": {
+        "path": "/home/lhl/dms-artifacts/qwen38-external-v2-long/long-data-manifest-32k.json",
+        "sha256": "e0c3ba238ff0adbd55e18998fc23ad2a7c84c8649dcce5523be79daa13ee2ff9",
+        "split": "validation"
+      },
+      "protocol": {
+        "candidate_owner": "integrated compact device route; dense prefill pool released before decode",
+        "categories": [
+          "mixed_ja_en"
+        ],
+        "correlation_note": "rows from correlated groups are repeated-prefix samples and are reported as correlated, not independent prompts",
+        "decode_steps": 2,
+        "diagnostic_injection_dir": null,
+        "expected_sequences_per_category": 1,
+        "modes": [
+          "no_evict"
+        ],
+        "prompt_tokens": 1024,
+        "serving_qualification": false,
+        "teacher": "dense BF16 KV exact-Q4 resident session; one trajectory per sequence",
+        "trajectory": "strict dense-teacher input tokens for every candidate step"
+      },
+      "host": "zbook",
+      "backend": "hip_gfx1151",
+      "gate_verdicts": {
+        "no_evict": {
+          "checks": [
+            {
+              "categories": [
+                "mixed_ja_en"
+              ],
+              "check": "row_coverage",
+              "decode_rows": 2,
+              "per_category": {
+                "mixed_ja_en": {
+                  "decode": 2,
+                  "prefill": 1
+                }
+              },
+              "phase": "coverage",
+              "prefill_rows": 1,
+              "scope": "global"
+            },
+            {
+              "check": "finite_logits",
+              "limit": 1.0,
+              "passed": true,
+              "phase": "combined",
+              "scope": "global",
+              "value": 1.0
+            },
+            {
+              "check": "max_kl",
+              "limit": 0.001,
+              "passed": true,
+              "phase": "combined",
+              "scope": "global",
+              "value": 0.0
+            },
+            {
+              "check": "min_top1",
+              "limit": 1.0,
+              "passed": true,
+              "phase": "combined",
+              "scope": "global",
+              "value": 1.0
+            },
+            {
+              "check": "finite_logits",
+              "limit": 1.0,
+              "passed": true,
+              "phase": "combined",
+              "scope": "category:mixed_ja_en",
+              "value": 1.0
+            },
+            {
+              "check": "max_kl",
+              "limit": 0.001,
+              "passed": true,
+              "phase": "combined",
+              "scope": "category:mixed_ja_en",
+              "value": 0.0
+            },
+            {
+              "check": "min_top1",
+              "limit": 1.0,
+              "passed": true,
+              "phase": "combined",
+              "scope": "category:mixed_ja_en",
+              "value": 1.0
+            }
+          ],
+          "failures": [],
+          "gate": "g0",
+          "gate_name": "integrity/control: compact no-evict versus dense",
+          "passed": true,
+          "row_counts": {
+            "correlated_groups": [],
+            "correlation_note": "rows from correlated groups are repeated-prefix samples and are reported as correlated, not independent prompts",
+            "decode_rows": 2,
+            "decode_rows_by_category": {
+              "mixed_ja_en": 2
+            },
+            "decode_rows_by_sequence": {
+              "long-validation-mixed_ja_en-32768": 2
+            },
+            "independent_source_groups": 1,
+            "prefill_rows": 1,
+            "sequence_count": 1
+          },
+          "rows_above_kl_0_02": [],
+          "scope_summaries": {
+            "category:mixed_ja_en": {
+              "decode": {
+                "finite_logits": true,
+                "max_kl": 0.0,
+                "mean_kl": 0.0,
+                "p95_kl": 0.0,
+                "p99_kl": 0.0,
+                "rows": 2,
+                "top1_agreement": 1.0
+              },
+              "prefill": {
+                "finite_logits": true,
+                "max_kl": 0.0,
+                "mean_kl": 0.0,
+                "p95_kl": 0.0,
+                "p99_kl": 0.0,
+                "rows": 1,
+                "top1_agreement": 1.0
+              }
+            },
+            "global": {
+              "decode": {
+                "finite_logits": true,
+                "max_kl": 0.0,
+                "mean_kl": 0.0,
+                "p95_kl": 0.0,
+                "p99_kl": 0.0,
+                "rows": 2,
+                "top1_agreement": 1.0
+              },
+              "prefill": {
+                "finite_logits": true,
+                "max_kl": 0.0,
+                "mean_kl": 0.0,
+                "p95_kl": 0.0,
+                "p99_kl": 0.0,
+                "rows": 1,
+                "top1_agreement": 1.0
+              }
+            }
+          },
+          "thresholds": {
+            "combined": {
+              "max_kl": 0.001,
+              "min_top1": 1.0
+            },
+            "name": "integrity/control: compact no-evict versus dense"
+          },
+          "top1_mismatches": []
+        }
+      },
+      "provenance": {
+        "commit": "1b9e41e93b4673cb977f2a94e2f185b56bc12149",
+        "scoped_dirty_diff": [
+          "audit/findings/doc-path-drift.json",
+          "audit/findings/stub.json",
+          "audit/findings/ungoverned-flag-branch.json",
+          "audit/inventory/flags.json",
+          "audit/inventory/kernels.json",
+          "audit/inventory/ledger.json",
+          "audit/inventory/meta.json",
+          "audit/inventory/worklog.json",
+          "audit/triage/axis-branch.jsonl",
+          "audit/triage/stub.jsonl",
+          "udit/findings/axis-branch.json"
+        ]
+      }
+    },
+    {
+      "model": {
+        "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+      },
+      "metadata": {
+        "path": "/home/lhl/dms-artifacts/qwen38-external-v3-final/qualified-w8192/dms_metadata.json",
+        "sha256": "62c1f2d2c590aff2756796f01bddfaf1b602750ceada4b3ac23639902ff8edfe"
+      },
+      "data_manifest": {
+        "path": "/home/lhl/dms-artifacts/qwen38-external-v2-long/long-data-manifest-32k.json",
+        "sha256": "e0c3ba238ff0adbd55e18998fc23ad2a7c84c8649dcce5523be79daa13ee2ff9",
+        "split": "validation"
+      },
+      "protocol": {
+        "candidate_owner": "integrated compact device route; dense prefill pool released before decode",
+        "categories": [
+          "code",
+          "general_en",
+          "general_ja",
+          "mixed_ja_en"
+        ],
+        "correlation_note": "rows from correlated groups are repeated-prefix samples and are reported as correlated, not independent prompts",
+        "decode_steps": 2,
+        "diagnostic_injection_dir": null,
+        "expected_sequences_per_category": 1,
+        "modes": [
+          "no_evict"
+        ],
+        "prompt_tokens": 1024,
+        "serving_qualification": false,
+        "teacher": "dense BF16 KV exact-Q4 resident session; one trajectory per sequence",
+        "trajectory": "strict dense-teacher input tokens for every candidate step"
+      },
+      "host": "zbook",
+      "backend": "hip_gfx1151",
+      "gate_verdicts": {
+        "no_evict": {
+          "checks": [
+            {
+              "categories": [
+                "code",
+                "general_en",
+                "general_ja",
+                "mixed_ja_en"
+              ],
+              "check": "row_coverage",
+              "decode_rows": 8,
+              "per_category": {
+                "code": {
+                  "decode": 2,
+                  "prefill": 1
+                },
+                "general_en": {
+                  "decode": 2,
+                  "prefill": 1
+                },
+                "general_ja": {
+                  "decode": 2,
+                  "prefill": 1
+                },
+                "mixed_ja_en": {
+                  "decode": 2,
+                  "prefill": 1
+                }
+              },
+              "phase": "coverage",
+              "prefill_rows": 4,
+              "scope": "global"
+            },
+            {
+              "check": "finite_logits",
+              "limit": 1.0,
+              "passed": true,
+              "phase": "combined",
+              "scope": "global",
+              "value": 1.0
+            },
+            {
+              "check": "max_kl",
+              "limit": 0.001,
+              "passed": true,
+              "phase": "combined",
+              "scope": "global",
+              "value": 0.0006484461813578299
+            },
+            {
+              "check": "min_top1",
+              "limit": 1.0,
+              "passed": true,
+              "phase": "combined",
+              "scope": "global",
+              "value": 1.0
+            },
+            {
+              "check": "finite_logits",
+              "limit": 1.0,
+              "passed": true,
+              "phase": "combined",
+              "scope": "category:code",
+              "value": 1.0
+            },
+            {
+              "check": "max_kl",
+              "limit": 0.001,
+              "passed": true,
+              "phase": "combined",
+              "scope": "category:code",
+              "value": 0.0
+            },
+            {
+              "check": "min_top1",
+              "limit": 1.0,
+              "passed": true,
+              "phase": "combined",
+              "scope": "category:code",
+              "value": 1.0
+            },
+            {
+              "check": "finite_logits",
+              "limit": 1.0,
+              "passed": true,
+              "phase": "combined",
+              "scope": "category:general_en",
+              "value": 1.0
+            },
+            {
+              "check": "max_kl",
+              "limit": 0.001,
+              "passed": true,
+              "phase": "combined",
+              "scope": "category:general_en",
+              "value": 0.0005457644818396347
+            },
+            {
+              "check": "min_top1",
+              "limit": 1.0,
+              "passed": true,
+              "phase": "combined",
+              "scope": "category:general_en",
+              "value": 1.0
+            },
+            {
+              "check": "finite_logits",
+              "limit": 1.0,
+              "passed": true,
+              "phase": "combined",
+              "scope": "category:general_ja",
+              "value": 1.0
+            },
+            {
+              "check": "max_kl",
+              "limit": 0.001,
+              "passed": true,
+              "phase": "combined",
+              "scope": "category:general_ja",
+              "value": 8.439408231164705e-08
+            },
+            {
+              "check": "min_top1",
+              "limit": 1.0,
+              "passed": true,
+              "phase": "combined",
+              "scope": "category:general_ja",
+              "value": 1.0
+            },
+            {
+              "check": "finite_logits",
+              "limit": 1.0,
+              "passed": true,
+              "phase": "combined",
+              "scope": "category:mixed_ja_en",
+              "value": 1.0
+            },
+            {
+              "check": "max_kl",
+              "limit": 0.001,
+              "passed": true,
+              "phase": "combined",
+              "scope": "category:mixed_ja_en",
+              "value": 0.0006484461813578299
+            },
+            {
+              "check": "min_top1",
+              "limit": 1.0,
+              "passed": true,
+              "phase": "combined",
+              "scope": "category:mixed_ja_en",
+              "value": 1.0
+            }
+          ],
+          "failures": [],
+          "gate": "g0",
+          "gate_name": "integrity/control: compact no-evict versus dense",
+          "passed": true,
+          "row_counts": {
+            "correlated_groups": [],
+            "correlation_note": "rows from correlated groups are repeated-prefix samples and are reported as correlated, not independent prompts",
+            "decode_rows": 8,
+            "decode_rows_by_category": {
+              "code": 2,
+              "general_en": 2,
+              "general_ja": 2,
+              "mixed_ja_en": 2
+            },
+            "decode_rows_by_sequence": {
+              "long-validation-code-32768": 2,
+              "long-validation-general_en-32768": 2,
+              "long-validation-general_ja-32768": 2,
+              "long-validation-mixed_ja_en-32768": 2
+            },
+            "independent_source_groups": 4,
+            "prefill_rows": 4,
+            "sequence_count": 4
+          },
+          "rows_above_kl_0_02": [],
+          "scope_summaries": {
+            "category:code": {
+              "decode": {
+                "finite_logits": true,
+                "max_kl": 0.0,
+                "mean_kl": 0.0,
+                "p95_kl": 0.0,
+                "p99_kl": 0.0,
+                "rows": 2,
+                "top1_agreement": 1.0
+              },
+              "prefill": {
+                "finite_logits": true,
+                "max_kl": 0.0,
+                "mean_kl": 0.0,
+                "p95_kl": 0.0,
+                "p99_kl": 0.0,
+                "rows": 1,
+                "top1_agreement": 1.0
+              }
+            },
+            "category:general_en": {
+              "decode": {
+                "finite_logits": true,
+                "max_kl": 0.0005457644818396347,
+                "mean_kl": 0.0003243641909562438,
+                "p95_kl": 0.0005236244527512956,
+                "p99_kl": 0.0005413364760219669,
+                "rows": 2,
+                "top1_agreement": 1.0
+              },
+              "prefill": {
+                "finite_logits": true,
+                "max_kl": 0.0,
+                "mean_kl": 0.0,
+                "p95_kl": 0.0,
+                "p99_kl": 0.0,
+                "rows": 1,
+                "top1_agreement": 1.0
+              }
+            },
+            "category:general_ja": {
+              "decode": {
+                "finite_logits": true,
+                "max_kl": 8.439408231164705e-08,
+                "mean_kl": 4.219704115582352e-08,
+                "p95_kl": 8.017437819606468e-08,
+                "p99_kl": 8.355014148853058e-08,
+                "rows": 2,
+                "top1_agreement": 1.0
+              },
+              "prefill": {
+                "finite_logits": true,
+                "max_kl": 0.0,
+                "mean_kl": 0.0,
+                "p95_kl": 0.0,
+                "p99_kl": 0.0,
+                "rows": 1,
+                "top1_agreement": 1.0
+              }
+            },
+            "category:mixed_ja_en": {
+              "decode": {
+                "finite_logits": true,
+                "max_kl": 0.0006484461813578299,
+                "mean_kl": 0.000398561573180572,
+                "p95_kl": 0.0006234577205401041,
+                "p99_kl": 0.0006434484891942847,
+                "rows": 2,
+                "top1_agreement": 1.0
+              },
+              "prefill": {
+                "finite_logits": true,
+                "max_kl": 0.0,
+                "mean_kl": 0.0,
+                "p95_kl": 0.0,
+                "p99_kl": 0.0,
+                "rows": 1,
+                "top1_agreement": 1.0
+              }
+            },
+            "global": {
+              "decode": {
+                "finite_logits": true,
+                "max_kl": 0.0006484461813578299,
+                "mean_kl": 0.0001807419902944929,
+                "p95_kl": 0.0006125075865264615,
+                "p99_kl": 0.0006412584623915563,
+                "rows": 8,
+                "top1_agreement": 1.0
+              },
+              "prefill": {
+                "finite_logits": true,
+                "max_kl": 0.0,
+                "mean_kl": 0.0,
+                "p95_kl": 0.0,
+                "p99_kl": 0.0,
+                "rows": 4,
+                "top1_agreement": 1.0
+              }
+            }
+          },
+          "thresholds": {
+            "combined": {
+              "max_kl": 0.001,
+              "min_top1": 1.0
+            },
+            "name": "integrity/control: compact no-evict versus dense"
+          },
+          "top1_mismatches": []
+        }
+      },
+      "provenance": {
+        "commit": "1b9e41e93b4673cb977f2a94e2f185b56bc12149",
+        "scoped_dirty_diff": [
+          "audit/findings/doc-path-drift.json",
+          "audit/findings/stub.json",
+          "audit/findings/ungoverned-flag-branch.json",
+          "audit/inventory/flags.json",
+          "audit/inventory/kernels.json",
+          "audit/inventory/ledger.json",
+          "audit/inventory/meta.json",
+          "audit/inventory/worklog.json",
+          "audit/triage/axis-branch.jsonl",
+          "audit/triage/stub.jsonl",
+          "hipengine/kernels/hip_gfx1100/attention/dms_compact.py",
+          "tests/test_gpu_dms_compact_attn_decode_hip.py",
+          "udit/findings/axis-branch.json"
+        ]
+      }
+    }
+  ]
+}

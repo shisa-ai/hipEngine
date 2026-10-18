@@ -1,0 +1,52 @@
+{
+  "kind": "gemma4_prefill_attention_per_row_read_range",
+  "performance_claim": true,
+  "recorded": "2026-09-28, gfx1151 Strix Halo (zbook, AMD Radeon 8060S), Gemma 4 26B-A4B UD-Q4_K_XL",
+  "what_changed": "A sliding layer's mask zeroes every key more than `window` positions behind the query, so a row's leading mask columns are all zero. The prefill kernel walked all of them. It now starts each row's walk at `max(0, row_offset + row - window + 1)`, where `row_offset` is the block's start in the mask's column frame. All three passes narrow together: pass 1 writes `logits_s[j]` for every j it visits, so passes 2 and 3 would read uninitialised shared memory below that column if only pass 1 narrowed. Pass 2's lane-to-column partition is preserved (`gemma4_attn_stride_first`), because the terms a lane drops are `expf(-inf) == 0` and dropping them cannot reorder the rest.",
+  "why_bit_exact": "A masked key contributes exp(-inf) = 0 to the denominator and a zero weight to the numerator, and `local_sum += 0.0f` is exact, so removing those terms leaves the surviving terms in their original lane and order. `running_max` is unaffected because fmaxf(-inf, x) == x.",
+  "bit_exactness_verified": {
+    "method": "the real artifact's prefill logits hashed at four lengths, with the per-row window and with `window=0` (which is exactly the pre-change code path: first_kept is 0 and every walk starts at the lane offset the original loop used)",
+    "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 ~/miniforge3/bin/python /tmp/prefill_bitid.py 512 1024 2048 4096",
+    "digests": {
+      "512": "4f4e617d38028d43aa46f07dd03efcba663359f46a1d813c92cccc3d93a5bf8b",
+      "1024": "eac1fa31124fe7071a3444e8283353ea80cf832cc407073056a3e5451f2f5744",
+      "2048": "faee8a68dcd296232db496e781950cd11701c38b2c5c29a6f39c3b79f0cd1dae",
+      "4096": "b12f5202818ba8728c1ca8e83e9278833e1f0b209e8b07be695e9009dad746aa"
+    },
+    "reading": "identical in both arms at every length, including top-1 and the logit sum. 512 and 1024 are provable no-ops (a row skips nothing until start - key_begin reaches the window), so 2048 and 4096 are the lengths that actually exercise the skip."
+  },
+  "measured_effect": {
+    "method": "interleaved A/B inside one process, 4 pairs per length, best of each arm. The control arm wraps the layer forward and forces window=0, so both arms run the same compiled kernel and alternate forward by forward.",
+    "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 ~/miniforge3/bin/python /tmp/prefill_ab.py 512 2048 4096",
+    "prefill_tok_s": {
+      "512": {"window_off": 270.7, "window_on": 270.4, "delta": "-0.10 percent"},
+      "2048": {"window_off": 222.5, "window_on": 225.5, "delta": "+1.35 percent"},
+      "4096": {"window_off": 197.4, "window_on": 201.0, "delta": "+1.78 percent"}
+    },
+    "kernel_level": {
+      "method": "rocprofv3 --kernel-trace --output-format rocpd, 2048-token prefill, 3 forwards after warmup, union of dispatch intervals",
+      "gemma4_attention_prefill_ms_per_forward": {"window_off": 3497.7, "window_on": 3343.2},
+      "delta": "-4.4 percent",
+      "share_of_prefill": "27.6 percent with the change, 28.5 percent without",
+      "reading": "the attention kernel itself is 4.4 percent faster at 2048, which is the isolated effect; the end-to-end number is smaller because attention is 28 percent of prefill. The walk is roughly 40 percent of the kernel's cost, so the remaining 60 percent is the kept keys' V gather and expf."
+    },
+    "reading": "the effect grows with length, which is the expected shape: the per-row bound only starts skipping once a row is further than `window` into the block, so longer prompts and later chunks gain more."
+  },
+  "why_the_measurement_method_matters": {
+    "finding": "measuring one arm and then the other produced a 1.0 percent 'regression' at 512 that does not exist. Run-order drift on this GPU is about the size of the effect being measured, and the first arm run is faster in either order.",
+    "evidence": "window-on run first at 512 gave 273.9 tok/s and the window-off control run second gave 271.2; the same two arms in the opposite order gave 270.4 and 270.7. The interleaved A/B reads -0.10 percent at 512.",
+    "control": "512 is a provable no-op for this change, so a correct measurement must read zero there. The interleaved method does; the sequential method did not. That is what makes the 2048 and 4096 rows trustworthy.",
+    "consequence": "the +1.35 and +1.78 percent rows have non-overlapping sample ranges across the two arms, so they are not drift."
+  },
+  "correctness_gate": {
+    "unit": "tests/test_unit_gemma4_sliding_read_range.py, 13 tests, including `test_every_column_below_the_per_row_bound_is_masked`: for every (window, start, rows) shape the bound must be a zero prefix of the mask and tight.",
+    "kernel": "tests/test_gpu_gemma4_attention_geometry.py::test_a_narrowed_prefill_walk_is_bit_identical_to_a_full_walk, parameterised over head_dim 6 (block-sum path) and 256 (warp-per-key path) and window 1 and 4: the narrowed walk must be bit-identical to the full walk.",
+    "mutation_checked": "moving the bound one column too far (`first + 1`) fails that test in all four parameterisations, so it is not vacuous.",
+    "suite": "pytest -k gemma4: 400+ tests, exit 0. tests/test_unit_gemma4_runner.py retains its pre-existing test_incremental_decode_matches_a_dense_prefill failure (max abs diff 4.417), verified present before this change and recorded in benchmarks/results/2026-09-27-gemma4-gfx1151-pack8-expert-route-measured.json.",
+    "promotion_gate": "not required: the change is bit-exact, so it is not a changed-arithmetic default and has no execution profile to promote."
+  },
+  "residual": {
+    "still_unskipped": "pass 3 recomputes expf(logits_s[j] - row_max) per (element, key) and loads V for every kept key; only the skipped columns are saved. The decode kernel already stores the weight over its logit and reads it back, which the prefill kernel does not do.",
+    "why_it_matters": "at 2048 the per-row bound removes 11.1 percent of the walk (2096640 keys against 2358272), and the kernel measured 4.4 percent faster, so the walk is about 40 percent of attention's cost. Attention is 28 percent of prefill, so no read-range change alone can exceed roughly 12 percent of prefill."
+  }
+}

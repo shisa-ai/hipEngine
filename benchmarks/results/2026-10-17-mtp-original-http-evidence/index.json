@@ -1,0 +1,55 @@
+{
+  "kind": "historical_http_evidence_archive",
+  "status": "diagnostic_not_current_acceptance",
+  "note": "These are the original captures reviewed at 4e26ceffb. HTTP 200 does not prove MTP ran; consult response used/route fields. Native-vs-AR generated-ID difference alone is not a production-correctness verdict.",
+  "files": [
+    {
+      "path": "benchmarks/results/2026-10-17-mtp-original-http-evidence/qwen38-q4km-http-matrix.json",
+      "original_sha256": "289073bc3fdde6d9218f2bcabdf5bf073b30be40bf6c543cb3d9a5d72b27d172",
+      "archived_sha256": "13fe942cbb875b8619e6d3a56a34e5fa2295f7c8b6d5d5a37ed584828bbf205f",
+      "transformation": "JSON whitespace normalization only"
+    },
+    {
+      "path": "benchmarks/results/2026-10-17-mtp-original-http-evidence/qwen38-q4ks-http-matrix.json",
+      "original_sha256": "602641f49b63a738da416031664e9b582d2c6f3a7c42cd0aa0293cd41376c082",
+      "archived_sha256": "e6982fb6fa13f9240c5792a5c4a7ef771990b8e9d66a9661aeb6ab322dc33f38",
+      "transformation": "JSON whitespace normalization only"
+    },
+    {
+      "path": "benchmarks/results/2026-10-17-mtp-original-http-evidence/qwen36-http-controls.json",
+      "original_sha256": "d42286fb78c0cecfb1b586df2c28b49439c09e7ff3118d5bfefe62bd90d96dd7",
+      "archived_sha256": "e2bde1e0eafa180742eb81eded56ed024fc81856f159100765614255e5c739e2",
+      "transformation": "JSON whitespace normalization only"
+    },
+    {
+      "path": "benchmarks/results/2026-10-17-mtp-original-http-evidence/gemma-http-controls.json",
+      "original_sha256": "7d2fdde07f4a05be0d14e3009ce41d0bc8a90029da1c752a497fea9e949dc5da",
+      "archived_sha256": "3c0e3a652b70edc7119e894127c3da020a23d189825ee0c45eb333a9fbf8d15c",
+      "transformation": "JSON whitespace normalization only"
+    },
+    {
+      "path": "benchmarks/results/2026-10-17-mtp-original-http-evidence/moe-hostproposal-native.json",
+      "original_sha256": "b3dde45f6ca645142cf3670742113545b43e121d20d01b69578838f4c41890db",
+      "archived_sha256": "c94977241dca96dc723d4c34d89902ecd7226d065d3809489a8a9a2f4a2546c4",
+      "transformation": "JSON whitespace normalization only"
+    },
+    {
+      "path": "benchmarks/results/2026-10-17-mtp-original-http-evidence/moe-hostproposal-eager.json",
+      "original_sha256": "26b22708ed49844bf7bad574ea262bc7f80b1a0c51168d01b67cbe88ccdb3152",
+      "archived_sha256": "17c62a825a66540ca5b56bf497ccdced52d1d1825ff7e86d96492d8d9fea920d",
+      "transformation": "JSON whitespace normalization only"
+    },
+    {
+      "path": "benchmarks/results/2026-10-17-mtp-original-http-evidence/moe-serial-clean.json",
+      "original_sha256": "ac358c91838b7bb532f9dbe7bce1e8b0531e12169af9bcf4935edaa3676470ea",
+      "archived_sha256": "03afaf6805128b569c78b5586a7e5bc05dd4447dadd8ad4545b5b68bd052908c",
+      "transformation": "JSON whitespace normalization only"
+    },
+    {
+      "path": "benchmarks/results/2026-10-17-mtp-original-http-evidence/qwen38-q4ks-original-serial.json",
+      "original_sha256": "6e6246836d03f7ef2d64f775e4b3a3db49cca99b5f316edbc35c0643f8602307",
+      "archived_sha256": "5a2e600e34b6bcb645186fd83ecbb5ca0295af91f3f66f2527202e6fe63ce5f4",
+      "transformation": "JSON whitespace normalization only"
+    }
+  ]
+}

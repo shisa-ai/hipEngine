@@ -1,0 +1,133 @@
+{
+ "engine": "hipengine",
+ "trace": "/tmp/g4_scoreboard_d3/trace_1024/run_kernel_trace.csv",
+ "prefill": {
+  "busy_ms": 392.6052,
+  "span_ms": 375.842,
+  "families": {
+   "moe.gate_up": {
+    "ms": 117.516,
+    "launches": 60.0
+   },
+   "dense.q8_0": {
+    "ms": 111.6382,
+    "launches": 252.0
+   },
+   "moe.down": {
+    "ms": 47.6952,
+    "launches": 58.0
+   },
+   "attn.sliding": {
+    "ms": 30.0016,
+    "launches": 50.0
+   },
+   "moe.router_gemm": {
+    "ms": 28.6767,
+    "launches": 120.0
+   },
+   "moe.route_glue": {
+    "ms": 18.5491,
+    "launches": 540.0
+   },
+   "norm": {
+    "ms": 9.9362,
+    "launches": 601.0
+   },
+   "attn.global": {
+    "ms": 8.8965,
+    "launches": 10.0
+   },
+   "elementwise": {
+    "ms": 7.2824,
+    "launches": 242.0
+   },
+   "moe.act_quant": {
+    "ms": 6.6,
+    "launches": 60.0
+   },
+   "runtime_copy_fill": {
+    "ms": 1.6957,
+    "launches": 272.0
+   },
+   "other": {
+    "ms": 1.6565,
+    "launches": 50.0
+   },
+   "moe.l29_experts": {
+    "ms": 1.4926,
+    "launches": 2.0
+   },
+   "lm_head": {
+    "ms": 0.9686,
+    "launches": 1.0
+   }
+  },
+  "other_top": {
+   "(anonymous namespace)::gemma4_qkv_split_bf16_kernel(unsigned short const*, long, long, long, long, i": 1.6565
+  }
+ },
+ "decode_per_token": {
+  "busy_ms": 14.7268,
+  "span_ms": 18.9789,
+  "families": {
+   "attn.sliding": {
+    "ms": 3.6765,
+    "launches": 50.0
+   },
+   "dense.q8_0": {
+    "ms": 2.8586,
+    "launches": 126.0
+   },
+   "norm": {
+    "ms": 1.5552,
+    "launches": 301.0
+   },
+   "moe.down": {
+    "ms": 1.4973,
+    "launches": 29.0
+   },
+   "moe.gate_up": {
+    "ms": 1.047,
+    "launches": 29.0
+   },
+   "lm_head": {
+    "ms": 0.9644,
+    "launches": 1.0
+   },
+   "moe.route_glue": {
+    "ms": 0.8944,
+    "launches": 180.0
+   },
+   "attn.global": {
+    "ms": 0.7502,
+    "launches": 10.0
+   },
+   "moe.router_gemm": {
+    "ms": 0.7098,
+    "launches": 30.0
+   },
+   "elementwise": {
+    "ms": 0.244,
+    "launches": 121.0
+   },
+   "moe.l29_experts": {
+    "ms": 0.2366,
+    "launches": 2.0
+   },
+   "runtime_copy_fill": {
+    "ms": 0.2304,
+    "launches": 97.0
+   },
+   "other": {
+    "ms": 0.0624,
+    "launches": 25.0
+   }
+  },
+  "other_top": {
+   "(anonymous namespace)::gemma4_qkv_split_bf16_kernel(unsigned short const*, long, long, long, long, i": 0.0624
+  }
+ },
+ "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/g4_scoreboard_d3/trace_1024 -o run -- /home/lhl/mambaforge/envs/therock/bin/python3 scripts/gemma4_family_census.py drive --prompt 1024 --decode 64 --prefill-repeats 2",
+ "trace_kernel_rows": 79412,
+ "prefill_prompt_tokens": 1024
+}

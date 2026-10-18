@@ -48,15 +48,23 @@ from hipengine.generation.deadline import (
     GenerationCancelled,
     GenerationDeadlineExceeded,
     generation_deadline_expired,
+    generation_deadline_remaining,
     raise_if_generation_cancelled,
     raise_if_generation_deadline_expired,
 )
-from hipengine.generation.engine_service import EngineService, EngineServiceHandle
+from hipengine.generation.engine_service import (
+    EngineService,
+    EngineCommandTimeout,
+    EngineServiceClosed,
+    EngineServiceHandle,
+)
 from hipengine.generation.engine_loop import (
     PREFILL_DECODE_POLICIES,
     EngineLoopConfig,
     EngineLoopEvent,
+    ExecutionFailure,
     GenerationAdmissionRejected,
+    GenerationExecutionFailed,
     EngineLoopRunner,
     GenerationSubmission,
     ResidentEngineLoop,
@@ -106,7 +114,6 @@ from hipengine.generation.sampling import (
     SamplingMode,
     SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS,
     SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
-    MTP_THINKING_RELAXABLE_BLOCKERS,
     active_processor_names,
     clone_thinking_budget_state,
     derive_row_seed,
@@ -119,8 +126,9 @@ from hipengine.generation.sampling import (
     thinking_budget_active,
     thinking_budget_state_from_params,
     supports_native_gpu_sampling,
+    supports_sampled_speculative_mtp,
     supports_speculative_mtp_sampling,
-    mtp_thinking_blockers_only,
+    speculative_serving_sampling_mode,
     relax_thinking_budget_for_mtp,
     validate_sampling_params,
 )
@@ -137,11 +145,17 @@ def register_builtin_generators() -> None:
 
     global _BUILTINS_REGISTERED
     if not _BUILTINS_REGISTERED:
+        from hipengine.generation import gemma4_gguf as _gemma4_gguf  # noqa: F401
         from hipengine.generation import laguna_gguf as _laguna_gguf  # noqa: F401
         from hipengine.generation import maple as _maple  # noqa: F401
         from hipengine.generation import qwen35_gguf as _qwen35_gguf  # noqa: F401
         from hipengine.generation import qwen4_exp_gguf as _qwen4_exp_gguf  # noqa: F401
         from hipengine.generation import qwen35_paro as _qwen35_paro  # noqa: F401
+        from hipengine.generation import surya as _surya  # noqa: F401
+        from hipengine.generation import surya_gpu as _surya_gpu  # noqa: F401
+        from hipengine.generation import vibevoice_asr as _vibevoice_asr  # noqa: F401
+        from hipengine.generation import vibevoice_tts as _vibevoice_tts  # noqa: F401
+        from hipengine.generation import yue2_song as _yue2_song  # noqa: F401
 
         _BUILTINS_REGISTERED = True
 
@@ -149,6 +163,7 @@ def register_builtin_generators() -> None:
     # these idempotent plans even after the model modules have been imported so
     # a prior LLM lifecycle test cannot make later profile resolution depend on
     # collection order.
+    from hipengine.generation.gemma4_profiles import register_gemma4_gguf_profiles
     from hipengine.generation.qwen36_gguf_gfx1100_profiles import (
         register_qwen36_dense_gguf_gfx1100_profiles,
         register_qwen36_moe_gguf_gfx1100_profiles,
@@ -163,6 +178,7 @@ def register_builtin_generators() -> None:
         register_qwen4_exp_gfx1151_profiles,
     )
 
+    register_gemma4_gguf_profiles()
     register_qwen36_dense_gguf_gfx1100_profiles()
     register_qwen36_moe_gguf_gfx1100_profiles()
     register_qwen36_gguf_gfx1151_profiles()
@@ -181,17 +197,20 @@ __all__ = [
     "CollectedOutput",
     "DecodePhase",
     "DecodeState",
-    "MTP_THINKING_RELAXABLE_BLOCKERS",
     "DuplicateGeneratorError",
     "EngineLoopConfig",
     "EngineLoopEvent",
     "EngineLoopRunner",
     "EngineOutput",
     "EngineService",
+    "EngineCommandTimeout",
+    "EngineServiceClosed",
     "EngineServiceHandle",
     "ExecutionCompatibilityKey",
     "ExecutionPlan",
+    "ExecutionFailure",
     "GenerationAdmissionRejected",
+    "GenerationExecutionFailed",
     "GenerationSubmission",
     "FinishDetails",
     "ForcedTokenQueue",
@@ -255,6 +274,7 @@ __all__ = [
     "engine_loop_config_from_args",
     "engine_loop_config_from_env",
     "generation_deadline_expired",
+    "generation_deadline_remaining",
     "normalize_token_sequences",
     "normalize_logit_bias_pairs",
     "plan_execution_groups",
@@ -272,10 +292,11 @@ __all__ = [
     "select_token",
     "speculative_mtp_sampling_blockers",
     "supports_native_gpu_sampling",
+    "supports_sampled_speculative_mtp",
     "supports_speculative_mtp_sampling",
+    "speculative_serving_sampling_mode",
     "thinking_budget_active",
     "thinking_budget_state_from_params",
-    "mtp_thinking_blockers_only",
     "relax_thinking_budget_for_mtp",
     "token_sequence_state_for_tokens",
     "validate_sampling_params",

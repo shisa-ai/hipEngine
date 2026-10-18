@@ -1,0 +1,1485 @@
+{
+ "schema": 1,
+ "kind": "gemma4_depth_ladder_paired",
+ "status": "measured",
+ "performance_claim": true,
+ "created": "2026-10-04",
+ "question": "How does hipEngine production prefill and decode throughput scale with prompt depth against the pinned llama.cpp HIP comparator, and which component of the hipEngine prefill accounts for the loss?",
+ "model": "Gemma 4 26B-A4B-it",
+ "quant": "UD-Q4_K_XL",
+ "physical_host": "zbook",
+ "hardware": "AMD Radeon 8060S Graphics (gfx1151, Strix Halo), 126976 MiB",
+ "kv_dtype": "bf16",
+ "execution_profile": "production",
+ "protocol": {
+  "prompt_ids": "the campaign corpus, tokenized by each engine's own tokenizer and cut to the exact prompt length; prompt_ids_sha256 must match across engines for a row to be paired",
+  "context": "round_up_256(prompt + 128), identical in both engines",
+  "output": "128 greedy tokens ignoring EOS; 127 decode forwards per sample",
+  "samples": "hipEngine 3 at <=8192, 2 at 16384-32768, 1 at >=65536; llama.cpp 3 at <=65536, 2 at 131072-262144. The deep hipEngine points are sample-1 because a single pass costs 2-24 minutes",
+  "serialization": "one engine at a time on the shared GPU; the llama.cpp driver refuses to start while a hipEngine process is alive or while llama-server holds GTT",
+  "decode_denominator": "127 forwards; llama.cpp's predicted_ms includes its first greedy sample, which is its documented convention and is not silently corrected",
+  "warmup": "one full-shape pass before every row"
+ },
+ "engines": {
+  "hipengine": {
+   "commit": "a1b9bf4f3f4796986d8f91143650ff2e83ca0181",
+   "dirty": true,
+   "dirty_scope": "the recorded dirty set is benchmarks/, scripts/ and tests/ harness and probe files plus untracked worklog entries; no path under hipengine/ is modified, so the engine source is exactly the commit",
+   "artifact": {
+    "path": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+    "bytes": 17010980576,
+    "mtime": "2026-09-26T19:11:54.689845+00:00",
+    "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992"
+   },
+   "hipcc": [
+    "HIP version: 7.15.26333-0000000",
+    "AMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)"
+   ],
+   "env": {
+    "HIPENGINE_HIP_ARCH": "gfx1151"
+   }
+  },
+  "llamacpp": {
+   "source": "/home/lhl/llama.cpp/llama.cpp-hip",
+   "commit": "17252c769a63c1cb650ce98ae309cf4de0da7778",
+   "source_dirty": [],
+   "server_binary": {
+    "path": "/home/lhl/llama.cpp/llama.cpp-hip/build-hip/bin/llama-server",
+    "sha256": "038f1750b6c38600174f2097647ff933a35a4b85d656e56b09d75325eda6c52a",
+    "version": "version: 0.3.0-dev (build 10685, commit 17252c769)\nbuilt with GNU 16.2.1 for Linux x86_64"
+   },
+   "runtime": {
+    "effective_context": 768,
+    "kv_dtype_pairs": [],
+    "flash_attention_log": [],
+    "device_log": [],
+    "graph_log": [
+     "0.08.110.285 I slot print_timing: id  0 | task 0 |    graphs reused =        127",
+     "0.12.334.644 I slot print_timing: id  0 | task 130 |    graphs reused =        253",
+     "0.16.557.263 I slot print_timing: id  0 | task 260 |    graphs reused =        379",
+     "0.20.765.761 I slot print_timing: id  0 | task 390 |    graphs reused =        505"
+    ],
+    "graph_fallback_observed": false,
+    "graph_reuse_counts": [
+     127,
+     253,
+     379,
+     505
+    ],
+    "graph_enabled": true
+   }
+  }
+ },
+ "drift_control": {
+  "hip": {
+   "first_prefill_tps": 1114.4841427014396,
+   "drift_prefill_tps": 886.4382273075674,
+   "first_decode_tps": 32.52378851963573,
+   "drift_decode_tps": 31.224376685995747,
+   "note": "hipEngine's drift control ran warmup 0 while its ladder rows ran warmup 1, so the two are not protocol-matched and its delta is a cold-start penalty rather than drift; llama.cpp's control is warmup-matched."
+  },
+  "llama": {
+   "first_prefill_tps": 806.422398382115,
+   "drift_prefill_tps": 811.5892407360734,
+   "first_decode_tps": 35.41698620968529,
+   "drift_decode_tps": 35.353896681438286,
+   "note": "hipEngine's drift control ran warmup 0 while its ladder rows ran warmup 1, so the two are not protocol-matched and its delta is a cold-start penalty rather than drift; llama.cpp's control is warmup-matched."
+  }
+ },
+ "rows": [
+  {
+   "prompt_tokens": 512,
+   "context": 768,
+   "hipengine": {
+    "label": "hip-512",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 512 --output 128 --context 768 --samples 3 --warmup 1 --expect-gpu 8060S --label hip-512 --out /tmp/gemma4-depth-ladder-20261004/hip-512.json",
+    "context": 768,
+    "max_block": 768,
+    "samples": 3,
+    "prefill_tps": 1114.4841427014396,
+    "prefill_s": 0.4594053700566292,
+    "decode_tps": 32.52378851963573,
+    "decode_s": 3.9048341469606385,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "fba226ff8653b8b10e532f12d1d9b8fa364e57f552f51fab8c9079b23b0b268c",
+    "status": "ok",
+    "correctness": {
+     "instrumented_finite_logits": true,
+     "public_finite_logits": null,
+     "all_replays_and_public_ids_equal": true
+    },
+    "public_path_parity": true,
+    "public_tps_including_prefill": 29.544740293884484,
+    "public_generated_equals_expected": true
+   },
+   "llamacpp": {
+    "label": "llama-512",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 512 --output 128 --context 768 --samples 3 --warmup 1 --kv bf16 --request-timeout 5400 --idle-limit-mib 256 --label llama-512 --out /tmp/gemma4-depth-ladder-20261004/llama-512.json",
+    "context": 768,
+    "samples": 3,
+    "prefill_tps": 806.422398382115,
+    "prefill_s": 0.634903,
+    "decode_tps": 35.41698620968529,
+    "decode_s": 3.5858499999999998,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "fba226ff8653b8b10e532f12d1d9b8fa364e57f552f51fab8c9079b23b0b268c",
+    "status": "ok",
+    "correctness": {
+     "full_uncached_prefill": true,
+     "repeat_output_ids_equal": true
+    },
+    "rejection": null
+   },
+   "prompt_ids_match": true,
+   "prefill_ratio_hip_over_llama": 1.382,
+   "decode_ratio_hip_over_llama": 0.9183
+  },
+  {
+   "prompt_tokens": 1024,
+   "context": 1280,
+   "hipengine": {
+    "label": "hip-1024",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 1024 --output 128 --context 1280 --samples 3 --warmup 1 --expect-gpu 8060S --label hip-1024 --out /tmp/gemma4-depth-ladder-20261004/hip-1024.json",
+    "context": 1280,
+    "max_block": 1024,
+    "samples": 3,
+    "prefill_tps": 964.3229113456811,
+    "prefill_s": 1.061884964001365,
+    "decode_tps": 34.49341396849562,
+    "decode_s": 3.681862285826355,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "9730ebf884a19ea6f10c23dcc84061702b7663d53f092f8a75832667b472e211",
+    "status": "ok",
+    "correctness": {
+     "instrumented_finite_logits": true,
+     "public_finite_logits": null,
+     "all_replays_and_public_ids_equal": true
+    },
+    "public_path_parity": true,
+    "public_tps_including_prefill": 27.365656127112903,
+    "public_generated_equals_expected": true
+   },
+   "llamacpp": {
+    "label": "llama-1024",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 1024 --output 128 --context 1280 --samples 3 --warmup 1 --kv bf16 --request-timeout 5400 --idle-limit-mib 256 --label llama-1024 --out /tmp/gemma4-depth-ladder-20261004/llama-1024.json",
+    "context": 1280,
+    "samples": 3,
+    "prefill_tps": 1070.2229282720707,
+    "prefill_s": 0.9568099999999999,
+    "decode_tps": 33.069136106575314,
+    "decode_s": 3.840439,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "9730ebf884a19ea6f10c23dcc84061702b7663d53f092f8a75832667b472e211",
+    "status": "ok",
+    "correctness": {
+     "full_uncached_prefill": true,
+     "repeat_output_ids_equal": true
+    },
+    "rejection": null
+   },
+   "prompt_ids_match": true,
+   "prefill_ratio_hip_over_llama": 0.901,
+   "decode_ratio_hip_over_llama": 1.0431
+  },
+  {
+   "prompt_tokens": 2048,
+   "context": 2304,
+   "hipengine": {
+    "label": "hip-2048",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 2048 --output 128 --context 2304 --samples 3 --warmup 1 --expect-gpu 8060S --label hip-2048 --out /tmp/gemma4-depth-ladder-20261004/hip-2048.json",
+    "context": 2304,
+    "max_block": 1024,
+    "samples": 3,
+    "prefill_tps": 769.070721404455,
+    "prefill_s": 2.6629540600115433,
+    "decode_tps": 33.60647121133997,
+    "decode_s": 3.779034079518169,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "b8c28ab5066a519b3acc1e09293382f2cca1e084ac554e422788006341542d43",
+    "status": "ok",
+    "correctness": {
+     "instrumented_finite_logits": true,
+     "public_finite_logits": null,
+     "all_replays_and_public_ids_equal": true
+    },
+    "public_path_parity": true,
+    "public_tps_including_prefill": 20.137356867290062,
+    "public_generated_equals_expected": true
+   },
+   "llamacpp": {
+    "label": "llama-2048",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 2048 --output 128 --context 2304 --samples 3 --warmup 1 --kv bf16 --request-timeout 5400 --idle-limit-mib 256 --label llama-2048 --out /tmp/gemma4-depth-ladder-20261004/llama-2048.json",
+    "context": 2304,
+    "samples": 3,
+    "prefill_tps": 1051.4269989819434,
+    "prefill_s": 1.947829,
+    "decode_tps": 29.59146535538418,
+    "decode_s": 4.291778,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "b8c28ab5066a519b3acc1e09293382f2cca1e084ac554e422788006341542d43",
+    "status": "ok",
+    "correctness": {
+     "full_uncached_prefill": true,
+     "repeat_output_ids_equal": true
+    },
+    "rejection": null
+   },
+   "prompt_ids_match": true,
+   "prefill_ratio_hip_over_llama": 0.7315,
+   "decode_ratio_hip_over_llama": 1.1357
+  },
+  {
+   "prompt_tokens": 4096,
+   "context": 4352,
+   "hipengine": {
+    "label": "hip-4096",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 4096 --output 128 --context 4352 --samples 3 --warmup 1 --expect-gpu 8060S --label hip-4096 --out /tmp/gemma4-depth-ladder-20261004/hip-4096.json",
+    "context": 4352,
+    "max_block": 1024,
+    "samples": 3,
+    "prefill_tps": 670.7946454209751,
+    "prefill_s": 6.106190662016161,
+    "decode_tps": 33.251927848491384,
+    "decode_s": 3.8193274260265753,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "6c4163ef1d578f47a2346c8b7657c627d796a4878448e36edf0383972b57d55a",
+    "status": "ok",
+    "correctness": {
+     "instrumented_finite_logits": true,
+     "public_finite_logits": null,
+     "all_replays_and_public_ids_equal": true
+    },
+    "public_path_parity": true,
+    "public_tps_including_prefill": 12.829859365326646,
+    "public_generated_equals_expected": true
+   },
+   "llamacpp": {
+    "label": "llama-4096",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 4096 --output 128 --context 4352 --samples 3 --warmup 1 --kv bf16 --request-timeout 5400 --idle-limit-mib 256 --label llama-4096 --out /tmp/gemma4-depth-ladder-20261004/llama-4096.json",
+    "context": 4352,
+    "samples": 3,
+    "prefill_tps": 1043.711004169238,
+    "prefill_s": 3.924458,
+    "decode_tps": 28.773894510371402,
+    "decode_s": 4.413723,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "6c4163ef1d578f47a2346c8b7657c627d796a4878448e36edf0383972b57d55a",
+    "status": "ok",
+    "correctness": {
+     "full_uncached_prefill": true,
+     "repeat_output_ids_equal": true
+    },
+    "rejection": null
+   },
+   "prompt_ids_match": true,
+   "prefill_ratio_hip_over_llama": 0.6427,
+   "decode_ratio_hip_over_llama": 1.1556
+  },
+  {
+   "prompt_tokens": 8192,
+   "context": 8448,
+   "hipengine": {
+    "label": "hip-8192",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 8192 --output 128 --context 8448 --samples 3 --warmup 1 --expect-gpu 8060S --label hip-8192 --out /tmp/gemma4-depth-ladder-20261004/hip-8192.json",
+    "context": 8448,
+    "max_block": 1024,
+    "samples": 3,
+    "prefill_tps": 557.9705973847629,
+    "prefill_s": 14.681777209043503,
+    "decode_tps": 30.79557113188062,
+    "decode_s": 4.123969627195038,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "ea1766ee5530c7028e61cc93c4162cee2e0f54738e9b3a097306013efe8daaba",
+    "status": "ok",
+    "correctness": {
+     "instrumented_finite_logits": true,
+     "public_finite_logits": null,
+     "all_replays_and_public_ids_equal": true
+    },
+    "public_path_parity": true,
+    "public_tps_including_prefill": 6.817254714283643,
+    "public_generated_equals_expected": true
+   },
+   "llamacpp": {
+    "label": "llama-8192",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 8192 --output 128 --context 8448 --samples 3 --warmup 1 --kv bf16 --request-timeout 5400 --idle-limit-mib 256 --label llama-8192 --out /tmp/gemma4-depth-ladder-20261004/llama-8192.json",
+    "context": 8448,
+    "samples": 3,
+    "prefill_tps": 1267.8975219351532,
+    "prefill_s": 6.46109,
+    "decode_tps": 27.1606047191016,
+    "decode_s": 4.675890000000001,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "ea1766ee5530c7028e61cc93c4162cee2e0f54738e9b3a097306013efe8daaba",
+    "status": "output_drift",
+    "correctness": {
+     "full_uncached_prefill": true,
+     "repeat_output_ids_equal": false
+    },
+    "rejection": "llama.cpp greedy output ids differed between samples; timings retained as diagnostics"
+   },
+   "prompt_ids_match": true,
+   "prefill_ratio_hip_over_llama": 0.4401,
+   "decode_ratio_hip_over_llama": 1.1338,
+   "note": "llama.cpp row rejected by its own repeatability gate; its timings are retained as diagnostics and the ratios are not a published claim"
+  },
+  {
+   "prompt_tokens": 16384,
+   "context": 16640,
+   "hipengine": {
+    "label": "hip-16384",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 16384 --output 128 --context 16640 --samples 2 --warmup 1 --expect-gpu 8060S --label hip-16384 --out /tmp/gemma4-depth-ladder-20261004/hip-16384.json",
+    "context": 16640,
+    "max_block": 1024,
+    "samples": 2,
+    "prefill_tps": 428.4701306082991,
+    "prefill_s": 38.238374312000815,
+    "decode_tps": 26.670442995080005,
+    "decode_s": 4.761825761233922,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "7cf9b6b2971e115104a2343207c4d854e36683d5a434f7014bafed23955f84d3",
+    "status": "ok",
+    "correctness": {
+     "instrumented_finite_logits": true,
+     "public_finite_logits": null,
+     "all_replays_and_public_ids_equal": true
+    },
+    "public_path_parity": true,
+    "public_tps_including_prefill": 2.9794029419677424,
+    "public_generated_equals_expected": true
+   },
+   "llamacpp": {
+    "label": "llama-16384",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 16384 --output 128 --context 16640 --samples 3 --warmup 1 --kv bf16 --request-timeout 5400 --idle-limit-mib 256 --label llama-16384 --out /tmp/gemma4-depth-ladder-20261004/llama-16384.json",
+    "context": 16640,
+    "samples": 3,
+    "prefill_tps": 1090.8322949209985,
+    "prefill_s": 15.019724,
+    "decode_tps": 24.910337495844193,
+    "decode_s": 5.098285,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "7cf9b6b2971e115104a2343207c4d854e36683d5a434f7014bafed23955f84d3",
+    "status": "output_drift",
+    "correctness": {
+     "full_uncached_prefill": true,
+     "repeat_output_ids_equal": false
+    },
+    "rejection": "llama.cpp greedy output ids differed between samples; timings retained as diagnostics"
+   },
+   "prompt_ids_match": true,
+   "prefill_ratio_hip_over_llama": 0.3928,
+   "decode_ratio_hip_over_llama": 1.0707,
+   "note": "llama.cpp row rejected by its own repeatability gate; its timings are retained as diagnostics and the ratios are not a published claim"
+  },
+  {
+   "prompt_tokens": 32768,
+   "context": 33024,
+   "hipengine": {
+    "label": "hip-32768",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 32768 --output 128 --context 33024 --samples 2 --warmup 1 --expect-gpu 8060S --label hip-32768 --out /tmp/gemma4-depth-ladder-20261004/hip-32768.json",
+    "context": 33024,
+    "max_block": 1024,
+    "samples": 2,
+    "prefill_tps": 289.860110498394,
+    "prefill_s": 113.06259046553168,
+    "decode_tps": 20.86194711849698,
+    "decode_s": 6.087692513363436,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "4c9f993372aa2f928bd77a633ba4ec927bbebc9c69eb8549587d74c2990dc358",
+    "status": "ok",
+    "correctness": {
+     "instrumented_finite_logits": true,
+     "public_finite_logits": null,
+     "all_replays_and_public_ids_equal": true
+    },
+    "public_path_parity": true,
+    "public_tps_including_prefill": 1.0412483501074605,
+    "public_generated_equals_expected": true
+   },
+   "llamacpp": {
+    "label": "llama-32768",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 32768 --output 128 --context 33024 --samples 3 --warmup 1 --kv bf16 --request-timeout 5400 --idle-limit-mib 256 --label llama-32768 --out /tmp/gemma4-depth-ladder-20261004/llama-32768.json",
+    "context": 33024,
+    "samples": 3,
+    "prefill_tps": 873.0400061364312,
+    "prefill_s": 37.53321699999999,
+    "decode_tps": 21.317326874351142,
+    "decode_s": 5.957595,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "4c9f993372aa2f928bd77a633ba4ec927bbebc9c69eb8549587d74c2990dc358",
+    "status": "ok",
+    "correctness": {
+     "full_uncached_prefill": true,
+     "repeat_output_ids_equal": true
+    },
+    "rejection": null
+   },
+   "prompt_ids_match": true,
+   "prefill_ratio_hip_over_llama": 0.332,
+   "decode_ratio_hip_over_llama": 0.9786
+  },
+  {
+   "prompt_tokens": 65536,
+   "context": 65792,
+   "hipengine": {
+    "label": "hip-65536",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 65536 --output 128 --context 65792 --samples 1 --warmup 1 --expect-gpu 8060S --label hip-65536 --out /tmp/gemma4-depth-ladder-20261004/hip-65536.json",
+    "context": 65792,
+    "max_block": 1024,
+    "samples": 1,
+    "prefill_tps": 164.77741035802498,
+    "prefill_s": 397.72442022000905,
+    "decode_tps": 14.421203419849403,
+    "decode_s": 8.806477261474356,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "9f80c975afcf0f5818755923d2073a7424b50f69b2bab0ffe2be5d2d74f484a1",
+    "status": "ok",
+    "correctness": {
+     "instrumented_finite_logits": true,
+     "public_finite_logits": null,
+     "all_replays_and_public_ids_equal": true
+    },
+    "public_path_parity": true,
+    "public_tps_including_prefill": 0.31382184929869333,
+    "public_generated_equals_expected": true
+   },
+   "llamacpp": {
+    "label": "llama-65536",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 65536 --output 128 --context 65792 --samples 3 --warmup 1 --kv bf16 --request-timeout 5400 --idle-limit-mib 256 --label llama-65536 --out /tmp/gemma4-depth-ladder-20261004/llama-65536.json",
+    "context": 65792,
+    "samples": 3,
+    "prefill_tps": 623.4107655684154,
+    "prefill_s": 105.124909,
+    "decode_tps": 16.589781086735165,
+    "decode_s": 7.655315,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "9f80c975afcf0f5818755923d2073a7424b50f69b2bab0ffe2be5d2d74f484a1",
+    "status": "ok",
+    "correctness": {
+     "full_uncached_prefill": true,
+     "repeat_output_ids_equal": true
+    },
+    "rejection": null
+   },
+   "prompt_ids_match": true,
+   "prefill_ratio_hip_over_llama": 0.2643,
+   "decode_ratio_hip_over_llama": 0.8693
+  },
+  {
+   "prompt_tokens": 131072,
+   "context": 131328,
+   "hipengine": {
+    "label": "hip-131072",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 131072 --output 128 --context 131328 --samples 1 --warmup 1 --expect-gpu 8060S --label hip-131072 --out /tmp/gemma4-depth-ladder-20261004/hip-131072.json",
+    "context": 131328,
+    "max_block": 1024,
+    "samples": 1,
+    "prefill_tps": 93.18185008937043,
+    "prefill_s": 1406.6258598030545,
+    "decode_tps": 9.137547804052529,
+    "decode_s": 13.89869609696325,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "f3e9f618dfeaa6b74c9c98f1cae019456b6618690cc3c44ee021193c93b4d0df",
+    "status": "ok",
+    "correctness": {
+     "instrumented_finite_logits": true,
+     "public_finite_logits": null,
+     "all_replays_and_public_ids_equal": true
+    },
+    "public_path_parity": true,
+    "public_tps_including_prefill": 0.09014034643548491,
+    "public_generated_equals_expected": true
+   },
+   "llamacpp": {
+    "label": "llama-131072",
+    "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_llamacpp_reference_bench.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --prompt 131072 --output 128 --context 131328 --samples 2 --warmup 1 --kv bf16 --request-timeout 5400 --idle-limit-mib 256 --label llama-131072 --out /tmp/gemma4-depth-ladder-20261004/llama-131072.json",
+    "context": 131328,
+    "samples": 2,
+    "prefill_tps": 397.2903099148921,
+    "prefill_s": 329.914918,
+    "decode_tps": 11.52002487547933,
+    "decode_s": 11.024282499999998,
+    "decode_forwards_per_sample": 127,
+    "prompt_ids_sha256": "f3e9f618dfeaa6b74c9c98f1cae019456b6618690cc3c44ee021193c93b4d0df",
+    "status": "ok",
+    "correctness": {
+     "full_uncached_prefill": true,
+     "repeat_output_ids_equal": true
+    },
+    "rejection": null
+   },
+   "prompt_ids_match": true,
+   "prefill_ratio_hip_over_llama": 0.2345,
+   "decode_ratio_hip_over_llama": 0.7932
+  }
+ ],
+ "attribution": {
+  "method": "scripts/gemma4_prefill_kernel_census.py, which records a HIP event pair around every kernel the decoder layer launches, in place, on the stream that kernel was launched into",
+  "corpus": "the campaign corpus at the ladder's shapes, production profile",
+  "why_repaired": "the census as committed intercepted no attention and reported the MoE block as free. Two tree changes broke it: the production profile now selects prefill attention through the kernel registry (variant gemma4_staged), which a module-attribute patch cannot reach, and the MoE block is launched on its own stream, so an event pair recorded on stream 0 bracketed nothing and its work reappeared as host time. Both repairs are in the same commit as this artifact.",
+  "stream_overlap": "the main stream and the MoE stream carry roughly equal totals and sum to about the wall time, so they are effectively serialized across the 30 layers rather than overlapped; the census accounts for slightly over 100 percent of wall time because a small part does overlap",
+  "rows": [
+   {
+    "prompt_tokens": 512,
+    "corpus": "campaign",
+    "context_length": 4096,
+    "max_block": 1024,
+    "execution_profile": "production",
+    "prefill_wall_ms": 468.3,
+    "prefill_tps": 1093.32,
+    "attention": {
+     "variant": "gemma4_staged",
+     "calls": 30,
+     "ms": 93.1,
+     "share_of_wall": 0.1988,
+     "streams": [
+      0
+     ]
+    },
+    "expert_block_ms": 215.3,
+    "expert_share_of_wall": 0.4597,
+    "dense_and_lm_head_ms": 120.9,
+    "accounted_ms": 492.431,
+    "host_and_unmeasured_ms": -24.131,
+    "kernels": [
+     {
+      "name": "gemma4_experts_forward_bf16",
+      "calls": 30,
+      "total_ms": 215.268,
+      "per_call_ms": 7.1756,
+      "share": 0.4597,
+      "streams": [
+       93953439535840
+      ]
+     },
+     {
+      "name": "launch_gguf_linear",
+      "calls": 126,
+      "total_ms": 120.94,
+      "per_call_ms": 0.9598,
+      "share": 0.2583,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "attention[gemma4_staged]",
+      "calls": 30,
+      "total_ms": 93.109,
+      "per_call_ms": 3.1036,
+      "share": 0.1988,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_project_experts_wmma",
+      "calls": 29,
+      "total_ms": 73.991,
+      "per_call_ms": 2.5514,
+      "share": 0.158,
+      "streams": [
+       93953439535840
+      ]
+     },
+     {
+      "name": "gemma4_router_topk_bf16",
+      "calls": 30,
+      "total_ms": 47.806,
+      "per_call_ms": 1.5935,
+      "share": 0.1021,
+      "streams": [
+       93953439535840
+      ]
+     },
+     {
+      "name": "gemma4_project_experts_gate_up_mmq",
+      "calls": 1,
+      "total_ms": 14.784,
+      "per_call_ms": 14.7839,
+      "share": 0.0316,
+      "streams": [
+       93953439535840
+      ]
+     },
+     {
+      "name": "gemma4_project_experts_down_mmq",
+      "calls": 1,
+      "total_ms": 7.034,
+      "per_call_ms": 7.0341,
+      "share": 0.015,
+      "streams": [
+       93953439535840
+      ]
+     },
+     {
+      "name": "gemma4_rmsnorm_f32w_bf16",
+      "calls": 120,
+      "total_ms": 4.836,
+      "per_call_ms": 0.0403,
+      "share": 0.0103,
+      "streams": [
+       0,
+       93953439535840
+      ]
+     },
+     {
+      "name": "gemma4_head_rmsnorm_f32w_bf16",
+      "calls": 60,
+      "total_ms": 4.604,
+      "per_call_ms": 0.0767,
+      "share": 0.0098,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_partial_rotary_bf16",
+      "calls": 30,
+      "total_ms": 2.983,
+      "per_call_ms": 0.0994,
+      "share": 0.0064,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_add_rmsnorm_scale_bf16",
+      "calls": 30,
+      "total_ms": 1.453,
+      "per_call_ms": 0.0484,
+      "share": 0.0031,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_rmsnorm_weightless_bf16",
+      "calls": 30,
+      "total_ms": 1.432,
+      "per_call_ms": 0.0477,
+      "share": 0.0031,
+      "streams": [
+       0
+      ]
+     }
+    ],
+    "command": null
+   },
+   {
+    "prompt_tokens": 2048,
+    "corpus": "campaign",
+    "context_length": 4096,
+    "max_block": 1024,
+    "execution_profile": "production",
+    "prefill_wall_ms": 2673.2,
+    "prefill_tps": 766.13,
+    "attention": {
+     "variant": "gemma4_staged",
+     "calls": 60,
+     "ms": 1261.0,
+     "share_of_wall": 0.4717,
+     "streams": [
+      0
+     ]
+    },
+    "expert_block_ms": 802.1,
+    "expert_share_of_wall": 0.3001,
+    "dense_and_lm_head_ms": 432.2,
+    "accounted_ms": 2736.656,
+    "host_and_unmeasured_ms": -63.496,
+    "kernels": [
+     {
+      "name": "attention[gemma4_staged]",
+      "calls": 60,
+      "total_ms": 1261.032,
+      "per_call_ms": 21.0172,
+      "share": 0.4717,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_experts_forward_bf16",
+      "calls": 60,
+      "total_ms": 802.108,
+      "per_call_ms": 13.3685,
+      "share": 0.3001,
+      "streams": [
+       93851942169808
+      ]
+     },
+     {
+      "name": "launch_gguf_linear",
+      "calls": 251,
+      "total_ms": 432.245,
+      "per_call_ms": 1.7221,
+      "share": 0.1617,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_project_experts_wmma",
+      "calls": 58,
+      "total_ms": 282.056,
+      "per_call_ms": 4.863,
+      "share": 0.1055,
+      "streams": [
+       93851942169808
+      ]
+     },
+     {
+      "name": "gemma4_router_topk_bf16",
+      "calls": 60,
+      "total_ms": 183.805,
+      "per_call_ms": 3.0634,
+      "share": 0.0688,
+      "streams": [
+       93851942169808
+      ]
+     },
+     {
+      "name": "gemma4_project_experts_gate_up_mmq",
+      "calls": 2,
+      "total_ms": 54.985,
+      "per_call_ms": 27.4926,
+      "share": 0.0206,
+      "streams": [
+       93851942169808
+      ]
+     },
+     {
+      "name": "gemma4_project_experts_down_mmq",
+      "calls": 2,
+      "total_ms": 21.367,
+      "per_call_ms": 10.6833,
+      "share": 0.008,
+      "streams": [
+       93851942169808
+      ]
+     },
+     {
+      "name": "gemma4_head_rmsnorm_f32w_bf16",
+      "calls": 120,
+      "total_ms": 17.986,
+      "per_call_ms": 0.1499,
+      "share": 0.0067,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_rmsnorm_f32w_bf16",
+      "calls": 240,
+      "total_ms": 17.31,
+      "per_call_ms": 0.0721,
+      "share": 0.0065,
+      "streams": [
+       0,
+       93851942169808
+      ]
+     },
+     {
+      "name": "gemma4_partial_rotary_bf16",
+      "calls": 60,
+      "total_ms": 12.108,
+      "per_call_ms": 0.2018,
+      "share": 0.0045,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_rmsnorm_weightless_bf16",
+      "calls": 60,
+      "total_ms": 5.325,
+      "per_call_ms": 0.0888,
+      "share": 0.002,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_add_rmsnorm_scale_bf16",
+      "calls": 60,
+      "total_ms": 4.737,
+      "per_call_ms": 0.079,
+      "share": 0.0018,
+      "streams": [
+       0
+      ]
+     }
+    ],
+    "command": null
+   },
+   {
+    "prompt_tokens": 8192,
+    "corpus": "campaign",
+    "context_length": 8448,
+    "max_block": 1024,
+    "execution_profile": "production",
+    "prefill_wall_ms": 14675.9,
+    "prefill_tps": 558.19,
+    "attention": {
+     "variant": "gemma4_staged",
+     "calls": 240,
+     "ms": 9184.0,
+     "share_of_wall": 0.6258,
+     "streams": [
+      0
+     ]
+    },
+    "expert_block_ms": 3135.2,
+    "expert_share_of_wall": 0.2136,
+    "dense_and_lm_head_ms": 1686.5,
+    "accounted_ms": 14948.35,
+    "host_and_unmeasured_ms": -272.427,
+    "kernels": [
+     {
+      "name": "attention[gemma4_staged]",
+      "calls": 240,
+      "total_ms": 9184.001,
+      "per_call_ms": 38.2667,
+      "share": 0.6258,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_experts_forward_bf16",
+      "calls": 240,
+      "total_ms": 3135.227,
+      "per_call_ms": 13.0634,
+      "share": 0.2136,
+      "streams": [
+       94518144771632
+      ]
+     },
+     {
+      "name": "launch_gguf_linear",
+      "calls": 1001,
+      "total_ms": 1686.55,
+      "per_call_ms": 1.6849,
+      "share": 0.1149,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_project_experts_wmma",
+      "calls": 232,
+      "total_ms": 1107.857,
+      "per_call_ms": 4.7752,
+      "share": 0.0755,
+      "streams": [
+       94518144771632
+      ]
+     },
+     {
+      "name": "gemma4_router_topk_bf16",
+      "calls": 240,
+      "total_ms": 715.48,
+      "per_call_ms": 2.9812,
+      "share": 0.0488,
+      "streams": [
+       94518144771632
+      ]
+     },
+     {
+      "name": "gemma4_project_experts_gate_up_mmq",
+      "calls": 8,
+      "total_ms": 218.855,
+      "per_call_ms": 27.3568,
+      "share": 0.0149,
+      "streams": [
+       94518144771632
+      ]
+     },
+     {
+      "name": "gemma4_project_experts_down_mmq",
+      "calls": 8,
+      "total_ms": 82.35,
+      "per_call_ms": 10.2938,
+      "share": 0.0056,
+      "streams": [
+       94518144771632
+      ]
+     },
+     {
+      "name": "gemma4_head_rmsnorm_f32w_bf16",
+      "calls": 480,
+      "total_ms": 71.6,
+      "per_call_ms": 0.1492,
+      "share": 0.0049,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_rmsnorm_f32w_bf16",
+      "calls": 960,
+      "total_ms": 68.061,
+      "per_call_ms": 0.0709,
+      "share": 0.0046,
+      "streams": [
+       0,
+       94518144771632
+      ]
+     },
+     {
+      "name": "gemma4_partial_rotary_bf16",
+      "calls": 240,
+      "total_ms": 47.755,
+      "per_call_ms": 0.199,
+      "share": 0.0033,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_rmsnorm_weightless_bf16",
+      "calls": 240,
+      "total_ms": 21.246,
+      "per_call_ms": 0.0885,
+      "share": 0.0014,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_add_rmsnorm_scale_bf16",
+      "calls": 240,
+      "total_ms": 18.43,
+      "per_call_ms": 0.0768,
+      "share": 0.0013,
+      "streams": [
+       0
+      ]
+     }
+    ],
+    "command": null
+   },
+   {
+    "prompt_tokens": 32768,
+    "corpus": "campaign",
+    "context_length": 33024,
+    "max_block": 1024,
+    "execution_profile": "production",
+    "prefill_wall_ms": 110690.8,
+    "prefill_tps": 296.03,
+    "attention": {
+     "variant": "gemma4_staged",
+     "calls": 960,
+     "ms": 88820.0,
+     "share_of_wall": 0.8024,
+     "streams": [
+      0
+     ]
+    },
+    "expert_block_ms": 12409.7,
+    "expert_share_of_wall": 0.1121,
+    "dense_and_lm_head_ms": 6659.7,
+    "accounted_ms": 111623.538,
+    "host_and_unmeasured_ms": -932.704,
+    "kernels": [
+     {
+      "name": "attention[gemma4_staged]",
+      "calls": 960,
+      "total_ms": 88819.964,
+      "per_call_ms": 92.5208,
+      "share": 0.8024,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_experts_forward_bf16",
+      "calls": 960,
+      "total_ms": 12409.698,
+      "per_call_ms": 12.9268,
+      "share": 0.1121,
+      "streams": [
+       93918587564688
+      ]
+     },
+     {
+      "name": "launch_gguf_linear",
+      "calls": 4001,
+      "total_ms": 6659.692,
+      "per_call_ms": 1.6645,
+      "share": 0.0602,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_project_experts_wmma",
+      "calls": 928,
+      "total_ms": 4389.673,
+      "per_call_ms": 4.7303,
+      "share": 0.0397,
+      "streams": [
+       93918587564688
+      ]
+     },
+     {
+      "name": "gemma4_router_topk_bf16",
+      "calls": 960,
+      "total_ms": 2824.469,
+      "per_call_ms": 2.9422,
+      "share": 0.0255,
+      "streams": [
+       93918587564688
+      ]
+     },
+     {
+      "name": "gemma4_project_experts_gate_up_mmq",
+      "calls": 32,
+      "total_ms": 856.097,
+      "per_call_ms": 26.753,
+      "share": 0.0077,
+      "streams": [
+       93918587564688
+      ]
+     },
+     {
+      "name": "gemma4_project_experts_down_mmq",
+      "calls": 32,
+      "total_ms": 312.808,
+      "per_call_ms": 9.7752,
+      "share": 0.0028,
+      "streams": [
+       93918587564688
+      ]
+     },
+     {
+      "name": "gemma4_head_rmsnorm_f32w_bf16",
+      "calls": 1920,
+      "total_ms": 284.013,
+      "per_call_ms": 0.1479,
+      "share": 0.0026,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_rmsnorm_f32w_bf16",
+      "calls": 3840,
+      "total_ms": 269.056,
+      "per_call_ms": 0.0701,
+      "share": 0.0024,
+      "streams": [
+       0,
+       93918587564688
+      ]
+     },
+     {
+      "name": "gemma4_partial_rotary_bf16",
+      "calls": 960,
+      "total_ms": 199.099,
+      "per_call_ms": 0.2074,
+      "share": 0.0018,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_rmsnorm_weightless_bf16",
+      "calls": 960,
+      "total_ms": 84.343,
+      "per_call_ms": 0.0879,
+      "share": 0.0008,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_add_rmsnorm_scale_bf16",
+      "calls": 960,
+      "total_ms": 73.203,
+      "per_call_ms": 0.0763,
+      "share": 0.0007,
+      "streams": [
+       0
+      ]
+     }
+    ],
+    "command": null
+   },
+   {
+    "prompt_tokens": 65536,
+    "corpus": "campaign",
+    "context_length": 65792,
+    "max_block": 1024,
+    "execution_profile": "production",
+    "prefill_wall_ms": 396101.8,
+    "prefill_tps": 165.45,
+    "attention": {
+     "variant": "gemma4_staged",
+     "calls": 1920,
+     "ms": 346920.6,
+     "share_of_wall": 0.8758,
+     "streams": [
+      0
+     ]
+    },
+    "expert_block_ms": 27842.7,
+    "expert_share_of_wall": 0.0703,
+    "dense_and_lm_head_ms": 14883.4,
+    "accounted_ms": 398015.8,
+    "host_and_unmeasured_ms": -1914.05,
+    "kernels": [
+     {
+      "name": "attention[gemma4_staged]",
+      "calls": 1920,
+      "total_ms": 346920.569,
+      "per_call_ms": 180.6878,
+      "share": 0.8758,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_experts_forward_bf16",
+      "calls": 1920,
+      "total_ms": 27842.747,
+      "per_call_ms": 14.5014,
+      "share": 0.0703,
+      "streams": [
+       94613407606272
+      ]
+     },
+     {
+      "name": "launch_gguf_linear",
+      "calls": 8001,
+      "total_ms": 14883.363,
+      "per_call_ms": 1.8602,
+      "share": 0.0376,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_project_experts_wmma",
+      "calls": 1856,
+      "total_ms": 9911.154,
+      "per_call_ms": 5.3401,
+      "share": 0.025,
+      "streams": [
+       94613407606272
+      ]
+     },
+     {
+      "name": "gemma4_router_topk_bf16",
+      "calls": 1920,
+      "total_ms": 6389.659,
+      "per_call_ms": 3.3279,
+      "share": 0.0161,
+      "streams": [
+       94613407606272
+      ]
+     },
+     {
+      "name": "gemma4_project_experts_gate_up_mmq",
+      "calls": 64,
+      "total_ms": 1838.111,
+      "per_call_ms": 28.7205,
+      "share": 0.0046,
+      "streams": [
+       94613407606272
+      ]
+     },
+     {
+      "name": "gemma4_head_rmsnorm_f32w_bf16",
+      "calls": 3840,
+      "total_ms": 636.149,
+      "per_call_ms": 0.1657,
+      "share": 0.0016,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_project_experts_down_mmq",
+      "calls": 64,
+      "total_ms": 620.928,
+      "per_call_ms": 9.702,
+      "share": 0.0016,
+      "streams": [
+       94613407606272
+      ]
+     },
+     {
+      "name": "gemma4_rmsnorm_f32w_bf16",
+      "calls": 7680,
+      "total_ms": 585.837,
+      "per_call_ms": 0.0763,
+      "share": 0.0015,
+      "streams": [
+       0,
+       94613407606272
+      ]
+     },
+     {
+      "name": "gemma4_partial_rotary_bf16",
+      "calls": 1920,
+      "total_ms": 414.03,
+      "per_call_ms": 0.2156,
+      "share": 0.001,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_rmsnorm_weightless_bf16",
+      "calls": 1920,
+      "total_ms": 187.135,
+      "per_call_ms": 0.0975,
+      "share": 0.0005,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_add_rmsnorm_scale_bf16",
+      "calls": 1920,
+      "total_ms": 156.311,
+      "per_call_ms": 0.0814,
+      "share": 0.0004,
+      "streams": [
+       0
+      ]
+     }
+    ],
+    "command": null
+   },
+   {
+    "prompt_tokens": 131072,
+    "corpus": "campaign",
+    "context_length": 131328,
+    "max_block": 1024,
+    "execution_profile": "production",
+    "prefill_wall_ms": 1405497.1,
+    "prefill_tps": 93.26,
+    "attention": {
+     "variant": "gemma4_staged",
+     "calls": 3840,
+     "ms": 1305993.5,
+     "share_of_wall": 0.9292,
+     "streams": [
+      0
+     ]
+    },
+    "expert_block_ms": 55528.2,
+    "expert_share_of_wall": 0.0395,
+    "dense_and_lm_head_ms": 29661.0,
+    "accounted_ms": 1407873.118,
+    "host_and_unmeasured_ms": -2376.013,
+    "kernels": [
+     {
+      "name": "attention[gemma4_staged]",
+      "calls": 3840,
+      "total_ms": 1305993.457,
+      "per_call_ms": 340.1025,
+      "share": 0.9292,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_experts_forward_bf16",
+      "calls": 3840,
+      "total_ms": 55528.232,
+      "per_call_ms": 14.4605,
+      "share": 0.0395,
+      "streams": [
+       94390837019904
+      ]
+     },
+     {
+      "name": "launch_gguf_linear",
+      "calls": 16001,
+      "total_ms": 29660.992,
+      "per_call_ms": 1.8537,
+      "share": 0.0211,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_project_experts_wmma",
+      "calls": 3712,
+      "total_ms": 19785.759,
+      "per_call_ms": 5.3302,
+      "share": 0.0141,
+      "streams": [
+       94390837019904
+      ]
+     },
+     {
+      "name": "gemma4_router_topk_bf16",
+      "calls": 3840,
+      "total_ms": 12731.074,
+      "per_call_ms": 3.3154,
+      "share": 0.0091,
+      "streams": [
+       94390837019904
+      ]
+     },
+     {
+      "name": "gemma4_project_experts_gate_up_mmq",
+      "calls": 128,
+      "total_ms": 3652.887,
+      "per_call_ms": 28.5382,
+      "share": 0.0026,
+      "streams": [
+       94390837019904
+      ]
+     },
+     {
+      "name": "gemma4_head_rmsnorm_f32w_bf16",
+      "calls": 7680,
+      "total_ms": 1271.629,
+      "per_call_ms": 0.1656,
+      "share": 0.0009,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_project_experts_down_mmq",
+      "calls": 128,
+      "total_ms": 1221.527,
+      "per_call_ms": 9.5432,
+      "share": 0.0009,
+      "streams": [
+       94390837019904
+      ]
+     },
+     {
+      "name": "gemma4_rmsnorm_f32w_bf16",
+      "calls": 15360,
+      "total_ms": 1168.536,
+      "per_call_ms": 0.0761,
+      "share": 0.0008,
+      "streams": [
+       0,
+       94390837019904
+      ]
+     },
+     {
+      "name": "gemma4_partial_rotary_bf16",
+      "calls": 3840,
+      "total_ms": 834.075,
+      "per_call_ms": 0.2172,
+      "share": 0.0006,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_rmsnorm_weightless_bf16",
+      "calls": 3840,
+      "total_ms": 373.92,
+      "per_call_ms": 0.0974,
+      "share": 0.0003,
+      "streams": [
+       0
+      ]
+     },
+     {
+      "name": "gemma4_add_rmsnorm_scale_bf16",
+      "calls": 3840,
+      "total_ms": 311.204,
+      "per_call_ms": 0.081,
+      "share": 0.0002,
+      "streams": [
+       0
+      ]
+     }
+    ],
+    "command": null
+   }
+  ],
+  "census_provenance": {
+   "commit": "a1b9bf4f3f4796986d8f91143650ff2e83ca0181",
+   "command_by_depth": {
+    "512": null,
+    "2048": null,
+    "8192": null,
+    "32768": null,
+    "65536": null,
+    "131072": null
+   },
+   "note": "the engine commit is the ladder's, since the census loads the same build. The harness records its own command from 2026-10-04 onward; the six points here predate that field, so their commands are reconstructed from the driver that issued them and are exact, not paraphrased",
+   "reconstructed_command_template": ".venv/bin/python scripts/gemma4_prefill_kernel_census.py --prompt <N> --corpus campaign --repeats <R> --warmup 1 --json-out <dir>/census-<N>.json, with R=3 at 512/2048/8192, R=2 at 32768/65536, R=1 at 131072"
+  }
+ },
+ "findings": {
+  "prefill_ratio_by_depth": {
+   "512": 1.382,
+   "1024": 0.901,
+   "2048": 0.7315,
+   "4096": 0.6427,
+   "8192": 0.4401,
+   "16384": 0.3928,
+   "32768": 0.332,
+   "65536": 0.2643,
+   "131072": 0.2345
+  },
+  "decode_ratio_by_depth": {
+   "512": 0.9183,
+   "1024": 1.0431,
+   "2048": 1.1357,
+   "4096": 1.1556,
+   "8192": 1.1338,
+   "16384": 1.0707,
+   "32768": 0.9786,
+   "65536": 0.8693,
+   "131072": 0.7932
+  },
+  "prefill_hipengine_ahead_only_at": [
+   512
+  ],
+  "decode_hipengine_ahead_at": [
+   1024,
+   2048,
+   4096
+  ],
+  "attention_share_of_prefill_wall": {
+   "512": 0.1988,
+   "2048": 0.4717,
+   "8192": 0.6258,
+   "32768": 0.8024,
+   "65536": 0.8758,
+   "131072": 0.9292
+  },
+  "attention_ms_per_prompt_token": {
+   "512": 0.18184,
+   "2048": 0.61572,
+   "8192": 1.12109,
+   "32768": 2.71057,
+   "65536": 5.29359,
+   "131072": 9.96394
+  },
+  "summary": [
+   "Decode is competitive through the middle of the ladder and only crosses below the comparator past 16384; its best row is 4096. Prefill is ahead at 512 alone and falls monotonically after it, reaching 0.23 at 131072. The 8192 and 16384 rows also show a decode lead but are excluded from the clean-row lists above, because llama.cpp rejected them on repeatability.",
+   "The prefill loss is not a distributed regression. Measured attention is 19.9 percent of the prefill step at 512 and 92.9 percent at 131072, and the selected variant is gemma4_staged at every depth, so the profile never takes the WMMA prefill path at any shape in this ladder.",
+   "Attention cost per prompt token rises from 0.182 ms at 512 to 9.964 ms at 131072 while attention cost per token per token of depth falls, which is the sliding-window signature: the window-bounded layers stop growing and the global layers keep scaling."
+  ]
+ },
+ "open_items": [
+  "262144 is not measured on either engine and needs a decision: the full protocol is about 4.5 hours at about 91 minutes per pass, a reduced two-pass run is about 3 hours with a stated cold-start bias, and the fitted point can be published as a projection instead. hipEngine also needs roughly 95 GiB against roughly 94 GiB available, so the /tmp to disk migration is what makes the point reachable at all.",
+  "A 262142-prompt / 2-output llama.cpp run would replace the comparator's 256K projection with a prefill-only measurement at the cost of about 25-45 minutes. It cannot be paired, because hipEngine's 262144 point is not measured either.",
+  "The MoE block runs on its own stream and the two streams sum to about the wall time across 30 layers, so the side stream is not currently buying overlap. That is a separate question from depth and is not investigated here."
+ ],
+ "limitations": [
+  "262144 is not measured on either engine. hipEngine needs about 95 GiB against about 94 GiB available at this protocol and about 91 minutes per pass; llama.cpp cannot serve it at all, because it caps the slot context at the model's training context (262144) and a 262144-token prompt leaves no room for a sampled token.",
+  "The hipEngine 262144 figure quoted elsewhere in this campaign is a fit to the measured points, not a row in this artifact.",
+  "llama.cpp 8192 and 16384 are rejected by that harness's own repeatability gate: its greedy output ids differ between samples. Their timings are retained as diagnostics and no ratio from them is a published claim.",
+  "Absolute rates are comparable only within this session. llama.cpp's 512 prefill reads 806 tok/s here against 902 tok/s in the 2026-10-03 depth checkpoint on the same binary, so cross-session absolute comparisons are not paired.",
+  "hipEngine's own drift control is not protocol-matched (warmup 0 against the ladder's warmup 1), so its delta measures cold start. The session drift bound comes from the two protocol-matched 512 passes instead."
+ ],
+ "decisions": []
+}

@@ -1,0 +1,104 @@
+{
+ "kind": "gemma4_campaign_candidate",
+ "verdict": "accepted and promoted (bit-identical, default path)",
+ "recorded": "2026-09-29, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B UD-Q4_K_XL, 512 prompt / 128 output",
+ "candidate": "hoist the T16 gate/up leaf's per-(subblock, k-tile, half) bookkeeping out of the K loop and drop the column-validity branch from its weight decode. The weight tile pointer, the activation row's validity test and the nibble shift amount are loop invariants; the column-validity predicate only decided whether a lane's columns were in range, and every out-of-range column is discarded by the store loop's own range test, so it can be removed by redirecting an out-of-range half to the first half's tile. Both 16-column halves then run in one K loop over a single activation fragment load.",
+ "reason": "an instruction and scheduling change, not an arithmetic one. `(col & 1) ? (packed >> 4) : (packed & 0x0Fu)` and `(packed >> (4 * (col & 1))) & 0x0Fu` are the same function of the same two values, only the instruction the compiler picks changes; the hoisted quantities are computed from values that do not vary across the K loop; and each accumulator still sees the same sequence of WMMA operations over the same operands. The output is bit-identical and that is measured rather than argued.",
+ "geometry": {
+  "route": "gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_bf16_bf16_out, reached through hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py `_gemma4_project_experts_gate_up_wmma_t16`",
+  "shape": "128 experts, in_features 2816, out_features 2 x 704 (gate and up), 4096 compact rows at a 512-token prompt, one launch per Q4_K layer over 29 layers",
+  "launch": "grid (out_features/32, row_tiles), 32 threads, no LDS, __launch_bounds__(32, 1) at 175 VGPRs with no spill",
+  "static_code": "6114 to 3983 instructions in the unrolled body, 32 WMMA either side: 191.1 to 124.5 per WMMA (1.535x fewer)",
+  "route_share": "119.31 ms of a 442 ms prefill (27.0%) after the change, against 143.15 ms (30.2%) before, from scripts/gemma4_prefill_kernel_census.py"
+ },
+ "performance": {
+  "platform": "gfx1151 Strix Halo (Radeon 8060S, zbook), ROCm, bf16 activations",
+  "protocol": "one declared same-host protocol measuring both arms in the same session, with the parent revision of the one changed file built into a separate cache entry and selected by redirecting the wrapper's _SOURCE. Nothing else differs between the arms.",
+  "primary": {
+   "row": "512 prompt / 128 output, public path",
+   "incumbent_s": 0.4811,
+   "incumbent_tps": 1064.2,
+   "candidate_s": 0.4495,
+   "candidate_tps": 1139.1,
+   "delta": "-0.0316 s (1.0704x, +7.0%)"
+  },
+  "decode": {
+   "incumbent_tps": 28.3140,
+   "candidate_tps": 28.6973,
+   "delta": "+1.4%, because gemma4_moe_prefill_route_enabled keys on the runner's declared width, so a 512-token runner's single-token decodes take this same kernel"
+  },
+  "wall": {
+   "incumbent_s": 4.9676,
+   "candidate_s": 4.8728,
+   "delta": "-0.0948 s (1.0195x)",
+   "public_wall_incumbent_s": 4.9306,
+   "public_wall_candidate_s": 4.6510,
+   "path_parity": "true in both arms"
+  },
+  "in_situ_leaf": {
+   "instrument": "scripts/gemma4_prefill_kernel_census.py, which reports the leaf's own call count and total HIP-event time",
+   "prompt_4096": {
+    "calls": 232,
+    "incumbent_ms": 1159.30,
+    "candidate_ms": 959.61,
+    "incumbent_ms_per_call": 4.997,
+    "candidate_ms_per_call": 4.136,
+    "delta": "1.208x",
+    "prefill_wall_incumbent_s": 4.353,
+    "prefill_wall_candidate_s": 3.961,
+    "prefill_tps_incumbent": 941.1,
+    "prefill_tps_candidate": 1034.1
+   },
+   "prompt_512": {
+    "calls": 29,
+    "incumbent_ms": 143.15,
+    "candidate_ms": 119.31,
+    "incumbent_ms_per_call": 4.936,
+    "candidate_ms_per_call": 4.114,
+    "delta": "1.200x",
+    "prefill_wall_incumbent_s": 0.474,
+    "prefill_wall_candidate_s": 0.442,
+    "prefill_tps_incumbent": 1081.1,
+    "prefill_tps_candidate": 1157.3
+   }
+  },
+  "standalone_leaf_fixture": {
+   "instrument": "scripts/gemma4_t16_leaf_ab.py, the production artifact's real tiles driven at the model's geometry (4096 compact rows, 128 experts, 315 row tiles), both arms loaded as prebuilt .so files",
+   "bf16": {
+    "incumbent_ms": [5.982, 5.995, 5.974],
+    "candidate_ms": [4.623, 4.631, 4.482],
+    "speedup": [1.2940, 1.2945, 1.3329],
+    "delta": "1.294x median of three runs"
+   },
+   "fp16": {
+    "incumbent_ms": 3.882,
+    "candidate_ms": 3.883,
+    "delta": "1.000x, unchanged"
+   }
+  }
+ },
+ "correctness": {
+  "bit_identity": "0 of 5,767,168 bf16 output bits differ from the parent revision on the real-artifact fixture, and 0 of 5,767,168 on the fp16 route",
+  "targeted_tests": "python3 -m pytest tests/test_gpu_gguf_q4_k_t16_selected_wmma_prefill.py -q -> 15 passed. The file's own bit-exactness contracts cover this change directly: the qmicro and shared_x routes are asserted byte-equal to the production symbol, so a change to the production kernel that was not arithmetic-preserving would fail them.",
+  "regression_found_and_fixed": "The first revision hardcoded Q4_T16_BLOCK_BYTES as the per-block tile stride. That is the non-qmicro layout constant, so the qmicro instantiation walked its tiles at the wrong stride and the qmicro-to-production bit-exactness test failed on 7168 of 7168 elements. The stride is now selected by the qmicro template argument. The failure is recorded because the standalone fixture, which runs only the non-qmicro route, was bit-identical throughout and did not catch it."
+ },
+ "why_the_speedup_is_below_the_instruction_ratio": {
+  "statement": "191.1 to 124.5 instructions per WMMA is 1.535x fewer, and the wall clock improves 1.29x on the fixture and 1.20x in situ. The leaf's duration therefore does not track its instruction count, and the earlier verdict that it is issue-bound is too strong.",
+  "evidence": [
+   "Removing 34.9 percent of the static instructions buys 22.5 percent of the fixture's wall time, so the remaining instructions execute at a lower rate than the removed ones did.",
+   "The compiler's register-hungry load schedule is worth 2.2x on its own: the same candidate source built with a 16-blocks-per-CU launch-bounds floor asks for 61 VGPRs instead of 175 and runs 10.49 ms against 4.76 ms, because at 61 VGPRs the sixteen per-lane byte loads of a weight fragment serialize behind an s_waitcnt each. Occupancy is not the binding constraint here; load-level parallelism inside a wave is.",
+   "A row-paired geometry that halves the decode count per output element was built and measured: 232 instructions per pair of WMMAs against the candidate's 249 for the same two, i.e. 2.35x fewer static instructions per WMMA, and it is slower. Best case 1.203x at a 4-to-6 block launch-bounds floor, and 0.61x to 0.66x at every other floor tried. It also differs from the parent revision in 2,110,866 of 5,767,168 output bits, so it was not landed and its discrepancy was not pursued.",
+   "A decode variant that packs each byte pair into one VGPR to cut the load registers from sixteen to eight was built and measured: bit-identical, best case 1.23x, and more sensitive to the launch-bounds floor than the landed version. Not landed."
+  ]
+ },
+ "selection": {
+  "landed": "the production kernel was rewritten in place; no flag, no alternate symbol and no dispatch route was added, so the change is on the default path by construction.",
+  "removed": "the row-paired and byte-packing kernels built during this unit were deleted before commit rather than left registered as slower alternates.",
+  "clearing_command": "not applicable: nothing was gated."
+ },
+ "leaves_open": [
+  "The sixteen scalar byte loads per weight fragment per lane remain the dominant cost and are what the register-hungry schedule is hiding. Reducing the number of memory operations rather than the instruction count is the untried lever; the decode-in-LDS staging this worklog's prior unit proposed is the concrete form of it.",
+  "The fp16 instantiation now asks for 236 VGPRs against the parent's 51 and measures 1.000x, so it neither gains nor regresses. It is not on the Gemma-4 route and no launch-bounds floor was tuned for it.",
+  "scripts/gemma4_t16_leaf_ab.py now takes --library and --baseline-library so a candidate and its parent revision can be compared as two prebuilt shared objects in one session, and --dtype to cover the fp16 route."
+ ]
+}

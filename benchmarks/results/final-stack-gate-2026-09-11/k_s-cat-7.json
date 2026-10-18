@@ -1,0 +1,64 @@
+{
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+  "seed": 7,
+  "prompt_tokens": 512,
+  "tokenized": true,
+  "scopes": {
+    "code": {
+      "positions": 390,
+      "kl_mean": 0.00010172134785269016,
+      "kl_max": 0.006222073100308844,
+      "top1": 1.0,
+      "calib_mean": 9.731621685205027e-05,
+      "calib_max": 0.008842735551297665
+    },
+    "general_en": {
+      "positions": 260,
+      "kl_mean": 6.272271451661825e-05,
+      "kl_max": 0.0012042265169477046,
+      "top1": 1.0,
+      "calib_mean": 6.865036266390234e-05,
+      "calib_max": 0.0010259307455271482
+    },
+    "general_ja": {
+      "positions": 260,
+      "kl_mean": 0.00013454041433531532,
+      "kl_max": 0.0024860511749383385,
+      "top1": 0.9961538461538462,
+      "calib_mean": 0.0001236607349710539,
+      "calib_max": 0.0021268739365041256
+    },
+    "mixed_ja_en": {
+      "positions": 260,
+      "kl_mean": 0.00030075468947485934,
+      "kl_max": 0.020140201146852672,
+      "top1": 1.0,
+      "calib_mean": 0.000738538452424109,
+      "calib_max": 0.11410684883594513
+    }
+  },
+  "overall": {
+    "positions": 1170,
+    "kl_mean": 0.00014457602810580283,
+    "kl_p95": 0.0005260392790660262,
+    "kl_p99": 0.0018844478763639927,
+    "kl_max": 0.02014019526541233,
+    "top1": 0.9991452991452991
+  },
+  "calibration_incumbent_vs_all_strict": {
+    "positions": 1170,
+    "kl_mean": 0.00023929421149659902,
+    "kl_max": 0.11410684883594513
+  },
+  "diagnostics_above_p99_envelope": [
+    {
+      "scope": "mixed_ja_en",
+      "prompt": "heldout_mixed_summary",
+      "position_in_prompt": 42,
+      "is_prefill_row": false,
+      "kl": 0.02014019526541233
+    }
+  ],
+  "candidate_finite": true,
+  "gate_pass": true
+}

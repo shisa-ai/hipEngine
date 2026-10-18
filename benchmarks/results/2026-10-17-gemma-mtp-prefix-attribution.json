@@ -1,0 +1,1567 @@
+{
+  "kind": "gemma_no_thinking_mtp_attribution",
+  "performance_claim": false,
+  "scope": "one observed request; diagnostic, not multicategory promotion evidence",
+  "source_sha256": "1c54ab5b3492085ee9f44ed9d17c7a6b6e57c9ad5678f4665d03879de97e756c",
+  "request": {
+    "model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Acceptance matrix: explain one practical fact about testing a web API."
+      }
+    ],
+    "temperature": 0,
+    "max_tokens": 64,
+    "stream": false,
+    "speculative_mtp": true,
+    "enable_thinking": false
+  },
+  "profiles": [
+    {
+      "profile": "production",
+      "manifest": {
+        "kind": "hipengine_execution_profile_manifest",
+        "schema_version": 1,
+        "execution_profile": "production",
+        "backend": "hip_gfx1151",
+        "model": "gemma4_gguf",
+        "quant": "gguf_q4_k_m",
+        "kv_policy": "paged_bf16",
+        "graph_policy": "eager_blocks",
+        "selections": [
+          {
+            "layer": "prefill_attention",
+            "scope": "full_head_dim_512",
+            "selected_variant": "gemma4_wmma_flash_full",
+            "strict_fallback_variant": "gemma4_plain",
+            "evidence_artifact": "benchmarks/results/2026-09-29-gemma4-gfx1151-prefill-attention-wmma-full-candidate.json",
+            "registry_quant": "gguf_q4_k_m"
+          },
+          {
+            "layer": "prefill_attention",
+            "scope": "sliding_head_dim_256",
+            "selected_variant": "gemma4_wmma_flash",
+            "strict_fallback_variant": "gemma4_plain",
+            "evidence_artifact": "benchmarks/results/2026-09-29-gemma4-gfx1151-prefill-attention-wmma-candidate.json",
+            "registry_quant": "gguf_q4_k_m"
+          }
+        ]
+      },
+      "verify_dense_exact": false,
+      "prompt_ids": [
+        2,
+        105,
+        2364,
+        107,
+        24040,
+        831,
+        6113,
+        236787,
+        8082,
+        886,
+        10231,
+        1707,
+        1003,
+        7257,
+        496,
+        4108,
+        9299,
+        236761,
+        106,
+        107,
+        105,
+        4368,
+        107,
+        100,
+        45518,
+        107,
+        101
+      ],
+      "ar_ids": [
+        902,
+        506,
+        4403,
+        529,
+        7257,
+        496,
+        4108,
+        9299,
+        236764,
+        614,
+        5213,
+        24040,
+        831,
+        28707,
+        1018,
+        568,
+        74860,
+        1456,
+        185487,
+        607,
+        496,
+        808,
+        17070,
+        2109,
+        28707,
+        236829,
+        653,
+        496,
+        808,
+        87732,
+        6274,
+        17616,
+        563,
+        496,
+        5904,
+        1456,
+        531,
+        4187,
+        3530,
+        1960,
+        6035,
+        531,
+        910,
+        7041,
+        9299,
+        61925,
+        236764,
+        4615,
+        236764,
+        532,
+        4275,
+        15187,
+        236761,
+        108,
+        8291,
+        563,
+        886,
+        10231,
+        1707,
+        1003,
+        1699,
+        614,
+        23772,
+        6113
+      ],
+      "mtp_ids": [
+        902,
+        506,
+        4403,
+        529,
+        7257,
+        496,
+        4108,
+        9299,
+        236764,
+        614,
+        5213,
+        24040,
+        831,
+        28707,
+        1018,
+        568,
+        74860,
+        11081,
+        531,
+        618,
+        496,
+        40954,
+        6274,
+        653,
+        496,
+        40632,
+        6274,
+        236768,
+        563,
+        496,
+        5904,
+        1456,
+        531,
+        4187,
+        855,
+        1418,
+        2653,
+        8376,
+        529,
+        9103,
+        532,
+        4275,
+        15187,
+        236761,
+        108,
+        8291,
+        563,
+        886,
+        10231,
+        1707,
+        1003,
+        1699,
+        614,
+        23772,
+        6113,
+        1056,
+        7257,
+        496,
+        4108,
+        9299,
+        236787,
+        108,
+        10354,
+        669
+      ],
+      "ar_text": "In the context of testing a web API, an **Acceptance Matrix** (often used interchangeably with a *Traceability Matrix* or a *Decision Table*) is a tool used to map specific business requirements to their corresponding API endpoints, methods, and expected outcomes.\n\nHere is one practical fact about using an acceptance matrix",
+      "mtp_text": "In the context of testing a web API, an **Acceptance Matrix** (often referred to as a Decision Table or a Truth Table) is a tool used to map out every possible combination of inputs and expected outcomes.\n\nHere is one practical fact about using an acceptance matrix when testing a web API:\n\n### The",
+      "first_generated_difference": 17,
+      "generated_ids_equal": false,
+      "same_prefix_serial_vs_mtp": {
+        "rows": 64,
+        "bit_equal": false,
+        "kl_mean": 0.0014280285544490956,
+        "kl_p95": 0.009936978861675511,
+        "kl_median": 2.3497219305143844e-05,
+        "kl_p90": 0.0025373036964924977,
+        "kl_above_0_05_rate": 0.0,
+        "top1_agreement": 0.984375,
+        "kl_p99": 0.016740418474488594,
+        "kl_max": 0.020569146634038495,
+        "top1_flips": [
+          17
+        ],
+        "flip_rows": [
+          {
+            "row": 17,
+            "reference_id": 1456,
+            "candidate_id": 11081,
+            "kl": 0.010353167996915994,
+            "reference_logit_gap": 0.15684127807617188
+          }
+        ]
+      },
+      "same_schedule_prefix_local_scalar_vs_batch": {
+        "rows": 86,
+        "bit_equal": false,
+        "kl_mean": 0.00034755471168862646,
+        "kl_p95": 0.0015934001628051045,
+        "kl_median": 1.1437666560215647e-05,
+        "kl_p90": 0.0006819927409648528,
+        "kl_above_0_05_rate": 0.0,
+        "top1_agreement": 1.0,
+        "kl_p99": 0.005888213244419479,
+        "kl_max": 0.006865566530716698,
+        "top1_flips": [],
+        "flip_rows": []
+      },
+      "ownership_checks_passed": true,
+      "repeat_equal": [
+        true,
+        true
+      ],
+      "after_unrelated_equal": true,
+      "trace": [
+        {
+          "start": 0,
+          "tokens": [
+            2,
+            105,
+            2364,
+            107,
+            24040,
+            831,
+            6113,
+            236787,
+            8082,
+            886,
+            10231,
+            1707,
+            1003,
+            7257,
+            496,
+            4108,
+            9299,
+            236761,
+            106,
+            107,
+            105,
+            4368,
+            107,
+            100,
+            45518,
+            107,
+            101
+          ],
+          "kwargs": {}
+        },
+        {
+          "start": 27,
+          "tokens": [
+            902,
+            506,
+            4403,
+            529,
+            7257
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 32,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 32,
+          "tokens": [
+            496,
+            4108,
+            9299,
+            236764,
+            614
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 37,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 37,
+          "tokens": [
+            5213,
+            24040,
+            831,
+            28707,
+            1018
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 42,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 42,
+          "tokens": [
+            568,
+            74860,
+            2760,
+            614,
+            122902
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 44,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 44,
+          "tokens": [
+            11081,
+            531,
+            618,
+            614,
+            122902
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 47,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 47,
+          "tokens": [
+            496,
+            64861,
+            2109,
+            28707,
+            653
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 48,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 48,
+          "tokens": [
+            40954,
+            28707,
+            653,
+            496,
+            64861
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 49,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 49,
+          "tokens": [
+            6274,
+            653,
+            496,
+            64861,
+            2109
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 52,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 52,
+          "tokens": [
+            40632,
+            6274,
+            236768,
+            563,
+            496
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 57,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 57,
+          "tokens": [
+            5904,
+            1456,
+            531,
+            4187,
+            855
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 62,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 62,
+          "tokens": [
+            1418,
+            2653,
+            8376,
+            529,
+            2744
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 66,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 66,
+          "tokens": [
+            9103,
+            532,
+            4275,
+            26054,
+            236761
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 69,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 69,
+          "tokens": [
+            15187,
+            236761,
+            108,
+            8291,
+            563
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 74,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 74,
+          "tokens": [
+            886,
+            10231,
+            1707,
+            1003,
+            1217
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 78,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 78,
+          "tokens": [
+            1699,
+            614,
+            23772,
+            6113,
+            573
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 82,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 82,
+          "tokens": [
+            1056,
+            7257,
+            614,
+            9299,
+            236787
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 84,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 84,
+          "tokens": [
+            496,
+            4108,
+            9299,
+            236787,
+            108
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 89,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 89,
+          "tokens": [
+            10354
+          ],
+          "kwargs": {
+            "logits_rows": 1,
+            "verification": true
+          },
+          "keep": 90,
+          "kv_prefix_unchanged": true
+        }
+      ],
+      "raw_logits": "/home/lhl/.local/state/hipengine/mtp-followup-20261017/gemma-prefix-attribution/production-logits.npz",
+      "raw_sha256": "2d195592a3c2515424fca71ec5b394a222ed95ff40d4db14579a148a6c120d7e"
+    },
+    {
+      "profile": "strict",
+      "manifest": {
+        "kind": "hipengine_execution_profile_manifest",
+        "schema_version": 1,
+        "execution_profile": "strict",
+        "backend": "hip_gfx1151",
+        "model": "gemma4_gguf",
+        "quant": "gguf_q4_k_m",
+        "kv_policy": "paged_bf16",
+        "graph_policy": "eager_blocks",
+        "selections": [
+          {
+            "layer": "prefill_attention",
+            "scope": "full_head_dim_512",
+            "selected_variant": "gemma4_plain",
+            "strict_fallback_variant": "gemma4_plain",
+            "evidence_artifact": null,
+            "registry_quant": "gguf_q4_k_m"
+          },
+          {
+            "layer": "prefill_attention",
+            "scope": "sliding_head_dim_256",
+            "selected_variant": "gemma4_plain",
+            "strict_fallback_variant": "gemma4_plain",
+            "evidence_artifact": null,
+            "registry_quant": "gguf_q4_k_m"
+          }
+        ]
+      },
+      "verify_dense_exact": true,
+      "prompt_ids": [
+        2,
+        105,
+        2364,
+        107,
+        24040,
+        831,
+        6113,
+        236787,
+        8082,
+        886,
+        10231,
+        1707,
+        1003,
+        7257,
+        496,
+        4108,
+        9299,
+        236761,
+        106,
+        107,
+        105,
+        4368,
+        107,
+        100,
+        45518,
+        107,
+        101
+      ],
+      "ar_ids": [
+        902,
+        506,
+        4403,
+        529,
+        7257,
+        496,
+        4108,
+        9299,
+        236764,
+        614,
+        5213,
+        24040,
+        831,
+        28707,
+        1018,
+        568,
+        74860,
+        1456,
+        185487,
+        607,
+        496,
+        808,
+        17070,
+        2109,
+        28707,
+        236829,
+        653,
+        496,
+        808,
+        171439,
+        85406,
+        28707,
+        17616,
+        563,
+        496,
+        5904,
+        1456,
+        531,
+        4187,
+        3530,
+        1960,
+        6035,
+        531,
+        910,
+        7041,
+        1594,
+        3636,
+        236761,
+        108,
+        8291,
+        563,
+        886,
+        10231,
+        1707,
+        1003,
+        1699,
+        614,
+        23772,
+        6113,
+        1056,
+        7257,
+        496,
+        4108,
+        9299
+      ],
+      "mtp_ids": [
+        902,
+        506,
+        4403,
+        529,
+        7257,
+        496,
+        4108,
+        9299,
+        236764,
+        614,
+        5213,
+        24040,
+        831,
+        28707,
+        1018,
+        568,
+        74860,
+        1456,
+        185487,
+        607,
+        496,
+        808,
+        17070,
+        2109,
+        28707,
+        236829,
+        653,
+        496,
+        808,
+        171439,
+        85406,
+        28707,
+        17616,
+        563,
+        496,
+        5904,
+        1456,
+        531,
+        4187,
+        3530,
+        1960,
+        6035,
+        531,
+        910,
+        7041,
+        1594,
+        3636,
+        236761,
+        108,
+        8291,
+        563,
+        886,
+        10231,
+        1707,
+        1003,
+        1699,
+        614,
+        23772,
+        6113,
+        1056,
+        7257,
+        496,
+        4108,
+        9299
+      ],
+      "ar_text": "In the context of testing a web API, an **Acceptance Matrix** (often used interchangeably with a *Traceability Matrix* or a *Requirement Coverage Matrix*) is a tool used to map specific business requirements to their corresponding test cases.\n\nHere is one practical fact about using an acceptance matrix when testing a web API",
+      "mtp_text": "In the context of testing a web API, an **Acceptance Matrix** (often used interchangeably with a *Traceability Matrix* or a *Requirement Coverage Matrix*) is a tool used to map specific business requirements to their corresponding test cases.\n\nHere is one practical fact about using an acceptance matrix when testing a web API",
+      "first_generated_difference": null,
+      "generated_ids_equal": true,
+      "same_prefix_serial_vs_mtp": {
+        "rows": 64,
+        "bit_equal": true,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_median": 0.0,
+        "kl_p90": 0.0,
+        "kl_above_0_05_rate": 0.0,
+        "top1_agreement": 1.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_flips": [],
+        "flip_rows": []
+      },
+      "same_schedule_prefix_local_scalar_vs_batch": {
+        "rows": 84,
+        "bit_equal": true,
+        "kl_mean": 0.0,
+        "kl_p95": 0.0,
+        "kl_median": 0.0,
+        "kl_p90": 0.0,
+        "kl_above_0_05_rate": 0.0,
+        "top1_agreement": 1.0,
+        "kl_p99": 0.0,
+        "kl_max": 0.0,
+        "top1_flips": [],
+        "flip_rows": []
+      },
+      "ownership_checks_passed": true,
+      "repeat_equal": [
+        true,
+        true
+      ],
+      "after_unrelated_equal": true,
+      "trace": [
+        {
+          "start": 0,
+          "tokens": [
+            2,
+            105,
+            2364,
+            107,
+            24040,
+            831,
+            6113,
+            236787,
+            8082,
+            886,
+            10231,
+            1707,
+            1003,
+            7257,
+            496,
+            4108,
+            9299,
+            236761,
+            106,
+            107,
+            105,
+            4368,
+            107,
+            100,
+            45518,
+            107,
+            101
+          ],
+          "kwargs": {}
+        },
+        {
+          "start": 27,
+          "tokens": [
+            902,
+            506,
+            4403,
+            529,
+            7257
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 32,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 32,
+          "tokens": [
+            496,
+            4108,
+            9299,
+            236764,
+            614
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 37,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 37,
+          "tokens": [
+            5213,
+            24040,
+            831,
+            28707,
+            1018
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 42,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 42,
+          "tokens": [
+            568,
+            74860,
+            2760,
+            614,
+            122902
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 44,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 44,
+          "tokens": [
+            1456,
+            185487,
+            607,
+            614,
+            122902
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 47,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 47,
+          "tokens": [
+            496,
+            64861,
+            2109,
+            28707,
+            653
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 48,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 48,
+          "tokens": [
+            808,
+            17070,
+            2109,
+            28707,
+            236829
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 53,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 53,
+          "tokens": [
+            653,
+            808,
+            171439,
+            28707,
+            17616
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 54,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 54,
+          "tokens": [
+            496,
+            808,
+            171439,
+            28707,
+            17616
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 57,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 57,
+          "tokens": [
+            85406,
+            28707,
+            17616,
+            563,
+            496
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 62,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 62,
+          "tokens": [
+            5904,
+            1456,
+            531,
+            4187,
+            1418
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 66,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 66,
+          "tokens": [
+            3530,
+            1960,
+            6035,
+            531,
+            3530
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 70,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 70,
+          "tokens": [
+            910,
+            7041,
+            1594,
+            3636,
+            236761
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 75,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 75,
+          "tokens": [
+            108,
+            8291,
+            563,
+            886,
+            10231
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 80,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 80,
+          "tokens": [
+            1707,
+            1003,
+            1217,
+            614,
+            23772
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 82,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 82,
+          "tokens": [
+            1699,
+            614,
+            23772,
+            6113,
+            531
+          ],
+          "kwargs": {
+            "logits_rows": 5,
+            "verification": true
+          },
+          "keep": 86,
+          "kv_prefix_unchanged": true
+        },
+        {
+          "start": 86,
+          "tokens": [
+            1056,
+            7257,
+            496,
+            4108
+          ],
+          "kwargs": {
+            "logits_rows": 4,
+            "verification": true
+          },
+          "keep": 90,
+          "kv_prefix_unchanged": true
+        }
+      ],
+      "raw_logits": "/home/lhl/.local/state/hipengine/mtp-followup-20261017/gemma-prefix-attribution/strict-logits.npz",
+      "raw_sha256": "af2080a7a30e6e558b50ce6c6e8ceb71902bd7c0a87a317564569c39e59b4832"
+    }
+  ],
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 2,
+    "collected_at": "2026-10-17T18:47:18.608987+00:00",
+    "host_name": "gfx1151",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "e9a80c4f586553515cf340eb94c2eb09c1c8118b",
+    "git_branch": "gfx1151-mtp-default",
+    "staged_dirty": false,
+    "unstaged_dirty": true,
+    "untracked_dirty": true,
+    "untracked_count": 18,
+    "dirty": true,
+    "configured_backend": "auto",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "f28cfd664022342bce241e6236474be472a6133a1fbbf9c6c48f8db9153f0e99",
+      "size_bytes": 17010980576,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8504966000,
+        17009932000
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "UD-Q4_K_XL",
+    "kv_dtype": "bf16",
+    "command": [
+      "/home/lhl/hipEngine-main/.venv/bin/python",
+      "scripts/gemma4_mtp_prefix_attribution.py",
+      "--model",
+      "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+      "--draft",
+      "/models/gguf/gemma-4-26B-A4B-it-GGUF/MTP/mtp-gemma-4-26B-A4B-it-Q8_0.gguf",
+      "--directory",
+      "/home/lhl/.local/state/hipengine/mtp-followup-20261017/gemma-prefix-attribution"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": null,
+      "HIPENGINE_BUILD_CACHE_ROOT": null,
+      "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": null,
+    "timing_protocol": null,
+    "warmups": null,
+    "repetitions": null,
+    "profiler": null
+  },
+  "draft_identity": {
+    "path": "/home/lhl/models/gguf/gemma-4-26B-A4B-it-GGUF/MTP/mtp-gemma-4-26B-A4B-it-Q8_0.gguf",
+    "revision": null,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "d1a1c31a0af001d83777ca084e8b0b6a02ab1c16bfa77666cac61eebc5b9feec",
+      "size_bytes": 461766816,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        230359120,
+        460718240
+      ],
+      "exists": true,
+      "path_type": "file"
+    }
+  },
+  "strict_teacher": {
+    "teacher_ids": [
+      902,
+      506,
+      4403,
+      529,
+      7257,
+      496,
+      4108,
+      9299,
+      236764,
+      614,
+      5213,
+      24040,
+      831,
+      28707,
+      1018,
+      568,
+      74860,
+      1456,
+      185487,
+      607,
+      496,
+      808,
+      17070,
+      2109,
+      28707,
+      236829,
+      653,
+      496,
+      808,
+      171439,
+      85406,
+      28707,
+      17616,
+      563,
+      496,
+      5904,
+      1456,
+      531,
+      4187,
+      3530,
+      1960,
+      6035,
+      531,
+      910,
+      7041,
+      1594,
+      3636,
+      236761,
+      108,
+      8291,
+      563,
+      886,
+      10231,
+      1707,
+      1003,
+      1699,
+      614,
+      23772,
+      6113,
+      1056,
+      7257,
+      496,
+      4108,
+      9299
+    ],
+    "strict_vs_production_ar": {
+      "rows": 64,
+      "bit_equal": false,
+      "kl_mean": 0.0037790054721137793,
+      "kl_p95": 0.017204909084864477,
+      "kl_median": 2.214829376589337e-05,
+      "kl_p90": 0.007271931346498483,
+      "kl_above_0_05_rate": 0.015625,
+      "top1_agreement": 0.953125,
+      "kl_p99": 0.05926805998155219,
+      "kl_max": 0.09393656773037161,
+      "top1_flips": [
+        29,
+        38,
+        56
+      ],
+      "flip_rows": [
+        {
+          "row": 29,
+          "reference_id": 171439,
+          "candidate_id": 87732,
+          "kl": 0.09393656773037161,
+          "reference_logit_gap": 0.27555084228515625
+        },
+        {
+          "row": 38,
+          "reference_id": 4187,
+          "candidate_id": 5330,
+          "kl": 0.009253238763679223,
+          "reference_logit_gap": 0.21418190002441406
+        },
+        {
+          "row": 56,
+          "reference_id": 614,
+          "candidate_id": 625,
+          "kl": 0.009332039056952261,
+          "reference_logit_gap": 0.13454818725585938
+        }
+      ]
+    },
+    "strict_vs_production_mtp": {
+      "rows": 64,
+      "bit_equal": false,
+      "kl_mean": 0.003946432870115999,
+      "kl_p95": 0.018453464254212838,
+      "kl_median": 3.993749831758211e-05,
+      "kl_p90": 0.00668250898082617,
+      "kl_above_0_05_rate": 0.015625,
+      "top1_agreement": 0.953125,
+      "kl_p99": 0.0608360108704388,
+      "kl_max": 0.0820001047524268,
+      "top1_flips": [
+        17,
+        29,
+        56
+      ],
+      "flip_rows": [
+        {
+          "row": 17,
+          "reference_id": 1456,
+          "candidate_id": 11081,
+          "kl": 0.014838601586445585,
+          "reference_logit_gap": 0.2732200622558594
+        },
+        {
+          "row": 29,
+          "reference_id": 171439,
+          "candidate_id": 87732,
+          "kl": 0.0820001047524268,
+          "reference_logit_gap": 0.27555084228515625
+        },
+        {
+          "row": 56,
+          "reference_id": 614,
+          "candidate_id": 625,
+          "kl": 0.004369038287586417,
+          "reference_logit_gap": 0.13454818725585938
+        }
+      ]
+    },
+    "production_ar_vs_mtp": {
+      "rows": 64,
+      "bit_equal": false,
+      "kl_mean": 0.0008485634700454301,
+      "kl_p95": 0.0064684305321005735,
+      "kl_median": 1.0260784039428589e-05,
+      "kl_p90": 0.0016736625067618482,
+      "kl_above_0_05_rate": 0.0,
+      "top1_agreement": 0.96875,
+      "kl_p99": 0.0097269473689771,
+      "kl_max": 0.010353167996915994,
+      "top1_flips": [
+        17,
+        38
+      ],
+      "flip_rows": [
+        {
+          "row": 17,
+          "reference_id": 1456,
+          "candidate_id": 11081,
+          "kl": 0.010353167996915994,
+          "reference_logit_gap": 0.15684127807617188
+        },
+        {
+          "row": 38,
+          "reference_id": 5330,
+          "candidate_id": 4187,
+          "kl": 0.0009779359149819941,
+          "reference_logit_gap": 0.058628082275390625
+        }
+      ]
+    },
+    "raw_logits": "/home/lhl/.local/state/hipengine/mtp-followup-20261017/gemma-prefix-attribution/strict-teacher-cross-profile.npz",
+    "raw_sha256": "33de2945fab04b898535d6918017c48306b209f00be016e4f53b72408897412e"
+  },
+  "teacher_extension": {
+    "method": "cross_profile_teacher(args, report[profiles]); reuse original captures rather than rerun unchanged public checks",
+    "evaluator_sha256": "1d82020bd7c03fde2918728a12c0705da783481f795024aa6641e1407c1b24de"
+  },
+  "strict_prefill_ablation": {
+    "teacher_ids": [
+      902,
+      506,
+      4403,
+      529,
+      7257,
+      496,
+      4108,
+      9299,
+      236764,
+      614,
+      5213,
+      24040,
+      831,
+      28707,
+      1018,
+      568,
+      74860,
+      1456,
+      185487,
+      607,
+      496,
+      808,
+      17070,
+      2109,
+      28707,
+      236829,
+      653,
+      496,
+      808,
+      171439,
+      85406,
+      28707,
+      17616,
+      563,
+      496,
+      5904,
+      1456,
+      531,
+      4187,
+      3530,
+      1960,
+      6035,
+      531,
+      910,
+      7041,
+      1594,
+      3636,
+      236761,
+      108,
+      8291,
+      563,
+      886,
+      10231,
+      1707,
+      1003,
+      1699,
+      614,
+      23772,
+      6113,
+      1056,
+      7257,
+      496,
+      4108,
+      9299
+    ],
+    "prefill_variants_override": [
+      "gemma4_plain"
+    ],
+    "strict_vs_production_ar": {
+      "rows": 64,
+      "bit_equal": true,
+      "kl_mean": 0.0,
+      "kl_p95": 0.0,
+      "kl_median": 0.0,
+      "kl_p90": 0.0,
+      "kl_above_0_05_rate": 0.0,
+      "top1_agreement": 1.0,
+      "kl_p99": 0.0,
+      "kl_max": 0.0,
+      "top1_flips": [],
+      "flip_rows": []
+    },
+    "strict_vs_production_mtp": {
+      "rows": 64,
+      "bit_equal": false,
+      "kl_mean": 0.0011771682811597766,
+      "kl_p95": 0.0076786188222221965,
+      "kl_median": 5.328670298298395e-06,
+      "kl_p90": 0.0038444314277671613,
+      "kl_above_0_05_rate": 0.0,
+      "top1_agreement": 0.96875,
+      "kl_p99": 0.013294422920252411,
+      "kl_max": 0.019784415830983376,
+      "top1_flips": [
+        21,
+        56
+      ],
+      "flip_rows": [
+        {
+          "row": 21,
+          "reference_id": 808,
+          "candidate_id": 64861,
+          "kl": 0.009482839782204109,
+          "reference_logit_gap": 0.022840499877929688
+        },
+        {
+          "row": 56,
+          "reference_id": 614,
+          "candidate_id": 625,
+          "kl": 0.009206493942915738,
+          "reference_logit_gap": 0.13454818725585938
+        }
+      ]
+    },
+    "production_ar_vs_mtp": {
+      "rows": 64,
+      "bit_equal": false,
+      "kl_mean": 0.0011771682811597766,
+      "kl_p95": 0.0076786188222221965,
+      "kl_median": 5.328670298298395e-06,
+      "kl_p90": 0.0038444314277671613,
+      "kl_above_0_05_rate": 0.0,
+      "top1_agreement": 0.96875,
+      "kl_p99": 0.013294422920252411,
+      "kl_max": 0.019784415830983376,
+      "top1_flips": [
+        21,
+        56
+      ],
+      "flip_rows": [
+        {
+          "row": 21,
+          "reference_id": 808,
+          "candidate_id": 64861,
+          "kl": 0.009482839782204109,
+          "reference_logit_gap": 0.022840499877929688
+        },
+        {
+          "row": 56,
+          "reference_id": 614,
+          "candidate_id": 625,
+          "kl": 0.009206493942915738,
+          "reference_logit_gap": 0.13454818725585938
+        }
+      ]
+    },
+    "raw_logits": "/home/lhl/.local/state/hipengine/mtp-followup-20261017/gemma-prefix-attribution/strict-prefill-cross-profile.npz",
+    "raw_sha256": "ce3b95b95d9996833a8e516bdd108983bdbcb96c611bec822aa3e150a3fa2154",
+    "evaluator_sha256": "fffa63bcd48b4a75eaa6fe7ee508974aaeb04eff51e4569d2284763cc6e2a68d"
+  },
+  "summary_derivation": {
+    "source_report": "/home/lhl/.local/state/hipengine/mtp-followup-20261017/gemma-prefix-attribution/report-with-strict-teacher.json",
+    "source_sha256": "03593560e22aedac7ce5a972fe2e823ced6a5ba3d8b275c0ee3ddc88269825c9",
+    "summary_script_sha256": "a7ff615491f5612b7d298461ba475b38a91bbc43b426958742f7795fae84685b",
+    "method": "paired_summary over the SHA-256-verified stored full-vocabulary logits; no GPU rerun"
+  },
+  "interpretation": {
+    "policy": "docs/EXECUTION-PROFILES.md section 2.11 (sparse top-k MoE), not the generic maximum-KL cutoff",
+    "quality_gate": "not_evaluated: one general_en request, not the full multicategory/heldout/task packet",
+    "bounds": {
+      "kl_median": 0.001,
+      "kl_p90": 0.02,
+      "kl_above_0_05_rate_global": 0.03,
+      "kl_above_0_05_rate_category": 0.08,
+      "top1_agreement_global": 0.96,
+      "top1_agreement_category": 0.94
+    },
+    "observations": [
+      "Exact cursor, token-history, retained KV bytes and layer write offsets passed.",
+      "Strict public AR and MTP generated IDs and all committed logits matched.",
+      "Same-schedule MTP repeated three times and after an unrelated request with identical output.",
+      "Production AR and MTP each have 61/64 top-1 agreement against the strict chain. This is below the full-packet global top-1 bar but above the category bar; this single prompt is not a full-packet verdict.",
+      "Plain prefill removes all production AR difference; production MTP then has 62/64 top-1 agreement and zero rows above the damage line.",
+      "No arithmetic or default change is made on the basis of this diagnostic."
+    ]
+  }
+}

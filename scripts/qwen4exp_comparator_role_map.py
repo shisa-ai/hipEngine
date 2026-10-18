@@ -332,6 +332,9 @@ def map_hipengine(name: str, grid: tuple[str, str, str]) -> str:
         "rmsnorm", "silu_mul", "scaled_silu", "gated_mean_sigmoid",
         "f32_to_bf16", "bf16_to_f32", "f32_to_f16", "f16_to_f32",
         "shared_gate_combine",
+        # The dense prefill route's weight-operand converter: it writes the f16
+        # tiles a Q8_0 kernel loads, which is a dtype conversion, not a GEMM.
+        "tiles_to_f16w",
         "repeat_bf16_branches", "fillBuffer", "copyBuffer",
     ):
         if token in bare:

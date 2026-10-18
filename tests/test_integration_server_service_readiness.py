@@ -21,6 +21,7 @@ from hipengine.generation import (
     GenerationSubmission,
 )
 from hipengine.server import ServerConfig, create_app
+from hipengine.server.api import StartupFailure
 
 _PREFIX_CACHE = {
     "mode": "radix",
@@ -196,24 +197,27 @@ def test_ready_keeps_live_snapshot_metrics_for_healthy_service() -> None:
     assert engine.snapshot_calls == 1
 
 
-def test_ready_startup_not_ready_stays_503_with_healthy_service() -> None:
+def test_failed_startup_records_the_stage_and_ends_the_process() -> None:
+    """A failed eager stage is recorded for ``/ready``, then startup exits.
+
+    Serving 503s from a process with nothing behind it only hides the fault, so
+    the recorded diagnosis is what a supervisor and ``/ready`` can act on before
+    the process ends.
+    """
+
     service = _FakeServiceHealth()
     engine = _ScratchProbeFailureEngine(service, snapshot=_healthy_snapshot)
     app = create_app(_config(eager_load=True, eager_load_max_tokens=2), llm=engine)
 
-    with TestClient(app) as client:
-        response = client.get("/ready")
+    with pytest.raises(StartupFailure):
+        with TestClient(app):
+            pass
 
-    assert response.status_code == 503
-    body = response.json()
-    assert body["ready"] is False
-    assert body["status"] == "error"
-    assert body["startup"]["error"]["stage"] == "scratch_probe"
-    assert body["startup"]["warmup_complete"] is False
-    assert body["service"]["accepting_requests"] is True
-    assert body["diagnostics"][0] == (
-        "server startup is not ready; check startup.error and server logs"
-    )
+    readiness = app.state.hipengine_readiness
+    assert readiness.ready is False
+    assert readiness.status == "error"
+    assert readiness.startup_error["stage"] == "scratch_probe"
+    assert readiness.warmup_complete is False
 
 
 def test_ready_without_service_health_hook_preserves_startup_behavior() -> None:

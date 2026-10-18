@@ -1,0 +1,222 @@
+{
+  "unit": "ud-gfx1100-iq-dense-strict-row-slab-cover",
+  "date": "2026-09-13",
+  "status": "retained",
+  "host": {
+    "name": "epyc",
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "device_index": 1,
+    "HIP_VISIBLE_DEVICES": "1",
+    "ROCR_VISIBLE_DEVICES": null
+  },
+  "change": {
+    "summary": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py _row_batch() now returns the smallest supported row slab at or above the row count instead of the largest at or below it, so grid.y is 1 at the native verifier and every weight slice is read once instead of ceil(rows/R) times.",
+    "file": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py",
+    "owner": "gguf_iq_dense_strict_kernel (Q3_K, IQ3_S, IQ3_XXS, IQ2_S, IQ2_XS)",
+    "rollback_env": "HIPENGINE_GGUF_IQ_DENSE_ROW_BATCH_DOWN=1",
+    "arithmetic_neutral_basis": "gguf_iq_dense.hip declares every R bit-identical (row-slab only changes which prompt rows share a block); padding rows load 0.0f and are never stored."
+  },
+  "verifier_census_ab": {
+    "command": "scripts/gguf_mtp_verifier_rocprof.py --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m --mode block-verify --block-rows 3 --block-verify-mode native --native-spec-target-cycle --steps 12 --warmup 3",
+    "interleaved": true,
+    "runs": [
+      {
+        "rule": "down",
+        "total_kernel_ms_per_step": 38.164,
+        "strict_family_ms_per_step": 4.246,
+        "calls_per_step": 11
+      },
+      {
+        "rule": "cover",
+        "total_kernel_ms_per_step": 37.008,
+        "strict_family_ms_per_step": 3.168,
+        "calls_per_step": 11
+      },
+      {
+        "rule": "down",
+        "total_kernel_ms_per_step": 38.307,
+        "strict_family_ms_per_step": 4.264,
+        "calls_per_step": 11
+      },
+      {
+        "rule": "cover",
+        "total_kernel_ms_per_step": 37.069,
+        "strict_family_ms_per_step": 3.19,
+        "calls_per_step": 11
+      },
+      {
+        "rule": "down",
+        "total_kernel_ms_per_step": 38.355,
+        "strict_family_ms_per_step": 4.283,
+        "calls_per_step": 11
+      }
+    ],
+    "strict_family_delta_pct": -25.4,
+    "total_kernel_delta_pct": -3.23,
+    "bands_overlap": false,
+    "per_call": {
+      "shape_17408x5120_q3_k": {
+        "down_us": 380.3,
+        "cover_us": 252.4
+      },
+      "note": "Q3_K N=17408 K=5120: 78.0 MB at R=2 (205 GB/s) vs 39.0 MB at R=4 (155 GB/s), so the kernel is instruction-bound and the win is traffic, not roofline."
+    }
+  },
+  "numerics_gate": {
+    "command": "scripts/ud_mtp_ar_verify_numerics_gate.py --model <artifact> --quant <axis> --json <out>",
+    "envelope": {
+      "mean": 0.001,
+      "p95": 0.005,
+      "p99": 0.02,
+      "max": 0.05,
+      "top1_overall": 0.99
+    },
+    "ud_q4_k_m_down_rule": {
+      "mean_kl": 3.435117286107088e-05,
+      "p95": 0.00021118801655917104,
+      "p99": 0.0002903925768989859,
+      "max": 0.0002951686174676826,
+      "top1_agreement": 1.0,
+      "rows": 162,
+      "deterministic": true
+    },
+    "ud_q4_k_m_cover_rule": {
+      "mean_kl": 3.435117286107088e-05,
+      "p95": 0.00021118801655917104,
+      "p99": 0.0002903925768989859,
+      "max": 0.0002951686174676826,
+      "top1_agreement": 1.0,
+      "rows": 162,
+      "deterministic": true
+    },
+    "ud_q4_k_s_cover_rule": {
+      "mean_kl": 1.8712441716354387e-05,
+      "p95": 0.00011148619063889427,
+      "p99": 0.000370414619277478,
+      "max": 0.0004865351336352168,
+      "top1_agreement": 1.0,
+      "rows": 162,
+      "deterministic": true
+    },
+    "note": "The two UD-Q4_K_M rows are identical to the last digit, which is the direct confirmation of the declared bit-identity across R."
+  },
+  "tests": {
+    "file": "tests/test_gguf_ud_dense_rowbatch.py",
+    "command": "HIP_VISIBLE_DEVICES=1 pytest tests/test_gguf_ud_dense_rowbatch.py -q",
+    "result": "206 passed, including the real-tensor R=1 vs R in {2,4,8} bit-identity comparison"
+  },
+  "paired_suite": {
+    "command": "scripts/ud_mtp_paired.py --runs 2 --device-index 1 --expect-device \"7900 XTX\"",
+    "prior_artifact": "benchmarks/results/2026-09-13-ud-gfx1100-q5t16-single-wave-rowtile.json",
+    "arms": {
+      "ud-q4-k-m": {
+        "true_ar_tok_s": 31.912717187521253,
+        "mtp_b3_tok_s": 49.40811720531191,
+        "mtp_vs_true_ar": 1.5482265867549454,
+        "binding_passed": true,
+        "binding_gates": {
+          "all_gpu_accept_match_cpu": true,
+          "deterministic_repeats": true,
+          "evidence_complete": true,
+          "faster_than_true_ar": true,
+          "timing_evidence_valid": true,
+          "true_ar_denominator_present": true
+        },
+        "deterministic": true,
+        "suite_status": "complete_exact",
+        "divergent_rows": [],
+        "prior_mtp_b3_tok_s": 49.40939358641746,
+        "mtp_b3_delta_pct": -0.002583276200940343
+      },
+      "ud-q4-k-s": {
+        "true_ar_tok_s": 31.303390853053134,
+        "mtp_b3_tok_s": 48.54789149517095,
+        "mtp_vs_true_ar": 1.550882833207058,
+        "binding_passed": true,
+        "binding_gates": {
+          "all_gpu_accept_match_cpu": true,
+          "deterministic_repeats": true,
+          "evidence_complete": true,
+          "faster_than_true_ar": true,
+          "timing_evidence_valid": true,
+          "true_ar_denominator_present": true
+        },
+        "deterministic": true,
+        "suite_status": "complete_exact",
+        "divergent_rows": [],
+        "prior_mtp_b3_tok_s": 46.95524161831739,
+        "mtp_b3_delta_pct": 3.391846835332357
+      },
+      "plain-q4-k-m": {
+        "true_ar_tok_s": 37.28275269849534,
+        "mtp_b3_tok_s": 63.997125953363046,
+        "mtp_vs_true_ar": 1.716534357613188,
+        "binding_passed": true,
+        "binding_gates": {
+          "all_gpu_accept_match_cpu": true,
+          "deterministic_repeats": true,
+          "evidence_complete": true,
+          "faster_than_true_ar": true,
+          "timing_evidence_valid": true,
+          "true_ar_denominator_present": true
+        },
+        "deterministic": true,
+        "suite_status": "complete_exact",
+        "divergent_rows": [],
+        "prior_mtp_b3_tok_s": 63.88520864404061,
+        "mtp_b3_delta_pct": 0.17518501026743127
+      },
+      "plain-q4-k-s": {
+        "true_ar_tok_s": 39.81511487988844,
+        "mtp_b3_tok_s": 66.34409897643533,
+        "mtp_vs_true_ar": 1.6663043463915086,
+        "binding_passed": true,
+        "binding_gates": {
+          "all_gpu_accept_match_cpu": true,
+          "deterministic_repeats": true,
+          "evidence_complete": true,
+          "faster_than_true_ar": true,
+          "timing_evidence_valid": true,
+          "true_ar_denominator_present": true
+        },
+        "deterministic": true,
+        "suite_status": "correctness_failed",
+        "divergent_rows": [
+          "general_ja_plan#run0",
+          "general_ja_plan#run1"
+        ],
+        "prior_mtp_b3_tok_s": 66.70854421944935,
+        "mtp_b3_delta_pct": -0.5463246834095381
+      }
+    },
+    "comparisons": {
+      "q4_k_m": {
+        "gap_to_plain_pct": {
+          "mtp_b3": 22.796349884028633,
+          "true_ar": 14.403538157177998
+        },
+        "plain_label": "plain-q4-k-m",
+        "ud_label": "ud-q4-k-m",
+        "ud_over_plain": {
+          "mtp_b3": 0.7720365011597137,
+          "true_ar": 0.85596461842822
+        }
+      },
+      "q4_k_s": {
+        "gap_to_plain_pct": {
+          "mtp_b3": 26.824100041791798,
+          "true_ar": 21.378122485676364
+        },
+        "plain_label": "plain-q4-k-s",
+        "ud_label": "ud-q4-k-s",
+        "ud_over_plain": {
+          "mtp_b3": 0.731758999582082,
+          "true_ar": 0.7862187751432363
+        }
+      }
+    },
+    "separation": "not_separated_from_run_to_run_spread",
+    "note": "UD-Q4_K_M is flat (-0.00%) and UD-Q4_K_S +3.39% tracks an AR denominator that moved 30.428 -> 31.303; the retention rests on the verifier sub-window A/B and the exact section-6.1 identity."
+  }
+}

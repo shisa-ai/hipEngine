@@ -50,6 +50,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out,
     gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out,
+    gguf_q4_k_selected_dual_wmma_prefill_compact_comp_bf16_bf16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_fp16_fp16_out,
@@ -58,9 +59,11 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     q4_k_predecode_scale_min_sidemeta,
     plan_gguf_q4_k_selected_prefill_build,
     selected_dual_wmma_prefill_compact_default_tiles,
+    gguf_q4_k_selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out,
 )
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType
+from tests._gguf_synthetic_weights import make_q5_k_weight
 from tests.test_gpu_gguf_q4_k_gemv import make_q4_k_weight
 
 
@@ -324,10 +327,19 @@ def _decode_output(host: np.ndarray, dtype: str) -> np.ndarray:
     raise ValueError(dtype)
 
 
-def _make_expert_q4_k_weights(
-    *, num_experts: int, out_features: int, in_features: int, offset: int
+def _make_expert_qk_weights(
+    *,
+    num_experts: int,
+    out_features: int,
+    in_features: int,
+    offset: int,
+    quant: str = "gguf_q4_k",
 ) -> np.ndarray:
-    base = make_q4_k_weight(out_features, in_features)
+    make_weight = {
+        "gguf_q4_k": make_q4_k_weight,
+        "gguf_q5_k": make_q5_k_weight,
+    }[quant]
+    base = make_weight(out_features, in_features)
     return np.ascontiguousarray(
         np.stack([np.roll(base, shift=offset + expert, axis=0) for expert in range(num_experts)], axis=0)
     )
@@ -341,6 +353,7 @@ def _build_compact_fixture(
     out_features_b: int,
     dtype: str,
     seed: int = 0,
+    quant: str = "gguf_q4_k",
 ) -> CompactFixture:
     num_experts = len(counts)
     compact_rows = int(sum(counts))
@@ -362,32 +375,38 @@ def _build_compact_fixture(
     x_host = _prepare_input(x_f32, dtype)
     x_ref = _decode_input_for_reference(x_host, dtype)
 
-    qweight_a = _make_expert_q4_k_weights(
+    qweight_a = _make_expert_qk_weights(
         num_experts=num_experts,
         out_features=out_features_a,
         in_features=in_features,
         offset=0,
+        quant=quant,
     )
-    qweight_b = _make_expert_q4_k_weights(
+    qweight_b = _make_expert_qk_weights(
         num_experts=num_experts,
         out_features=out_features_b,
         in_features=in_features,
         offset=3,
+        quant=quant,
     )
 
     reference = np.zeros(
         (compact_rows, out_features_a + out_features_b), dtype=np.float32
     )
+    qtype = {
+        "gguf_q4_k": GGMLQuantizationType.Q4_K,
+        "gguf_q5_k": GGMLQuantizationType.Q5_K,
+    }[quant]
     for expert, count in enumerate(counts):
         if count == 0:
             continue
         start = int(expert_start_compact[expert])
         stop = start + count
         reference[start:stop, :out_features_a] = gguf_quant_gemv(
-            x_ref[start:stop], qweight_a[expert], GGMLQuantizationType.Q4_K
+            x_ref[start:stop], qweight_a[expert], qtype
         )
         reference[start:stop, out_features_a:] = gguf_quant_gemv(
-            x_ref[start:stop], qweight_b[expert], GGMLQuantizationType.Q4_K
+            x_ref[start:stop], qweight_b[expert], qtype
         )
 
     return CompactFixture(
@@ -614,6 +633,153 @@ def test_grouped_rowbatch8_matches_strict_selected_dual_bits() -> None:
             free(device, runtime=runtime)
 
 
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_grouped_rowbatch8_fused_stride_matches_the_two_tensor_form_bits() -> None:
+    """A fused ``gate_up`` allocation must reproduce the two-tensor form's bits.
+
+    Gemma's ``gate_up`` is one allocation holding both halves, so the grouped
+    owner has to take the fused expert stride (``out_features_a +
+    out_features_b``) and write both halves into one output row. Either stride
+    being wrong reads a neighbouring expert's rows or interleaves the halves,
+    and neither fails loudly, so this asserts bit-equality against the
+    two-tensor form that ``test_grouped_rowbatch8_matches_strict_selected_dual_bits``
+    already pins to the strict selected dual.
+    """
+
+    from hipengine.core.hip import get_hip_runtime
+
+    fixture = _build_compact_fixture(
+        counts=[9, 0, 17, 3] + [0] * 63 + [5],
+        in_features=256,
+        out_features_a=32,
+        out_features_b=32,
+        dtype="bf16",
+        seed=23,
+    )
+    assert fixture.out_features_a == fixture.out_features_b
+    fused_width = 2 * fixture.out_features_a
+    # One allocation per expert holding both halves, which is the layout Gemma's
+    # gate_up tensor uses.
+    fused_weights = np.ascontiguousarray(
+        np.concatenate([fixture.qweight_a, fixture.qweight_b], axis=1)
+    )
+    assert fused_weights.shape == (
+        fixture.num_experts,
+        fused_width,
+        fixture.qweight_a.shape[-1],
+    )
+
+    runtime = get_hip_runtime()
+    devices = []
+    outputs = []
+    try:
+        # The two-tensor form strides experts by one half's width, so it needs
+        # each half in its own allocation; the fused form needs the fused
+        # allocation. Both are uploaded so the two runs read the same weights.
+        two_tensor_a = np.ascontiguousarray(fixture.qweight_a)
+        two_tensor_b = np.ascontiguousarray(fixture.qweight_b)
+        for host in (
+            fixture.x_host,
+            fixture.expert_start_compact,
+            two_tensor_a,
+            two_tensor_b,
+            fused_weights,
+        ):
+            device = malloc(host.nbytes, runtime=runtime)
+            copy_host_to_device(device, host_array_ptr(host), runtime=runtime)
+            devices.append(device)
+        # The two-tensor form writes one half-width buffer per side; the fused
+        # form writes both halves into one full-width buffer. The amortized
+        # owner gets its own fused buffer so its bits can be compared.
+        for width in (
+            fixture.out_features_a,
+            fixture.out_features_a,
+            fused_width,
+            fused_width,
+        ):
+            outputs.append(
+                malloc(
+                    fixture.compact_rows * width * np.dtype(np.uint16).itemsize,
+                    runtime=runtime,
+                )
+            )
+        # Two-tensor form: separate outputs, each side's own row stride.
+        gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out(
+            devices[0].ptr,
+            devices[1].ptr,
+            devices[2].ptr,
+            devices[3].ptr,
+            outputs[0].ptr,
+            outputs[1].ptr,
+            fixture.compact_rows,
+            fixture.num_experts,
+            fixture.in_features,
+            fixture.out_features_a,
+            runtime=runtime,
+        )
+        # Fused form: one output, both strides the fused width, up origin one
+        # gate width into the row, and the up half's weights one half into the
+        # fused weight allocation.
+        row_bytes = (fixture.in_features // 256) * 144
+        gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out(
+            devices[0].ptr,
+            devices[1].ptr,
+            devices[4].ptr,
+            devices[4].ptr + fixture.out_features_a * row_bytes,
+            outputs[2].ptr,
+            outputs[2].ptr + fixture.out_features_a * np.dtype(np.uint16).itemsize,
+            fixture.compact_rows,
+            fixture.num_experts,
+            fixture.in_features,
+            fixture.out_features_a,
+            output_row_stride=fused_width,
+            expert_stride_rows=fused_width,
+            runtime=runtime,
+        )
+        # Amortized form: same fused layout, but each CTA covers four output
+        # columns and reuses the input row batch across them. The loop nest is
+        # the only difference, so the bits must match the row-batch owner's.
+        gguf_q4_k_selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out(
+            devices[0].ptr,
+            devices[1].ptr,
+            devices[4].ptr,
+            devices[4].ptr + fixture.out_features_a * row_bytes,
+            outputs[3].ptr,
+            outputs[3].ptr + fixture.out_features_a * np.dtype(np.uint16).itemsize,
+            fixture.compact_rows,
+            fixture.num_experts,
+            fixture.in_features,
+            fixture.out_features_a,
+            output_row_stride=fused_width,
+            expert_stride_rows=fused_width,
+            runtime=runtime,
+        )
+        got = []
+        for output, width in zip(
+            outputs,
+            (
+                fixture.out_features_a,
+                fixture.out_features_a,
+                fused_width,
+                fused_width,
+            ),
+            strict=True,
+        ):
+            host = np.empty((fixture.compact_rows, width), dtype=np.uint16)
+            copy_device_to_host(
+                host_array_ptr(host), output, host.nbytes, runtime=runtime
+            )
+            got.append(host)
+        np.testing.assert_array_equal(got[2][:, : fixture.out_features_a], got[0])
+        np.testing.assert_array_equal(got[2][:, fixture.out_features_a :], got[1])
+        np.testing.assert_array_equal(got[3], got[2])
+    finally:
+        for output in reversed(outputs):
+            free(output, runtime=runtime)
+        for device in reversed(devices):
+            free(device, runtime=runtime)
+
+
 def _run_selected_dual_gpu(
     fixture: CompactFixture,
     dtype: str,
@@ -621,6 +787,7 @@ def _run_selected_dual_gpu(
     hot_fulltile: bool = False,
     hot_threshold: int = 64,
     sidemeta: bool = False,
+    compensated: bool = False,
 ) -> np.ndarray:
     from hipengine.core.hip import get_hip_runtime
 
@@ -631,7 +798,10 @@ def _run_selected_dual_gpu(
         (fixture.compact_rows, fixture.out_features_a + fixture.out_features_b),
         dtype=out_dtype,
     )
-    if sidemeta:
+    if compensated:
+        assert dtype == "bf16", "compensated path is only exported for bf16"
+        wrapper = gguf_q4_k_selected_dual_wmma_prefill_compact_comp_bf16_bf16_out
+    elif sidemeta:
         wrapper = (
             gguf_q4_k_selected_dual_wmma_prefill_compact_sidemeta_bf16_bf16_out
             if dtype == "bf16"
@@ -770,6 +940,43 @@ def test_gguf_q4_k_selected_wmma_bf16_matches_cpu_selected_reference(
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize(
+    ("counts", "in_features", "out_features_a", "out_features_b"), _SELECTED_CASES
+)
+def test_gguf_q4_k_selected_wmma_compensated_beats_plain_against_reference(
+    counts: list[int], in_features: int, out_features_a: int, out_features_b: int
+) -> None:
+    """The compensated path must track the strict f32 reference far more closely.
+
+    The plain kernel rounds every dequantised weight to fp16 (~2^-11 relative).
+    The compensated kernel carries an fp16 high part plus an fp16 residual, so it
+    should agree with the strict CPU reference to roughly fp16*fp16, and must be
+    strictly closer than the plain kernel on the same fixture. That ordering is
+    the kernel-level statement behind the end-to-end ``kl_max`` measurement
+    (0.182 plain against 0.061 compensated on 1024 prompt tokens).
+    """
+
+    fixture = _build_compact_fixture(
+        counts=counts,
+        in_features=in_features,
+        out_features_a=out_features_a,
+        out_features_b=out_features_b,
+        dtype="bf16",
+    )
+    plain = _run_selected_dual_gpu(fixture, "bf16")
+    compensated = _run_selected_dual_gpu(fixture, "bf16", compensated=True)
+    reference = fixture.reference.astype(np.float32)
+
+    plain_err = np.abs(plain.astype(np.float32) - reference).max()
+    comp_err = np.abs(compensated.astype(np.float32) - reference).max()
+    assert comp_err <= plain_err, (comp_err, plain_err)
+
+    # bf16 output quantisation dominates the residual, so compare against the
+    # exact f32 accumulator through the same bf16 rounding the kernel applies.
+    np.testing.assert_allclose(compensated, fixture.reference, rtol=2.0e-3, atol=1.0e-1)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(
     ("counts", "in_features", "out_features_a", "out_features_b"),
     [
         pytest.param([5, 11, 0, 23], 256, 32, 16, id="fp16-uneven-empty"),
@@ -793,7 +1000,7 @@ def test_gguf_q4_k_selected_wmma_fp16_matches_cpu_selected_reference(
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_p9_c5_q4_k_predecode_scale_min_sidemeta_shape_and_values() -> None:
-    raw = _make_expert_q4_k_weights(num_experts=2, out_features=4, in_features=256, offset=1)
+    raw = _make_expert_qk_weights(num_experts=2, out_features=4, in_features=256, offset=1)
     sidemeta = q4_k_predecode_scale_min_sidemeta(raw)
     assert sidemeta.shape == (2, 4, 1, 8, 2)
     assert sidemeta.dtype == np.float16

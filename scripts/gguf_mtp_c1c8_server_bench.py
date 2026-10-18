@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 from datetime import datetime, timezone
@@ -19,13 +20,21 @@ from typing import Any, Mapping, Sequence
 
 from fastapi.testclient import TestClient
 
-from hipengine import LLM
-from hipengine.benchmark.provenance import collect_model_identity
-from hipengine.core.memory import memory_stats
-from hipengine.kernels.backends import backend_package_capability
-from hipengine.server.api import ServerConfig, create_app
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
+# The venv installs ``hipengine`` as an editable pointing at another worktree,
+# and running this file puts ``scripts/`` at ``sys.path[0]``, so ``hipengine``
+# would otherwise resolve to that other tree and the bench would silently
+# measure the wrong source. Put this worktree first, as every sibling script
+# does.
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from hipengine import LLM  # noqa: E402
+from hipengine.benchmark.provenance import collect_model_identity  # noqa: E402
+from hipengine.core.memory import memory_stats  # noqa: E402
+from hipengine.kernels.backends import backend_package_capability  # noqa: E402
+from hipengine.server.api import ServerConfig, create_app  # noqa: E402
+
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
 DEFAULT_PROMPTS = REPO_ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
 FULL_PROMPT_IDS = (
@@ -404,7 +413,8 @@ def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
     budget = int(kwargs.get("candidate_budget", 2))
     # The caller owns the diagnostic width. This supports the independently
     # qualified gfx1100/gfx1151 C8 protocols without turning the diagnostic
-    # resolver into production admission.
+    # resolver into production admission. Admission stays on the physical axes
+    # the engine's own resolver uses: width, depth, sampling mode, memory fit.
     max_realized_group_rows = max(
         1,
         int(kwargs.get("max_realized_group_rows", 8)),
@@ -413,14 +423,10 @@ def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
         1 <= rows <= max_realized_group_rows
         and budget in {1, 2, 3}
         and kwargs["sampling_mode"] == "greedy_fast"
-        and int(kwargs["context_tokens"]) <= 95
-        and int(kwargs["output_horizon_tokens"]) == 24
         and kwargs["memory_fit"]
     )
     key = {
         "realized_group_rows": rows,
-        "context_tokens": int(kwargs["context_tokens"]),
-        "output_horizon_tokens": int(kwargs["output_horizon_tokens"]),
         "candidate_budget": budget,
     }
     digest = hashlib.sha256(json.dumps(key, sort_keys=True).encode("utf-8")).hexdigest()
@@ -431,8 +437,6 @@ def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
     static_key = {
         "candidate_budget": budget,
         "sampling_mode": str(kwargs["sampling_mode"]),
-        "context_tokens": int(kwargs["context_tokens"]),
-        "output_horizon_tokens": int(kwargs["output_horizon_tokens"]),
         "memory_fit": bool(kwargs["memory_fit"]),
         "max_realized_group_rows": max_realized_group_rows,
     }
@@ -1056,14 +1060,31 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     requested_profile = (
         None if args.execution_profile == "default" else str(args.execution_profile)
     )
-    llm = LLM(
-        str(args.model),
-        backend=str(args.backend),
-        execution_profile=requested_profile,
-        max_active_requests=resident_capacity,
-        max_sequence_length=int(args.max_sequence_length),
-        speculative_candidate_budget=int(args.candidate_budget),
-    )
+    scope_grant = None
+    if args.mtp_scope_grant:
+        # A UD artifact is certified for the ``ar`` scope only until the U6 MTP
+        # pin mints, and the pin needs the width evidence this run produces.
+        # Grant the scope in process, as ``ud_mtp_paired`` does, so the cell can
+        # be measured; the run is a candidate and its rows are marked diagnostic
+        # by ``--generation2-diagnostic``. Nothing is retained from a grant.
+        from ud_mtp_paired import mtp_scope_granted
+
+        scope_grant = mtp_scope_granted({str(args.quant)})
+        scope_grant.__enter__()
+    try:
+        llm = LLM(
+            str(args.model),
+            backend=str(args.backend),
+            execution_profile=requested_profile,
+            max_active_requests=resident_capacity,
+            max_sequence_length=int(args.max_sequence_length),
+            speculative_candidate_budget=int(args.candidate_budget),
+            kv_storage=args.kv_storage,
+        )
+    except BaseException:
+        if scope_grant is not None:
+            scope_grant.__exit__(None, None, None)
+        raise
     runtime_profile: dict[str, Any] = {}
     prefill_probe: _NativePrefillProbe | None = None
     try:
@@ -1111,11 +1132,23 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 ),
                 speculative_candidate_budget=int(args.candidate_budget),
                 shutdown_grace_seconds=5.0,
+                kv_storage=str(args.kv_storage or "auto"),
             ),
             llm=llm,
         )
         cells: list[dict[str, Any]] = []
+        kv_capability: dict[str, Any] = {}
         with TestClient(app) as client:
+            ready = client.get("/ready").json()
+            kv_capability = dict((ready.get("model") or {}).get("kv_capability") or {})
+            effective_storage = kv_capability.get("effective_kv_storage")
+            if args.kv_storage is not None and str(effective_storage) != str(
+                args.kv_storage
+            ):
+                raise RuntimeError(
+                    f"requested kv_storage {args.kv_storage!r} resolved to "
+                    f"{effective_storage!r}: {kv_capability.get('reason')}"
+                )
             for width in widths:
                 for arm in ARMS:
                     _run_arm(
@@ -1201,6 +1234,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         # TestClient owns current-server shutdown. Older servers leave close idempotent.
     finally:
         llm.close()
+        if scope_grant is not None:
+            scope_grant.__exit__(None, None, None)
     summary = summarize(
         cells,
         widths=widths,
@@ -1252,7 +1287,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "timing": "blocking OpenAI barrier-to-last-completion complete wall",
             "capture_prefill_attribution": bool(args.capture_prefill_attribution),
+            "requested_kv_storage": args.kv_storage,
+            "effective_kv_storage": kv_capability.get("effective_kv_storage"),
         },
+        "kv_capability": kv_capability,
         "runtime_profile": runtime_profile,
         "summary": summary,
         "acceptance": summarize_acceptance(cells),
@@ -1276,6 +1314,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--backend", default="hip_gfx1100")
     parser.add_argument("--quant", default="gguf_q4_k_m")
+    parser.add_argument(
+        "--kv-storage",
+        default=None,
+        help=(
+            "KV storage cell this run measures: omit for the product default, or "
+            "'int8_per_token_head' for the compressed cell. The run records the "
+            "cell it resolved and refuses to write an artifact when the server's "
+            "/ready reports a different one, because an artifact that cannot say "
+            "which cell it measured cannot be told apart from a default-KV run. "
+            "An unqualified artifact falls back to BF16 unless the unverified-INT8 "
+            "diagnostic override is set."
+        ),
+    )
     parser.add_argument(
         "--execution-profile",
         choices=("strict", "production", "default"),
@@ -1331,6 +1382,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--correctness-contract",
         choices=_CORRECTNESS_CONTRACTS,
         default="ar_exact",
+    )
+    parser.add_argument(
+        "--mtp-scope-grant",
+        action="store_true",
+        help=(
+            "candidate mode: grant the preset's MTP scope in process so a width "
+            "cell can be measured before the U6 pin mints. Requires "
+            "--generation2-diagnostic; rows are diagnostic, never a rate claim"
+        ),
     )
     parser.add_argument("--output", type=Path, required=True)
     return parser

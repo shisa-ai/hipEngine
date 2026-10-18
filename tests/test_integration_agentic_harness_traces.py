@@ -49,7 +49,8 @@ _REQUIRED_AGENTIC_TRACE_COVERAGE: dict[str, frozenset[str]] = {
             "required_tool_missing_non_streaming",
             "specific_tool_wrong_function_non_streaming",
             "tool_choice_none_rejects_tool_call_non_streaming",
-            "parallel_tool_calls_without_opt_in_non_streaming",
+            "parallel_tool_calls_default_on_non_streaming",
+            "parallel_tool_calls_false_rejected_non_streaming",
             "parallel_tool_calls_streaming",
         }
     ),

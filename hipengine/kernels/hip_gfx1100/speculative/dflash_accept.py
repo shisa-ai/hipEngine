@@ -426,7 +426,19 @@ def dflash_accept_chain_i32_native_cycle(
 
 
 def register_dflash_accept_kernels(*, replace: bool = True) -> None:
-    for quant in ("w4_paro", "gguf_ud_q3_k_m", "gguf_q4_k_m", "gguf_q4_k_s"):
+    # The accept chain operates on int32 accept buffers, not on weights, so it
+    # is registered once per session quant identity that reaches it. The UD
+    # Q4_K_M/Q4_K_S identities are the UD dense lanes' session quant keys (the
+    # same keys their prefill/route policy tables use), not a fifth registry
+    # axis.
+    for quant in (
+        "w4_paro",
+        "gguf_ud_q3_k_m",
+        "gguf_ud_q4_k_m",
+        "gguf_ud_q4_k_s",
+        "gguf_q4_k_m",
+        "gguf_q4_k_s",
+    ):
         register(
             KernelKey("hip_gfx1100", "dflash_accept_chain", quant, "i32"),
             dflash_accept_chain_i32,

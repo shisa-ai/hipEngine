@@ -1,0 +1,66 @@
+"""Shared gfx11 VibeVoice registrations, installed by each backend peer."""
+from hipengine.kernels.registry import KernelKey, register, is_registered
+from hipengine.kernels.hip_gfx1100.vibevoice import attention_spans_splitk
+from hipengine.kernels.hip_gfx1100.vibevoice import encoder
+from hipengine.kernels.hip_gfx1100.vibevoice import decoder as tts_decoder
+from hipengine.kernels.hip_gfx1100.vibevoice import diffusion as tts_diffusion
+from hipengine.kernels.hip_gfx1100.convert import cast
+from hipengine.kernels.hip_gfx1100.fused import paro_silu
+from hipengine.kernels.hip_gfx1100.linear import dense_gemv
+from hipengine.kernels.hip_gfx1100.rotary import qwen35_rotary
+
+
+def frontend_gemm(x,w,out,rows,inputs,outputs,*,runtime):
+    # The semantic encoder's deep stages collapse to a handful of rows while their
+    # width grows to 2048, so the GEMMs are weight-traffic bound and the BM=128
+    # tile leaves only 64 workgroups for 40 CUs. The BM=64 twin carries the same
+    # arithmetic -- per-element accumulation is k0-major then kk-major, which the
+    # column tile does not affect -- and is verified bit-identical, so this is a
+    # pure scheduling change, not a numerical one.
+    if outputs % 128 == 0 and inputs % 32 == 0:
+        fn = (dense_gemv.dense_prefill_wmma_out_bf16_m64 if rows < 64
+              else dense_gemv.dense_prefill_wmma_out_bf16)
+    else:
+        fn = dense_gemv.dense_prefill_gemm_out_bf16
+    fn(x,w,out,rows,inputs,outputs,stream=0,runtime=runtime)
+
+
+def frontend_gemm_strict(x,w,out,rows,inputs,outputs,*,runtime):
+    dense_gemv.dense_prefill_gemm_out_bf16(x,w,out,rows,inputs,outputs,stream=0,runtime=runtime)
+
+
+def incremental_prefill(runner,hidden_rows,rows,start):
+    from hipengine.core.runtime import MemcpyKind
+    width = runner.spec.hidden_size*2
+    for row in range(rows):
+        runner.runtime.memcpy(runner._hidden.ptr,hidden_rows.ptr+row*width,width,MemcpyKind.DEVICE_TO_DEVICE)
+        runner.forward_layers(start+row)
+        runner.runtime.memcpy(hidden_rows.ptr+row*width,runner._hidden.ptr,width,MemcpyKind.DEVICE_TO_DEVICE)
+
+
+def batched_prefill(runner,hidden_rows,rows,start):
+    runner._prefill_batched(hidden_rows,rows,start)
+
+
+def register_vibevoice_kernels(backend):
+    from hipengine.kernels.vibevoice import PRIMITIVES
+    modules=(encoder,tts_decoder,tts_diffusion,cast,paro_silu,dense_gemv,qwen35_rotary)
+    for name in PRIMITIVES:
+        fn=next(getattr(module,name) for module in modules if hasattr(module,name))
+        if name == 'vv_depthwise_conv_bf16':
+            fn=encoder.vv_depthwise_unfused_bf16
+        key=KernelKey(backend,name,'bf16','strict')
+        if not is_registered(key):register(key,fn)
+    for layer,variant,fn in (
+        # Split-K decode attention: a production reassociation of the strict span
+        # kernel's softmax (docs/EXECUTION-PROFILES.md). Registered under the same
+        # layer, so a caller selects it by variant and `strict` stays the parent.
+        ('vv_attention_spans','production',attention_spans_splitk.vv_attention_spans_splitk),
+        ('vv_depthwise_conv_bf16','fused',encoder.vv_depthwise_conv_bf16),
+        ('vibevoice_frontend_gemm','wmma',frontend_gemm),
+        ('vibevoice_frontend_gemm','strict',frontend_gemm_strict),
+        ('vibevoice_prefill','strict',incremental_prefill),
+        ('vibevoice_prefill','hipblaslt',batched_prefill),
+    ):
+        key=KernelKey(backend,layer,'bf16',variant)
+        if not is_registered(key):register(key,fn)

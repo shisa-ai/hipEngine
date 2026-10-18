@@ -104,6 +104,39 @@ def timesfm3_relu(
     _check_launch(runtime, err)
 
 
+def timesfm3_sgemm_f64acc(
+    a_ptr: int,
+    b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Row-major ``out[rows, out_features] = a @ b.T`` with FP64 accumulation.
+
+    ``a`` is ``[rows, in_features]`` and ``b`` is ``[out_features,
+    in_features]``, both row-major fp32.  Used by the strict fp32 decode
+    path so each GEMM matches the CPU oracle instead of the arch-dependent
+    rocBLAS SGEMM accumulation order.
+    """
+
+    library = library or _library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "timesfm3_sgemm_f64acc",
+        (ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+         ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_void_p),
+        ctypes.c_int,
+    )
+    err = fn(a_ptr, b_ptr, out_ptr, rows, out_features, in_features, stream)
+    _check_launch(runtime, err)
+
+
 def timesfm3_qkv_norm_scatter_f16(
     qkv_ptr: int,
     pos_ptr: int,
@@ -194,5 +227,6 @@ __all__ = [
     "plan_timesfm3_build",
     "timesfm3_qkv_norm_scatter_f16",
     "timesfm3_relu",
+    "timesfm3_sgemm_f64acc",
     "timesfm3_var_attention",
 ]

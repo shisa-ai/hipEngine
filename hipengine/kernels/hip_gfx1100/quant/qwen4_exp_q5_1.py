@@ -135,6 +135,124 @@ def qwen4_exp_gather_bf16_lanes(
         runtime.check(int(error))
 
 
+def qwen4_exp_q5_1_t16_selected_grouped_prefill_bf16_bf16_out(
+    input_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    tiles_ptr: int,
+    output_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run the compact grouped Q5_1 down projection through Q5_1T16 tiles.
+
+    Same contract and ABI as
+    :func:`qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out`,
+    but ``tiles_ptr`` addresses Q5_1T16 tiles
+    (``[experts, out_tiles16, blocks_per_row, 576]``) from
+    :func:`hipengine.quant.gguf_t16.repack_gguf_q5_1_tile16` instead of raw
+    Q5_1 blocks. The decoded weights, the accumulation order, and the output
+    are identical to the raw-block kernel.
+    """
+
+    if compact_rows <= 0 or num_experts <= 0 or wmma_total_rows <= 0:
+        raise ValueError("compact_rows, num_experts, and wmma_total_rows must be positive")
+    if wmma_total_rows % 16:
+        raise ValueError("wmma_total_rows must be divisible by 16")
+    if in_features <= 0 or in_features % 32 or out_features <= 0 or out_features % 16:
+        raise ValueError("Q5_1 grouped T16 projection has invalid feature geometry")
+    library = library or build_qwen4_exp_q5_1(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_q5_1_t16_selected_grouped_prefill_bf16_bf16_out",
+        _ARGS_GROUPED_WMMA,
+        ctypes.c_int,
+    )
+    error = fn(
+        input_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        tiles_ptr,
+        output_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        wmma_total_rows,
+        stream,
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
+def qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_comp_bf16_bf16_out(
+    input_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    weights_ptr: int,
+    output_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run the compensated compact grouped Q5_1 down projection through WMMA.
+
+    Same contract as
+    :func:`qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out`,
+    but each dequantised weight is split into an fp16 high part plus an fp16
+    residual so the represented weight is accurate to ~2^-22 rather than
+    ~2^-11.
+    """
+
+    if compact_rows <= 0 or num_experts <= 0 or wmma_total_rows <= 0:
+        raise ValueError("compact_rows, num_experts, and wmma_total_rows must be positive")
+    if wmma_total_rows % 16:
+        raise ValueError("wmma_total_rows must be divisible by 16")
+    if in_features <= 0 or in_features % 32 or out_features <= 0:
+        raise ValueError("Q5_1 grouped WMMA projection has invalid feature geometry")
+    library = library or build_qwen4_exp_q5_1(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_comp_bf16_bf16_out",
+        _ARGS_GROUPED_WMMA,
+        ctypes.c_int,
+    )
+    error = fn(
+        input_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        weights_ptr,
+        output_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        wmma_total_rows,
+        ctypes.c_void_p(stream),
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
 def qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
     input_ptr: int,
     expert_start_compact_ptr: int,
@@ -186,6 +304,57 @@ def qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
         runtime.check(int(error))
 
 
+def qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out4_amortized_bf16_bf16_out(
+    input_ptr: int,
+    expert_start_ptr: int,
+    weights_ptr: int,
+    output_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the grouped Q5_1 prefill kernel with amortized input reads.
+
+    Same arithmetic as
+    :func:`qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out`,
+    but each CTA covers four output columns of one expert and reuses the input
+    row batch across them instead of re-reading it once per column. The
+    reduction is the same 256-thread tree per output, so the published bits are
+    unchanged.
+    """
+
+    if compact_rows <= 0 or num_experts <= 0:
+        raise ValueError("compact_rows and num_experts must be positive")
+    if in_features <= 0 or in_features % 32 or out_features <= 0:
+        raise ValueError("Q5_1 grouped projection has invalid feature geometry")
+    library = library or build_qwen4_exp_q5_1(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(
+        library,
+        "hipengine_qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out4_amortized_bf16_bf16_out",
+    )
+    fn.argtypes = [ctypes.c_void_p] * 4 + [ctypes.c_int64] * 4 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        input_ptr,
+        expert_start_ptr,
+        weights_ptr,
+        output_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream,
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out(
     input_ptr: int,
     expert_start_ptr: int,
@@ -227,6 +396,97 @@ def qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out(
     )
     if int(error) != HIP_SUCCESS:
         runtime.check(int(error))
+
+
+def _staged_grouped_prefill(
+    symbol: str,
+    input_ptr: int,
+    expert_start_ptr: int,
+    weights_ptr: int,
+    output_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run one staged grouped Q5_1 projection and report nothing."""
+
+    if compact_rows <= 0 or num_experts <= 0:
+        raise ValueError("compact_rows and num_experts must be positive")
+    if in_features <= 0 or in_features % 32 or out_features <= 0:
+        raise ValueError("Q5_1 grouped projection has invalid feature geometry")
+    staged_bytes = 4 * ((in_features + 255) // 256) * 8 * 12
+    if staged_bytes > 65536 - 8192:
+        raise ValueError(
+            f"Q5_1 grouped projection cannot stage {in_features} input features: "
+            f"the packed weights need {staged_bytes} bytes of dynamic shared "
+            f"memory against a budget of {65536 - 8192}. This route stages the "
+            "whole row at once, so it is bounded at 38144 input features; use "
+            "a per-chunk route for wider rows."
+        )
+    library = library or build_qwen4_exp_q5_1(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, symbol, _ARGS_GROUPED, ctypes.c_int)
+    error = fn(
+        input_ptr,
+        expert_start_ptr,
+        weights_ptr,
+        output_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream,
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
+def qwen4_exp_q5_1_selected_grouped_prefill_staged_out4_bf16_bf16_out(
+    input_ptr: int,
+    expert_start_ptr: int,
+    weights_ptr: int,
+    output_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run grouped Q5_1 rows with the activation held across four output columns.
+
+    Same ABI, same contraction order and therefore the same bits as
+    ``qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out``;
+    it differs in how the bytes are fetched. Each thread keeps the activation
+    elements it needs for the current k-chunk in registers, so one element feeds
+    four output columns instead of one, which is what the incumbent's per-column
+    block launch spends its time re-reading from L2. The tile shape is the
+    measured optimum of a small sweep at both shapes this route serves: 1.91x at
+    the Gemma 4 down projection and 1.55x at Qwen4Exp's, with every output
+    bit-identical to the incumbent.
+    """
+
+    _staged_grouped_prefill(
+        "hipengine_qwen4_exp_q5_1_selected_grouped_prefill_staged_out4_bf16_bf16_out",
+        input_ptr,
+        expert_start_ptr,
+        weights_ptr,
+        output_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
 
 
 def qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out(
@@ -689,6 +949,128 @@ def qwen4_exp_q5_1_selected_gemv_bf16_bf16_out(
         runtime.check(int(error))
 
 
+def qwen4_exp_q5_1_selected_pack8_gemv_bf16_bf16_out(
+    input_ptr: int,
+    selected_ptr: int,
+    weights_ptr: int,
+    output_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run one raw Q5_1 expert projection per compact row, eight columns a block.
+
+    The pack8 sibling of ``qwen4_exp_q5_1_selected_gemv_bf16_bf16_out``: same raw
+    blocks, same per-output arithmetic, eight output columns per block instead of
+    one. It is bit-exact against that route, so it is a replacement rather than a
+    numerical candidate, and it exists because the family's dispatcher prefers
+    this shape wherever it is registered.
+
+    ``out_features`` must be a multiple of 8. The width is a property of the
+    launch shape rather than of the quant, and the caller checks it before asking
+    for this variant, so a width that does not admit the shape is a ``ValueError``
+    here and a fall back to the scalar route at the dispatcher.
+    """
+
+    if x_rows <= 0 or rows <= 0 or rows % x_rows:
+        raise ValueError("rows must be positive and divisible by positive x_rows")
+    if num_experts <= 0 or in_features <= 0 or out_features <= 0:
+        raise ValueError("num_experts, in_features, and out_features must be positive")
+    if in_features % 32:
+        raise ValueError("Q5_1 in_features must be divisible by 32")
+    if out_features % 8:
+        raise ValueError("Q5_1 pack8 selected GEMV requires out_features % 8 == 0")
+    if threads != 256:
+        raise ValueError("Q5_1 strict selected GEMV requires threads == 256")
+    library = library or build_qwen4_exp_q5_1(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_q5_1_selected_pack8_gemv_bf16_bf16_out",
+        _ARGS,
+        ctypes.c_int,
+    )
+    error = fn(
+        input_ptr,
+        selected_ptr,
+        weights_ptr,
+        output_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream,
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
+def qwen4_exp_q5_1_selected_pack8_chunk8_gemv_bf16_bf16_out(
+    input_ptr: int,
+    selected_ptr: int,
+    weights_ptr: int,
+    output_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Production pack8 selected Q5_1 GEMV: eight-input runs per thread, one wave.
+
+    Same ABI as :func:`qwen4_exp_q5_1_selected_pack8_gemv_bf16_bf16_out` (the
+    strict owner); the summation order differs, so it is a production variant.
+    ``threads`` is accepted for signature parity and must be 256, the strict
+    owner's contract; this launch always uses one 32-lane wave.
+    """
+
+    if x_rows <= 0 or rows <= 0 or rows % x_rows:
+        raise ValueError("rows must be positive and divisible by positive x_rows")
+    if num_experts <= 0 or in_features <= 0 or out_features <= 0:
+        raise ValueError("num_experts, in_features, and out_features must be positive")
+    if in_features % 32:
+        raise ValueError("Q5_1 in_features must be divisible by 32")
+    if out_features % 8:
+        raise ValueError("Q5_1 pack8 selected GEMV requires out_features % 8 == 0")
+    if threads != 256:
+        raise ValueError("Q5_1 strict selected GEMV requires threads == 256")
+    library = library or build_qwen4_exp_q5_1(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_q5_1_selected_pack8_chunk8_gemv_bf16_bf16_out",
+        _ARGS,
+        ctypes.c_int,
+    )
+    error = fn(
+        input_ptr,
+        selected_ptr,
+        weights_ptr,
+        output_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream,
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
 _ARGS_IU8_RISK = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -1019,9 +1401,39 @@ def register_qwen4_exp_q5_1_kernels(*, replace: bool = True) -> None:
             "hip_gfx1100",
             "moe_linear",
             "gguf_q5_1",
+            "selected_grouped_wmma_prefill_compact_comp_bf16_bf16_out",
+        ),
+        qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_comp_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q5_1",
             "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
         ),
         qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q5_1",
+            "selected_grouped_prefill_staged_out4_bf16_bf16_out",
+        ),
+        qwen4_exp_q5_1_selected_grouped_prefill_staged_out4_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q5_1",
+            "selected_grouped_prefill_compact_rowbatch8_out4_amortized_bf16_bf16_out",
+        ),
+        qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out4_amortized_bf16_bf16_out,
         replace=replace,
     )
     register(
@@ -1095,15 +1507,56 @@ def register_qwen4_exp_q5_1_kernels(*, replace: bool = True) -> None:
             qwen4_exp_q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_out,
             replace=replace,
         )
+    # D3 screen (scripts/gguf_q5_1_gemma_down_decode_screen.py, artifact
+    # benchmarks/results/2026-09-30-gemma4-q5_1-down-decode-screen.json): at
+    # Gemma down decode
+    # geometry (in 704, out 2816, E 128, rows 1/8/16) the logical t64 lane
+    # mapping is bit-exact with the 256-thread GEMV and 1.48-1.77x faster
+    # (105 GB/s -> 138-188 GB/s), beating wave64, pack8, and t128 in the
+    # same run. Register it for the ``linear`` consumer (Gemma down); the
+    # ``moe_linear`` callers keep the incumbent.
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q5_1",
+            "selected_gemv_bf16_bf16_out",
+        ),
+        qwen4_exp_q5_1_selected_gemv_logical256_t64_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q5_1",
+            "selected_gemv_bf16_bf16_out",
+        ),
+        qwen4_exp_q5_1_selected_gemv_bf16_bf16_out,
+        replace=replace,
+    )
     for layer in ("linear", "moe_linear"):
+        # The pack8 shape of the same route. Registered under the same layers so
+        # the family's dispatcher finds it wherever it finds the scalar one; a
+        # lookup under a layer the sibling is not in simply misses.
         register(
             KernelKey(
                 "hip_gfx1100",
                 layer,
                 "gguf_q5_1",
-                "selected_gemv_bf16_bf16_out",
+                "selected_pack8_gemv_bf16_bf16_out",
             ),
-            qwen4_exp_q5_1_selected_gemv_bf16_bf16_out,
+            qwen4_exp_q5_1_selected_pack8_gemv_bf16_bf16_out,
+            replace=replace,
+        )
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                layer,
+                "gguf_q5_1",
+                "selected_pack8_chunk8_gemv_bf16_bf16_out",
+            ),
+            qwen4_exp_q5_1_selected_pack8_chunk8_gemv_bf16_bf16_out,
             replace=replace,
         )
 
@@ -1121,11 +1574,14 @@ __all__ = [
     "plan_qwen4_exp_q5_1_build",
     "qwen4_exp_gather_bf16_lanes",
     "qwen4_exp_q5_1_selected_gemv_bf16_bf16_out",
+    "qwen4_exp_q5_1_selected_pack8_chunk8_gemv_bf16_bf16_out",
+    "qwen4_exp_q5_1_selected_pack8_gemv_bf16_bf16_out",
     "qwen4_exp_q5_1_selected_gemv_logical256_t128_bf16_bf16_out",
     "qwen4_exp_q5_1_selected_gemv_logical256_t64_bf16_bf16_out",
     "qwen4_exp_q5_1_selected_gemv_wave64_bf16_bf16_out",
     "qwen4_exp_q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_out",
     "qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+    "qwen4_exp_q5_1_selected_grouped_prefill_staged_out4_bf16_bf16_out",
     "qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out",
     "qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
     "qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out",

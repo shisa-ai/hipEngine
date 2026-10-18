@@ -11,7 +11,7 @@ def test_wide_intent_requires_every_intermediate_width(missing, shared_bound):
     calls = []
     def resolve(**kwargs):
         width = kwargs['realized_group_rows']
-        calls.append((width, kwargs['output_horizon_tokens']))
+        calls.append(width)
         return SimpleNamespace(admitted=width != missing,
             static_eligibility=SpeculativeMTPStaticEligibility(
                 state='speculative_capable', reason='test', max_candidate_count=3,
@@ -27,8 +27,7 @@ def test_wide_intent_requires_every_intermediate_width(missing, shared_bound):
         assert len(intents) == len(sources) == 2
         assert all(i.packed_c1_target and i.max_realized_group_rows == 8
                    and not i.automatic_eligible for i in intents)
-        assert calls == [(w, h) for h in (8, 24) for w in range(1, 9)]
-
+        assert calls == [w for _horizon in (8, 24) for w in range(1, 9)]
 
 def test_wide_submission_uses_atomic_groups_and_fifteen_identities():
     from types import SimpleNamespace

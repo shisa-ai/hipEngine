@@ -7,7 +7,7 @@ teacher trajectory rather than a held-out natural-text corpus.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import numpy as np
@@ -51,6 +51,10 @@ def per_row_metrics(
         "top1_equal": np.empty(n_rows, dtype=np.bool_),
         "topk_set_overlap": np.empty(n_rows, dtype=np.float64),
         "max_abs_logit_delta": np.empty(n_rows, dtype=np.float64),
+        "reference_margin_logit": np.empty(n_rows, dtype=np.float64),
+        "total_variation": np.empty(n_rows, dtype=np.float64),
+        "entropy_delta_nats": np.empty(n_rows, dtype=np.float64),
+        "max_probability_delta": np.empty(n_rows, dtype=np.float64),
     }
     for i in range(n_rows):
         ref_lp = _log_softmax(reference[i])
@@ -58,6 +62,16 @@ def per_row_metrics(
         ref_p = np.exp(ref_lp)
         candidate_p = np.exp(candidate_lp)
         label = int(labels_array[i])
+        rows["total_variation"][i] = float(0.5 * np.abs(candidate_p - ref_p).sum())
+        rows["entropy_delta_nats"][i] = float(
+            np.sum(ref_p * ref_lp) - np.sum(candidate_p * candidate_lp)
+        )
+        rows["max_probability_delta"][i] = float(candidate_p.max() - ref_p.max())
+        if vocab_size == 1:
+            rows["reference_margin_logit"][i] = 0.0
+        else:
+            top_two = np.partition(np.asarray(reference[i], dtype=np.float64), -2)[-2:]
+            rows["reference_margin_logit"][i] = float(top_two.max() - top_two.min())
 
         # Small negative values can arise only from floating-point summation.
         rows["kl_nats"][i] = max(float(np.sum(ref_p * (ref_lp - candidate_lp))), 0.0)
@@ -73,6 +87,65 @@ def per_row_metrics(
         candidate_topk = np.argpartition(candidate[i], -top_k)[-top_k:]
         rows["topk_set_overlap"][i] = np.intersect1d(ref_topk, candidate_topk).size / top_k
     return rows
+
+
+def _flip_summary(equal: np.ndarray) -> dict[str, Any]:
+    """Report a descriptive rate and a row-independent Wilson approximation."""
+    count = int(equal.size)
+    flips = int(np.count_nonzero(~equal))
+    interval = None
+    rate = None
+    if count:
+        rate = flips / count
+        z2 = 1.959963984540054 ** 2
+        denominator = 1.0 + z2 / count
+        center = (rate + z2 / (2 * count)) / denominator
+        radius = np.sqrt(rate * (1 - rate) / count + z2 / (4 * count ** 2)) / denominator * np.sqrt(z2)
+        interval = {"low": max(0.0, float(center - radius)),
+                    "high": min(1.0, float(center + radius))}
+    return {"rows": count, "flips": flips, "rate": rate, "wilson95_iid_rows": interval}
+
+
+def summarize_diagnostics(
+    rows: Mapping[str, np.ndarray], *, sequence_count: int | None = None,
+) -> dict[str, Any]:
+    """Summarize report-only vectors; signed deltas are candidate minus reference.
+
+    Sequence counts describe capture coverage, not independent observations.
+    Wilson intervals assume independent, identically distributed token rows;
+    correlated contexts and deterministic repeats do not justify that assumption.
+    """
+    equal = rows["top1_equal"]
+    margins = rows["reference_margin_logit"]
+    bounds = ((0.0, 0.05), (0.05, 0.5), (0.5, 2.0), (2.0, None))
+    buckets = []
+    for lower, upper in bounds:
+        mask = margins >= lower
+        if upper is not None:
+            mask &= margins < upper
+        buckets.append({"lower_inclusive": lower, "upper_exclusive": upper,
+                        **_flip_summary(equal[mask])})
+    result = {
+        "gating": False,
+        "rows": int(equal.size),
+        "sequence_count": sequence_count,
+        "uncertainty_note": (
+            "Wilson intervals assume independent identically distributed rows; "
+            "token rows can be correlated. Sequence counts are coverage, not "
+            "independent sample counts. Do not pool deterministic repeats."
+        ),
+        "top1_flips": _flip_summary(equal),
+        "margin_buckets": buckets,
+    }
+    for key in ("total_variation", "entropy_delta_nats", "max_probability_delta"):
+        values = rows[key]
+        percentiles = np.percentile(values, (5, 50, 95, 99))
+        result[key] = {
+            "mean": float(values.mean()), "min": float(values.min()),
+            "max": float(values.max()),
+            **dict(zip(("p05", "p50", "p95", "p99"), map(float, percentiles), strict=True)),
+        }
+    return result
 
 
 def _summarize_vectors(
@@ -111,6 +184,7 @@ def _summarize_vectors(
         "first_top1_mismatch_row": None if mismatch_rows.size == 0 else int(mismatch_rows[0]),
         f"top{top_k}_set_overlap_pct": float(100.0 * selected["topk_set_overlap"].mean()),
         "max_abs_logit_delta": float(selected["max_abs_logit_delta"].max()),
+        "diagnostics": summarize_diagnostics(selected),
     }
 
 

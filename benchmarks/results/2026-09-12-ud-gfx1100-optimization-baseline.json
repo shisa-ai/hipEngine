@@ -1,0 +1,141 @@
+{
+  "baseline_artifact": "benchmarks/results/paired-ud-plain-mtp-c1-natural25-b3-graph-xtx.json",
+  "baseline_artifact_sha256": "a9576ad60382680df82d4929d7dfb6e7b8ba984f90099a47fa9874610dcf518d",
+  "baseline_rates": {
+    "q4_k_m": {
+      "binding_passed": true,
+      "plain_ar_toks": 37.186,
+      "plain_model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "plain_mtp_toks": 63.465,
+      "plain_quant": "gguf_q4_k_m",
+      "plain_recorded": {
+        "all_exact_greedy": true,
+        "exactness": {
+          "binding": false,
+          "divergent_count": 0,
+          "divergent_rows": [],
+          "note": "docs/EXECUTION-PROFILES.md section 6: free-running generated-ID equality is recorded but is not the denominator; section 4.1 permits logits and generated IDs to differ at near ties in the production profile.",
+          "rows": 20
+        },
+        "suite_status": "complete_exact"
+      },
+      "ud_ar_over_plain_ar": 0.8603,
+      "ud_ar_toks": 31.993,
+      "ud_model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "ud_mtp_gain_abs": 3.548,
+      "ud_mtp_over_plain_mtp": 0.56,
+      "ud_mtp_over_ud_ar": 1.1109,
+      "ud_mtp_toks": 35.541,
+      "ud_plain_mtp_gap_abs": -27.924,
+      "ud_quant": "gguf_ud_q4_k_m",
+      "ud_recorded": {
+        "all_exact_greedy": true,
+        "exactness": {
+          "binding": false,
+          "divergent_count": 0,
+          "divergent_rows": [],
+          "note": "docs/EXECUTION-PROFILES.md section 6: free-running generated-ID equality is recorded but is not the denominator; section 4.1 permits logits and generated IDs to differ at near ties in the production profile.",
+          "rows": 20
+        },
+        "suite_status": "complete_exact"
+      }
+    },
+    "q4_k_s": {
+      "binding_passed": true,
+      "plain_ar_toks": 39.565,
+      "plain_model": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+      "plain_mtp_toks": 64.094,
+      "plain_quant": "gguf_q4_k_s",
+      "plain_recorded": {
+        "all_exact_greedy": true,
+        "exactness": {
+          "binding": false,
+          "divergent_count": 0,
+          "divergent_rows": [],
+          "note": "docs/EXECUTION-PROFILES.md section 6: free-running generated-ID equality is recorded but is not the denominator; section 4.1 permits logits and generated IDs to differ at near ties in the production profile.",
+          "rows": 20
+        },
+        "suite_status": "complete_exact"
+      },
+      "ud_ar_over_plain_ar": 0.7914,
+      "ud_ar_toks": 31.311,
+      "ud_model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+      "ud_mtp_gain_abs": 1.75,
+      "ud_mtp_over_plain_mtp": 0.5158,
+      "ud_mtp_over_ud_ar": 1.0559,
+      "ud_mtp_toks": 33.061,
+      "ud_plain_mtp_gap_abs": -31.032,
+      "ud_quant": "gguf_ud_q4_k_s",
+      "ud_recorded": {
+        "all_exact_greedy": false,
+        "exactness": {
+          "binding": false,
+          "divergent_count": 2,
+          "divergent_rows": [
+            "general_ja_plan#run0",
+            "general_ja_plan#run1"
+          ],
+          "note": "docs/EXECUTION-PROFILES.md section 6: free-running generated-ID equality is recorded but is not the denominator; section 4.1 permits logits and generated IDs to differ at near ties in the production profile.",
+          "rows": 20
+        },
+        "suite_status": "correctness_failed"
+      }
+    }
+  },
+  "candidate_mode": "the U6 admission pin is empty (the two paired_run items are still open), so MTP scope is granted in-process and this artifact is diagnostic evidence for those items, not a retained admission.",
+  "device": {
+    "device_index": 1,
+    "expect_device": "AMD Radeon RX 7900 XTX",
+    "note": "The device is declared, never inferred. A rate measured while another worker shares the card is not evidence.",
+    "selected_environment": {
+      "HIP_VISIBLE_DEVICES": "1",
+      "ROCR_VISIBLE_DEVICES": null
+    }
+  },
+  "frozen_at_commit": "26b82777e39c2a3d7d1a0f0d104a39b08edde543",
+  "host_note": "single host/GPU by construction; no concurrent GPU work is enforced by the operator, not by this script",
+  "kind": "optimization-baseline-manifest",
+  "note": "Frozen starting point for docs/UD-GFX1151-OPTIMIZE.md. Absolute rates and all three ratios are recorded together; a ratio-only comparison is insufficient. Every later candidate is scored against this row.",
+  "phase": "Phase 0 - freeze and reproduce the baseline",
+  "plan": "docs/UD-GFX1151-OPTIMIZE.md",
+  "protocol": {
+    "ar_baseline": "suite true no-MTP single-row greedy per artifact through recorded production decode-graph replay",
+    "ar_decode_mode": "graph",
+    "candidate_budgets": [
+      3
+    ],
+    "correctness_gates": {
+      "binding": [
+        "true_ar_denominator_present",
+        "all_gpu_accept_match_cpu",
+        "deterministic_repeats",
+        "faster_than_true_ar"
+      ],
+      "note": "docs/EXECUTION-PROFILES.md section 6: free-running generated-ID equality is recorded but is not the denominator, and section 4.1 permits logits and generated IDs to differ at near ties under the production profile. The control-plane gates are binding in every profile.",
+      "recorded_not_binding": [
+        "status_complete_exact",
+        "all_exact_greedy"
+      ]
+    },
+    "draft_hidden_variant": "pre_output_norm",
+    "kv_layout": "resident session default (Qwen35GGUFResidentSession, wmma prefill, gemv decode)",
+    "max_new_tokens": 25,
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "runs": 2,
+    "suite": "scripts/qwen36_dense_gguf_suite.py",
+    "target_verify_mode": "native",
+    "warmup": true
+  },
+  "reproduction": {
+    "command": "scripts/ud_mtp_paired.py --from-raw --raw-dir /tmp/ud-mtp-graph-raw-gpu1 --output <reproduced>",
+    "differing_fields": [
+      "device.device_index",
+      "device.expect_device",
+      "device.selected_environment.HIP_VISIBLE_DEVICES"
+    ],
+    "raw_payloads": "/tmp/ud-mtp-graph-raw-gpu1/paired-{ud,plain}-q4-k-{m,s}.json",
+    "result": "semantically identical: every pair, rate, comparison, and evidence field regenerates exactly; the only deltas are device.device_index, device.expect_device, and device.selected_environment.HIP_VISIBLE_DEVICES, which --from-raw cannot fill because it selects no device"
+  },
+  "timing_evidence_valid": true,
+  "unit": "ud-optimization-baseline"
+}

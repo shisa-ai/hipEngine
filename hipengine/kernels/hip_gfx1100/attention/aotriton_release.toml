@@ -2,7 +2,7 @@
 # attention wrapper.  hipEngine vendors a pruned copy of this pin under
 # aotriton_runtime/<version>/ and tracks the binary/image payloads with Git LFS.
 # The fetch helper at scripts/fetch_aotriton.sh remains the refresh/offline-cache
-# tool for bumping or replacing the vendored tree.  See docs/PREFILL.md
+# tool for bumping or replacing the vendored tree.  See docs/reference/PREFILL.md
 # "AOTriton distribution and pinning strategy" for the rationale and lookup
 # chain.
 #

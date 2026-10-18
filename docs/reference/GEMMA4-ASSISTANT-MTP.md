@@ -1,0 +1,468 @@
+---
+status: current
+owns: The `gemma4-assistant` MTP head's forward specification (per-layer step order, KV binding, attention scale), where it is implemented, how a caller reaches it, what it measures, and its open defects. Read before changing the head's forward or its draft/verify loop.
+---
+# Gemma 4 assistant head (MTP)
+
+The Gemma 4 26B-A4B MTP head is a **separate GGUF artifact with its own
+architecture string**, not tensors inside the target. This document is the
+resolved specification: the algorithm, the hyperparameters, the tensor layout,
+and which KV the head's four blocks attend against. The sections after the
+specification describe the implementation, how to reach it, what it measures,
+and what is still open.
+
+The head is implemented and reachable through the public API for greedy and
+sampled requests on `hip_gfx1100` and `hip_gfx1151`. Whether a greedy request's
+output is token-identical to plain greedy decoding depends on the execution
+profile; see "The verify contract". A sampled request's tokens follow the
+target's own sampling distribution; see "Acceptance".
+
+## The artifact
+
+| field | value |
+| --- | --- |
+| path | `/models/gguf/gemma-4-26B-A4B-it-GGUF/mtp-gemma-4-26B-A4B-it-Q8_0.gguf` |
+| size | 461,766,816 bytes |
+| `general.architecture` | **`gemma4-assistant`** (the target is `gemma4`) |
+| tensors | 49 |
+| blocks | 4 (`blk.0` … `blk.3`) |
+| linear type | Q8_0, norms F32 |
+
+Upstream also ships `-BF16` and `-F16` variants under `MTP/`.
+
+## Hyperparameters
+
+| key | value | meaning |
+| --- | --- | --- |
+| `block_count` | 4 | layers in the head |
+| `embedding_length` | 1024 | the head's own width |
+| `embedding_length_out` | **2816** | the target's width |
+| `feed_forward_length` | 8192 | head FFN width |
+| `attention.head_count` | 16 | query heads |
+| `attention.head_count_kv` | 8 per layer | GQA |
+| `attention.key_length` / `value_length` | 512 | full-attention head dim |
+| `attention.key_length_swa` / `value_length_swa` | 256 | sliding-window head dim |
+| `attention.sliding_window` | 1024 | window |
+| `attention.sliding_window_pattern` | per layer | which layers are SWA |
+| `attention.shared_kv_layers` | 4 | see "KV binding" |
+| `rope.dimension_count` / `_swa` | 512 / 256 | rotary dims |
+| `rope.freq_base` / `_swa` | 1e6 / 1e4 | two RoPE bases |
+| `nextn_predict_layers` | 4 | equals `block_count` |
+
+`embedding_length_out = 2816` is what makes `2 * 2816 = 5632` the pre-projection
+input width. Three independent sources agree on that number: the reference's
+tensor shape, the artifact's `nextn.pre_projection` dims, and this metadata key.
+
+## Tensor layout
+
+11 tensors per block, identical names across all four:
+
+```
+attn_norm  layer_output_scale  attn_q  attn_q_norm  attn_output
+post_attention_norm  ffn_norm  ffn_gate  ffn_up  ffn_down  post_ffw_norm
+```
+
+Plus five global tensors: `token_embd` (Q8_0, 285 MB), `output_norm`,
+`rope_freqs`, `nextn.pre_projection` (Q8_0, `[5632, 1024]`, 21.9 MB), and
+`nextn.post_projection` (Q8_0, `[1024, 2816]`, 3.1 MB).
+
+**There is no `attn_k` and no `attn_v` in any block.** That is what makes the KV
+binding question the only open one, and it is now answered below.
+
+`output` is the same tensor as `token_embd` (`TENSOR_DUPLICATED` in the
+reference's loader), so the head's vocabulary projection is tied.
+
+## The forward
+
+From `llama.cpp@17252c769`, `src/models/gemma4-assistant.cpp`. `n_embd_backbone`
+is 2816, `n_embd` is 1024.
+
+```
+x  = backbone_tok_embd[token]       # [2816]   the *target* model's embedding
+x  = x * sqrt(n_embd_backbone)      # 2816 ** 0.5
+xh = concat(x, h_backbone)          # [5632]   h_backbone is the target's hidden state
+cur = nextn_proj_pre @ xh           # [1024]
+
+for il in 0 .. 3:
+    is_swa       = sliding_window_pattern[il]
+    n_embd_head  = 256 if is_swa else 512
+    freq_base    = 1e4 if is_swa else 1e6
+    n_rot        = 256 if is_swa else 512
+    freq_factors = None if is_swa else rope_freqs
+
+    normed = rmsnorm(cur, attn_norm)
+    Q      = wq @ normed                        # [16 * n_embd_head]
+    Q      = reshape(Q, n_embd_head, 16)
+    Q      = rmsnorm(Q, attn_q_norm)            # per head, over n_embd_head
+    Q      = rope(Q, pos, freq_factors, n_rot, freq_base, freq_scale)
+
+    attn     = attention(Q, K, V, scale = 1.0)  # K, V are the backbone's; see below
+    attn     = wo @ attn                        # [n_embd]
+    attn     = rmsnorm(attn, post_attention_norm)
+    attn_out = attn + cur
+
+    ffn_in = rmsnorm(attn_out, ffn_norm)
+    ffn    = down @ (gelu_tanh(gate @ ffn_in) * (up @ ffn_in))
+    ffn    = rmsnorm(ffn, post_ffw_norm)
+
+    cur = (ffn + attn_out) * layer_output_scale[il]
+
+cur    = rmsnorm(cur, output_norm)
+logits = head_token_embd @ cur      # [262144]
+h_next = nextn_proj_post @ cur      # [2816]  the next-token hidden state
+```
+
+Five details that are easy to get wrong:
+
+- **`f_attention_scale = 1.0f`.** The head does *not* apply `1/sqrt(head_dim)`;
+  the reference sets the scale explicitly in `load_arch_hparams`.
+- **The norm order is post-norm, not pre-norm.** `attn_post_norm` normalizes the
+  attention *output* before the residual add, and `post_ffw_norm` normalizes the
+  FFN output before its residual add. Only `attn_norm` and `ffn_norm` are
+  pre-norms.
+- **`attn_q_norm` is applied to Q only**, per head, over `n_embd_head`. There is
+  no K norm.
+- **`wo` sits between the attention and `attn_post_norm`.** The `attn_output`
+  tensor is `[n_embd_head*n_head, n_embd]`, so the projection contracts the
+  concatenated heads back to `n_embd` *before* `post_attention_norm` (which is
+  `[n_embd]`) sees it. Applying the norm to the unconcatenated `[n_head*n_embd_head]`
+  attention output would be a shape error against a `[n_embd]` weight.
+- **The input embedding and the output projection are different tables.** The
+  graph reads `model_other->tok_embd` -- the *backbone's* embedding, width 2816 --
+  for its input, and uses the head's own `token_embd` (width 1024, duplicated as
+  `output`) only for the logits. The head's `token_embd.weight` is never used as
+  an input embedding. So the forward needs the backbone's embedding table *and*
+  the head's, and a port that gathers the head's own table for the input would
+  produce a `[1024]` vector where `[2816]` is required.
+
+## KV binding — the resolved question
+
+The head creates no `wk`/`wv`, and `attention.shared_kv_layers` is read in
+`load_arch_hparams` but never used in `load_arch_tensors`. The answer is in the
+cache construction, `src/llama-model.cpp` around line 2578:
+
+```c
+if (arch == LLM_ARCH_GEMMA4_ASSISTANT) {
+    llama_memory_t mem_other = llama_get_memory(cparams.ctx_other);
+    share = [&](int32_t il) {
+        const llama_model * model_other = llama_get_model(cparams.ctx_other);
+        if (hparams.is_swa(il)) return llama_model_n_layer(model_other) - 2;
+        return llama_model_n_layer(model_other) - 1;
+    };
+    res = new llama_kv_cache_iswa(..., mem_other, filter, reuse, share);
+}
+```
+
+So, with a 30-layer backbone:
+
+- **Every one of the four head blocks attends against the backbone's last two
+  layers' KV.** A sliding-window head block reads **backbone layer 28**; a
+  full-attention head block reads **backbone layer 29**.
+- The head's K/V tensors are views, not copies: `llama_kv_cache` pushes a *copy
+  of the layer struct* for a shared layer, so `k`/`v` point at the same device
+  buffers the backbone wrote.
+- `cparams.ctx_other` is the target context. `llama-context.cpp` throws
+  `"Gemma4Assistant requires ctx_other to be set"` when it is missing, so a
+  draft context cannot be built without the target's context handle.
+
+**Consequence for the port:** the head needs no KV allocation, no eviction
+policy, and no `KVLiveSpans` plumbing of its own. It needs read access to two of
+the backbone's KV layer buffers, which means the backbone runner has to expose
+them by layer index, and the draft step has to be positioned at the same token
+position the backbone last wrote.
+
+**The shared cache needs no GQA adaptation, and that is checkable.** The head's
+`attention.head_count_kv` is `[8, 8, 8, 2]` per block, and the backbone's
+per-layer pattern is `[8, 8, 8, 8, 8, 2]` repeating over its 30 layers. Layer 28
+is `28 mod 6 == 4`, so 8 KV heads and sliding-window; layer 29 is
+`29 mod 6 == 5`, so 2 KV heads and full attention. The head's three SWA blocks
+read layer 28 and ask for 8 KV heads; its full block reads layer 29 and asks for
+2. Both sides also carry `head_count = 16` with `key_length` 512 and
+`key_length_swa` 256.
+
+So for the two layers the head reads, the head's attention geometry is
+**identical** to the backbone layer's -- same Q head count, same KV head count,
+same head width. The head's attention can therefore call the backbone's own
+attention kernel against the backbone's KV buffers with no head remapping and no
+head-count conversion. A port that treated `head_count_kv` as a property of the
+head alone would be free to pick a value the cache does not carry; the equality
+above is what makes 8 and 2 correct rather than arbitrary, and a test should
+assert it against both artifacts rather than trusting this paragraph.
+
+**The rope geometry is likewise recoverable, not assumed.** The head's
+`rope_freqs.weight` is 256 entries: the first **64** are exactly `1.0` and the
+remaining 192 are `1e30`. That is the same span-marker encoding the backbone's
+artifact uses, which `gemma4_rotated_pair_count` already decodes -- so the
+full-attention block rotates **64** pairs of its 256 with the exponent scale of
+`head_dim = 512` (`rope_type="proportional"`), and the three SWA blocks rotate
+all **128** of their 128 pairs at `head_dim = 256`. A reading that treated
+`freq_factors` as a multiplier rather than a span marker would divide the
+inverse frequencies by `1e30` and silently produce a table that matches
+rotation-by-zero only by accident.
+
+**The head's rope configs are the backbone layers' own, verified against both
+artifacts.** Decoding the backbone gives layer 28 as
+`(default, head_dim=256, rotated_pairs=128, freq_base=1e4)` and layer 29 as
+`(proportional, head_dim=512, rotated_pairs=64, freq_base=1e6)`. Decoding the
+head's own metadata and `rope_freqs` independently gives exactly those two
+configs. So the head does not merely *tolerate* the backbone's tables -- it wants
+the same ones, and a port can build each head block's rope from the backbone's
+`rope_for_layer` for the layer it reads instead of deriving a second schedule.
+The equality is also the check: if the two ever disagree, one of them is wrong,
+and it is cheaper to notice that here than in an acceptance-rate number.
+
+## Implementation
+
+| Piece | Where |
+| --- | --- |
+| Config decoder, expected shapes, tensor-map validation | `hipengine/loading/gemma4_assistant_gguf.py` |
+| Device residency for all 49 tensors (461.8 MB file, 440.5 MB on device) | `hipengine/loading/gemma4_assistant_device.py` |
+| Target/head pairing checks before either is loaded | `hipengine/loading/gemma4_mtp_gguf.py` |
+| The head's forward and the drafter that chains it | `hipengine/runtime/gemma4_assistant.py` (`Gemma4AssistantHead`, `Gemma4MtpDrafter`) |
+| Draft/verify loop, telemetry, provider registration | `hipengine/generation/gemma4_mtp.py` (provider `gemma4_mtp`) |
+| The request's sampler law and the exact speculative accept | `hipengine/generation/gemma4_sampling.py` (`Gemma4Sampler`, `speculative_accept`) |
+| Generator hook that attaches a provider | `hipengine/generation/gemma4_gguf.py` (`attach_speculative_provider`) |
+
+The head reads backbone layers 28 and 29 through the runner, uses the backbone's
+embedding table for its input and its own for the logits, and builds its rope
+tables from the backbone layers it reads, as specified above.
+
+### The cycle
+
+One cycle drafts up to `candidate_budget` tokens with the head, then verifies
+them in one backbone forward of `[token, *drafts]` that returns
+`len(drafts) + 1` logit rows (`Gemma4Runner.forward(..., logits_rows=...,
+verification=True)`). It walks the drafts in order, accepting each against its
+verify row until one is rejected, and commits one more token from the row where
+the walk stopped, so a cycle commits between 1 and `candidate_budget + 1`
+tokens. The backbone is rewound to the committed position and the next cycle's
+seed hidden row is taken from the verify pass.
+
+### Acceptance
+
+Acceptance is exact speculative sampling (Leviathan et al., "Fast Inference
+from Transformers via Speculative Decoding", 2022). Write `p` for the
+distribution the request's sampler would draw from at a position given the
+target's verify row, and `q` for the distribution the draft was drawn from. A
+drafted token `x` is accepted with probability `min(1, p(x) / q(x))`. A
+rejection commits a draw from `normalize(max(0, p - q))`, and a cycle whose
+drafts are all accepted commits a draw from `p` at the next row. The committed
+token is then distributed as `p` whatever `q` was, so sampled MTP changes the
+speed of a sampled request and not its distribution.
+
+- **A greedy request** makes both distributions a single token. A draft is
+  accepted exactly when it is the verify row's argmax, and a rejection commits
+  that argmax.
+- **A sampled request** applies its sampler pipeline (temperature, top-k, top-p,
+  min-p, repetition, presence and frequency penalties, logit bias, suppressed
+  tokens) to each verify row to get `p`, with the history penalties seeing the
+  drafts accepted before that row. Each draft is drawn from the same pipeline
+  applied to the head's logits, narrowed to its 64 most likely tokens. Drawing
+  the draft, rather than offering the head's most likely token, is what raises
+  acceptance: a single-token draft is accepted with probability `p(x)`, a drawn
+  one with `min(1, p(x) / q(x))`, which is 1 wherever the head is no more
+  confident than the target.
+- The request's seed fixes both the accept draws and the draft draws, on
+  separate streams, so the same seed returns the same tokens.
+
+`Gemma4MTPTextProvider.draft_sampling = False` makes a sampled request offer the
+head's most likely token instead of drawing one. It exists to measure what a
+drawn draft gains and is still exact.
+
+### The verify contract
+
+A verify row is the target's logits for one drafted position. Whether it equals
+the logits a one-token decode step produces at that position, bit for bit, is
+`Gemma4Runner.verify_dense_exact`, which the generator sets from the execution
+profile.
+
+| Profile | `verify_dense_exact` | A verify block runs | Rows against one-token decode | Telemetry `verify_equivalence` |
+| --- | --- | --- | --- | --- |
+| production | false | the one-row dense kernel per row (WMMA for a wide output above four rows), one multi-row key-sliced flash attention launch from 256 keys (the class kernel below), the multi-row router | within the production numerical envelope | `production_envelope_of_target_ar_greedy` |
+| strict, or no profile bound | true | the one-row dense kernel per row, one decode-shaped attention launch per row, the one-token router per row | bit-identical | `bit_identical_to_target_ar_greedy` |
+
+Three operators make a multi-row block differ from one-token decode, and the
+exact path replaces each:
+
+- **Dense projections.** A block of two to eight rows runs each row on the
+  one-row T16 GEMV that decode uses, in one launch, so its rows are
+  bit-identical to decode in both profiles and faster than the multi-row
+  kernels it replaced (five rows of the 4096x2816 output projection: 40.6 us
+  against 103.4 us on WMMA prefill). The GEMV's cost grows with each row and
+  the WMMA tile's does not, so production keeps WMMA prefill for more than four
+  rows of the 8192-wide QKV projection, which accumulates in a different order.
+  The exact path never takes it.
+- **Attention.** The decode kernel partitions its reduction by the number of
+  keys it is handed, and a multi-row launch hands every row the block's key
+  range. The exact path launches each row over the range that row would have as
+  a one-token step. Production serves the whole block with one launch of the
+  decode plan's key-sliced flash route from 256 keys, each row bounded by its
+  own mask row; the block's tokens share each key slice's loads and each
+  query-key dot product is one thread's sum. Five rows at 32K keys take 29.1 ms
+  against 133.7 ms on the owned-logits class kernel the block used before. A one-row verify
+  block takes exactly a decode step's attention in both profiles.
+- **The MoE router.** The one-token router is a fused launch whose projection
+  reduces in a different order from the multi-row chain. The exact path routes
+  each row through the one-token launch.
+
+With all three, a block of up to nine rows is bit-identical to nine one-token
+steps in both profiles at prompts of 120, 600 and 1100 tokens. Under the
+production setting the same rows differ from one-token decode by a row KL of
+5.8e-8 to 8.8e-2 with no argmax change in the 72 rows compared; over a long
+generation a near tie can still resolve differently, so the output can diverge
+from plain greedy decoding and each divergent output is itself a greedy
+continuation under the block's arithmetic.
+
+INT8 KV storage has no per-row decode launch here, so a verify block on it keeps
+the multi-row attention; the provider requires BF16 KV.
+
+### Cycle details
+
+- `drafts[0]` predicts the token after `token`, not `token` itself.
+- The last cycle leaves one row of headroom so a request never emits more than
+  `max_tokens`.
+- `candidate_budget` is 1 to 8.
+- Multi-token stop sequences, forced-token queues, structured constraints,
+  thinking budgets, `min_tokens` and log probabilities are refused with an error
+  naming the limitation, as they are on the plain route.
+
+### Reaching it
+
+```python
+llm = hipengine.LLM(
+    model="<target>.gguf",
+    speculative_provider="gemma4_mtp",
+    draft_model="<mtp head>.gguf",
+    speculative_candidate_budget=4,
+)
+outputs = llm.generate_speculative_mtp_detailed([prompt], sampling_params)
+```
+
+`LLM.generate()` stays autoregressive unless the request sets
+`speculative_mtp=True`; without an attached provider that request raises
+instead of returning plain text. Server routing of the flag is described in
+`docs/API.md`. `scripts/gemma4_mtp_probe.py` compares plain and MTP generation
+through this API over prompt suites and writes a paired artifact; with
+`--temperature` above zero it compares sampled plain decoding with sampled MTP.
+
+## What it measures
+
+Radeon Pro W7900 (`hip_gfx1100`), target `UD-Q4_K_XL`, head `Q8_0`, production
+profile, BF16 KV, 18 prompts from the two suites under `benchmarks/prompts/`
+(code, English, Japanese, mixed), two samples each, 128 greedy tokens. Rates
+are whole-call tokens per second including the prefill of a short prompt, plain
+call first, measured 2026-10-15 with `scripts/gemma4_mtp_probe.py`.
+
+| `candidate_budget` | Plain tok/s | MTP tok/s | Ratio | Code | English | Japanese | Mixed | Rows token-identical to plain |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2 | 74.6 | 108.8 | 1.46x | 1.50x | 1.44x | 1.41x | 1.47x | 28 of 36 |
+| 4 | 75.0 | 118.3 | 1.58x | 1.71x | 1.50x | 1.43x | 1.62x | 24 of 36 |
+| 6 | 74.2 | 112.6 | 1.52x | 1.72x | 1.38x | 1.31x | 1.65x | 26 of 36 |
+| 8 | 75.1 | 104.0 | 1.39x | 1.50x | 1.37x | 1.22x | 1.43x | 26 of 36 |
+
+A budget of 4 is the best measured setting on this device. Artifact:
+`benchmarks/results/2026-10-15-gemma4-gfx1100-expert-chunk8.json`. On
+`hip_gfx1151` (Radeon 8060S) the same protocol at a budget of 4 gives 45.5 plain
+and 69.4 MTP tok/s (1.52x, 72.3% acceptance):
+`benchmarks/results/2026-10-15-gemma4-gfx1151-mtp-budget4.json`.
+
+The table above is the production profile, whose verify block is not exact. The
+same 18 prompts at a budget of 4, measured again with the exact verify path
+available, compare the two contracts:
+
+| Profile | Verify | Plain tok/s | MTP tok/s | Ratio | Rows token-identical to plain greedy |
+| --- | --- | ---: | ---: | ---: | ---: |
+| production | envelope (default) | 75.0 | 118.3 | 1.58x | 24 of 36 |
+| strict | exact (default) | 72.2 | 94.4 | 1.31x | 36 of 36 |
+
+The cost is in the verify block itself. Median time for one verify block after
+a 600-token prompt, production profile:
+
+| Rows in the block | 1 | 3 | 5 | 7 | 9 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Envelope verify (ms) | 12.8 | 18.5 | 21.8 | 25.3 | 30.6 |
+| Exact verify (ms) | 12.7 | 20.6 | 26.7 | 33.4 | 43.2 |
+
+A one-token decode step takes 12.7 ms in the same run. In production the
+expert projections of a decode step and of a verify block run the
+eight-input-run selected kernels, whose rows are identical at any lane count, so
+an exact verify block in production stays bit-identical to production decode;
+strict keeps the per-k selected owners. The lm-head projection
+of a block wider than eight rows is launched in balanced chunks of at most
+eight, because its small-block kernel serves two to eight rows and the kernel
+behind it reads the whole vocabulary matrix once per row: a nine-row block
+spent 21.9 ms in the lm head alone before the split, against 2.4 ms for five
+rows. Artifacts:
+`benchmarks/results/2026-10-15-gemma4-gfx1100-mtp-wide-head.json` and
+`benchmarks/results/2026-10-15-gemma4-gfx1100-mtp-small-block-dense.json`.
+
+### Long prompts
+
+The draft head attends to the target's cache. It runs the key-sliced flash
+decode with the long-row slice count in every profile, because a draft only
+proposes and the target verifies every token: on the native launch a long
+global row took the owned-logits class kernel, 12.8 ms a draft token at 32K
+keys against 3.3 ms now. Through `generate_speculative_mtp_detailed` at a
+budget of 4, 128 greedy tokens after one long prompt of cycled campaign prose
+(draft acceptance 100% on it), production, W7900:
+
+| Prompt tokens | Plain s | MTP s | Decode phase, plain / MTP s | Output |
+| ---: | ---: | ---: | ---: | --- |
+| 8192 | 4.26 | 3.32 | 1.82 / 0.88 | identical |
+| 32768 | 14.66 | 13.66 | 2.12 / 1.12 | identical |
+
+Before the multi-row flash verify and the head's flash attention the same runs
+took 3.60 s and 17.27 s, so MTP was slower than plain decoding at 32K. The
+decode phase is the call less the 2.45 s / 12.47 s prefill both arms share.
+
+### Sampled requests
+
+Same device, prompts and timing scope, production profile, a budget of 4,
+measured 2026-10-13, before the small-block dense route above. Plain
+is the sampled plain route on the same seeds, averaged over the two runs of each
+row; each ratio is against the plain rate of its own run. The two MTP columns
+differ only in how a draft is proposed. Acceptance is accepted drafts over proposed
+drafts.
+
+| Sampler | Plain tok/s | MTP, most-likely draft | MTP, drawn draft | Acceptance, most-likely to drawn |
+| --- | ---: | ---: | ---: | ---: |
+| greedy | 73.7 | 102.8 (1.40x) | same | 72.9% |
+| temperature 0.5 | 69.4 | 87.6 (1.26x) | 87.8 (1.27x) | 68.9% to 68.8% |
+| temperature 0.8 | 70.1 | 85.8 (1.23x) | 87.0 (1.24x) | 65.4% to 66.3% |
+| temperature 1.0, top-k 64, top-p 0.95 | 70.2 | 85.7 (1.22x) | 87.5 (1.25x) | 63.4% to 65.9% |
+
+Sampled MTP is 1.24x to 1.27x sampled plain decoding. Drawing the draft adds up
+to 2.5 points of acceptance and up to 2% of throughput over offering the head's
+most likely token, and nothing at temperature 0.5. A sampled plain request is
+about 5% slower than a greedy one because each step's logits row is brought to
+the host and sampled there. Artifact:
+`benchmarks/results/2026-10-13-gemma4-gfx1100-mtp-sampled.json`.
+
+## Open defects
+
+1. **A verify block costs too much per row.** Each extra row adds about 2 to
+   3 ms to a 13 ms one-row block (five rows 22.6 ms). llama.cpp at `45451c3` on the same card runs
+   a five-row block in 18.6 ms against its 14.6 ms one-row step, and its MTP
+   with the same head and prompts reaches 2.01x. A five-row production block
+   here spends 5.4 ms in dense projections (3.2 ms for one row), 6.8 ms in
+   expert projections (2.0 ms), 1.6 ms in attention and 2.7 ms in the lm head
+   (1.2 ms); the dense branch overlaps the expert branch.
+2. **Sampling runs on the host.** Each sampled step copies a 262,144-entry
+   logits row to the host. With a top-k the law costs about 0.4 ms a row; a
+   whole-vocabulary law about 0.5 ms; a request with a history penalty about
+   1.6 ms, because the penalized row is rebuilt in double precision. A device
+   sampler would remove the copy and that cost.
+3. **A sampled request on `hip_gfx1151` has not been run.** Its decode graph
+   replays the step and returns the logits row for the host sampler
+   (`Gemma4DecodeGraphSession.step`), which this change calls but which was
+   exercised only on `hip_gfx1100`, where the graph is not used.
+
+## References
+
+- Algorithm and tensor shapes: `llama.cpp@17252c769`,
+  `src/models/gemma4-assistant.cpp` — `load_arch_hparams`, `load_arch_tensors`,
+  and the graph builder.
+- KV binding: same tree, `src/llama-model.cpp` (~line 2578) and
+  `src/llama-kv-cache.cpp` (`layer_share_cb`).
+- `17252c769` is the commit `benchmarks/README.md` records for the gfx1151
+  llama.cpp baseline row, so the reference and the baseline are from one tree.

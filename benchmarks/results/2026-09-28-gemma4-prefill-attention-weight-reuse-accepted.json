@@ -1,0 +1,73 @@
+{
+  "kind": "gemma4_campaign_candidate",
+  "verdict": "accepted and promoted (bit-exact, default path)",
+  "recorded": "2026-09-28, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B prefill attention",
+  "candidate": "store exp(logit - row_max) over its logit in pass 2 of gemma4_attention_prefill_kernel and read it in pass 3, instead of recomputing expf for every (element, key) pair",
+  "reason": "the change is bit-exact, so it needs no numerical gate. Pass 2 already computed expf(logits_s[j] - row_max) for the denominator and discarded it; pass 3 then recomputed the identical expression head_dim times per key -- 256 times per key at the artifact's sliding-layer geometry, 512 at its full-layer geometry. Pass 3 now reads the value pass 2 stored. Same arguments, same device, same expf, so the same bits. The decode twin (gemma4_attention_decode_kernel) has done exactly this since it was written, and its comment already records the argument.",
+  "mechanism": {
+    "structure": "pass 2 of gemma4_attention_prefill_kernel: `local_sum += expf(logits_s[j] - row_max)` becomes `const float weight = expf(logits_s[j] - row_max); local_sum += weight; logits_s[j] = weight;`. Pass 3: `const float weight = expf(logits_s[j] - row_max)` becomes `const float weight = logits_s[j]`.",
+    "why_in_place_is_race_free": "the pass 2 stride is blockDim.x and thread t only ever touches j == t (mod blockDim.x), so a thread's writes never race another thread's reads of logits_s and no key is visited twice. Coverage of [first_kept, keys) is complete either way: a thread with t >= first_kept starts at t, and one with t < first_kept starts at the first value congruent to t at or above first_kept. Pass 3 loops from first_kept, so every weight it reads was written.",
+    "why_it_is_bit_exact": "pass 3 adds the same float that pass 2 added to local_sum. expf of the same arguments on the same device returns the same bits, so the recomputed value and the stored value are identical. The accumulation order in both passes is untouched.",
+    "not_the_only_copy": "the decode kernel in the same file already stores the weight and reads it back (see the `pass 2 stores exp(logit - row_max) back over its logit` comment above gemma4_attention_decode_kernel). This change makes the block kernel match its twin rather than introducing a new pattern."
+  },
+  "correctness": {
+    "gate": "not applicable - no arithmetic change, so no execution-profile gate is required",
+    "kernel_level": "tests/test_gpu_gemma4_attention_decode_parity.py launches the prefill and decode symbols on identical inputs and compares outputs bitwise (uint16 for BF16, float equality for F32), over 12 shapes including the artifact's two real layer geometries (16 heads, 2 kv heads, head_dim 256; 16 heads, 8 kv heads, head_dim 512) at 1024 keys, plus a 2055-key odd tile edge and an 8192-key context cap. 162 passed across the five attention test files.",
+    "model_level": "tests/test_unit_gemma4_runner.py::test_incremental_decode_matches_a_dense_prefill reports max abs diff 4.417 both with and without this change -- identical to the digit. The test fails on both sides for an unrelated reason and is recorded as a pre-existing defect, not a regression.",
+    "suite": "406 gemma4 tests: 405 passed, 1 failed (the pre-existing test above)"
+  },
+  "test_repair_this_unit_also_landed": {
+    "defect": "tests/test_gpu_gemma4_attention_decode_parity.py passed 12 arguments to a 14-argument symbol. The prefill symbol gained `window` and `row_offset` (see _ARGTYPES_PREFILL) and two of the file's three _raw_launch call sites were never updated, so 57 tests in that file raised TypeError before launching anything.",
+    "evidence": "the file failed identically with the kernel reverted to HEAD, so the breakage predates this unit",
+    "fix": "the shared _raw_launch helper now appends the prefill tail (window, row_offset) as 0/0, which makes first_kept 0 so prefill visits every key exactly as decode's keep_mask does -- the parity these tests assert; and the one direct call site in test_public_wrapper_tokens_one_routes_to_decode_result now passes 0/0, matching the Python wrapper's defaults that it compares against",
+    "effect": "tests/test_gpu_gemma4_attention_decode_parity.py went from 57 failed / 94 passed to 95 passed. The bit-exactness contract this unit relies on had no working coverage before."
+  },
+  "performance": {
+    "platform": "gfx1151 Strix Halo (Radeon 8060S, zbook), ROCm, bf16 KV",
+    "protocol_end_to_end": "scripts/gemma4_prefill_route_ablation.py --prompt 2048 --repeats 2, run twice with the kernel stashed and once without, same shell, same host, back to back",
+    "end_to_end": {
+      "before": {"prefill_s": 7.590, "prefill_tps": 269.8, "no_attention_arm_s": 5.276, "attention_share": "2.314 s, 30.5%"},
+      "after": {"prefill_s": 7.191, "prefill_tps": 284.8, "no_attention_arm_s": 5.268, "attention_share": "1.923 s, 26.7%"},
+      "saving": "399 ms of prefill, +5.6% prefill throughput",
+      "control": "the no_attention arm is 5.276 s before and 5.268 s after -- a 8 ms drift across runs -- so the 399 ms is attributable to the kernel and not to run-to-run variance"
+    },
+    "protocol_isolated": "scripts/gemma4_attention_prefill_bench.py --tokens 2048 --iters 3, kernel stashed vs not",
+    "isolated": {
+      "swa_256d_16q_8kv_window_1024": {"before_ms_per_launch": 92.20, "after_ms_per_launch": 62.33, "speedup": 1.48, "before_gflops": 279.6, "after_gflops": 413.6},
+      "swa_256d_16q_8kv_window_0": {"before_ms_per_launch": 110.75, "after_ms_per_launch": 79.40, "speedup": 1.39},
+      "full_512d_16q_2kv_window_0": {"before_ms_per_launch": 190.72, "after_ms_per_launch": 133.32, "speedup": 1.43, "before_gflops": 360.5, "after_gflops": 515.7},
+      "at_chunk_size_tokens_512": {"swa_window_1024": {"before": 6.60, "after": 4.77, "speedup": 1.38}, "full_window_0": {"before": 11.21, "after": 7.80, "speedup": 1.44}}
+    },
+    "why_the_isolated_and_end_to_end_numbers_differ": "the isolated bench launches one kernel at tokens == keys; the real forward chunks 2048 tokens into four 512-token blocks whose keys grow 512/1024/1536/2048, and the sliding-window layers walk a saturated window rather than a growing one. Timing the real launches with HIP events attributes 1959.71 ms of the 7191 ms prefill to attention across 120 launches, which matches the ablation's 1.923 s arm and is the number the end-to-end row rests on."
+  },
+  "attention_launch_geometry_measured": {
+    "method": "wrap gemma4_attention_prefill_bf16, record (tokens, keys, window, row_offset, num_heads, head_dim) per launch during a real 2048-token Gemma4Runner.forward, and time each call with HIP events",
+    "total_ms": 1959.71,
+    "launches": 120,
+    "rows": [
+      {"tokens": 512, "keys": 512, "window": 0, "head_dim": 512, "n": 5, "per_launch_ms": 7.888},
+      {"tokens": 512, "keys": 512, "window": 1024, "head_dim": 256, "n": 25, "per_launch_ms": 5.095},
+      {"tokens": 512, "keys": 1024, "window": 0, "head_dim": 512, "n": 5, "per_launch_ms": 23.825},
+      {"tokens": 512, "keys": 1024, "window": 1024, "head_dim": 256, "n": 25, "per_launch_ms": 13.544},
+      {"tokens": 512, "keys": 1535, "window": 1024, "head_dim": 256, "n": 50, "per_launch_ms": 17.659},
+      {"tokens": 512, "keys": 1536, "window": 0, "head_dim": 512, "n": 5, "per_launch_ms": 38.182},
+      {"tokens": 512, "keys": 2048, "window": 0, "head_dim": 512, "n": 5, "per_launch_ms": 52.262}
+    ]
+  },
+  "rejected_hypothesis": {
+    "claim": "the sliding-window layers waste about 1.5x their work because keys=1535 exceeds the 1024-key window and the walk is not clipped at the tail",
+    "test": "a keys curve at fixed tokens=512, window=1024 and a correctly built sliding mask: keys 512/1024/1280/1535/2048/3072 gave 6.43/14.31/17.43/18.82/18.41/18.39 ms",
+    "result": "rejected. The cost saturates at about 18.4 ms once the window is populated and does not grow with keys out to 3072, so first_kept does bound the walk and there is no tail waste to reclaim. The cost is proportional to visible pairs (8.4M vs 6.3M visible pairs explains the 18.4 vs 14.3 ms ratio), which is the kernel working as designed.",
+    "kept_because": "it is the measurement that closes the largest remaining attention lead, and it is cheap to re-check"
+  },
+  "selection": {
+    "flag": "none - the change is unconditional inside the kernel",
+    "fallback": "not applicable: no variant is selected and no path is bypassed, so the strict unfused chain and the decode twin are unaffected",
+    "rollback": "revert the two-line edit; the decode kernel's behaviour is unchanged"
+  },
+  "caveats": [
+    "The end-to-end saving (399 ms) is smaller than the isolated kernel speedup (1.48x) because the real forward's attention is spread over 120 chunked launches whose per-launch rates differ from the single-launch bench. The end-to-end row is the one that describes production.",
+    "The attention arm of the route ablation is 1.923 s, which the direct HIP-event timing of the real launches (1959.71 ms) corroborates. The ablation's earlier 2295 ms figure in 2026-09-28-gemma4-gfx1151-prefill-route-attribution.json was taken against a 7.536 s baseline from a different tree state; the 7.590 s baseline in this artifact's control run is the one this A/B is measured against."
+  ],
+  "next": "Attention is 27.3% of the 7.191 s prefill and runs at a flat ~450 GFLOP/s with no reclaimable work. The remaining lever is the kernel's rate, not its work: pass 3 is a rank-1 update (weights x V) with one thread per output element looping over every visible key, reading one 2-byte V element and one broadcast LDS weight per iteration. The standard fix is to tile it -- one block per (query tile, head) reading a K/V tile once for the whole tile -- which is the flash-attention structure. That is a kernel project, not an edit."
+}

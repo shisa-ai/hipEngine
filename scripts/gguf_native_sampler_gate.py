@@ -192,14 +192,26 @@ def _run_rows(
         runner.rollback_admission(states[int(request_id)])
         runner._rows.pop(int(request_id))
     after_release = runner.kv_pool.stats.to_json_dict()
+    workspace_lease_pages = int(
+        runner.kv_pool_memory_snapshot().get("packed_workspace_lease_pages", 0)
+    )
     payload = {
         "request_ids": list(request_ids),
         "transitions": transitions,
         "rows": row_payloads,
         "pool_before_release": before_release,
         "pool_after_release": after_release,
+        "workspace_lease_pages_after_release": workspace_lease_pages,
     }
     return payload, captured
+
+
+def _released_pool_exact(pool: dict[str, Any], workspace_lease_pages: int) -> bool:
+    """Require no request pages; verify pins against independent lease ownership."""
+    return (
+        int(pool["refcounted_pages"]) == workspace_lease_pages
+        and int(pool["pinned_pages"]) == workspace_lease_pages
+    )
 
 
 def _native_request(
@@ -207,6 +219,7 @@ def _native_request(
     *,
     max_tokens: int,
     row_seeds: tuple[int, ...],
+    top_k: int = 0,
 ):
     from hipengine.generation.registry import GenerationRequest
 
@@ -214,7 +227,7 @@ def _native_request(
         prompts=prompts,
         max_tokens=int(max_tokens),
         temperature=0.85,
-        top_k=8,
+        top_k=top_k,
         top_p=0.82,
         min_p=0.08,
         seed=17,
@@ -299,8 +312,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         prompts,
         max_tokens=max_tokens,
         row_seeds=row_seeds,
+        top_k=int(args.top_k),
     )
-    os.environ["HIPENGINE_QWEN35_NATIVE_SAMPLER"] = "1"
+    # Exercise the runtime default unless the caller explicitly requests rollback.
     llm = LLM(
         str(model),
         backend=str(args.backend),
@@ -459,14 +473,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             == "processed_logits_required"
             for row in oracle_rows
         )
+        workspace_lease_pages = int(
+            runner.kv_pool_memory_snapshot().get("packed_workspace_lease_pages", 0)
+        )
         ownership_exact = bool(
-            int(final_pool["refcounted_pages"]) == 0
-            and int(final_pool["pinned_pages"]) == 0
+            _released_pool_exact(final_pool, workspace_lease_pages)
             and int(final_pool["cow_fork_events"]) == 0
             and not runner.active_request_ids
             and int(runner.available_session_count) == 4
             and all(
-                int(run_payload["pool_after_release"]["refcounted_pages"]) == 0
+                _released_pool_exact(
+                    run_payload["pool_after_release"],
+                    run_payload["workspace_lease_pages_after_release"],
+                )
                 for run_payload in (
                     first,
                     second,
@@ -515,7 +534,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "physical_rows": 4,
                 "row_seeds": list(row_seeds),
                 "temperature": 0.85,
-                "top_k": 8,
+                "top_k": int(args.top_k),
                 "top_p": 0.82,
                 "min_p": 0.08,
                 "processors": [
@@ -552,9 +571,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "batch_route_exact": batch_route_exact,
                 "observability": observability,
             },
+            "native_sampler_provenance": llm._get_text_generator().native_sampler_provenance,
             "ownership": {
                 "exact": ownership_exact,
                 "final_pool": final_pool,
+                "workspace_lease_pages": workspace_lease_pages,
                 "active_request_ids": list(runner.active_request_ids),
                 "available_sessions": int(runner.available_session_count),
             },
@@ -593,6 +614,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prompt-tokens", type=int, default=256)
     parser.add_argument("--max-tokens", type=int, default=4)
     parser.add_argument("--max-sequence-length", type=int, default=512)
+    parser.add_argument("--top-k", type=int, default=0,
+                        help="Candidate limit; default 0 tests the full vocabulary")
     parser.add_argument("--json", type=Path)
     return parser
 

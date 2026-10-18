@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-08",
+  "status": "diagnostic",
+  "diagnostic_only": true,
+  "promotion_qualified": false,
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S",
+  "backend": "hip_gfx1151",
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+  "purpose": "Common-KV-precision diagnostic for the K_S 512-context gate: compare both saved arms against the saved llama.cpp BF16-KV teacher (matching hipEngine's BF16 KV storage) instead of the default F16-KV teacher. Labeled diagnostic alongside the normative F16-KV gate (benchmarks/results/2026-09-08-zbook-ud-ks-context512-teacher-gate-corrected.json); teacher selection is not a gate criterion and neither result is promoted on this basis.",
+  "method": "Existing captures, no new GPU work. The BF16-KV teacher was captured with the stale K_M-history input, so prompt 7 (general_ja_explain) steps 5-8 are excluded: 158 of 162 rows. Prompt 2's stale continuation index 8 is dropped by the tokenwise harness and never consumed. Recapture of the four stale BF16-KV rows is optional follow-up; none of the excluded rows are worst-case candidates.",
+  "arms_vs_bf16kv_teacher": {
+    "bf16_expanded_iq2_xs": {
+      "rows": 158,
+      "mean": 0.00089538,
+      "p95": 0.00422336,
+      "p99": 0.00848516,
+      "max": 0.01811209,
+      "top1": "157/158"
+    },
+    "raw_iq2_xs_default": {
+      "rows": 158,
+      "mean": 0.00092244,
+      "p95": 0.00348601,
+      "p99": 0.00963867,
+      "max": 0.03074856,
+      "top1": "156/158"
+    },
+    "gates": "same thresholds as the normative gate (mean<=0.001, p95<=0.005, p99<=0.02, max<=0.05, top1>=0.99)",
+    "expanded_verdict": "passes all five gates on the valid rows",
+    "raw_verdict": "passes mean/p95/p99/max; top-1 156/158 = 98.73% misses the 0.99 threshold by one flip"
+  },
+  "teacher_kv_precision_floor": {
+    "description": "llama.cpp F16-KV vs BF16-KV teacher on the same 158 rows: the KL the KV-precision choice alone creates",
+    "mean": 0.00041531,
+    "p95": 0.00259577,
+    "max": 0.00611351,
+    "top1": "157/158"
+  },
+  "interpretation": "Against the KV-matched teacher both arms drop under the mean gate (0.0009 vs 0.00104 against the F16-KV teacher), so a substantial part of the normative gate's mean excess is the hipEngine-BF16-KV vs teacher-F16-KV precision mismatch, not projection arithmetic. The raw IQ2_XS arm still shows a real tail/top-1 deficit relative to the expanded arm: worst row heldout_code_rate_limiter step 1 KL 0.030749 (the same row already flagged as the K_M raw Q5/Q6 arm's one above-threshold row in the 2026-09-07 common-KV artifact), and top-1 misses at code_lru_cache step 8 and the known general_ja_explain step 4. The expanded arm's mean remains slightly better (0.000895 vs 0.000922).",
+  "next": "Localize heldout_code_rate_limiter step 1 (raw arm) with layer-boundary captures plus a control prompt; examine recurrent state, projection-input rounding, and residual accumulation under identical operation inputs. K_M evidence already established a Q8_1-vs-BF16 activation difference without proving a faulty projection.",
+  "commands": {
+    "captures": "/tmp/ud-q56-context512-S-baseline.npz, /tmp/ud-context512-S-current-default.npz",
+    "bf16kv_teacher": "/tmp/ud-llama-context512-S-bf16kv.f32 (captured 2026-09-08 with stale input for prompt 7 steps 5-8)",
+    "f16kv_teacher": "/tmp/ud-llama-context512-S-fixed.f32"
+  }
+}

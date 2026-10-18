@@ -67,6 +67,9 @@ _Q4_DUAL_INTERLEAVED_NATURAL_TILE8_PARALLEL_SILU_HALFDOT_BF16 = (
 _Q4_DENSE_DUAL_LOCAL32_SILU_BF16 = (
     "hipengine_gguf_q4_k_t16_dense_dual_local32_silu_gemv_bf16_bf16_out"
 )
+_Q5_DENSE_DUAL_SILU_BF16 = (
+    "hipengine_gguf_q5_k_t16_dense_dual_silu_gemv_bf16_bf16_out"
+)
 _Q4_DENSE_SINGLE_LOCAL32_BF16 = (
     "hipengine_gguf_q4_k_t16_dense_single_local32_gemv_bf16_bf16_out"
 )
@@ -147,6 +150,7 @@ _Q4_DUAL_SILU_DIRECT_Q8X2_DP4A_BF16 = (
     "bf16_bf16_out"
 )
 _Q4_SINGLE_DIRECT_BF16 = "hipengine_gguf_q4_k_t16_selected_gemv_bf16_bf16_out"
+_Q4_SINGLE_CHUNK8_BF16 = "hipengine_gguf_q4_k_t16_selected_chunk8_gemv_bf16_bf16_out"
 _Q4_SINGLE_NATURAL_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out"
 )
@@ -165,6 +169,18 @@ _Q4_SINGLE_DIRECT_FP16 = "hipengine_gguf_q4_k_t16_selected_gemv_fp16_fp16_out"
 _Q5_DENSE_DIRECT_BF16 = (
     "hipengine_gguf_q5_k_t16_gemv_decode_bf16_bf16_out"
 )
+_Q5_DENSE_DIRECT_BF16_RESIDUAL = (
+    "hipengine_gguf_q5_k_t16_gemv_decode_bf16_residual_bf16_out"
+)
+_Q5_DENSE_SINGLE_LOCAL32_BF16 = (
+    "hipengine_gguf_q5_k_t16_dense_single_local32_gemv_bf16_bf16_out"
+)
+_Q5_SINGLE_LOCAL32_BF16 = (
+    "hipengine_gguf_q5_k_t16_selected_local32_gemv_bf16_bf16_out"
+)
+_Q5_QMICRO_SINGLE_LOCAL32_BF16 = (
+    "hipengine_gguf_q5_k_qmicro_t16_selected_local32_gemv_bf16_bf16_out"
+)
 _Q5_DENSE_TILE8_BF16 = (
     "hipengine_gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out"
 )
@@ -173,6 +189,9 @@ _Q5_DENSE_ROWTILE_BF16 = (
 )
 _Q5_DENSE_ROWTILE_COL8_BF16 = (
     "hipengine_gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out"
+)
+_Q5_DENSE_ROWTILE_SINGLE_WAVE_BF16 = (
+    "hipengine_gguf_q5_k_t16_gemv_rowtile_single_wave_bf16_bf16_out"
 )
 _Q5_DENSE_ROWTILE_GROUPED_ROWS8_BF16 = (
     "hipengine_gguf_q5_k_t16_gemv_rowtile_grouped_rows8_bf16_bf16_out"
@@ -899,6 +918,107 @@ def gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out(
     if status != HIP_SUCCESS:
         raise RuntimeError(
             f"{_Q4_DENSE_DUAL_LOCAL32_SILU_BF16} failed with HIP status "
+            f"{status}: {rt.error_string(status)}"
+        )
+
+
+def gguf_q5_k_t16_dense_dual_silu_gemv_bf16_bf16_out(
+    x_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the exact dense/shared Q5T16 SiLU decode dual."""
+
+    if rows != 1:
+        raise ValueError("dense Q5T16 SiLU decode dual requires rows == 1")
+    if in_features <= 0 or in_features % _QK_K:
+        raise ValueError("in_features must be a positive multiple of 256")
+    if out_features <= 0 or out_features % _T16_COLS:
+        raise ValueError("out_features must be a positive multiple of 16")
+    lib = library or _t16_selected_gemv_library()
+    rt = runtime or get_hip_runtime()
+    fn = getattr(lib, _Q5_DENSE_DUAL_SILU_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    status = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(tiles_a_ptr),
+        ctypes.c_void_p(tiles_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if status != HIP_SUCCESS:
+        raise RuntimeError(
+            f"{_Q5_DENSE_DUAL_SILU_BF16} failed with HIP status "
+            f"{status}: {rt.error_string(status)}"
+        )
+
+
+def gguf_q5_k_t16_dense_single_local32_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the exact local32 dense/shared Q5T16 single-output owner."""
+
+    if rows != 1:
+        raise ValueError("dense Q5T16 local32 decode requires rows == 1")
+    if in_features <= 0 or in_features % _QK_K:
+        raise ValueError("in_features must be a positive multiple of 256")
+    if out_features <= 0 or out_features % _T16_COLS:
+        raise ValueError("out_features must be a positive multiple of 16")
+    lib = library or _t16_selected_gemv_library()
+    rt = runtime or get_hip_runtime()
+    fn = getattr(lib, _Q5_DENSE_SINGLE_LOCAL32_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    status = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(tiles_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if status != HIP_SUCCESS:
+        raise RuntimeError(
+            f"{_Q5_DENSE_SINGLE_LOCAL32_BF16} failed with HIP status "
             f"{status}: {rt.error_string(status)}"
         )
 
@@ -2017,6 +2137,38 @@ def gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
     )
 
 
+def gguf_q5_k_t16_gemv_decode_bf16_residual_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact dense Q5T16 c1 decode projection plus rounded residual."""
+
+    if rows != 1:
+        raise ValueError("Q5T16 down-residual composite requires rows == 1")
+    _launch_dense_q5_t16_residual(
+        _Q5_DENSE_DIRECT_BF16_RESIDUAL,
+        x_ptr,
+        tiles_ptr,
+        residual_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out(
     x_ptr: int,
     tiles_ptr: int,
@@ -2060,7 +2212,14 @@ def gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch exact four-column Q5T16 row reuse for rows 2-8."""
+    """Launch the four-wave WG128 parent-parity Q5T16 rowtile for rows 2-8.
+
+    The ordered wave-0..3 reduction is the contract the grouped rows6/rows8
+    owners and the one-expert direct producer share, so this entry point stays
+    the parity parent. Production verifier rows select the single-wave
+    eight-column owner instead through
+    ``GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT``.
+    """
 
     _check_dense_q5_t16_shape(rows, in_features, out_features, rowtile=True)
     _launch_dense_q5_t16(
@@ -2160,6 +2319,41 @@ def gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out(
     _check_dense_q5_t16_shape(rows, in_features, out_features, rowtile=True)
     _launch_dense_q5_t16(
         _Q5_DENSE_ROWTILE_COL8_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q5_k_t16_gemv_rowtile_single_wave_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the single-wave eight-column Q5T16 verifier rowtile.
+
+    One wave32 per block owns eight columns over the whole K, each lane owning
+    eight contiguous k, so the subblock scale/min decode hoists out of the
+    inner loop and the block needs no cross-wave exchange. This is the Q4_K
+    rowtile's geometry; it is a production-profile owner, not parent-parity.
+    """
+
+    _check_dense_q5_t16_shape(rows, in_features, out_features, rowtile=True)
+    _launch_dense_q5_t16(
+        _Q5_DENSE_ROWTILE_SINGLE_WAVE_BF16,
         x_ptr,
         tiles_ptr,
         out_ptr,
@@ -2287,6 +2481,56 @@ def _launch_dense_q5_t16(
     status = fn(
         ctypes.c_void_p(x_ptr),
         ctypes.c_void_p(tiles_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if status != HIP_SUCCESS:
+        raise RuntimeError(
+            f"{symbol} failed with HIP status {status}: {rt.error_string(status)}"
+        )
+
+
+def _launch_dense_q5_t16_residual(
+    symbol: str,
+    x_ptr: int,
+    tiles_ptr: int,
+    residual_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    """Launch one Q5T16 decode projection plus rounded-BF16 residual."""
+
+    if in_features <= 0 or in_features % _QK_K != 0:
+        raise ValueError("in_features must be a positive multiple of 256")
+    if out_features <= 0 or out_features % _T16_COLS != 0:
+        raise ValueError("out_features must be a positive multiple of 16")
+    lib = library or _t16_selected_gemv_library()
+    rt = runtime or get_hip_runtime()
+    fn = getattr(lib, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    status = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(tiles_ptr),
+        ctypes.c_void_p(residual_ptr),
         ctypes.c_void_p(out_ptr),
         ctypes.c_int64(rows),
         ctypes.c_int64(in_features),
@@ -2670,6 +2914,45 @@ def gguf_q4_k_t16_selected_gemv_bf16_bf16_out(
     )
 
 
+def gguf_q4_k_t16_selected_chunk8_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Production selected Q4T16 GEMV: eight-k runs per thread, one wave per tile.
+
+    Same ABI and per-row results order as
+    :func:`gguf_q4_k_t16_selected_gemv_bf16_bf16_out` (the strict owner); the
+    summation order differs, so it is a production variant.
+    """
+
+    _launch_single_direct(
+        _Q4_SINGLE_CHUNK8_BF16,
+        x_ptr,
+        selected_ptr,
+        tiles_ptr,
+        out_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out(
     x_ptr: int,
     selected_ptr: int,
@@ -2951,6 +3234,84 @@ def gguf_q5_k_t16_selected_gemv_bf16_bf16_out(
 
     _launch_single_direct(
         _Q5_SINGLE_DIRECT_BF16,
+        x_ptr,
+        selected_ptr,
+        tiles_ptr,
+        out_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q5_k_t16_selected_local32_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the selected Q5T16 local32 GEMV owner.
+
+    ``x_rows`` follows the selected-expert contract: one x row per selected row
+    when ``x_rows == rows``, one shared x row when ``x_rows == 1``. The row
+    mapping matches the direct selected owner exactly.
+    """
+
+    _launch_single_direct(
+        _Q5_SINGLE_LOCAL32_BF16,
+        x_ptr,
+        selected_ptr,
+        tiles_ptr,
+        out_ptr,
+        x_rows,
+        rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q5_k_qmicro_t16_selected_local32_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the selected Q5 qmicro-planar local32 GEMV owner.
+
+    Reads the qmicro planar record layout that the MoE decode path materializes
+    for ``gguf_q5_k_qmicro_t16_v1`` weights. The ``x_rows`` contract is the same
+    as the plain-T16 selected local32 owner.
+    """
+
+    _launch_single_direct(
+        _Q5_QMICRO_SINGLE_LOCAL32_BF16,
         x_ptr,
         selected_ptr,
         tiles_ptr,
@@ -4403,6 +4764,53 @@ def _check_common(compact_rows: int, in_features: int, num_experts: int) -> None
 def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
     """Register compact selected T16 GEMV decode kernels."""
 
+    # Alias registration: the t16 selected decode GEMV has the same launch ABI
+    # as the raw selected GEMV (identical positional arguments and stream
+    # keyword), so under the t16 quant key the raw variant name serves it and
+    # dispatch routes on quant_key alone -- the alias pattern qwen's
+    # materializer documents for the WMMA compact spelling. The ``linear``
+    # layer binding is the key Gemma 4's decode resolves, and the key its
+    # strict-mode grouped-miss fall-through resolves; without it that miss
+    # would reach the raw-layout by-offset launch, which refuses non-raw
+    # layouts loudly.
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "selected_gemv_bf16_bf16_out",
+        ),
+        gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "selected_chunk8_gemv_bf16_bf16_out",
+        ),
+        gguf_q4_k_t16_selected_chunk8_gemv_bf16_bf16_out,
+        replace=replace,
+    )
+
+    # D11: the Q5_K gate_up expert stack plans raw plus its Q5T16 tiles side
+    # copy, and its decode rewrite resolves this key when the weight ships
+    # tiles (D11 screen: bit-exact with the raw incumbent and 4.35x faster at
+    # the production geometry, 0.1830 -> 0.0421 ms at rows 8). Same alias
+    # rationale as the q4_k registration above: same launch ABI, raw variant
+    # name, ``linear`` layer binding.
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q5_k_t16_v1",
+            "selected_gemv_bf16_bf16_out",
+        ),
+        gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
+        replace=replace,
+    )
+
     register(
         KernelKey(
             "hip_gfx1100",
@@ -4411,6 +4819,36 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
             "dense_single_local32_bf16_bf16_out",
         ),
         gguf_q4_k_t16_dense_single_local32_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q5_k_t16_v1",
+            "dense_single_local32_bf16_bf16_out",
+        ),
+        gguf_q5_k_t16_dense_single_local32_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q5_k_t16_v1",
+            "selected_t16_local32_gemv_decode_bf16_bf16_out",
+        ),
+        gguf_q5_k_t16_selected_local32_gemv_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q5_k_qmicro_t16_v1",
+            "selected_t16_local32_gemv_decode_bf16_bf16_out",
+        ),
+        gguf_q5_k_qmicro_t16_selected_local32_gemv_bf16_bf16_out,
         replace=replace,
     )
     register(
@@ -4451,6 +4889,16 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
             "dense_dual_local32_bf16_bf16_out",
         ),
         gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_pair_silu",
+            "gguf_q5_k_t16_v1",
+            "q5_dense_dual_silu_gemv_decode_bf16_bf16_out",
+        ),
+        gguf_q5_k_t16_dense_dual_silu_gemv_bf16_bf16_out,
         replace=replace,
     )
     register(
@@ -4596,6 +5044,16 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "linear+residual",
+            "gguf_q5_k_t16_v1",
+            "t16_gemv_decode_bf16_residual_bf16_out",
+        ),
+        gguf_q5_k_t16_gemv_decode_bf16_residual_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "linear",
             "gguf_q5_k_t16_v1",
             "t16_gemv_decode_tile8_bf16_bf16_out",
@@ -4621,6 +5079,16 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
             "t16_gemv_rowtile_col8_bf16_bf16_out",
         ),
         gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q5_k_t16_v1",
+            "t16_gemv_rowtile_single_wave_bf16_bf16_out",
+        ),
+        gguf_q5_k_t16_gemv_rowtile_single_wave_bf16_bf16_out,
         replace=replace,
     )
     register(
@@ -5054,6 +5522,7 @@ __all__ = [
     "gguf_q4_k_t16_selected_dual_gemv_decode_compact_fp16_fp16_out",
     "gguf_q4_k_t16_selected_dual_grouped_smallm_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_pairreuse_gemv_decode_compact_bf16_bf16_out",
+    "gguf_q4_k_t16_selected_chunk8_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_natural_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_natural_parallel_gemv_bf16_bf16_out",
@@ -5068,6 +5537,7 @@ __all__ = [
     "gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out",
     "gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out",
     "gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out",
+    "gguf_q5_k_t16_gemv_rowtile_single_wave_bf16_bf16_out",
     "gguf_q5_k_t16_gemv_rowtile_grouped_rows6_bf16_bf16_out",
     "gguf_q5_k_t16_gemv_rowtile_grouped_rows8_bf16_bf16_out",
     "gguf_q5_k_t16_gemv_rowtile12_col8_bf16_bf16_out",
@@ -5075,6 +5545,8 @@ __all__ = [
     "gguf_q5_k_qmicro_t16_selected_gemv_bf16_bf16_out",
     "gguf_q5_k_qmicro_t16_selected_qwen_tile8_gemv_bf16_bf16_out",
     "gguf_q5_k_t16_selected_gemv_bf16_bf16_out",
+    "gguf_q5_k_qmicro_t16_selected_local32_gemv_bf16_bf16_out",
+    "gguf_q5_k_t16_selected_local32_gemv_bf16_bf16_out",
     "gguf_q5_k_t16_selected_qwen_tile8_gemv_bf16_bf16_out",
     "gguf_q5_k_t16_selected_pairreuse_gemv_bf16_bf16_out",
     "gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out",

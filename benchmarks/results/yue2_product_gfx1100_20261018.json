@@ -1,0 +1,296 @@
+{
+  "selection": {
+    "requested": "auto",
+    "backend": "hip_gfx1100",
+    "source": "hip_arch",
+    "detected_arches": [
+      "gfx1100"
+    ]
+  },
+  "observed": {
+    "ar_backend": "hip_gfx1100",
+    "ar_max_context": 16000,
+    "nar_backend": "hip_gfx1100",
+    "vae_library": "/home/lhl/.cache/hipengine/build/yue2_vae-fb4013a9d7024869/yue2_vae",
+    "torch_imported": false,
+    "repeat_bit_identical": true
+  },
+  "capabilities": {
+    "surface": "song",
+    "loaded": false,
+    "sample_rate": 48000,
+    "channels": 2,
+    "cot_modes": [
+      "full",
+      "melody",
+      "off"
+    ],
+    "ode_steps": {
+      "default": 32
+    },
+    "context": {
+      "ar_span_attention": 16000,
+      "model_limit": 24576
+    },
+    "vae": {
+      "tiled": true,
+      "core_frames": 1024,
+      "halo_frames": 16
+    },
+    "torch_free": true,
+    "serialized_requests": true,
+    "backend": "hip_gfx1100",
+    "checkpoints": {
+      "model": "/mnt/nvme1/models/YuE2-3B",
+      "vae": "/mnt/nvme1/models/YuE2-Vae"
+    }
+  },
+  "runs": [
+    {
+      "tag": "first",
+      "wall_seconds": 116.757,
+      "frames": 1862,
+      "samples": 3574976,
+      "channels": 2,
+      "sample_rate": 48000,
+      "duration_seconds": 74.479,
+      "rtf": 1.568,
+      "finite": true,
+      "peak": 1.005176,
+      "rms": 0.156203,
+      "non_silent_fraction": 1.0,
+      "truncation": {
+        "abc": false,
+        "semantic": false
+      },
+      "semantic_tokens": 1862,
+      "abc_tokens": 0,
+      "latent_identity": "e4649562e706645d34c0b7a8c035a72dbcaaaaf8354bb24b7152edb4f895b515",
+      "audio_identity": "02dda95062bf9c1c00e433cedcba9ba385432f554c16db48fe25fc333526ab14",
+      "timing": {
+        "abc": {
+          "seconds": 0.0,
+          "output_tokens": 0
+        },
+        "semantic": {
+          "seconds": 69.7195073645562,
+          "prefill_seconds": 0.22713339142501354,
+          "ttft_seconds": 0.23283556289970875,
+          "output_tokens": 1863,
+          "content_tokens": 1862,
+          "output_tps": 26.72135920666454,
+          "prefix_tokens": 62,
+          "negative_prefix_tokens": 12,
+          "cfg_branches": 2,
+          "execution": "eager",
+          "attention": "spans",
+          "random": {
+            "algorithm": "numpy-pcg64-v1",
+            "seed": 20260916
+          },
+          "random_state_digest": "6b5bbea962135908"
+        },
+        "nar_seconds": 12.578000171110034,
+        "vae_seconds": 8.172717992216349,
+        "e2e_seconds": 90.48355377279222
+      },
+      "weights": {
+        "model": {
+          "path": "/mnt/nvme1/models/YuE2-3B",
+          "files": {
+            "config.json": {
+              "sha256": "ad3477bbef890bf98ae196c1e4b44779494a6231c4ab66f32708eabadf265329",
+              "bytes": 959
+            },
+            "qwen.tiktoken": {
+              "sha256": "b2b1b8dfb5cc5f024bafc373121c6aba3f66f9a5a0269e243470a1de16a33186",
+              "bytes": 2561218
+            },
+            "weights_manifest.json": {
+              "sha256": "2296f82c29dcb11aeefde07e216403a32fc86c8f6da2ec15a70102abfd936a93",
+              "bytes": 179
+            }
+          },
+          "shards": [
+            {
+              "name": "model.safetensors",
+              "bytes": 7261441640
+            }
+          ],
+          "tensor_count": 628
+        },
+        "vae": {
+          "path": "/mnt/nvme1/models/YuE2-Vae",
+          "files": {
+            "config.json": {
+              "sha256": "f0191bb9694009956de44e0c361a6f1334760be4c8f848e599bde242a54a0970",
+              "bytes": 1378
+            },
+            "weights_manifest.json": {
+              "sha256": "017d64a4d288217a43fcac3866a0e1d55f796fa891d4dfb6de0bd170ab750026",
+              "bytes": 178
+            }
+          },
+          "shards": [
+            {
+              "name": "model.safetensors",
+              "bytes": 530512720
+            }
+          ],
+          "tensor_count": 435
+        }
+      },
+      "config": {
+        "abc": {
+          "temperature": 0.7,
+          "top_p": 0.9,
+          "top_k": 30,
+          "repetition_penalty": 1.005,
+          "penalty_window": 100,
+          "min_tokens": 32,
+          "max_tokens": 4096
+        },
+        "semantic": {
+          "temperature": 1.0,
+          "top_p": 0.95,
+          "top_k": 100,
+          "repetition_penalty": 1.2,
+          "penalty_window": 50,
+          "min_tokens": 200,
+          "max_tokens": 9000
+        },
+        "ode_steps": 32,
+        "ode_method": "midpoint",
+        "context": 24576,
+        "vae_core_frames": 1024,
+        "vae_halo_frames": 16,
+        "vae_tiled": true,
+        "guidance": 1.01,
+        "cot": "off"
+      }
+    },
+    {
+      "tag": "repeat",
+      "wall_seconds": 90.357,
+      "frames": 1862,
+      "samples": 3574976,
+      "channels": 2,
+      "sample_rate": 48000,
+      "duration_seconds": 74.479,
+      "rtf": 1.213,
+      "finite": true,
+      "peak": 1.005176,
+      "rms": 0.156203,
+      "non_silent_fraction": 1.0,
+      "truncation": {
+        "abc": false,
+        "semantic": false
+      },
+      "semantic_tokens": 1862,
+      "abc_tokens": 0,
+      "latent_identity": "e4649562e706645d34c0b7a8c035a72dbcaaaaf8354bb24b7152edb4f895b515",
+      "audio_identity": "02dda95062bf9c1c00e433cedcba9ba385432f554c16db48fe25fc333526ab14",
+      "timing": {
+        "abc": {
+          "seconds": 0.0,
+          "output_tokens": 0
+        },
+        "semantic": {
+          "seconds": 69.56257303617895,
+          "prefill_seconds": 0.04281335882842541,
+          "ttft_seconds": 0.04493390582501888,
+          "output_tokens": 1863,
+          "content_tokens": 1862,
+          "output_tps": 26.781643040016192,
+          "prefix_tokens": 62,
+          "negative_prefix_tokens": 12,
+          "cfg_branches": 2,
+          "execution": "eager",
+          "attention": "spans",
+          "random": {
+            "algorithm": "numpy-pcg64-v1",
+            "seed": 20260916
+          },
+          "random_state_digest": "6b5bbea962135908"
+        },
+        "nar_seconds": 12.559200877323747,
+        "vae_seconds": 8.220645852386951,
+        "e2e_seconds": 90.34323921613395
+      },
+      "weights": {
+        "model": {
+          "path": "/mnt/nvme1/models/YuE2-3B",
+          "files": {
+            "config.json": {
+              "sha256": "ad3477bbef890bf98ae196c1e4b44779494a6231c4ab66f32708eabadf265329",
+              "bytes": 959
+            },
+            "qwen.tiktoken": {
+              "sha256": "b2b1b8dfb5cc5f024bafc373121c6aba3f66f9a5a0269e243470a1de16a33186",
+              "bytes": 2561218
+            },
+            "weights_manifest.json": {
+              "sha256": "2296f82c29dcb11aeefde07e216403a32fc86c8f6da2ec15a70102abfd936a93",
+              "bytes": 179
+            }
+          },
+          "shards": [
+            {
+              "name": "model.safetensors",
+              "bytes": 7261441640
+            }
+          ],
+          "tensor_count": 628
+        },
+        "vae": {
+          "path": "/mnt/nvme1/models/YuE2-Vae",
+          "files": {
+            "config.json": {
+              "sha256": "f0191bb9694009956de44e0c361a6f1334760be4c8f848e599bde242a54a0970",
+              "bytes": 1378
+            },
+            "weights_manifest.json": {
+              "sha256": "017d64a4d288217a43fcac3866a0e1d55f796fa891d4dfb6de0bd170ab750026",
+              "bytes": 178
+            }
+          },
+          "shards": [
+            {
+              "name": "model.safetensors",
+              "bytes": 530512720
+            }
+          ],
+          "tensor_count": 435
+        }
+      },
+      "config": {
+        "abc": {
+          "temperature": 0.7,
+          "top_p": 0.9,
+          "top_k": 30,
+          "repetition_penalty": 1.005,
+          "penalty_window": 100,
+          "min_tokens": 32,
+          "max_tokens": 4096
+        },
+        "semantic": {
+          "temperature": 1.0,
+          "top_p": 0.95,
+          "top_k": 100,
+          "repetition_penalty": 1.2,
+          "penalty_window": 50,
+          "min_tokens": 200,
+          "max_tokens": 9000
+        },
+        "ode_steps": 32,
+        "ode_method": "midpoint",
+        "context": 24576,
+        "vae_core_frames": 1024,
+        "vae_halo_frames": 16,
+        "vae_tiled": true,
+        "guidance": 1.01,
+        "cot": "off"
+      }
+    }
+  ]
+}

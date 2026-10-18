@@ -10,7 +10,10 @@ real allocation path.
 from __future__ import annotations
 
 import inspect
+import threading
 from types import SimpleNamespace
+
+import pytest
 
 from hipengine.core.memory import DeviceBuffer
 from hipengine.generation import qwen35_gguf
@@ -486,7 +489,7 @@ def test_gguf_capacity_excludes_deferred_kv_from_scratch() -> None:
     assert resident.scratch_bytes - deferred.scratch_bytes == resident.kv_pool_bytes
 
 
-def test_gguf_capacity_workspace_lease_mirrors_the_declared_context() -> None:
+def test_gguf_capacity_workspace_lease_is_bounded_and_growth_is_priced() -> None:
     plain = gguf_runner.qwen35_gguf_resident_breakdown(
         _real_qwen38_27b_cfg(),
         context_tokens=16_384,
@@ -503,11 +506,37 @@ def test_gguf_capacity_workspace_lease_mirrors_the_declared_context() -> None:
         kv_scale_dtype="fp32",
         workspace_lease_needed=True,
     )
-    # 16,384 tokens is 64 pages, which is above the 1,024-token packed floor.
+    # Reserve only the packed floor eagerly; full private fallback is priced
+    # separately because the pinned arena remains live during growth.
     assert plain.workspace_lease_pages == 0
-    assert leased.workspace_lease_pages == 64
-    assert leased.workspace_lease_bytes == 64 * leased.page_bytes
-    assert leased.total_bytes - plain.total_bytes == leased.workspace_lease_bytes
+    assert leased.workspace_lease_pages == 4
+    assert leased.workspace_lease_bytes == 4 * leased.page_bytes
+    assert leased.private_workspace_bytes == 64 * leased.page_bytes
+    assert leased.total_bytes - plain.total_bytes == (
+        leased.workspace_lease_bytes + leased.private_workspace_bytes
+    )
+
+
+@pytest.mark.parametrize("context", [511, 1025, 5379])
+@pytest.mark.parametrize("capacity", [1, 4, 8])
+def test_workspace_slots_are_independent_of_request_kv(context, capacity):
+    kwargs = dict(
+        context_tokens=context, **_QWEN38_27B_GEOMETRY,
+        kv_storage_dtype="bf16", workspace_lease_needed=True,
+        max_batch_size=1,
+    )
+    single = gguf_runner.qwen35_gguf_resident_breakdown(_real_qwen38_27b_cfg(), **kwargs)
+    concurrent = gguf_runner.qwen35_gguf_resident_breakdown(
+        _real_qwen38_27b_cfg(), workspace_lease_slots=capacity, **kwargs,
+    )
+    assert concurrent.workspace_lease_pages == gguf_runner.packed_verify_workspace_lease_pages(
+        capacity, concurrent.max_positions,
+    )
+    assert concurrent.kv_pool_bytes == single.kv_pool_bytes
+    assert concurrent.scratch_bytes == single.scratch_bytes
+    assert concurrent.total_bytes - single.total_bytes == (
+        (capacity - 1) * (single.workspace_lease_bytes + single.private_workspace_bytes)
+    )
 
 
 def test_gguf_capacity_reserve_and_transient_overrides_are_respected() -> None:
@@ -655,8 +684,8 @@ def test_auto_context_honours_explicit_pool_memory_budget(monkeypatch) -> None:
     assert generator._auto_context_estimate.usable_bytes <= 4096 * 1024**2
 
 
-def test_auto_context_is_independent_of_batch_size(monkeypatch) -> None:
-    """Scheduler concurrency does not shrink the per-request context ceiling."""
+def test_auto_context_prices_serving_workspace_capacity(monkeypatch) -> None:
+    """Concurrency changes the pinned lease, not per-request elastic KV."""
 
     monkeypatch.delenv("HIPENGINE_GGUF_AUTO_CONTEXT", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_KV_CAPACITY_RESERVE_MIB", raising=False)
@@ -670,8 +699,11 @@ def test_auto_context_is_independent_of_batch_size(monkeypatch) -> None:
         runner, max_batch_size=8, defer_kv_allocation=True
     )
 
-    assert single is not None and batched == single
-    assert generator._auto_resolved_max_sequence_length == single
+    assert single is not None and batched is not None and batched < single
+    assert generator._auto_resolved_max_sequence_length == batched
+    assert generator._auto_context_estimate.workspace_lease_pages == (
+        gguf_runner.packed_verify_workspace_lease_pages(8, batched)
+    )
 
 
 def test_auto_context_honours_the_disable_flag(monkeypatch) -> None:
@@ -843,7 +875,8 @@ def test_prepare_retries_when_the_kv_pool_allocation_fails(monkeypatch) -> None:
 
     reserved: list[int | None] = []
 
-    def _reserve_sessions() -> None:
+    def _reserve_sessions(*, max_sequence_length: int | None = None) -> None:
+        del max_sequence_length
         context = generator._auto_resolved_max_sequence_length
         reserved.append(context)
         # Fail while the pool would need more than half the original budget.
@@ -878,7 +911,8 @@ def test_prepare_degrades_a_pinned_context_with_a_warning(monkeypatch) -> None:
         lambda message, *args: warnings.append(message % args),
     )
 
-    def _reserve_sessions() -> None:
+    def _reserve_sessions(*, max_sequence_length: int | None = None) -> None:
+        del max_sequence_length
         attempted.append(runner._max_sequence_length)
         if runner._max_sequence_length is None or int(runner._max_sequence_length) > 32_768:
             raise MemoryError("hip out of memory")
@@ -930,7 +964,8 @@ def test_auto_context_flag_disables_the_fallback_on_both_paths(monkeypatch) -> N
     runner = _resident_runner_stub(generator, capacity=4)
     reserved: list[int | None] = []
 
-    def _reserve_sessions() -> None:
+    def _reserve_sessions(*, max_sequence_length: int | None = None) -> None:
+        del max_sequence_length
         reserved.append(runner._max_sequence_length)
         raise MemoryError("hip out of memory")
 
@@ -993,6 +1028,156 @@ def test_recalibrated_auto_context_is_strictly_smaller_and_aligned(monkeypatch) 
         assert smaller >= 256
 
 
+def test_recalibrated_auto_context_terminates_at_the_block_floor(monkeypatch) -> None:
+    """At or below one block there is no smaller valid context to retry at.
+
+    The failed context must come back unchanged so the callers' ``next_context
+    >= context`` guard stops the loop. A value below one block is what let a
+    real server walk 256 -> 0 -> -256 -> ... -2560.
+    """
+
+    monkeypatch.delenv("HIPENGINE_GGUF_AUTO_CONTEXT", raising=False)
+    generator = _auto_context_generator()
+    runner = _auto_context_runner(free_gib=8.0)
+    for failed in (256, 255, 128, 1):
+        next_context = generator._recalibrated_auto_context(
+            runner,
+            failed_context=failed,
+            max_batch_size=1,
+            defer_kv_allocation=True,
+        )
+        assert next_context == failed
+        assert next_context > 0
+
+
+def test_construct_shared_session_stops_at_the_minimum_context(monkeypatch) -> None:
+    """Repeated failures must never attempt zero or negative context.
+
+    With the 14-attempt budget the real server configured, a failure at every
+    size drove the retry below one block. The loop must attempt the smallest
+    valid context exactly once and then raise.
+    """
+
+    monkeypatch.delenv("HIPENGINE_GGUF_AUTO_CONTEXT", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_AUTO_CONTEXT_ATTEMPTS", "14")
+    generator = _auto_context_generator()
+    generator._prepared_session_kv_kwargs = lambda: {}
+    generator._configure_session = lambda session: None
+    attempts: list[int | None] = []
+
+    class _Session:
+        def __init__(self, model_path, **kwargs):
+            attempts.append(kwargs.get("max_sequence_length"))
+            raise MemoryError("hip out of memory")
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", _Session)
+    with pytest.raises(MemoryError):
+        generator._construct_shared_session(
+            _auto_context_runner(),
+            max_sequence_length=131_072,
+            max_batch_size=1,
+            defer_kv_allocation=True,
+            use_wmma_prefill=None,
+            use_gemv_decode=None,
+        )
+
+    assert attempts[0] == 131_072
+    assert all(int(context) > 0 for context in attempts if context is not None)
+    assert all(int(context) % 256 == 0 for context in attempts if context is not None)
+    assert attempts == sorted(attempts, reverse=True)
+    assert attempts[-1] == 256
+    assert attempts.count(256) == 1
+
+
+def test_prepare_stops_at_the_minimum_context(monkeypatch) -> None:
+    """The pool retry must terminate at one block instead of going negative."""
+
+    monkeypatch.delenv("HIPENGINE_GGUF_AUTO_CONTEXT", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_AUTO_CONTEXT_ATTEMPTS", "14")
+    generator = _auto_context_generator(_prepared_max_sequence_length=131_072)
+    runner = _resident_runner_stub(generator, capacity=4)
+    attempted: list[int | None] = []
+
+    def _reserve_sessions(*, max_sequence_length: int | None = None) -> None:
+        del max_sequence_length
+        attempted.append(runner._max_sequence_length)
+        raise MemoryError("hip out of memory")
+
+    runner._reserve_sessions = _reserve_sessions
+    runner._clear_prefix_snapshots = lambda: None
+    runner._release_available_sessions = lambda: None
+
+    with pytest.raises(MemoryError):
+        runner.prepare()
+
+    assert attempted[0] == 131_072
+    assert all(int(context) > 0 for context in attempted if context is not None)
+    assert all(int(context) % 256 == 0 for context in attempted if context is not None)
+    assert attempted == sorted(attempted, reverse=True)
+    assert attempted[-1] == 256
+    assert attempted.count(256) == 1
+
+
+def test_prepare_retry_builds_the_session_at_the_selected_context(monkeypatch) -> None:
+    """The retry context must reach ``_construct_shared_session``, not just the log.
+
+    Production ``_reserve_sessions`` acquires through
+    ``generator._acquire_shared_session``, which used to read only
+    ``_prepared_max_sequence_length``. The retry updated the runner's
+    ``_max_sequence_length`` but not that prepared field, so every construction
+    re-requested the original pinned size while the warning logged a smaller
+    one. This drives the real reserve/acquire plumbing with only construction
+    mocked.
+    """
+
+    monkeypatch.delenv("HIPENGINE_GGUF_AUTO_CONTEXT", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_AUTO_CONTEXT_ATTEMPTS", "14")
+    generator = _auto_context_generator(_prepared_max_sequence_length=8_192)
+    generator._defer_resident_session_policy_resolution = True
+    runner = _resident_runner_stub(generator, capacity=4)
+    runner._shared_runner = _auto_context_runner(free_gib=8.0)
+    built: list[int | None] = []
+
+    def _construct_shared_session(shared_runner, *, max_sequence_length, **kwargs):
+        del shared_runner, kwargs
+        built.append(max_sequence_length)
+        raise MemoryError("hip out of memory")
+
+    monkeypatch.setattr(generator, "_construct_shared_session", _construct_shared_session)
+
+    with pytest.raises(MemoryError):
+        runner.prepare()
+
+    assert built[0] == 8_192
+    # Every construction uses the context the retry selected, strictly
+    # decreasing to the one-block floor; the original pinned size is never
+    # re-requested after it fails.
+    assert all(int(context) > 0 for context in built if context is not None)
+    assert all(int(context) % 256 == 0 for context in built if context is not None)
+    assert all(
+        int(earlier) > int(later) for earlier, later in zip(built, built[1:])
+    ), built
+    assert built[-1] == 256
+    assert built.count(8_192) == 1
+    # The retry is transient: the prepared policy itself is untouched.
+    assert generator._prepared_max_sequence_length == 8_192
+
+
+def test_recalibrated_auto_context_does_not_raise_a_sub_block_pin(monkeypatch) -> None:
+    """A user's sub-block context must not be silently promoted to a block."""
+
+    monkeypatch.delenv("HIPENGINE_GGUF_AUTO_CONTEXT", raising=False)
+    generator = _auto_context_generator()
+    runner = _auto_context_runner(free_gib=8.0)
+    next_context = generator._recalibrated_auto_context(
+        runner,
+        failed_context=128,
+        max_batch_size=1,
+        defer_kv_allocation=True,
+    )
+    assert next_context == 128
+
+
 def test_resident_slot_default_is_one(monkeypatch) -> None:
     """One slot is the default; each slot reserves a full-context KV plane.
 
@@ -1011,21 +1196,22 @@ def test_resident_slot_default_is_one(monkeypatch) -> None:
     assert signature.parameters["capacity"].default == 4
 
 
-def test_server_defaults_to_int8_kv_storage() -> None:
-    """The serve CLI default is INT8, gated by artifact qualification."""
+@pytest.mark.parametrize("storage", ["bf16", "int8_per_token_head", "auto"])
+def test_server_kv_storage_environment_and_cli_precedence(monkeypatch, storage) -> None:
+    """Storage selection works independently of the product's current default."""
 
     from hipengine.server.__main__ import build_parser
 
+    monkeypatch.setenv("HIPENGINE_KV_STORAGE", storage)
     parser = build_parser()
-    assert parser.parse_args(["--model", "/tmp/m.gguf"]).kv_storage == "int8_per_token_head"
+    assert parser.parse_args(["--model", "/tmp/m.gguf"]).kv_storage == storage
+    for explicit in ("bf16", "int8_per_token_head", "auto"):
+        args = parser.parse_args(["--model", "/tmp/m.gguf", "--kv-storage", explicit])
+        assert args.kv_storage == explicit
 
-    # Both rollbacks stay available.
-    assert parser.parse_args(["--model", "/tmp/m.gguf", "--kv-storage", "bf16"]).kv_storage == "bf16"
-    assert parser.parse_args(["--model", "/tmp/m.gguf", "--kv-storage", "auto"]).kv_storage == "auto"
 
-
-def test_server_defaults_match_the_qualified_int8_contract(monkeypatch) -> None:
-    """The CLI defaults have to key the registered qualification contract.
+def test_server_explicit_int8_uses_qualified_scale_defaults(monkeypatch) -> None:
+    """An explicit INT8 selection must use compatible default scale settings.
 
     The retained evidence for the supported dense GGUF artifacts is keyed on
     ``scale_dtype="fp32"``. A server defaulting to fp16 scales builds a key that
@@ -1038,16 +1224,24 @@ def test_server_defaults_match_the_qualified_int8_contract(monkeypatch) -> None:
     from hipengine.models.qwen35 import _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE
     from hipengine.server.__main__ import build_parser
 
-    args = build_parser().parse_args(["--model", "/tmp/m.gguf"])
+    monkeypatch.setenv("HIPENGINE_KV_STORAGE", "bf16")
+    monkeypatch.delenv("HIPENGINE_KV_SCALE_DTYPE", raising=False)
+    monkeypatch.delenv("HIPENGINE_KV_SCALE_GRANULARITY", raising=False)
+    args = build_parser().parse_args(
+        ["--model", "/tmp/m.gguf", "--kv-storage", "int8_per_token_head"]
+    )
     assert args.kv_storage == "int8_per_token_head"
     assert args.kv_scale_dtype == "fp32"
     assert args.kv_scale_granularity == "per_token_head"
 
-    # At least one retained contract must match those defaults for the target
-    # artifact, or the default is a no-op that reports INT8 and allocates BF16.
+    # Explicit INT8 must not silently fall back because its scale defaults
+    # cannot match the supported artifact's contract.
     key = KVCapabilityKey(
         artifact_sha256="7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
         artifact_size_bytes=17_106_773_984,
+        artifact_execution_fingerprint=(
+            "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+        ),
         backend="hip_gfx1100",
         target_arch="gfx1100",
         weight_quant="gguf_q4_k_m",
@@ -1057,5 +1251,70 @@ def test_server_defaults_match_the_qualified_int8_contract(monkeypatch) -> None:
         scale_granularity=args.kv_scale_granularity,
     )
     matches = [row for row in _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE if row.key == key]
-    assert matches, "the default KV policy matches no retained qualification contract"
+    assert matches, "explicit INT8 with default scales matches no qualification contract"
     assert matches[0].decision == "qualified"
+
+
+def test_a_declared_context_is_what_the_session_is_sized_to(monkeypatch) -> None:
+    """The incident this pins: a declared 4096 was replaced by 183808.
+
+    ``LLM(model, max_sequence_length=N)`` is a declaration about the resident
+    session, and the session used to be sized by automatic selection unless the
+    caller also called ``prepare``. Auto-selection takes the largest context that
+    fits; on this APU the KV pool is host memory, so the substitution allocated
+    tens of GiB the caller never asked for and the machine ran out of RAM.
+    """
+
+    monkeypatch.delenv("HIPENGINE_GGUF_AUTO_CONTEXT", raising=False)
+    runner = _auto_context_runner(free_gib=100.0)
+    generator = _auto_context_generator()
+    auto = generator._resolve_auto_context(
+        runner, max_batch_size=1, defer_kv_allocation=False
+    )
+    assert auto is not None and auto > 4096, "the fixture must offer a large context"
+
+    requested: list[int | None] = []
+
+    def _construct(self, shared_runner, *, max_sequence_length, **kwargs):
+        requested.append(max_sequence_length)
+        return SimpleNamespace(max_sequence_length=max_sequence_length)
+
+    monkeypatch.setattr(
+        qwen35_gguf.Qwen35GGUFBringupGenerator,
+        "_construct_shared_session",
+        _construct,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        qwen35_gguf.Qwen35GGUFBringupGenerator,
+        "_configure_session",
+        lambda self, session: None,
+        raising=False,
+    )
+    generator._shared_session_pool = {}
+    generator._shared_session_pool_lock = threading.Lock()
+
+    # Without a declaration the automatic selection decides, as before.
+    generator._acquire_shared_session(runner, pool_name="auto")
+    assert requested == [auto]
+
+    # With one, the declaration decides -- whatever auto-selection would have
+    # chosen.
+    pinned = _auto_context_generator()
+    pinned._shared_session_pool = {}
+    pinned._shared_session_pool_lock = threading.Lock()
+    pinned.declare_max_sequence_length(4096)
+    pinned._acquire_shared_session(runner, pool_name="pinned")
+    assert requested == [auto, 4096]
+
+
+def test_prepare_and_declaration_agree_on_the_pin() -> None:
+    generator = _auto_context_generator()
+    generator.declare_max_sequence_length(4096)
+    assert generator._prepared_max_sequence_length == 4096
+    # A later, smaller declaration must not shrink the pin, and a non-positive
+    # one is a caller error rather than a silent no-op.
+    assert generator.declare_max_sequence_length(1024) == 4096
+    assert generator._prepared_max_sequence_length == 4096
+    with pytest.raises(ValueError):
+        generator.declare_max_sequence_length(0)

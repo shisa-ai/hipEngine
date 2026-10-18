@@ -1,0 +1,28 @@
+{
+  "kind": "gemma4_gfx1151_expert_pack8_layout_settlement",
+  "performance_claim": true,
+  "recorded": "2026-09-28, gfx1151 Strix Halo (AMD Radeon 8060S), Gemma 4 26B-A4B UD-Q4_K_XL",
+  "settles": "docs/REFACTOR.md 'Gemma 4's pack8 expert layout is off by default'",
+  "why": "That entry names a default-off flag with a measured cause and states its own clearing condition: 'Clear it by measuring the packed layout against the raw one at a row count where rows exceeds the expert count, which is the one regime the ladder does not already give to grouped_prefill.' Gemma 4 has 128 experts and the prefill chunk is 512 rows, so --prompt 512 --prefill 512 is exactly that regime. This run performs the named measurement.",
+  "command": "HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT=<0|1> python scripts/gemma4_campaign_bench.py --prompt 512 --output 32 --samples 2 --warmup 1 --expect-gpu 8060S",
+  "condition": "rows = 512 prefill rows, against 128 experts, so rows exceeds the expert count",
+  "measurements": [
+    {"layout": "off (raw)", "prefill_tps": 343.2, "prefill_s": 1.492, "decode_tps": 21.24},
+    {"layout": "on (pack8)", "prefill_tps": 340.0, "prefill_s": 1.506, "decode_tps": 7.78}
+  ],
+  "finding": {
+    "prefill": "343.2 against 340.0 tok/s, a 0.9 percent difference in favour of the raw layout, which is inside run-to-run variation and is not a win for either side.",
+    "decode": "21.24 against 7.78 tok/s, so the packed layout is 2.73x slower. This reproduces the 2.75x regression the REFACTOR entry already documents, on a fresh run with the same flag.",
+    "verdict": "The packed layout is never ahead. It is not ahead in the regime the ladder already assigns to grouped_prefill, and it is not ahead in the one regime the ladder does not cover, which is the condition the entry set for deletion."
+  },
+  "consequence": "The REFACTOR entry's own text says the flag and the unreached code 'go away together when the question is settled'. The question is now settled by its own named method, so the deletion is unblocked: LAYOUT_Q4_K_PACK8, pack8_arrays, _materialize_pack8, _pack8_shapes, _pack8_nbytes, pack8_layout_enabled, and gemma4_project_experts_pack8.",
+  "caveats": [
+    "The prefill comparison is a 0.9 percent difference, so this run does not establish a prefill win for the raw layout either. It establishes that the packed layout is not ahead, which is what the deletion condition asks.",
+    "The decode regression is measured at rows == 1, which is not the regime the entry's clearing condition names. It is reported because it is the larger and more decisive of the two effects and it reproduces a previously documented number.",
+    "The flag costs 19.2 GB of duplicated weights on the 26B artifact. Both runs fit; the raw run does not carry that cost."
+  ],
+  "next": [
+    "Delete the packed layout and its seven symbols, and remove the default-off flag and its pinning test.",
+    "Re-run the campaign bench afterwards to confirm prefill and decode are unchanged from the raw row."
+  ]
+}

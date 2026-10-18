@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "path": "worklog/entries/20261017T194124.121835Z-mtp-followup-physical-mtp-matrix-c6fedf.md",
+  "sha256": "b3bcdade957d0552a413d543f6f5787c460d3f000feb07b032346d8f0890bd21",
+  "defects": [
+    "abbreviated_base_commit",
+    "missing_required_sections"
+  ],
+  "reason": "The physical-route entry used the short base commit 201c9a2a0 and lacked the required Changes and Validation headings. Resolve its full identity and link the valid correction without modifying the committed entry. The failed validation was not chained to the commit command, so this malformed entry was committed accidentally.",
+  "base_commit": "201c9a2a0c0f50d3f0070c9b9449fb3302b903b5",
+  "superseded_by": "worklog/entries/20261017T194313.618798Z-mtp-followup-physical-matrix-correction-81e3fd.md"
+}

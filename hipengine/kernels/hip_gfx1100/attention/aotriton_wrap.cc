@@ -395,6 +395,8 @@ extern "C" int hipengine_aotriton_attn_fwd_v3_compact_varlen(
     void* persistent_atomic_counter,
     float sm_scale,
     int32_t is_causal,
+    int32_t window_left,
+    int32_t window_right,
     void* stream) noexcept {
   if (max_seqlen_q <= 0 || max_seqlen_k <= 0) {
     return static_cast<int>(kInvalidValue);
@@ -457,8 +459,11 @@ extern "C" int hipengine_aotriton_attn_fwd_v3_compact_varlen(
       ? AOTRITON_NS::v3::flash::CausalType::WindowedAttention
       : AOTRITON_NS::v3::flash::CausalType::None;
   params.varlen_type = AOTRITON_NS::v3::flash::VarlenType::CompactVarlen;
-  params.window_left = AOTRITON_NS::v3::flash::WindowValue::BottomRightAligned;
-  params.window_right = AOTRITON_NS::v3::flash::WindowValue::BottomRightAligned;
+  // Window bounds are caller-supplied so a measurement can vary them; the
+  // Python defaults are the two WindowValue sentinels below, which makes the
+  // default path byte-for-byte what this line used to hardcode.
+  params.window_left = window_left;
+  params.window_right = window_right;
 
   try {
     return static_cast<int>(AOTRITON_NS::v3::flash::attn_fwd(

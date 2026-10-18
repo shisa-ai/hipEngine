@@ -1,0 +1,23 @@
+{
+  "id": "2026-09-26-gemma4-26b-a4b-profile-gap-closed-launch-bubbles",
+  "date": "2026-09-26",
+  "kind": "analysis",
+  "status": "diagnostic",
+  "campaign": "GEMMA4-26B-A4B-OPTIMIZATION",
+  "iteration": 45,
+  "subject": "The 3.2 ms unattributed slice of the decode profile is GPU-side launch latency, and its two candidate fixes are both refuted by existing measurements",
+  "method": "Arithmetic over measured components, no new run: iteration 19's profile (attention 8.5, MoE 6.2, dense 3.9 of a 21.8 ms step), iteration 26's launch census (14 elementwise launches per layer, ~420 per step), and iteration 25's finding that host dispatch is hidden behind GPU execution at this row.",
+  "findings": {
+    "memory_is_irrelevant": "The 14 elementwise launches per layer each read and write the 2816-wide hidden row in bf16, so the whole chain moves about 4.7 MB per token. At the 960 GB/s roofline that is 0.005 ms. The elementwise chain costs essentially nothing in bandwidth.",
+    "the_gap_is_launch_latency": "420 launches at 5-8 us of GPU-side gap each is 2.10-3.36 ms, which accounts for the 3.2 ms the profile leaves unattributed. Combined: 18.6 + 3.2 = 21.8 ms. The profile is closed.",
+    "it_is_not_host_cost": "Iteration 25 established that host dispatch is hidden behind GPU execution at 1024p, so this is GPU-side inter-kernel latency, not the launcher wrapper.",
+    "fusion_is_refuted_twice": "docs/REFACTOR.md records two bit-exact, launch-reducing fusions that lost on wall time: the Qwen rmsnorm+rotate (13.41 -> 14.09 ms/pass, because the one-block-per-row RMSNorm reduction serialises the per-group rotate) and HIPENGINE_FULL_QKV_SPLIT_KEY_FUSED (932 -> 922 calls/pass but 26.925 -> 27.010 ms/cycle). The fused head_rmsnorm+partial_rotary composite that exists in the registry is gguf_qwen35_*, a Qwen-specific kernel keyed to a qwen35_position_f32 variant, so it is not reusable for Gemma 4.",
+    "graphs_are_already_measured_and_scoped": "HIP graph capture is not unexercised: hipengine/core/hip.py exposes it and core/pm4/transport.py uses it as the hipgraph transport. docs/REFACTOR.md records +0.81%/+0.68% at 64 tokens and +1.36%/+1.40% at 32 tokens, and the campaign's own line 450 already scopes it to the short-prompt rows where host cost is exposed, not to the 1024p metric row."
+  },
+  "corrections_to_campaign_record": [
+    "Campaign line 405 states that hipengine/core/hip.py exposes stream_begin_capture, graph instantiation and hipGraphLaunch and that 'nothing calls them'. That is stale: core/pm4/transport.py:528 calls graph_instantiate, and the hipgraph transport is an implemented submission path with measured results in docs/REFACTOR.md."
+  ],
+  "conclusion": "The re-profile the campaign's three-failed-candidates rule requires is complete: every slice of the 21.8 ms decode step is now attributed, and the launch-bubble slice has no cheap fix - fusion regressed twice and graphs are both measured small and scoped elsewhere. Reducing it needs fusion that does not serialise a reduction before a dependent transform, or a graph that helps where host is already hidden.",
+  "product_path_changed": false,
+  "rows_moved": false
+}

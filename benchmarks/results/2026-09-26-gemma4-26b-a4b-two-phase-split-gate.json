@@ -1,0 +1,25 @@
+{
+ "baseline_path": "/mnt/nvme1/gemma4-eval/teacher-forced-6224cc0576fb.npz",
+ "baseline_sha256": "a79a3146c1d56792b22526199df2df992d86294637fee612b58981b621d50acf",
+ "chain_sha256": "9730ebf884a19ea6f10c23dcc84061702b7663d53f092f8a75832667b472e211",
+ "direction": "kl(baseline || candidate)",
+ "failed": [],
+ "kl_max": 0.006745962439037706,
+ "kl_mean": 9.027225561878478e-06,
+ "kl_p95": 5.247882917802412e-06,
+ "kl_p99": 6.11815924994765e-05,
+ "passed": true,
+ "percentile_method": "nearest-rank",
+ "rows": 1023,
+ "thresholds": {
+  "kl_max": 0.05,
+  "kl_mean": 0.001,
+  "kl_p95": 0.005,
+  "kl_p99": 0.02,
+  "top1_rate": 0.99
+ },
+ "top1_flip_rows": [],
+ "top1_flips": 0,
+ "top1_rate": 1.0,
+ "vocab": 262144
+}

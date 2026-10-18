@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "path": "worklog/entries/20261017T170648.649549Z-mtp-acceptance-reviewer-http-acceptance-gaps-730a2c.md",
+  "sha256": "857f43976f0c308a6304dd4ac351c314bedd84ae1f86688518f43cdf357c890e",
+  "defects": [
+    "missing_required_sections"
+  ],
+  "reason": "the entry's final section is titled '## Remaining observations' instead of the required '## Next', so it was committed without that heading.",
+  "base_commit": null,
+  "superseded_by": "worklog/entries/20261017T182358.688374Z-worklog-compat-correct-http-acceptance-gaps-headings-bc8d1a.md"
+}

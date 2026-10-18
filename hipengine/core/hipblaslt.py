@@ -6,6 +6,7 @@ import ctypes
 
 HIP_R_32F = 0
 HIP_R_16F = 2
+HIP_R_16BF = 6
 HIPBLAS_COMPUTE_32F = 2
 HIPBLAS_OP_T = 112
 HIPBLASLT_ORDER_COL = 0
@@ -13,6 +14,12 @@ HIPBLASLT_MATRIX_LAYOUT_ORDER = 3
 HIPBLASLT_MATMUL_DESC_TRANSA = 0
 HIPBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES = 1
 HIPBLAS_STATUS_SUCCESS = 0
+
+#: Position in the zero-workspace heuristic list that `scripts/hipblaslt_algo_scan.py`
+#: measured fastest on this host for the shapes the YuE2 runtimes issue. See
+#: ``HipblasLtProblem.fast_algorithm`` for the measured spread and the reason this is
+#: a fixed index rather than a runtime autotune.
+FAST_ALGORITHM_INDEX = 4
 
 
 class HipblasLtAlgo(ctypes.Structure):
@@ -53,6 +60,9 @@ class HipblasLt:
         in_features: int,
         out_features: int,
         workspace_nbytes: int = 0,
+        *,
+        ab_type: int = HIP_R_16F,
+        cd_type: int = HIP_R_32F,
     ) -> "HipblasLtProblem":
         problem = HipblasLtProblem(
             self,
@@ -60,6 +70,8 @@ class HipblasLt:
             in_features,
             out_features,
             workspace_nbytes,
+            ab_type=ab_type,
+            cd_type=cd_type,
         )
         self._problems.append(problem)
         return problem
@@ -170,6 +182,9 @@ class HipblasLtProblem:
         in_features: int,
         out_features: int,
         workspace_nbytes: int,
+        *,
+        ab_type: int = HIP_R_16F,
+        cd_type: int = HIP_R_32F,
     ) -> None:
         if min(rows, in_features, out_features) <= 0:
             raise ValueError("hipBLASLt dimensions must be positive")
@@ -180,6 +195,8 @@ class HipblasLtProblem:
         self.in_features = int(in_features)
         self.out_features = int(out_features)
         self.workspace_nbytes = int(workspace_nbytes)
+        self.ab_type = int(ab_type)
+        self.cd_type = int(cd_type)
         self.matmul_desc = ctypes.c_void_p()
         self.preference = ctypes.c_void_p()
         self.layouts: list[ctypes.c_void_p] = []
@@ -204,25 +221,25 @@ class HipblasLtProblem:
             "hipblasLtMatmulDescSetAttribute(TRANSA)",
         )
         self.a = self._layout(
-            HIP_R_16F,
+            self.ab_type,
             self.in_features,
             self.out_features,
             self.in_features,
         )
         self.b = self._layout(
-            HIP_R_16F,
+            self.ab_type,
             self.in_features,
             self.rows,
             self.in_features,
         )
         self.c = self._layout(
-            HIP_R_32F,
+            self.cd_type,
             self.out_features,
             self.rows,
             self.out_features,
         )
         self.d = self._layout(
-            HIP_R_32F,
+            self.cd_type,
             self.out_features,
             self.rows,
             self.out_features,
@@ -276,6 +293,33 @@ class HipblasLtProblem:
 
         algorithms = self.algorithms()
         return algorithms[min(max(int(preferred_index), 0), len(algorithms) - 1)]
+
+    def zero_workspace_algorithms(self, maximum: int = 16) -> tuple[HipblasLtHeuristicResult, ...]:
+        """The candidates that need no workspace, in hipBLASLt's own order."""
+
+        return tuple(a for a in self.algorithms(maximum) if a.workspace_size == 0)
+
+    def fast_algorithm(self, maximum: int = 16) -> HipblasLtHeuristicResult:
+        """The zero-workspace candidate that measured fastest on this host.
+
+        hipBLASLt returns its candidates in its own heuristic order and does not
+        sort them by measured time, so taking the first one is a guess.
+        ``scripts/hipblaslt_algo_scan.py`` times all of them on the device; for
+        the 16 shapes it covers at rows 1, 64, 512, 1299 and 2048,
+        ``FAST_ALGORITHM_INDEX`` is fastest in 11 and within 15% of fastest in
+        the rest (the rows=1 cases, where every candidate is under 0.5 ms), and
+        the first entry is 1.4-5.7x slower on the large-row shapes. The choice is
+        a fixed index rather than a runtime autotune so that two runs of the same
+        input select the same algorithm and stay reproducible.
+        """
+
+        usable = self.zero_workspace_algorithms(maximum)
+        if not usable:
+            raise RuntimeError(
+                f"hipBLASLt returned no zero-workspace algorithms for M={self.rows} "
+                f"K={self.in_features} N={self.out_features}"
+            )
+        return usable[min(FAST_ALGORITHM_INDEX, len(usable) - 1)]
 
     def launch(
         self,

@@ -1,0 +1,263 @@
+{
+ "schema": 1,
+ "kind": "gemma4_gfx1100_expert_chunk8",
+ "date": "2026-10-15",
+ "performance_claim": true,
+ "question": "Can Gemma 4's selected expert GEMVs (Q4T16 gate/up, Q5_1 down) run faster, and what does it do to MTP verify blocks and decode?",
+ "model": "Gemma 4 26B-A4B-it UD-Q4_K_XL, BF16 KV; MTP head mtp-gemma-4-26B-A4B-it-Q8_0",
+ "hardware": {
+  "device": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "host": "epyc"
+ },
+ "hipengine_commit": "89d9540e1 plus this change",
+ "diagnosis": {
+  "lanes_vs_distinct_ms_per_30_layers": {
+   "gate_up": {
+    "8/8": 1.218,
+    "24/24": 3.182,
+    "40/24": 4.698,
+    "40/40": 4.93,
+    "72/32": 7.98
+   },
+   "down": {
+    "8/8": 0.999,
+    "24/24": 3.129,
+    "40/24": 4.577,
+    "40/40": 4.934,
+    "72/32": 7.917
+   }
+  },
+  "same_expert_vs_distinct_ms": {
+   "8_lanes": {
+    "gate_up": [
+     1.312,
+     1.45
+    ],
+    "down": [
+     0.955,
+     1.214
+    ]
+   },
+   "40_lanes": {
+    "gate_up": [
+     5.487,
+     6.125
+    ],
+    "down": [
+     4.83,
+     5.018
+    ]
+   }
+  },
+  "conclusion": "cost tracks lanes, not distinct experts, and barely moves when every lane reads one cache-resident expert: the kernels are ALU-bound; each thread re-derives its column's scales for every weight",
+  "rejected": [
+   "run-grouped exact kernels sharing one dequant across same-expert lanes: bit-identical, 0.72-0.89x below 72 lanes",
+   "vectorized and software-pipelined loads in the strict Q4 kernel: bit-identical, no gain",
+   "a 64-thread exact emulation of the Q5_1 256-thread tree: slower"
+  ]
+ },
+ "change": "Production siblings selected_chunk8_gemv (Q4T16) and selected_pack8_chunk8_gemv (Q5_1): one 32-lane wave per output tile, each thread summing runs of eight consecutive inputs of one quant block, so the block's scales are decoded once per eight weights. Offered by the selected-expert chain only on the unpinned (production) MoE route; strict pins grouped and keeps the selected owners. The production plan's moe_decode_q4_k / moe_decode_q5_1 selections name them.",
+ "kernel_microbench_ms_per_30_layers": {
+  "gate_up": {
+   "lanes": [
+    8,
+    40,
+    72
+   ],
+   "strict": [
+    1.415,
+    5.779,
+    9.639
+   ],
+   "chunk8": [
+    0.993,
+    3.633,
+    5.621
+   ]
+  },
+  "down": {
+   "lanes": [
+    8,
+    40,
+    72
+   ],
+   "strict": [
+    1.033,
+    4.836,
+    8.35
+   ],
+   "chunk8": [
+    0.876,
+    2.94,
+    4.69
+   ]
+  },
+  "lane_invariance": "each row bit-identical alone and inside a 40-lane launch (tests/test_gpu_gemma4_expert_chunk8.py)",
+  "vs_strict": "within two bf16 ulps of each row's largest magnitude"
+ },
+ "gate": {
+  "command": "scripts/gemma4_teacher_forced_gate.py capture (strict experts restored by a wrapper) / gate, production",
+  "depths": {
+   "1024": {
+    "passed": true,
+    "rows": 1023,
+    "scored_key_range": [
+     1025,
+     2047
+    ],
+    "kl_mean": 3.539224430560601e-06,
+    "kl_p95": 3.946695581678396e-06,
+    "kl_p99": 3.485565497539512e-05,
+    "kl_max": 0.000992337472084456,
+    "top1_rate": 1.0,
+    "top1_flips": 0,
+    "thresholds": {
+     "kl_max": 0.05,
+     "kl_mean": 0.001,
+     "kl_p95": 0.005,
+     "kl_p99": 0.02,
+     "top1_rate": 0.99
+    },
+    "baseline_sha256": "e0a18c2e129d1b9516e9be64260adbe7ff72f27ab51e900d8105d63952809380"
+   },
+   "32768": {
+    "passed": true,
+    "rows": 511,
+    "scored_key_range": [
+     32769,
+     33279
+    ],
+    "kl_mean": 7.798487696677751e-05,
+    "kl_p95": 1.392656824473031e-06,
+    "kl_p99": 2.208278344463463e-05,
+    "kl_max": 0.037837901962994636,
+    "top1_rate": 1.0,
+    "top1_flips": 0,
+    "thresholds": {
+     "kl_max": 0.05,
+     "kl_mean": 0.001,
+     "kl_p95": 0.005,
+     "kl_p99": 0.02,
+     "top1_rate": 0.99
+    },
+    "baseline_sha256": "fce24fb4635d187cf86bd60c5113f0ee542f6bffb4e6897a6720b946a87329c1"
+   }
+  },
+  "rows_total": 1534
+ },
+ "verify_block_ms_median": {
+  "method": "scratch timing, 600-token prompt, 25 reps, production",
+  "rows": [
+   1,
+   3,
+   5,
+   7,
+   9
+  ],
+  "envelope": [
+   12.9,
+   18.68,
+   22.58,
+   26.74,
+   32.55
+  ],
+  "envelope_before": [
+   13.25,
+   19.62,
+   25.92,
+   31.83,
+   39.15
+  ],
+  "exact": [
+   12.71,
+   20.6,
+   26.72,
+   33.42,
+   43.22
+  ],
+  "exact_before": [
+   13.98,
+   21.64,
+   29.75,
+   38.19,
+   49.27
+  ],
+  "row_equality": "exact verify bitwise equal to production one-token steps (66 of 66 rows at 3-7 rows)"
+ },
+ "decode_paired_ab_tok_s": {
+  "512": {
+   "new": [
+    75.37,
+    73.72
+   ],
+   "strict_experts": [
+    75.59,
+    74.18
+   ]
+  },
+  "2048": {
+   "new": [
+    75.34,
+    76.13
+   ],
+   "strict_experts": [
+    75.25,
+    73.38
+   ]
+  },
+  "note": "one-token decode is launch-bound; no measurable change"
+ },
+ "public_path": {
+  "command": "scripts/gemma4_mtp_probe.py ... 18 prompts x 2, 128 tokens",
+  "production": {
+   "2": [
+    74.6,
+    108.8,
+    1.459
+   ],
+   "4": [
+    75.0,
+    118.3,
+    1.577
+   ],
+   "6": [
+    74.2,
+    112.6,
+    1.518
+   ],
+   "8": [
+    75.1,
+    104.0,
+    1.385
+   ]
+  },
+  "production_columns": [
+   "plain_tok_s",
+   "mtp_tok_s",
+   "ratio"
+  ],
+  "before_budget_4": 1.444,
+  "strict_budget_4": {
+   "plain": 72.2,
+   "mtp": 94.4,
+   "ratio": 1.306,
+   "identical": "36 of 36"
+  },
+  "campaign_bench": {
+   "512": {
+    "prefill": 3728.9,
+    "decode": 74.52
+   },
+   "8192": {
+    "prefill": 3323.9,
+    "decode": 71.43
+   },
+   "ids_equal_to_previous_ladder": true
+  }
+ },
+ "limitations": [
+  "The 32K gate depth's max row KL is 3.8e-2 against a 5e-2 limit (mean 7.8e-5, zero flips).",
+  "Not measured on hip_gfx1151; the kernels are shared code, but its plan selects routes independently and was not re-gated."
+ ]
+}

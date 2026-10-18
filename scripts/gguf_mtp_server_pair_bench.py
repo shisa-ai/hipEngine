@@ -1,0 +1,634 @@
+#!/usr/bin/env python3
+"""Same-server AR/MTP pair bench over the OpenAI streaming API.
+
+One harness, one server process, one request shape: every arm differs only in
+the request body (for hipEngine, the ``speculative_mtp`` field), so an AR and an
+MTP reading from the same load are directly comparable.
+
+Protocol:
+
+  * one discarded warmup per shape, then N measured runs
+  * streaming, so TTFT and the decode window are measured, not inferred
+  * decode tok/s = (completion_tokens - 1) / (t_last_chunk - t_first_chunk)
+  * prefill tok/s = prompt_tokens / TTFT
+  * greedy: temperature 0
+  * a sampled arm sets ``--temperature`` > 0; exact-id identity is then
+    undefined and the identity probe is skipped rather than reported as a
+    match the run cannot support
+  * the prompt is a deterministic filler passage of roughly the requested token
+    count, so the shape is a length rather than a content choice
+
+Per-arm request extras come from ``BENCH_EXTRA_JSON`` (for example
+``{"speculative_mtp": false}`` for the AR control arm), so the arm is recorded
+in the artifact rather than in a copied harness. Each run records the routing
+block the server reported about itself (effective route, decision reason, MTP
+output coverage and cycles, fallback counts); ``--identity-tokens N`` adds one
+non-streaming greedy probe per row whose exact generated ids let the arms be
+compared token for token. Set ``BENCH_INCLUDE_HIPENGINE=0`` when pointing the
+harness at an engine that rejects hipEngine's ``stream_options`` extension.
+
+Usage:
+  scripts/gguf_mtp_server_pair_bench.py --url http://127.0.0.1:8081 --model <id> \
+      --tag mtp-auto --shapes 945,3530 --decode 128 --repeats 3 --out mtp.json
+  BENCH_EXTRA_JSON='{"speculative_mtp": false}' \
+  scripts/gguf_mtp_server_pair_bench.py --url http://127.0.0.1:8081 --model <id> \
+      --tag ar-control --shapes 945,3530 --decode 128 --repeats 3 --out ar.json
+
+Sampled arm over the category suite (one server process, arm selected by the
+request field, ``--expect-route`` binding each arm to the route it claims):
+  BENCH_EXTRA_JSON='{"speculative_mtp": true}' \
+  scripts/gguf_mtp_server_pair_bench.py --url http://127.0.0.1:8081 --model <id> \
+      --tag sampled-mtp --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+      --decode 128 --repeats 2 --temperature 0.7 --top-p 0.95 \
+      --expect-route speculative_mtp --out sampled-mtp.json
+  BENCH_EXTRA_JSON='{"speculative_mtp": false}' \
+  scripts/gguf_mtp_server_pair_bench.py --url http://127.0.0.1:8081 --model <id> \
+      --tag sampled-ar --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+      --decode 128 --repeats 2 --temperature 0.7 --top-p 0.95 \
+      --expect-route default --out sampled-ar.json
+"""
+import argparse
+import json
+import os
+import statistics
+import sys
+import time
+import urllib.request
+from pathlib import Path
+from typing import Any, Mapping
+
+PARA = (
+    "The Strix Halo package pairs sixteen Zen 5 cores with a Radeon 8060S "
+    "integrated GPU over a unified memory pool, so weights and activations "
+    "share the same physical DRAM as the host. Bandwidth, not capacity, sets "
+    "the decode ceiling for a dense 27B model at four-bit weights. Kernel "
+    "selection therefore matters more than arithmetic throughput: a fused "
+    "recurrence or a better matrix shape buys more tokens per second than an "
+    "extra compute unit would. "
+)
+
+
+def make_prompt(target_tokens: int) -> str:
+    """Deterministic filler prompt of roughly `target_tokens` tokens.
+
+    The task asks for a long continuation rather than an answer: an answered
+    question ends at EOS after ~24 tokens, which leaves no decode window to
+    time. The exact prompt length is read back from the server's usage block.
+    """
+    # ~4 chars per token for this English text.
+    target_chars = target_tokens * 4
+    body = (PARA * (target_chars // len(PARA) + 2))[:target_chars]
+    return (
+        "Continue the technical passage below in the same style and register. "
+        "Write at least 400 more words and do not stop early; do not summarise "
+        "and do not add a heading.\n\n" + body + "\n\nContinuation:"
+    )
+
+
+def request_extras() -> dict:
+    """Per-engine request fields, e.g. hipEngine's ``speculative_mtp`` pin."""
+    return json.loads(os.environ.get("BENCH_EXTRA_JSON", "{}"))
+
+
+def stream_options() -> dict:
+    """Stream options, including hipEngine's own extension channel.
+
+    The routing/accounting block rides on ``include_hipengine``, which is what
+    makes a row's own route and speculation coverage observable. Both servers
+    this harness compares are OpenAI-compatible and ignore an unknown
+    ``stream_options`` key, but a stricter engine can opt out with
+    ``BENCH_INCLUDE_HIPENGINE=0`` rather than failing on the request.
+    """
+    options: dict[str, Any] = {"include_usage": True}
+    if os.environ.get("BENCH_INCLUDE_HIPENGINE", "1") not in ("", "0"):
+        options["include_hipengine"] = True
+    return options
+
+
+def _merge_extension(target: dict[str, Any], update: Mapping[str, Any]) -> None:
+    """Merge a stream's routing extension, keeping earlier nested fields.
+
+    The accounting arrives in pieces: a chunk may carry the route decision while
+    the terminal usage chunk carries the cycle and coverage counters. Replacing
+    the nested mapping outright would drop whichever half arrived first, so
+    nested mappings are merged and only leaf values are overwritten.
+    """
+
+    for key, value in update.items():
+        current = target.get(key)
+        if isinstance(value, Mapping) and isinstance(current, Mapping):
+            merged = dict(current)
+            merged.update(value)
+            target[key] = merged
+        else:
+            target[key] = value
+
+
+# Keys of ``route_summary``'s output that a stored prompt row keeps. The row is
+# what a later reader (or a category rollup) sees, so acceptance belongs here
+# beside coverage: a rate without the acceptance it ran at cannot be compared
+# across arms or categories.
+ROUTE_ROW_KEYS = (
+    "effective_route",
+    "decision_reason",
+    "mtp_used",
+    "speculative_cycles",
+    "accepted_draft_tokens",
+    "rejected_draft_tokens",
+    "mtp_output_tokens",
+    "ar_output_tokens",
+    "mtp_coverage",
+    "fallback_event_counts",
+)
+
+
+def route_satisfies(realized: Any, run: Mapping[str, Any], expected: str) -> bool:
+    """Whether a recorded run really ran the route an arm declared.
+
+    Autoregressive decoding has two representations and both are legitimate.
+    A server that considered MTP and fell back reports ``effective_route`` of
+    ``"default"`` with a ``backend_k0_fallback`` reason.  A server whose MTP is
+    off for the process, or whose request disabled it, reports no route
+    decision at all, so the field is ``None``.  Both ran autoregressively, so
+    both satisfy an AR arm - but nothing that shows speculation activity may,
+    which is what keeps the recorded duplicate-route failure (an AR arm that
+    actually ran MTP) a failure.
+    """
+
+    if expected == "speculative_mtp":
+        return realized == "speculative_mtp"
+    if expected == "default":
+        if realized == "speculative_mtp":
+            return False
+        if run.get("mtp_used") is True:
+            return False
+        return not run.get("speculative_cycles")
+    return True
+
+
+def route_mismatches(result: Mapping[str, Any], *, expected: str) -> list[str]:
+    """Name every recorded run whose realized route differs from the arm contract.
+
+    A control arm that asks for AR but silently runs MTP produces a duplicate
+    of the MTP arm, which reads as a clean 1.00x ratio and a confident
+    conclusion that speculation does not help.  Nothing about the numbers says
+    so: only the route each run reported does.  An arm whose intent came from
+    the environment can lose that intent before the request is built (a
+    launcher that clears the environment strips the variable), so the intent
+    is declared on the command line and checked against the response.
+    """
+
+    mismatches: list[str] = []
+    for section in ("shapes", "prompts"):
+        for key, entry in (result.get(section) or {}).items():
+            candidates = list(entry.get("runs") or [])
+            route = entry.get("route") or {}
+            if route:
+                candidates.append(route)
+            for index, run in enumerate(candidates):
+                realized = run.get("effective_route")
+                if not route_satisfies(realized, run, expected):
+                    mismatches.append(f"{section}.{key}[{index}]={realized!r}")
+    return mismatches
+
+
+def route_summary(
+    extension: Mapping[str, Any], usage: Mapping[str, Any] | None = None
+) -> dict:
+    """The routing and MTP accounting a served row reports about itself.
+
+    A serving rate is only comparable across arms if the row says which route
+    ran and how much of its output came from speculative cycles, so the pair
+    harness records the same fields the ShareGPT recorder reads rather than
+    inferring coverage from the arm's intent. Streaming and non-streaming
+    responses carry the same accounting under slightly different keys, so both
+    channels are read. Accepted and rejected draft counts live in the usage
+    block (``completion_tokens_details``), which is a sibling of the extension,
+    so it is passed in beside it.
+    """
+    route = (extension.get("generation_shape") or {}).get("route_decision") or {}
+    mtp = extension.get("speculative_mtp") or {}
+    accounting = mtp.get("output_accounting") or {}
+    token_accounting = extension.get("token_accounting") or {}
+    details = (usage or {}).get("completion_tokens_details") or {}
+    accepted = mtp.get("accepted_draft_tokens")
+    if accepted is None:
+        accepted = details.get("accepted_prediction_tokens")
+    rejected = mtp.get("rejected_draft_tokens")
+    if rejected is None:
+        rejected = details.get("rejected_prediction_tokens")
+    return {
+        "effective_route": (
+            route.get("effective_route")
+            or mtp.get("effective_route")
+            or extension.get("effective_route")
+        ),
+        "decision_reason": route.get("decision_reason") or mtp.get("decision_reason"),
+        "mtp_used": bool(mtp.get("used")),
+        "speculative_cycles": mtp.get("draft_cycles") or mtp.get("speculative_cycles"),
+        "accepted_draft_tokens": accepted,
+        "rejected_draft_tokens": rejected,
+        "mtp_output_tokens": accounting.get("mtp_output_tokens")
+        or mtp.get("mtp_output_tokens"),
+        "ar_output_tokens": accounting.get("ar_output_tokens")
+        or mtp.get("ar_output_tokens"),
+        "mtp_coverage": accounting.get("mtp_coverage") or mtp.get("mtp_coverage"),
+        "fallback_event_counts": mtp.get("fallback_event_counts"),
+        "generated_ids": _flat_generated_ids(
+            token_accounting.get("choice_generated_token_ids")
+        ),
+    }
+
+
+def _flat_generated_ids(value: Any) -> list[int] | None:
+    """Normalize ``choice_generated_token_ids`` to one choice's id list.
+
+    The API reports ids per choice, so a single-choice response arrives as
+    ``[[...]]``. Comparing two arms is a token-for-token comparison of the
+    sequence each one emitted, so the nested single-choice form is flattened
+    and a multi-choice response keeps its per-choice lists.
+    """
+    if not isinstance(value, list) or not value:
+        return None
+    if all(isinstance(item, list) for item in value):
+        if len(value) != 1:
+            return value
+        return list(value[0])
+    return list(value)
+
+
+def identity_once(url: str, model: str, prompt: str, decode_tokens: int,
+                  timeout: float = 900.0) -> dict:
+    """Non-streaming greedy probe used as the cross-arm identity oracle.
+
+    Exact generated ids are only attached to a non-streaming response, so the
+    identity probe is a separate request from the timed streaming repeats. It
+    runs the same route the repeats do (the request fields are identical apart
+    from ``stream``) and reports the ids, the text and the routing block.
+
+    This probe is greedy by construction and the caller skips it for a sampled
+    arm: under sampling the two arms draw from the same distribution rather
+    than agreeing token for token, so a recorded match would be an accident of
+    the RNG stream and not evidence about the route.
+    """
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": decode_tokens,
+        "temperature": 0.0,
+        "enable_thinking": False,
+        "chat_template_kwargs": {"enable_thinking": False},
+        "stream": False,
+        **request_extras(),
+    }
+    req = urllib.request.Request(
+        url.rstrip("/") + "/v1/chat/completions",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        body = json.loads(resp.read().decode("utf-8"))
+    choice = (body.get("choices") or [{}])[0]
+    message = choice.get("message") or {}
+    return {
+        "prompt_tokens": (body.get("usage") or {}).get("prompt_tokens"),
+        "completion_tokens": (body.get("usage") or {}).get("completion_tokens"),
+        "finish_reason": choice.get("finish_reason"),
+        "text": message.get("content") or "",
+        "reasoning_chars": len(message.get("reasoning_content") or ""),
+        **route_summary(body.get("hipengine") or {}, body.get("usage")),
+    }
+
+
+def stream_once(url: str, model: str, prompt: str, decode_tokens: int,
+                temperature: float = 0.0,
+                top_p: float | None = None,
+                timeout: float = 900.0) -> dict:
+    # Identical JSON to both engines, including the thinking pin: Atlas defaults
+    # to thinking off, hipEngine defaults to on and streams `reasoning_content`.
+    # Both accept the top-level field and the chat_template_kwargs mirror.
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": decode_tokens,
+        "temperature": temperature,
+        "enable_thinking": False,
+        "chat_template_kwargs": {"enable_thinking": False},
+        "stream": True,
+        "stream_options": stream_options(),
+        # Optional per-engine extras (e.g. hipEngine's ``speculative_mtp``).
+        **request_extras(),
+    }
+    if top_p is not None:
+        payload["top_p"] = top_p
+    req = urllib.request.Request(
+        url.rstrip("/") + "/v1/chat/completions",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    t0 = time.perf_counter()
+    ttft = None
+    t_last = None
+    text = []
+    reasoning = []
+    usage = {}
+    finish = None
+    extension: dict[str, Any] = {}
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        for raw in resp:
+            line = raw.decode("utf-8", "replace").strip()
+            if not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data == "[DONE]":
+                break
+            try:
+                chunk = json.loads(data)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(chunk.get("hipengine"), Mapping):
+                _merge_extension(extension, chunk["hipengine"])
+            if chunk.get("usage"):
+                usage = chunk["usage"]
+            for choice in chunk.get("choices") or []:
+                if isinstance(choice.get("hipengine"), Mapping):
+                    _merge_extension(extension, choice["hipengine"])
+                if choice.get("finish_reason"):
+                    finish = choice["finish_reason"]
+                delta = choice.get("delta") or {}
+                if delta.get("reasoning_content"):
+                    reasoning.append(delta["reasoning_content"])
+                piece = delta.get("content")
+                if piece or delta.get("reasoning_content"):
+                    now = time.perf_counter()
+                    if ttft is None:
+                        ttft = now - t0
+                    t_last = now - t0
+                if piece:
+                    text.append(piece)
+    total = time.perf_counter() - t0
+    completion = usage.get("completion_tokens")
+    if completion is None:
+        completion = len(text)
+    decode_s = (t_last - ttft) if (t_last is not None and ttft is not None) else None
+    return {
+        "ttft_s": ttft,
+        "total_s": total,
+        "decode_window_s": decode_s,
+        "prompt_tokens": usage.get("prompt_tokens"),
+        "completion_tokens": completion,
+        "finish_reason": finish,
+        "reasoning_tokens_chars": len("".join(reasoning)),
+        "decode_tok_s": ((completion - 1) / decode_s) if decode_s else None,
+        "prefill_tok_s": (usage.get("prompt_tokens") / ttft) if ttft else None,
+        "text": "".join(text),
+        **route_summary(extension, usage),
+    }
+
+
+def cv(values) -> float:
+    vals = [v for v in values if v is not None]
+    if len(vals) < 2 or statistics.mean(vals) == 0:
+        return 0.0
+    return statistics.stdev(vals) / statistics.mean(vals)
+
+
+def load_prompt_suite(path) -> list[dict]:
+    """Read the committed JSONL prompt suites (``id``/``category``/``messages``)."""
+    prompts: list[dict] = []
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        item = json.loads(line)
+        name = str(item.get("id") or item.get("name") or "")
+        if not name:
+            raise SystemExit(f"{path}:{line_number}: prompt requires id/name")
+        text = item.get("prompt")
+        if not isinstance(text, str) or not text:
+            messages = item.get("messages")
+            if not isinstance(messages, list) or len(messages) != 1:
+                raise SystemExit(
+                    f"{path}:{line_number}: prompt requires text or one user message"
+                )
+            text = str(messages[0].get("content") or "")
+        if not text:
+            raise SystemExit(f"{path}:{line_number}: prompt text is empty")
+        prompts.append(
+            {
+                "id": name,
+                "category": str(item.get("category") or "uncategorized"),
+                "text": text,
+            }
+        )
+    if not prompts:
+        raise SystemExit(f"{path} contains no prompts")
+    return prompts
+
+
+def pad_prompt(text: str, *, pad_to_tokens: int | None) -> str:
+    """Prepend a deterministic filler passage to reach a target context length.
+
+    Padding is character-approximate (~4 chars/token) and identical for every
+    arm; the artifact records the token count the server reports. The suite
+    prompt stays the tail, so the model still answers the original task.
+    """
+    if not pad_to_tokens or int(pad_to_tokens) <= 0:
+        return text
+    target_chars = int(pad_to_tokens) * 4
+    body = (PARA * (target_chars // len(PARA) + 2))[:target_chars]
+    return (
+        "Read the reference passage below, then follow the instruction that "
+        "comes after it.\n\n" + body + "\n\nInstruction:\n" + text
+    )
+
+
+def measure(
+    args: argparse.Namespace,
+    *,
+    label: str,
+    prompt: str,
+    result: dict,
+    key: str,
+) -> dict:
+    """Run the warmup plus measured repeats for one prompt and record them."""
+    runs = []
+    for i in range(args.repeats + 1):          # +1 discarded warmup
+        r = stream_once(args.url, args.model, prompt, args.decode,
+                        temperature=args.temperature, top_p=args.top_p)
+        if i == 0:
+            print(f"[{args.tag}] warmup {label}: {r['decode_tok_s']:.2f} tok/s "
+                  f"({r['completion_tokens']} tok)", flush=True)
+            continue
+        runs.append(r)
+        short = " SHORT!" if r["completion_tokens"] < args.decode else ""
+        print(f"[{args.tag}] {label} run{i}: "
+              f"decode {r['decode_tok_s']:.2f} tok/s, ttft {r['ttft_s']*1000:.0f} ms, "
+              f"prompt {r['prompt_tokens']} tok, gen {r['completion_tokens']} tok "
+              f"({r['finish_reason']}){short}", flush=True)
+    identity = None
+    if args.identity_tokens and args.temperature > 0.0:
+        # A sampled arm cannot have token identity: the two arms draw from the
+        # same law rather than producing the same tokens, so a recorded match
+        # would say nothing about the route. Record the skip instead of a
+        # comparison the run cannot support.
+        identity = {"skipped": "sampled_arm_has_no_token_identity"}
+    elif args.identity_tokens:
+        identity = identity_once(
+            args.url, args.model, prompt, int(args.identity_tokens)
+        )
+        print(f"[{args.tag}] {label} identity: {len(identity['generated_ids'] or [])} ids, "
+              f"route {identity['effective_route']}, mtp_used {identity['mtp_used']}", flush=True)
+    return {
+        "prompt_tokens": runs[0]["prompt_tokens"],
+        "completion_tokens": runs[0]["completion_tokens"],
+        "identity": identity,
+        "temperature": args.temperature,
+        "top_p": args.top_p,
+        "route": {k: runs[0][k] for k in ROUTE_ROW_KEYS},
+        "decode_tok_s_median": statistics.median([r["decode_tok_s"] for r in runs]),
+        "decode_tok_s_cv": cv([r["decode_tok_s"] for r in runs]),
+        "prefill_tok_s_median": statistics.median([r["prefill_tok_s"] for r in runs]),
+        "prefill_tok_s_cv": cv([r["prefill_tok_s"] for r in runs]),
+        "ttft_ms_median": statistics.median([r["ttft_s"] * 1000 for r in runs]),
+        "total_s_median": statistics.median([r["total_s"] for r in runs]),
+        "sample_text": runs[0]["text"][:600],
+        "runs": [{k: v for k, v in r.items() if k != "text"} for r in runs],
+    }
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--url", required=True)
+    ap.add_argument("--model", required=True)
+    ap.add_argument("--tag", required=True)
+    ap.add_argument("--shapes", default="512,1024,4096")
+    ap.add_argument("--prompts-file", type=Path,
+                    help="JSONL suite; switches the run from shapes to prompt ids")
+    ap.add_argument("--prompt-names", help="comma-separated subset of suite ids")
+    ap.add_argument("--limit", type=int, help="run only the first N selected suite prompts")
+    ap.add_argument("--pad-to-tokens", type=int,
+                    help="prepend deterministic filler so the context reaches this size")
+    ap.add_argument("--decode", type=int, default=128)
+    ap.add_argument("--repeats", type=int, default=3)
+    ap.add_argument(
+        "--identity-tokens",
+        type=int,
+        default=0,
+        help=(
+            "Also run one non-streaming greedy probe per shape/prompt with this "
+            "output budget and record its exact generated ids, so the two arms "
+            "can be compared token for token. 0 disables the probe."
+        ),
+    )
+    ap.add_argument(
+        "--expect-route",
+        choices=("any", "default", "speculative_mtp"),
+        default="any",
+        help=(
+            "Fail unless every recorded run reports this effective_route. Set "
+            "it on every arm so the arm cannot be recorded as something it did "
+            "not measure; 'default' is the autoregressive route."
+        ),
+    )
+    ap.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help=(
+            "Sampling temperature for both the timed repeats and the warmup. "
+            "0.0 is the greedy protocol; > 0 selects a sampled arm and skips "
+            "the identity probe, which is undefined under sampling."
+        ),
+    )
+    ap.add_argument(
+        "--top-p",
+        type=float,
+        default=None,
+        help="Nucleus threshold sent with --temperature; omitted when unset.",
+    )
+    ap.add_argument("--out", required=True)
+    args = ap.parse_args()
+
+    # Wait for the server, then report the model id it actually serves.
+    for _ in range(300):
+        try:
+            with urllib.request.urlopen(args.url.rstrip("/") + "/v1/models", timeout=5) as r:
+                served = [m["id"] for m in json.load(r)["data"]]
+            break
+        except Exception:
+            time.sleep(1)
+    else:
+        print(f"{args.tag}: server never came up at {args.url}", file=sys.stderr)
+        return 2
+    print(f"[{args.tag}] /v1/models -> {served}", flush=True)
+
+    result = {
+        "tag": args.tag,
+        "url": args.url,
+        "served_models": served,
+        "request_extras": json.loads(os.environ.get("BENCH_EXTRA_JSON", "{}")),
+        "temperature": args.temperature,
+        "top_p": args.top_p,
+        "decode_tokens": args.decode,
+        "repeats": args.repeats,
+        "shapes": {},
+        "prompts": {},
+    }
+    if args.prompts_file is not None:
+        prompts = load_prompt_suite(args.prompts_file)
+        if args.prompt_names:
+            wanted = [name.strip() for name in args.prompt_names.split(",") if name.strip()]
+            prompts = [p for p in prompts if p["id"] in wanted]
+        if args.limit is not None:
+            prompts = prompts[: int(args.limit)]
+        if not prompts:
+            print(f"[{args.tag}] no prompts selected", file=sys.stderr)
+            return 2
+        result["prompts_file"] = str(args.prompts_file)
+        result["pad_to_tokens"] = args.pad_to_tokens
+        for prompt in prompts:
+            label = f"{prompt['id']}[{prompt['category']}]"
+            result["prompts"][prompt["id"]] = {
+                "category": prompt["category"],
+                **measure(
+                    args,
+                    label=label,
+                    prompt=pad_prompt(prompt["text"], pad_to_tokens=args.pad_to_tokens),
+                    result=result,
+                    key=prompt["id"],
+                ),
+            }
+    else:
+        for shape in [int(s) for s in args.shapes.split(",")]:
+            result["shapes"][shape] = measure(
+                args,
+                label=str(shape),
+                prompt=make_prompt(shape),
+                result=result,
+                key=str(shape),
+            )
+    if args.expect_route != "any":
+        mismatches = route_mismatches(result, expected=args.expect_route)
+        if mismatches:
+            print(
+                f"[{args.tag}] arm contract violated: expected "
+                f"effective_route={args.expect_route!r} but "
+                f"{len(mismatches)} run(s) reported otherwise: "
+                + ", ".join(mismatches[:6]),
+                file=sys.stderr,
+            )
+            print(
+                f"[{args.tag}] refusing to write {args.out}: an arm that did not "
+                "run its declared route would be recorded as a measurement it "
+                "never made",
+                file=sys.stderr,
+            )
+            return 3
+    with open(args.out, "w") as fh:
+        json.dump(result, fh, indent=2)
+    print(f"[{args.tag}] wrote {args.out}", flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

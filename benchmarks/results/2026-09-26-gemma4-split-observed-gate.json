@@ -1,0 +1,575 @@
+{
+  "kind": "gemma4_split_numerical_reproduction",
+  "performance_claim": false,
+  "split": {
+    "baseline_forced_slices": 1,
+    "baseline_path": "/mnt/nvme1/gemma4-eval/teacher-forced-prefilled-strict-001c4fec3.npz",
+    "baseline_provenance": {
+      "artifact": {
+        "bytes": 17010980576,
+        "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+        "mtime": "2026-09-22T10:30:20.793299+00:00",
+        "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+      },
+      "context_length": 8192,
+      "env": {
+        "HIP_INCLUDE_PATH": "/opt/rocm/include",
+        "HIP_LIB_PATH": "/opt/rocm/lib",
+        "HIP_PATH": "/opt/rocm",
+        "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+        "HSA_SCRATCH_SINGLE_LIMIT": "8388608",
+        "ROCR_VISIBLE_DEVICES": "1"
+      },
+      "forced_slices": 1,
+      "git_commit": "001c4fec3084e7648c74b0f7e480be168ba8666e",
+      "git_dirty": true,
+      "git_dirty_files": [
+        "M scripts/gemma4_teacher_forced_gate.py",
+        " M tests/test_unit_gemma4_teacher_forced_gate.py"
+      ],
+      "gpu_name_device0": "AMD Radeon RX 7900 XTX",
+      "hipcc": [
+        "HIP version: 7.2.53211-3d9ef42",
+        "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+      ],
+      "max_block": 512,
+      "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+      "prefill": 1024,
+      "python": "3.11.11",
+      "rocm_smi_clock_power": [
+        "============================ ROCm System Management Interface ============================",
+        "====================================== Temperature =======================================",
+        "GPU[0]\t\t: Temperature (Sensor edge) (C): 34.0",
+        "GPU[0]\t\t: Temperature (Sensor junction) (C): 41.0",
+        "GPU[0]\t\t: Temperature (Sensor memory) (C): 46.0",
+        "GPU[1]\t\t: Temperature (Sensor edge) (C): 44.0",
+        "GPU[1]\t\t: Temperature (Sensor junction) (C): 54.0",
+        "GPU[1]\t\t: Temperature (Sensor memory) (C): 72.0",
+        "==========================================================================================",
+        "=============================== Current clock frequencies ================================",
+        "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[0]\t\t: fclk clock level: 1: (1000Mhz)",
+        "GPU[0]\t\t: mclk clock level: 0: (96Mhz)",
+        "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[0]\t\t: socclk clock level: 1: (600Mhz)",
+        "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[1]\t\t: fclk clock level: 2: (1200Mhz)",
+        "GPU[1]\t\t: mclk clock level: 2: (772Mhz)",
+        "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[1]\t\t: socclk clock level: 1: (750Mhz)",
+        "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "==========================================================================================",
+        "=================================== Power Consumption ====================================",
+        "GPU[0]\t\t: Average Graphics Package Power (W): 7.0",
+        "GPU[1]\t\t: Average Graphics Package Power (W): 48.0",
+        "==========================================================================================",
+        "================================== End of ROCm SMI Log ==================================="
+      ]
+    },
+    "baseline_sha256": "240067741b33e702eefa20cf6a69f26a88bcd1fde7d7c3eb7302b1d668858056",
+    "candidate_forced_slices": null,
+    "candidate_provenance": {
+      "artifact": {
+        "bytes": 17010980576,
+        "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+        "mtime": "2026-09-22T10:30:20.793299+00:00",
+        "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+      },
+      "context_length": 8192,
+      "env": {
+        "HIP_INCLUDE_PATH": "/opt/rocm/include",
+        "HIP_LIB_PATH": "/opt/rocm/lib",
+        "HIP_PATH": "/opt/rocm",
+        "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+        "HSA_SCRATCH_SINGLE_LIMIT": "8388608",
+        "ROCR_VISIBLE_DEVICES": "1"
+      },
+      "git_commit": "0a2bc640ab3f75bbc1ef9add1c8bc9d47cd24b4d",
+      "git_dirty": true,
+      "git_dirty_files": [
+        "M audit/findings/stub.json",
+        " M audit/findings/ungoverned-flag-branch.json",
+        " M audit/inventory/flags.json",
+        " M audit/inventory/kernels.json",
+        " M audit/inventory/meta.json",
+        " M audit/inventory/worklog.json",
+        " M audit/triage/stub.jsonl",
+        " M scripts/gemma4_teacher_forced_gate.py",
+        " M tests/test_unit_gemma4_teacher_forced_gate.py",
+        "?? tests/test_unit_gemma4_teacher_forced_routes.py"
+      ],
+      "gpu_name_device0": "AMD Radeon RX 7900 XTX",
+      "hipcc": [
+        "HIP version: 7.2.53211-3d9ef42",
+        "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+      ],
+      "max_block": 512,
+      "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+      "python": "3.11.11",
+      "rocm_smi_clock_power": [
+        "============================ ROCm System Management Interface ============================",
+        "====================================== Temperature =======================================",
+        "GPU[0]\t\t: Temperature (Sensor edge) (C): 29.0",
+        "GPU[0]\t\t: Temperature (Sensor junction) (C): 36.0",
+        "GPU[0]\t\t: Temperature (Sensor memory) (C): 40.0",
+        "GPU[1]\t\t: Temperature (Sensor edge) (C): 41.0",
+        "GPU[1]\t\t: Temperature (Sensor junction) (C): 49.0",
+        "GPU[1]\t\t: Temperature (Sensor memory) (C): 60.0",
+        "==========================================================================================",
+        "=============================== Current clock frequencies ================================",
+        "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[0]\t\t: fclk clock level: 1: (1000Mhz)",
+        "GPU[0]\t\t: mclk clock level: 0: (96Mhz)",
+        "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[0]\t\t: socclk clock level: 1: (600Mhz)",
+        "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[1]\t\t: fclk clock level: 1: (1000Mhz)",
+        "GPU[1]\t\t: mclk clock level: 0: (96Mhz)",
+        "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[1]\t\t: socclk clock level: 1: (600Mhz)",
+        "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "==========================================================================================",
+        "=================================== Power Consumption ====================================",
+        "GPU[0]\t\t: Average Graphics Package Power (W): 12.0",
+        "GPU[1]\t\t: Average Graphics Package Power (W): 8.0",
+        "==========================================================================================",
+        "================================== End of ROCm SMI Log ==================================="
+      ]
+    },
+    "chain_sha256": "b8c28ab5066a519b3acc1e09293382f2cca1e084ac554e422788006341542d43",
+    "direction": "kl(baseline || candidate)",
+    "evidence_level": "numerical_rows",
+    "failed": [
+      "kl_max"
+    ],
+    "kl_max": 0.05558947161998167,
+    "kl_mean": 9.188804655792472e-05,
+    "kl_p95": 4.002721560956157e-06,
+    "kl_p99": 4.149405666844368e-05,
+    "observed_routes": {
+      "decode_launches": 30690,
+      "head_dims": [
+        256,
+        512
+      ],
+      "selections": [
+        2
+      ],
+      "split_key_range": [
+        1024,
+        2047
+      ],
+      "split_launches": 30690
+    },
+    "passed": false,
+    "percentile_method": "nearest-rank",
+    "prefill": 1024,
+    "promotion_qualified": false,
+    "rows": 1023,
+    "scored_key_range": [
+      1025,
+      2047
+    ],
+    "thresholds": {
+      "kl_max": 0.05,
+      "kl_mean": 0.001,
+      "kl_p95": 0.005,
+      "kl_p99": 0.02,
+      "top1_rate": 0.99
+    },
+    "top1_flip_rows": [],
+    "top1_flips": 0,
+    "top1_rate": 1.0,
+    "vocab": 262144
+  },
+  "strict_control": {
+    "baseline_forced_slices": 1,
+    "baseline_path": "/mnt/nvme1/gemma4-eval/teacher-forced-prefilled-strict-001c4fec3.npz",
+    "baseline_provenance": {
+      "artifact": {
+        "bytes": 17010980576,
+        "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+        "mtime": "2026-09-22T10:30:20.793299+00:00",
+        "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+      },
+      "context_length": 8192,
+      "env": {
+        "HIP_INCLUDE_PATH": "/opt/rocm/include",
+        "HIP_LIB_PATH": "/opt/rocm/lib",
+        "HIP_PATH": "/opt/rocm",
+        "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+        "HSA_SCRATCH_SINGLE_LIMIT": "8388608",
+        "ROCR_VISIBLE_DEVICES": "1"
+      },
+      "forced_slices": 1,
+      "git_commit": "001c4fec3084e7648c74b0f7e480be168ba8666e",
+      "git_dirty": true,
+      "git_dirty_files": [
+        "M scripts/gemma4_teacher_forced_gate.py",
+        " M tests/test_unit_gemma4_teacher_forced_gate.py"
+      ],
+      "gpu_name_device0": "AMD Radeon RX 7900 XTX",
+      "hipcc": [
+        "HIP version: 7.2.53211-3d9ef42",
+        "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+      ],
+      "max_block": 512,
+      "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+      "prefill": 1024,
+      "python": "3.11.11",
+      "rocm_smi_clock_power": [
+        "============================ ROCm System Management Interface ============================",
+        "====================================== Temperature =======================================",
+        "GPU[0]\t\t: Temperature (Sensor edge) (C): 34.0",
+        "GPU[0]\t\t: Temperature (Sensor junction) (C): 41.0",
+        "GPU[0]\t\t: Temperature (Sensor memory) (C): 46.0",
+        "GPU[1]\t\t: Temperature (Sensor edge) (C): 44.0",
+        "GPU[1]\t\t: Temperature (Sensor junction) (C): 54.0",
+        "GPU[1]\t\t: Temperature (Sensor memory) (C): 72.0",
+        "==========================================================================================",
+        "=============================== Current clock frequencies ================================",
+        "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[0]\t\t: fclk clock level: 1: (1000Mhz)",
+        "GPU[0]\t\t: mclk clock level: 0: (96Mhz)",
+        "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[0]\t\t: socclk clock level: 1: (600Mhz)",
+        "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[1]\t\t: fclk clock level: 2: (1200Mhz)",
+        "GPU[1]\t\t: mclk clock level: 2: (772Mhz)",
+        "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[1]\t\t: socclk clock level: 1: (750Mhz)",
+        "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "==========================================================================================",
+        "=================================== Power Consumption ====================================",
+        "GPU[0]\t\t: Average Graphics Package Power (W): 7.0",
+        "GPU[1]\t\t: Average Graphics Package Power (W): 48.0",
+        "==========================================================================================",
+        "================================== End of ROCm SMI Log ==================================="
+      ]
+    },
+    "baseline_sha256": "240067741b33e702eefa20cf6a69f26a88bcd1fde7d7c3eb7302b1d668858056",
+    "candidate_forced_slices": 1,
+    "candidate_provenance": {
+      "artifact": {
+        "bytes": 17010980576,
+        "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+        "mtime": "2026-09-22T10:30:20.793299+00:00",
+        "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+      },
+      "context_length": 8192,
+      "env": {
+        "HIP_INCLUDE_PATH": "/opt/rocm/include",
+        "HIP_LIB_PATH": "/opt/rocm/lib",
+        "HIP_PATH": "/opt/rocm",
+        "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+        "HSA_SCRATCH_SINGLE_LIMIT": "8388608",
+        "ROCR_VISIBLE_DEVICES": "1"
+      },
+      "git_commit": "0a2bc640ab3f75bbc1ef9add1c8bc9d47cd24b4d",
+      "git_dirty": true,
+      "git_dirty_files": [
+        "M audit/findings/stub.json",
+        " M audit/findings/ungoverned-flag-branch.json",
+        " M audit/inventory/flags.json",
+        " M audit/inventory/kernels.json",
+        " M audit/inventory/meta.json",
+        " M audit/inventory/worklog.json",
+        " M audit/triage/stub.jsonl",
+        " M scripts/gemma4_teacher_forced_gate.py",
+        " M tests/test_unit_gemma4_teacher_forced_gate.py",
+        "?? tests/test_unit_gemma4_teacher_forced_routes.py"
+      ],
+      "gpu_name_device0": "AMD Radeon RX 7900 XTX",
+      "hipcc": [
+        "HIP version: 7.2.53211-3d9ef42",
+        "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+      ],
+      "max_block": 512,
+      "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+      "python": "3.11.11",
+      "rocm_smi_clock_power": [
+        "============================ ROCm System Management Interface ============================",
+        "====================================== Temperature =======================================",
+        "GPU[0]\t\t: Temperature (Sensor edge) (C): 32.0",
+        "GPU[0]\t\t: Temperature (Sensor junction) (C): 39.0",
+        "GPU[0]\t\t: Temperature (Sensor memory) (C): 44.0",
+        "GPU[1]\t\t: Temperature (Sensor edge) (C): 43.0",
+        "GPU[1]\t\t: Temperature (Sensor junction) (C): 51.0",
+        "GPU[1]\t\t: Temperature (Sensor memory) (C): 64.0",
+        "==========================================================================================",
+        "=============================== Current clock frequencies ================================",
+        "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[0]\t\t: fclk clock level: 1: (1000Mhz)",
+        "GPU[0]\t\t: mclk clock level: 0: (96Mhz)",
+        "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[0]\t\t: socclk clock level: 1: (600Mhz)",
+        "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[1]\t\t: fclk clock level: 1: (1000Mhz)",
+        "GPU[1]\t\t: mclk clock level: 0: (96Mhz)",
+        "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[1]\t\t: socclk clock level: 1: (600Mhz)",
+        "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "==========================================================================================",
+        "=================================== Power Consumption ====================================",
+        "GPU[0]\t\t: Average Graphics Package Power (W): 12.0",
+        "GPU[1]\t\t: Average Graphics Package Power (W): 9.0",
+        "==========================================================================================",
+        "================================== End of ROCm SMI Log ==================================="
+      ]
+    },
+    "chain_sha256": "b8c28ab5066a519b3acc1e09293382f2cca1e084ac554e422788006341542d43",
+    "direction": "kl(baseline || candidate)",
+    "evidence_level": "numerical_rows",
+    "failed": [],
+    "kl_max": 0.0,
+    "kl_mean": 0.0,
+    "kl_p95": 0.0,
+    "kl_p99": 0.0,
+    "observed_routes": {
+      "decode_launches": 30690,
+      "head_dims": [
+        256,
+        512
+      ],
+      "selections": [
+        1
+      ],
+      "split_key_range": null,
+      "split_launches": 0
+    },
+    "passed": true,
+    "percentile_method": "nearest-rank",
+    "prefill": 1024,
+    "promotion_qualified": false,
+    "rows": 1023,
+    "scored_key_range": [
+      1025,
+      2047
+    ],
+    "thresholds": {
+      "kl_max": 0.05,
+      "kl_mean": 0.001,
+      "kl_p95": 0.005,
+      "kl_p99": 0.02,
+      "top1_rate": 0.99
+    },
+    "top1_flip_rows": [],
+    "top1_flips": 0,
+    "top1_rate": 1.0,
+    "vocab": 262144
+  },
+  "short_no_split_control": {
+    "baseline_forced_slices": 1,
+    "baseline_path": "/tmp/gemma4-iter49-short.npz",
+    "baseline_provenance": {
+      "artifact": {
+        "bytes": 17010980576,
+        "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+        "mtime": "2026-09-22T10:30:20.793299+00:00",
+        "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+      },
+      "attention_source_sha256": {
+        "hip": "502b3bc8e269b8bd9143efd078412480c89341de8942f179e0e2a4d890ba6099",
+        "py": "3fe9631a870d244e87fb5ce35ac5fe53405bee18f3a2623e8f624936db2af83d"
+      },
+      "context_length": 8192,
+      "env": {
+        "HIP_INCLUDE_PATH": "/opt/rocm/include",
+        "HIP_LIB_PATH": "/opt/rocm/lib",
+        "HIP_PATH": "/opt/rocm",
+        "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+        "HSA_SCRATCH_SINGLE_LIMIT": "8388608",
+        "ROCR_VISIBLE_DEVICES": "1"
+      },
+      "evaluator_source_sha256": "dad9df1e93e349d3d75e3c427de61d6a3d0342faeb8a5ed4e8512319ffe4ca1f",
+      "forced_slices": 1,
+      "git_commit": "0a2bc640ab3f75bbc1ef9add1c8bc9d47cd24b4d",
+      "git_dirty": true,
+      "git_dirty_files": [
+        "M audit/findings/stub.json",
+        " M audit/findings/ungoverned-flag-branch.json",
+        " M audit/inventory/flags.json",
+        " M audit/inventory/kernels.json",
+        " M audit/inventory/meta.json",
+        " M audit/inventory/worklog.json",
+        " M audit/triage/stub.jsonl",
+        " M scripts/gemma4_teacher_forced_gate.py",
+        " M tests/test_unit_gemma4_teacher_forced_gate.py",
+        "?? tests/test_unit_gemma4_teacher_forced_routes.py"
+      ],
+      "gpu_name_device0": "AMD Radeon RX 7900 XTX",
+      "hipcc": [
+        "HIP version: 7.2.53211-3d9ef42",
+        "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+      ],
+      "max_block": 512,
+      "observed_routes": {
+        "decode_launches": 210,
+        "head_dims": [
+          256,
+          512
+        ],
+        "selections": [
+          1
+        ],
+        "split_key_range": null,
+        "split_launches": 0
+      },
+      "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+      "prefill": 0,
+      "python": "3.11.11",
+      "rocm_smi_clock_power": [
+        "============================ ROCm System Management Interface ============================",
+        "====================================== Temperature =======================================",
+        "GPU[0]\t\t: Temperature (Sensor edge) (C): 33.0",
+        "GPU[0]\t\t: Temperature (Sensor junction) (C): 40.0",
+        "GPU[0]\t\t: Temperature (Sensor memory) (C): 44.0",
+        "GPU[1]\t\t: Temperature (Sensor edge) (C): 42.0",
+        "GPU[1]\t\t: Temperature (Sensor junction) (C): 52.0",
+        "GPU[1]\t\t: Temperature (Sensor memory) (C): 62.0",
+        "==========================================================================================",
+        "=============================== Current clock frequencies ================================",
+        "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[0]\t\t: fclk clock level: 1: (1000Mhz)",
+        "GPU[0]\t\t: mclk clock level: 0: (96Mhz)",
+        "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[0]\t\t: socclk clock level: 1: (600Mhz)",
+        "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[1]\t\t: fclk clock level: 4: (2000Mhz)",
+        "GPU[1]\t\t: mclk clock level: 3: (1249Mhz)",
+        "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[1]\t\t: socclk clock level: 1: (1285Mhz)",
+        "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "==========================================================================================",
+        "=================================== Power Consumption ====================================",
+        "GPU[0]\t\t: Average Graphics Package Power (W): 10.0",
+        "GPU[1]\t\t: Average Graphics Package Power (W): 66.0",
+        "==========================================================================================",
+        "================================== End of ROCm SMI Log ==================================="
+      ]
+    },
+    "baseline_sha256": "3528a731c05a09eb3a1e60a7c2721f33c832e574fc7ec4d82db434f910241efc",
+    "candidate_forced_slices": null,
+    "candidate_provenance": {
+      "artifact": {
+        "bytes": 17010980576,
+        "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+        "mtime": "2026-09-22T10:30:20.793299+00:00",
+        "path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+      },
+      "attention_source_sha256": {
+        "hip": "502b3bc8e269b8bd9143efd078412480c89341de8942f179e0e2a4d890ba6099",
+        "py": "3fe9631a870d244e87fb5ce35ac5fe53405bee18f3a2623e8f624936db2af83d"
+      },
+      "context_length": 8192,
+      "env": {
+        "HIP_INCLUDE_PATH": "/opt/rocm/include",
+        "HIP_LIB_PATH": "/opt/rocm/lib",
+        "HIP_PATH": "/opt/rocm",
+        "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+        "HSA_SCRATCH_SINGLE_LIMIT": "8388608",
+        "ROCR_VISIBLE_DEVICES": "1"
+      },
+      "evaluator_source_sha256": "dad9df1e93e349d3d75e3c427de61d6a3d0342faeb8a5ed4e8512319ffe4ca1f",
+      "git_commit": "0a2bc640ab3f75bbc1ef9add1c8bc9d47cd24b4d",
+      "git_dirty": true,
+      "git_dirty_files": [
+        "M audit/findings/stub.json",
+        " M audit/findings/ungoverned-flag-branch.json",
+        " M audit/inventory/flags.json",
+        " M audit/inventory/kernels.json",
+        " M audit/inventory/meta.json",
+        " M audit/inventory/worklog.json",
+        " M audit/triage/stub.jsonl",
+        " M scripts/gemma4_teacher_forced_gate.py",
+        " M tests/test_unit_gemma4_teacher_forced_gate.py",
+        "?? tests/test_unit_gemma4_teacher_forced_routes.py"
+      ],
+      "gpu_name_device0": "AMD Radeon RX 7900 XTX",
+      "hipcc": [
+        "HIP version: 7.2.53211-3d9ef42",
+        "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+      ],
+      "max_block": 512,
+      "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+      "python": "3.11.11",
+      "rocm_smi_clock_power": [
+        "============================ ROCm System Management Interface ============================",
+        "====================================== Temperature =======================================",
+        "GPU[0]\t\t: Temperature (Sensor edge) (C): 33.0",
+        "GPU[0]\t\t: Temperature (Sensor junction) (C): 40.0",
+        "GPU[0]\t\t: Temperature (Sensor memory) (C): 44.0",
+        "GPU[1]\t\t: Temperature (Sensor edge) (C): 42.0",
+        "GPU[1]\t\t: Temperature (Sensor junction) (C): 53.0",
+        "GPU[1]\t\t: Temperature (Sensor memory) (C): 64.0",
+        "==========================================================================================",
+        "=============================== Current clock frequencies ================================",
+        "GPU[0]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[0]\t\t: fclk clock level: 1: (1000Mhz)",
+        "GPU[0]\t\t: mclk clock level: 0: (96Mhz)",
+        "GPU[0]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[0]\t\t: socclk clock level: 1: (600Mhz)",
+        "GPU[0]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "GPU[1]\t\t: dcefclk clock level: 0: (145Mhz)",
+        "GPU[1]\t\t: fclk clock level: 4: (2000Mhz)",
+        "GPU[1]\t\t: mclk clock level: 3: (1249Mhz)",
+        "GPU[1]\t\t: sclk clock level: S: (0Mhz)",
+        "GPU[1]\t\t: socclk clock level: 1: (1285Mhz)",
+        "GPU[1]\t\t: pcie clock level: 2 (16.0GT/s x8)",
+        "==========================================================================================",
+        "=================================== Power Consumption ====================================",
+        "GPU[0]\t\t: Average Graphics Package Power (W): 12.0",
+        "GPU[1]\t\t: Average Graphics Package Power (W): 64.0",
+        "==========================================================================================",
+        "================================== End of ROCm SMI Log ==================================="
+      ]
+    },
+    "chain_sha256": "09e98da3f7bc3a4b5f9114aa6b7f0ce39b855ef58058a9305e36741a6ee4d62b",
+    "direction": "kl(baseline || candidate)",
+    "evidence_level": "screen",
+    "failed": [
+      "split_not_exercised"
+    ],
+    "kl_max": 0.0,
+    "kl_mean": 0.0,
+    "kl_p95": 0.0,
+    "kl_p99": 0.0,
+    "observed_routes": {
+      "decode_launches": 210,
+      "head_dims": [
+        256,
+        512
+      ],
+      "selections": [
+        1
+      ],
+      "split_key_range": null,
+      "split_launches": 0
+    },
+    "passed": false,
+    "percentile_method": "nearest-rank",
+    "prefill": 0,
+    "promotion_qualified": false,
+    "rows": 7,
+    "scored_key_range": [
+      1,
+      7
+    ],
+    "thresholds": {
+      "kl_max": 0.05,
+      "kl_mean": 0.001,
+      "kl_p95": 0.005,
+      "kl_p99": 0.02,
+      "top1_rate": 0.99
+    },
+    "top1_flip_rows": [],
+    "top1_flips": 0,
+    "top1_rate": 1.0,
+    "vocab": 262144
+  }
+}

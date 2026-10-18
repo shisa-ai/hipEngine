@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build the PF-0 natural-text route-covering fixture in the canonical schema.
 
-PF-0 (``docs/QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md`` section 6, queue row 1)
+PF-0 (``docs/campaigns/QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md`` section 6, queue row 1)
 requires a fixture that is both natural (no token-level repetition) and
 route-covering (every prompt reaches the ``rows >= 64`` Q8 MMQ policy).  The
 2026-08-29 admission suite is natural but too short (11.1% route coverage) and

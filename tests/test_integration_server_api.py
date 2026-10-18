@@ -20,20 +20,30 @@ from fastapi.testclient import TestClient
 from hipengine import ResidentPreparationError, SamplingParams
 from hipengine.generation import (
     GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS,
+    EngineCommandTimeout,
+    EngineServiceClosed,
     FinishDetails,
     GenerationAdmissionRejected,
     GenerationCancellationToken,
     GenerationCancelled,
     GenerationDeadlineExceeded,
+    GenerationExecutionFailed,
     GenerationOutput,
     GenerationStreamChunk,
     GenerationTelemetry,
+    PreparedPromptInput,
     TokenLogprob,
 )
 from hipengine.generation.sampling import (
     NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES,
     SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS,
     SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
+)
+from hipengine.runtime.memory_admission import (
+    ADMISSION_REFUSAL_CODE,
+    MemoryAdmissionRefused,
+    MemoryConsumer,
+    price_memory_admission,
 )
 from hipengine.server import ServerConfig, create_app, render_chat_prompt
 from hipengine.server.__main__ import build_parser
@@ -46,6 +56,7 @@ from hipengine.server.api import (
     ChatCompletionRequest,
     CompletionRequest,
     OpenAIHTTPError,
+    StartupFailure,
     _AGENTIC_REPLAY_FAILURE_REASONS,
     _STRUCTURED_OUTPUT_RESULT_VALIDATION_FAILURE_REASONS,
     _TOOL_RESULT_VALIDATION_FAILURE_REASONS,
@@ -64,9 +75,11 @@ from hipengine.server.api import (
     _SPECULATIVE_MTP_AUTO_ROUTE,
     _SPECULATIVE_MTP_BATCH_ROUTE,
     _SPECULATIVE_MTP_DEFAULT_ROUTE,
+    _SPECULATIVE_MTP_K0_ROUTE,
     _prepared_context_tokens,
     _request_completion_cap,
     _request_control,
+    _realized_model_serving_plan,
     _resolve_realized_generation_route,
     _sampling_for_realized_generation_route,
     _serving_plan_route_decision,
@@ -75,6 +88,8 @@ from hipengine.server.api import (
     _startup_memory_summary,
     _mtp_accepted_rejected_counts,
     _mtp_response_summary,
+    _mtp_screening_static_eligibility,
+    _MTP_SCREENING_REASONS,
 )
 
 
@@ -175,6 +190,33 @@ def test_prepared_context_tokens_finds_resident_model_owner_session() -> None:
     engine = SimpleNamespace(_text_generator=generator)
 
     assert _prepared_context_tokens(engine) == 8192
+
+
+def test_mtp_circuit_breaker_scope_buckets_by_prompt_context_tokens() -> None:
+    """The breaker's context bucket follows the request, not the engine."""
+
+    engine = SimpleNamespace(
+        model_id="model",
+        _resolved_backend="hip_gfx1151",
+        resolved_execution_profile="strict",
+    )
+    breaker = _MTPCircuitBreaker(threshold=2)
+
+    assert breaker.scope(engine, ((7,) * 300,)) == (
+        "model",
+        "hip_gfx1151",
+        "strict",
+        "512",
+    )
+    assert breaker.scope(engine, ((7,) * 4096,))[3] == "4096"
+    assert breaker.scope(
+        engine,
+        (PreparedPromptInput(source_text="x", token_ids=(7,) * 1000),),
+    )[3] == "1024"
+    # Text prompts are not tokenized here, so counting characters would put
+    # unrelated requests in one bucket. They stay scope-unknown instead.
+    assert breaker.scope(engine, ("a text prompt",))[3] == "unknown"
+    assert breaker.scope(engine, ())[3] == "unknown"
 
 
 def _api_error_taxonomy_table() -> dict[str, dict[str, Any]]:
@@ -318,6 +360,18 @@ class ResidentSessionPromptFakeLLM(PromptPreparingFakeLLM):
 
 class SpeculativeMTPFakeLLM(FakeLLM):
     supports_speculative_mtp = True
+    # The loaded engine resolves an omitted budget from model-plugin evidence.
+    speculative_candidate_budget_requested: int | None = None
+    speculative_candidate_budget: int | None = 3
+    speculative_candidate_budget_source = "model_plugin_evidence"
+
+    @property
+    def speculative_candidate_budget_resolution(self) -> dict[str, Any]:
+        return {
+            "requested_candidate_budget": self.speculative_candidate_budget_requested,
+            "candidate_budget": self.speculative_candidate_budget,
+            "candidate_budget_source": self.speculative_candidate_budget_source,
+        }
 
     def __init__(self, token_map: dict[str, list[int]] | None = None) -> None:
         super().__init__(token_map=token_map)
@@ -401,6 +455,94 @@ class SpeculativeMTPFakeLLM(FakeLLM):
         ]
 
 
+class LateResolvingMTPFakeLLM(SpeculativeMTPFakeLLM):
+    """An engine whose MTP route exists only once ``prepare`` loads the model.
+
+    Real engines behave this way: ``LLM.__init__`` builds no generator, and the
+    model plugin's speculative evidence is read during ``prepare``. So the route
+    is genuinely unknown between construction and preparation, which is the
+    window where a startup line must not claim a resolved state.
+    """
+
+    def __init__(self, token_map: dict[str, list[int]] | None = None) -> None:
+        super().__init__(token_map=token_map)
+        self.supports_speculative_mtp = False
+        self._text_generator = None
+
+    def prepare(
+        self,
+        *,
+        max_sequence_length: int | None = None,
+        sampling_params: SamplingParams,
+    ) -> int:
+        selected = super().prepare(
+            max_sequence_length=max_sequence_length,
+            sampling_params=sampling_params,
+        )
+        self.supports_speculative_mtp = True
+        self._text_generator = object()
+        return selected
+
+
+class AccountingSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
+    """Streaming MTP fake that reports per-request execution accounting.
+
+    Mirrors the resident GGUF MTP2 path: three depth-3 cycles emit nine tokens
+    (six accepted drafts plus three target bonus tokens) out of twelve, and the
+    response carries the same accounting in its streamed final metadata.
+    """
+
+    def stream_speculative_mtp_detailed(self, prompts, sampling_params):
+        prompt_tuple = (
+            (str(prompts),)
+            if isinstance(prompts, str)
+            else tuple(str(prompt) for prompt in prompts)
+        )
+        self.mtp_calls.append((prompt_tuple, sampling_params))
+        yield GenerationStreamChunk(
+            text=f"mtp:{prompt_tuple[0]}",
+            generated_token_ids=tuple(range(901, 913)),
+            finish_details={"reason": "length"},
+            telemetry=GenerationTelemetry.from_decode_counts(
+                prompt_tokens=1,
+                generated_tokens=12,
+                row_index=0,
+                request_id="0",
+                phase="answer",
+                sampler_mode="greedy_fast",
+                execution_path="gguf_specdec2_mtp2",
+                timing={
+                    "mtp_cycles_count": 3.0,
+                    "mtp_generated_draft_tokens": 9.0,
+                    "mtp_accepted_draft_tokens": 6.0,
+                    "mtp_visible_output_tokens": 9.0,
+                    "mtp_accept_per_draft": 2 / 3,
+                },
+                timing_scope="choice",
+                timing_owner=True,
+                diagnostics={
+                    "specdec2_mtp2": {
+                        "requested_budget": 3,
+                        "candidate_budget": 3,
+                        "prompt_streaming": True,
+                        "prompt_fallback_reason": None,
+                        "cycles": 3,
+                        "generated_draft_tokens": 9,
+                        "accepted_draft_tokens": 6,
+                        "selected_depth_histogram": {"3": 3},
+                        "mtp_output_tokens": 9,
+                        "ar_output_tokens_in_cycles": 0,
+                        "first_fallback_position": None,
+                        "ar_step_reason_counts": {},
+                        "recoverable_failures": 0,
+                        "failure_reason_counts": {},
+                        "k0_catchups": 0,
+                    }
+                },
+            ),
+        )
+
+
 class ArtifactScopedSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
     def __init__(self) -> None:
         super().__init__()
@@ -411,8 +553,6 @@ class ArtifactScopedSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
         admitted = bool(
             kwargs["realized_group_rows"] == 1
             and kwargs["sampling_mode"] == "greedy_fast"
-            and 1 <= kwargs["context_tokens"] <= 67
-            and kwargs["output_horizon_tokens"] == 25
             and kwargs["kv_storage"] in {"auto", "bf16"}
             and kwargs["memory_fit"]
         )
@@ -422,7 +562,7 @@ class ArtifactScopedSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
             else (
                 "sampling_mode_not_qualified"
                 if kwargs["sampling_mode"] != "greedy_fast"
-                else "context_bucket_not_qualified"
+                else "physical_group_not_qualified"
             )
         )
         return {
@@ -430,8 +570,6 @@ class ArtifactScopedSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
             "plan_fingerprint": "sha256:" + ("a" if admitted else "b") * 64,
             "key": {
                 "realized_group_rows": kwargs["realized_group_rows"],
-                "context_tokens": kwargs["context_tokens"],
-                "output_horizon_tokens": kwargs["output_horizon_tokens"],
             },
             "admitted": admitted,
             "selected_route": "speculative_mtp" if admitted else "default",
@@ -452,10 +590,140 @@ class ArtifactScopedSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
         return self._plan(
             realized_group_rows=1,
             sampling_mode="greedy_fast",
-            context_tokens=67,
-            output_horizon_tokens=25,
             kv_storage="bf16",
             memory_fit=True,
+        )
+
+
+class UnqualifiedBudgetSpeculativeMTPFakeLLM(ArtifactScopedSpeculativeMTPFakeLLM):
+    """Admits nothing: the candidate-budget axis is unqualified everywhere.
+
+    Used to prove the explicit screening override, which must reach an
+    unqualified physical cell without widening automatic intent.
+    """
+
+    @staticmethod
+    def _plan(**kwargs: Any) -> dict[str, Any]:
+        plan = ArtifactScopedSpeculativeMTPFakeLLM._plan(**kwargs)
+        plan["key"]["candidate_budget"] = 4
+        plan["admitted"] = False
+        plan["selected_candidate_count"] = 0
+        sampling_ok = kwargs["sampling_mode"] == "greedy_fast"
+        # Shape-accurate: the live resolver reports every failed axis with the
+        # first one in declaration order as the summary reason, and the budget
+        # axis precedes the sampling axis. A non-greedy request that is also
+        # over the qualified depth therefore reports the *screenable* budget
+        # reason while the sampling boundary is one of its failed axes.
+        plan["failed_axes"] = (
+            ["candidate_budget_not_qualified"]
+            if sampling_ok
+            else [
+                "candidate_budget_not_qualified",
+                "sampling_mode_unmeasured",
+            ]
+        )
+        plan["reason"] = plan["failed_axes"][0]
+        plan["plan_fingerprint"] = "sha256:" + "9" * 64
+        return plan
+
+
+class QualifiedServingPlanFakeLLM(ArtifactScopedSpeculativeMTPFakeLLM):
+    """Admits C1 greedy, and emits a decision payload shaped like the real one.
+
+    The shared fake returns a bare mapping, while the live resolver returns
+    ``SpeculativeMTPServingDecision.as_dict()``, which always carries
+    ``static_eligibility``. Qualified-cell invariance needs that field to be
+    present or the plan layer cannot grant typed intent at all.
+    """
+
+    @staticmethod
+    def _plan(**kwargs: Any) -> dict[str, Any]:
+        plan = ArtifactScopedSpeculativeMTPFakeLLM._plan(**kwargs)
+        admitted = bool(plan["admitted"])
+        plan["key"]["candidate_budget"] = 3
+        plan["static_eligibility"] = {
+            "state": "speculative_capable" if admitted else "permanent_ar",
+            "eligible": admitted,
+            "reason": plan["reason"],
+            "max_candidate_count": 3 if admitted else 0,
+            "max_realized_group_rows": 1 if admitted else 0,
+            "automatic_eligible": False,
+            "strict_fallback_key": "gguf_target_ar",
+            "evidence_key": "fake-qwen38-q4km-c1-b3",
+            "evidence_fingerprint": "sha256:" + "c" * 64,
+            "evidence_artifacts": ["benchmarks/results/fake-qwen38-q4km-s0.json"],
+        }
+        return plan
+
+
+def test_realized_re_resolution_keeps_screening_closed_on_a_structural_rejection(
+    monkeypatch,
+) -> None:
+    """A wider realized group that fails memory fit must not carry screening in.
+
+    Reproduced finding: the request-time plan is rejected on a screenable axis
+    and carries a screening eligibility; the realized re-resolution then fails
+    the same screenable axis *and* the memory-fit axis. Carrying the
+    request-time intent forward unconditionally would authorize a cell the
+    realized group does not fit, so the carry-forward has to read the realized
+    plan's own failed set rather than its summary reason.
+    """
+
+    class RealizedMemoryMissFakeLLM(UnqualifiedBudgetSpeculativeMTPFakeLLM):
+        @staticmethod
+        def _plan(**kwargs: Any) -> dict[str, Any]:
+            plan = UnqualifiedBudgetSpeculativeMTPFakeLLM._plan(**kwargs)
+            if int(kwargs["realized_group_rows"]) > 1:
+                plan["failed_axes"] = [
+                    "candidate_budget_not_qualified",
+                    "insufficient_memory",
+                ]
+            else:
+                plan["failed_axes"] = ["candidate_budget_not_qualified"]
+            return plan
+
+    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    fake = RealizedMemoryMissFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        speculative_mtp_serving="opt_in",
+    )
+    sampling = SamplingParams(max_tokens=25)
+    route, plan = _generation_route_for_request(
+        config,
+        CompletionRequest(
+            model="fake-model", prompt="one", max_tokens=25, speculative_mtp=True
+        ),
+        engine=fake,
+        sampling=sampling,
+        prompts=("one",),
+    )
+    assert plan is not None and plan["screening"] is True
+
+    # The singleton realized group still screens: its only failed axis is
+    # screenable, which is the control for the case below.
+    singleton = _realized_model_serving_plan(fake, ("one",), sampling, plan)
+    assert singleton is not None
+    assert singleton["screening"] is True
+
+    wider = _realized_model_serving_plan(fake, ("one", "two"), sampling, plan)
+    assert wider is not None
+    assert wider["admitted"] is False
+    assert wider.get("screening") is None
+    assert wider.get("static_intent_allowed") is None
+    assert wider.get("qualification") is None
+    # The realized rejection is still reported in full, so the caller can see
+    # why the screening intent was refused.
+    assert wider["reason"] == "candidate_budget_not_qualified"
+    assert "insufficient_memory" in wider["failed_axes"]
+
+    with pytest.raises(OpenAIHTTPError, match="candidate_budget_not_qualified"):
+        _resolve_realized_generation_route(
+            route,
+            group_rows=2,
+            sampling=sampling,
+            precomputed_decision=wider,
         )
 
 
@@ -480,8 +748,6 @@ class RealizedGroupArtifactScopedSpeculativeMTPFakeLLM(
         admitted = bool(
             rows in {1, 2}
             and kwargs["sampling_mode"] == "greedy_fast"
-            and 1 <= kwargs["context_tokens"] <= 67
-            and kwargs["output_horizon_tokens"] == 25
             and kwargs["kv_storage"] in {"auto", "bf16"}
             and kwargs["memory_fit"]
         )
@@ -491,8 +757,6 @@ class RealizedGroupArtifactScopedSpeculativeMTPFakeLLM(
             "plan_fingerprint": "sha256:" + ("e" if rows == 1 else "f") * 64,
             "key": {
                 "realized_group_rows": rows,
-                "context_tokens": kwargs["context_tokens"],
-                "output_horizon_tokens": kwargs["output_horizon_tokens"],
             },
             "admitted": admitted,
             "selected_route": "speculative_mtp" if admitted else "default",
@@ -595,6 +859,64 @@ class ScratchProbeFailureFakeLLM(FakeLLM):
         raise RuntimeError("scratch failed near private startup prompt")
 
 
+class WideScratchProbeFakeLLM(FakeLLM):
+    """Fails the scratch probe above width one, the way a HIP allocation does."""
+
+    def prepare_request_scratch(
+        self,
+        *,
+        max_prompt_tokens: int,
+        max_new_tokens: int = 0,
+        sampling_params: SamplingParams | None = None,
+        max_batch_size: int = 1,
+        release_after_probe: bool = True,
+    ) -> dict[str, Any]:
+        if int(max_batch_size) > 1:
+            self.scratch_prepares.append({"max_batch_size": int(max_batch_size), "failed": True})
+            raise MemoryError("resident session allocation failed (HIP error 2: out of memory)")
+        return super().prepare_request_scratch(
+            max_prompt_tokens=max_prompt_tokens,
+            max_new_tokens=max_new_tokens,
+            sampling_params=sampling_params,
+            max_batch_size=max_batch_size,
+            release_after_probe=release_after_probe,
+        )
+
+
+class _FakeCapacityEstimate:
+    """The fields the startup probe preflight reads off a capacity estimate."""
+
+    def __init__(
+        self,
+        *,
+        allocatable_context_tokens: int,
+        requested_total_bytes: int,
+        usable_bytes: int,
+    ) -> None:
+        self.allocatable_context_tokens = int(allocatable_context_tokens)
+        self.requested_total_bytes = int(requested_total_bytes)
+        self.usable_bytes = int(usable_bytes)
+        self.available_bytes = int(usable_bytes)
+        self.reserve_bytes = 0
+
+
+class NarrowCapacityFakeLLM(FakeLLM):
+    """Prices one probe session at 20 GiB against 8 GiB usable."""
+
+    def resident_capacity_estimate(
+        self,
+        *,
+        max_batch_size: int = 1,
+        requested_context_tokens: int | None = None,
+    ) -> _FakeCapacityEstimate:
+        del max_batch_size, requested_context_tokens
+        return _FakeCapacityEstimate(
+            allocatable_context_tokens=4096,
+            requested_total_bytes=20 * 1024**3,
+            usable_bytes=8 * 1024**3,
+        )
+
+
 class SequentialFakeLLM(FakeLLM):
     def __init__(self, outputs: list[str | GenerationOutput]) -> None:
         super().__init__()
@@ -653,6 +975,100 @@ class DelayedFakeLLM(FakeLLM):
             yield chunk
 
 
+class BlockingPrepareFakeLLM(PromptPreparingFakeLLM):
+    """A fake whose ``tokenize`` blocks and whose stream runs until stopped.
+
+    ``EngineService`` runs the engine on one driver thread, so a control command
+    (the server's prompt tokenization) waits behind whatever that thread is doing:
+    a context prepare that grows the KV pool, or one prefill tick of a large
+    prompt. The wait is real; what matters is which thread absorbs it.
+    """
+
+    supports_controlled_streaming = True
+    supports_stream_many = True
+
+    def __init__(self, *, stream_delay_s: float = 0.05) -> None:
+        super().__init__(stream=True)
+        self.stream_delay_s = float(stream_delay_s)
+        self.tokenize_entered = threading.Event()
+        self.tokenize_release = threading.Event()
+        self.stream_stop = threading.Event()
+        self.tokenize_threads: list[int] = []
+
+    def tokenize(self, text: str) -> tuple[int, ...]:
+        self.tokenize_threads.append(threading.get_ident())
+        if "SLOW-PREP" in str(text):
+            self.tokenize_entered.set()
+            assert self.tokenize_release.wait(timeout=10.0)
+        return super().tokenize(text)
+
+    def stream(self, prompt: str, sampling_params: SamplingParams):
+        """Keep yielding until the test stops it, so the stream outlives a wait."""
+
+        index = 0
+        while not self.stream_stop.is_set():
+            yield f"chunk-{index}"
+            index += 1
+            time.sleep(self.stream_delay_s)
+
+    def stream_many_detailed(self, prompts, sampling_params):
+        """One row: the incremental chat path gates on this being callable."""
+
+        yield from self.stream(prompts[0], sampling_params)
+
+
+async def _asgi_chat_post(
+    app: Any,
+    payload: Mapping[str, Any],
+    *,
+    on_body: Any = None,
+) -> int:
+    """POST one chat request straight into the ASGI app, returning its status.
+
+    ``TestClient`` collects the response body before handing it back, so it cannot
+    show whether a stream kept moving while other work was in flight. Calling the
+    app directly reports every body message as the app produces it.
+    """
+
+    body = json.dumps(payload).encode()
+    sent = {"request": False}
+
+    async def receive() -> dict[str, Any]:
+        if not sent["request"]:
+            sent["request"] = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        await asyncio.sleep(0.01)
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    status = {"code": 0}
+
+    async def send(message: Mapping[str, Any]) -> None:
+        if message["type"] == "http.response.start":
+            status["code"] = int(message["status"])
+        elif on_body is not None:
+            on_body(message)
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/v1/chat/completions",
+        "raw_path": b"/v1/chat/completions",
+        "query_string": b"",
+        "headers": [
+            (b"host", b"testserver"),
+            (b"content-type", b"application/json"),
+            (b"content-length", str(len(body)).encode()),
+        ],
+        "client": ("127.0.0.1", 12345),
+        "server": ("testserver", 80),
+    }
+    await app(scope, receive, send)
+    return status["code"]
+
+
 class BackendDeadlineFakeLLM(FakeLLM):
     def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
         prompts = tuple(prompts)
@@ -687,6 +1103,30 @@ class AdmissionRejectedFakeLLM(FakeLLM):
     def stream(self, prompt: str, sampling_params: SamplingParams):
         self.stream_calls.append((str(prompt), sampling_params))
         self._reject((prompt,), sampling_params)
+        yield  # pragma: no cover - keeps this method a generator
+
+
+class BackendExecutionFailedFakeLLM(FakeLLM):
+    """A contained execution failure: this request died, the engine did not."""
+
+    def _fail(self, prompts, sampling_params: SamplingParams) -> None:
+        self.calls.append((tuple(prompts), sampling_params))
+        raise GenerationExecutionFailed(
+            phase="decode",
+            request_ids=(7,),
+            work_kind="decode_batch",
+            mutation="none",
+            reason="sampler row 1 exceeds the packed capacity of 0",
+            error=ValueError("capacity"),
+        )
+
+    def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+        self._fail(prompts, sampling_params)
+        raise AssertionError("unreachable")
+
+    def stream(self, prompt: str, sampling_params: SamplingParams):
+        self.stream_calls.append((str(prompt), sampling_params))
+        self._fail((prompt,), sampling_params)
         yield  # pragma: no cover - keeps this method a generator
 
 
@@ -1024,7 +1464,7 @@ def _parallelism_capability() -> dict[str, Any]:
 
 
 def test_tensor_parallel_design_doc_matches_capability_manifest() -> None:
-    doc = (REPO_ROOT / "docs" / "TENSOR_PARALLEL.md").read_text(encoding="utf-8")
+    doc = (REPO_ROOT / "docs" / "reference" / "TENSOR_PARALLEL.md").read_text(encoding="utf-8")
     tensor_parallel = _parallelism_capability()["tensor_parallel"]
 
     assert "`parallelism.tensor_parallel.enabled=false`" in doc
@@ -1126,6 +1566,7 @@ def test_models_endpoint_reports_served_model_name_and_auth() -> None:
             },
         },
         "capabilities": {
+            "surfaces": ["text"],
             "completions": True,
             "chat_completions": True,
             "streaming": True,
@@ -1135,10 +1576,16 @@ def test_models_endpoint_reports_served_model_name_and_auth() -> None:
             "continuations": True,
             "sessions": True,
             "grammars": False,
+            "song_generation": False,
             "speculative_mtp": False,
             "speculative": False,
             "tensor_parallel": False,
             "multiple_models": False,
+        },
+        "song_generation": {
+            "enabled": False,
+            "reason": "the served model declares no song surface",
+            "surfaces": ["text"],
         },
         "capabilities_url": "/v1/hipengine/capabilities",
         "routing": {"loaded_model_count": 1, "multiple_models": False},
@@ -1317,6 +1764,9 @@ def test_decode_telemetry_endpoint_sanitizes_hook_failures_and_bad_payloads() ->
 
 def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
+    # The MTP context window is an environment resolution, so pin it: a value
+    # exported in the developer's shell must not change this expectation.
+    monkeypatch.delenv("HIPENGINE_MTP2_MAX_CONTEXT_TOKENS", raising=False)
     fake = FakeLLM()
     app = create_app(
         ServerConfig(
@@ -1688,7 +2138,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "allows_pending_tool_calls_at_transcript_end": True,
             "applies_to_session_snapshots": True,
         },
-        "parallel_tool_calls_requires_opt_in": True,
+        "parallel_tool_calls_requires_opt_in": False,
         "parallel_tool_calls": True,
         "streaming_argument_chunks": True,
         "streaming_argument_chunk_chars": 128,
@@ -1930,6 +2380,20 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         },
         "thinking_policy": "hint",
         "processed_target_verification": False,
+        "candidate_budget": {
+            "requested": None,
+            "resolved": None,
+            "source": "unresolved",
+        },
+        "context_window": {
+            "policy": "target_capacity",
+            "fixed_cap": None,
+            "env": None,
+            "exported": None,
+            "resolved": None,
+            "qualified_default": None,
+            "error": None,
+        },
     }
     assert body["sampling"]["speculative_mtp"]["incompatible_fields"] == list(
         SPECULATIVE_MTP_INCOMPATIBLE_FIELDS
@@ -1966,7 +2430,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     assert "guided_diff" not in body["unsupported_fields"]
 
 
-def test_capabilities_endpoint_reports_scoped_gguf_native_sampler_candidate(
+def test_capabilities_endpoint_reports_default_gguf_native_sampler(
     monkeypatch,
 ) -> None:
     monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
@@ -1980,14 +2444,14 @@ def test_capabilities_endpoint_reports_scoped_gguf_native_sampler_candidate(
     )
     assert disabled.status_code == 200
     native = disabled.json()["sampling"]["native_gpu"]
-    assert native["enabled"] is False
+    assert native["enabled"] is True
     assert native["enable_env"] == "HIPENGINE_QWEN35_NATIVE_SAMPLER=1"
     assert native["scope"] == "gguf_resident_c1_and_dense_compatible_c_gt_1"
     assert native["c_gt_1"] == (
         "single_batched_launch_when_compatible_else_native_rows"
     )
     assert native["true_batched_c_gt_1"] is True
-    assert native["default_path"] is False
+    assert native["default_path"] is True
     assert "forced_tokens_pending" in native["unsupported"]
     assert "gguf" not in native["unsupported"]
     assert "true_batched_c_gt_1" not in native["unsupported"]
@@ -1999,8 +2463,15 @@ def test_capabilities_endpoint_reports_scoped_gguf_native_sampler_candidate(
     assert enabled.status_code == 200
     assert enabled.json()["sampling"]["native_gpu"]["enabled"] is True
 
+    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "0")
+    rollback = TestClient(create_app(config, llm=FakeLLM())).get("/v1/hipengine/capabilities")
+    assert rollback.json()["sampling"]["native_gpu"]["enabled"] is False
 
-def test_capabilities_endpoint_reports_speculative_mtp_when_config_and_engine_support() -> None:
+
+def test_capabilities_endpoint_reports_speculative_mtp_when_config_and_engine_support(monkeypatch) -> None:
+    # The MTP context window is an environment resolution, so pin it: a value
+    # exported in the developer's shell must not change this expectation.
+    monkeypatch.delenv("HIPENGINE_MTP2_MAX_CONTEXT_TOKENS", raising=False)
     fake = SpeculativeMTPFakeLLM()
     app = create_app(
         ServerConfig(
@@ -2029,6 +2500,20 @@ def test_capabilities_endpoint_reports_speculative_mtp_when_config_and_engine_su
         "incompatible_conditions": dict(SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS),
         "thinking_policy": "hint",
         "processed_target_verification": False,
+        "candidate_budget": {
+            "requested": None,
+            "resolved": 3,
+            "source": "model_plugin_evidence",
+        },
+        "context_window": {
+            "policy": "target_capacity",
+            "fixed_cap": None,
+            "env": None,
+            "exported": None,
+            "resolved": None,
+            "qualified_default": None,
+            "error": None,
+        },
         "policy": "opt_in",
         "request_field": "speculative_mtp",
         "default_enabled": False,
@@ -2079,6 +2564,268 @@ def test_capabilities_endpoint_defaults_to_auto_exact_fallback() -> None:
         "compatibility_mtp_explicit_only": True,
         "evidence": "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json",
     }
+
+
+def test_mtp_capability_reports_capability_resolved_candidate_budget() -> None:
+    """An omitted budget reports the depth capability data resolved."""
+
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            speculative_mtp_serving="opt_in",
+        ),
+        llm=fake,
+    )
+
+    payload = TestClient(app).get("/v1/hipengine/capabilities").json()
+
+    assert payload["sampling"]["speculative_mtp"]["candidate_budget"] == {
+        "requested": None,
+        "resolved": 3,
+        "source": "model_plugin_evidence",
+    }
+
+
+def test_mtp_capability_reports_an_explicit_candidate_budget() -> None:
+    """A pinned depth is reported as pinned, never rewritten."""
+
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            speculative_mtp_serving="opt_in",
+            speculative_candidate_budget=4,
+        ),
+        llm=fake,
+    )
+
+    payload = TestClient(app).get("/v1/hipengine/capabilities").json()
+
+    assert payload["sampling"]["speculative_mtp"]["candidate_budget"] == {
+        "requested": 4,
+        "resolved": 4,
+        "source": "explicit",
+    }
+
+
+def test_candidate_budget_reports_pending_before_the_engine_loads() -> None:
+    """An engine that has not loaded its artifact reports pending, not a depth."""
+
+    from hipengine.server.api import _candidate_budget_resolution
+
+    class UnloadedEngine:
+        @property
+        def speculative_candidate_budget_resolution(self) -> dict[str, Any]:
+            return {
+                "requested_candidate_budget": None,
+                "candidate_budget": None,
+                "candidate_budget_source": "pending",
+            }
+
+    assert _candidate_budget_resolution(
+        ServerConfig(model="fake-path"), engine=UnloadedEngine()
+    ) == {"requested": None, "resolved": None, "source": "pending"}
+
+
+def test_server_config_accepts_an_omitted_candidate_budget() -> None:
+    """Omitting the budget is a supported configuration, not a default of 4."""
+
+    assert ServerConfig(model="fake-path").speculative_candidate_budget is None
+    assert (
+        ServerConfig(model="fake-path", speculative_candidate_budget=2)
+        .speculative_candidate_budget
+        == 2
+    )
+    with pytest.raises(ValueError, match="must be positive"):
+        ServerConfig(model="fake-path", speculative_candidate_budget=0)
+
+
+def test_unprepared_engine_logs_no_mtp_state_yet(caplog) -> None:
+    """A loading engine says nothing about MTP; the resolved line carries it.
+
+    RED for the pre-resolution echo: reporting ``serving=off
+    engine_supported=False`` while the generator is still being prepared
+    contradicts the ``serving=enabled engine_supported=True`` line the operator
+    reads once the model is resident. Reporting ``pending`` there is the same
+    contradiction, softened: the engine is already loading, so the requested
+    values are the only content and the resolved line follows on its own.
+    """
+
+    from hipengine.server.api import _log_effective_mtp_config
+
+    class UnpreparedEngine:
+        """An engine whose generator - and MTP capability - is not resolved."""
+
+        _text_generator = None
+
+    with caplog.at_level(logging.INFO, logger="uvicorn.error"):
+        logged = _log_effective_mtp_config(
+            ServerConfig(
+                model="fake-path",
+                served_model_name="fake-model",
+                eager_load=False,
+                speculative_mtp_serving="auto",
+                speculative_candidate_budget=3,
+            ),
+            engine=UnpreparedEngine(),
+        )
+
+    assert logged is False
+    assert "EFFECTIVE_MTP" not in caplog.text
+
+
+def test_missing_engine_logs_no_mtp_state(caplog) -> None:
+    """No engine at all is not a resolved state either; lazy startup says pending."""
+
+    from hipengine.server.api import _log_effective_mtp_config
+
+    with caplog.at_level(logging.INFO, logger="uvicorn.error"):
+        logged = _log_effective_mtp_config(
+            ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False),
+            engine=None,
+        )
+
+    assert logged is False
+    assert "EFFECTIVE_MTP" not in caplog.text
+
+
+def test_lazy_startup_pending_line_defers_to_the_first_request(caplog, monkeypatch) -> None:
+    """Lazy startup states the request, then the load states the outcome.
+
+    Exactly two field lines: the pending form at startup, when no engine exists,
+    and the resolved form once the first request prepares the model. The request
+    itself must not repeat either one.
+    """
+
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
+    fake = LateResolvingMTPFakeLLM()
+    monkeypatch.setattr("hipengine.server.api.LLM", lambda *args, **kwargs: fake)
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            speculative_mtp_serving="enabled",
+        )
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/completions",
+            json={
+                "model": "fake-model",
+                "prompt": "one",
+                "max_tokens": 1,
+                "temperature": 0.0,
+                "speculative_mtp": False,
+            },
+        )
+        second = client.post(
+            "/v1/completions",
+            json={
+                "model": "fake-model",
+                "prompt": "two",
+                "max_tokens": 1,
+                "temperature": 0.0,
+                "speculative_mtp": False,
+            },
+        )
+
+    assert response.status_code == 200
+    assert second.status_code == 200
+    assert fake.prepares, "the request path must prepare the model it reports on"
+    field_lines = [line for line in caplog.text.splitlines() if "EFFECTIVE_MTP: serving=" in line]
+    assert len(field_lines) == 2, caplog.text
+    assert "serving=pending engine_supported=unknown" in field_lines[0]
+    assert "serving=enabled engine_supported=True" in field_lines[1]
+
+
+def test_eager_startup_logs_one_resolved_mtp_line(caplog, monkeypatch) -> None:
+    """Eager startup prints the resolved state and never a pending echo.
+
+    The engine is loading for the whole startup, so a pending line would be a
+    second field line that the resolved one immediately supersedes.
+    """
+
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
+    fake = LateResolvingMTPFakeLLM()
+    monkeypatch.setattr("hipengine.server.api.LLM", lambda *args, **kwargs: fake)
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="enabled",
+        )
+    )
+
+    with TestClient(app):
+        pass
+
+    assert fake.prepares, "eager startup must prepare the model it reports on"
+    field_lines = [line for line in caplog.text.splitlines() if "EFFECTIVE_MTP: serving=" in line]
+    assert len(field_lines) == 1, caplog.text
+    assert "serving=enabled engine_supported=True" in field_lines[0]
+
+
+def test_resolved_engine_without_mtp_route_still_logs_off(caplog) -> None:
+    """A resolved engine that has no MTP route reports off, as before."""
+
+    from hipengine.server.api import _log_effective_mtp_config
+
+    class ResolvedPlainEngine:
+        _text_generator = object()
+
+    with caplog.at_level(logging.INFO, logger="uvicorn.error"):
+        _log_effective_mtp_config(
+            ServerConfig(
+                model="fake-path",
+                served_model_name="fake-model",
+                eager_load=False,
+                speculative_mtp_serving="auto",
+            ),
+            engine=ResolvedPlainEngine(),
+        )
+
+    assert "serving=off engine_supported=False" in caplog.text
+
+
+def test_startup_warns_when_enabled_mtp_cannot_serve_its_budget(caplog) -> None:
+    """An explicitly enabled route that cannot admit is reported, not silent."""
+
+    from hipengine.server.api import _log_effective_mtp_config
+
+    fake = SpeculativeMTPFakeLLM()
+    fake.speculative_mtp_serving_capability = {
+        "admitted": False,
+        "automatic_eligible": False,
+        "reason": "candidate_budget_not_qualified",
+    }
+    fake.speculative_candidate_budget_requested = 4
+    fake.speculative_candidate_budget = 4
+    fake.speculative_candidate_budget_source = "explicit"
+
+    with caplog.at_level(logging.WARNING):
+        _log_effective_mtp_config(
+            ServerConfig(
+                model="fake-path",
+                served_model_name="fake-model",
+                eager_load=False,
+                speculative_mtp_serving="enabled",
+                speculative_candidate_budget=4,
+            ),
+            engine=fake,
+        )
+
+    assert any(
+        "candidate_budget_not_qualified" in record.message
+        and "candidate_budget requested:4 resolved:4 source:explicit" in record.message
+        for record in caplog.records
+    )
 
 
 def test_capabilities_endpoint_does_not_infer_default_mtp_from_dense_boolean() -> None:
@@ -2144,6 +2891,417 @@ def test_api_error_taxonomy_table_matches_capabilities_manifest() -> None:
         assert api_table[code]["status_code"] == item["status_code"]
         assert api_table[code]["retryable"] == item["retryable"]
         assert api_table[code]["current_emission"]
+
+
+def test_closed_engine_service_answers_with_a_typed_unavailable_error() -> None:
+    """The 2026-09-18 bodyless 500: a closed service must name itself.
+
+    The resident service closed after a fatal packed-prefill failure, and the
+    next requests hit ``EngineServiceClosed`` while the server prepared their
+    resident context. That exception escaped the endpoint and Starlette answered
+    with a plain-text ``Internal Server Error``: no ``error.code``, no message,
+    and nothing the client could tell apart from a truncation.
+    """
+
+    closed_message = (
+        "engine service is closed after a fatal execution failure "
+        "(NotImplementedError: packed paged AR prefill currently requires "
+        "context < 1024)"
+    )
+
+    class ClosedServiceFakeLLM(FakeLLM):
+        def prepare(self, *, max_sequence_length=None, sampling_params):
+            raise EngineServiceClosed(closed_message)
+
+    fake = ClosedServiceFakeLLM(outputs=["never served"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_completion_tokens": 4,
+            "stream": True,
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.headers["content-type"].startswith("application/json")
+    body = response.json()
+    assert body["error"]["code"] == "engine_unavailable"
+    assert body["error"]["type"] == "server_error"
+    assert body["error"]["message"] == closed_message
+    assert body["error"]["hipengine"]["retryable"] is True
+    assert body["error"]["hipengine"]["exception_type"] == "EngineServiceClosed"
+
+
+def test_admission_refusal_answers_with_its_named_capacity_error() -> None:
+    """A pre-mutation capacity refusal is a capacity answer, not an internal fault.
+
+    The admission budget prices every resident consumer before anything is
+    allocated, so a refusal leaves the engine healthy and the same request may
+    fit once memory frees up. The refusal names the consumer that did not fit and
+    carries its own error code, so a client can tell "too large right now" from
+    "the engine cannot answer" -- and from its own malformed request.
+    """
+
+    decision = price_memory_admission(
+        free_bytes=1024**3,
+        consumers=(MemoryConsumer("kv_pool", 8 * 1024**3),),
+        reserve_bytes=0,
+    )
+    refusal = MemoryAdmissionRefused(decision)
+
+    class OverloadedFakeLLM(FakeLLM):
+        def prepare(self, *, max_sequence_length=None, sampling_params):
+            raise refusal
+
+    fake = OverloadedFakeLLM(outputs=["never served"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_completion_tokens": 4,
+            "stream": True,
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.headers["content-type"].startswith("application/json")
+    body = response.json()
+    assert body["error"]["code"] == ADMISSION_REFUSAL_CODE
+    assert body["error"]["code"] != "internal_error"
+    assert body["error"]["message"] == str(refusal)
+    assert "kv_pool" in body["error"]["message"]
+
+
+def test_engine_command_timeout_answers_with_a_typed_unavailable_error() -> None:
+    """A driver that never answers is the server's problem, not the request's.
+
+    The resident service abandons a command whose liveness budget expires, and the
+    error names the method, the budget, and the activity holding the driver thread.
+    Answering the non-retryable ``internal_error`` would tell a client that its own
+    request was at fault for a stalled engine, so an exhausted budget is reported
+    the way a closed service is: retryable ``engine_unavailable``.
+    """
+
+    timeout_message = (
+        "engine service command timed out: method=tokenize budget_s=300.0 "
+        "driver_command=control:prepare driver_command_s=301.2 queued_commands=2 "
+        "active_requests=1 driver_alive=yes"
+    )
+
+    class UnresponsiveServiceFakeLLM(PromptPreparingFakeLLM):
+        def tokenize(self, text: str) -> tuple[int, ...]:
+            raise EngineCommandTimeout(timeout_message)
+
+    fake = UnresponsiveServiceFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_completion_tokens": 4,
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.headers["content-type"].startswith("application/json")
+    body = response.json()
+    assert body["error"]["code"] == "engine_unavailable"
+    assert body["error"]["type"] == "server_error"
+    assert "method=tokenize" in body["error"]["message"]
+    assert "budget_s=300.0" in body["error"]["message"]
+    assert "driver_command=control:prepare" in body["error"]["message"]
+    assert body["error"]["hipengine"]["exception_type"] == "EngineCommandTimeout"
+
+
+@pytest.mark.parametrize("explicit,status", [(True, 501), (False, 200), (None, 200)])
+def test_explicit_unimplemented_mtp_does_not_silently_downgrade(explicit, status):
+    fake = SpeculativeMTPFakeLLM()
+    fake.resolve_speculative_mtp_serving_plan = lambda **kwargs: {
+        "admitted": False,
+        "automatic_eligible": False,
+        "reason": "dense_group_above_offered_width",
+        "implementation_key": "gguf_dense_int8_gfx1151_group_native_chain",
+        "selected_candidate_count": 0,
+        "key": {"kv_storage": "int8_per_token_head", "realized_group_rows": 8},
+    }
+    app = create_app(
+        ServerConfig(model="fake", served_model_name="fake-model", eager_load=False),
+        llm=fake,
+    )
+    body = {"model": "fake-model", "prompt": "hi", "max_tokens": 4}
+    if explicit is not None:
+        body["speculative_mtp"] = explicit
+    with TestClient(app) as client:
+        response = client.post("/v1/completions", json=body)
+    assert response.status_code == status, response.text
+    if explicit is True:
+        assert response.json()["error"]["code"] == "unsupported_feature"
+        assert "dense_group_above_offered_width" in response.json()["error"]["message"]
+        assert fake.mtp_calls == []
+        assert fake.calls == []
+
+
+@pytest.mark.parametrize("error_class", [EngineServiceClosed, EngineCommandTimeout])
+@pytest.mark.parametrize("chat,n", [(False, 1), (True, 1), (True, 2)])
+def test_closed_engine_service_mid_stream_ends_with_a_typed_error_event(error_class, chat, n) -> None:
+    """A service that closes after the first chunk still names itself."""
+
+    class ClosingStreamFakeLLM(FakeLLM):
+        supports_stream_many = True
+
+        def stream(self, prompt, sampling_params):
+            yield "partial"
+            raise error_class(
+                "engine service is closed after a fatal execution failure "
+                "(RuntimeError: device fault)"
+            )
+
+        def stream_many_detailed(self, prompts, sampling_params):
+            for text in self.stream(prompts[0], sampling_params):
+                yield GenerationStreamChunk(
+                    text=text,
+                    telemetry=GenerationTelemetry.from_decode_counts(
+                        prompt_tokens=1, generated_tokens=1, row_index=0,
+                        phase="answer", sampler_mode="greedy_fast", execution_path="test",
+                    ),
+                )
+
+    fake = ClosingStreamFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+
+    with client.stream(
+        "POST",
+        "/v1/chat/completions" if chat else "/v1/completions",
+        json={
+            "model": "fake-model",
+            **({"messages": [{"role": "user", "content": "hi"}]} if chat else {"prompt": "hi"}),
+            "max_tokens": 4,
+            "stream": True,
+            "n": n,
+        },
+    ) as response:
+        assert response.status_code == 200
+        body = "".join(response.iter_text())
+
+    events = [
+        json.loads(line[len("data: ") :])
+        for line in body.splitlines()
+        if line.startswith("data: ") and line != "data: [DONE]"
+    ]
+    errors = [event["error"] for event in events if isinstance(event.get("error"), dict)]
+    assert errors, body
+    assert errors[-1]["code"] == "engine_unavailable"
+    assert errors[-1]["hipengine"]["status_code"] == 503
+    assert errors[-1]["hipengine"]["retryable"] is True
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_completion_tokenize_timeout_is_engine_unavailable(stream) -> None:
+    class UnresponsiveFake(PromptPreparingFakeLLM):
+        def tokenize(self, text):
+            raise EngineCommandTimeout("method=tokenize budget_s=300.0 driver_alive=yes")
+
+    app = create_app(
+        ServerConfig(model="fake", served_model_name="fake-model", eager_load=False),
+        llm=UnresponsiveFake(),
+    )
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/v1/completions",
+            json={"model": "fake-model", "prompt": "hi", "max_tokens": 4, "stream": stream},
+        )
+    if stream:
+        assert response.status_code == 200
+        events = [
+            json.loads(line[6:])
+            for line in response.text.splitlines()
+            if line.startswith("data: ") and line != "data: [DONE]"
+        ]
+        error = next(event["error"] for event in events if "error" in event)
+        assert response.text.endswith("data: [DONE]\n\n")
+    else:
+        assert response.status_code == 503
+        error = response.json()["error"]
+    assert error["code"] == "engine_unavailable"
+    assert error["hipengine"]["status_code"] == 503
+    assert error["hipengine"]["retryable"] is True
+    assert "method=tokenize" in error["message"]
+
+
+@pytest.mark.parametrize(
+    "path,stream,n,info,metadata,live_many",
+    [
+        ("/ready", False, 1, False, False, False),
+        ("/metrics", False, 1, False, False, False),
+        ("/v1/completions", False, 1, True, False, False),
+        ("/v1/completions", True, 1, True, False, False),
+        ("/v1/completions", True, 1, False, True, False),
+        ("/v1/chat/completions", False, 1, True, False, False),
+        ("/v1/chat/completions", True, 1, True, False, False),
+        ("/v1/chat/completions", True, 1, False, True, False),
+        ("/v1/chat/completions", True, 2, True, False, False),
+        ("/v1/chat/completions", True, 2, False, True, False),
+        ("/v1/chat/completions", True, 2, True, False, True),
+        ("/v1/chat/completions", True, 2, False, True, True),
+    ],
+)
+def test_busy_snapshot_does_not_block_other_http_requests(path, stream, n, info, metadata, live_many):
+    import httpx
+
+    entered = threading.Event()
+    release = threading.Event()
+    snapshot_threads = []
+
+    class BusySnapshotFake(FakeLLM):
+        supports_stream_many = live_many
+
+        def stream_many_detailed(self, prompts, sampling_params):
+            for index, _prompt in enumerate(prompts):
+                yield GenerationStreamChunk(
+                    text="hello",
+                    telemetry=GenerationTelemetry.from_decode_counts(
+                        prompt_tokens=1, generated_tokens=1, row_index=index,
+                        phase="answer", sampler_mode="greedy_fast", execution_path="test",
+                    ),
+                )
+
+        def live_loop_snapshot(self):
+            snapshot_threads.append(threading.get_ident())
+            entered.set()
+            assert release.wait(5.0), "snapshot watchdog did not release"
+            return {"runner": {"kv_pool": {"current_bytes": 1024}}}
+
+    fake = BusySnapshotFake(outputs=["hello"] * n)
+    app = create_app(
+        ServerConfig(
+            model="fake", served_model_name="fake-model", eager_load=False,
+            metrics="prometheus", info=info,
+        ),
+        llm=fake,
+    )
+
+    # Only release after a real snapshot wait has started. This also lets a
+    # regressed, blocked event loop unwind and fail instead of hanging the test.
+    def watchdog():
+        if entered.wait(5.0):
+            release.wait(1.0)
+        release.set()
+
+    watcher = threading.Thread(target=watchdog)
+    watcher.start()
+
+    async def run():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            body = {"model": "fake-model", "max_tokens": 4, "stream": stream, "n": n}
+            if path == "/v1/chat/completions":
+                body["messages"] = [{"role": "user", "content": "hi"}]
+            else:
+                body["prompt"] = "hi"
+            if metadata:
+                body["stream_options"] = {"include_hipengine": True, "include_usage": True}
+            pending = asyncio.create_task(
+                client.get(path) if path in {"/ready", "/metrics"}
+                else client.post(path, json=body)
+            )
+            try:
+                assert await asyncio.to_thread(entered.wait, 5.0)
+                health = await client.get("/health")
+                models = await client.get("/v1/models")
+                assert health.status_code == models.status_code == 200
+                assert not release.is_set(), "unrelated HTTP requests waited for the driver"
+                assert threading.get_ident() not in snapshot_threads
+            finally:
+                release.set()
+                response = await pending
+            assert response.status_code == 200
+            if path.startswith("/v1/"):
+                assert '"error":' not in response.text
+
+    try:
+        asyncio.run(run())
+    finally:
+        release.set()
+        watcher.join(5.0)
+
+
+def test_unexpected_server_fault_answers_with_the_openai_error_shape() -> None:
+    """Any escaped fault keeps a JSON body and a code instead of a bare 500."""
+
+    class ExplodingFakeLLM(FakeLLM):
+        def prepare(self, *, max_sequence_length=None, sampling_params):
+            raise RuntimeError("resident workspace bookkeeping exploded")
+
+    fake = ExplodingFakeLLM(outputs=["never served"])
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_completion_tokens": 4,
+        },
+    )
+
+    assert response.status_code == 500
+    assert response.headers["content-type"].startswith("application/json")
+    body = response.json()
+    assert body["error"]["code"] == "internal_error"
+    assert body["error"]["type"] == "server_error"
+    assert "resident workspace bookkeeping exploded" in body["error"]["message"]
+    assert body["error"]["hipengine"]["retryable"] is False
+    assert body["error"]["hipengine"]["exception_type"] == "RuntimeError"
 
 
 def test_capabilities_endpoint_reports_auto_chat_default_and_cache_config() -> None:
@@ -3192,6 +4350,229 @@ def test_startup_scratch_probe_keeps_admission_width_for_enabled_mtp_route() -> 
     assert fake.scratch_prepares[0]["max_batch_size"] == 8
 
 
+def test_startup_scratch_probe_leaves_the_width_to_the_configured_cap() -> None:
+    """An unset --max-active-requests keeps the probe at one request.
+
+    Widening it to the route cap makes the probe re-size the resident context for a
+    wider batch, which OOMs on a box whose KV budget is already committed; the probe
+    is a startup gate as well as a warmup, so its width stays the configured one.
+    """
+
+    fake = FakeLLM(outputs=["warm"])
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        quant="gguf_q4_k_m",
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert fake.scratch_prepares
+    assert fake.scratch_prepares[0]["max_batch_size"] == 1
+    probe = response.json()["startup"]["checks"]["scratch_probe"]
+    assert probe["result"]["max_batch_size"] == 1
+
+
+def test_startup_scratch_probe_keeps_a_smaller_server_cap() -> None:
+    fake = FakeLLM(outputs=["warm"])
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        quant="gguf_q4_k_m",
+        max_active_requests=2,
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert fake.scratch_prepares[0]["max_batch_size"] == 2
+
+
+def test_startup_scratch_probe_prices_the_width_before_allocating_it() -> None:
+    """A probe slot is a resident session, so width multiplies the session price.
+
+    The estimator prices one session. Asking for four of them without pricing four is
+    what turned a warmup into four HIP out-of-memory attempts at startup, so the probe
+    is reduced before it allocates and the reduction is reported instead of silent.
+    """
+
+    fake = NarrowCapacityFakeLLM(outputs=["warm"])
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        max_active_requests=4,
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert fake.scratch_prepares[0]["max_batch_size"] == 1
+    probe = body["startup"]["checks"]["scratch_probe"]
+    assert probe["status"] == "reduced"
+    assert probe["requested_max_batch_size"] == 4
+    assert probe["max_batch_size"] == 1
+    assert probe["result"]["max_batch_size"] == 1
+    reduction = probe["width_reduction"]
+    assert reduction["reason"] == "insufficient_free_memory_for_width"
+    assert reduction["session_context_tokens"] == 4096
+    assert reduction["per_session_bytes"] == 20 * 1024**3
+    assert reduction["required_bytes"] == 4 * 20 * 1024**3
+    assert reduction["usable_bytes"] == 8 * 1024**3
+    assert reduction["detail"] == (
+        "4 concurrent sessions need 80.00 GiB against 8.00 GiB usable"
+    )
+    assert body["diagnostics"] == [
+        "startup scratch probe ran at width 1 instead of 4: "
+        "4 concurrent sessions need 80.00 GiB against 8.00 GiB usable"
+    ]
+
+
+def test_startup_scratch_probe_keeps_the_configured_width_when_it_fits() -> None:
+    """The preflight only reduces a width the machine cannot hold."""
+
+    class RoomyCapacityFakeLLM(FakeLLM):
+        def resident_capacity_estimate(
+            self,
+            *,
+            max_batch_size: int = 1,
+            requested_context_tokens: int | None = None,
+        ) -> _FakeCapacityEstimate:
+            del max_batch_size, requested_context_tokens
+            return _FakeCapacityEstimate(
+                allocatable_context_tokens=4096,
+                requested_total_bytes=1 * 1024**3,
+                usable_bytes=8 * 1024**3,
+            )
+
+    fake = RoomyCapacityFakeLLM(outputs=["warm"])
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", max_active_requests=4),
+        llm=fake,
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert fake.scratch_prepares[0]["max_batch_size"] == 4
+    probe = response.json()["startup"]["checks"]["scratch_probe"]
+    assert probe["status"] == "passed"
+    assert "width_reduction" not in probe
+
+
+def test_startup_scratch_probe_retries_at_width_one_before_failing_startup() -> None:
+    """A wider probe that cannot allocate retries narrow instead of ending startup."""
+
+    fake = WideScratchProbeFakeLLM(outputs=["warm"])
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", max_active_requests=4),
+        llm=fake,
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert [payload["max_batch_size"] for payload in fake.scratch_prepares] == [4, 1]
+    body = response.json()
+    probe = body["startup"]["checks"]["scratch_probe"]
+    assert probe["status"] == "reduced"
+    assert probe["requested_max_batch_size"] == 4
+    assert probe["max_batch_size"] == 1
+    assert probe["result"]["max_batch_size"] == 1
+    assert probe["failed_attempts"] == [{"max_batch_size": 4, "exception_type": "MemoryError"}]
+    assert body["diagnostics"] == [
+        "startup scratch probe ran at width 1 instead of 4: "
+        "width 4 failed to allocate (MemoryError)"
+    ]
+
+
+def test_startup_warms_the_speculative_mtp_route_before_ready() -> None:
+    """The chat smoke runs the default route; an explicit MTP request runs another."""
+
+    fake = SpeculativeMTPFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        speculative_mtp_serving="opt_in",
+        max_active_requests=4,
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        body = client.get("/ready").json()
+
+    check = body["startup"]["checks"]["mtp_smoke"]
+    assert check["status"] == "passed"
+    assert check["route"] == "speculative_mtp"
+    assert check["realized_route"] == "speculative_mtp"
+    assert check["max_tokens"] == 8
+    assert check["prompt_tokens"] >= 128
+    assert body["startup"]["last_timings_s"]["mtp_smoke_s"] is not None
+    assert len(fake.mtp_calls) == 1
+    prompts, sampling = fake.mtp_calls[0]
+    assert sampling.max_tokens == 8
+    assert prompts[0].count("one two three four") == 32
+
+
+def test_startup_skips_the_mtp_warmup_when_the_route_is_off() -> None:
+    fake = SpeculativeMTPFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        speculative_mtp_serving="off",
+        max_active_requests=4,
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        body = client.get("/ready").json()
+
+    assert body["startup"]["checks"]["mtp_smoke"] == {
+        "enabled": False,
+        "status": "disabled",
+        "reason": "mtp_route_disabled",
+    }
+    assert body["startup"]["last_timings_s"]["mtp_smoke_s"] is None
+    assert fake.mtp_calls == []
+
+
+def test_startup_mtp_warmup_failure_keeps_the_server_ready() -> None:
+    """A speculative warmup failure is not a serving failure: the route falls back."""
+
+    class FailingMTPFakeLLM(SpeculativeMTPFakeLLM):
+        def generate_speculative_mtp_detailed(self, prompts, sampling_params):
+            raise RuntimeError("speculative warmup failed")
+
+    fake = FailingMTPFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        speculative_mtp_serving="opt_in",
+        max_active_requests=4,
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ready"] is True
+    check = body["startup"]["checks"]["mtp_smoke"]
+    assert check["enabled"] is True
+    assert check["status"] == "failed"
+    assert isinstance(check["exception_type"], str) and check["exception_type"]
+
+
 def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, Any] = {}
     fake = FakeLLM(outputs=["ok"])
@@ -3208,11 +4589,13 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         speculative_mtp_serving: str | None = None,
         speculative_provider: str | None = None,
         draft_model: str | None = None,
-        speculative_candidate_budget: int = 4,
+        speculative_candidate_budget: int | None = None,
         kv_storage: str = "auto",
         kv_scale_dtype: str = "fp16",
         kv_scale_granularity: str = "per_token_head",
         vision_model: str | None = None,
+        vae_model: str | None = None,
+        dms_metadata_path: str | None = None,
     ) -> FakeLLM:
         captured.update(
             {
@@ -3230,6 +4613,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
                 "kv_scale_dtype": kv_scale_dtype,
                 "kv_scale_granularity": kv_scale_granularity,
                 "vision_model": vision_model,
+                "vae_model": vae_model,
             }
         )
         return fake
@@ -3265,11 +4649,12 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         "prefix_cache": "radix",
         "speculative_provider": None,
         "draft_model": None,
-        "speculative_candidate_budget": 4,
+        "speculative_candidate_budget": None,
         "kv_storage": "int8_per_token_head",
         "kv_scale_dtype": "fp32",
         "kv_scale_granularity": "per_token_head",
         "vision_model": None,
+        "vae_model": None,
     }
 
 
@@ -3551,7 +4936,14 @@ def test_ready_reports_selected_visible_gpu_from_rocm_env(monkeypatch) -> None:
     }
 
 
-def test_ready_reports_startup_failure_diagnostics_without_payload_text() -> None:
+def test_failed_eager_startup_ends_the_process_and_keeps_the_diagnosis() -> None:
+    """A server that cannot start exits instead of listening unready.
+
+    The failure is recorded before the process ends, so the same diagnosis is still
+    readable from the readiness payload, and the log carries it for a supervisor that
+    only sees a non-zero exit.
+    """
+
     fake = ScratchProbeFailureFakeLLM(outputs=["private warmup output"])
     app = create_app(
         ServerConfig(
@@ -3563,8 +4955,18 @@ def test_ready_reports_startup_failure_diagnostics_without_payload_text() -> Non
         llm=fake,
     )
 
-    with TestClient(app) as client:
-        ready = client.get("/ready")
+    with pytest.raises(StartupFailure) as raised:
+        with TestClient(app):
+            pass
+
+    assert raised.value.stage == "scratch_probe"
+    assert raised.value.guidance == (
+        "Try a lower --max-context-tokens or a higher scratch/headroom reserve."
+    )
+    assert isinstance(raised.value.cause, RuntimeError)
+
+    # The lifespan never completed, so this reads the state it recorded on the way out.
+    ready = TestClient(app).get("/ready")
 
     assert ready.status_code == 503
     body = ready.json()
@@ -3583,13 +4985,17 @@ def test_ready_reports_startup_failure_diagnostics_without_payload_text() -> Non
         "guidance": "Try a lower --max-context-tokens or a higher scratch/headroom reserve.",
     }
     assert body["startup"]["checks"]["raw_warmup"] == {"status": "passed", "max_tokens": 2}
-    assert body["startup"]["checks"]["scratch_probe"] == {
+    probe = body["startup"]["checks"]["scratch_probe"]
+    assert probe == {
         "enabled": True,
         "status": "failed",
         "max_prompt_tokens": 131071,
         "probe_prompt_tokens": 131071,
         "context_unknown": False,
+        "requested_max_batch_size": 1,
+        "max_batch_size": 1,
         "exception_type": "RuntimeError",
+        "failed_attempts": [{"max_batch_size": 1, "exception_type": "RuntimeError"}],
     }
     assert body["startup"]["last_timings_s"]["warmup_s"] >= 0.0
     assert body["startup"]["last_timings_s"]["scratch_probe_s"] >= 0.0
@@ -4773,6 +6179,45 @@ def test_ready_reports_lazy_server_ready_without_loaded_model() -> None:
     assert body["model"]["loaded_model_count"] == 0
 
 
+def test_ready_reports_runtime_engine_service_failure_as_unhealthy() -> None:
+    """A fatal resident-execution failure must be visible to a readiness probe."""
+
+    class UnhealthyLLM(FakeLLM):
+        def engine_service_health(self) -> dict[str, Any]:
+            return {
+                "object": "hipengine.engine_service.health",
+                "status": "unhealthy",
+                "serving": False,
+                "unhealthy": {
+                    "exception_type": "RuntimeError",
+                    "message": "packed sampler row 1 exceeds capacity 0",
+                    "location": "runner.py:29767 in sample_native_from_packed_logits",
+                    "phase": "decode",
+                    "request_ids": [3],
+                },
+            }
+
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False)
+    )
+    app.state.hipengine_llm = UnhealthyLLM()
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["ready"] is False
+    assert body["status"] == "unhealthy"
+    assert body["engine_service"]["status"] == "unhealthy"
+    diagnostic = " ".join(body["diagnostics"])
+    assert "fatal execution failure" in diagnostic
+    assert "packed sampler row 1 exceeds capacity 0" in diagnostic
+    assert "runner.py:29767" in diagnostic
+    # The client is never told to shrink its memory budget for a runtime fault.
+    assert "--max-context-tokens" not in diagnostic
+
+
 def test_chat_default_max_tokens_is_dynamic_when_omitted() -> None:
     request = ChatCompletionRequest(
         model="fake-model",
@@ -4849,14 +6294,22 @@ def test_mtp_circuit_breaker_opens_by_scope_and_restart_resets() -> None:
     assert restarted.is_open(scope) is False
 
 
-def test_generation_batcher_mtp_breaker_fails_before_third_backend_launch() -> None:
-    class FailingMTP(SpeculativeMTPFakeLLM):
-        def generate_speculative_mtp_detailed(self, prompts, sampling_params):
-            self.mtp_calls.append((tuple(prompts), sampling_params))
-            raise RuntimeError("injected MTP runtime failure")
+class FailingSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
+    """MTP route that always raises, so the scope breaker opens from real failures."""
 
+    def generate_speculative_mtp_detailed(self, prompts, sampling_params):
+        self.mtp_calls.append((tuple(str(prompt) for prompt in prompts), sampling_params))
+        raise RuntimeError("injected MTP runtime failure")
+
+    def stream_speculative_mtp_detailed(self, prompts, sampling_params):
+        self.mtp_calls.append((tuple(str(prompt) for prompt in prompts), sampling_params))
+        raise RuntimeError("injected MTP runtime failure")
+        yield  # pragma: no cover - makes this a generator, like the real streamer
+
+
+def test_generation_batcher_open_mtp_breaker_rejects_explicit_third_launch() -> None:
     async def run() -> None:
-        fake = FailingMTP()
+        fake = FailingSpeculativeMTPFakeLLM()
         breaker = _MTPCircuitBreaker(threshold=2)
         batcher = _GenerationBatcher(
             engine_factory=lambda: fake,
@@ -4870,21 +6323,99 @@ def test_generation_batcher_mtp_breaker_fails_before_third_backend_launch() -> N
                     SamplingParams(max_tokens=2),
                     route="speculative_mtp",
                 )
-        with pytest.raises(OpenAIHTTPError) as excinfo:
+        with pytest.raises(OpenAIHTTPError, match="mtp_circuit_breaker_open"):
             await batcher.submit(
                 ("prompt",),
                 SamplingParams(max_tokens=2),
                 route="speculative_mtp",
             )
-        assert excinfo.value.status_code == 503
-        assert excinfo.value.code == "mtp_circuit_breaker_open"
+
         assert len(fake.mtp_calls) == 2
+        assert fake.calls == []
         assert fake.mtp_circuit_breaker_state["state"] == "open"
 
     asyncio.run(run())
 
 
-def test_operator_mtp_rollback_routes_new_requests_to_ar_until_restart() -> None:
+def test_open_mtp_breaker_rejects_explicit_request_and_reports_state() -> None:
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="opt_in",
+        ),
+        llm=fake,
+    )
+    breaker = app.state.hipengine_mtp_circuit_breaker
+    scope = breaker.scope(fake, ("hello",))
+    for index in range(breaker.threshold):
+        breaker.record_failure(scope, RuntimeError(f"injected {index}"))
+    assert breaker.is_open(scope) is True
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "hello",
+            "max_tokens": 2,
+            "temperature": 0.0,
+            "speculative_mtp": True,
+        },
+    )
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["error"]["param"] == "speculative_mtp"
+    assert body["error"]["code"] == "engine_unavailable"
+    assert body["error"]["hipengine"]["speculative_mtp"]["reason"] == "mtp_circuit_breaker_open"
+    assert body["error"]["hipengine"]["speculative_mtp"]["circuit_breaker"]["state"] == "open"
+    assert fake.mtp_calls == []
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize("endpoint", ["/v1/completions", "/v1/chat/completions"])
+def test_open_mtp_breaker_rejects_explicit_streaming_requests(endpoint: str) -> None:
+    fake = SpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="opt_in",
+        ),
+        llm=fake,
+    )
+    breaker = app.state.hipengine_mtp_circuit_breaker
+    scope = breaker.scope(fake, ("hello",))
+    for index in range(breaker.threshold):
+        breaker.record_failure(scope, RuntimeError(f"injected {index}"))
+    payload = {
+        "model": "fake-model",
+        "max_tokens": 3,
+        "temperature": 0.0,
+        "stream": True,
+        "stream_options": {"include_usage": True, "include_hipengine": True},
+        "speculative_mtp": True,
+    }
+    if endpoint.endswith("chat/completions"):
+        payload["messages"] = [{"role": "user", "content": "hello"}]
+    else:
+        payload["prompt"] = "hello"
+
+    response = TestClient(app).post(endpoint, json=payload)
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    error = next(item["error"] for item in payloads if item.get("error"))
+    assert error["code"] == "engine_unavailable"
+    assert "mtp_circuit_breaker_open" in error["message"]
+    assert not any(item.get("choices", [{}])[0].get("text") for item in payloads if item.get("choices"))
+    assert fake.mtp_calls == []
+    assert fake.calls == []
+
+
+def test_operator_mtp_rollback_rejects_new_explicit_requests_until_restart() -> None:
     fake = SpeculativeMTPFakeLLM()
     config = ServerConfig(
         model="fake-path",
@@ -4905,14 +6436,15 @@ def test_operator_mtp_rollback_routes_new_requests_to_ar_until_restart() -> None
     rollback = client.post("/v1/hipengine/speculative_mtp/rollback")
     after = client.post("/v1/completions", json=payload)
 
-    assert before.status_code == rollback.status_code == after.status_code == 200
+    assert before.status_code == rollback.status_code == 200
+    assert after.status_code == 503
     assert before.json()["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
     assert rollback.json()["new_requests_route"] == "default"
     assert rollback.json()["circuit_breaker"]["state"] == "operator_disabled"
-    assert after.json()["hipengine"]["generation_shape"]["route"] == "default"
-    assert after.json()["hipengine"]["generation_shape"]["route_decision"]["reason"] == "mtp_operator_rollback"
+    assert after.json()["error"]["hipengine"]["speculative_mtp"]["reason"] == "mtp_operator_rollback"
+    assert after.json()["error"]["hipengine"]["speculative_mtp"]["circuit_breaker"]["state"] == "operator_disabled"
     assert len(fake.mtp_calls) == 1
-    assert len(fake.calls) == 1
+    assert fake.calls == []
 
     restarted_fake = SpeculativeMTPFakeLLM()
     restarted = TestClient(create_app(config, llm=restarted_fake))
@@ -6091,30 +7623,530 @@ def test_reresolved_width_deferred_plan_derives_static_intent() -> None:
     assert deferred["static_eligibility"]["eligible"] is True
 
 
-def test_explicit_c1_deferred_plan_drops_intent_outside_scope() -> None:
-    fake = C2OnlyArtifactScopedSpeculativeMTPFakeLLM()
+def test_explicit_c1_plan_drops_intent_when_rejection_is_not_a_width_miss() -> None:
+    """Only a physical width miss keeps typed intent for the resident owner.
+
+    A sampling-mode rejection is decided before mutation, so the request falls
+    out of the speculative route instead of being deferred.
+    """
+
+    fake = ArtifactScopedSpeculativeMTPFakeLLM()
     request = CompletionRequest(
         model="fake-model",
         prompt="one",
         max_tokens=25,
-        temperature=0.0,
+        temperature=0.4,
         speculative_mtp=True,
     )
-    outside_route, outside_plan = _generation_route_for_request(
-        ServerConfig(
+    with pytest.raises(OpenAIHTTPError, match="temperature"):
+        _generation_route_for_request(
+            ServerConfig(
+                model="fake-path",
+                served_model_name="fake-model",
+                speculative_mtp_serving="opt_in",
+            ),
+            request,
+            engine=fake,
+            sampling=SamplingParams(max_tokens=25, temperature=0.4),
+            prompts=("one",),
+        )
+
+
+def test_screening_override_keeps_explicit_intent_for_an_unqualified_cell(
+    monkeypatch,
+) -> None:
+    """An explicit request may screen an unqualified cell; default stays closed."""
+
+    fake = UnqualifiedBudgetSpeculativeMTPFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        speculative_mtp_serving="opt_in",
+    )
+    sampling = SamplingParams(max_tokens=25)
+    request = CompletionRequest(
+        model="fake-model", prompt="one", max_tokens=25, speculative_mtp=True
+    )
+
+    monkeypatch.delenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", raising=False)
+    with pytest.raises(OpenAIHTTPError, match="candidate_budget_not_qualified"):
+        _generation_route_for_request(
+            config,
+            request,
+            engine=fake,
+            sampling=sampling,
+            prompts=("one",),
+        )
+
+    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    route, plan = _generation_route_for_request(
+        config,
+        request,
+        engine=fake,
+        sampling=sampling,
+        prompts=("one",),
+    )
+    assert route == _SPECULATIVE_MTP_BATCH_ROUTE
+    assert plan is not None
+    assert plan["admitted"] is False
+    assert plan["screening"] is True
+    assert plan["qualification"] == "explicit_screening_unqualified_cell"
+    assert plan["unqualified_reason"] == "candidate_budget_not_qualified"
+    assert plan["static_intent_allowed"] is True
+    eligibility = SpeculativeMTPStaticEligibility.from_mapping(
+        plan["static_eligibility"]
+    )
+    assert eligibility.eligible is True
+    assert eligibility.automatic_eligible is False
+    assert eligibility.max_candidate_count == 4
+    assert eligibility.max_realized_group_rows >= 1
+
+
+def test_screening_override_never_widens_automatic_intent(monkeypatch) -> None:
+    """Automatic intent stays fail-closed with the screening switch on."""
+
+    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    fake = UnqualifiedBudgetSpeculativeMTPFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        speculative_mtp_serving="auto",
+    )
+    sampling = SamplingParams(max_tokens=25)
+    request = CompletionRequest(model="fake-model", prompt="one", max_tokens=25)
+
+    route, plan = _generation_route_for_request(
+        config,
+        request,
+        engine=fake,
+        sampling=sampling,
+        prompts=("one",),
+    )
+    assert route == _SPECULATIVE_MTP_AUTO_ROUTE
+    assert plan is not None
+    assert plan["admitted"] is False
+    assert plan["static_intent_allowed"] is False
+    assert plan.get("screening") is None
+    realized_route, realized = _resolve_realized_generation_route(
+        route,
+        group_rows=1,
+        sampling=sampling,
+        precomputed_decision=plan,
+    )
+    assert realized_route == _SPECULATIVE_MTP_DEFAULT_ROUTE
+    assert realized is not None
+    assert realized.get("screening") is None
+
+
+def test_screening_override_refuses_a_sampling_mode_rejection(monkeypatch) -> None:
+    """Sampling semantics are a correctness boundary, not an unmeasured cell.
+
+    The summary reason here is the screenable budget axis, because the budget
+    axis precedes the sampling axis and the resolver reports only the first
+    failed one. Reading that reason alone would admit the request; the
+    boundary has to be read from the failed axes.
+    """
+
+    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    fake = UnqualifiedBudgetSpeculativeMTPFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        speculative_mtp_serving="opt_in",
+    )
+    sampling = SamplingParams(max_tokens=25, temperature=0.4)
+    request = CompletionRequest(
+        model="fake-model",
+        prompt="one",
+        max_tokens=25,
+        temperature=0.4,
+        speculative_mtp=True,
+    )
+
+    with pytest.raises(OpenAIHTTPError, match="temperature"):
+        _generation_route_for_request(
+            config,
+            request,
+            engine=fake,
+            sampling=sampling,
+            prompts=("one",),
+        )
+    plan = fake._plan(realized_group_rows=1, sampling_mode="sampled", kv_storage="bf16", memory_fit=True)
+    assert plan["reason"] == "candidate_budget_not_qualified"
+    assert "sampling_mode_unmeasured" in plan["failed_axes"]
+    assert _mtp_screening_static_eligibility(plan, physical_max_rows=4) is None
+
+
+def test_realized_re_resolution_carries_screening_intent(monkeypatch) -> None:
+    """The queue's realized re-resolution must not drop screening intent.
+
+    It re-runs the same evidence resolver, which rejects the unqualified cell
+    again; without the carry-forward the batch falls to K0 before the resident
+    owner can screen it.
+    """
+
+    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    fake = UnqualifiedBudgetSpeculativeMTPFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        speculative_mtp_serving="opt_in",
+    )
+    sampling = SamplingParams(max_tokens=25)
+    route, plan = _generation_route_for_request(
+        config,
+        CompletionRequest(
+            model="fake-model", prompt="one", max_tokens=25, speculative_mtp=True
+        ),
+        engine=fake,
+        sampling=sampling,
+        prompts=("one",),
+    )
+    assert plan is not None and plan["screening"] is True
+
+    realized = _realized_model_serving_plan(fake, ("one",), sampling, plan)
+    assert realized is not None
+    assert realized["admitted"] is False
+    assert realized["screening"] is True
+    assert realized["qualification"] == "explicit_screening_unqualified_cell"
+    assert realized["unqualified_reason"] == "candidate_budget_not_qualified"
+    assert realized["static_intent_allowed"] is True
+
+    realized_route, decision = _resolve_realized_generation_route(
+        route,
+        group_rows=1,
+        sampling=sampling,
+        precomputed_decision=realized,
+    )
+    assert realized_route == _SPECULATIVE_MTP_BATCH_ROUTE
+    assert decision is not None
+    assert decision["static_intent_allowed"] is True
+    assert decision["k0_class"] == "not_k0"
+
+
+def test_realized_re_resolution_keeps_automatic_intent_closed(monkeypatch) -> None:
+    """A qualified automatic plan stays unmarked and unqualified ones stay K0."""
+
+    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    fake = UnqualifiedBudgetSpeculativeMTPFakeLLM()
+    plan = {
+        "plan_fingerprint": "sha256:" + "7" * 64,
+        "key": {"realized_group_rows": 1, "sampling_mode": "greedy_fast"},
+        "admitted": False,
+        "reason": "candidate_budget_not_qualified",
+        "static_eligibility": {
+            "state": "permanent_ar",
+            "eligible": False,
+            "reason": "candidate_budget_not_qualified",
+            "max_candidate_count": 0,
+            "max_realized_group_rows": 0,
+            "automatic_eligible": False,
+            "strict_fallback_key": "gguf_target_ar",
+        },
+    }
+    realized = _realized_model_serving_plan(
+        fake, ("one",), SamplingParams(max_tokens=25), plan
+    )
+    assert realized is not None
+    assert realized.get("screening") is None
+    assert realized.get("static_intent_allowed") is None
+    assert realized.get("static_eligibility") is None
+
+
+def test_screening_response_metadata_marks_the_unqualified_cell(monkeypatch) -> None:
+    """A screening rate must not be readable as a qualified route."""
+
+    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    fake = UnqualifiedBudgetSpeculativeMTPFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        speculative_mtp_serving="opt_in",
+    )
+    sampling = SamplingParams(max_tokens=25)
+    route, plan = _generation_route_for_request(
+        config,
+        CompletionRequest(
+            model="fake-model", prompt="one", max_tokens=25, speculative_mtp=True
+        ),
+        engine=fake,
+        sampling=sampling,
+        prompts=("one",),
+    )
+    realized_route, decision = _resolve_realized_generation_route(
+        route,
+        group_rows=1,
+        sampling=sampling,
+        precomputed_decision=plan,
+    )
+    assert realized_route == _SPECULATIVE_MTP_BATCH_ROUTE
+    assert decision is not None
+    assert decision["screening"] is True
+    assert decision["reason"] == "unqualified_cell_deferred_to_resident_owner"
+    assert decision["qualification"] == "explicit_screening_unqualified_cell"
+    assert decision["unqualified_reason"] == "candidate_budget_not_qualified"
+    assert decision["static_intent_allowed"] is True
+    assert decision["k0_class"] == "not_k0"
+
+    summary = _mtp_response_summary(
+        realized_route,
+        None,
+        route_decision=decision,
+        thinking_policy="hint",
+    )
+    assert summary["qualification"] == "explicit_screening_unqualified_cell"
+    assert summary["unqualified"] is True
+    assert summary["unqualified_reason"] == "candidate_budget_not_qualified"
+    assert summary["selection_reason"] == (
+        "unqualified_cell_deferred_to_resident_owner"
+    )
+    assert summary["requested_route"] == _SPECULATIVE_MTP_BATCH_ROUTE
+
+
+def test_screening_switch_leaves_a_qualified_cell_unchanged(monkeypatch) -> None:
+    """Invariance guard: a qualified cell keeps its evidence-backed plan."""
+
+    for screening in (None, "1"):
+        if screening is None:
+            monkeypatch.delenv(
+                "HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", raising=False
+            )
+        else:
+            monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", screening)
+        fake = QualifiedServingPlanFakeLLM()
+        config = ServerConfig(
             model="fake-path",
             served_model_name="fake-model",
             speculative_mtp_serving="opt_in",
+        )
+        sampling = SamplingParams(max_tokens=25)
+        route, plan = _generation_route_for_request(
+            config,
+            CompletionRequest(
+                model="fake-model", prompt="one", max_tokens=25, speculative_mtp=True
+            ),
+            engine=fake,
+            sampling=sampling,
+            prompts=("one",),
+        )
+        assert route == _SPECULATIVE_MTP_BATCH_ROUTE
+        assert plan is not None
+        assert plan["admitted"] is True
+        assert plan.get("screening") is None
+        assert plan["static_intent_allowed"] is True
+        eligibility = SpeculativeMTPStaticEligibility.from_mapping(
+            plan["static_eligibility"]
+        )
+        assert eligibility.eligible is True
+        assert eligibility.evidence_key == "fake-qwen38-q4km-c1-b3"
+        assert eligibility.max_candidate_count == 3
+        realized_route, decision = _resolve_realized_generation_route(
+            route,
+            group_rows=1,
+            sampling=sampling,
+            precomputed_decision=plan,
+        )
+        assert realized_route == _SPECULATIVE_MTP_BATCH_ROUTE
+        assert decision is not None
+        assert decision["selected_candidate_count"] == 3
+        summary = _mtp_response_summary(
+            realized_route,
+            None,
+            route_decision=decision,
+            thinking_policy="hint",
+        )
+        assert "qualification" not in summary
+        assert "unqualified" not in summary
+
+
+def test_screening_switch_does_not_admit_an_enabled_default_request(
+    monkeypatch,
+) -> None:
+    """Invariance guard: the server default stays fail-closed with screening on."""
+
+    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    fake = UnqualifiedBudgetSpeculativeMTPFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        speculative_mtp_serving="enabled",
+    )
+    sampling = SamplingParams(max_tokens=25)
+    route, plan = _generation_route_for_request(
+        config,
+        CompletionRequest(model="fake-model", prompt="one", max_tokens=25),
+        engine=fake,
+        sampling=sampling,
+        prompts=("one",),
+    )
+    assert route != _SPECULATIVE_MTP_BATCH_ROUTE
+    assert plan is not None
+    assert plan["admitted"] is False
+    assert plan.get("screening") is None
+    assert plan["static_intent_allowed"] is False
+    realized_route, realized = _resolve_realized_generation_route(
+        route,
+        group_rows=1,
+        sampling=sampling,
+        precomputed_decision=plan,
+    )
+    assert realized_route == _SPECULATIVE_MTP_DEFAULT_ROUTE
+    assert realized is not None
+    assert realized.get("screening") is None
+    summary = _mtp_response_summary(
+        realized_route,
+        None,
+        route_decision=realized,
+        thinking_policy="hint",
+    )
+    assert "qualification" not in summary
+    assert "unqualified" not in summary
+
+
+def test_screening_switch_ignores_an_explicit_opt_out(monkeypatch) -> None:
+    """`speculative_mtp: false` stays AR even with screening on."""
+
+    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    fake = UnqualifiedBudgetSpeculativeMTPFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        speculative_mtp_serving="enabled",
+    )
+    route, plan = _generation_route_for_request(
+        config,
+        CompletionRequest(
+            model="fake-model", prompt="one", max_tokens=25, speculative_mtp=False
         ),
-        request,
         engine=fake,
         sampling=SamplingParams(max_tokens=25),
-        prompts=(" ".join(f"token{index}" for index in range(68)),),
+        prompts=("one",),
     )
-    assert outside_route != _SPECULATIVE_MTP_BATCH_ROUTE
-    assert outside_plan is not None
-    assert outside_plan["admitted"] is False
-    assert outside_plan["reason"] == "scope_not_qualified"
+    assert route == _SPECULATIVE_MTP_DEFAULT_ROUTE
+    assert plan is None
+    assert fake.plan_calls == []
+
+
+def test_screening_override_applies_in_the_default_auto_mode(monkeypatch) -> None:
+    """An explicit request screens even when the server mode is the default auto."""
+
+    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    fake = UnqualifiedBudgetSpeculativeMTPFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        speculative_mtp_serving="auto",
+    )
+    sampling = SamplingParams(max_tokens=25)
+    route, plan = _generation_route_for_request(
+        config,
+        CompletionRequest(
+            model="fake-model", prompt="one", max_tokens=25, speculative_mtp=True
+        ),
+        engine=fake,
+        sampling=sampling,
+        prompts=("one",),
+    )
+    assert route == _SPECULATIVE_MTP_BATCH_ROUTE
+    assert plan is not None
+    assert plan["screening"] is True
+    assert plan["qualification"] == "explicit_screening_unqualified_cell"
+    assert plan["static_intent_allowed"] is True
+
+
+def test_mtp_screening_helper_refuses_plans_it_cannot_authorize() -> None:
+    """The helper is fail-closed on malformed plans and correctness reasons."""
+
+    assert "sampling_mode_not_qualified" not in _MTP_SCREENING_REASONS
+    assert "artifact_identity_unverified" not in _MTP_SCREENING_REASONS
+    assert "insufficient_memory" not in _MTP_SCREENING_REASONS
+    assert "candidate_budget_not_qualified" in _MTP_SCREENING_REASONS
+
+    assert _mtp_screening_static_eligibility({}, physical_max_rows=4) is None
+    assert (
+        _mtp_screening_static_eligibility(
+            {
+                "reason": "sampling_mode_not_qualified",
+                "key": {"candidate_budget": 3},
+            },
+            physical_max_rows=4,
+        )
+        is None
+    )
+    assert (
+        _mtp_screening_static_eligibility(
+            {"reason": "candidate_budget_not_qualified", "key": {}},
+            physical_max_rows=4,
+        )
+        is None
+    )
+    payload = _mtp_screening_static_eligibility(
+        {
+            "reason": "candidate_budget_not_qualified",
+            "key": {"candidate_budget": 3},
+            "plan_fingerprint": "sha256:" + "5" * 64,
+        },
+        physical_max_rows=4,
+    )
+    assert payload is not None
+    eligibility = SpeculativeMTPStaticEligibility.from_mapping(payload)
+    assert eligibility.eligible is True
+    assert eligibility.automatic_eligible is False
+    assert eligibility.max_candidate_count == 3
+    assert eligibility.max_realized_group_rows == 4
+    assert eligibility.evidence_key == "explicit_screening_unqualified_cell"
+
+
+def test_screening_override_reads_every_failed_axis_not_the_summary_reason() -> None:
+    """A screenable summary reason must not admit a structural failure.
+
+    Reproduced finding: the resolver reports only its first failed
+    qualification axis, so ``candidate_budget=4`` with ``memory_fit=False``
+    reports ``candidate_budget_not_qualified`` - a screenable axis - while the
+    cell does not fit in memory at all. The helper must read the whole failed
+    set, because memory fit and sampling semantics are correctness boundaries
+    that no operator override may cross.
+    """
+
+    screenable = {
+        "reason": "candidate_budget_not_qualified",
+        "key": {"candidate_budget": 3},
+        "plan_fingerprint": "sha256:" + "6" * 64,
+    }
+    assert _mtp_screening_static_eligibility(screenable, physical_max_rows=4) is not None
+
+    for structural in (
+        "insufficient_memory",
+        "sampling_mode_unmeasured",
+    ):
+        plan = dict(screenable)
+        plan["failed_axes"] = ["candidate_budget_not_qualified", structural]
+        assert (
+            _mtp_screening_static_eligibility(plan, physical_max_rows=4) is None
+        ), structural
+
+    unverified = dict(screenable)
+    unverified["failed_axes"] = ["artifact_identity_unverified"]
+    assert _mtp_screening_static_eligibility(unverified, physical_max_rows=4) is not None
+
+    # A plan whose failed set is entirely screenable still screens.
+    only_screenable = dict(screenable)
+    only_screenable["failed_axes"] = [
+        "candidate_budget_not_qualified",
+        "resident_capacity_not_qualified",
+    ]
+    assert (
+        _mtp_screening_static_eligibility(only_screenable, physical_max_rows=4)
+        is not None
+    )
+
+    # An empty failed set is not a structural rejection.
+    empty_axes = dict(screenable)
+    empty_axes["failed_axes"] = []
+    assert (
+        _mtp_screening_static_eligibility(empty_axes, physical_max_rows=4)
+        is not None
+    )
 
 
 def test_automatic_route_rejects_any_explicit_only_realized_plan() -> None:
@@ -6147,8 +8179,6 @@ def test_generation_batcher_re_resolves_model_plan_at_realized_c2_before_mutatio
         c1_plan = fake.resolve_speculative_mtp_serving_plan(
             realized_group_rows=1,
             sampling_mode="greedy_fast",
-            context_tokens=1,
-            output_horizon_tokens=25,
             kv_storage="bf16",
             memory_fit=True,
         )
@@ -6758,6 +8788,23 @@ def test_chat_passes_auth_scoped_resident_session_key_to_capable_generator(
     assert commit["supported_streaming"] is True
 
 
+@pytest.mark.parametrize("chat", [False, True])
+@pytest.mark.parametrize("stream", [False, True])
+def test_min_tokens_uses_model_eos_without_explicit_request_id(chat, stream) -> None:
+    fake = FakeLLM(outputs=["yes yes"])
+    fake._text_generator = SimpleNamespace(tokenizer=SimpleNamespace(eos_token_id=99))
+    client = TestClient(create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake))
+    request = {"model": "fake-model", "max_tokens": 4, "min_tokens": 2, "stream": stream}
+    if chat:
+        request["messages"] = [{"role": "user", "content": "Say yes"}]
+    else:
+        request["prompt"] = "Say yes"
+    response = client.post("/v1/chat/completions" if chat else "/v1/completions", json=request)
+    assert response.status_code == 200, response.text
+    assert fake.calls[0][1].min_tokens == 2
+    assert fake.calls[0][1].eos_token_id == 99
+
+
 def test_completions_endpoint_calls_llm_and_applies_stop() -> None:
     fake = FakeLLM(outputs=["alpha<stop>tail", "beta<stop>tail"])
     app = create_app(
@@ -7136,7 +9183,7 @@ def test_artifact_scoped_explicit_mtp_uses_one_plan_in_capability_route_and_resp
     assert rollback["serving_plan"]["plan_fingerprint"] == plan["plan_fingerprint"]
 
 
-def test_artifact_scoped_explicit_mtp_fails_to_k0_before_backend_mutation() -> None:
+def test_artifact_scoped_explicit_mtp_rejects_unsupported_sampling_before_mutation() -> None:
     fake = ArtifactScopedSpeculativeMTPFakeLLM()
     app = create_app(
         ServerConfig(
@@ -7148,6 +9195,9 @@ def test_artifact_scoped_explicit_mtp_fails_to_k0_before_backend_mutation() -> N
         ),
         llm=fake,
     )
+    # A sampling-mode miss still fails closed before backend mutation. Shape
+    # (prompt context and output horizon) is deliberately not an admission
+    # axis, so a long prompt alone no longer selects K0.
     prompt = " ".join(f"token{index}" for index in range(68))
 
     response = TestClient(app).post(
@@ -7156,23 +9206,18 @@ def test_artifact_scoped_explicit_mtp_fails_to_k0_before_backend_mutation() -> N
             "model": "fake-model",
             "prompt": prompt,
             "max_tokens": 25,
-            "temperature": 0.0,
+            "temperature": 0.4,
             "speculative_mtp": True,
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 400
     body = response.json()
-    shape = body["hipengine"]["generation_shape"]
-    summary = body["hipengine"]["speculative_mtp"]
-    assert shape["route"] == "default"
-    assert shape["route_decision"]["reason"] == "context_bucket_not_qualified"
-    assert shape["route_decision"]["selected_candidate_count"] == 0
-    assert summary["effective_route"] == "default"
-    assert summary["used"] is False
-    assert summary["decision_reason"] == "context_bucket_not_qualified"
+    assert body["error"]["code"] == "unsupported_parameter"
+    assert body["error"]["param"] == "speculative_mtp"
+    assert "temperature" in body["error"]["message"]
     assert fake.mtp_calls == []
-    assert len(fake.calls) == 1
+    assert fake.calls == []
 
 
 def test_auto_and_enabled_share_explicit_only_plan_fingerprint_and_k0() -> None:
@@ -7216,7 +9261,9 @@ def test_auto_and_enabled_share_explicit_only_plan_fingerprint_and_k0() -> None:
     assert fingerprints[0] == fingerprints[1]
 
 
-def test_promoted_artifact_plan_routes_auto_only_inside_exact_scope() -> None:
+def test_promoted_artifact_plan_routes_auto_for_every_shape_in_the_cell() -> None:
+    """Shape is not an admission axis, so the promoted cell covers all shapes."""
+
     fake = PromotedArtifactScopedSpeculativeMTPFakeLLM()
     app = create_app(
         ServerConfig(
@@ -7277,11 +9324,74 @@ def test_promoted_artifact_plan_routes_auto_only_inside_exact_scope() -> None:
     assert capability["auto_route"]["policy_fingerprint"] == plan["plan_fingerprint"]
     assert auto["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
     assert auto["hipengine"]["generation_shape"]["route_decision"]["policy_fingerprint"] == plan["plan_fingerprint"]
-    assert outside["hipengine"]["generation_shape"]["route"] == "default"
-    assert outside["hipengine"]["generation_shape"]["route_decision"]["reason"] == "context_bucket_not_qualified"
+    assert outside["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
+    assert outside["hipengine"]["generation_shape"]["route_decision"]["policy_fingerprint"] == plan["plan_fingerprint"]
     assert incompatible["hipengine"]["generation_shape"]["route"] == "default"
     assert incompatible["hipengine"]["generation_shape"]["route_decision"]["reason"] == "sampling_mode_not_qualified"
     assert disabled["hipengine"]["generation_shape"]["route"] == "default"
+
+
+def test_info_mode_logs_one_request_summary_per_completed_request(caplog) -> None:
+    """--info logs tokens in/out, rates, and KV memory once per request.
+
+    The summary is the only place the server reports a request's own token
+    counts, phase rates, and KV footprint together, so it must appear exactly
+    once per completed request and must stay silent when the flag is off.
+    """
+
+    fake = FakeLLM(outputs=["hello there"])
+    app = create_app(
+        ServerConfig(model="/models/fake", served_model_name="fake-model", info=True),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    with caplog.at_level(logging.INFO, logger="uvicorn.error"):
+        response = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 4,
+            },
+        )
+
+    assert response.status_code == 200
+    usage = response.json()["usage"]
+    lines = [
+        record.getMessage()
+        for record in caplog.records
+        if record.getMessage().startswith("REQUEST_INFO:")
+    ]
+    assert len(lines) == 1
+    line = lines[0]
+    assert "endpoint=/v1/chat/completions" in line
+    assert "stream=false" in line
+    assert "model=fake-model" in line
+    assert f"tokens_in={usage['prompt_tokens']}" in line
+    assert f"tokens_out={usage['completion_tokens']}" in line
+    assert "wall_ms=" in line
+
+    caplog.clear()
+    quiet = create_app(
+        ServerConfig(model="/models/fake", served_model_name="fake-model"),
+        llm=FakeLLM(outputs=["hello there"]),
+    )
+    with caplog.at_level(logging.INFO, logger="uvicorn.error"):
+        assert (
+            TestClient(quiet)
+            .post(
+                "/v1/chat/completions",
+                json={
+                    "model": "fake-model",
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "max_tokens": 4,
+                },
+            )
+            .status_code
+            == 200
+        )
+    assert "REQUEST_INFO:" not in caplog.text
 
 
 def test_chat_endpoint_routes_explicit_mtp_and_reports_direct_usage() -> None:
@@ -7460,6 +9570,76 @@ def test_explicit_mtp_streaming_uses_committed_speculative_chunks(endpoint: str)
     }
 
 
+@pytest.mark.parametrize("endpoint", ["/v1/completions", "/v1/chat/completions"])
+def test_explicit_mtp_streaming_done_reports_output_accounting(endpoint: str) -> None:
+    """A streamed MTP request reports the same split as the blocking response."""
+
+    fake = AccountingSpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="opt_in",
+        ),
+        llm=fake,
+    )
+    payload: dict[str, Any] = {
+        "model": "fake-model",
+        "max_tokens": 12,
+        "temperature": 0.0,
+        "stream": True,
+        "stream_options": {"include_usage": True, "include_hipengine": True},
+        "speculative_mtp": True,
+    }
+    if endpoint.endswith("chat/completions"):
+        payload["messages"] = [{"role": "user", "content": "hello"}]
+    else:
+        payload["prompt"] = "hello"
+
+    response = TestClient(app).post(endpoint, json=payload)
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    assert not any(item.get("error") for item in payloads)
+    done = next(
+        item["choices"][0]
+        for item in payloads
+        if item.get("choices")
+        and item["choices"][0].get("finish_reason") is not None
+    )
+    summary = done["hipengine"]["speculative_mtp"]
+    assert summary["used"] is True
+    assert summary["effective_route"] == "speculative_mtp"
+    assert summary["draft_cycles"] == 3
+    assert summary["accepted_draft_tokens"] == 6
+    assert summary["mtp_output_tokens"] == 9
+    assert summary["ar_output_tokens"] == 3
+    assert summary["output_accounting"] == {
+        "completion_tokens": 12,
+        "mtp_output_tokens": 9,
+        "ar_output_tokens": 3,
+        "ar_output_tokens_in_cycles": 0,
+        "mtp_coverage": 0.75,
+        # Three committed depth-3 cycles emit three verified tokens plus six
+        # accepted drafts, which is exactly the reported speculative output.
+        "mtp_output_tokens_explained_by_cycles": 9,
+        "unexplained_mtp_output_tokens": 0,
+        "speculative_cycles": 3,
+        "reconciled": True,
+        "reconciled_reasons": [],
+    }
+    assert summary["selected_depth_histogram"] == {"3": 3}
+    assert summary["fallback_event_counts"] == {}
+    assert summary["first_fallback_position"] is None
+    # The same stream also reports draft acceptance through OpenAI usage.
+    usage_event = next(item for item in payloads if item.get("usage"))
+    assert usage_event["usage"]["completion_tokens"] == 12
+    assert usage_event["usage"]["completion_tokens_details"] == {
+        "accepted_prediction_tokens": 6,
+        "rejected_prediction_tokens": 3,
+    }
+
+
 def test_mtp_summary_honors_batch_timing_ownership() -> None:
     details = []
     for row_index, timing_owner in enumerate((True, False)):
@@ -7501,6 +9681,35 @@ def test_mtp_summary_honors_batch_timing_ownership() -> None:
         **expected,
         "selected_route": "default",
         "decision_reason": "resident_dynamic_mtp",
+    }
+
+
+def test_mtp_summary_uses_provider_diagnostics_when_no_normalized_timing_exists() -> None:
+    details = [
+        GenerationOutput(
+            text="done",
+            telemetry=GenerationTelemetry.from_decode_counts(
+                prompt_tokens=4,
+                generated_tokens=7,
+                execution_path="gemma4_mtp_batched_exact_verify",
+                diagnostics={
+                    "speculative_provider": "gemma4_mtp",
+                    "proposed_draft_tokens": 7,
+                    "accepted_draft_tokens": 4,
+                    "cycles": [{"accepted": 2}, {"accepted": 2}],
+                },
+            ),
+        )
+    ]
+
+    assert _mtp_response_summary("speculative_mtp", details) == {
+        "effective_route": "speculative_mtp",
+        "used": True,
+        "draft_tokens": 7,
+        "accepted_draft_tokens": 4,
+        "rejected_draft_tokens": 3,
+        "acceptance_rate": 4 / 7,
+        "draft_cycles": 2,
     }
 
 
@@ -7605,6 +9814,373 @@ def test_mtp_summary_reports_selected_mtp_backend_k0_fallback_truthfully() -> No
         "draft_cycles": 0,
         "decision_reason": "backend_k0_fallback",
     }
+
+
+def _mtp_accounting_detail(
+    *,
+    generated_tokens: int,
+    accounting: dict[str, Any],
+    execution_path: str = "gguf_specdec2_mtp2",
+    timing: Mapping[str, float] | None = None,
+    finish_details: Any | None = None,
+) -> GenerationOutput:
+    """One backend output that carries a per-request execution block."""
+
+    cycles = int(accounting.get("cycles") or 0)
+    if timing is None and cycles > 0:
+        timing = {
+            "mtp_cycles_count": float(cycles),
+            "mtp_generated_draft_tokens": float(
+                accounting.get("generated_draft_tokens") or 0
+            ),
+            "mtp_accepted_draft_tokens": float(
+                accounting.get("accepted_draft_tokens") or 0
+            ),
+        }
+    return GenerationOutput(
+        text="done",
+        finish_details=finish_details,
+        telemetry=GenerationTelemetry.from_decode_counts(
+            prompt_tokens=8,
+            generated_tokens=generated_tokens,
+            row_index=0,
+            execution_path=execution_path,
+            timing=timing,
+            timing_scope="choice" if timing is not None else None,
+            timing_owner=True if timing is not None else None,
+            diagnostics={"specdec2_mtp2": accounting},
+        ),
+    )
+
+
+def _full_coverage_accounting(**overrides: Any) -> dict[str, Any]:
+    accounting: dict[str, Any] = {
+        "requested_budget": 3,
+        "candidate_budget": 3,
+        "prompt_streaming": False,
+        "prompt_fallback_reason": None,
+        "cycles": 8,
+        "generated_draft_tokens": 24,
+        "accepted_draft_tokens": 15,
+        "selected_depth_histogram": {"3": 8},
+        "mtp_output_tokens": 23,
+        "ar_output_tokens_in_cycles": 0,
+        "first_fallback_position": None,
+        "ar_step_reason_counts": {},
+        "recoverable_failures": 0,
+        "failure_reason_counts": {},
+        "k0_catchups": 0,
+    }
+    accounting.update(overrides)
+    return accounting
+
+
+def test_mtp_summary_separates_the_four_refusal_facts_from_the_folded_reason() -> None:
+    """A refused row and an engaged row must not fold to the same story.
+
+    Both rows here emit autoregressive steps attributed to ``no_provider``, so
+    both report the same ``fallback_reason``. What separates them is the
+    activation reason, the provider readiness, the realized group width, and the
+    group's autoregressive decision -- each published on its own, because the
+    first row was refused at admission for its whole life while the second only
+    waited one cycle for its provider to prime.
+    """
+
+    refused = _mtp_accounting_detail(
+        generated_tokens=3,
+        accounting=_full_coverage_accounting(
+            cycles=0,
+            generated_draft_tokens=0,
+            accepted_draft_tokens=0,
+            selected_depth_histogram={},
+            mtp_output_tokens=0,
+            ar_output_tokens_in_cycles=0,
+            first_fallback_position=0,
+            ar_step_reason_counts={"no_provider": 3},
+            activation_reason="prefix_reuse_k0",
+            provider_readiness="absent",
+            provider_decline_reason="provider_state_absent",
+            provider_state_present=False,
+            plan_group_rows=1,
+            plan_ar_only=True,
+            plan_reason="no_provider",
+        ),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [refused])
+
+    assert summary["fallback_reason"] == "prefix_reuse_k0"
+    assert summary["execution"] == {
+        "activation_reason": "prefix_reuse_k0",
+        "provider_readiness": "absent",
+        "provider_decline_reason": "provider_state_absent",
+        # Reported beside readiness because the two answer different questions:
+        # readiness says whether the capability was granted, this says whether
+        # the row still holds provider state. A reused prefix never primes, so
+        # there is no state here even before the refusal.
+        "provider_state_present": False,
+        "plan_group_rows": 1,
+        "plan_ar_only": True,
+        "plan_reason": "no_provider",
+    }
+
+    engaged = _mtp_accounting_detail(
+        generated_tokens=24,
+        accounting=_full_coverage_accounting(
+            ar_step_reason_counts={"no_provider": 1},
+            provider_readiness="ready",
+            plan_group_rows=1,
+            plan_ar_only=False,
+            plan_reason="speculative_qualified",
+            provider_state_present=True,
+            cycle_timing_ms={
+                "proposal": 1.0,
+                "target": 40.0,
+                "provider_update": 2.0,
+                "accept": 3.0,
+                "candidate_readback": 0.0,
+                "target_readback": 1.0,
+                "accept_upload": 0.0,
+                "accept_tail": 0.0,
+                "accept_enqueue": 0.5,
+                "selected_commit": 0.5,
+            },
+        ),
+    )
+
+    engaged_summary = _mtp_response_summary("speculative_mtp", [engaged])
+
+    # The phase split is reported with the cycle count it must be divided by:
+    # these windows are host wall, so a sum alone is not a per-cycle cost.
+    assert engaged_summary["draft_cycles"] == 8
+    assert engaged_summary["cycle_timing_ms"]["target"] == 40.0
+    assert engaged_summary["cycle_timing_ms"]["proposal"] == 1.0
+
+    # A ready provider with no fallback position must not publish the planner's
+    # root bookkeeping reason as if the request fell back.
+    assert "fallback_reason" not in engaged_summary
+    assert engaged_summary["execution"] == {
+        "activation_reason": None,
+        "provider_readiness": "ready",
+        "provider_decline_reason": None,
+        "provider_state_present": True,
+        "plan_group_rows": 1,
+        "plan_ar_only": False,
+        "plan_reason": "speculative_qualified",
+    }
+
+
+def test_mtp_summary_reports_full_speculative_output_coverage() -> None:
+    """``used`` alone must not read as full coverage: report the output split."""
+
+    detail = _mtp_accounting_detail(
+        generated_tokens=24,
+        accounting=_full_coverage_accounting(),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    assert summary["used"] is True
+    assert summary["draft_tokens"] == 24
+    assert summary["accepted_draft_tokens"] == 15
+    assert summary["draft_cycles"] == 8
+    assert summary["mtp_output_tokens"] == 23
+    # The prompt root token is produced by the target prefill, not a cycle.
+    assert summary["ar_output_tokens"] == 1
+    assert summary["output_accounting"] == {
+        "completion_tokens": 24,
+        "mtp_output_tokens": 23,
+        "ar_output_tokens": 1,
+        "ar_output_tokens_in_cycles": 0,
+        "mtp_coverage": 23 / 24,
+        "mtp_output_tokens_explained_by_cycles": 23,
+        "unexplained_mtp_output_tokens": 0,
+        "speculative_cycles": 8,
+        "reconciled": True,
+        "reconciled_reasons": [],
+    }
+    assert summary["selected_depth_histogram"] == {"3": 8}
+    assert summary["fallback_event_counts"] == {}
+    assert "fallback_reason" not in summary
+    # No mid-generation fallback: speculation covered everything after the root.
+    assert summary["first_fallback_position"] is None
+
+
+def test_mtp_summary_reports_mixed_speculation_with_the_fallback_position() -> None:
+    detail = _mtp_accounting_detail(
+        generated_tokens=24,
+        accounting=_full_coverage_accounting(
+            cycles=3,
+            generated_draft_tokens=8,
+            # Two committed depth-3 cycles emit one verified token each plus
+            # four accepted drafts in total, which is the six speculative
+            # output tokens this summary reports.
+            accepted_draft_tokens=4,
+            selected_depth_histogram={"0": 1, "3": 2},
+            mtp_output_tokens=6,
+            ar_output_tokens_in_cycles=1,
+            first_fallback_position=7,
+            ar_step_reason_counts={"target_graph_context_bucket_miss": 16},
+        ),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    assert summary["used"] is True
+    assert summary["mtp_output_tokens"] == 6
+    assert summary["ar_output_tokens"] == 18
+    assert summary["output_accounting"]["mtp_coverage"] == 0.25
+    assert summary["output_accounting"]["mtp_output_tokens_explained_by_cycles"] == 6
+    assert summary["output_accounting"]["unexplained_mtp_output_tokens"] == 0
+    assert summary["output_accounting"]["reconciled"] is True
+    assert summary["output_accounting"]["reconciled_reasons"] == []
+    assert summary["selected_depth_histogram"] == {"0": 1, "3": 2}
+    assert summary["fallback_event_counts"] == {
+        "target_graph_context_bucket_miss": 16
+    }
+    assert summary["fallback_reason"] == "target_graph_context_bucket_miss"
+    assert summary["first_fallback_position"] == 7
+
+
+def test_mtp_summary_surfaces_the_prompt_fallback_reason() -> None:
+    """A refused activation reports why, not just ``backend_k0_fallback``."""
+
+    detail = _mtp_accounting_detail(
+        generated_tokens=24,
+        execution_path="gguf_packed_ar_server_decode",
+        accounting=_full_coverage_accounting(
+            candidate_budget=0,
+            cycles=0,
+            generated_draft_tokens=0,
+            accepted_draft_tokens=0,
+            selected_depth_histogram={},
+            mtp_output_tokens=0,
+            prompt_fallback_reason="target_context_k0",
+            ar_step_reason_counts={"no_provider": 23},
+        ),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    assert summary["used"] is False
+    assert summary["effective_route"] == "default"
+    assert summary["selected_route"] == "speculative_mtp"
+    # The compatibility field is preserved and the specific reason is added.
+    assert summary["decision_reason"] == "backend_k0_fallback"
+    assert summary["fallback_reason"] == "target_context_k0"
+    assert summary["fallback_event_counts"] == {
+        "no_provider": 23,
+        "target_context_k0": 1,
+    }
+    assert summary["mtp_output_tokens"] == 0
+    assert summary["ar_output_tokens"] == 24
+    assert summary["output_accounting"]["mtp_coverage"] == 0.0
+    assert summary["first_fallback_position"] == 0
+
+
+def test_mtp_summary_leaves_a_request_without_intent_unchanged() -> None:
+    detail = GenerationOutput(
+        text="done",
+        telemetry=GenerationTelemetry.from_decode_counts(
+            prompt_tokens=4,
+            generated_tokens=3,
+            row_index=0,
+            execution_path="gguf_packed_ar_server_decode",
+            timing={"request_total_ms": 1.0},
+            timing_scope="choice",
+            timing_owner=True,
+            diagnostics={"prefix_cache": {}},
+        ),
+    )
+
+    assert _mtp_response_summary("default", [detail]) == {
+        "effective_route": "default",
+        "used": False,
+        "draft_tokens": 0,
+        "accepted_draft_tokens": 0,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": None,
+        "draft_cycles": 0,
+    }
+
+
+def test_mtp_summary_reconciles_a_short_output_tail() -> None:
+    """The final cycle of a truncated run emits fewer tokens than its depth."""
+
+    detail = _mtp_accounting_detail(
+        generated_tokens=4,
+        accounting=_full_coverage_accounting(
+            cycles=2,
+            generated_draft_tokens=6,
+            accepted_draft_tokens=3,
+            selected_depth_histogram={"3": 2},
+            mtp_output_tokens=3,
+            first_fallback_position=None,
+        ),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    assert summary["mtp_output_tokens"] == 3
+    assert summary["ar_output_tokens"] == 1
+    assert summary["output_accounting"] == {
+        "completion_tokens": 4,
+        "mtp_output_tokens": 3,
+        "ar_output_tokens": 1,
+        "ar_output_tokens_in_cycles": 0,
+        "mtp_coverage": 0.75,
+        # The truncated tail emits fewer tokens than the cycles could explain,
+        # so the committed cycles bound the speculative output rather than
+        # matching it exactly.
+        "mtp_output_tokens_explained_by_cycles": 5,
+        # Negative: the committed cycles could have explained two more tokens
+        # than the truncated tail emitted. Only a positive value is
+        # over-attribution.
+        "unexplained_mtp_output_tokens": -2,
+        "speculative_cycles": 2,
+        "reconciled": True,
+        "reconciled_reasons": [],
+    }
+
+
+def test_mtp_summary_reports_partial_accounting_for_a_cancelled_request() -> None:
+    """A cancelled request reports what it emitted, without a false fallback."""
+
+    detail = _mtp_accounting_detail(
+        generated_tokens=5,
+        finish_details={"reason": "cancel", "cancelled": True},
+        accounting=_full_coverage_accounting(
+            cycles=1,
+            generated_draft_tokens=3,
+            accepted_draft_tokens=2,
+            selected_depth_histogram={"3": 1},
+            mtp_output_tokens=3,
+            first_fallback_position=None,
+        ),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    assert summary["used"] is True
+    assert summary["mtp_output_tokens"] == 3
+    assert summary["ar_output_tokens"] == 2
+    assert summary["output_accounting"]["reconciled"] is True
+    assert summary["first_fallback_position"] is None
+    assert "decision_reason" not in summary
+
+
+def test_mtp_summary_flags_an_unreconciled_accounting_block() -> None:
+    """More speculative output than completion tokens is a backend bug."""
+
+    detail = _mtp_accounting_detail(
+        generated_tokens=4,
+        accounting=_full_coverage_accounting(mtp_output_tokens=9),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    assert summary["output_accounting"]["reconciled"] is False
+    assert summary["ar_output_tokens"] == 0
 
 
 def test_mtp_metrics_count_owned_zero_draft_request() -> None:
@@ -7788,7 +10364,7 @@ def test_completions_enabled_mode_requires_model_plugin_default_evidence() -> No
     assert len(fake.mtp_calls) == 1
 
 
-def test_completions_endpoint_routes_explicit_non_greedy_mtp_to_k0() -> None:
+def test_completions_endpoint_rejects_unsupported_explicit_non_greedy_mtp() -> None:
     fake = SpeculativeMTPFakeLLM()
     app = create_app(
         ServerConfig(
@@ -7811,16 +10387,65 @@ def test_completions_endpoint_routes_explicit_non_greedy_mtp_to_k0() -> None:
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 400
     body = response.json()
-    assert body["choices"][0]["text"] == "generated:one"
-    decision = body["hipengine"]["generation_shape"]["route_decision"]
-    assert decision["selected_route"] == "default"
-    assert decision["reason"] == "unsupported_sampling_k0"
-    assert decision["selected_candidate_count"] == 0
-    assert decision["sampling_blockers"] == ["temperature"]
-    assert len(fake.calls) == 1
+    assert body["error"]["code"] == "unsupported_parameter"
+    assert body["error"]["param"] == "speculative_mtp"
+    assert "temperature" in body["error"]["message"]
+    assert fake.calls == []
     assert fake.mtp_calls == []
+
+
+@pytest.mark.parametrize(
+    "payload,token_map,blocker",
+    [
+        ({"stop": ["\n\n"]}, {"one": [1], "\n\n": [5, 6]}, "stop_token_sequences"),
+        ({"stop": ["<eos>"]}, {"one": [1], "<eos>": [9]}, "stop_token_ids"),
+        ({"stop": ["zzz"]}, {"one": [1]}, None),
+        ({"min_tokens": 2, "eos_token_id": 9}, None, "min_tokens"),
+        ({"eos_token_id": 9}, None, "eos_token_id"),
+        ({"temperature": 0.4, "eos_token_id": 9}, None, "eos_token_id"),
+        ({"ignore_eos": True}, None, "ignore_eos"),
+        ({"suppress_token_ids": [7]}, None, "suppress_token_ids"),
+    ],
+)
+def test_explicit_mtp_rejects_unimplemented_finish_semantics(
+    payload: dict[str, object], token_map: dict[str, list[int]] | None, blocker: str | None
+) -> None:
+    """A greedy-only provider refuses controls instead of substituting AR.
+
+    An unlowerable text stop is handled after generation and keeps MTP.
+    """
+
+    fake = SpeculativeMTPFakeLLM(token_map=token_map)
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="opt_in",
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "one", "max_tokens": 3, "speculative_mtp": True}
+        | payload,
+    )
+
+    if blocker is None:
+        assert response.status_code == 200
+        assert response.json()["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
+        assert fake.mtp_calls
+        return
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "unsupported_parameter"
+    assert error["param"] == "speculative_mtp"
+    assert blocker in error["message"]
+    assert fake.mtp_calls == []
+    assert fake.calls == []
 
 
 def test_chat_completion_hint_thinking_policy_routes_through_mtp_and_relaxes_sampling() -> None:
@@ -7930,8 +10555,8 @@ def test_chat_completion_thinking_policy_request_override_selects_policy() -> No
     assert response.json()["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
     assert len(fake.mtp_calls) == 1
 
-    # Config is hint but the request opts in to hard -> thinking stays a hard
-    # blocker and deterministically selects K0 before provider mutation.
+    # Config is hint but the explicit request opts in to hard; this greedy-only
+    # fake must refuse rather than discard enforcement or substitute AR.
     fake2 = SpeculativeMTPFakeLLM(token_map={_THINKING_CLOSE_MARKER: [42, 43]})
     app2 = create_app(
         ServerConfig(
@@ -7957,14 +10582,12 @@ def test_chat_completion_thinking_policy_request_override_selects_policy() -> No
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 400
     body = response.json()
-    assert body["hipengine"]["generation_shape"]["route"] == "default"
-    assert body["hipengine"]["generation_shape"]["route_decision"]["sampling_blockers"] == [
-        "thinking_budget"
-    ]
+    assert body["error"]["code"] == "unsupported_parameter"
+    assert "thinking_budget" in body["error"]["message"]
     assert fake2.mtp_calls == []
-    assert len(fake2.calls) == 1
+    assert fake2.calls == []
 
 
 def test_completions_preserve_structured_finish_details() -> None:
@@ -11807,6 +14430,67 @@ def test_kv_admission_rejection_maps_to_retryable_completion_429() -> None:
     }
 
 
+def test_backend_execution_failed_maps_to_request_scoped_500() -> None:
+    """A contained failure is this request's failure, not the server's."""
+
+    fake = BackendExecutionFailedFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "fail", "max_tokens": 4},
+    )
+
+    assert response.status_code == 500
+    error = response.json()["error"]
+    assert error["type"] == "server_error"
+    assert error["code"] == "execution_failed"
+    assert error["hipengine"]["retryable"] is True
+    assert error["hipengine"]["execution"] == {
+        "phase": "decode",
+        "request_ids": [7],
+        "work_kind": "decode_batch",
+        "state_mutation": "none",
+        "cause_type": "ValueError",
+        "reason": "sampler row 1 exceeds the packed capacity of 0",
+    }
+    # The engine survived, so readiness must not report a dead service.
+    ready = client.get("/ready").json()
+    assert ready["engine_service"] is None
+    assert ready["status"] != "unhealthy"
+    assert not any("engine service" in item for item in ready["diagnostics"])
+
+
+def test_backend_execution_failed_streams_request_scoped_error_chunk() -> None:
+    fake = BackendExecutionFailedFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    with client.stream(
+        "POST",
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "fail", "max_tokens": 4, "stream": True},
+    ) as response:
+        body = "".join(response.iter_text())
+
+    assert response.status_code == 200
+    payloads = [line[6:] for line in body.splitlines() if line.startswith("data: ")]
+    error_chunk = next(
+        json.loads(payload)
+        for payload in payloads
+        if payload != "[DONE]"
+        and json.loads(payload)["choices"][0]["finish_reason"] == "error"
+    )
+    error = error_chunk["error"]
+    assert error["code"] == "execution_failed"
+    assert error["hipengine"]["retryable"] is True
+    assert error["hipengine"]["execution"]["phase"] == "decode"
+    assert error["hipengine"]["execution"]["request_ids"] == [7]
+    assert error["hipengine"]["execution"]["state_mutation"] == "none"
+    assert body.rstrip().endswith("data: [DONE]")
+
+
 def test_backend_cancelled_exception_maps_to_completion_499() -> None:
     fake = BackendCancelledFakeLLM()
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
@@ -11853,6 +14537,96 @@ def test_backend_deadline_finish_detail_maps_to_chat_408() -> None:
     error = response.json()["error"]
     assert error["code"] == "deadline_exceeded"
     assert error["finish_details"] == {"reason": "deadline_exceeded", "deadline_exceeded": True}
+
+
+def test_blocked_engine_command_does_not_stall_an_in_flight_stream() -> None:
+    """An engine command wait belongs to its request, not to the event loop.
+
+    The server tokenizes prompts through the resident engine service, whose
+    commands wait on a single driver thread. Running that wait on the event loop
+    thread stops the server from flushing anything else: an in-flight SSE stream
+    pauses and then delivers its remaining tokens in one burst after the wait, and
+    health checks, metrics, and cancellation queue behind it too. The wait must run
+    on a worker thread, so the stream keeps moving and the engine call never runs
+    on the loop thread.
+    """
+
+    fake = BlockingPrepareFakeLLM(stream_delay_s=0.05)
+    app = create_app(
+        ServerConfig(model="/models/fake", served_model_name="fake-model"),
+        llm=fake,
+    )
+
+    async def run() -> list[int]:
+        loop_thread = threading.get_ident()
+        started = time.monotonic()
+        body_times: list[float] = []
+
+        def record(message: Mapping[str, Any]) -> None:
+            if message["type"] == "http.response.body" and message.get("body"):
+                body_times.append(time.monotonic() - started)
+
+        stream_task = asyncio.create_task(
+            _asgi_chat_post(
+                app,
+                {
+                    "model": "fake-model",
+                    "messages": [{"role": "user", "content": "stream please"}],
+                    "max_tokens": 100000,
+                    "stream": True,
+                },
+                on_body=record,
+            )
+        )
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and not body_times:
+            await asyncio.sleep(0.01)
+        assert body_times, "the streaming request never delivered a body message"
+
+        # A blocked event loop cannot report on itself, so the block is observed
+        # from a thread. The watchdog always releases the fake, which keeps a
+        # stalled loop a failed assertion instead of a hung test.
+        progress_during_block: list[int] = []
+
+        def watchdog() -> None:
+            baseline = len(body_times)
+            deadline = time.monotonic() + 3.0
+            while time.monotonic() < deadline:
+                if len(body_times) > baseline:
+                    progress_during_block.append(len(body_times) - baseline)
+                    break
+                time.sleep(0.01)
+            fake.tokenize_release.set()
+            fake.stream_stop.set()
+
+        slow_task = asyncio.create_task(
+            _asgi_chat_post(
+                app,
+                {
+                    "model": "fake-model",
+                    "messages": [{"role": "user", "content": "SLOW-PREP prompt"}],
+                    "max_tokens": 4,
+                },
+            )
+        )
+        watcher = threading.Thread(target=watchdog, daemon=True)
+        watcher.start()
+        assert await asyncio.to_thread(fake.tokenize_entered.wait, 20.0)
+        # Joining from the loop would block the very stream this test measures.
+        await asyncio.to_thread(watcher.join, 15.0)
+
+        assert progress_during_block, (
+            "the in-flight stream stalled while another request's engine command was "
+            "blocked on the event loop thread"
+        )
+        assert await slow_task == 200
+        await asyncio.wait_for(stream_task, timeout=10.0)
+        # The engine wait itself must never have run on the event loop thread.
+        assert fake.tokenize_threads
+        assert loop_thread not in fake.tokenize_threads
+        return progress_during_block
+
+    assert asyncio.run(run())
 
 
 def test_streaming_completion_timeout_emits_error_and_done() -> None:
@@ -16645,7 +19419,7 @@ def test_chat_completion_tool_choice_none_rejects_tool_call() -> None:
     assert choice["message"] == {"role": "assistant", "content": ""}
 
 
-def test_chat_completion_auto_tool_builds_tokenizer_grammar_and_close_stop() -> None:
+def test_chat_completion_auto_tool_builds_xml_grammar_without_stripping_close() -> None:
     fake = FakeLLM(
         outputs=["ordinary answer"],
         token_map={"</tool_call>": [88, 89]},
@@ -16675,9 +19449,10 @@ def test_chat_completion_auto_tool_builds_tokenizer_grammar_and_close_stop() -> 
     assert params.tool_call_constraint.forbidden_text_prefixes == ("<think>",)
     assert params.tool_call_constraint.thinking_start_marker is None
     assert params.tool_call_constraint.thinking_end_marker is None
-    assert params.force_sequence_completion_token_sequences == ((88, 89),)
-    assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
-    assert params.stop_token_sequences == ((88, 89),)
+    assert params.tool_call_constraint.envelope == "xml"
+    assert params.force_sequence_completion_token_sequences == ()
+    assert params.force_sequence_completion_reason is None
+    assert params.stop_token_sequences == ()
 
 
 def test_chat_completion_tool_constraint_requires_tokenize_and_detokenize() -> None:
@@ -16739,12 +19514,12 @@ def test_chat_completion_tool_choice_none_suppresses_tool_call_start_token() -> 
         {"type": "function", "function": {"name": "read"}},
     ],
 )
-def test_chat_completion_required_tool_choice_forces_atomic_tool_json_prefix(tool_choice) -> None:
+def test_chat_completion_required_tool_choice_forces_atomic_tool_xml_prefix(tool_choice) -> None:
     fake = FakeLLM(
         outputs=["ordinary answer"],
         token_map={
             "<tool_call>": [77, 78],
-            '<tool_call>{"name":"read","arguments":': [77, 78, 90, 91, 92],
+            '<tool_call>\n<function=read>\n': [77, 78, 90, 91, 92],
             "</tool_call>": [88, 89],
         },
     )
@@ -16766,7 +19541,7 @@ def test_chat_completion_required_tool_choice_forces_atomic_tool_json_prefix(too
     assert response.status_code == 200
     assert fake.tokenize_calls == [
         "<tool_call>",
-        '<tool_call>{"name":"read","arguments":',
+        '<tool_call>\n<function=read>\n',
         "</tool_call>",
     ]
     params = fake.calls[-1][1]
@@ -16774,9 +19549,9 @@ def test_chat_completion_required_tool_choice_forces_atomic_tool_json_prefix(too
     assert params.forced_token_reason == "tool_choice_required"
     assert params.tool_call_constraint.thinking_start_marker == "<think>"
     assert params.tool_call_constraint.thinking_end_marker == "</think>"
-    assert params.force_sequence_completion_token_sequences == ((88, 89),)
-    assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
-    assert params.stop_token_sequences == ((88, 89),)
+    assert params.force_sequence_completion_token_sequences == ()
+    assert params.force_sequence_completion_reason is None
+    assert params.stop_token_sequences == ()
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "stop"
     assert choice["finish_details"] == _stateless_finish_details("tool_required_not_satisfied")
@@ -16789,7 +19564,7 @@ def test_chat_completion_required_tool_choice_queues_tool_start_after_thinking_b
         token_map={
             "</think>": [91, 92],
             "<tool_call>": [77, 78],
-            '<tool_call>{"name":"read","arguments":': [77, 78, 90, 91, 92],
+            '<tool_call>\n<function=read>\n': [77, 78, 90, 91, 92],
             "</tool_call>": [88, 89],
         },
     )
@@ -16814,7 +19589,7 @@ def test_chat_completion_required_tool_choice_queues_tool_start_after_thinking_b
     assert fake.tokenize_calls == [
         "</think>",
         "<tool_call>",
-        '<tool_call>{"name":"read","arguments":',
+        '<tool_call>\n<function=read>\n',
         "</tool_call>",
     ]
     params = fake.calls[-1][1]
@@ -16823,9 +19598,9 @@ def test_chat_completion_required_tool_choice_queues_tool_start_after_thinking_b
     assert params.post_thinking_forced_token_reason == "tool_choice_required"
     assert params.tool_call_constraint.thinking_start_marker == "<think>"
     assert params.tool_call_constraint.thinking_end_marker == "</think>"
-    assert params.force_sequence_completion_token_sequences == ((88, 89),)
-    assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
-    assert params.stop_token_sequences == ((88, 89),)
+    assert params.force_sequence_completion_token_sequences == ()
+    assert params.force_sequence_completion_reason is None
+    assert params.stop_token_sequences == ()
     assert params.thinking_close_token_ids == (91, 92)
     assert params.thinking_hard_token_cap == 512
     choice = response.json()["choices"][0]
@@ -16860,33 +19635,24 @@ def test_chat_completion_required_tool_choice_skips_name_prefix_with_multiple_to
     assert fake.tokenize_calls == ["<tool_call>", "</tool_call>"]
     params = fake.calls[-1][1]
     assert params.forced_tokens_pending == (77, 78)
-    assert params.force_sequence_completion_token_sequences == ((88, 89),)
-    assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
-    assert params.stop_token_sequences == ((88, 89),)
+    assert params.force_sequence_completion_token_sequences == ()
+    assert params.force_sequence_completion_reason is None
+    assert params.stop_token_sequences == ()
 
 
 @pytest.mark.parametrize(
     ("schema_prefix_ids", "expected_close_sequences"),
     [
-        (
-            (93, 94, 95, 96),
-            ((12445, 13766, 13042, 29), (510, 13766, 13042, 29)),
-        ),
-        (
-            (27, 12445, 13766, 13042, 29, 591),
-            ((510, 13766, 13042, 29),),
-        ),
-        (
-            (27, 510, 13766, 13042, 29, 591),
-            ((12445, 13766, 13042, 29),),
-        ),
+        ((93, 94, 95, 96), ()),
+        ((27, 12445, 13766, 13042, 29, 591), ()),
+        ((27, 510, 13766, 13042, 29, 591), ()),
     ],
 )
-def test_chat_completion_specific_tool_choice_forces_schema_first_string_key_after_tool_result(
+def test_chat_completion_specific_tool_choice_forces_xml_header_after_tool_result(
     schema_prefix_ids: tuple[int, ...],
     expected_close_sequences: tuple[tuple[int, ...], ...],
 ) -> None:
-    schema_prefix = '<tool_call>{"name":"grep","arguments":{"pattern":"'
+    schema_prefix = '<tool_call>\n<function=grep>\n'
     fake = FakeLLM(
         outputs=["ordinary answer"],
         token_map={
@@ -16949,16 +19715,14 @@ def test_chat_completion_specific_tool_choice_forces_schema_first_string_key_aft
     assert response.status_code == 200
     assert fake.tokenize_calls == [
         "<tool_call>",
-        '<tool_call>{"name":"grep","arguments":',
         schema_prefix,
         "</tool_call>",
-        "}}</tool_call>",
     ]
     params = fake.calls[-1][1]
     assert params.forced_tokens_pending == schema_prefix_ids
     assert params.forced_token_reason == "tool_choice_required"
     assert params.force_sequence_completion_token_sequences == expected_close_sequences
-    assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
+    assert params.force_sequence_completion_reason == ("tool_call_sequence_completion" if expected_close_sequences else None)
     assert params.stop_token_sequences == expected_close_sequences
 
 
@@ -16967,7 +19731,7 @@ def test_chat_completion_specific_tool_choice_falls_back_for_non_string_first_re
         outputs=["ordinary answer"],
         token_map={
             "<tool_call>": [77, 78],
-            '<tool_call>{"name":"count","arguments":': [90, 91, 92],
+            '<tool_call>\n<function=count>\n': [90, 91, 92],
             "</tool_call>": [88, 89],
         },
     )
@@ -17001,13 +19765,13 @@ def test_chat_completion_specific_tool_choice_falls_back_for_non_string_first_re
     assert response.status_code == 200
     assert fake.tokenize_calls == [
         "<tool_call>",
-        '<tool_call>{"name":"count","arguments":',
+        '<tool_call>\n<function=count>\n',
         "</tool_call>",
     ]
     params = fake.calls[-1][1]
     assert params.forced_tokens_pending == (90, 91, 92)
-    assert params.force_sequence_completion_token_sequences == ((88, 89),)
-    assert params.stop_token_sequences == ((88, 89),)
+    assert params.force_sequence_completion_token_sequences == ()
+    assert params.stop_token_sequences == ()
 
 
 def test_chat_completion_strict_tool_schema_reports_schema_violation() -> None:
@@ -18014,7 +20778,8 @@ def test_chat_completion_strict_tool_schema_rejects_bounded_subset_violations(ar
     assert "tool_calls" not in choice["message"]
 
 
-def test_chat_completion_parallel_tool_calls_require_explicit_opt_in() -> None:
+@pytest.mark.parametrize("parallel", [None, True])
+def test_chat_completion_parallel_tool_calls_default_on_and_false_disables(parallel) -> None:
     output = (
         '<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>'
         '<tool_call>{"name":"read","arguments":{"path":"WORKLOG.md"}}</tool_call>'
@@ -18045,7 +20810,7 @@ def test_chat_completion_parallel_tool_calls_require_explicit_opt_in() -> None:
 
     rejected_response = TestClient(rejected).post(
         "/v1/chat/completions",
-        json={"model": "fake-model", "messages": [{"role": "user", "content": "read files"}], "tools": tools},
+        json={"model": "fake-model", "messages": [{"role": "user", "content": "read files"}], "tools": tools, "parallel_tool_calls": False},
     )
     accepted_response = TestClient(accepted).post(
         "/v1/chat/completions",
@@ -18053,7 +20818,7 @@ def test_chat_completion_parallel_tool_calls_require_explicit_opt_in() -> None:
             "model": "fake-model",
             "messages": [{"role": "user", "content": "read files"}],
             "tools": tools,
-            "parallel_tool_calls": True,
+            **({} if parallel is None else {"parallel_tool_calls": parallel}),
         },
     )
 
@@ -18061,6 +20826,67 @@ def test_chat_completion_parallel_tool_calls_require_explicit_opt_in() -> None:
     accepted_choice = accepted_response.json()["choices"][0]
     assert accepted_choice["finish_reason"] == "tool_calls"
     assert len(accepted_choice["message"]["tool_calls"]) == 2
+
+
+@pytest.mark.parametrize("parallel", [None, True, False])
+def test_xml_parallel_default_matches_sampling_and_streaming(parallel) -> None:
+    chunks = [
+        '<tool_call>\n<function=bash>\n<parameter=command>\necho one\n</parameter>\n</function>\n</tool_call>',
+        '<tool_call>\n<function=bash>\n<parameter=command>\necho two\n</parameter>\n</function>\n</tool_call>',
+    ]
+    fake = FakeLLM(outputs=['unused'], stream_chunks=chunks)
+    body = {
+        'model': 'fake-model', 'messages': [{'role': 'user', 'content': 'run both'}],
+        'stream': True, 'chat_template_kwargs': {'enable_thinking': False},
+        'tools': [{'type': 'function', 'function': {'name': 'bash', 'parameters': {
+            'type': 'object', 'properties': {'command': {'type': 'string'}},
+            'required': ['command'],
+        }}}],
+        **({} if parallel is None else {'parallel_tool_calls': parallel}),
+    }
+    from hipengine.server.api import ChatCompletionRequest, _tool_call_sampling_constraint
+    constraint = _tool_call_sampling_constraint(
+        ChatCompletionRequest(**body), fake, chat_default_max_tokens=None,
+    )
+    assert constraint.parallel_tool_calls is (parallel is not False)
+    client = TestClient(create_app(ServerConfig(model='fake-path', served_model_name='fake-model'), llm=fake))
+    payloads = _sse_payloads(client.post('/v1/chat/completions', json=body).text)
+    if parallel is False:
+        assert any(p.get('error', {}).get('code') == 'invalid_tool_call' for p in payloads)
+    else:
+        calls = [c for p in payloads for choice in p.get('choices', [])
+                 for c in choice.get('delta', {}).get('tool_calls', [])]
+        assert len({c['id'] for c in calls}) == 2
+        assert payloads[-1]['choices'][0]['finish_reason'] == 'tool_calls'
+
+
+@pytest.mark.parametrize("truncated", [False, True])
+def test_streaming_xml_tool_emits_incremental_arguments_and_errors_on_truncation(truncated):
+    chunks = ['<tool_call>\n<function=bash>\n<parameter=command>\n', 'echo ', 'live']
+    if not truncated:
+        chunks.append('\n</parameter>\n</function>\n</tool_call>')
+    fake = FakeLLM(outputs=['unused'], stream_chunks=chunks)
+    client = TestClient(create_app(ServerConfig(model='fake-path', served_model_name='fake-model'), llm=fake))
+    response = client.post('/v1/chat/completions', json={
+        'model': 'fake-model', 'messages': [{'role': 'user', 'content': 'run command'}],
+        'stream': True, 'chat_template_kwargs': {'enable_thinking': False},
+        'tools': [{'type': 'function', 'function': {'name': 'bash', 'parameters': {
+            'type': 'object', 'properties': {'command': {'type': 'string'}}, 'required': ['command'],
+        }}}],
+    })
+    payloads = _sse_payloads(response.text)
+    calls = [call for payload in payloads for choice in payload.get('choices', [])
+             for call in choice.get('delta', {}).get('tool_calls', [])]
+    assert len(calls) >= 4
+    assert len({call['id'] for call in calls}) == 1
+    assert calls[0]['function']['name'] == 'bash'
+    if truncated:
+        assert any(payload.get('error', {}).get('code') == 'invalid_tool_call' for payload in payloads)
+        assert not any(choice.get('finish_reason') in {'stop', 'tool_calls'}
+                       for payload in payloads for choice in payload.get('choices', []))
+    else:
+        assert json.loads(''.join(call['function']['arguments'] for call in calls)) == {'command': 'echo live'}
+        assert payloads[-1]['choices'][0]['finish_reason'] == 'tool_calls'
 
 
 def test_streaming_chat_completion_returns_tool_call_deltas() -> None:
@@ -20245,6 +23071,33 @@ def test_streaming_completion_prefers_backend_chunk_finish_details() -> None:
     }
 
 
+@pytest.mark.parametrize("mode", [None, "off", "radix"])
+def test_server_prefix_cache_default_and_overrides(monkeypatch, mode) -> None:
+    from hipengine.kvcache import PREFIX_CACHE_DEFAULT
+
+    monkeypatch.delenv("HIPENGINE_PREFIX_CACHE", raising=False)
+    assert PREFIX_CACHE_DEFAULT == "radix"
+    # The CLI preserves an omitted value so the engine can resolve its
+    # backend-owned default; explicit environment and command-line values remain
+    # visible at parse time.
+    assert build_parser().parse_args(["--model", "fake-path"]).prefix_cache is None
+    if mode is not None:
+        monkeypatch.setenv("HIPENGINE_PREFIX_CACHE", mode)
+    args = build_parser().parse_args(["--model", "fake-path"])
+    assert args.prefix_cache == mode
+    for explicit in ("off", "radix"):
+        assert build_parser().parse_args(
+            ["--model", "fake-path", "--prefix-cache", explicit]
+        ).prefix_cache == explicit
+        app = create_app(
+            ServerConfig(model="fake-path", eager_load=False, prefix_cache=explicit),
+            llm=FakeLLM(),
+        )
+        assert app.state.hipengine_prefix_cache_mode == explicit
+    app = create_app(ServerConfig(model="fake-path", eager_load=False), llm=FakeLLM())
+    assert app.state.hipengine_prefix_cache_mode == PREFIX_CACHE_DEFAULT
+
+
 def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch) -> None:
     monkeypatch.delenv("HIPENGINE_GENERATION_BATCH_WINDOW_MS", raising=False)
     monkeypatch.delenv("HIPENGINE_DEBUG", raising=False)
@@ -20260,11 +23113,13 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     monkeypatch.delenv("HIPENGINE_MAX_CHAT_SESSIONS", raising=False)
     monkeypatch.delenv("HIPENGINE_REPLAY_DIR", raising=False)
     monkeypatch.delenv("HIPENGINE_REPLAY_REDACTION", raising=False)
+    monkeypatch.delenv("HIPENGINE_INFO", raising=False)
     default_args = build_parser().parse_args(["--model", "fake-path"])
     assert default_args.backend == "auto"
     assert default_args.quant == "auto"
     assert default_args.generation_batch_window_ms == 0.0
     assert default_args.debug is False
+    assert default_args.info is False
     assert default_args.chat_default_max_tokens == 4096
     assert default_args.startup_chat_smoke is True
     assert default_args.startup_scratch_probe is True
@@ -20294,11 +23149,13 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     monkeypatch.setenv("HIPENGINE_MAX_CHAT_SESSIONS", "5")
     monkeypatch.setenv("HIPENGINE_REPLAY_DIR", "/tmp/hipengine-replay")
     monkeypatch.setenv("HIPENGINE_REPLAY_REDACTION", "none")
+    monkeypatch.setenv("HIPENGINE_INFO", "1")
     env_args = build_parser().parse_args(["--model", "fake-path"])
     assert env_args.metrics == "prometheus"
     assert env_args.prefix_cache == "radix"
     assert env_args.generation_batch_window_ms == 3.5
     assert env_args.debug is True
+    assert env_args.info is True
     assert env_args.chat_default_max_tokens is None
     assert env_args.startup_chat_smoke is False
     assert env_args.startup_scratch_probe is False
@@ -20667,7 +23524,7 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
         "allows_pending_tool_calls_at_transcript_end": True,
         "applies_to_session_snapshots": True,
     }
-    assert artifact["capabilities"]["features"]["tools"]["parallel_tool_calls_requires_opt_in"] is True
+    assert artifact["capabilities"]["features"]["tools"]["parallel_tool_calls_requires_opt_in"] is False
     assert artifact["capabilities"]["features"]["tools"]["streaming_argument_chunks"] is True
     assert artifact["capabilities"]["features"]["tools"]["streaming_argument_chunk_chars"] == 128
     assert artifact["capabilities"]["features"]["reasoning_controls"]["token_budget_enforced"] is True
@@ -20728,6 +23585,20 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
         },
         "thinking_policy": "hint",
         "processed_target_verification": False,
+        "candidate_budget": {
+            "requested": None,
+            "resolved": None,
+            "source": "unresolved",
+        },
+        "context_window": {
+            "policy": "target_capacity",
+            "fixed_cap": None,
+            "env": None,
+            "exported": None,
+            "resolved": None,
+            "qualified_default": None,
+            "error": None,
+        },
     }
     assert artifact["capabilities"]["sampling"]["speculative_mtp"]["incompatible_fields"] == list(
         SPECULATIVE_MTP_INCOMPATIBLE_FIELDS
@@ -21299,7 +24170,7 @@ def test_replay_artifact_captures_streaming_agentic_result_validation_failure(tm
     assert response.status_code == 200
     payloads = _sse_payloads(response.text)
     done = next(payload for payload in payloads if payload["choices"][0]["finish_reason"])
-    assert done["choices"][0]["finish_reason"] == "stop"
+    assert done["choices"][0]["finish_reason"] == "error"
     assert done["choices"][0]["finish_details"] == _stateless_finish_details("tool_required_not_satisfied")
     assert done["choices"][0]["hipengine"]["finish_details"] == _stateless_finish_details(
         "tool_required_not_satisfied"
@@ -21308,14 +24179,8 @@ def test_replay_artifact_captures_streaming_agentic_result_validation_failure(tm
     artifact, serialized = _load_single_replay_artifact(replay_dir)
     assert artifact["request"]["path"] == "/v1/chat/completions"
     assert artifact["finish_details"] == _stateless_finish_details("tool_required_not_satisfied")
-    assert artifact["error"] is None
-    assert artifact["result"]["choices"] == [
-        {
-            "index": 0,
-            "finish_reason": "stop",
-            "finish_details": _stateless_finish_details("tool_required_not_satisfied"),
-        }
-    ]
+    assert artifact["error"]["code"] == "tool_required_not_satisfied"
+    assert "result" not in artifact
     assert "secret streaming tool task" not in serialized
     assert "ordinary stream answer" not in serialized
 
@@ -22700,3 +25565,236 @@ def test_resident_prepare_refusal_returns_a_structured_remedy() -> None:
     ready = client.get("/ready")
     assert ready.status_code == 503
     assert ready.json()["ready"] is False
+
+
+def test_mtp_summary_refuses_a_split_that_only_reconciles_arithmetically() -> None:
+    """Arithmetic consistency is not attribution.
+
+    ``ar_output_tokens`` is defined as ``completion - mtp``, so a response
+    reporting five completion tokens, three speculative ones and ninety-nine
+    in-cycle autoregressive ones satisfies ``mtp + ar == completion``. It is
+    still impossible: the request emitted five tokens, so ninety-nine of them
+    cannot have come from inside its cycles.
+    """
+
+    detail = _mtp_accounting_detail(
+        generated_tokens=5,
+        accounting=_full_coverage_accounting(
+            cycles=1,
+            generated_draft_tokens=3,
+            accepted_draft_tokens=2,
+            selected_depth_histogram={"3": 1},
+            mtp_output_tokens=3,
+            ar_output_tokens_in_cycles=99,
+            ar_step_reason_counts={"no_provider": 99},
+        ),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    accounting = summary["output_accounting"]
+    # The arithmetic still holds, which is exactly why it proves nothing.
+    assert accounting["mtp_output_tokens"] + accounting["ar_output_tokens"] == 5
+    assert accounting["reconciled"] is False
+    assert accounting["reconciled_reasons"] == [
+        "in_cycle_ar_output_exceeds_ar_output"
+    ]
+
+
+def test_mtp_summary_refuses_speculative_output_its_cycles_cannot_explain() -> None:
+    """Over-attribution: more speculative output than the cycles emitted."""
+
+    detail = _mtp_accounting_detail(
+        generated_tokens=9,
+        accounting=_full_coverage_accounting(
+            cycles=1,
+            generated_draft_tokens=3,
+            accepted_draft_tokens=1,
+            selected_depth_histogram={"3": 1},
+            mtp_output_tokens=7,
+        ),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    accounting = summary["output_accounting"]
+    assert accounting["mtp_output_tokens_explained_by_cycles"] == 2
+    assert accounting["unexplained_mtp_output_tokens"] == 5
+    assert accounting["reconciled"] is False
+    assert accounting["reconciled_reasons"] == [
+        "mtp_output_exceeds_committed_cycles"
+    ]
+
+
+def test_mtp_summary_refuses_speculative_output_without_committed_cycles() -> None:
+    detail = _mtp_accounting_detail(
+        generated_tokens=6,
+        accounting=_full_coverage_accounting(
+            cycles=0,
+            generated_draft_tokens=0,
+            accepted_draft_tokens=0,
+            selected_depth_histogram={},
+            mtp_output_tokens=6,
+        ),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    assert summary["output_accounting"]["reconciled"] is False
+    # No cycle ran at all, so it also cannot explain any speculative output.
+    assert summary["output_accounting"]["reconciled_reasons"] == [
+        "mtp_output_without_committed_cycles",
+        "mtp_output_exceeds_committed_cycles",
+    ]
+
+
+def test_mtp_summary_proves_attribution_with_committed_output_spans(
+    monkeypatch,
+) -> None:
+    """Diagnostic spans must tile the emitted output and match both counters."""
+
+    monkeypatch.setenv("HIPENGINE_MTP2_OUTPUT_SPANS", "1")
+    detail = _mtp_accounting_detail(
+        generated_tokens=7,
+        accounting=_full_coverage_accounting(
+            cycles=3,
+            generated_draft_tokens=6,
+            accepted_draft_tokens=3,
+            selected_depth_histogram={"3": 2, "0": 1},
+            mtp_output_tokens=5,
+            ar_output_tokens_in_cycles=1,
+            output_spans=[
+                {"mode": "mtp", "reason": "speculative_qualified", "position": 1, "tokens": 3},
+                {"mode": "mtp", "reason": "speculative_qualified", "position": 4, "tokens": 2},
+                {"mode": "ar", "reason": "target_graph_context_bucket_miss", "position": 6, "tokens": 1},
+            ],
+        ),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    accounting = summary["output_accounting"]
+    assert accounting["reconciled"] is True
+    assert accounting["reconciled_reasons"] == []
+    spans = accounting["span_accounting"]
+    assert spans == {
+        "spans": 3,
+        "tokens": 6,
+        "mtp_tokens": 5,
+        "ar_tokens": 1,
+        "ar_tokens_by_reason": {"target_graph_context_bucket_miss": 1},
+        "unspanned_tokens": 1,
+        "expected_unspanned_ar_tokens": 1,
+        "first_position": 1,
+        "last_end": 7,
+        "contiguous": True,
+        "mtp_tokens_match": True,
+        "ar_in_cycle_tokens_match": True,
+        "unspanned_tokens_match": True,
+        "reconciled": True,
+        "reconciled_reasons": [],
+    }
+
+
+def test_mtp_summary_refuses_spans_that_do_not_tile_the_output(monkeypatch) -> None:
+    """A gap, an overlap, or a short span list is a failed attribution proof."""
+
+    monkeypatch.setenv("HIPENGINE_MTP2_OUTPUT_SPANS", "1")
+
+    def _summary(spans: list[dict[str, Any]]) -> dict[str, Any]:
+        detail = _mtp_accounting_detail(
+            generated_tokens=7,
+            accounting=_full_coverage_accounting(
+                cycles=3,
+                generated_draft_tokens=6,
+                accepted_draft_tokens=3,
+                selected_depth_histogram={"3": 2, "0": 1},
+                mtp_output_tokens=5,
+                ar_output_tokens_in_cycles=1,
+                output_spans=spans,
+            ),
+        )
+        return _mtp_response_summary("speculative_mtp", [detail])[
+            "output_accounting"
+        ]
+
+    # A gap between the second and third span leaves position 6 unaccounted.
+    gap = _summary(
+        [
+            {"mode": "mtp", "reason": "r", "position": 1, "tokens": 3},
+            {"mode": "mtp", "reason": "r", "position": 4, "tokens": 2},
+            {"mode": "ar", "reason": "r", "position": 7, "tokens": 1},
+        ]
+    )
+    assert gap["reconciled"] is False
+    # The spans cover every token the split accounts for, so the only failure is
+    # the gap itself.
+    assert gap["reconciled_reasons"] == ["span:spans_not_contiguous"]
+
+    # Spans that stop short: the remainder must be the autoregressive output
+    # emitted outside the plan, and here it is not.
+    short = _summary(
+        [
+            {"mode": "mtp", "reason": "r", "position": 1, "tokens": 3},
+            {"mode": "mtp", "reason": "r", "position": 4, "tokens": 2},
+        ]
+    )
+    assert short["reconciled"] is False
+    assert short["reconciled_reasons"] == [
+        "span:span_ar_tokens_do_not_match_in_cycle_ar_output",
+        "span:unspanned_tokens_are_not_autoregressive",
+    ]
+
+    # Spans that exceed the emitted output entirely.
+    over = _summary(
+        [
+            {"mode": "mtp", "reason": "r", "position": 1, "tokens": 6},
+            {"mode": "ar", "reason": "r", "position": 7, "tokens": 2},
+        ]
+    )
+    assert over["reconciled"] is False
+    assert over["reconciled_reasons"] == [
+        "span:spans_exceed_the_completion_count",
+        "span:span_mtp_tokens_do_not_match_mtp_output",
+        "span:span_ar_tokens_do_not_match_in_cycle_ar_output",
+        "span:unspanned_tokens_are_not_autoregressive",
+    ]
+
+    # A span list whose modes disagree with the reported split.
+    mismatched = _summary(
+        [
+            {"mode": "mtp", "reason": "r", "position": 1, "tokens": 4},
+            {"mode": "ar", "reason": "r", "position": 5, "tokens": 2},
+        ]
+    )
+    assert mismatched["reconciled"] is False
+    assert mismatched["reconciled_reasons"] == [
+        "span:span_mtp_tokens_do_not_match_mtp_output",
+        "span:span_ar_tokens_do_not_match_in_cycle_ar_output",
+    ]
+
+    # Recording enabled but nothing committed: the proof cannot be made, and
+    # neither counter can be matched by an empty span list.
+    empty = _summary([])
+    assert empty["reconciled"] is False
+    assert empty["reconciled_reasons"] == [
+        "span:no_committed_spans",
+        "span:span_mtp_tokens_do_not_match_mtp_output",
+        "span:span_ar_tokens_do_not_match_in_cycle_ar_output",
+        "span:unspanned_tokens_are_not_autoregressive",
+    ]
+
+
+def test_mtp_summary_omits_spans_unless_diagnostic_recording_is_on(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_MTP2_OUTPUT_SPANS", raising=False)
+    detail = _mtp_accounting_detail(
+        generated_tokens=24,
+        accounting=_full_coverage_accounting(),
+    )
+
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+
+    assert "span_accounting" not in summary["output_accounting"]
+    assert summary["output_accounting"]["reconciled"] is True

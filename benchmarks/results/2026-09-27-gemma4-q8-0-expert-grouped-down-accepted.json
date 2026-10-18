@@ -1,0 +1,40 @@
+{
+ "kind": "gemma4_campaign_candidate",
+ "verdict": "accepted and promoted (bit-exact, default path)",
+ "recorded": "2026-09-27, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B Q8_0 expert down projection",
+ "candidate": "bind the Q8_0 grouped expert family under the moe_linear layer and prefer it in the grouped prefill preference order. The family was registered only under linear, so the one MoE layer of this artifact that carries Q8_0 expert weights had no grouped route and fell through to the per-row expert gather: 4096 separate (out_col, lane) blocks against one block per (expert, out_col) that reuses the expert's weight rows.",
+ "reason": "the change is bit-exact, so it needs no numerical gate. The grouped kernel reproduces the selected GEMV's association exactly - column = t, t + blockDim.x, ... reduced through the same tree - and tests/test_unit_gemma4_expert_route.py::test_grouped_prefill_is_bit_exact_against_the_selected_gemv now runs the Q8_0 family at four geometries and compares on bits, not tolerance.",
+ "mechanism": {
+  "structure": "the wrapper gguf_q8_0_selected_grouped_prefill_compact_bf16_bf16_out was already implemented and registered; this adds the moe_linear registry key it was missing and names the variant last in _GROUPED_PREFILL_VARIANTS, so it is the fallback for a quant whose family has no staged or rowbatch8 variant.",
+  "arithmetic": "unchanged. Same k-set, same order, same reduction tree.",
+  "refuted_alternative": "the Q8_0 family also registers a WMMA grouped variant (selected_grouped_wmma_prefill_compact). It is not used here: WMMA changes the association, so it is a candidate for the numerical gate rather than a bit-exact route.",
+  "profile": "one block per (expert, out_col); 128 experts, 4096 compact rows."
+ },
+ "correctness": {
+  "gate": "not applicable - no arithmetic change, so no execution-profile gate is required",
+  "kernel_level": "0 differing bf16 outputs against gemma4_project_experts_selected at (2816, 704), (704, 2816), (64, 32) and (37, 96), four experts with one empty, so the comparison also pins that row order follows expert_start.",
+  "unit_test": "tests/test_unit_gemma4_expert_route.py: 44 pass, 5 of them the new Q8_0 geometry cases. The test also fixes an unbound extra_outputs in its cleanup path, which had been masking route failures as UnboundLocalError.",
+  "route_ran": "the route table from a real 512-token model forward now shows moe_linear/gguf_q8_0/selected_grouped_prefill_compact_bf16_bf16_out at 43.4 ms and the former linear/gguf_q8_0/selected_gemv_bf16_bf16_out row is gone.",
+  "generation_parity": "not run as a separate arm: the two routes are bit-identical at the kernel level, which is pinned by the device test above, so a token-id comparison could only restate it."
+ },
+ "performance": {
+  "platform": "gfx1151 Strix Halo (Radeon 8060S, zbook), ROCm",
+  "protocol": "one process, both routes resolved, five timed launches per round, two interleaved rounds, min reported; synthetic Q8_0 expert weights at the artifact's own geometry (128 experts, 704 -> 2816, 4096 compact rows)",
+  "primary": {
+   "row": "Q8_0 expert down, 128 experts / 704 -> 2816 / 4096 compact rows",
+   "incumbent_ms": 68.13,
+   "candidate_ms": 37.19,
+   "delta": "1.83x",
+   "second_round": "68.17 -> 38.64 ms (1.76x)"
+  },
+  "limits": "one projection of one layer, so the whole-model effect is about 31 ms of a 3.29 s prefill (~0.9%). It is reported at that size rather than as a row delta.",
+  "secondary": {
+   "row": "512 prompt / 8 output route attribution",
+   "why": "the attribution confirms the selection and the route-level cost (69.0 -> 43.4 ms); it is not a clean A/B because its two runs are on different trees, the earlier one predating the attention unit."
+  }
+ },
+ "selection": {
+  "flag": "none - the variant is in the preference order and the registry key is always registered",
+  "fallback": "a quant whose family has a staged or rowbatch8 variant still prefers those; the plain compact variant is reached only when nothing earlier resolves."
+ }
+}

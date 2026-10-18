@@ -5,10 +5,12 @@ branches and worktrees do not contend on one append target.
 
 - **Current entries:** [`worklog/entries/`](worklog/entries/)
 - **Format and commands:** [`worklog/README.md`](worklog/README.md)
-- **Frozen history through commit `7c7c18875`:**
-  [`WORKLOG-LEGACY.md`](WORKLOG-LEGACY.md)
+- **Pre-cutoff history:** 7,232 journal entries imported under
+  [`worklog/entries/`](worklog/entries/) with `worker: legacy`. The original
+  journal bytes live in Git history at the ref pinned in
+  [`worklog/legacy-port-manifest.json`](worklog/legacy-port-manifest.json)
 - **Approved migration plan:**
-  [`docs/PLAN-WORKLOG2-revamp.md`](docs/PLAN-WORKLOG2-revamp.md)
+  [`docs/archive/PLAN-WORKLOG2-revamp.md`](docs/archive/PLAN-WORKLOG2-revamp.md)
 
 Create a current entry with:
 
@@ -31,4 +33,5 @@ python3 scripts/worklog.py render
 `check` validates staged and tracked content only, so another worker's unstaged
 entry cannot block a commit.
 
-Do not append to this navigation page or edit the frozen legacy journal.
+Do not append to this navigation page or resurrect the retired legacy journal
+into the tree.

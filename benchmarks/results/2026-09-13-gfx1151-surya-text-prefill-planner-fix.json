@@ -1,0 +1,196 @@
+{
+ "date": "2026-09-13",
+ "generated_utc": "2026-09-13T06:43:28Z",
+ "model": "datalab-to/surya-ocr-2",
+ "provenance": {
+  "timestamp_utc": "2026-09-13T06:43:28Z",
+  "hostname": "zbook",
+  "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+  "os": "Linux 6.18.42-1-cachyos-lts",
+  "python": "3.13.13",
+  "numpy": "2.4.4",
+  "command": "scripts/surya_attention_memory.py --tokens 8580,16384 --max-seq 16384 --text-budget-bytes 536870912 --runs 3 --passes 2 --out benchmarks/results/2026-09-13-gfx1151-surya-text-prefill-planner-fix.json",
+  "git_revision": "15d78bd4ac958787702b4feeaf776d1de4a75be0",
+  "git_branch": "surya",
+  "git_dirty": true,
+  "torch": "2.13.0+rocm10.0.0",
+  "torch_hip": "7.15.26333",
+  "gpu": "AMD Radeon 8060S Graphics"
+ },
+ "vision_attention": {
+  "budget_bytes": 536870912,
+  "grids": [
+   {
+    "grid": [
+     1,
+     220,
+     156
+    ],
+    "patches": 34320,
+    "merged_image_tokens": 8580,
+    "dense_score_bytes": 56537395200,
+    "query_block": 320,
+    "tiled_score_bytes": 527155200,
+    "reduction_x": 107.25
+   },
+   {
+    "grid": [
+     1,
+     256,
+     256
+    ],
+    "patches": 65536,
+    "merged_image_tokens": 16384,
+    "dense_score_bytes": 206158430208,
+    "query_block": 160,
+    "tiled_score_bytes": 503316480,
+    "reduction_x": 409.6
+   }
+  ]
+ },
+ "text_attention": {
+  "budget_bytes_list": [
+   536870912
+  ],
+  "block_list": [],
+  "shape_envelope": "byte-budget rows are the production plan (envelope and wavefront rounding respected); --text-blocks rows lift both and solve the byte budget backwards from the named width",
+  "production_envelope": {
+   "rows": 128,
+   "divisor": 32,
+   "multiple": 32
+  },
+  "runs": 3,
+  "passes": 2,
+  "pass_check": "second pass in reverse order; pass_ratio = pass1/pass2 per row, flagged outside max(3%, 0.25 s)",
+  "decode_steps": 0,
+  "tile_plan": {
+   "budget": 536870912,
+   "block": null,
+   "label": "512 MiB"
+  }
+ },
+ "protocol": {
+  "measurement": "hipengine.core.memory process-local device allocation counter (hipEngine-owned buffers)",
+  "boundary": "peak scratch = peak_allocated_bytes - resident_bytes, where resident is the runner's long-lived allocation after construction",
+  "prompt": "synthetic text-only ids of the given length with plain 1-D rope positions; no image, so this isolates the text stack",
+  "isolation": "a fresh runner per token count, with reset_memory_stats() after construction, so the peak is one prefill's footprint and not a previous run's high-water mark",
+  "score_tile_bytes": "the planner's causal score tile (nq * tokens * block * 4) for the row's budget; budget_bytes null means the dense path",
+  "timing": "prefill_seconds is the mean of prefill_seconds_runs, which are wall-clock repeats on an already-warm runner",
+  "decode_timing": "decode_seconds_runs are per-step wall clocks at the row's live token count; each decode_step ends in _logits_last, which synchronizes before the logits D2H, so a step is launch plus execution plus the copy the greedy loop needs. A row whose token count equals max_seq has no free KV slot and records decode_steps 0"
+ },
+ "page_tokens": {
+  "300dpi_a4": 8580
+ },
+ "results": [
+  {
+   "max_seq": 16384,
+   "resident_components": {
+    "weights_bytes": 2663047936,
+    "kv_planes_bytes": 402653184,
+    "gdn_state_bytes": 18883584,
+    "conv_state_bytes": 1778688,
+    "span_metadata_bytes": 147728,
+    "span_decode_partial_bytes": 528384,
+    "span_num_splits": 64,
+    "span_block_size": 256,
+    "resident_bytes": 3087053368
+   },
+   "best_shape_by_tokens": {
+    "8580": {
+     "query_block": 1952,
+     "prefill_seconds": 7.435543815294902,
+     "dense_seconds": null
+    },
+    "16384": {
+     "query_block": 1024,
+     "prefill_seconds": 16.75163932641347,
+     "dense_seconds": null
+    }
+   },
+   "budgets": [
+    {
+     "max_seq": 16384,
+     "budget_bytes": 536870912,
+     "requested_block": null,
+     "envelope_lifted": false,
+     "split_plan": {
+      "chunk_size": 256,
+      "num_splits": 64,
+      "block_size": 256,
+      "block_table_len": 64
+     },
+     "skipped_over_context": [],
+     "rows": [
+      {
+       "tokens": 8580,
+       "query_block": 1952,
+       "requested_block": null,
+       "envelope_lifted": false,
+       "effective_budget_bytes": 536870912,
+       "resident_bytes": 3087053368,
+       "peak_scratch_bytes": 2124354660,
+       "retained_scratch_bytes": 2124354660,
+       "score_tile_bytes": 535941120,
+       "dense_score_bytes": 2355724800,
+       "non_attention_scratch_bytes": 1588413540,
+       "linear_bytes_per_token": 185129.78321678322,
+       "peak_total_bytes": 5211408028,
+       "prefill_seconds": 7.399703184763591,
+       "prefill_seconds_runs": [
+        7.347598314285278,
+        7.415748596191406,
+        7.435762643814087
+       ],
+       "prefill_seconds_pass2": 7.471384445826213,
+       "prefill_seconds_runs_pass2": [
+        7.4753313064575195,
+        7.467770576477051,
+        7.471051454544067
+       ],
+       "pass_ratio": 0.9904,
+       "prefill_seconds_pooled": 7.435543815294902,
+       "prefill_runs_pooled": 6,
+       "best_query_block": 1952,
+       "vs_best_shape": 1.0
+      },
+      {
+       "tokens": 16384,
+       "query_block": 1024,
+       "requested_block": null,
+       "envelope_lifted": false,
+       "effective_budget_bytes": 536870912,
+       "resident_bytes": 3087053368,
+       "peak_scratch_bytes": 3569785732,
+       "retained_scratch_bytes": 3569785732,
+       "score_tile_bytes": 536870912,
+       "dense_score_bytes": 8589934592,
+       "non_attention_scratch_bytes": 3032914820,
+       "linear_bytes_per_token": 185114.42993164062,
+       "peak_total_bytes": 6656839100,
+       "prefill_seconds": 16.722062985102337,
+       "prefill_seconds_runs": [
+        16.727898597717285,
+        16.69874930381775,
+        16.739541053771973
+       ],
+       "prefill_seconds_pass2": 16.78121566772461,
+       "prefill_seconds_runs_pass2": [
+        16.799222230911255,
+        16.751060962677002,
+        16.79336380958557
+       ],
+       "pass_ratio": 0.9965,
+       "prefill_seconds_pooled": 16.75163932641347,
+       "prefill_runs_pooled": 6,
+       "best_query_block": 1024,
+       "vs_best_shape": 1.0
+      }
+     ],
+     "label": "512 MiB",
+     "pass_index": 0,
+     "fitted_linear_bytes_per_token": 185097.5499743722
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,59 @@
+{
+  "date": "2026-09-27",
+  "platform": "gfx1151",
+  "gpu": "AMD Radeon 8060S Graphics",
+  "model": "gemma-4-26B-A4B-it UD-Q4_K_XL",
+  "artifact": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+  "artifact_head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+  "commit": "9402558816ad80c8127af3513b2f5d12973fb67d",
+  "status": "baseline",
+  "protocol": {
+    "llama_server": "~/llama.cpp/llama.cpp-hip @ 17252c769, -ngl 99 -fa on, bf16 KV, --no-cache-prompt --fit off, temperature 0 top_k 1",
+    "hipengine": "scripts/gemma4_campaign_bench.py, greedy, bf16 KV, execution profile default",
+    "prompt": "both engines receive the same prompt ids from exact_prompt_ids; llama.cpp's own tokenizer round-trips them (text_probe.llama_tokens == prompt_tokens at both lengths), so the two are scored on identical input",
+    "serialization": "the two engines were measured in separate GPU-exclusive runs, never concurrently"
+  },
+  "rows": {
+    "512/128": {
+      "prompt_tokens": 512,
+      "output_tokens": 128,
+      "hipengine": {
+        "prefill_tps": 257.20394194706415,
+        "decode_tps": 21.058700854303275,
+        "prefill_s": 1.9906382309854962
+      },
+      "llamacpp": {
+        "prefill_tps": 909.2830338796726,
+        "decode_tps": 36.028327911117266,
+        "prefill_s": 0.563081
+      },
+      "prefill_gap": 3.5352608789596807,
+      "decode_gap": 1.7108523531618998
+    },
+    "1024/128": {
+      "prompt_tokens": 1024,
+      "output_tokens": 128,
+      "hipengine": {
+        "prefill_tps": 229.98500073174742,
+        "decode_tps": 19.95155717668046,
+        "prefill_s": 4.452464276982937
+      },
+      "llamacpp": {
+        "prefill_tps": 1183.1147343999853,
+        "decode_tps": 33.664589358278704,
+        "prefill_s": 0.865512
+      },
+      "prefill_gap": 5.144312588367275,
+      "decode_gap": 1.6873163863934464
+    }
+  },
+  "findings": [
+    "The objective's premise that prefill is about 30x off llama.cpp is out of date on this platform: the measured gap is 3.54x at 512/128 and 5.14x at 1024/128. The int8 expert gate/up route becoming the default is part of what closed it - this run reports 257.2 tok/s at 512/128 against the 154.3 tok/s the campaign changelog recorded for this same box before that change.",
+    "The gap widens with prompt length, and it widens from opposite directions: hipEngine falls from 257.2 to 230.0 tok/s going from 512 to 1024 prompt tokens while llama.cpp rises from 909.3 to 1183.1. A fixed per-prefill cost amortising over more tokens explains llama.cpp rising; hipEngine falling points at work that grows with length, which is the campaign's first open item - the 5 global layers at head_dim 512 have no tiled kernel, so past the window later blocks fall back to the slow one.",
+    "Decode is flat across both lengths and both engines, at 21.06/19.95 for hipEngine against 36.03/33.66 for llama.cpp. The objective's 2x decode target (about 42 tok/s) is therefore above llama.cpp's own number here, not merely a match to it."
+  ],
+  "limits": [
+    "One box, one artifact, one prompt corpus (the campaign's exact-token chain). These are baselines for driving the next change, not promotion evidence.",
+    "The peak device memory hipEngine holds is 24.46 GB. The gfx1100 branch's stride change (e202b4080, 32.35 -> 23.58 GB) is not in this branch."
+  ]
+}

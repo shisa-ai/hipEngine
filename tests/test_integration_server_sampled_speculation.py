@@ -173,13 +173,17 @@ def test_logprob_requests_preserve_operator_mtp_rollback(monkeypatch):
     try:
         with TestClient(create_app(cfg, llm=llm)) as client:
             assert client.post('/v1/hipengine/speculative_mtp/rollback').status_code == 200
+            # An explicit ``speculative_mtp`` request is refused with the typed
+            # rollback reason rather than silently served by the AR path; only
+            # an automatic request keeps the reported AR fallback.
             response = client.post('/v1/completions', json=dict(
                 model='fake-model', prompt='one', max_tokens=12, temperature=.8,
                 top_k=2, logprobs=3, seed=41, speculative_mtp=True))
-            assert response.status_code == 200, response.text
-            assert llm.ar_calls and not llm.speculative_calls
+            assert response.status_code == 503, response.text
+            detail = response.json()['error']['hipengine']['speculative_mtp']
+            assert detail['reason'] == 'mtp_operator_rollback'
+            assert not llm.ar_calls and not llm.speculative_calls
             assert not any(call[0] == 'verify' for call in target.calls)
-            assert response.json()['hipengine']['speculative_mtp']['decision_reason'] == 'mtp_operator_rollback'
     finally:
         llm.api.close()
         api.close()

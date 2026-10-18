@@ -1,0 +1,108 @@
+{
+  "schema": "hipengine.benchmark/1",
+  "kind": "yue2_ar_paired_forward",
+  "created": "2026-10-18",
+  "revision": "9b1e0fc419ba1450225cc52a64b97763f2d81873",
+  "worktree": "paired CFG branches in one pass of two-row GEMV launches",
+  "device": {
+    "backend": "hip_gfx1100",
+    "arch": "gfx1100",
+    "gpu": "AMD Radeon Pro W7900",
+    "gpus_present": [
+      "AMD Radeon Pro W7900",
+      "AMD Radeon RX 7900 XTX"
+    ],
+    "host": "epyc",
+    "peak_bandwidth_gb_s": 864.0
+  },
+  "model": {
+    "checkpoint": "m-a-p/YuE2-3B",
+    "revision": "29b3558",
+    "vae": "m-a-p/YuE2-Vae@9a94e1d",
+    "quant": "bf16",
+    "branches": 2,
+    "ar_context": 16000
+  },
+  "claim": {
+    "what": "The two CFG branches share every projection weight, so one two-row launch per projection replaces two one-row launches. Each row keeps the single-row kernel's K traversal and local-256 reduction order, so the change is arithmetic-neutral: the AR step and the generated audio are bit-identical to the serial path.",
+    "not_claimed": "No reference (torch) arm exists on this host, so this is an absolute gfx1100 measurement and a serial-versus-paired ratio, not a ratio against the upstream implementation."
+  },
+  "kernel_ab": {
+    "protocol": "per-row bit-identity against the single-row kernel on the production shapes, plus an FP64 outer check; rows 1, 2 and 3 (odd row count runs the second block with one row)",
+    "gate": "tests/test_unit_yue2_ar_gemv_rowtile2.py",
+    "gate_result": "15 passed",
+    "new_kernels": [
+      "hipengine_dense_gemv_out_bf16_rowtile2",
+      "hipengine_dense_dual_gemv_out_bf16_rowtile2"
+    ],
+    "note": "A separate per-kernel microbenchmark was discarded: at these matrix sizes the weight matrix stays in Navi31's Infinity Cache across repetitions, so its GB/s figures (1.3-3.0 TB/s) describe cache bandwidth and not the 2.8 GB-per-branch weight stream the runtime actually pulls from HBM. Only the end-to-end runtime timings below are reported."
+  },
+  "step_profile": {
+    "protocol": "Yue2ArRuntime(branches=2) on the song pipeline's resident 16000-token context, mandarin-off-s1234 prefixes, 900 warm steps to reach product depth, then 150 timed steps with a device synchronize after the head, after the sampler and after the forward so each segment is attributed without queue backpressure",
+    "command": "uv run python scripts/yue2_ar_step_profile.py --tokens 150 --depth 900 --sync [--paired]",
+    "ctx_start": 1000,
+    "ctx_end": 1150,
+    "serial": {
+      "step_ms": 37.993,
+      "head_ms": 1.079,
+      "sampler_ms": 0.814,
+      "forward_ms": 36.1
+    },
+    "paired": {
+      "step_ms": 32.082,
+      "head_ms": 1.077,
+      "sampler_ms": 0.813,
+      "forward_ms": 30.224
+    },
+    "speedup": {
+      "step": 1.18,
+      "forward": 1.19
+    },
+    "identity": {
+      "steps": 12,
+      "warm_steps": 900,
+      "rows_compared": "logits and both branch hidden rows, every step",
+      "mismatches": 0,
+      "worst_abs_delta": 0.0
+    },
+    "context_start": 998,
+    "context_end": 1147
+  },
+  "depth_scan": {
+    "protocol": "paired forward only, 150 timed steps at each depth, synchronize per segment",
+    "command": "uv run python scripts/yue2_ar_step_profile.py --tokens 150 --depth {0,900} --sync --paired",
+    "forward_ms_at_context_98": 12.177,
+    "forward_ms_at_context_998": 30.224,
+    "marginal_ms_per_900_ctx": 18.047,
+    "finding": "The fixed part of a paired forward is 12.18 ms; the remaining 18.0 ms at product depth is span attention, which is 60% of the forward there and grows linearly in context. The projection GEMVs are no longer the dominant term at depth."
+  },
+  "product_path": {
+    "protocol": "one live request through hipengine.LLM.generate() with the registered yue2 plugin (cot=off, seed 20260916, 32 ODE steps, tiled decoder, 1862 latent frames / 74.479 s of audio), then a repeat in the same process",
+    "before": {
+      "e2e_seconds": 90.36,
+      "rtf": 1.21,
+      "ar_seconds": 69.56,
+      "ar_tok_s": 26.8,
+      "nar_seconds": 12.56,
+      "vae_seconds": 8.22
+    },
+    "after": {
+      "e2e_seconds": 79.598,
+      "rtf": 1.069,
+      "ar_seconds": 58.695,
+      "ar_tok_s": 31.74,
+      "nar_seconds": 12.63,
+      "vae_seconds": 8.272
+    },
+    "repeat_bit_identical": true,
+    "audio_identity": "02dda95062bf9c1c00e433cedcba9ba385432f554c16db48fe25fc333526ab14",
+    "audio_identity_unchanged_from": "the gfx1100 qualification run at 9b1e0fc41",
+    "torch_imported": false
+  },
+  "gates_rerun": {
+    "unit": "tests/test_unit_yue2_ar_gemv_rowtile2.py + tests/test_unit_yue2_ar_runtime.py + tests/test_unit_yue2_session.py: 40 passed",
+    "session_gate": "3/3 cases PASS, teacher-forced agreement identical to the committed gfx1100 artifact (ABC 0.991 / 0.998, semantic 0.980 / 0.969 / 0.967)",
+    "product": "one live request plus an in-process repeat, bit-identical audio identity",
+    "not_rerun": "the 12-case end-to-end fixture gate and the 18-case AR replay; both were run at 9b1e0fc41 and this change is bit-identical to that revision's step arithmetic"
+  }
+}

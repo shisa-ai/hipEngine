@@ -5,6 +5,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from hipengine.generation.engine_loop import GenerationExecutionFailed
+
 from hipengine.generation.engine_loop import EngineLoopConfig, SubmitPollTextGenerator
 from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
 from hipengine.generation.registry import GenerationRequest
@@ -206,7 +208,13 @@ def test_thinking_close_must_also_satisfy_output_grammar(resident, allow_close):
         if allow_close:
             assert owner.generate_detailed(request())[0].generated_token_ids == (2, 2, 3, 4, 5, 9)
         else:
-            with pytest.raises(ValueError, match='thinking close token violates output grammar'):
+            # The engine loop reports an uncontained runner error to the failed
+            # request's caller as GenerationExecutionFailed, keeping the cause
+            # type and message; the bare model generator raises it unchanged.
+            expected = GenerationExecutionFailed if resident else ValueError
+            with pytest.raises(expected, match='thinking close token violates output grammar') as caught:
                 owner.generate_detailed(request())
+            if resident:
+                assert caught.value.cause_type == 'ValueError'
     finally:
         owner.close()

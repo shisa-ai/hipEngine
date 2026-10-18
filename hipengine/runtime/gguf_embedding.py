@@ -26,8 +26,9 @@ class GGUFEmbeddingDispatch:
     abi: str
 
 
-_RAW_EMBEDDING_QUANTS = frozenset(
-    {"gguf_q4_k", "gguf_q5_k", "gguf_q6_k", "gguf_q8_0"}
+from hipengine.loading.qwen35_gguf_consumer_surface import (
+    RAW_EMBEDDING_QUANTS as _RAW_EMBEDDING_QUANTS,
+    resolve_embedding_consumer_contract,
 )
 
 
@@ -36,24 +37,11 @@ def resolve_gguf_embedding_dispatch(
     *,
     output_dtype: str = GGUF_EMBEDDING_OUTPUT_BF16,
     backend: str | None = None,
+    rows: int = 1,
 ) -> GGUFEmbeddingDispatch:
     resolved_backend = backend or getattr(weight, "backend", "hip_gfx1100")
-    if output_dtype != GGUF_EMBEDDING_OUTPUT_BF16:
-        raise ValueError(f"unsupported GGUF embedding output dtype {output_dtype!r}")
-    if weight.spec.layout == LAYOUT_RAW_GGUF and weight.spec.quant_key in _RAW_EMBEDDING_QUANTS:
-        return GGUFEmbeddingDispatch(
-            KernelKey(resolved_backend, "embedding", weight.spec.quant_key, "lookup_bf16_out"),
-            "raw",
-        )
-    if weight.spec.layout == LAYOUT_DENSE_BF16:
-        return GGUFEmbeddingDispatch(
-            KernelKey(resolved_backend, "embedding", "bf16", "lookup_bf16_out"),
-            "dense_bf16",
-        )
-    raise ValueError(
-        "unsupported GGUF embedding dispatch: "
-        f"layout={weight.spec.layout!r}, quant={weight.spec.quant_key!r}, output={output_dtype!r}"
-    )
+    contract = resolve_embedding_consumer_contract(weight.spec.layout, weight.spec.quant_key, output_dtype, rows=rows)
+    return GGUFEmbeddingDispatch(contract.key(resolved_backend), contract.abi)
 
 
 def launch_gguf_embedding(
@@ -71,10 +59,12 @@ def launch_gguf_embedding(
     libraries: Mapping[str, ctypes.CDLL] | None = None,
     runtime=None,
 ) -> None:
+    # Shared owner refuses unsupported rows before registry/device work.
     dispatch = resolve_gguf_embedding_dispatch(
         weight,
         output_dtype=output_dtype,
         backend=backend,
+        rows=rows,
     )
     _ensure_embedding_kernel_registered(dispatch.key)
     fn = resolve(
@@ -105,6 +95,8 @@ def _launch_raw(fn, weight, token_ids_ptr, out_ptr, rows, hidden_size, vocab_siz
 
 
 def _launch_dense_bf16(fn, weight, token_ids_ptr, out_ptr, rows, hidden_size, vocab_size, kwargs) -> None:
+    if int(rows) != 1:
+        raise ValueError("dense BF16 embedding requires rows=1")
     fn(
         weight.allocation("raw").tensor.ptr,
         token_ids_ptr,

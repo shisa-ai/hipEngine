@@ -23,7 +23,7 @@ from hipengine.execution_profiles import (
     manifest_sha256,
     validate_variant_manifest,
 )
-from scripts.quant_quality.metrics import per_row_metrics
+from scripts.quant_quality.metrics import per_row_metrics, summarize_diagnostics
 
 
 EXECUTION_PROFILE_EVALUATION_KIND = "hipengine_execution_profile_evaluation"
@@ -735,7 +735,11 @@ def _metric_vectors(
         "reference_teacher_nll": canonical["reference_teacher_nll_nats"],
         "candidate_teacher_nll": canonical["teacher_nll_nats"],
         "teacher_delta_p": canonical["delta_p"],
-        "strict_margin": np.empty(row_count, dtype=np.float64),
+        "strict_margin": canonical["reference_margin_logit"],
+        "reference_margin_logit": canonical["reference_margin_logit"],
+        "total_variation": canonical["total_variation"],
+        "entropy_delta_nats": canonical["entropy_delta_nats"],
+        "max_probability_delta": canonical["max_probability_delta"],
         "strict_top1_candidate_rank": np.empty(row_count, dtype=np.int64),
         "strict_top1_token_id": np.argmax(reference, axis=1).astype(np.int64),
         "candidate_top1_token_id": np.argmax(candidate, axis=1).astype(np.int64),
@@ -745,19 +749,16 @@ def _metric_vectors(
         strict_row = np.asarray(reference[index], dtype=np.float64)
         candidate_row = np.asarray(candidate[index], dtype=np.float64)
         strict_top1 = int(np.argmax(strict_row))
-        if strict_row.size == 1:
-            # A one-token vocabulary has no runner-up; keep retained JSON finite.
-            result["strict_margin"][index] = 0.0
-        else:
-            top_two = np.partition(strict_row, -2)[-2:]
-            result["strict_margin"][index] = float(top_two.max() - top_two.min())
         result["strict_top1_candidate_rank"][index] = int(
             1 + np.count_nonzero(candidate_row > candidate_row[strict_top1])
         )
     return result
 
 
-def _summary(vectors: Mapping[str, np.ndarray], indices: np.ndarray) -> dict[str, Any]:
+def _summary(
+    vectors: Mapping[str, np.ndarray], indices: np.ndarray,
+    rows: Sequence[RowDescriptor],
+) -> dict[str, Any]:
     kl = vectors["kl"][indices]
     top1 = vectors["top1_equal"][indices]
     overlap = vectors["topk_overlap"][indices]
@@ -798,6 +799,10 @@ def _summary(vectors: Mapping[str, np.ndarray], indices: np.ndarray) -> dict[str
         "flip_eligible_share": float(flip_eligible.mean()),
         "top1_mismatches_flip_eligible": int((~top1 & flip_eligible).sum()),
         "top1_mismatches_outside_flip_eligible": int((~top1 & ~flip_eligible).sum()),
+        "diagnostics": summarize_diagnostics(
+            {key: values[indices] for key, values in vectors.items()},
+            sequence_count=len({(rows[int(i)].scenario_id, rows[int(i)].request_id) for i in indices}),
+        ),
     }
 
 
@@ -888,7 +893,7 @@ def compare_profile_logits(
         top_k=effective_top_k,
     )
     all_indices = np.arange(len(row_tuple), dtype=np.int64)
-    overall = _summary(vectors, all_indices)
+    overall = _summary(vectors, all_indices, row_tuple)
     by_scope: dict[str, dict[str, Any]] = {}
     scope_failures: list[dict[str, str]] = []
     scope_kl_advisories: list[dict[str, str]] = []
@@ -900,7 +905,7 @@ def compare_profile_logits(
                 [index for index, row in enumerate(row_tuple) if getattr(row, dimension) == value],
                 dtype=np.int64,
             )
-            summary = _summary(vectors, indices)
+            summary = _summary(vectors, indices, row_tuple)
             # The KL limits bind on the complete row set. A scope binds on its
             # top-1 floor; its KL statistics against the global limits are
             # reported as an advisory for localization.
@@ -1160,8 +1165,8 @@ def compare_bf16_noninferiority(
         top_k=effective_top_k,
     )
     indices = np.arange(len(row_tuple), dtype=np.int64)
-    strict_summary = _summary(strict_vectors, indices)
-    candidate_summary = _summary(candidate_vectors, indices)
+    strict_summary = _summary(strict_vectors, indices, row_tuple)
+    candidate_summary = _summary(candidate_vectors, indices, row_tuple)
     mean_delta = candidate_summary["kl_mean"] - strict_summary["kl_mean"]
     top1_delta = candidate_summary["top1_agreement"] - strict_summary["top1_agreement"]
     def scoped(dimension: str) -> tuple[dict[str, Any], bool]:
@@ -1176,8 +1181,8 @@ def compare_bf16_noninferiority(
                 ],
                 dtype=np.int64,
             )
-            strict_group = _summary(strict_vectors, selected)
-            candidate_group = _summary(candidate_vectors, selected)
+            strict_group = _summary(strict_vectors, selected, row_tuple)
+            candidate_group = _summary(candidate_vectors, selected, row_tuple)
             group_mean_delta = candidate_group["kl_mean"] - strict_group["kl_mean"]
             group_top1_delta = (
                 candidate_group["top1_agreement"] - strict_group["top1_agreement"]

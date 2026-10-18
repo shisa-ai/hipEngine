@@ -158,8 +158,8 @@ def test_queue_does_not_coalesce_hard_and_hint_policies():
     from hipengine import SamplingParams
     from hipengine.server.api import _GenerationBatcher, _QueuedGeneration
     batcher = _GenerationBatcher(engine_factory=lambda: None, batch_window_seconds=0)
-    hard = _QueuedGeneration(('prompt',), SamplingParams(), route='speculative_mtp', mtp_thinking_policy='hard')
-    hint = _QueuedGeneration(('prompt',), SamplingParams(), route='speculative_mtp', mtp_thinking_policy='hint')
+    hard = _QueuedGeneration(('prompt',), SamplingParams(), route='speculative_mtp', thinking_policy='hard')
+    hint = _QueuedGeneration(('prompt',), SamplingParams(), route='speculative_mtp', thinking_policy='hint')
     assert batcher._group_key(hard) != batcher._group_key(hint)
 
 

@@ -1,0 +1,10 @@
+{
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "seed": 7,
+  "positions": 65,
+  "kl_mean": 3.591505706556221e-05,
+  "kl_max": 0.0008820512720008829,
+  "top1_agreement": 1.0,
+  "candidate_finite": true,
+  "gate_pass": true
+}

@@ -67,6 +67,7 @@ class _AllocRecorder:
 
 def _make_owner(recorder: _AllocRecorder) -> gguf_runner.Qwen35GGUFResidentSession:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.runner = SimpleNamespace(weights=None)
     owner.scratch = None
     owner._device_kv_layout = None
@@ -268,6 +269,7 @@ def test_slot_views_delegate_packed_workspace_to_batch_owner(monkeypatch) -> Non
 
     owner._ensure_packed_verify_workspace = MethodType(owner_ensure, owner)
     view = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    view.use_iq_dense_mmq = False
     view.runner = owner.runner
     view.scratch = None
     view._device_kv_layout = None
@@ -296,6 +298,7 @@ def test_slot_views_delegate_packed_workspace_to_batch_owner(monkeypatch) -> Non
 
 def test_slot_view_graph_invalidation_delegates_to_batch_owner() -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._resident_batch_owner = None
     owner._resident_slot_views = []
     owner._device_kv_graph_handles = {}
@@ -304,6 +307,7 @@ def test_slot_view_graph_invalidation_delegates_to_batch_owner() -> None:
     owner._decode_graphs = [graph]
 
     view = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    view.use_iq_dense_mmq = False
     view._resident_batch_owner = owner
 
     assert view._invalidate_live_packed_decode_graphs() == 1
@@ -314,6 +318,7 @@ def test_packed_prefill_invalidates_graph_before_flush_and_slot_reuse() -> None:
     """A replay graph must not survive a prefill overwrite of its private slots."""
 
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._packed_decode_state_dirty = True
     owner._resident_batch_owner = None
     owner._device_kv_graph_handles = {}
@@ -423,6 +428,7 @@ def _shared_view_of(owner: gguf_runner.Qwen35GGUFResidentSession) -> (
     """A slot view: same workspace objects, different session identity."""
 
     view = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    view.use_iq_dense_mmq = False
     view._resident_batch_owner = owner
     view._packed_ar_attention_workspace = owner._packed_ar_attention_workspace
     view._packed_verify_scratch = owner._packed_verify_scratch
@@ -690,6 +696,7 @@ def test_ensure_packed_workspace_upgrades_unleased_for_plane_consumers(
         return real_ensure(self, **kwargs)
 
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._packed_verify_state = SimpleNamespace(
         slot_count=1,
         max_sequence_length=4096,
@@ -795,6 +802,8 @@ def _fake_kv_pool(layout, pages):
     )
     return SimpleNamespace(
         workspace_pages=lambda key: tuple(pages),
+        reserve_private_workspace=lambda nbytes: object(),
+        release_private_workspace=lambda token: None,
         backing=backing,
     )
 
@@ -891,6 +900,7 @@ def test_real_ensure_upgrades_unleased_for_plane_consumers(monkeypatch) -> None:
     pool = _fake_kv_pool(layout, pages=(0, 1, 2, 3))
 
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.__dict__.update(
         runner=_allocator_fake_runner(),
         runtime=SimpleNamespace(memset=lambda ptr, value, nbytes: None),
@@ -938,3 +948,654 @@ def test_real_ensure_upgrades_unleased_for_plane_consumers(monkeypatch) -> None:
     assert upgraded.kv_backing_kind == "pool_lease"
     assert upgraded.page_ids == (0, 1, 2, 3)
     assert upgraded.full_key_caches[1] is pool.backing.full_key_caches[1]
+
+
+# ---------------------------------------------------------------------------
+# Workspace lease sizing vs the union geometry (2026-09-17)
+#
+# The lease is taken once at pool creation, before any packed layout exists,
+# while the workspace is allocated for the union geometry - which unions the
+# realized layout slots with the serving capacity. A one-slot lease therefore
+# went short on the first packed prefill: 32 leased pages against a 4-slot x
+# 9-page workspace at an 8192-token session, and 4 against 16 at 1024, where
+# it failed during startup warmup.
+# ---------------------------------------------------------------------------
+
+
+def test_packed_verify_lease_slot_ceiling_mirrors_union_capacity() -> None:
+    """The lease slot term must match the union geometry's capacity term."""
+
+    ceiling = gguf_runner.packed_verify_lease_slot_ceiling
+
+    assert ceiling(None) == gguf_runner._PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
+    assert ceiling("not-a-number") == gguf_runner._PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
+    assert ceiling(0) == 1
+    assert ceiling(1) == 1
+    assert ceiling(9) == 9
+
+
+def test_union_geometry_never_exceeds_the_lease_slot_ceiling() -> None:
+    """A single-slot request still packs the full serving capacity."""
+
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.max_batch_size = 4
+    owner._packed_verify_state = None
+    owner._packed_verify_scratch = None
+    owner._packed_verify_prefill_row_cap = lambda: 8
+
+    union_slots, _rows, _max_seq, _segments = owner._packed_verify_union_geometry(
+        slot_count=1,
+        rows=8,
+        max_sequence_length=1024,
+    )
+
+    # A one-slot request opens the full capacity, so a lease sized for one
+    # slot cannot cover the workspace the allocation asks for.
+    assert union_slots == 4
+    assert union_slots == gguf_runner.packed_verify_lease_slot_ceiling(4)
+    assert union_slots > 1
+
+
+def test_long_context_union_sizes_kv_slots_to_live_demand() -> None:
+    """Past the short-context floor the KV slot axis follows the live request.
+
+    A C4 runner serving one long-context request must not open the four-slot
+    resident capacity: the per-slot KV planes dominate the workspace, so idle
+    scheduler capacity only multiplies the allocation.
+    """
+
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.max_batch_size = 4
+    owner._packed_verify_state = None
+    owner._packed_verify_scratch = None
+    owner._packed_verify_prefill_row_cap = lambda: 8
+
+    union_slots, _rows, union_max_seq, union_segments = (
+        owner._packed_verify_union_geometry(
+            slot_count=1,
+            rows=8,
+            max_sequence_length=12544,
+        )
+    )
+    assert union_slots == 1
+    assert union_max_seq == 12544
+    # The GDN scratch keeps the capacity floor; it is cheap and must stay
+    # wide enough for any concurrent slot.
+    assert union_segments == 4
+
+
+def test_wide_short_state_does_not_bloat_a_narrow_long_request(monkeypatch) -> None:
+    """A wide short-context shape must not carry into a narrow long request."""
+
+    recorder = _AllocRecorder(monkeypatch)
+    recorder.install()
+    owner = _make_owner(recorder)
+    runtime = SimpleNamespace()
+
+    # A short-context round opens the full C4 capacity floor.
+    owner._ensure_packed_verify_workspace(
+        slot_count=4, rows=4, max_sequence_length=1024, runtime=runtime
+    )
+    assert int(recorder.state_allocations[0].slot_count) == 4
+
+    # The long-context round that forces a resize must size to one live slot,
+    # not retain the four-slot short-context width (a 4x KV bloat).
+    state, _scratch = owner._ensure_packed_verify_workspace(
+        slot_count=1, rows=8, max_sequence_length=12544, runtime=runtime
+    )
+    assert len(recorder.state_allocations) == 2
+    assert int(state.slot_count) == 1
+    assert int(state.max_sequence_length) == 12544
+
+
+def test_long_narrow_state_is_reused_by_smaller_shapes(monkeypatch) -> None:
+    """A later smaller request reuses the long narrow workspace."""
+
+    recorder = _AllocRecorder(monkeypatch)
+    recorder.install()
+    owner = _make_owner(recorder)
+    runtime = SimpleNamespace()
+
+    long_state, long_scratch = owner._ensure_packed_verify_workspace(
+        slot_count=1, rows=8, max_sequence_length=12544, runtime=runtime
+    )
+    reused_state, reused_scratch = owner._ensure_packed_verify_workspace(
+        slot_count=1, rows=4, max_sequence_length=1024, runtime=runtime
+    )
+    assert reused_state is long_state
+    assert reused_scratch is long_scratch
+    assert len(recorder.state_allocations) == 1
+    assert len(recorder.scratch_allocations) == 1
+
+
+def test_wide_to_narrow_long_resize_is_lifecycle_safe(monkeypatch) -> None:
+    """Shrinking to demand still invalidates graphs and scatters state first."""
+
+    recorder = _AllocRecorder(monkeypatch)
+    recorder.install()
+    owner = _make_owner(recorder)
+    runtime = SimpleNamespace()
+    events: list[str] = []
+
+    owner._ensure_packed_verify_workspace(
+        slot_count=4, rows=4, max_sequence_length=1024, runtime=runtime
+    )
+    graph = SimpleNamespace(closed=False)
+    graph.close = lambda: (events.append("graph-close"), setattr(graph, "closed", True))
+    owner._decode_graphs.append(graph)
+    owner._packed_decode_state_dirty = True
+
+    def fake_flush(self, *, stream=0):
+        events.append("flush")
+        self._packed_decode_state_dirty = False
+        return True
+
+    owner.flush_packed_decode_state = MethodType(fake_flush, owner)
+    real_free = owner._free_packed_verify_workspace
+
+    def recording_free(self, *, runtime):
+        events.append("free")
+        real_free(runtime=runtime)
+
+    owner._free_packed_verify_workspace = MethodType(recording_free, owner)
+
+    state, _scratch = owner._ensure_packed_verify_workspace(
+        slot_count=1, rows=8, max_sequence_length=12544, runtime=runtime
+    )
+
+    assert events == ["graph-close", "flush", "free"]
+    assert graph.closed is True
+    assert int(state.slot_count) == 1
+
+
+def test_lease_pages_helper_covers_every_capacity_bounded_geometry() -> None:
+    """The eager floor is bounded; larger union geometry uses private backing."""
+
+    for capacity in (1, 2, 4, 8):
+        for max_positions in (256, 512, 1024, 2048, 8192):
+            leased = gguf_runner.packed_verify_workspace_lease_pages(
+                capacity, max_positions
+            )
+
+            owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+            owner.max_batch_size = capacity
+            owner._packed_verify_state = None
+            owner._packed_verify_scratch = None
+            owner._packed_verify_prefill_row_cap = lambda: 8
+
+            # The loop cannot request more slots than its own capacity; an MTP
+            # verify group that packs wider is the documented exception and is
+            # covered by the degradation test below, not by the lease.
+            for slot_count in range(1, capacity + 1):
+                union_slots, _rows, union_max_seq, _segments = (
+                    owner._packed_verify_union_geometry(
+                        slot_count=slot_count,
+                        rows=8,
+                        max_sequence_length=max_positions,
+                    )
+                )
+                needed = union_slots * ((union_max_seq + 255) // 256)
+                # The eager lease is bounded at the short-context floor and
+                # never scales with the admitted context.
+                assert leased == capacity * 4
+                # Within the short-context floor the eager floor covers the
+                # union geometry. Past it, the union sizes the KV slot axis to
+                # the live request and any excess is backed by private KV, so
+                # no upper bound on `needed` is asserted here.
+                if max_positions <= 1024:
+                    assert needed <= leased
+
+
+def test_lease_pages_helper_applies_the_context_floor_and_capacity_term() -> None:
+    """Both terms are load-bearing and neither silently disappears."""
+
+    # 1024-token per-slot floor: a short request context does not shrink below it.
+    assert gguf_runner.packed_verify_workspace_lease_pages(1, 256) == 4
+    assert gguf_runner.packed_verify_workspace_lease_pages(1, 1024) == 4
+    # Longer admission ceilings do not increase eager reservation.
+    assert gguf_runner.packed_verify_workspace_lease_pages(1, 2048) == 4
+    # Capacity scales slots.
+    assert gguf_runner.packed_verify_workspace_lease_pages(4, 2048) == 16
+    # An unusable capacity falls back to the historical floor rather than 0.
+    assert gguf_runner.packed_verify_workspace_lease_pages(None, 1024) == (
+        gguf_runner._PACKED_VERIFY_DEFAULT_SLOT_CAPACITY * 4
+    )
+
+
+def test_short_lease_degrades_to_private_instead_of_failing_closed(
+    monkeypatch,
+) -> None:
+    """A lease too small for the request must not wedge serving.
+
+    The lease is sized once at pool creation from the caps known then, but
+    `_packed_verify_union_geometry` lets a caller pack more slots than the
+    serving capacity (an MTP verify group does exactly this at C1). That used
+    to raise from `allocate`, turning a legitimate geometry into a hard prefill
+    failure. The private branch allocates the identical geometry, so the lease
+    is a fast path and never a correctness dependency.
+    """
+
+    from hipengine.runtime.qwen35_gguf_runner import _GGUFPackedTargetState
+
+    _install_fake_device(monkeypatch)
+    private_calls: list[dict] = []
+    real_chunk = gguf_runner._allocate_qwen35_gguf_kv_chunk
+
+    def recording_chunk(*args, **kwargs):
+        private_calls.append(dict(kwargs))
+        return real_chunk(*args, **kwargs)
+
+    monkeypatch.setattr(
+        gguf_runner, "_allocate_qwen35_gguf_kv_chunk", recording_chunk
+    )
+    runtime = SimpleNamespace(memset=lambda ptr, value, nbytes: None)
+    layout = _int8_kv_layout()
+    # 1 slot x 1024 positions needs 4 pages; the lease holds 2.
+    pool = _fake_kv_pool(layout, pages=(0, 1))
+    runner = _allocator_fake_runner()
+
+    state = _GGUFPackedTargetState.allocate(
+        runner,
+        slot_count=1,
+        max_sequence_length=1024,
+        runtime=runtime,
+        kv_layout=layout,
+        kv_pool=pool,
+        lease_kv_planes=True,
+    )
+
+    assert state.kv_backing_kind == "private"
+    assert len(private_calls) == 1
+    assert private_calls[0]["pages"] == 4
+    # The shortfall is recorded, not silently swallowed: chronic under-leasing
+    # is a perf defect that must stay visible.
+    shortfalls = getattr(runner, "_packed_workspace_lease_shortfalls", [])
+    assert len(shortfalls) == 1
+    assert shortfalls[0]["leased_pages"] == 2
+    assert shortfalls[0]["needed_pages"] == 4
+
+
+def test_sufficient_lease_still_prefers_the_arena(monkeypatch) -> None:
+    """The degradation path must not cost the arena win in the normal case."""
+
+    from hipengine.runtime.qwen35_gguf_runner import _GGUFPackedTargetState
+
+    _install_fake_device(monkeypatch)
+    monkeypatch.setattr(
+        gguf_runner,
+        "_allocate_qwen35_gguf_kv_chunk",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("a sufficient lease must not fall back to private")
+        ),
+    )
+    runtime = SimpleNamespace(memset=lambda ptr, value, nbytes: None)
+    layout = _int8_kv_layout()
+    runner = _allocator_fake_runner()
+
+    state = _GGUFPackedTargetState.allocate(
+        runner,
+        slot_count=1,
+        max_sequence_length=1024,
+        runtime=runtime,
+        kv_layout=layout,
+        kv_pool=_fake_kv_pool(layout, pages=(4, 5, 6, 7)),
+        lease_kv_planes=True,
+    )
+
+    assert state.kv_backing_kind == "pool_lease"
+    assert getattr(runner, "_packed_workspace_lease_shortfalls", []) == []
+
+
+def test_pool_pressure_callbacks_tolerate_a_session_without_a_batch_owner() -> None:
+    """A pool-owning session has no ``_resident_batch_owner`` and must not raise.
+
+    The attribute is only ever assigned onto the per-slot views a resident batch
+    owner creates. A session that owns its own device KV pool never has it, so
+    the grow/pressure callbacks have to read it defensively. They did not, and a
+    prefix-cache run raised ``AttributeError: 'Qwen35GGUFResidentSession' object
+    has no attribute '_resident_batch_owner'`` from
+    ``GlobalDeviceKVPool._ensure_free_pages`` the moment retained snapshots
+    pinned enough pages to trigger pressure.
+    """
+
+    session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    assert not hasattr(session, "_resident_batch_owner")
+
+    before_grow = lambda: (  # noqa: E731 - mirrors the callback shape under test
+        owner._invalidate_live_packed_decode_graphs()
+        if (owner := getattr(session, "_resident_batch_owner", None)) is not None
+        else None
+    )
+    assert before_grow() is None
+    # Pressure never reads ``_resident_batch_owner``: it resolves the published
+    # prefix-cache owner instead (see the published-owner contract below).
+    assert session._on_device_kv_pool_pressure(8) is None
+
+    # With an owner attached the grow callback delegates.
+    calls: list[object] = []
+    session._resident_batch_owner = SimpleNamespace(
+        _invalidate_live_packed_decode_graphs=lambda: calls.append("invalidate"),
+    )
+    before_grow()
+    assert calls == ["invalidate"]
+
+
+def test_pool_pressure_reclaims_through_the_published_prefix_cache_owner() -> None:
+    """Pool pressure must reach the owner of the retained prefix snapshots.
+
+    The device KV pool is created by a resident session, but the retained
+    snapshots that pressure may reclaim live on the generation runner that owns
+    the session. ``_resident_batch_owner`` cannot serve that callback: on a
+    session it names the *session* holding shared session-level resources, and a
+    session has no prefix cache. Resolving the handler through it raised
+    ``AttributeError`` the first time a request needed more pages than the pool
+    floor held, and a fatal execution failure closes the engine for every later
+    request.
+    """
+
+    session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    # A session-shaped batch owner owns shared buffers, not the prefix cache.
+    session._resident_batch_owner = SimpleNamespace(
+        _invalidate_live_packed_decode_graphs=lambda: None,
+    )
+    assert session._on_device_kv_pool_pressure(8) is None
+
+    calls: list[int] = []
+    session._kv_pool_pressure_owner = SimpleNamespace(
+        evict_prefix_cache_for_pressure=lambda required: calls.append(required) or 4,
+    )
+    assert session._on_device_kv_pool_pressure(8) == 4
+    assert calls == [8]
+
+
+def test_bound_blocks_validate_against_pool_capacity_after_growth() -> None:
+    """A grown pool's pages must bind, not fail against the first chunk's count.
+
+    The global pool grows by appending backing chunks while keeping page ids
+    stable and reaching every page through its pointer tables. Validating an
+    allocation against the first chunk's page count rejected any request whose
+    pages landed past that chunk, which is what a retained-snapshot prefix-cache
+    run hits the moment the pool grows.
+    """
+
+    validate = gguf_runner._validate_bound_blocks_against_capacity
+
+    # Pages inside the first chunk, and pages past it, are both in range once
+    # the bound is the pool capacity.
+    validate((0, 1, 2), start_block_id=0, page_capacity=128)
+    validate((126, 127, 200), start_block_id=0, page_capacity=256)
+
+    with pytest.raises(ValueError, match="must contain pages"):
+        validate((), start_block_id=0, page_capacity=128)
+    with pytest.raises(ValueError, match="must be unique"):
+        validate((3, 3), start_block_id=0, page_capacity=128)
+    with pytest.raises(ValueError, match="outside its pool page range"):
+        validate((0, 128), start_block_id=0, page_capacity=128)
+    with pytest.raises(ValueError, match="outside its pool page range"):
+        validate((1,), start_block_id=4, page_capacity=128)
+
+
+@pytest.mark.parametrize("fail_at", [*range(1, 17), None, "budget"])
+def test_private_workspace_budget_and_buffer_lifecycle(monkeypatch, fail_at):
+    from dataclasses import replace
+
+    from hipengine.kvcache.device_global import GlobalDeviceKVPool
+
+    _install_fake_device(monkeypatch)
+    runner = _allocator_fake_runner()
+
+    layout = replace(_int8_kv_layout(), bf16_mirror_layer_indices=(1, 3))
+    page_bytes = gguf_runner._qwen35_gguf_kv_page_bytes(runner.weights.config, layout)
+    pool = GlobalDeviceKVPool(
+        page_bytes=page_bytes, backend_fingerprint="test", generation=1,
+        backing=SimpleNamespace(layout=layout),
+        plane_page_pointers={"key": (100, 200)},
+        pointer_table_pointers={"key": 300}, metadata_descriptor_pointer=400,
+        close_storage=lambda: None, max_pages=2 if fail_at == "budget" else 20,
+    )
+    pool.lease_workspace("qwen35_gguf_packed_execution", 2)
+    live = set()
+    real_malloc = gguf_runner.malloc
+    calls = 0
+
+    def malloc(nbytes, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == fail_at:
+            raise MemoryError("injected allocation failure")
+        buffer = real_malloc(nbytes, **kwargs)
+        live.add(buffer.ptr)
+        return buffer
+
+    monkeypatch.setattr(gguf_runner, "malloc", malloc)
+    monkeypatch.setattr(gguf_runner, "free", lambda buffer, **kwargs: live.remove(buffer.ptr))
+
+    def allocate():
+        return gguf_runner._GGUFPackedTargetState.allocate(
+            runner, slot_count=1, max_sequence_length=1024,
+            runtime=SimpleNamespace(), kv_layout=layout, kv_pool=pool,
+        )
+
+    if fail_at is None:
+        state = allocate()
+        assert state.kv_backing_kind == "private"
+        scratch_bytes = sum(
+            int(buffer.nbytes)
+            for buffer in (*state.layer_conv_states, *state.layer_recurrent_states)
+            if buffer is not None
+        )
+        assert scratch_bytes > 0
+        assert state.resident_charge_token is not None
+        # Both resident consumers of this state are charged: its own scratch
+        # buffers first, then the private KV payload.
+        assert [item.name for item in pool.resident_consumers] == [
+            "kv_arena",
+            "packed_verify_scratch",
+            "private_workspace",
+        ]
+        assert pool.private_workspace_bytes == 4 * page_bytes + scratch_bytes
+        assert pool.accounted_bytes == 6 * page_bytes + scratch_bytes
+        owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+        owner._packed_verify_state = state
+        owner._packed_verify_scratch = None
+        owner._free_packed_verify_workspace(runtime=SimpleNamespace())
+        owner._free_packed_verify_workspace(runtime=SimpleNamespace())
+    else:
+        with pytest.raises(MemoryError, match="budget" if fail_at == "budget" else "injected"):
+            allocate()
+        if fail_at == "budget":
+            # A two-page budget cannot hold the scratch buffers, and the scratch
+            # is priced before they are allocated, so the refusal lands with
+            # nothing allocated at all rather than after four buffers existed.
+            assert calls == 0
+    assert live == set()
+    assert pool.private_workspace_bytes == 0
+    pool.release_workspace("qwen35_gguf_packed_execution")
+    pool.close()
+
+
+def test_private_kv_payload_is_refused_by_name_once_the_scratch_fits(monkeypatch) -> None:
+    """The KV-payload charge is still refused, by name, when the scratch fits.
+
+    This is the same refusal the two-page case used to exercise; pricing the
+    scratch first moved that case earlier, so the payload refusal needs a budget
+    that holds the scratch and not the payload.
+    """
+
+    from dataclasses import replace
+
+    from hipengine.kvcache.device_global import GlobalDeviceKVPool
+    from hipengine.runtime.memory_admission import MemoryAdmissionRefused
+
+    _install_fake_device(monkeypatch)
+    runner = _allocator_fake_runner()
+    layout = replace(_int8_kv_layout(), bf16_mirror_layer_indices=(1, 3))
+    page_bytes = gguf_runner._qwen35_gguf_kv_page_bytes(runner.weights.config, layout)
+    pool = GlobalDeviceKVPool(
+        page_bytes=page_bytes, backend_fingerprint="test", generation=1,
+        backing=SimpleNamespace(layout=layout),
+        plane_page_pointers={"key": (100, 200)},
+        pointer_table_pointers={"key": 300}, metadata_descriptor_pointer=400,
+        close_storage=lambda: None, max_pages=5,
+    )
+    pool.lease_workspace("qwen35_gguf_packed_execution", 2)
+    live = set()
+    calls = 0
+    real_malloc = gguf_runner.malloc
+
+    def malloc(nbytes, **kwargs):
+        nonlocal calls
+        calls += 1
+        buffer = real_malloc(nbytes, **kwargs)
+        live.add(buffer.ptr)
+        return buffer
+
+    monkeypatch.setattr(gguf_runner, "malloc", malloc)
+    monkeypatch.setattr(gguf_runner, "free", lambda buffer, **kwargs: live.remove(buffer.ptr))
+
+    with pytest.raises(MemoryAdmissionRefused) as caught:
+        gguf_runner._GGUFPackedTargetState.allocate(
+            runner, slot_count=1, max_sequence_length=1024,
+            runtime=SimpleNamespace(), kv_layout=layout, kv_pool=pool,
+        )
+
+    refusal = caught.value
+    assert refusal.refused_consumer == "private_workspace"
+    assert "private_workspace" in str(refusal)
+    # The scratch charge fit, so its four buffers exist and are freed with it.
+    assert calls == 4
+    assert live == set()
+    assert pool.private_workspace_bytes == 0
+    pool.release_workspace("qwen35_gguf_packed_execution")
+    pool.close()
+
+
+def test_explicit_pool_budget_rejects_initial_overcommit_without_hip_query():
+    session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    session.defer_kv_allocation = True
+    session.runner = _allocator_fake_runner()
+    session.scratch = SimpleNamespace()
+    session.runtime = SimpleNamespace()
+    session._device_kv_layout = _int8_kv_layout()
+    session.kv_pool_memory_budget_mib = 1
+    with pytest.raises(MemoryError, match="budget"):
+        session.create_global_device_kv_pool(page_capacity=20, generation=1)
+
+
+def test_mtp_verify_width_packs_rows_inside_one_slot() -> None:
+    """Candidate tokens are rows within each target request's slot."""
+
+    layout = gguf_runner._build_gguf_packed_verify_layout(
+        (
+            gguf_runner._GGUFPackedVerifySlotBlock(
+                input_token_ids=(11, 12, 13, 14),
+                start_position=7,
+            ),
+        ),
+        block_size=4,
+    )
+    assert layout.rows == 4
+    assert layout.slot_count == 1
+    assert layout.max_live_count == 11
+    assert gguf_runner.packed_verify_lease_slot_ceiling(1) == layout.slot_count
+
+    four_rows = gguf_runner._build_gguf_packed_verify_layout(
+        tuple(
+            gguf_runner._GGUFPackedVerifySlotBlock(
+                input_token_ids=(11 + slot, 21 + slot, 31 + slot, 41 + slot),
+                start_position=7,
+            )
+            for slot in range(4)
+        ),
+        block_size=4,
+    )
+    assert four_rows.rows == 16
+    assert four_rows.slot_count == 4
+    assert gguf_runner.packed_verify_lease_slot_ceiling(4) == four_rows.slot_count
+
+
+def test_engine_close_releases_the_owner_workspace_before_the_pool(monkeypatch) -> None:
+    """Engine close must free the packed workspace before closing the pool.
+
+    The owner's packed workspace holds a private-workspace reservation in the
+    pool, and ``GlobalDeviceKVPool.close`` refuses to close while one is held.
+    The guarded release is what frees it, so a close that skips the release
+    fails at the pool with "cannot close global device KV pool with private
+    workspace" -- which is what an INT8 MTP server session hit on shutdown
+    (the bench's own artifact write is what surfaced it, after every cell had
+    already run). Reconfigure/resize already release the idle workspace first;
+    close is pinned here to the same order.
+    """
+
+    from dataclasses import replace
+
+    from hipengine.generation import qwen35_gguf as gguf_engine
+    from hipengine.kvcache.device_global import GlobalDeviceKVPool
+
+    _install_fake_device(monkeypatch)
+    layout = replace(_int8_kv_layout(), bf16_mirror_layer_indices=(1, 3))
+    page_bytes = gguf_runner._qwen35_gguf_kv_page_bytes(
+        _allocator_fake_runner().weights.config, layout
+    )
+    pool = GlobalDeviceKVPool(
+        page_bytes=page_bytes,
+        backend_fingerprint="test",
+        generation=1,
+        backing=SimpleNamespace(layout=layout),
+        plane_page_pointers={"key": (100, 200)},
+        pointer_table_pointers={"key": 300},
+        metadata_descriptor_pointer=400,
+        close_storage=lambda: None,
+        max_pages=20,
+    )
+    token = pool.reserve_private_workspace(4 * page_bytes, "packed_verify_scratch")
+    assert pool.private_workspace_bytes == 4 * page_bytes
+    # The refusal below is the one the release has to prevent: without it the
+    # pool is exactly as unclosable as the failed shutdown reported.
+    with pytest.raises(RuntimeError, match="private workspace"):
+        pool.close()
+
+    order: list[str] = []
+
+    class _Owner:
+        def release_idle_packed_workspace(self) -> int:
+            order.append("release_workspace")
+            pool.release_private_workspace(token)
+            return 4 * page_bytes
+
+        def bind_workspace_kv_pool(self, value) -> None:
+            order.append("bind")
+
+        def close(self) -> None:
+            order.append("owner_close")
+
+    runner = object.__new__(gguf_engine.Qwen35GGUFResidentModelRunner)
+    runner._closed = False
+    runner._rows = {}
+    runner._outputs = {}
+    runner._completed_metadata = {}
+    runner._mtp2_adapter = None
+    runner._kv_pool = pool
+    runner._resident_batch_owner = _Owner()
+    runner._available = []
+    runner._resident_batch_owner_pool_key = None
+    runner.generator = SimpleNamespace(
+        target_arch="gfx1151", close=lambda: order.append("generator_close")
+    )
+    monkeypatch.setattr(
+        gguf_engine.Qwen35GGUFResidentModelRunner,
+        "_flush_all_packed_owners",
+        lambda self: None,
+    )
+    monkeypatch.setattr(
+        gguf_engine.Qwen35GGUFResidentModelRunner,
+        "_clear_prefix_snapshots",
+        lambda self: None,
+    )
+
+    runner.close()
+
+    assert order[0] == "release_workspace"
+    assert order[-1] == "generator_close"
+    assert runner._kv_pool is None
+    assert pool.private_workspace_bytes == 0

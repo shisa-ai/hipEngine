@@ -1,0 +1,4000 @@
+{
+  "kind": "gemma4_public_attention_route_observation",
+  "performance_claim": false,
+  "prompt_tokens": 16384,
+  "requested_output_tokens": 8,
+  "surface": "hipengine.LLM.generate",
+  "device_synchronize_passed": true,
+  "execution_profile_manifest": {
+    "kind": "hipengine_execution_profile_manifest",
+    "schema_version": 1,
+    "execution_profile": "production",
+    "backend": "hip_gfx1100",
+    "model": "gemma4_gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_policy": "paged_bf16",
+    "graph_policy": "serial_eager",
+    "selections": [
+      {
+        "layer": "decode_attention",
+        "scope": "global_head_dim_512",
+        "selected_variant": "gemma4_flash",
+        "strict_fallback_variant": "gemma4_plain",
+        "evidence_artifact": null,
+        "registry_quant": "gemma4_decode_attention"
+      },
+      {
+        "layer": "embedding",
+        "scope": "lookup_q8_0",
+        "selected_variant": "lookup_bf16_out",
+        "strict_fallback_variant": "lookup_bf16_out",
+        "evidence_artifact": null,
+        "registry_quant": "gguf_q8_0"
+      },
+      {
+        "layer": "exact_prefill_attention",
+        "scope": "sliding_multi_row",
+        "selected_variant": "gemma4_staged",
+        "strict_fallback_variant": "gemma4_plain",
+        "evidence_artifact": null,
+        "registry_quant": "gemma4_exact_prefill_attention"
+      },
+      {
+        "layer": "linear",
+        "scope": "dense_decode_q8_0",
+        "selected_variant": "pack8_gemv_bf16_bf16_out",
+        "strict_fallback_variant": "pack8_gemv_bf16_bf16_out",
+        "evidence_artifact": null,
+        "registry_quant": "gguf_q8_0"
+      },
+      {
+        "layer": "linear",
+        "scope": "dense_prefill_q8_0",
+        "selected_variant": "wmma_prefill_bf16_bf16_out",
+        "strict_fallback_variant": "wmma_prefill_bf16_bf16_out",
+        "evidence_artifact": null,
+        "registry_quant": "gguf_q8_0"
+      },
+      {
+        "layer": "linear",
+        "scope": "lm_head_f32_q8_0",
+        "selected_variant": "pack8_gemv_bf16_f32_out",
+        "strict_fallback_variant": "pack8_gemv_bf16_f32_out",
+        "evidence_artifact": null,
+        "registry_quant": "gguf_q8_0"
+      },
+      {
+        "layer": "linear",
+        "scope": "moe_decode_q4_k",
+        "selected_variant": "selected_gemv_bf16_bf16_out",
+        "strict_fallback_variant": "selected_gemv_bf16_bf16_out",
+        "evidence_artifact": null,
+        "registry_quant": "gguf_q4_k_t16_v1"
+      },
+      {
+        "layer": "linear",
+        "scope": "moe_decode_q5_1",
+        "selected_variant": "selected_gemv_bf16_bf16_out",
+        "strict_fallback_variant": "selected_gemv_bf16_bf16_out",
+        "evidence_artifact": null,
+        "registry_quant": "gguf_q5_1"
+      },
+      {
+        "layer": "linear",
+        "scope": "moe_decode_q5_k",
+        "selected_variant": "selected_gemv_bf16_bf16_out",
+        "strict_fallback_variant": "selected_gemv_bf16_bf16_out",
+        "evidence_artifact": null,
+        "registry_quant": "gguf_q5_k"
+      },
+      {
+        "layer": "linear",
+        "scope": "moe_selected_q8_0",
+        "selected_variant": "selected_gemv_bf16_bf16_out",
+        "strict_fallback_variant": "selected_gemv_bf16_bf16_out",
+        "evidence_artifact": null,
+        "registry_quant": "gguf_q8_0"
+      },
+      {
+        "layer": "moe_linear",
+        "scope": "down_q5_1",
+        "selected_variant": "selected_grouped_prefill_staged_out4_bf16_bf16_out",
+        "strict_fallback_variant": "selected_grouped_prefill_pair2_fold128_bf16_bf16_out",
+        "evidence_artifact": null,
+        "registry_quant": "gguf_q5_1"
+      },
+      {
+        "layer": "moe_linear",
+        "scope": "gate_up_q4_k",
+        "selected_variant": "selected_dual_wmma_prefill_fused_bf16_bf16_out",
+        "strict_fallback_variant": "selected_t16_gemv_decode_bf16_bf16_out",
+        "evidence_artifact": null,
+        "registry_quant": "gguf_q4_k_t16_v1"
+      },
+      {
+        "layer": "moe_linear",
+        "scope": "gate_up_q5_k",
+        "selected_variant": "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out",
+        "strict_fallback_variant": "selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out",
+        "evidence_artifact": null,
+        "registry_quant": "gguf_q5_k"
+      }
+    ]
+  },
+  "manifest_sha256": "f824e37b10559c145f664de990d4f987a1b9672e5baa2bad6e3c7a758054d1a8",
+  "observer_source_sha256": "74f3b1b66263fec18ecfddf925581ae400224e85da055c321d32c9db1194ce66",
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip": "0739b6400512dc15d2a0ee1ae399a2aa2bd2df02cdeb3372dd50f198281f2ccd",
+    "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py": "aa05933169d21259bb18695d73ceaf817766d9b3c48e3b87796dd1c4e036d8cf",
+    "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_decode_wmma_full.hip": "dcaabb26375e3455e9494046e23e324b39c234160ec57b0a5d985179ce3d18bb",
+    "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_int8.hip": "ba744b768cf6e69245f01e5f13533ccac9550b2eb01fc2c390783525b3fe6a21",
+    "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_int8.py": "8e65448de048a7c3d9e7400c41e140f70bb2d20a63c6be0a7decf0ecec918a89",
+    "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma.hip": "f5a28a348a11b2748cb7df8f929f29d02e057556012a40396e6a594a3b10d305",
+    "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma.py": "ea7170dda1756f8bef98cadd2e4f8ff46779e3dfa0dc89a301ace24fd5618e18",
+    "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.hip": "39507883359b3df454878a407be11224a7a550853da00570a13123b60536325c",
+    "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.py": "0a9b9c75e9437e6f372ff45057997846ff3c745690d2d7b76fda97c3f28b7301",
+    "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_staged.hip": "913c77f0751bd3d90e38a40ee1b9b9706fec17fb572d1246047688a772f4c1bf",
+    "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_staged.py": "50b079f0065c35d486f71c7266334c105c7b3f5312b17af04c775df8a610b76d",
+    "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_tiled.hip": "c0b439e6c322695f18d3f7caaf868aa102df352b454a18737d427c155d3a1fe7",
+    "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_tiled.py": "33f68984d9b1c489f8bb799a0a4979b98f7346557f5b46145e8887fdc9c71bde"
+  },
+  "counts": [
+    {
+      "variant": "aotriton",
+      "query_width": "multi_token",
+      "invocations": 100
+    },
+    {
+      "variant": "tiled",
+      "query_width": "multi_token",
+      "invocations": 320
+    }
+  ],
+  "launches": [
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 256,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 512,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 768,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "aotriton",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 256,
+      "num_heads": 16,
+      "num_kv_heads": 8
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1024,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1280,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1280,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1280,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1280,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1280,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1536,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1536,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1536,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1536,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1536,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1792,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1792,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1792,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1792,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 1792,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 2048,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 2048,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 2048,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 2048,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 2048,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 2304,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 2304,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 2304,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 2304,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 2304,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 2560,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 2560,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 2560,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 2560,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 2560,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 2816,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 2816,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 2816,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 2816,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 2816,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 3072,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 3072,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 3072,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 3072,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 3072,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 3328,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 3328,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 3328,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 3328,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 3328,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 3584,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 3584,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 3584,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 3584,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 3584,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 3840,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 3840,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 3840,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 3840,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 3840,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 4096,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 4096,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 4096,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 4096,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 4096,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 4352,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 4352,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 4352,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 4352,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 4352,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 4608,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 4608,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 4608,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 4608,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 4608,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 4864,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 4864,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 4864,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 4864,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 4864,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 5120,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 5120,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 5120,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 5120,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 5120,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 5376,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 5376,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 5376,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 5376,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 5376,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 5632,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 5632,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 5632,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 5632,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 5632,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 5888,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 5888,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 5888,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 5888,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 5888,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 6144,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 6144,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 6144,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 6144,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 6144,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 6400,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 6400,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 6400,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 6400,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 6400,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 6656,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 6656,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 6656,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 6656,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 6656,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 6912,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 6912,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 6912,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 6912,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 6912,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 7168,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 7168,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 7168,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 7168,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 7168,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 7424,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 7424,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 7424,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 7424,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 7424,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 7680,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 7680,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 7680,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 7680,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 7680,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 7936,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 7936,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 7936,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 7936,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 7936,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 8192,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 8192,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 8192,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 8192,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 8192,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 8448,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 8448,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 8448,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 8448,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 8448,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 8704,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 8704,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 8704,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 8704,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 8704,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 8960,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 8960,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 8960,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 8960,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 8960,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 9216,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 9216,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 9216,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 9216,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 9216,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 9472,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 9472,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 9472,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 9472,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 9472,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 9728,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 9728,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 9728,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 9728,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 9728,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 9984,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 9984,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 9984,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 9984,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 9984,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 10240,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 10240,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 10240,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 10240,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 10240,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 10496,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 10496,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 10496,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 10496,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 10496,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 10752,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 10752,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 10752,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 10752,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 10752,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 11008,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 11008,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 11008,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 11008,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 11008,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 11264,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 11264,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 11264,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 11264,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 11264,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 11520,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 11520,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 11520,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 11520,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 11520,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 11776,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 11776,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 11776,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 11776,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 11776,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 12032,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 12032,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 12032,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 12032,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 12032,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 12288,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 12288,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 12288,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 12288,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 12288,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 12544,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 12544,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 12544,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 12544,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 12544,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 12800,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 12800,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 12800,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 12800,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 12800,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 13056,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 13056,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 13056,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 13056,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 13056,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 13312,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 13312,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 13312,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 13312,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 13312,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 13568,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 13568,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 13568,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 13568,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 13568,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 13824,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 13824,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 13824,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 13824,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 13824,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 14080,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 14080,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 14080,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 14080,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 14080,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 14336,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 14336,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 14336,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 14336,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 14336,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 14592,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 14592,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 14592,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 14592,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 14592,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 14848,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 14848,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 14848,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 14848,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 14848,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 15104,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 15104,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 15104,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 15104,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 15104,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 15360,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 15360,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 15360,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 15360,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 15360,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 15616,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 15616,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 15616,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 15616,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 15616,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 15872,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 15872,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 15872,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 15872,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 15872,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 16128,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 16128,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 16128,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 16128,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 16128,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 16384,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 16384,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 16384,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 16384,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    },
+    {
+      "variant": "tiled",
+      "reason": "native capability route",
+      "tokens": 256,
+      "keys": 16384,
+      "head_dim": 512,
+      "num_heads": 16,
+      "num_kv_heads": 2
+    }
+  ],
+  "outputs": [
+    "\u3068\u79cb\u306e\u7d05\u8449\u3067\u306f\u89b3\u5149\u5ba2"
+  ],
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 2,
+    "collected_at": "2026-10-08T22:17:53.563111+00:00",
+    "host_name": "epyc",
+    "repo_root": "/home/lhl/hipEngine-gemma4",
+    "hipengine_commit": "7b8edb5c6afc894f5fbdfe97e725c00ad8cde097",
+    "git_branch": "gemma4",
+    "staged_dirty": false,
+    "unstaged_dirty": true,
+    "untracked_dirty": true,
+    "untracked_count": 38,
+    "dirty": true,
+    "configured_backend": "auto",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon RX 7900 XTX",
+    "model_path": "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "f28cfd664022342bce241e6236474be472a6133a1fbbf9c6c48f8db9153f0e99",
+      "size_bytes": 17010980576,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8504966000,
+        17009932000
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "UD-Q4_K_XL",
+    "kv_dtype": "bf16",
+    "command": [
+      "scripts/gemma4_public_route_probe.py",
+      "--prompt",
+      "16384",
+      "--output",
+      "8",
+      "--out",
+      "benchmarks/results/2026-10-09-gemma4-flash-promotion-public-route.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": null,
+      "GPU_MAX_HW_QUEUES": null,
+      "HIPENGINE_BUILD_CACHE_ROOT": null,
+      "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": "1",
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+    "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "build_profile": null,
+    "timing_protocol": null,
+    "warmups": null,
+    "repetitions": null,
+    "profiler": null
+  }
+}

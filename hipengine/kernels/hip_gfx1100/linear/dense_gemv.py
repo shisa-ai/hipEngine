@@ -49,7 +49,9 @@ _ARGTYPES_DENSE_GEMV_DUAL_WMMA = (
 _SOURCE = Path(__file__).with_name("dense_gemv.hip")
 _OUTPUT_NAME = "dense_gemv.so"
 _SYMBOL_BF16_OUT = "hipengine_dense_gemv_out_bf16"
+_SYMBOL_BF16_OUT_ROWTILE2 = "hipengine_dense_gemv_out_bf16_rowtile2"
 _SYMBOL_BF16_F32_OUT = "hipengine_dense_gemv_bf16_f32_out"
+_SYMBOL_BF16_F32_OUT_ROWTILE2 = "hipengine_dense_gemv_bf16_f32_out_rowtile2"
 _SYMBOL_BF16_RESIDUAL_OUT = "hipengine_dense_gemv_out_bf16_residual_bf16_out"
 _SYMBOL_BF16_VIRTUAL256_OUT = "hipengine_dense_gemv_virtual256_out_bf16"
 _SYMBOL_BF16_VIRTUAL256_ROWTILE_OUT = "hipengine_dense_gemv_virtual256_rowtile_out_bf16"
@@ -64,10 +66,12 @@ _SYMBOL_FP16_OUT = "hipengine_dense_gemv_out_fp16"
 _SYMBOL_F32_OUT = "hipengine_dense_gemv_out_f32"
 _SYMBOL_DENSE_PREFILL_BF16_OUT = "hipengine_dense_prefill_gemm_out_bf16"
 _SYMBOL_DENSE_PREFILL_WMMA_OUT_BF16 = "hipengine_dense_prefill_wmma_out_bf16"
+_SYMBOL_DENSE_PREFILL_WMMA_OUT_BF16_M64 = "hipengine_dense_prefill_wmma_out_bf16_m64"
 _SYMBOL_DENSE_PREFILL_WMMA_RESIDUAL_OUT_BF16 = (
     "hipengine_dense_prefill_wmma_out_bf16_residual_bf16_out"
 )
 _SYMBOL_DUAL_BF16_OUT = "hipengine_dense_dual_gemv_out_bf16"
+_SYMBOL_DUAL_BF16_OUT_ROWTILE2 = "hipengine_dense_dual_gemv_out_bf16_rowtile2"
 _SYMBOL_DUAL_FP16_OUT = "hipengine_dense_dual_gemv_out_fp16"
 _SYMBOL_DUAL_SEPARATE_BF16_OUT = "hipengine_dense_dual_gemv_separate_out_bf16"
 _SYMBOL_DUAL_SEPARATE_FP16_OUT = "hipengine_dense_dual_gemv_separate_out_fp16"
@@ -152,6 +156,37 @@ def dense_gemv_out_bf16(
     library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_BF16_OUT, _ARGTYPES_DENSE_GEMV_SINGLE, ctypes.c_int)
+    err = fn(x_ptr, weight_ptr, out_ptr, rows, in_features, out_features, threads, stream)
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def dense_gemv_out_bf16_rowtile2(
+    x_ptr: int,
+    weight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """BF16 output GEMV with two rows per block.
+
+    The weight stream is issued once for both rows. Each row keeps
+    :func:`dense_gemv_out_bf16`'s K traversal and reduction order, so a row's
+    result is bit-identical to the single-row kernel's.
+    """
+
+    _check_shape(rows, in_features, out_features, threads)
+    library = library or _dense_gemv_library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, _SYMBOL_BF16_OUT_ROWTILE2, _ARGTYPES_DENSE_GEMV_SINGLE, ctypes.c_int
+    )
     err = fn(x_ptr, weight_ptr, out_ptr, rows, in_features, out_features, threads, stream)
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
@@ -487,6 +522,42 @@ def dense_gemv_bf16_f32_out(
         runtime.check(int(err))
 
 
+def dense_gemv_bf16_f32_out_rowtile2(
+    x_ptr: int,
+    weight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Multiply BF16 activations and weights into an unrounded FP32 output, two rows
+    per block.
+
+    The weight stream is issued once for both rows, so two branches cost one weight
+    read instead of two. Each row's reduction order matches
+    :func:`dense_gemv_bf16_f32_out`, so a row's result is bit-identical to the
+    single-row kernel's.
+    """
+
+    _check_shape(rows, in_features, out_features, threads)
+    library = library or _dense_gemv_library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_BF16_F32_OUT_ROWTILE2,
+        _ARGTYPES_DENSE_GEMV_SINGLE,
+        ctypes.c_int,
+    )
+    err = fn(x_ptr, weight_ptr, out_ptr, rows, in_features, out_features, threads, stream)
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def dense_gemv_out_fp16(
     x_ptr: int,
     weight_ptr: int,
@@ -593,6 +664,41 @@ def dense_dual_gemv_out_bf16(
     library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_DUAL_BF16_OUT, _ARGTYPES_DENSE_GEMV_DUAL, ctypes.c_int)
+    err = fn(x_ptr, weight_a_ptr, weight_b_ptr, out_ptr,
+             rows, in_features, out_features_a, out_features_b, threads, stream)
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def dense_dual_gemv_out_bf16_rowtile2(
+    x_ptr: int,
+    weight_a_ptr: int,
+    weight_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """BF16 output dual GEMV (``gate``/``up``) with two rows per block.
+
+    One weight read per K vector serves both rows, and each row keeps
+    :func:`dense_dual_gemv_out_bf16`'s reduction order, so a row is bit-identical
+    to the single-row kernel's.
+    """
+
+    _check_shape(rows, in_features, out_features_a, threads)
+    _check_shape(rows, in_features, out_features_b, threads)
+    library = library or _dense_gemv_library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, _SYMBOL_DUAL_BF16_OUT_ROWTILE2, _ARGTYPES_DENSE_GEMV_DUAL, ctypes.c_int
+    )
     err = fn(x_ptr, weight_a_ptr, weight_b_ptr, out_ptr,
              rows, in_features, out_features_a, out_features_b, threads, stream)
     if int(err) != HIP_SUCCESS:
@@ -752,6 +858,57 @@ def dense_prefill_wmma_out_bf16(
     library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_DENSE_PREFILL_WMMA_OUT_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(weight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def dense_prefill_wmma_out_bf16_m64(
+    x_ptr: int,
+    weight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """BM=64 twin of :func:`dense_prefill_wmma_out_bf16`.
+
+    Identical arithmetic and accumulation order; the narrower column tile puts
+    twice as many workgroups in flight, which is what the low-row/high-K shapes
+    in the semantic encoder need. Outputs are bit-identical to the BM=128 path.
+    """
+
+    if rows <= 0 or in_features <= 0 or out_features <= 0:
+        raise ValueError("shape must be positive")
+    if in_features % 32:
+        raise ValueError("dense WMMA prefill requires in_features % 32 == 0")
+    if out_features % 64:
+        raise ValueError("dense WMMA prefill m64 requires out_features % 64 == 0")
+    library = library or _dense_gemv_library()
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_DENSE_PREFILL_WMMA_OUT_BF16_M64)
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,

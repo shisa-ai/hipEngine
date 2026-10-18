@@ -23,6 +23,7 @@ from typing import Any, ClassVar, Iterator, Mapping, Sequence
 import numpy as np
 
 from hipengine.benchmark.provenance import collect_model_identity, detect_device_name
+from hipengine.speculative.delegation import StagedAdapterDelegation
 import hipengine.generation.qwen35_gguf_mtp2 as _qwen35_gguf_mtp2_module
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipError
@@ -43,7 +44,10 @@ from hipengine.generation.batch_scheduler import (
 )
 from hipengine.generation.constraints import token_sequence_state_for_tokens
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
-from hipengine.generation.engine_loop import GenerationAdmissionRejected
+from hipengine.generation.engine_loop import (
+    ExecutionFailure,
+    GenerationAdmissionRejected,
+)
 from hipengine.generation.finish import finish_details_with_sampling_state
 from hipengine.generation.registry import (
     FinishDetails,
@@ -78,6 +82,7 @@ from hipengine.models.kv_capabilities import (
     model_artifact_identity,
     resolve_kv_capability,
 )
+from hipengine.kvcache.pool import DeviceKVContiguityError
 from hipengine.kvcache import (
     FixedPagedKVPolicy,
     RadixCache,
@@ -91,20 +96,28 @@ from hipengine.kernels.backends import (
     resolve_backend,
 )
 from hipengine.quant.gguf import dequantize_gguf_data
+from hipengine.speculative.accounting import (
+    accounting_timing_fields,
+    record_provider_readiness,
+    record_speculative_plan,
+    speculative_output_accounting,
+)
 from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_gguf_runner import (
+    PACKED_AR_PREFILL_CONTEXT_LIMIT,
     Qwen35GGUFFullStackRunner,
     Qwen35GGUFResidentSession,
     _GGUF_PACKED_WORKSPACE_LEASE_KEY,
     _GGUFResumablePrefillState,
     _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY,
-    _PACKED_VERIFY_MIN_MAX_SEQUENCE,
     _gguf_device_kv_contiguous_base_row,
+    _gguf_gapped_slot_local_fast_route_available,
     _gguf_int8_bf16_full_attention_layer_indices,
     _gguf_packed_layer_outer_enabled,
-    _qualified_no_mirror_int8_capability,
+    _admitted_no_mirror_int8_capability,
     _rope_tables as _gguf_rope_tables,
     estimate_qwen35_gguf_kv_capacity,
+    packed_verify_workspace_lease_pages,
 )
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
 
@@ -332,10 +345,157 @@ _GGUF_AR_NATIVE_MAX_SLOTS = 8
 # multiplier: the shared pool grows against its independent device budget.
 # Pass --max-active-requests to change how many requests may be in flight.
 _GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY = 4
+
+# A retained prefix snapshot holds one full hybrid Conv/GDN state clone (~64 MiB
+# for a 35B-A3B checkpoint) plus its KV pages. Retained boundaries are the
+# cross-request working set: a conversation's next turn can only match a boundary
+# that survived every intervening request's captures. The default count budget is
+# the pre-fix effective value, max(1, capacity); a wider working set is opt-in
+# because enabling it today is a measured regression (docs/REFACTOR.md). The
+# 14-lane serving protocol needs 16 retained entries — one conversation's
+# boundary must survive 13 intervening captures — and the byte budget bounds the
+# state the wide set pins.
+_PREFIX_RETAINED_STATE_BYTES_LIMIT = 1 << 30
+# DMS extension snapshots also own cold dense prompt KV, predictor planes and
+# trunk hidden rows. Give that host working set a separate, bounded budget;
+# allocations remain lazy and the existing explicit byte limit overrides both.
+_DMS_PREFIX_RETAINED_STATE_BYTES_LIMIT = 4 << 30
+_PREFIX_RETAINED_SNAPSHOTS_WIDE = 16
+_GGUF_PREFIX_RETAINED_SNAPSHOTS_ENV = "HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS"
+_GGUF_PREFIX_RETAINED_STATE_BYTES_ENV = "HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES"
+
+
+def _gguf_prefix_retained_snapshot_limit(capacity: int) -> int:
+    """Retained-snapshot count budget: pre-fix effective default, opt-in wider."""
+
+    default = max(1, int(capacity))
+    return _gguf_auto_context_int_env(
+        _GGUF_PREFIX_RETAINED_SNAPSHOTS_ENV, default, minimum=default
+    )
+
+
+def _gguf_prefix_retained_state_bytes_limit(*, dms: bool = False) -> int:
+    """Retention ceiling; DMS includes cold host prompt planes and recurrence."""
+
+    return _gguf_auto_context_int_env(
+        _GGUF_PREFIX_RETAINED_STATE_BYTES_ENV,
+        _DMS_PREFIX_RETAINED_STATE_BYTES_LIMIT if dms else _PREFIX_RETAINED_STATE_BYTES_LIMIT,
+        minimum=1 << 20,
+    )
+
+
+_GGUF_PREFIX_GAPPED_SUFFIX_MAX_ENV = "HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX"
+_GGUF_PREFIX_GAPPED_SUFFIX_MAX_DEFAULT = 512
+
+
+def _gguf_prefix_gapped_suffix_max_tokens() -> int:
+    """Largest suffix worth prefilling through a gapped hit on the slow route.
+
+    Placement decides the route. A contiguous shared allocation keeps the
+    slot-local prefill; a gapped one used to drop to the packed paged route,
+    which was far slower per token and got worse as context grows (measured
+    on Qwen3.5-0.8B against the full prefill the hit replaces: 2048+768 cost
+    1.07x the miss, 4096+768 1.22x, while 2048+512 cost 0.63x and 4096+512
+    0.87x). Past that the cheaper answer was to decline the hit and let the
+    request take the fast private prefill.
+
+    The gapped gather route changed the cost side: a gapped BF16 slot whose
+    head-major KV buffers are admitted gathers into the same dense buffers
+    the contiguous route uses and pays the same AOTriton attention cost, so
+    the guard no longer applies to it (any suffix length wins). The budget
+    below only binds when that fast gapped route is unavailable for the
+    lease's backend/config - the gather kill-switch, a backend without
+    head-major KV, or a context beyond the validated head-major allocation
+    class - where the old paged-route costs still hold.
+
+    A contiguous hit is never subject to this: it uses the same route the miss
+    would have used, so it wins at any suffix length.
+    """
+
+    return _gguf_auto_context_int_env(
+        _GGUF_PREFIX_GAPPED_SUFFIX_MAX_ENV,
+        _GGUF_PREFIX_GAPPED_SUFFIX_MAX_DEFAULT,
+        minimum=0,
+    )
+
+
+def _gguf_prefix_gapped_fast_route_available(lease: Any, context_tokens: int) -> bool:
+    """Whether a gapped hit on this lease gathers onto the fast slot-local route."""
+
+    session = getattr(lease, "session", None)
+    runner = getattr(session, "runner", None)
+    if runner is None:
+        return False
+    return _gguf_gapped_slot_local_fast_route_available(
+        backend=str(getattr(runner, "backend", "")),
+        context_tokens=int(context_tokens),
+        kv_width=int(getattr(runner, "kv_width", 0)),
+    )
+
+
+_GGUF_PREFIX_BATCHED_SUFFIX_ENV = "HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX"
+
+
+def _gguf_prefix_batched_suffix_enabled() -> bool:
+    """Batched reused-suffix (\"extend\") prefill; the serial loop is the fallback.
+
+    Default on: the packed paged prefill route accepts restored mid-sequence
+    state at any context length. ``HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX=0``
+    restores the serial ``session.step()`` suffix loop for rollback/bisection.
+    """
+
+    return os.environ.get(_GGUF_PREFIX_BATCHED_SUFFIX_ENV, "1").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _gguf_prefix_batched_suffix_chunk_eligible(chunk: tuple[int, ...]) -> bool:
+    """Batch a reused suffix only when it is at least two rows wide.
+
+    A one-row prefill does not take the bulk schedule: MoE has no rows==1 bulk
+    path at all (``_run_post_attention_moe_rows`` refuses it) and the dense
+    projections fall to their registered GEMV decode variants. Running a single
+    suffix token through the batched route would therefore give a hit whose
+    arithmetic differs from the wider chunk the same token sits in on a miss,
+    for no speedup worth having - one token costs one step either way. The
+    serial route handles it, which is also what this shape did before the
+    batched route existed.
+    """
+
+    return len(chunk) >= 2
+
+
+def _gguf_prefix_suffix_segments(
+    session_position: int,
+    prompt_length: int,
+    chunk: tuple[int, ...],
+) -> tuple[tuple[int, ...], ...]:
+    """Split one reused-suffix chunk at the deepest prompt-aligned boundary.
+
+    A boundary snapshot is only capturable while the session sits exactly on
+    it, so a batched suffix prefill that would cross the deepest 256-aligned
+    prompt boundary in one call runs as two batched segments with the capture
+    in between.
+    """
+
+    boundary = (int(prompt_length) // 256) * 256
+    start = int(session_position)
+    end = start + len(chunk)
+    if start < boundary < end:
+        cut = boundary - start
+        # A one-row segment would leave the bulk prefill schedule (see the
+        # single-token-suffix decline in the admission path), so a split that
+        # would strand a single token is not worth the mid-prefill snapshot.
+        if cut >= 1 and len(chunk) - cut >= 2:
+            return (chunk[:cut], chunk[cut:])
+    return (chunk,)
 # Superset of every shared-slot AR physical width a backend may register and use.
 # Direct widths c3/c5/c6/c7 are admitted here so they can be certified via an
 # explicit env override before the default advertised capability is expanded
-# (see docs/CONCURRENCY2.md). The default non-resident set stays (1, 2, 4, 8).
+# (see docs/reference/CONCURRENCY2.md). The default non-resident set stays (1, 2, 4, 8).
 _GGUF_AR_PHYSICAL_BUCKET_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
 # Promoted 2026-08-20 after direct c3/c5/c6/c7 lifecycle certification (#36):
 # every width in the superset is now an advertised default. The env override
@@ -408,6 +568,15 @@ _GGUF_MTP_SERVER_STREAM_VERIFY_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY"
 _GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER_ENV = "HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER"
 _GGUF_MTP_SERVER_VERIFY_MODE_ENV = "HIPENGINE_GGUF_MTP_VERIFY_MODE"
 _GGUF_MTP_SERVER_CANDIDATE_BUDGET_ENV = "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"
+# Provider prefix checkpoints: one entry per captured prefix, each holding a
+# copy of that prefix's provider KV and recurrent state. Bounded capture keeps
+# MTP usable after a target radix hit; zero remains the memory/bisection rollback.
+_GGUF_MTP2_PREFIX_CHECKPOINT_ENTRIES_ENV = "HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES"
+_GGUF_MTP2_PREFIX_CHECKPOINT_DEFAULT_ENTRIES = 4
+# The prefix cache's block granularity. The trie stores whole blocks and the
+# snapshot path already keys on this same multiple, so the capture boundary is
+# the last full block rather than the prompt's end.
+_GGUF_PREFIX_CACHE_BLOCK_TOKENS = 256
 _GGUF_MTP_SERVER_DEFAULT_VERIFY_MODE = "native"
 _GGUF_MTP_SERVER_DEFAULT_CANDIDATE_BUDGET = 3
 
@@ -691,27 +860,6 @@ def _gguf_single_row_block_table_prefill_required(session: object) -> bool:
     )
 
 
-def _qualified_compact_serial_int8_max_rows(generator: object) -> int:
-    """Return the artifact-qualified logical residency bound for serial c1 INT8."""
-
-    provenance = getattr(generator, "kv_capability_provenance", None)
-    if not isinstance(provenance, Mapping):
-        return 0
-    evidence = provenance.get("evidence")
-    if not isinstance(evidence, Mapping):
-        return 0
-    if not (
-        provenance.get("status") == "qualified"
-        and provenance.get("runtime_action") == "admit"
-        and provenance.get("promotion_eligible") is True
-        and provenance.get("effective_kv_storage") == "int8_per_token_head"
-        and evidence.get("persistent_bf16_mirror") is False
-        and int(evidence.get("max_direct_rows", 0)) >= 1
-    ):
-        return 0
-    return max(0, int(evidence.get("max_serial_resident_rows", 0)))
-
-
 def _gguf_ar_stream_decode_enabled() -> bool:
     return os.environ.get(_GGUF_AR_STREAM_DECODE_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -801,6 +949,21 @@ def _gguf_mtp_server_candidate_budget() -> int:
     if not 1 <= budget <= _qwen35_gguf_mtp2_module.MTP2_MAX_CANDIDATE_DEPTH:
         return _GGUF_MTP_SERVER_DEFAULT_CANDIDATE_BUDGET
     return budget
+
+
+def _gguf_mtp2_prefix_checkpoint_entries() -> int:
+    """Bound provider prefix checkpoints; zero disables capture explicitly."""
+
+    raw = os.environ.get(_GGUF_MTP2_PREFIX_CHECKPOINT_ENTRIES_ENV, "")
+    if raw is None or str(raw).strip() == "":
+        return _GGUF_MTP2_PREFIX_CHECKPOINT_DEFAULT_ENTRIES
+    try:
+        entries = int(str(raw).strip())
+    except ValueError:
+        return _GGUF_MTP2_PREFIX_CHECKPOINT_DEFAULT_ENTRIES
+    if entries < 0:
+        return _GGUF_MTP2_PREFIX_CHECKPOINT_DEFAULT_ENTRIES
+    return entries
 
 
 @dataclass(frozen=True)
@@ -1151,6 +1314,17 @@ def _new_mtp_draft_runner(
     )
 
 
+def _mtp_dense_kv_nbytes(*, capacity: int, qk_head_dim: int, kv_heads: int = 2) -> int:
+    """Bytes ``_allocate_mtp_dense_kv`` will allocate for this geometry.
+
+    Exposed so an admission budget can price the draft KV slab before the
+    allocation happens, instead of the limit being discovered as a HIP OOM.
+    """
+
+    rows = int(capacity)
+    return 2 * rows * int(kv_heads) * int(qk_head_dim) * 4
+
+
 def _allocate_mtp_dense_kv(
     *,
     runtime: Any,
@@ -1161,7 +1335,9 @@ def _allocate_mtp_dense_kv(
     from hipengine.core.memory import malloc
 
     rows = int(capacity)
-    key_nbytes = rows * int(kv_heads) * int(qk_head_dim) * 4
+    key_nbytes = _mtp_dense_kv_nbytes(
+        capacity=rows, qk_head_dim=qk_head_dim, kv_heads=kv_heads
+    ) // 2
     value_nbytes = key_nbytes
     key_cache = malloc(key_nbytes, runtime=runtime)
     value_cache = malloc(value_nbytes, runtime=runtime)
@@ -1183,6 +1359,56 @@ class _GGUFNativeBatchRun:
     scheduling: dict[str, Any]
 
 
+def declared_int8_scale_dtype(
+    declarations: Sequence[Any],
+    *,
+    backend: str,
+    target_arch: str,
+    weight_quant: str | None,
+    kv_storage: str,
+    storage_layout: str,
+    scale_granularity: str,
+    requested_scale_dtype: str,
+) -> str | None:
+    """The scale dtype the kernels declare for this INT8 KV contract.
+
+    Every INT8 KV declaration names the scale dtype its decode leaf reads, and
+    the request default (fp16) is not it. A key carrying an undeclared dtype
+    matches no declaration at all, so the capability resolves as a contract miss
+    instead of admitting -- or refusing -- the contract that exists, and
+    ``max_direct_rows`` comes back zero even where a declaration covers the
+    artifact. Binding the declared dtype keeps the capability, the prepared
+    policy and the allocation on one contract.
+
+    Returns ``None`` when the request already carries a declared dtype, when no
+    declaration covers the other axes, or when none names a dtype.
+    """
+
+    declared: list[str] = []
+    for row in declarations:
+        if getattr(row, "backend", None) != backend:
+            continue
+        if getattr(row, "target_arch", None) != target_arch:
+            continue
+        row_quant = getattr(row, "weight_quant", None)
+        if row_quant is not None and weight_quant is not None:
+            if row_quant != weight_quant:
+                continue
+        if getattr(row, "kv_storage", None) != kv_storage:
+            continue
+        if getattr(row, "storage_layout", None) != storage_layout:
+            continue
+        if getattr(row, "scale_granularity", None) != scale_granularity:
+            continue
+        dtype = str(getattr(row, "scale_dtype", "") or "")
+        if dtype and dtype not in declared:
+            declared.append(dtype)
+    requested = str(requested_scale_dtype)
+    if requested in declared or not declared:
+        return None
+    return declared[0]
+
+
 @dataclass
 class Qwen35GGUFBringupGenerator:
     """Public API GGUF greedy generator over a persistent resident session."""
@@ -1196,6 +1422,8 @@ class Qwen35GGUFBringupGenerator:
     prefill_attn_aotriton_min_tokens: int | None = None
     native_batch_decode: bool = False
     native_batch_capacity: int = 8
+    # Independent of model execution_profile: explicit strict debugging opt-out.
+    native_sampler_algorithm: str = "sorted"
     engine_loop_config_defaults: Mapping[str, Any] = field(default_factory=dict, repr=False)
     server_plain_ar_max_active_requests: int | None = None
     server_plain_ar_max_active_requests_by_max_sequence_length: Mapping[int, int] = field(
@@ -1307,6 +1535,7 @@ class Qwen35GGUFBringupGenerator:
         key = KVCapabilityKey(
             artifact_sha256=artifact.sha256,
             artifact_size_bytes=artifact.size_bytes,
+            artifact_execution_fingerprint=self._artifact_execution_fingerprint(),
             backend=str(self.backend),
             target_arch=str(self.target_arch),
             weight_quant=self._kv_weight_quant_key(),
@@ -1318,13 +1547,22 @@ class Qwen35GGUFBringupGenerator:
         plugin_resolver = getattr(self.model_plugin, "resolve_kv_capability", None)
         if callable(plugin_resolver):
             return plugin_resolver(key=key, artifact=artifact)
-        return resolve_kv_capability((), key=key, artifact=artifact)
+        return resolve_kv_capability(
+            (),
+            key=key,
+            artifact=artifact,
+            declarations=getattr(
+                self.model_plugin, "kv_capability_declarations", ()
+            ),
+        )
 
     @property
     def kv_capability_provenance(self) -> dict[str, object]:
         resolution = getattr(self, "_kv_capability_resolution", None)
         if resolution is not None:
-            return resolution.as_dict()
+            payload = resolution.as_dict()
+            payload["max_packed_rows"] = self._effective_packed_decode_rows()
+            return payload
         return {
             "schema_version": 1,
             "status": "not_applicable",
@@ -1333,6 +1571,7 @@ class Qwen35GGUFBringupGenerator:
             "diagnostic_override": False,
             "requested": None,
             "effective_kv_storage": "bf16",
+            "max_packed_rows": self._effective_packed_decode_rows(),
             "artifact": {
                 "path": str(getattr(self.weight_index, "path", self.model_path)),
                 "size_bytes": None,
@@ -1344,6 +1583,34 @@ class Qwen35GGUFBringupGenerator:
             "reason": "BF16/default KV does not require approximate-KV capability evidence",
         }
 
+    def _effective_packed_decode_rows(self) -> int | None:
+        """Return the resident session's effective packed decode width.
+
+        The declared ``max_direct_rows`` states what the direct INT8 batch leaf
+        implements. The effective width can be lower, and on a long-context INT8
+        session it usually is: the layout keeps a BF16 prefix of full-attention
+        layers, a BF16 layer has no retained INT8 planes, and one packed batch
+        cannot run the retained leaf and the standard leaf together. The session
+        therefore caps the width at one row and serializes.
+
+        Reporting this keeps the effective width distinguishable from the
+        declared one; they differ silently otherwise. Returns ``None`` when no
+        resident session is available to report.
+        """
+
+        widths: list[int] = []
+        for holder in (self, getattr(self, "_resident_model_runner", None)):
+            accessor = getattr(holder, "_resident_sessions", None)
+            if not callable(accessor):
+                continue
+            widths.extend(
+                int(getattr(session, "packed_decode_max_rows", 0) or 0)
+                for session in accessor()
+                if getattr(session, "packed_decode_max_rows", None) is not None
+            )
+        if not widths:
+            return None
+        return min(widths)
     def _resolve_request_kv_policy(
         self,
         params: Any | None,
@@ -1357,9 +1624,48 @@ class Qwen35GGUFBringupGenerator:
             ),
         )
         resolved = requested
+        if getattr(self, "dms_metadata_path", None) is not None:
+            # Compact retention has its own codec and transactions. Dense KV
+            # evidence and dense retained-decode leaves do not describe it.
+            if requested.storage_layout != "uniform":
+                raise NotImplementedError("DMS supports uniform per-token/head codec scales only")
+            if requested.storage_dtype.value == "int8_per_token_head":
+                requested = replace(requested, scale_dtype=DType.FP32)
+            self._kv_capability_resolution = None
+            return requested.create_policy(), requested.scale_dtype.value, (
+                requested.storage_dtype.value, requested.storage_layout,
+                requested.scale_dtype.value, requested.scale_granularity,
+            )
         if requested.storage_dtype.value == "int8_per_token_head":
+            requested_dtype = str(requested.scale_dtype.value)
+            declared_dtype = declared_int8_scale_dtype(
+                getattr(self.model_plugin, "kv_capability_declarations", ()),
+                backend=str(self.backend),
+                target_arch=str(self.target_arch),
+                weight_quant=self._kv_weight_quant_key(),
+                kv_storage=requested.storage_dtype.value,
+                storage_layout=str(requested.storage_layout),
+                scale_granularity=str(requested.scale_granularity),
+                requested_scale_dtype=requested_dtype,
+            )
+            if declared_dtype is not None:
+                requested = replace(
+                    requested,
+                    scale_dtype=DType.parse(declared_dtype),
+                )
+                resolved = requested
             capability = self._resolve_int8_kv_capability(requested)
-            if capability.status != "qualified":
+            if declared_dtype is not None:
+                capability = capability.with_runtime_outcome(
+                    effective_kv_storage=capability.effective_kv_storage,
+                    runtime_action=capability.runtime_action,
+                    reason=(
+                        f"{capability.reason}; bound the declared "
+                        f"{declared_dtype} scale dtype, not the requested "
+                        f"{requested_dtype}"
+                    ),
+                )
+            if capability.runtime_action != "admit":
                 if self._int8_kv_diagnostic_override_enabled():
                     capability = capability.with_runtime_outcome(
                         effective_kv_storage=requested.storage_dtype.value,
@@ -1370,11 +1676,10 @@ class Qwen35GGUFBringupGenerator:
                         ),
                     )
                 else:
-                    resolved = resolve_kv_policy("bf16")
-                    capability = capability.with_runtime_outcome(
-                        effective_kv_storage=resolved.storage_dtype.value,
-                        runtime_action="fallback_bf16",
-                        reason=f"{capability.reason}; failed closed to BF16",
+                    self._kv_capability_resolution = capability
+                    raise ValueError(
+                        "explicit kv_storage='int8_per_token_head' cannot run: "
+                        f"{capability.reason}; refusing to silently substitute BF16"
                     )
             self._kv_capability_resolution = capability
         else:
@@ -1387,6 +1692,13 @@ class Qwen35GGUFBringupGenerator:
         )
         return resolved.create_policy(), resolved.scale_dtype.value, signature
 
+    def configure_dms(self, config) -> None:
+        """Bind either a compact DMS config or a sidecar metadata path."""
+        if isinstance(config, str):
+            self.dms_metadata_path = config
+            self.dms_config = None
+        else:
+            self.dms_config = config
     def _prepare_kv_policy(self, params: Any | None) -> None:
         current = getattr(self, "_prepared_kv_signature", None)
         requested_storage = getattr(params, "kv_storage", "auto") or "auto"
@@ -1421,6 +1733,15 @@ class Qwen35GGUFBringupGenerator:
 
     def _prepared_session_kv_kwargs(self) -> dict[str, Any]:
         signature = getattr(self, "_prepared_kv_signature", None)
+        if getattr(self, "dms_metadata_path", None) is not None:
+            from hipengine.kvcache.dms import create_dms_bf16_backend, create_dms_int8_backend
+
+            factories = {"bf16": create_dms_bf16_backend, "int8_per_token_head": create_dms_int8_backend}
+            storage = "bf16" if signature is None else signature[0]
+            if storage not in factories:
+                raise NotImplementedError(f"DMS has no compact codec for {storage}")
+            return {"dms_metadata_path": self.dms_metadata_path,
+                    "dms_backend_factory": factories[storage]}
         if signature in {None, ("bf16", "uniform", "fp16", "per_token_head")}:
             return {}
         return {
@@ -1429,6 +1750,49 @@ class Qwen35GGUFBringupGenerator:
             "kv_scale_granularity": signature[3],
             "kv_capability": copy.deepcopy(self.kv_capability_provenance),
         }
+
+    @property
+    def resident_context_tokens(self) -> int | None:
+        """The context resident sizing will use, or ``None`` if nothing decided yet.
+
+        A caller's declaration wins over automatic selection, so this reports the
+        declaration when there is one and the auto-selected context otherwise.
+        ``None`` means no session has been sized yet and no context was declared.
+        """
+
+        pinned = getattr(self, "_prepared_max_sequence_length", None)
+        if pinned is not None:
+            return int(pinned)
+        resolved = getattr(self, "_auto_resolved_max_sequence_length", None)
+        return None if resolved is None else int(resolved)
+
+    @_target_arch_scoped
+    def declare_max_sequence_length(self, max_sequence_length: int) -> int:
+        """Record a serving context the caller declared, before any allocation.
+
+        Resident sizing reads ``_prepared_max_sequence_length`` and only
+        ``prepare`` used to set it, so a caller that declared its context at
+        construction time (``LLM(model, max_sequence_length=N)``) and never
+        called ``prepare`` had that declaration ignored: the session was sized by
+        automatic selection instead, which picks the largest context that fits
+        and can be far larger than the caller asked for. On this APU the KV pool
+        is host memory, so that substitution is a machine-level allocation, not a
+        local one.
+
+        Unlike ``prepare`` this allocates nothing: it records the pin that the
+        next session acquisition reads. The pin never shrinks, matching
+        ``prepare``.
+        """
+
+        requested = int(max_sequence_length)
+        if requested <= 0:
+            raise ValueError("max_sequence_length must be positive")
+        current = getattr(self, "_prepared_max_sequence_length", None)
+        self._prepared_max_sequence_length = max(
+            requested,
+            0 if current is None else int(current),
+        )
+        return self._prepared_max_sequence_length
 
     @_target_arch_scoped
     def prepare(
@@ -1442,12 +1806,7 @@ class Qwen35GGUFBringupGenerator:
         if max_sequence_length is not None and int(max_sequence_length) <= 0:
             raise ValueError("max_sequence_length must be positive")
         if max_sequence_length is not None:
-            requested = int(max_sequence_length)
-            current = getattr(self, "_prepared_max_sequence_length", None)
-            self._prepared_max_sequence_length = max(
-                requested,
-                0 if current is None else int(current),
-            )
+            self.declare_max_sequence_length(max_sequence_length)
         self._prepare_kv_policy(sampling_params)
         self._get_shared_runner()
         return None if max_sequence_length is None else int(max_sequence_length)
@@ -1588,13 +1947,10 @@ class Qwen35GGUFBringupGenerator:
             mtp_widths = [width for width in (2, 4) if width <= mtp_width_cap]
             if mtp_width_cap > 1 and mtp_width_cap not in mtp_widths:
                 mtp_widths.append(mtp_width_cap)
-            assets = self._load_mtp_serving_assets()
             for width in sorted(set(mtp_widths)):
                 for target_len in warm_prompt_lengths:
                     sessions: list[Qwen35GGUFResidentSession] = []
                     session_keys: list[_GGUFSessionPoolKey | None] = []
-                    drafts: list[Any] = []
-                    draft_keys: list[int | None] = []
                     unsupported = False
                     try:
                         for _slot in range(width):
@@ -1606,13 +1962,6 @@ class Qwen35GGUFBringupGenerator:
                             )
                             sessions.append(session)
                             session_keys.append(session_key)
-                            draft, draft_key, _draft_reused = self._acquire_mtp_draft_runner(
-                                assets,
-                                runtime=session.runtime,
-                                pool_enabled=True,
-                            )
-                            drafts.append(draft)
-                            draft_keys.append(draft_key)
                         with _temporary_env(_LLAMA_COMPAT_MTP_ENV):
                             chunk_start_index = 0
                             while chunk_start_index < width:
@@ -1673,18 +2022,11 @@ class Qwen35GGUFBringupGenerator:
                         result["packed_mtp_prefill_reason"] = f"packed_prefill_unsupported_width_{width}"
                         unsupported = True
                     except Exception:
-                        for draft in drafts:
-                            self._release_mtp_draft_runner(None, draft)
-                        drafts = []
                         for session in sessions:
                             session.close()
                         sessions = []
                         raise
                     finally:
-                        while drafts:
-                            draft = drafts.pop()
-                            draft_key = draft_keys.pop()
-                            self._release_mtp_draft_runner(draft_key, draft)
                         while sessions:
                             session = sessions.pop()
                             session_key = session_keys.pop()
@@ -1703,6 +2045,16 @@ class Qwen35GGUFBringupGenerator:
         result["packed_mtp_verify_prompt_lengths"] = sorted(set(result["packed_mtp_verify_prompt_lengths"]))
         return result
 
+    def configure_dms(self, config) -> None:
+        """Bind either a compact DMS config or a sidecar metadata path."""
+        if getattr(self, "_prepared_kv_signature", None) is not None:
+            raise RuntimeError("DMS must be configured before resident preparation")
+        if isinstance(config, str):
+            self.dms_metadata_path = config
+            self.dms_config = None
+        else:
+            self.dms_config = config
+
     @_target_arch_scoped
     def create_resident_model_runner(
         self,
@@ -1711,6 +2063,13 @@ class Qwen35GGUFBringupGenerator:
     ) -> "Qwen35GGUFResidentModelRunner":
         """Create the single scheduler-facing GGUF model owner for this generator."""
 
+        if getattr(self, "dms_config", None) is not None:
+            if capacity not in (None, 1):
+                raise ValueError("DMS compact serving requires max_active_requests=1")
+            from hipengine.generation.qwen35_gguf_dms import Qwen35GGUFDMSModelRunner
+            runner = Qwen35GGUFDMSModelRunner(self, capacity=1)
+            self._resident_model_runner = runner
+            return runner
         runner = Qwen35GGUFResidentModelRunner(
             self,
             capacity=(
@@ -1737,7 +2096,11 @@ class Qwen35GGUFBringupGenerator:
         with lock:
             runner = getattr(self, "_shared_runner", None)
             if runner is None:
-                runner = Qwen35GGUFFullStackRunner(self.model_path, backend=self.backend)
+                runner = Qwen35GGUFFullStackRunner(
+                    self.model_path, backend=self.backend,
+                    execution_routes=(("eager", "native_rows", "native_graph")
+                                      if getattr(self, "native_batch_decode", False) else ("eager",)),
+                )
                 self._shared_runner = runner
             return runner
 
@@ -1789,6 +2152,34 @@ class Qwen35GGUFBringupGenerator:
         )
         return policy != "off"
 
+    def resident_capacity_estimate(
+        self,
+        *,
+        max_batch_size: int = 1,
+        requested_context_tokens: int | None = None,
+    ) -> Any | None:
+        """Price one resident session against current free HIP memory.
+
+        This is the per-session price a caller multiplies by the number of sessions it
+        holds at once. The startup scratch probe is that caller: it acquires one session
+        per probe slot, and each of those sessions preallocates its own KV pages and
+        packed workspace lease.
+
+        Returns ``None`` when the route cannot be priced (no HIP runtime, fake runner).
+        """
+
+        try:
+            shared_runner = self._get_shared_runner()
+        except Exception as exc:  # noqa: BLE001 - best-effort sizing read
+            _LOGGER.debug("GGUF resident capacity estimate unavailable: %s", exc)
+            return None
+        return self._resident_capacity_estimate(
+            shared_runner,
+            max_batch_size=max(1, int(max_batch_size)),
+            defer_kv_allocation=False,
+            requested_context_tokens=requested_context_tokens,
+        )
+
     def _resident_capacity_estimate(
         self,
         shared_runner: Qwen35GGUFFullStackRunner,
@@ -1826,6 +2217,11 @@ class Qwen35GGUFBringupGenerator:
             "fp16",
             "per_token_head",
         )
+        dms_requested = getattr(self, "dms_metadata_path", None) is not None
+        if dms_requested:
+            # The prefill peak includes a transient dense BF16 source even
+            # when the retained compact payload is INT8.
+            signature = ("bf16", "uniform", "fp16", "per_token_head")
         storage, storage_layout, scale_dtype, granularity = (str(part) for part in signature)
         configured_budget_mib = getattr(self, "_kv_pool_memory_budget_mib", None)
         if configured_budget_mib is not None:
@@ -1836,7 +2232,7 @@ class Qwen35GGUFBringupGenerator:
             )
         model_max = int(getattr(cfg, "context_length", 0) or 0)
         requested = int(requested_context_tokens or 0) or model_max or _GGUF_AUTO_CONTEXT_BLOCK_SIZE
-        qualified = _qualified_no_mirror_int8_capability(
+        qualified = _admitted_no_mirror_int8_capability(
             getattr(self, "kv_capability_provenance", None)
         )
         full_attention_layers = sum(
@@ -1863,18 +2259,18 @@ class Qwen35GGUFBringupGenerator:
                 kv_width=kv_width,
                 linear_qkv_width=linear_qkv_width,
                 fp16_recurrent_state=bool(getattr(shared_runner, "fp16_recurrent_state", False)),
-                # Context admission is per request.  The shared device pool
-                # grows against its memory budget, so scheduler concurrency
-                # must not multiply the resident KV footprint estimate.
+                # Elastic request KV is priced per request; the eager workspace
+                # is pinned for the entire serving capacity independently.
                 max_batch_size=1,
+                workspace_lease_slots=int(max_batch_size),
                 kv_storage_dtype=storage,
                 kv_storage_layout=storage_layout,
                 kv_scale_dtype=scale_dtype,
                 kv_scale_granularity=granularity,
                 int8_kv_no_mirror_qualified=qualified,
                 int8_bf16_layer_indices_resolver=_layer_indices,
-                allocate_kv_cache=not bool(defer_kv_allocation),
-                workspace_lease_needed=self._packed_workspace_lease_needed(
+                allocate_kv_cache=dms_requested or not bool(defer_kv_allocation),
+                workspace_lease_needed=not dms_requested and self._packed_workspace_lease_needed(
                     max_batch_size=int(max_batch_size)
                 ),
                 reserve_bytes=_gguf_auto_context_reserve_bytes(),
@@ -1888,8 +2284,7 @@ class Qwen35GGUFBringupGenerator:
     def _auto_context_cache_key(
         self, *, max_batch_size: int, defer_kv_allocation: bool
     ) -> tuple[int, bool]:
-        del max_batch_size
-        return (1, bool(defer_kv_allocation))
+        return (max(1, int(max_batch_size)), bool(defer_kv_allocation))
 
     def _record_auto_context_selection(
         self,
@@ -1901,9 +2296,8 @@ class Qwen35GGUFBringupGenerator:
     ) -> None:
         """Remember a resolved context and keep the reported value conservative.
 
-        The cache is keyed only by allocation mode. Scheduler concurrency does
-        not change the per-request context ceiling when KV pages come from the
-        shared elastic pool.
+        The cache includes serving capacity because its eager workspace lease
+        is pinned even when request KV pages come from the elastic pool.
         """
 
         key = self._auto_context_cache_key(
@@ -1929,9 +2323,8 @@ class Qwen35GGUFBringupGenerator:
     ) -> int | None:
         """Choose the resident context when the caller did not pin one.
 
-        The selection is cached per allocation mode. Every request shares the
-        same context ceiling; concurrency is enforced by the scheduler and does
-        not cause a second context calculation.
+        The selection is cached per serving capacity and allocation mode.
+        Requests within one serving configuration share the same ceiling.
         """
 
         cached = self._auto_resolved_max_sequence_lengths.get(
@@ -2027,8 +2420,18 @@ class Qwen35GGUFBringupGenerator:
             reduced = candidate * _GGUF_AUTO_CONTEXT_FALLBACK_NUMERATOR // _GGUF_AUTO_CONTEXT_FALLBACK_DENOMINATOR
         else:
             reduced = candidate // 2
+        # The largest block-aligned context strictly below the one that just
+        # failed. A failed context at or below one block has no smaller valid
+        # context, so return it unchanged: the callers' ``next_context >=
+        # context`` guard then terminates the retry. Flooring to a fixed block
+        # here drove a real server through 256 -> 0 -> -2560; promoting a
+        # sub-block pin to a full block would instead silently raise the user's
+        # requested context.
+        ceiling = ((int(failed_context) - 1) // block) * block
+        if ceiling < block:
+            return int(failed_context)
         reduced = max(block, (reduced // block) * block)
-        return min(reduced, int(failed_context) - block)
+        return min(reduced, ceiling)
 
     def _construct_shared_session(
         self,
@@ -2095,6 +2498,21 @@ class Qwen35GGUFBringupGenerator:
                 )
                 context = next_context
             else:
+                dms_source = getattr(session, "_dms_source", None)
+                if dms_source is not None:
+                    config = dms_source.config
+                    self._dms_serving_policy = {
+                        "metadata_path": self.dms_metadata_path,
+                        "decision_source": config.decision_source,
+                        "decision_mode": session.dms_decision_mode,
+                        "window_size": config.window_size,
+                        "target_compression_ratio": config.target_compression_ratio,
+                        "prefill_selection_mode": config.prefill_selection_mode,
+                        "storage": self._prepared_kv_signature[0],
+                        "prefill_mode": session.dms_prefill_mode,
+                        "max_active_requests": 1,
+                        "prefix_cache": "off",
+                    }
                 self._attach_capacity_estimate(
                     session,
                     shared_runner,
@@ -2146,9 +2564,14 @@ class Qwen35GGUFBringupGenerator:
         use_gemv_decode: bool | None = None,
         defer_kv_allocation: bool = False,
         max_batch_size: int = 1,
+        max_sequence_length: int | None = None,
     ) -> tuple[Qwen35GGUFResidentSession, _GGUFSessionPoolKey, bool]:
         self._ensure_shared_pools()
-        max_sequence_length = getattr(self, "_prepared_max_sequence_length", None)
+        # An explicit context wins so a retry can acquire at the size it just
+        # selected. Falling back to the prepared policy keeps the pinned value
+        # authoritative for callers that do not override it.
+        if max_sequence_length is None:
+            max_sequence_length = getattr(self, "_prepared_max_sequence_length", None)
         if getattr(self, "_prepared_kv_signature", None) is None:
             self._prepare_kv_policy(None)
         assert self._prepared_kv_signature is not None
@@ -2381,7 +2804,28 @@ class Qwen35GGUFBringupGenerator:
         if error is not None:
             raise error
 
+    @property
+    def native_sampler_provenance(self) -> dict[str, Any]:
+        from hipengine.runtime.native_sampler import native_sampler_provenance
+
+        return {
+            **native_sampler_provenance(self.native_sampler_algorithm),
+            "model_execution_profile": getattr(self, "execution_profile", None),
+            "backend": self.backend,
+        }
+
+    def _configure_native_sampler(self, session: Qwen35GGUFResidentSession) -> None:
+        # Sampling is an independently declared arithmetic axis (§3). Do not
+        # infer strict sampler parity from a model-only execution-profile label.
+        provenance = self.native_sampler_provenance
+        workspace = getattr(session, "_native_sampler_workspace", None)
+        if workspace is not None and not workspace.closed:
+            if workspace.full_vocab_algorithm != self.native_sampler_algorithm:
+                raise RuntimeError("cannot change live native sampler selection")
+        session.native_sampler_algorithm = provenance["full_vocab_algorithm"]
+
     def _configure_session(self, session: Qwen35GGUFResidentSession) -> None:
+        self._configure_native_sampler(session)
         # Prefill correctness policy is selected by the generator registry
         # factory, not by a quant branch in runtime dispatch.
         session.default_bulk_attention_mode = getattr(
@@ -2442,31 +2886,35 @@ class Qwen35GGUFBringupGenerator:
     def supports_speculative_mtp(self) -> bool:
         """Whether this GGUF inventory has the NextN tensors required for MTP."""
 
+        if getattr(self, "dms_config", None) is not None:
+            return False
         return _gguf_info_has_mtp_tensors(self.weight_index)
 
-    def resolve_speculative_mtp_serving_plan(
+    def _speculative_mtp_serving_key(
         self,
         *,
-        execution_profile_manifest_sha256: str,
         realized_group_rows: int,
         resident_capacity: int,
         candidate_budget: int,
         sampling_mode: str,
-        max_sequence_length: int,
-        context_tokens: int,
-        output_horizon_tokens: int,
         kv_storage: str,
         memory_fit: bool,
     ):
-        """Resolve the model-plugin-owned exact serving plan before mutation."""
+        """Build the resident artifact's model-plugin serving scope.
 
-        from hipengine.speculative.serving import (
-            SpeculativeMTPServingKey,
-            resolve_speculative_mtp_serving_plan,
-        )
+        Returns ``(evidence, key)``, or ``(evidence, None)`` when this model
+        plugin owns unrelated artifacts (for example Q4_K_S) whose explicit
+        compatibility route is independent of the typed serving evidence.
+        """
+
+        from hipengine.speculative.serving import SpeculativeMTPServingKey
 
         requested_kv = str(kv_storage or "auto")
-        effective_kv = "bf16" if requested_kv == "auto" else requested_kv
+        prepared_kv = getattr(self, "_prepared_kv_signature", None)
+        effective_kv = (
+            str(prepared_kv[0]) if prepared_kv is not None
+            else "bf16" if requested_kv == "auto" else requested_kv
+        )
         evidence = tuple(
             getattr(
                 self.model_plugin,
@@ -2483,48 +2931,154 @@ class Qwen35GGUFBringupGenerator:
         except OSError:
             artifact_size = None
         weight_quant = self._kv_weight_quant_key()
-        if not any(
-            row.artifact_size_bytes == artifact_size
-            and row.weight_quant == weight_quant
-            for row in evidence
+        implemented_storage = any(
+            implementation.kv_storage == effective_kv
+            for implementation in getattr(
+                self.model_plugin, "speculative_mtp_serving_implementations", (),
+            )
+        )
+        execution_fingerprint = self._artifact_execution_fingerprint()
+        # The artifact axis is execution identity, so a revision whose bytes
+        # differ but whose layouts match still resolves here.  Only the quant
+        # family is a cheap pre-filter: a row for another quant cannot cover
+        # this artifact on any axis.
+        if not implemented_storage and not any(
+            row.weight_quant == weight_quant for row in evidence
         ):
-            # This model plugin may own unrelated dense artifacts (for example
-            # Q4_K_S). No typed plan applies; preserve their independent
-            # explicit compatibility route without implying default evidence.
-            return None
-        artifact = self._kv_model_artifact_identity()
+            return evidence, None
         key = SpeculativeMTPServingKey(
-            artifact_sha256=artifact.sha256,
-            artifact_size_bytes=artifact.size_bytes,
-            content_verified=artifact.content_verified,
+            # Provenance only: the resident file's SHA-256 is not an admission
+            # axis, so it is not computed here.  Computing it would read the
+            # whole artifact to compare a value no row reads.
+            artifact_sha256=None,
+            artifact_size_bytes=artifact_size,
+            content_verified=execution_fingerprint is not None,
             backend=str(self.backend),
             target_arch=str(self.target_arch),
             weight_quant=weight_quant,
-            execution_profile=str(
-                getattr(self, "execution_profile", None) or "legacy_exact"
-            ),
-            execution_profile_manifest_sha256=(
-                execution_profile_manifest_sha256
-            ),
             kv_storage=effective_kv,
-            kv_layout="uniform",
+            kv_layout=str(prepared_kv[1]) if prepared_kv is not None else "uniform",
             realized_group_rows=int(realized_group_rows),
             resident_capacity=int(resident_capacity),
             candidate_budget=int(candidate_budget),
             sampling_mode=str(sampling_mode),
-            max_sequence_length=int(max_sequence_length),
-            context_tokens=int(context_tokens),
-            output_horizon_tokens=int(output_horizon_tokens),
             memory_fit=bool(memory_fit),
+            kv_scale_dtype=str(prepared_kv[2]) if prepared_kv is not None else None,
+            kv_scale_granularity=str(prepared_kv[3]) if prepared_kv is not None else None,
+            artifact_execution_fingerprint=execution_fingerprint,
         )
+        return evidence, key
+
+    def _artifact_execution_fingerprint(self) -> str | None:
+        """Execution identity of the resident artifact, when it is computable.
+
+        ``None`` leaves the key without an artifact identity, and admission then
+        fails closed as ``artifact_identity_unverified``.
+        """
+
+        from hipengine.loading.gguf import gguf_execution_fingerprint
+
+        try:
+            return gguf_execution_fingerprint(self.weight_index)
+        except Exception:
+            return None
+
+    def resolve_speculative_mtp_serving_plan(
+        self,
+        *,
+        realized_group_rows: int,
+        resident_capacity: int,
+        candidate_budget: int,
+        sampling_mode: str,
+        kv_storage: str,
+        memory_fit: bool,
+        request_mode: str = "automatic",
+    ):
+        """Resolve the model-plugin-owned exact serving plan before mutation.
+
+        ``request_mode`` is ``explicit`` for a request that asked for
+        speculation and ``automatic`` otherwise.  Only the explicit mode may
+        admit on implementation capability when no evidence row covers the
+        cell; automatic policy stays with the retained evidence.
+        """
+
+        from hipengine.speculative.serving import resolve_speculative_mtp_serving_plan
+
+        evidence, key = self._speculative_mtp_serving_key(
+            realized_group_rows=realized_group_rows,
+            resident_capacity=resident_capacity,
+            candidate_budget=candidate_budget,
+            sampling_mode=sampling_mode,
+            kv_storage=kv_storage,
+            memory_fit=memory_fit,
+        )
+        if key is None:
+            # No typed plan applies; preserve the independent explicit
+            # compatibility route without implying default evidence.
+            return None
         resolver = getattr(
             self.model_plugin,
             "resolve_speculative_mtp_serving_plan",
             None,
         )
         if callable(resolver):
-            return resolver(key=key)
+            try:
+                return resolver(key=key, request_mode=str(request_mode))
+            except TypeError:
+                # Model plugins that predate the request-mode parameter keep
+                # their evidence-only behaviour.
+                return resolver(key=key)
         return resolve_speculative_mtp_serving_plan((), key=key)
+
+    def max_qualified_speculative_candidate_budget(
+        self,
+        *,
+        realized_group_rows: int,
+        resident_capacity: int,
+        sampling_mode: str,
+        kv_storage: str = "auto",
+        memory_fit: bool = True,
+    ) -> int | None:
+        """Deepest depth the resident artifact's evidence qualifies for this cell.
+
+        The requested-depth axis is deliberately ignored: the answer describes
+        what the retained evidence authorizes, which is how an omitted server
+        budget resolves without a global constant.
+        """
+
+        evidence, key = self._speculative_mtp_serving_key(
+            realized_group_rows=realized_group_rows,
+            resident_capacity=resident_capacity,
+            # Placeholder: the capability resolver drops the depth axis.
+            candidate_budget=1,
+            sampling_mode=sampling_mode,
+            kv_storage=kv_storage,
+            memory_fit=memory_fit,
+        )
+        if key is None or not evidence:
+            return None
+        resolver = getattr(self.model_plugin, "max_qualified_candidate_budget", None)
+        if not callable(resolver):
+            return None
+        return resolver(key=key)
+
+    def speculative_candidate_budget_default(self) -> int:
+        """Depth this generator's MTP path uses when unpinned."""
+
+        budget = int(_gguf_mtp_server_candidate_budget())
+        declarations = tuple(
+            getattr(self.model_plugin, "speculative_mtp_serving_implementations", ())
+            or ()
+        )
+        # Default depth describes what the adapter can execute, including when
+        # MTP is explicit-only. Automatic eligibility must not raise that depth.
+        offered = [
+            int(declaration.max_candidate_count)
+            for declaration in declarations
+            if (self.backend, self.target_arch) in declaration.backends
+            and declaration.kv_storage == "bf16"
+        ]
+        return min(budget, max(offered, default=budget))
 
     def generate(self, request: GenerationRequest) -> list[str]:
         outputs = self.generate_detailed(request)
@@ -2572,6 +3126,7 @@ class Qwen35GGUFBringupGenerator:
             }
         )
         with Qwen35GGUFResidentSession(self.model_path, **session_kwargs) as session:
+            self._configure_native_sampler(session)
             if plan.mode is SamplingMode.GREEDY_FAST:
                 yield from self._stream_greedy(
                     session,
@@ -2669,6 +3224,8 @@ class Qwen35GGUFBringupGenerator:
                 self.model_path,
                 max_sequence_length=max_sequence_length,
                 max_batch_size=native_capacity,
+                backend=self.backend,
+                execution_routes=("eager", "native_rows", "native_graph"),
             ) as session:
                 self._configure_session(session)
                 native_run = self._generate_greedy_batch(
@@ -2951,6 +3508,7 @@ class Qwen35GGUFBringupGenerator:
         batch_results_by_request: dict[int, Any] = {}
         chunk_ms_by_request: dict[int, float] = {}
         completed_chunks = 0
+        serial_prefill_request_ids: set[int] = set()
         try:
             with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
                 for chunk in chunks:
@@ -2978,8 +3536,26 @@ class Qwen35GGUFBringupGenerator:
                     completed_chunks += 1
         except NotImplementedError:
             if completed_chunks == 0:
+                # Nothing was prefilled yet, so the caller's per-slot route can
+                # serve the whole request; declining here keeps the packed
+                # bound from rejecting a prompt the context admits.
                 return False
-            raise
+            # A later width group hit the packed route's context bound. The
+            # groups before it are already prefilled, so finish the remaining
+            # slots on the strict per-session route instead of failing a
+            # request whose prompt is inside the configured context.
+            self._fallback_reasons["packed_prefill_unsupported_k0"] += 1
+            for chunk in chunks[completed_chunks:]:
+                for slot in chunk:
+                    result = slot.session.prefill(
+                        slot.prompt_ids,
+                        return_logits=False,
+                    )
+                    batch_results_by_request[int(slot.request_id)] = result
+                    chunk_ms_by_request[int(slot.request_id)] = _timing_ms_since(
+                        batch_start
+                    )
+                    serial_prefill_request_ids.add(int(slot.request_id))
         prefill_ms = _timing_ms_since(batch_start)
         for slot in slots:
             result = batch_results_by_request[int(slot.request_id)]
@@ -2991,7 +3567,9 @@ class Qwen35GGUFBringupGenerator:
                     "prefill_batch_chunk_ms",
                     float(chunk_ms_by_request.get(int(slot.request_id), 0.0)),
                 )
-            slot.native_compact_prefill = True
+            slot.native_compact_prefill = (
+                int(slot.request_id) not in serial_prefill_request_ids
+            )
             self._finish_ar_serving_slot_prefill(slot, int(getattr(result, "token_id")), request)
         return True
 
@@ -3860,47 +4438,54 @@ class Qwen35GGUFBringupGenerator:
                     }
                 )
 
-            owner_session = acquired[0]["session"]
-            prefill_batch = getattr(owner_session, "prefill_batch_native", None)
-            if not callable(prefill_batch):
-                raise NotImplementedError("resident session has no packed prefill entry point")
-            prefill_results_by_slot: list[Any | None] = [None] * len(acquired)
-            prefill_ms_by_slot = [0.0] * len(acquired)
-            chunk_start_index = 0
-            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-                while chunk_start_index < len(acquired):
-                    remaining = len(acquired) - chunk_start_index
-                    take = min(_MTP_SERVING_TARGET_BATCH_MAX_SLOTS, remaining)
-                    if remaining > _MTP_SERVING_TARGET_BATCH_MAX_SLOTS and remaining - take == 1:
-                        take -= 1
-                    chunk_entries = acquired[chunk_start_index:chunk_start_index + take]
-                    chunk_owner = chunk_entries[0]["session"]
-                    chunk_prefill_batch = getattr(chunk_owner, "prefill_batch_native", None)
-                    if not callable(chunk_prefill_batch):
-                        raise NotImplementedError("resident session has no packed prefill entry point")
-                    prompt_batch = [tuple(entry["prompt_ids"]) for entry in chunk_entries]
-                    session_batch = [entry["session"] for entry in chunk_entries]
-                    prefill_start = time.perf_counter()
-                    chunk_results = chunk_prefill_batch(
-                        prompt_batch,
-                        sessions=session_batch,
-                        return_logits=False,
-                        return_hidden_seeds=True,
-                    )
-                    prefill_ms = _timing_ms_since(prefill_start)
-                    if chunk_results is None:
-                        raise NotImplementedError("packed MTP prefill returned no results")
-                    chunk_results = list(chunk_results)
-                    if len(chunk_results) != len(chunk_entries):
-                        raise RuntimeError(
-                            f"packed MTP prefill returned {len(chunk_results)} result(s) "
-                            f"for {len(chunk_entries)} slot(s)"
+            # The packed route can refuse an unsupported slab or resource
+            # shape. That is a route decision, not a failure of the request: release
+            # what was acquired and decline so the per-request slot path serves it.
+            try:
+                owner_session = acquired[0]["session"]
+                prefill_batch = getattr(owner_session, "prefill_batch_native", None)
+                if not callable(prefill_batch):
+                    raise NotImplementedError("resident session has no packed prefill entry point")
+                prefill_results_by_slot: list[Any | None] = [None] * len(acquired)
+                prefill_ms_by_slot = [0.0] * len(acquired)
+                chunk_start_index = 0
+                with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+                    while chunk_start_index < len(acquired):
+                        remaining = len(acquired) - chunk_start_index
+                        take = min(_MTP_SERVING_TARGET_BATCH_MAX_SLOTS, remaining)
+                        if remaining > _MTP_SERVING_TARGET_BATCH_MAX_SLOTS and remaining - take == 1:
+                            take -= 1
+                        chunk_entries = acquired[chunk_start_index:chunk_start_index + take]
+                        chunk_owner = chunk_entries[0]["session"]
+                        chunk_prefill_batch = getattr(chunk_owner, "prefill_batch_native", None)
+                        if not callable(chunk_prefill_batch):
+                            raise NotImplementedError("resident session has no packed prefill entry point")
+                        prompt_batch = [tuple(entry["prompt_ids"]) for entry in chunk_entries]
+                        session_batch = [entry["session"] for entry in chunk_entries]
+                        prefill_start = time.perf_counter()
+                        chunk_results = chunk_prefill_batch(
+                            prompt_batch,
+                            sessions=session_batch,
+                            return_logits=False,
+                            return_hidden_seeds=True,
                         )
-                    for offset, result in enumerate(chunk_results):
-                        slot_index = chunk_start_index + offset
-                        prefill_results_by_slot[slot_index] = result
-                        prefill_ms_by_slot[slot_index] = prefill_ms
-                    chunk_start_index += take
+                        prefill_ms = _timing_ms_since(prefill_start)
+                        if chunk_results is None:
+                            raise NotImplementedError("packed MTP prefill returned no results")
+                        chunk_results = list(chunk_results)
+                        if len(chunk_results) != len(chunk_entries):
+                            raise RuntimeError(
+                                f"packed MTP prefill returned {len(chunk_results)} result(s) "
+                                f"for {len(chunk_entries)} slot(s)"
+                            )
+                        for offset, result in enumerate(chunk_results):
+                            slot_index = chunk_start_index + offset
+                            prefill_results_by_slot[slot_index] = result
+                            prefill_ms_by_slot[slot_index] = prefill_ms
+                        chunk_start_index += take
+            except NotImplementedError:
+                close_acquired()
+                return None
 
             slots: list[_GGUFMTPServingSlot] = []
             hidden_size = int(assets.token_embd_f32.shape[1])
@@ -5499,6 +6084,7 @@ class Qwen35GGUFBringupGenerator:
         tokenize_ms: float,
     ) -> Iterator[GenerationStreamChunk]:
         generated_ids: list[int] = []
+        decoder = _GGUFStreamDecoder(self.tokenizer)
         telemetry_timing = {"tokenize_ms": max(0.0, float(tokenize_ms))}
         raise_if_generation_deadline_expired(request)
         result = session.prefill(prompt_ids, return_logits=False)
@@ -5506,7 +6092,7 @@ class Qwen35GGUFBringupGenerator:
         generated_ids.append(int(result.token_id))
         finished = _gguf_finished(generated_ids, self.tokenizer, request)
         yield GenerationStreamChunk(
-            self.tokenizer.decode([generated_ids[-1]]),
+            decoder.feed(generated_ids[-1], final=finished or len(generated_ids) >= request.max_tokens),
             finish_details=(
                 _gguf_finish_details(generated_ids, self.tokenizer, request)
                 if finished or len(generated_ids) >= request.max_tokens
@@ -5535,7 +6121,7 @@ class Qwen35GGUFBringupGenerator:
             generated_ids.append(int(step.token_id))
             finished = _gguf_finished(generated_ids, self.tokenizer, request)
             yield GenerationStreamChunk(
-                self.tokenizer.decode([generated_ids[-1]]),
+                decoder.feed(generated_ids[-1], final=finished or len(generated_ids) >= request.max_tokens),
                 finish_details=(
                     _gguf_finish_details(generated_ids, self.tokenizer, request)
                     if finished or len(generated_ids) >= request.max_tokens
@@ -5572,6 +6158,7 @@ class Qwen35GGUFBringupGenerator:
         state = _gguf_row_sampling_state(sampling_request, prompt_ids, row_index=row_index)
         generated_ids: list[int] = []
         live_phase = None if state.thinking_budget is not None else "answer"
+        decoder = _GGUFStreamDecoder(self.tokenizer)
         raise_if_generation_deadline_expired(request)
         result = session.prefill(prompt_ids, return_logits=True)
         raise_if_generation_deadline_expired(request)
@@ -5586,7 +6173,7 @@ class Qwen35GGUFBringupGenerator:
         )
         finished = _gguf_finished(generated_ids, self.tokenizer, sampling_request)
         yield GenerationStreamChunk(
-            self.tokenizer.decode([generated_ids[-1]]),
+            decoder.feed(generated_ids[-1], final=finished or len(generated_ids) >= sampling_request.max_tokens),
             token_logprobs=_gguf_stream_token_logprobs(self.tokenizer, sample, sampling_request),
             finish_details=(
                 _gguf_finish_details(generated_ids, self.tokenizer, sampling_request, state)
@@ -5628,7 +6215,7 @@ class Qwen35GGUFBringupGenerator:
             )
             finished = _gguf_finished(generated_ids, self.tokenizer, sampling_request)
             yield GenerationStreamChunk(
-                self.tokenizer.decode([generated_ids[-1]]),
+                decoder.feed(generated_ids[-1], final=finished or len(generated_ids) >= sampling_request.max_tokens),
                 token_logprobs=_gguf_stream_token_logprobs(self.tokenizer, sample, sampling_request),
                 finish_details=(
                     _gguf_finish_details(generated_ids, self.tokenizer, sampling_request, state)
@@ -5657,6 +6244,34 @@ class Qwen35GGUFBringupGenerator:
                 return
 
 
+class _GGUFStreamDecoder:
+    """One request's text state, shared by AR and speculative publication."""
+
+    def __init__(
+        self, tokenizer: Any, *, suppress_after_special: bool = False, ignore_eos: bool = False
+    ) -> None:
+        self.tokenizer = tokenizer
+        self.suppress_after_special = suppress_after_special
+        self.ignore_eos = ignore_eos
+        self.suppressed = False
+        factory = getattr(tokenizer, "incremental_decoder", None)
+        self.decoder = factory(skip_special=suppress_after_special) if callable(factory) else None
+
+    def feed(self, token_id: int, *, final: bool) -> str:
+        if self.suppressed:
+            return ""
+        ids = (int(token_id),)
+        ignored_eos = self.ignore_eos and token_id == getattr(self.tokenizer, "eos_token_id", None)
+        if self.suppress_after_special and not ignored_eos:
+            visible = self.tokenizer.decode(ids, skip_special=True)
+            if not visible and self.tokenizer.decode(ids):
+                self.suppressed = True
+                return self.decoder.feed((), final=True) if self.decoder is not None else ""
+        if self.decoder is not None:
+            return self.decoder.feed(ids, final=final)
+        return self.tokenizer.decode(ids, skip_special=self.suppress_after_special)
+
+
 @dataclass(frozen=True, slots=True)
 class _GGUFResidentSessionLease:
     session: Qwen35GGUFResidentSession
@@ -5670,6 +6285,12 @@ class _GGUFPrefixSnapshotEntry:
     snapshot: Any
     owner_request_id: int | None
     retained: bool = False
+    # True for the deepest 256-aligned boundary at or before the request's own
+    # prompt end. Every following turn reaches it -- a resend matches it and a
+    # cumulative turn passes through it first -- so it outranks a decode-time
+    # boundary, which only a client resending this request's generated text
+    # verbatim can reach.
+    prompt_boundary: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -5722,13 +6343,37 @@ class _GGUFResidentLoopRow:
     prefix_admission_fallback: bool = False
     prefix_fallback_reason: str | None = None
     mtp2_candidate_budget: int = 0
+    mtp2_requested_budget: int = 0
     mtp2_prompt_streaming: bool = False
     mtp2_prompt_prime_rows: int = 0
     mtp2_prompt_carried_bytes: int = 0
     mtp2_prompt_fallback_reason: str | None = None
+    # The four separately-published refusal facts. Declared on the row (a slots
+    # dataclass) because the shared accounting helper cannot attach a new
+    # attribute at runtime: why the row's provider was not ready, how wide the
+    # group it was planned in was, and whether that group ran autoregressively.
+    mtp2_provider_readiness: str | None = None
+    mtp2_provider_decline_reason: str | None = None
+    # Declared here because this row is a slotted dataclass: the accounting
+    # layer writes these attributes, and an undeclared one raises inside the
+    # engine loop rather than reporting a missing fact.
+    mtp2_provider_state_present: bool | None = None
+    mtp2_plan_group_rows: int | None = None
+    mtp2_plan_ar_only: bool | None = None
+    mtp2_plan_reason: str | None = None
+    mtp2_mtp_output_tokens: int = 0
+    mtp2_ar_output_tokens: int = 0
+    mtp2_ar_step_output_tokens: int = 0
+    mtp2_first_fallback_position: int | None = None
+    mtp2_ar_step_reasons: dict[str, int] = field(default_factory=dict)
     mtp2_cycles: int = 0
     mtp2_candidate_counts: list[int] = field(default_factory=list)
     mtp2_accepted_counts: list[int] = field(default_factory=list)
+    # Committed output spans (mode, reason, position, tokens), recorded only
+    # while HIPENGINE_MTP2_OUTPUT_SPANS is enabled. Declared here because the
+    # row is a slots dataclass: the shared accounting helper cannot attach a new
+    # attribute at runtime.
+    mtp2_output_spans: list[dict[str, Any]] = field(default_factory=list)
     mtp2_proposal_ms: float = 0.0
     mtp2_target_ms: float = 0.0
     mtp2_provider_update_ms: float = 0.0
@@ -5823,7 +6468,7 @@ def _compact_live_execution_manifest(manifest: Mapping[str, Any]) -> dict[str, A
     return compact
 
 
-class Qwen35GGUFResidentModelRunner:
+class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
     """Long-lived scheduler-facing owner of GGUF model and session state.
 
     The owner reserves a fixed session pool once, keeps stable request identity
@@ -5867,6 +6512,14 @@ class Qwen35GGUFResidentModelRunner:
         self._resident_batch_owner_pool_key: _GGUFSessionPoolKey | None = None
         self._rows: dict[int, _GGUFResidentLoopRow] = {}
         self._outputs: dict[int, GenerationOutput] = {}
+        # Per-published-token metadata from committed speculative cycles, keyed
+        # by request. A cycle publishes several tokens at once and its stream
+        # events are decorated after the commit, by which point a cycle that
+        # finishes the request has already reclaimed the row. The blocking
+        # output reads the row's own sample list during reclaim; these events
+        # need a record that outlives the row.
+        self._cycle_token_samples: dict[int, list[Any]] = {}
+        self._stream_decoders: dict[int, _GGUFStreamDecoder] = {}
         self._completed_metadata: dict[int, dict[str, Any]] = {}
         self._next_batch_id = 0
         self._kv_pool: Any | None = None
@@ -5876,13 +6529,31 @@ class Qwen35GGUFResidentModelRunner:
         self._prefix_cache: RadixCache | None = None
         self._prefix_state_snapshots: dict[tuple[int, ...], _GGUFPrefixSnapshotEntry] = {}
         self._prefix_snapshot_limit = max(1, int(capacity))
+        # Retained snapshots are the durable, cross-request working set; transient
+        # ones are the current request's captures. They are trimmed separately so
+        # a request's own capture can never evict the boundary that served it.
+        # The retained count defaults to the pre-fix effective budget; the wider
+        # working set is opt-in (docs/REFACTOR.md records the regression).
+        self._prefix_retained_limit = _gguf_prefix_retained_snapshot_limit(capacity)
+        self._prefix_retained_state_bytes_limit = (
+            _gguf_prefix_retained_state_bytes_limit()
+        )
+        self._prefix_retained_evictions_by_reason: dict[str, int] = {}
+        self._prefix_snapshot_promotions = 0
         self._prefix_snapshot_hits = 0
         self._prefix_snapshot_evictions = 0
+        self._prefix_snapshot_captures = 0
+        self._prefix_snapshot_capture_bytes = 0
         self._prefix_usable_hits = 0
         self._prefix_unusable_hits = 0
+        self._prefix_contiguous_admissions = 0
+        self._prefix_gapped_admissions = 0
         self._prefix_admission_fallbacks = 0
+        self._prefix_fallback_reasons: dict[str, int] = {}
         self._prefix_reused_tokens = 0
         self._prefix_state_clone_bytes = 0
+        self._prefix_phase_ms: dict[str, float] = {}
+        self._prefix_phase_calls: dict[str, int] = {}
         self._kv_hip_used_peak_sampled_bytes = 0
         self._kv_graph_invalidation_count = 0
         self._packed_workspace_release_events = 0
@@ -5896,6 +6567,29 @@ class Qwen35GGUFResidentModelRunner:
         self._mtp2_adapter: Any | None = None
         self._mtp2_adapter_resolved = False
         self._closed = False
+        # How much of the step currently executing could already have reached
+        # device state.  ``"none"`` is set by a step's own pre-device
+        # validation and cleared at its first device call; the conservative
+        # default keeps a failure in any other phase fatal.
+        self._execution_mutation_window = "unknown"
+        self._execution_step_request_id: int | None = None
+        # Rows whose device state may already have advanced inside the step or
+        # speculative cycle currently executing, and rows whose canonical
+        # commit this runner recorded inside it.  Containment reads both to
+        # bound a post-device claim: a row is left unnamed only when the runner
+        # can prove it never entered the device phase, and the mutation class
+        # is ``committed`` exactly when a canonical commit was recorded before
+        # the failure.
+        self._execution_stepped_request_ids: set[int] = set()
+        self._execution_committed_request_ids: set[int] = set()
+        # The plan of the speculative cycle currently executing, so a failed
+        # cycle can name the rows it owned.
+        self._execution_speculative_plan: Any | None = None
+        # True once the current step's device phase has completed without any
+        # enumerated device work, so a failure after it is still pre-device for
+        # every row.  A phase that raised before completing leaves it False, so
+        # an unenumerated device path stays refused instead of contained.
+        self._execution_device_phase_empty = False
         self._graph_handle_refs: dict[int, weakref.ReferenceType[Any]] = {}
         self._graph_handle_buckets: dict[int, str] = {}
         self._graph_handle_replays: dict[int, int] = {}
@@ -6029,10 +6723,17 @@ class Qwen35GGUFResidentModelRunner:
         sessions = self._resident_sessions()
         self._observe_graph_handles(sessions)
         pool = self._kv_pool
+        workspace_pages_fn = getattr(pool, "workspace_pages", None)
+        workspace_lease = (
+            workspace_pages_fn(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
+            if callable(workspace_pages_fn) else None
+        )
         pool_stats = None if pool is None else pool.stats.to_json_dict()
         if pool_stats is not None:
             pool_stats["max_pages"] = getattr(pool, "max_pages", None)
             pool_stats["budget_bytes"] = getattr(pool, "budget_bytes", None)
+            pool_stats["private_workspace_bytes"] = int(getattr(pool, "private_workspace_bytes", 0))
+            pool_stats["accounted_bytes"] = int(getattr(pool, "accounted_bytes", pool_stats["current_bytes"]))
         active_entries: Counter[str] = Counter()
         for handle in self._graph_handles_for_sessions(sessions):
             if bool(getattr(handle, "closed", False)):
@@ -6061,6 +6762,7 @@ class Qwen35GGUFResidentModelRunner:
         ]
         return {
             "model_runner": {
+                "dms": copy.deepcopy(getattr(self.generator, "_dms_serving_policy", None)),
                 "capacity": int(self.capacity),
                 "max_active_requests": int(self.capacity),
                 "max_context_tokens": getattr(
@@ -6076,9 +6778,7 @@ class Qwen35GGUFResidentModelRunner:
                 "packed_workspace_current_bytes": workspace_owner_bytes,
                 "packed_workspace_owner_sessions": workspace_sessions,
                 "packed_workspace_leased_pool_bytes": (
-                    int(pool_stats.get("pinned_pages", 0)) * pool_page_bytes
-                    if pool_stats is not None
-                    else 0
+                    len(workspace_lease or ()) * pool_page_bytes
                 ),
                 "packed_kv_workspace_lease_skipped": bool(
                     getattr(self, "_packed_kv_workspace_lease_skipped", False)
@@ -6248,6 +6948,13 @@ class Qwen35GGUFResidentModelRunner:
             ),
             "dynamic_pool": pool_stats,
             "packed_workspace_backing": workspace_backing,
+            "private_workspace_kv_bytes": (
+                0 if pool is None else int(getattr(pool, "private_workspace_bytes", 0))
+            ),
+            "accounted_kv_bytes": (
+                0 if pool is None else int(getattr(pool, "accounted_bytes", pool_stats["current_bytes"]))
+            ),
+            "kv_budget_bytes": None if pool is None else getattr(pool, "budget_bytes", None),
             "packed_workspace_lease_pages": (
                 0 if workspace_lease is None else len(workspace_lease)
             ),
@@ -6292,6 +6999,8 @@ class Qwen35GGUFResidentModelRunner:
         if self._rows:
             raise RuntimeError("cannot configure GGUF device KV pool while requests are active")
         self._clear_prefix_snapshots()
+        if config != getattr(self, "_engine_loop_config", None):
+            self._dms_prefix_cache = None
         self._engine_loop_config = config
         self._prefix_cache_mode = resolve_prefix_cache_mode(
             getattr(config, "prefix_cache", "off")
@@ -6301,6 +7010,12 @@ class Qwen35GGUFResidentModelRunner:
             if self._prefix_cache_mode == "radix"
             else None
         )
+        if getattr(self.generator, "dms_metadata_path", None) is not None:
+            if self.capacity != 1:
+                raise NotImplementedError("DMS requires singleton ownership")
+            # The session owns its transient prefill pool and compact backend.
+            # Binding a dense global allocation here would replace that owner.
+            return
         factory_session = self._available[-1].session if self._available else None
         create_global_pool = getattr(
             factory_session,
@@ -6321,7 +7036,11 @@ class Qwen35GGUFResidentModelRunner:
             "kv_pool_memory_budget_mib",
             getattr(config, "kv_pool_memory_budget_mib", None),
         )
-        max_pages_per_request = max(1, (int(scratch.max_positions) + 255) // 256)
+        # Pool pressure reclaims this runner's retained prefix snapshots, so the
+        # pool-owning session is handed the handler explicitly. The session's own
+        # `_resident_batch_owner` names the session that owns shared session-level
+        # resources and has no prefix cache to reclaim from.
+        setattr(factory_session, "_kv_pool_pressure_owner", self)
         initial_pages = int(config.kv_pool_initial_pages)
         self._kv_pool_memory_budget_mib = getattr(
             config, "kv_pool_memory_budget_mib", None
@@ -6339,23 +7058,22 @@ class Qwen35GGUFResidentModelRunner:
                 global_capacity = min(global_capacity, high_water_pages)
             if global_capacity <= 0:
                 raise ValueError("GGUF global KV capacity must be positive")
-            # Eager packed-execution workspace lease: sized to the capacity-
-            # honest union-geometry ceiling (serving-capacity slots x
-            # max(1024, request context) tokens). The serving loop cannot
-            # open more resident slots than ``self.capacity``, so the lease
-            # follows it instead of the historical 8-slot floor; admission
-            # accounting still sees every pinned page and the workspace
-            # never grows.
-            workspace_pages_per_slot = max(
-                max_pages_per_request,
-                _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,
+            # Eager packed-execution workspace lease. This is an execution
+            # scratch budget, not a full-context KV reservation per admitted
+            # request: multi-row execution grows or falls back to
+            # request-owned storage when this shared floor is insufficient.
+            #
+            # Use the same serving capacity and context floor as the packed
+            # batch owner. Physical verifier slots may exceed serving capacity;
+            # private fallback KV is charged against the same pool budget in
+            # addition to this arena reservation.
+            # Eagerly reserve only the short-context workspace floor.
+            # Longer execution uses the budgeted private fallback instead of
+            # pinning full-context planes for every idle resident slot.
+            workspace_pages = packed_verify_workspace_lease_pages(
+                int(self.capacity),
+                1024,
             )
-            # Workspace is an execution scratch budget, not one full-context
-            # KV reservation per admitted request.  Multi-row execution grows
-            # or falls back to request-owned storage when this shared floor is
-            # insufficient.
-            workspace_slots = 1
-            workspace_pages = workspace_slots * workspace_pages_per_slot
             # P4 (roadmap F2): the packed KV plane lease exists only for
             # plane consumers - non-slot-local packed prefill (prefix-cache
             # COW scatter), packed batch decode above one resident slot, and
@@ -6612,24 +7330,70 @@ class Qwen35GGUFResidentModelRunner:
                 f"GGUF request requires {positions} KV positions but resident capacity is {capacity}"
             )
         pages = (positions + 255) // 256
+        start = time.perf_counter()
         prefix_source = self._prefix_source_for(row)
+        self._prefix_phase_add("admission_lookup", start)
         if prefix_source is not None:
             matched_tokens = prefix_source.matched_tokens
             prefix_pages = len(matched_tokens) // 256
+            # Placement decides which prefill route the hit gets, and the two
+            # are not close. A gapped block table has no contiguous base row, so
+            # `prefill_batch_native` drops to the packed paged route and imports
+            # the session's history into the packed planes; a contiguous run
+            # keeps the slot-local AOTriton route. Measured on Qwen3.5-0.8B, the
+            # paged route does the same attention work about 2.5x slower, which
+            # is what pushes a hit's break-even down to a suffix of roughly 12%
+            # of the prompt.
+            #
+            # So ask for contiguity first and accept a gapped placement rather
+            # than refusing: a slower hit still beats re-prefilling the whole
+            # prompt. Requiring contiguity outright (the earlier policy) turned
+            # fragmented placements into full-prefill misses, and never asking
+            # (the policy this replaces) put every hit on the slow route.
+            start = time.perf_counter()
+            allocation = None
             try:
                 allocation = pool.admit_with_shared_prefix(
                     row.request_id,
                     prefix_source.block_ids,
                     suffix_pages=pages - prefix_pages,
                     now_seconds=time.monotonic(),
+                    require_contiguous=True,
                 )
-            except MemoryError:
-                self._prefix_admission_fallbacks += 1
-                row.prefix_admission_fallback = True
-                row.prefix_fallback_reason = "shared_admission_capacity"
-            else:
+                self._prefix_contiguous_admissions += 1
+            except (DeviceKVContiguityError, MemoryError):
+                suffix_tokens = len(row.prompt_ids) - len(matched_tokens)
+                if (
+                    suffix_tokens > _gguf_prefix_gapped_suffix_max_tokens()
+                    and not _gguf_prefix_gapped_fast_route_available(lease, positions)
+                ):
+                    # Only a gapped placement is available and the suffix is
+                    # long enough that the slow paged route costs more than
+                    # the full prefill it would replace. The fast gapped
+                    # gather route is unavailable for this lease, so declining
+                    # the hit is still the cheaper answer.
+                    self._note_prefix_admission_fallback(
+                        row, "gapped_suffix_exceeds_paged_budget"
+                    )
+                else:
+                    try:
+                        allocation = pool.admit_with_shared_prefix(
+                            row.request_id,
+                            prefix_source.block_ids,
+                            suffix_pages=pages - prefix_pages,
+                            now_seconds=time.monotonic(),
+                            require_contiguous=False,
+                        )
+                        self._prefix_gapped_admissions += 1
+                    except MemoryError:
+                        self._note_prefix_admission_fallback(
+                            row, "shared_admission_capacity"
+                        )
+            if allocation is not None:
+                self._prefix_phase_add("admission_pool", start)
                 try:
                     lease.session.bind_device_kv_allocation(pool, allocation)
+                    restore_start = time.perf_counter()
                     if prefix_source.source_row is not None:
                         source_row = prefix_source.source_row
                         assert source_row.lease is not None
@@ -6645,6 +7409,7 @@ class Qwen35GGUFResidentModelRunner:
                                 prefix_source.snapshot,
                             )
                         )
+                    self._prefix_phase_add("admission_restore_state", restore_start)
                 except Exception:
                     if getattr(lease.session, "device_kv_allocation", None) is not None or getattr(
                         lease.session, "allocation", None
@@ -6680,15 +7445,21 @@ class Qwen35GGUFResidentModelRunner:
                 self._prefix_usable_hits += 1
                 self._prefix_reused_tokens += len(matched_tokens)
                 self._prefix_state_clone_bytes += cloned_bytes
+                refresh_start = time.perf_counter()
                 self._refresh_prefix_cache(row)
+                self._prefix_phase_add("admission_refresh", refresh_start)
                 self._sample_kv_hip_memory()
                 return
 
         try:
+            start = time.perf_counter()
             allocation = pool.allocate(
                 row.request_id,
                 pages,
                 now_seconds=time.monotonic(),
+                require_contiguous=(
+                    len(row.prompt_ids) >= PACKED_AR_PREFILL_CONTEXT_LIMIT
+                ),
             )
         except MemoryError as exc:
             stats = pool.stats
@@ -6709,6 +7480,7 @@ class Qwen35GGUFResidentModelRunner:
         except Exception:
             pool.release(row.request_id, now_seconds=time.monotonic())
             raise
+        self._prefix_phase_add("admission_pool", start)
         if not self._available or self._available[-1] is not lease:
             lease.session.invalidate_device_kv_graphs()
             lease.session.unbind_device_kv_allocation()
@@ -6730,35 +7502,66 @@ class Qwen35GGUFResidentModelRunner:
             and plan.mode is SamplingMode.PROCESSED_ARGMAX
         )
 
+    def _prefix_phase_add(self, name: str, start: float) -> None:
+        """Accumulate one named prefix-cache phase for serving diagnostics.
+
+        The serving path pays for prefix reuse in several distinct places
+        (admission lookup, trie maintenance, snapshot capture, state restore,
+        suffix prefill). Wall-clock per phase is the only way to rank them,
+        because the device work is asynchronous and the host work is not.
+        """
+
+        phases = self._prefix_phase_ms
+        phases[name] = round(float(phases.get(name, 0.0)) + _timing_ms_since(start), 3)
+        calls = self._prefix_phase_calls
+        calls[name] = int(calls.get(name, 0)) + 1
+
     def _prefix_source_for(
         self,
         row: _GGUFResidentLoopRow,
     ) -> _GGUFPrefixReuseSource | None:
         cache = getattr(self, "_prefix_cache", None)
         if cache is None:
-            row.prefix_fallback_reason = "cache_off"
+            self._note_prefix_fallback(row, "cache_off")
             return None
         if not self._prefix_reuse_supported(row):
-            row.prefix_fallback_reason = "sampling_unsupported"
+            self._note_prefix_fallback(row, "sampling_unsupported")
             return None
         if len(row.prompt_ids) <= 256:
-            row.prefix_fallback_reason = "prompt_too_short"
+            self._note_prefix_fallback(row, "prompt_too_short")
             return None
         row.prefix_eligible = True
+        start = time.perf_counter()
         self._flush_all_packed_owners()
+        self._prefix_phase_add("lookup_flush_packed", start)
+        start = time.perf_counter()
         for candidate in tuple(self._rows.values()):
             if candidate.request_id != row.request_id:
                 self._refresh_prefix_cache(candidate)
+        self._prefix_phase_add("lookup_refresh_others", start)
         row.prefix_lookup = True
+        start = time.perf_counter()
         match = cache.match(row.prompt_ids)
+        self._prefix_phase_add("lookup_match", start)
         row.prefix_matched_tokens = int(match.matched_token_count)
         if not match.hit:
-            row.prefix_fallback_reason = "miss"
+            self._note_prefix_fallback(row, "miss")
             return None
         if match.matched_token_count >= len(row.prompt_ids):
             self._prefix_unusable_hits += 1
-            row.prefix_fallback_reason = "full_prompt_boundary_requires_suffix"
+            self._note_prefix_fallback(row, "full_prompt_boundary_requires_suffix")
             return None
+        if int(getattr(row, "mtp2_candidate_budget", 0)) > 0:
+            provider_has_prefix = getattr(
+                getattr(self, "_mtp2_adapter", None), "has_prefix_checkpoint", None,
+            )
+            if not callable(provider_has_prefix) or not provider_has_prefix(
+                match.matched_tokens, match.block_ids,
+            ):
+                self._prefix_unusable_hits += 1
+                self._note_prefix_fallback(row, "provider_checkpoint_unavailable")
+                return None
+        start = time.perf_counter()
         state = cache.entry_state(match.matched_tokens)
         for request_id in state.owner_request_ids:
             source = self._rows.get(int(request_id))
@@ -6766,13 +7569,17 @@ class Qwen35GGUFResidentModelRunner:
                 continue
             if source.lease is None or source.kv_allocation is None:
                 continue
-            if tuple(self._processed_tokens(source)) != match.matched_tokens:
+            processed_start = time.perf_counter()
+            source_tokens = tuple(self._processed_tokens(source))
+            self._prefix_phase_add("processed_tokens", processed_start)
+            if source_tokens != match.matched_tokens:
                 continue
             session = source.lease.session
             if int(getattr(session, "position", -1)) != match.matched_token_count:
                 continue
             if tuple(source.kv_allocation.block_ids[: match.matched_block_count]) != match.block_ids:
                 continue
+            self._prefix_phase_add("lookup_resolve", start)
             return _GGUFPrefixReuseSource(
                 matched_tokens=match.matched_tokens,
                 block_ids=match.block_ids,
@@ -6808,13 +7615,15 @@ class Qwen35GGUFResidentModelRunner:
             if valid:
                 self._prefix_state_snapshots.pop(match.matched_tokens)
                 self._prefix_state_snapshots[match.matched_tokens] = snapshot_entry
+                self._prefix_phase_add("lookup_resolve", start)
                 return _GGUFPrefixReuseSource(
                     matched_tokens=match.matched_tokens,
                     block_ids=match.block_ids,
                     snapshot=snapshot,
                 )
+        self._prefix_phase_add("lookup_resolve", start)
         self._prefix_unusable_hits += 1
-        row.prefix_fallback_reason = "state_source_unavailable"
+        self._note_prefix_fallback(row, "state_source_unavailable")
         return None
 
     @staticmethod
@@ -6831,31 +7640,185 @@ class Qwen35GGUFResidentModelRunner:
             return ()
         return tuple(known[:position])
 
+    def _prefix_prompt_boundary(self, row: _GGUFResidentLoopRow) -> int:
+        """Deepest 256-token boundary at or before the end of this row's prompt.
+
+        This is the one boundary a following turn can reach: a cumulative
+        client resends the whole transcript, and a client that rebuilds the
+        transcript from its own normalized assistant/tool text still starts
+        with the previous prompt verbatim.  Boundaries below it are superseded
+        by it for both styles.
+        """
+
+        if self._prefix_cache is None:
+            return 0
+        return (len(row.prompt_ids) // 256) * 256
+
+    def _int8_boundary_split_boundary(self, row: _GGUFResidentLoopRow) -> int:
+        """Deepest reusable boundary for a prefix-eligible compact-INT8 miss.
+
+        Returns 0 unless the row is a direct-INT8 request whose radix lookup
+        missed and whose prompt has an interior 256-token boundary. Such a row
+        is prefilled as aligned prefix plus tail (see
+        :meth:`_prefill_int8_boundary_split`) so the boundary becomes a real
+        session cursor position and its Conv/GDN state is captured.
+        """
+
+        if row.prefix_reused_tokens:
+            return 0
+        if self._prefix_cache is None or not row.prefix_eligible:
+            return 0
+        lease = row.lease
+        if lease is None or row.kv_allocation is None:
+            return 0
+        if getattr(lease.session, "kv_attention_source", None) != "int8_direct":
+            return 0
+        boundary = self._prefix_prompt_boundary(row)
+        if boundary <= 0 or boundary >= len(row.prompt_ids):
+            return 0
+        return boundary
+
+    def _prefill_int8_boundary_split(self, row: _GGUFResidentLoopRow) -> None:
+        """Prefill a prefix-eligible compact-INT8 miss as aligned prefix + tail.
+
+        The compact-INT8 executors commit the session cursor only at the
+        (usually unaligned) prompt end -- the fallback full-prompt route in one
+        call, the resumable layer-outer route when the last layer completes --
+        so ``_refresh_prefix_cache`` never observes a 256-token boundary and
+        the radix cache stays empty. Prefilling the aligned prefix and the tail
+        as two block-table-aware calls, the same shape the reused-suffix path
+        uses, makes the deepest boundary a real cursor position; the state
+        captured there is the true Conv/GDN state at that boundary, not the
+        prompt-end state relabelled.
+        """
+
+        lease = row.lease
+        if lease is None:
+            raise RuntimeError("GGUF INT8 boundary split requires a session lease")
+        session = lease.session
+        prompt = tuple(int(token) for token in row.prompt_ids)
+        boundary = self._int8_boundary_split_boundary(row)
+        if boundary <= 0:
+            raise RuntimeError("GGUF INT8 boundary split requires an interior boundary")
+        prefill_batch = getattr(
+            self._packed_execution_owner(session),
+            "prefill_batch_native",
+            None,
+        )
+        if not callable(prefill_batch):
+            raise RuntimeError(
+                "GGUF INT8 boundary split requires block-table-aware prefill"
+            )
+        prefix = prompt[:boundary]
+        tail = prompt[boundary:]
+        start = time.perf_counter()
+        sink = None
+        if int(getattr(row, "mtp2_candidate_budget", 0)) > 0:
+            streaming_sinks = self._begin_mtp2_prompt_streaming((row,))
+            sink = streaming_sinks[0] if streaming_sinks else None
+
+        def _stream_kwargs(chunk_start: int, finish: bool) -> dict[str, Any]:
+            if sink is None:
+                return {}
+            return {
+                "target_hidden_chunk_sinks": (sink,),
+                "target_hidden_request_ids": (row.request_id,),
+                "target_hidden_chunk_starts": (int(chunk_start),),
+                "finish_target_hidden_sinks": bool(finish),
+            }
+
+        try:
+            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+                prefill_batch(
+                    [prefix],
+                    sessions=[session],
+                    full_prompt_lengths=[len(prompt)],
+                    return_logits=False,
+                    return_hidden_seeds=False,
+                    sample_output=False,
+                    **_stream_kwargs(0, False),
+                )
+            # The prefix call ends exactly on the deepest 256-aligned boundary,
+            # so this captures that boundary's real Conv/GDN state.
+            position = int(getattr(session, "position", -1))
+            if position != boundary:
+                raise RuntimeError(
+                    "GGUF INT8 boundary split prefix prefill ended at position "
+                    f"{position}, expected {boundary}"
+                )
+            self._refresh_prefix_cache(row)
+            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+                results = prefill_batch(
+                    [tail],
+                    sessions=[session],
+                    full_prompt_lengths=[len(prompt)],
+                    return_logits=False,
+                    return_hidden_seeds=False,
+                    sample_output=True,
+                    **_stream_kwargs(boundary, True),
+                )
+        except Exception:
+            if sink is not None:
+                self._finish_mtp2_prompt_streaming((row,), (sink,), success=False)
+            raise
+        if sink is not None:
+            self._finish_mtp2_prompt_streaming((row,), (sink,), success=True)
+        result_list = [] if results is None else list(results)
+        if len(result_list) != 1 or result_list[0] is None:
+            raise RuntimeError(
+                "GGUF INT8 boundary split prefill returned no result"
+            )
+        row.prefill_ms += _timing_ms_since(start)
+        row.prefill_chunk_count += 2
+        self._route_counts["int8_boundary_split_rows"] += 1
+        self._route_counts["int8_boundary_split_prefill_calls"] += 2
+        self._prefix_phase_add("int8_boundary_split", start)
+        self._finish_native_prefill(
+            row,
+            result_list[0],
+            native_compact_prefill=True,
+        )
+        # The whole prompt is done. The scheduler may still hold chunks for it,
+        # so mark the prefill complete to short-circuit them the way the
+        # resumable path does.
+        row.resumable_prefill = _RESUMABLE_PREFILL_DONE
+
     def _refresh_prefix_cache(self, row: _GGUFResidentLoopRow) -> bool:
         cache = getattr(self, "_prefix_cache", None)
         if cache is None:
             return False
         if row.lease is None or row.kv_allocation is None:
             return False
+        phase_start = time.perf_counter()
+        processed_start = time.perf_counter()
         tokens = self._processed_tokens(row)
+        self._prefix_phase_add("processed_tokens", processed_start)
         if not tokens or len(tokens) % 256 != 0:
             # Keep the latest exact aligned boundary live while the request
             # advances through a partial page. Normal completion can then
             # promote that historical snapshot before request ownership drops.
+            self._prefix_phase_add("refresh_unaligned", phase_start)
             return False
+        trie_start = time.perf_counter()
         cache.cancel(row.request_id)
         block_count = len(tokens) // 256
         block_ids = tuple(int(block_id) for block_id in row.kv_allocation.block_ids[:block_count])
         if len(block_ids) != block_count:
+            self._prefix_phase_add("refresh_trie", trie_start)
+            self._prefix_phase_add("refresh_unaligned", phase_start)
             return False
         try:
             cache.insert(row.request_id, tokens, block_ids)
         except ValueError as exc:
+            self._prefix_phase_add("refresh_trie", trie_start)
             if "conflicting block ids" not in str(exc):
                 raise
             self._prefix_unusable_hits += 1
+            self._prefix_phase_add("refresh_conflict", phase_start)
             return False
+        self._prefix_phase_add("refresh_trie", trie_start)
         self._capture_prefix_snapshot(row, tokens=tokens, block_ids=block_ids)
+        self._prefix_phase_add("refresh_total", phase_start)
         return True
 
     def _prefix_cache_observability(self) -> dict[str, Any]:
@@ -6892,8 +7855,17 @@ class Qwen35GGUFResidentModelRunner:
             "stats": None if cache is None else cache.stats.to_json_dict(),
             "usable_hits": int(getattr(self, "_prefix_usable_hits", 0)),
             "unusable_hits": int(getattr(self, "_prefix_unusable_hits", 0)),
+            # Which prefill route the hits got: a contiguous run keeps the
+            # slot-local AOTriton route, a gapped one falls to packed paged.
+            "contiguous_admissions": int(
+                getattr(self, "_prefix_contiguous_admissions", 0)
+            ),
+            "gapped_admissions": int(getattr(self, "_prefix_gapped_admissions", 0)),
             "admission_fallbacks": int(
                 getattr(self, "_prefix_admission_fallbacks", 0)
+            ),
+            "fallback_reasons": dict(
+                getattr(self, "_prefix_fallback_reasons", {})
             ),
             "reused_tokens": int(getattr(self, "_prefix_reused_tokens", 0)),
             "state_clone_bytes": int(
@@ -6903,11 +7875,45 @@ class Qwen35GGUFResidentModelRunner:
             "snapshot_limit": int(
                 getattr(self, "_prefix_snapshot_limit", getattr(self, "capacity", 0))
             ),
+            "retained_snapshot_limit": int(
+                getattr(
+                    self,
+                    "_prefix_retained_limit",
+                    getattr(self, "_prefix_snapshot_limit", 0),
+                )
+            ),
+            "retained_snapshot_state_limit_bytes": int(
+                getattr(
+                    self,
+                    "_prefix_retained_state_bytes_limit",
+                    _PREFIX_RETAINED_STATE_BYTES_LIMIT,
+                )
+            ),
+            "retained_snapshot_state_bytes": int(
+                sum(
+                    int(getattr(entry.snapshot, "nbytes", 0))
+                    for entry in retained_entries
+                )
+            ),
+            "retained_snapshot_evictions_by_reason": dict(
+                getattr(self, "_prefix_retained_evictions_by_reason", {})
+            ),
+            "snapshot_promotions": int(
+                getattr(self, "_prefix_snapshot_promotions", 0)
+            ),
             "retained_snapshot_entries": len(retained_entries),
             "snapshot_hits": int(getattr(self, "_prefix_snapshot_hits", 0)),
             "snapshot_evictions": int(
                 getattr(self, "_prefix_snapshot_evictions", 0)
             ),
+            "snapshot_captures": int(
+                getattr(self, "_prefix_snapshot_captures", 0)
+            ),
+            "snapshot_capture_bytes": int(
+                getattr(self, "_prefix_snapshot_capture_bytes", 0)
+            ),
+            "phase_ms": dict(getattr(self, "_prefix_phase_ms", {})),
+            "phase_calls": dict(getattr(self, "_prefix_phase_calls", {})),
             "snapshot_bytes": snapshot_bytes,
             "retained_kv_pages": len(retained_blocks),
             "retained_kv_bytes": retained_kv_bytes,
@@ -6937,13 +7943,25 @@ class Qwen35GGUFResidentModelRunner:
             else len(row.kv_allocation.reused_block_ids)
         )
         residency = self._prefix_cache_observability()
+        dms_cache = getattr(self, "_dms_prefix_cache", None)
+        is_dms = getattr(self.generator, "dms_metadata_path", None) is not None
+        provider_store = getattr(getattr(self, "_mtp2_adapter", None),
+                                 "_prefix_checkpoint_store_instance", None)
+        provider_bytes = 0 if provider_store is None else provider_store.nbytes
+        if is_dms:
+            residency = {**residency, "snapshot_entries": 0 if dms_cache is None else len(dms_cache.entries),
+                         "retained_kv_pages": 0,
+                         "resident_bytes": (0 if dms_cache is None else dms_cache.nbytes) + provider_bytes}
         mode = getattr(self, "_prefix_cache_mode", "off")
         fallback_reason = row.prefix_fallback_reason
         if fallback_reason is None and mode == "off":
             fallback_reason = "cache_off"
         return {
             "mode": mode,
-            "block_size_tokens": 256,
+            "block_size_tokens": 1 if is_dms else 256,
+            **({"reuse_scope": "prompt_prefix",
+                "cache_host_bytes": 0 if dms_cache is None else dms_cache.nbytes,
+                "cache_provider_device_bytes": provider_bytes} if is_dms else {}),
             "eligible": bool(row.prefix_eligible),
             "lookup": bool(row.prefix_lookup),
             "hit": bool(row.prefix_reused_tokens),
@@ -6974,17 +7992,56 @@ class Qwen35GGUFResidentModelRunner:
         diagnostics: dict[str, Any] = {
             "prefix_cache": self._prefix_request_telemetry(row)
         }
+        accounting = speculative_output_accounting(row)
+        if accounting is not None:
+            diagnostics["specdec2_mtp2"] = accounting
         slot = row.slot
+        dms_backend = None if slot is None else getattr(slot.session, "_dms_backend", None)
+        if dms_backend is not None:
+            diagnostics["dms"] = dms_backend.observability_snapshot()
+            diagnostics["dms"]["backend"]["prefix_mode"] = (
+                "owned_prompt_prefix" if self._prefix_cache_mode != "off" else "off"
+            )
         audit = (
             None
             if slot is None
             else getattr(slot.session, "device_kv_layout_audit", None)
         )
-        if include_kv_layout and callable(audit):
+        if include_kv_layout and dms_backend is not None:
+            snapshot = diagnostics["dms"]
+            diagnostics["kv_layout"] = {
+                "topology": "dms_compact", "storage_dtype": dms_backend.codec,
+                "storage_layout": "per_head_compact", "scale_dtype": "fp32" if dms_backend.codec == "int8_per_token_head" else None,
+                "kv_attention_source": "dms_compact",
+                "persistent_total_bytes": snapshot["capacity"]["device_resident_bytes"],
+                "persistent_bf16_mirror_bytes": 0,
+            }
+        elif include_kv_layout and callable(audit):
             payload = audit()
             if isinstance(payload, Mapping):
                 diagnostics["kv_layout"] = copy.deepcopy(dict(payload))
         return diagnostics
+
+    def _refresh_prefix_cache_at_prompt_boundary(
+        self,
+        row: _GGUFResidentLoopRow,
+        lease: _GGUFResidentSessionLease,
+    ) -> bool:
+        """Capture the single reusable boundary of this request.
+
+        Each captured boundary clones the full hybrid Conv/GDN state and
+        synchronizes the device.  Capturing every 256-token prefill chunk
+        therefore costs one full state clone per chunk while only the deepest
+        prompt-aligned boundary is reachable by the next turn, so the chunked
+        greedy prefill path captures exactly that one.
+        """
+
+        boundary = self._prefix_prompt_boundary(row)
+        if boundary <= 0:
+            return False
+        if boundary != int(getattr(lease.session, "position", -1)):
+            return False
+        return self._refresh_prefix_cache(row)
 
     def _capture_prefix_snapshot(
         self,
@@ -7005,7 +8062,10 @@ class Qwen35GGUFResidentModelRunner:
         capture = getattr(session, "capture_prefix_state_snapshot", None)
         if not callable(capture):
             return
+        phase_start = time.perf_counter()
+        clone_start = time.perf_counter()
         snapshot = capture(position=len(tokens))
+        self._prefix_phase_add("capture_clone_state", clone_start)
         if int(getattr(snapshot, "position", -1)) != len(tokens):
             close = getattr(snapshot, "close", None)
             if callable(close):
@@ -7018,16 +8078,68 @@ class Qwen35GGUFResidentModelRunner:
             raise RuntimeError("GGUF prefix snapshot returned the wrong block ids")
         for prior_tokens, entry in tuple(self._prefix_state_snapshots.items()):
             if not entry.retained and entry.owner_request_id == row.request_id:
-                self._evict_prefix_snapshot(prior_tokens)
+                if entry.prompt_boundary:
+                    # The prompt-aligned boundary is the one every following turn
+                    # reaches. A decode-time capture -- the decode path refreshes
+                    # the cache after every token, so any reply long enough to
+                    # cross the next 256-token boundary makes one -- is reachable
+                    # only by a client that resends this request's generated text
+                    # verbatim, so it may not evict the boundary entry: doing that
+                    # left the next turn with no live prefix at all and made it
+                    # re-prefill the whole prompt.
+                    continue
+                self._evict_prefix_snapshot(prior_tokens, reason="superseded_by_row")
         self._prefix_state_snapshots[tokens] = _GGUFPrefixSnapshotEntry(
             tokens=tokens,
             block_ids=block_ids,
             snapshot=snapshot,
             owner_request_id=int(row.request_id),
+            prompt_boundary=len(tokens) == self._prefix_prompt_boundary(row),
         )
-        while len(self._prefix_state_snapshots) > self._prefix_snapshot_limit:
-            oldest = next(iter(self._prefix_state_snapshots))
-            self._evict_prefix_snapshot(oldest)
+        self._prefix_snapshot_captures += 1
+        self._prefix_snapshot_capture_bytes += int(
+            getattr(snapshot, "nbytes", 0)
+        )
+        evict_start = time.perf_counter()
+        self._trim_prefix_snapshots()
+        self._prefix_phase_add("capture_evict", evict_start)
+        self._prefix_phase_add("capture_total", phase_start)
+
+    def _trim_prefix_snapshots(self) -> None:
+        """Bound transient and retained snapshots independently.
+
+        A transient snapshot belongs to the request that captured it and can be
+        dropped freely. A retained one is the durable boundary another request
+        may still match, so the transient trim must never take it: doing so made
+        a request's own second capture evict the entry that had just served it
+        and limited reuse to one hand-off per conversation.
+        """
+
+        transient = [
+            tokens
+            for tokens, entry in self._prefix_state_snapshots.items()
+            if not entry.retained and not entry.prompt_boundary
+        ]
+        while len(transient) > self._prefix_snapshot_limit:
+            self._evict_prefix_snapshot(transient.pop(0), reason="trim_transient")
+        retained = [
+            tokens
+            for tokens, entry in self._prefix_state_snapshots.items()
+            if entry.retained
+        ]
+        retained_bytes = sum(
+            int(getattr(self._prefix_state_snapshots[tokens].snapshot, "nbytes", 0))
+            for tokens in retained
+        )
+        while retained and (
+            len(retained) > self._prefix_retained_limit
+            or retained_bytes > self._prefix_retained_state_bytes_limit
+        ):
+            tokens = retained.pop(0)
+            retained_bytes -= int(
+                getattr(self._prefix_state_snapshots[tokens].snapshot, "nbytes", 0)
+            )
+            self._evict_prefix_snapshot(tokens, reason="trim_retained")
 
     def _promote_prefix_snapshots(self, row: _GGUFResidentLoopRow) -> None:
         cache = self._prefix_cache
@@ -7044,29 +8156,70 @@ class Qwen35GGUFResidentModelRunner:
                 for block_id in allocation.block_ids[: len(entry.block_ids)]
             )
             if prefix != entry.block_ids:
-                self._evict_prefix_snapshot(tokens)
+                self._evict_prefix_snapshot(tokens, reason="promote_mismatch")
                 continue
             pool.retain_blocks(entry.block_ids)
             try:
                 cache.retain_entry(tokens, entry.block_ids)
             except Exception:
                 pool.release_blocks(entry.block_ids)
-                self._evict_prefix_snapshot(tokens)
+                self._evict_prefix_snapshot(tokens, reason="promote_failed")
                 raise
             entry.owner_request_id = None
             entry.retained = True
+            self._prefix_snapshot_promotions += 1
+        # Retained entries are trimmed oldest-first, and a decode-time boundary
+        # is inserted after the prompt-aligned one it must never outlive: move
+        # the boundary entry last so a budget squeeze drops the boundary only a
+        # verbatim continuation could reach first.
+        for tokens, entry in tuple(self._prefix_state_snapshots.items()):
+            if entry.retained and entry.prompt_boundary:
+                self._prefix_state_snapshots.pop(tokens)
+                self._prefix_state_snapshots[tokens] = entry
+        self._trim_prefix_snapshots()
 
     def _drop_prefix_snapshots_for_row(self, request_id: int) -> None:
         rid = int(request_id)
         for tokens, entry in tuple(self._prefix_state_snapshots.items()):
             if not entry.retained and entry.owner_request_id == rid:
-                self._evict_prefix_snapshot(tokens)
+                self._evict_prefix_snapshot(tokens, reason="row_released")
 
-    def _evict_prefix_snapshot(self, tokens: Sequence[int]) -> bool:
+    def _note_prefix_fallback(
+        self, row: _GGUFResidentLoopRow, reason: str | None
+    ) -> None:
+        """Record why one row could not reuse a prefix, per reason.
+
+        The served harness only sees process-wide counters, so a fallback that
+        is not counted here is invisible in a serving artifact.
+        """
+
+        row.prefix_fallback_reason = reason
+        if reason:
+            counts = self._prefix_fallback_reasons
+            counts[reason] = int(counts.get(reason, 0)) + 1
+
+    def _note_prefix_admission_fallback(
+        self, row: _GGUFResidentLoopRow, reason: str
+    ) -> None:
+        self._prefix_admission_fallbacks += 1
+        row.prefix_admission_fallback = True
+        self._note_prefix_fallback(row, reason)
+
+    def _evict_prefix_snapshot(
+        self,
+        tokens: Sequence[int],
+        *,
+        reason: str = "unspecified",
+    ) -> bool:
         token_tuple = tuple(int(token) for token in tokens)
         entry = self._prefix_state_snapshots.pop(token_tuple, None)
         if entry is None:
             return False
+        discard_provider = getattr(
+            getattr(self, "_mtp2_adapter", None), "discard_prefix_checkpoint", None,
+        )
+        if callable(discard_provider):
+            discard_provider(token_tuple)
         if entry.retained:
             cache = self._prefix_cache
             pool = self._kv_pool
@@ -7078,22 +8231,42 @@ class Qwen35GGUFResidentModelRunner:
         if callable(close):
             close()
         self._prefix_snapshot_evictions += 1
+        if entry.retained:
+            by_reason = self._prefix_retained_evictions_by_reason
+            by_reason[reason] = int(by_reason.get(reason, 0)) + 1
         return True
 
     def _clear_prefix_snapshots(self) -> None:
         for tokens in tuple(self._prefix_state_snapshots):
-            self._evict_prefix_snapshot(tokens)
+            self._evict_prefix_snapshot(tokens, reason="clear")
 
     def evict_prefix_cache_for_pressure(self, required_pages: int) -> int:
-        """Release reclaimable prefix pages before device-pool growth."""
+        """Release reclaimable prefix pages before device-pool growth.
+
+        A retained entry whose pages are still actively leased cannot be
+        reclaimed: dropping its cache references frees no page until the live
+        lease releases, and it destroys a boundary the admission may be about
+        to reuse. That includes the transient guard a shared-prefix admission
+        holds, which is exactly the prefix being admitted. Evicting it there
+        freed the prefix pages between the contiguous and gapped placement
+        attempts, so the fallback then refused to share them and surfaced a
+        400 instead of a clean private allocation. Skip those entries and let
+        the caller decline the hit or grow.
+        """
 
         needed = max(1, int(required_pages))
         released = 0
+        pool = self._kv_pool
+        actively_leased = getattr(pool, "actively_leased", None)
         for tokens, entry in tuple(self._prefix_state_snapshots.items()):
             if not entry.retained:
                 continue
+            if callable(actively_leased) and any(
+                actively_leased(int(block_id)) for block_id in entry.block_ids
+            ):
+                continue
             pages = len(tuple(entry.block_ids))
-            if self._evict_prefix_snapshot(tokens):
+            if self._evict_prefix_snapshot(tokens, reason="pool_pressure"):
                 released += pages
             if released >= needed:
                 break
@@ -7190,23 +8363,95 @@ class Qwen35GGUFResidentModelRunner:
             if callable(quant_resolver)
             else str(getattr(self.generator.model_plugin, "default_quant", ""))
         )
+        # The adapter may be built before LLM publishes a resident-cell budget.
+        # Use the generator's capability-bounded default, not the dense global
+        # default: a K3 adapter serving K2 rows disables graph verification.
+        budget = getattr(self.generator, "speculative_candidate_budget", None)
+        if budget is None:
+            resolve_budget = getattr(
+                self.generator, "speculative_candidate_budget_default",
+                _gguf_mtp_server_candidate_budget,
+            )
+            budget = resolve_budget()
         self._mtp2_adapter = factory(
             self,
             enabled=True,
             target_verify_mode=_gguf_mtp_server_target_verify_mode(),
             candidate_budget=min(
-                _qwen35_gguf_mtp2_module.MTP2_MAX_CANDIDATE_DEPTH,
-                int(
-                    getattr(
-                        self.generator,
-                        "speculative_candidate_budget",
-                        _gguf_mtp_server_candidate_budget(),
-                    )
-                ),
+                _qwen35_gguf_mtp2_module.MTP2_MAX_CANDIDATE_DEPTH, int(budget),
             ),
             quant=quant,
         )
+        self._configure_mtp2_prefix_checkpoint_capture(self._mtp2_adapter)
         return self._mtp2_adapter
+
+    def _configure_mtp2_prefix_checkpoint_capture(self, adapter: Any) -> None:
+        """Publish the prefix-capture key to the adapter.
+
+        The provider's checkpoint describes a prefix the target's cache holds,
+        so both halves of its key are the runner's: the block size that decides
+        which boundary is worth taking, and the block ids a later lookup
+        validates against. With target prefix caching off there is nothing to
+        restore, so provider checkpoints are disabled as well.
+        """
+
+        capacity = (
+            _gguf_mtp2_prefix_checkpoint_entries()
+            if getattr(self, "_prefix_cache_mode", "off") != "off" else 0
+        )
+        adapter.prefix_checkpoint_capacity = capacity
+        adapter.prefix_checkpoint_block_size = (
+            1 if getattr(getattr(self, "generator", None), "dms_metadata_path", None) is not None
+            else int(_GGUF_PREFIX_CACHE_BLOCK_TOKENS)
+        )
+        adapter.prefix_checkpoint_key = (
+            self._prefix_checkpoint_block_ids if capacity > 0 else None
+        )
+        try:
+            if os.environ.get("HIPENGINE_MTP2_TRACE_DECLINE", "").strip() not in {"", "0"}:
+                print(
+                    "[mtp2-prefix-checkpoint] configured "
+                    f"entries={capacity} block={int(_GGUF_PREFIX_CACHE_BLOCK_TOKENS)}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+        except Exception:
+            pass
+
+    def _prefix_checkpoint_block_ids(
+        self, request_id: int, prefix_len: int
+    ) -> tuple[int, ...] | None:
+        """Return the target's block ids covering ``prefix_len`` tokens.
+
+        The store validates a lookup against exactly these ids, so this must
+        answer for the prefix in question rather than for the row's whole
+        allocation: a later turn matches a shorter prefix than the row it
+        arrived on, and ids past the match would fail a validation that should
+        have succeeded.
+        """
+
+        row = self._row(int(request_id))
+        if row is None:
+            return None
+        if getattr(getattr(self, "generator", None), "dms_metadata_path", None) is not None:
+            if row.lease is None:
+                return None
+            session = row.lease.session
+            cached = getattr(session, "_dms_prefill_reuse", None)
+            if cached is not None and len(cached.tokens) == int(prefix_len):
+                return cached.checkpoint_key
+            return (getattr(session, "_dms_cache_identity", id(session)), int(prefix_len))
+        allocation = getattr(row, "kv_allocation", None)
+        block_ids = getattr(allocation, "block_ids", None)
+        if not block_ids:
+            return None
+        block_count = int(prefix_len) // int(_GGUF_PREFIX_CACHE_BLOCK_TOKENS)
+        if block_count <= 0:
+            return None
+        available = tuple(int(block_id) for block_id in block_ids)
+        if len(available) < block_count:
+            return None
+        return available[:block_count]
 
     def register_speculative_request(
         self,
@@ -7227,6 +8472,18 @@ class Qwen35GGUFResidentModelRunner:
             max(1, evidence_budget),
         )
         row.mtp2_candidate_budget = effective_budget
+        # Admission intent is never zeroed by a transient refusal: a prompt
+        # activation that was refused while another was in flight keeps its
+        # requested depth, because whether the row can speculate is decided by
+        # its priming source rather than by that refusal. An *unsupported*
+        # priming source is a property of the row on this route -- a reused
+        # prefix, an unsupported target profile, a prompt past the context
+        # window, an operator-disabled streaming path -- so those refusals do
+        # zero the budget, and the response reports intent separately from
+        # realized execution via ``mtp2_requested_budget``.
+        row.mtp2_requested_budget = max(
+            int(getattr(row, "mtp2_requested_budget", 0) or 0), effective_budget
+        )
         if adapter is not None:
             adapter.register_request(
                 request_id,
@@ -7246,13 +8503,33 @@ class Qwen35GGUFResidentModelRunner:
         return min(max_budget, max(1, int(request.max_tokens)))
 
     def speculative_eos_supported(self, request_id: int) -> bool:
-        adapter = self._resolved_mtp2_adapter()
-        return bool(adapter is not None and adapter.enabled
-                    and adapter._physical_c1_request(int(request_id)))
+        """Whether the adapter owns EOS-aware state selection for this row."""
 
-    def speculative_capability(self, request_semantics):
         adapter = self._resolved_mtp2_adapter()
-        return None if adapter is None else adapter.capability(request_semantics)
+        if adapter is None or not adapter.enabled:
+            return False
+        supports = getattr(adapter, "eos_finish_supported", None)
+        if not callable(supports):
+            return False
+        return bool(supports(int(request_id)))
+
+    # StagedAdapterDelegation hooks: this runner resolves the dense/MoE MTP2
+    # adapter lazily and runs every device-touching stage under the loaded
+    # target's arch environment; cold plan/claim queries stay unwrapped.
+    def _staged_adapter(self):
+        return self._resolved_mtp2_adapter()
+
+    def _staged_adapter_missing_error(self) -> str:
+        return "GGUF MTP2 adapter is unavailable"
+
+    @contextmanager
+    def _staged_adapter_arch_environment(self):
+        with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+            with hip_target_arch_environment(self.generator.target_arch):
+                yield
+
+    def _begin_staged_adapter_cycle(self, plan) -> None:
+        self._begin_speculative_cycle(plan)
 
     def speculative_post_reject_cooldown(self, request_ids):
         adapter = self._resolved_mtp2_adapter()
@@ -7287,100 +8564,58 @@ class Qwen35GGUFResidentModelRunner:
         adapter = self._resolved_mtp2_adapter()
         return None if adapter is None else int(adapter.physical_request_bound)
 
-    def speculative_claims_fit(self, plan) -> bool:
-        adapter = self._resolved_mtp2_adapter()
-        return bool(adapter is not None and adapter.claims_fit(plan))
-
-    def speculative_frontier_available(self, plan) -> bool:
-        adapter = self._resolved_mtp2_adapter()
-        return bool(
-            adapter is not None
-            and getattr(adapter, "staged_frontier", True)
-        )
-
     def execute_speculative_cycle(self, plan, *, commit: bool):
+        self._begin_speculative_cycle(plan)
         adapter = self._resolved_mtp2_adapter()
         execute = None if adapter is None else getattr(adapter, "execute_cycle", None)
         if not callable(execute):
             raise NotImplementedError("GGUF MTP2 adapter has no bounded complete cycle")
-        with hip_target_arch_environment(self.generator.target_arch):
-            return execute(plan, commit=bool(commit))
-
-    def prepare_speculative_k0(self, plan, request_semantics, *, stream=None) -> None:
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is not None:
+        with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
             with hip_target_arch_environment(self.generator.target_arch):
-                adapter.prepare_k0(plan, request_semantics, stream=stream)
+                return execute(plan, commit=bool(commit))
 
-    def speculative_component_claims(self, plan):
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is None:
-            raise RuntimeError("GGUF MTP2 adapter is unavailable")
-        return adapter.component_claims(plan)
+    def note_speculative_plan(self, plan) -> None:
+        """Publish the group-level plan decision on every row it planned.
 
-    def reserve_speculative_claims(self, claims):
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is None:
-            raise RuntimeError("GGUF MTP2 adapter is unavailable")
-        return adapter.reserve_claims(claims)
+        The loop owns the plan; the row owns the per-request reporting. Without
+        this the served response could only report the route's intent
+        (``k0_class``) and a serving-key width, so a row that decoded
+        autoregressively for its whole life still read as ``not_k0`` with no way
+        to see the group it was actually planned in.
+        """
 
-    def release_speculative_claims(self, reservation) -> None:
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is None:
-            raise RuntimeError("GGUF MTP2 adapter is unavailable")
-        with hip_target_arch_environment(self.generator.target_arch):
-            adapter.release_claims(reservation)
+        request_ids = tuple(int(value) for value in plan.request_ids)
+        reasons = tuple(getattr(plan, "reasons", ()) or ())
+        ar_only = bool(getattr(plan, "is_ar_only", False))
+        for index, request_id in enumerate(request_ids):
+            row = self._row(request_id)
+            if row is None:
+                continue
+            reason = reasons[index] if index < len(reasons) else None
+            record_speculative_plan(
+                row,
+                group_rows=len(request_ids),
+                ar_only=ar_only,
+                plan_reason=getattr(reason, "value", reason),
+            )
 
-    def prepare_speculative_requests(self, plan, request_semantics, *, stream=None) -> None:
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is None:
-            raise RuntimeError("GGUF MTP2 adapter is unavailable")
-        with hip_target_arch_environment(self.generator.target_arch):
-            adapter.prepare_requests(plan, request_semantics, stream=stream)
+    def note_provider_readiness(
+        self, request_id, readiness, reason=None, state_present=None
+    ) -> None:
+        """Publish the row's own draft-provider readiness and decline reason."""
 
-    def propose_speculative_batch(self, plan, request_semantics, *, stream=None):
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is None:
-            raise RuntimeError("GGUF MTP2 adapter is unavailable")
-        with hip_target_arch_environment(self.generator.target_arch):
-            return adapter.propose_batch(plan, request_semantics, stream=stream)
+        row = self._row(int(request_id))
+        if row is None:
+            return
+        record_provider_readiness(
+            row,
+            readiness=readiness,
+            decline_reason=reason,
+            state_present=state_present,
+        )
 
     def speculative_kv_live_spans_owner(self, plan) -> str:
         return f"gguf-resident:{id(self)}:{plan.operation_id}"
-
-    def execute_target_frontier(
-        self,
-        plan,
-        frontier,
-        complete_claims,
-        *,
-        commit: bool,
-        cancelled_request_ids,
-    ):
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is None:
-            raise RuntimeError("GGUF MTP2 adapter is unavailable")
-        with hip_target_arch_environment(self.generator.target_arch):
-            return adapter.execute_target_frontier(
-                plan,
-                frontier,
-                complete_claims,
-                commit=commit,
-                cancelled_request_ids=cancelled_request_ids,
-            )
-
-    def rollback_speculative_cycle(self, plan, candidate_graph, error) -> None:
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is not None:
-            with hip_target_arch_environment(self.generator.target_arch):
-                adapter.rollback_cycle(plan, candidate_graph, error)
-
-    def recover_speculative_cycle_failure(self, plan, error) -> bool:
-        adapter = self._resolved_mtp2_adapter()
-        if adapter is None:
-            return False
-        with hip_target_arch_environment(self.generator.target_arch):
-            return bool(adapter.recover_cycle_failure(plan, error))
 
     def restore_speculative_target_rows(self, plan) -> bool:
         """Rebuild canonical target state after an uncertain selected commit."""
@@ -7425,14 +8660,31 @@ class Qwen35GGUFResidentModelRunner:
         prefill_batch = getattr(owner, "prefill_batch_native", None)
         if not callable(prefill_batch):
             return False
-        with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-            results = prefill_batch(
-                token_rows,
-                sessions=sessions,
-                full_prompt_lengths=[len(tokens) for tokens in token_rows],
-                return_logits=False,
-                return_hidden_seeds=False,
-            )
+        try:
+            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+                results = prefill_batch(
+                    token_rows,
+                    sessions=sessions,
+                    full_prompt_lengths=[len(tokens) for tokens in token_rows],
+                    return_logits=False,
+                    return_hidden_seeds=False,
+                )
+        except NotImplementedError:
+            # This rebuild runs after the cycle already published committed
+            # tokens, so a shape refusal from the packed route must not end a
+            # live stream with unsupported_parameter. Rebuild every row on the
+            # registered strict per-session route (the same tokens, the same
+            # cursors the caller asserts below) and keep sessions that only the
+            # block-table-aware route can represent fail-closed.
+            if any(
+                _gguf_single_row_block_table_prefill_required(session)
+                for session in sessions
+            ):
+                return False
+            results = [
+                session.prefill(tokens, return_logits=False)
+                for session, tokens in zip(sessions, token_rows, strict=True)
+            ]
         result_rows = () if results is None else tuple(results)
         if len(result_rows) != len(concrete):
             raise RuntimeError(
@@ -7446,6 +8698,7 @@ class Qwen35GGUFResidentModelRunner:
         ):
             if (
                 bool(require_token_match)
+                and not bool(getattr(row, "native_sampled", False))
                 and int(result.token_id) != int(row.slot.prev_token)
             ):
                 raise RuntimeError(
@@ -7555,7 +8808,7 @@ class Qwen35GGUFResidentModelRunner:
                 self._release_available_sessions()
                 self._max_sequence_length = requested
                 try:
-                    self._reserve_sessions()
+                    self._reserve_sessions(max_sequence_length=requested)
                     if config is not None:
                         self.configure_engine_loop(config)
                 except (HipError, MemoryError) as exc:
@@ -7644,7 +8897,12 @@ class Qwen35GGUFResidentModelRunner:
             return frozenset()
         rows, chunks = [row for row, _ in eligible], [chunk for _, chunk in eligible]
         for row in rows:
+            self._execution_step_request_id = int(row.request_id)
             raise_if_generation_deadline_expired(row.request)
+        self._execution_step_request_id = None
+        # From here the grouped call may reach device work for any of these
+        # rows, so all of them join the containment scope of a failure.
+        self._mark_execution_stepped(row.request_id for row in rows)
         leases: list[_GGUFResidentSessionLease] = []
         for row in rows:
             lease = row.lease or self._acquire_lease()
@@ -7679,6 +8937,29 @@ class Qwen35GGUFResidentModelRunner:
                     return_hidden_seeds=capture_mtp2_hidden,
                     **streaming_kwargs,
                 )
+        except NotImplementedError:
+            # The packed route refuses this slab's operation or resource shape.
+            # That is a route decision about this group, not a failure of the
+            # request: report no rows as handled so the caller prefills them
+            # through the serial path, which is the same contract this method
+            # already uses for an ineligible lane or a missing packed owner.
+            # Raising here instead retired every row of the item with an
+            # ``execution_failed`` 500 for a prompt well inside the configured
+            # context.
+            self._finish_mtp2_prompt_streaming(
+                rows,
+                streaming_sinks,
+                success=False,
+            )
+            for row, sink in zip(rows, streaming_sinks, strict=True):
+                if sink is not None:
+                    # The adapter already closed this row's streaming sink as
+                    # failed; keep the budget consistent with that so the
+                    # serial path does not open a second stream for the row.
+                    row.mtp2_candidate_budget = 0
+                    row.mtp2_prompt_fallback_reason = "packed_prefill_unsupported_k0"
+            self._fallback_reasons["packed_prefill_unsupported_k0"] += 1
+            return frozenset()
         except Exception:
             self._finish_mtp2_prompt_streaming(
                 rows,
@@ -7715,15 +8996,251 @@ class Qwen35GGUFResidentModelRunner:
             raise_if_generation_deadline_expired(row.request)
         return frozenset(int(row.request_id) for row in rows)
 
+    def contain_execution_failure(
+        self,
+        error: BaseException,
+        *,
+        phase: str,
+        request_ids: tuple[int, ...],
+        work_kind: str,
+    ) -> ExecutionFailure | None:
+        """Contain one GGUF step the runner can prove is safe to retire.
+
+        Two claims are available for a prefill or decode step.  ``none`` means
+        the step raised before any device call, so the failing row's scheduler
+        bookkeeping is the whole blast radius.  ``partial`` means the step
+        entered its device phase without claiming a canonical commit: the
+        runner marks every row immediately before its first device call, so the
+        claim names exactly the rows whose device state may have advanced, and
+        the loop retires them through the same request-owned release path a
+        single-row claim uses.  Every row the step never reached stays canonical
+        and is left unnamed.
+
+        A speculative cycle instead asks its resolved adapter for the mutation
+        class and the rows it cannot prove canonical (a cycle that recorded a
+        canonical commit is ``committed``; a cycle whose device cursors moved
+        without one is ``partial``).
+
+        Everything else stays fatal: a ``HipError`` (the device itself reported
+        a fault, so shared device state is unproven), a quiesce that cannot be
+        established, a phase that does not mark its device window, a device
+        phase with no attributed row, and an adapter that cannot narrow the
+        mutation window.  Those are ``unknown``, which is never a successful
+        containment claim.
+        """
+
+        rows = tuple(int(request_id) for request_id in request_ids)
+        if not rows:
+            return None
+        if str(phase) not in {"prefill", "decode"}:
+            return self._contain_speculative_execution_failure(
+                error,
+                phase=phase,
+                request_ids=rows,
+                work_kind=work_kind,
+            )
+        if isinstance(error, HipError):
+            return None
+        stepped = {
+            request_id
+            for request_id in rows
+            if request_id in self._execution_stepped_request_ids
+        }
+        step_request_id = self._execution_step_request_id
+        trigger = (
+            int(step_request_id)
+            if step_request_id is not None and int(step_request_id) in rows
+            else None
+        )
+        if stepped:
+            # Device work is attributed to these rows; the row that raised is
+            # part of the scope even when it never reached its own device call,
+            # because its failure still has to be reported.
+            affected = tuple(
+                sorted(stepped | ({trigger} if trigger is not None else set()))
+            )
+            mutation = "partial"
+        elif (
+            trigger is not None
+            or self._execution_mutation_window == "none"
+            or self._execution_device_phase_empty
+        ):
+            # No row reached device work in this step, so the failure is
+            # pre-device for everything the claim names.
+            affected = (trigger,) if trigger is not None else rows
+            mutation = "none"
+        else:
+            # The step entered its device phase without attributing device work
+            # to any row: the window stays unresolved and the failure is fatal.
+            return None
+        if not self._quiesce_after_execution_failure(affected):
+            return None
+        return ExecutionFailure(
+            request_ids=affected,
+            phase=str(phase),
+            work_kind=str(work_kind),
+            mutation=mutation,
+            reason=f"{type(error).__name__}: {error}",
+            error=error,
+        )
+
+    def _contain_speculative_execution_failure(
+        self,
+        error: BaseException,
+        *,
+        phase: str,
+        request_ids: tuple[int, ...],
+        work_kind: str,
+    ) -> ExecutionFailure | None:
+        """Claim a failed speculative cycle the resolved adapter can scope."""
+
+        if str(phase) not in {"speculative_prepare", "speculative_cycle"}:
+            return None
+        if isinstance(error, HipError):
+            return None
+        plan = self._execution_speculative_plan
+        if plan is None:
+            return None
+        adapter = self._resolved_mtp2_adapter()
+        evidence = (
+            None if adapter is None else getattr(adapter, "containment_evidence", None)
+        )
+        if not callable(evidence):
+            return None
+        verdict = evidence(plan, error)
+        if verdict is None:
+            return None
+        mutation, affected = verdict
+        affected = tuple(int(request_id) for request_id in affected)
+        if not affected:
+            return None
+        if any(request_id not in request_ids for request_id in affected):
+            # A scope outside the failed work item is a runner bug, not a
+            # containment: refuse it here so the loop never has to reject it.
+            return None
+        if not self._quiesce_after_execution_failure(affected):
+            return None
+        return ExecutionFailure(
+            request_ids=affected,
+            phase=str(phase),
+            work_kind=str(work_kind),
+            mutation=str(mutation),
+            reason=f"{type(error).__name__}: {error}",
+            error=error,
+        )
+
+    def _begin_execution_step(self) -> None:
+        """Reset the per-step containment accounting."""
+
+        self._execution_mutation_window = "none"
+        self._execution_step_request_id = None
+        self._execution_stepped_request_ids.clear()
+        self._execution_committed_request_ids.clear()
+        self._execution_device_phase_empty = False
+
+    def _begin_speculative_cycle(self, plan) -> None:
+        """Enter a speculative cycle: remember its plan and clear its commits."""
+
+        self._execution_speculative_plan = plan
+        self._execution_committed_request_ids.clear()
+
+    def _execution_stepped(self) -> set[int]:
+        """Return the stepped-row set, materializing it for lightweight runners."""
+
+        stepped = getattr(self, "_execution_stepped_request_ids", None)
+        if stepped is None:
+            # Scheduling tests build runners with ``__new__`` and never run the
+            # dataclass initializer, so the containment sets are absent until
+            # the first step marks a row.
+            stepped = set()
+            self._execution_stepped_request_ids = stepped
+        return stepped
+
+    def _mark_execution_stepped(self, request_ids) -> None:
+        """Record that these rows' device state may already have advanced."""
+
+        self._execution_stepped().update(
+            int(request_id) for request_id in request_ids
+        )
+
+    def note_execution_commit(self, request_id: int) -> None:
+        """Record one canonical commit made inside the current cycle.
+
+        A resolved adapter calls this when it publishes a cycle's committed
+        tokens for a row.  Containment reads the set to distinguish a
+        ``committed`` failure, where the row's device state is ahead of the
+        outer scheduler and cannot fall back to autoregressive decoding, from a
+        ``partial`` one where no commit was claimed.
+        """
+
+        self._execution_committed_request_ids.add(int(request_id))
+
+    def execution_committed_request_ids(self) -> frozenset[int]:
+        """Rows whose canonical commit this runner recorded in the current step."""
+
+        return frozenset(self._execution_committed_request_ids)
+
+    def _quiesce_after_execution_failure(self, request_ids: tuple[int, ...]) -> bool:
+        """Establish device completion after a failed step, or report that it failed."""
+
+        runtimes: list[Any] = []
+        seen: set[int] = set()
+
+        def remember(candidate: Any) -> None:
+            if candidate is None or id(candidate) in seen:
+                return
+            seen.add(id(candidate))
+            runtimes.append(candidate)
+
+        for request_id in request_ids:
+            row = self._rows.get(int(request_id))
+            if row is None:
+                continue
+            slot = getattr(row, "slot", None)
+            session = getattr(slot, "session", None)
+            remember(getattr(session, "runtime", None))
+            lease = getattr(row, "lease", None)
+            remember(getattr(getattr(lease, "session", None), "runtime", None))
+        remember(getattr(self._shared_runner, "_runtime", None))
+        if not runtimes:
+            # No reachable device runtime means no proof that the device is idle.
+            return False
+        for runtime in runtimes:
+            synchronize = getattr(runtime, "device_synchronize", None)
+            if not callable(synchronize):
+                return False
+            try:
+                synchronize()
+            except BaseException:
+                return False
+        return True
+
     def prefill_batch(self, work: WorkItem, *, commit: bool) -> None:
+        self._begin_execution_step()
         if not commit:
             raise ValueError("GGUF resident prefill requires commit=True")
         with hip_target_arch_environment(self.generator.target_arch):
+            if getattr(self.generator, "dms_metadata_path", None) is not None:
+                # Compact capture owns a complete prompt. Scheduler chunks still
+                # advance their normal accounting; compute runs at the last one.
+                for request_id, token_row in zip(work.request_ids, work.token_rows, strict=True):
+                    row = self._row(request_id)
+                    start = row.prefill_tokens_seen
+                    chunk = tuple(int(token) for token in token_row)
+                    if chunk != row.prompt_ids[start:start + len(chunk)]:
+                        raise RuntimeError("DMS prefill chunk does not match the registered prompt")
+                    row.prefill_tokens_seen += len(chunk)
+                    if row.prefill_tokens_seen == len(row.prompt_ids):
+                        self._mark_execution_stepped((request_id,))
+                        self._prefill_dms_row(row)
+                return
             handled = self._try_prefill_native_work_batch(work)
+            self._execution_mutation_window = "unknown"
             for request_id, token_row in zip(work.request_ids, work.token_rows, strict=True):
                 if int(request_id) in handled:
                     continue
                 row = self._row(request_id)
+                self._execution_step_request_id = int(request_id)
                 start = int(row.prefill_tokens_seen)
                 chunk = tuple(int(token) for token in token_row)
                 expected = row.prompt_ids[start:start + len(chunk)]
@@ -7741,6 +9258,9 @@ class Qwen35GGUFResidentModelRunner:
                     min(len(chunk), int(row.prefix_reused_tokens) - start),
                 )
                 model_chunk = chunk[reused_in_chunk:]
+                # From here the row may reach a device call, so it joins the
+                # containment scope of a failure later in this step.
+                self._mark_execution_stepped((request_id,))
                 if row.native_greedy:
                     if row.incremental_prefill is None:
                         row.incremental_prefill = bool(row.prefix_reused_tokens) or not (
@@ -7789,13 +9309,20 @@ class Qwen35GGUFResidentModelRunner:
                     raise_if_generation_deadline_expired(row.request)
 
     def decode_batch(self, work: WorkItem, *, commit: bool) -> tuple[GeneratedToken, ...]:
+        self._begin_execution_step()
         if not commit:
             raise ValueError("GGUF resident decode requires commit=True")
         request_ids = tuple(int(request_id) for request_id in work.request_ids)
         with hip_target_arch_environment(self.generator.target_arch):
-            rows = [self._row(request_id) for request_id in request_ids]
+            rows = []
+            for request_id in request_ids:
+                self._execution_step_request_id = int(request_id)
+                rows.append(self._row(request_id))
             for row in rows:
+                self._execution_step_request_id = int(row.request_id)
                 raise_if_generation_deadline_expired(row.request)
+            self._execution_step_request_id = None
+            self._execution_mutation_window = "unknown"
             step_rows = [
                 row
                 for row in rows
@@ -7825,9 +9352,17 @@ class Qwen35GGUFResidentModelRunner:
                         request_ids=step_request_ids,
                         row_to_request=step_request_ids,
                     )
+                self._mark_execution_stepped(step_request_ids)
                 self._step_native_rows(step_rows, work=step_work)
+            else:
+                # This tick's device phase has no packed work: every row's first
+                # token came from prefill, so nothing here can have advanced a
+                # row's device state.
+                self._execution_device_phase_empty = True
             for row in rows:
+                self._execution_step_request_id = int(row.request_id)
                 raise_if_generation_deadline_expired(row.request)
+            self._execution_step_request_id = None
 
             generated: list[GeneratedToken] = []
             for request_id, row in zip(request_ids, rows, strict=True):
@@ -7934,11 +9469,21 @@ class Qwen35GGUFResidentModelRunner:
         return [int(request_id) for request_id in request_ids if int(request_id) not in self._outputs]
 
     def take_outputs(self, request_ids: Sequence[int]) -> list[GenerationOutput]:
-        return [self._outputs.pop(int(request_id)) for request_id in request_ids]
+        outputs: list[GenerationOutput] = []
+        for request_id in request_ids:
+            rid = int(request_id)
+            # The blocking output is the last reader of a cycle's recorded
+            # metadata; stream events were decorated while the cycle published.
+            self._cycle_token_samples.pop(rid, None)
+            getattr(self, "_stream_decoders", {}).pop(rid, None)
+            outputs.append(self._outputs.pop(rid))
+        return outputs
 
     def discard(self, request_ids: Sequence[int]) -> None:
         for request_id in request_ids:
             rid = int(request_id)
+            self._cycle_token_samples.pop(rid, None)
+            getattr(self, "_stream_decoders", {}).pop(rid, None)
             row = self._rows.pop(rid, None)
             if row is not None:
                 adapter = self._mtp2_adapter
@@ -8028,11 +9573,18 @@ class Qwen35GGUFResidentModelRunner:
                 for row in tuple(self._rows.values()):
                     self._release_row_resources(row)
                 self._rows.clear()
+                getattr(self, "_stream_decoders", {}).clear()
                 self._outputs.clear()
                 self._completed_metadata.clear()
                 self._clear_prefix_snapshots()
+                self._dms_prefix_cache = None
                 if self._kv_pool is not None:
-                    self._teardown_kv_pool(release_workspace_state=False)
+                    # The owner's packed workspace holds a private-workspace
+                    # reservation in the pool, and `close()` rejects one that
+                    # is still held. Releasing the idle workspace first is what
+                    # frees it, so this path matches reconfigure/resize rather
+                    # than skipping the release and failing the pool close.
+                    self._teardown_kv_pool(release_workspace_state=True)
                 self._release_available_sessions()
             except BaseException as exc:  # pragma: no cover - defensive cleanup
                 error = exc
@@ -8046,11 +9598,11 @@ class Qwen35GGUFResidentModelRunner:
         if error is not None:
             raise error
 
-    def _reserve_sessions(self) -> None:
+    def _reserve_sessions(self, *, max_sequence_length: int | None = None) -> None:
         if not bool(
             getattr(self.generator, "_defer_resident_session_policy_resolution", False)
         ):
-            self._reserve_legacy_test_sessions()
+            self._reserve_legacy_test_sessions(max_sequence_length=max_sequence_length)
             return
         acquired: list[_GGUFResidentSessionLease] = []
         batch_owner: Qwen35GGUFResidentSession | None = None
@@ -8062,6 +9614,7 @@ class Qwen35GGUFResidentModelRunner:
                 use_gemv_decode=True,
                 defer_kv_allocation=True,
                 max_batch_size=self.capacity,
+                max_sequence_length=max_sequence_length,
             )
             batch_owner._reset_current_slot_only = True
             acquired.append(_GGUFResidentSessionLease(batch_owner, pool_key))
@@ -8081,16 +9634,6 @@ class Qwen35GGUFResidentModelRunner:
             )
             if callable(validate_layout):
                 validate_layout(sessions)
-            attention_source = getattr(batch_owner, "kv_attention_source", None)
-            if attention_source == "int8_direct" and self.capacity > 1:
-                qualified_rows = _qualified_compact_serial_int8_max_rows(
-                    self.generator
-                )
-                if self.capacity > qualified_rows:
-                    raise NotImplementedError(
-                        "compact direct INT8 residency is artifact-qualified only "
-                        f"through logical c{qualified_rows}; requested c{self.capacity}"
-                    )
         except Exception:
             if batch_owner is not None:
                 batch_owner.close()
@@ -8099,7 +9642,7 @@ class Qwen35GGUFResidentModelRunner:
         self._resident_batch_owner_pool_key = pool_key
         self._available.extend(acquired)
 
-    def _reserve_legacy_test_sessions(self) -> None:
+    def _reserve_legacy_test_sessions(self, *, max_sequence_length: int | None = None) -> None:
         acquired: list[_GGUFResidentSessionLease] = []
         try:
             for _ in range(self.capacity):
@@ -8109,6 +9652,7 @@ class Qwen35GGUFResidentModelRunner:
                     use_wmma_prefill=_resident_session_wmma_prefill_default(),
                     use_gemv_decode=True,
                     defer_kv_allocation=True,
+                    max_sequence_length=max_sequence_length,
                 )
                 acquired.append(_GGUFResidentSessionLease(session, pool_key))
         except Exception:
@@ -8158,6 +9702,14 @@ class Qwen35GGUFResidentModelRunner:
             return
         session = lease.session
         self._close_c1_decode_graph(row)
+        if getattr(getattr(self, "generator", None), "dms_metadata_path", None) is not None:
+            # Dense prefill planes were freed by compaction. A reset cannot
+            # recreate those planes or erase the compact allocator's history.
+            session.close()
+            self._resident_batch_owner = None
+            self._resident_batch_owner_pool_key = None
+            row.lease = None
+            return
         graph_handles = tuple(
             handle
             for handle in self._graph_handles_for_sessions((session,))
@@ -8248,14 +9800,116 @@ class Qwen35GGUFResidentModelRunner:
             raise KeyError(f"request_id {rid} is not registered with the GGUF resident runner")
         return self._rows[rid]
 
+    def prefill_activation_ready(self, request_id: int) -> bool:
+        """Whether this row's next prefill chunk may run now.
+
+        A speculative row whose prompt has not started prefill needs the MTP
+        prompt-activation claim before its first chunk, because the sink
+        captures hidden states from prompt position zero. While another row
+        holds that claim (a chunked prefill holds it across ticks), running
+        this row's first chunk would permanently forfeit its draft provider.
+        The scheduler defers the row instead, so a concurrent arrival keeps its
+        MTP eligibility at the cost of a bounded prefill start delay.
+        """
+
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            return True
+        probe = getattr(adapter, "prompt_activation_available", None)
+        if not callable(probe) or bool(probe()):
+            return True
+        row = self._row(int(request_id))
+        if row.prefill_tokens_seen > 0 or row.mtp2_candidate_budget <= 0:
+            return True
+        # A prefix-reused row that has no usable checkpoint never primes a
+        # provider (K0), so it can start whenever the scheduler picks it. One
+        # that does prime streams its suffix like any other row and needs the
+        # claim for the same reason: its first chunk would otherwise forfeit a
+        # provider that is about to be restored.
+        if not row.prefix_reused_tokens:
+            return False
+        return int(row.request_id) not in self._restorable_prefix_rows((row,))
+
+    def prefill_needs_activation(self, request_id: int) -> bool:
+        """Whether this row's next chunk would open the prompt-activation claim.
+
+        Only a row whose prompt has not started prefill needs the claim; a row
+        already carrying a sink is mid-activation and a row without speculative
+        intent never opens one. The scheduler uses this to admit at most one
+        claim-opening row per multi-row prefill item, because the serial prefill
+        path activates each row immediately before its own first chunk and a
+        second claim-opening row in the same item would forfeit its provider.
+        """
+
+        row = self._row(int(request_id))
+        if row.mtp2_candidate_budget <= 0:
+            return False
+        if row.prefix_reused_tokens:
+            # A restorable hit row opens a claim like any streaming row; a
+            # refused one never opens a sink at all.
+            return bool(
+                int(row.request_id) in self._restorable_prefix_rows((row,))
+                and row.prefill_tokens_seen == 0
+                and row.slot is None
+            )
+        return bool(row.prefill_tokens_seen == 0 and row.slot is None)
+
+    def _restorable_prefix_rows(
+        self,
+        rows: Sequence[_GGUFResidentLoopRow],
+    ) -> set[int]:
+        """Request ids whose reused prefix has a usable checkpoint.
+
+        Empty when no adapter is resolved, so a row that cannot be restored
+        keeps the pre-checkpoint behavior of never priming a provider.
+        """
+
+        if not hasattr(self, "_mtp2_adapter"):
+            # A runner double that never initialized adapter state has none.
+            return set()
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            return set()
+        probe = getattr(adapter, "restorable_prefix_rows", None)
+        if not callable(probe):
+            return set()
+        return set(probe(rows))
+
     def _begin_mtp2_prompt_streaming(
         self,
         rows: Sequence[_GGUFResidentLoopRow],
     ) -> tuple[Any | None, ...]:
+        resolver = getattr(self, "_resolved_mtp2_adapter", None)
+        adapter = resolver() if callable(resolver) else None
+        restorable: set[int] = set()
+        # A runner double without adapter state has no restorable rows.
+        probe = getattr(self, "_restorable_prefix_rows", None)
+        if adapter is not None and callable(probe):
+            restorable = set(probe(rows))
         selected = tuple(
-            row for row in rows
-            if row.mtp2_candidate_budget > 0 and not row.prefix_reused_tokens
+            row
+            for row in rows
+            if row.mtp2_candidate_budget > 0
+            and (
+                not row.prefix_reused_tokens
+                or int(row.request_id) in restorable
+            )
         )
+        # A reused prefix is never prefilled, so the prompt hidden rows a draft
+        # provider is primed from cannot exist for such a row, and it is filtered
+        # out above before any adapter gate sees it. Record that refusal here --
+        # the adapter's own reuse gate is never reached for these rows -- because
+        # a row refused without a reason is indistinguishable from a row whose
+        # provider was merely still priming, and both used to publish only the
+        # planner's ``no_provider``.
+        for row in rows:
+            if (
+                row.mtp2_candidate_budget > 0
+                and int(row.prefix_reused_tokens) > 0
+                and int(row.request_id) not in restorable
+                and row.mtp2_prompt_fallback_reason is None
+            ):
+                row.mtp2_prompt_fallback_reason = "prefix_reuse_k0"
         if not _gguf_specdec2_streaming_prompt_enabled():
             for row in selected:
                 row.mtp2_candidate_budget = 0
@@ -8263,7 +9917,6 @@ class Qwen35GGUFResidentModelRunner:
             return (None,) * len(tuple(rows))
         if not selected:
             return (None,) * len(tuple(rows))
-        adapter = self._resolved_mtp2_adapter()
         if adapter is None:
             return (None,) * len(tuple(rows))
         checkpoints = {
@@ -8304,11 +9957,133 @@ class Qwen35GGUFResidentModelRunner:
             raise RuntimeError("GGUF MTP2 streaming prompt adapter disappeared")
         adapter.finish_prompt_streaming(ids, success=bool(success), stream=int(stream))
 
+    def _prefill_dms_row(self, row: _GGUFResidentLoopRow) -> None:
+        raise_if_generation_deadline_expired(row.request)
+        row.lease = row.lease or self._acquire_lease()
+        session = row.lease.session
+        session.dms_max_new_tokens = max(1, int(row.request.max_tokens)) + max(1, row.mtp2_candidate_budget) + 1
+        if row.native_sampled:
+            self._prepare_sampled_prefill(row)
+        start = time.perf_counter()
+        cache_enabled = self._prefix_cache_mode != "off"
+        cache_eligible = cache_enabled
+        row.prefix_eligible = cache_eligible
+        row.prefix_lookup = cache_eligible
+        self._dms_cache_sequence = getattr(self, "_dms_cache_sequence", 0) + 1
+        session._dms_cache_identity = self._dms_cache_sequence
+        cache = getattr(self, "_dms_prefix_cache", None)
+        if cache is None:
+            from hipengine.runtime.dms_prefix import DMSPrefixCache
+            cache = self._dms_prefix_cache = DMSPrefixCache(
+                _gguf_prefix_retained_state_bytes_limit(dms=True), _PREFIX_RETAINED_SNAPSHOTS_WIDE
+            )
+        snapshot = cache.lookup(session, row.prompt_ids, bool(row.native_sampled)) if cache_eligible else None
+        hit = cache_eligible and snapshot is not None and snapshot.matches(
+            session, row.prompt_ids, bool(row.native_sampled)
+        )
+        partial = (cache_eligible and snapshot is not None and not hit
+                   and snapshot.compatible(session) and snapshot.cold is not None
+                   and snapshot.cold.reused_tokens(row.prompt_ids) > 0)
+        session._dms_prefill_reuse = snapshot if hit or partial else None
+        if hit or partial:
+            row.prefix_matched_tokens = row.prefix_reused_tokens = len(snapshot.tokens)
+        prime_from_cached_hidden = False
+        if (hit or partial) and row.mtp2_candidate_budget > 0:
+            adapter = self._resolved_mtp2_adapter()
+            prime_from_cached_hidden = row.request_id not in adapter.restorable_prefix_rows((row,))
+            if prime_from_cached_hidden:
+                # An AR cache source has target state but no NextN checkpoint.
+                # Prime the draft from owned trunk rows, not a second target prefill.
+                row.prefix_reused_tokens = 0
+        sinks = self._begin_mtp2_prompt_streaming((row,))
+        if hit or partial:
+            row.prefix_reused_tokens = len(snapshot.tokens)
+        sink = sinks[0]
+        if sink is not None and cache_eligible:
+            from hipengine.runtime.dms_prefill_cache import cache_boundary_points
+            session._dms_cache_capture_tokens = tuple(row.prompt_ids)
+            session._dms_cache_byte_budget = cache.max_bytes
+            sink.capture_boundaries = (*cache_boundary_points(session), len(row.prompt_ids))
+        if row.mtp2_candidate_budget > 0 and sink is None:
+            raise NotImplementedError("DMS MTP requires the native NextN prompt streaming provider")
+        row.prefix_fallback_reason = (
+            None if hit or partial else "cache_off" if not cache_enabled else
+            "dms_prefix_miss"
+        )
+        captured = None
+        try:
+            if prime_from_cached_hidden:
+                from hipengine.runtime.dms_prefill_cache import prime_cached_hidden
+                prime_cached_hidden(session, snapshot, sink, row.request_id)
+            if hit:
+                from hipengine.runtime.dms_prefix import restore_prompt
+                result = restore_prompt(session, snapshot)
+                row.prefix_matched_tokens = row.prefix_reused_tokens = len(row.prompt_ids)
+                row.prefix_snapshot_hit = True
+                row.prefix_source_kind = "dms_owned_prompt"
+                row.prefix_state_clone_bytes = snapshot.nbytes
+            else:
+                session._dms_cache_capture_tokens = tuple(row.prompt_ids) if cache_eligible else None
+                session._dms_cache_byte_budget = cache.max_bytes
+                session._dms_prefill_reuse = snapshot if partial else None
+                if partial:
+                    row.prefix_matched_tokens = row.prefix_reused_tokens = len(snapshot.tokens)
+                    row.prefix_snapshot_hit = True
+                    row.prefix_source_kind = "dms_cold_prefill"
+                    row.prefix_state_clone_bytes = snapshot.nbytes
+                result = session.prefill(
+                    row.prompt_ids, use_bulk=True, bulk_attention_mode="bulk",
+                    return_logits=bool(row.native_sampled),
+                    **({"target_hidden_chunk_sink": sink,
+                        "target_hidden_request_id": row.request_id} if sink is not None else {}),
+                )
+                if cache_eligible:
+                    from hipengine.runtime.dms_prefix import capture_prompt
+                    captured = capture_prompt(
+                        session, row.prompt_ids, result, sampled=bool(row.native_sampled)
+                    )
+        except BaseException:
+            self._finish_mtp2_prompt_streaming((row,), sinks, success=False)
+            raise
+        self._finish_mtp2_prompt_streaming((row,), sinks, success=True)
+        if captured is not None:
+            evicted = cache.put(captured)
+            adapter = getattr(self, "_mtp2_adapter", None)
+            if adapter is not None:
+                for old in evicted:
+                    boundaries = (*(() if old.cold is None else old.cold.boundaries), len(old.tokens))
+                    for end in boundaries:
+                        prefix = old.tokens[:end]
+                        still_owned = any(
+                            prefix == kept.tokens[:end] and
+                            (end == len(kept.tokens) or end in kept.cold.boundaries)
+                            for kept in cache.entries.values()
+                        )
+                        if not still_owned:
+                            adapter.discard_prefix_checkpoint(prefix)
+        row.prefill_ms += _timing_ms_since(start)
+        row.prefill_chunk_count += int(not hit)
+        if row.native_sampled:
+            sample = (
+                session.sample_native_from_last_logits(row.sampling_request, row.sampling_state)
+                if row.native_sampler else None
+            )
+            self._finish_sampled_prefill(row, result, native_compact_prefill=False, native_sample=sample)
+        else:
+            self._finish_native_prefill(row, result, native_compact_prefill=False)
+        raise_if_generation_deadline_expired(row.request)
+
     def _prefill_native_row(self, row: _GGUFResidentLoopRow) -> None:
         if row.slot is not None:
             return
         lease = row.lease or self._acquire_lease()
         row.lease = lease
+        if self._int8_boundary_split_boundary(row) > 0:
+            # A prefix-eligible compact-INT8 miss is prefilled as aligned prefix
+            # plus tail so its deepest boundary is captured as real state; the
+            # plain full-prompt call below would advance straight past it.
+            self._prefill_int8_boundary_split(row)
+            return
         start = time.perf_counter()
         native_compact_prefill = False
         # Direct no-mirror INT8 uses one block-table-aware single-row prefill
@@ -8351,6 +10126,7 @@ class Qwen35GGUFResidentModelRunner:
                 if streaming
                 else {}
             )
+            packed_prefill_declined = False
             try:
                 with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
                     results = prefill_batch(
@@ -8373,6 +10149,30 @@ class Qwen35GGUFResidentModelRunner:
                         ),
                         **streaming_kwargs,
                     )
+            except NotImplementedError:
+                # A packed-route refusal is a shape limit, not a request
+                # failure. The row may already own committed prompt chunks (a
+                # declined incremental prefill resets the session and replays
+                # the whole prompt here), so ending the response with an
+                # unsupported_parameter error is both late and wrong: finish
+                # the prompt on the registered strict per-session route and
+                # keep decoding autoregressively. Sessions whose KV layout only
+                # the block-table-aware route can represent still fail closed.
+                self._finish_mtp2_prompt_streaming(
+                    (row,),
+                    streaming_sinks,
+                    success=False,
+                )
+                if _gguf_single_row_block_table_prefill_required(lease.session):
+                    raise
+                row.mtp2_candidate_budget = 0
+                row.mtp2_prompt_fallback_reason = "packed_prefill_unsupported_k0"
+                self._fallback_reasons["packed_prefill_unsupported_k0"] += 1
+                row.prefill_ms = 0.0
+                row.prefill_chunk_count = 0
+                result = lease.session.prefill(row.prompt_ids, return_logits=False)
+                results = [result]
+                packed_prefill_declined = True
             except Exception:
                 self._finish_mtp2_prompt_streaming(
                     (row,),
@@ -8391,7 +10191,7 @@ class Qwen35GGUFResidentModelRunner:
                     "shifted dynamic GGUF prefill did not return exactly one result"
                 )
             result = result_list[0]
-            native_compact_prefill = True
+            native_compact_prefill = not packed_prefill_declined
         self._route_counts["native_full_prefill_rows"] += 1
         row.prefill_ms += _timing_ms_since(start)
         row.prefill_chunk_count += 1
@@ -8511,6 +10311,7 @@ class Qwen35GGUFResidentModelRunner:
             ),
             native_compact_prefill=bool(native_compact_prefill),
         )
+        self._observe_mtp2_prefill(row, result)
 
     def _prefill_sampled_row(self, row: _GGUFResidentLoopRow) -> None:
         if row.slot is not None:
@@ -8521,9 +10322,22 @@ class Qwen35GGUFResidentModelRunner:
         start = time.perf_counter()
         native_compact_prefill = False
         packed_owner = self._packed_execution_owner(lease.session)
+        # A sampled row needs the prompt's first-token logits for its host
+        # sampler, and a packed prefill refuses to return logits and host hidden
+        # rows together, so a row that owes a draft provider takes the streamed
+        # target-hidden sink the greedy path uses: the sink carries the rows and
+        # the call still returns logits. Without a sink the row keeps the shipped
+        # scalar prefill and decodes without a provider.
+        streaming_sinks = (
+            self._begin_mtp2_prompt_streaming((row,))
+            if row.mtp2_candidate_budget > 0
+            else (None,)
+        )
+        streaming = streaming_sinks[0] is not None
         if (
             getattr(self, "_resident_batch_owner", None) is None
             and not _gguf_single_row_block_table_prefill_required(lease.session)
+            and not streaming
         ):
             result = lease.session.prefill(
                 row.prompt_ids,
@@ -8542,15 +10356,40 @@ class Qwen35GGUFResidentModelRunner:
             native_logits_kwargs = (
                 {"require_logits": True} if row.native_sampler else {}
             )
-            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-                results = prefill_batch(
-                    [row.prompt_ids],
-                    sessions=[lease.session],
-                    full_prompt_lengths=[len(row.prompt_ids)],
-                    return_logits=not row.native_sampler,
-                    return_hidden_seeds=False,
-                    **native_logits_kwargs,
+            streaming_kwargs = (
+                {
+                    "target_hidden_chunk_sinks": streaming_sinks,
+                    "target_hidden_request_ids": (row.request_id,),
+                    "target_hidden_chunk_starts": (0,),
+                }
+                if streaming
+                else {}
+            )
+            try:
+                with _temporary_env(
+                    {"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}
+                ):
+                    results = prefill_batch(
+                        [row.prompt_ids],
+                        sessions=[lease.session],
+                        full_prompt_lengths=[len(row.prompt_ids)],
+                        return_logits=not row.native_sampler,
+                        return_hidden_seeds=False,
+                        **streaming_kwargs,
+                        **native_logits_kwargs,
+                    )
+            except Exception:
+                self._finish_mtp2_prompt_streaming(
+                    (row,),
+                    streaming_sinks,
+                    success=False,
                 )
+                raise
+            self._finish_mtp2_prompt_streaming(
+                (row,),
+                streaming_sinks,
+                success=True,
+            )
             result_list = [] if results is None else list(results)
             if len(result_list) != 1:
                 raise RuntimeError(
@@ -8563,8 +10402,10 @@ class Qwen35GGUFResidentModelRunner:
         native_sample = None
         if row.native_sampler:
             if native_compact_prefill:
+                # Packed prefill leaves logits on its execution owner, while
+                # the selected token still belongs to the request's slot.
                 sample_native = getattr(
-                    lease.session,
+                    packed_owner,
                     "sample_native_from_packed_logits",
                     None,
                 )
@@ -8622,21 +10463,142 @@ class Qwen35GGUFResidentModelRunner:
         native_compact_prefill = False
         final_prefix_boundary = (len(row.prompt_ids) // 256) * 256
 
-        if row.prefix_reused_tokens:
+        # Processed argmax needs host logits, but its draft provider still
+        # needs every newly computed prompt hidden row. Stream both cache
+        # misses and restored suffixes through the packed prefill sink, just
+        # as the native route does, without dropping the request's processors.
+        sinks = (
+            self._begin_mtp2_prompt_streaming((row,))
+            if row.mtp2_candidate_budget > 0 else (None,)
+        )
+        if sinks[0] is not None:
+            prefill_batch = getattr(
+                self._packed_execution_owner(session), "prefill_batch_native", None
+            )
             start = time.perf_counter()
-            for index, token_id in enumerate(chunk):
-                result = session.step(
-                    int(token_id),
-                    return_logits=bool(final_chunk and index == len(chunk) - 1),
-                )
-                if int(session.position) == final_prefix_boundary:
+            chunk_start = int(session.position) - int(row.prefix_reused_tokens)
+            segments = _gguf_prefix_suffix_segments(
+                int(session.position), len(row.prompt_ids), chunk
+            )
+            try:
+                if not callable(prefill_batch):
+                    raise RuntimeError("MTP processed prefill requires packed hidden sinks")
+                for index, segment in enumerate(segments):
+                    want_output = bool(final_chunk and index == len(segments) - 1)
+                    with _temporary_env(
+                        {"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}
+                    ):
+                        results = prefill_batch(
+                            [segment], sessions=[session],
+                            full_prompt_lengths=[len(row.prompt_ids)],
+                            return_logits=want_output, return_hidden_seeds=False,
+                            sample_output=want_output,
+                            target_hidden_chunk_sinks=sinks,
+                            target_hidden_request_ids=(row.request_id,),
+                            target_hidden_chunk_starts=(chunk_start,),
+                            finish_target_hidden_sinks=False,
+                        )
+                    chunk_start += len(segment)
                     self._refresh_prefix_cache(row)
-            self._route_counts["prefix_c1_suffix_prefill_chunks"] += 1
-            self._route_counts["prefix_c1_suffix_prefill_tokens"] += len(chunk)
-            self._route_counts["processed_argmax_prefix_c1_suffix_chunks"] += 1
-            self._route_counts["processed_argmax_prefix_c1_suffix_tokens"] += len(chunk)
+                    if want_output:
+                        result_list = [] if results is None else list(results)
+                        if len(result_list) != 1 or getattr(result_list[0], "logits", None) is None:
+                            raise RuntimeError("MTP processed prefill returned no logits")
+                        result = result_list[0]
+                if final_chunk:
+                    self._finish_mtp2_prompt_streaming((row,), sinks, success=True)
+            except BaseException:
+                self._finish_mtp2_prompt_streaming((row,), sinks, success=False)
+                raise
             row.prefill_ms += _timing_ms_since(start)
-            row.prefill_chunk_count += 1
+            row.prefill_chunk_count += len(segments)
+            self._route_counts["processed_argmax_mtp_streamed_prefill_chunks"] += len(segments)
+            if row.prefix_reused_tokens:
+                self._prefix_phase_add("suffix_prefill", start)
+            self._refresh_prefix_cache_at_prompt_boundary(row, lease)
+            if final_chunk:
+                self._finish_sampled_prefill(row, result, native_compact_prefill=True)
+            return
+
+        if row.prefix_reused_tokens:
+            # A reused prefix is never prefilled, so this row's prompt activation
+            # cannot produce the full-prompt hidden rows a provider needs. Run
+            # the same admission the miss path runs, for its recorded reason:
+            # it refuses a reused-prefix row (``prefix_reuse_k0``, or whichever
+            # gate fires first) and would otherwise leave the row with no
+            # published reason at all, so the served response reported the
+            # planner's ``no_provider`` beside a ``not_k0`` route claim and no
+            # reader could tell the row was refused at admission.
+            self._begin_mtp2_prompt_streaming((row,))
+            start = time.perf_counter()
+            prefill_batch = (
+                getattr(
+                    self._packed_execution_owner(session),
+                    "prefill_batch_native",
+                    None,
+                )
+                if (
+                    _gguf_prefix_batched_suffix_enabled()
+                    and _gguf_prefix_batched_suffix_chunk_eligible(chunk)
+                )
+                else None
+            )
+            if callable(prefill_batch):
+                segments = _gguf_prefix_suffix_segments(
+                    int(getattr(session, "position", 0)),
+                    len(row.prompt_ids),
+                    chunk,
+                )
+                native_compact_prefill = True
+                for segment_index, segment in enumerate(segments):
+                    last_segment = segment_index == len(segments) - 1
+                    want_output = bool(final_chunk and last_segment)
+                    with _temporary_env(
+                        {"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}
+                    ):
+                        results = prefill_batch(
+                            [segment],
+                            sessions=[session],
+                            full_prompt_lengths=[len(row.prompt_ids)],
+                            return_logits=want_output,
+                            return_hidden_seeds=False,
+                            sample_output=want_output,
+                        )
+                    if not last_segment:
+                        # The segment ended exactly on the deepest prompt-
+                        # aligned boundary; capture it before continuing.
+                        self._refresh_prefix_cache(row)
+                    elif final_chunk:
+                        result_list = [] if results is None else list(results)
+                        if len(result_list) != 1 or result_list[0] is None:
+                            raise RuntimeError(
+                                "GGUF batched reused-suffix prefill returned no result"
+                            )
+                        result = result_list[0]
+                self._route_counts["prefix_batched_suffix_prefill_chunks"] += 1
+                self._route_counts["prefix_batched_suffix_prefill_tokens"] += len(chunk)
+                self._route_counts["processed_argmax_prefix_batched_suffix_chunks"] += 1
+                self._route_counts["processed_argmax_prefix_batched_suffix_tokens"] += len(chunk)
+                row.prefill_ms += _timing_ms_since(start)
+                self._prefix_phase_add("suffix_prefill", start)
+                row.prefill_chunk_count += 1
+                self._refresh_prefix_cache_at_prompt_boundary(row, lease)
+            else:
+                for index, token_id in enumerate(chunk):
+                    result = session.step(
+                        int(token_id),
+                        return_logits=bool(final_chunk and index == len(chunk) - 1),
+                    )
+                    if int(session.position) == final_prefix_boundary:
+                        self._refresh_prefix_cache(row)
+                self._route_counts["prefix_c1_suffix_prefill_chunks"] += 1
+                self._route_counts["prefix_c1_suffix_prefill_tokens"] += len(chunk)
+                self._route_counts["processed_argmax_prefix_c1_suffix_chunks"] += 1
+                self._route_counts["processed_argmax_prefix_c1_suffix_tokens"] += len(chunk)
+                self._fallback_reasons["prefix_batched_suffix_unavailable"] += 1
+                row.prefill_ms += _timing_ms_since(start)
+                self._prefix_phase_add("suffix_prefill", start)
+                row.prefill_chunk_count += 1
         else:
             if not final_chunk or chunk != row.prompt_ids:
                 raise RuntimeError(
@@ -8739,16 +10701,114 @@ class Qwen35GGUFResidentModelRunner:
         row.lease = lease
         if row.prefix_reused_tokens:
             start = time.perf_counter()
+            session = lease.session
+            # A restorable hit row primes its provider from the checkpoint at
+            # the boundary and then streams the suffix rows it is about to
+            # prefill, which is the only source of provider state a reused
+            # prefix can have: the reused tokens never run the target here.
+            reused_prefix = int(row.prefix_reused_tokens)
+            sink = None
+            if row.mtp2_candidate_budget > 0:
+                streaming_sinks = self._begin_mtp2_prompt_streaming((row,))
+                sink = streaming_sinks[0] if streaming_sinks else None
+            prefill_batch = (
+                getattr(
+                    self._packed_execution_owner(session),
+                    "prefill_batch_native",
+                    None,
+                )
+                if (
+                    _gguf_prefix_batched_suffix_enabled()
+                    and _gguf_prefix_batched_suffix_chunk_eligible(chunk)
+                )
+                else None
+            )
+            if callable(prefill_batch):
+                chunk_abs_start = int(getattr(session, "position", 0))
+                segments = _gguf_prefix_suffix_segments(
+                    chunk_abs_start,
+                    len(row.prompt_ids),
+                    chunk,
+                )
+                result = None
+                segment_offset = 0
+                for segment_index, segment in enumerate(segments):
+                    last_segment = segment_index == len(segments) - 1
+                    # The sink carries the suffix, so its chunk start is the
+                    # suffix-relative row index the engine reports as absolute.
+                    streaming_kwargs = (
+                        {
+                            "target_hidden_chunk_sinks": (sink,),
+                            "target_hidden_request_ids": (row.request_id,),
+                            "target_hidden_chunk_starts": (
+                                chunk_abs_start - reused_prefix + segment_offset,
+                            ),
+                            # A suffix is prefilled in chunks, so this call does
+                            # not own the sink's whole timeline: the adapter
+                            # closes it once the prompt is complete.
+                            "finish_target_hidden_sinks": False,
+                        }
+                        if sink is not None
+                        else {}
+                    )
+                    segment_offset += len(segment)
+                    with _temporary_env(
+                        {"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}
+                    ):
+                        results = prefill_batch(
+                            [segment],
+                            sessions=[session],
+                            full_prompt_lengths=[len(row.prompt_ids)],
+                            return_logits=False,
+                            return_hidden_seeds=False,
+                            sample_output=bool(final_chunk and last_segment),
+                            **streaming_kwargs,
+                        )
+                    if not last_segment:
+                        # The segment ended exactly on the deepest prompt-
+                        # aligned boundary; capture it before continuing.
+                        self._refresh_prefix_cache(row)
+                    elif final_chunk:
+                        result_list = [] if results is None else list(results)
+                        if len(result_list) != 1 or result_list[0] is None:
+                            raise RuntimeError(
+                                "GGUF batched reused-suffix prefill returned no result"
+                            )
+                        result = result_list[0]
+                self._route_counts["prefix_batched_suffix_prefill_chunks"] += 1
+                self._route_counts["prefix_batched_suffix_prefill_tokens"] += len(chunk)
+                row.prefill_ms += _timing_ms_since(start)
+                self._prefix_phase_add("suffix_prefill", start)
+                row.prefill_chunk_count += 1
+                self._refresh_prefix_cache_at_prompt_boundary(row, lease)
+                if final_chunk:
+                    if sink is not None:
+                        # Commit the streamed suffix: the provider is now at the
+                        # prompt's end and the row owns it. A sink that is short
+                        # is refused there and the row decodes autoregressively.
+                        self._finish_mtp2_prompt_streaming(
+                            (row,),
+                            (sink,),
+                            success=True,
+                        )
+                    self._finish_native_prefill(
+                        row,
+                        result,
+                        native_compact_prefill=True,
+                    )
+                return
             result = None
             for token_id in chunk:
-                result = lease.session.step(int(token_id), return_logits=False)
+                result = session.step(int(token_id), return_logits=False)
             if result is None:
                 raise RuntimeError("GGUF shared-prefix suffix chunk must be non-empty")
             self._route_counts["prefix_c1_suffix_prefill_chunks"] += 1
             self._route_counts["prefix_c1_suffix_prefill_tokens"] += len(chunk)
+            self._fallback_reasons["prefix_batched_suffix_unavailable"] += 1
             row.prefill_ms += _timing_ms_since(start)
+            self._prefix_phase_add("suffix_prefill", start)
             row.prefill_chunk_count += 1
-            self._refresh_prefix_cache(row)
+            self._refresh_prefix_cache_at_prompt_boundary(row, lease)
             if final_chunk:
                 self._finish_native_prefill(
                     row,
@@ -8838,8 +10898,9 @@ class Qwen35GGUFResidentModelRunner:
         if not final_chunk:
             self._route_counts["native_incremental_prefill_unsampled_chunks"] += 1
         row.prefill_ms += _timing_ms_since(start)
+        self._prefix_phase_add("prefill_batched", start)
         row.prefill_chunk_count += 1
-        self._refresh_prefix_cache(row)
+        self._refresh_prefix_cache_at_prompt_boundary(row, lease)
         if final_chunk:
             self._finish_native_prefill(
                 row,
@@ -8864,12 +10925,23 @@ class Qwen35GGUFResidentModelRunner:
         GPU work done. Returns True when the resumable executor owned this
         chunk (including the segment that completes the prompt); False when the
         caller must use the fail-closed full-prompt path.
+
+        A prefix-eligible miss short-circuits to
+        :meth:`_prefill_int8_boundary_split` before the layer-outer machinery:
+        that executor commits the cursor only at the unaligned prompt end, so it
+        would never expose the boundary a following turn reuses.
         """
 
         if row.prefix_reused_tokens:
             # Shared-prefix admission requires incremental prefill support that
             # the layer-outer executor does not provide.
             return False
+        if self._int8_boundary_split_boundary(row) > 0:
+            # A prefix-eligible miss must expose its deepest aligned boundary;
+            # the layer-outer executor commits the cursor only at the unaligned
+            # prompt end, so prefill the prefix and tail as two calls instead.
+            self._prefill_int8_boundary_split(row)
+            return True
         if not _gguf_packed_layer_outer_enabled():
             return False
         lease = row.lease
@@ -8912,17 +10984,34 @@ class Qwen35GGUFResidentModelRunner:
         else:
             budget = max(1, -(-remaining_layers // remaining_polls))
         started = time.perf_counter()
+        streaming_sinks = (
+            self._begin_mtp2_prompt_streaming((row,))
+            if state is None and int(getattr(row, "mtp2_candidate_budget", 0)) > 0
+            else tuple(getattr(state, "target_hidden_chunk_sinks", ())) or (None,)
+        )
         try:
             if state is None:
-                result = resume(prompts, sessions=sessions, layer_budget=budget)
+                streaming_kwargs = (
+                    {"target_hidden_chunk_sinks": streaming_sinks}
+                    if any(sink is not None for sink in streaming_sinks) else {}
+                )
+                result = resume(
+                    prompts, sessions=sessions, layer_budget=budget, **streaming_kwargs,
+                )
             else:
                 result = resume(state=state, layer_budget=budget)
         except NotImplementedError:
+            if any(sink is not None for sink in streaming_sinks):
+                self._finish_mtp2_prompt_streaming((row,), streaming_sinks, success=False)
             if state is None:
                 # The layer-outer executor declined this shape before doing any
                 # device work; the caller falls back to the full-prompt route.
                 self._fallback_reasons["resumable_int8_prefill_declined"] += 1
                 return False
+            raise
+        except BaseException:
+            if any(sink is not None for sink in streaming_sinks):
+                self._finish_mtp2_prompt_streaming((row,), streaming_sinks, success=False)
             raise
         row.prefill_ms += _timing_ms_since(started)
         row.prefill_chunk_count += 1
@@ -8939,6 +11028,8 @@ class Qwen35GGUFResidentModelRunner:
             )
         row.resumable_prefill = _RESUMABLE_PREFILL_DONE
         self._route_counts["resumable_int8_prefill_completions"] += 1
+        if any(sink is not None for sink in streaming_sinks):
+            self._finish_mtp2_prompt_streaming((row,), streaming_sinks, success=True)
         self._finish_native_prefill(
             row,
             result_list[0],
@@ -9010,14 +11101,28 @@ class Qwen35GGUFResidentModelRunner:
             ),
             native_compact_prefill=bool(native_compact_prefill),
         )
-        if row.mtp2_candidate_budget > 0:
-            adapter = self._resolved_mtp2_adapter()
-            if adapter is not None:
-                adapter.observe_prefill_result(
-                    row.request_id,
-                    row.prompt_ids,
-                    result,
-                )
+        self._observe_mtp2_prefill(row, result)
+
+    def _observe_mtp2_prefill(self, row: _GGUFResidentLoopRow, result: Any) -> None:
+        """Hand a prefilled row's hidden rows to its MTP provider, if it has one.
+
+        Both prefill finishes call this: the greedy path and the sampled path.
+        A row that registered a candidate budget owns provider draft state, and
+        the provider's capability needs the prompt's hidden rows before it can
+        admit the row, so skipping this on the sampled path left a sampled row
+        without a provider for its whole lifetime (planner reason
+        ``no_provider`` on every cycle).
+        """
+
+        if row.mtp2_candidate_budget <= 0:
+            return
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            return
+        # This hook may capture the sampled target graph. Use the same scoped
+        # kernel/arch environment as every later speculative device stage.
+        with self._staged_adapter_arch_environment():
+            adapter.observe_prefill_result(row.request_id, row.prompt_ids, result)
 
     def _run_resident_fallback(self, row: _GGUFResidentLoopRow) -> None:
         if row.fallback_output is not None:
@@ -9591,6 +11696,8 @@ class Qwen35GGUFResidentModelRunner:
         slot = row.slot
         if slot is None:
             raise RuntimeError("GGUF resident c1 decode row is missing its session slot")
+        if getattr(slot.session, "_dms_backend", None) is not None:
+            return slot.session.step(int(slot.prev_token), return_logits=False)
         if len(getattr(self, "_rows", {})) > 1:
             # Slot views deliberately share the batch owner's execution buffers.
             # A scalar graph captured for the c1 edge of a wider logical round
@@ -9800,6 +11907,26 @@ class Qwen35GGUFResidentModelRunner:
         if slots:
             self.generator._flush_ar_packed_decode_owners(slots)
 
+    def _stream_token_text(self, request_id: int, token_id: int, *, final: bool) -> str:
+        # Speculative events can arrive after reclaim removed the row. Keep the
+        # decoder alongside the published samples, not on the resident slot.
+        decoders = getattr(self, "_stream_decoders", None)
+        if decoders is None:
+            self._stream_decoders = decoders = {}
+        decoder = decoders.get(request_id)
+        if decoder is None:
+            row = getattr(self, "_rows", {}).get(request_id)
+            request = (row.sampling_request or row.request) if row is not None else None
+            decoder = decoders[request_id] = _GGUFStreamDecoder(
+                self.generator.tokenizer,
+                suppress_after_special=True,
+                ignore_eos=bool(request is not None and request.ignore_eos),
+            )
+        text = decoder.feed(token_id, final=final)
+        if final:
+            decoders.pop(request_id, None)
+        return text
+
     def decorate_speculative_stream_events(
         self,
         events: Sequence[GeneratedTokenEvent],
@@ -9807,26 +11934,56 @@ class Qwen35GGUFResidentModelRunner:
         """Attach tokenizer-owned text to canonical speculative token events."""
 
         decorated: list[GeneratedTokenEvent] = []
-        suppress_after_special = False
         for event in events:
             chunk = event.stream_chunk
             if chunk is None:
                 decorated.append(event)
                 continue
-            raw_text = self.generator.tokenizer.decode((int(event.token_id),))
-            visible_text = self.generator.tokenizer.decode(
-                (int(event.token_id),), skip_special=True
+            text = self._stream_token_text(
+                int(event.request_id), int(event.token_id), final=event.finished
             )
-            text = "" if suppress_after_special else visible_text
-            if raw_text and not visible_text:
-                suppress_after_special = True
+            token_logprob = self._take_cycle_token_logprob(
+                int(event.request_id),
+                int(event.token_id),
+            )
             decorated.append(
                 replace(
                     event,
-                    stream_chunk=replace(chunk, text=text),
+                    stream_chunk=replace(
+                        chunk,
+                        text=text,
+                        token_logprobs=(
+                            chunk.token_logprobs
+                            if token_logprob is None
+                            else (token_logprob,)
+                        ),
+                    ),
                 )
             )
         return tuple(decorated)
+
+    def _take_cycle_token_logprob(
+        self,
+        request_id: int,
+        token_id: int,
+    ) -> TokenLogprob | None:
+        """Consume the recorded metadata for one published token, if any.
+
+        Returns ``None`` when the route recorded nothing for that token, so the
+        caller keeps whatever metadata the scheduler already put on the chunk.
+        """
+
+        pending = self._cycle_token_samples.get(int(request_id))
+        if not pending:
+            return None
+        for index, sample in enumerate(pending):
+            if int(sample.token_id) != int(token_id):
+                continue
+            del pending[index]
+            if not pending:
+                self._cycle_token_samples.pop(int(request_id), None)
+            return _gguf_token_logprob(self.generator.tokenizer, sample)
+        return None
 
     def _native_stream_chunk(self, row: _GGUFResidentLoopRow) -> GenerationStreamChunk:
         slot = row.slot
@@ -9834,23 +11991,32 @@ class Qwen35GGUFResidentModelRunner:
             raise RuntimeError("GGUF resident model row has no token to stream")
         generated_ids = tuple(int(token) for token in slot.generated_ids)
         request = row.sampling_request or row.request
-        sample = row.samples[-1] if row.samples else None
+        sample = (
+            row.samples[-1]
+            if row.samples and len(row.samples) == len(generated_ids)
+            else None
+        )
+        timing = dict(slot.timing)
+        # Streaming keeps the same per-request MTP counters as the blocking
+        # output, so a live/done chunk reports realized speculation rather than
+        # only the admission intent.
+        timing.update(accounting_timing_fields(speculative_output_accounting(row)))
         execution_path = (
-            "gguf_packed_ar_native_sampler_decode"
-            if row.native_sampler
+            "gguf_specdec2_mtp2"
+            if row.mtp2_cycles > 0
             else (
-                "gguf_packed_ar_host_sampler_decode"
-                if row.native_sampled
-                else "gguf_packed_ar_server_decode"
+                "gguf_packed_ar_native_sampler_decode"
+                if row.native_sampler
+                else (
+                    "gguf_packed_ar_host_sampler_decode"
+                    if row.native_sampled
+                    else "gguf_packed_ar_server_decode"
+                )
             )
         )
         return GenerationStreamChunk(
-            text=(
-                _gguf_token_text(self.generator.tokenizer, sample)
-                if sample is not None
-                else self.generator.tokenizer.decode(
-                    (generated_ids[-1],), skip_special=True
-                )
+            text=self._stream_token_text(
+                int(row.request_id), generated_ids[-1], final=slot.done
             ),
             token_logprobs=(
                 _gguf_stream_token_logprobs(self.generator.tokenizer, sample, request)
@@ -9889,7 +12055,7 @@ class Qwen35GGUFResidentModelRunner:
                 native_caware_decode=slot.native_decode_steps > 0,
                 serial_decode_fallback=slot.serial_decode_steps > 0,
                 native_sampler_rows=row.native_sampler,
-                timing=dict(slot.timing),
+                timing=timing,
                 sampler_plan=row.sampler_plan,
                 diagnostics=self._request_diagnostics(
                     row,
@@ -9922,10 +12088,12 @@ class Qwen35GGUFResidentModelRunner:
                 sampler_plan=row.sampler_plan,
             )
         )
+        # Speculative outputs have token IDs but no per-token SampleResult.
+        # A prefill-only sample list must not truncate the visible completion.
         token_logprobs = tuple(
             _gguf_token_logprob(self.generator.tokenizer, sample)
             for sample in row.samples
-        )
+        ) if len(row.samples) == len(generated_ids) else ()
         execution_path = (
             "gguf_specdec2_mtp2"
             if row.mtp2_cycles > 0
@@ -9948,25 +12116,18 @@ class Qwen35GGUFResidentModelRunner:
                     "specdec2_mtp2_prompt_prime_rows": float(
                         row.mtp2_prompt_prime_rows
                     ),
+                    "specdec2_mtp2_prompt_reused_rows": float(
+                        len(row.prompt_ids) - row.mtp2_prompt_prime_rows
+                    ),
                     "specdec2_mtp2_prompt_carried_bytes": float(
                         row.mtp2_prompt_carried_bytes
                     ),
                 }
             )
         if row.mtp2_cycles > 0:
-            mtp_generated_draft_tokens = sum(row.mtp2_candidate_counts)
-            mtp_accepted_draft_tokens = sum(row.mtp2_accepted_counts)
+            timing.update(accounting_timing_fields(speculative_output_accounting(row)))
             timing.update(
                 {
-                    "mtp_cycles_count": float(row.mtp2_cycles),
-                    "mtp_generated_draft_tokens": float(mtp_generated_draft_tokens),
-                    "mtp_accepted_draft_tokens": float(mtp_accepted_draft_tokens),
-                    "mtp_accept_per_draft": (
-                        float(mtp_accepted_draft_tokens)
-                        / float(mtp_generated_draft_tokens)
-                        if mtp_generated_draft_tokens
-                        else 0.0
-                    ),
                     "specdec2_mtp2_cycles": float(row.mtp2_cycles),
                     "specdec2_mtp2_proposal_ms": float(row.mtp2_proposal_ms),
                     "specdec2_mtp2_target_ms": float(row.mtp2_target_ms),
@@ -10012,11 +12173,7 @@ class Qwen35GGUFResidentModelRunner:
                 }
             )
         return GenerationOutput(
-            text=(
-                "".join(token.token_text for token in token_logprobs)
-                if token_logprobs
-                else self.generator.tokenizer.decode(generated_ids)
-            ),
+            text=self.generator.tokenizer.decode(generated_ids),
             token_logprobs=token_logprobs,
             generated_token_ids=generated_ids,
             finish_details=finish_details,
@@ -10276,7 +12433,7 @@ def _gguf_generation_output(
 ) -> GenerationOutput:
     token_logprobs = tuple(_gguf_token_logprob(tokenizer, sample) for sample in samples)
     return GenerationOutput(
-        text="".join(token.token_text for token in token_logprobs),
+        text=tokenizer.decode(tuple(token.token_id for token in token_logprobs)),
         token_logprobs=token_logprobs,
         generated_token_ids=tuple(token.token_id for token in token_logprobs),
         finish_details=finish_details,
@@ -10870,7 +13027,7 @@ def _gguf_native_sampler_plan_enabled(
 
 def _native_gpu_sampler_requested() -> bool:
     value = os.environ.get("HIPENGINE_QWEN35_NATIVE_SAMPLER")
-    return value is not None and value.strip().lower() not in {"", "0", "false", "no", "off"}
+    return value is None or value.strip().lower() not in {"", "0", "false", "no", "off"}
 
 
 def make_qwen35_gguf_bringup_generator(

@@ -1,0 +1,57 @@
+{
+  "model": "microsoft/VibeVoice-1.5B",
+  "quant": "bf16",
+  "measurement_basis": "real-request-path",
+  "request": {
+    "script": "Speaker 1: The quick brown fox jumps over the lazy dog.",
+    "prompt_tokens": 121,
+    "generated_tokens": 27,
+    "diffusion_frames": 25,
+    "cfg_scale": 1.3,
+    "ddpm_steps": 20,
+    "seed": 20260915,
+    "reference_pcm_sha256": "f2eff090a813b99b747a1cc37953485e8b72349b3fcb723037a0a6dd277d42c9",
+    "reference_pcm_samples": 222480,
+    "voice_files": {
+      "en-Alice_woman.wav": {
+        "expected": "c27ae47421436287a6bd2c3062de2dc2a2855b78c0bb626d472202c359704203",
+        "actual": "c27ae47421436287a6bd2c3062de2dc2a2855b78c0bb626d472202c359704203",
+        "verified": true
+      }
+    },
+    "injected": "recorded random operands only (voice VAE draws, per-frame initial noise)",
+    "not_injected": "prompt embeddings, negative conditions",
+    "tracing_during_timing": false,
+    "max_audio_seconds": 4.333,
+    "token_cap": 35,
+    "finish_reason": "stop",
+    "timed_finish_reasons": [
+      "stop"
+    ],
+    "oracle_generated_tokens": 27
+  },
+  "workload": {
+    "output_audio_seconds": 3.333,
+    "sample_rate": 24000
+  },
+  "host": {
+    "name": "zbook",
+    "gpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S"
+  },
+  "command": "uv run python scripts/vibevoice_tts_session_bench.py",
+  "weight_load_seconds": 3.321,
+  "cold_start_seconds": 4.341,
+  "warm_synthesis_seconds": 4.092,
+  "time_to_first_audio_seconds": 0.379,
+  "pooled_rtf": 1.228,
+  "chain_exact": true,
+  "negative_conditions_match": true,
+  "stages": {
+    "lm_total_seconds": 1.526,
+    "prompt_seconds": 0.18,
+    "diffusion_seconds": 1.23,
+    "decode_seconds": 0.319,
+    "semantic_seconds": 0.837
+  },
+  "note": "Verification re-run of the retained session benchmark at HEAD, same protocol and same request as results/2026-09-15-gfx1151-vibevoice-tts-session-real-request.json. Recorded to bound the run-to-run spread of the retained 1.201 headline: this run measured pooled_rtf 1.228 (warm 4.092 s), ~2% slower, still faster than the torch lane's 1.336. Stage spread vs the retained run: lm 1.450->1.526, diffusion 1.298->1.230, semantic 0.781->0.837, decode 0.301->0.319."
+}

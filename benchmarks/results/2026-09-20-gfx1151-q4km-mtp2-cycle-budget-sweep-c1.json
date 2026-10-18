@@ -1,0 +1,99 @@
+{
+  "schema": "hipengine.mtp2_cycle_budget_sweep.v1",
+  "timestamp": "2026-09-20T20:17:25Z",
+  "host": {
+    "label": "AMD Radeon 8060S (gfx1151, RDNA3.5)",
+    "hostname": "gfx1151",
+    "backend": "hip_gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m"
+  },
+  "protocol": {
+    "server": "python -m hipengine.server --model <dense 27B Q4_K_M> --backend hip_gfx1151 --execution-profile production --speculative-mtp-serving auto --speculative-candidate-budget {1,2,3} --prefix-cache off --kv-storage bf16 --max-context-tokens 8192",
+    "load": "scripts/sharegpt_mtp_routing_pass.py --num-prompts 4 --turns 4 --min-prompt-len 256 --max-prompt-len 600 --max-total-len 1024 --output-len 128 --max-concurrency 1 --route-mix auto --seed 4242",
+    "cache": "off",
+    "concurrency": 1,
+    "turns": 4,
+    "conversations": 4
+  },
+  "note": "Task #31 step 3. Same load and route at three candidate budgets, to separate the fixed per-cycle part of the dominant target window from the part that scales with verified rows. Diagnostic only: the default did not change, so no benchmark rollup row is added. The three budgets were measured on one host in one sweep, so their rates are comparable to each other and to nothing else. The phase windows are host wall around each phase; 'fixed' here means 'independent of verified-row count', not 'device-busy'. The fixed part is weight streaming by inference from the AR step cost, not by direct measurement.",
+  "points": [
+    {
+      "budget": 1,
+      "verify_rows": 2.0,
+      "engaged_rows": 16,
+      "per_cycle_mean_ms": {
+        "accept": 0.0,
+        "accept_enqueue": 0.0,
+        "accept_tail": 0.0,
+        "accept_upload": 0.0,
+        "candidate_readback": 0.0,
+        "proposal": 0.3643,
+        "provider_update": 0.791,
+        "selected_commit": 0.0,
+        "target": 94.5201,
+        "target_readback": 0.0
+      },
+      "per_cycle_mean_ms_sum": 95.6754,
+      "observed_decode_wall_per_cycle_ms": 95.731,
+      "itl_median_ms": 50.488,
+      "accepted_drafts_per_cycle": 0.874,
+      "decode_tokens_per_s_per_request": 19.807,
+      "failed_requests": 0,
+      "wall_seconds": 132.65900623099878
+    },
+    {
+      "budget": 2,
+      "verify_rows": 3.0,
+      "engaged_rows": 16,
+      "per_cycle_mean_ms": {
+        "accept": 0.0,
+        "accept_enqueue": 0.0,
+        "accept_tail": 0.0,
+        "accept_upload": 0.0,
+        "candidate_readback": 0.0,
+        "proposal": 0.5313,
+        "provider_update": 0.8865,
+        "selected_commit": 0.0,
+        "target": 101.7764,
+        "target_readback": 0.0
+      },
+      "per_cycle_mean_ms_sum": 103.1942,
+      "observed_decode_wall_per_cycle_ms": 101.667,
+      "itl_median_ms": 38.65,
+      "accepted_drafts_per_cycle": 1.608,
+      "decode_tokens_per_s_per_request": 25.873,
+      "failed_requests": 0,
+      "wall_seconds": 108.71543037705123
+    },
+    {
+      "budget": 3,
+      "verify_rows": 4.0,
+      "engaged_rows": 16,
+      "per_cycle_mean_ms": {
+        "accept": 0.0,
+        "accept_enqueue": 0.0,
+        "accept_tail": 0.0,
+        "accept_upload": 0.0,
+        "candidate_readback": 0.0,
+        "proposal": 0.775,
+        "provider_update": 1.0077,
+        "selected_commit": 0.0,
+        "target": 110.3508,
+        "target_readback": 0.0
+      },
+      "per_cycle_mean_ms_sum": 112.1335,
+      "observed_decode_wall_per_cycle_ms": 109.389,
+      "itl_median_ms": 35.707,
+      "accepted_drafts_per_cycle": 2.085,
+      "decode_tokens_per_s_per_request": 28.006,
+      "failed_requests": 0,
+      "wall_seconds": 101.68684705998749
+    }
+  ],
+  "marginal_target_ms_per_added_row": 7.92,
+  "fixed_intercept_ms": 78.69,
+  "source_probes": "/tmp/t31-budget/probe-{1,2,3}.json"
+}

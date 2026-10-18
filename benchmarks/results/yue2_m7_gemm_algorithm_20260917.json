@@ -1,0 +1,97 @@
+{
+  "date": "2026-09-17",
+  "host": {
+    "name": "zbook",
+    "gpu": "AMD Radeon 8060S (gfx1151, Ryzen AI MAX+ 395, 40 CU, unified LPDDR5X)",
+    "rocm": "7.15.26333 / hipBLASLt from the same ROCm SDK",
+    "note": "Every figure is gfx1151. No gfx1100 hardware was available."
+  },
+  "change": {
+    "what": "The YuE2 AR and NAR runtimes selected their hipBLASLt algorithm as the first zero-workspace candidate hipBLASLt returned. They now use HipblasLtProblem.fast_algorithm(), a fixed index into that same filtered list (FAST_ALGORITHM_INDEX = 4), which is the index the wrapper's own convenience selector already documented as the measured gfx1151 fast heuristic.",
+    "why": "hipBLASLt returns candidates in its own heuristic order, not by measured time, and its first entry is 1.4-5.7x slower than the measured best on these shapes.",
+    "sites": [
+      "hipengine/runtime/yue2_ar.py:_prepare_lt (the batched prefill route)",
+      "hipengine/runtime/yue2_nar.py:_prepare_gemm (the NAR projections)"
+    ],
+    "reproducibility": "A fixed index, not a runtime autotune, so two runs of the same input select the same algorithm and stay comparable run to run."
+  },
+  "algorithm_scan": {
+    "script": "scripts/hipblaslt_algo_scan.py",
+    "command": "python3 scripts/hipblaslt_algo_scan.py --rows 1299 --repeat 6",
+    "shape_results_rows_1299": [
+      {"shape": [1299, 2048, 6144], "index_0_ms": 6.248, "index_4_ms": 1.617, "ratio": 3.86, "index_4_tflops": 20.21},
+      {"shape": [1299, 6144, 2048], "index_0_ms": 7.027, "index_4_ms": 1.660, "ratio": 4.23, "index_4_tflops": 19.69},
+      {"shape": [1299, 2048, 2048], "index_0_ms": 2.370, "index_4_ms": 0.830, "ratio": 2.86, "index_4_tflops": 13.13},
+      {"shape": [1299, 2048, 1024], "index_0_ms": 1.176, "index_4_ms": 0.328, "ratio": 3.59, "index_4_tflops": 16.61}
+    ],
+    "shape_results_other_rows": {
+      "rows_1": "all candidates within 15% (best index 5/6/6/3, every one under 0.5 ms)",
+      "rows_64": "index 4 best on three of four shapes (1.47-2.93x), index 0 best by 0% on the fourth",
+      "rows_512": "index 4 best (1.02-4.06x)",
+      "rows_2048": "index 4 best (1.13-5.68x)"
+    },
+    "summary": "Across 16 shapes, index 4 is fastest in 11 and within 15% of fastest in the rest."
+  },
+  "solver_effect": {
+    "case": "mandarin-off-s1234",
+    "method": "hipengine.runtime.yue2_nar.Yue2NarRuntime._gemm wrapped with a device synchronize on either side, over the same solve used for the attention split",
+    "projections_seconds": {"before": 3.89, "after": 0.94, "ratio": 4.14},
+    "projection_shapes": [
+      {"shape": [1299, 2048, 6144], "calls": 224, "before_s": 1.995, "after_s": 0.453},
+      {"shape": [1299, 6144, 2048], "calls": 112, "before_s": 0.881, "after_s": 0.229},
+      {"shape": [1299, 2048, 2048], "calls": 224, "before_s": 0.707, "after_s": 0.165},
+      {"shape": [1299, 2048, 1024], "calls": 224, "before_s": 0.304, "after_s": 0.087}
+    ],
+    "nar_solve_seconds": {"two_steps": {"before": 11.10, "after": 7.95}, "thirty_two_steps": {"before": 116.53, "after": 81.13}}
+  },
+  "replay": {
+    "case": "mandarin-off-s1234",
+    "command": "python3 scripts/yue2_e2e_gate.py --only mandarin-off-s1234 --steps <n> --skip-live --json <out>",
+    "two_steps": {"nar_seconds": 7.95, "vae_seconds": 20.06, "total_seconds": 28.02},
+    "thirty_two_steps": {"nar_seconds": 81.13, "vae_seconds": 20.10, "total_seconds": 101.23},
+    "frames": "1297/1297",
+    "samples": "2490176/2490176",
+    "determinism": "bit-identical",
+    "torch_imported": false,
+    "session_start_baseline_thirty_two_steps": {"nar_seconds": 443.4, "total_seconds": 465.9},
+    "combined_ratio_thirty_two_steps": 5.47,
+    "reference_same_host_seconds": 27.32,
+    "gap_before": 16.2,
+    "gap_after": 2.97
+  },
+  "ar_replay_gate": {
+    "command": "python3 scripts/yue2_ar_replay.py --json <out>",
+    "status": "pass",
+    "cases": 18,
+    "rows": 576,
+    "pooled_mean_kl": {"before": 0.002113, "after": 0.001158},
+    "worst_case_max_kl": {"before": 0.090976, "after": 0.007095, "case": "abc-nocfg-L128-s5678"},
+    "top1_agreement": {"before": 0.9670, "after": 0.9549},
+    "top8_recall": {"before": 0.9605, "after": 0.9588},
+    "prefill_total_seconds": {"before": 91.3, "after": 77.6},
+    "note": "The 'before' row is benchmarks/results/yue2_ar_replay_hipblaslt_20260916.json. The 18 cases were not re-run against the strict arm in this session, so the 522.5 s strict figure is cross-session; only the batched route's own 91.3 s -> 77.6 s is same-protocol."
+  },
+  "solver_gates_after_change": {
+    "chunk0": {"latents_rel_l2": 0.01248, "cosine": 0.999923, "exact_bf16_fraction": 0.157, "was": {"rel_l2": 0.01225, "cosine": 0.999926, "exact": 0.162}, "passed": true},
+    "multichunk": {"latents_rel_l2": 0.01071, "cosine": 0.999944, "exact_bf16_fraction": 0.169, "was": {"rel_l2": 0.01071, "cosine": 0.999944}, "passed": true},
+    "condend": {"latents_rel_l2": 0.00905, "cosine": 0.999960, "exact_bf16_fraction": 0.202, "was": {"rel_l2": 0.00885, "cosine": 0.999962}, "passed": true},
+    "reading": "The production arithmetic moved slightly, as a different GEMM accumulation order must. Every gate stays inside its calibrated envelope; the multi-chunk case reproduces its recorded numbers exactly."
+  },
+  "session_gate_after_change": {
+    "status": "pass",
+    "cases": ["english-full-s1234", "english-melody-s1234", "mandarin-off-s1234"],
+    "teacher_forced_semantic": {"english-full": 0.982, "english-melody": 0.971, "mandarin-off": 0.967},
+    "teacher_forced_abc": {"english-full": 0.991, "english-melody": 0.997},
+    "was": {"semantic": [0.979, 0.969, 0.961], "abc": [0.991, 1.0]},
+    "note": "Every case improved slightly; all pass."
+  },
+  "unit_tests": {
+    "command": "python3 -m pytest tests/test_unit_yue2_*.py tests/test_gpu_hipblaslt.py",
+    "result": "221 passed"
+  },
+  "next_candidates": [
+    "NAR attention is again the solver's dominant per-evaluation cost at the product's 32 steps (about 53 s of the 81 s solve): the tile maximum is still a serial 128-entry shared-memory walk per row per tile, and fmax is order-independent so a warp shuffle keeps it exact.",
+    "VAE decode is 20.1 s of the 28.0 s two-step replay and 20.1 s of the 101.2 s thirty-two-step replay.",
+    "The AR decode path (576 steps of the 77.6 s replay) still runs on GEMV kernels and was not touched by this change."
+  ]
+}

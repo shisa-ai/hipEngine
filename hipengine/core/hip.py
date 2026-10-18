@@ -13,9 +13,13 @@ from typing import Final
 from hipengine.core.runtime import MemcpyKind
 
 HIP_SUCCESS: Final[int] = 0
+# hipErrorNotReady: a poll answer ("the event is still in flight"), not a
+# failure. `HipRuntime.event_query` treats it as False instead of raising.
+_HIP_ERROR_NOT_READY: Final[int] = 600
 HIP_HOST_REGISTER_MAPPED: Final[int] = 0x02
 DEFAULT_HIP_LIBRARY: Final[str] = "libamdhip64.so"
 HIP_GRAPH_NODE_TYPE_KERNEL: Final[int] = 0
+HIP_GRAPH_NODE_TYPE_MEMCPY: Final[int] = 1
 
 
 class HipDim3(ctypes.Structure):
@@ -40,6 +44,50 @@ class HipKernelNodeParams(ctypes.Structure):
 
 
 HipMemcpyKind = MemcpyKind
+
+
+class HipPos(ctypes.Structure):
+    """ctypes layout of HIP's ``hipPos`` value."""
+
+    _fields_ = [("x", ctypes.c_size_t), ("y", ctypes.c_size_t), ("z", ctypes.c_size_t)]
+
+
+class HipPitchedPtr(ctypes.Structure):
+    """ctypes layout of HIP's ``hipPitchedPtr`` value."""
+
+    _fields_ = [
+        ("ptr", ctypes.c_void_p),
+        ("pitch", ctypes.c_size_t),
+        ("xsize", ctypes.c_size_t),
+        ("ysize", ctypes.c_size_t),
+    ]
+
+
+class HipExtent(ctypes.Structure):
+    """ctypes layout of HIP's ``hipExtent`` value."""
+
+    _fields_ = [("width", ctypes.c_size_t), ("height", ctypes.c_size_t), ("depth", ctypes.c_size_t)]
+
+
+class HipMemcpy3DParms(ctypes.Structure):
+    """ctypes layout of ``hipMemcpy3DParms`` from ``driver_types.h``.
+
+    Field order follows ROCm's header exactly (ABI-significant): ``srcArray``,
+    ``srcPos``, ``srcPtr``, ``dstArray``, ``dstPos``, ``dstPtr``, ``extent``,
+    ``kind``. Used by ``hipGraphMemcpyNodeGetParams`` to read back the copy a
+    captured memcpy node will perform.
+    """
+
+    _fields_ = [
+        ("srcArray", ctypes.c_void_p),
+        ("srcPos", HipPos),
+        ("srcPtr", HipPitchedPtr),
+        ("dstArray", ctypes.c_void_p),
+        ("dstPos", HipPos),
+        ("dstPtr", HipPitchedPtr),
+        ("extent", HipExtent),
+        ("kind", ctypes.c_int),
+    ]
 
 
 class HipError(RuntimeError):
@@ -218,6 +266,22 @@ class HipRuntime:
         self.check(self.library.hipStreamEndCapture(ctypes.c_void_p(stream), ctypes.byref(graph)))
         return 0 if graph.value is None else int(graph.value)
 
+    def stream_is_capturing(self, stream: int) -> bool:
+        """Whether ``stream`` is inside an active or invalidated capture.
+
+        ``hipStreamIsCapturing`` reports ``None``, ``Active`` or
+        ``Invalidated``. This returns ``True`` for anything but ``None``:
+        host-synchronizing work is illegal in both capturing states, and a
+        caller deciding whether it may synchronize or read a device buffer back
+        must treat an invalidated capture the same as an active one.
+        """
+
+        status = ctypes.c_int()
+        self.check(
+            self.library.hipStreamIsCapturing(ctypes.c_void_p(stream), ctypes.byref(status))
+        )
+        return int(status.value) != 0
+
     def graph_instantiate(self, graph: int) -> int:
         graph_exec = ctypes.c_void_p()
         error_node = ctypes.c_void_p()
@@ -297,6 +361,55 @@ class HipRuntime:
         self.check(function(ctypes.c_void_p(node), ctypes.byref(params)))
         return params
 
+    def graph_memcpy_node_params(self, node: int) -> tuple[int, int, int]:
+        """Return the ``(src, dst, count_bytes)`` a captured memcpy node will run.
+
+        HIP stores 1-D copies as ``hipMemcpy3DParms``: the pointers land in
+        ``srcPtr``/``dstPtr`` and the byte count in ``extent.width`` (per the
+        header, width is bytes for linear memory). Callers that know what the
+        node must copy should cross-check the returned count rather than trust
+        this reconstruction.
+        """
+
+        params = HipMemcpy3DParms()
+        function = self._inspection_function("hipGraphMemcpyNodeGetParams")
+        self.check(function(ctypes.c_void_p(node), ctypes.byref(params)))
+        return (
+            int(params.srcPtr.ptr or 0),
+            int(params.dstPtr.ptr or 0),
+            int(params.extent.width),
+        )
+
+    def graph_exec_memcpy_node_set_1d(
+        self,
+        graph_exec: int,
+        node: int,
+        *,
+        dst: int,
+        src: int,
+        count: int,
+        kind: HipMemcpyKind | int,
+    ) -> None:
+        """Re-target one memcpy node of an instantiated graph.
+
+        This is the per-replay update for copies whose destination is a
+        position the graph cannot know at capture time (the Gemma 4 KV
+        append): the executable keeps every other parameter, and the host
+        supplies the one value that moves each step.
+        """
+
+        function = self._inspection_function("hipGraphExecMemcpyNodeSetParams1D")
+        self.check(
+            function(
+                ctypes.c_void_p(graph_exec),
+                ctypes.c_void_p(node),
+                ctypes.c_void_p(dst),
+                ctypes.c_void_p(src),
+                ctypes.c_size_t(count),
+                ctypes.c_int(int(kind)),
+            )
+        )
+
     def kernel_name_ref_by_ptr(self, function_ptr: int, stream: int = 0) -> str:
         function = self._inspection_function("hipKernelNameRefByPtr")
         raw = function(ctypes.c_void_p(function_ptr), ctypes.c_void_p(stream))
@@ -336,6 +449,20 @@ class HipRuntime:
 
     def event_synchronize(self, event: int) -> None:
         self.check(self.library.hipEventSynchronize(ctypes.c_void_p(event)))
+
+    def event_query(self, event: int) -> bool:
+        """True once the event has completed; False while the device is behind it.
+
+        ``hipEventQuery`` answers ``hipErrorNotReady`` for an event the device
+        has not reached, which is a poll result rather than a failure.
+        """
+        result = int(self.library.hipEventQuery(ctypes.c_void_p(event)))
+        if result == 0:
+            return True
+        if result == _HIP_ERROR_NOT_READY:
+            return False
+        self.check(result)
+        return False
 
     def event_elapsed_time_ms(self, start: int, stop: int) -> float:
         elapsed = ctypes.c_float()
@@ -420,6 +547,8 @@ class HipRuntime:
         self.library.hipStreamBeginCapture.restype = ctypes.c_int
         self.library.hipStreamEndCapture.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)]
         self.library.hipStreamEndCapture.restype = ctypes.c_int
+        self.library.hipStreamIsCapturing.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)]
+        self.library.hipStreamIsCapturing.restype = ctypes.c_int
         self.library.hipGraphInstantiate.argtypes = [
             ctypes.POINTER(ctypes.c_void_p),
             ctypes.c_void_p,
@@ -439,6 +568,11 @@ class HipRuntime:
             "hipGraphGetEdges": ([ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t)], ctypes.c_int),
             "hipGraphNodeGetType": ([ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)], ctypes.c_int),
             "hipGraphKernelNodeGetParams": ([ctypes.c_void_p, ctypes.POINTER(HipKernelNodeParams)], ctypes.c_int),
+            "hipGraphMemcpyNodeGetParams": ([ctypes.c_void_p, ctypes.POINTER(HipMemcpy3DParms)], ctypes.c_int),
+            "hipGraphExecMemcpyNodeSetParams1D": (
+                [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int],
+                ctypes.c_int,
+            ),
             "hipKernelNameRefByPtr": ([ctypes.c_void_p, ctypes.c_void_p], ctypes.c_char_p),
             "hipGetDevice": ([ctypes.POINTER(ctypes.c_int)], ctypes.c_int),
             "hipDeviceGetPCIBusId": ([ctypes.c_char_p, ctypes.c_int, ctypes.c_int], ctypes.c_int),
@@ -456,6 +590,8 @@ class HipRuntime:
         self.library.hipEventRecord.restype = ctypes.c_int
         self.library.hipEventSynchronize.argtypes = [ctypes.c_void_p]
         self.library.hipEventSynchronize.restype = ctypes.c_int
+        self.library.hipEventQuery.argtypes = [ctypes.c_void_p]
+        self.library.hipEventQuery.restype = ctypes.c_int
         self.library.hipEventElapsedTime.argtypes = [
             ctypes.POINTER(ctypes.c_float),
             ctypes.c_void_p,
@@ -481,6 +617,73 @@ def get_hip_runtime(path: str = DEFAULT_HIP_LIBRARY) -> HipRuntime:
         configure_hip_process_environment()
         _DEFAULT_RUNTIME = HipRuntime.load(path)
     return _DEFAULT_RUNTIME
+
+
+_COMPUTE_UNITS: dict[int, int] = {}
+
+
+def parse_rocminfo_compute_units(text: str) -> tuple[int, ...]:
+    """Compute units of each GPU agent in ``rocminfo`` output, in device order.
+
+    Only agents whose ``Name`` is an ISA (``gfx...``) are counted; ``rocminfo`` also
+    reports the CPU agent, which has its own unrelated "Compute Unit" count. Keeping
+    the per-agent values in order lets the caller select by device ordinal instead of
+    guessing from a maximum.
+    """
+
+    import re
+
+    units: list[int] = []
+    for block in re.split(r"^Agent \d+", text, flags=re.M)[1:]:
+        name = re.search(r"^\s*Name:\s*(gfx[0-9a-z]+)\s*$", block, re.M)
+        count = re.search(r"^\s*Compute Unit:\s*(\d+)\s*$", block, re.M)
+        if name is not None and count is not None:
+            units.append(int(count.group(1)))
+    return tuple(units)
+
+
+def _rocminfo_compute_units(device: int) -> int | None:
+    import subprocess
+
+    try:
+        completed = subprocess.run(
+            ["rocminfo"], check=False, text=True, capture_output=True, timeout=30
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    units = parse_rocminfo_compute_units(completed.stdout)
+    return units[device] if 0 <= device < len(units) else None
+
+
+def device_compute_units(device: int = 0) -> int | None:
+    """Compute units on ``device``, or ``None`` when the probe cannot answer.
+
+    Grid sizing reads this, so an unknown answer stays ``None`` and the caller picks
+    its own documented fallback rather than inheriting a number that silently
+    under-fills a device of a different size.
+
+    The unit is compute units, because that is what wave slots are counted in. HIP's
+    own device properties report something else: on these RDNA3 hosts
+    ``hipDeviceProp_t.multiProcessorCount`` and
+    ``hipDeviceGetAttribute(hipDeviceAttributeMultiprocessorCount, dev)`` both return
+    48 for a 96-CU gfx1100 under ROCm 7.2, because they count work-group processors
+    and a WGP packs two CUs that share an LDS. Halving the count here would halve the
+    planned grid, so the source is ``rocminfo``, whose per-agent ``Compute Unit`` is
+    the CU count.
+
+    The count is a SKU property rather than an ISA one: gfx1100 covers 80, 84 and 96
+    enabled CUs (RX 7900 GRE, RX 7900 XT, RX 7900 XTX and the W7900), and harvesting
+    is per card, so it is read from the device instead of derived from the arch
+    string. The value is cached per device; the probe is a subprocess, so call it once
+    at runtime construction, not per launch.
+    """
+
+    if device in _COMPUTE_UNITS:
+        return _COMPUTE_UNITS[device]
+    units = _rocminfo_compute_units(device)
+    if units is not None:
+        _COMPUTE_UNITS[device] = units
+    return units
 
 
 def is_default_runtime_loaded() -> bool:

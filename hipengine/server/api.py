@@ -9,6 +9,7 @@ limited to short model/session preparation mutations.
 from __future__ import annotations
 
 import asyncio
+import base64
 from contextlib import suppress
 from copy import deepcopy
 from decimal import Decimal, InvalidOperation
@@ -24,7 +25,7 @@ import sys
 import threading
 import time
 import uuid
-from collections import deque
+from collections import Counter, deque
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -35,7 +36,7 @@ from urllib.parse import unquote
 from anyio import CancelScope
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 try:  # Pydantic v2; FastAPI's current default.
@@ -45,15 +46,19 @@ except ImportError:  # pragma: no cover - Pydantic v1 compatibility
 
 from starlette.concurrency import run_in_threadpool
 
-from hipengine import LLM, ResidentPreparationError, SamplingParams
+from hipengine import DMSConfig, LLM, ResidentPreparationError, SamplingParams
+from hipengine.llm import resolve_generation_surfaces
 from hipengine.generation import (
     DecodeState,
+    EngineCommandTimeout,
+    EngineServiceClosed,
     FinishDetails,
     GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS,
     GenerationAdmissionRejected,
     GenerationCancellationToken,
     GenerationCancelled,
     GenerationDeadlineExceeded,
+    GenerationExecutionFailed,
     GenerationOutput,
     GenerationStreamChunk,
     GenerationTelemetry,
@@ -67,19 +72,37 @@ from hipengine.generation import (
     derive_row_seed,
     relax_thinking_budget_for_mtp,
     speculative_mtp_sampling_blockers,
+    speculative_serving_sampling_mode,
+    supports_sampled_speculative_mtp,
     supports_speculative_mtp_sampling,
 )
 from hipengine.generation.constraints import JsonObjectConstraintState, ToolCallConstraintSpec
 from hipengine.generation.logprobs import logprob_text, logprob_text_spans
+from hipengine.generation.qwen35_gguf_mtp2 import (
+    unqualified_mtp_screening_enabled as _mtp_unqualified_screening_enabled,
+)
 from hipengine.generation.registry import normalize_prompt_input
 from hipengine.kernels.backends import backend_package_capability
-from hipengine.kvcache import resolve_prefix_cache_mode
-from hipengine.server.multimodal import extract_qwen4_exp_chat_media
+from hipengine.kvcache import PREFIX_CACHE_DEFAULT, resolve_prefix_cache_mode
+from hipengine.models import DEFAULT_GENERATION_SURFACES
+from hipengine.runtime.memory_admission import MemoryAdmissionRefused
+from hipengine.util.wav import encode_wav_bytes
+from hipengine.server.multimodal import (
+    extract_chat_media,
+    media_for_engine,
+    request_has_media,
+    resolve_vision_http_limits,
+    vision_max_side,
+    vision_prompt_markers,
+)
+from hipengine.speculative.accounting import span_accounting
 from hipengine.speculative.policy import (
     DEFAULT_AUTO_DEPTH_POLICY,
     select_offline_speculative_depth,
 )
+from hipengine.speculative.registry import DEFAULT_PROVIDER_CANDIDATE_BUDGET
 from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
+from hipengine.speculative.serving import STRUCTURAL_REJECTION_AXES
 from hipengine.tokenization.identity import token_ids_sha256
 
 
@@ -91,7 +114,7 @@ _THINKING_START_MARKER = "<think>"
 _THINKING_CLOSE_MARKER = "</think>"
 _TOOL_CALL_START_MARKER = "<tool_call>"
 _TOOL_CALL_END_MARKER = "</tool_call>"
-_CHAT_TEMPLATE_TERMINAL_MARKERS = ("<|im_end|>",)
+_CHAT_TEMPLATE_TERMINAL_MARKERS = ("<|im_end|>", "<turn|>")
 _CHAT_TEMPLATE_RESIDUE_MARKERS = ("<|endoftext|>", "<|im_start|>", "<|im_end|>")
 _CHAT_TEMPLATE_RESIDUE_ROLES = ("assistant", "developer", "system", "tool", "user")
 _TOOL_CALL_ARGUMENT_STREAM_CHARS = 128
@@ -266,8 +289,71 @@ class _SpeculativeMTPRouteReason(str, Enum):
     AUTOMATIC_SCOPE_NOT_PROMOTED = "automatic_mtp_scope_not_promoted"
 
 
+# Why automatic intent is withheld at a width whose cell executes.
+#
+# Two independent causes have been recorded here, and only the second is what a
+# live c2 overlap actually reports today.
+#
+# 1. The INT8 static width bound. A singleton INT8 request selected the C1
+#    declaration (`gguf_dense_int8_native_chain`, depth 7, one row) and carried
+#    `max_realized_group_rows=1`, so `partition_max_requests` resolved a due
+#    width-2 group to 0 even though the packed cells are declared to physical c4
+#    and execute. Fixed in `hipengine/models/qwen35.py`: the static width bound
+#    now follows the widest automatic-eligible declaration for the request's
+#    storage and backend, while depth stays with the declaration the realized
+#    width selects, so an unlisted wider cell still fails closed.
+#
+# 2. The storage a sweep actually runs. `scripts/gguf_mtp_c1c8_server_bench.py`
+#    builds `LLM` and `ServerConfig` without a KV storage selector and has never
+#    contained one, so it runs the product default; `/ready` reports
+#    `effective_kv_storage: bf16` for that construction, and a realized width-2
+#    automatic overlap resolves the retained BF16 row
+#    `qwen38-q4km-gfx1151-production-bf16-c2-k3-d24`, whose
+#    `automatic_eligible` is false and whose reason is
+#    `diagnostic_production_c2_after_ar_rebase`. That is a promotion decision on
+#    a measured cell -- the explicit arm of the same sweep engages it at 25.75
+#    tok/s against its own AR baseline's 10.79 -- so the route that lifts it is
+#    that row's promotion, not a code change here.
+#
+# A request that wants the INT8 cell has to reach a server whose `/ready`
+# reports `effective_kv_storage: int8_per_token_head` (the CLI route,
+# `hipengine serve --kv-storage int8_per_token_head`, or the bench's own
+# `--kv-storage`, which now records the cell and refuses a mismatch).
+#
+# 3. Provider registration for a realized group wider than one. Measured on the
+#    INT8 cell itself (automatic arm, c1/c2/c4), the route layer admits --
+#    `selected_route: speculative_mtp`,
+#    `selection_reason: implemented_gguf_dense_int8_gfx1151_group_native_chain`
+#    -- and the resident owner then reports `plan_ar_only: true`,
+#    `plan_reason: no_provider`,
+#    `provider_decline_reason: request N unregistered or disabled`, so every
+#    step falls back with `no_provider` and this reason is not the one the
+#    response reports (`backend_k0_fallback` is). The requests are never
+#    registered with the MTP2 adapter at a width above one; that registration is
+#    the gate, not this constant.
+# Recorded in docs/reference/INT8-MTP-SERVER-READINESS.md.
 _SPECULATIVE_MTP_AUTO_REJECTION_REASON = (
     _SpeculativeMTPRouteReason.AUTOMATIC_SCOPE_NOT_PROMOTED.value
+)
+# Explicit screening override: an operator-enabled path that keeps typed MTP
+# intent for a request no evidence row admits, so the resident owner can admit
+# the unqualified physical cell instead of the request falling to K0. It never
+# applies to automatic intent, and the qualification value below is what keeps a
+# screening run from being read as a qualified one in response metadata.
+_MTP_SCREENING_QUALIFICATION = "explicit_screening_unqualified_cell"
+_MTP_SCREENING_REASONS = frozenset(
+    {
+        "no_model_plugin_evidence",
+        "artifact_not_qualified",
+        "backend_not_qualified",
+        "target_arch_not_qualified",
+        "weight_quant_not_qualified",
+        "kv_storage_not_qualified",
+        "kv_layout_not_qualified",
+        "physical_group_not_qualified",
+        "resident_capacity_not_qualified",
+        "candidate_budget_not_qualified",
+    }
 )
 _SPECULATIVE_MTP_AUTO_EVIDENCE = (
     "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json"
@@ -329,15 +415,22 @@ class ServerConfig:
     startup_min_free_mib: int | None = None
     max_context_tokens: int | None = None
     chat_default_max_tokens: int | None = 4096
+    dms: "DMSConfig | None" = None
     kv_storage: str = "auto"
     kv_scale_dtype: str = "fp16"
     kv_scale_granularity: str = "per_token_head"
+    dms_metadata_path: str | None = None
     generation_batch_window_ms: float = 0.0
     stream_queue_max_chunks: int = 16
     shutdown_grace_seconds: float = 5.0
     request_timeout_ms: float | None = None
     metrics: str = "off"
-    prefix_cache: str = "off"
+    # The engine loop's default. The gfx1100 numerical gate is still open and
+    # tracked in docs/REFACTOR.md; the per-request path fails closed with a
+    # recorded reason, so an unqualified row prefills privately. See the
+    # --prefix-cache default in hipengine/server/__main__.py.
+    prefix_cache: str | None = None
+    info: bool = False
     debug: bool = False
     replay_dir: str | None = None
     replay_redaction: str = "hash"
@@ -349,14 +442,43 @@ class ServerConfig:
     speculative_mtp_thinking: str = "hint"
     speculative_provider: str | None = None
     draft_model: str | None = None
-    speculative_candidate_budget: int = 4
+    speculative_candidate_budget: int | None = None
     vision_model: str | None = None
+    # Companion decoder checkpoint for models whose pipeline needs a second
+    # artifact to produce its output (YuE2 decodes latents with ``m-a-p/YuE2-Vae``).
+    vae_model: str | None = None
+    # HTTP vision input bounds. None means: take the decoded-pixel bound from
+    # the engine's declared ``vision_max_pixels`` (falling back to the 1 MP
+    # Qwen4Exp scope), and scale the compressed-payload bound with it.
+    vision_max_pixels: int | None = None
+    vision_max_image_bytes: int | None = None
     created: int = field(default_factory=lambda: int(time.time()))
     execution_profile: str | None = None
 
     def __post_init__(self) -> None:
         from hipengine.execution_profiles import resolve_requested_execution_profile
+        from hipengine.kvcache.dms_serving import resolve_dms_serving_options
 
+        path, capacity, prefix = resolve_dms_serving_options(
+            self.dms_metadata_path, self.max_active_requests, self.prefix_cache
+        )
+        object.__setattr__(self, "dms_metadata_path", path)
+        object.__setattr__(self, "max_active_requests", capacity)
+        object.__setattr__(self, "prefix_cache", resolve_prefix_cache_mode(prefix))
+
+        if self.dms is not None:
+            if not isinstance(self.dms, DMSConfig):
+                raise TypeError("dms must be a DMSConfig")
+            if self.max_active_requests not in (None, 1):
+                raise ValueError("DMS compact serving requires max_active_requests=1")
+            if self.prefix_cache != "off":
+                raise ValueError("DMS compact KV has no radix prefix-cache adapter; set prefix_cache='off'")
+            if self.speculative_mtp_serving != "off" or self.speculative_provider is not None:
+                raise ValueError("DMS compact KV has no speculative serving adapter; set speculative_mtp_serving='off'")
+            if self.kv_storage not in ("auto", "bf16"):
+                raise ValueError("DMS public serving implements BF16 compact storage only")
+            object.__setattr__(self, "max_active_requests", 1)
+            object.__setattr__(self, "kv_storage", "bf16")
         profile = resolve_requested_execution_profile(self.execution_profile)
         object.__setattr__(
             self,
@@ -391,8 +513,12 @@ class ServerConfig:
             raise ValueError("draft_model requires speculative_provider")
         if provider is not None and drafter is None:
             raise ValueError("speculative_provider requires draft_model")
-        candidate_budget = int(self.speculative_candidate_budget)
-        if candidate_budget <= 0:
+        candidate_budget = (
+            None
+            if self.speculative_candidate_budget is None
+            else int(self.speculative_candidate_budget)
+        )
+        if candidate_budget is not None and candidate_budget <= 0:
             raise ValueError("speculative_candidate_budget must be positive")
         object.__setattr__(self, "speculative_provider", provider)
         object.__setattr__(self, "draft_model", drafter)
@@ -403,6 +529,17 @@ class ServerConfig:
         if vision_model == "":
             raise ValueError("vision_model must be non-empty when set")
         object.__setattr__(self, "vision_model", vision_model)
+        vae_model = None if self.vae_model is None else str(self.vae_model).strip()
+        if vae_model == "":
+            raise ValueError("vae_model must be non-empty when set")
+        object.__setattr__(self, "vae_model", vae_model)
+        for name in ("vision_max_pixels", "vision_max_image_bytes"):
+            value = getattr(self, name)
+            if value is None:
+                continue
+            if int(value) <= 0:
+                raise ValueError(f"{name} must be positive when set")
+            object.__setattr__(self, name, int(value))
         if int(self.stream_queue_max_chunks) < 2:
             raise ValueError("stream_queue_max_chunks must be at least 2")
         if float(self.shutdown_grace_seconds) < 0.0:
@@ -687,6 +824,40 @@ _ERROR_TAXONOMY: dict[str, dict[str, Any]] = {
         "retryable": True,
         "emitted": True,
         "description": "The server admission queue or chat-session cap is full.",
+    },
+    "engine_unavailable": {
+        "status_code": 503,
+        "retryable": True,
+        "emitted": True,
+        "description": (
+            "The resident engine service is closed, unhealthy, or unresponsive "
+            "and cannot accept work. The message names the fatal cause the "
+            "service recorded, or - for an engine command that outlived its "
+            "liveness budget - the method, the budget, and the activity that "
+            "held the driver thread. Restart the server to restore serving."
+        ),
+    },
+    "internal_error": {
+        "status_code": 500,
+        "retryable": False,
+        "emitted": True,
+        "description": (
+            "An unexpected server fault escaped request handling. The payload "
+            "still carries a message and a code, so a client never receives a "
+            "bodyless or non-JSON 500."
+        ),
+    },
+    "execution_failed": {
+        "status_code": 500,
+        "retryable": True,
+        "emitted": True,
+        "description": (
+            "The request's own execution step failed before its result could be "
+            "applied. The engine kept serving other requests; retrying the "
+            "request is safe. error.hipengine.execution names the phase, the "
+            "affected rows, and whether the failed step may have mutated device "
+            "state."
+        ),
     },
     "model_unavailable": {
         "status_code": 404,
@@ -1257,7 +1428,7 @@ def _tools_capability(
             "allows_pending_tool_calls_at_transcript_end": True,
             "applies_to_session_snapshots": True,
         },
-        "parallel_tool_calls_requires_opt_in": True,
+        "parallel_tool_calls_requires_opt_in": False,
         "parallel_tool_calls": True,
         "streaming_argument_chunks": True,
         "streaming_argument_chunk_chars": _TOOL_CALL_ARGUMENT_STREAM_CHARS,
@@ -1578,12 +1749,17 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
         "automatic_route_promoted": automatic_promoted,
         "sampling_compatible": bool(serving_route),
         "compatibility_guard": "supports_speculative_mtp_sampling",
-        "allowed_execution_modes": ["greedy_fast"],
+        "allowed_execution_modes": sorted(
+            {"greedy_fast", *(
+                str(mode) for mode in getattr(engine, "speculative_mtp_sampling_modes", ())
+            )}
+        ),
         "incompatible_fields": list(SPECULATIVE_MTP_INCOMPATIBLE_FIELDS),
         "incompatible_conditions": dict(SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS),
         "thinking_policy": str(config.speculative_mtp_thinking),
         "processed_target_verification": False,
-    }
+        "candidate_budget": _candidate_budget_resolution(config, engine=engine),
+        "context_window": _mtp2_context_window_resolution(),    }
     if serving_plan is not None:
         payload["certified_explicit_scope"] = deepcopy(serving_plan)
     if not serving_route:
@@ -1734,6 +1910,7 @@ def _speculative_provider_capability(
 
     configured = config.speculative_provider is not None
     supported = configured and _engine_supports_speculative(engine)
+    resolved_budget = _effective_speculative_candidate_budget(config, engine=engine)
     payload: dict[str, Any] = {
         "configured": bool(configured),
         "serving_route": bool(supported),
@@ -1744,7 +1921,10 @@ def _speculative_provider_capability(
         "streaming_compatible": bool(
             supported and _engine_supports_speculative_streaming(engine)
         ),
-        "candidate_budget": int(config.speculative_candidate_budget),
+        "candidate_budget": resolved_budget,
+        "candidate_budget_resolution": _candidate_budget_resolution(
+            config, engine=engine
+        ),
         "compatibility_guard": "raw_greedy_bf16_c1",
         "processed_target_verification": False,
     }
@@ -1761,7 +1941,10 @@ def _speculative_provider_capability(
             "policy": "explicit_only",
             "default_enabled": False,
             "streaming_compatible": _engine_supports_speculative_streaming(engine),
-            "candidate_budget": int(config.speculative_candidate_budget),
+            "candidate_budget": resolved_budget,
+            "candidate_budget_resolution": _candidate_budget_resolution(
+                config, engine=engine
+            ),
             "compatibility_guard": capabilities.get("compatibility_guard", "raw_greedy_bf16_c1"),
         }
     )
@@ -1954,17 +2137,217 @@ def _session_metadata_capability(max_active: int | None = None) -> dict[str, Any
     }
 
 
-def _model_capability_summary(config: ServerConfig | None = None, *, engine: Any | None = None) -> dict[str, Any]:
+def _resolved_generation_surfaces(engine: Any | None) -> tuple[str, ...]:
+    """Return the surfaces the served model declares, defaulting to text.
+
+    A model plugin that declares nothing is a text model, which is every plugin
+    but YuE2. The declaration is read from the model, never inferred from its
+    name or artifact, so an unfamiliar checkpoint still routes by capability.
+    """
+
+    if engine is None:
+        return DEFAULT_GENERATION_SURFACES
+    surfaces = getattr(engine, "generation_surfaces", None)
+    if surfaces is None:
+        return DEFAULT_GENERATION_SURFACES
+    return tuple(str(surface) for surface in surfaces)
+
+
+def _served_generation_surfaces(app: FastAPI) -> tuple[str, ...]:
+    """The served surfaces, from the startup resolution when there is one."""
+
+    cached = getattr(app.state, "hipengine_generation_surfaces", None)
+    if cached is not None:
+        return tuple(cached)
+    return _resolved_generation_surfaces(getattr(app.state, "hipengine_llm", None))
+
+
+def _startup_generation_surfaces(config: ServerConfig) -> tuple[str, ...]:
+    """Resolve the declared surfaces at startup without loading weights.
+
+    A model this cannot resolve fails at load with its own message, so routing
+    reports the default surface rather than pre-empting that with a guess.
+    """
+
+    try:
+        return resolve_generation_surfaces(config.model)
+    except Exception:
+        _LOGGER.warning(
+            "SURFACES: could not resolve declared surfaces for model=%s; "
+            "assuming the text surface",
+            config.model,
+            exc_info=True,
+        )
+        return DEFAULT_GENERATION_SURFACES
+
+
+class _SongRequestCancellation:
+    """Stop a long song request when its client goes away.
+
+    The pipeline polls ``cancelled`` between its stages and inside its decode
+    loops, so noticing the disconnect is the whole job here; a running kernel is
+    never interrupted mid-call.
+    """
+
+    #: How often the connection is checked. A song takes minutes, so a second of
+    #: check latency costs nothing and keeps the watcher quiet.
+    POLL_SECONDS = 1.0
+
+    def __init__(self, request: Request) -> None:
+        self._request = request
+        self._cancelled = False
+        self._task: asyncio.Task | None = None
+
+    def cancelled(self) -> bool:
+        return self._cancelled
+
+    async def start(self) -> None:
+        self._task = asyncio.create_task(self._watch())
+
+    async def _watch(self) -> None:
+        while not self._cancelled:
+            try:
+                if await self._request.is_disconnected():
+                    self._cancelled = True
+                    return
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # A connection that cannot be polled is not evidence of a
+                # disconnect, so the request keeps running.
+                return
+            await asyncio.sleep(self.POLL_SECONDS)
+
+    async def stop(self) -> None:
+        task, self._task = self._task, None
+        if task is None:
+            return
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+def _song_request_from_body(request: SongGenerationRequest, generator: Any) -> Any:
+    """Build the model-owned request, reporting invalid fields as request errors."""
+
+    from hipengine.generation.yue2 import SongRequest
+
+    describe = getattr(generator, "song_capabilities", None)
+    modes = tuple(describe().get("cot_modes") or ()) if callable(describe) else ()
+    cot = str(request.cot).strip().lower()
+    if modes and cot not in modes:
+        raise OpenAIHTTPError(
+            400,
+            f"cot must be one of {', '.join(modes)}, not {request.cot!r}",
+            code="invalid_request",
+            param="cot",
+        )
+    if request.abc is not None and cot == "off":
+        raise OpenAIHTTPError(
+            400,
+            "an external abc score requires cot=melody or cot=full",
+            code="invalid_request",
+            param="abc",
+        )
+    try:
+        return SongRequest(
+            style=request.style,
+            lyrics=request.lyrics,
+            cot=cot,
+            seed=831001 if request.seed is None else int(request.seed),
+            abc=request.abc,
+            cfg_scale=None if request.cfg_scale is None else float(request.cfg_scale),
+            id="song" if request.request_id is None else str(request.request_id),
+        )
+    except (TypeError, ValueError) as exc:
+        raise OpenAIHTTPError(
+            400, str(exc), code="invalid_request", param="request_id"
+        ) from exc
+
+
+def _song_generator(engine: Any) -> Any:
+    """Return the model-owned song generator, or refuse with a named capability miss."""
+
+    getter = getattr(engine, "song_generator", None)
+    if not callable(getter):
+        raise OpenAIHTTPError(
+            501,
+            "the served model does not implement song generation",
+            code="unsupported_feature",
+        )
+    try:
+        return getter()
+    except NotImplementedError as exc:
+        raise OpenAIHTTPError(
+            501,
+            f"the served model does not implement song generation: {exc}",
+            code="unsupported_feature",
+        ) from exc
+
+
+def _require_text_surface(surfaces: Sequence[str], *, endpoint: str) -> None:
+    """Refuse a text endpoint on a model that does not generate text."""
+
+    if "text" in surfaces:
+        return
+    declared = ", ".join(surfaces) or "nothing"
+    suggestion = "; use POST /v1/audio/songs" if "song" in surfaces else ""
+    raise OpenAIHTTPError(
+        501,
+        f"the served model generates {declared} rather than text, so {endpoint} "
+        f"is unavailable{suggestion}",
+        code="unsupported_feature",
+    )
+
+
+def _song_generation_capability(config: ServerConfig, *, engine: Any | None) -> dict[str, Any]:
+    """Describe the song endpoint, and the model's own pipeline facts when loaded."""
+
+    surfaces = _resolved_generation_surfaces(engine)
+    if "song" not in surfaces:
+        return {
+            "enabled": False,
+            "reason": "the served model declares no song surface",
+            "surfaces": list(surfaces),
+        }
+    generator = getattr(engine, "_text_generator", None) if engine is not None else None
+    describe = getattr(generator, "song_capabilities", None)
+    detail = describe() if callable(describe) else None
+    # The pipeline reports the checkpoints it resolved, which is what a decoder
+    # taken from the Hugging Face cache does not have a config value for.
+    resolved = dict((detail or {}).get("checkpoints") or {})
+    checkpoints: dict[str, Any] = {
+        "model": resolved.get("model") or str(config.model),
+        "decoder": resolved.get("vae") or config.vae_model,
+    }
+    if config.vae_model is None and checkpoints["decoder"] is not None:
+        checkpoints["decoder_source"] = "hugging_face_cache"
     return {
-        "completions": True,
-        "chat_completions": True,
-        "streaming": True,
-        "tools": True,
-        "reasoning_controls": True,
-        "structured_outputs": True,
-        "continuations": True,
-        "sessions": True,
+        "enabled": True,
+        "endpoint": "/v1/audio/songs",
+        "response_formats": ["wav", "json"],
+        "loaded": bool(generator is not None and getattr(generator, "loaded", False)),
+        "checkpoints": checkpoints,
+        "detail": detail,
+    }
+
+
+def _model_capability_summary(config: ServerConfig | None = None, *, engine: Any | None = None) -> dict[str, Any]:
+    surfaces = _resolved_generation_surfaces(engine)
+    text_surface = "text" in surfaces
+    song_surface = "song" in surfaces
+    return {
+        "surfaces": list(surfaces),
+        "completions": text_surface,
+        "chat_completions": text_surface,
+        "streaming": text_surface,
+        "tools": text_surface,
+        "reasoning_controls": text_surface,
+        "structured_outputs": text_surface,
+        "continuations": text_surface,
+        "sessions": text_surface,
         "grammars": False,
+        "song_generation": song_surface,
         "speculative_mtp": (
             False
             if config is None
@@ -2094,6 +2477,26 @@ else:  # pragma: no cover - Pydantic v1 compatibility
     class _OpenAIBaseModel(BaseModel):
         class Config:
             extra = "allow"
+
+
+class SongGenerationRequest(_OpenAIBaseModel):
+    """One lyrics-to-audio request for a model that declares the song surface.
+
+    The sampling settings are the model's own product defaults, not request
+    fields: this pipeline's quality path is the pinned preset, and a caller that
+    needs different arithmetic uses the Python API's phase overrides.
+    """
+
+    model: str | None = None
+    style: str = Field(min_length=1)
+    lyrics: str = Field(min_length=1)
+    cot: str = "full"
+    seed: int | None = Field(default=None, ge=0, lt=2**63)
+    abc: str | None = None
+    cfg_scale: float | None = Field(default=None, ge=0.0, le=20.0)
+    steps: int | None = Field(default=None, ge=1)
+    response_format: str = "wav"
+    request_id: str | None = None
 
 
 class CompletionRequest(_OpenAIBaseModel):
@@ -2353,6 +2756,129 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 
+# Credentials are reported as present-but-redacted.  Redaction is by exact
+# name on purpose: a substring rule on "KEY"/"TOKEN" would hide the tuning
+# knobs this echo exists to expose (HIPENGINE_GGUF_INT8_KV_KEY_ONLY,
+# HIPENGINE_FULL_QKV_SPLIT_KEY_FUSED).
+_ENV_ECHO_PREFIX = "HIPENGINE_"
+_ENV_ECHO_REDACTED = frozenset({"HIPENGINE_API_KEY", "HIPENGINE_KEY"})
+_ENV_ECHO_REDACTED_VALUE = "<redacted>"
+
+
+def _effective_hipengine_env(
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Report the HIPENGINE_* environment this process actually resolved.
+
+    A launcher that clears or filters the environment (``env -i``, a
+    container entrypoint, a systemd unit) can strip a requested knob without
+    failing.  The server then keeps its default, and a benchmark that
+    believed it had raised a limit silently measures the default instead.
+    Echoing the resolved values turns that no-op into something a caller can
+    assert against the values it requested.
+    """
+
+    source = os.environ if environ is None else environ
+    return {
+        name: (
+            _ENV_ECHO_REDACTED_VALUE if name in _ENV_ECHO_REDACTED else str(value)
+        )
+        for name, value in sorted(source.items())
+        if name.startswith(_ENV_ECHO_PREFIX)
+    }
+
+
+def _mtp2_context_window_resolution() -> dict[str, Any]:
+    """Report how the MTP adapter bounds prompt context.
+
+    The adapter used to carry a fixed 1,023-token window whose only cause was
+    that nothing had been measured past the 1,024 attention transition. Prompt
+    context is not an admission axis (docs/EXECUTION-PROFILES.md section 2.9),
+    so the window is gone and the adapter is bounded by the target's own
+    allocated capacity instead. This block stays machine-readable so a harness
+    can assert which policy is in effect rather than inferring it from rates.
+    """
+
+    return {
+        "policy": "target_capacity",
+        "fixed_cap": None,
+        "env": None,
+        "exported": None,
+        "resolved": None,
+        "qualified_default": None,
+        "error": None,
+    }
+
+
+def _mtp2_context_window_log_fields() -> tuple[str, str]:
+    """Render the context-window policy as the ``env:``/``resolved:`` pair."""
+
+    resolution = _mtp2_context_window_resolution()
+    return ("none", str(resolution["policy"]))
+
+
+def _mtp_unavailable_route_fallback(
+    route: str,
+    *,
+    requested_route: str,
+    route_decision: Mapping[str, Any] | None,
+    breaker: "_MTPCircuitBreaker | None",
+    engine: Any,
+    prompts: Sequence[PromptInput],
+    group_rows: int,
+    output_horizon_tokens: int,
+) -> tuple[str, dict[str, Any] | None]:
+    """Refuse explicit MTP when unavailable; report automatic AR fallback.
+
+    Client validation errors do not open the breaker. A genuine runtime failure
+    or operator rollback may close the route, but cannot change an explicit
+    request into an autoregressive request.
+    """
+
+    if str(route) not in {
+        _SPECULATIVE_MTP_BATCH_ROUTE,
+        _SPECULATIVE_MTP_AUTO_ROUTE,
+        _SPECULATIVE_MTP_K0_ROUTE,
+    }:
+        return str(route), None if route_decision is None else dict(route_decision)
+    if breaker is None:
+        return str(route), None if route_decision is None else dict(route_decision)
+    if breaker.operator_disabled:
+        reason = "mtp_operator_rollback"
+        evidence = "operator_runtime_rollback"
+    else:
+        scope = breaker.scope(engine, prompts)
+        if not breaker.is_open(scope):
+            return str(route), None if route_decision is None else dict(route_decision)
+        reason = "mtp_circuit_breaker_open"
+        evidence = "circuit_breaker_scope_open"
+    breaker.attach(engine)
+    if (
+        str(requested_route) == _SPECULATIVE_MTP_BATCH_ROUTE
+        and (route_decision or {}).get("request_mode") != "automatic"
+    ):
+        raise OpenAIHTTPError(
+            503,
+            f"requested speculative_mtp cannot execute: {reason}; restart the server to reset",
+            error_type="server_error",
+            code="engine_unavailable",
+            param="speculative_mtp",
+            extra={"hipengine": {"speculative_mtp": {
+                "reason": reason, "circuit_breaker": breaker.snapshot(),
+            }}},
+        )
+    return _SPECULATIVE_MTP_DEFAULT_ROUTE, {
+        "requested_route": str(requested_route),
+        "selected_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
+        "reason": reason,
+        "realized_group_rows": int(group_rows),
+        "output_horizon_tokens": int(output_horizon_tokens),
+        "exact_default_required": True,
+        "evidence": evidence,
+        "circuit_breaker": breaker.snapshot(),
+    }
+
+
 def _serving_plan_route_decision(
     plan: Mapping[str, Any],
     *,
@@ -2439,6 +2965,20 @@ def _serving_plan_route_decision(
     ):
         admitted = False
         reason = _SPECULATIVE_MTP_AUTO_REJECTION_REASON
+    if (
+        not admitted
+        and not static_intent_allowed
+        and route == _SPECULATIVE_MTP_BATCH_ROUTE
+        and copied.get("request_mode") != "automatic"
+    ):
+        raise OpenAIHTTPError(
+            501,
+            f"requested speculative_mtp cannot execute: {reason}",
+            error_type="unsupported_feature",
+            code="unsupported_feature",
+            param="speculative_mtp",
+            extra={"hipengine": {"speculative_mtp": {"reason": reason, "key": key}}},
+        )
     selected_route = (
         _SPECULATIVE_MTP_BATCH_ROUTE
         if admitted
@@ -2463,6 +3003,7 @@ def _serving_plan_route_decision(
     )
     return selected_route, {
         "requested_route": reported_requested_route,
+        "request_mode": copied.get("request_mode", "explicit" if route == _SPECULATIVE_MTP_BATCH_ROUTE else "automatic"),
         "selected_route": selected_route,
         "reason": reason,
         "k0_class": k0_class,
@@ -2471,7 +3012,18 @@ def _serving_plan_route_decision(
             static_payload
         ).fingerprint,
         "static_intent_allowed": static_intent_allowed,
-        "policy_cell": copied.get("evidence_key"),
+        "policy_cell": copied.get("implementation_key") or copied.get("evidence_key"),
+        **(
+            {
+                "admission_basis": "implementation",
+                "implementation_key": copied["implementation_key"],
+                "effective_kv_storage": key.get("kv_storage"),
+                "kv_layout": key.get("kv_layout"),
+                "kv_scale_dtype": key.get("kv_scale_dtype"),
+                "kv_scale_granularity": key.get("kv_scale_granularity"),
+            }
+            if copied.get("implementation_key") else {}
+        ),
         "selected_candidate_count": (
             int(copied.get("selected_candidate_count", 0))
             if selected_route == _SPECULATIVE_MTP_BATCH_ROUTE
@@ -2493,7 +3045,13 @@ def _realized_model_serving_plan(
     sampling: SamplingParams,
     precomputed_decision: Mapping[str, Any] | None,
 ) -> dict[str, Any] | None:
-    """Re-resolve model evidence after the queue's physical group is known."""
+    """Re-resolve model evidence after the queue's physical group is known.
+
+    A request-time screening intent is carried forward only when the realized
+    rejection is itself screenable: the realized group can fail a structural
+    axis (for example memory fit at the wider group) that the request-time plan
+    did not, and the request-time eligibility must not authorize that.
+    """
 
     if not prompts or not isinstance(precomputed_decision, Mapping):
         return None
@@ -2509,20 +3067,17 @@ def _realized_model_serving_plan(
     )
     sampling_mode = str(precomputed_key.get("sampling_mode") or "")
     if not sampling_mode:
-        sampling_mode = (
-            "greedy_fast"
-            if supports_speculative_mtp_sampling(sampling)
-            else "processed_argmax"
-        )
+        sampling_mode = speculative_serving_sampling_mode(sampling)
     decision = resolver(
         realized_group_rows=len(prompts),
         sampling_mode=sampling_mode,
-        context_tokens=max(
-            _prompt_token_count(engine, prompt) for prompt in prompts
-        ),
-        output_horizon_tokens=int(sampling.max_tokens),
         kv_storage=str(precomputed_key.get("kv_storage") or sampling.kv_storage),
         memory_fit=bool(precomputed_key.get("memory_fit", True)),
+        request_mode=str(
+            precomputed_decision.get("request_mode")
+            or precomputed_key.get("request_mode")
+            or "automatic"
+        ),
     )
     if decision is None:
         return None
@@ -2533,7 +3088,31 @@ def _realized_model_serving_plan(
     )
     if not isinstance(payload, Mapping):
         raise TypeError("realized speculative MTP serving plan must be a mapping")
-    return deepcopy(dict(payload))
+    realized = deepcopy(dict(payload))
+    if (
+        not bool(realized.get("admitted"))
+        and bool(precomputed_decision.get("screening"))
+        and _mtp_plan_structural_rejection(realized) is None
+    ):
+        # The realized re-resolution runs the same evidence resolver against the
+        # realized group, so an unqualified cell can only be rejected again.
+        # Carry the request-time screening intent forward, otherwise the batch
+        # falls to K0 before the resident owner's screening admission runs.
+        screening_static = precomputed_decision.get("static_eligibility")
+        if isinstance(screening_static, Mapping):
+            realized["static_eligibility"] = deepcopy(dict(screening_static))
+            realized["screening"] = True
+            realized["qualification"] = str(
+                precomputed_decision.get("qualification")
+                or _MTP_SCREENING_QUALIFICATION
+            )
+            realized["unqualified_reason"] = str(
+                realized.get("reason")
+                or precomputed_decision.get("unqualified_reason")
+                or ""
+            )
+            realized["static_intent_allowed"] = True
+    return realized
 
 
 def _static_eligibility_from_route_decision(
@@ -2548,6 +3127,32 @@ def _static_eligibility_from_route_decision(
         return None
     eligibility = SpeculativeMTPStaticEligibility.from_mapping(payload)
     return eligibility if eligibility.eligible else None
+
+
+def _mtp_dispatch_sampling(
+    sampling: SamplingParams,
+    *,
+    thinking_policy: str | None = None,
+) -> SamplingParams:
+    """Return the params the MTP batch route dispatches with.
+
+    The hint policy asks for the raw-argmax-exact form of the request: its
+    thinking hints stay in the rendered prompt while the sampler-level budget
+    fields are cleared, which is what lets the exact raw-argmax route serve it.
+
+    The hard policy asks for the budget itself, and the sampled route applies a
+    request's own per-row law, so a hard request keeps whatever the request path
+    decided. Relaxing it here served the request with its enforcement silently
+    dropped -- invisible while hard refused the route, and live once the sampled
+    route began serving a budget.
+
+    An unset policy keeps the previous behavior, which is a no-op for every
+    request that carries no thinking enforcement.
+    """
+
+    if str(thinking_policy or "") == "hard":
+        return sampling
+    return relax_thinking_budget_for_mtp(sampling)
 
 
 def _sampling_for_realized_generation_route(
@@ -2599,9 +3204,13 @@ def _resolve_realized_generation_route(
         if (
             route == _SPECULATIVE_MTP_BATCH_ROUTE
             and not bool(precomputed_decision.get("admitted"))
-            and str(precomputed_decision.get("reason"))
-            == "physical_group_not_qualified"
+            and (
+                str(precomputed_decision.get("reason"))
+                == "physical_group_not_qualified"
+                or bool(precomputed_decision.get("screening"))
+            )
         ):
+            screening = bool(precomputed_decision.get("screening"))
             key = (
                 precomputed_decision.get("key")
                 if isinstance(precomputed_decision.get("key"), Mapping)
@@ -2613,7 +3222,8 @@ def _resolve_realized_generation_route(
             # physical admission (listed cell or explicit-only screening) can
             # re-admit this request. Dropping it turns every deferred C1
             # explicit request into pre-mutation K0 and makes the screening
-            # path unreachable. Automatic routes never enter this branch.
+            # path unreachable. Automatic routes never enter this branch, and
+            # the screening variant marks the qualification it did not meet.
             static_payload = precomputed_decision.get("static_eligibility")
             static_mapping = (
                 static_payload if isinstance(static_payload, Mapping) else None
@@ -2638,8 +3248,24 @@ def _resolve_realized_generation_route(
             )
             return route, {
                 "requested_route": route,
+                "request_mode": precomputed_decision.get("request_mode", "explicit"),
                 "selected_route": route,
-                "reason": "physical_group_deferred_to_resident_owner",
+                "reason": (
+                    "unqualified_cell_deferred_to_resident_owner"
+                    if screening
+                    else "physical_group_deferred_to_resident_owner"
+                ),
+                **({
+                    "screening": True,
+                    "qualification": str(
+                        precomputed_decision.get("qualification")
+                        or _MTP_SCREENING_QUALIFICATION
+                    ),
+                    "unqualified_reason": str(
+                        precomputed_decision.get("unqualified_reason")
+                        or precomputed_decision.get("reason")
+                    ),
+                } if screening else {}),
                 "policy_cell": precomputed_decision.get("evidence_key"),
                 "selected_candidate_count": 0,
                 "policy_reason": str(precomputed_decision.get("reason")),
@@ -2697,11 +3323,11 @@ def _resolve_realized_generation_route(
                 "realized_group_rows": int(group_rows),
                 "output_horizon_tokens": int(sampling.max_tokens),
                 "exact_default_required": True,
-                "evidence": "docs/SPECDEC2.md#12-s6--gfx1151-product-closure",
+                "evidence": "docs/reference/SPECDEC2.md#12-s6--gfx1151-product-closure",
             },
         )
     if route != _SPECULATIVE_MTP_AUTO_ROUTE:
-        return route, None
+        return route, None if precomputed_decision is None else dict(precomputed_decision)
     rows = int(group_rows)
     if rows < 1:
         raise ValueError("automatic generation route requires a positive realized group")
@@ -2881,6 +3507,196 @@ def _log_stream_failure(
     )
 
 
+def _log_request_info(
+    *,
+    config: ServerConfig,
+    request: CompletionRequest | ChatCompletionRequest,
+    usage: Mapping[str, Any],
+    timing: Mapping[str, Any] | None = None,
+    kv_pool: Mapping[str, Any] | None = None,
+    kv_request_bytes: int | None = None,
+    wall_ms: float | None = None,
+) -> None:
+    """Log one compact per-request summary when ``--info`` is enabled.
+
+    The line carries the request's token counts, the backend prefill phase, the
+    server-observed time to first token and stream window, the request's
+    persistent KV allocation in the shared pool, and the pool state. Absent
+    phases are omitted rather than reported as zero.
+    """
+
+    if not bool(getattr(config, "info", False)):
+        return
+
+    prompt_tokens = _info_number(usage.get("prompt_tokens"))
+    completion_tokens = _info_number(usage.get("completion_tokens"))
+    is_chat = isinstance(request, ChatCompletionRequest)
+    endpoint = "/v1/chat/completions" if is_chat else "/v1/completions"
+    fields = [
+        f"endpoint={endpoint}",
+        f"stream={'true' if bool(getattr(request, 'stream', False)) else 'false'}",
+        f"model={config.model_id}",
+        f"tokens_in={int(prompt_tokens or 0)}",
+        f"tokens_out={int(completion_tokens or 0)}",
+    ]
+    resolved_timing = timing if isinstance(timing, Mapping) else {}
+    prefill_ms = _info_number(resolved_timing.get("prefill_ms"))
+    if prefill_ms is not None and prefill_ms > 0:
+        fields.append(f"prefill_ms={prefill_ms:.1f}")
+        if prompt_tokens:
+            fields.append(f"prefill_tok_s={prompt_tokens / (prefill_ms / 1000.0):.1f}")
+    ttft_ms = _info_number(resolved_timing.get("ttft_ms"))
+    if ttft_ms is not None:
+        fields.append(f"ttft_ms={ttft_ms:.1f}")
+    # Two measurements share the units but not the basis. A streamed request is
+    # timed by the server between the first and last token it delivered, which is
+    # the window the client saw; that window collapses when the stream is delayed
+    # (for example while another request waits on the engine), so its rate is
+    # named for the window rather than presented as engine throughput. A blocking
+    # request has no first-token timestamp, so its decode phase comes from the
+    # engine's own accounting, where ``request_total_ms`` covers the whole
+    # request. Engine telemetry inside a stream carries ``request_total_ms`` as a
+    # prefill-time snapshot, which must never be read as a decode span.
+    stream_decode_ms = _info_number(resolved_timing.get("decode_elapsed_ms"))
+    if stream_decode_ms is not None:
+        fields.append(f"stream_decode_ms={stream_decode_ms:.1f}")
+        stream_tok_s = _info_number(resolved_timing.get("decode_tokens_per_second"))
+        if stream_tok_s is None and completion_tokens:
+            stream_tok_s = completion_tokens / max(stream_decode_ms, 1e-9) * 1_000.0
+        if stream_tok_s is not None:
+            fields.append(f"stream_tok_s={stream_tok_s:.2f}")
+    elif not bool(getattr(request, "stream", False)):
+        request_total_ms = _info_number(resolved_timing.get("request_total_ms"))
+        if request_total_ms is not None and prefill_ms is not None:
+            decode_ms = max(0.0, request_total_ms - prefill_ms)
+            fields.append(f"decode_ms={decode_ms:.1f}")
+            if completion_tokens and decode_ms > 0:
+                fields.append(
+                    f"decode_tok_s={completion_tokens / (decode_ms / 1000.0):.2f}"
+                )
+    if wall_ms is None:
+        # Streamed requests are measured by the server's own timing tracker.
+        wall_ms = _info_number(resolved_timing.get("elapsed_ms"))
+    if wall_ms is not None:
+        fields.append(f"wall_ms={wall_ms:.1f}")
+    if kv_request_bytes:
+        fields.append(f"kv_request_alloc_mib={float(kv_request_bytes) / 2**20:.1f}")
+    if isinstance(kv_pool, Mapping) and kv_pool:
+        pool_bytes = _info_number(kv_pool.get("current_bytes"))
+        if pool_bytes is not None:
+            fields.append(f"kv_pool_gib={pool_bytes / 2**30:.2f}")
+        for key, label in (
+            ("current_pages", "kv_pool_pages"),
+            ("pinned_pages", "kv_pool_pinned_pages"),
+            ("grow_events", "kv_pool_grows"),
+        ):
+            value = _info_number(kv_pool.get(key))
+            if value is not None:
+                fields.append(f"{label}={value:.0f}")
+    _LOGGER.info("REQUEST_INFO: %s", " ".join(fields))
+
+
+def _info_number(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
+
+
+def _telemetry_kv_request_bytes(telemetry: Any) -> int | None:
+    """Return one request's persistent KV bytes from generation telemetry."""
+
+    if isinstance(telemetry, Mapping):
+        diagnostics = telemetry.get("diagnostics")
+    else:
+        diagnostics = None if telemetry is None else getattr(telemetry, "diagnostics", None)
+    if not isinstance(diagnostics, Mapping):
+        return None
+    layout = diagnostics.get("kv_layout")
+    if not isinstance(layout, Mapping):
+        return None
+    return int(_info_number(layout.get("persistent_total_bytes")) or 0) or None
+
+
+def _stream_timing_enabled(include_hipengine: bool, config: ServerConfig) -> bool:
+    """True when stream timing must be tracked for this request.
+
+    Stream timing is tracked for the client's ``include_hipengine`` metadata and
+    for the server's own ``--info`` summary, so ``--info`` reports the same
+    time-to-first-token and decode rate that a metadata-requesting client sees.
+    """
+
+    return bool(include_hipengine) or bool(getattr(config, "info", False))
+
+
+def _generation_output_timing(details: Sequence[Any]) -> Mapping[str, Any] | None:
+    """Return the timing payload owned by one blocking generation output."""
+
+    for detail in details:
+        timing, _decode_state, timing_owner = _mtp_telemetry_parts(detail)
+        if timing and timing_owner:
+            return timing
+    for detail in details:
+        timing, _decode_state, _timing_owner = _mtp_telemetry_parts(detail)
+        if timing:
+            return timing
+    return None
+
+
+def _generation_output_kv_request_bytes(details: Sequence[Any]) -> int | None:
+    """Return the persistent KV bytes of one blocking generation output."""
+
+    for detail in details:
+        value = _telemetry_kv_request_bytes(getattr(detail, "telemetry", None))
+        if value:
+            return value
+    return None
+
+
+def _stream_timing_summary(
+    stream_started_at: "_StreamTimingSource",
+    *,
+    usage: Mapping[str, Any] | None = None,
+    backend_timing: Mapping[str, float] | None = None,
+) -> dict[str, float]:
+    """Server-observed stream timing merged with backend phase timing."""
+
+    timing: dict[str, float] = {}
+    if isinstance(stream_started_at, _StreamTimingTracker):
+        # Final usage updates total accounting, but cannot invent a token-delivery
+        # timestamp. The decode interval is fixed by token-bearing events.
+        timing.update(
+            stream_started_at.observe(event="usage", usage=usage)
+        )
+    elif isinstance(stream_started_at, (int, float)) and not isinstance(stream_started_at, bool):
+        timing["elapsed_ms"] = round(
+            max(0.0, (time.perf_counter() - float(stream_started_at)) * 1000.0), 3
+        )
+    if backend_timing:
+        for raw_key, raw_value in backend_timing.items():
+            key = str(raw_key).strip().removeprefix("backend_")
+            value = _info_number(raw_value)
+            if key and value is not None:
+                timing.setdefault(key, value)
+    return timing
+
+
+def _prompt_context_tokens(prompt: PromptInput) -> int | None:
+    """Exact prompt token count when the request is already tokenized.
+
+    Text prompts are not tokenized here: counting their characters would put
+    unrelated requests in one bucket, so they stay scope-unknown.
+    """
+
+    if isinstance(prompt, (str, bytes, bytearray, Mapping)):
+        return None
+    try:
+        length = len(prompt)  # type: ignore[arg-type]
+    except TypeError:
+        return None
+    return int(length) if int(length) > 0 else None
+
+
 class _MTPCircuitBreaker:
     """Restart-scoped protection for repeated MTP backend/runtime failures."""
 
@@ -2907,7 +3723,7 @@ class _MTPCircuitBreaker:
         profile = str(getattr(engine, "resolved_execution_profile", None) or "strict")
         lengths = [
             int(length)
-            for length in (_prepared_context_tokens(prompt) for prompt in prompts)
+            for length in (_prompt_context_tokens(prompt) for prompt in prompts)
             if length is not None and int(length) > 0
         ]
         context_bucket = (
@@ -2937,6 +3753,8 @@ class _MTPCircuitBreaker:
         scope: tuple[str, str, str, str],
         exc: BaseException,
     ) -> None:
+        if isinstance(exc, (NotImplementedError, ValueError, GenerationCancelled, GenerationDeadlineExceeded, OpenAIHTTPError)):
+            return
         failures = self._failures.get(scope, 0) + 1
         self._failures[scope] = failures
         if failures >= self.threshold and scope not in self._opened:
@@ -2983,10 +3801,10 @@ class _QueuedGeneration:
     include_batch_metadata: bool = False
     route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE
     route_decision: dict[str, Any] | None = None
+    thinking_policy: str | None = None
     cancelled: bool = False
     finished: bool = False
     producer_task: asyncio.Task[None] | None = None
-    mtp_thinking_policy: str = "hint"
 
 
 class _CompositeGenerationCancellationToken:
@@ -3161,11 +3979,17 @@ class _GenerationBatcher:
             route,
             (
                 decision.get("plan_fingerprint"),
-                item.mtp_thinking_policy,
                 _sampling_key(
                     item.sampling,
                     include_cancellation_token=False,
                 ),
+                # The thinking policy decides what the MTP dispatch does with
+                # this request's sampler-level budget, and it is not visible in
+                # the sampling params: the request path leaves them untouched and
+                # the dispatch applies the policy. Two requests that differ only
+                # in policy are therefore not interchangeable, and coalescing
+                # them would apply one policy's answer to both.
+                item.thinking_policy,
             ),
         )
 
@@ -3217,9 +4041,9 @@ class _GenerationBatcher:
         *,
         detailed: bool = False,
         include_batch_metadata: bool = False,
-        mtp_thinking_policy: str = "hint",
         route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
         route_decision: Mapping[str, Any] | None = None,
+        thinking_policy: str | None = None,
         error_extra: Mapping[str, Any] | None = None,
     ) -> list[Any] | _QueuedBatchResult:
         prompt_tuple = tuple(normalize_prompt_input(prompt) for prompt in prompts)
@@ -3233,11 +4057,11 @@ class _GenerationBatcher:
                 future=future,
                 detailed=bool(detailed),
                 include_batch_metadata=bool(include_batch_metadata),
-                mtp_thinking_policy=mtp_thinking_policy,
                 route=str(route),
                 route_decision=(
                     None if route_decision is None else deepcopy(dict(route_decision))
                 ),
+                thinking_policy=None if thinking_policy is None else str(thinking_policy),
             )
         )
         if self._worker is None or self._worker.done():
@@ -3256,9 +4080,9 @@ class _GenerationBatcher:
         prompts: Sequence[PromptInput],
         sampling: SamplingParams,
         *,
-        mtp_thinking_policy: str = "hint",
         route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
         route_decision: Mapping[str, Any] | None = None,
+        thinking_policy: str | None = None,
         error_extra: Mapping[str, Any] | None = None,
     ) -> AsyncIterator[GenerationStreamChunk]:
         """Yield generated stream chunks through a per-request queue owned by the batcher."""
@@ -3271,11 +4095,11 @@ class _GenerationBatcher:
             prompts=prompt_tuple,
             sampling=sampling,
             stream_queue=queue,
-            mtp_thinking_policy=mtp_thinking_policy,
             route=str(route),
             route_decision=(
                 None if route_decision is None else deepcopy(dict(route_decision))
             ),
+            thinking_policy=None if thinking_policy is None else str(thinking_policy),
         )
         self._queue.append(item)
         if self._worker is None or self._worker.done():
@@ -3395,7 +4219,11 @@ class _GenerationBatcher:
                 self._launch_controlled_stream(first, engine)
                 return
         elif (
-            str(first.route) == _SPECULATIVE_MTP_DEFAULT_ROUTE
+            str(first.route) in {
+                _SPECULATIVE_MTP_DEFAULT_ROUTE,
+                _SPECULATIVE_MTP_BATCH_ROUTE,
+                _SPECULATIVE_MTP_AUTO_ROUTE,
+            }
             and _engine_supports_independent_generation(engine)
         ):
             active_limit = self._route_request_cap(first.route)
@@ -3426,6 +4254,14 @@ class _GenerationBatcher:
                         "independent generation capacity is full without an active producer"
                     )
                 await asyncio.wait(active_tasks, return_when=asyncio.FIRST_COMPLETED)
+                return
+            if str(first.route) != _SPECULATIVE_MTP_DEFAULT_ROUTE:
+                # Each client keeps its sampling/control state. The resident
+                # service owns physical MTP grouping; waiting for a whole HTTP
+                # call here prevents other clients from ever reaching it.
+                # The ready-cohort API below is AR-only, so MTP uses its own
+                # normal submission path instead.
+                self._launch_independent_generation(first)
                 return
             submit_ready = getattr(
                 engine,
@@ -3673,12 +4509,25 @@ class _GenerationBatcher:
                 self._active_items[id(item)] = item
         try:
             if len(group) == 1 and group[0].stream_queue is not None:
-                if len(group[0].prompts) == 1:
-                    await self._stream_single(group[0])
-                    return
+                stream_item = group[0]
                 engine = self._engine_factory()
+                stream_route, stream_decision = _mtp_unavailable_route_fallback(
+                    stream_item.route,
+                    requested_route=stream_item.route,
+                    route_decision=stream_item.route_decision,
+                    breaker=self._mtp_circuit_breaker,
+                    engine=engine,
+                    prompts=stream_item.prompts,
+                    group_rows=len(stream_item.prompts),
+                    output_horizon_tokens=int(stream_item.sampling.max_tokens),
+                )
+                stream_item.route = stream_route
+                stream_item.route_decision = stream_decision
+                if len(stream_item.prompts) == 1:
+                    await self._stream_single(stream_item, engine=engine)
+                    return
                 if _engine_supports_stream_many(engine):
-                    await self._stream_many(group[0], engine)
+                    await self._stream_many(stream_item, engine)
                     return
             prompts: list[PromptInput] = []
             slices: list[tuple[_QueuedGeneration, int, int]] = []
@@ -3711,21 +4560,16 @@ class _GenerationBatcher:
                 engine=self._engine_factory(),
             )
             breaker = self._mtp_circuit_breaker
-            if (
-                route == _SPECULATIVE_MTP_BATCH_ROUTE
-                and breaker is not None
-                and breaker.operator_disabled
-            ):
-                route = _SPECULATIVE_MTP_DEFAULT_ROUTE
-                route_decision = {
-                    "requested_route": requested_route,
-                    "selected_route": route,
-                    "reason": "mtp_operator_rollback",
-                    "realized_group_rows": len(prompts),
-                    "output_horizon_tokens": int(group_sampling.max_tokens),
-                    "exact_default_required": True,
-                    "evidence": "operator_runtime_rollback",
-                }
+            route, route_decision = _mtp_unavailable_route_fallback(
+                route,
+                requested_route=requested_route,
+                route_decision=route_decision,
+                breaker=breaker,
+                engine=self._engine_factory(),
+                prompts=tuple(prompts),
+                group_rows=len(prompts),
+                output_horizon_tokens=int(group_sampling.max_tokens),
+            )
             route_cap = self._route_request_cap(requested_route)
             group_sampling = _sampling_for_realized_generation_route(
                 group_sampling,
@@ -3740,7 +4584,7 @@ class _GenerationBatcher:
                     tuple(prompts),
                     group_sampling,
                     route=execution_route,
-                    mtp_thinking_policy=group[0].mtp_thinking_policy,
+                    thinking_policy=group[0].thinking_policy,
                 )
             except Exception as exc:
                 for item in group:
@@ -3779,6 +4623,9 @@ class _GenerationBatcher:
                     )
                 else:
                     _finish_queued_generation(item, outputs=item_outputs)
+        except OpenAIHTTPError as exc:
+            for item in group:
+                _finish_queued_generation(item, exception=exc)
         finally:
             if manage_active:
                 for item in group:
@@ -3790,10 +4637,12 @@ class _GenerationBatcher:
         prompts: tuple[PromptInput, ...],
         sampling: SamplingParams,
         *,
-        mtp_thinking_policy: str = "hint",
         route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
+        thinking_policy: str | None = None,
     ) -> _QueuedBatchResult:
         engine = self._engine_factory()
+        # _run_group resolves availability before dispatch and preserves the
+        # request's explicit/automatic intent in the response route decision.
         if str(route) == _SPECULATIVE_MTP_BATCH_ROUTE:
             breaker = self._mtp_circuit_breaker
             scope = None if breaker is None else breaker.scope(engine, prompts)
@@ -3815,10 +4664,11 @@ class _GenerationBatcher:
                     },
                 )
             # Admission has already checked whether this provider can enforce
-            # hard controls. Only an explicit hint policy clears enforcement.
-            mtp_sampling = (
-                relax_thinking_budget_for_mtp(sampling)
-                if mtp_thinking_policy == "hint" else sampling
+            # hard controls, and the dispatch helper keeps a hard request's
+            # enforcement while relaxing only an explicit hint policy.
+            mtp_sampling = _mtp_dispatch_sampling(
+                sampling,
+                thinking_policy=thinking_policy,
             )
             try:
                 raw_outputs = await _generate_speculative_mtp_detailed(
@@ -3858,18 +4708,26 @@ class _GenerationBatcher:
 
     async def _stream_single(self, item: _QueuedGeneration, *, engine: Any | None = None) -> None:
         assert item.stream_queue is not None
+        route = _execution_route_for_static_intent(item.route, item.route_decision)
+        sampling = _sampling_for_realized_generation_route(
+            item.sampling,
+            item.route_decision,
+        )
+        if str(route) == _SPECULATIVE_MTP_BATCH_ROUTE:
+            # The same dispatch boundary the blocking path uses: the policy
+            # decides whether this route serves the request's own budget or its
+            # raw-argmax-exact form. Without this the two transports disagreed
+            # about a hint request's enforcement.
+            sampling = _mtp_dispatch_sampling(
+                sampling,
+                thinking_policy=item.thinking_policy,
+            )
         try:
             async for chunk in _stream_engine_text(
                 self._engine_factory() if engine is None else engine,
                 item.prompts[0],
-                _sampling_for_realized_generation_route(
-                    item.sampling,
-                    item.route_decision,
-                ),
-                route=_execution_route_for_static_intent(
-                    item.route,
-                    item.route_decision,
-                ),
+                sampling,
+                route=route,
             ):
                 if _queued_generation_cancelled(item):
                     raise GenerationCancelled(_queued_generation_finish_details(item))
@@ -3974,6 +4832,10 @@ async def _finish_stream_queued_generation(
     item.finished = True
     if item.cancelled:
         return
+    if isinstance(exception, GenerationExecutionFailed):
+        # Same request-scoped reporting as the blocking path: the engine kept
+        # serving, so a stream consumer gets the stable retryable code.
+        exception = _execution_failed_error(exception)
     if exception is not None:
         await queue.put(exception)
     await queue.put(_STREAM_DONE)
@@ -3989,6 +4851,12 @@ def _finish_queued_generation(
     if item.finished:
         return
     item.finished = True
+    if isinstance(exception, GenerationExecutionFailed):
+        # One request's contained step failure is that request's failure: the
+        # shared engine kept serving, so every consumer (blocking submit and
+        # streaming) reports a retryable, request-scoped error instead of a bare
+        # server fault.
+        exception = _execution_failed_error(exception)
     if item.future is not None and not item.future.done():
         if exception is not None:
             item.future.set_exception(exception)
@@ -4183,6 +5051,22 @@ class _ReadinessState:
     last_startup_checks: dict[str, Any] = field(default_factory=dict)
 
 
+class StartupFailure(RuntimeError):
+    """Eager startup cannot complete, so the server must not keep serving.
+
+    Raised out of the ASGI lifespan after the diagnosis has been recorded and
+    logged. Uvicorn turns a lifespan startup exception into a non-zero exit, which
+    is the honest signal for a server that has nothing to serve: left running, it
+    answers every request with 503 and the reason is only visible in ``/ready``.
+    """
+
+    def __init__(self, stage: str, guidance: str, cause: BaseException) -> None:
+        super().__init__(f"startup {stage} failed: {type(cause).__name__}: {cause}")
+        self.stage = stage
+        self.guidance = guidance
+        self.cause = cause
+
+
 @dataclass(frozen=True)
 class _ContinuationRecord:
     id: str
@@ -4246,6 +5130,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "warmup_s": None,
             "scratch_probe_s": None,
             "chat_smoke_s": None,
+            "mtp_smoke_s": None,
             "startup_total_s": None,
         },
     )
@@ -4696,7 +5581,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             max_tokens=max_tokens,
         )
 
-    def chat_context_candidate(
+    async def chat_context_candidate(
         request: ChatCompletionRequest,
         prefix_messages: Sequence[Mapping[str, Any]],
         engine: Any,
@@ -4707,7 +5592,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 request,
                 (*prefix_messages, *request.messages),
             )
-        prompt, thinking, prepared_prompt = _render_prepared_chat_prompt_for_request(
+        # Rendering, tokenizing, and the thinking-budget context checks inside all
+        # issue engine control commands, so the whole candidate runs on a worker
+        # thread: a wait on the event loop thread would stall every other request's
+        # SSE stream for as long as the engine's driver thread is busy.
+        prompt, thinking, prepared_prompt = await asyncio.to_thread(
+            _render_prepared_chat_prompt_for_request,
             render_request,
             chat_default_max_tokens=config.chat_default_max_tokens,
             engine=engine,
@@ -4722,10 +5612,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         apply_context_policy: bool,
     ) -> _ChatContextRender:
         prefix_messages = tuple(await chat_session_prefix_messages(request))
-        render_request, prompt, prepared_prompt, thinking = chat_context_candidate(
-            request,
-            prefix_messages,
-            engine,
+        render_request, prompt, prepared_prompt, thinking = (
+            await chat_context_candidate(
+                request,
+                prefix_messages,
+                engine,
+            )
         )
         effective_prefix = prefix_messages
         session_payload = _diagnostic_session_payload(request, effective_prefix)
@@ -4744,7 +5636,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 and prefix_messages
                 and effective_max_context_tokens(engine) is not None
             ):
-                prefixed_fit = chat_context_fit_payload(
+                prefixed_fit = await asyncio.to_thread(
+                    chat_context_fit_payload,
                     render_request,
                     prepared_prompt,
                     engine,
@@ -4763,14 +5656,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                                 candidate_prompt,
                                 candidate_prepared_prompt,
                                 candidate_thinking,
-                            ) = chat_context_candidate(
+                            ) = await chat_context_candidate(
                                 request,
                                 candidate_prefix,
                                 engine,
                             )
                         except OpenAIHTTPError:
                             continue
-                        candidate_fit = chat_context_fit_payload(
+                        candidate_fit = await asyncio.to_thread(
+                            chat_context_fit_payload,
                             candidate_request,
                             candidate_prepared_prompt,
                             engine,
@@ -4865,6 +5759,22 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     mtp_circuit_breaker = _MTPCircuitBreaker()
     app.state.hipengine_mtp_circuit_breaker = mtp_circuit_breaker
 
+    mtp_effective_state_logged = False
+
+    def log_effective_mtp_once(engine: Any) -> None:
+        """Emit the resolved MTP state once, the first time an engine resolves.
+
+        Exactly one line states the effective state per process: whichever call
+        first sees a prepared generator emits it, and later calls stay silent so
+        a request never repeats what the model load already reported.
+        """
+
+        nonlocal mtp_effective_state_logged
+        if mtp_effective_state_logged:
+            return
+        if _log_effective_mtp_config(config, engine=engine):
+            mtp_effective_state_logged = True
+
     def get_llm() -> Any:
         if app.state.hipengine_llm is None:
             app.state.hipengine_llm = LLM(
@@ -4874,17 +5784,20 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 execution_profile=config.execution_profile,
                 max_active_requests=config.max_active_requests,
                 max_sequence_length=config.max_context_tokens,
+                **({"dms": config.dms} if config.dms is not None else {}),
                 prefix_cache=prefix_cache_mode,
                 speculative_mtp_serving=config.speculative_mtp_serving,
                 speculative_provider=config.speculative_provider,
                 draft_model=config.draft_model,
                 speculative_candidate_budget=config.speculative_candidate_budget,
                 kv_storage=config.kv_storage,
+                dms_metadata_path=config.dms_metadata_path,
                 kv_scale_dtype=config.kv_scale_dtype,
                 kv_scale_granularity=config.kv_scale_granularity,
                 vision_model=config.vision_model,
+                vae_model=config.vae_model,
             )
-            _log_effective_mtp_config(config, engine=app.state.hipengine_llm)
+            log_effective_mtp_once(app.state.hipengine_llm)
         mtp_circuit_breaker.attach(app.state.hipengine_llm)
         app.state.hipengine_readiness.model_loaded = True
         return app.state.hipengine_llm
@@ -4963,6 +5876,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         prepared = _prepared_context_tokens(engine)
         if prepared is not None and (requested_context is None or prepared >= requested_context):
             app.state.hipengine_effective_max_context_tokens = prepared
+            log_effective_mtp_once(engine)
             return effective_max_context_tokens(engine)
         preparer = getattr(engine, "prepare", None)
         if not callable(preparer):
@@ -5017,6 +5931,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 time.perf_counter() - prepare_started,
             )
             raise
+        except MemoryAdmissionRefused:
+            # A priced overload refusal is a capacity answer with its own error
+            # code, not an operator misconfiguration: it is raised before any
+            # allocation, and the same request fits once consumers shrink.
+            raise
         except MemoryError as exc:
             guidance = (
                 "Try a lower --max-context-tokens or --kv-storage int8_per_token_head."
@@ -5037,14 +5956,19 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
             raise
         except Exception as exc:
-            guidance = _resident_prepare_guidance(exc)
+            # Log the remedy the operator would need, but do not relabel the
+            # fault. A closed service, an admission refusal, or an unexpected
+            # server fault each has its own public error code, and wrapping
+            # them all as a resident-preparation refusal hides that code from
+            # the client. Only a refusal the prepare layer raises as
+            # ``ResidentPreparationError`` is a resident-preparation failure.
             _LOGGER.error(
                 "hipEngine %s failed to prepare resident session/KV cache: %s. %s",
                 phase,
                 exc,
-                guidance,
+                _resident_prepare_guidance(exc),
             )
-            raise ResidentPreparationError(str(exc)) from exc
+            raise
         finally:
             if previous_sigint is not None:
                 signal.signal(signal.SIGINT, previous_sigint)
@@ -5067,6 +5991,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         # on the logger the server already configures, so an automatic context
         # selection is visible without extra flags.
         _log_kv_capacity_summary(engine)
+        # The generator is prepared by now, so the MTP route is resolvable: this
+        # is where eager startup and the first lazy request report it.
+        log_effective_mtp_once(engine)
         return effective
 
     def mark_startup_failed(
@@ -5105,6 +6032,30 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         readiness.last_startup_memory = startup_memory
         readiness.last_startup_checks = startup_checks
         _record_startup_memory_snapshot(startup_memory, "startup_begin")
+
+        def fail_startup(
+            stage: str,
+            exc: BaseException,
+            *,
+            guidance: str,
+            timings: Mapping[str, float | None] | None = None,
+        ) -> None:
+            """Record the failed stage, then end startup instead of serving 503s.
+
+            The recorded diagnosis still reaches ``/ready`` for the stages that
+            recover, and the log carries it for this one; what it must not do is
+            leave a process listening with nothing behind it.
+            """
+
+            mark_startup_failed(
+                readiness,
+                exc,
+                startup_started=startup_started,
+                stage=stage,
+                guidance=guidance,
+                timings=timings,
+            )
+            raise StartupFailure(stage, guidance, exc) from exc
         max_tokens = max(1, int(config.eager_load_max_tokens))
         if not config.eager_load:
             max_context = configured_max_context_tokens()
@@ -5121,6 +6072,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 config.kv_scale_granularity,
             )
             startup_total_s = time.perf_counter() - startup_started
+            app.state.hipengine_generation_surfaces = _startup_generation_surfaces(config)
+            _LOGGER.info(
+                "SURFACES: model=%s surfaces=%s",
+                config.model_id,
+                ",".join(app.state.hipengine_generation_surfaces),
+            )
             readiness.ready = True
             readiness.status = "ready"
             readiness.model_loaded = app.state.hipengine_llm is not None
@@ -5134,7 +6091,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "startup_total_s": round(startup_total_s, 6),
             }
             _LOGGER.info("LOAD_TIMING: eager_load=False startup_total_s=%.3f", startup_total_s)
-            _log_effective_mtp_config(config, engine=app.state.hipengine_llm)
+            _log_pending_mtp_config(config)
             _LOGGER.info("hipEngine is ready (lazy load).")
             return
         sampling = SamplingParams(
@@ -5187,21 +6144,101 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "status": "failed",
                     "exception_type": type(exc).__name__,
                 }
-                mark_startup_failed(
-                    readiness,
+                _LOGGER.exception("STARTUP_ENGINE_CREATE: failed")
+                fail_startup(
+                    "engine_create",
                     exc,
-                    startup_started=startup_started,
-                    stage="engine_create",
                     guidance="Check the configured model path, backend, quantization, and server logs.",
                     timings={"engine_create_s": round(time.perf_counter() - engine_started, 6)},
                 )
-                _LOGGER.exception("STARTUP_ENGINE_CREATE: failed")
-                return
             engine_create_s = time.perf_counter() - engine_started
             _LOGGER.info(
                 "MODEL_LOAD: engine created elapsed=%.1fs; preparing weights, "
                 "KV pool, and runtime workspace",
                 engine_create_s,
+            )
+            surfaces = _resolved_generation_surfaces(engine)
+            app.state.hipengine_generation_surfaces = surfaces
+            if "text" not in surfaces:
+                # A model that declares no text surface has no resident chat
+                # context, no warmup prompt, and no chat smoke to run. It has a
+                # pipeline, and building that pipeline here is what makes
+                # readiness mean the request this server advertises can be served.
+                _LOGGER.info(
+                    "MODEL_LOAD: surfaces=%s; building the generation pipeline",
+                    ",".join(surfaces),
+                )
+                song_session_started = time.perf_counter()
+                try:
+                    generator = _song_generator(engine)
+                    await asyncio.to_thread(generator.session)
+                except Exception as exc:
+                    startup_checks["song_session"] = {
+                        "status": "failed",
+                        "exception_type": type(exc).__name__,
+                    }
+                    _LOGGER.exception("STARTUP_SONG_SESSION: failed")
+                    fail_startup(
+                        "song_session",
+                        exc,
+                        guidance=(
+                            "Check the model directory and its qwen.tiktoken asset, "
+                            "the decoder checkpoint passed as --vae-model, and the "
+                            "server logs."
+                        ),
+                        timings={
+                            "engine_create_s": round(engine_create_s, 6),
+                            "song_session_s": round(
+                                time.perf_counter() - song_session_started, 6
+                            ),
+                        },
+                    )
+                song_session_s = time.perf_counter() - song_session_started
+                startup_checks["song_session"] = {
+                    "enabled": True,
+                    "status": "passed",
+                    "seconds": round(song_session_s, 6),
+                    "surfaces": list(surfaces),
+                }
+                _record_startup_memory_snapshot(startup_memory, "after_song_session")
+                guard_memory = _device_memory_snapshot()
+                if guard_memory is not None:
+                    startup_memory["guard"] = guard_memory
+                _log_startup_memory_summary(startup_memory, startup_checks)
+                _startup_free_memory_guard(
+                    memory=guard_memory, min_free_mib=config.startup_min_free_mib
+                )
+                startup_total_s = time.perf_counter() - startup_started
+                readiness.ready = True
+                readiness.status = "ready"
+                readiness.model_loaded = True
+                readiness.warmup_complete = True
+                readiness.last_startup_timings = {
+                    "engine_create_s": round(engine_create_s, 6),
+                    "resident_prepare_s": None,
+                    "warmup_s": None,
+                    "scratch_probe_s": None,
+                    "chat_smoke_s": None,
+                    "mtp_smoke_s": None,
+                    "song_session_s": round(song_session_s, 6),
+                    "startup_total_s": round(startup_total_s, 6),
+                }
+                _LOGGER.info(
+                    "LOAD_TIMING: model=%s surfaces=%s song_session_s=%.3f "
+                    "startup_total_s=%.3f",
+                    config.model_id,
+                    ",".join(surfaces),
+                    song_session_s,
+                    startup_total_s,
+                )
+                _LOGGER.info(
+                    "hipEngine is ready (%s generation).", ",".join(surfaces)
+                )
+                return
+            _LOGGER.info(
+                "SURFACES: model=%s surfaces=%s",
+                config.model_id,
+                ",".join(surfaces),
             )
             prepare_started = time.perf_counter()
             try:
@@ -5211,18 +6248,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "status": "failed",
                     "exception_type": type(exc).__name__,
                 }
-                mark_startup_failed(
-                    readiness,
+                fail_startup(
+                    "resident_prepare",
                     exc,
-                    startup_started=startup_started,
-                    stage="resident_prepare",
                     guidance=_resident_prepare_guidance(exc),
                     timings={
                         "engine_create_s": round(engine_create_s, 6),
                         "resident_prepare_s": round(time.perf_counter() - prepare_started, 6),
                     },
                 )
-                return
             resident_prepare_s = time.perf_counter() - prepare_started
             _LOGGER.info(
                 "Config: model=%s served_model=%s max_context_tokens=%s "
@@ -5253,11 +6287,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "max_tokens": max_tokens,
                 "exception_type": type(exc).__name__,
             }
-            mark_startup_failed(
-                readiness,
+            _LOGGER.exception("WARMUP: failed during eager startup")
+            fail_startup(
+                "raw_warmup",
                 exc,
-                startup_started=startup_started,
-                stage="raw_warmup",
                 guidance="Check backend generation logs and lower --eager-load-max-tokens if needed.",
                 timings={
                     "engine_create_s": round(engine_create_s, 6),
@@ -5265,8 +6298,6 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "warmup_s": round(time.perf_counter() - warmup_started, 6),
                 },
             )
-            _LOGGER.exception("WARMUP: failed during eager startup")
-            return
         warmup_s = time.perf_counter() - warmup_started
         startup_checks["raw_warmup"] = {"status": "passed", "max_tokens": max_tokens}
         _record_startup_memory_snapshot(startup_memory, "after_raw_warmup")
@@ -5274,16 +6305,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         scratch_probe_s: float | None = None
         scratch_probe_started = time.perf_counter()
         max_prompt_tokens = _startup_max_prompt_tokens(max_context)
+        mtp_startup_warmup_requested = str(config.speculative_mtp_serving) != "off"
+        mtp_route_enabled = mtp_startup_warmup_requested and _engine_supports_speculative_mtp(engine)
         if config.startup_scratch_probe:
             scratch_preparer = getattr(engine, "prepare_request_scratch", None)
             scratch_probe_context_unknown = max_prompt_tokens is None
             scratch_probe_prompt_tokens = 64 if max_prompt_tokens is None else int(max_prompt_tokens)
             scratch_probe_batch_size = max(1, int(config.max_active_requests or 1))
-            mtp_startup_warmup_requested = str(config.speculative_mtp_serving) != "off"
-            mtp_route_enabled = (
-                mtp_startup_warmup_requested
-                and _engine_supports_speculative_mtp(engine)
-            )
             if not mtp_route_enabled:
                 plain_ar_limit = getattr(
                     engine,
@@ -5300,6 +6328,20 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         scratch_probe_batch_size,
                         plain_ar_limit,
                     )
+            requested_scratch_probe_batch_size = scratch_probe_batch_size
+            scratch_probe_width_reduction: dict[str, Any] | None = None
+            if scratch_probe_batch_size > 1:
+                scratch_probe_width_reduction = _startup_probe_width_reduction(
+                    engine,
+                    width=scratch_probe_batch_size,
+                )
+                if scratch_probe_width_reduction is not None:
+                    _LOGGER.warning(
+                        "STARTUP_SCRATCH_PROBE: width %d reduced to 1; %s",
+                        scratch_probe_batch_size,
+                        scratch_probe_width_reduction["detail"],
+                    )
+                    scratch_probe_batch_size = 1
             if max_prompt_tokens is None and scratch_probe_batch_size <= 1:
                 startup_checks["scratch_probe"] = {"enabled": True, "status": "skipped", "reason": "unknown_context"}
             elif not callable(scratch_preparer):
@@ -5312,65 +6354,114 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     scratch_probe_prompt_tokens,
                     scratch_probe_batch_size,
                 )
-                try:
-                    def run_scratch_probe() -> Any:
-                        mtp_warmup_env = "HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP"
-                        previous_mtp_warmup = os.environ.get(mtp_warmup_env)
-                        os.environ[mtp_warmup_env] = "1" if mtp_startup_warmup_requested else "0"
-                        try:
-                            return scratch_preparer(
-                                max_prompt_tokens=scratch_probe_prompt_tokens,
-                                max_new_tokens=0,
-                                sampling_params=sampling,
-                                max_batch_size=scratch_probe_batch_size,
-                                release_after_probe=True,
-                            )
-                        finally:
-                            if previous_mtp_warmup is None:
-                                os.environ.pop(mtp_warmup_env, None)
-                            else:
-                                os.environ[mtp_warmup_env] = previous_mtp_warmup
+                scratch_probe_failed_attempts: list[dict[str, Any]] = []
 
-                    scratch_result = await run_in_threadpool(
-                        run_scratch_probe
-                    )
-                except Exception as exc:
-                    startup_checks["scratch_probe"] = {
-                        "enabled": True,
-                        "status": "failed",
-                        "max_prompt_tokens": None if scratch_probe_context_unknown else scratch_probe_prompt_tokens,
-                        "probe_prompt_tokens": scratch_probe_prompt_tokens,
-                        "context_unknown": scratch_probe_context_unknown,
-                        "exception_type": type(exc).__name__,
-                    }
-                    _LOGGER.error(
-                        "STARTUP_SCRATCH_PROBE: failed at probe_prompt_tokens=%d: %s. "
-                        "Try a lower --max-context-tokens or a higher scratch/headroom reserve.",
-                        scratch_probe_prompt_tokens,
-                        exc,
-                    )
-                    mark_startup_failed(
-                        readiness,
-                        exc,
-                        startup_started=startup_started,
-                        stage="scratch_probe",
-                        guidance="Try a lower --max-context-tokens or a higher scratch/headroom reserve.",
-                        timings={
-                            "engine_create_s": round(engine_create_s, 6),
-                            "resident_prepare_s": round(resident_prepare_s, 6),
-                            "warmup_s": round(warmup_s, 6),
-                            "scratch_probe_s": round(time.perf_counter() - scratch_probe_started, 6),
-                        },
-                    )
-                    return
-                startup_checks["scratch_probe"] = {
+                def run_scratch_probe() -> Any:
+                    mtp_warmup_env = "HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP"
+                    previous_mtp_warmup = os.environ.get(mtp_warmup_env)
+                    os.environ[mtp_warmup_env] = "1" if mtp_startup_warmup_requested else "0"
+                    try:
+                        return scratch_preparer(
+                            max_prompt_tokens=scratch_probe_prompt_tokens,
+                            max_new_tokens=0,
+                            sampling_params=sampling,
+                            max_batch_size=scratch_probe_batch_size,
+                            release_after_probe=True,
+                        )
+                    finally:
+                        if previous_mtp_warmup is None:
+                            os.environ.pop(mtp_warmup_env, None)
+                        else:
+                            os.environ[mtp_warmup_env] = previous_mtp_warmup
+
+                while True:
+                    try:
+                        scratch_result = await run_in_threadpool(run_scratch_probe)
+                    except Exception as exc:
+                        scratch_probe_failed_attempts.append(
+                            {
+                                "max_batch_size": scratch_probe_batch_size,
+                                "exception_type": type(exc).__name__,
+                            }
+                        )
+                        if scratch_probe_batch_size > 1:
+                            # Every probe slot is its own resident session, so a wider probe
+                            # can fail to allocate while one slot fits. Retry at the narrowest
+                            # width before treating the failure as fatal.
+                            _LOGGER.warning(
+                                "STARTUP_SCRATCH_PROBE: width %d failed to allocate (%s); "
+                                "retrying at width 1",
+                                scratch_probe_batch_size,
+                                exc,
+                            )
+                            scratch_probe_batch_size = 1
+                            continue
+                        startup_checks["scratch_probe"] = {
+                            "enabled": True,
+                            "status": "failed",
+                            "max_prompt_tokens": (
+                                None
+                                if scratch_probe_context_unknown
+                                else scratch_probe_prompt_tokens
+                            ),
+                            "probe_prompt_tokens": scratch_probe_prompt_tokens,
+                            "context_unknown": scratch_probe_context_unknown,
+                            "requested_max_batch_size": requested_scratch_probe_batch_size,
+                            "max_batch_size": scratch_probe_batch_size,
+                            "exception_type": type(exc).__name__,
+                            "failed_attempts": scratch_probe_failed_attempts,
+                        }
+                        _LOGGER.error(
+                            "STARTUP_SCRATCH_PROBE: failed at probe_prompt_tokens=%d: %s. "
+                            "Try a lower --max-context-tokens or a higher "
+                            "scratch/headroom reserve.",
+                            scratch_probe_prompt_tokens,
+                            exc,
+                        )
+                        fail_startup(
+                            "scratch_probe",
+                            exc,
+                            guidance=(
+                                "Try a lower --max-context-tokens or a higher "
+                                "scratch/headroom reserve."
+                            ),
+                            timings={
+                                "engine_create_s": round(engine_create_s, 6),
+                                "resident_prepare_s": round(resident_prepare_s, 6),
+                                "warmup_s": round(warmup_s, 6),
+                                "scratch_probe_s": round(
+                                    time.perf_counter() - scratch_probe_started, 6
+                                ),
+                            },
+                        )
+                    else:
+                        break
+                scratch_probe_check: dict[str, Any] = {
                     "enabled": True,
                     "status": "passed",
-                    "max_prompt_tokens": None if scratch_probe_context_unknown else scratch_probe_prompt_tokens,
+                    "max_prompt_tokens": (
+                        None if scratch_probe_context_unknown else scratch_probe_prompt_tokens
+                    ),
                     "probe_prompt_tokens": scratch_probe_prompt_tokens,
                     "context_unknown": scratch_probe_context_unknown,
+                    "requested_max_batch_size": requested_scratch_probe_batch_size,
+                    "max_batch_size": scratch_probe_batch_size,
                     "result": scratch_result,
                 }
+                if scratch_probe_width_reduction is not None:
+                    scratch_probe_check["status"] = "reduced"
+                    scratch_probe_check["width_reduction"] = scratch_probe_width_reduction
+                    scratch_probe_check["width_reduction_detail"] = scratch_probe_width_reduction[
+                        "detail"
+                    ]
+                if scratch_probe_failed_attempts:
+                    scratch_probe_check["status"] = "reduced"
+                    scratch_probe_check["failed_attempts"] = scratch_probe_failed_attempts
+                    scratch_probe_check["width_reduction_detail"] = (
+                        f"width {scratch_probe_failed_attempts[-1]['max_batch_size']} failed to "
+                        f"allocate ({scratch_probe_failed_attempts[-1]['exception_type']})"
+                    )
+                startup_checks["scratch_probe"] = scratch_probe_check
         else:
             startup_checks["scratch_probe"] = {"enabled": False, "status": "disabled"}
         scratch_probe_s = time.perf_counter() - scratch_probe_started
@@ -5408,6 +6499,86 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         else:
             startup_checks["chat_smoke"] = {"enabled": False, "status": "disabled"}
 
+        # The chat smoke above runs the route a request without `speculative_mtp`
+        # resolves to, which is not the route an explicit MTP request runs. Warm the
+        # speculative path too, so the first user request that asks for MTP by name
+        # does not pay for kernels, scratch, and draft state nothing has touched yet.
+        mtp_smoke_s: float | None = None
+        if config.startup_chat_smoke and mtp_route_enabled:
+            mtp_smoke_started = time.perf_counter()
+            mtp_smoke_request = ChatCompletionRequest(
+                model=config.model_id,
+                messages=[
+                    ChatMessage(role="user", content=_startup_mtp_smoke_prompt(config.eager_load_prompt))
+                ],
+                temperature=0.0,
+                top_p=1.0,
+                max_tokens=_STARTUP_MTP_SMOKE_MAX_TOKENS,
+                speculative_mtp=True,
+            )
+            try:
+                async with session_lock:
+                    mtp_smoke_prompt = chat_prompt_for_request(mtp_smoke_request, engine)
+                    mtp_smoke_sampling = sampling_params(mtp_smoke_request, (mtp_smoke_prompt,), engine)
+                    mtp_smoke_prompt_tokens = _count_tokens_for_admission(engine, mtp_smoke_prompt)
+                    _validate_context_budget(
+                        effective_max_context_tokens(engine), engine, (mtp_smoke_prompt,), mtp_smoke_sampling
+                    )
+                    # Resolve the route exactly as a served request does, so the warmup
+                    # runs the route an explicit MTP request would take here -- and so a
+                    # route this server would refuse fails the warmup the same way.
+                    mtp_smoke_route, mtp_smoke_route_decision = _generation_route_for_request(
+                        config,
+                        mtp_smoke_request,
+                        engine=engine,
+                        sampling=mtp_smoke_sampling,
+                        prompts=(mtp_smoke_prompt,),
+                    )
+                _LOGGER.info(
+                    "WARMUP_SPECULATIVE_MTP: route=%s prompt_tokens=%d max_tokens=%d",
+                    mtp_smoke_route,
+                    mtp_smoke_prompt_tokens,
+                    int(mtp_smoke_sampling.max_tokens),
+                )
+                warmup_result = await generation_batcher.submit(
+                    (mtp_smoke_prompt,),
+                    mtp_smoke_sampling,
+                    detailed=True,
+                    include_batch_metadata=True,
+                    route=mtp_smoke_route,
+                    route_decision=mtp_smoke_route_decision,
+                )
+            except Exception as exc:
+                # A speculative warmup failure is not a serving failure: the route
+                # has its own decline-and-fall-back path, and the request that would
+                # have paid this cost still runs. Report it and stay ready.
+                mtp_smoke_s = time.perf_counter() - mtp_smoke_started
+                startup_checks["mtp_smoke"] = {
+                    "enabled": True,
+                    "status": "failed",
+                    "exception_type": type(exc).__name__,
+                }
+                _LOGGER.warning("WARMUP_SPECULATIVE_MTP: failed; serving continues", exc_info=True)
+            else:
+                mtp_smoke_s = time.perf_counter() - mtp_smoke_started
+                startup_checks["mtp_smoke"] = {
+                    "enabled": True,
+                    "status": "passed",
+                    "route": str(mtp_smoke_route),
+                    "realized_route": _warmup_realized_route(warmup_result),
+                    "prompt_tokens": int(mtp_smoke_prompt_tokens),
+                    "max_tokens": int(mtp_smoke_sampling.max_tokens),
+                }
+                _record_startup_memory_snapshot(startup_memory, "after_mtp_smoke")
+        elif config.startup_chat_smoke:
+            startup_checks["mtp_smoke"] = {
+                "enabled": False,
+                "status": "disabled",
+                "reason": "mtp_route_disabled",
+            }
+        else:
+            startup_checks["mtp_smoke"] = {"enabled": False, "status": "disabled"}
+
         guard_memory = _device_memory_snapshot()
         if guard_memory is not None:
             startup_memory["guard"] = guard_memory
@@ -5424,16 +6595,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "warmup_s": round(warmup_s, 6),
             "scratch_probe_s": None if scratch_probe_s is None else round(scratch_probe_s, 6),
             "chat_smoke_s": None if chat_smoke_s is None else round(chat_smoke_s, 6),
+            "mtp_smoke_s": None if mtp_smoke_s is None else round(mtp_smoke_s, 6),
             "startup_total_s": round(startup_total_s, 6),
         }
         _LOGGER.info(
-            "LOAD_TIMING: model=%s engine_create_s=%.3f resident_prepare_s=%.3f warmup_s=%.3f scratch_probe_s=%s chat_smoke_s=%s startup_total_s=%.3f",
+            "LOAD_TIMING: model=%s engine_create_s=%.3f resident_prepare_s=%.3f warmup_s=%.3f scratch_probe_s=%s chat_smoke_s=%s mtp_smoke_s=%s startup_total_s=%.3f",
             config.model_id,
             engine_create_s,
             resident_prepare_s,
             warmup_s,
             "skipped" if scratch_probe_s is None else f"{scratch_probe_s:.3f}",
             "skipped" if chat_smoke_s is None else f"{chat_smoke_s:.3f}",
+            "skipped" if mtp_smoke_s is None else f"{mtp_smoke_s:.3f}",
             startup_total_s,
         )
         _log_pretty_startup_summary(
@@ -5441,7 +6614,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             engine=engine,
             memory=_startup_memory_summary(startup_memory, startup_checks),
         )
-        _log_effective_mtp_config(config, engine=app.state.hipengine_llm)
+        # Normally silent: the resolved line was already emitted when the model
+        # became resident. Kept so eager startup reports the effective state on
+        # every path that reaches readiness.
+        log_effective_mtp_once(app.state.hipengine_llm)
         _LOGGER.info("hipEngine is ready.")
 
     async def shutdown_model() -> None:
@@ -5549,6 +6725,83 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             content={"error": error_payload},
         )
 
+    @app.exception_handler(Exception)
+    async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
+        """Answer an escaped fault with the OpenAI error shape, never a bare 500.
+
+        Starlette routes a handler registered for ``Exception`` through
+        ``ServerErrorMiddleware``, which sends this response and then re-raises,
+        so the traceback still reaches the server log. Before this handler
+        existed, a fault that escaped an endpoint (for example the
+        engine-closed ``RuntimeError`` a request hits while the resident
+        service is unhealthy) was answered with Starlette's plain-text
+        ``Internal Server Error``: no ``error.code``, no message, and nothing a
+        client could distinguish from a truncation.
+
+        A resident service that cannot answer is reported as unavailable rather
+        than as an internal fault: it is closed or unhealthy
+        (``EngineServiceClosed``), or its driver thread let a command's liveness
+        budget expire (``EngineCommandTimeout``). Neither is the request's
+        fault, and a client can retry both once the engine serves again, so
+        answering ``internal_error`` would tell it the opposite of the truth.
+
+        A request refused by the admission budget (``MemoryAdmissionRefused``)
+        is a capacity answer, not a fault: the refusal is raised before anything
+        is allocated, the engine stays healthy, and the same request may fit once
+        the priced consumers shrink. It carries its own error code so a client
+        can tell "too large right now" from "the engine cannot answer".
+        """
+
+        engine_unavailable = isinstance(exc, (EngineServiceClosed, EngineCommandTimeout))
+        overload_refused = isinstance(exc, MemoryAdmissionRefused)
+        if engine_unavailable:
+            status_code, code = 503, "engine_unavailable"
+        elif overload_refused:
+            status_code, code = 503, exc.code
+        else:
+            status_code, code = 500, "internal_error"
+        message = (
+            str(exc)
+            if (engine_unavailable or overload_refused)
+            else f"unhandled server error: {type(exc).__name__}: {exc}"
+        )
+        _LOGGER.exception(
+            "UNHANDLED_ERROR: %s %s status=%d code=%s exception=%s",
+            request.method,
+            _request_target(request),
+            status_code,
+            code,
+            type(exc).__name__,
+        )
+        _log_request_failure(
+            request,
+            status_code=status_code,
+            code=code,
+            param=None,
+            message=message,
+        )
+        metrics = getattr(app.state, "hipengine_server_metrics", None)
+        if metrics is not None:
+            metrics.record_failure()
+        error_payload = _error_payload(
+            message=message,
+            error_type="server_error",
+            code=code,
+            param=None,
+            status_code=status_code,
+            extra={"hipengine": {"exception_type": type(exc).__name__}},
+        )
+        await _maybe_write_replay_artifact(
+            config,
+            request,
+            error_payload,
+            engine=getattr(app.state, "hipengine_llm", None),
+        )
+        return JSONResponse(
+            status_code=status_code,
+            content={"error": error_payload},
+        )
+
     def sampling_params(
         request: CompletionRequest | ChatCompletionRequest,
         prompts: Sequence[PromptInput],
@@ -5606,6 +6859,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if isinstance(request, ChatCompletionRequest)
             else ()
         )
+        if tool_call_constraint is not None and tool_call_constraint.envelope == "xml":
+            # XML closure is owned by the structural constraint. Generic close
+            # repair can inject an outer tag into an unfinished parameter, and
+            # a stop sequence strips the closing tag before the parser sees it.
+            force_sequence_completion_token_sequences = ()
         stop_token_sequences = tuple(
             dict.fromkeys((*stop_token_sequences, *force_sequence_completion_token_sequences))
         )
@@ -5633,7 +6891,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             logit_bias=request.logit_bias or (),
             suppress_token_ids=suppress_token_ids,
             min_tokens=int(request.min_tokens if request.min_tokens is not None else 0),
-            eos_token_id=None if request.eos_token_id is None else int(request.eos_token_id),
+            eos_token_id=_request_eos_token_id(request, engine),
             stop_token_ids=stop_token_ids,
             stop_token_sequences=stop_token_sequences,
             forced_tokens_pending=initial_forced_tool_token_ids,
@@ -5684,6 +6942,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         prepared_thinking: _ThinkingControl | None = None,
         resident_session_key: str | None = None,
     ) -> _GeneratedBatch:
+        info_started_at = time.perf_counter()
         generation_shape: dict[str, Any] | None = None
         try:
             _validate_generation_request(
@@ -5694,7 +6953,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
             async with session_lock:
                 engine = get_llm()
-                prompts = _prepare_prompt_inputs(engine, prompts)
+                prompts = await _prepare_prompt_inputs_async(engine, prompts)
                 admission_started = time.perf_counter()
                 sampling = sampling_params(
                     request,
@@ -5745,10 +7004,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     prompts,
                     (time.perf_counter() - admission_started) * 1_000.0,
                 )
-            if _request_logprobs_enabled(request) and generation_route not in {
-                _SPECULATIVE_PROVIDER_ROUTE, _SPECULATIVE_MTP_BATCH_ROUTE,
-                _SPECULATIVE_MTP_AUTO_ROUTE,
-            }:
+            logprobs_requested = _request_logprobs_enabled(request)
+            if logprobs_requested:
                 generation_route, generation_route_decision = (
                     _resolve_realized_generation_route(
                         generation_route,
@@ -5758,6 +7015,28 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         engine=engine,
                     )
                 )
+            # A logprob belongs to the token the route committed, and a
+            # speculative cycle commits several at once from verified rows the
+            # direct call below never sees. A logprobs request the plan admits
+            # to the speculative route therefore goes through the batcher like
+            # any other request, which is also the only path that can produce
+            # the metadata. A request the plan does not admit keeps the direct
+            # autoregressive call it has always used.
+            # Any speculative route keeps the batcher: the generic provider
+            # route commits several tokens per cycle exactly as the MTP route
+            # does, so the direct autoregressive call cannot produce its
+            # logprobs either.
+            speculative_logprobs = logprobs_requested and str(
+                _execution_route_for_static_intent(
+                    generation_route,
+                    generation_route_decision,
+                )
+            ) in {
+                _SPECULATIVE_PROVIDER_ROUTE,
+                _SPECULATIVE_MTP_BATCH_ROUTE,
+                _SPECULATIVE_MTP_AUTO_ROUTE,
+            }
+            if logprobs_requested and not speculative_logprobs:
                 raw_outputs = await _generate_detailed(engine, tuple(prompts), sampling)
                 scheduler_token_chunks = _backend_scheduler_token_chunks(engine)
                 direct_backend_groups = (
@@ -5782,7 +7061,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     sampling,
                     detailed=True,
                     include_batch_metadata=True,
-                    mtp_thinking_policy=_request_speculative_mtp_thinking(config, request),
+                    thinking_policy=_request_speculative_mtp_thinking(config, request),
                     route=generation_route,
                     route_decision=generation_route_decision,
                     error_extra=route_rejection_extra(
@@ -5819,6 +7098,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             raise _deadline_exceeded_error(exc.finish_details) from exc
         except GenerationCancelled as exc:
             raise _request_cancelled_error(exc.finish_details) from exc
+        except GenerationExecutionFailed as exc:
+            raise _execution_failed_error(exc) from exc
+        except (EngineServiceClosed, EngineCommandTimeout) as exc:
+            app.state.hipengine_server_metrics.record_failure()
+            raise _engine_unavailable_error(exc) from exc
         except OpenAIHTTPError as exc:
             _record_openai_error(app.state.hipengine_server_metrics, exc)
             raise
@@ -5864,6 +7148,16 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             generation_shape=generation_shape,
         )
         app.state.hipengine_server_metrics.record_success(batch.usage)
+        if config.info:
+            _log_request_info(
+                config=config,
+                request=request,
+                usage=batch.usage,
+                timing=_generation_output_timing(details),
+                kv_pool=await _kv_pool_stream_payload_async(engine),
+                kv_request_bytes=_generation_output_kv_request_bytes(details),
+                wall_ms=(time.perf_counter() - info_started_at) * 1000.0,
+            )
         return batch
 
     async def generate_with_request_control(
@@ -5903,7 +7197,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         response_id = f"cmpl-{uuid.uuid4().hex}"
         created = int(time.time())
         include_hipengine = _stream_include_hipengine(request)
-        stream_started_at = _StreamTimingTracker.start() if include_hipengine else time.perf_counter()
+        stream_started_at = (
+            _StreamTimingTracker.start()
+            if _stream_timing_enabled(include_hipengine, config)
+            else time.perf_counter()
+        )
         routing_metadata = (
             _routing_response_metadata(
                 config,
@@ -5937,7 +7235,6 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
 
         full_text: list[str] = []
-        pending_stream_logprobs: list[TokenLogprob] = []
         last_stream_chunk: GenerationStreamChunk | None = None
         try:
             _validate_generation_request(
@@ -5956,7 +7253,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             ]:
                 async with session_lock:
                     engine = get_llm()
-                    generation_prompt = _prepare_prompt_input(engine, prompt)
+                    generation_prompt = await _prepare_prompt_input_async(engine, prompt)
                     admission_started = time.perf_counter()
                     sampling = sampling_params(
                         request,
@@ -5974,6 +7271,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             prompts=(generation_prompt,),
                         )
                     )
+                    requested_generation_route = generation_route
                     generation_route, generation_route_decision = (
                         _resolve_realized_generation_route(
                             generation_route,
@@ -5981,6 +7279,21 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             sampling=sampling,
                             precomputed_decision=generation_route_decision,
                             engine=engine,
+                        )
+                    )
+                    # Streaming reports the route in the done chunk instead of
+                    # through the batcher's batch shape, so an unavailable MTP
+                    # route has to be resolved here to be reported truthfully.
+                    generation_route, generation_route_decision = (
+                        _mtp_unavailable_route_fallback(
+                            generation_route,
+                            requested_route=requested_generation_route,
+                            route_decision=generation_route_decision,
+                            breaker=app.state.hipengine_mtp_circuit_breaker,
+                            engine=engine,
+                            prompts=(generation_prompt,),
+                            group_rows=1,
+                            output_horizon_tokens=int(sampling.max_tokens),
                         )
                     )
                     await ensure_resident_context(
@@ -6033,11 +7346,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     engine=engine,
                 )
             token_accounting = _StreamTokenAccounting.for_engine(engine) if include_hipengine else None
-            async for token in _stop_filtered_stream(_iterate_with_request_control(
+            literal_stops = _LiteralStopStream(request.stop)
+            pending_stream_logprobs: list[TokenLogprob] = []
+            async for token in _iterate_with_literal_stops(
                 generation_batcher.stream(
                     (generation_prompt,),
                     sampling,
-                    mtp_thinking_policy=_request_speculative_mtp_thinking(config, request),
+                    thinking_policy=_request_speculative_mtp_thinking(config, request),
                     route=generation_route,
                     route_decision=generation_route_decision,
                     error_extra=route_rejection_extra(
@@ -6051,7 +7366,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     ),
                 ),
                 control,
-            ), request.stop):
+                literal_stops,
+            ):
+                # A byte-level tokenizer publishes incomplete UTF-8 as a chunk
+                # with no text. Its record still belongs to the character that
+                # completes next, so hold it rather than dropping it.
                 stream_chunk = _coalesce_stream_logprobs(
                     _coerce_generation_stream_chunk(token), pending_stream_logprobs,
                 )
@@ -6134,6 +7453,22 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 error_type=openai_exc.error_type,
                 finish_details=openai_exc.finish_details,
             )
+            if _stream_include_usage(request):
+                # A cancelled stream still reports what it delivered, so a client
+                # can detect the truncation and account for the tokens it saw.
+                yield _completion_stream_usage(
+                    response_id,
+                    created,
+                    config.model_id,
+                    _usage(
+                        getattr(app.state, "hipengine_llm", None),
+                        (prompt,),
+                        ("".join(full_text),),
+                    ),
+                    include_hipengine=include_hipengine,
+                    stream_started_at=stream_started_at,
+                    routing=routing_metadata,
+                )
             yield _completion_stream_error(
                 response_id,
                 created,
@@ -6245,6 +7580,36 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
             yield "data: [DONE]\n\n"
             return
+        except (EngineServiceClosed, EngineCommandTimeout) as exc:
+            app.state.hipengine_server_metrics.record_failure()
+            message = str(exc)
+            _log_stream_failure(
+                "POST /v1/completions stream",
+                status_code=503,
+                code="engine_unavailable",
+                param=None,
+                message=message,
+            )
+            await write_error_artifact(
+                message,
+                status_code=503,
+                code="engine_unavailable",
+                error_type="server_error",
+            )
+            yield _completion_stream_error(
+                response_id,
+                created,
+                config.model_id,
+                message,
+                status_code=503,
+                code="engine_unavailable",
+                error_type="server_error",
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
+                routing=routing_metadata,
+            )
+            yield "data: [DONE]\n\n"
+            return
         except Exception as exc:  # pragma: no cover - real runtime failures
             app.state.hipengine_server_metrics.record_failure()
             message = f"generation failed: {exc}"
@@ -6274,11 +7639,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             yield "data: [DONE]\n\n"
             return
 
-        raw_text = "".join(full_text)
+        raw_text = literal_stops.raw_text if literal_stops.stops else "".join(full_text)
         text, finish_reason, matched_stop = _apply_stop(raw_text, request.stop)
-        server_stop = text != raw_text
-        backend_detail = None if server_stop else _output_from_stream_chunk(last_stream_chunk, raw_text)
-        done_stream_chunk = None if server_stop else last_stream_chunk
+        server_stop = literal_stops.matched
+        done_stream_chunk = _literal_stop_terminal_chunk(last_stream_chunk, server_stop)
+        backend_detail = _output_from_stream_chunk(done_stream_chunk, raw_text)
         finish_reason = _finish_reason_for_output(backend_detail, finish_reason, server_stop=server_stop)
         usage = _usage(
             engine,
@@ -6288,13 +7653,28 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             prefer_telemetry_counts=True,
         )
         app.state.hipengine_server_metrics.record_success(usage)
+        if config.info:
+            _log_request_info(
+                config=config,
+                request=request,
+                usage=usage,
+                timing=_stream_timing_summary(
+                    stream_started_at,
+                    usage=usage,
+                    backend_timing=_stream_chunk_backend_timing(last_stream_chunk),
+                ),
+                kv_pool=await _kv_pool_stream_payload_async(engine),
+                kv_request_bytes=_telemetry_kv_request_bytes(
+                    None if last_stream_chunk is None else last_stream_chunk.telemetry
+                ),
+            )
         cache_action = _session_cache_action(request)
         final_tokens = (
             _stream_usage_token_payload(usage, token_accounting)
             if include_hipengine and token_accounting is not None
             else None
         )
-        final_kv_pool = _kv_pool_stream_payload(engine) if include_hipengine else None
+        final_kv_pool = await _kv_pool_stream_payload_async(engine) if include_hipengine else None
         yield _completion_stream_done(
             response_id,
             created,
@@ -6332,7 +7712,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
         yield "data: [DONE]\n\n"
 
-    def readiness_payload() -> dict[str, Any]:
+    async def readiness_payload() -> dict[str, Any]:
         engine = getattr(app.state, "hipengine_llm", None)
         model_identity = _server_model_identity(config, engine)
         readiness: _ReadinessState = app.state.hipengine_readiness
@@ -6340,7 +7720,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         service_health = _engine_service_health(engine)
         service_ready = _service_health_accepts_requests(service_health)
         if service_ready:
-            live_snapshot = _live_loop_snapshot(engine)
+            # Probing the live loop touches engine state, so keep it off the
+            # event loop like the rest of the readiness work.
+            live_snapshot = await asyncio.to_thread(_live_loop_snapshot, engine) or {}
             graph = _graph_bucket_metric_values(engine, live_snapshot=live_snapshot)
             pool = _pool_metric_values(engine, live_snapshot=live_snapshot)
         else:
@@ -6350,6 +7732,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             graph = _graph_bucket_metric_values(None, live_snapshot=_STATIC_METRIC_SNAPSHOT)
             pool = _pool_metric_values(None, live_snapshot=_STATIC_METRIC_SNAPSHOT)
         prefix_cache = _prefix_cache_metric_values(live_snapshot)
+        service_health = _engine_service_health(engine)
+        service_ready = _service_health_accepts_requests(service_health)
+        engine_service = _engine_service_payload(engine)
         diagnostics: list[str] = []
         if not readiness.ready:
             diagnostics.append("server startup is not ready; check startup.error and server logs")
@@ -6357,17 +7742,48 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 diagnostics.append(
                     f"{readiness.startup_error.get('message')}: {readiness.startup_error.get('guidance')}"
                 )
-        if service_health is not None and not service_ready:
+        scratch_check = readiness.last_startup_checks.get("scratch_probe")
+        if isinstance(scratch_check, Mapping) and str(scratch_check.get("status")) == "reduced":
+            diagnostics.append(
+                "startup scratch probe ran at width "
+                f"{scratch_check.get('max_batch_size')} instead of "
+                f"{scratch_check.get('requested_max_batch_size')}: "
+                f"{scratch_check.get('width_reduction_detail')}"
+            )
+        runtime_status = readiness.status
+        runtime_ready = bool(readiness.ready)
+        if engine_service is not None and not bool(engine_service.get("serving", True)):
+            unhealthy = engine_service.get("unhealthy")
+            if unhealthy:
+                runtime_status = "unhealthy"
+                diagnostics.append(
+                    "resident engine service stopped serving after a fatal execution "
+                    f"failure ({unhealthy.get('exception_type')}: {unhealthy.get('message')})"
+                    + (
+                        f" at {unhealthy.get('location')}"
+                        if unhealthy.get("location")
+                        else ""
+                    )
+                    + "; restart the server to restore serving"
+                )
+            else:
+                runtime_status = "closed"
+                diagnostics.append(
+                    "resident engine service is closed; restart the server to restore serving"
+                )
+            runtime_ready = False
+        elif service_health is not None and not service_ready:
+            # A service that is neither serving nor closed still fails its
+            # lifetime checks; report why instead of a bare status change.
+            runtime_status = "unavailable"
+            runtime_ready = False
             diagnostics.extend(_service_health_diagnostics(service_health))
         payload: dict[str, Any] = {
             "object": "hipengine.readiness",
-            "status": (
-                readiness.status
-                if service_health is None or service_ready
-                else "unavailable"
-            ),
-            "ready": bool(readiness.ready) and service_ready,
+            "status": runtime_status,
+            "ready": runtime_ready,
             "diagnostics": diagnostics,
+            "engine_service": dict(engine_service) if engine_service is not None else None,
             "model": {
                 **model_identity,
                 "loaded": bool(readiness.model_loaded),
@@ -6397,6 +7813,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "pool": pool,
             },
             "prefix_cache": prefix_cache,
+            "dms": {
+                "requested_metadata_path": config.dms_metadata_path,
+                "policy": _nested_mapping(_nested_mapping(live_snapshot, "runner"), "model_runner").get("dms"),
+            },
             "graph_cache": {
                 "entries": graph["entries"],
                 "hits": graph["hits"],
@@ -6418,7 +7838,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "sessions": chat_session_summary(),
         }
         if service_health is not None:
-            payload["service"] = service_health
+            # The documented lifetime quartet, kept apart from the service's own
+            # ``status``/``serving`` fields published under ``engine_service``.
+            payload["service"] = {
+                "accepting_requests": bool(service_health.get("accepting_requests")),
+                "driver_alive": bool(service_health.get("driver_alive")),
+                "closing": bool(service_health.get("closing")),
+                "closed": bool(service_health.get("closed")),
+                "failure": service_health.get("failure"),
+            }
         return payload
 
     @app.get("/health")
@@ -6431,7 +7859,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
     @app.get("/ready")
     async def ready() -> JSONResponse:
-        payload = readiness_payload()
+        payload = await readiness_payload()
         return JSONResponse(status_code=200 if payload["ready"] else 503, content=payload)
 
     @app.get("/v1/hipengine/sessions")
@@ -6678,10 +8106,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
         @app.get("/metrics", response_class=PlainTextResponse)
         async def prometheus_metrics() -> PlainTextResponse:
+            engine = getattr(app.state, "hipengine_llm", None)
+            live_snapshot = await asyncio.to_thread(_live_loop_snapshot, engine) or {}
             return PlainTextResponse(
                 _render_prometheus_metrics(
                     app.state.hipengine_server_metrics,
-                    engine=getattr(app.state, "hipengine_llm", None),
+                    engine=engine,
+                    live_snapshot=live_snapshot,
                     generation_batcher=getattr(app.state, "hipengine_generation_batcher", None),
                     chat_sessions=chat_sessions,
                     pending_chat_sessions=chat_session_pending,
@@ -6728,6 +8159,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             "capability": _kv_capability_provenance(engine),
                         },
                         "capabilities": _model_capability_summary(config, engine=engine),
+                        "song_generation": _song_generation_capability(config, engine=engine),
                         "capabilities_url": "/v1/hipengine/capabilities",
                         "routing": {
                             "loaded_model_count": 0 if engine is None else 1,
@@ -6777,7 +8209,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         native_gpu_capability = {
             "enabled": _env_flag(
                 "HIPENGINE_QWEN35_NATIVE_SAMPLER",
-                default=not gguf_native_candidate,
+                default=True,
             ),
             "env": "HIPENGINE_QWEN35_NATIVE_SAMPLER",
             "disable_env": "HIPENGINE_QWEN35_NATIVE_SAMPLER=0",
@@ -6817,7 +8249,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         "single_batched_launch_when_compatible_else_native_rows"
                     ),
                     "true_batched_c_gt_1": True,
-                    "default_path": False,
+                    "default_path": True,
                     "unsupported": [
                         capability
                         for capability in NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES
@@ -6827,6 +8259,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
         return {
             "object": "hipengine.capabilities",
+            "effective_env": _effective_hipengine_env(),
             "model": {
                 "id": model_identity["id"],
                 "path": config.model,
@@ -7080,6 +8513,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "metadata": _session_metadata_capability(config.max_chat_sessions),
             },
             "admission": _admission_capability(config, engine=engine),
+            "song_generation": _song_generation_capability(config, engine=engine),
             "routing": {
                 "loaded_model_count": 0 if engine is None else 1,
                 "multiple_models": False,
@@ -7231,6 +8665,126 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
             raise
 
+    @app.post("/v1/audio/songs", response_model=None)
+    async def generate_song(
+        request: SongGenerationRequest,
+        raw_request: Request,
+        _auth: None = Depends(require_auth),
+    ) -> Any:
+        """Generate one song from lyrics and a style prompt.
+
+        Returns ``audio/wav`` by default and a JSON provenance document when
+        ``response_format`` is ``json``. One request runs at a time on the
+        resident pipeline; a second concurrent request is refused with 429.
+        """
+
+        engine = get_llm()
+        _validate_model(config, request.model, engine=engine)
+        response_format = str(request.response_format).strip().lower()
+        if response_format not in ("wav", "json"):
+            raise OpenAIHTTPError(
+                400,
+                f"response_format must be 'wav' or 'json', not {request.response_format!r}",
+                code="unsupported_parameter",
+                param="response_format",
+            )
+        generator = _song_generator(engine)
+        song_request = _song_request_from_body(request, generator)
+
+        cancellation = _SongRequestCancellation(raw_request)
+        await cancellation.start()
+        song_started = time.perf_counter()
+        try:
+            song = await run_in_threadpool(
+                generator.generate_song,
+                song_request,
+                steps=request.steps,
+                cancelled=cancellation.cancelled,
+            )
+        except InterruptedError as exc:
+            raise OpenAIHTTPError(
+                499,
+                "the song request was cancelled before it finished",
+                code="cancelled",
+            ) from exc
+        except RuntimeError as exc:
+            from hipengine.runtime.yue2_session import Yue2SessionBusy
+
+            if not isinstance(exc, Yue2SessionBusy):
+                raise
+            raise OpenAIHTTPError(
+                429,
+                "the song pipeline is already running a request",
+                code="engine_busy",
+                headers={"Retry-After": str(config.queue_retry_after_seconds)},
+            ) from exc
+        finally:
+            await cancellation.stop()
+        song_seconds = time.perf_counter() - song_started
+
+        audio = song.audio
+        samples = int(audio.shape[-1])
+        channels = int(audio.shape[0])
+        try:
+            wav_bytes = await run_in_threadpool(
+                encode_wav_bytes, audio, int(song.sample_rate)
+            )
+        except ValueError as exc:
+            raise OpenAIHTTPError(
+                500,
+                f"the generated audio could not be encoded: {exc}",
+                error_type="server_error",
+                code="internal_error",
+            ) from exc
+        _LOGGER.info(
+            "SONG: request_id=%s frames=%d samples=%d duration=%.2fs seconds=%.1f "
+            "truncated=%s",
+            song.request_id[:16],
+            int(song.frames),
+            samples,
+            float(song.duration_seconds),
+            song_seconds,
+            song.truncation,
+        )
+        if response_format == "json":
+            return JSONResponse(
+                {
+                    "object": "hipengine.song",
+                    "model": config.model_id,
+                    "request_id": song.request_id,
+                    "sample_rate": int(song.sample_rate),
+                    "channels": channels,
+                    "frames": int(song.frames),
+                    "samples": samples,
+                    "duration_seconds": float(song.duration_seconds),
+                    "truncation": dict(song.truncation),
+                    "abc": song.semantic.plan.abc,
+                    "abc_ids": [int(token) for token in song.semantic.plan.abc_ids],
+                    "semantic_tokens": len(song.semantic.tokens),
+                    "latent_identity": song.latent_identity,
+                    "audio_identity": song.audio_identity,
+                    "request": song.semantic.plan.request.to_dict(),
+                    "config": dict(song.config),
+                    "weights": dict(song.weights),
+                    "timing": dict(song.timing),
+                    "seconds": round(song_seconds, 6),
+                    "audio_wav_base64": base64.b64encode(wav_bytes).decode("ascii"),
+                }
+            )
+        return Response(
+            content=wav_bytes,
+            media_type="audio/wav",
+            headers={
+                "Content-Disposition": f'attachment; filename="{song_request.id}.wav"',
+                "X-Hipengine-Request-Id": song.request_id,
+                "X-Hipengine-Frames": str(int(song.frames)),
+                "X-Hipengine-Duration-Seconds": f"{float(song.duration_seconds):.3f}",
+                "X-Hipengine-Latent-Identity": song.latent_identity,
+                "X-Hipengine-Audio-Identity": song.audio_identity,
+                "X-Hipengine-Generation-Seconds": f"{song_seconds:.3f}",
+            },
+        )
+
     @app.post("/v1/completions", response_model=None)
     async def completions(
         request: CompletionRequest,
@@ -7238,6 +8792,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         auth_principal: str = Depends(require_auth),
     ) -> dict[str, Any] | StreamingResponse:
         _validate_model(config, request.model, engine=getattr(app.state, "hipengine_llm", None))
+        _require_text_surface(_served_generation_surfaces(app), endpoint="/v1/completions")
         _validate_generation_request(
             config,
             request,
@@ -7397,7 +8952,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         )
         if request.stream:
             include_hipengine = _stream_include_hipengine(request)
-            stream_started_at = _StreamTimingTracker.start() if include_hipengine else time.perf_counter()
+            stream_started_at = (
+                _StreamTimingTracker.start()
+                if _stream_timing_enabled(include_hipengine, config)
+                else time.perf_counter()
+            )
             engine = getattr(app.state, "hipengine_llm", None)
             token_accounting = _StreamTokenAccounting.for_engine(engine) if include_hipengine else None
             return StreamingResponse(
@@ -7422,7 +8981,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     if include_hipengine
                     else None,
                     kv_pool=(
-                        _kv_pool_stream_payload(engine)
+                        await _kv_pool_stream_payload_async(engine)
                         if include_hipengine
                         else None
                     ),
@@ -7440,6 +8999,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         auth_principal: str = Depends(require_auth),
     ) -> dict[str, Any] | StreamingResponse:
         _validate_model(config, request.model, engine=getattr(app.state, "hipengine_llm", None))
+        _require_text_surface(_served_generation_surfaces(app), endpoint="/v1/chat/completions")
         _validate_generation_request(
             config,
             request,
@@ -7448,6 +9008,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         )
         _validate_continuation_resume_request(request)
         attached_engine = getattr(app.state, "hipengine_llm", None)
+        # A lazily loaded server (eager_load=False) has no attached engine yet,
+        # so an engine-declared vision model is invisible until the first
+        # request. Detect media in the request first, and only then pay for
+        # get_llm() to read its declarations.
+        has_media = request_has_media(request.messages)
+        if has_media and attached_engine is None:
+            attached_engine = get_llm()
         multimodal_capable = bool(
             config.vision_model is not None
             or (
@@ -7456,11 +9023,23 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
         )
         try:
-            multimodal_input = (
-                extract_qwen4_exp_chat_media(request.messages)
-                if multimodal_capable
-                else None
-            )
+            if not multimodal_capable:
+                multimodal_input = None
+            else:
+                max_pixels, max_bytes = resolve_vision_http_limits(
+                    attached_engine,
+                    max_pixels=config.vision_max_pixels,
+                    max_bytes=config.vision_max_image_bytes,
+                )
+                image_marker, video_marker = vision_prompt_markers(attached_engine)
+                multimodal_input = extract_chat_media(
+                    request.messages,
+                    max_bytes=max_bytes,
+                    max_side=vision_max_side(max_pixels),
+                    max_pixels=max_pixels,
+                    image_marker=image_marker,
+                    video_marker=video_marker,
+                )
         except ValueError as exc:
             raise OpenAIHTTPError(
                 400, str(exc), code="invalid_request", param="messages"
@@ -7473,26 +9052,39 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if request.stream:
                 raise OpenAIHTTPError(
                     400,
-                    "Qwen4Exp HTTP multimodal streaming is not yet supported",
+                    "HTTP multimodal streaming is not yet supported",
                     code="unsupported_parameter",
                     param="stream",
                 )
             if _request_n(request) != 1:
                 raise OpenAIHTTPError(
                     400,
-                    "Qwen4Exp HTTP multimodal generation requires n=1",
+                    "HTTP multimodal generation requires n=1",
                     code="unsupported_parameter",
                     param="n",
                 )
             if request.tools or request.continuation_id or request.session:
                 raise OpenAIHTTPError(
                     400,
-                    "Qwen4Exp HTTP multimodal generation does not combine with "
+                    "HTTP multimodal generation does not combine with "
                     "tools, continuation, or sessions",
                     code="unsupported_parameter",
                 )
             prompt, media = multimodal_input
             engine = get_llm()
+            # A prompt-driven model's task *is* its prompt. An image-only
+            # request (no text part, or only whitespace) means "do the model's
+            # default task", so substitute the engine's declared prompt rather
+            # than sending an empty one.
+            default_prompt = getattr(engine, "vision_default_prompt", None)
+            if default_prompt and not prompt.strip():
+                prompt = str(default_prompt)
+            try:
+                adapted_media = media_for_engine(engine, media)
+            except ValueError as exc:
+                raise OpenAIHTTPError(
+                    400, str(exc), code="invalid_request", param="messages"
+                ) from exc
             control = _request_control(config, request, raw_request)
             maximum = (
                 request.max_completion_tokens
@@ -7519,7 +9111,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     run_in_threadpool(
                         engine.generate_multimodal_detailed,
                         prompt,
-                        media,
+                        adapted_media,
                         sampling,
                     ),
                     control,
@@ -7551,6 +9143,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             prompt_tokens = int(
                 telemetry_usage.get("prompt_tokens") or engine.count_tokens(prompt)
             )
+            # The generator knows the exact prompt length when it built the
+            # prompt (a vision prompt is text plus image tokens, which a text
+            # tokenizer count cannot recover). Fall back to the tokenizer for
+            # the text-only generators that report nothing.
+            reported_prompt_tokens = getattr(detail, "prompt_tokens", None)
+            if reported_prompt_tokens is None:
+                reported_prompt_tokens = int(await asyncio.to_thread(engine.count_tokens, prompt))
+            prompt_tokens = int(reported_prompt_tokens)
             completion_tokens = len(generated_ids)
             return {
                 "id": f"chatcmpl-{uuid.uuid4().hex}",
@@ -7614,7 +9214,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             prompt=continuation_prompt,
                             render_request=request,
                             prefix_messages=(),
-                            prepared_prompt=_prepare_prompt_input(
+                            prepared_prompt=await _prepare_prompt_input_async(
                                 engine,
                                 continuation_prompt,
                             ),
@@ -7637,7 +9237,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             generation_prompt = (
                 prepared_prompt.prepared_prompt
                 if prepared_prompt.prepared_prompt is not None
-                else _prepare_prompt_input(get_llm(), prompt)
+                else await _prepare_prompt_input_async(get_llm(), prompt)
             )
             fit_context_extra = prepared_prompt.fit_context_extra
             resident_session_key = (
@@ -7890,7 +9490,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
         created = int(time.time())
         include_hipengine = _stream_include_hipengine(request)
-        stream_started_at = _StreamTimingTracker.start() if include_hipengine else time.perf_counter()
+        stream_started_at = (
+            _StreamTimingTracker.start()
+            if _stream_timing_enabled(include_hipengine, config)
+            else time.perf_counter()
+        )
         routing_metadata = (
             _routing_response_metadata(
                 config,
@@ -8056,7 +9660,26 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             )
                     usage = _usage(engine, prompts, full_text)
                     app.state.hipengine_server_metrics.record_success(usage)
-                    final_kv_pool = _kv_pool_stream_payload(engine) if include_hipengine else None
+                    if config.info:
+                        _log_request_info(
+                            config=config,
+                            request=request,
+                            usage=usage,
+                            timing=_stream_timing_summary(
+                                stream_started_at,
+                                usage=usage,
+                                backend_timing=_stream_chunk_backend_timing(
+                                    last_stream_chunks[0] if last_stream_chunks else None
+                                ),
+                            ),
+                            kv_pool=await _kv_pool_stream_payload_async(engine),
+                            kv_request_bytes=_telemetry_kv_request_bytes(
+                                None
+                                if not last_stream_chunks
+                                else last_stream_chunks[0].telemetry
+                            ),
+                        )
+                    final_kv_pool = await _kv_pool_stream_payload_async(engine) if include_hipengine else None
                     for index, text in enumerate(full_text):
                         backend_detail = _output_from_stream_chunk(last_stream_chunks[index], text)
                         finish_reason = _finish_reason_for_output(backend_detail, "stop")
@@ -8317,7 +9940,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         stream_started_at=stream_started_at,
                         routing=routing_metadata,
                         kv_pool=(
-                            _kv_pool_stream_payload(getattr(app.state, "hipengine_llm", None))
+                            await _kv_pool_stream_payload_async(getattr(app.state, "hipengine_llm", None))
                             if include_hipengine
                             else None
                         ),
@@ -8341,7 +9964,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         stream_started_at=stream_started_at,
                         routing=routing_metadata,
                         kv_pool=(
-                            _kv_pool_stream_payload(getattr(app.state, "hipengine_llm", None))
+                            await _kv_pool_stream_payload_async(getattr(app.state, "hipengine_llm", None))
                             if include_hipengine
                             else None
                         ),
@@ -8365,7 +9988,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         stream_started_at=stream_started_at,
                         routing=routing_metadata,
                         kv_pool=(
-                            _kv_pool_stream_payload(getattr(app.state, "hipengine_llm", None))
+                            await _kv_pool_stream_payload_async(getattr(app.state, "hipengine_llm", None))
                             if include_hipengine
                             else None
                         ),
@@ -8382,7 +10005,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     stream_started_at=stream_started_at,
                     routing=routing_metadata,
                     kv_pool=(
-                        _kv_pool_stream_payload(getattr(app.state, "hipengine_llm", None))
+                        await _kv_pool_stream_payload_async(getattr(app.state, "hipengine_llm", None))
                         if include_hipengine
                         else None
                     ),
@@ -8406,6 +10029,28 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 error_type=exc.error_type,
                 finish_details=exc.finish_details,
                 extra=exc.extra,
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
+                routing=routing_metadata,
+            )
+        except (EngineServiceClosed, EngineCommandTimeout) as exc:
+            app.state.hipengine_server_metrics.record_failure()
+            message = str(exc)
+            _log_stream_failure(
+                "POST /v1/chat/completions stream",
+                status_code=503,
+                code="engine_unavailable",
+                param=None,
+                message=message,
+            )
+            yield _chat_stream_error(
+                response_id,
+                created,
+                config.model_id,
+                message,
+                status_code=503,
+                code="engine_unavailable",
+                error_type="server_error",
                 include_hipengine=include_hipengine,
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
@@ -8445,7 +10090,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         response_id = f"chatcmpl-{uuid.uuid4().hex}"
         created = int(time.time())
         include_hipengine = _stream_include_hipengine(request)
-        stream_started_at = _StreamTimingTracker.start() if include_hipengine else time.perf_counter()
+        stream_started_at = (
+            _StreamTimingTracker.start()
+            if _stream_timing_enabled(include_hipengine, config)
+            else time.perf_counter()
+        )
         routing_metadata = (
             _routing_response_metadata(
                 config,
@@ -8521,7 +10170,6 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             yield "data: [DONE]\n\n"
             return
         full_text: list[str] = []
-        pending_stream_logprobs: list[TokenLogprob] = []
         last_stream_chunk: GenerationStreamChunk | None = None
         splitter_source_chunks: list[_LiveSourceChunk] = []
         splitter_source_offset = 0
@@ -8532,6 +10180,41 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
         )
         buffer_tool_output = bool(request.tools)
+        live_tool_stream = None
+        live_tool_calls: dict[int, _ParsedToolCall] = {}
+
+        def live_tool_events(parts, source_chunk):
+            for part in parts:
+                events = (
+                    [("reasoning_content", -1, "", part.text)]
+                    if part.field == "reasoning_content"
+                    else live_tool_stream.feed(part.text)
+                )
+                yield from live_tool_deltas(events, source_chunk)
+
+        def live_tool_deltas(events, source_chunk):
+            for field, tool_index, name, fragment in events:
+                phase = "tool_call" if field == "tool" else "think" if field == "reasoning_content" else "answer"
+                tokens = token_accounting.observe(phase, fragment) if token_accounting is not None else None
+                if field == "tool":
+                    if name:
+                        live_tool_calls[tool_index] = _ParsedToolCall(
+                            id=f"call_{uuid.uuid4().hex[:24]}", name=name, arguments="",
+                        )
+                    call = live_tool_calls[tool_index]
+                    live_tool_calls[tool_index] = replace(call, arguments=call.arguments + fragment)
+                    yield _chat_stream_tool_call(
+                        response_id, created, config.model_id, live_tool_calls[tool_index],
+                        tool_index=tool_index, argument_chunk=fragment, include_name=bool(name),
+                        tokens=tokens, stream_chunk=source_chunk, include_hipengine=include_hipengine,
+                        stream_started_at=stream_started_at, routing=routing_metadata,
+                    )
+                else:
+                    yield _chat_stream_delta(
+                        response_id, created, config.model_id, field, fragment,
+                        tokens=tokens, stream_chunk=source_chunk, include_hipengine=include_hipengine,
+                        stream_started_at=stream_started_at, routing=routing_metadata, phase=phase,
+                    )
 
         try:
             async def prepare_stream() -> tuple[
@@ -8562,6 +10245,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             prompts=(generation_prompt,),
                         )
                     )
+                    requested_generation_route = generation_route
                     generation_route, generation_route_decision = (
                         _resolve_realized_generation_route(
                             generation_route,
@@ -8569,6 +10253,21 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             sampling=sampling,
                             precomputed_decision=generation_route_decision,
                             engine=engine,
+                        )
+                    )
+                    # Streaming reports the route in the done chunk instead of
+                    # through the batcher's batch shape, so an unavailable MTP
+                    # route has to be resolved here to be reported truthfully.
+                    generation_route, generation_route_decision = (
+                        _mtp_unavailable_route_fallback(
+                            generation_route,
+                            requested_route=requested_generation_route,
+                            route_decision=generation_route_decision,
+                            breaker=app.state.hipengine_mtp_circuit_breaker,
+                            engine=engine,
+                            prompts=(generation_prompt,),
+                            group_rows=1,
+                            output_horizon_tokens=int(sampling.max_tokens),
                         )
                     )
                     await ensure_resident_context(
@@ -8621,6 +10320,16 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     engine=engine,
                 )
             token_accounting = _StreamTokenAccounting.for_engine(engine) if include_hipengine else None
+            constraint = sampling.tool_call_constraint
+            if buffer_tool_output and constraint is not None and constraint.envelope == "xml":
+                from hipengine.server.tool_stream import XMLToolStream
+
+                live_tool_stream = XMLToolStream(
+                    names=constraint.tool_names,
+                    string_typed=lambda name, key: _xml_parameter_is_string_typed(
+                        request.tools, tool_name=name, key=key,
+                    ),
+                )
             yield _chat_stream_role(
                 response_id,
                 created,
@@ -8629,11 +10338,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
             )
-            async for token in _stop_filtered_stream(_iterate_with_request_control(
+            literal_stops = _LiteralStopStream(request.stop)
+            pending_stream_logprobs: list[TokenLogprob] = []
+            async for token in _iterate_with_literal_stops(
                 generation_batcher.stream(
                     (generation_prompt,),
                     sampling,
-                    mtp_thinking_policy=_request_speculative_mtp_thinking(config, request),
+                    thinking_policy=_request_speculative_mtp_thinking(config, request),
                     route=generation_route,
                     route_decision=generation_route_decision,
                     error_extra=route_rejection_extra(
@@ -8647,7 +10358,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     ),
                 ),
                 control,
-            ), request.stop):
+                literal_stops,
+            ):
+                # A byte-level tokenizer publishes incomplete UTF-8 as a chunk
+                # with no text. Its record still belongs to the character that
+                # completes next, so hold it rather than dropping it.
                 stream_chunk = _coalesce_stream_logprobs(
                     _coerce_generation_stream_chunk(token), pending_stream_logprobs,
                 )
@@ -8659,6 +10374,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     _validate_stream_logprob_chunk(stream_chunk)
                 full_text.append(text)
                 if buffer_tool_output:
+                    if live_tool_stream is not None:
+                        for event in live_tool_events(splitter.feed_parts(text), stream_chunk):
+                            yield event
                     continue
                 source_start = splitter_source_offset
                 source_end = source_start + len(text)
@@ -8715,6 +10433,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     splitter_source_chunks,
                     min_source_start=splitter.pending_source_start,
                 )
+            if live_tool_stream is not None:
+                for event in live_tool_events(splitter.finish_parts(), last_stream_chunk):
+                    yield event
             if not buffer_tool_output:
                 for part in splitter.finish_parts():
                     phase = "think" if part.field == "reasoning_content" else "answer"
@@ -8812,6 +10533,22 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 error_type=openai_exc.error_type,
                 finish_details=openai_exc.finish_details,
             )
+            if _stream_include_usage(request):
+                # A cancelled stream still reports what it delivered, so a client
+                # can detect the truncation and account for the tokens it saw.
+                yield _chat_stream_usage(
+                    response_id,
+                    created,
+                    config.model_id,
+                    _usage(
+                        getattr(app.state, "hipengine_llm", None),
+                        (generation_prompt,),
+                        ("".join(full_text),),
+                    ),
+                    include_hipengine=include_hipengine,
+                    stream_started_at=stream_started_at,
+                    routing=routing_metadata,
+                )
             yield _chat_stream_error(
                 response_id,
                 created,
@@ -8923,6 +10660,36 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
             yield "data: [DONE]\n\n"
             return
+        except (EngineServiceClosed, EngineCommandTimeout) as exc:
+            app.state.hipengine_server_metrics.record_failure()
+            message = str(exc)
+            _log_stream_failure(
+                "POST /v1/chat/completions stream",
+                status_code=503,
+                code="engine_unavailable",
+                param=None,
+                message=message,
+            )
+            await write_error_artifact(
+                message,
+                status_code=503,
+                code="engine_unavailable",
+                error_type="server_error",
+            )
+            yield _chat_stream_error(
+                response_id,
+                created,
+                config.model_id,
+                message,
+                status_code=503,
+                code="engine_unavailable",
+                error_type="server_error",
+                include_hipengine=include_hipengine,
+                stream_started_at=stream_started_at,
+                routing=routing_metadata,
+            )
+            yield "data: [DONE]\n\n"
+            return
         except Exception as exc:  # pragma: no cover - real runtime failures
             app.state.hipengine_server_metrics.record_failure()
             message = f"generation failed: {exc}"
@@ -8952,17 +10719,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             yield "data: [DONE]\n\n"
             return
 
-        raw_text = "".join(full_text)
+        raw_text = literal_stops.raw_text if literal_stops.stops else "".join(full_text)
         text, finish_reason, matched_stop = _apply_stop(raw_text, request.stop)
-        server_stop = text != raw_text
-        backend_detail = None if server_stop else _output_from_stream_chunk(last_stream_chunk, raw_text)
-        done_stream_chunk = None if server_stop else last_stream_chunk
-        if server_stop:
-            # Stop strings can split across yielded chunks; current streaming keeps
-            # transport simple and reports the stop after generation completes.
-            finish_reason = "stop"
-        else:
-            finish_reason = _finish_reason_for_output(backend_detail, finish_reason)
+        server_stop = literal_stops.matched
+        done_stream_chunk = _literal_stop_terminal_chunk(last_stream_chunk, server_stop)
+        backend_detail = _output_from_stream_chunk(done_stream_chunk, raw_text)
+        finish_reason = _finish_reason_for_output(backend_detail, finish_reason, server_stop=server_stop)
         usage = _usage(
             engine,
             (generation_prompt,),
@@ -8971,13 +10733,28 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             prefer_telemetry_counts=True,
         )
         app.state.hipengine_server_metrics.record_success(usage)
+        if config.info:
+            _log_request_info(
+                config=config,
+                request=request,
+                usage=usage,
+                timing=_stream_timing_summary(
+                    stream_started_at,
+                    usage=usage,
+                    backend_timing=_stream_chunk_backend_timing(last_stream_chunk),
+                ),
+                kv_pool=await _kv_pool_stream_payload_async(engine),
+                kv_request_bytes=_telemetry_kv_request_bytes(
+                    None if last_stream_chunk is None else last_stream_chunk.telemetry
+                ),
+            )
         cache_action = _session_cache_action(request)
         final_tokens = (
             _stream_usage_token_payload(usage, token_accounting)
             if include_hipengine and token_accounting is not None
             else None
         )
-        final_kv_pool = _kv_pool_stream_payload(engine) if include_hipengine else None
+        final_kv_pool = await _kv_pool_stream_payload_async(engine) if include_hipengine else None
         if buffer_tool_output:
             parsed = _parse_chat_tool_calls_for_engine(
                 engine,
@@ -9011,6 +10788,27 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 tool_validation,
                 finish_details=finish_details,
             )
+            live_tool_mismatch = False
+            if live_tool_stream is not None and not live_tool_stream.buffered:
+                try:
+                    live_tool_mismatch = (
+                        live_tool_stream.state != "text"
+                        or [(call.name, json.loads(call.arguments)) for call in live_tool_calls.values()]
+                        != [(call.name, json.loads(call.arguments)) for call in parsed.tool_calls]
+                    )
+                except ValueError:
+                    live_tool_mismatch = True
+            if live_tool_stream is not None and not live_tool_stream.buffered and (tool_validation.failed or live_tool_mismatch):
+                # A partially streamed call must never end as a successful empty
+                # response. Clients may execute it only after tool_calls finish.
+                _LOGGER.warning("Tool stream validation failed: parser_failed=%s stream_state=%s streamed_calls=%d parsed_calls=%d",
+                                tool_validation.failed, live_tool_stream.state,
+                                len(live_tool_calls), len(parsed.tool_calls))
+                hard_error = OpenAIHTTPError(
+                    400, "generated tool call failed validation",
+                    code=tool_validation.failure_reason or "invalid_tool_call",
+                    param="tool_calls", finish_details=finish_details,
+                )
             if hard_error is not None:
                 _record_openai_error(app.state.hipengine_server_metrics, hard_error)
                 _log_stream_failure(
@@ -9060,6 +10858,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 },
                 engine=engine,
             )
+            if live_tool_stream is not None:
+                if live_tool_stream.buffered:
+                    split = _split_reasoning(parsed.text, initially_open=parsed.reasoning_initially_open)
+                    remainder = split.content.removeprefix(live_tool_stream.content)
+                    if split.content.strip() == live_tool_stream.content.strip():
+                        remainder = ""
+                    parsed = replace(parsed, text=remainder, reasoning_initially_open=False)
+                else:
+                    for event in live_tool_deltas(live_tool_stream.finish(), last_stream_chunk):
+                        yield event
+                    # Content and argument fragments already reached the client.
+                    parsed = replace(parsed, text="", tool_calls=(), reasoning_initially_open=False)
             for event in _chat_stream_parsed(
                 response_id,
                 created,
@@ -9153,39 +10963,90 @@ def _live_loop_snapshot(engine: Any | None) -> Mapping[str, Any] | None:
 def _engine_service_health(engine: Any | None) -> dict[str, Any] | None:
     """Return nonblocking service lifetime health for the loaded model, if exposed.
 
-    Only an already-loaded text generator is inspected so readiness never triggers
-    a lazy model load. Engines without a health hook keep the startup-only
-    contract and report no ``service`` payload.
+    Two hooks exist in the tree: the engine service publishes
+    ``engine_service_health`` and the generator publishes ``service_health``.
+    Both are read into one shape so readiness reports the same fields whichever
+    hook the loaded model provides. Only an already-loaded generator is
+    inspected, so readiness never triggers a lazy model load; an engine with
+    neither hook keeps the startup-only contract and reports no service payload.
     """
     if engine is None:
         return None
-    for target in (getattr(engine, "_text_generator", None), engine):
+    for target in (engine, getattr(engine, "_text_generator", None)):
         if target is None:
             continue
-        probe = getattr(target, "service_health", None)
-        if not callable(probe):
-            continue
-        try:
-            payload = probe()
-        except Exception as exc:
-            # An unreadable health probe is not evidence of a usable service.
-            return {
-                "accepting_requests": False,
-                "driver_alive": False,
-                "closing": False,
-                "closed": False,
-                "failure": type(exc).__name__,
-            }
-        data = payload if isinstance(payload, Mapping) else {}
-        failure = data.get("failure")
-        return {
-            "accepting_requests": bool(data.get("accepting_requests", False)),
-            "driver_alive": bool(data.get("driver_alive", False)),
-            "closing": bool(data.get("closing", False)),
-            "closed": bool(data.get("closed", False)),
-            "failure": None if failure is None else str(failure),
-        }
+        for hook in ("engine_service_health", "service_health"):
+            probe = getattr(target, hook, None)
+            if not callable(probe):
+                continue
+            try:
+                payload = probe()
+            except EngineCommandTimeout:
+                # The probe is bounded, so a timeout means a busy driver thread,
+                # not a broken service. Readiness keeps answering and loses only
+                # its live diagnostics; a real fault reports below.
+                return None
+            except Exception as exc:
+                # An unreadable health probe is not evidence of a usable service.
+                # ``serving`` stays unset so readiness reports this through the
+                # lifetime-check path, naming the probe's failure, instead of
+                # claiming the service shut down cleanly.
+                return {
+                    "accepting_requests": False,
+                    "driver_alive": False,
+                    "closing": False,
+                    "closed": False,
+                    "failure": type(exc).__name__,
+                }
+            return _normalized_service_health(payload)
     return None
+
+
+def _engine_service_payload(engine: Any | None) -> Mapping[str, Any] | None:
+    """Return the engine-service health payload exactly as the service reports it.
+
+    ``LLM.engine_service_health`` carries the service's own ``status``,
+    ``serving`` and ``unhealthy`` fields. Readiness publishes it unchanged under
+    ``engine_service`` and keeps the normalized lifetime quartet under
+    ``service``; the two answer different questions about the same service.
+    """
+
+    if engine is None:
+        return None
+    getter = getattr(engine, "engine_service_health", None)
+    if not callable(getter):
+        return None
+    try:
+        payload = getter()
+    except Exception:
+        return None
+    return payload if isinstance(payload, Mapping) else None
+
+
+def _normalized_service_health(payload: Any) -> dict[str, Any]:
+    data = payload if isinstance(payload, Mapping) else {}
+    failure = data.get("failure")
+    serving = data.get("serving")
+    accepting = data.get("accepting_requests")
+    driver_alive = data.get("driver_alive")
+    closing = bool(data.get("closing", False))
+    closed = bool(data.get("closed", False))
+    if accepting is None:
+        # The engine-service payload reports one ``serving`` flag instead of the
+        # generator's lifetime quartet; treat it as both accept and driver state.
+        accepting = bool(serving) if serving is not None else not (closing or closed)
+    if driver_alive is None:
+        driver_alive = accepting
+    unhealthy = data.get("unhealthy")
+    return {
+        "accepting_requests": bool(accepting),
+        "driver_alive": bool(driver_alive),
+        "closing": closing,
+        "closed": closed,
+        "serving": bool(serving) if serving is not None else bool(accepting),
+        "unhealthy": dict(unhealthy) if isinstance(unhealthy, Mapping) else None,
+        "failure": None if failure is None else str(failure),
+    }
 
 
 def _service_health_accepts_requests(health: Mapping[str, Any] | None) -> bool:
@@ -9407,8 +11268,10 @@ def _render_prometheus_metrics(
     pending_chat_sessions: set[str] | None = None,
     max_chat_sessions: int | None = None,
     config: ServerConfig | None = None,
+    live_snapshot: Mapping[str, Any] | None = None,
 ) -> str:
-    live_snapshot = _live_loop_snapshot(engine)
+    if live_snapshot is None:
+        live_snapshot = _live_loop_snapshot(engine) or {}
     resident = _resident_loop_metric_values(live_snapshot)
     pool = _pool_metric_values(engine, live_snapshot=live_snapshot)
     graph = _graph_bucket_metric_values(engine, live_snapshot=live_snapshot)
@@ -9772,6 +11635,11 @@ def _kv_pool_stream_payload(engine: Any | None) -> dict[str, float] | None:
         for key, value in values.items()
         if key not in {"max_pages", "budget_bytes"}
     }
+
+
+async def _kv_pool_stream_payload_async(engine: Any | None) -> dict[str, float] | None:
+    # Live snapshots are serialized behind GPU work on the engine driver.
+    return await asyncio.to_thread(_kv_pool_stream_payload, engine)
 
 
 def _generation_queue_metric_values(generation_batcher: Any | None) -> dict[str, float]:
@@ -10316,15 +12184,18 @@ def _render_chat_prompt_with_model_protocol(
     renderer_kwargs = {}
     if getattr(target,"chat_template_reasoning_effort",False) and thinking.effort is not None:
         renderer_kwargs["reasoning_effort"] = thinking.effort
-    return str(
-        renderer(
-            messages,
-            tools=tools,
-            enable_thinking=_model_template_thinking_enabled(thinking),
-            add_generation_prompt=True,
-            **renderer_kwargs,
+    try:
+        return str(
+            renderer(
+                messages,
+                tools=tools,
+                enable_thinking=_model_template_thinking_enabled(thinking),
+                add_generation_prompt=True,
+                **renderer_kwargs,
+            )
         )
-    )
+    except NotImplementedError as exc:
+        raise OpenAIHTTPError(400, str(exc), code="unsupported_parameter") from exc
 
 
 def _render_prepared_chat_prompt_for_request(
@@ -11263,6 +13134,92 @@ def _startup_max_prompt_tokens(max_context_tokens: int | None) -> int | None:
     return max(1, int(max_context_tokens) - 1)
 
 
+def _startup_probe_width_reduction(engine: Any, *, width: int) -> dict[str, Any] | None:
+    """Price a width-N startup probe before running it.
+
+    Every probe slot is its own resident session, and a resident session preallocates
+    its KV pages and packed workspace lease. The capacity estimator prices one
+    session, so nothing priced the multiplication a wider probe performs: the probe
+    asked for four slots, each slot's price fitted on its own, and the fourth
+    allocation failed after four HIP out-of-memory attempts.
+
+    Returns ``None`` when the probe should run at the configured width. An engine that
+    cannot be priced returns ``None`` too, and so does one whose estimate says no
+    session fits at all: a missing or unusable estimate must not silently drop a
+    warmup, and the narrow probe is the fallback that speaks for itself.
+    """
+
+    estimator = getattr(engine, "resident_capacity_estimate", None)
+    if not callable(estimator):
+        return None
+    try:
+        headroom = estimator(max_batch_size=1, requested_context_tokens=None)
+        if headroom is None:
+            return None
+        session_context = int(getattr(headroom, "allocatable_context_tokens", 0) or 0)
+        if session_context <= 0:
+            return None
+        priced = estimator(max_batch_size=1, requested_context_tokens=session_context)
+        if priced is None:
+            return None
+        per_session_bytes = int(getattr(priced, "requested_total_bytes", 0) or 0)
+        usable_bytes = int(getattr(priced, "usable_bytes", 0) or 0)
+    except Exception as exc:  # noqa: BLE001 - a pricing failure must not fail startup
+        _LOGGER.debug("STARTUP_SCRATCH_PROBE: width preflight unavailable: %s", exc)
+        return None
+    if per_session_bytes <= 0 or usable_bytes <= 0:
+        return None
+    required_bytes = per_session_bytes * int(width)
+    if required_bytes <= usable_bytes:
+        return None
+    return {
+        "reason": "insufficient_free_memory_for_width",
+        "requested_width": int(width),
+        "session_context_tokens": session_context,
+        "per_session_bytes": per_session_bytes,
+        "required_bytes": required_bytes,
+        "usable_bytes": usable_bytes,
+        "free_bytes": int(getattr(priced, "available_bytes", 0) or 0),
+        "reserve_bytes": int(getattr(priced, "reserve_bytes", 0) or 0),
+        "detail": (
+            f"{int(width)} concurrent sessions need {_format_bytes(required_bytes)} "
+            f"against {_format_bytes(usable_bytes)} usable"
+        ),
+    }
+
+
+# Tokens the startup speculative warmup generates. Enough for several draft/verify
+# cycles, small enough that the warmup stays a startup cost and not a benchmark.
+_STARTUP_MTP_SMOKE_MAX_TOKENS = 8
+# Words in the warmup prompt, built by repeating ``--eager-load-prompt``. A prompt
+# this size exercises the prefill path a real request takes, unlike the 9-token chat
+# smoke, without paying a full 512-token prefill at every server start.
+_STARTUP_MTP_SMOKE_PROMPT_WORDS = 128
+
+
+def _startup_mtp_smoke_prompt(eager_load_prompt: str) -> str:
+    """A warmup prompt long enough for the speculative route to draft and verify."""
+
+    words = str(eager_load_prompt).split() or ["warmup"]
+    repeats = max(1, -(-_STARTUP_MTP_SMOKE_PROMPT_WORDS // len(words)))
+    return " ".join(words * repeats)
+
+
+def _warmup_realized_route(result: Any) -> str | None:
+    """The route a completed warmup batch ran, when the batcher reports one.
+
+    The batcher resolves an unavailable speculative route to AR before dispatch, so
+    the requested route alone cannot tell an operator whether the speculative path
+    was actually warmed.
+    """
+
+    shape = getattr(result, "generation_shape", None)
+    if not isinstance(shape, Mapping):
+        return None
+    route = shape.get("route")
+    return None if route is None else str(route)
+
+
 def _record_startup_memory_snapshot(target: dict[str, Any], stage: str) -> dict[str, Any] | None:
     snapshot = _device_memory_snapshot()
     if snapshot is not None:
@@ -11321,29 +13278,125 @@ def _startup_memory_summary(
     }
 
 
-def _log_effective_mtp_config(config: ServerConfig, *, engine: Any | None) -> None:
-    """Log configured or effective MTP serving state.
+def _engine_speculative_mtp_unresolved(engine: Any | None) -> bool:
+    """Whether the engine's speculative MTP route is not resolved yet.
 
-    Lazy startup has no engine to inspect yet, so it reports a pending state;
-    ``get_llm`` emits the effective state immediately after creating the model.
+    ``LLM`` resolves its text generator - and with it the model's speculative
+    capability - during ``prepare``. An engine that already has one is resolved,
+    so its answer stands whether it is yes or no. Before that, "no MTP route"
+    only means "not known yet", and printing it as ``serving=off`` contradicts
+    the line the operator reads once the engine has resolved. Startup calls this
+    with an unprepared engine while the model load is still running.
     """
 
     if engine is None:
-        _LOGGER.info(
-            "EFFECTIVE_MTP: serving=pending engine_supported=unknown "
-            "default_enabled=unknown policy=%s thinking=%s",
-            config.speculative_mtp_serving,
-            config.speculative_mtp_thinking,
-        )
-        return
-    capability = _speculative_mtp_capability(config, engine=engine)
+        return True
+    if _engine_speculative_mtp_callable(engine) is not None:
+        return False
+    if getattr(engine, "_text_generator", None) is not None:
+        return False
+    return getattr(engine, "text_generator", None) is None
+
+
+def _log_pending_mtp_config(config: ServerConfig) -> None:
+    """Log the requested MTP policy of a server that has no engine yet.
+
+    Only lazy startup reaches this: the model is not created until the first
+    request, so the requested policy, candidate budget, and context window are
+    everything that is knowable at startup, and saying so is more useful than
+    silence. The resolved line follows once that request prepares the model.
+    Eager startup skips the pending form entirely - its engine resolves during
+    the same startup, so a pending echo would be a second line that the
+    resolved line immediately supersedes.
+    """
+
     _LOGGER.info(
-        "EFFECTIVE_MTP: serving=%s engine_supported=%s default_enabled=%s policy=%s thinking=%s",
+        "EFFECTIVE_MTP: serving=pending engine_supported=unknown "
+        "default_enabled=unknown policy=%s thinking=%s "
+        "candidate_budget=requested:%s resolved:pending source:pending "
+        "mtp2_context_window=env:%s resolved:%s "
+        "(pre-resolution: the model is not loaded yet; lazy startup resolves "
+        "this when the first request prepares the engine)",
+        config.speculative_mtp_serving,
+        config.speculative_mtp_thinking,
+        config.speculative_candidate_budget,
+        *_mtp2_context_window_log_fields(),
+    )
+
+
+def _log_effective_mtp_config(config: ServerConfig, *, engine: Any | None) -> bool:
+    """Log the resolved MTP serving state; report whether there was one.
+
+    An engine that exists but has not prepared its generator has no answer yet.
+    A pending line for it would carry nothing the operator cannot read from the
+    requested values already logged, and the resolved line follows as soon as
+    ``prepare`` runs, so this logs nothing and returns ``False`` until then. A
+    resolved engine always logs, whether or not it has an MTP route.
+    """
+
+    if engine is None or _engine_speculative_mtp_unresolved(engine):
+        return False
+    capability = _speculative_mtp_capability(config, engine=engine)
+    budget = _candidate_budget_resolution(config, engine=engine)
+    _LOGGER.info(
+        "EFFECTIVE_MTP: serving=%s engine_supported=%s default_enabled=%s policy=%s thinking=%s "
+        "candidate_budget=requested:%s resolved:%s source:%s "
+        "mtp2_context_window=env:%s resolved:%s",
         "enabled" if capability["serving_route"] else "off",
         _engine_supports_speculative_mtp(engine),
         capability.get("default_enabled", False),
         capability.get("policy", str(config.speculative_mtp_serving)),
         capability.get("thinking_policy", str(config.speculative_mtp_thinking)),
+        budget["requested"],
+        budget["resolved"],
+        budget["source"],
+        *_mtp2_context_window_log_fields(),
+    )
+    _warn_unservable_mtp_budget(config, engine=engine, budget=budget)
+    return True
+
+
+def _warn_unservable_mtp_budget(
+    config: ServerConfig,
+    *,
+    engine: Any | None,
+    budget: Mapping[str, Any],
+) -> None:
+    """Warn when an explicitly enabled MTP server cannot serve its budget.
+
+    An unsupported depth is reported, never silently rewritten: the operator
+    asked for it, so the server says which axis the evidence rejected.
+    """
+
+    if str(config.speculative_mtp_serving) != "enabled":
+        return
+    if not _engine_supports_speculative_mtp(engine):
+        _LOGGER.warning(
+            "EFFECTIVE_MTP: speculative_mtp_serving=enabled but this model/backend "
+            "has no speculative MTP route; requests fall back to autoregressive decode"
+        )
+        return
+    plan = _engine_speculative_mtp_serving_capability(engine)
+    if plan is None:
+        _LOGGER.warning(
+            "EFFECTIVE_MTP: speculative_mtp_serving=enabled but no serving plan "
+            "resolves for this artifact/physical cell; requests fall back to "
+            "autoregressive decode (candidate_budget requested:%s resolved:%s source:%s)",
+            budget.get("requested"),
+            budget.get("resolved"),
+            budget.get("source"),
+        )
+        return
+    if bool(plan.get("admitted")):
+        return
+    _LOGGER.warning(
+        "EFFECTIVE_MTP: speculative_mtp_serving=enabled but the resolved serving "
+        "plan refuses this cell (%s); requests fall back to autoregressive decode "
+        "(candidate_budget requested:%s resolved:%s source:%s)",
+        plan.get("reason"),
+        budget.get("requested"),
+        budget.get("resolved"),
+        budget.get("source"),
     )
 
 
@@ -11365,6 +13418,48 @@ def _log_startup_memory_summary(memory: Mapping[str, Any], checks: Mapping[str, 
     )
 
 
+def _speculation_startup_text(
+    config: ServerConfig,
+    *,
+    capability: Mapping[str, Any],
+    budget: Mapping[str, Any],
+    engine: Any | None,
+) -> str:
+    """State the route requests will run, not the policy that was configured.
+
+    ``serving_route`` reports that MTP is configured and the engine can serve
+    it, which is not a statement that this cell admits.  Reading the resolved
+    plan here keeps the startup summary from advertising a route the request
+    path refuses -- the operator cannot see that disagreement from the banner.
+    An admission no measurement backs is marked, because the depth is real but
+    its provenance is not a measurement on this cell.
+    """
+
+    if not capability["serving_route"]:
+        return f"MTP unavailable (policy {config.speculative_mtp_serving})"
+    plan = _engine_speculative_mtp_serving_capability(engine)
+    if plan is None or not bool(plan.get("admitted")):
+        reason = "unresolved" if plan is None else str(plan.get("reason"))
+        return f"MTP unavailable ({reason})"
+    status = (
+        "MTP enabled"
+        if bool(plan.get("automatic_eligible"))
+        else f"MTP explicit-only (default AR; {plan.get('reason') or 'automatic_ineligible'})"
+    )
+    if config.speculative_mtp_serving == "opt_in":
+        status = "MTP explicit-only (default AR; policy opt_in)"
+    selected = plan.get("selected_candidate_count")
+    depth = budget["resolved"] if selected is None else selected
+    measured = bool(
+        plan.get("evidence_key")
+        and plan.get("evidence_fingerprint")
+        and plan.get("evidence_artifacts")
+    )
+    depth_text = "unresolved" if depth is None else str(int(depth))
+    suffix = "" if measured else " (unmeasured)"
+    return f"{status}, candidate budget {depth_text}{suffix}"
+
+
 def _log_pretty_startup_summary(
     config: ServerConfig,
     *,
@@ -11377,7 +13472,7 @@ def _log_pretty_startup_summary(
     snapshot = _live_loop_snapshot(engine) or {}
     runner = _nested_mapping(snapshot, "runner")
     pool = _nested_mapping(runner, "kv_pool")
-    context = estimate.get("requested_context_tokens")
+    context = estimate.get("requested_context_tokens") or config.max_context_tokens
     model_max = estimate.get("model_max_context_tokens")
     storage = estimate.get("kv_storage_dtype") or config.kv_storage
     scale = estimate.get("kv_scale_dtype") or config.kv_scale_dtype
@@ -11405,14 +13500,35 @@ def _log_pretty_startup_summary(
         else f"{_format_bytes(int(used))} / {_format_bytes(int(total))}"
     )
     budget_text = "automatic" if budget is None else _format_bytes(int(budget))
+    # The three decisions that decide what a request actually runs: how KV is
+    # stored, whether a repeated prefix is reused, and whether speculation is
+    # served. A reader must not have to probe /ready to learn any of them.
+    prefix_mode = resolve_prefix_cache_mode(config.prefix_cache)
+    prefix_block = _prefix_cache_metric_values(snapshot).get("block_size_tokens")
+    if prefix_mode == "off":
+        prefix_text = "off"
+    elif prefix_block:
+        prefix_text = f"{prefix_mode} ({int(prefix_block)}-token blocks)"
+    else:
+        prefix_text = prefix_mode
+    capability = _speculative_mtp_capability(config, engine=engine)
+    budget_resolution = _candidate_budget_resolution(config, engine=engine)
+    speculation_text = _speculation_startup_text(
+        config,
+        capability=capability,
+        budget=budget_resolution,
+        engine=engine,
+    )
     _LOGGER.info(
         "\n%s%s%s\n"
-        "  Model       %s\n"
-        "  Context     %s tokens\n"
-        "  KV cache    %s (%s scales)\n"
-        "  Concurrency %s requests in flight\n"
-        "  KV budget   %s\n"
-        "  GPU memory  %s used\n"
+        "  Model        %s\n"
+        "  Context      %s tokens\n"
+        "  KV cache     %s (%s scales)\n"
+        "  Prefix cache %s\n"
+        "  Speculation  %s\n"
+        "  Concurrency  %s requests in flight\n"
+        "  KV budget    %s\n"
+        "  GPU memory   %s used\n"
         "%s%s%s",
         cyan,
         "hipEngine ready",
@@ -11421,6 +13537,8 @@ def _log_pretty_startup_summary(
         context_text,
         f"{storage}",
         scale,
+        prefix_text,
+        speculation_text,
         "automatic" if concurrency is None else str(int(concurrency)),
         budget_text,
         memory_text,
@@ -11714,6 +13832,24 @@ def _engine_speculative_mtp_serving_capability(
     if not isinstance(payload, Mapping):
         raise TypeError("engine speculative_mtp_serving_capability must be a mapping")
     return deepcopy(dict(payload))
+
+
+def _engine_supports_sampled_mtp(engine: Any | None) -> bool:
+    """Whether immutable model-plugin evidence admits the sampled accept route.
+
+    The sampled route is qualified per artifact by an evidence row, so a request
+    that only the sampled rule can serve keeps typed speculative intent exactly
+    when such a row admits it; otherwise it falls to K0 before provider mutation,
+    which is the shipped behavior for every temperature request today.
+    """
+
+    modes = getattr(engine, "speculative_mtp_sampling_modes", None)
+    if modes is None:
+        return False
+    try:
+        return "sampled" in {str(mode) for mode in tuple(modes)}
+    except TypeError:
+        return False
 
 
 def _engine_supports_default_mtp(engine: Any | None) -> bool:
@@ -12203,6 +14339,44 @@ def _deadline_exceeded_error(finish_details: FinishDetails | Mapping[str, Any] |
     )
 
 
+def _engine_unavailable_error(
+    exc: EngineServiceClosed | EngineCommandTimeout,
+) -> OpenAIHTTPError:
+    """Report a closed or unresponsive service as an availability failure.
+
+    A closed or unhealthy engine service cannot accept work for any request, so
+    this is not the request's fault: the client can retry once the service is
+    healthy again. The message names the fatal cause the service recorded.
+    """
+
+    return OpenAIHTTPError(
+        503,
+        str(exc),
+        error_type="server_error",
+        code="engine_unavailable",
+    )
+
+
+def _execution_failed_error(exc: GenerationExecutionFailed) -> OpenAIHTTPError:
+    """Report one contained execution failure without blaming the whole server.
+
+    The engine service contains a request's own step failure and keeps
+    serving, so this is a request-scoped failure the client can retry. The
+    contained scope is the runner's, and its mutation class says how much of
+    the step could have reached device state. A fatal
+    failure never reaches a client this way: it closes the service and every
+    request on it reports that separately.
+    """
+
+    return OpenAIHTTPError(
+        500,
+        str(exc),
+        error_type="server_error",
+        code="execution_failed",
+        extra={"hipengine": {"execution": exc.to_json_dict()}},
+    )
+
+
 def _request_cancelled_error(finish_details: FinishDetails | Mapping[str, Any] | None = None) -> OpenAIHTTPError:
     if isinstance(finish_details, FinishDetails):
         details = finish_details.to_json_dict()
@@ -12576,6 +14750,49 @@ def _prepare_prompt_inputs(
         else:
             prepared.append(_prepare_prompt_input(engine, prompt))
     return tuple(prepared)
+
+
+def _engine_call_is_blocking(engine: Any) -> bool:
+    """Whether engine control calls must be moved off the event loop thread.
+
+    ``EngineService`` runs the engine on one driver thread, so a control command
+    (tokenizing, counting tokens, preparing a context, reading a live snapshot)
+    waits behind whatever that thread is doing: a context prepare that grows the
+    KV pool and captures graphs, or one prefill tick of a large prompt. Waiting on
+    the event loop thread stops the server from doing anything else - SSE deltas
+    are no longer flushed, so a client sees its tokens arrive in one burst after
+    the wait, and health checks, cancellation, and other requests queue behind it.
+    """
+
+    return callable(getattr(engine, "tokenize", None)) or callable(
+        getattr(engine, "count_tokens", None)
+    )
+
+
+async def _prepare_prompt_input_async(
+    engine: Any,
+    prompt: PromptInput,
+    *,
+    render_ms: float = 0.0,
+) -> PromptInput:
+    """``_prepare_prompt_input`` with its engine wait on a worker thread."""
+
+    if isinstance(prompt, str) and _engine_call_is_blocking(engine):
+        return await asyncio.to_thread(
+            _prepare_prompt_input, engine, prompt, render_ms=render_ms
+        )
+    return _prepare_prompt_input(engine, prompt, render_ms=render_ms)
+
+
+async def _prepare_prompt_inputs_async(
+    engine: Any,
+    prompts: Sequence[PromptInput],
+) -> tuple[PromptInput, ...]:
+    """``_prepare_prompt_inputs`` with its engine wait on a worker thread."""
+
+    if any(isinstance(prompt, str) for prompt in prompts) and _engine_call_is_blocking(engine):
+        return await asyncio.to_thread(_prepare_prompt_inputs, engine, prompts)
+    return _prepare_prompt_inputs(engine, prompts)
 
 
 def _with_admission_prepare_ms(
@@ -13025,7 +15242,7 @@ def _grammar_sampling_spec(request, engine):
         if mode!="none" and getattr(target,"model_owned_tool_grammar",False):
             spec = {"format":"qwen4exp_tools","tools":tools,
                     "mode":"required" if mode in {"required","function"} else "auto",
-                    "name":name,"answer":spec,"parallel":bool(request.parallel_tool_calls)}
+                    "name":name,"answer":spec,"parallel":request.parallel_tool_calls is not False}
     if spec is not None:
         if isinstance(request,ChatCompletionRequest):
             thinking = _thinking_control_from_request(request,chat_default_max_tokens=None)
@@ -13078,6 +15295,8 @@ def _tool_call_sampling_constraint(
     return ToolCallConstraintSpec(
         tool_names=names,
         mode=constraint_mode,
+        envelope="xml",
+        parallel_tool_calls=request.parallel_tool_calls is not False,
         forbidden_text_prefixes=forbidden,
         thinking_start_marker=_THINKING_START_MARKER if thinking_enabled else None,
         thinking_end_marker=_THINKING_CLOSE_MARKER if thinking_enabled else None,
@@ -13104,23 +15323,11 @@ def _required_tool_sampling_forced_prefix(
     if name is None:
         return start, False
     try:
-        prefix_ids = _tokenize_text(engine, _tool_call_name_prefix_text(name))
+        prefix_ids = _tokenize_text(engine, f"{_TOOL_CALL_START_MARKER}\n<function={name}>\n")
     except OpenAIHTTPError:
         return start, False
     prefix = tuple(int(token_id) for token_id in prefix_ids)
-    if not prefix:
-        return start, False
-    schema_prefix = _specific_tool_first_required_string_prefix(request, name)
-    if schema_prefix is None:
-        return prefix, False
-    try:
-        schema_prefix_ids = _tokenize_text(engine, schema_prefix)
-    except OpenAIHTTPError:
-        return prefix, False
-    schema_prefix_tokens = tuple(int(token_id) for token_id in schema_prefix_ids)
-    if not schema_prefix_tokens:
-        return prefix, False
-    return schema_prefix_tokens, True
+    return (prefix or start), False
 
 
 def _tool_call_sequence_completion_token_sequences(
@@ -13161,38 +15368,6 @@ def _tool_call_name_prefix_text(name: str) -> str:
         f"{_TOOL_CALL_START_MARKER}"
         f'{{"name":{json.dumps(str(name), ensure_ascii=False, separators=(",", ":"))},"arguments":'
     )
-
-
-def _specific_tool_first_required_string_prefix(
-    request: ChatCompletionRequest,
-    name: str,
-) -> str | None:
-    tool = _tool_map_by_name(request.tools).get(str(name))
-    if tool is None:
-        return None
-    function = _tool_function(tool)
-    if function.get("strict") is not True:
-        return None
-    schema = _tool_parameters_schema(tool)
-    if not isinstance(schema, Mapping) or schema.get("type") != "object":
-        return None
-    if schema.get("additionalProperties") is not False:
-        return None
-    required = schema.get("required")
-    properties = schema.get("properties")
-    if (
-        not isinstance(required, Sequence)
-        or isinstance(required, (str, bytes))
-        or not required
-        or not isinstance(properties, Mapping)
-    ):
-        return None
-    key = required[0]
-    property_schema = properties.get(key) if isinstance(key, str) else None
-    if not isinstance(property_schema, Mapping) or property_schema.get("type") != "string":
-        return None
-    encoded_key = json.dumps(key, ensure_ascii=False, separators=(",", ":"))
-    return f"{_tool_call_name_prefix_text(name)}{{{encoded_key}:\""
 
 
 def _tool_call_close_repair_token_sequences(
@@ -13391,8 +15566,9 @@ def _request_speculative_mtp_thinking(
     ``hint`` keeps the thinking hints in the rendered prompt but relaxes the
     host-sampler thinking-budget enforcement (soft-close bias, EOS
     suppression, hard-close forcing) so the request can use the exact
-    raw-argmax MTP route.  ``hard`` keeps full host-sampler enforcement and
-    treats the thinking budget as a hard MTP blocker.
+    raw-argmax MTP route.  ``hard`` keeps full host-sampler enforcement; a
+    budget-carrying request is served by the sampled route, which applies the
+    request's own per-row law, and the raw-argmax route keeps refusing it.
     """
 
     raw = getattr(request, "speculative_mtp", None)
@@ -13460,12 +15636,44 @@ def _speculative_mtp_route_for_request(
         # Hard policy retains those fields and requires a provider that declares
         # processed thinking-budget support; other providers fall back to AR.
         sampling = relax_thinking_budget_for_mtp(sampling)
-    blockers = (
+    # An explicit request is admitted only for the controls the loaded provider
+    # declares; an implicit one keeps the route's own blockers. Either way an
+    # unservable sampling shape falls back to K0 rather than failing the
+    # request, because the AR path can still answer it.
+    sampling_blockers = (
         _provider_speculative_sampling_blockers(engine, sampling)
-        if explicit_requested else speculative_mtp_sampling_blockers(sampling)
+        if explicit_requested
+        else speculative_mtp_sampling_blockers(sampling)
     )
-    if blockers:
+    if sampling_blockers and not (
+        supports_sampled_speculative_mtp(sampling)
+        and _engine_supports_sampled_mtp(engine)
+    ):
+        if explicit_requested and not _provider_supported_sampling_fields(
+            _engine_speculative_capabilities(engine)
+        ):
+            # A provider that declares no processed controls at all cannot serve
+            # this request, so an explicit ask is refused before any provider
+            # mutation, naming the fields that block it. A processed provider
+            # that merely lacks one declared control keeps the request and drops
+            # to K0, because the AR path can still answer it.
+            raise OpenAIHTTPError(
+                400,
+                "requested speculative_mtp does not support these sampling controls: "
+                + ", ".join(sampling_blockers),
+                code="unsupported_parameter",
+                param="speculative_mtp",
+            )
         return _SPECULATIVE_MTP_K0_ROUTE
+    if (
+        not sampling_blockers
+        and not explicit_requested
+        and not supports_speculative_mtp_sampling(sampling)
+    ):
+        # Only an implicit request is demoted to the default route here. An
+        # explicit one was already admitted by the provider's declared
+        # controls above, so it keeps the sampled route.
+        return _SPECULATIVE_MTP_DEFAULT_ROUTE
     if explicit_requested:
         return _SPECULATIVE_MTP_BATCH_ROUTE
     if configured_mode == "enabled":
@@ -13498,6 +15706,60 @@ def _speculative_provider_effective_kv_storage(
         return requested
 
 
+def _candidate_budget_resolution(
+    config: ServerConfig,
+    *,
+    engine: Any | None = None,
+) -> dict[str, Any]:
+    """Return requested/effective/source for the speculative candidate depth.
+
+    An operator-pinned depth is used unchanged. An omitted one is reported by
+    the loaded engine (which resolves it from model-plugin evidence); before
+    that resolution a configured generic provider declares its own shape, and
+    without either the depth stays unresolved rather than guessed.
+    """
+
+    requested = config.speculative_candidate_budget
+    requested = None if requested is None else int(requested)
+    if requested is not None:
+        return {"requested": requested, "resolved": requested, "source": "explicit"}
+    engine_resolution = getattr(engine, "speculative_candidate_budget_resolution", None)
+    if isinstance(engine_resolution, Mapping):
+        resolved = engine_resolution.get("candidate_budget")
+        source = engine_resolution.get("candidate_budget_source")
+        if resolved is not None:
+            return {
+                "requested": engine_resolution.get("requested_candidate_budget", requested),
+                "resolved": int(resolved),
+                "source": str(source or "engine_resolved"),
+            }
+        if str(source) == "pending":
+            # The engine exists but has not loaded its artifact yet, so the
+            # capability data that resolves the depth is not available.
+            return {
+                "requested": engine_resolution.get("requested_candidate_budget", requested),
+                "resolved": None,
+                "source": "pending",
+            }
+    if config.speculative_provider is not None:
+        return {
+            "requested": requested,
+            "resolved": int(DEFAULT_PROVIDER_CANDIDATE_BUDGET),
+            "source": "provider_default",
+        }
+    return {"requested": requested, "resolved": None, "source": "unresolved"}
+
+
+def _effective_speculative_candidate_budget(
+    config: ServerConfig,
+    *,
+    engine: Any | None = None,
+) -> int | None:
+    """Return the depth this server runs with, resolving an omitted request."""
+
+    return _candidate_budget_resolution(config, engine=engine)["resolved"]
+
+
 def _speculative_provider_route_for_request(
     config: ServerConfig,
     request: CompletionRequest | ChatCompletionRequest,
@@ -13520,10 +15782,18 @@ def _speculative_provider_route_for_request(
         )
     configured_provider = config.speculative_provider
     if configured_provider is None:
+        # ``speculative: true`` is the generic client spelling for speculative
+        # decoding.  On a model with the native MTP route, map it to that route
+        # instead of rejecting a server-default request merely because no
+        # legacy external provider was configured.  If MTP is unavailable, the
+        # caller gets the typed 501 below rather than a misleading 400.
+        if _engine_supports_speculative_mtp(engine):
+            return _SPECULATIVE_MTP_BATCH_ROUTE
         raise OpenAIHTTPError(
-            400,
-            "speculative provider serving is not configured for this server",
-            code="unsupported_parameter",
+            501,
+            "speculative decoding is not supported by this model/backend",
+            error_type="unsupported_feature",
+            code="unsupported_feature",
             param="speculative",
         )
     selected_provider = requested_provider or configured_provider
@@ -13534,12 +15804,11 @@ def _speculative_provider_route_for_request(
             code="unsupported_parameter",
             param="speculative",
         )
+    effective_budget = _effective_speculative_candidate_budget(config, engine=engine)
     candidate_budget = (
-        int(config.speculative_candidate_budget)
-        if requested_budget is None
-        else int(requested_budget)
+        effective_budget if requested_budget is None else int(requested_budget)
     )
-    if candidate_budget != int(config.speculative_candidate_budget):
+    if effective_budget is not None and candidate_budget != effective_budget:
         raise OpenAIHTTPError(
             400,
             "requested speculative candidate budget does not match the configured owner",
@@ -13621,18 +15890,16 @@ def _engine_speculative_mtp_serving_plan(
     effective_sampling = sampling
     if _request_speculative_mtp_thinking(config, request) == "hint":
         effective_sampling = relax_thinking_budget_for_mtp(sampling)
-    sampling_mode = (
-        "greedy_fast"
-        if supports_speculative_mtp_sampling(effective_sampling)
-        else "processed_argmax"
-    )
+    sampling_mode = speculative_serving_sampling_mode(effective_sampling)
     decision = resolver(
         realized_group_rows=len(prompts),
         sampling_mode=sampling_mode,
-        context_tokens=max(_prompt_token_count(engine, prompt) for prompt in prompts),
-        output_horizon_tokens=int(effective_sampling.max_tokens),
         kv_storage=str(effective_sampling.kv_storage),
         memory_fit=True,
+        request_mode=(
+            "explicit" if _request_speculative_mtp_enabled(request) is True
+            else "automatic"
+        ),
     )
     if decision is None:
         return None
@@ -13640,6 +15907,86 @@ def _engine_speculative_mtp_serving_plan(
     if not isinstance(payload, Mapping):
         raise TypeError("speculative MTP serving plan must be a mapping")
     return deepcopy(dict(payload))
+
+
+def _mtp_plan_structural_rejection(plan: Mapping[str, Any]) -> str | None:
+    """Return the plan's failed correctness axis, if it failed one.
+
+    The resolver reports only the first failed axis as ``reason``, so a plan
+    that fails both a screenable physical axis and a structural one reports the
+    screenable axis. Structural safety therefore has to be read from
+    ``failed_axes``; a plan carrying no ``failed_axes`` (an older or hand-built
+    payload) is judged on its summary reason alone.
+    """
+
+    failed_axes = plan.get("failed_axes")
+    if isinstance(failed_axes, (list, tuple, frozenset, set)):
+        for axis in failed_axes:
+            if str(axis) in STRUCTURAL_REJECTION_AXES:
+                return str(axis)
+        return None
+    reason = str(plan.get("reason") or "")
+    return reason if reason in STRUCTURAL_REJECTION_AXES else None
+
+
+def _mtp_screening_static_eligibility(
+    plan: Mapping[str, Any],
+    *,
+    physical_max_rows: int,
+) -> dict[str, Any] | None:
+    """Build screening intent for an explicit request no evidence row admits.
+
+    Returns ``None`` unless the plan was rejected on a physical qualification
+    axis. Sampling-semantics, artifact-identity, and memory rejections stay
+    fail-closed: they are correctness boundaries rather than unmeasured cells,
+    so no operator override may enter the speculative route through them. The
+    resulting eligibility is never automatic, and the qualification marker it
+    carries is what keeps a screening run out of qualified evidence.
+
+    Structural safety is read from ``failed_axes``, not from the summary
+    ``reason``. A plan can fail several axes at once and the resolver reports
+    only the first one in declaration order, so a plan that fails both
+    ``candidate_budget_not_qualified`` and ``insufficient_memory`` reports the
+    screenable axis as its reason. Reading only the reason would admit a
+    memory-fit failure through the override. A plan that carries no
+    ``failed_axes`` (an older or hand-built payload) is judged on its reason
+    alone, which is the pre-existing behaviour.
+    """
+
+    reason = str(plan.get("reason") or "")
+    if reason not in _MTP_SCREENING_REASONS:
+        return None
+    if _mtp_plan_structural_rejection(plan) is not None:
+        return None
+    key = plan.get("key") if isinstance(plan.get("key"), Mapping) else {}
+    budget = int(key.get("candidate_budget", 0) or 0)
+    if budget <= 0:
+        return None
+    rows = max(1, int(physical_max_rows))
+    marker = {
+        "qualification": _MTP_SCREENING_QUALIFICATION,
+        "unqualified_reason": reason,
+        "max_realized_group_rows": rows,
+        "candidate_budget": budget,
+        "plan_fingerprint": plan.get("plan_fingerprint"),
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps(marker, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
+    return {
+        "state": "speculative_capable",
+        "eligible": True,
+        "reason": reason,
+        "max_candidate_count": budget,
+        "max_realized_group_rows": rows,
+        "automatic_eligible": False,
+        "strict_fallback_key": str(
+            plan.get("strict_fallback_key") or "gguf_target_ar"
+        ),
+        "evidence_key": _MTP_SCREENING_QUALIFICATION,
+        "evidence_fingerprint": fingerprint,
+        "evidence_artifacts": [],
+    }
 
 
 def _generation_route_for_request(
@@ -13679,13 +16026,62 @@ def _generation_route_for_request(
         prompts=prompts,
     )
     if plan is None:
+        if route == _SPECULATIVE_MTP_BATCH_ROUTE and _request_speculative_mtp_enabled(request) is not True:
+            return route, {"request_mode": "automatic"}
         return route, None
     explicit_requested = _request_speculative_mtp_enabled(request) is True
+    plan["request_mode"] = "explicit" if explicit_requested else "automatic"
+    plan_reason = str(plan.get("reason") or "")
+    if (
+        explicit_requested
+        and not bool(plan.get("admitted"))
+        and (
+            plan.get("implementation_key")
+            or plan_reason == "mtp_contract_unsupported"
+        )
+    ):
+        raise OpenAIHTTPError(
+            501,
+            f"requested speculative_mtp cannot execute: {plan_reason}",
+            error_type="unsupported_feature",
+            code="unsupported_feature",
+            param="speculative_mtp",
+            extra={"hipengine": {"speculative_mtp": {
+                "reason": plan_reason,
+                "implementation_key": plan.get("implementation_key"),
+                "key": plan.get("key"),
+            }}},
+        )
     defer_physical_group = bool(
         explicit_requested
         and not bool(plan.get("admitted"))
-        and str(plan.get("reason")) == "physical_group_not_qualified"
+        and plan_reason == "physical_group_not_qualified"
     )
+    screening_payload = None
+    if (
+        explicit_requested
+        and not bool(plan.get("admitted"))
+        and _mtp_unqualified_screening_enabled()
+    ):
+        screening_payload = _mtp_screening_static_eligibility(
+            plan,
+            physical_max_rows=_gguf_mtp_batch_route_max_active_requests(
+                config, engine
+            ),
+        )
+    if screening_payload is not None:
+        plan["static_eligibility"] = screening_payload
+        plan["screening"] = True
+        plan["qualification"] = _MTP_SCREENING_QUALIFICATION
+        plan["unqualified_reason"] = plan_reason
+    if explicit_requested and not plan.get("admitted") and not defer_physical_group and screening_payload is None:
+        raise OpenAIHTTPError(
+            501,
+            f"requested speculative_mtp cannot execute: {plan_reason}",
+            error_type="unsupported_feature",
+            code="unsupported_feature",
+            param="speculative_mtp",
+        )
     static_payload = plan.get("static_eligibility")
     static_eligible = bool(
         isinstance(static_payload, Mapping)
@@ -13709,7 +16105,11 @@ def _generation_route_for_request(
         )
     )
     if route == _SPECULATIVE_MTP_BATCH_ROUTE and (
-        (not bool(plan.get("admitted")) and not defer_physical_group)
+        (
+            not bool(plan.get("admitted"))
+            and not defer_physical_group
+            and screening_payload is None
+        )
         or (
             not explicit_requested
             and not bool(plan.get("automatic_eligible"))
@@ -14993,6 +17393,137 @@ def _message_content_text(content: str | list[Any] | None, message_index: int) -
     return "".join(text_parts)
 
 
+class _LiteralStopStream:
+    """Hold possible stop prefixes before publishing any response text.
+
+    Keep original chunk boundaries where possible, and drain the backend after
+    a match so its terminal IDs, usage and speculative attribution survive.
+    """
+
+    def __init__(self, stop: str | list[str] | None) -> None:
+        self.stops = tuple(s for s in _stop_strings(stop) if s)
+        self.matched = False
+        self.raw_parts: list[str] = []
+        self.pending: list[GenerationStreamChunk] = []
+
+    @property
+    def raw_text(self) -> str:
+        return "".join(self.raw_parts)
+
+    def feed(self, chunk: GenerationStreamChunk) -> list[GenerationStreamChunk]:
+        self.raw_parts.append(chunk.text)
+        if self.matched:
+            return [replace(chunk, text="", token_logprobs=())]
+        if not chunk.text:
+            # A byte-level tokenizer publishes an incomplete UTF-8 fragment as a
+            # chunk with no text. Its record belongs to the character that
+            # completes next, so it must survive to be coalesced onto that
+            # chunk; dropping it would leave the client unable to rebuild the
+            # text from token bytes.
+            return [chunk]
+        self.pending.append(chunk)
+        text = "".join(item.text for item in self.pending)
+        boundary, full = self._stop_boundary(text)
+        if full is not None and full <= boundary:
+            self.matched = True
+            result = self._drain(full, partial=True)
+            self.pending.clear()
+            return result
+        return self._drain(boundary, partial=False)
+
+    def _stop_boundary(self, text: str) -> tuple[int, int | None]:
+        """Return the safe publish length and the earliest completed match.
+
+        A stop that has only partly arrived can still start earlier than one
+        that already matched. Publishing past the earlier start would let a
+        shorter stop win over a longer one that the client's text still
+        contains, so the boundary is the earliest of the two. Publishing is
+        held until the longer candidate resolves or the stream ends.
+        """
+
+        matches = [text.find(stop) for stop in self.stops if stop in text]
+        full = min(matches) if matches else None
+        boundary = len(text)
+        for stop in self.stops:
+            for start in range(max(0, len(text) - len(stop) + 1), len(text)):
+                if stop.startswith(text[start:]):
+                    boundary = min(boundary, start)
+                    break
+        return (boundary if full is None else min(boundary, full)), full
+
+    def _drain(self, count: int, *, partial: bool) -> list[GenerationStreamChunk]:
+        result = []
+        while self.pending and count > 0:
+            chunk = self.pending[0]
+            if len(chunk.text) > count:
+                if partial:
+                    # A stop inside a token has no probability for the visible
+                    # fragment. Preserve its ID, but report that logprob omitted.
+                    records = []
+                    left = count
+                    for token in chunk.token_logprobs:
+                        if left <= 0:
+                            break
+                        if len(token.token_text) <= left:
+                            records.append(token)
+                        else:
+                            records.append(replace(token, token_text=token.token_text[:left],
+                                                   logprob=None, top_logprobs=()))
+                        left -= len(token.token_text)
+                    result.append(replace(chunk, text=chunk.text[:count], token_logprobs=tuple(records)))
+                break
+            self.pending.pop(0)
+            result.append(chunk)
+            count -= len(chunk.text)
+        return result
+
+    def finish(self) -> list[GenerationStreamChunk]:
+        if self.pending and not self.matched:
+            text = "".join(item.text for item in self.pending)
+            matches = [text.find(stop) for stop in self.stops if stop in text]
+            if matches:
+                # Held text that turned out to contain a stop: apply the same
+                # earliest-match rule the non-streaming path uses.
+                self.matched = True
+                result = self._drain(min(matches), partial=True)
+                self.pending.clear()
+                return result
+        result, self.pending = self.pending, []
+        return result
+
+
+async def _iterate_with_literal_stops(iterator, control, stops):
+    source = _iterate_with_request_control(iterator, control)
+    last = None
+    try:
+        async for token in source:
+            if not stops.stops:
+                yield token
+                continue
+            last = _coerce_generation_stream_chunk(token)
+            for chunk in stops.feed(last):
+                yield chunk
+        if stops.stops:
+            for chunk in stops.finish():
+                yield chunk
+            if last is not None:
+                # Buffered text can outlive the backend's terminal chunk. The
+                # final metadata must still come from that terminal chunk.
+                yield replace(last, text="", token_logprobs=())
+    finally:
+        await source.aclose()
+
+
+def _literal_stop_terminal_chunk(chunk, matched):
+    if chunk is None or not matched:
+        return chunk
+    finish = chunk.finish_details or FinishDetails(reason="stop")
+    return replace(chunk, finish_details=replace(
+        finish, reason="stop", length_limit=None, eos_token_id=None,
+        continuation_eligible=False,
+    ))
+
+
 def _apply_stop(text: str, stop: str | list[str] | None) -> tuple[str, str, str | None]:
     """Trim at the earliest requested stop string and name the one that matched.
 
@@ -15001,7 +17532,6 @@ def _apply_stop(text: str, stop: str | list[str] | None) -> tuple[str, str, str 
     ``reason`` to ``stop`` while keeping the backend's ``eos_token_id`` reports
     two different causes for one finish.
     """
-
     stops = _stop_strings(stop)
     if not stops:
         return text, "stop", None
@@ -15427,6 +17957,27 @@ def _stop_strings(stop: str | list[str] | None) -> tuple[str, ...]:
     return tuple(str(item) for item in stop)
 
 
+def _request_eos_token_id(
+    request: CompletionRequest | ChatCompletionRequest,
+    engine: Any,
+) -> int | None:
+    """Resolve the model EOS before validating a minimum-output request."""
+    if request.eos_token_id is not None:
+        return int(request.eos_token_id)
+    if not request.min_tokens:
+        return None
+    target = _model_chat_protocol_target(engine, initialize=True)
+    eos = getattr(getattr(target, "tokenizer", None), "eos_token_id", None)
+    if eos is None:
+        raise OpenAIHTTPError(
+            400,
+            "min_tokens requires eos_token_id when the model tokenizer does not declare one",
+            code="invalid_request",
+            param="min_tokens",
+        )
+    return int(eos)
+
+
 def _stop_tokens_from_stop(
     stop: str | list[str] | None,
     engine: Any,
@@ -15440,15 +17991,20 @@ def _stop_tokens_from_stop(
     token_ids: list[int] = []
     sequences: list[tuple[int, ...]] = []
     for item in stops:
-        try:
-            ids = tuple(int(token) for token in tokenizer(item))
-        except (KeyError, NotImplementedError, TypeError, ValueError):
-            continue
-        if len(ids) == 1:
-            if ids[0] not in token_ids:
-                token_ids.append(ids[0])
-        elif len(ids) > 1 and ids not in sequences:
-            sequences.append(ids)
+        # BPE often merges the preceding whitespace into the first word.
+        # Keep the standalone spelling and the common contextual spellings;
+        # arbitrary token-boundary substrings still use response post-trimming.
+        spellings = (item,) if item[0].isspace() else (item, " " + item, "\n" + item)
+        for spelling in spellings:
+            try:
+                ids = tuple(int(token) for token in tokenizer(spelling))
+            except (KeyError, NotImplementedError, TypeError, ValueError):
+                continue
+            if len(ids) == 1:
+                if ids[0] not in token_ids:
+                    token_ids.append(ids[0])
+            elif len(ids) > 1 and ids not in sequences:
+                sequences.append(ids)
     return tuple(token_ids), tuple(sequences)
 
 
@@ -15537,76 +18093,6 @@ def _completion_logprobs(detail: GenerationOutput, text: str, *, echo_text: str 
     if omitted:
         payload.setdefault("hipengine", {})["omitted_token_logprobs"] = omitted
     return payload
-
-
-async def _stop_filtered_stream(
-    source: AsyncIterator[Any], stops: str | Sequence[str] | None,
-) -> AsyncIterator[GenerationStreamChunk]:
-    """Publish safe text prefixes, retaining only possible stop suffixes.
-
-    Token stops still belong to the backend. If in-context tokenization misses
-    one, drain its remaining events to preserve authoritative commit accounting.
-    Do not manufacture partial-token logprobs at a text-stop boundary.
-    """
-    stops = tuple(s for s in ((stops,) if isinstance(stops, str) else stops or ()) if s)
-    pending = ""
-    records: list[TokenLogprob] = []
-    matched = False
-    last = None
-    try:
-        async for value in source:
-            chunk = _coerce_generation_stream_chunk(value)
-            if not stops:
-                yield chunk
-                continue
-            last = chunk
-            if matched:
-                continue
-            pending += chunk.text
-            records.extend(chunk.token_logprobs)
-            positions = [i for stop in stops if (i := pending.find(stop)) >= 0]
-            hold = max((size for stop in stops for size in range(1, min(len(stop), len(pending) + 1))
-                        if pending.endswith(stop[:size])), default=0)
-            safe_end = len(pending) - hold
-            if positions and min(positions) <= safe_end:
-                cut = min(positions)
-                matched = True
-            else:
-                # An earlier incomplete stop takes precedence over a later
-                # completed one if it completes on the next chunk.
-                cut = safe_end
-                # A token (or UTF-8 byte group) crossing the safe boundary must
-                # stay intact until the suffix is resolved.
-                for start, end in logprob_text_spans(records):
-                    if start < cut < end:
-                        cut = start
-                        break
-            if cut:
-                spans = tuple(logprob_text_spans(records))
-                selected = tuple(token for token, (start, _end) in zip(records, spans, strict=True)
-                                 if start < cut)
-                yield replace(chunk, text=pending[:cut], token_logprobs=selected,
-                              finish_details=None)
-                records = [token for token, (_start, end) in zip(records, spans, strict=True) if end > cut]
-                pending = pending[cut:]
-            if matched:
-                pending = ""
-                records.clear()
-        if stops and last is not None:
-            positions = [i for stop in stops if (i := pending.find(stop)) >= 0]
-            if positions:
-                pending = pending[:min(positions)]
-                matched = True
-            if pending:
-                yield replace(last, text=pending, token_logprobs=tuple(records), finish_details=None)
-            finish = last.finish_details
-            if matched:
-                finish = FinishDetails(reason="stop") if finish is None else replace(finish, reason="stop")
-            yield replace(last, text="", token_logprobs=(), finish_details=finish)
-    finally:
-        close = getattr(source, "aclose", None)
-        if close is not None:
-            await close()
 
 
 def _coalesce_stream_logprobs(
@@ -15959,6 +18445,11 @@ def _usage(
         completion_details["rejected_prediction_tokens"] = rejected
     if completion_details:
         usage["completion_tokens_details"] = completion_details
+    cached_tokens = _prefix_cached_token_total(details)
+    if cached_tokens is not None:
+        # Reuse can only shrink prompt work, never grow it, so the reported
+        # count is clamped to the prompt it was served from.
+        usage["prompt_tokens_details"] = {"cached_tokens": min(cached_tokens, prompt_tokens)}
     return usage
 
 
@@ -15977,6 +18468,34 @@ def _mtp_telemetry_parts(detail: GenerationOutput) -> tuple[Mapping[str, Any] | 
     return (timing if isinstance(timing, Mapping) else None), decode_state, timing_owner is not False
 
 
+def _mtp_execution_accounting(detail: GenerationOutput) -> Mapping[str, Any] | None:
+    """Return one output's per-request MTP-versus-AR execution block.
+
+    The backend publishes it under ``diagnostics.specdec2_mtp2`` for every
+    request that carried speculative intent, including requests that were
+    refused before any speculative cycle ran.  Absence means the request never
+    had speculative intent, which is different from a refusal with zero
+    coverage.
+    """
+
+    telemetry = getattr(detail, "telemetry", None)
+    if isinstance(telemetry, Mapping):
+        diagnostics = telemetry.get("diagnostics")
+    else:
+        diagnostics = None if telemetry is None else getattr(telemetry, "diagnostics", None)
+    if not isinstance(diagnostics, Mapping):
+        return None
+    block = diagnostics.get("specdec2_mtp2")
+    return block if isinstance(block, Mapping) else None
+
+
+def _mtp_counted_int(value: Any) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _mtp_accepted_rejected_counts(
     details: Sequence[GenerationOutput] | None,
 ) -> tuple[int, int] | None:
@@ -15993,10 +18512,20 @@ def _mtp_accepted_rejected_counts(
     found = False
     for detail in (details or ()):
         timing, _, timing_owner = _mtp_telemetry_parts(detail)
-        if timing is None or not timing_owner:
+        if timing is not None and not timing_owner:
             continue
-        row_accepted = timing.get("mtp_accepted_draft_tokens")
-        row_generated = timing.get("mtp_generated_draft_tokens")
+        row_accepted = None if timing is None else timing.get("mtp_accepted_draft_tokens")
+        row_generated = None if timing is None else timing.get("mtp_generated_draft_tokens")
+        if row_accepted is None and row_generated is None:
+            telemetry = getattr(detail, "telemetry", None)
+            diagnostics = (
+                telemetry.get("diagnostics")
+                if isinstance(telemetry, Mapping)
+                else getattr(telemetry, "diagnostics", None)
+            )
+            if isinstance(diagnostics, Mapping) and diagnostics.get("speculative_provider"):
+                row_accepted = diagnostics.get("accepted_draft_tokens", 0)
+                row_generated = diagnostics.get("proposed_draft_tokens", 0)
         if row_accepted is None and row_generated is None:
             continue
         found = True
@@ -16005,6 +18534,99 @@ def _mtp_accepted_rejected_counts(
     if not found:
         return None
     return accepted, max(0, generated - accepted)
+
+
+def _prefix_cache_diagnostics(detail: GenerationOutput) -> Mapping[str, Any] | None:
+    """Return one output's per-request prefix-cache block, when the backend published it."""
+
+    telemetry = getattr(detail, "telemetry", None)
+    if isinstance(telemetry, Mapping):
+        diagnostics = telemetry.get("diagnostics")
+    else:
+        diagnostics = None if telemetry is None else getattr(telemetry, "diagnostics", None)
+    if not isinstance(diagnostics, Mapping):
+        return None
+    block = diagnostics.get("prefix_cache")
+    return block if isinstance(block, Mapping) else None
+
+
+def _prefix_cached_token_total(
+    details: Sequence[GenerationOutput] | None,
+) -> int | None:
+    """Sum prompt tokens served from the prefix cache across generation outputs.
+
+    Mirrors vLLM's ``usage.prompt_tokens_details.cached_tokens``: the count is a
+    subset of ``prompt_tokens``, and a request that reused nothing reports zero.
+    Returns ``None`` when no output carried prefix-cache telemetry, which is
+    different from a cache that was consulted and missed -- callers must not
+    report a zero they did not measure.
+    """
+
+    cached = 0
+    found = False
+    for detail in (details or ()):
+        block = _prefix_cache_diagnostics(detail)
+        if block is None:
+            continue
+        found = True
+        reused = block.get("reused_tokens")
+        if isinstance(reused, int) and not isinstance(reused, bool) and reused > 0:
+            cached += reused
+    return cached if found else None
+
+
+def _mtp_output_reconciliation(
+    *,
+    completion_tokens: int,
+    mtp_output_tokens: int,
+    ar_output_tokens: int,
+    ar_cycle_output_tokens: int,
+    accepted_draft_tokens: int,
+    cycles: int,
+    depth_histogram: Mapping[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    """Check the MTP-versus-AR split against independently committed counts.
+
+    ``ar_output_tokens = completion_tokens - mtp_output_tokens`` holds by
+    construction, so it can never be evidence that the split is right; a
+    response reporting five completion tokens, three speculative ones and
+    ninety-nine in-cycle autoregressive ones satisfies it. The checks here are
+    the independent ones:
+
+    * every committed speculative cycle emits one verified token plus its
+      accepted drafts, so the cycle records bound the speculative output,
+    * in-cycle autoregressive output is a subset of the autoregressive output,
+    * speculative output requires committed cycles to have produced it,
+    * when diagnostic spans were recorded, they must tile the emitted output.
+
+    Returns the derived accounting fields and the list of failed checks. An
+    empty list means the split is attributable, not merely arithmetical.
+    """
+
+    reasons: list[str] = []
+    depth0_cycles = _mtp_counted_int(depth_histogram.get("0"))
+    speculative_cycles = max(0, int(cycles) - depth0_cycles)
+    # One verified token per committed speculative cycle, plus its accepted
+    # drafts. A cycle truncated at the output horizon can emit fewer, never
+    # more.
+    explained = max(0, int(accepted_draft_tokens)) + speculative_cycles
+    unexplained = max(0, int(mtp_output_tokens)) - explained
+    if int(ar_output_tokens) < 0:
+        reasons.append("ar_output_negative")
+    if int(mtp_output_tokens) > 0 and int(cycles) <= 0:
+        reasons.append("mtp_output_without_committed_cycles")
+    if int(ar_cycle_output_tokens) > max(0, int(ar_output_tokens)):
+        reasons.append("in_cycle_ar_output_exceeds_ar_output")
+    if unexplained > 0:
+        reasons.append("mtp_output_exceeds_committed_cycles")
+    return (
+        {
+            "mtp_output_tokens_explained_by_cycles": explained,
+            "unexplained_mtp_output_tokens": unexplained,
+            "speculative_cycles": speculative_cycles,
+        },
+        reasons,
+    )
 
 
 def _mtp_response_summary(
@@ -16025,6 +18647,24 @@ def _mtp_response_summary(
     generated = 0
     cycles = 0
     used = False
+    accounting_seen = False
+    mtp_output_tokens = 0
+    ar_cycle_output_tokens = 0
+    completion_tokens = 0
+    depth_histogram: Counter[str] = Counter()
+    fallback_reason_counts: Counter[str] = Counter()
+    output_spans: list[dict[str, Any]] = []
+    spans_recorded = False
+    prompt_fallback_reason: str | None = None
+    activation_reason: str | None = None
+    provider_readiness: str | None = None
+    provider_state_present: bool | None = None
+    provider_decline_reason: str | None = None
+    plan_group_rows: int | None = None
+    plan_ar_only: bool | None = None
+    plan_reason: str | None = None
+    cycle_timing: Mapping[str, Any] | None = None
+    first_fallback_position: int | None = None
     selected_route = "unknown" if route is None else str(route)
     for detail in (details or ()):
         timing, decode_state, timing_owner = _mtp_telemetry_parts(detail)
@@ -16034,6 +18674,129 @@ def _mtp_response_summary(
             execution_path = None if decode_state is None else getattr(decode_state, "execution_path", None)
         if execution_path and "mtp" in str(execution_path).lower():
             used = True
+        generated_tokens = _telemetry_generated_token_count(
+            getattr(detail, "telemetry", None)
+        )
+        if generated_tokens is not None:
+            completion_tokens += generated_tokens
+        block = _mtp_execution_accounting(detail)
+        if block is not None:
+            accounting_seen = True
+            block_spans = block.get("output_spans")
+            if isinstance(block_spans, Sequence) and not isinstance(
+                block_spans, (str, bytes)
+            ):
+                spans_recorded = True
+                output_spans.extend(
+                    dict(span) for span in block_spans if isinstance(span, Mapping)
+                )
+            block_cycles = _mtp_counted_int(block.get("cycles"))
+            block_mtp_outputs = _mtp_counted_int(block.get("mtp_output_tokens"))
+            if block_cycles > 0 or block_mtp_outputs > 0:
+                used = True
+            mtp_output_tokens += block_mtp_outputs
+            ar_cycle_output_tokens += _mtp_counted_int(
+                block.get("ar_output_tokens_in_cycles")
+            )
+            for depth, depth_cycles in (block.get("selected_depth_histogram") or {}).items():
+                depth_histogram[str(depth)] += _mtp_counted_int(depth_cycles)
+            prompt_reason = block.get("prompt_fallback_reason")
+            if prompt_reason is None:
+                # The same admission refusal is published under both names; read
+                # either so a block that reports only the explicit one still
+                # makes it the primary reason instead of folding to an event.
+                prompt_reason = block.get("activation_reason")
+            if prompt_reason:
+                fallback_reason_counts[str(prompt_reason)] += 1
+                if prompt_fallback_reason is None:
+                    prompt_fallback_reason = str(prompt_reason)
+            # The four refusal facts are collected separately from the folded
+            # ``fallback_reason`` below. Folding them is what made an engaged row
+            # (one initial provider wait) and a row refused for its whole life
+            # report the same reason.
+            block_activation = block.get("activation_reason")
+            if block_activation is not None and activation_reason is None:
+                activation_reason = str(block_activation)
+            block_readiness = block.get("provider_readiness")
+            if block_readiness is not None and provider_readiness is None:
+                provider_readiness = str(block_readiness)
+            block_state_present = block.get("provider_state_present")
+            if block_state_present is not None and provider_state_present is None:
+                provider_state_present = bool(block_state_present)
+            block_decline = block.get("provider_decline_reason")
+            if block_decline is not None and provider_decline_reason is None:
+                provider_decline_reason = str(block_decline)
+            block_group_rows = block.get("plan_group_rows")
+            if block_group_rows is not None and plan_group_rows is None:
+                plan_group_rows = _mtp_counted_int(block_group_rows)
+            block_ar_only = block.get("plan_ar_only")
+            if block_ar_only is not None and plan_ar_only is None:
+                plan_ar_only = bool(block_ar_only)
+            block_plan_reason = block.get("plan_reason")
+            if block_plan_reason is not None and plan_reason is None:
+                plan_reason = str(block_plan_reason)
+            block_cycle_timing = block.get("cycle_timing_ms")
+            if isinstance(block_cycle_timing, Mapping) and cycle_timing is None:
+                cycle_timing = {
+                    str(name): float(value)
+                    for name, value in block_cycle_timing.items()
+                    if isinstance(value, (int, float))
+                }
+            for reason, count in (block.get("ar_step_reason_counts") or {}).items():
+                fallback_reason_counts[str(reason)] += _mtp_counted_int(count)
+            for reason, count in (block.get("failure_reason_counts") or {}).items():
+                fallback_reason_counts[str(reason)] += _mtp_counted_int(count)
+            position = block.get("first_fallback_position")
+            if position is not None and first_fallback_position is None:
+                first_fallback_position = _mtp_counted_int(position)
+        if block is not None and _mtp_counted_int(block.get("cycles")) > 0:
+            # A per-row execution block is the authoritative cycle record and is
+            # available to streaming outputs too, where batch timing ownership
+            # would otherwise hide it.
+            accepted += _mtp_counted_int(block.get("accepted_draft_tokens"))
+            generated += _mtp_counted_int(block.get("generated_draft_tokens"))
+            cycles += _mtp_counted_int(block.get("cycles"))
+            continue
+        timing_generated = (
+            None if timing is None else timing.get("mtp_generated_draft_tokens")
+        )
+        timing_accepted = (
+            None if timing is None else timing.get("mtp_accepted_draft_tokens")
+        )
+        if timing_generated is None and timing_accepted is None:
+            # Gemma's assistant-head provider predates the normalized
+            # ``specdec2_mtp2`` block and publishes its counts directly in
+            # provider diagnostics. Keep the response extension truthful for
+            # that route instead of returning draft_tokens=0 while usage has
+            # already reported the same counts.
+            telemetry = getattr(detail, "telemetry", None)
+            diagnostics = (
+                telemetry.get("diagnostics")
+                if isinstance(telemetry, Mapping)
+                else getattr(telemetry, "diagnostics", None)
+            )
+            if (
+                isinstance(diagnostics, Mapping)
+                and diagnostics.get("speculative_provider")
+            ):
+                provider_cycles = diagnostics.get("cycles")
+                if isinstance(provider_cycles, Sequence) and not isinstance(
+                    provider_cycles, (str, bytes, bytearray)
+                ):
+                    provider_cycle_count = len(provider_cycles)
+                else:
+                    provider_cycle_count = _mtp_counted_int(
+                        diagnostics.get("cycle_count")
+                    )
+                accepted += _mtp_counted_int(
+                    diagnostics.get("accepted_draft_tokens")
+                )
+                generated += _mtp_counted_int(
+                    diagnostics.get("proposed_draft_tokens")
+                )
+                cycles += provider_cycle_count
+                used = True
+                continue
         if timing is None or not timing_owner:
             continue
         row_accepted = timing.get("mtp_accepted_draft_tokens")
@@ -16072,6 +18835,120 @@ def _mtp_response_summary(
         "acceptance_rate": (float(accepted) / float(generated)) if generated else None,
         "draft_cycles": cycles,
     }
+    if accounting_seen:
+        # ``used`` only says some speculation ran. These counts say how much of
+        # the emitted text came from which execution mode. The autoregressive
+        # count is whatever speculation did not cover, which reconciles
+        # arithmetically by construction, so ``reconciled`` is decided by the
+        # independent checks below rather than by that subtraction.
+        ar_output_tokens = completion_tokens - mtp_output_tokens
+        derived, reconcile_reasons = _mtp_output_reconciliation(
+            completion_tokens=completion_tokens,
+            mtp_output_tokens=mtp_output_tokens,
+            ar_output_tokens=ar_output_tokens,
+            ar_cycle_output_tokens=ar_cycle_output_tokens,
+            accepted_draft_tokens=accepted,
+            cycles=cycles,
+            depth_histogram=depth_histogram,
+        )
+        summary["mtp_output_tokens"] = mtp_output_tokens
+        summary["ar_output_tokens"] = max(0, ar_output_tokens)
+        output_accounting: dict[str, Any] = {
+            "completion_tokens": completion_tokens,
+            "mtp_output_tokens": mtp_output_tokens,
+            "ar_output_tokens": max(0, ar_output_tokens),
+            "ar_output_tokens_in_cycles": ar_cycle_output_tokens,
+            "mtp_coverage": (
+                float(mtp_output_tokens) / float(completion_tokens)
+                if completion_tokens > 0
+                else 0.0
+            ),
+            **derived,
+        }
+        if spans_recorded:
+            # Diagnostic mode: the committed spans must tile the emitted output
+            # and agree with both counters, so attribution is checked against
+            # what was emitted rather than against the subtraction.
+            spans = span_accounting(
+                output_spans,
+                completion_tokens=completion_tokens,
+                mtp_output_tokens=mtp_output_tokens,
+                ar_output_tokens=ar_output_tokens,
+                ar_output_tokens_in_cycles=ar_cycle_output_tokens,
+            )
+            output_accounting["span_accounting"] = spans
+            reconcile_reasons = reconcile_reasons + [
+                f"span:{reason}" for reason in spans["reconciled_reasons"]
+            ]
+        output_accounting["reconciled"] = not reconcile_reasons
+        output_accounting["reconciled_reasons"] = reconcile_reasons
+        summary["output_accounting"] = output_accounting
+        summary["selected_depth_histogram"] = {
+            depth: depth_histogram[depth]
+            for depth in sorted(depth_histogram, key=lambda value: int(value))
+        }
+        # These are event counts, not token counts: one entry per
+        # non-speculative step or refusal, which is a different quantity from
+        # ``ar_output_tokens`` (a token count) and from
+        # ``ar_output_tokens_in_cycles`` (the in-plan subset of those tokens).
+        # The field name carries the unit so the two can never be compared
+        # accidentally. Per-reason *token* attribution comes from
+        # ``output_accounting.span_accounting`` in diagnostic mode.
+        summary["fallback_event_counts"] = {
+            reason: fallback_reason_counts[reason]
+            for reason in sorted(fallback_reason_counts)
+        }
+        summary["fallback_event_total"] = sum(fallback_reason_counts.values())
+        # Reported separately from ``fallback_reason``: the activation reason is
+        # the row's own admission outcome, the readiness is whether its provider
+        # existed at all, the plan fields are what the group it ran in actually
+        # decided. A reader must be able to see all four at once, because a row
+        # can be route-qualified, plan-refused, and provider-absent together.
+        summary["execution"] = {
+            "activation_reason": activation_reason,
+            "provider_readiness": provider_readiness,
+            "provider_state_present": provider_state_present,
+            "provider_decline_reason": provider_decline_reason,
+            "plan_group_rows": plan_group_rows,
+            "plan_ar_only": plan_ar_only,
+            "plan_reason": plan_reason,
+        }
+        if cycle_timing is not None:
+            # Host-wall phase sums for this request's committed cycles, beside
+            # the cycle count they belong to. ``draft_cycles`` above is the
+            # divisor; without it a sum cannot be read as a per-cycle cost.
+            summary["cycle_timing_ms"] = dict(cycle_timing)
+        primary_fallback_reason = prompt_fallback_reason
+        if primary_fallback_reason is None and fallback_reason_counts:
+            # No admission-level refusal: report the reason that accounted for
+            # the most non-speculative steps (ties broken by name).
+            primary_fallback_reason = sorted(
+                fallback_reason_counts.items(), key=lambda item: (-item[1], item[0])
+            )[0][0]
+        if (
+            primary_fallback_reason == "no_provider"
+            and used
+            and provider_readiness == "ready"
+            and not plan_ar_only
+            and first_fallback_position is None
+        ):
+            # ``no_provider`` can describe the target-root/K0 bookkeeping that
+            # surrounds an otherwise engaged provider. It is not a fallback
+            # reason when the provider was ready and no output position left
+            # speculative execution. Do not publish it beside ``used: true``.
+            primary_fallback_reason = None
+        if primary_fallback_reason is not None:
+            summary["fallback_reason"] = primary_fallback_reason
+        # ``None`` means speculation covered every token after the prompt root;
+        # ``0`` means speculation never covered any token. Only the backend can
+        # report a position between those two, because it sees each cycle.
+        summary["first_fallback_position"] = (
+            first_fallback_position
+            if first_fallback_position is not None
+            else 0
+            if mtp_output_tokens == 0
+            else None
+        )
     if backend_k0_fallback:
         summary["selected_route"] = selected_route
         summary["decision_reason"] = "backend_k0_fallback"
@@ -16089,6 +18966,17 @@ def _mtp_response_summary(
                 if backend_k0_fallback or resident_dynamic_mtp
                 else "decision_reason"
             ] = str(decision_reason)
+        if bool(route_decision.get("screening")):
+            # An operator-enabled screening run measured a cell that no retained
+            # evidence row qualifies. Report it explicitly so its rate cannot be
+            # read as a qualified route.
+            summary["qualification"] = str(
+                route_decision.get("qualification") or "explicit_screening_unqualified_cell"
+            )
+            summary["unqualified"] = True
+            unqualified_reason = route_decision.get("unqualified_reason")
+            if unqualified_reason is not None:
+                summary["unqualified_reason"] = str(unqualified_reason)
     if used and thinking_policy is not None:
         policy = str(thinking_policy)
         summary["thinking_policy"] = policy
@@ -16225,8 +19113,8 @@ def _safe_count(counter: Any, text: str) -> int:
         return 0
 
 
-_REASONING_OPEN_TAG = "<think>"
-_REASONING_CLOSE_TAG = "</think>"
+_REASONING_OPEN_TAGS = ("<think>", "<|channel>thought\n")
+_REASONING_CLOSE_TAGS = ("</think>", "<channel|>")
 
 
 class _ReasoningSplitter:
@@ -16277,9 +19165,12 @@ class _ReasoningSplitter:
     def _drain(self, *, final: bool) -> list[_ReasoningPart]:
         outputs: list[_ReasoningPart] = []
         while self._buffer:
-            markers = (
-                (self._buffer.find(_REASONING_OPEN_TAG), _REASONING_OPEN_TAG, True),
-                (self._buffer.find(_REASONING_CLOSE_TAG), _REASONING_CLOSE_TAG, False),
+            markers = tuple(
+                (self._buffer.find(tag), tag, next_state)
+                for tags, next_state in (
+                    (_REASONING_OPEN_TAGS, True), (_REASONING_CLOSE_TAGS, False)
+                )
+                for tag in tags
             )
             found = min((item for item in markers if item[0] >= 0), default=None)
             if found is not None:
@@ -16295,9 +19186,17 @@ class _ReasoningSplitter:
                 self._buffer = ""
                 break
             keep = max(
-                _tag_suffix_len(self._buffer, _REASONING_OPEN_TAG),
-                _tag_suffix_len(self._buffer, _REASONING_CLOSE_TAG),
+                _tag_suffix_len(self._buffer, tag)
+                for tag in (*_REASONING_OPEN_TAGS, *_REASONING_CLOSE_TAGS)
             )
+            # A terminal marker can straddle stream chunks. Hold both partial
+            # and complete trailing markers until finish_parts can strip them;
+            # once emitted, a client cannot retract them.
+            keep = max(keep, *(
+                len(tag) if self._buffer.endswith(tag)
+                else _tag_suffix_len(self._buffer, tag)
+                for tag in _CHAT_TEMPLATE_TERMINAL_MARKERS
+            ))
             emit_len = len(self._buffer) - keep
             if emit_len > 0:
                 self._append(outputs, self._buffer[:emit_len], self._buffer_start)
@@ -16328,11 +19227,13 @@ def _tag_suffix_len(text: str, tag: str) -> int:
 
 
 def _classify_chat_length_phase(text: str) -> str:
-    if _tag_suffix_len(text, _REASONING_OPEN_TAG):
+    if any(_tag_suffix_len(text, tag) for tag in _REASONING_OPEN_TAGS):
         return "reasoning"
-    in_reasoning = text.rfind(_REASONING_OPEN_TAG) > text.rfind(_REASONING_CLOSE_TAG)
+    in_reasoning = max(text.rfind(tag) for tag in _REASONING_OPEN_TAGS) > max(
+        text.rfind(tag) for tag in _REASONING_CLOSE_TAGS
+    )
     if in_reasoning:
-        if _tag_suffix_len(text, _REASONING_CLOSE_TAG):
+        if any(_tag_suffix_len(text, tag) for tag in _REASONING_CLOSE_TAGS):
             return "closing_think"
         return "reasoning"
     if _has_unclosed_tool_call(text):
@@ -16867,7 +19768,7 @@ def _validate_chat_tool_result(
         if strict and mode in {"required", "function"}:
             return _tool_validation_failure("tool_required_not_satisfied")
         return _ToolValidationResult(parsed)
-    if len(parsed.tool_calls) > 1 and not bool(request.parallel_tool_calls):
+    if len(parsed.tool_calls) > 1 and request.parallel_tool_calls is False:
         return _tool_validation_failure("invalid_tool_call")
 
     tools_by_name = _tool_map_by_name(request.tools)
@@ -17990,7 +20891,11 @@ class _StreamTokenAccounting:
 class _StreamTimingTracker:
     started_at: float
     first_token_at: float | None = None
+    first_chunk_tokens: int | None = None
+    last_token_at: float | None = None
+    last_chunk_tokens: int = 0
     observed_tokens: int = 0
+    buffered: bool = False
 
     @classmethod
     def start(cls) -> "_StreamTimingTracker":
@@ -18009,6 +20914,10 @@ class _StreamTimingTracker:
         if token_event:
             if self.first_token_at is None:
                 self.first_token_at = now
+                self.first_chunk_tokens = token_total if token_total > 0 else None
+            if token_total > self.last_chunk_tokens:
+                self.last_token_at = now
+                self.last_chunk_tokens = token_total
         if token_total > self.observed_tokens:
             self.observed_tokens = token_total
         return self.snapshot(now=now, event=event)
@@ -18020,12 +20929,28 @@ class _StreamTimingTracker:
             return payload
         ttft_s = max(0.0, self.first_token_at - self.started_at)
         payload["ttft_ms"] = round(ttft_s * 1000.0, 3)
-        if str(event) in {"done", "usage"}:
-            decode_elapsed_s = max(0.0, now - self.first_token_at)
+        if str(event) in {"done", "usage"} and not self.buffered and self.last_token_at is not None:
+            # The interval ends at the last token-bearing event, not at the
+            # final SSE flush. Tokens in the first chunk precede this interval.
+            decode_elapsed_s = max(0.0, self.last_token_at - self.first_token_at)
             payload["decode_elapsed_ms"] = round(decode_elapsed_s * 1000.0, 3)
-            if self.observed_tokens > 0:
-                payload["decode_tokens_per_second"] = round(self.observed_tokens / max(decode_elapsed_s, 1e-9), 3)
+            if self.first_chunk_tokens is not None:
+                decode_tokens = self.last_chunk_tokens - self.first_chunk_tokens
+                if decode_tokens > 0 and decode_elapsed_s > 0:
+                    payload["decode_tokens_per_second"] = round(decode_tokens / decode_elapsed_s, 3)
         return payload
+
+
+def _observe_stream_source(
+    tracker: "_StreamTimingSource", chunk: GenerationStreamChunk | None,
+) -> None:
+    """A completed first backend chunk is buffered, even if split into channels."""
+    if not isinstance(tracker, _StreamTimingTracker) or tracker.first_token_at is not None or chunk is None:
+        return
+    if chunk.finish_details is not None or (
+        chunk.telemetry is not None and chunk.telemetry.decode_state.phase == "done"
+    ):
+        tracker.buffered = True
 
 
 _StreamTimingSource = float | _StreamTimingTracker | None
@@ -18189,8 +21114,11 @@ def _attach_stream_hipengine(
     routing: Mapping[str, Any] | None = None,
     kv_pool: Mapping[str, float] | None = None,
 ) -> dict[str, Any]:
-    if include_hipengine:
-        payload["hipengine"] = _stream_hipengine_payload(
+    # A tracker is also created when only the --info summary needs it, so it has
+    # to be fed even when the client did not request stream metadata; the
+    # payload itself stays opt-in.
+    if include_hipengine or isinstance(stream_started_at, _StreamTimingTracker):
+        hipengine_payload = _stream_hipengine_payload(
             event,
             stream_started_at=stream_started_at,
             usage=usage,
@@ -18200,6 +21128,8 @@ def _attach_stream_hipengine(
             routing=routing,
             kv_pool=kv_pool,
         )
+        if include_hipengine:
+            payload["hipengine"] = hipengine_payload
     return payload
 
 
@@ -18218,6 +21148,7 @@ def _completion_stream_delta(
     routing: Mapping[str, Any] | None = None,
     phase: str = "answer",
 ) -> str:
+    _observe_stream_source(stream_started_at, stream_chunk)
     choice = {
         "text": text,
         "index": int(index),
@@ -18409,6 +21340,8 @@ def _completion_stream(
     done_phase: str = "done",
     scheduler_token_chunks: Sequence[Mapping[str, Any]] | None = None,
 ) -> Iterator[str]:
+    if isinstance(stream_started_at, _StreamTimingTracker):
+        stream_started_at.buffered = True
     choices_by_index = {int(choice["index"]): choice for choice in choices}
     details_by_index = (
         {index: detail for index, detail in enumerate(details)}
@@ -18794,6 +21727,7 @@ def _chat_stream_delta(
     routing: Mapping[str, Any] | None = None,
     phase: str | None = None,
 ) -> str:
+    _observe_stream_source(stream_started_at, stream_chunk)
     choice: dict[str, Any] = {"index": int(index), "delta": {field: text}, "finish_reason": None}
     if logprobs is not None:
         choice["logprobs"] = dict(logprobs)
@@ -18839,6 +21773,7 @@ def _chat_stream_tool_call(
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
 ) -> str:
+    _observe_stream_source(stream_started_at, stream_chunk)
     function: dict[str, Any] = {"arguments": call.arguments if argument_chunk is None else str(argument_chunk)}
     if include_name:
         function["name"] = call.name
@@ -18910,6 +21845,8 @@ def _chat_stream_parsed(
     kv_pool: Mapping[str, float] | None = None,
     done_phase: str = "done",
 ) -> Iterator[str]:
+    if isinstance(stream_started_at, _StreamTimingTracker):
+        stream_started_at.buffered = True
     split = _split_reasoning(
         parsed.text,
         initially_open=parsed.reasoning_initially_open,
@@ -19096,6 +22033,8 @@ def _chat_stream_scheduler_tool_call_chunks(
     routing: Mapping[str, Any] | None = None,
     kv_pool: Mapping[str, float] | None = None,
 ) -> Iterator[str]:
+    if isinstance(stream_started_at, _StreamTimingTracker):
+        stream_started_at.buffered = True
     last_stream_chunk: GenerationStreamChunk | None = None
     emitted_by_tool: set[int] = set()
     for fragment in fragments:
@@ -19172,6 +22111,8 @@ def _chat_stream_scheduler_text_chunks(
     kv_pool: Mapping[str, float] | None = None,
     done_phase: str = "done",
 ) -> Iterator[str]:
+    if isinstance(stream_started_at, _StreamTimingTracker):
+        stream_started_at.buffered = True
     splitter = _ReasoningSplitter(initially_open=reasoning_initially_open)
     last_stream_chunk: GenerationStreamChunk | None = None
     for raw_chunk in scheduler_chunks:

@@ -3,6 +3,11 @@ from __future__ import annotations
 import pytest
 
 from hipengine.kvcache.device_global import GlobalDeviceKVPool
+from hipengine.kvcache.pool import DeviceKVContiguityError
+from hipengine.runtime.memory_admission import (
+    ADMISSION_REFUSAL_CODE,
+    MemoryAdmissionRefused,
+)
 
 
 def _pool(*, pages: int = 6):
@@ -24,6 +29,55 @@ def _pool(*, pages: int = 6):
         close_storage=lambda: closed.append(True),
     )
     return pool, closed
+
+
+@pytest.mark.parametrize("fragmented", [False, True])
+@pytest.mark.parametrize("max_pages", [4, 8])
+def test_private_allocation_grows_a_whole_chunk_or_refuses(
+    monkeypatch, fragmented: bool, max_pages: int
+) -> None:
+    pool, _ = _pool(pages=2)
+    pool._max_pages = max_pages
+    pool._growth_chunk_pages = 1
+    grown = []
+
+    def grow(pages, start):
+        grown.append(pages)
+        return (
+            {role: tuple(0xD000 + (start + i) * 256 for i in range(pages))
+             for role in ("layer0.key", "layer0.value")},
+            {"layer0.key": 0xE000, "layer0.value": 0xF000},
+            {"arena": start},
+        )
+
+    pool._grow_storage = grow
+    if fragmented:
+        pool.grow(2)
+    pool.allocate(1, 1)
+    grown.clear()
+    allocate = pool._allocate_within_one_chunk
+    attempts = 0
+
+    def bounded_allocate(*args, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        assert attempts <= 3, "private allocation retried without placement progress"
+        return allocate(*args, **kwargs)
+
+    monkeypatch.setattr(pool, "_allocate_within_one_chunk", bounded_allocate)
+    if max_pages == 4:
+        with pytest.raises(MemoryError):
+            pool.allocate(2, 3)
+        assert grown == []
+        assert set(pool.allocations) == {1}
+    else:
+        allocation = pool.allocate(2, 3)
+        assert grown == [3]
+        assert len(allocation.block_ids) == 3
+        assert allocation.chunk_start_block_id == (4 if fragmented else 2)
+        pool.release(2)
+    pool.release(1)
+    pool.close()
 
 
 def test_global_device_pool_allocates_arbitrary_free_pages_without_chunks() -> None:
@@ -123,6 +177,7 @@ def test_global_device_pool_grows_on_pressure_with_graph_invalidation() -> None:
                 "layer0.value": (0x4200, 0x4300),
             },
             {"layer0.key": 0xA000, "layer0.value": 0xB000},
+            {"arena": 2},
         )
 
     pool = GlobalDeviceKVPool(
@@ -166,6 +221,7 @@ def test_shared_prefix_admission_grows_only_for_private_suffix() -> None:
                 "layer0.value": tuple(0x4200 + index * 0x100 for index in range(pages)),
             },
             {"layer0.key": 0xA000, "layer0.value": 0xB000},
+            {"arena": 2},
         )
 
     pool = GlobalDeviceKVPool(
@@ -188,13 +244,31 @@ def test_shared_prefix_admission_grows_only_for_private_suffix() -> None:
     pool.retain_blocks(source.block_ids)
     pool.release(1)
 
-    reused = pool.admit_with_shared_prefix(2, source.block_ids, suffix_pages=2)
-    assert reused.reused_block_ids == source.block_ids
-    assert len(reused.allocated_block_ids) == 2
+    # The prefix sits in the first storage chunk, which has one page left. A
+    # two-page suffix cannot join it there, and growth cannot help: it appends a
+    # separate chunk, and every KV kernel addresses one chunk from its own base,
+    # so a prefix and suffix split across chunks would index past the first one.
+    # The admission declines instead and the caller falls back to a private
+    # allocation, which is confined to one chunk as a whole and may use the
+    # appended one.
+    with pytest.raises(MemoryError):
+        pool.admit_with_shared_prefix(2, source.block_ids, suffix_pages=2)
+    assert grown == []
+    assert pool.stats.prefix_reused_pages == 0
+
+    private = pool.allocate(3, 2)
     assert grown == [2]
+    assert private.chunk_start_block_id == 3
+
+    # A suffix that does fit beside its prefix still reuses it.
+    reused = pool.admit_with_shared_prefix(4, source.block_ids, suffix_pages=1)
+    assert reused.reused_block_ids == source.block_ids
+    assert len(reused.allocated_block_ids) == 1
+    assert reused.chunk_start_block_id == 0
     assert pool.stats.prefix_reused_pages == 2
 
-    pool.release(2)
+    pool.release(3)
+    pool.release(4)
     pool.release_blocks(source.block_ids)
     pool.close()
 
@@ -260,4 +334,314 @@ def test_global_device_pool_workspace_lease_exhaustion_and_missing_release() -> 
     with pytest.raises(KeyError, match="second-workspace"):
         pool.release_workspace("second-workspace")
     pool.release_workspace("packed-ar")
+    pool.close()
+
+
+def test_global_device_pool_shared_admission_continues_the_prefix_run() -> None:
+    """A shared suffix continues the prefix instead of taking the lowest free pages."""
+
+    pool, _closed = _pool(pages=8)
+    pool.allocate(1, 4)
+    source = pool.allocate(2, 2)
+    pool.retain_blocks(source.block_ids)
+    pool.release(1)
+
+    shared = pool.admit_with_shared_prefix(
+        3,
+        source.block_ids,
+        suffix_pages=2,
+        require_contiguous=True,
+    )
+
+    assert source.block_ids == (4, 5)
+    assert shared.block_ids == (4, 5, 6, 7)
+    assert shared.reused_block_ids == (4, 5)
+    assert shared.allocated_block_ids == (6, 7)
+    pool.release(3)
+    pool.release(2)
+    pool.release_blocks(source.block_ids)
+    pool.close()
+
+
+def test_global_device_pool_shared_admission_rejects_a_gapped_run_when_required() -> None:
+    """A contiguous requirement declines the reuse instead of returning a gapped lease."""
+
+    pool, _closed = _pool(pages=8)
+    pool.allocate(1, 2)
+    source = pool.allocate(2, 2)
+    pool.retain_blocks(source.block_ids)
+    pool.release(2)
+    pool.allocate(3, 2)
+
+    with pytest.raises(DeviceKVContiguityError, match="contiguous shared-plus-private run"):
+        pool.admit_with_shared_prefix(
+            4,
+            source.block_ids,
+            suffix_pages=2,
+            require_contiguous=True,
+        )
+
+    # A declined admission leaves the pool conserved and the same pages reusable.
+    assert pool.stats.free_pages == 2
+    assert pool.refcount(source.block_ids[0]) == 1
+    shared = pool.admit_with_shared_prefix(4, source.block_ids, suffix_pages=2)
+    assert shared.block_ids == (2, 3, 6, 7)
+    assert pool.stats.prefix_reuse_events == 1
+    pool.release(4)
+    pool.release(3)
+    pool.release(1)
+    pool.release_blocks(source.block_ids)
+    pool.close()
+
+
+def test_private_workspace_shares_budget_with_arena_growth() -> None:
+    pool, _ = _pool(pages=2)
+    pool._max_pages = 5
+    grown = []
+
+    def grow(pages, start):
+        grown.append(pages)
+        return ({role: tuple(0xD000 + (start + i) * 256 for i in range(pages))
+                 for role in ("layer0.key", "layer0.value")},
+                {"layer0.key": 0xE000, "layer0.value": 0xF000})
+
+    pool._grow_storage = grow
+    token = pool.reserve_private_workspace(2 * pool.page_bytes)
+    assert pool.private_workspace_bytes == 256
+    assert pool.accounted_bytes == 512
+    with pytest.raises(MemoryError, match="budget"):
+        pool.grow(2)
+    assert grown == []
+    pool._growth_chunk_pages = 8
+    pool.allocate(1, 2)
+    pool.allocate(2, 1)  # automatic growth clamps to the remaining shared budget
+    assert grown == [1]
+    assert pool.accounted_bytes == pool.budget_bytes
+    with pytest.raises(MemoryError, match="budget"):
+        pool.reserve_private_workspace(1)
+    pool.release(1)
+    pool.release(2)
+    with pytest.raises(RuntimeError, match="private workspace"):
+        pool.close()
+    pool.release_private_workspace(token)
+    assert pool.private_workspace_bytes == 0
+    pool.grow(2)
+    pool.close()
+
+
+def test_private_workspace_counts_allocated_arena_not_only_live_pages() -> None:
+    pool, _ = _pool(pages=2)
+    pool._max_pages = 2
+    assert pool.stats.free_pages == 2
+    with pytest.raises(MemoryError, match="budget"):
+        pool.reserve_private_workspace(128)
+    assert pool.private_workspace_bytes == 0
+    pool.close()
+
+
+# --- one budget over every named resident consumer (task #15) -----------------
+
+#: The consumers the admission budget has to price. The pool's own arena covers
+#: the target KV and its scale planes; the rest are charged by name.
+_NAMED_CONSUMERS = (
+    "target_kv_scales",
+    "draft_kv",
+    "verifier_scratch",
+    "captured_graphs",
+    "retained_prefix",
+)
+
+
+def _budgeted_pool(pages: int = 2, max_pages: int = 4):
+    pool, closed = _pool(pages=pages)
+    pool._max_pages = max_pages
+    return pool, closed
+
+
+def test_resident_consumers_report_arena_first_then_charges_in_order() -> None:
+    pool, _ = _budgeted_pool()
+    first = pool.reserve_resident_bytes("verifier_scratch", 64)
+    second = pool.reserve_resident_bytes("captured_graphs", 32)
+    assert [item.name for item in pool.resident_consumers] == [
+        "kv_arena",
+        "verifier_scratch",
+        "captured_graphs",
+    ]
+    assert pool.resident_consumers[0].bytes == pool.current_pages * pool.page_bytes
+    assert pool.accounted_bytes == 256 + 96
+    pool.release_private_workspace(first)
+    pool.release_private_workspace(second)
+    assert [item.name for item in pool.resident_consumers] == ["kv_arena"]
+    assert pool.accounted_bytes == 256
+    pool.close()
+
+
+def test_private_workspace_charge_can_be_named() -> None:
+    """The KV-payload charge is one named consumer among the others."""
+
+    pool, _ = _budgeted_pool()
+    token = pool.reserve_private_workspace(64, "packed_verify_kv")
+    assert [item.name for item in pool.resident_consumers] == [
+        "kv_arena",
+        "packed_verify_kv",
+    ]
+    assert pool.private_workspace_bytes == 64
+    pool.release_private_workspace(token)
+    assert pool.private_workspace_bytes == 0
+    pool.close()
+
+
+def test_exact_boundary_charge_is_admitted_and_one_byte_more_is_refused() -> None:
+    """A consumer that fits exactly at the boundary succeeds."""
+
+    pool, _ = _budgeted_pool()
+    arena = pool.current_pages * pool.page_bytes
+    remaining = pool.budget_bytes - arena
+    assert remaining == 256
+    token = pool.reserve_resident_bytes("verifier_scratch", remaining)
+    assert pool.accounted_bytes == pool.budget_bytes
+    with pytest.raises(MemoryAdmissionRefused) as caught:
+        pool.reserve_resident_bytes("captured_graphs", 1)
+    assert caught.value.refused_consumer == "captured_graphs"
+    # The refused attempt charged nothing, so the caller allocated nothing.
+    assert pool.accounted_bytes == pool.budget_bytes
+    pool.release_private_workspace(token)
+    pool.close()
+
+
+@pytest.mark.parametrize("name", _NAMED_CONSUMERS)
+def test_each_named_consumer_is_the_refusal_reason_at_its_own_edge(name: str) -> None:
+    """Push each consumer to its budget edge and assert the refusal names it.
+
+    An unrelated consumer takes half the headroom first, so the refusal can only
+    be attributed to the consumer under test rather than to the arena.
+    """
+
+    pool, _ = _budgeted_pool()
+    arena = pool.current_pages * pool.page_bytes
+    remaining = pool.budget_bytes - arena
+    prior = remaining // 2
+    filler = pool.reserve_resident_bytes("unrelated_consumer", prior)
+
+    # The admitted side of this consumer's edge.
+    edge = pool.reserve_resident_bytes(name, remaining - prior)
+    assert pool.accounted_bytes == pool.budget_bytes
+    pool.release_private_workspace(edge)
+
+    before = pool.accounted_bytes
+    with pytest.raises(MemoryAdmissionRefused) as caught:
+        pool.reserve_resident_bytes(name, remaining - prior + 1)
+    refusal = caught.value
+    assert refusal.refused_consumer == name, (name, refusal.refused_consumer)
+    assert name in str(refusal)
+    assert refusal.code == ADMISSION_REFUSAL_CODE
+    assert isinstance(refusal, MemoryError)
+    assert pool.accounted_bytes == before
+    pool.release_private_workspace(filler)
+    pool.close()
+
+
+def test_unrelated_charge_value_behaves_the_same_on_both_sides() -> None:
+    """A byte count unrelated to any threshold is priced like any other."""
+
+    pool, _ = _budgeted_pool()
+    arena = pool.current_pages * pool.page_bytes
+    remaining = pool.budget_bytes - arena
+    odd = 77
+    filler = pool.reserve_resident_bytes("captured_graphs", remaining - odd)
+    edge = pool.reserve_resident_bytes("verifier_scratch", odd)
+    assert pool.accounted_bytes == pool.budget_bytes
+    pool.release_private_workspace(edge)
+    with pytest.raises(MemoryAdmissionRefused) as caught:
+        pool.reserve_resident_bytes("verifier_scratch", odd + 1)
+    assert caught.value.refused_consumer == "verifier_scratch"
+    pool.release_private_workspace(filler)
+    pool.close()
+
+
+def test_resident_charge_requires_a_name_and_positive_bytes() -> None:
+    pool, _ = _budgeted_pool()
+    with pytest.raises(ValueError):
+        pool.reserve_resident_bytes("   ", 8)
+    with pytest.raises(ValueError):
+        pool.reserve_resident_bytes("verifier_scratch", 0)
+    assert pool.private_workspace_bytes == 0
+    pool.close()
+
+
+def _growth_provider(grown: list[int]):
+    def grow(pages, start):
+        grown.append(pages)
+        return (
+            {
+                role: tuple(0xD000 + (start + i) * 256 for i in range(pages))
+                for role in ("layer0.key", "layer0.value")
+            },
+            {"layer0.key": 0xE000, "layer0.value": 0xF000},
+            {"arena": start},
+        )
+
+    return grow
+
+
+def test_growth_refuses_padded_physical_before_calling_the_provider() -> None:
+    """A granularity-padded growth is refused before any provider call.
+
+    ``budget_bytes`` is the logical page budget, but the prospective growth is
+    priced with the padded physical callback, so the boundary is respected
+    before a single byte is mapped.
+    """
+
+    pool, _ = _pool(pages=2)
+    pool.page_bytes = 1024
+    pool._max_pages = 4  # budget_bytes = 4096
+    pool._growth_chunk_pages = 1
+    # Physical commitment is twice the logical payload.
+    pool._physical_bytes_for_pages = lambda pages: pages * 2048
+    grown: list[int] = []
+    pool._grow_storage = _growth_provider(grown)
+
+    # Current padded commitment is 4096; one more page adds 2048 and exceeds
+    # the 4096-byte budget.
+    with pytest.raises(MemoryAdmissionRefused):
+        pool.grow(1)
+    assert grown == []
+    pool.close()
+
+
+def test_growth_without_padding_keeps_the_logical_boundary() -> None:
+    """A plain hipMalloc provider keeps its logical page budget."""
+
+    pool, _ = _pool(pages=2)
+    pool.page_bytes = 1024
+    pool._max_pages = 4  # budget_bytes = 4096
+    pool._growth_chunk_pages = 1
+    grown: list[int] = []
+    pool._grow_storage = _growth_provider(grown)
+
+    # Logical 2 * 1024 + 1 * 1024 = 3072 <= 4096, so growth proceeds.
+    pool.grow(1)
+    assert grown == [1]
+    pool.close()
+
+
+def test_ensure_free_pages_caps_at_the_padded_physical_budget() -> None:
+    """The contiguous-growth target is capped by padded physical pricing."""
+
+    pool, _ = _pool(pages=2)
+    pool.page_bytes = 1024
+    pool._max_pages = 8  # budget_bytes = 8192
+    pool._growth_chunk_pages = 1
+    pool._contiguous_growth = True
+    # Three logical pages fit (3072 <= 8192); four padded pages do not
+    # (4 * 2048 = 8192 exactly fits, 5 * 2048 = 10240 does not).
+    pool._physical_bytes_for_pages = lambda pages: pages * 2048
+    grown: list[int] = []
+    pool._grow_storage = _growth_provider(grown)
+
+    pool._ensure_free_pages(8)
+    # Uncapped the target would be 2 + 6 = 8 pages; padded physical pricing caps
+    # it at four (4 * 2048 = 8192 == budget, 5 * 2048 > budget).
+    assert grown == [2]
+    assert pool.global_pool.page_capacity == 4
     pool.close()

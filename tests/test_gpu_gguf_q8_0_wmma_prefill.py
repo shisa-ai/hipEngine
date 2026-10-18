@@ -1,7 +1,7 @@
 """Correctness tests for the GGUF Q8_0 batched WMMA prefill kernel.
 
 The kernel is the first batched prefill GEMM from the P8 plan
-(see ``docs/GGUF.md`` "P8: real batched prefill GEMM"). It mirrors the
+(see ``docs/reference/GGUF.md`` "P8: real batched prefill GEMM"). It mirrors the
 PARO ``awq_fusedw4_prefill_fp16_kernel`` template line-by-line and
 replaces the inner K-loop dequant block with Q8_0 byte decoding.
 
@@ -116,34 +116,80 @@ def test_gguf_q8_0_wmma_prefill_registry_and_build_plan() -> None:
     assert dry_run.output_path == artifact.output_path
 
 
-def test_gguf_q8_0_wmma_prefill_default_tiles_match_paro_heuristic() -> None:
-    """P9.C1 tuned heuristic: shape-aware (tile_m, tile_n) defaults.
+def test_gguf_q8_0_wmma_prefill_default_tiles_match_paro_heuristic(monkeypatch) -> None:
+    """Pinning test for the per-arch (tile_m, tile_n) default.
 
-    Pinning test for the per-shape dispatch decision. Each assertion below
-    is anchored to a microbench-best tile measured on RX 7900 XTX / gfx1100
-    at rows=512, BF16/BF16. Changing the heuristic must also change these
-    assertions deliberately (with new microbench evidence).
+    The default is keyed on the target arch (``_target_arch``): the gfx1100 and
+    gfx1151 sweeps ran on different physical hosts and retained different tiles,
+    so each arch is asserted against its own measured tile. Changing either
+    heuristic must also change its assertions deliberately, with new microbench
+    evidence.
+
+    gfx1100 (2026-09-27 sweep, thirteen shapes, rows 8/31/128/256/512/1024,
+    BF16/BF16; the sweep script is ``scripts/gemma4_dense_q8_tile_sweep.py``):
+    a flat tile_m of 16 with tile_n 32 above 32 rows beat the previous shape
+    cascade by 1.17-1.94x at rows >= 128 and 1.72-3.31x at rows 8/31.
+
+    gfx1151 (2026-09-28 sweeps, rows=512 BF16/BF16): a single tile_m of 32 with
+    tile_n 64 above 64 rows was fastest on three of gemma4's four dense prefill
+    geometries; the earlier shape ladder selected the slower tile on every
+    shape tested, including the qwen35moe shapes it was written for.
     """
 
-    # P9.C1 sweep: at rows=512 the optimal TN is 32 across all out_features.
-    # rows < 32 falls back to TN=16 because the bigger TN under-utilises the
-    # WMMA tile.
+    # gfx1100: rows >= 32 take (16, 32) at every measured shape, including the
+    # ones the old cascade sent to 32 or 64; rows < 32 take the narrower (16, 16).
+    monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1100")
     assert _default_tiles(rows=512, in_features=2048, out_features=8192) == (16, 32)
     assert _default_tiles(rows=512, in_features=2048, out_features=4096) == (16, 32)
-    assert _default_tiles(rows=512, in_features=4096, out_features=2048) == (64, 32)
-    assert _default_tiles(rows=512, in_features=2048, out_features=2048) == (32, 32)
+    assert _default_tiles(rows=512, in_features=4096, out_features=2048) == (16, 32)
+    assert _default_tiles(rows=512, in_features=2048, out_features=2048) == (16, 32)
     assert _default_tiles(rows=512, in_features=2048, out_features=512) == (16, 32)
     assert _default_tiles(rows=32, in_features=2048, out_features=8192) == (16, 32)
-    assert _default_tiles(rows=32, in_features=4096, out_features=2048) == (64, 32)
+    assert _default_tiles(rows=32, in_features=4096, out_features=2048) == (16, 32)
+    # Gemma 4's dense Q8_0 shapes, where the cascade picked (32, 32) or (64, 32).
+    assert _default_tiles(rows=512, in_features=2816, out_features=4096) == (16, 32)
+    assert _default_tiles(rows=512, in_features=2816, out_features=8192) == (16, 32)
+    assert _default_tiles(rows=512, in_features=4096, out_features=2816) == (16, 32)
+    assert _default_tiles(rows=512, in_features=8192, out_features=2816) == (16, 32)
+    assert _default_tiles(rows=512, in_features=2816, out_features=2112) == (16, 32)
+    assert _default_tiles(rows=512, in_features=2112, out_features=2816) == (16, 32)
+    # rows < 32: the narrower tile_n, and tile_m 16 rather than the cascade's
+    # 32/64 -- worth 1.72-3.31x at these row counts.
     assert _default_tiles(rows=31, in_features=2048, out_features=8192) == (16, 16)
-    assert _default_tiles(rows=31, in_features=4096, out_features=2048) == (64, 16)
-    assert _default_tiles(rows=8, in_features=2048, out_features=2048) == (32, 16)
-    # tile_m falls back to 16 when out_features < 32 (rare; lm_head etc.).
+    assert _default_tiles(rows=31, in_features=4096, out_features=2048) == (16, 16)
+    assert _default_tiles(rows=31, in_features=2816, out_features=8192) == (16, 16)
+    assert _default_tiles(rows=8, in_features=2048, out_features=2048) == (16, 16)
+    assert _default_tiles(rows=8, in_features=8192, out_features=2816) == (16, 16)
+    # out_features < 32 (rare; lm_head etc.) keeps tile_m 16.
     assert _default_tiles(rows=512, in_features=2048, out_features=16) == (16, 32)
+
+    # gfx1151: tile_n is 64 at rows >= 64, 32 at rows >= 32, 16 below. tile_n is
+    # the token-side tile, so it is the dimension that trades weight traffic
+    # against registers; the earlier comment here said 32 was "the largest value
+    # whose accumulator and activation registers fit", which was an assumption,
+    # not a measurement -- (32, 64) needs 143 VGPRs against (64, 32)'s 127 and
+    # runs, and it is faster on three of gemma4's four dense prefill shapes.
+    monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1151")
+    assert _default_tiles(rows=512, in_features=2048, out_features=8192) == (32, 64)
+    assert _default_tiles(rows=512, in_features=2048, out_features=4096) == (32, 64)
+    assert _default_tiles(rows=512, in_features=4096, out_features=2048) == (32, 64)
+    assert _default_tiles(rows=512, in_features=2048, out_features=2048) == (32, 64)
+    assert _default_tiles(rows=512, in_features=2048, out_features=512) == (32, 64)
+    assert _default_tiles(rows=64, in_features=2048, out_features=8192) == (32, 64)
+    assert _default_tiles(rows=32, in_features=2048, out_features=8192) == (32, 32)
+    assert _default_tiles(rows=32, in_features=4096, out_features=2048) == (32, 32)
+    assert _default_tiles(rows=31, in_features=2048, out_features=8192) == (32, 16)
+    assert _default_tiles(rows=31, in_features=4096, out_features=2048) == (32, 16)
+    assert _default_tiles(rows=8, in_features=2048, out_features=2048) == (32, 16)
+    # tile_m falls back to 16 when out_features < 32 (rare; lm_head etc.),
+    # because a 32-wide output tile would launch mostly out-of-range columns.
+    assert _default_tiles(rows=512, in_features=2048, out_features=16) == (16, 64)
+    assert _default_tiles(rows=512, in_features=2048, out_features=31) == (16, 64)
+    assert _default_tiles(rows=512, in_features=2048, out_features=64) == (32, 64)
 
     for tm, tn in _ALLOWED_TILES:
         assert tm in {16, 32, 64}
-        assert tn in {16, 32}
+        assert tn in {16, 32, 64}
 
 
 def test_gguf_q8_0_wmma_prefill_tile_override(monkeypatch) -> None:
@@ -516,7 +562,15 @@ def test_launch_gguf_linear_wmma_prefill_matches_cpu_reference() -> None:
 
         # Minimal weight-shape fake matching the runtime's expectations.
         weight = SimpleNamespace(
-            spec=SimpleNamespace(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q8_0"),
+            spec=SimpleNamespace(
+                layout=LAYOUT_RAW_GGUF,
+                quant_key="gguf_q8_0",
+                # The generic dispatch reads this to decide whether a raw sidecar
+                # exists (gguf_linear.py:3344). Real specs carry it; this stub
+                # did not, so the dispatch-integration test raised AttributeError
+                # and had been dead since that read was added.
+                allocation_names=("raw",),
+            ),
             allocation=lambda name="raw": SimpleNamespace(
                 tensor=SimpleNamespace(ptr=qw_dev.ptr)
             ),

@@ -1,3 +1,9 @@
+---
+status: current
+owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code to remove after optimal paths are proven.
+---
+# hipEngine Refactor / Dead-Path Ledger
+
 ## DMS extent compaction: replace the memmove with a ring head
 
 The DMS append/decode kernel compacts the live extent on every decode step:
@@ -1157,12 +1163,12 @@ Measured 2026-10-18 on gfx1151/zbook
   (`Q8_MMQ_PREFILL` -0.539 s, `PRODUCTION_MOE_PREFILL` -0.550 s,
   `Q4_IU8_PREFILL` -2.822 s). **Enabling all of them at once is worth +1.7%.**
   The recorded recovery cost is `-40.94/-41.89/-54.53%` prefill
-  (`docs/EXECUTION-PROFILES.md` §2.9). The two are not the same measurement
-  (§2.9 is weighted p512/p1024/p4096 on the `gguf_q4_k_m` profile; this is one
+  (`docs/EXECUTION-PROFILES.md` §2.13). The two are not the same measurement
+  (§2.13 is weighted p512/p1024/p4096 on the `gguf_q4_k_m` profile; this is one
   case under post-binder overrides on the UD profile), so the discrepancy is
   **unresolved**, but the recovery baseline itself improved 1.52x since the
   2026-09-16 sweep (23.648 s -> 15.544 s) and the recovery profile's own
-  optimization appears to have closed most of the gap. **Re-derive §2.9 at
+  optimization appears to have closed most of the gap. **Re-derive §2.13 at
   HEAD before treating its product-policy framing as current.** No selector is
   re-admitted: the three material wins are all blocked on numerics (see the
   GR sections above), and the remaining six are losses or noise. The reachable
@@ -1293,6 +1299,1239 @@ Measured 2026-10-18 on gfx1151/zbook
   rows per block needs the row-tile limit extended and makes the epilogue
   union 64 KiB. Measure residency or test a register-local-SiLU epilogue.
 
+## `Gemma4MTPTextProvider.draft_sampling` keeps a most-likely-token draft arm (open 2026-10-13)
+
+A sampled Gemma 4 MTP request draws each draft from the assistant head's
+distribution. `Gemma4MTPTextProvider.draft_sampling = False` makes it offer the
+head's most likely token instead; both are exact under the accept rule. The
+attribute is a class default of `True`, is read by no environment variable or
+request field, and is set only by `scripts/gemma4_mtp_probe.py --draft-law
+point_mass`, which is how the two were compared on the W7900 (acceptance 63.4%
+against 65.9% at temperature 1.0 with top-k 64;
+`benchmarks/results/2026-10-13-gemma4-gfx1100-mtp-sampled.json`).
+
+Remove the attribute, the probe option and the `else` branch in the provider's
+`propose` once the same comparison has been run on `hip_gfx1151` and the drawn
+draft is no worse there. If it is worse there, the choice becomes a backend
+capability rather than an attribute.
+
+## gfx1100 has no kernel-registration refresh hook (found 2026-10-12)
+
+`load_backend_kernel_package` refills registrations a test's registry isolation
+removed by calling the backend package's `register_backend_kernels(replace=False)`.
+`hipengine/kernels/hip_gfx1151/__init__.py` exports that hook;
+`hipengine/kernels/hip_gfx1100/__init__.py` does not, because its kernels
+register when their modules are first imported. Under pytest on gfx1100 a
+second model load in one process therefore fails with
+`MissingRuntimeProfilePlanError` once an earlier test's teardown has restored
+the collection-time registry. `tests/test_gpu_gemma4_decode_graph_capture.py`
+is the file that shows it: each of its three tests passes when run as its own
+pytest invocation, and the second and third fail after the first in one
+invocation. Product loads are unaffected; nothing clears the registry outside
+tests.
+
+Removal condition: `hip_gfx1100` exports `register_backend_kernels`, and
+`pytest tests/test_gpu_gemma4_decode_graph_capture.py` passes in one invocation
+on a gfx1100 device.
+
+## Q8_0 T16 f16w tiles are found through a pointer table (added 2026-10-10)
+
+The two-wave and four-wave Q8_0 T16 WMMA prefill launches read a pre-converted half weight operand
+(`f16w`) when the weight's owner holds one: `Gemma4DeviceWeights.ensure_dense_f16w`
+builds it for every dense Q8_0 projection that carries T16 tiles, provided the
+device keeps 2 GiB free afterwards, and frees it with the weights. The launch
+wrapper finds it through `_F16W_TILES` in
+`hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py`, a table keyed
+by the tiles device pointer, because the registered
+`t16_wmma_prefill_bf16_bf16_out` signature carries the tiles pointer and no
+other weight operand. The output is bit-identical with or without it, so there
+is no flag; the memory rule is the only selector.
+
+Removal condition: give the linear dispatch's `t16` operand contract an
+optional second weight operand, pass the `f16w` allocation through
+`linear_weight_pointers`, and delete the table together with its
+register/unregister calls.
+
+## Gemma 4 expert down WMMA rollback lever (added 2026-10-10)
+
+`HIPENGINE_GEMMA4_MOE_DOWN_WMMA` (default on) makes the unpinned Gemma 4 MoE
+prefill run the expert down projection through the grouped WMMA owner, in its
+Q5_1T16 tile form where the tensor carries the tiles, in
+`gemma4_experts_forward_bf16`
+(`hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py`). `0` restores the
+exact grouped owner; a pinned `HIPENGINE_GEMMA4_MOE_PREFILL` mode is unaffected.
+The exact staged owner it replaces was 60% of W7900 prefill kernel time. The
+route reads BF16 activations and reassociates against the exact owner, so it is
+a production-profile route gated under the section 2.11 envelope; it is not the
+int8 MMQ down, whose lever and failure record are separate.
+
+Removal condition: once a llama.cpp-paired W7900 ladder carries the route's
+numbers and one release cycle passes without a rollback, delete the env check
+and this entry together. The exact grouped owner stays as the strict plan's
+owner and the pinned `grouped` mode.
+
+## Staged PV singleton unroll rollback lever (added 2026-10-09)
+
+`HIPENGINE_GEMMA4_PV_UNROLL` (default 32) pins the staged singleton P*V
+decode walk's in-flight V window; `8` restores the prior width. The chain
+per (row, dimension) is one ascending-key FMA sequence at every width, so
+either side is bit-identical -- the lever exists to A/B the widths and to
+roll back if the wider window regresses on an unmeasured shape.
+
+Removal condition: once the restored-state 262015 decode record and the
+paired ladder carry the width-32 numbers and one release cycle passes
+without a rollback, fold the selection to the constant and delete this
+entry together with the env read.
+
+## Router full-block SGEMM rollback lever (added 2026-10-08)
+
+`HIPENGINE_GEMMA4_ROUTER_SGEMM` (default on) pins the Gemma 4 router
+logits projection back to the backend's declared tile schedule when set to
+`0`, in `laguna_router_logits` (`hipengine/kernels/hip_gfx1100/gemma4/
+gemma4_router.py`). Full 1024-row prefill blocks otherwise route through the
+F32 rocBLAS SGEMM tier on every backend (1.68x the tile on gfx1151), a
+reordering-class change gated under the section 2.11 router-routing-scoped
+envelope rather than the superseded absolute-kl_max reading.
+
+Removal condition: once the section 2.11 packet for the router candidate
+is recorded and one release cycle passes without a rollback, delete the env
+check and this entry together. The declared tile schedule stays: it is the
+sub-1024-block path and the strict-arm owner for gate captures.
+
+## Q5_1T16 down-prefill rollback lever (added 2026-10-08)
+
+`HIPENGINE_GEMMA4_Q5_1_DOWN_T16` (default on) rolls the Gemma 4 expert down
+prefill from the Q5_1T16 tile route back to the raw-block grouped WMMA
+kernel, in `_gemma4_project_experts_down_wmma_t16`
+(`hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py`). The tile leaf is
+bit-identical to the raw-block leaf, so the lever exists only to A/B the two
+owners inside one process on the shared-memory iGPU, where mid-band session
+variance (~10 percent) is larger than the expected step-level delta.
+
+Removal condition: once the tile route has been measured through a published
+paired ladder (in-process A/B plus the standard verify) and one release cycle
+passes without a rollback, delete the env check and this entry together. The
+raw-block WMMA owner itself stays: it is the fallback for weights that carry
+no tile allocation, and the strict compensated variant resolves through it.
+
+## The split dense GeGLU wrapper lost its only caller when gate/up fused (found 2026-09-29)
+
+The dense MLP's gate and up projections are fused into one resident weight
+(`mlp_gate_up_proj`) by `_build_layer` in `hipengine/runtime/gemma4.py`, so
+`gemma4_layer.py` reads both halves from a single `(rows, 2 * intermediate)`
+buffer and calls `gemma4_gelu_tanh_mul_bf16` -- the form the expert path already
+uses. `gemma4_gelu_tanh_mul_split_bf16`
+(`hipengine/kernels/hip_gfx1100/gemma4/gemma4_moe.py`) existed only because the
+artifact stored `ffn_gate` and `ffn_up` as distinct tensors, which its own
+docstring states, so it now has no production caller. It is still exported from
+the gemma4 package and its HIP symbol is still built.
+
+Remove the Python wrapper, `_SYMBOL_GELU_SPLIT`, the
+`gemma4_gelu_tanh_mul_split_bf16` export in `gemma4/__init__.py`, and the HIP
+kernel, in that order. Do not remove the kernel first: the wrapper's existence
+is what keeps the symbol referenced.
+
+Clearing condition: `grep -rn gemma4_gelu_tanh_mul_split_bf16 hipengine/ tests/ scripts/`
+returns only the definition, the package export, and this entry, and the Gemma 4
+unit tier plus one public `LLM.generate()` request pass after the wrapper is
+gone. Removal should be its own unit, separate from the fusion that stranded it.
+
+## Gemma 4 WMMA attention candidates were promoted to the production prefill default (updated 2026-10-07)
+
+Production routes multi-row prefill to `gemma4_wmma_flash` (sliding) and
+`gemma4_wmma_flash_full` (head_dim 512) on both gfx1151 and gfx1100. Each
+backend's plan passed the section 2.11 router-routing-scoped envelope
+(EXECUTION-PROFILES, 2026-10-07 lead decision) on its own hardware: on the
+8060S median row KL 3.8e-6, p90 6.0e-3, flip-damage 1.3% against a 3% budget,
+top-1 98.4%; on the W7900 median 2.5e-6, p90 5.8e-3, flip-damage 0.62%, top-1
+98.94%; tasks non-inferior on all 18 packet cases with repeats and isolation
+green on both.
+
+Single-token decode differs by plan. The gfx1151 plan appends `gemma4_staged`
+to the prefill request, so a one-token block resolves to the strict-parity
+staged singleton. The gfx1100 plan declares a decode scope, and the runner
+forwards no prefill request on a decode step when one exists: the layer's
+decode selector serves it, with `gemma4_flash_long` (`gemma4_flash` with more
+slices past 8192 keys) for the untrimmed global step
+past the resident-logit bound, and for a step on either packing from 256 keys
+up to the 1024 where the native launch asks for flash itself, and
+`gemma4_staged` as that scope's rollback lever. Strict requests `gemma4_plain` on gfx1151; the gfx1100 strict plan
+declares it as each scope's rollback key and forwards no prefill request, so
+strict prefill there stays on the layer's own route chain. Unifying the two
+backends' decode routing and binding plain for gfx1100 strict are the open
+cleanups here. The profile remains the rollback lever:
+`HIPENGINE_EXECUTION_PROFILE=strict` selects plain attention.
+
+Before the section 2.11 envelope the WMMA candidates were held out of the
+default: the multicategory teacher-chain packet found KL failures against the
+earlier mean/tail bars, including chains on which the older full-attention
+parent also fails, and precision controls that preserve only strict scores or
+replace only the probability/value arithmetic also failed those bars. The
+staged repair reproduces the two saved failing chains bitwise. That packet and
+its public-route evidence belong to
+`worklog/entries/20261003T040334.761582Z-lhl-gemma4-staged-exact-repair-c2e87f.md`.
+
+The 2026-09-29 single-chain result in
+`benchmarks/results/2026-09-29-gemma4-teacher-forced-gate-prefill-attention.json`
+is historical evidence, not coverage of the failing categories or a performance
+claim for staged attention. Its original kernel-speed artifacts likewise measure
+WMMA, not the staged default.
+
+**Diagnostic timing (2026-10-04; interpretation corrected 2026-10-05).**
+The same-process A/B in
+`benchmarks/results/2026-10-04-gemma4-gfx1151-prefill-attention-variant-ab.json`
+measures staged/WMMA prefill at 93.3/477.8 tok/s at 131072 tokens (5.121x).
+The candidate remains an arithmetic evaluation path, not a production default.
+The stage trace at 32768 attributes 59.5% of attention time to scores, 37.8%
+to P*V and 2.7% to softmax.
+
+The trace's `LDS_Block_Size=0` does not account for dynamically allocated
+shared memory. The staged source already loads Q into shared memory and stages
+weights for grouped-head V reuse. Scores use one warp per key, not one thread
+per score. The hypothetical 101 TB unstaged read calculation is not measured
+traffic. WMMA also changes arithmetic, so its speedup cannot be attributed to
+staging alone. Arithmetic-preserving reuse changes still require strict
+parent-parity validation; only the reassociated-arithmetic promotion packet
+can be avoided. See the correction and implementation in
+`worklog/entries/20261005T152628.367992Z-lhl-gemma4-score-reuse-e96b93.md`.
+
+Removal condition: none. The candidates are the shipped prefill default; the
+staged decode entry and the strict plain fallback stay registered, and the
+execution-profile selection is a product API, not a candidate-only flag. A
+revert is a profile decision, not a file deletion.
+
+## Gemma flash decode keeps a fallback the current scope cannot reach (found 2026-10-08)
+
+`gemma4_attention_decode_flash_bf16` asks the launcher's own admission before it
+requests the flash route, and delegates to the staged singleton when that
+admission rejects the shape. The delegate is the chain the decode scope used
+before flash, and the launcher's own fallback -- the owned-scratch class kernel
+-- is far slower at long context: measured 2026-10-08 at a 128K prefix, a
+global row that left the flash route took **225.3 ms** per decode step against
+the staged singleton's **73.4 ms** on the same teacher token and KV prefix
+(`/tmp/gemma4-pv/flashvar-decode-attrib.json`, `baseline-decode-attrib.json`,
+both at `308c4c38c`). Nothing the selector admits currently reaches the
+fallback: for the scope (one token, head_dim 512, GQA ratio 8, past the
+15,616-key resident bound) the fitted slice count always exists and is always
+admitted, which the fitting unit tests pin.
+
+Removal condition: move the admission into the selector that chooses the variant
+-- so a shape flash cannot serve resolves to `gemma4_staged` there -- and drop
+the wrapper's own check. That needs the selector to answer with the kernel's
+fitted slice count, which is a device-library call on the route-decision path;
+until that is measured, keep the wrapper's check as the single authority.
+
+## Plain Gemma attention needs raw-coordinate boundary validation (found 2026-10-03)
+
+The strict plain family's `gemma4_attn_first_kept` and window walk-end calculations
+in `gemma4_attention.hip` narrow caller-supplied int64 coordinates to `int` without
+clamping them to the key range. Its launchers also lack complete grid/product
+validation. The staged repair adds overflow-safe clamping and host/device shape
+checks, but leaves the plain oracle's ordinary arithmetic and launch contract
+unchanged. This is a direct raw-launch boundary issue, not a measured regression
+on model-generated coordinates. A matching pre-repair staged reproducer caused
+a GPU queue memory fault; it was run in an isolated process.
+
+Removal condition: add plain host/device coordinate and grid/product validation
+with focused tiny-coordinate and invalid-shape regressions, then run
+`tests/test_gpu_gemma4_attention_staged.py` to confirm ordinary strict/staged
+parity still passes. Reject or clamp unrepresentable inputs before a launch;
+do not reproduce an unchecked device read merely to obtain a RED crash.
+
+## Gemma prefill attention tiled variant is a dead route (found 2026-09-28)
+
+`gemma4_attention_prefill_tiled_kernel` is exported as
+`hipengine_gemma4_attention_prefill_tiled_{bf16,f32}` and has no Python wrapper.
+It was written to make the shared-memory footprint independent of context -- the
+strict kernel materialises one logit per key, so its shared array is
+`(head_dim + keys + 256) * 4` bytes and occupancy falls from 16 blocks per CU at
+512 keys to 3 at 4096 -- on the theory that this is what limits the strict
+kernel. It is not what limits it.
+
+Measured with `scripts/gemma4_attention_prefill_tiled_ab.py`, both kernels
+driven through ctypes on the same device buffers, 5 iters and 2 warmups:
+
+| tokens | head_dim | strict | tiled | ratio |
+| ---: | ---: | ---: | ---: | ---: |
+| 512 | 256 | 150.5 ms | 150.65 ms | 1.00 |
+| 2048 | 256 | 46.72 ms | 67.21 ms | **1.44 (slower)** |
+| 2048 | 512 | 88.83 ms | 95.52 ms | **1.075 (slower)** |
+
+and the outputs are **bit-identical** at every one of those sizes -- 0
+mismatched elements out of 8,388,608 and 16,777,216, max abs diff 0, max rel
+diff 0. The two kernels are not two arithmetic contracts; they are one contract
+with two schedules, and the schedule that costs a 1.44x slowdown is the one
+whose only justification was the occupancy theory the measurement refutes.
+
+Removal condition: delete `gemma4_attention_prefill_tiled_kernel`,
+`launch_gemma4_attention_prefill_tiled`, and the two exported symbols, and drop
+`scripts/gemma4_attention_prefill_tiled_ab.py`. Nothing selects them, so there
+is no behaviour to preserve. Keep the strict kernel, which is both faster and
+the one the decode-parity contract is written against.
+## Dense Q8 MMQ prefill branch is unreachable behind the WMMA rewrite (found 2026-09-26)
+
+The dense branch of `_q8_mmq_prefill_dispatch`
+(`hipengine/runtime/gguf_linear.py`) cannot fire for any shape whose policy admits
+it. `_wmma_prefill_dispatch` runs earlier in the chain and rewrites a raw Q8_0
+dispatch to `abi="wmma_raw"` / `variant="wmma_prefill_bf16_bf16_out"`, while the
+MMQ dispatch matches on `abi == "raw"` plus one of three unwrapped variant names,
+so it returns the dispatch unchanged. Instrumentation at the entry point confirmed
+680 admitted dispatches rejected on the key mismatch and none on policy.
+
+**This is not a bug to fix by reordering.** Making the branch fire was measured at
+29% slower (1054 against 1367 tok/s) although correct, and `kl_max` improved to
+0.000893 from 0.001341. The unreachability is the mechanism that keeps a slower
+route off the default path, so the ordering is load-bearing.
+
+Removal condition: delete the dense branch of `_q8_mmq_prefill_dispatch` (and the
+three unwrapped variant names it matches on) once no caller can reach it. That is
+already true today -- the WMMA rewrite runs first for every shape the branch's own
+policy admits, and the ordering is load-bearing -- so the branch is dead code whose
+only remaining effect is to look selectable. Removing it needs no replacement path:
+the WMMA route it loses to is the faster one. If the ordering is ever reversed,
+delete the branch instead of reviving it, and treat a faster dense Q8 MMQ leaf as a
+new candidate with its own measurement rather than as a restoration of this one.
+
+What is left to clean up is the appearance: the branch reads as a working route.
+Either delete the dense branch and its policy entries, or add the note at the
+match site explaining that the `wmma_raw` rewrite precedes it by design. Decide when
+someone next touches the Q8 MMQ policy. Removal condition: any edit to
+`_q8_mmq_prefill_dispatch`'s dense branch or to the Gemma4 `Q8MMQPrefillPolicy`
+shape table.
+
+## Gemma attention legacy slice-count ABI (2026-09-26)
+
+The default two-pass decode attention in
+`hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip` now partitions
+output dimensions and preserves the single-kernel key accumulation order. The
+`decode_slices` helper in
+`hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py` and the native
+`split_slices` argument of `launch_gemma4_attention_decode` keep their existing
+values for compatibility with callers and diagnostic scripts: one selects the
+single kernel, and values above one select the dimension pass. The value above
+one no longer sizes a key-slice grid, and the key-slice and combine kernels are
+gone. `gemma4_decode_split_workspace_bytes` still accepts `head_dim` and
+`slices` that no longer affect its result.
+
+Remove `decode_slices`, the `split_slices` argument, and the unused
+`gemma4_decode_split_workspace_bytes` parameters when no caller or diagnostic
+script passes a slice count: `scripts/gemma4_teacher_forced_gate.py`
+(`force_slices`, `--slices`),
+`tests/test_gpu_gemma4_attention_decode_parity.py`, and
+`tests/test_unit_gemma4_attention_scratch.py` are the current callers to
+migrate to an explicit two-pass selection API. Remove it once the slice count is gone from the launch ABI and the Gemma
+unit/GPU guard plus one public `LLM.generate()` request pass. Clearing condition:
+the launch ABI carries an explicit two-pass selection instead of a slice count,
+keeping the existing split entry threshold and the strict single-kernel oracle
+route.
+## gfx1151 compact attention wave producer — NUMERICAL CONTROL FAILURE
+
+The gfx1151 BF16 compact attention build selects the existing generic grouped
+producer. The wave-group6 producer failed the unchanged four-category G0
+no-evict control; replacing only attention with dense arithmetic eliminated the
+mixed-category mismatch. Evidence and exact commands are in
+`worklog/entries/20260926T140616.347941Z-main-dms-producer-control-183661.md`.
+No feature is disabled and no model identity is used for admission. gfx1100
+selection is unchanged; this finding was measured on gfx1151 only.
+
+Removal condition: repair the wave producer and pass the same G0 command from
+that worklog, the matched-input attention GPU test, public DMS lifecycle tests,
+and applicable execution-profile numerical gates before restoring gfx1151 wave
+selection. Primitive tolerances alone did not catch this full-model failure.
+
+
+## Dormant (Q3_K gate, IQ4_XS up), (IQ4_XS gate, Q3_K up), (IQ3_S gate, IQ4_XS up), and (Q5_K gate, Q6_K planar up) fused pair registrations (2026-09-25) — AWAITING A CLEARING SCREEN
+
+E6b-5 built the fused pair+SiLU owner for the 3-layer (Q3_K, IQ4_XS)
+family: `B_KIND=2` in `gguf_iq4_q4_pair.hip` (side B = the strict
+per-row Q3_K GEMV's exact 128-thread tile emulated across the pair's
+waves), the `hipengine_gguf_q3_iq4_pair_silu` entry point, its Python
+wrapper, and the registered key `gguf_q3_k+gguf_iq4_xs`. It is
+bit-exact against `q3 strict single + iq4 local32 single + silu_mul`
+at K=5120 (GPU test) and at (5120, 17408) rows=1 (screen), but the
+production screen measured **0.92-0.99x across five runs - never the
+required >= 1.00** - so the route block ships dormant: no dispatch
+path selects this key, and production behavior is unchanged by
+construction.
+
+**E6b-7 added the reverse direction the same day (iteration 18):**
+(IQ4_XS gate, Q3_K up), 1 layer (blk.0), under a second instantiation
+`<W, GATE_IS_Q4=false, B_KIND=2, A_IS_CHAIN=false>` and its own
+extern-C `hipengine_gguf_iq4_q3_pair_silu` + wrapper
+`gguf_iq4_q3_pair_silu_bf16_bf16_out` + registration key
+`gguf_iq4_xs+gguf_q3_k` (route order == C geometry, no reorder; the
+epilogue takes the gate from side A's IQ4 chain). Bit-exact at K=5120
+(GPU suite) and at (5120, 17408) rows=1, but five production screens
+measured **0.95 / 0.97 / 1.03 / 0.96 / 0.95 - mean 0.972, four of five
+below the >= 1.00 gate** (the lone 1.03 inside the historical screen
+spread), so its route block was also removed and production stayed
+byte-identical by construction (LLM probe: pair7 = 0 dispatches, all
+five shipped families intact). The structural cause is the same one
+recorded for the first direction: sides keep identical arithmetic, so
+the direction swap cannot change the wall picture.
+
+**E6 closeout added two more dormant directions the same day
+(iteration 21):** (IQ3_S gate, IQ4_XS up), 1 layer (layer 11), under
+instantiation `<W, GATE_IS_Q4=true, B_KIND=3, A_KIND=0>` + extern-C
+`hipengine_gguf_iq3s_iq4_pair_silu` + wrapper
+`gguf_iq3s_iq4_pair_silu_bf16_bf16_out` + key
+`gguf_iq3_s+gguf_iq4_xs` (B_KIND=3 is the IQ3_S local32 decode
+owner's Q==2 split-K path verbatim - both sides of layer 11 take the
+session's local32 owner, no ffn_gate pin; the wrapper reorders the
+gate-first route args to C geometry). Bit-exact at K=5120 (GPU test)
+and at (5120, 17408) rows=1 (screen), but four production screens
+measured **0.99 / 0.99 / 0.98 / 0.97 - never the required >= 1.00**.
+And (Q5_K gate, Q6_K planar up), 1 layer (layer 63), under
+`<W, GATE_IS_Q4=true, B_KIND=1, A_KIND=3>` + extern-C
+`hipengine_gguf_q5_q6_pair_silu` + wrapper
+`gguf_q5_q6_pair_silu_bf16_bf16_out` + key
+`gguf_q5_k_t16_v1+gguf_q6_k_t16_qmicro_planar_v1` (A_KIND=3 emulates
+the planar single's exact 4-wave chain across the block's waves; the
+wrapper reorders gate-first args so side A runs the planar chain).
+Bit-exact everywhere, but four production screens measured
+**0.60-0.61x** - the chain emulation across block waves costs far more
+than the launch it saves. Both route blocks were removed with the unit;
+production behavior is byte-identical by construction. The third
+closeout direction, (IQ4_NL gate, Q5_K up) at 1.03-1.04x, passed its
+gate and shipped (it is not part of this entry).
+
+**E6 same-quant closeout recorded a capability gap (iteration 22):**
+(Q3_K gate, Q3_K up), 1 layer (layer 14), has no expressible entry -
+side A has no strict-Q3 instantiation (only `B_KIND=2` runs the strict
+Q3 tile, on side B), and every strict-emulation screen to date lands
+0.60-0.99x (E6b-5, E6b-7, E6 closeout), so a predicted-failing body
+was not built. Nothing ships and production is unchanged by
+construction; any artifact carrying this ordered pair hits the same
+gap. The same unit adjudicated (Q4_K, Q4_K) as **already fused** by
+the pre-existing dense-dual route (5 layers, 4.84 launches/token - no
+entry needed, admission test only) and shipped (IQ4_NL gate, IQ4_NL
+up) at 1.04x with `B_KIND=4`; neither belongs to this entry.
+
+Clearing command (Q3_K/Q3_K gap): port the strict per-row Q3_K tile
+into the pair's side A (mirror of `B_KIND==2`, e.g. `A_KIND=4`),
+instantiate `<W, GATE_IS_Q4=false, B_KIND=2, A_KIND=4>` +
+`hipengine_gguf_q3_q3_pair_silu` + wrapper + registration key
+`gguf_q3_k+gguf_q3_k`, prove bit-exact vs `q3 strict + q3 strict +
+silu_mul` at K=5120 and at (5120, 17408) rows=1, then screen
+`~/ud-e1-census/e6_closeout_screen.py` (or successor): only at
+>= 1.00x add the route block in `hipengine/runtime/gguf_linear.py`
+keyed on both sides' raw strict `gemv_bf16_bf16_out` owners at
+rows==1.
+
+Clearing command: re-run `~/ud-e1-census/e6b5_screen.py`,
+`~/ud-e1-census/e6b7_screen.py`, and
+`~/ud-e1-census/e6_closeout_screen.py` (or successors) after a
+structural change to the pair (e.g. overlapping side A and side B
+phases, a lower-overhead strict emulation, or a wave-scheduled planar
+chain that runs each single-wave on its own hardware wave); if any
+direction measures >= 1.00x bit-exact, add that direction's route
+block back in `hipengine/runtime/gguf_linear.py` keyed on its ordered
+pair (`gguf_q3_k+gguf_iq4_xs` or `gguf_iq4_xs+gguf_q3_k` gate-first,
+`gguf_iq3_s+gguf_iq4_xs`, `gguf_q5_k_t16_v1+gguf_q6_k_t16_qmicro_planar_v1`)
+with the matching predicates (raw-IQ side = session-qualified decode
+owner with the spec's slot_path - Q3/IQ3_S parents keep
+`gemv_bf16_bf16_out` without a policy entry or under a pin, IQ4 sides
+the local32 owner; Q5 side = E4a tile8 c1 owner; Q6 side = direct
+planar decode key; both sides' ABIs as the shipped wrappers read them)
+and delete this entry.
+
+Removal condition: if the fused pair family is redesigned or those
+layers change quant, delete `B_KIND==2`, `B_KIND==3`, `A_KIND==3`, all
+four dormant extern-C wrappers, their Python wrappers/registrations
+(all four ordered keys), and their GPU/route tests together - dead
+code with no route does not accumulate a second life.
+Evidence: `docs/campaigns/UD-GFX1151-OPTIMIZE2.md` E6b-5 row;
+`worklog/entries/20260925T011636.401265Z-lhl-ud-gfx1151-optimize2-e6b5-q3-iq4-negative-c7f21a.md` (this unit's entry).
+
+## Dense27B prefix oracle disagreement after prefix/MTP integration (2026-09-20) — RESOLVED
+
+The merge qualification at p1024+s200 on Qwen3.8-27B Q4_K_M / gfx1151
+compares active and completed prefix reuse against both private batched
+recomputation and the gate's one-shot-prefix/serial-suffix oracle. All four
+category probes have byte-identical prefix and post-suffix state versus
+private batched recomputation, exact clone metadata, and correct lifecycle.
+The serial oracle is not numerically equivalent: English and mixed-category
+mean KL exceed the production envelope, and completed-source Japanese fails
+even the outer numerical smoke. Do not call this full production numerical
+qualification or hide it behind the passing clone/ownership checks.
+The identical Japanese probe on untouched upstream `1de470e21` reproduces
+the complete numerical and state-comparison records exactly; this discrepancy
+predates the merge.
+
+Next: localize the one-shot-prefix versus batched-prefix divergence using
+matched teacher rows and real category/heldout prompts; then run the calibrated
+production envelope and task gate. Preserve the batched HIT/MISS state check
+separately from that investigation. This ledger item does not justify
+prompt-conditioned routing or a blanket strict bit-equality requirement.
+Evidence: `benchmarks/results/2026-09-20-gfx1151-prefix-mtp-merge-qualification.json`.
+
+**Resolution.** The prescribed localization and envelope run are done, and the
+finding above describes the comparison rather than the candidate. The gate's
+reference is itself built by a prefix prefill, and the packed wave and the
+single-session path persist different final-state arithmetic, so a reference
+built through the single-session path made every numerical term a cross-route
+comparison. `--reference-prefill-mode` now defaults to `packed`
+(`prefill_batch_native`), sharing the candidate's and the served engine's route
+family; `native` and the plugin's certified bulk scheduler remain as
+diagnostics. That the identical Japanese probe reproduced exactly on untouched
+upstream is what a comparison artifact looks like, not a merge regression.
+
+On the same-route reference the gate passes all eight suites -- four natural
+categories and four heldout suites, 1,024 teacher-forced rows, 2 top-1 flips,
+0 state mismatches -- with the worst scope (`heldout-general_en`) at least 2.5x
+inside every binding term of the calibrated envelope. `general_ja` moves from
+`kl_mean` 0.6811212740489249 / `kl_max` 1.7583460667891433 / top-1 0.75 over 4
+teacher-forced rows to 0.0001940 / 0.0050300 / 1.00 over 128. The batched
+HIT/MISS state check was preserved separately as instructed.
+Evidence: `benchmarks/results/2026-09-20-gfx1151-prefix-gate-packed-reference-1024rows.json`;
+source: `worklog/entries/20260920T054514.573459Z-lhl-prefix-gate-packed-reference-1024rows-40a28f.md`.
+
+**W7900 BF16 resolution (2026-09-20).** Gapped prefix-hit pages selected native
+attention because their required gather inherited the optional contiguous
+head-major-layout default. Resolving the registered gather independently removes
+all 120 scheduler state mismatches. Contiguous defaults do not change.
+The remaining completed-source KL failure also occurs for private batched
+recomputation compared with token-serial suffix replay. The gate now compares
+independent private batched-prefix/batched-suffix recomputation, applies the
+unchanged canonical mean/p95/p99/max KL and top-1 envelope, and retains the
+serial-suffix comparison against both candidate and private recomputation.
+All four categories and four heldouts, both source lifecycles, pass with zero
+KL and exact state over 2,048 teacher-forced rows. This is cache-hit fidelity,
+not certification that distinct prefill schedules have identical arithmetic.
+Evidence: `benchmarks/results/2026-09-20-w7900-prefix-bf16-layout-repair.json`.
+
+HTTP and in-process prefix caching default to radix. `hipengine serve
+--prefix-cache off` or `HIPENGINE_PREFIX_CACHE=off` is the rollback.
+Eligibility fallbacks record `prefix_fallback_reason`; they do not detect
+numerical divergence. Remaining separate work: explicit no-mirror INT8 suffix
+prefill can allocate a BF16 oracle without restoring its cached prefix.
+Validate the retained INT8/scale attention source, suffix/reclaim/pressure,
+and user-facing requests before claiming that contract repaired.
+Decision: `worklog/entries/20260920T155434.502352Z-lhl-served-lane-boundaries-bc9b95.md`.
+
+## Three qwen36-dense serving rows carry no execution identity (found 2026-09-20)
+
+The three `qwen36-dense-q4km-gfx1100-*` rows in
+`hipengine/models/qwen35.py` describe Qwen3.6-27B-Q4_K_M
+(`/models/gguf/Qwen3.6-27B-Q4_K_M.gguf`, sha256 `a7cbd3ec…`, 17,106,773,120
+bytes) and record its measured gfx1100 scope. That artifact is not on this host,
+so `artifact_execution_fingerprint` is empty on all three and they match no
+resident file: their automatic authorization is inert until someone records the
+identity.
+
+**Clearing command.** `python3 scripts/gguf_execution_identity.py <artifact.gguf>`
+prints the fingerprint to paste into the three rows. `tests/test_unit_speculative_mtp_serving_capability.py::
+test_qwen36_dense_rows_authorize_nothing_until_their_identity_is_recorded` pins
+the current inert state and fails once the rows bind, which is the signal to
+update it.
+
+Explicit requests on that cell are unaffected: they resolve through the dense
+BF16 implementation declaration, which does not read evidence rows. The
+`qwen36-dense` and `qwen38` rows cannot be conflated by a byte-digest match
+because the artifact axis is the execution identity, not the SHA-256.
+
+## MTP admission no longer reads the artifact's byte digest (2026-09-20)
+
+`SpeculativeMTPServingKey.artifact_sha256` and `artifact_size_bytes` are
+provenance fields now; admission compares
+`artifact_execution_fingerprint` (`hipengine/loading/gguf.py`). The two Qwen3.8
+plain builds differ by 1,024 metadata bytes and share one identity, and the
+resident file's SHA-256 is no longer computed on the serving path because no
+row reads it.
+
+Consequence to be aware of: a `KVCapabilityKey`'s `capability_id` covers its key
+payload, so it changed for every int8-KV contract. The two 2026-09-11 W7900
+int8-KV artifacts under `benchmarks/results/` record the pre-change id
+(`4b0e936f…` for the gfx1100 direct-c4 contract); they are frozen measurements
+and are not rewritten.
+
+## Packed workspace eager reservation is bounded — RESOLVED
+
+`packed_verify_workspace_lease_pages` reserves four 256-token pages per serving
+slot, matching the existing 1,024-token packed context floor. Longer realized
+contexts or wider physical layouts use private KV charged against the same pool
+budget. They never overwrite the pinned lease or another request's pages.
+
+The capacity estimator reports `private_workspace_bytes` separately and prices
+both the eager lease and the full private fallback when the requested context
+exceeds the floor. Bounding startup reservation therefore does not assume that
+long-context workspace is free. Private buffers and their budget charges follow
+the packed state's existing growth and close lifecycle.
+
+## Capacity estimates include serving-capacity workspace leases — RESOLVED
+
+`qwen35_gguf_resident_breakdown` and `estimate_qwen35_gguf_kv_capacity` accept
+`workspace_lease_slots`, independently of `max_batch_size`. The generator prices
+elastic request KV at one request and the eager workspace lease at serving
+capacity. Auto-context selections are cached by capacity and allocation mode,
+so a single-request selection cannot be reused for a wider pinned lease.
+
+Regression coverage compares estimator pages with the allocator's lease helper
+at capacities 1, 4, and 8 and contexts below, above, and unrelated to the packed
+context floor. Private growth and eager reservation are priced separately.
+
+## Wide MTP groups run without a prompt provider, and the over-width demotion is inert (found 2026-09-19) — RESOLVED
+
+Resolved in three steps. (1) The `(8, 3)` cell left
+`GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS["production"]` in 9c8ff5444; the
+explicit capacity-8 route now falls to the registered strict fallback
+`gguf_target_ar`, and the production-admission rerun recorded in
+`benchmarks/results/2026-09-19-gfx1151-qwen38-mtp-width-census-and-c8-k3-withdrawal.json`
+confirms the withdrawal. (2) Speculation routes by priming source instead of
+sink refusal (3edac59c9): a row whose prompt sink was refused declines
+capability with `provider_state_absent` before any cycle can open a provider
+(regression:
+`tests/test_unit_qwen35_gguf_mtp2_seam.py::test_capability_refuses_a_row_whose_prompt_sink_was_refused`).
+(3) A zero partition bound is one whole-batch AR step in the engine instead of
+"do not partition" (regression:
+`tests/test_unit_specdec2_engine_loop.py::test_zero_partition_bound_stops_a_wide_capable_runner_from_cycling`).
+The observations below record the original finding; the first bullet's claim
+that the production width table lists `(8, 3)` predates the withdrawal.
+
+- `hipengine/kernels/hip_gfx1151/__init__.py` lists `(8, 3)` in
+  `GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS["production"]`, but
+  `GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES` for the same
+  geometry/file-type/profile admits widths `(1, 2, 3, 4)`, so
+  `begin_prompt_streaming` refuses a pending set of 8 rows and stamps every row
+  `mtp2_prompt_fallback_reason = "physical_streaming_category_rejected"`. The
+  refusal does not fail the route closed: the group still reports
+  `effective_route=speculative_mtp`, `used=true`, and executes 7-9 draft cycles
+  per row against a provider with no prompt state. Measured on all 80 rows of
+  the 10-cell width-8 protocol, with production admission as well as the
+  diagnostic resolver: the MTP arm agrees with AR for 3-5 tokens and then emits
+  the same `<|im_end|>`/`<|im_start|>` loop on all 10 prompts, so its output does
+  not depend on the prompt, and the cell is 0.936x of its own AR baseline where
+  the 2026-09-05 qualification recorded 1.0015x with 40/40 AR-equal cells.
+  Evidence:
+  `benchmarks/results/2026-09-19-gfx1151-qwen38-mtp-width-census-and-c8-k3-withdrawal.json`.
+- `hipengine/generation/qwen35_gguf_mtp2.py` `partition_max_requests` returns 0
+  for a due group wider than
+  `GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS["production"]` (4), but
+  `hipengine/generation/engine_loop.py`
+  `_maybe_run_partitioned_speculative_decode` reads a non-positive bound as
+  "do not partition" and returns `None`, after which `_run_decode` falls through
+  to `_maybe_run_speculative_cycle` on the whole wide work item. The M5
+  whole-batch-AR defense is therefore inert for an over-width all-speculative due
+  item; `docs/REFACTOR.md` RF-M5 recorded that precondition as unreached before
+  the 2026-09-05 width policy admitted `(8, 3)`.
+- Remove the wide cell by either failing the route closed when the prompt sink is
+  refused (refusal is not a partial state the cycle can run on), or by adding
+  widths 5-8 to the prompt-streaming policy and re-qualifying the cell against a
+  same-run true-AR baseline. Move the over-width demotion to the admission owner
+  or make the engine treat a zero partition bound as a whole-batch AR step; then
+  the partitioner-level defense can be deleted. Do not keep `(8, 3)` listed while
+  the prompt sink refuses width 8.
+
+## Per-token reused-prefix suffix prefill (found 2026-09-18)
+
+Resolved during the upstream prefix-cache campaign and integrated into the
+local MTP branch during the merge. The historical observation below explains the
+original work; it no longer describes the default suffix route. Upstream's
+`HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX` switch owns the serial fallback, and
+single-token suffixes intentionally stay serial. The overlapping task #20
+`HIPENGINE_GGUF_PREFIX_SUFFIX_PACKED` helper and switch are removed during
+integration; the preservation commit `0f3bd43dc` keeps their history.
+
+- `hipengine/generation/qwen35_gguf.py` `_prefill_native_chunk` and
+  `_prefill_processed_argmax_chunk` both take an `if row.prefix_reused_tokens:`
+  branch that prefills the suffix after the matched prefix with one
+  `session.step(token_id)` per token, where the miss path calls the batched
+  prefill. A step costs a decode step, so a hit prefills at **82.1 ms per
+  executed token against 3.3 ms** on the miss rows (24.9x) and 28.9x the TTFT,
+  which made a realistic multi-turn load decode 3.47 tok/s with
+  `--prefix-cache radix` against 46.52 with it off. The route stays default-off
+  and is not promotable until this branch is replaced by the batched entry; the
+  retained 11.8x prefix win is a p256+s1 packet, where the loop costs one step.
+  Evidence:
+  `benchmarks/results/2026-09-18-gfx1151-qwen38-prefix-hit-multiturn-rejected.json`.
+- The branch also has to go before MTP can be admitted on a hit: it is the same
+  per-token processing that a draft-provider checkpoint would need to skip, and
+  measuring the checkpoint against a decode-speed suffix would attribute the
+  suffix's cost to the checkpoint.
+
+## `prefix_reuse_k0` prompt-sink refusal (found 2026-09-18)
+
+- `hipengine/generation/qwen35_gguf_mtp2.py` `_open_prompt_streaming_sinks`
+  returns `None` as soon as any row in the group has `prefix_reused_tokens > 0`
+  (`mtp2_prompt_fallback_reason = "prefix_reuse_k0"`), so the provider never
+  receives the prompt's hidden rows and every decode cycle reports
+  `no_provider`: measured 127 events and 0 draft cycles on hit rows against 126
+  of 128 tokens from speculation on the matching miss rows. It is a correct
+  refusal for the current target route (a reused prefix never ran the target in
+  this request, so there are no hidden rows to stream) and a dead end for MTP.
+- Remove it by supplying the provider's missing state instead of refusing: batch
+  the suffix (entry above), then capture the provider's recurrent state at each
+  256-aligned boundary during the catch-up it already performs and restore it on
+  a matching hit. Rebuilding the target's hidden rows for a reused prefix is the
+  rejected alternative, because it re-runs the target over the whole reused
+  prefix.
+- Capture (2026-09-19) and the restore (2026-09-20) are both in place, so the
+  `restored_checkpoint_suffix_unavailable_k0` reason and the runner-side
+  `prefill_activation_ready` / `prefill_needs_activation` shortcut that treated
+  every reused row as never priming a provider are gone. The `prefix_reuse_k0`
+  label now names only a hit row whose checkpoint is absent, stale, lacks its
+  boundary row, or cannot be restored.
+## Prefix snapshot eviction destroys the retained entry it just served (found 2026-09-18)
+
+- `_capture_prefix_snapshot` trims with `while len(self._prefix_state_snapshots) >
+  self._prefix_snapshot_limit: self._evict_prefix_snapshot(next(iter(...)))`,
+  which takes the oldest entry whether or not it is retained. The resident loop's
+  limit is 1 (`snapshot_limit: 1` in the 2026-09-18 gfx1151 serving run), and one
+  request captures twice: once at its decode boundary and once at its completion
+  prompt boundary (`_refresh_prefix_cache_at_prompt_boundary`). The second
+  capture therefore always evicts the entry that served the current request,
+  releasing its pool pin and its `cache.release_entry`. The next request finds an
+  empty trie and reports the engine reason `miss`.
+- Measured consequence on gfx1151 (41 served turns per arm, one arm per process):
+  33 captures, 32 evictions, 6 hits, `unusable_hits: 0`. Every lane with reusable
+  content hits **at most once**, on the turn after its first capture. Every
+  missed eligible turn had at least 2048 tokens of verbatim resent prefix
+  (`prompt_lcp_reusable_tokens`), so the tokens were matchable; the failure is
+  retention, not structure. Artifact:
+  `benchmarks/results/2026-09-18-gfx1151-prefix-cache-miss-path-diagnostic.json`.
+- Fix direction: make the trim prefer unretained entries and never evict a
+  retained entry while an unretained one exists, and size the retained working
+  set for several conversations rather than for the loop capacity. RED test
+  target: with `_prefix_snapshot_limit == 1`, capture for request A, promote it,
+  capture for request B, then assert A's entry is still resolvable.
+- Fixed 2026-09-18: transient and retained entries are now trimmed by separate
+  budgets (`_prefix_snapshot_limit` for the current request's captures,
+  `_prefix_retained_limit` plus a 1 GiB state-byte ceiling for retained ones).
+  `_prefix_retained_evictions_by_reason` and `retained_snapshot_state_bytes`
+  expose both budgets through `/ready`.
+- The retained count defaults to the pre-fix effective budget
+  `max(1, capacity)`: the wider working set is opt-in via
+  `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS` (16 covers the 14-lane serving
+  protocol, where a conversation's next turn arrives after up to 13 other lanes
+  have captured and retained their own boundaries) and
+  `HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES` (default 1 GiB). The old
+  opt-in reason — the +11%/+308% serial-suffix regression — is gone: the
+  batched suffix prefill and the gapped-page gather route landed on
+  2026-09-19/20, and retained 16 has been the strongest configuration measured
+  on every protocol since (14-lane campaign -18.4% wall vs -17.8% default on
+  merged main; real-session replay lane -64.2% vs -44.1%, 30/32 hits, worklog
+  `20260919T202013.823662Z-lhl-agentic-session-replay-e8a2c9`). It stays
+  opt-in only because (a) the 16/1 GiB values are not derived from a measured
+  working-set distribution — re-derive them from a served lane trace before
+  claiming the retained budget is optimal — and (b) retention depth has not
+  been measured under concurrent multi-conversation load, where 16 slots
+  spread across conversations instead of down one chain. A host-sizing
+  recommendation for >=24 GB hosts is documented in benchmarks/README.md.
+  Flip the code default to the wide set only after both are measured.
+
+## Prefix eligibility floor excludes short multi-turn traffic (found 2026-09-18)
+
+- `_prefix_source_for` returns `prompt_too_short` for `len(row.prompt_ids) <= 256`
+  before any lookup. Every ShareGPT conversation in the serving suite is under
+  that size (30-685 prompt tokens, four turns above 256), so 19 of 41 turns never
+  consult the cache and 0 of 8 lookups hit. Multi-turn chat traffic is exactly
+  the shape this cache exists for.
+- Fix direction: separate the floor from the block size. A lookup can match zero
+  full blocks cheaply and still be worth attempting for a 400-token prompt with a
+  256-token prefix; the current constant conflates "too short to have any block"
+  with "not worth a trie probe". Decide the floor from measured probe cost, not
+  from `block_size_tokens`, and re-measure the ShareGPT lanes.
+
+## Prefix snapshot capture allocates and frees its buffers per capture (found 2026-09-18)
+
+- `capture_prefix_state_snapshot` allocates two device buffers per linear-state
+  layer, copies the Conv/GDN state into them with `memcpy_async`, and calls
+  `device_synchronize`. `_evict_prefix_snapshot` frees them again. Measured on
+  gfx1151 with rocprofv3 over 4 served requests: **+161 `hipMalloc` and +161
+  `hipFree` calls** (~54 per capture) at **~3.2 ms per malloc**, against state
+  copies of **~25 us each**. The engine's own phase counter puts a capture at
+  **0.18-0.38 s** on the greedy route and up to **1.4 s** on the sampled route,
+  and the prompt-boundary refresh pays it on **every eligible turn, hit or miss**.
+- Fix direction: hold the snapshot buffers in a per-session pool sized to the
+  largest capture (the state size is fixed by the model) instead of malloc/free
+  per capture, and drop the `device_synchronize` to a stream sync when the
+  capture is already on the request's stream. RED test target: capture, evict,
+  capture again and assert the second capture performs no allocation.
+- Evidence: `benchmarks/results/2026-09-18-gfx1151-prefix-cache-cost-attribution.json`
+  (`rocprof.hip_api.radix.hipMalloc`, `ranked_cost[1]`).
+
+## Reused-suffix prefill has two routes and only one is slow (found 2026-09-18)
+
+- The greedy cumulative lanes prefill a reused row's suffix through
+  `_prefill_native_chunk`'s serial loop, one `session.step()` per token: measured
+  **33.8-35.3 ms per suffix token** (6.2-6.9 s on a hit turn) with **~1,679 extra
+  kernel dispatches per token** against **~0.4 ms/token** for the batched prefill
+  kernels.
+- **Corrected 2026-09-18 (same day): there is no cheap second route.**
+  `_prefill_processed_argmax_chunk`'s reused branch also calls `session.step()`
+  once per token; it simply never recorded the `suffix_prefill` phase (it bumped
+  `processed_argmax_prefix_c1_suffix_*` route counters instead), so the fixture
+  lanes looked like they skipped the serial loop. The phase counter is now
+  recorded on both routes. The sampled lanes' 3-5 s lower walls are therefore not
+  explained by the missing phase and still need per-phase re-attribution against
+  the same lane prompts.
+- **Resolved 2026-09-18 (same day, later): the batched route exists and was
+  gated by policy, not capability.** The packed AR prefill accepts non-zero
+  start positions (`_GGUFPackedVerifySlotBlock.start_position`), seeds per-slot
+  GDN state from the restored session (`_sync_packed_decode_initial_state`),
+  imports prefix KV through page-aligned D2D segments, and commits the suffix
+  back through the session block table. The only blocker was
+  `_validate_packed_ar_prefill_context` refusing `max_live_count >= 1024` on
+  the paged route (a 2026-07-20 policy gate from 84fd737a3, never numerically
+  qualified past 1024 because the slot-local AOTriton route took over there).
+  The gate is removed; the reused branch of both `_prefill_native_chunk` and
+  `_prefill_processed_argmax_chunk` now prefills the suffix batched, with the
+  serial loop kept as the opt-in fallback
+  (`HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX=0`). Fixture evidence (Qwen3.5-0.8B,
+  18 GDN + 6 full-attention layers): shared-prefix batched extend matches the
+  serial oracle token-for-token with KL <= 0.05 and identical 8-step decode
+  continuations at total contexts 712/1224/2248/4296, with and without
+  `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN`.
+- Historical note: the mid-day correction ("there is no cheap second route")
+  was right about the sampled route's missing phase counter and wrong about
+  the batched route's reach; the audit entry
+  `worklog/entries/20260918T142514.675878Z-pi-prefix-cache-batched-suffix-audit-73980d.md`
+  records the mechanism.
+
+## Split prefill diverges from a single call (found 2026-09-19)
+
+- Prefilling a prompt in two `prefill_batch_native` calls does not always equal
+  prefilling it in one. Two shapes diverge, measured on the Qwen3.5-0.8B
+  fixture and reproduced identically on Qwen3.6-35B-A3B across all four
+  mtp-bench categories:
+  * `rows == 1` - a one-token chunk selects decode-shaped kernels
+    (`dense_down_decode_fused`, the rows==1 projection routes), whose
+    arithmetic differs from the bulk prefill path. **Closed for the prefix
+    cache on 2026-09-19**: a one-token reused suffix now takes the serial step
+    (`_gguf_prefix_batched_suffix_chunk_eligible`), so a hit never emits a
+    one-row prefill, and prefill callers pass `force_bulk_rows` to
+    `_run_post_attention_ffn_rows` to keep a one-row prefill off the dense GEMV
+    decode variants. MoE cannot be redirected the same way -
+    `_run_post_attention_moe_rows` refuses `rows <= 1` - so the raw
+    `prefill_batch_native` API still exposes the shape and the pin covers it.
+  * total context above 2048 - splitting anywhere diverges from one call.
+    **Root cause located 2026-09-19**: per-layer capture shows the first
+    divergent layer is the first `full_attention` layer (layer 3 on
+    Qwen3.5-0.8B, max|d| 1.953e-03, BF16-ULP scale) while every preceding
+    `linear_attention` layer is bit-identical, so the effect is in full
+    attention, not GDN. Splits at different boundaries agree with each other
+    and only the single call differs, which places it in query-window handling
+    once one call carries more than 2048 query rows. Capping the query window
+    would make misses match hits but measured *worse* against a serial
+    reference (kl_mean 2.37e-2 single call versus 1.59e-1 split), so that trade
+    was rejected. The
+    threshold is absolute, not relative to `max_sequence_length` (verified with
+    the session capacity held at 4096), and is independent of the split point:
+    at total 2148 the split result is identical for boundaries 1024, 1792,
+    1920 and 2048, and differs from the single call in all four.
+- **This is not a prefix-cache defect.** The probe uses one session and two
+  direct prefill calls - no pool sharing, no snapshot restore, no cache. Both
+  families reproduce on clean HEAD (d01ec1b51) to three significant figures.
+  The batched reused-suffix extend inherits them because a cache hit takes the
+  split path; it does not cause them.
+- Which side is right: against a serial autoregressive reference at total 2052,
+  the single call is closer (kl_mean 2.37e-2, top-1 100%) than the split
+  (kl_mean 1.59e-1, top-1 91.7%). So the >2048 split path is a real accuracy
+  gap, not a neutral re-association.
+- Pinned by `test_split_prefill_divergence_boundaries_are_unchanged` in
+  `tests/test_live_qwen35_gguf_chunked_prefill.py`, which also asserts that
+  total 2048 is still bit-exact. Fixing either family should break that test;
+  replace it with coverage in
+  `test_batched_suffix_extend_is_bit_exact_against_recompute`.
+- Removal scope: the pin, once both families are fixed and every shape is
+  covered by the bit-exact contract test.
+
+## Strict prefix gate cannot bind a batched candidate (found 2026-09-19, fixed 2026-09-20)
+
+- **Resolved.** `scripts/gguf_prefix_reuse_gate.py` builds its reference by
+  consuming the suffix through serial `session.step` calls, then compared GDN
+  state bytes (`initial_state_exact` / `final_state_exact`). Only a serial
+  candidate could satisfy that, so the gate reported `failed` for the batched
+  reused-suffix route on every arm while `output_exact`, `trajectory_exact`,
+  top-1 and the lifecycle checks all passed.
+- The gate now binds the comparison that reproduces the production shape
+  (`scheduler_chunk_diagnostic`: `prefill_batch_native` over the prefix and then
+  the suffix) through `gate_passed` / `_PRODUCTION_GATE_TERMS`. The serial,
+  one-shot-prefix, and one-shot-bulk comparisons stay in the payload as
+  diagnostics named in `_DIAGNOSTIC_COMPARISONS`, and `metrics_passed` keeps the
+  numerical envelope binding against the teacher-forced reference. The
+  localization and its evidence are in
+  `worklog/entries/20260920T033547.660457Z-lhl-dense27b-oracle-suffix-shape-localized-5e052a.md`.
+- Batched-versus-serial GDN state differs by ~5e-3 relative L2 at
+  `start_position == 0` as well, so this is a property of batched prefill, not
+  of reuse. The serial fallback (`HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX=0`) still
+  passes the gate outright; the batched route is additionally covered by
+  HIT == MISS bit-equality.
+- The gate now accepts `--prompt-file` / `--prompt-category` so its numerical
+  checks can run on real tokenized suite text; its default repeated-token-id
+  prompt produces degenerate logits that make KL unrepresentative.
+- Removal scope: done, apart from the open accuracy question. Whether the
+  production route's token or the single-call routes' token is closer to the
+  truth needs a higher-precision reference, and the Japanese `kl_mean` 0.68112127
+  is still measured against the serial reference, so the gate continues to flag
+  it. Rebase the numerical reference once that reference exists.
+
+## Grown KV pool could not serve an allocation spanning two chunks (found and fixed 2026-09-19)
+
+- The KV-pool growth path had never been exercised until a retained-snapshot
+  prefix-cache run pinned enough pages to force it. Three defects surfaced in a
+  row; the first two are fixed:
+  * the `before_grow` / `on_pressure` callbacks dereferenced
+    `self._resident_batch_owner` bare, while every other reader in the file
+    guards with `getattr`. A session that owns its own pool never has the
+    attribute, so the first grow/pressure event raised `AttributeError`. Fixed,
+    with `test_pool_pressure_callbacks_tolerate_a_session_without_a_batch_owner`.
+  * `grow_storage` rebound `pointer_tables` without declaring it `nonlocal`,
+    so `old_tables = pointer_tables` raised `UnboundLocalError` the first time
+    the pool actually grew. Fixed.
+  * bind-time validation checked `block_id - start_block_id < backing.pages`
+    against the first chunk, so any allocation whose pages landed past it was
+    rejected with `GGUF KV allocation is outside its backing chunk`. The
+    backing genuinely describes one chunk (its metadata and buffer sizes are
+    validated against `pages`), so the bound moved instead: allocations now
+    carry `pool_page_capacity` and a pointer-table pool validates against it.
+    Fixed, with `test_bound_blocks_validate_against_pool_capacity_after_growth`.
+  * the GPU memory fault in
+    `qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel` was **not**
+    stale pointer tables, as first recorded here. `bind_device_kv_allocation`
+    gives the session the backing chunk's cache buffers while the block table
+    carries global page ids, and every KV kernel addresses a chunk as
+    `base + page * stride`. A grown pool handed out allocations whose pages sat
+    in the appended chunk, so the write indexed past the end of the first one.
+    Fixed by confining an allocation to one chunk: `_select_free` takes a page
+    range, `GlobalDeviceKVPool` tracks `(start, pages, backing)` per chunk and
+    reports the chunk that owns the allocation. `grow_storage` returns its new
+    chunk's backing as a third element (two-element returns still work).
+  * a shared-prefix admission must place its suffix in the chunk that holds the
+    prefix, and growth appends a separate chunk, so growth can never satisfy
+    that path - it now asks eviction instead and declines with `MemoryError`
+    when the prefix's chunk is full. Admission turns that into the existing
+    private-allocation fallback, so the request is still served.
+- Exposure: eviction runs before growth - `_ensure_free_pages` calls
+  `_on_pressure` (which evicts prefix-cache entries) first and only grows when
+  that cannot free enough - and at `max_pages` growth is refused with
+  `MemoryError` rather than attempted. So the fault needs sustained pressure
+  plus headroom. `kv_pool_high_water_pages` defaults to `None`, which is
+  unbounded headroom; setting it bounds the pool and keeps the pool on the
+  eviction path. The pool never shrinks: `GlobalDeviceKVPool.shrink_idle` is a
+  stub returning 0, so grown capacity is held for the pool's lifetime.
+- Reproduction: `scripts/prefix_cache_multiturn_bench.py` with
+  `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16` on Qwen3.6-35B-A3B. That arm
+  completes, and after the placement cost model below it measures **-11.0%
+  wall** where it first measured +9.5%. The default retention is still better
+  (-18.6%), so the wide set stays opt-in, but it is no longer harmful.
+- Removal scope: this entry, once `shrink_idle` returns grown capacity. It is a
+  stub returning 0, so a pool that grows stays grown for its lifetime.
+
+## Placement decides the prefill route, and the routes are far apart (found 2026-09-19)
+
+- A shared-prefix allocation whose pages are contiguous keeps the slot-local
+  prefill route. A gapped one makes `_gguf_device_kv_contiguous_base_row`
+  return None, `slot_local_full_prefill` false, and the suffix prefills through
+  the packed paged route. Measured on Qwen3.5-0.8B with the source deliberately
+  held so placement is gapped, an 8234-token prompt reusing 2048: the paged
+  suffix costs **6.5 ms/token against 0.39 ms/token** for the full prefill it
+  replaces, one call or twenty-five - chunking is not the driver, and stubbing
+  the whole-history KV import changes it by 0.1%, so the cost is in the paged
+  prefill compute itself.
+- That single ratio explained the served regression. At
+  `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16`, pinned retained pages fragment
+  the arena, 8 of 18 admissions were gapped, and one lane spent **114 s**
+  prefilling a 6,186-token suffix that a plain miss does in ~15 s. Phase
+  attribution: `suffix_prefill` 5.8 s at the default retention against
+  **125-135 s** at retained 16.
+- Two changes, both measured: admission asks for a contiguous placement first
+  and accepts a gapped one rather than refusing (15 of 16 hits are contiguous
+  at the default retention, so most hits already took the fast route by the
+  allocator's adjacency preference - this makes it explicit); and a gapped
+  placement is only accepted when the suffix is at most
+  `HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX` tokens, default 512. Past that the
+  hit is declined into the full prefill it would have replaced. Crossover
+  measured at 2048 and 4096 token boundaries: a gapped hit costs 0.63x and
+  0.87x the miss at a 512-token suffix and 1.07x and 1.22x at 768.
+- Result: retained 16 goes from +9.5% to **-11.0%** wall with `suffix_prefill`
+  down from 134.9 s to 6.8 s; the default retention is unchanged at -18.6%.
+- **Update 2026-09-19 (gapped gather route):** the cost model's premise is now
+  gone where the gather route serves. A gapped BF16 slot swaps its identity
+  spans for its real chunk-local block table and runs the same AOTriton
+  attention over gathered head-major buffers the contiguous route uses, so a
+  gapped hit pays contiguous cost at any suffix length (the 35B lane's forced
+  gapped suffix prefill went 134,511 ms -> 8,306 ms against 8,226 ms
+  contiguous). The suffix budget now binds only when the fast gapped route is
+  unavailable - `HIPENGINE_GGUF_GAPPED_GATHER=0`, a backend without
+  head-major KV, or a context beyond the validated head-major allocation
+  class - where the paged-route costs above still hold. Removal scope below
+  is unchanged for those populations.
+- Removal scope: the threshold and the decline path, once the paged prefill
+  route is no longer several times slower per token than the slot-local one
+  on every backend. Gapped gfx1100 BF16 slots now resolve the registered copy
+  kernel independently of the optional contiguous head-major-layout default;
+  explicit rollback and allocation limits still retain the guard.
+  Fixing that is the real prize - it would make every hit pay and let the
+  retained working set grow.
+
+## One-process multi-arm prefix A/B is unsafe (found 2026-09-18)
+
+- `scripts/prefix_cache_multiturn_bench.py --allow-multi-mode` loads several
+  arms in one process with per-arm teardown. A third arm (a second `radix` arm)
+  faulted the GPU at lane `fixture-small_repo`:
+  `HSA_STATUS_ERROR_EXCEPTION` followed by `Memory access fault by GPU node-1 ...
+  Reason: Page not present or supervisor privilege`. Two arms (`off`, then
+  `radix`) complete normally with GTT back to 173 MiB after teardown, so the
+  fault needs a second cache-enabled engine in the same process.
+- Removal scope: the `--allow-multi-mode` flag and the per-arm teardown path,
+  once either the underlying reuse-after-close defect is fixed or the harness
+  always runs one arm per process (`--merge` already supports that, and the
+  2026-09-18 served A/B used it).
+- Until then the served A/B runs one arm per process and merges the artifacts;
+  the flag keeps the fault in its help text so the next caller is warned.
+- Not yet diagnosed: whether the fault is stale device pointers from a closed
+  prefix-cache engine or allocator fragmentation across two 64 GiB loads. A
+  minimal reproduction (two `radix` arms, one lane) is the first step.
+
+## Shared-prefix suffix prefill runs one token at a time (found 2026-09-18, resolved 2026-09-18)
+
+- `_prefill_native_chunk` has two routes for a chunk: a batched call through
+  `prefill_batch_native`, and a serial loop that calls `session.step()` once per
+  token. A row with `prefix_reused_tokens` takes the serial loop and never
+  reaches the batched route. Measured cost on `zbook`/`gfx1151`: **34.0 ms per
+  suffix token** (31.5-34.5 across all 16 hit turns of the prefix-cache A/B),
+  against **1.8 ms/token** for the batched full prefill it replaces. That single
+  route is why the measured A/B is net-negative (+6.4% wall overall, ShareGPT
+  +22.7%) even though reuse resolves 16 of 27 lookups.
+- **Resolved 2026-09-18:** the reused branch of both reused-suffix routes now
+  prefills batched via `prefill_batch_native` (the <1024 paged-prefill policy
+  gate was the only blocker; see the resolution note in "Reused-suffix prefill
+  has two routes and only one is slow" above). Shared-prefix admission no longer
+  asks for a contiguous suffix run: the paged route walks the block table, so
+  `shared_admission_noncontiguous` cannot fire. The serial loop remains as the
+  decline path for `_disable_incremental_prefill` (which fails closed for reused
+  rows by design) and as the `HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX=0` rollback.
+- Removal scope: the serial loop in `_prefill_native_chunk` and
+  `_prefill_processed_argmax_chunk`, the `prefix_c1_suffix_prefill_chunks` /
+  `prefix_c1_suffix_prefill_tokens` / `processed_argmax_prefix_c1_suffix_*`
+  counters that only it feeds, and the `HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX`
+  flag, once the served multi-turn A/B re-measurement with the wide retained
+  set (`HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16`) shows the batched route
+  holding exactness and the win in production shapes, and the
+  `scripts/gguf_prefix_reuse_gate.py` gate passes at >=1024 total context on
+  gfx1151 and gfx1100.
+- The invariant stands while the loop lives: a reused row's prefix pages are
+  shared with another request, so no fallback may write them.
+
+## Screening override now spans the plan layer (extended 2026-09-17)
+
+- `HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS` previously reached only the resident
+  owner's width/depth admission (`_physical_width_depth_admitted_for_group`).
+  The serving plan layer rejected an unqualified cell first, so an explicit
+  request never carried typed intent and the screening branch was unreachable
+  for every rejection except a physical width miss. The server now reads the
+  same switch through
+  `qwen35_gguf_mtp2.unqualified_mtp_screening_enabled()` and, for an explicit
+  request only, replaces the rejected plan's permanent-AR eligibility with a
+  non-automatic screening eligibility marked
+  `qualification: explicit_screening_unqualified_cell`. Response metadata carries
+  `unqualified: true` and the original rejection reason.
+- Removal scope is now larger than the 2026-09-06 entry below:
+  `MTP2_SCREEN_UNQUALIFIED_CELLS_ENV`, `unqualified_mtp_screening_enabled`, the
+  `_physical_width_depth_admitted_for_group` screening branch, the server's
+  `_MTP_SCREENING_REASONS` / `_MTP_SCREENING_QUALIFICATION` and the
+  `_mtp_screening_static_eligibility` helper, the screening branch in
+  `_resolve_realized_generation_route`, the `qualification`/`unqualified`
+  response fields, and their tests. Remove them when every measured cell either
+  has a qualified serving-evidence row or stays explicitly rejected, or when the
+  campaign is stopped.
+- Keep the invariant while it lives: screening never applies to automatic
+  intent, and sampling-mode, artifact-identity, and memory-fit rejections stay
+  fail-closed for every request. The invariant is enforced against *every*
+  failed qualification axis, not against the plan's summary reason: the resolver
+  reports only the first failed axis in declaration order, and the budget axis
+  precedes both the sampling axis and memory fit, so a plan that fails a
+  screenable axis and a structural one at once reports the screenable one
+  (`worklog/entries/20260917T170815.296012Z-lhl-mtp-screening-structural-axes-b6a093.md`). Structural
+  axes are named once in `serving.STRUCTURAL_REJECTION_AXES` and read by both
+  override sites (the request-time helper and the realized-intent carry-forward
+  in `_realized_model_serving_plan`).
+
+## Long-context MTP window override (found 2026-09-17, removed 2026-09-20)
+
+- **Removed.** The 1,023-token window and its
+  `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS` override are gone from
+  `hipengine/generation/qwen35_gguf_mtp2.py`. The adapter is now bounded only by
+  the target's own `max_sequence_length`, which is allocated capacity rather
+  than an evidence gap, and the advertised `max_context_tokens` reads that same
+  value so admission and per-cycle policy cannot disagree.
+- Why it had to go: it was a guard whose only cause was that nothing had been
+  measured past the 1,024 attention transition. `docs/EXECUTION-PROFILES.md`
+  section 1.1 says a restriction must name a concrete cause and that a guard
+  existing only because a case was not tested is an evaluation and cleanup task,
+  not a permanent safety boundary; section 2.9 lists prompt context as
+  explicitly **not** an admission axis, and `max_sequence_length_not_qualified`
+  and `context_bucket_not_qualified` were already removed as rejection reasons
+  elsewhere. A guard justified by "untested" also prevents the measurement that
+  would retire it, so it is permanent by construction.
+- Both stated causes were resolved before removal. The staged linear-attention
+  chain is byte-exact above the split threshold on the dense Q4_K_M path
+  (2026-09-19, see the row-wise strict dispatch entry below), so
+  `strict_long_rows` no longer covers it and the multi-row verifier is what runs
+  there. Measured long-context MTP then reaches 1.42x-1.74x from 1,804 to 12,142
+  prompt tokens at 0.992-0.996 coverage with greedy output identical to AR, and a
+  512-token prompt decoded 2,048 tokens across the 1,024 transition at 0.999
+  coverage with no bucket miss at all.
+- The long-context gate the entry asked for already exists:
+  `scripts/gguf_mtp_long_context_gate.py`. Long-context MTP claims still need the
+  mtp-bench category suite per `docs/BENCHMARK.md` "Anti-gaming"; the removal
+  makes that measurement reachable rather than blocked.
+- The draft-side boundary stays: `runtime/qwen35_gguf_nextn.py`
+  `_NEXTN_EXACT_CHAIN_GRAPH_MAX_CONTEXT = 1023` skips the proposal graph past it
+  (`eager_long_context`) and runs the eager proposal chain instead. That is a
+  per-cycle schedule choice with a working fallback, which section 1.1 permits
+  ("a graph-bucket miss may select eager execution for that cycle"), not a
+  refusal. Same for the target graph bucket and the split-K boundary. Assessed
+  2026-09-17
+  (`worklog/entries/20260917T170209.714945Z-lhl-mtp-long-context-assessment-8122b3.md`):
+  of the four boundaries on this path only the adapter window refused a request.
+- Residue removed with it (2026-09-20): `benchmarks/atlas-agent/` still described
+  the window as current behaviour, named the deleted
+  `_MTP2_QUALIFIED_CONTEXT_WINDOW`, and shipped a `FORCE_LONG_MTP=1` knob whose
+  only effects were to export the now-inert `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS`
+  and to pass a `--max-context-tokens` the base command already passed. The
+  knob, its `force_long_mtp` provenance line, the README section and knob row,
+  and `analyze.py`'s "LONG-CONTEXT MTP" caveat are gone, and the prose now
+  reports the measured admission range instead. A dead knob is worse than no
+  knob: it warned an operator that a working route was unqualified.
+
+## Long-context verifier rows are coupled to the global split-attention threshold (found 2026-09-17, resolved 2026-09-18)
+
+- Resolved: `_run_full_attention_attn_chain_rows_exact` no longer raises
+  `"staged full-attention chain currently requires non-split decode"` when the
+  span-wide attention limit crosses the split threshold. Every verifier row now
+  resolves its own c1 attention leaf (`_staged_full_attention_row_leaf`) — the
+  split-K gate leaf with the scalar owner's own chunk size and split tiling at or
+  above the threshold, and the short-context batch leaf or the plain leaf below
+  it, whichever the scalar owner would pick from `position + 1` — so the batched
+  projections, head norm/rotary, KV writes, and output projection stay batched
+  across the boundary while ordinary decoding keeps split-K attention. Eager
+  verification builds the per-row views the graph owner already gets from device
+  metadata (`_eager_native_row_views`), and `_staged_full_attention_rows_ready`
+  keeps the row-wise strict route for any row whose leaf does not resolve.
+  Measured on the eager long-context packet: cycle wall 8.129 s -> 7.893 s median
+  (-2.9%, 7 of 10 cases faster), 10/10 direct cases exact against the
+  serial-exact teacher, 16/32 split-K calls per case unchanged
+  (`worklog/entries/20260917T195925.422701Z-lhl-gguf-long-context-eager-staged-attention-2c4ca3.md`,
+  `benchmarks/results/2026-09-18-gfx1151-qwen38-long-context-eager-verifier-staged-chain.json`).
+- Resolved for the measured artifact (2026-09-19): the staged *linear*-attention
+  chain is byte-exact above the split threshold on the current dense Q4_K_M
+  path, so the blanket row-wise rule no longer has a correctness reason to cover
+  it and the backend default admits the staged chain for that file type (see the
+  row-wise strict dispatch entry above). The row-wise c1 route stays registered
+  as the strict fallback for every other artifact identity and behind
+  `HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG=0`; it is not dead code. The recorded
+  0.90x/0.68x serving ratios were measured with the row-wise rule in force
+  (`benchmarks/results/2026-09-17-gfx1151-qwen38-long-context-mtp-screen.json`).
+  The adapter's 1,023-token provider window that also refused serving MTP above a
+  1,022-token prompt was a separate blocker from this route and has since been
+  removed (see the entry above).
+- Historical note: the only measured way to reach the batched long-row route
+  before this was to raise the split threshold past the request's context (or
+  disable it with `0`), which cost normal decoding about 9% at 3,530 prompt
+  tokens. That workaround is no longer needed for full attention, and the
+  linear rows now have their own default-off admission instead.
+
+## Speculative candidate-budget default vs qualified depth (found 2026-09-17)
+
+- Resolved 2026-09-17: an omitted `--speculative-candidate-budget`
+  (`HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET`) no longer defaults to 4. The server
+  resolves the depth from the loaded model's retained serving evidence (deepest
+  qualified depth for the resident physical cell), or from the generic
+  provider's declared shape (Laguna keeps B4), and reports requested/resolved/
+  source at startup and in `/v1/hipengine/capabilities`. A pinned depth is used
+  unchanged and an unservable one is warned about instead of silently
+  rewritten. See `docs/ENVS.md` and
+  `worklog/entries/20260917T113608.088508Z-lhl-mtp-candidate-budget-capability-f876c3.md`.
+- Remaining debt: the two budget knobs stay separate. The server surface
+  (`--speculative-candidate-budget`) and the generator surface
+  (`HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET`, default 3) describe the same dense MTP
+  depth; the generator value is now only a fallback when no evidence row
+  describes the cell. Collapse them into one capability-owned setting once the
+  adapter budget is always published by the loaded owner.
+- Remaining debt: `_candidate_budget_resolution` keeps a three-source ladder
+  (explicit / engine-resolved / provider-declared). Once every generator
+  publishes a resolution, the provider branch is only needed for pre-load
+  capability reads and can be reduced to a declared provider field.
+
+## MTP output attribution: two AR-in-plan paths and a duplicated telemetry write (found 2026-09-17)
+
+- Resolved 2026-09-17: a request no longer reports `used: true` as if it were
+  full coverage. Every response with speculative intent carries an
+  `output_accounting` block splitting emitted tokens into MTP-committed and
+  autoregressive output, plus the selected-depth histogram, per-reason fallback
+  counts, and the first fallback position. See
+  `worklog/entries/20260917T121319.033073Z-lhl-mtp-output-accounting-e77e00.md`.
+- Remaining debt: autoregressive tokens emitted while the request is still
+  owned by the speculative plan arrive through two paths - a depth-zero cycle
+  commit (`record_speculative_outputs`) and a K0 step of an AR-only cycle
+  (`record_autoregressive_step`, recorded at the decode that emits the token
+  since `worklog/entries/20260917T155308.311295Z-lhl-mtp-ar-commit-attribution-3efe2f.md`)
+  - and are summed into one `ar_output_tokens_in_cycles` field. Collapse them
+  once the resident owner routes every row through a single commit path, which
+  would also remove the `emitted_tokens=0` call that exists only to avoid double
+  attribution.
+- Remaining debt: the per-request execution counters are published twice, as
+  the `diagnostics.specdec2_mtp2` block and as `mtp_*` scalar entries in the
+  response `timing` map. The scalars exist because the server's draft-usage and
+  metrics paths read ownership-bearing `timing` fields; once those read the
+  diagnostics block directly, `accounting_timing_fields` and its streaming
+  mirror in `qwen35_gguf.py` can go.
+
+## Speculative-MTP serving evidence rows (shape-axis removal, 2026-09-17)
+
+- Serving admission is physical only (see `docs/EXECUTION-PROFILES.md` §2.9).
+  Three retained rows now describe a physical cell that an earlier-declared row
+  already owns and are therefore unreachable:
+  `qwen38-q4km-gfx1151-production-bf16-c1-b3-context128`,
+  `qwen38-q4km-gfx1151-production-bf16-cap4-c1-intent-k3-d24`, and
+  `qwen36-dense-q4km-gfx1100-strict-bf16-c2-k2-d24`. Their benchmark artifacts
+  and reason strings are still valid provenance, so prune them only after
+  confirming no rollup or external reference depends on the evidence keys;
+  do not re-add a shape or profile check to make them reachable again.
+- `scripts/gguf_mtp_c1c8_server_bench.py::_diagnostic_plan` and
+  `scripts/qwen38_packet5_k4_watchdog_probe.py::_inject_k4_evidence_row` keep
+  their own diagnostic scopes. The watchdog probe injects a row for the width
+  it screens; if a future probe needs a *distinct* authorization on a cell that
+  a registered row already covers, it must say which row wins rather than rely
+  on declaration order.
+- Campaign documents written before 2026-09-17 (`docs/CONCURRENCY2-*.md`,
+  `docs/campaigns/QWEN36-27B-GGUF-CAMPAIGN.md`, `docs/MTP-*.md`) describe the admission
+  scope in shape/horizon/manifest terms. They are historical records and were
+  left intact; only `docs/API.md`, `docs/EXECUTION-PROFILES.md`, and
+  `docs/archive/COMPARISON-vs-atlas.md` state the current contract.
+
+## VibeVoice ASR prefill and legacy dense attention
+
+- The Q4_K_M batched prefill in `kernels/hip_gfx1100/vibevoice/q4.py`
+  (`q4_prefill`) mirrors the orchestration in
+  `runtime/vibevoice_qwen2.py::_prefill_batched` — the same norm / rope /
+  KV-write / attention / silu / residual sequence with different GEMMs and
+  activation dtypes. Unify them behind overridable GEMM, activation-staging
+  and scratch hooks once the Q4 prefill has a production-profile numerical
+  gate; the two copies currently differ only in those three places.
+- The batched prefill route wires only Q4_K and Q6_K; Q5_K has no WMMA
+  prefill kernel (only the naive raw-block `gguf_q5_k_prefill_*`, ~100x
+  slower) and raises rather than mis-decoding. Add a Q5_K WMMA prefill before
+  any Q5_K_M GGUF is put on this route.
+- `q4_prefill` allocates ~19 scratch buffers per call. Hoist them into the
+  runner (like the decode scratch) once prefill is on the production path and
+  per-request allocation shows up in a profile.
+
+- `prefill_variant=hipblaslt` and `frontend_variant=wmma` expose the arithmetic
+  candidates to the production evaluator. Keep their registered strict chains
+  as debugging oracles. Bind the public production profile only after the full
+  model-specific numerical/task gate; remove standalone candidate-selection
+  plumbing when profile construction owns that selection.
+- The old raw `vv_prefill_attention_f32` wrapper remains for parent comparison.
+  Runtime attention and KV writes now use `KVLiveSpans`. Remove the raw wrapper
+  after profile qualification and migration of any external diagnostic caller;
+  do not reintroduce it as an implicit fallback.
+- Convolution tails currently use owned host snapshots at chunk boundaries.
+  Replace these with device-resident tails only after the same whole/chunk,
+  60-second transition, recording-reset and post-join-noise tests pass.
+
 ## Dense Qwen35 execution-profile module names (architecture-scope rename)
 
 - Three profile modules are named after models but register architecture-scoped
@@ -1311,7 +2550,7 @@ Measured 2026-10-18 on gfx1151/zbook
   whenever it is done; it must not change any `RuntimeProfileKey`, any
   `VariantSelection`, or any binder env name, and it must not split the key per
   model name.
-- See `docs/20260909-GFX1151-GFX1100-TRANSFER-AUDIT.md` section K for the
+- See `docs/archive/20260909-GFX1151-GFX1100-TRANSFER-AUDIT.md` section K for the
   identity ruling and for the gfx1100-versus-gfx1151 plan A/B that decides which
   composition each backend keeps.
 
@@ -1329,6 +2568,52 @@ Measured 2026-10-18 on gfx1151/zbook
   flag, the `_gguf_packed_layer_outer_enabled` helper, and the chunk-outer
   dispatch branch together, and keep the chunk-outer tests only as the decline
   coverage the layer-outer path needs.
+
+## `HIPENGINE_YUE2_NAR_ATTENTION` (scalar fallback for the tensor-core attention)
+
+- `nar_wmma.hip` became the default attention for the production head geometry
+  (16 query heads over 8 key/value heads at head_dim 128) on 2026-09-17, after
+  all three M4 solver gates passed and the 32-step product solve of
+  `mandarin-off-s1234` fell 54.76 s -> 32.22 s. The kernel is 5.1x the scalar
+  kernel's rate (20.1 ms -> 3.85 ms per call at 1 299 rows / 2 695 keys) and
+  lands inside 1.7x of the pinned upstream's own attention kernel.
+- `HIPENGINE_YUE2_NAR_ATTENTION=scalar` selects `nar_attention_f32`, which stays
+  registered as the strict fallback: it is bit-exact against
+  `tests/fixtures/yue2/operators/nar_attention_parent.npz` and against the
+  recorded parent kernel, so it is the debugging oracle and the bisection point
+  for any solver regression. The tensor-core kernel changes arithmetic by design
+  (f16 WMMA operands, f16 output accumulator) and is held to the production
+  profile gates instead.
+- Removal condition: once the tensor-core path has held through a release cycle
+  with no solver regression traced to it, drop the environment flag and the
+  `_wmma_attention` branch, keep the scalar kernel registered but unreachable by
+  default, and keep `test_attention_matches_the_parent_kernel_bit_for_bit` as
+  the oracle's coverage.
+
+## YuE2 AR full-vocabulary head route (gate-only, keep)
+
+- `Yue2ArRuntime.logits(branch, domain=...)` projects only a phase's window
+  (`hipengine.generation.yue2.phase_window`: 32 769 rows for `semantic`, 151 849
+  for `abc`) and returns a full-vocabulary row that is `-inf` outside it, which is
+  exactly what `distribution` masks. The session loop always passes a window and
+  then samples through `distribution_windowed`, so the unwindowed call is now
+  reached only by the replay matrix (`scripts/yue2_ar_replay.py`), the
+  matched-timing harnesses and the paired-head check, all of which score
+  full-vocabulary rows against the pinned upstream oracle.
+- That is why this route stays: the reference rows are full-vocabulary, so a
+  windowed row cannot be compared against them and the AR replay gate would lose
+  its oracle. Do not remove `domain=None` as dead code; it is the diagnostic path
+  the numerical gate depends on. Both routes share one kernel
+  (`dense_gemv_bf16_f32_out_rowtile2`) and differ only in the weight offset and
+  `out_features`, so there is no second implementation to keep in sync.
+- The same split exists one level up in the sampler: `distribution` (full row) and
+  `distribution_windowed` (window slice plus its token offset) are one arithmetic
+  body, `_distribution_slice`, called with `(0, n)` or with a phase window. The
+  full-row call is not a fallback that can be retired -- it is the shape the
+  equivalence tests compare against -- but it is also no longer a second
+  implementation, so there is nothing to keep in step.
+- Removal condition: none. Revisit only if the oracle fixtures gain windowed rows
+  or a future profile retires the full-vocabulary replay gate.
 
 ## `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` (INT8 KV C1 decode graph)
 
@@ -1367,6 +2652,32 @@ Measured 2026-10-18 on gfx1151/zbook
   Note also that the earlier claim of a scalar-vs-packed floor inconsistency was
   wrong and was corrected in
   `worklog/entries/20260912T000826.517239Z-lhl-p3-c1-graph-floor-correction-5a1217.md`.
+
+## Host-to-device source ownership
+
+- `copy_host_array_to_device(buffer, array, nbytes=None)` retains a contiguous
+  source through the synchronous copy and checks both source and destination
+  bounds. Its default byte count is the source size. Use this API for arrays,
+  including temporary results of `np.ascontiguousarray`; noncontiguous inputs
+  must be made contiguous by the caller. The helper does not import NumPy or
+  add device-wide synchronization.
+- The reviewed temporary-array uploads in the GGUF, PARO, Moonshine, Evie,
+  TimesFM, and MTP runners use the owning API. Ownership and strided-input
+  regressions live in `tests/test_unit_host_array_upload.py`; real copies and
+  source reuse are covered by `tests/test_gpu_host_array_upload.py` and
+  `tests/test_gpu_h2d_source_lifetime.py`.
+- Remaining cleanup: named-local array uploads still use the raw-address
+  `copy_host_to_device` API in other paths. Named locals are safe through a
+  synchronous copy, but future edits must not replace them with temporary
+  pointer expressions. The AST guards are partial, not a proof of arbitrary
+  pointer lifetimes. Migrate array callers when touching those paths; retain
+  the pointer API for callers that genuinely manage a raw address. Remove this
+  ledger entry when array upload callers consistently use the owning API.
+- `_copy_array_to_tensor`-style helpers may also carry defensive per-copy
+  `device_synchronize()` calls. A synchronous copy retains no dependency on
+  the host source after return; removing synchronization still requires checking
+  each helper's device ordering contract. A future asynchronous upload API must
+  define a separate source-lifetime contract.
 
 ## Qwen4Exp Q8 expanded F32 cache: removed
 
@@ -1877,6 +3188,38 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-09-13 Surya decode split chunk keyed to `max_seq` — open
+
+- `plan_surya_decode_splits` derives the decode split chunk from the runner's
+  `max_seq` (`chunk = round_up(ceil(max_seq / 64), 32)`, `num_splits =
+  ceil(max_seq / chunk)`) and `SuryaGpuRunner._alloc_span_state` builds one
+  immutable `KVLiveSpans` view per runner, so a runner configured for a long
+  context runs short requests with fewer, longer producer blocks. At a *fixed*
+  live context that costs decode time, measured on gfx1151: 1024 live tokens
+  decode in 18.31 / 18.36 / 18.88 / 18.96 / 19.55 ms per token at `max_seq`
+  8192 / 12288 / 16384 / 20480 / 32768 (chunk 128 / 192 / 256 / 320 / 512), and
+  8580 live tokens in 19.07 / 19.22 / 19.38 / 20.00 ms from 12288 up — 3% from
+  8192 to 16384 and 4% more to 32768, against a per-row spread of 1.1-2.4%
+  (`benchmarks/results/2026-09-13-gfx1151-surya-context-default.json`).
+- Fix: derive the chunk from the live count instead of `max_seq`.
+  `surya_full_attn_decode_f32_spans` already resolves the plan inside the
+  wrapper from `spans.max_live_count` and already accepts a `chunk_size`
+  override, so the change is a host-only
+  `plan_surya_decode_splits(live_count)` call in `_attention_decode_spans` — no
+  kernel change. The one allocation that must move with it is the split-K
+  partial triple, sized today from the construction plan's `num_splits`: a
+  live-derived plan can exceed it (at `max_seq` 5000 the construction plan is 53
+  splits while a 4096-token request derives 64), so size those buffers for
+  `SURYA_TARGET_SPLITS` — 512 KiB for the output partials at Surya's 8 q heads
+  and head_dim 256.
+- This changes decode arithmetic (different split boundaries reassociate the
+  online-softmax partials), so promotion needs the production-profile numerical
+  gate plus the registered rocBLAS strict fallback. Note the default path's
+  decode arithmetic already depends on the configured `max_seq` for the same
+  reason, so this does not introduce a new variability class — it removes one.
+- Removal trigger: when the live-derived plan lands and the decode rows above
+  converge across `max_seq`, delete the `max_seq`-derived chunk and this entry.
+
 ## 2026-09-08 Native C1 Context Admission
 
 - Remove the obsolete gfx1100 dense H5120 Q4_K_M p95 native-context workaround
@@ -1922,6 +3265,116 @@ should be removed or collapsed.
   the same codec, overflow, above-window, snapshot, and model gates pass.
   Keep the CPU-reference oracle and BF16 fallback. Do not re-quantize moved
   payloads or detach their scales from token positions.
+
+## 2026-09-09 W4A16 IQ prefill — registered, unrouted
+
+**State.** `gguf_iq_wmma_prefill.hip` implements a W4A16 prefill route for all
+seven dense IQ quants and is registered on both HIP backends under
+`dense_wmma_w4a16_prefill_bf16_bf16_out`. **No dispatch policy selects it**, and
+a test asserts that.
+
+**Why it is kept unrouted — and why that rationale is now weak.** It was
+retained as "the only route that reaches exact-path accuracy at GEMM speed".
+**Measured end to end, it does not.** The context512 gate puts it at mean
+0.0014384, level with the integer MMQ's 0.0014707 and nowhere near the
+two-quant policy's 0.0010796, while running 150.9 tok/s against the integer
+MMQ's 171.9 — 12% slower for no mean benefit.
+
+The original claim came from a leaf comparison reporting GEMV 1.66e-03 and
+W4A16 1.67e-03. Both kernels write bf16, and bf16 rounding alone contributes
+exactly 1.66e-03, so that comparison was measuring the output format and could
+not resolve the two paths. Only the integer MMQ (5.60e-03) sat far enough above
+the floor to be distinguished.
+
+What survives is a different error *shape*: W4A16's p95 of 0.0037423 is the
+best of all three arms, better even than the two-quant policy, while its p99
+and max are the worst.
+
+**Second correction (2026-09-09): keep it, and consider promoting it.** The
+"dominated" reading above was itself scored against the llama.cpp teacher.
+Against hipEngine strict - the reference `EXECUTION-PROFILES.md` section 6
+actually specifies - W4A16 **passes every threshold in the calibrated
+envelope** (mean 0.000827, p95 0.004547, p99 0.012475, max 0.023513, top-1
+100%), while the shipped four-quant integer MMQ **breaches the 5e-2 absolute
+maximum-row ceiling** at 0.170390. W4A16 is not dominated; on the correct
+reference it is the only measured arm that is admissible, at 150.9 tok/s
+against 171.9.
+
+**Removal trigger.** Only if the default is re-taken on strict-referenced data
+and the integer MMQ is made admissible some other way, or a desktop
+re-measure overturns the ranking. Until then this is a promotion candidate, not
+a deletion candidate. See
+`benchmarks/results/2026-09-09-zbook-ud-production-gate-reference.json`.
+
+## 2026-09-09 Dense IQ MMQ four-quant policy — retained with a recorded trade
+
+**State.** `GGUF_IQ_DENSE_MMQ_PREFILL_POLICY` routes all four quants whose K32
+groups are expressible as `scale * int8`: IQ4_XS, IQ3_XXS, IQ3_S, IQ4_NL.
+Q3_K, IQ2_S and IQ2_XS carry a scale per 16 elements and stay on the strict
+GEMV; that needs a per-16-scale MMQ contract, i.e. a kernel redesign.
+
+**The trade, measured at 512/128 on the published protocol.**
+
+| arm | prefill | mean | p95 | max | top-1 |
+| --- | --- | --- | --- | --- | --- |
+| IQ4_XS + IQ3_XXS | 127.2 | 0.0010796 | 0.0051188 | 0.0354152 | 162/162 |
+| + IQ3_S | 137.7 | 0.0012985 | 0.0044588 | 0.0403417 | 161/162 |
+| + IQ4_NL | 155.2 | 0.0013457 | 0.0071143 | 0.0412277 | 161/162 |
+| **all four (retained)** | **171.9** | 0.0014707 | 0.0077991 | **0.0297407** | 161/162 |
+
+Mean regresses 36% and p95 52% against the two-quant policy, while the
+**maximum improves** to the best of the four and both binding gates pass with
+margin (max 0.0297 against 0.05, top-1 100%). IQ4_NL and IQ3_S were each held
+out briefly on the mean regression before the combined arm was measured.
+
+**Why it is not a defect to chase.** A per-tensor localization of the IQ4_NL
+cost was attempted and failed: excluding the three early `ffn_down` tensors -
+which a single-prompt probe blamed for 71% of the divergence - measured no
+better against the teacher (mean 0.0013632 vs 0.0013457 for all seven). Against
+the teacher the cost is not attributable to particular tensors. It is a
+systematic mean/tail-shape trade of the Q8_1 activation plane.
+
+**Removal trigger.** If a task or repeat/serving gate later shows the mean
+regression matters, roll back per quant by deleting its entry - IQ3_S and
+IQ4_NL are the two to drop first, in that order of cost-effectiveness
+(IQ4_NL buys +22%, IQ3_S +8.3%). If instead the trade proves harmless, delete
+this ledger entry. The open improvement is a finer activation quantization for
+these quants than the shared DS4 plane, which would likely recover the mean.
+
+## 2026-09-07 UD cleanup — reduce authorization surface
+
+- Removed generic profile qualifiers, custom-factory rollback and the cancelled
+  profile-application prototype. Preserve ordinary profile plugin composition
+  and the shared header-identity helper; do not recreate a transaction or
+  file-replacement defense around model loading. Model files are immutable
+  during a session.
+- Existing GGUF binders still write process-wide settings. Initial UD bring-up
+  uses a fresh process without a named profile. If multiple model/profile owners
+  must coexist, replace the needed settings with explicit owner fields at their
+  actual consumers; do not wrap every method in implicit profile context.
+- Removed per-call native physical-operand authorization and recursive scans.
+  Native routes qualify at construction and use session-owned fixed allocations.
+  Private pointer/geometry mutation is not a supported reconfiguration API.
+  Closed-owner, row, token and context bounds remain runtime checks.
+- Next: simplify reusable admission certificates. Keep loader shape/dtype checks
+  and shared dispatch contracts; do not replace them with a second framework.
+
+## 2026-09-07 GGUF native execution authorization — bounded cleanup
+
+- The experimental `NativeInvocationContext`, index-publication receipts and
+  recursive physical inventories are removed. They defended against arbitrary
+  private-field mutation rather than a supported caller. Construction-time
+  resident checks and shared kernel ABI descriptions stay. Do not restore
+  per-layer full-model validation; add narrow invalidation at an actual public
+  reconfiguration API if one is introduced. No GPU timing claim accompanies
+  this host-only cleanup.
+- `qwen35_gguf_native_row_binding_errors` is now a legacy alpha/beta diagnostic,
+  not the execution guard. Remove its export when diagnostic callers/tests
+  migrate to full execution-contract reports; never restore it as authority.
+- Host/deferred embedding and optional expert-sidecar native adapters have no
+  complete pre-allocation contract. Keep those route refusals until the actual
+  registered/executed adapter and every resident/physical owner are represented
+  in the shared call plan. Eager/c1 placement behavior is separate and unchanged.
 
 ## 2026-09-06 GGUF file-type stamp switches — open
 ## 2026-09-05 Qwen4Exp PF-5 GDN tile-16 prefill opt-out — promoted default
@@ -2280,10 +3733,35 @@ should be removed or collapsed.
   AR/NextN scope, partial-header validation, omitted sidecars/capabilities and
   allocation accounting in `scripts/gguf_quant_route_audit.py` and its tests.
   Decouple global IQ repack admission from `contract_f32_linear` without changing
-  existing MoE precision. Remove the diagnostic policy mirror after a pure
-  cold-path shared planner/capability interface supplies the report.
+  existing MoE precision. ~~Remove the diagnostic policy mirror after a pure
+  cold-path shared planner/capability interface supplies the report.~~ Done
+  2026-09-07 (UD-U0): capability/flag resolution now goes through the shared
+  pure policy API `hipengine.loading.qwen35_gguf_policy` (source-reading AST
+  reader in the audit, `backend_package_capability` at runtime); the audit's
+  regex/quoted-substring capability mirror and the local raw-IQ predicate copy
+  are removed. The stamp-switch hazard itself stays open until U1 binds policy
+  to the actual role/shape/type/layout manifest.
+- ~~Residual cold-path import chain (not fixed here)~~ Fixed 2026-09-07 (UD-U0
+  review blocker): the engine root `hipengine/__init__.py` eagerly imported
+  `hipengine.llm`, whose speculative package chain loads
+  `hipengine.kernels.hip_gfx1100`, so importing any `hipengine.loading.*`
+  module (the metadata audit, its tests, any no-ROCm CI) loaded a GPU backend
+  package. The root package now resolves `LLM` and `SamplingParams` lazily via
+  PEP 562 module `__getattr__` (`ExecutionProfile` stays eager; it is pure), so
+  a bare `import hipengine` is CPU-safe while `from hipengine import LLM,
+  SamplingParams` and the runtime kernel-registration chain are unchanged.
+  Guarded by
+  `tests/test_scripts_gguf_quant_route_audit.py::test_fresh_process_audit_never_imports_gpu_backend_packages`
+  (fresh subprocess, meta-path guard rejects `hipengine.kernels.hip_*` /
+  `cuda_*` / torch before any import, then runs the real CLI) and
+  `tests/test_integration_hipengine_public_api.py` (lazy-export identity/caching/`dir`
+  contracts). Remaining honest limitation: actually touching `LLM` or importing
+  `hipengine.llm` still loads the speculative package and kernel modules -- by
+  design, that is the runtime registration path -- so anything needing true
+  llm-free operation must keep using only pure modules
+  (`hipengine.loading.qwen35_gguf_policy`, `hipengine.execution_profiles`).
 - Analysis and the wider campaign this sits inside:
-  [`UD-QUANTS.md`](UD-QUANTS.md), sections 2, 7.3 and U0/U1.
+  [`UD-QUANTS.md`](campaigns/UD-QUANTS.md), sections 2, 7.3 and U0/U1.
 
 ## 2026-09-07 W7900 packed C1 target qualification — open
 
@@ -2688,7 +4166,7 @@ fallback count is not a success metric.
 
 ## SPECDEC2 whole-request compatibility seam
 
-- Added 2026-08-24 for the approved [`SPECDEC2.md`](SPECDEC2.md) campaign.
+- Added 2026-08-24 for the approved [`SPECDEC2.md`](reference/SPECDEC2.md) campaign.
   During S1-S4 the new Generation-2 one-cycle provider/target path coexists with
   the synchronous `SubmitPollTextGenerator.submit_speculative_many_detailed()`
   route, which currently finishes complete model-owned generation under the
@@ -3162,7 +4640,7 @@ fallback count is not a success metric.
   ownership drains cleanly. The route deliberately reports physical width 1
   and makes no throughput claim.
 - Removal trigger remains the approved
-  [`IKV-C2`-`IKV-C7` campaign](QWEN38-INT8-KV-CONTINUOUS.md): replace the serial
+  [`IKV-C2`-`IKV-C7` campaign](campaigns/QWEN38-INT8-KV-CONTINUOUS.md): replace the serial
   route with row-batched direct INT8 attention, complete prefill and admission
   ownership, and rerun the artifact-scoped c1/c2/c4/c8 matrices. Remove the
   mirrored short route when the replacement is exact, memory-positive,
@@ -4665,7 +6143,7 @@ shorter-horizon audit establishes a lower break-even.
 | GGUF prefill route-session stack | `Qwen35GGUFResidentSession.prefill` opens the wmma/q8/pack8/unequal-pair/F16 route sessions as one stack, while the packed admission entry `prefill_batch_native` now opens only `q4_t16_unequal_pair_prefill_session` (the route whose row floor was qualified). | Sessions are added per qualified route because each needed its own W7900 bit-parity + A/B evidence; the shipping AR route admits through `prefill_batch_native` (bound in `hipengine/generation/qwen35_gguf.py` 5 times), so a route enabled only in `prefill` is invisible to it - that is how the rows16 QKV dual landed with a flat topline until the packed entry was wired. | Extract one `_prefill_route_sessions(...)` context stack used by both entries (and by `_prefill_batch_native_impl` if a caller ever reaches it directly), then delete the per-entry session lists. Route-eligibility stays in the capability policies, not in call sites. |
 | GGUF bench shipping-route alias | `scripts/qwen35_gguf_bench.py --public-ar-profile` (plus the recorded `public_ar_profile` / `shipping_ar_route_mismatch` protocol fields and the stderr warning) selects `use_wmma_prefill=True` + `use_gemv_decode=True` instead of the low-level env-default-off selectors. | W7900 Qwen3.8-27B-Q4_K_M measured 45-token prefill 0.4577 s unset vs 0.2818 s shipping (+62.4%), 512 tokens +1.7%, identical generated id, final logit 22.1395 -> 21.9644. Without the alias the harness default route silently measures a route the product never runs; see worklog `20260829T215206.066388Z-lhl-w7900-qwen38-submodule-parity-1921c9`. | Collapse once the bench resolves its default through the same session-profile helper the product uses (so no separate alias is needed), or once every retained short-prompt prefill artifact has been re-measured on the shipping route and the low-level selectors are gone from the bench surface. |
 | GGUF duplicate AR loop ownership | `Qwen35GGUFResidentModelRunner` owns public blocking and OpenAI submit/poll execution, but `_generate_ar_serving_slots()` remains as a direct control/oracle and explicit compatibility fallback. | D1–E3/F1 now prove one shared model-owning loop through exact arbitrary-C burst/live admission, cancellation, SSE, shutdown, real KV ownership, observability, and retained server scaling on both gfx11 targets. The direct loop still supplies the independent c1/native-width oracle used by the retained E1/E2/E3 packets. | Both gfx11 triggers are met. During F2, move the oracle into an explicit test/benchmark helper and remove production call sites after one release window; keep registry-resolved unsupported-shape fallbacks. |
-| GGUF RadixCache production admission | `HIPENGINE_PREFIX_CACHE=radix` is a real model-loop opt-in. It prefers an active source's exact-current positive 256-token boundary, then may restore a bounded cache-owned device snapshot after normal source reclaim. Stochastic sampled reuse remains off, while deterministic `processed_argmax` forced-tool rows now restore prefixes with full-vocabulary logits and unchanged host processors. Shared-prefix suffix tokens use exact c1 steps because packed one-row suffix arithmetic passes KL/top-1 but is not byte-identical to c1 state/KV. | Host/runtime RED/GREEN proves same-backing page refcounts/COW, non-contiguous block-table gather/scatter, exact hybrid-state clone, suffix-only execution, source-first reclaim, and final drain. The active-current gfx1151 and gfx1100 gates are byte-exact; the clean gfx1151 paired p256+s1 packet moves already-live continuation TTFT **249.269 -> 21.188 ms (11.765x, -91.50%)**, with live pages **4 -> 3** (5,242,880 bytes) and zero paired HIP-current median savings. The completed-source gate then resets/unbinds the source before admission, restores all 66,846,720 snapshot bytes, keeps output/all Conv/GDN/live-KV/four teacher-forced steps byte-exact (`KL=0`, top-1 `100%`), and proves cache refs/eviction **1->1->2->1->0**. Its clean paired economics move TTFT **249.446 -> 22.013 ms (11.332x, -91.18%)** with 3/3 exact snapshot hits; unique continuation pages stay **2 -> 2**, while exact cache residency is **72,089,600 bytes** and paired HIP current is **+62,914,560 bytes**. The gfx1100 active/completed correctness transfer also passes output, all Conv/GDN/live-KV bytes, four teacher-forced steps (`KL=0`, top-1 100%), refcount/COW, snapshot eviction, and final drain. Deterministic processed-argmax p2048/p8192 active/completed gates additionally preserve a two-token forced sequence plus the five-ID response trajectory, reuse 8/32 pages, and bound completed residency at 108,789,760/234,618,880 bytes before exact eviction/final drain. The final W7900 A2 packet closes lifecycle/pressure but rejects agentic promotion: radix hits only 0/12, 3/24, and 3/18 C1 turns, regresses active-SSE goodput 64.19%/65.63%/26.64%, and worsens tool-ready latency 181.90%/196.09%/38.81%. Default stays `off`; radix is explicit diagnostic-only. | Do not default-enable the measured latest-boundary policy. Reconsider only after a model-general LCP/snapshot redesign passes the full frozen C1/C4/C8 suite, same-seed sampled output/state gates, and lifecycle economics without prompt-conditioned tuning. If no such redesign is scheduled after A3/A4, move production radix admission to a benchmark/diagnostic helper and remove the runtime flag; keep exact c1 suffix and ownership tests as references. |
+| GGUF RadixCache early admission history | Radix is now the HTTP and in-process default, with batched suffix prefill and registered gapped-page gather. The earlier admission used a latest-boundary policy and serial suffix steps; its results below are historical, not the current default policy. Stochastic reuse remains unsupported; deterministic processed-argmax requests preserve their host processors. | Early p256+s1 ownership gates passed exact state, refcounts/COW, source reclaim, snapshot eviction, and final drain on gfx1151 and gfx1100. The historical W7900 A2 packet closed lifecycle/pressure but rejected that agentic configuration: radix hit 0/12, 3/24, and 3/18 C1 turns, regressed active-SSE goodput 64.19%/65.63%/26.64%, and worsened tool-ready latency 181.90%/196.09%/38.81%. The original numerical and timing artifacts remain in the benchmark history. The current BF16 layout-repair packet independently passes all 16 category/lifecycle scopes with exact state and zero KL; it makes no new performance claim. | Keep lifecycle tests and the explicit `off` rollback. Remove obsolete admission cost guards only after their concrete slow-path conditions no longer apply. Any new performance claim needs a fresh same-host workload; the historical A2 result neither measures the repaired path nor overrides the owner-directed radix default. |
 | GGUF LCP-1 convolution prefill | `HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE=baseline|tile32x128` selects between the production global-read convolution and the registered exact shared-token route. | gfx1151 selects `tile32x128` automatically. The clean 512/4K 82-part and wall gates pass, the 4K body falls `954.134 -> 49.790 ms`, and all six right-sized prefill rows improve `+1.10%..+24.04%` with unchanged memory. gfx1100 remains on `baseline` pending hardware transfer. The production implementation is the required unfused fallback and explicit rollback. | Remove the explicit mode selector after one release window if the gfx1100 transfer remains stable. Never remove the exact production fallback. |
 | GGUF packed-AR singleton-indexed GDN | Backend capability `GGUF_GDN_INDEXED_SINGLETON_DECODE` selects a one-token-per-row indexed sibling while retaining the arbitrary-length segmented recurrence. | gfx1151 defaults to the singleton sibling after independent-c1 byte equality and exact p512/d64 trajectories; gfx1100 remains on segmented GDN pending hardware transfer. The runtime manifest records `indexed_singleton` versus `segments` explicitly. | Remove the gfx1100 capability split only after an independent W7900 c2/c4/c8 correctness/performance gate. Keep the segmented implementation permanently as the arbitrary-length fallback. |
 | GGUF selected-MoE duplicate-expert reuse | `HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE=0`, `HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE=0`, and `HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE=0` roll physical-C8 Q4T16 gate/up plus Q5/Q6T16 down back to per-selected-lane kernels; backend capabilities keep gfx1100 unchanged. | gfx1151 pairs consecutive dynamic expert-ID occurrences inside 128-thread blocks while preserving each row's reduction order. Q4 gate/up and Q5/Q6 down share weights across independent per-row accumulators. Lower widths and unpaired IDs retain exact fallback behavior. | Remove the three env opt-outs after one release window plus defaults-only gfx1151 direct/server refreshes and an independent gfx1100 transfer. Keep per-lane kernels for unsupported widths and as required fallbacks. |
@@ -4738,7 +6216,7 @@ shorter-horizon audit establishes a lower break-even.
 | MTP verifier rejected gate | `HIPENGINE_SELECTED_MOE_STAGED_ROTATE` opt-in for M13.B.3 staged selected gate/up rotate+GEMV. | Default-off; staged/keyed gate-up path is exact but later W7900 verifier-window measurement regressed kernel time (`15.344 -> 15.611 ms/pass`) despite launch-count reduction. | Remove or demote to kernel test-only unless a no-spin/no-barrier-reset design beats the unfused chain on the current D32 prompt suite. |
 | MTP verifier rejected gate | `HIPENGINE_SHARED_EXPERT_FUSED_ROTATE` opt-in for M13.B.2 shared-expert rotate+dual GEMV. | Default-off; exact, but the saved rotate launch was replaced by a barrier reset in the original path and the keyed-barrier follow-up was neutral (`15.350 -> 15.365 ms/pass`). | Remove or demote to kernel test-only unless a future full-layer C-dispatch path can reuse it without adding per-launch synchronization overhead. |
 | MTP verifier rejected gate | `HIPENGINE_FUSED_RMSNORM_ROTATE` opt-in for M15.4 fused input RMSNorm + PARO rotate2. | Default-off; current-stack retest on 2026-06-11 stayed exact but regressed verifier kernel `13.41 -> 14.09 ms/pass` and host window `18.45 -> 19.05 ms/pass`. | After the MTP break-even path is stable, remove the runtime gate or demote it to a kernel test-only path unless a new implementation avoids the one-block RMSNorm occupancy trap. |
-| MTP verifier docs | Older "default-off diagnostic" notes for P1 gates can become stale as promoted defaults land. | `docs/MTP.md`, `benchmarks/README.md`, and `WORKLOG.md` carry historical rows plus current status. | During each MTP sprint commit, update current-status language and leave old measurements only as dated history. |
+| MTP verifier docs | Older "default-off diagnostic" notes for P1 gates can become stale as promoted defaults land. | `docs/reference/MTP.md`, `benchmarks/README.md`, and `WORKLOG.md` carry historical rows plus current status. | During each MTP sprint commit, update current-status language and leave old measurements only as dated history. |
 | GGUF decode graph replay | Session-bound graphs retain a full key and cumulative transition budget; callers can still explicitly capture diagnostic windows outside the production selector. | SOL-G5 resolves the old uncapped debt: the context cap is inferred from `position + max_replay_steps` or validated when explicit; the key covers backend/model/weights/buffers/KV/layers/route/sampler/recording/state generation; replay rejects cursor drift or budget overflow. Current gfx1151 HIP passes 128/128 byte-exact checkpoints. | Keep the strict cap/key checks permanently. Remove only redundant legacy graph arguments after the MTP diagnostic modes are retired and all callers use the state-bound API. |
 | GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --no-target-graph-verify` eager target-verification opt-out. | Default path now uses capped resident decode-graph target verification with fp32 hidden-seed capture; the eager opt-out is useful for bisection and correctness/perf comparison but is >2x slower on the B1 full suite. | Remove or move to a dedicated debug harness once the capped target graph has survived the next MTP break-even sprint and a multi-token GGUF graph correctness gate is part of the regular validation bundle. |
 | GGUF MTP diagnostics | `scripts/gguf_mtp_bench.py --no-mtp-draft-warmup` cold-start diagnostic opt-out. | Default path now runs one stateless untimed draft warmup so MTP timing matches the true-AR warmup protocol; the cold-start opt-out is useful only for measuring wrapper/library/weight-cache first-use cost. | Remove or move to a dedicated cold-start harness once the MTP draft runtime has persistent device buffers and per-process cold-start cost is documented separately from steady-state tok/s. |
@@ -4823,7 +6301,7 @@ should be boring.
   0.90). Does NOT match llama HIP MTP (67.3) — dp4a is necessary but not sufficient.
 - Remove when: either a Vulkan backend supersedes the perf goal, or the project
   decides to drop dp4a experimentation entirely. Until then it is the documented
-  opt-in for the dp4a/accuracy tradeoff. See docs/MTP-LLAMACPP-PARITY.md "COFFIN NAIL".
+  opt-in for the dp4a/accuracy tradeoff. See docs/campaigns/MTP-LLAMACPP-PARITY.md "COFFIN NAIL".
 
 ## `--llama-compat` / `llama-compat*` routes (default OFF, semantic diagnostic)
 - Added 2026-06-30. Bench flag `--llama-compat` forces the closest hipEngine
@@ -5219,7 +6697,7 @@ should be boring.
   route mirrors `resident-b1-probe-block-direct-cap32k-minrows2-pmin05` plus this
   flag. **Default off** until a full-suite row proves it improves wall time.
 - Purpose: test the first queued llama.cpp-parity fix from
-  `docs/MTP-LLAMACPP-PARITY.md`: remove or shrink `target_serial_verify_step`
+  `docs/campaigns/MTP-LLAMACPP-PARITY.md`: remove or shrink `target_serial_verify_step`
   without merely shifting the same cost into `target_block_verify_total`.
 - Remove / promote when: promote into the retained route only if exact full-suite
   B5 beats the current default and stage buckets show serial verifier cost falls
@@ -7024,9 +8502,46 @@ should be boring.
   versus scalar AR (layer 46 row 3, max abs 0.015625). The retained 13/13
   transition packet and real crossing are in
   `worklog/entries/20260821T052947.067917Z-gfx1151-mtp-rf1-boundary-4k-46c738.md`.
+- Measured 2026-09-12: the flip is exactly at `start_position + rows == 1024`.
+  `scripts/ud_mtp_ar_verify_numerics_gate.py` reports `max_abs_diff` 0.073-0.280
+  at 1021/1022/1023 and exactly `0.0` at 1024, 1536, 2048 and 4096, because the
+  per-row branch runs the same per-token kernels as `session.step`. **A
+  long-context run of that gate therefore reports zero KL for a reason that has
+  nothing to do with the multi-row arithmetic**: at 4096 it pooled 162 rows with
+  mean = p95 = p99 = max = `0.000e+00` and top-1 1.0000. Do not read a
+  long-context zero-KL result from this gate as a multi-row verifier pass, and do
+  not read it as a speed claim either — the retained per-row route is 44.7 s per
+  8 generated tokens and the long-graph alternative measured 0.9989x (see the RF2
+  entry above).
 - This is deliberately not the fast long-context route (direct cycle cost
   0.4–1.6 s, 44.7 s per 8 generated tokens) and does not raise the 1023 graph
   context cap.
+- The staged route is now the default for the measured artifact (2026-09-19):
+  the backend package capability
+  `GGUF_STAGED_LINEAR_ROWS_LONG_DEFAULT_FILE_TYPES` (`mostly_q4_k_m` on
+  gfx1151) admits dense linear-attention rows above the split threshold, and
+  `HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG` overrides it in either direction as
+  the rollback seam. The row-wise route in this entry stays registered as the
+  strict fallback for a preset-bound or unknown-manifest artifact, an unlisted
+  file type, gfx1100, and `=0`. The 2026-09-12 BF16 boundary that motivated the
+  blanket rule (layer 46, max abs 0.015625) does not reproduce on the current
+  dense Q4_K_M path: on the eager route
+  (`scripts/gguf_mtp_long_context_gate.py --disable-target-graph`, gfx1151,
+  Qwen3.8-27B Q4_K_M) every straddle case at 1,020-1,028, 3,528-3,532 and 8,192
+  is exact against the serial-exact teacher with `staged_chain_calls` 48 and
+  `row_wise_attn_calls` 0, the matched row-wise control is exact as well, and
+  the committed long-context task packet binds task, AR-id and eager-ownership
+  equality at a 4,096-token context.
+- Removal trigger: the gates have now qualified the staged linear route on the
+  admitted (backend, model, quant) cell, the capability default is the promoted
+  path, and `HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG` is a documented rollback
+  exactly like `GGUF_AOTRITON_HEAD_MAJOR_KV`. Retire the env override and the
+  row-wise long-context branch together when the row-wise c1 route stops being
+  the registered strict fallback for an unlisted artifact - that is, when every
+  admitted artifact family has its own packet and the strict chain is reachable
+  through the registry rather than through this branch. A gate failure on a
+  newly admitted family means removing that family from the capability, not
+  restoring a default-off flag.
 - Removal trigger: after RF2 context-bucketed split-K N1/N2 graphs are qualified
   and the eager long path becomes a non-authoritative fallback, re-evaluate
   whether the row-wise serialization can be consolidated into the registered
@@ -7320,17 +8835,6 @@ reaches the packed route. Preferred fix still stands: have the bench snapshot co
 before and after each cell and store the delta next to the cumulative value, so
 attribution does not depend on reconstructing execution order.
 
-The **automatic MTP route is gated off** on gfx1100 / Qwen3.8 `Q4_K_M`, measured 2026-08-30:
-with `--mtp-request-mode automatic` no cell engages (0/80, zero accepted draft tokens),
-declining with `artifact_not_qualified` at C1, `resident_capacity_not_qualified` at C2 and
-`physical_group_not_qualified` at C3-C8. Consequence: the published explicit-K3 row is an
-engine ranking, and the product ships AR at all eight widths on this host. Un-sequencing
-this needs each gate qualified separately - they are three different qualification
-predicates, not one switch - and it is the reason the C5-C8 "AR beats our own K3" question
-has no user-facing urgency: there is no automatic K3 to displace yet. Until then do not
-read the K3 row as shipping behaviour. Removing this note = the automatic route engages at
-some width with acceptance counters proving it.
-
 `gguf_mtp_verifier_rocprof.py --mode block-verify` cannot sweep `--block-rows`: the child
 raises `ValueError: token_id 2147483647 outside [0, 248320)` from
 `qwen35_gguf_runner.py:19000`, i.e. `verify()` rejects the INT32_MAX padding the harness
@@ -7573,6 +9077,20 @@ other means and were not touched.
   The route STAYS default-off: +1.23 GB persistent sidecar for a target-stage
   delta inside control spread does not justify promotion; the env pair
   remains the operator opt-in for k2-shaped runs.
+- **Allocation-formula gap closed (2026-09-07, UD-U1 repair regression
+  round):** `planned_qwen35_gguf_weight_allocation_nbytes` initially had no
+  `qmicro_planar` formula (the route audit reported the resident
+  formula-unavailable rather than guessing), and the new mandatory admission
+  materializability check turned that gap into a hard refusal of this
+  previously loadable resident. The formula is now exact and derived from the
+  actual converter/allocation ABI: the INT8 `planar.tiles` payload of
+  `convert_gguf_q5_k_qmicro_tile16_to_planar(repack_gguf_q5_k_qmicro_tile16(raw[None, ...]))`
+  = `experts * (out/16) * (bytes_per_row/176) * GGUF_Q5_K_QMICRO_PLANAR_T16_BLOCK_BYTES`
+  (3328 B/block; measured 5120x6144 ssm_out sidecar = 25,559,040 bytes),
+  gated to Q5_K T16 residents exactly like the materializer's own sidecar
+  gate. Byte-exactness is pinned against the real CPU converter in
+  `tests/test_live_gguf_ud_admission.py`; the audit reports the sidecar
+  formula-sized. No kernel, dispatch, or default-change is involved.
 - Remove the kernel, wrapper, registry entry, session/runner/env wiring,
   loader sidecar, leaf script, and tests if the P2 residual closes by
   another axis AND the flag pair has had no operator use for a full
@@ -7616,18 +9134,43 @@ batches (len(sessions) >= 2) with a RED-first contract
   `benchmarks/results/2026-09-05-gfx1151-qwen38-c8-k3-width-policy-retained.json`
   and
   `benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json`.
+- **The gfx1151 half of that row is withdrawn (2026-09-19).** Re-measured on the
+  same instrument the cell is 46.88 tok/s against 50.10 true AR (0.936x) with
+  0 of 10 cells reproducing the AR output, because the prompt-streaming policy
+  refuses a pending set of 8 rows while the route runs anyway; the gfx1100 cell
+  is untouched by that measurement. See the 2026-09-19 entry at the top of this
+  ledger and
+  `benchmarks/results/2026-09-19-gfx1151-qwen38-mtp-width-census-and-c8-k3-withdrawal.json`.
 - Roll back by removing only the failing exact cell from that backend/profile
   policy. Do not restore a scalar ceiling or broaden intervening widths. Keep
   the registered strict fallback.
 
-## RF-M5 — production whole-batch AR route for over-width MTP due items (2026-08-31)
+## RF-M5 — production whole-batch AR route for over-width MTP due items (2026-08-31) — RESOLVED
+
+Resolved: `_maybe_run_partitioned_speculative_decode` now treats a zero
+partition bound as one whole-batch AR step instead of "do not partition"
+(`tests/test_unit_specdec2_engine_loop.py::test_zero_partition_bound_stops_a_wide_capable_runner_from_cycling`
+pins the engine decision against a runner whose capability would grant the
+wide cycle), and the admission owner caps gfx1151 production MTP widths at
+four (9c8ff5444), so C5-C8 never enter MTP and the census artifact's true-AR
+column stays their operative baseline -- no remeasure row is claimed here.
+Decision: the partitioner-level threshold is retained deliberately as the
+zero-bound signal the engine maps; it is not a redundant defense. The
+observation below records the measured inert state from 2026-09-19.
 
 `GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS = {"production": 4}` plus a
 zero `partition_max_requests` result make an over-bound due batch take one
-full-width AR step rather than chained MTP subgroups. This is currently inert
-on the server benchmark because admission caps explicit groups at four before
-the partitioner sees them. If admission semantics broaden, move demotion to
-the admission owner, remeasure C5-C8 against current AR, and remove the
+full-width AR step rather than chained MTP subgroups. **Measured 2026-09-19: it
+does not.** `_maybe_run_partitioned_speculative_decode` treats a zero bound as
+"do not partition" and returns `None`, so `_run_decode` falls through to
+`_maybe_run_speculative_cycle` on the whole wide work item, and the 8-row
+width-8 protocol runs 8-row speculative cycles this way. The defense was inert
+on the server benchmark only while admission capped explicit groups at four
+before the partitioner saw them; admission broadened when the 2026-09-05 width
+policy listed `(8, 3)`, so this entry's precondition is met. Evidence:
+`benchmarks/results/2026-09-19-gfx1151-qwen38-mtp-width-census-and-c8-k3-withdrawal.json`.
+Move demotion to the admission owner (or make a zero partition bound mean one
+whole-batch AR step), remeasure C5-C8 against current AR, and remove the
 partitioner-level defense once redundant.
 
 ## RF-B1A — MTP serving target WMMA-prefill transfer (2026-09-02)
@@ -7699,6 +9242,17 @@ Qwen3.6/gfx1151 routes are untouched; admission is recorded in
 `_physical_width_depth_admitted_for_group` screening branch, and its tests
 when the campaign's final C1-C8/K1-K7 matrix lands and every measured cell
 either has a qualified serving-evidence row or stays explicitly rejected.
+
+**Open interaction (2026-09-21).** The guard now also blocks screening every
+BF16 cell the implementation declarations cover, because those declarations are
+automatic-eligible: `automatic_eligible` no longer implies "this cell is in the
+listed policy", which is the invariant the guard was written against. A cell
+covered by an explicit-only evidence row (`automatic_eligible=false`) is still
+screenable; a cell with no row of its own is not, and reaches the adapter as
+ordinary automatic intent instead. Measuring a BF16 cell outside the listed
+policy therefore needs the guard keyed on the listed cell table rather than on
+`automatic_eligible` -- decide that with the campaign owner before extending the
+matrix, since removing the guard lets screening widen automatic intent.
 
 ## 2026-09-07 Dual C1 target-route dispatch — singleton vs packed frontier
 
@@ -8006,7 +9560,7 @@ runtime level instead (2.5: fp32 unfused path; 3.0: fp32 routes through the
 separate var-q/k normalization chain). Register both families under the
 four-axis registry with their strict fallback chains when a second consumer
 of the kernels appears; until then the runtime-level fallback is the
-contract of record (see docs/MODEL-TIMESFM3.md).
+contract of record (see docs/model-cards/MODEL-TIMESFM3.md).
 
 ## 2026-09-12 PARO paged-attention backend pin - removal rejected
 
@@ -9463,3 +11017,1497 @@ registry keys, projection dispatch keys, step widths, and the profile/source
 binding. Delete the substring helper, its identity table, and the fake-scope
 tests in `tests/test_unit_qwen4exp_ar_batch_admission.py` once the structured
 manifest is committed and no older evidence needs the legacy binding.
+
+## 2026-09-07 UD-U1 F3 — raw rank-3 Q4_K selected-expert consumer is not registry-mediated
+
+The F3 concrete-consumer qualification (UD-QUANTS U1 round 6) binds every
+certified admission coverage record to a concrete four-axis registry key,
+except one documented escape hatch: the raw rank-3 Q4_K selected-expert
+consumer. The production runtime (`_launch_selected_raw_gguf_moe_linear` in
+`runtime/qwen35_gguf_runner.py`) calls the direct module wrapper
+`hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv:gguf_q4_k_selected_gemv_bf16_bf16_out`,
+which is not registered under its own registry key (only the
+`selected_dual_gemv_bf16_bf16_out`/`selected_pack8_gemv_bf16_bf16_out`
+siblings are). The admission record therefore names the module symbol
+(`consumer_module`/`consumer_symbol`) and the parity test proves the symbol
+exists on both HIP backends.
+
+Removal trigger: register the single selected wrapper under
+`(backend, "linear", "gguf_q4_k", "selected_gemv_bf16_bf16_out")` in
+`register_gguf_q4_k_gemv_kernels` (the Q5_K/Q6_K/Q8_0 raw selected singles are
+already registered this way by `register_gguf_k_gemv_kernels`), switch the
+runtime call site to registry resolution, and drop the
+`consumer_module`/`consumer_symbol` fields plus their parity branch from
+`hipengine/loading/qwen35_gguf_admission.py`.
+
+## UD-U1 invocation ownership follow-up
+
+- The linear-table mirror and admission-side selected variant-substring ABI
+  inference are removed. `qwen35_gguf_consumer_surface` owns production rows,
+  named auxiliary contracts and marshalling; `gguf_selected_contract` owns
+  selected call kinds, ordered partner bindings and default caller topology.
+  Keep the generated `_DISPATCH_TABLE` compatibility view only while tests or
+  callers inspect it; remove that view once those users query the resolver.
+- The old Q8T16 `(bf16 selector, fp16 output)` key actually launches an FP16
+  input kernel. Its key/runtime behavior is preserved, but the descriptor
+  exposes the real pointer dtype and admission does not certify BF16 input
+  against it. Remove the selector alias after its FP16 callers migrate to an
+  explicit typed input contract; do not insert an unqualified conversion.
+- `f32_input_operations`, `gdn_force_bf16`, and `recurrent_state_dtype` are
+  cold caller declarations, not setters for runtime numerical behavior.
+  Replace redundant manual declarations when F1 wires actual entry intents
+  into certificate consumption. Native head input must remain the actual
+  BF16 scratch owner unless a real caller adapter is implemented separately.
+- Optional raw/T16 selected DP4A adapter flags remain runtime diagnostics,
+  but admission refuses the affected unrepresented adapter contracts before
+  allocation. Mandatory X8 adapters are explicit and qualified as interfaces.
+  Remove this refusal only with a shared explicit adapter intent, actual
+  caller/operand tests and the applicable existing numerical/profile gate;
+  never treat a nearby BF16 record as that proof. Likewise baseline GDN
+  prefill cannot certify FP16 state by borrowing its F32-state contract.
+- Direct caller boundaries and registered primitive availability are distinct.
+  The ordered dual helper owns its two-single fallback; raw Q4 singleton
+  registry mediation remains the item above. F1 entry/dependency enforcement
+  and F5 profile-binder authorization remain open, not implicit benefits of
+  the new immutable metadata.
+
+## 2026-09-11 MTP verify-journal allocation cost on gfx1100
+
+- `Qwen35GGUFTransactionalVerifier` now allocates a row-capable rollback
+  journal whenever any reachable decode position selects the serial row
+  route. On gfx1100 the native target context limit is 95, so every session
+  with `scratch.max_positions + budget + 1 > 95` (all of them, since the
+  resident scratch rounds to a 256-position floor) keeps
+  `max_rows + 1 = 5` rollback rows per linear-attention layer instead of one:
+  measured **+606 MiB** for candidate budget 3 on Qwen3.8-27B
+  (5 x 151.50 MiB vs 1 x 151.50 MiB). gfx1151 is unaffected because its
+  65,544-token limit admits the initial-state-only journal.
+- Recover that memory only with a design that keeps the route contract sound:
+  reuse the session-owned multi-row `_verify_linear_*_state_rows` buffers for
+  serial rollback, or re-allocate the journal at the top of `prepare()` before
+  `capture_initial` when the route first becomes serial. Do not re-enable the
+  initial-state-only journal for a session whose position range can reach the
+  serial route, and do not widen the capability value without the
+  corresponding native-target qualification.
+
+## 2026-09-11 U6 — UD MTP scope pin is withheld
+
+- `_UD_MTP_PRESET_FINGERPRINTS` (`hipengine/loading/qwen35_gguf_admission.py`)
+  is the separate MTP certification table. It is **derived** from
+  `_UD_MTP_CERTIFICATIONS` and admits only a complete certification unit, so it
+  is empty on purpose and can no longer be hand-granted. The UD draft dtype pin,
+  the UD accept-chain registrations, the slot-scoped blk.64 draft operation set,
+  and the draft residency/`eh_proj`/head ownership contract are landed and
+  gated; draft/verifier state disjointness, exact AR/MTP control (blocked by the
+  K_S `general_ja_plan` AR divergence), the declared context/width envelope, and
+  the category heldouts are not.
+- Population trigger: flip the affected `Qwen35GGUFUDMTPCertificationItem`
+  entries to `qualified=True` with their passing evidence **and** clear the
+  remaining `docs/campaigns/UD-QUANTS.md` U6 checklist items. A record's `blocker` field
+  names exactly what is missing; `is_complete()` is what grants the pin.
+- Do not populate the pin from a single-prompt or single-width result, and do
+  not widen `_UD_PRESET_FINGERPRINTS` (the AR table) to grant MTP scope: the
+  two tables exist precisely so an AR certificate cannot imply MTP admission.
+- The UD draft dtype manifest (`_UD_NEXTN_DRAFT_QTYPES`) is inert until the pin
+  lands. It is not dead code to delete: it is the identity-bound replacement
+  for the caller-claimed native-XL variant exception, and its coverage
+  contract is enforced and tested.
+
+## 2026-09-11 Committed profiler traces and oversized captures under `benchmarks/results/`
+
+**State.** `git ls-files benchmarks/results | xargs du -cb | tail -1` totals
+**155.7 MB**. Seven raw `rocprofv3` trace CSVs carry ~73 MB of it:
+
+| file | size |
+| --- | ---: |
+| `final-decode-campaign-2026-09-11/plainks-trace.csv` | 11.2 MB |
+| `final-decode-campaign-2026-09-11/plainkm-trace.csv` | 10.9 MB |
+| `2026-09-11-q5-local32-decode-study/trace-unrouted.csv` | 10.5 MB |
+| `final-decode-campaign-2026-09-11/ud-k_m-trace.csv` | 10.3 MB |
+| `2026-09-11-q5-local32-decode-study/trace-routed.csv` | 10.3 MB |
+| `final-decode-campaign-2026-09-11/wudkm-trace.csv` | 10.3 MB |
+| `final-decode-campaign-2026-09-11/wudks-trace.csv` | 10.3 MB |
+
+Six further JSON captures are 2.9-10.1 MB
+(`mtp-gguf-iter271-gdn-replay-window-capture.json` is the largest at 10.1 MB).
+The compact census summaries beside them — `{ud-k_m,udks,plainkm,plainks,wudkm,wudks}-census.json`,
+each a few KB — carry the numbers every published claim actually uses, and the
+per-kernel table in this repository's own W7900 correction was derived from
+those, not from the CSVs.
+
+**Why it matters.** `AGENTS.md` "Never Committed" lists "`rocprofv3` dumps, raw
+benchmark logs". These were committed anyway (introduced by `b6cb557f9` and
+`1570712a1`). They are not linked from `benchmarks/README.md`,
+`benchmarks/HISTORY.md`, or the campaign rollup README, so nothing references
+them; a 159 MB result tree also makes the branch expensive to clone and review.
+
+**Removal trigger.** Before the branch is merged, delete the trace CSVs and the
+oversized window captures, or move them to external storage and leave a pointer.
+No claim depends on them: every retained number is in a census or summary
+artifact. Confirm no doc link breaks first — currently none exists.
+
+**Not done here.** These files belong to other agents' committed units, and
+`AGENTS.md` forbids cleaning up another agent's benchmark outputs unless the task
+asks for it. This entry records the debt rather than acting on it.
+
+## 2026-09-12 `--ar-decode-mode eager` retained as a diagnostic control
+
+**State.** `scripts/qwen36_dense_gguf_suite.py` gained `--ar-decode-mode
+{graph,eager}`, defaulting to `graph`, so the true-AR performance denominator
+runs the production decode-graph replay path instead of synchronous scalar
+`step()` submission. `eager` is retained as a synchronous diagnostic control.
+
+**Why it is retained.** It is the only way to re-derive the eager/graph
+comparison that localized the original denominator defect (same device work,
+28.77 vs 28.88 ms/transition at about 860 launches; wall 65-69 ms eager against
+31 ms graph). `scripts/gguf_ar_eager_graph_equivalence.py` uses it.
+
+**Removal trigger.** Remove `--ar-decode-mode`, the `eager` branch in `_run_ar`,
+and the `autoregressive_step` stage key once no open question needs the eager
+path — concretely, after the eager/graph equivalence check is either folded into
+a routinely run gate or the eager route is retired. Until then the flag must not
+be used to produce a paired or campaign denominator: `scripts/ud_mtp_paired.py`
+pins `graph` in `PAIRED_PROTOCOL` and rejects a payload whose
+`workload.ar_decode_mode` disagrees.
+
+**Do not promote `eager` to a default or a second supported denominator.** It is
+a diagnostic control; every published rate uses `graph`.
+
+## 2026-09-12 `--mtp-scope-grant` on the c1-c8 server bench
+
+**State.** `scripts/gguf_mtp_c1c8_server_bench.py` gained `--mtp-scope-grant`,
+off by default, which grants the named preset's MTP scope in process via
+`ud_mtp_paired.mtp_scope_granted` so a width cell can be measured while the U6
+pin is still unminted. It is documented as requiring
+`--generation2-diagnostic`, whose rows are labelled `diagnostic_physical_gguf_mtp`.
+
+**Why it is retained.** The U6 pin mints MTP scope, and the pin needs the width
+evidence, so without a candidate-mode grant the widths cannot be measured at
+all. The same pattern already exists for the paired protocol.
+
+**Removal trigger.** Remove the flag once the U6 certification records are
+complete and the pin is derived, since a granted run is then no longer needed to
+reach the cell. A granted run must never be used as a rate claim: it is a
+diagnostic whose only purpose is to decide whether a real evidence row is
+warranted.
+
+## 2026-09-13 Q5_K gate/up WMMA prefill pair — now unreachable in production
+
+**State.** `_q5_t16_dense_pair_silu_variant` returns `None` below one full row
+tile (`_Q5_T16_DENSE_DUAL_SILU_MIN_TILE_ROWS = 32`), so the fused Q5_K gate/up
+pair no longer fires anywhere in the native verifier envelope (2-8 rows). Every
+pair call in the profiled workload had `gridY == 1`, i.e. a 32-row tile, so the
+gate removed the owner's only caller.
+
+**Why it is retained.** The five registered variants and the pair path stay
+registered so a rows >= 32 caller can still take them, and so the change is a
+policy gate rather than a deletion: the section-6.1 gate evidence is tied to
+this dispatch shape.
+
+**Removal trigger.** If no production path is measured taking a Q5_K gate/up
+pair at 32 or more rows, delete the pair path together with the five
+`dense_dual_wmma_prefill*` variants, the `_Q5_T16_DENSE_DUAL_SILU_ROW_VARIANTS`
+table, and the `q5_k_t16_dense_dual_wmma_prefill_*` kernels. Confirm first that
+the prefill owner for Q5_K gate/up is the single WMMA prefill
+(`gguf_q5_t16_dense_wmma_prefill_bf16`) and not a chunked call into this pair.
+
+## 2026-09-13 Q8T16 shape-explicit rowtile admission — env kill switch
+
+**State.** `_Q8_T16_ALL_ROWTILE_SHAPES` (`{(5120, 1024)}`) admits the Q8_0
+`attn_k`/`attn_v` projections at rows 2-8 to the 128-thread
+`q8_0_t16_rowtile_gemv` owner instead of the 32-thread
+`gguf_q8_0_t16_prefill_wmma` owner. `HIPENGINE_GGUF_Q8_T16_ROWTILE_SHAPES`
+overrides the set on/off for bisection.
+
+**Why it is retained.** The set is measured, not broad: the broad
+`HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` boolean stays off because audit packet C1
+rejected that route on gfx1100 for the decode widths, and because the broad
+boolean also reaches the `ssm_alpha`/`ssm_beta` projections and changes their
+arithmetic.
+
+**Removal trigger.** Once the `(5120, 1024)` Q8_0 shape is covered by a
+registered variant policy rather than an admission helper — or once no UD
+artifact carries Q8_0 attention K/V projections — fold the set into the
+registry and delete both the set and the env override, leaving
+`_Q8_T16_QWEN35_ATTN_IN` as the only in-feature admission.
+
+## 2026-09-13 Q5T16 single-wave verifier rowtile — env kill switch
+
+**State.** `GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT` in
+`hipengine/kernels/hip_gfx1100/__init__.py` names the production owner for
+`gguf_q5_k_t16_v1` rows 2-8. `HIPENGINE_GGUF_Q5_T16_ROWTILE_SINGLE_WAVE`
+overrides it on/off for bisection; clearing it to `0` restores the four-wave
+WG128 parent-parity owner `t16_gemv_rowtile_bf16_bf16_out`.
+
+**Why it is retained.** The four-wave entry point cannot be rebound: the
+grouped rows6/rows8 owners declare bit-identity to it applied to six-row
+chunks, so the two geometries must stay separately registered for as long as
+that parity contract is asserted.
+
+**Removal trigger.** If the grouped rows6/rows8 owners are retired, or their
+parity contract is restated against the single-wave owner, delete the four-wave
+variant, the capability table, and the env switch, and bind
+`t16_gemv_rowtile_bf16_bf16_out` to the single-wave body.
+
+## 2026-09-13 strict dense IQ row slab covers the prompt rows — env kill switch
+
+**State.** `_row_batch()` in `hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py`
+returns the smallest slab in `(1, 2, 4, 8)` at or above the row count, so
+`grid.y` is one and each weight slice is read once. `HIPENGINE_GGUF_IQ_DENSE_ROW_BATCH_DOWN`
+overrides it for bisection; setting it to `1` restores the largest slab at or
+below the row count.
+
+**Why it is retained.** The two rules differ only for `rows` in 3, 5, 6 and 7,
+where the old rule left `grid.y > 1`. The kernel declares every `R`
+bit-identical, so the switch exists to bisect a launch-geometry suspicion, not
+to preserve an arithmetic variant.
+
+**Removal trigger.** Once no artifact or test needs the round-down comparison,
+delete `_row_batch_round_down()`, `_ROW_BATCH_DOWN_ENV` and the switch test, and
+keep the covering rule alone.
+
+## 2026-09-13 rounded add+rmsnorm fixed-5120 leaf — env kill switch
+
+**State.** `GGUF_ROUNDED_NORM_RESIDUAL_DECODE_POLICIES` in
+`hipengine/kernels/hip_gfx1100/__init__.py` routes the `add+rmsnorm` layer to
+`rounded_bf16_out_fixed5120_wave256` for `(rows, 5120)` with `2 <= rows <= 8`.
+`HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120=0` restores the generic
+`rounded_bf16_out` owner.
+
+**Why it is retained.** The two owners are bit-identical - the new leaf
+reproduces the generic 256-thread tree level for level and only caches the 20
+per-thread rounded values - so the switch exists to bisect a launch-geometry or
+routing suspicion, not to preserve an arithmetic variant. It is also what makes
+the interleaved census A/B possible, because the switch is read from the
+environment inside the profiled child process.
+
+**Removal trigger.** Once no artifact or test needs the generic-owner
+comparison, drop the `enabled_env` / `enabled_default` keys from the table, the
+`_backend_environment_policy_enabled` branch in
+`_gguf_norm_residual_decode_kernel`, and the switch test; keep the fixed-5120
+policy alone. The generic `rounded_bf16_out` registration must stay: it is the
+declared fallback for every shape the policy does not cover.
+
+## IQ4_XS T16 replacement layout (`GGUF_IQ4_XS_T16_*`)
+
+**What.** `hipengine/quant/gguf_t16.py` carries the IQ4_XS T16 layout
+constants, `GGUFIQ4XSTile16`, `repack_gguf_iq4_xs_tile16` and
+`unpack_gguf_iq4_xs_tile16`, plus `IQ4_XS_T16_SHAPE` in
+`hipengine/quant/gguf_repack.py` and `tests/test_live_gguf_iq4_xs_t16_layout.py`.
+
+**Why it is unused.** It was built as the first half of the "IQ4_XS repack
+into a tile layout" item in `docs/campaigns/UD-GFX1151-OPTIMIZE.md`, on the assumption
+that IQ4_XS's lack of a tile layout explained the 1.53x gap to the t16 rowtile
+owners. The T16-layout owner was then built and measured, and it is
+bit-identical to the shipped local32 owner but only 0.79-1.12x on six real
+tensors, with the single-wave geometry worse still. The item is rejected, so
+nothing consumes the layout.
+
+**Removal trigger.** If no IQ4_XS T16 owner lands, delete the layout
+constants, the dataclass, both functions, their `__all__` entries,
+`IQ4_XS_T16_SHAPE`, and `tests/test_live_gguf_iq4_xs_t16_layout.py`. The layout is
+byte-neutral and correct, so it is cheap to keep as a tested primitive; the
+reason to remove it is that dead code in the quant layer reads as a live
+option. If it is removed and the item is ever re-opened, the test file is the
+specification to restore it from.
+
+## 2026-09-11 Surya HIP runtime: direct backend imports — open
+
+`hipengine/runtime/surya.py` imports its JIT libraries directly from
+`hipengine.kernels.hip_gfx1100` (`evie_ops`, `linear_attn.conv`,
+`linear_attn.gdn`, `surya.surya_ops`) and resolves kernels by symbol name from
+the built `.so`. This is the same pattern the committed EVIE runtime
+(`hipengine/runtime/evie.py`) already uses, so the deviation is repo-wide, not
+Surya-specific: the four-axis registry currently governs engine/dispatch
+kernels, while hand-written runtime runners own their JIT libraries. Migrate
+EVIE and Surya together onto a backend-keyed kernel-library resolver when the
+runtime runners become a second consumer of shared linear-attention kernels;
+until then the direct import is the contract of record.
+
+## 2026-09-11 Surya KV write and decode: dense offset scheme — closed 2026-09-13
+
+`surya_scatter_kv_f32(k, cache, tokens, base_pos, nk, hd, max_seq, row)` wrote
+into a contiguous `(nk, max_seq, hd)` plane from a host-supplied
+`(tokens, token_offset)` pair, and `_attention_decode` built per-head cache
+pointer arrays from `max_seq * hd` strides. Both read no span metadata, which
+the architectural invariant forbids.
+
+Closed by two spans-aware kernels in `surya/surya_ops.{hip,py}` plus the runtime
+wiring: `surya_scatter_kv_f32_spans` resolves each logical token index through
+`base_offsets` and skips tokens outside `live_counts` with a negative
+`token_positions` entry or an `evict_mask` mark, and
+`surya_full_attn_decode_f32_spans` is a fused fp32 head_dim-256 GQA-4 split-K
+producer plus `..._split_k_reduce_f32`. The producer runs one block per
+`(kv_head, context chunk)` so all four query heads of a KV head share one K/V
+read, and the split count comes from `plan_surya_decode_splits`, which targets a
+constant split count rather than a constant chunk because the launch has to stay
+wide enough to fill the machine at every context length. The dense policy fills
+all four span fields uniformly (identity page table, `arange` positions, empty
+eviction mask), so the default path exercises the ABI.
+
+Retained as explicit fallbacks/bisection oracles, not dead code:
+`attention_decode_rocblas_f32` (the four-dispatch parent) is the strict
+fallback for head_dim != 256 or GQA repeat != 4 and is what
+`tests/test_gpu_surya_kv_spans.py` measures parent parity against;
+`surya_scatter_kv_f32` (the pre-spans scatter) is used by
+`scripts/surya_gpu_debug_attn.py`. Remove both when the fp32 spans decode kernel
+is shared with the Qwen3.5 decode path or when the debug script no longer needs
+the parent, whichever comes first.
+
+The fused producer still passes `chunk_size` as the score GEMM's `m`, so its
+QK^T work is `q_per_kv * head_dim * chunk_size` regardless of how many tokens in
+the chunk are invisible; a chunk whose tokens are mostly evicted or empty does
+the same dot products as a full one. Bounding each chunk's keys to its last
+visible token would cut that, but the dense policy has no invisible tokens, so
+there is nothing to measure yet.
+
+## 2026-09-11 Surya vision attention: quadratic score scratch — closed
+
+`hipengine/runtime/surya.py` `_vis_scores` materialized the full vision
+attention score matrix, `vision_num_heads * n^2 * 4` bytes for `n` patches.
+`vision_num_heads` is 12 and patches are 16 px (`SURYA_RESIZE_FACTOR` 32 is
+patch size times spatial merge), and attention runs *before* the merger, so `n`
+is the full patch grid `h * w` — four times the merged vision token count.
+Scratch was therefore quadratic in page area: 805 MB for the 1024x1024 fixture
+(64x64, 4096), 12.88 GB for 2048x2048 (128x128, 16384), **56.5 GB for a
+300-DPI A4 page (220x156, 34320 patches)** and **206 GB at the checkpoint's
+`SURYA_MAX_PIXELS` ceiling** (256x256, 65536).
+
+Closed by query-row tiling: `plan_vision_attention` derives a query block from
+`max_vision_scratch_bytes` (512 MiB default) and `_vision_attention_packed`
+walks the score matrix one tile at a time. Each tile still holds the full key
+range, so the softmax rows are exactly the rows the dense path computed and
+the result is unchanged; only `heads * n * block * 4` bytes are live. The A4
+grid now needs 535 MB (106x smaller) and the ceiling 535 MB (386x smaller), and
+admission no longer rejects a routine document. Evidence:
+`benchmarks/results/2026-09-12-gfx1151-surya-attention-memory.json`,
+`tests/test_live_surya_gpu.py::test_gpu_tiled_vision_matches_dense_and_oracle`.
+
+The "result is unchanged" claim is now measured, not inferred: under a 12 MiB
+budget (4-10 tiles per page, partial tiles included) the tiled and dense paths
+are bit-identical over 4562 teacher-forced full-vocabulary rows — mean/p95/p99/
+max KL `0.000e+00`, top-1 `100%`. Evidence:
+`benchmarks/results/2026-09-12-gfx1151-surya-numerical-gate.json`.
+
+## 2026-09-12 Surya bench-suite pages clip their own text — closed 2026-09-13
+
+Four of the seven pages in `scripts/surya_bench_pages.py` drew text past the
+canvas, so the text the suite claimed to measure was not the text in the image:
+`ja` body lines 576-663 px wide on a 512 px page (480 px usable), `mixed` Latin
+lines 503/506 px against 480, `scan` ~531 px against 476, and `page_long` six
+224 px blocks from y=168 so blocks 5 and 6 fell off a 1024 px canvas. Scoring
+against the intended text read correct model output as error, which is how the
+earlier `line.` -> `literature` "hallucination" arose: the model completed a
+clipped word.
+
+The four pages are re-cut onto canvases the fit assertion accepts (1024x1024
+for `ja`/`mixed`/`scan`, 1024x1600 for `long`) and every text page now draws
+through `_draw_text_fit`, which raises rather than clipping. The re-cut bytes
+are exactly the former `page_<name>_fit.png` bytes, which is why the captured
+full-page-protocol oracle only needed its `page` field renamed: the images did
+not change. `FIT_PAGES`, `write_fit_pages`, `acceptance_page` and the `--fit`
+flag are gone; `page_filename` returns `page_<name>.png` for every page, and
+`tests/test_unit_surya_transcription_fixtures.py` asserts each generator still
+rejects the old clipping geometry so the pages cannot silently clip again.
+
+`oracle_bench.json` was re-captured (torch fp32, 7 pages) and the lane
+comparison re-run, both recorded in
+`benchmarks/results/2026-09-13-gfx1151-surya-suite-recut.json`. The vision grids
+grew with the canvas (`ja`/`mixed`/`scan` 32x32 -> 64x64, `long` 64x64 ->
+100x64), so the absolute rates are not comparable with the superseded
+2026-09-11 baseline.
+
+## 2026-09-12 Surya text prefill: quadratic causal score scratch — closed
+
+`SuryaGpuRunner._attention_packed` materialized the full causal score matrix
+for the text prefill, `num_attention_heads * tokens^2 * 4` bytes
+(`num_attention_heads` 8). Measured on gfx1151 with
+`scripts/surya_attention_memory.py`: at `max_seq` 16384 the score matrix was
+2.36 GB of a 7.03 GB peak for the 8580 image tokens of a 300-DPI A4 page, and
+8.59 GB of a 14.71 GB peak at a full 16384-token prompt; the remaining scratch
+was linear at 180.8 KiB/token.
+
+Closed by the same query-row tiling the vision tower uses: `plan_score_tiles`
+(one implementation, shared by both paths; `plan_vision_attention` is now the
+vision-shaped name for it) derives a query block from
+`max_prefill_scratch_bytes` (512 MiB default) and `_attention_packed` walks the
+score matrix one tile at a time. Each tile still holds the full key range, so
+the softmax rows are exactly the rows the dense path computed, and the mask
+stays absolute through a new `query_offset` argument on
+`surya_causal_mask_scale_f32` (the causal condition is relative to the tile's
+first query, not the tile-local row index). The measured prefill peak falls
+7.03 -> 5.21 GB for the page and 14.71 -> 6.66 GB at a full prompt for 0.8%
+wall-clock at 16384 tokens, and `block >= tokens` reproduces the dense calls
+exactly, so the dense plan remains the strict fallback. Evidence:
+`benchmarks/results/2026-09-12-gfx1151-surya-text-prefill-tiling.json`,
+`tests/test_live_surya_gpu.py::test_gpu_tiled_prefill_matches_dense_and_cpu_reference`,
+`tests/test_live_surya_gpu.py::test_gpu_causal_mask_honors_the_query_offset`.
+
+## 2026-09-13 Surya lane comparison is measured one process per lane — open
+
+`benchmarks/results/2026-09-13-gfx1151-surya-suite-recut.json` is built from
+one `surya_perf_compare.py` run per lane merged with `--merge`, because both
+lanes in one process return the last three hipEngine rows (`full`, `columns`,
+`list`) degenerate from the first generated token with every stage time
+unchanged. Measuring hipEngine alone over the same 12 cases passes every gate,
+so the corruption rides on shared-process device state left by the torch lane
+rather than on the pages or the harness. This is task #80's bug.
+
+When #80 is fixed, re-run the suite as a single combined invocation
+(`--split all --runs 3 --lanes hipengine_gpu,torch_cuda`), confirm all 24 rows
+pass, and drop the `lane_isolation` protocol note and the per-lane caveat from
+`benchmarks/README.md`. `--merge` itself stays: merging per-lane artifacts is a
+legitimate way to keep a comparison honest when one lane perturbs the other.
+
+## 2026-09-13 Surya tile shape: grid divisibility was tested and rejected
+
+Grid divisibility was the other candidate shape rule and it was tested: the
+sweep records `even` (full last tile) per row, and even division wins at 256 and
+6400 patches and loses at 1024 and 4096, so it does not predict the curve. The
+rule uses the wavefront multiple instead, which does separate on the A4 page
+(where no measured block divides the grid, so the separation is not a tail
+effect). If a future rule wants to use divisibility, the data to re-check is
+already in the artifacts.
+
+## 2026-09-13 Surya tile shape: 4096-patch spikes have no mechanism — open
+
+The 4096-patch shape curve is reproducibly non-monotone, confirmed by four
+independent measurements (two full sweeps, a one-runner probe with a mutated
+budget, and a fresh-runner probe; all on a quiet GPU, all with the block
+asserted):
+
+| rows | 16 | 32 | 64 | 96 | 128 | 160 | 192 | 256 | 341 | 512 | 1024 | 2048 | 2730 | 4096 |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ms | 1575 | 1089 | 939 | 894 | 881 | 909 | 1102 | 1168 | 1175 | 1667 | 1327 | 1137 | 1118 | 1040 |
+
+192/256/341/512/1024 rows are 24-89% slower than 128, and 512 -- a multiple of
+32 -- is the worst shape on the grid, 1.6x the dense tile. Nothing measured
+explains where the spikes fall; rocBLAS kernel selection at particular
+`(M, N, K)` triples is the leading candidate, and a `rocprofv3 --kernel-trace`
+over one fast shape (128) and one slow shape (512) at 4096 patches would settle
+whether the score-scale or softmax kernel changes or a GEMM switches tiles.
+Worth doing before anyone adds another shape rule: the envelope's floor of 128
+happens to land on a spike-free value here, which is luck, not design.
+
+Two related consequences, both already applied:
+
+- Rounding down to a multiple of 32 is a memory-neutral tie-break justified by
+the A4 page's clean separation, not a guarantee. 512 rows at 4096 patches is a
+multiple of 32 and the slowest shape measured on that grid.
+- A shape probe that varies the block from outside
+  `scripts/surya_vision_tiling_cost.py` must lift `SHAPE_TILE_ROWS` /
+  `SHAPE_TILE_DIVISOR` / `SHAPE_TILE_MULTIPLE`, or the production cap overrides
+  the requested block and the probe reports one block for every shape. That
+  happened here and produced a flat, plausible curve that looked like evidence
+  the sweep was wrong. The vision envelope applies whenever it is narrower than
+  the tile the byte budget admits, so on any grid where the budget's own tile is
+  wider a probe must lift all three constants; lifting unconditionally stays the
+  rule.
+
+## 2026-09-13 Surya attention tile shape: the vision envelope's mid-size anomaly — open
+
+`plan_score_tiles` takes a per-path shape policy. The vision tower consults the
+envelope `max(128, ceil(rows / 32))` rows, rounded down to a multiple of 32
+(`SHAPE_TILE_ROWS`, `SHAPE_TILE_DIVISOR`, `SHAPE_TILE_MULTIPLE` in
+`hipengine/runtime/surya.py`) whenever it is narrower than the tile the byte
+budget admits; the text prefill passes `shape_envelope=False` and keeps the
+budget's width, because its own sweeps show that is its optimum at every
+measured length (`2026-09-13-gfx1151-surya-text-prefill-shape-sweep.json`,
+`2026-09-13-gfx1151-surya-text-prefill-small-prompts.json`). A conditional
+envelope — applying it only while the budget alone left one or two tiles —
+fixed the text prefill but regressed narrow vision budgets: at 4096 patches a
+64 MiB budget picked 320 rows (1081.07 ms) and a 128 MiB budget 672 rows
+(1378.13 ms), against 882.39 ms at the envelope's 128 rows, because the
+4096-patch curve has a spike band between roughly 256 and 1344 rows
+(`2026-09-13-gfx1151-surya-vision-narrow-budget-check.json`). What stays open:
+
+- **The 6400-patch anomaly.** The envelope picks 192 rows (2130.11 ms across 34
+tiles) where 96 rows is 1938.40 ms, 9% faster, and 6400 remains the only
+measured grid that wants *more* tiles than `rows / 32` while the surrounding
+points do not separate on the wavefront multiple the way the A4 page does
+(64 rows is 2057.20 ms, 96 is 1938.40, 128 is 2112.64). Reaching 96 rows needs
+the divisor near 64 *and* the floor below 128, which costs 2.7% at 1024 patches
+(96 rows 139.65 ms against 136.00 ms at 128). Revisit when a sweep over more
+mid-size grids shows what makes this one different; special-casing one grid
+would be overfitting.
+- **Open: the reported time ceiling.** The estimate has small non-monotone steps
+at the 32-row wavefront boundaries: 14 descending steps in 1..20000 patches,
+the largest -1.8% at 5089 (1435.97 -> 1409.67 ms), as the envelope's
+`ceil(rows / 32)` jumps a row and the block rounds back down to the multiple.
+`vision_patch_ceiling` bisects that estimate, so in principle a time budget
+inside a step can report a count short of the true maximum; it matches a
+brute-force scan at every budget tried from 0.5 s to 200 s, including the 120 s
+default (56856 patches). It is sound — the reported count's own estimate fits —
+and admission uses `check_vision_capacity` on the requested grid rather than the
+ceiling, so nothing is admitted unsafely. A monotone bound would remove the
+caveat if the reported ceiling ever needs to be exact.
+- **Open: the A4 page.** Its time optimum is a plateau at 2048-8192 rows (40076-40618 ms,
+3217.5-12870.0 MiB) and the 320-row default is 7.4% above it, but the byte
+budget is what stops there (512 MiB admits 325 rows), not the envelope — the cap
+admits 1073 rows at 34320 patches. Raise `max_vision_scratch_bytes` rather than
+loosen the cap. 4096 rows (6435.0 MiB, 40076.23 ms) is the measured minimum and
+8192 rows is 0.93% slower in the same run, so the return from fewer tiles
+saturates around 9 tiles; `rows / 8` would be 4290 rows here and is not a
+candidate rule (see the envelope's other grids).
+
+Also found while sweeping, and now refuted: a user-raised
+`max_vision_scratch_bytes` above ~6 GB on an A4 grid was recorded as making the
+vision attention fail with
+`hipErrorInvalidConfiguration` (error 9) from the `vision score scale` check
+instead of erroring cleanly. **That does not reproduce**: 4096 rows (6435.0 MiB)
+and 8192 rows (12870.0 MiB) both ran cleanly, twice each, in four separate
+processes, at 40076-40449 ms
+(`2026-09-13-gfx1151-surya-vision-tiling-a4-ceiling.json`). The original sweep's
+logs are not retained, so its cause is unknown and no memory ceiling should be
+taken from it. The 512 MiB default derives 320 rows and never approaches that
+scratch. What is still untested is the dense tile itself — 56.5 GB of score
+matrix at 34320 patches, which is inside the host's 124 GiB GTT aperture but is
+a ~10-15 minute forward and a 56.5 GB allocation on a shared machine, so the A4
+evidence remains shape-to-shape rather than shape-to-dense. If a launch-config
+guard on `_vision_attention_packed` is still wanted, the first question is
+whether the dense tile runs at all.
+
+## 2026-09-12 Surya prefill tiles still compute the masked-away keys — open
+
+The text-prefill tiling bounds the *memory* but not the QK^T arithmetic: every
+tile passes `m=tokens` (the full key range) to the score GEMM and then masks the
+keys beyond its last query, so the tiled prefill does the same ~`nq * tokens^2`
+multiply-adds the dense path did, of which only the lower triangle survives.
+Bounding each tile's keys to `start + bq` would halve the QK^T FLOPs
+(`sum_t bq * (start + bq) ~ tokens^2 / 2`), at the cost of a per-tile `keys`
+argument in `surya_causal_mask_scale_f32` and a per-tile `head_stride` in the
+tile layout (`evie_softmax_rows_f32` already takes `cols` and `tokens`
+separately, so it needs no new argument). Do it when the prefill's score-GEMM
+share is measured to matter; it is a separate change from the memory fix, which
+neither added nor removed QK^T work.
+
+## 2026-09-12 Surya A4 page has no torch fp32 reference — open
+
+The 300-DPI A4 page is in the transcription ground-truth and reading-order gates
+(`QUALITY_CASES` in `tests/test_live_surya_transcription.py`) but not in the
+implementation-parity gates, because those compare against a captured torch fp32
+greedy chain and no such capture exists for this page. So the page's *quality* is
+gated and its *parity with the reference implementation* is not.
+
+Capture it when a page-scale parity claim is wanted: add the case to
+`scripts/surya_oracle_greedy.py --case protocol` and to
+`tests/fixtures/surya/oracle_fullpage_protocol.json`, then move `a4` from
+`QUALITY_ONLY_CASES` into `CASES`/`EXACT_ID_CASES` (or `COORDINATE_CASES` if its
+bbox digits turn out to be as fragile as the degraded scan's). The capture is a
+torch fp32 CPU run of 2108 tokens; nothing else about the page needs to change.
+
+## 2026-09-12 Only Surya reports `GenerationOutput.prompt_tokens` — open
+
+The server prefers a generator-reported `prompt_tokens` and falls back to
+`engine.count_tokens(prompt)` when none is reported. Only the Surya generators
+set it, because only they build a prompt whose length a tokenizer cannot
+recover (text plus image tokens). Every text-only generator still takes the
+fallback path.
+
+Set it in the text-only generators when the fallback is wanted gone: it removes
+a `count_tokens` call per request and one branch in `chat_completions`. There is
+no correctness reason to hurry, since for a text-only prompt the tokenizer count
+is already exact.
+
+## 2026-09-13 Surya vision admission is GPU-only and reports runner errors — open
+
+`SuryaGpuRunner.check_vision_capacity` enforces three budgets before any device
+work: the score-tile bytes, the vision wall clock, and free device memory. Two
+edges of that boundary are unowned.
+
+- The CPU-reference generator (`SuryaOCRGenerator`) has no capacity check at
+  all, so a page-scale grid runs a pure-numpy vision tower for as long as it
+  takes. Give it the same estimate (`vision_forward_seconds` is fitted to
+  device rates, so a CPU lane needs its own constants) or declare a patch
+  ceiling; neither generator is wired into a server yet, so nothing reaches
+  this today.
+- An over-budget page reaches a generator's caller as the runner's
+  `SuryaGpuRuntimeError`, which is a request-level fault: the server maps
+  `SuryaRequestError` to a 400 and anything else to a 500. Convert at the
+  generator boundary when the Surya generators are wired into a server, and
+  decide the free-memory check separately — that one is genuinely a
+  server-state fault rather than a bad request.
+
+## 2026-09-13 Generation-registry clears cannot be replayed — open
+
+`clear_generation_registry_for_tests()` empties `_FACTORIES`, and nothing can
+repopulate it afterwards: the built-in registrations are module-scope
+`register_text_generator(...)` calls, so once those modules are in `sys.modules`
+a later `register_builtin_generators()` does not re-execute them, and
+`_BUILTINS_REGISTERED` stays `True` so it does not even try. A test that called
+the clear would empty the registry for the rest of the process. Nothing calls it
+today and its docstring now says this.
+
+Give each generation module a callable `register_*()` and call it from
+`register_builtin_generators()` — the pattern the runtime-profile registries in
+that same function already use. The clear then becomes safe, and the generation
+registry can join the collection-time baseline restore in `tests/conftest.py`
+that already makes the kernel registry order-independent under
+`clear_registry_for_tests()`.
+
+## Compact scoreboard: 2-line headroom at 498/500
+
+- `benchmarks/README.md` was returned to its documented shape on 2026-09-13
+  (1962 -> 494 lines). The Qwen4Exp/Framework optimization journal, the
+  Qwen3.8-Flash-Next implementation-first status, the Surya planner/kernel
+  internals, the harness catalog that duplicates `benchmarks/HARNESSES.md`, and
+  the per-campaign delta prose moved verbatim to `benchmarks/HISTORY.md`; no
+  line was dropped and every current row stayed.
+- What remains is current by construction (Surya topline, root-README export
+  block, the `## Current ...` sections, evidence status, reading, maintenance).
+  Two lines of headroom absorbs nothing; the next unit must move a section.
+- When the next substantial lane lands, either raise the line budget in
+  `tests/test_benchmark_readme_sync.py` under the 2026-09-06 rationale
+  ("guardrails against worklog-style prose, not a content budget"), or move the
+  next-least-current section to `HISTORY.md`. The closest calls this time were
+  the harness catalog (already duplicated in `HARNESSES.md`) and the
+  Maple-Preview retained backend comparison (Maple still has concurrency rows
+  in the scoreboard).
+- Do not let the file re-grow: the line/byte/link gate is the ratchet, and the
+  failure mode was silent drift, not a single large addition.
+
+## VibeVoice-TTS semantic encoder `rows=1` GEMV dispatch (rejected on quality)
+
+`kernels/hip_gfx1100/vibevoice/registered.py`'s `frontend_gemm` routes every row
+count to the tiled WMMA prefill GEMM. Routing `rows < 2` to `dense_gemv_out_bf16`
+is **3.00x faster on the semantic stage** (per-chunk `encode_chunk_streaming`
+55.22 -> 18.42 ms, isolated A/B in one process) and takes pooled RTF from 1.337 to
+a median of 1.146 over five runs. **It must not land: it fails the generated-audio
+quality gate.**
+
+- Measured over ten seeds on freshly synthesized audio: **54/60 request-runs pass
+  with the dispatch on against 58/60 with it off**, and the on arm reproduces a
+  catastrophic failure -- `two-2turn` seed 20260917 at WER 0.6471 with 5 repeated
+  4-grams, 11.73 s of output (duration ratio 1.725) and a broken speaker
+  attribution. Two more seeds regress, one losing its transcript entirely.
+- The numerical difference at the boundary is small (max 0.0625 absolute, 3.7e-3
+  relative, about one bf16 ulp at the signal's 16.875 scale), which is why the
+  correctness suite and the exact-token-chain gate both pass while the audio
+  quality gate fails. Do not treat "small perturbation" as "safe perturbation":
+  the two-speaker trajectory is chaotically sensitive to it.
+- **A false negative was recorded here once.** A ten-seed A/B was believed to show
+  bit-identical outcomes on and off. That comparison was invalid: the harness
+  labels its arms `wmma` for threshold 0 and `gemv` for threshold 2, so `wmma`
+  means the dispatch is off, and both arms under comparison were off. Any future
+  A/B on this path must assert the arm's threshold in the artifact rather than
+  trusting the label.
+
+To remove this entry: it would need a mechanism that removes the trajectory
+sensitivity, not a re-measurement. The isolated stage win is real and stays on
+record in this file so it is not re-attempted from scratch.
+
+## VibeVoice-TTS LM decode gate+up at `threads=64` (rejected on quality, ~1.2x)
+
+`vibevoice_qwen2.py`'s decode gate+up projection calls `dense_dual_gemv_out_bf16`
+at the `threads=256` default. **This entry has been wrong twice; the numbers below
+are the corrected ones.**
+
+What is solid:
+
+- Under DRAM streaming the kernel reaches **169.5 GB/s at `threads=64` against
+  138.1 GB/s at `threads=256`** (55.1 MB of weights per call, 256 MB flush drained
+  and synchronized before timing, median of 12). That is a real **~1.23x**, not the
+  3.8x an earlier draft claimed and not zero as a later draft claimed.
+- End-to-end, applying it took the LM stage from **1.450 s to 1.266 s** and pooled
+  RTF from 1.201 to 1.174. That is consistent with ~1.2x on this kernel, which is
+  the useful cross-check on any isolated figure here.
+- **It is rejected anyway.** It moves 5 of 17920 outputs by one ulp, keeps
+  `chain_exact` true, keeps the correctness suite green at 126 passed, and still
+  takes the ten-seed generated-audio suite from **58/60 to 57/60** by adding a
+  `single-numbers` failure at WER 0.1667.
+
+Two measurement traps were hit while establishing this, both worth avoiding:
+
+1. **Reusing one input buffer measures L2, not the workload.** A benchmark that
+   ran 30 iterations against one 55 MB weight buffer reported 74.8 us at
+   `threads=64` (an impossible 736 GB/s) because the weights stayed cached.
+2. **An unsynchronized flush steals the bandwidth you are measuring.** Writing a
+   256 MB buffer between calls without draining it first dropped the apparent rate
+   to ~37 GB/s for every thread count, which is how an earlier draft concluded the
+   thread count was irrelevant. The memset and the kernel were competing.
+
+**A bit-exact attempt was made and failed to capture the win.** The 256-thread
+path at K=1536 falls entirely into the scalar stride-256 tail loop, so a variant
+that stages the weight row through shared memory with 8-wide loads should have
+recovered the load efficiency while keeping each thread's element set and order
+identical. It was **bit-exact on all four shapes tested** (K=1536/N=8960,
+K=1536/N=1536, K=1024/N=4096, K=2047/N=512) and measured **0.99x** -- no
+improvement. The kernel is latency-bound on DRAM rather than limited by load
+width, so the `threads=64` advantage comes from having more workgroups resident
+per CU, which cannot be reproduced without changing the thread count and therefore
+the reduction width. The variant was reverted rather than kept as neutral code.
+
+To remove this entry: the ~1.2x is worth having but must arrive without moving the
+summation order, and the two obvious routes are now closed -- a bare thread-count
+change moves 5 of 17920 outputs by one ulp, and shared-memory staging is neutral.
+What is left is a change to how workgroups are scheduled or how many outputs each
+one owns, and any such change has to keep the 256-wide tree pairing per output.
+
+**Method note:** for a streaming kernel, flush between calls AND synchronize the
+flush before timing, then cross-check the isolated figure against the end-to-end
+stage delta.
+
+## VibeVoice-TTS: batch the CFG positive and negative LM branches (open, kernel-ABI change)
+
+The session builds two LM runtimes over the same weights, `positive` and `negative`.
+`_negative_condition` runs a full LM forward per diffusion frame, streaming all 28
+layers for one row. The negative branch is bounded by `stages.lm_total_seconds`
+(1.563 s of 4.230 s warm synthesis), which it shares with the positive branch, so its
+plausible share is roughly half of `lm_total` -- **~0.7-0.8 s, ~18% of warm synthesis**.
+
+> **Superseded magnitude.** Earlier revisions of this section reported a 65.5 GB /
+> ~47% traffic share and a "bit-exact, session-orchestration refactor" framing. Both
+> were retracted by `worklog/entries/20260915T200702.494130Z`; the original figure came
+> from per-call-sync instrumentation that absorbed outstanding kernels from other
+> stages and summed to more than the session can contain. Do not reuse the 49.8% or
+> 47% figures.
+
+This is **not** a small refactor. The dependency chain inside one generation step is
+strictly sequential:
+
+```
+pos_forward(k-1) -> next_token -> neg_forward(k) -> diffusion(k) -> pos_forward(k)
+```
+
+`neg_forward(k)` cannot be hoisted, because whether iteration `k` diffuses is decided
+by the logits `pos_forward(k-1)` produces. A speculative batch is semantically sound
+(`neg_forward(k)` consumes the same `_prev_feedback` row `pos_forward(k-1)` consumed)
+but needs a rollback of the negative KV position when speculation misses.
+
+The existing multi-row machinery does not reach across runtimes:
+
+- each `VibevoiceQwen2Runtime` owns its own `self.layers` weight buffers, so one GEMV
+  cannot read both branches' weights from a single pointer;
+- `vv_kv_write_spans(...)` and `vv_attention_spans(...)` take a **single**
+  `k_cache` / `v_cache` pointer, and the two branches hold different KV caches.
+
+So it requires new kernel variants taking per-row cache pointers, plus speculative
+execution and KV rollback in the session loop. **That is a kernel-ABI change, not a
+tuning change, and it reassociates arithmetic** -- so it needs the production-profile
+numerical gate in `docs/EXECUTION-PROFILES.md`, not the bit-exact parent-parity gate.
+
+Expected if it lands: LM 1.450 s toward ~0.86 s. That is a bound from the corrected
+~18% share, not a promise, and it is well below the 2-10x framing.
+
+## VibeVoice-TTS: the model is bandwidth bound, and that bounds the remaining work
+
+Not a refactor item so much as the frame for every other one. The diffusion head
+holds **246.5 MB** of weights and is invoked once per generated frame with a
+20-step solver, so it streams **123.3 GB per request** -- a **~0.59 s floor** at
+the ~209 GB/s this host sustains.
+
+> **Corrected by direct device measurement.** `worklog/entries/20260915T205121.492340Z`
+> traced the diffusion region under `rocprofv3` and measured **28.18 ms/frame of GEMV
+> device time** (89.6% of the head's 31.44 ms of device time), i.e. **~175 GB/s**, or
+> **~84% of sustained bandwidth** -- not the 45% this section previously claimed. The
+> remaining head time is 2.78 ms/frame of `vv_diff_rmsnorm_modulate` and ~0.5 ms of
+> everything else. The head is also invoked with `_GEMV_THREADS = 64` already
+> (`vibevoice_tts_diffusion.py` line 36).
+
+Frames cannot be batched to fix this: each frame's diffusion condition is the LM
+hidden state for that frame, which depends on the previous frame's semantic
+feedback, so the frames are sequentially dependent. The weights cannot be cached
+either -- 246.5 MB against a much smaller L2, re-read on all 20 steps of every
+frame. The CFG branches are already batched into rows=2, so the weights are read
+once for both.
+
+The practical consequence: the diffusion GEMV is already at ~84% of sustained
+bandwidth, so it has no large win left. Closing the residual means changing the
+summation order, which this model's generated audio rejects. The accepted semantic
+win worked because it changed the column tile and not the accumulation order.
+
+Anyone looking for more speed should start from the bandwidth number rather than
+from a kernel profile, and should expect the answer to be a work-partitioning
+change that preserves the reduction tree, or a quality candidate (fewer solver
+steps, lower precision) that the generated-audio suite has to justify.
+
+## VibeVoice-TTS: per-step diffusion D2H readback (resolved 2026-09-16)
+
+The default diffusion loop keeps CFG and DPM-Solver++ state on device. The fused
+step preserves the reference rounding points, and timestep/condition invariants
+are cached. The host path remains the diagnostic oracle used by parity tests.
+
+The device solver measured a 14.9% diffusion-stage reduction and approximately
+3.5% warm-request reduction in a same-session A/B under host load. The invariant
+cache separately measured a 12.2% diffusion-stage reduction and 3.4% warm-request
+reduction on an idle host. These percentages are separate measurements, not an
+established combined speedup. Fresh ten-seed quality evaluation reproduces 58/60;
+broader TTS quality qualification remains pending.
+
+Evidence: `worklog/entries/20260916T033657.511650Z-lhl-vibevoice-tts-device-solver-loop-bd1697.md`
+and `worklog/entries/20260916T042339.511052Z-lhl-vibevoice-tts-diffusion-cache-measurement-90ed57.md`.
+Desktop gfx1151 measurements must establish a new physical-host baseline before
+claiming further gains over torch or the previous implementation.
+
+## Streaming consumer pays one threadpool round trip per chunk (open 2026-09-17)
+`hipengine/server/api.py` pulls each streamed chunk with a separate
+`await run_in_threadpool(_next_stream_item, iterator)` call, and
+`StreamingOutputCollector.drain()` is invoked with `max_chunks=1`. The engine
+producer therefore only has to be modestly faster than that round trip for the
+per-child mailbox to fill, which is what the mailbox-bound fix in
+`worklog/entries/20260917T150847.490398Z-lhl-mtp-stream-mailbox-budget-f63132.md`
+turned from a cancellation into buffering. Buffering is the correct immediate
+behavior, but it hides the real cost: a consumer that is slower than the producer
+now delays the request instead of losing it.
+
+Remove the debt by draining a batch per round trip (yield the first ready chunk
+immediately, then hand over whatever is already buffered without blocking) and by
+raising `max_chunks` in the `drain()` call sites. Re-measure decode throughput on
+a streaming MTP request with per-chunk telemetry enabled before and after; the
+current per-chunk telemetry doubles the consumer's per-chunk cost, which is what
+made the margin visible.
+
+## Concurrent prompt activation is refused instead of overlapped (open 2026-09-17)
+
+`Qwen35GGUFMTP2Adapter.begin_prompt_streaming` allows one prompt activation at a
+time: the activation primes shared provider state (prompt rows, carried hidden
+rows, provider request slots), and the claim that guards it is released only at
+the request's final prefill chunk. A prompt longer than
+`max_prefill_chunk_tokens` (256 by default) therefore holds the claim across
+ticks, so a second request starting its prefill is refused with
+`prompt_activation_in_flight` and decodes without a draft provider. Before
+2026-09-17 that condition raised inside the driver thread and closed the whole
+engine service, which is what made the concurrency pass at c>=4 unmeasurable.
+
+The provider side looks ready for overlap: every priming structure is keyed by
+request (`_request_slots`, `_prompt_prime_rows`, `_prompt_priming_staging`) and
+hidden rows land in a per-slot region, and
+`GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES` already admits prompt-streaming
+widths 1-4 on gfx1151. The refusal is therefore conservative, not a hardware
+limit.
+
+**Half replaced 2026-09-18 by scheduling, not overlap.** The scheduler now
+consults `prefill_activation_ready` and `prefill_needs_activation`, so a fresh
+speculative row's first chunk is deferred until the claim is free and at most one
+claim-opening chunked row is admitted per prefill item. A concurrent arrival
+keeps its provider instead of being refused; activations still serialize, which
+costs the waiting request prefill-start latency. What remains owed is the
+overlap path itself: co-activating several chunked rows in one activation, which
+needs the exactness gate below (generated-token equality plus non-collapsed
+acceptance against independent c=1 runs) and a claim that stays held until every
+co-activated sink finishes (`finish_prompt_streaming` currently clears
+`_active_prompt_claims` as soon as any one row finishes).
+
+**Intent no longer dies with the refusal (2026-09-19).** The refusal now records
+the row in `_streaming_refused_requests` and leaves `mtp2_candidate_budget`
+alone, because whether a refused row can still speculate is decided by its
+priming source (`_priming_source`: live provider state, a complete and current
+prompt buffer, or neither) rather than by the refusal. Zeroing the budget there
+was the blanket disable this entry was really paying for.
+
+## Priming-source refusals that still zero the budget (open 2026-09-19)
+
+The unsupported priming classes -- `prefix_reuse_k0`, `target_profile_k0`,
+`target_context_k0`, `physical_streaming_category_rejected`,
+`operator_disabled_streaming_prompt_k0`, `packed_prefill_unsupported_k0`,
+`incremental_streaming_unsupported_k0` -- still set
+`row.mtp2_candidate_budget = 0` at their refusal sites, spread across
+`hipengine/generation/qwen35_gguf.py` and `qwen35_gguf_mtp2.py`. That is correct
+today: each names a property of the row on this route, so the row cannot prime a
+provider at all. It should not stay spread out. `_priming_source` is the one
+place that answers "can this row speculate", so these sites should ask it
+instead of writing the budget, and `prefix_reuse_k0` should stop being a refusal
+entirely once #21 lands a checkpoint priming source: a reused-prefix row would
+then carry the fourth class (a restored checkpoint) rather than zeroing its
+budget. Removing the zeroing without that branch would let a reused-prefix row
+reach the gate with no source at all, which is why the two move together.
+
+Related, and separately owed: the serving evidence row for this cell is
+`cap4-realized-c1-b3`, which matches only `realized_group_rows == 1`, so a
+request admitted while it is alone is later batched into a wider decode group and
+silently realizes `effective_route="default"`. The wider realized widths need
+their own measured evidence rows before MTP can be admitted at c>1.
+
+**`HIPENGINE_SPEC_MTP_SPLIT_REFUSED_GROUPS` (default off, added 2026-09-18).**
+A due group the provider refuses as a whole now decodes autoregressively in one
+batch, which is the route the adapter's partition contract specifies. The flag
+re-opens the alternative -- one one-row provider cycle per capable row, with the
+refused rows autoregressive in the same tick -- so the serving ladder can
+re-measure it. The 2026-09-18 measurement rejected it: at c=2 and c=4 with a row
+that crosses the provider's 1023-token window beside a healthy co-resident, the
+split route raised MTP output share from 1.8%/2.1% to 69.3%/73.9% and lowered
+decode throughput by 19%/26% per token, including a row that accepted depth 3 on
+every one of its 162 cycles. Remove the flag and
+`speculative_split_refused_groups` once the coupling has a retained row on a
+second protocol or host, or once a wider-group route actually beats the batch AR
+decode; until then the flag is the only way to reproduce the rejected arm.
+
+**Sampled-route finish-rule blockers — resolved (2026-09-22).** The route's
+servable blocker set is the sampling law and nothing else
+(`temperature`, `logit_bias`, penalties, `suppress_token_ids`), plus the
+finish-rule relaxations the cycle commit honors: `ignore_eos`, `min_tokens`,
+`eos_token_id`, `stop_token_ids`, and `stop_token_sequences`. The commit applies
+the autoregressive finish rule to the whole verified chain through
+`hipengine/speculative/streaming.py` `limit_chain_accept_finish`, selecting the
+terminal prefix and reporting `eos` or `stop`, so a stop token or EOS that lands
+mid-cycle publishes nothing after it.
+Evidence: `benchmarks/results/2026-09-22-gfx1151-qwen38-int8-mtp-finish-rule.json`
+and `benchmarks/results/2026-09-22-gfx1151-qwen38-bf16-mtp-finish-rule.json`
+(`scripts/mtp_finish_rule_gate.py`, with `tests/test_unit_mtp_finish_rule_gate.py`
+driving each check to fail against a server that violates it).
+Source: `worklog/entries/20260922T140534.086274Z-lhl-mtp-finish-rule-c10d7c.md`.
+
+**Sampled-route debug traces (env-gated, added 2026-09-18; retained 2026-09-19).**
+`HIPENGINE_DEBUG_SAMPLED_ROUTE` gates stderr traces that name every gate on this
+route: `[route-debug]` and `[cap-debug]` and `[cap-silent-none]` and
+`[prefill-debug]` in `hipengine/generation/qwen35_gguf_mtp2.py`,
+`[cycle-failure]` in the same file's `recover_cycle_failure`, `[plan-debug]` in
+`hipengine/generation/engine_loop.py`, and `[sampled-plan]` in
+`_device_sampled_accept_plan` (six refusal sites: row/sampler shape, host state,
+planner mode, logits processors, tool-call and json constraints, forced tokens,
+temperature, and the missing captured graph with its warmup error). They cost one
+`os.environ` lookup per call when the variable is unset and print nothing.
+
+The device-side sampled accept landed on 2026-09-19 and the route now serves by
+default at the cap4 c1 key, so the original removal trigger is met; they are kept
+because they were decisive twice in that unit (a contained cycle exception
+planned `no_provider` for every row, and a warmup skipped at capacity > 1 left
+every sampled cycle without its graph) and the route's c>=2 admission cell is
+still open. Remove them, or replace them with a documented diagnostic, once the
+sampled route's admission cell is widened and measured.
+## `HIPENGINE_GGUF_GAPPED_GATHER` kill-switch for the gapped slot-local gather route (added 2026-09-19)
+
+Default **on**. A gapped device-KV placement used to drop the whole packed
+prefill slab onto the native three-pass paged prefill kernel (~34x per-launch
+vs AOTriton on gfx1151; the 35B regression lane measured 134,511 ms vs 8,226 ms
+for the same 6,144-token suffix). With the flag on, a gapped BF16 slot keeps the
+slot-local executor: `_gguf_gapped_slot_local_prefill_scratch` swaps its identity
+spans for spans carrying the session's real chunk-local block table, the paged
+KV write / native fallback / head-major gather all walk it, and AOTriton reads
+the same gathered dense head-major buffers the contiguous route uses.
+
+The gather buffers are demand-sized per session
+(`_gguf_gapped_slot_head_major_scratch`): resident sessions built at a model's
+full context class (e.g. 262,144 positions) exceed the validated 64K head-major
+allocation class, so `_ensure_bulk_prefill_workspace`'s capacity-sized pair is
+never allocated there. The first gapped slot-local prefill instead grows one
+bucketed pair (4,096-token buckets) sized to the context the session actually
+prefills, capped by the same validated token/byte class limits, and a context
+past the class keeps the native spans fallback.
+
+The forced AOTriton slots survive the gather route: the engine loop slices long
+prompts into 256-row prefill chunks, below the 512-token AOTriton threshold,
+and contiguous slots cross it via `aotriton_min_tokens=1`. Clearing the force
+for gapped slabs (the old packed-route behavior) stranded every gapped chunk
+on the native kernel and reproduced the original 104 s lane inside the served
+bench; keeping it makes gapped chunks pay contiguous cost.
+
+Removal scope: the flag, the `gapped_slot_local_gather` branch in
+`_prefill_batch_native_single_slab`, the demand-sized gather buffers, and the
+fast-route condition that keeps `HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX`
+binding only when the gather is unavailable - once the gather route holds
+through a full `--suite all` milestone plus the served multi-turn A/B on both
+the gfx1151 zbook and a W7900 host. Gapped gfx1100 BF16 slots use the registered
+gather by default; the optional contiguous-layout capability is not a
+prerequisite. Explicit rollback, missing copy kernels, and allocation limits
+still select the native spans fallback and retain the suffix guard.
+
+## Two MTP entry points disagree on the sampling contract (open 2026-09-19)
+
+The served GGUF MTP route (the MTP2 adapter, `qwen35_gguf_mtp2.py`) is
+capability-gated per sampling mode: a temperature request is served by the
+sampled route when an evidence row advertises it, and that route is a measured
+1.90x at c=1. The direct-generator MTP entry still declares the pre-gate
+contract in two places:
+
+- `hipengine/generation/qwen35_gguf.py::_generate_speculative_mtp_detailed`
+  (reached from the entry above it) raises
+  `NotImplementedError("GGUF speculative MTP currently supports only greedy-fast
+  sampling")` for any non-`GREEDY_FAST` sampler plan.
+- The transactional verify work that path drives
+  (`hipengine/generation/batch_scheduler.py::next_speculative_verify_work`)
+  builds every work item with `target_sampling_policy="raw_target_top1"` and
+  `compatible_sampling_modes=("greedy_fast",)`, and raises
+  `ValueError("speculative verification requires greedy-fast sampling; ...
+  incompatible fields: temperature")` for a sampled request.
+
+Both statements are *accurate for that implementation* -- its verifier commits a
+raw target top-1 and cannot serve a sampled accept -- so the repair is not to
+widen the constants but to stop having two sampling contracts. When the
+direct-generator path is next touched, a sampled request should be routed to the
+MTP2 adapter (which already owns the sampled accept) rather than growing a
+second sampled accept in the transactional verifier, and the two sites above
+should then be deleted rather than relaxed. Until then the refusal is honest and
+the gap is confined to direct-generator callers: the server's sampled requests
+reach the adapter route and are measured there.
+
+A test-level artifact of the same confusion is gone: the greedy route's
+predicate test is now named
+`test_greedy_speculative_route_predicate_allows_only_greedy_fast_requests` and
+says in its docstring that it pins one half of the policy.
+
+## Full-vocabulary native sampler fallback and GGUF placement (2026-09-21)
+
+`NativeSamplerWorkspace(full_vocab_algorithm="sorted")` selects the full-vocabulary
+sort/merge/scan implementation; `"strict"` retains the original native algorithms
+for debugging and numerical comparisons. The original registered temperature and
+top-p primitives remain strict fallbacks. Sorted FP64 accumulation of FP32 weights
+is not bit-identical to the old serial FP32 accumulation, and temperature-only
+sampling changes draw ordering while preserving the categorical law.
+
+Keep the constructor choice as an explicit debugging opt-out. GGUF generators
+and sessions accept `native_sampler_algorithm="strict"`; their default is
+`"sorted"`. The model and sampler arithmetic axes are independent: a strict model
+can use the production sampler without claiming strict sampler parity.
+`native_sampler_provenance` reports a stable selection manifest, named fallbacks,
+and the last successful workspace route; packed execution manifests include it.
+A live workspace refuses conflicting selection changes. Preserve the registered
+strict primitives as the debugging oracle.
+The new implementation has hardware evidence on gfx1151 only. gfx1100 transfer
+and the broader model/quant matrix are unverified.
+
+GGUF placement defaults on for supported, available native requests;
+`HIPENGINE_QWEN35_NATIVE_SAMPLER=0` retains rollback/bisection value. Keep that
+opt-out while independent hardware transfer is evaluated; do not use it as an
+admission gate for supported requests. Dynamic constraints and forced queues
+still require the host path. The full-vocabulary kernel improvement is
+not evidence that those request shapes became supported.
+
+## Provider Prefix Checkpoint Rollback
+
+`HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES` defaults to four bounded provider
+snapshots when radix caching is enabled, and allocates none with prefix caching
+off. Zero is an explicit memory/bisection rollback. A target prefix hit alone
+cannot reconstruct the draft provider's recurrent state and KV; capture and
+restore must travel together.
+
+Keep the rollback until provider snapshots share the target cache's byte budget
+and eviction lifecycle. Then remove the independent entry-count control while
+retaining the bounded cache policy. Validate the composed user path with
+`scripts/int8_mtp_prefix_gate.py` against a radix-enabled server: it requires
+real prefix hits, compact INT8, speculative cycles and parity with the same
+prefix-reusing AR route. A cache miss or an AR-only response is not a pass.
+
+## Startup scratch probe warms the packed route only when N sessions fit (open 2026-09-21)
+
+The startup scratch probe acquires one resident session per probe slot, and each of
+those sessions is constructed at the auto-sized resident context with its own
+preallocated KV pages and packed workspace lease. A width-N probe therefore costs
+about N full-context sessions. On a box whose free memory holds fewer than N of them
+the probe is reduced to one slot, so the packed prefill and verifier warmups the
+wider probe exists to run are skipped and the first concurrent request pays for them.
+
+Remove the reduction once the probe can warm the packed route without holding N
+full-context sessions -- for example by constructing probe sessions at a short
+context, since the warm prompts are at most 128 tokens. That needs a session-pool
+key or construction path carrying a context distinct from the request context. Until
+it exists, `_startup_probe_width_reduction` in `hipengine/server/api.py` is what
+keeps a wide probe from turning a warmup into HIP out-of-memory attempts.
+
+## A failed wide startup probe leaves the process unable to allocate the next stage (open 2026-09-21)
+
+On the 120 GiB box, a startup at `--max-active-requests 4` sent the scratch probe's
+resident-session ladder down four HIP out-of-memory attempts. The probe then retried at
+width 1 and passed, and the very next stage -- the 9-token chat smoke -- failed with
+`HipError: HIP error 2: out of memory` during prefill. The ladder documents that a
+failed attempt is rolled back by the session constructor, and the width-1 probe right
+after it did allocate a full-context session, so what held the memory afterwards is
+unestablished.
+
+`_startup_probe_width_reduction` in `hipengine/server/api.py` now prices the width
+before allocating it, so the attempt that failed here does not happen. A genuine
+failure still reaches the ladder, and the retry then runs on a machine that may be
+tighter than it looks.
+
+Remove this once a failed `_construct_shared_session` in
+`hipengine/generation/qwen35_gguf.py` is shown to roll back completely: force the
+ladder with a width the box cannot hold, then assert a full-context session plus the
+chat smoke still allocate. If the failed attempt does not roll back completely, fix
+the rollback instead of weakening the probe.
+
+## Dormant Q5_T16 rows==1 dual block with poisoned variant inheritance (open 2026-09-25)
+
+`launch_gguf_linear_pair_silu`'s Q5 block (`hipengine/runtime/gguf_linear.py`, the
+`q5_t16_pair_variant = registered_decode_variant or "q5_dense_dual_silu..."` path) is
+dormant on `hip_gfx1151` for three stacked reasons found in E6a (UD-GFX1151-OPTIMIZE2
+iteration 11): the identity policy row hands back the **Q4** variant name
+`dense_dual_local32_bf16_bf16_out` (the row mirrors plain by design; the IQ4 branch
+selects its own key and ignores the value, the Q5 block inherits it blindly, and the
+resulting key is unregistered under `gguf_q5_k_t16_v1`); post-E4a both sides dispatch
+`t16_gemv_decode_tile8_bf16_bf16_out` while the rule demands the direct key; and the
+earlier `_q5_t16_dense_pair_silu_variant(rows)` branch at the `dense_pair_quant ==
+"gguf_q5_k_t16_v1"` test is dead code (`dense_pair_quant` only ever holds quants in
+`_Q4_T16_DENSE_QUANTS`, which excludes Q5).
+
+E6a's gate says leave it dormant: at the production shape (5120, 17408) rows=1 the
+dual is bit-exact against the 2× tile8 + `silu_mul_separate_out_bf16` chain but
+**loses** it — 705.6 vs 653.6 µs/layer (0.93×, allocate-once timing, 200 launches,
+`~/ud-e1-census/e6a_screen.py`) — because the dual kernel mirrors the direct
+owner's schedule while the singles now run on the faster tile8 owner.
+
+Clearing command: re-screen `dual vs 2×tile8 chain` at rows=1 before any change
+here; only if the dual wins at the current dispatched singles does it make sense to
+fix the variant selection (Q5 branch selects its own key, mirroring the IQ4
+precedent), extend the dispatch predicate to the tile8 key, and update the block's
+stale comment (it still describes the direct-only rows==1 condition). Until that
+screen passes, the dormancy is load-bearing and the dead branch plus the stale
+comment should be cleaned up instead.
+## Logprobs requests skip the captured-graph sampled accept (open 2026-09-23)
+
+`_device_sampled_accept_plan` in `hipengine/generation/qwen35_gguf_mtp2.py`
+declines a request that asked for logprobs. The captured graph samples and
+accepts on the device and returns no logits row to the host, so the route has
+nothing to report a published token's logprob from; the request falls to the
+eager host accept, which scores each published token against the verified row
+that predicted it. Serving the metadata is what the logprobs path requires, and
+the fallback is exact -- the gate compares it against the autoregressive route
+token for token at zero delta -- so the decline costs the graph's speed on those
+requests, not their correctness.
+
+Remove this once the graph accept can return the per-row values it selected
+from -- the top-1 candidate and its processed logprob, plus the
+retained top-k the request asked for -- for the rows it accepted. The evidence
+that would justify it is the same gate at zero delta with the decline removed
+and the execution path reporting the captured-graph accept.
+
+## Forced-token requests skip the captured-graph sampled accept (open 2026-09-23)
+
+A request with a pending forced token cannot use the captured-graph sampled
+accept, for the same reason logprobs requests cannot: the graph samples on the
+device and the route needs the row's law on the host to substitute the forced
+token for it. `supports_native_gpu_sampling` in
+`hipengine/generation/sampling.py` refuses those requests, so they take the
+eager host accept, where the override is a point mass on the forced token and
+the accept walk corrects to it. `_sampled_accept_summary` in
+`hipengine/generation/qwen35_gguf_mtp2.py` raises rather than silently sampling
+if a forced token ever reaches the native shape. The fallback is exact -- the
+gate compares both arms token for token, including the queue's position in the
+output -- so the decline costs those requests the graph's speed, not their
+correctness.
+
+Remove this once the graph accept can consume a per-row override, which needs
+the device sampler to take a row's forced token as an input the way the host
+path does. The evidence that would justify it is the same gate with the refusal
+removed and the execution path reporting the captured-graph accept.
+
+## Gemma 4 fused MMQ gate/up prefill is the default; the flag is a rollback lever (open 2026-09-27)
+
+`HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ` selects a fused int8-dp4a MMQ32 route for
+Gemma 4's `Q4_K` expert gate/up prefill. It replaces two fp32 grouped launches
+plus a fused-stride read with one pack, one tile map, and one MMQ launch that
+reads Gemma 4's per-expert `gate | up` row block directly, and it measures
+**4.23 s -> 3.33 s on the 512/128 prefill (1.27x)** with path parity intact.
+
+**The route is now the default path.** The lead made that call on 2026-09-27
+after the teacher-forced check passed on the gfx1100 branch at worst-case KL
+0.0013 and 0.00077 against the 0.05 bar with no top-1 changes, and this branch
+reaches the same conclusion by measurement: on realistic prose (2004 ids) the
+route matches the fp32 arm for ten consecutive tokens with the first divergence
+being llama.cpp alone, and on a truncated Python snippet - the exact class this
+flag cited as its cause - it matches for all 23. The variable is now the rollback
+lever: `HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ=0` restores the fp32 grouped route, and
+unset means on. `tests/test_unit_gemma4_expert_route.py` pins both halves, because
+the campaign's harnesses select their arms through the same function and an
+inversion would have had them compare the route with itself while reporting
+agreement. The reason this flag was originally raised was a recorded observed failure, and
+that failure did not reproduce. The flag's text cited a Python snippet that
+agrees for two tokens and then collapses into a fourteen-token repetition;
+against llama.cpp on a comparable prompt, cut mid-comparison so the continuation
+is genuinely ambiguous, all three arms agree on all 23 first tokens with no
+repetition. What does reproduce is a divergence at low-margin positions, and it
+is a property of out-of-distribution input rather than of the route. The route's
+raw-logit perturbation is three times smaller in distribution than out (3.46 max
+absolute difference on prose against 9.76 on random ids), which is the mechanism
+that was previously recorded as unidentified: the int8 activation-quantisation
+step is small enough not to move a decision on input the model was trained for,
+and random ids leave the logits flat enough that it is. The route replaces only
+the prefill's expert gate/up projection, so one forward of N ids under each arm
+reproduces what a longer teacher-forced chain shows, and
+`scripts/gemma4_mmq_prefill_length_probe.py` sweeps that. Measured on the frozen
+campaign chain, deterministically: the route is over the binding 0.05 `kl_max`
+bar at **7 of the 13 prefill lengths from 16 to 1024 ids** where it runs - `kl`
+0.305 at 16, 1.007 at 24, 0.109 at 32, 0.135 at 48, **2.036 at 64** - with greedy
+decision flips at 24 and 64 ids. At 1024 ids it is 7.3e-07.
+
+The earlier recorded reason for this flag was wrong in a way that argued for
+promotion. It read the breach as a near-certain-row tail effect: `kl_max` 0.0651
+on 2 of 1022 rows, top-1 100% with zero flips, and the already-shipped attention
+split breaching the same bar at the same rows. That measurement was taken at a
+1024-id prefill, which is this route's **best case** rather than a representative
+one, and the current default path is bit-identical to the strict arm on both
+chains (KL exactly 0.0 over 1023 rows, including all 77 close-margin rows, with
+30690 split launches engaged), so the split does not breach that bar today. The
+applicability question that text raised was not the operative one.
+
+The mechanism is input-distribution-dependent rather than a per-row
+activation-quantization bound: that bound is per row and does not vary by six
+orders of magnitude with the row count, and what varies is how often the model's
+margin is smaller than the bound. The leaf's only unit coverage was once 4
+experts over 10 rows in `tests/test_unit_gemma4_expert_route.py`, which does not
+reach the real geometry of 128 experts;
+`tests/test_gpu_gemma4_expert_route_true_geometry.py` now covers the real geometry
+including an expert spanning more than one MMQ tile.
+
+Remove it once a teacher-forced gate against the campaign's frozen evaluator
+has been recorded for the new default and its verdict is on file. Note
+that `capture` must run with `HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ=0` to freeze the
+incumbent fp32 path, since capture otherwise freezes the new default and the gate
+would compare the route with itself. The implementation, its registered launch
+path, and its correctness tests stay in place. Evidence:
+`benchmarks/results/2026-09-27-gemma4-mmq-gate-up-three-arm-attribution.json`,
+`benchmarks/results/2026-09-27-gemma4-mmq-gate-up-short-prefill-divergence.json`.
+
+## Gemma 4 expert down MMQ: exact automatic default after continuation failure (open 2026-10-03)
+
+Automatic selection does not use the MMQ down; since 2026-10-10 it runs the
+grouped WMMA owner (see the WMMA rollback lever entry at the top of this
+ledger), and before that the registered exact down owner. The existing one-plane
+MMQ route failed nine of ten generated-history screens; three-plane feedback
+failed seven. The exact-down control matched all 610 paired strict logits.
+Explicit `HIPENGINE_GEMMA4_MOE_DOWN_MMQ=1` and pinned `mmq` selection remain
+runnable; neither the representation nor the evaluator thresholds changed.
+
+Clearing command (use the same artifact for both arms):
+
+```bash
+HIPENGINE_GEMMA4_MOE_DOWN_MMQ=1 .venv/bin/python scripts/gemma4_generated_history_gate.py \
+  --model <artifact>.gguf --output-dir /tmp/gemma4-down-mmq-repair
+```
+
+Remove the lever after a repaired MMQ owner passes this unchanged continuation
+screen and the full applicable execution-profile gate, with selected-route,
+repeatability and isolation evidence. See
+`worklog/entries/20261003T123946.224463Z-lhl-repair-tiled-expert-default-dispatch-after-gemma-e11ee2.md`.
+
+The following measurements describe the earlier 2026-09-28 decision, not the
+current default.
+
+`HIPENGINE_GEMMA4_MOE_DOWN_MMQ` selects the Q5_1 DS4 DP4A MMQ route for Gemma 4's
+expert down projection. Before it, Q5_1 had no MMQ path at all --
+`gemma4_project_experts_gate_up_mmq` accepts only `gguf_q4_k` and `gguf_q5_k` -- so
+the down projection ran the fp32 grouped family at **8.6 GB/s** where the Q4_K
+gate/up MMQ on the same layer ran at **67 GB/s**, 11.8x per FLOP. It measures
+**7.191 s -> 5.213 s on the 2048-token prefill (+38.0%)**, and the expert share of
+prefill falls from 43.4% to 11.0%. On the loop's 512/128 shape the prefill goes
+from 1.52 s to 1.01 s.
+
+**Historical default (2026-09-28).** The route defaulted on, and
+`HIPENGINE_GEMMA4_MOE_DOWN_MMQ=0` restored the FP32 grouped route.
+`tests/test_unit_gemma4_expert_route.py` and
+`tests/test_gpu_gguf_q5_1_mmq_selected_prefill.py` test the implementation.
+
+**Why the width constraint had to be lifted, not worked around.** The Q5_1 MMQ
+kernel tiled `in_features` in 128-wide DS4 blocks and computed
+`ds4_blocks = in_features / 128` with integer division, so a width that is not a
+multiple of 128 silently dropped its tail; its `in_features % 128` guard existed to
+prevent exactly that. Gemma 4 26B-A4B's expert down width is **704**, which is
+`5 x 128 + 64`. The route now rounds `ds4_blocks` up and skips the Q5_1 sub-blocks
+a trailing group does not have, and the DS4 activation pack rounds `blocks_per_row`
+up and reads `0.0` past `hidden`. **This is exact, not an approximation:** the
+elements past `hidden` are zero, and a zero cannot raise a `max_abs` or move a sum,
+so the scale the real elements get is the one they would have got without the
+padding.
+
+**Numerical envelope, measured.** At the model's own geometry -- 4096 compact rows,
+128 experts, 704 -> 2816, one plane -- against the fp32 grouped owner and against an
+exact dequant oracle: grouped vs oracle max 0.00789 / mean 0.000712; MMQ vs oracle
+max 0.01297 / mean 0.001336; MMQ vs grouped max 0.01218 / mean 0.001110. That is the
+same envelope the Q4_K gate/up route above already runs at, and it uses the same
+plane count (`_MMQ_ACTIVATION_PASSES = 1`) for the same reason.
+
+**It is over the 0.05 `kl_max` bar on the 2048/1024 teacher-forced gate, and that
+over-bar is not this route's.** Measured 2026-09-28 against
+`/tmp/gemma4-gate-strict-gfx1151.npz`: all routes on gives `kl_max` 0.137246 with
+`kl_mean` 0.000317, `kl_p99` 0.000179, `top1_rate` 1.0 and 0 flips; with this route
+off it is **0.170633**; with the WMMA dense prefill off it is 0.167806; with both off
+it is 0.156917. Every configuration fails the bar and turning this route off makes it
+*worse*, so the over-bar is the pre-existing property of the Q4_K gate/up MMQ route
+recorded in the section above -- over the bar at 7 of 13 frozen-campaign prefill
+lengths -- and not something this route introduced. All-on also reproduces to six
+decimal places across runs, so the result is deterministic rather than a tail draw.
+
+Remove it once a teacher-forced gate against the campaign's frozen evaluator
+has been recorded for the new default and its verdict is on file. Note that
+`capture` must run with `HIPENGINE_GEMMA4_MOE_DOWN_MMQ=0` to freeze the incumbent
+fp32 path, for the same reason the gate/up entry gives. The implementation, its
+registered launch path, and its correctness tests stay in place. Evidence:
+`benchmarks/results/2026-09-28-gemma4-prefill-expert-down-route-attribution.json`.
+
+## Gemma 4's pack8 expert layout is deleted (settled and removed 2026-09-28)
+
+**RESOLVED 2026-09-28: the layout was measured never ahead, and the flag and its
+unreached code have been deleted.** Nothing here is outstanding.
+
+The clearing condition this entry set was measured at 512 prefill rows against 128
+experts, the one regime the ladder does not give to `grouped_prefill`: prefill
+343.2 against 340.0 tok/s (a 0.9 percent difference, inside run-to-run variation)
+and decode 21.24 against 7.78 tok/s, reproducing the documented 2.73x regression on
+a fresh run. Evidence:
+`benchmarks/results/2026-09-28-gemma4-gfx1151-expert-pack8-layout-settlement.json`.
+
+### What was removed
+
+The flag `HIPENGINE_GEMMA4_EXPERT_PACK8_LAYOUT` and the unreached code behind it,
+as this entry's second bullet specified: `LAYOUT_Q4_K_PACK8`, `pack8_arrays`,
+`_materialize_pack8`, `_pack8_shapes`, `_pack8_nbytes`, `pack8_layout_enabled`, and
+`gemma4_project_experts_pack8`, along with `_PACK8_ALLOCATION_NAMES`, the
+`pack8_selected` rung of the expert route ladder, the planning branch in
+`hipengine/loading/gemma4_gguf_device.py`, the pack8 branch in `resident_bytes`,
+the `gemma4_project_experts_pack8` leaf in `scripts/gemma4_prefill_kernel_census.py`,
+the env-var row in `docs/ENVS.md`, and the six tests in
+`tests/test_unit_gemma4_gguf_device.py` that existed to exercise or pin the layout.
+`_product` and `import os` became unused in the loading module and went with them.
+
+The removal takes a flag, a 19.2 GB raw/packed duplication path, and 116.6 s of
+load-time repacking off the path of anyone who had set the variable.
+
+### What deliberately remains
+
+**`_SELECTED_PACK8_VARIANT` and the `pack8_selected` GEMV kernels are a different
+thing and were left in place.** That family is the 8-output-columns-per-block form
+of the per-lane selected GEMV over the *raw* blocks; it is preferred where it is
+registered by `gemma4_project_experts_selected`, a live route, and it is pinned
+bit-exact against its single-output owner by
+`tests/test_unit_gemma4_expert_route.py`. It shares the name and nothing else. The
+dense `require_pack8` GEMV path in `hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py`
+is likewise unrelated.
+
+### Why the default-off was legitimate while it lasted
+
+It was one of the real default-off cases: a **measured cause**, not a missing
+qualification. Decode measured 21.03 tok/s without the layout and 7.64 tok/s with
+it, with `pack8_selected` confirmed as the route that ran. The layout was
+arithmetically correct, so every correctness test passed either way -- which is why
+the default was pinned by its own test, because a silent flip back would have
+reintroduced a 2.75x decode regression with nothing else noticing. That pinning
+test is gone with the flag, which is the correct end state rather than a coverage
+loss: there is no longer a default that can flip.
+
+The duplication the flag enabled was 19.2 GB on the 26B artifact: 60 rank-3 expert
+tensors at 14.4 GB raw expanding by 1.33x. It was affordable against the measured
+124 GiB device ceiling, which was never the reason the flag was off. Evidence:
+`benchmarks/results/2026-09-27-gemma4-gfx1151-pack8-expert-route-measured.json`.
+
+## The 128-wide MMQ32 K pass is implemented, correct and unwired (open 2026-09-28)
+
+`gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_kernel` stages four Q4_K
+subblocks per pass instead of one, taking the gate/up projection from 88 staging iterations
+and 176 `__syncthreads()` to 22 and 44 at identical arithmetic. It is exported as
+`hipengine_gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_bf16_bf16_out` with a
+Python wrapper, and `tests/test_gpu_gguf_q4_k_q8_1_selected_prefill.py` checks it **bitwise**
+against the 32-wide route on three geometries plus the CPU reference. Nothing routes to it.
+
+Removal condition: delete
+`gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_kernel`, its `extern "C"`
+launcher and its Python symbol unless the route is either re-measured at the production gate/up
+geometry and wins, or wired behind an `in_features % 128 == 0` dispatch condition and shown to
+improve end-to-end prefill. Clearing command: rerun
+`scripts/gemma4_mmq_k_width_leaf_bench.py` at `out_features` 1408 once the fixture can reach it,
+or promote the route and take an end-to-end number.
+
+**It is unwired because it was measured and did not earn the place.** On the leaf bench
+(`scripts/gemma4_mmq_k_width_leaf_bench.py`) the wide pass was 0.986x at `in_features` 512,
+0.897x at 1024, and 0.914x at 2816 -- and the 2816 medians moved between runs (narrow 138.2
+then 159.5 us) while the minima sat within 4% of each other, so at the production K depth it
+is a wash. The barrier count was worth a factor of 1.36 in the earlier estimate; it is worth
+about 10% at best and nothing at 2816.
+
+Two things would clear it, and either is enough:
+
+- **Re-measure at the production geometry.** The bench could not reach `out_features` 1408
+  because the synthetic weight generator overflows `uint8` past 128, so every point above runs
+  at 128 output features and a quarter of the intended arithmetic intensity.
+- **Wire it and take an end-to-end number.** That requires an `in_features % 128 == 0`
+  dispatch condition, which the narrow route does not need.
+
+If neither happens, delete the kernel, its `extern "C"` launcher, its Python symbol and its
+three test parameters. The `KSUB` template machinery underneath stays either way: it is a
+verified no-op at `KSUB = 1` and it is what made the experiment cheap.
+## `HIPENGINE_GEMMA4_MOE_PREFILL` selects a prefill route that fails an absolute bar (open 2026-09-26)
+
+The Gemma 4 prefill MoE has two WMMA owner variants per projection that are 2.7x
+faster than the exact routes: a compensated form (fp16 high part plus fp16 residual
+per weight, two WMMA ops per k-tile) and the plain uncompensated form kept only as
+the diagnostic that isolates the fp16 weight-rounding term. `auto` runs neither.
+The compensated form passes every aggregate logits bar with 10-200x margin and
+leaves top-1 unchanged on all 1023 scored rows, but breaches the campaign's absolute
+`kl_max` bar at 0.060867 against 0.05 on 1 of 1023 rows. The breach is reduction
+association, not a defect; a two-way accumulator split moved it to 0.081599 rather
+than reducing it. See the iteration-59 diagnostic in
+`docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md`.
+
+Remove this once the lead rules on whether an absolute `kl_max` applies to a
+reordering-class change. If it does not apply, delete `_PREFILL_MODE_ENV`,
+`_prefill_mode`, `_prefill_route_flags` and the exact-route default, make the
+compensated variants the prefill route unconditionally, and delete the plain
+variants and the diagnostic modes with them. If it does apply, delete the Gemma
+wiring for both WMMA owner variants and their `compensated` plumbing instead, and
+keep the kernels registered for callers that only need their own parity contract.
+
+## Gemma 4 gate/up split allocation (resolved 2026-09-27)
+
+`materialize_gemma4_gguf_device_weight` used to upload the fused
+`ffn_gate_up_exps` stack **and** two per-expert `gate`/`up` copies, because the
+Q4_K int8 MMQ32 leaf derived each expert's weight stride from its own output
+width and so could not address a fused stack. `Gemma4GGUFWeightSpec.split_gate_up`,
+`_mmq_split_requested`, `_is_fused_expert_gate_up` and the
+`_MMQ_DUAL_WEIGHTS_ARE_SPLIT` refusal in `gemma4_experts_forward_bf16` carried
+the condition. The duplicate cost 8.04 GiB plus allocator overhead: peak device
+use at `--prompt 1024` was 32.35 GB, and Gemma 4 stopped loading on the 24 GB
+RX 7900 XTX with `HIP error 2: out of memory`.
+
+Removed rather than completed. The leaf takes an explicit `expert_stride_rows`
+(0 keeps the old per-half behavior for every other caller), Gemma 4 passes the
+fused width, and the fused allocation is the only copy again. Peak device use
+on the W7900 is 22.06 GiB (49.0% of 45.0 GiB) and the XTX loads and runs. None
+of the symbols above exist any more, so there is nothing left in this ledger's
+sense to delete; this row records the removal and closes it.
+
+Evidence: `worklog/entries/20260927T081858.830497Z-lhl-gemma4-mmq-fused-stride-242422.md`;
+iteration 152 in `docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md`;
+`tests/test_gpu_gguf_q4_k_q8_1_selected_prefill.py`
+(`test_q4_k_q8_1_ds4_mmq32_fused_stride_matches_split_tensors` -- fused output
+bit-identical to split, with a negative control proving the comparison cannot
+pass on an ignored stride); and
+`benchmarks/results/2026-09-29-gemma4-moe-fused-stride-gate-w7900.json`
+(the campaign gate at `--prompt 2048 --prefill 1024`: `passed: true`,
+`kl_max` 7.7e-04 against a 0.05 bar, 0 of 1023 top-1 flips).
+
+## `HIPENGINE_GEMMA4_DECODE_GRAPH` whole-step graph replay is prize-bounded, not correctness-bounded (open 2026-10-10)
+
+The Gemma 4 generation loop replays decode steps from a whole-step HIP graph
+capture (`hipengine/runtime/gemma4_decode_graph.py`). Since 2026-10-10 the
+flash phase kernel re-derives its slice partitioning per block from a staged
+device live-extent slot (`[delta, live]`, staged per replay per geometry),
+so every route a decode step takes below 15328 keys — flash, the two-phase
+split, the class kernel — replays bit-identically to the launched path; the
+capture window is bounded only by the measured launch-bound prize
+(`_CAPTURE_MAX_KEYS` = 2176 keys: +15.4 percent decode at 1024 prompt
+tokens, +2.2 percent at 2048, flat-to-negative from 2560 where the step is
+device-bound). The env `HIPENGINE_GEMMA4_DECODE_GRAPH` (default on) is the
+rollback seam for the whole route, and the in-session `launched_fallbacks`
+counter makes the fallback visible per request.
+
+History: the 2026-10-09 restriction blamed the split's host-computed slice
+geometry and blocked capture from 1024 keys; the 2026-10-10 layer probe
+(worklog 20261010T010705) attributed the replay divergence to flash's
+live-key-count partitioning (the split and class routes always replayd
+bit-exact), and a route-crossover attempt to re-route the launched path to
+the split was refuted on natural tokens the same day (worklog
+20261010T024452). The device-resolved slot keeps the launched path
+byte-identical (a null slot reproduces the scalar partitioning exactly) and
+needs no execution-profile gate.
+
+The window is per backend: a backend package may declare
+`GEMMA4_DECODE_GRAPH_CAPTURE_MAX_KEYS`, and `_capture_max_keys` reads it. The
+2176-key default and the gains above are Radeon 8060S measurements.
+`hip_gfx1100` declares `0`: on a W7900 (2026-10-12, graph on against off at the
+default window) decode was 0.989x at 256 prompt tokens, 1.000x at 512, 0.994x
+at 1024, 0.934x at 1536 and 0.927x at 2048 with equal generated ids, so its
+decode steps stay launched. Replay exactness on that device is still pinned by
+`tests/test_gpu_gemma4_decode_graph_capture.py`, which captures inside the
+default window whatever the backend declares.
+
+Removal condition: correctness no longer bounds the window -- the
+class-global kernel (resident row above the 64 KiB LDS budget, keys > 15328
+for head_dim 512) and the staged singleton deep variant were probed at
+16384 and 32768 prompt depths on 2026-10-10 and replay bit-identically,
+like every other route, so the guard is purely the measured engagement
+threshold. It goes when the capture cost falls below the device-bound
+crossover (today flat-to-negative from 2560 keys: the per-bucket capture
+cost plus the frozen superset walk outweighs the launch-gap savings on
+device-bound steps), or if the deep steps become launch-bound again. Then
+the bucket guard, the fallback counter, and the env all go, and the graph
+covers the full decode range. The intermediate capture design notes
+(retarget cost, capture-amortized buckets) live in the module docstring
+and the 2026-10-09 worklog entry.

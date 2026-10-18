@@ -80,6 +80,35 @@ def test_ragged_padded_queries_isolate_both_slots_and_repeat(runner, oracle):
         np.testing.assert_array_equal(expected, again)
 
 
+@pytest.mark.parametrize("batched", [False, True])
+def test_recurrent_work_buffers_reset_nan_bytes(runner, oracle, monkeypatch, batched):
+    """Only mutable per-layer state is dirtied, never weights or constants."""
+    ids = oracle["query_input_ids"][0]
+    one = (ids, np.ones(len(ids), dtype=np.int64))
+    run = (lambda: runner.encode_queries([one, one])) if batched else (
+        lambda: [runner.encode_query(*one)])
+    expected = run()
+    original = runner._gdn_layer
+    dirtied = []
+
+    def dirty_then_forward(*args, **kwargs):
+        seg = kwargs.get("seg")
+        buffers = ([runner._zero_conv_state, runner._gdn_state_zero] if seg is None
+                   else [seg.conv_state_slab, seg.gdn_state_slab])
+        for buffer in buffers:
+            if buffer is not None:
+                runner.runtime.memset_async(buffer.ptr, 255, buffer.nbytes, 0)
+                dirtied.append(buffer.ptr)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(runner, "_gdn_layer", dirty_then_forward)
+    actual = run()
+    assert dirtied
+    for a, b in zip(actual, expected, strict=True):
+        assert np.isfinite(a).all()
+        np.testing.assert_array_equal(a, b)
+
+
 def test_distinct_document_pixels_isolate_both_slots_and_repeat(runner, oracle):
     ids = oracle["input_ids"][0]
     mask = oracle["attention_mask"][0]

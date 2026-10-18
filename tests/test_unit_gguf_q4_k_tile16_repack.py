@@ -57,6 +57,66 @@ def test_q4_k_tile16_repack_roundtrips_raw_bytes_exactly() -> None:
     np.testing.assert_array_equal(restored, raw)
 
 
+def test_q4_k_tile16_column_major_roundtrips_raw_bytes_exactly() -> None:
+    raw = _raw_q4_k_bytes(experts=3, out_features=32, blocks_per_row=2)
+
+    packed = repack_gguf_q4_k_tile16(raw, column_major=True)
+    restored = unpack_gguf_q4_k_tile16(packed, column_major=True)
+
+    assert packed.tiles.shape == (3, 2, 2, GGUF_Q4_K_TILE16_BLOCK_BYTES)
+    np.testing.assert_array_equal(restored, raw)
+
+
+def test_q4_k_tile16_column_major_is_a_q_region_permutation_only() -> None:
+    """The K-major repack moves only Q-region bytes, and one lane's K tile is contiguous.
+
+    Every byte outside the Q region is untouched, the Q region is the same
+    multiset of bytes, and the byte for (byte column ``p``, K value ``k``) sits
+    at ``p * 16 + (k % 16)`` inside its 128-byte K tile -- which is what lets a
+    decode lane read its sixteen K values with one 128-bit load.
+    """
+
+    from hipengine.quant.gguf_q4_k import (
+        GGUF_Q4_K_SUBBLOCK,
+        GGUF_Q4_K_SUBBLOCKS,
+        GGUF_Q4_K_TILE16_Q_OFFSET,
+    )
+
+    raw = _raw_q4_k_bytes(experts=2, out_features=16, blocks_per_row=2)
+    row_major = repack_gguf_q4_k_tile16(raw).tiles
+    column_major = repack_gguf_q4_k_tile16(raw, column_major=True).tiles
+
+    np.testing.assert_array_equal(
+        column_major[..., :GGUF_Q4_K_TILE16_Q_OFFSET],
+        row_major[..., :GGUF_Q4_K_TILE16_Q_OFFSET],
+    )
+    np.testing.assert_array_equal(
+        np.sort(column_major[..., GGUF_Q4_K_TILE16_Q_OFFSET:], axis=-1),
+        np.sort(row_major[..., GGUF_Q4_K_TILE16_Q_OFFSET:], axis=-1),
+    )
+
+    # Row-major stores (k, p) at k * 8 + p inside a sub-block's 256 bytes.
+    # K-major stores (k, p) at (k // 16) * 128 + p * 16 + (k % 16).
+    row = row_major[..., GGUF_Q4_K_TILE16_Q_OFFSET:].reshape(
+        -1, GGUF_Q4_K_SUBBLOCKS, GGUF_Q4_K_SUBBLOCK, 8
+    )
+    col = column_major[..., GGUF_Q4_K_TILE16_Q_OFFSET:].reshape(
+        -1, GGUF_Q4_K_SUBBLOCKS, GGUF_Q4_K_SUBBLOCK, 8
+    )
+    k_idx = np.arange(GGUF_Q4_K_SUBBLOCK)[:, None]
+    p_idx = np.arange(8)[None, :]
+    offset = (k_idx // 16) * 128 + p_idx * 16 + (k_idx % 16)
+    np.testing.assert_array_equal(col[..., offset // 8, offset % 8], row)
+
+def test_q4_k_tile16_column_major_rejects_the_wrong_unpack() -> None:
+    raw = _raw_q4_k_bytes(experts=1, out_features=16, blocks_per_row=1)
+
+    packed = repack_gguf_q4_k_tile16(raw, column_major=True)
+
+    with pytest.raises(AssertionError):
+        np.testing.assert_array_equal(unpack_gguf_q4_k_tile16(packed), raw)
+
+
 def test_q4_k_tile16_repack_has_expected_near_raw_storage_overhead() -> None:
     raw = _raw_q4_k_bytes(experts=2, out_features=16, blocks_per_row=1)
     packed = repack_gguf_q4_k_tile16(raw)

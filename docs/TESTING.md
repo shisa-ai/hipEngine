@@ -1,3 +1,7 @@
+---
+status: normative
+owns: RED/GREEN workflow, correctness oracles, fixture policy, test naming/discovery, and the validation matrix.
+---
 # hipEngine Testing Discipline
 
 hipEngine is math-heavy software. A change that compiles, launches, and gets faster can still be wrong. The default posture is therefore:
@@ -46,6 +50,47 @@ Every non-trivial behavior change follows:
 5. **Log and commit.** Record exact commands/results in the unit's immutable worklog entry for non-trivial code, kernel, or correctness changes; commit only after validation passes.
 
 If a failing test cannot be written first, record why in the unit's worklog entry before implementing. Avoid silent "trust me" math changes.
+
+### A red test you did not cause is still your problem
+
+When a suite is green except for failures you did not expect, the failures are
+evidence about the tree, not noise. Two rules before calling one pre-existing:
+
+- **Reproduce it at an ancestor, never at a descendant.** "It also fails at
+  `<later commit>`" is not a pre-existence check: any descendant carries the
+  defect too. Use `git bisect` or check out the parent of the commit you suspect,
+  and record which commit you reproduced it at.
+- **Read what the failing test names.** A failure whose name mentions the kernel
+  family, quant, or layer you just touched is a finding about your change, even
+  when the code paths look unrelated. "Unrelated to `<my subsystem>`" is not the
+  same as "unrelated to this change".
+
+A defect that stays in the tree is not just unfixed: every measurement taken
+above it -- timing, gate, benchmark, bisect -- is poisoned, and the resulting
+numbers are indistinguishable from a real regression in the thing being
+measured. The cost of the wrong pre-existence check is a day of measurement on a
+broken tree, not one red test.
+
+### A guard must exercise the path the change touches
+
+An automated loop decides keep/kill from its configured metric and guard, so
+these two rules are what stand between a candidate and the default path:
+
+- **The metric must move with the change.** A keep verdict read from a phase the
+  change does not affect is not a gate. A prefill tile candidate accepted on a
+  decode throughput reading was never measured in the direction it acted; the
+  reading that justified it was noise from a different phase. When a change can
+  affect both phases, both readings are required, and the one the change targets
+  is the one that decides.
+- **The guard's test list must include the tests that own the changed kernel's
+  arithmetic.** A hand-written file list is a snapshot of a previous change, not
+  a property of the tree. A candidate that touches a new kernel family, quant, or
+  layer adds that family's tests to the guard before the iteration is accepted.
+
+`tests/test_unit_gemma4_expert_route.py` compared the staged prefill kernel
+against a dequantized reference, ran in the default tier, and failed six times
+under the commit that overran its staging buffer. It was not in the optimizing
+loop's guard, and the loop kept the commit.
 
 ## Oracles
 
@@ -119,6 +164,37 @@ with prompt/step, strict and candidate winners, KL, top-k overlap, strict
 margin/rank, teacher NLL/delta-p, and maximum absolute logit delta even when its
 KL is below the review boundary. The binding values and calibration evidence
 are in [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md#61-calibrated-production-envelope).
+
+### Report-only distribution diagnostics
+
+The shared `scripts/quant_quality/metrics.py` row core adds a `diagnostics`
+object to quant-quality and execution-profile summaries, including each group
+or category/shape/transition scope. Prefix-reuse reports inherit it under
+`production_profile.summary.diagnostics`. These fields have `gating: false`;
+they do not change thresholds, outlier-review rules, or admission decisions.
+
+- `total_variation` is half the full-vocabulary sum of absolute probability
+  differences. `entropy_delta_nats` and `max_probability_delta` are candidate
+  minus reference. Each reports mean, min, max, and p05/p50/p95/p99. Signed
+  quantiles help expose changes that cancel in the mean. Probabilities use
+  FP64 stable log-softmax; adding a constant to every logit leaves these
+  distribution diagnostics unchanged.
+- `margin_buckets` reports row counts, flips, and flip rates for reference
+  top-1 minus top-2 raw-logit margins in `[0, 0.05)`, `[0.05, 0.5)`,
+  `[0.5, 2)`, and `[2, infinity)`. These are descriptive bins, not error
+  tolerances. A one-token vocabulary uses margin zero; ties follow NumPy's
+  first-index argmax. Empty bins report null rates and intervals.
+- `top1_flips` and each margin bucket include `wilson95_iid_rows`, a 95%
+  Wilson interval that assumes independent, identically distributed rows.
+  Consecutive tokens can be correlated, so this is an approximation, not a
+  confidence gate or a substitute for prompt-level analysis. Do not pool
+  deterministic repeats to increase the accuracy sample count.
+- `rows` counts compared token positions. Profile `sequence_count` counts
+  distinct `(scenario_id, request_id)` pairs within the summary; it does not
+  establish independent prompts. Quant-quality comparisons without sequence
+  identities report null; their enclosing harness may report prompt counts.
+
+### Run an evaluation packet
 
 Run a completed packet with:
 
@@ -309,7 +385,7 @@ python3 scripts/check_fixtures.py
 python3 scripts/smoke.py --mode registry
 python3 scripts/smoke.py --mode cpu-fixtures
 python3 scripts/smoke.py --mode smoke-add-plan
-rg -n "import torch|torch\." hipengine tests scripts pyproject.toml docs/IMPLEMENTATION.md || true
+rg -n "import torch|torch\." hipengine tests scripts pyproject.toml docs/reference/IMPLEMENTATION.md || true
 ```
 
 The torch audit may show docstrings/comments, but executable hot-path imports/usages are blockers.
@@ -427,7 +503,7 @@ same-run AR tokens) is a self-consistency check between two *different* kernels
 (the chain/verify kernel vs the AR decode kernel); a numerically close verifier
 can flip it by about one ULP at a near-tie boundary. Such a flip alone is not a
 control-ownership bug, but it also does not waive the full production quality
-or MTP economics gate. See `docs/MEGAKERNEL.md` §5/§8.1/§9.4 for the historical
+or MTP economics gate. See `docs/reference/MEGAKERNEL.md` §5/§8.1/§9.4 for the historical
 rationale. Any MTP speed claim re-baselines true AR tok/s, task quality,
 acceptance, and complete cycle economics on the full suite.
 
@@ -519,7 +595,7 @@ row has only `0.022 GiB` headroom.
 A different gfx1151 file (size `17,106,775,008`, SHA-256 `7e78da...`) rejects
 pure native INT8 at complete 1K/8 with `77.78%` minimum-prompt top-1. Neither
 result transfers by filename or geometry. The active
-[`IKV-C0`-`IKV-C7` campaign](QWEN38-INT8-KV-CONTINUOUS.md) has completed its
+[`IKV-C0`-`IKV-C7` campaign](campaigns/QWEN38-INT8-KV-CONTINUOUS.md) has completed its
 first gate: demand-driven full-file SHA-256 plus backend/target/quant/layout/scale
 identity qualifies the exact gfx1100 file, preserves the gfx1151 rejection, and
 falls unknown or mismatched contracts back to BF16 unless an explicit

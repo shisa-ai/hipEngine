@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "status": "diagnostic_only_promotion_blocked",
+  "date": "2026-09-07",
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S",
+  "backend": "hip_gfx1151",
+  "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "model_sha256": "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482",
+  "inspected_head": "e1641cde166185c725898652466d78b531409647",
+  "protocol_source": "/tmp/ud-q56-context512.py",
+  "protocol_sha256": "3f7e1c11dd0dc2a8cfb588a467cbe8b6733d462189b7f74a21056a092925efb7",
+  "command_template": "PYTHONPATH=. OPENBLAS_NUM_THREADS=4 HIPENGINE_COMPILER_VERSION_FILE=/tmp/ud-hipcc-version.txt .venv/bin/python -u /tmp/ud-q56-context512.py MODE M",
+  "modes_in_order": ["baseline", "candidate"],
+  "candidate": "Process-local decode_repack=True for two-dimensional Q5_K/Q6_K tensors only",
+  "workload": {
+    "concurrency": 1,
+    "prompt_count": 18,
+    "context_tokens": 512,
+    "teacher_steps": 9,
+    "logit_positions": 162,
+    "prefill": "serial eager, use_bulk=False",
+    "synthetic_repeated_chat_tokens": true,
+    "prompt_sources": ["benchmarks/prompts/mtpbench-code-general-ja.jsonl", "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"],
+    "independent_teacher": false,
+    "task_quality_evaluation": false
+  },
+  "allocated_weight_buffer_bytes": {"baseline": 26396502016, "candidate": 21526849536},
+  "comparison": {
+    "inputs_and_forced_tokens_equal": true,
+    "all_logits_finite": true,
+    "kl_direction": "baseline || candidate",
+    "kl_mean": 0.0016475004110867754,
+    "kl_p95": 0.003245019600510764,
+    "kl_max": 0.10279943595480874,
+    "top1_matches": 162,
+    "positions": 162
+  },
+  "worst_position": {
+    "flat_index": 91,
+    "prompt_id": "heldout_code_rate_limiter",
+    "category": "code",
+    "step_after_prefill": 1,
+    "local_reproduction_capture": "/tmp/ud-q56-context512-M-worst.npz",
+    "top1_token_id": 321,
+    "baseline_top1_probability": 0.8718413124133275,
+    "candidate_top1_probability": 0.9726980528782079
+  },
+  "limitations": [
+    "Top-1 equality does not establish distributional parity.",
+    "This compares residency paths in hipEngine, not an independent teacher or BF16 source model.",
+    "The failing position is preserved; its numerical cause is not localized.",
+    "No speed claim, task-quality qualification, serving qualification, or default change."
+  ]
+}

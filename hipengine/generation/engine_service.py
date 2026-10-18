@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import queue
 import threading
 from collections import Counter
 from collections.abc import Mapping
 import time
+import traceback
 from dataclasses import dataclass, field, replace
 from typing import Any, Iterator, Sequence
 
@@ -16,6 +18,7 @@ from hipengine.generation.concurrency2 import (
     OutputCollector,
     OutputKind,
     StreamingOutputCollector,
+    stream_mailbox_bound,
 )
 from hipengine.generation.deadline import GenerationCancelled, generation_deadline_expired
 from hipengine.generation.engine_loop import (
@@ -31,6 +34,48 @@ from hipengine.generation.registry import (
 )
 from hipengine.speculative.streaming import trim_speculative_output
 
+# The driver thread owns the engine, so a command waits behind whatever the
+# engine is already doing: preparing a context can grow the KV pool and capture
+# graphs, and one scheduling tick can prefill a large prompt chunk. Both
+# legitimately exceed half a minute. The budget below is a liveness guard for a
+# driver that has stopped making progress, not a bound on real engine work, so it
+# is deliberately generous and settable through
+# ``HIPENGINE_ENGINE_COMMAND_TIMEOUT_SECONDS``.
+DEFAULT_COMMAND_TIMEOUT_SECONDS = 300.0
+
+# Log one diagnostic line when a command waits this long, so an operator can see
+# what the driver was doing instead of only a timeout traceback.
+DEFAULT_SLOW_COMMAND_WARN_SECONDS = 10.0
+
+# The server configures this logger for its own output, so a slow-command or
+# timeout diagnostic lands in the server log with the rest of the request lines.
+_LOGGER = logging.getLogger("uvicorn.error")
+
+
+class EngineServiceClosed(RuntimeError):
+    """A closed or unhealthy engine service cannot accept further work.
+
+    The message names the fatal cause the service recorded, so a caller can
+    report an unavailable runtime instead of its own request fault. The server
+    maps this to a typed ``engine_unavailable`` response; a plain ``RuntimeError``
+    would reach the client as an unnamed internal error.
+    """
+
+
+class EngineCommandTimeout(TimeoutError):
+    """A command the resident service never answered within its liveness budget.
+
+    The driver thread owns the engine, so a command waits behind whatever the
+    engine is already doing. The budget guards liveness, not engine work: when it
+    is exhausted the service cannot say whether that work will finish, so this is
+    a property of the runtime rather than of the request that happened to be
+    waiting. The server reports it the same way it reports a closed service - a
+    retryable ``engine_unavailable`` - and the message names the method, the
+    budget, and what the driver was doing. A bare ``TimeoutError`` would instead
+    be answered as a non-retryable ``internal_error`` and blame the client's
+    request for a stalled server.
+    """
+
 
 @dataclass(slots=True)
 class _CommandResponse:
@@ -45,7 +90,7 @@ class _CommandResponse:
 
     def result(self, timeout: float | None = None) -> Any:
         if not self.ready.wait(timeout=timeout):
-            raise TimeoutError("engine service command timed out")
+            raise EngineCommandTimeout("engine service command timed out")
         if self.error is not None:
             raise self.error
         return self.value
@@ -172,7 +217,8 @@ class EngineService:
         command_queue_size: int = 1024,
         stream_queue_max_chunks: int | None = None,
         idle_wait_seconds: float = 0.001,
-        command_timeout_seconds: float = 30.0,
+        command_timeout_seconds: float = DEFAULT_COMMAND_TIMEOUT_SECONDS,
+        slow_command_warn_seconds: float = DEFAULT_SLOW_COMMAND_WARN_SECONDS,
     ) -> None:
         queue_size = int(command_queue_size)
         if queue_size <= 0:
@@ -204,6 +250,16 @@ class EngineService:
         self._stream_queue_max_chunks = configured_stream_bound
         self._idle_wait_seconds = idle_wait
         self._command_timeout_seconds = command_timeout
+        slow_command_warn = float(slow_command_warn_seconds)
+        if slow_command_warn < 0.0:
+            raise ValueError("slow_command_warn_seconds must be non-negative")
+        self._slow_command_warn_seconds = slow_command_warn
+        # Driver-thread activity, reported by diagnostics when a command waits.
+        self._active_command_kind: str | None = None
+        self._active_command_method: str | None = None
+        self._active_command_started_at: float | None = None
+        self._active_command_response: _CommandResponse | None = None
+        self._tick_started_at: float | None = None
         self._states_by_service_id: dict[int, _ChildState] = {}
         self._states_by_backend_id: dict[int, _ChildState] = {}
         self._next_service_request_id = 0
@@ -216,6 +272,7 @@ class EngineService:
         self._closing = False
         self._closed = False
         self._failure: str | None = None
+        self._unhealthy: dict[str, Any] | None = None
         self._driver_thread_id: int | None = None
         self._driver_ready = threading.Event()
         self._thread = threading.Thread(
@@ -252,6 +309,83 @@ class EngineService:
             "failure": self._failure,
         }
 
+    def health(self) -> dict[str, Any]:
+        """Report whether the shared driver is still able to serve requests.
+
+        ``status`` is ``"ok"`` while the driver runs, ``"unhealthy"`` when a
+        fatal execution failure closed it, and ``"closed"`` after a clean
+        shutdown.  An unhealthy report names the failing phase and the deepest
+        frame, so a readiness probe or an operator can act without reading a
+        traceback.
+        """
+
+        if self._unhealthy is not None:
+            return {
+                "object": "hipengine.engine_service.health",
+                "status": "unhealthy",
+                "serving": False,
+                "unhealthy": dict(self._unhealthy),
+            }
+        if self._closed or self._closing:
+            return {
+                "object": "hipengine.engine_service.health",
+                "status": "closed",
+                "serving": False,
+                "unhealthy": None,
+            }
+        return {
+            "object": "hipengine.engine_service.health",
+            "status": "ok",
+            "serving": True,
+            "unhealthy": None,
+        }
+
+    def _record_unhealthy(self, error: BaseException) -> None:
+        """Remember why a fatal driver failure closed the service."""
+
+        if self._unhealthy is not None:
+            return
+        location: str | None = None
+        cause: BaseException | None = error
+        deepest: BaseException | None = error
+        seen: set[int] = set()
+        while cause is not None and id(cause) not in seen:
+            seen.add(id(cause))
+            frames = traceback.extract_tb(cause.__traceback__)
+            if frames:
+                last = frames[-1]
+                location = f"{last.filename}:{last.lineno} in {last.name}"
+            deepest = cause
+            cause = cause.__cause__
+        phase = getattr(error, "phase", None)
+        request_ids = getattr(error, "request_ids", None)
+        self._unhealthy = {
+            "exception_type": type(error).__name__,
+            # The deepest cause names the fault itself: a fatal execution
+            # failure is reported through its wrapper, so a device error stays
+            # visible as ``HipError`` rather than only as the containment
+            # refusal that followed it.
+            "cause_type": None if deepest is None else type(deepest).__name__,
+            "message": str(error),
+            "location": location,
+            "phase": None if phase is None else str(phase),
+            "request_ids": None if request_ids is None else [int(v) for v in request_ids],
+        }
+
+    def _closed_service_error(self) -> EngineServiceClosed:
+        """Name the reason a closed service cannot accept work."""
+
+        message = "engine service is closed"
+        unhealthy = self._unhealthy
+        if unhealthy is not None:
+            message += (
+                f" after a fatal execution failure "
+                f"({unhealthy['exception_type']}: {unhealthy['message']})"
+            )
+            if unhealthy.get("location"):
+                message += f" at {unhealthy['location']}"
+        return EngineServiceClosed(message)
+
     @property
     def supports_controlled_streaming(self) -> bool:
         return bool(getattr(self._driver, "supports_controlled_streaming", False))
@@ -283,6 +417,10 @@ class EngineService:
         return self._stream_queue_max_chunks
 
     def __getattr__(self, name: str) -> Any:
+        if name == "_driver":
+            # Unset on an instance built by object.__new__ in tests, and the
+            # delegation below would otherwise recurse until the stack dies.
+            raise AttributeError(name)
         return getattr(self._driver, name)
 
     def submit_child(
@@ -710,10 +848,13 @@ class EngineService:
         if streaming:
             collector = StreamingOutputCollector(
                 max_output_tokens=request.max_tokens,
-                max_chunks=(
-                    self._stream_queue_max_chunks
-                    if stream_queue_max_chunks is None
-                    else int(stream_queue_max_chunks)
+                max_chunks=stream_mailbox_bound(
+                    (
+                        self._stream_queue_max_chunks
+                        if stream_queue_max_chunks is None
+                        else int(stream_queue_max_chunks)
+                    ),
+                    request.max_tokens,
                 ),
                 enqueue_token_events=False,
             )
@@ -750,7 +891,7 @@ class EngineService:
     def _enqueue(self, command: _ServiceCommand) -> None:
         with self._lifecycle_lock:
             if self._closing or self._closed:
-                raise RuntimeError("engine service is closed")
+                raise self._closed_service_error()
             self._put_command(command)
 
     def _put_command(self, command: _ServiceCommand) -> None:
@@ -778,7 +919,7 @@ class EngineService:
                 kwargs=tuple(kwargs.items()),
             )
         )
-        return response.result(timeout=self._command_timeout_seconds)
+        return self._wait_response(response, method_name=str(method_name))
 
     def _drive(self) -> None:
         self._driver_thread_id = threading.get_ident()
@@ -809,20 +950,29 @@ class EngineService:
                         shutdown_response = self._drain_commands()
                         if shutdown_response is not None:
                             break
-                events = tuple(self._driver.poll(max_ticks=1))
+                self._tick_started_at = time.monotonic()
+                try:
+                    events = tuple(self._driver.poll(max_ticks=1))
+                finally:
+                    self._tick_started_at = None
                 self._route_events(events)
                 self._finish_ready_children()
                 if not events and self._states_by_service_id and self._idle_wait_seconds:
                     time.sleep(self._idle_wait_seconds)
         except BaseException as exc:
             driver_error = exc
-            self._failure = type(exc).__name__
+            # Name the fault, not its containment wrapper: a device or driver
+            # failure is reported through ``GenerationExecutionFailed``, and a
+            # readiness probe that only saw the wrapper could not tell a
+            # RuntimeError from a HIP fault.
+            self._failure = getattr(exc, "cause_type", None) or type(exc).__name__
             import os
             import sys
             import traceback
             if os.environ.get("HIPENGINE_ENGINE_SERVICE_TRACEBACK"):
                 print("=== engine service driver exception ===", file=sys.stderr, flush=True)
                 traceback.print_exc()
+            self._record_unhealthy(exc)
             self._fail_all(exc)
             if shutdown_response is not None:
                 shutdown_response.finish(error=exc)
@@ -845,6 +995,19 @@ class EngineService:
             with self._lifecycle_lock:
                 self._closed = True
                 self._closing = True
+            # A caller can enqueue shutdown after fatal failure publication
+            # but before cleanup marks the service closed. No driver iteration
+            # remains to consume that command: acknowledge it after cleanup and
+            # fail other queued controls instead of leaving their callers hung.
+            while True:
+                try:
+                    pending = self._commands.get_nowait()
+                except queue.Empty:
+                    break
+                pending.response.finish(
+                    error=(close_error if pending.kind == "shutdown" else
+                           RuntimeError("engine service closed before command execution"))
+                )
             if shutdown_response is not None:
                 shutdown_response.finish(error=close_error)
 
@@ -901,6 +1064,90 @@ class EngineService:
         )
 
     def _process_command(self, command: _ServiceCommand) -> _CommandResponse | None:
+        self._active_command_kind = command.kind
+        self._active_command_method = command.method_name
+        self._active_command_started_at = time.monotonic()
+        self._active_command_response = command.response
+        try:
+            return self._process_command_inner(command)
+        finally:
+            self._active_command_kind = None
+            self._active_command_method = None
+            self._active_command_started_at = None
+            self._active_command_response = None
+
+    def _activity_snapshot(self) -> str:
+        """Describe what the driver thread is doing, for wait diagnostics."""
+
+        now = time.monotonic()
+        parts: list[str] = []
+        # The driver thread mutates this activity between a check and a read, so
+        # each field is sampled once: a cleared timestamp must not turn a
+        # diagnostic into a ``TypeError``.
+        active = self._active_command_kind
+        method = self._active_command_method
+        command_started_at = self._active_command_started_at
+        tick_started_at = self._tick_started_at
+        if active is not None:
+            if method:
+                active = f"{active}:{method}"
+            parts.append(f"driver_command={active}")
+            if command_started_at is not None:
+                parts.append(f"driver_command_s={now - command_started_at:.1f}")
+        if tick_started_at is not None:
+            parts.append(f"driver_tick_s={now - tick_started_at:.1f}")
+        parts.append(f"queued_commands={self._commands.qsize()}")
+        parts.append(f"active_requests={len(self._states_by_service_id)}")
+        parts.append(f"driver_alive={'yes' if self._thread.is_alive() else 'no'}")
+        return " ".join(parts)
+
+    def _wait_response(self, response: _CommandResponse, *, method_name: str) -> Any:
+        """Wait for one command, reporting what blocked it.
+
+        The budget guards liveness, not engine work: a command can legitimately
+        queue behind a context prepare or a long prefill chunk. A command that
+        waits past the warning threshold logs one diagnostic line naming the
+        driver's activity, and an exhausted budget raises with the same detail
+        instead of a bare timeout.
+
+        A command that the driver has already started is not reported as blocked
+        by itself; only the timeout names its own long-running work, because that
+        is the case where the caller needs to know the command is still active.
+        """
+
+        started = time.monotonic()
+        warned = False
+        warn_after = self._slow_command_warn_seconds
+        while True:
+            elapsed = time.monotonic() - started
+            remaining = self._command_timeout_seconds - elapsed
+            if remaining <= 0.0:
+                break
+            slice_seconds = remaining if warn_after <= 0.0 else min(remaining, warn_after)
+            if response.ready.wait(timeout=slice_seconds):
+                return response.result()
+            waited = time.monotonic() - started
+            if (
+                not warned
+                and warn_after > 0.0
+                and waited >= warn_after
+                and self._active_command_response is not response
+            ):
+                warned = True
+                _LOGGER.warning(
+                    "ENGINE_COMMAND_SLOW: method=%s waited_ms=%.1f %s",
+                    method_name,
+                    waited * 1000.0,
+                    self._activity_snapshot(),
+                )
+        raise EngineCommandTimeout(
+            "engine service command timed out: "
+            f"method={method_name} "
+            f"budget_s={self._command_timeout_seconds:.1f} "
+            f"{self._activity_snapshot()}"
+        )
+
+    def _process_command_inner(self, command: _ServiceCommand) -> _CommandResponse | None:
         if command.kind == "shutdown":
             return command.response
         if command.kind in {"submit", "submit_many", "submit_speculative_many"}:
@@ -995,16 +1242,12 @@ class EngineService:
 
     def _route_events(self, events: Sequence[EngineLoopEvent]) -> None:
         for event in events:
-            if event.kind == "rejected" and event.request_id is not None:
+            if event.kind in {"rejected", "failed"} and event.request_id is not None:
                 state = self._states_by_backend_id.get(int(event.request_id))
                 if state is not None and not state.terminal:
                     error = event.error
                     if error is None:
-                        error = GenerationAdmissionRejected(
-                            "resident admission was rejected",
-                            resource="resident_admission",
-                            request_id=int(event.request_id),
-                        )
+                        error = self._default_event_error(event)
                     self._publish_terminal(
                         state,
                         generation_output=None,
@@ -1039,17 +1282,25 @@ class EngineService:
                 self._cancel_state(state, reason="client_backpressure")
                 continue
             state.token_ids.append(token_id)
-            if self._buffer_speculative_stream and state.execution_mode in {"verify_chain", "verify_tree"}:
+            if getattr(self, "_buffer_speculative_stream", False) and state.execution_mode in {"verify_chain", "verify_tree"}:
                 # A buffered provider's scheduler can emit token events without
                 # complete text deltas. Publish its authoritative output only at
                 # terminal; a lone frontier delta must not suppress that text.
                 continue
             chunks = _stop_safe_chunks(state, token_id=token_id, chunk=event.stream_chunk)
             for chunk in chunks:
-                if state.execution_mode in {"verify_chain", "verify_tree"}:
-                    # Filter with the finish reason intact before removing the
-                    # metadata owned by the terminal service chunk.
-                    chunk = replace(chunk, finish_details=None, generated_token_ids=None)
+                if state.execution_mode in {"verify_chain", "verify_tree"} and (
+                    chunk.finish_details is not None
+                    or chunk.generated_token_ids is not None
+                ):
+                    # Stop suppression needs the finish metadata first. Only
+                    # then defer final IDs/finish/telemetry to the terminal
+                    # service chunk; live chunks own the stop-safe text.
+                    chunk = replace(
+                        chunk,
+                        finish_details=None,
+                        generated_token_ids=None,
+                    )
                 accepted = state.collector.publish(
                     EngineOutput(
                         kind=OutputKind.CHUNK,
@@ -1061,6 +1312,21 @@ class EngineService:
                     self._cancel_state(state, reason="client_backpressure")
                     break
             self._notify_output()
+
+    def _default_event_error(self, event: EngineLoopEvent) -> BaseException:
+        """Name one terminal event that arrived without its own error object."""
+
+        request_id = None if event.request_id is None else int(event.request_id)
+        if event.kind == "rejected":
+            return GenerationAdmissionRejected(
+                "resident admission was rejected",
+                resource="resident_admission",
+                request_id=request_id,
+            )
+        return RuntimeError(
+            "engine execution failed without a reported failure "
+            f"(request_id={request_id})"
+        )
 
     def _finish_ready_children(self) -> None:
         for state in tuple(self._states_by_service_id.values()):
@@ -1266,6 +1532,12 @@ class EngineService:
                 command = self._commands.get_nowait()
             except queue.Empty:
                 return
+            if command.kind == "shutdown":
+                # Shutdown queued during fatal cleanup only asks the driver to
+                # stop, which the failing tick already did. Acknowledge it
+                # instead of reporting the fatal error as a close failure.
+                command.response.finish(value=True)
+                continue
             states = (command.state,) if command.state is not None else command.states
             for state in states:
                 self._cancel_state(state, reason="driver_error", error=error)
@@ -1365,4 +1637,9 @@ def _stream_chunk_for_choice(
     return replace(chunk, telemetry=telemetry)
 
 
-__all__ = ["EngineService", "EngineServiceHandle"]
+__all__ = [
+    "EngineCommandTimeout",
+    "EngineService",
+    "EngineServiceClosed",
+    "EngineServiceHandle",
+]

@@ -46,12 +46,17 @@ venv/
 .vscode/
 .idea/
 
-# pi / agent harness state
+# Agent-runner config / harness state (per-user, never checked in)
+.claude/
+.codex/
 .pi/
 .multiloop/
 
 # Local generated Worklog2 view
 .worklog/
+
+# Local PCM written by scripts/vibevoice_tts_quality_suite.py
+.vibevoice-tts-quality/
 
 # OS
 .DS_Store

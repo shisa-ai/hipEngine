@@ -1,0 +1,29 @@
+{
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+  "seed": 23,
+  "prompt_tokens": 512,
+  "natural": {
+    "positions": 64,
+    "kl_mean": 3.3492040529381484e-05,
+    "kl_max": 0.001011451706290245,
+    "top1": 1.0
+  },
+  "category": {
+    "positions": 1169,
+    "kl_mean": 6.954414857318625e-05,
+    "kl_p95": 0.00028618331998586655,
+    "kl_p99": 0.0008542047580704093,
+    "kl_max": 0.008110636845231056
+  },
+  "pooled": {
+    "positions": 1233,
+    "kl_mean": 6.767283048247918e-05,
+    "kl_p95": 0.0002812916354741901,
+    "kl_p99": 0.0008554564556106925,
+    "kl_max": 0.008110636845231056
+  },
+  "top1_agreement": 0.9991896272285251,
+  "candidate_finite": true,
+  "prefill_kl_sanity": 0.0,
+  "gate_pass": true
+}

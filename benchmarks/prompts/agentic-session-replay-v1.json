@@ -1,0 +1,703 @@
+{
+ "kind": "hipengine.session_replay_workloads",
+ "schema_version": 1,
+ "suite": "agentic-session-replay-v1",
+ "description": "Replay slice of a real Jouzu coding-agent session (2026-09-19 prefix-cache campaign): 32 consecutive client resends of a cumulative tool-using transcript",
+ "source": {
+  "record": {
+   "kind": "jouzu-session-jsonl",
+   "session_id": "01a0b869-170b-7203-ba2f-f95be627544d",
+   "path": "/home/lhl/.local/state/jouzu/sessions/2026-09-19T06-44-50-059Z_01a0b869-170b-7203-ba2f-f95be627544d.jsonl",
+   "tip_record": "77d12a62"
+  },
+  "notes": [
+   "The session log does not record the client system prompt or tool schemas; a representative coding-agent policy and stub tool schemas are substituted for token-count fidelity.",
+   "Assistant thinking blocks are not replayed; agentic clients do not resend them.",
+   "File order is not conversation order: entries follow the parentId ancestry of the tip, so dead retry branches are excluded."
+  ]
+ },
+ "tools": [
+  {
+   "name": "bash",
+   "description": "Tool 'bash' invoked during the replayed agent session (stub schema; the recorded session does not store tool schemas).",
+   "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": []
+   }
+  },
+  {
+   "name": "edit",
+   "description": "Tool 'edit' invoked during the replayed agent session (stub schema; the recorded session does not store tool schemas).",
+   "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": []
+   }
+  }
+ ],
+ "workloads": [
+  {
+   "id": "session-tail",
+   "system_prompt": "You are a coding agent working inside a repository. Read the relevant files before editing them, keep changes scoped to one logical unit, and run the narrowest relevant check before claiming a task is done. Use the provided tools to inspect and modify the repository rather than guessing. Report concrete results with file paths, and distinguish measured results from inference. When a request is ambiguous, state your reading of it and proceed with the smallest coherent change.",
+   "entries": [
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "call_ee5e8c48c43c4caeb5260607",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"git show a12d4b64e --stat | head -15\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_ee5e8c48c43c4caeb5260607",
+     "content": "commit a12d4b64e29388cc157bd046aa9ef03cb7605af6\nAuthor: lhl <lhl@randomfoo.net>\nDate:   Fri Sep 18 03:17:53 2026 +0900\n\n    test: repair two stale expectations left by earlier contract changes\n    \n    - The streaming mailbox bound became the child's own output budget (floor =\n      configured value) in 0a184f55d, which updated the engine-service backpressure\n      test but missed the same assertion here: with stream_queue_max_chunks=1 and an\n      8-token budget the stream now drains instead of being cancelled, so the block\n      asserts the current slow-consumer contract and the real reclaim order.\n    - The packed workspace lease became the union slot ceiling in 9b3cce6ac (a\n      one-slot lease went short and failed closed at prefill). Two lease tests still\n      expected the old one-slot lease; they now derive the expected page count from\n      packed_verify_lease_slot_ceiling and the 1024-token per-slot floor.\n"
+    },
+    {
+     "role": "assistant",
+     "content": "One new commit on main — tests only. Checking exact overlap with our branch's files:",
+     "tool_calls": [
+      {
+       "id": "call_57fd8cc7471b43beb8e44287",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"git show a12d4b64e --stat | tail -8; echo ===; git diff --name-only 9493d4224..a12d4b64e\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_57fd8cc7471b43beb8e44287",
+     "content": "    - Recorded follow-up: the lease's slot term reads max_batch_size from the\n      generator's resident runner, which the real model runner does not expose, so\n      the ceiling always falls back to the 8-slot default and over-leases.\n\n .../test_integration_generation_batch_scheduler.py | 32 +++++----\n tests/test_unit_gguf_prefix_cache_runner.py        | 71 +++++++++++++------\n ...3.007695Z-lhl-stale-test-expectations-5bf466.md | 82 ++++++++++++++++++++++\n 3 files changed, 149 insertions(+), 36 deletions(-)\n===\ntests/test_integration_generation_batch_scheduler.py\ntests/test_unit_gguf_prefix_cache_runner.py\nworklog/entries/20260917T181743.007695Z-lhl-stale-test-expectations-5bf466.md\n"
+    },
+    {
+     "role": "assistant",
+     "content": "`tests/test_unit_gguf_prefix_cache_runner.py` is the overlap — both sides touched it (their lease-test repairs, my new gather test). Syncing local main first, then merging:",
+     "tool_calls": [
+      {
+       "id": "call_9bf90fedf64a408a895a3ed7",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"git fetch . origin/main:main 2>&1 && git log --oneline -1 main && git merge-base --is-ancestor main origin/main && echo \\\"local main == origin/main\\\"\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_9bf90fedf64a408a895a3ed7",
+     "content": "From .\n   9493d4224..a12d4b64e  origin/main -> main\na12d4b64e test: repair two stale expectations left by earlier contract changes\nlocal main == origin/main\n"
+    },
+    {
+     "role": "assistant",
+     "content": "Local main synced. Switching this worktree to main for the merge:",
+     "tool_calls": [
+      {
+       "id": "call_ad23005e74b84db6b156de10",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"git status --porcelain | head -3; git checkout main 2>&1 | tail -2 && git status -sb\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_ad23005e74b84db6b156de10",
+     "content": "Switched to branch 'main'\nYour branch is up to date with 'origin/main'.\n## main...origin/main\n"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "call_772a63ca57ae4e0f9a2d1189",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"git merge --no-ff perf-prefix-caching -m \\\"merge: integrate perf-prefix-caching with current main\\n\\nGapped slot-local prefill gather route + prefix-caching campaign:\\n\\n- Gapped device-KV placements keep the slot-local AOTriton prefill via\\n  block-table span swap + demand-sized head-major gather buffers; the\\n  512-token gapped-suffix guard now binds only where the gather is\\n  unavailable (kill-switch, no head-major KV, oversized context).\\n- Served A/B on gfx1151 (35B-A3B UD-Q4_K_M): retained 16 goes -11.0% ->\\n  -20.1% wall (21.58 tok/s, 18/27 hits, 0 declines, worst turn prefill\\n  15.1 s); default retention unchanged at -18.4%.\\n- Route-forced rocprof probe, reuse-gate correctness (KL 0, exact state\\n  bytes), unit tier green (1 pre-existing llguidance import failure).\\\" 2>&1 | tail -6\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_772a63ca57ae4e0f9a2d1189",
+     "content": "Auto-merging tests/test_unit_gguf_prefix_cache_runner.py\nCONFLICT (content): Merge conflict in tests/test_unit_gguf_prefix_cache_runner.py\nAutomatic merge failed; fix conflicts and then commit the result.\n"
+    },
+    {
+     "role": "assistant",
+     "content": "One conflict, as predicted. Examining it:",
+     "tool_calls": [
+      {
+       "id": "call_0c97633df9404e8ab036c382",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"grep -n \\\"^<<<<<<<\\\\|^=======\\\\|^>>>>>>>\\\" tests/test_unit_gguf_prefix_cache_runner.py\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_0c97633df9404e8ab036c382",
+     "content": "1323:<<<<<<< HEAD\n1347:=======\n1366:>>>>>>> perf-prefix-caching\n1381:<<<<<<< HEAD\n1386:=======\n1388:>>>>>>> perf-prefix-caching\n"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "call_d3d932888f74482dbcde1efb",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"sed -n '1310,1400p' tests/test_unit_gguf_prefix_cache_runner.py\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_d3d932888f74482dbcde1efb",
+     "content": "    runner = Qwen35GGUFResidentModelRunner(owner, capacity=2)\n    config = EngineLoopConfig(\n        max_active_requests=2,\n        kv_pool_initial_pages=8,\n        kv_pool_low_water_pages=8,\n        kv_pool_chunk_pages=8,\n        prefix_cache=\"off\",\n    )\n    runner._reserve_sessions()\n    runner.configure_engine_loop(config)\n\n    pool = runner.kv_pool\n    batch_owner = owner.sessions[0]\n<<<<<<< HEAD\n    # The lease covers the packed union geometry: one page per 256 tokens of the\n    # 768-token session (max(3, 1024/256) = 4 pages per slot) times the union\n    # slot ceiling. That ceiling is read from the generator's resident runner's\n    # ``max_batch_size``, which the real model runner does not expose, so the\n    # shared helper's default slot capacity applies here; see the follow-up on\n    # the unreachable capacity signal.\n    lease_slots = packed_verify_lease_slot_ceiling(\n        getattr(\n            getattr(owner, \"_resident_model_runner\", None),\n            \"max_batch_size\",\n            None,\n        )\n    )\n    pages_per_slot = max(\n        (768 + 255) // 256,\n        _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,\n    )\n    expected_lease_pages = lease_slots * pages_per_slot\n    assert pool.current_pages == 8 + expected_lease_pages\n    lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)\n    assert lease is not None and len(lease) == expected_lease_pages\n    assert pool.stats.free_pages == 8\n    assert pool.stats.pinned_pages == expected_lease_pages\n=======\n    # capacity=2 requests * 3 pages/request = 6 request pages; the packed\n    # workspace lease adds capacity slots * max(3, 1024/256) = 8 pinned pages\n    # on top (the lease is capacity-honest: serving can never open more\n    # resident slots than max_active_requests, and the 1024-token per-slot\n    # union floor still applies to short request contexts).\n    #\n    # 2026-09-19: the assertions below used to read 4 pinned / 12 total, i.e.\n    # a ONE-slot lease, contradicting this comment. They predate the slot\n    # ceiling and were never updated when the capacity term was introduced,\n    # which is why they have been RED. The lease now comes from\n    # `packed_verify_workspace_lease_pages`, the shared twin of\n    # `_packed_verify_union_geometry`, so the slot term is the serving\n    # capacity on both sides: 2 slots * 4 pages = 8.\n    assert pool.current_pages == 16\n    lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)\n    assert lease is not None and len(lease) == 8\n    assert pool.stats.free_pages == 8\n    assert pool.stats.pinned_pages == 8\n>>>>>>> perf-prefix-caching\n    assert batch_owner.bound_workspace_pools == [pool]\n    snapshot = runner.observability_snapshot()\n    assert snapshot[\"model_runner\"][\"max_active_requests\"] == 2\n    assert snapshot[\"model_runner\"][\"max_context_tokens\"] == 768\n    assert \"max_pages\" in snapshot[\"kv_pool\"]\n    assert \"budget_bytes\" in snapshot[\"kv_pool\"]\n\n    # Reconfiguration releases the lease and the idle workspace before the\n    # old pool closes, then re-leases on the fresh pool.\n    runner.configure_engine_loop(config)\n    new_pool = runner.kv_pool\n    assert new_pool is not pool\n    assert batch_owner.workspace_release_calls == 1\n    assert pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY) is None\n<<<<<<< HEAD\n    assert (\n        len(new_pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY))\n        == expected_lease_pages\n    )\n=======\n    assert len(new_pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)) == 8\n>>>>>>> perf-prefix-caching\n    assert batch_owner.bound_workspace_pools[-1] is new_pool\n\n    runner.close()\n    assert runner.kv_pool is None\n\n\ndef test_configure_engine_loop_leases_the_union_slot_ceiling_at_c1() -> None:\n    \"\"\"A C1 pool still leases the packed union slot ceiling, not one slot.\n\n    The packed union geometry can open more slots than the serving capacity\n    because the MTP verify width alone packs four, so the pool cannot take a\n    one-slot lease. The lease's slot t…[truncated]"
+    },
+    {
+     "role": "assistant",
+     "content": "The conflict is between main's test repair (asserting the *older* union-ceiling lease behavior) and our branch's test update (asserting the shared-geometry lease from our commit `660126b4a`). Since main's commit touched **tests only**, the merged production code is our branch's lease behavior — our assertions are the correct ones. Resolving both hunks to our side, manually (preserving any other auto-merged content):",
+     "tool_calls": [
+      {
+       "id": "call_4b0b808abd284d338b38e050",
+       "type": "function",
+       "function": {
+        "name": "edit",
+        "arguments": "{\"edits\":[{\"newText\":\"    pool = runner.kv_pool\\n    batch_owner = owner.sessions[0]\\n    # capacity=2 requests * 3 pages/request = 6 request pages; the packed\\n    # workspace lease adds capacity slots * max(3, 1024/256) = 8 pinned pages\\n    # on top (the lease is capacity-honest: serving can never open more\\n    # resident slots than max_active_requests, and the 1024-token per-slot\\n    # union floor still applies to short request contexts).\\n    #\\n    # 2026-09-19: the assertions below used to read 4 pinned / 12 total, i.e.\\n    # a ONE-slot lease, contradicting this comment. They predate the slot\\n    # ceiling and were never updated when the capacity term was introduced,\\n    # which is why they have been RED. The lease now comes from\\n    # `packed_verify_workspace_lease_pages`, the shared twin of\\n    # `_packed_verify_union_geometry`, so the slot term is the serving\\n    # capacity on both sides: 2 slots * 4 pages = 8.\\n    assert pool.current_pages == 16\\n    lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)\\n    assert lease is not None and len(lease) == 8\\n    assert pool.stats.free_pages == 8\\n    assert pool.stats.pinned_pages == 8\\n    assert batch_owner.bound_workspace_pools == [pool]\",\"oldText\":\"    pool = runner.kv_pool\\n    batch_owner = owner.sessions[0]\\n<<<<<<< HEAD\\n    # The lease covers the packed union geometry: one page per 256 tokens of the\\n    # 768-token session (max(3, 1024/256) = 4 pages per slot) times the union\\n    # slot ceiling. That ceiling is read from the generator's resident runner's\\n    # ``max_batch_size``, which the real model runner does not expose, so the\\n    # shared helper's default slot capacity applies here; see the follow-up on\\n    # the unreachable capacity signal.\\n    lease_slots = packed_verify_lease_slot_ceiling(\\n        getattr(\\n            getattr(owner, \\\"_resident_model_runner\\\", None),\\n            \\\"max_batch_size\\\",\\n            None,\\n        )\\n    )\\n    pages_per_slot = max(\\n        (768 + 255) // 256,\\n        _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,\\n    )\\n    expected_lease_pages = lease_slots * pages_per_slot\\n    assert pool.current_pages == 8 + expected_lease_pages\\n    lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)\\n    assert lease is not None and len(lease) == expected_lease_pages\\n    assert pool.stats.free_pages == 8\\n    assert pool.stats.pinned_pages == expected_lease_pages\\n=======\\n    # capacity=2 requests * 3 pages/request = 6 request pages; the packed\\n    # workspace lease adds capacity slots * max(3, 1024/256) = 8 pinned pages\\n    # on top (the lease is capacity-honest: serving can never open more\\n    # resident slots than max_active_requests, and the 1024-token per-slot\\n    # union floor still applies to short request contexts).\\n    #\\n    # 2026-09-19: the assertions below used to read 4 pinned / 12 total, i.e.\\n    # a ONE-slot lease, contradicting this comment. They predate the slot\\n    # ceiling and were never updated when the capacity term was introduced,\\n    # which is why they have been RED. The lease now comes from\\n    # `packed_verify_workspace_lease_pages`, the shared twin of\\n    # `_packed_verify_union_geometry`, so the slot term is the serving\\n    # capacity on both sides: 2 slots * 4 pages = 8.\\n    assert pool.current_pages == 16\\n    lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)\\n    assert lease is not None and len(lease) == 8\\n    assert pool.stats.free_pages == 8\\n    assert pool.stats.pinned_pages == 8\\n>>>>>>> perf-prefix-caching\\n    assert batch_owner.bound_workspace_pools == [pool]\"},{\"newText\":\"    assert pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY) is None\\n    assert len(new_pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)) == 8\\n    assert batch_owner.bound_workspace_pools[-1] is new_pool\",\"oldText\":\"    assert pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY) is None\\n<<<<<<< HEAD\\n    assert (\\n        len(new_pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY))\\n        == expected_lease_pages\\n    )\\n=======\\n    assert len(new_pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)) == 8\\n>>>>>>> perf-prefix-caching\\n    assert batch_owner.bound_workspace_pools[-1] is new_pool\"}],\"path\":\"tests/test_unit_gguf_prefix_cache_runner.py\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_4b0b808abd284d338b38e050",
+     "content": "Successfully replaced 2 block(s) in tests/test_unit_gguf_prefix_cache_runner.py."
+    },
+    {
+     "role": "assistant",
+     "content": "Conflict resolved. Now checking the merged file's imports for main's helper references, and the auto-merged scheduler test for stale lease expectations:",
+     "tool_calls": [
+      {
+       "id": "call_86da6edfc25741c6b982d095",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"grep -n \\\"packed_verify_lease_slot_ceiling\\\\|_PACKED_VERIFY_MIN_MAX_SEQUENCE\\\\|packed_verify_workspace_lease_pages\\\" tests/test_unit_gguf_prefix_cache_runner.py tests/test_integration_generation_batch_scheduler.py | head -12; echo ===; grep -n \\\"<<<<<<<\\\\|>>>>>>>\\\" tests/test_unit_gguf_prefix_cache_runner.py | head -3\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_86da6edfc25741c6b982d095",
+     "content": "tests/test_unit_gguf_prefix_cache_runner.py:1305:        _PACKED_VERIFY_MIN_MAX_SEQUENCE,\ntests/test_unit_gguf_prefix_cache_runner.py:1306:        packed_verify_lease_slot_ceiling,\ntests/test_unit_gguf_prefix_cache_runner.py:1333:    # `packed_verify_workspace_lease_pages`, the shared twin of\ntests/test_unit_gguf_prefix_cache_runner.py:1375:        _PACKED_VERIFY_MIN_MAX_SEQUENCE,\ntests/test_unit_gguf_prefix_cache_runner.py:1376:        packed_verify_lease_slot_ceiling,\ntests/test_unit_gguf_prefix_cache_runner.py:1393:    expected_lease_pages = packed_verify_lease_slot_ceiling(None) * max(\ntests/test_unit_gguf_prefix_cache_runner.py:1395:        _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,\n===\n"
+    },
+    {
+     "role": "assistant",
+     "content": "A second lease test from main (`..._at_c1`) uses the ceiling API — need to check it against our production behavior and our branch's own c1 test:",
+     "tool_calls": [
+      {
+       "id": "call_ac3f56fe7f0f43a3a9cb1efd",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"grep -n \\\"def test_configure_engine_loop_leases\\\" tests/test_unit_gguf_prefix_cache_runner.py; echo ===; sed -n '1380,1410p' tests/test_unit_gguf_prefix_cache_runner.py; echo ===; grep -n \\\"def packed_verify_lease_slot_ceiling\\\\|def packed_verify_workspace_lease_pages\\\" hipengine/runtime/qwen35_gguf_runner.py\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_ac3f56fe7f0f43a3a9cb1efd",
+     "content": "1302:def test_configure_engine_loop_leases_packed_workspace_pages() -> None:\n1362:def test_configure_engine_loop_leases_the_union_slot_ceiling_at_c1() -> None:\n===\n    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)\n    config = EngineLoopConfig(\n        max_active_requests=1,\n        kv_pool_initial_pages=8,\n        kv_pool_low_water_pages=8,\n        kv_pool_chunk_pages=8,\n        prefix_cache=\"off\",\n    )\n    runner._reserve_sessions()\n    runner.configure_engine_loop(config)\n\n    pool = runner.kv_pool\n    assert pool is not None\n    expected_lease_pages = packed_verify_lease_slot_ceiling(None) * max(\n        (768 + 255) // 256,\n        _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,\n    )\n    assert pool.current_pages == 8 + expected_lease_pages\n    lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)\n    assert lease is not None and len(lease) == expected_lease_pages\n    assert pool.stats.pinned_pages == expected_lease_pages\n    assert pool.stats.free_pages == 8\n\n    runner.close()\n\n\ndef test_packed_verify_union_geometry_is_capacity_honest() -> None:\n    \"\"\"The union geometry caps workspace slots at the real serving capacity.\"\"\"\n\n    from types import SimpleNamespace\n\n===\n2065:def packed_verify_lease_slot_ceiling(max_batch_size: object | None) -> int:\n2082:def packed_verify_workspace_lease_pages(\n"
+    },
+    {
+     "role": "assistant",
+     "content": "Both symbols survive in the merged tree. The decisive check — run the merged tests:",
+     "tool_calls": [
+      {
+       "id": "call_caef54c14b6e443e8c63eae9",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"timeout 600 python3 -m pytest tests/test_unit_gguf_prefix_cache_runner.py tests/test_integration_generation_batch_scheduler.py -q 2>&1 | tail -6\",\"timeout\":620}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_caef54c14b6e443e8c63eae9",
+     "content": "0.01s call     tests/test_integration_generation_batch_scheduler.py::test_batch_c_sweep_skips_retained_when_scaling_reference_shape_missing\n0.01s call     tests/test_integration_generation_batch_scheduler.py::test_batch_c_sweep_skips_retained_when_scaling_reference_missing[serial-serial_bridge]\n0.01s call     tests/test_integration_generation_batch_scheduler.py::test_batch_c_sweep_profiler_precondition_rejects_mismatched_device_env\n=========================== short test summary info ============================\nFAILED tests/test_unit_gguf_prefix_cache_runner.py::test_configure_engine_loop_leases_the_union_slot_ceiling_at_c1\nFAILED tests/test_integration_generation_batch_scheduler.py::test_engine_loop_cli_env_defaults_match_docs\n"
+    },
+    {
+     "role": "assistant",
+     "content": "Two merge-revealed failures. Examining both:",
+     "tool_calls": [
+      {
+       "id": "call_39f2311a191c4b74b877b014",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"timeout 300 python3 -m pytest tests/test_unit_gguf_prefix_cache_runner.py::test_configure_engine_loop_leases_the_union_slot_ceiling_at_c1 tests/test_integration_generation_batch_scheduler.py::test_engine_loop_cli_env_defaults_match_docs 2>&1 | grep -E \\\"assert|Error|E  |missing|Expected\\\" | head -20\",\"timeout\":320}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_39f2311a191c4b74b877b014",
+     "content": "        assert pool is not None\n>       assert pool.current_pages == 8 + expected_lease_pages\nE       assert 12 == (8 + 32)\nE        +  where 12 = <hipengine.kvcache.device_global.GlobalDeviceKVPool object at 0x7f0ed5e338c0>.current_pages\ntests/test_unit_gguf_prefix_cache_runner.py:1397: AssertionError\n        assert config == EngineLoopConfig()\n        assert config.prefill_decode_policy == \"protect_decode\"\n        assert config.max_active_requests is None\n        assert config.max_prefill_chunk_tokens == 256\n        assert config.fair_prefill_burst_chunks == 1\n        assert config.kv_pool_initial_pages == 128\n        assert config.kv_pool_low_water_pages == 128\n        assert config.kv_pool_high_water_pages is None\n        assert config.kv_pool_chunk_pages == 128\n        assert config.kv_pool_memory_budget_mib is None\n        assert config.kv_pool_idle_grace_seconds == 30.0\n        assert config.max_pending_requests is None\n>       assert config.prefix_cache == \"off\"\nE       AssertionError: assert 'radix' == 'off'\nE         \n"
+    },
+    {
+     "role": "assistant",
+     "content": "Both failures are the merge exposing **opposing deliberate decisions**: main's tests assert the pre-`660126b4a` lease and the pre-campaign `prefix_cache=\"off\"` default, while our branch's production (later, worklog-backed) changed both. Examining the docs-sync test to fix it correctly:",
+     "tool_calls": [
+      {
+       "id": "call_b95d9f4f3b144c81a56151e8",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"grep -n \\\"def test_engine_loop_cli_env_defaults_match_docs\\\" -B3 -A40 tests/test_integration_generation_batch_scheduler.py | head -55\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_b95d9f4f3b144c81a56151e8",
+     "content": "17118-    assert completion_adapter._loop.completed == {}\n17119-\n17120-\n17121:def test_engine_loop_cli_env_defaults_match_docs() -> None:\n17122-    parser = argparse.ArgumentParser()\n17123-    add_engine_loop_config_args(parser, environ={})\n17124-    config = engine_loop_config_from_args(parser.parse_args([]))\n17125-\n17126-    assert config == EngineLoopConfig()\n17127-    assert config.prefill_decode_policy == \"protect_decode\"\n17128-    assert config.max_active_requests is None\n17129-    assert config.max_prefill_chunk_tokens == 256\n17130-    assert config.fair_prefill_burst_chunks == 1\n17131-    assert config.kv_pool_initial_pages == 128\n17132-    assert config.kv_pool_low_water_pages == 128\n17133-    assert config.kv_pool_high_water_pages is None\n17134-    assert config.kv_pool_chunk_pages == 128\n17135-    assert config.kv_pool_memory_budget_mib is None\n17136-    assert config.kv_pool_idle_grace_seconds == 30.0\n17137-    assert config.max_pending_requests is None\n17138-    assert config.prefix_cache == \"off\"\n17139-\n17140-    docs = Path(\"docs/ENVS.md\").read_text()\n17141-    for text in [\n17142-        \"HIPENGINE_PREFILL_DECODE_POLICY\",\n17143-        \"HIPENGINE_MAX_ACTIVE_REQUESTS\",\n17144-        \"HIPENGINE_MAX_PREFILL_CHUNK_TOKENS\",\n17145-        \"HIPENGINE_FAIR_PREFILL_BURST_CHUNKS\",\n17146-        \"HIPENGINE_KV_POOL_INITIAL_PAGES\",\n17147-        \"HIPENGINE_KV_POOL_LOW_WATER_PAGES\",\n17148-        \"HIPENGINE_KV_POOL_HIGH_WATER_PAGES\",\n17149-        \"HIPENGINE_KV_POOL_CHUNK_PAGES\",\n17150-        \"HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS\",\n17151-        \"HIPENGINE_MAX_PENDING_REQUESTS\",\n17152-        \"HIPENGINE_PREFIX_CACHE\",\n17153-        \"protect_decode\",\n17154-        \"128\",\n17155-        \"256\",\n17156-        \"30.0\",\n17157-    ]:\n17158-        assert text in docs\n17159-\n17160-\n17161-def test_engine_loop_cli_env_overrides() -> None:\n"
+    },
+    {
+     "role": "assistant",
+     "content": "The test pins the old `\"off\"` default; our branch deliberately made `radix` the default (campaign core decision). Checking the merged default and whether our branch updated `docs/ENVS.md`:",
+     "tool_calls": [
+      {
+       "id": "call_f87ecc4628b14aa3938d1e7b",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"grep -n \\\"PREFIX_CACHE_DEFAULT\\\\s*=\\\" hipengine/generation/engine_loop.py; grep -n -A6 \\\"HIPENGINE_PREFIX_CACHE\\\" docs/ENVS.md | head -12\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_f87ecc4628b14aa3938d1e7b",
+     "content": "158:| `HIPENGINE_PREFIX_CACHE` | OpenAI-compatible server / KV sharing | `off` | Prefix-cache mode used by `hipengine serve --prefix-cache`: `off` or `radix`. `radix` enables the scoped fail-closed GGUF path: a greedy request with a non-empty suffix may reuse an exact positive 256-token boundary from either an active-current source or a bounded cache-owned completed-source snapshot. The runner clones hybrid Conv/GDN state, shares page-aligned KV with a private COW suffix, preserves the latest aligned boundary across an unaligned tail, and otherwise reports an explicit private-prefill fallback. Sampling, short prompts, and exact-full-prompt boundaries do not reuse. `/ready` reports bounded snapshot/page/byte ownership. Default stays `off` until the multi-turn economics and lifecycle/pressure gates in `docs/CONCURRENCY.md` pass. |\n159-| `HIPENGINE_REPLAY_DIR` | OpenAI-compatible server diagnostics | unset | Opt-in directory for finite JSON failed-request replay artifacts. Disabled by default for sensitive deployments; equivalent CLI flag is `--replay-dir`. |\n160-| `HIPENGINE_REPLAY_REDACTION` | OpenAI-compatible server diagnostics | `hash` | Replay artifact string redaction mode: `hash` replaces strings with SHA-256/length metadata, while `none` stores raw strings for explicit local debugging only. Equivalent CLI flag is `--replay-redaction`. |\n161-\n162-Removed historical AOTriton knobs (`HIPENGINE_AOTRITON_SOURCE_ROOT` and\n163-`HIPENGINE_AOTRITON_RUNTIME_ROOT`) are no longer read by the runtime.\n164-\n"
+    },
+    {
+     "role": "assistant",
+     "content": "`docs/ENVS.md` still documents the default as `off` — stale since our branch's `04b879ad3` flipped the default. Let me confirm whether our branch missed both the test and the doc:",
+     "tool_calls": [
+      {
+       "id": "call_5613456c7273434ca723b908",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"git show perf-prefix-caching:tests/test_integration_generation_batch_scheduler.py | grep -n 'prefix_cache == ' | head -3; git show perf-prefix-caching:docs/ENVS.md | grep -c \\\"Default stays \\\\`off\\\\`\\\"\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_5613456c7273434ca723b908",
+     "content": "17136:    assert config.prefix_cache == \"off\"\n17233:    assert cli_config.prefix_cache == \"off\"\n1\n"
+    },
+    {
+     "role": "assistant",
+     "content": "Our branch's own debt — the default-flip commit missed both. Checking the second `\"off\"` assertion's context before fixing:",
+     "tool_calls": [
+      {
+       "id": "call_b357ff068bc24b77a7ec19c8",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"sed -n '17220,17240p' tests/test_integration_generation_batch_scheduler.py\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_b357ff068bc24b77a7ec19c8",
+     "content": "                \"off\",\n            ]\n        )\n    )\n    assert cli_config.prefill_decode_policy == \"protect_ttft\"\n    assert cli_config.max_active_requests == 5\n    assert cli_config.max_prefill_chunk_tokens == 11\n    assert cli_config.fair_prefill_burst_chunks == 3\n    assert cli_config.kv_pool_initial_pages == 32\n    assert cli_config.kv_pool_low_water_pages == 16\n    assert cli_config.kv_pool_high_water_pages == 96\n    assert cli_config.kv_pool_chunk_pages == 8\n    assert cli_config.kv_pool_memory_budget_mib == 3072\n    assert cli_config.kv_pool_idle_grace_seconds == 2.5\n    assert cli_config.max_pending_requests == 9\n    assert cli_config.prefix_cache == \"off\"\n\n    with pytest.raises(ValueError, match=\"max_active_requests\"):\n        EngineLoopConfig(max_active_requests=0)\n    with pytest.raises(ValueError, match=\"max_prefill_chunk_tokens\"):\n        EngineLoopConfig(max_prefill_chunk_tokens=0)\n"
+    },
+    {
+     "role": "assistant",
+     "content": "Line 17233 is an explicit-CLI-arg test (correct as `\"off\"`). Before adapting main's c1 lease test, due diligence on our branch's recorded lease decision:",
+     "tool_calls": [
+      {
+       "id": "call_83da4d95f50c408bb48f1157",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"sed -n '1,40p' worklog/entries/20260918T160119.350325Z-lhl-packed-workspace-lease-sizing-5c2b68.md 2>/dev/null | head -45\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_83da4d95f50c408bb48f1157",
+     "content": "---\nschema: 1\ntimestamp: 2026-09-18T16:01:19.350325Z\nworker: lhl\nbranch: perf-prefix-caching\nworktree: hipEngine-main\nbase_commit: d01ec1b5111264cbeedd53937e2719176add4326\nstatus: completed\ntopic: packed-workspace-lease-sizing\n---\n\n# Packed workspace lease sizing: one geometry for lease and demand\n\n## Summary\n\nThe packed KV-plane workspace lease and the allocation that consumes it were\ntwo independently written expressions of one geometry, so they disagreed. The\nlease is taken once at pool creation (`configure_engine_loop`); the demand is\ncomputed per request by `_packed_verify_union_geometry` +\n`_GGUFPackedTargetState.allocate`. When they disagreed, `allocate` raised\n`packed workspace lease holds N pages but the workspace needs M` and wedged\nprefill. Both sides now derive from one helper,\n`packed_verify_workspace_lease_pages`, and a lease that still cannot cover a\nrequest degrades to a private KV chunk instead of failing closed.\n\nThis was found while validating the batched reused-suffix prefill unit\n(`20260918T152121.577918Z-pi-prefix-cache-batched-suffix-extend-1ee788.md`),\nwhose `scripts/gguf_prefix_reuse_gate.py` arms died on this error. The defect\nitself is older than that unit and independent of it: the removal of the <1024\npaged-prefill gate merely routed long contexts onto the paged path, which is\nthe path that consumes the lease, so a pre-existing mismatch started firing.\n\n## Changes\n\n- `hipengine/runtime/qwen35_gguf_runner.py`: new\n  `packed_verify_workspace_lease_pages(max_batch_size, max_positions)`, the\n  lease-side twin of `_packed_verify_union_geometry`\n  (`ceil(max(max_positions, _PACKED_VERIFY_MIN_MAX_SEQUENCE)/256)` pages per\n  slot x `packed_verify_lease_slot_ceiling(max_batch_size)` slots).\n- `hipengine/runtime/qwen35_gguf_runner.py`: `_GGUFPackedTargetState.allocate`\n"
+    },
+    {
+     "role": "assistant",
+     "content": "The lease entry says the slot term is still the ceiling helper — yet the merged tree measures 1 slot at c1. Reading the merged helpers to see what the test should assert:",
+     "tool_calls": [
+      {
+       "id": "call_1aa9bf7b7bad48879f822016",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"sed -n '2065,2110p' hipengine/runtime/qwen35_gguf_runner.py; echo ===; grep -n \\\"packed_verify_workspace_lease_pages(\\\" hipengine/generation/qwen35_gguf.py | head -3\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_1aa9bf7b7bad48879f822016",
+     "content": "def packed_verify_lease_slot_ceiling(max_batch_size: object | None) -> int:\n    \"\"\"Slot count the packed workspace lease must cover.\n\n    ``_packed_verify_union_geometry`` unions the realized layout slots with the\n    serving capacity, so the workspace can pack more than one slot even for a\n    single request (the MTP verify width alone packs four). The pool lease is\n    taken once at pool creation, before any layout exists, so it has to be\n    sized from this ceiling; a one-slot lease is short as soon as the loop\n    packs a verify group and the allocation then fails closed at prefill time.\n    \"\"\"\n\n    try:\n        return max(1, int(max_batch_size))\n    except (TypeError, ValueError):\n        return _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY\n\n\ndef packed_verify_workspace_lease_pages(\n    max_batch_size: object | None,\n    max_positions: object | None,\n) -> int:\n    \"\"\"Pages the packed workspace lease must hold to satisfy ``allocate``.\n\n    This is the lease-side twin of ``_packed_verify_union_geometry`` and has to\n    stay arithmetically identical to it. The demand side computes\n    ``union_slots * ceil(union_max_seq / block_size)``, unioning the request\n    with ``packed_verify_lease_slot_ceiling(max_batch_size)`` and with\n    ``_PACKED_VERIFY_MIN_MAX_SEQUENCE``. Sizing the lease from any separately\n    written expression lets the two drift, which is exactly how a lease gets\n    granted that ``_GGUFPackedTargetState.allocate`` then rejects at prefill\n    time (\"packed workspace lease holds N pages but the workspace needs M\").\n    One helper for both sides makes that mismatch unrepresentable for every\n    geometry the serving loop can request within its capacity.\n\n    Requests ABOVE the capacity ceiling are deliberately not covered: the lease\n    is taken once at pool creation, before any layout exists, so it can only be\n    sized from caps known at that point. ``allocate`` degrades those to a\n    private KV chunk rather than failing closed.\n    \"\"\"\n\n    slots = packed_verify_lease_slot_ceiling(max_batch_size)\n    try:\n        positions = int(max_positions)\n    except (TypeError, ValueError):\n        positions = _PACKED_VERIFY_MIN_MAX_SEQUENCE\n    positions = max(positions, _PACKED_VERIFY_MIN_MAX_SEQUENCE)\n===\n6591:            workspace_pages = packed_verify_workspace_lease_pages(\n"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "call_c22a79a5554c481586f3cd9f",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"sed -n '6580,6600p' hipengine/generation/qwen35_gguf.py\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_c22a79a5554c481586f3cd9f",
+     "content": "            #   * The per-slot term was `max(max_pages_per_request, 4)`, equal\n            #     to the demand side's `ceil(max(max_positions, 1024)/256)`\n            #     only by coincidence of how scratch.max_positions rounds.\n            #\n            # `self.capacity` is the right cap: it is exactly what this runner\n            # passes as `max_batch_size` when it builds the packed batch owner,\n            # so the demand side's ceiling resolves to the identical value.\n            # A caller that packs MORE slots than capacity (an MTP verify group\n            # at C1) is a legitimate geometry no pool-creation-time lease can\n            # cover; `_GGUFPackedTargetState.allocate` degrades those to a\n            # private KV chunk instead of failing closed.\n            workspace_pages = packed_verify_workspace_lease_pages(\n                int(self.capacity),\n                int(scratch.max_positions),\n            )\n            # P4 (roadmap F2): the packed KV plane lease exists only for\n            # plane consumers - non-slot-local packed prefill (prefix-cache\n            # COW scatter), packed batch decode above one resident slot, and\n            # the MTP verifier. A C1 server with prefix cache and MTP both\n            # off has no such consumer: slot-local prefill reads request-\n            # owned KV and singleton decode uses the request's direct\n"
+    },
+    {
+     "role": "assistant",
+     "content": "The merged contract is explicit: the lease is capacity-honest with graceful degradation for above-capacity verify groups (documented in the code comment and the branch's lease-sizing entry). Main's c1 test asserts the superseded 8-slot contract. Resolving all three pieces:",
+     "tool_calls": [
+      {
+       "id": "call_3f2971baa5514125a4b024b9",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"sed -n '1362,1404p' tests/test_unit_gguf_prefix_cache_runner.py\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_3f2971baa5514125a4b024b9",
+     "content": "def test_configure_engine_loop_leases_the_union_slot_ceiling_at_c1() -> None:\n    \"\"\"A C1 pool still leases the packed union slot ceiling, not one slot.\n\n    The packed union geometry can open more slots than the serving capacity\n    because the MTP verify width alone packs four, so the pool cannot take a\n    one-slot lease. The lease's slot term comes from the generator's resident\n    runner's ``max_batch_size``, which the real model runner does not expose;\n    the shared helper's default slot capacity therefore applies. See the\n    follow-up on that unreachable capacity signal.\n    \"\"\"\n\n    from hipengine.runtime.qwen35_gguf_runner import (\n        _GGUF_PACKED_WORKSPACE_LEASE_KEY,\n        _PACKED_VERIFY_MIN_MAX_SEQUENCE,\n        packed_verify_lease_slot_ceiling,\n    )\n\n    owner = _FakeGlobalPoolOwner()\n    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)\n    config = EngineLoopConfig(\n        max_active_requests=1,\n        kv_pool_initial_pages=8,\n        kv_pool_low_water_pages=8,\n        kv_pool_chunk_pages=8,\n        prefix_cache=\"off\",\n    )\n    runner._reserve_sessions()\n    runner.configure_engine_loop(config)\n\n    pool = runner.kv_pool\n    assert pool is not None\n    expected_lease_pages = packed_verify_lease_slot_ceiling(None) * max(\n        (768 + 255) // 256,\n        _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,\n    )\n    assert pool.current_pages == 8 + expected_lease_pages\n    lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)\n    assert lease is not None and len(lease) == expected_lease_pages\n    assert pool.stats.pinned_pages == expected_lease_pages\n    assert pool.stats.free_pages == 8\n\n    runner.close()\n\n"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "call_94199842cd8447e2b2f64fda",
+       "type": "function",
+       "function": {
+        "name": "edit",
+        "arguments": "{\"edits\":[{\"newText\":\"def test_configure_engine_loop_leases_the_capacity_workspace_at_c1() -> None:\\n    \\\"\\\"\\\"A C1 pool leases the serving capacity's workspace, not a fixed ceiling.\\n\\n    The lease's slot term is the runner's serving capacity (one slot at C1)\\n    times the per-slot union floor of max(ceil(max_positions/256),\\n    _PACKED_VERIFY_MIN_MAX_SEQUENCE/256) pages. An above-capacity geometry\\n    (an MTP verify group packs four physical slots at C1) is deliberately\\n    not covered by the pool-creation-time lease: ``_GGUFPackedTargetState``\\n    degrades such allocations to a private KV chunk instead of failing\\n    closed, so the capacity-sized lease is correct rather than short.\\n    \\\"\\\"\\\"\\n\\n    from hipengine.runtime.qwen35_gguf_runner import (\\n        _GGUF_PACKED_WORKSPACE_LEASE_KEY,\\n        _PACKED_VERIFY_MIN_MAX_SEQUENCE,\\n        packed_verify_lease_slot_ceiling,\\n        packed_verify_workspace_lease_pages,\\n    )\\n\\n    owner = _FakeGlobalPoolOwner()\\n    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)\\n    config = EngineLoopConfig(\\n        max_active_requests=1,\\n        kv_pool_initial_pages=8,\\n        kv_pool_low_water_pages=8,\\n        kv_pool_chunk_pages=8,\\n        prefix_cache=\\\"off\\\",\\n    )\\n    runner._reserve_sessions()\\n    runner.configure_engine_loop(config)\\n\\n    pool = runner.kv_pool\\n    assert pool is not None\\n    expected_lease_pages = packed_verify_workspace_lease_pages(\\n        1,\\n        768,\\n    )\\n    assert expected_lease_pages == packed_verify_lease_slot_ceiling(1) * max(\\n        (768 + 255) // 256,\\n        _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,\\n    )\\n    assert expected_lease_pages == 4\\n    assert pool.current_pages == 8 + expected_lease_pages\\n    lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)\\n    assert lease is not None and len(lease) == expected_lease_pages\\n    assert pool.stats.pinned_pages == expected_lease_pages\\n    assert pool.stats.free_pages == 8\\n\\n    runner.close()\",\"oldText\":\"def test_configure_engine_loop_leases_the_union_slot_ceiling_at_c1() -> None:\\n    \\\"\\\"\\\"A C1 pool still leases the packed union slot ceiling, not one slot.\\n\\n    The packed union geometry can open more slots than the serving capacity\\n    because the MTP verify width alone packs four, so the pool cannot take a\\n    one-slot lease. The lease's slot term comes from the generator's resident\\n    runner's ``max_batch_size``, which the real model runner does not expose;\\n    the shared helper's default slot capacity therefore applies. See the\\n    follow-up on that unreachable capacity signal.\\n    \\\"\\\"\\\"\\n\\n    from hipengine.runtime.qwen35_gguf_runner import (\\n        _GGUF_PACKED_WORKSPACE_LEASE_KEY,\\n        _PACKED_VERIFY_MIN_MAX_SEQUENCE,\\n        packed_verify_lease_slot_ceiling,\\n    )\\n\\n    owner = _FakeGlobalPoolOwner()\\n    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)\\n    config = EngineLoopConfig(\\n        max_active_requests=1,\\n        kv_pool_initial_pages=8,\\n        kv_pool_low_water_pages=8,\\n        kv_pool_chunk_pages=8,\\n        prefix_cache=\\\"off\\\",\\n    )\\n    runner._reserve_sessions()\\n    runner.configure_engine_loop(config)\\n\\n    pool = runner.kv_pool\\n    assert pool is not None\\n    expected_lease_pages = packed_verify_lease_slot_ceiling(None) * max(\\n        (768 + 255) // 256,\\n        _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,\\n    )\\n    assert pool.current_pages == 8 + expected_lease_pages\\n    lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)\\n    assert lease is not None and len(lease) == expected_lease_pages\\n    assert pool.stats.pinned_pages == expected_lease_pages\\n    assert pool.stats.free_pages == 8\\n\\n    runner.close()\"}],\"path\":\"tests/test_unit_gguf_prefix_cache_runner.py\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_94199842cd8447e2b2f64fda",
+     "content": "Successfully replaced 1 block(s) in tests/test_unit_gguf_prefix_cache_runner.py."
+    },
+    {
+     "role": "assistant",
+     "content": "Now the defaults test and the ENVS.md row:",
+     "tool_calls": [
+      {
+       "id": "call_21c7f59683e74cd49861ea43",
+       "type": "function",
+       "function": {
+        "name": "edit",
+        "arguments": "{\"edits\":[{\"newText\":\"    assert config.max_pending_requests is None\\n    assert config.prefix_cache == \\\"radix\\\"\",\"oldText\":\"    assert config.max_pending_requests is None\\n    assert config.prefix_cache == \\\"off\\\"\"}],\"path\":\"tests/test_integration_generation_batch_scheduler.py\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_21c7f59683e74cd49861ea43",
+     "content": "Successfully replaced 1 block(s) in tests/test_integration_generation_batch_scheduler.py."
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "call_feafae1a47d94106871a3fd6",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"python3 - << 'EOF'\\npath = \\\"docs/ENVS.md\\\"\\ntext = open(path).read()\\nold_row_tail = \\\"Sampling, short prompts, and exact-full-prompt boundaries do not reuse. `/ready` reports bounded snapshot/page/byte ownership. Default stays `off` until the multi-turn economics and lifecycle/pressure gates in `docs/CONCURRENCY.md` pass. |\\\"\\nnew_row_tail = \\\"Sampling, short prompts, and exact-full-prompt boundaries do not reuse. `/ready` reports bounded snapshot/page/byte ownership. Default `radix`: the multi-turn economics and lifecycle/pressure gates passed and the served lanes measure a net wall-time win (see `benchmarks/README.md`). |\\\"\\nassert old_row_tail in text, \\\"ENVS row tail not found\\\"\\nopen(path, \\\"w\\\").write(text.replace(old_row_tail, new_row_tail))\\nprint(\\\"ENVS.md updated\\\")\\nEOF\\ngrep -c \\\"| \\\\`HIPENGINE_PREFIX_CACHE\\\\` | OpenAI-compatible server / KV sharing | \\\\`radix\\\\` |\\\" docs/ENVS.md\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_feafae1a47d94106871a3fd6",
+     "content": "ENVS.md updated\n0\n\n\nCommand exited with code 1"
+    },
+    {
+     "role": "assistant",
+     "content": "The trailing sentence is fixed but the default **cell** still reads `off`. Fixing it:",
+     "tool_calls": [
+      {
+       "id": "call_5e6fef5678ba4041902f300b",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"python3 - << 'EOF'\\npath = \\\"docs/ENVS.md\\\"\\ntext = open(path).read()\\nold = \\\"| `HIPENGINE_PREFIX_CACHE` | OpenAI-compatible server / KV sharing | `off` | Prefix-cache mode\\\"\\nnew = \\\"| `HIPENGINE_PREFIX_CACHE` | OpenAI-compatible server / KV sharing | `radix` | Prefix-cache mode\\\"\\nassert old in text, \\\"cell not found\\\"\\nopen(path, \\\"w\\\").write(text.replace(old, new))\\nprint(\\\"cell updated\\\")\\nEOF\\ngrep -o \\\"| \\\\`HIPENGINE_PREFIX_CACHE\\\\` | OpenAI-compatible server / KV sharing | \\\\`[a-z]*\\\\`\\\" docs/ENVS.md\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_5e6fef5678ba4041902f300b",
+     "content": "cell updated\n| `HIPENGINE_PREFIX_CACHE` | OpenAI-compatible server / KV sharing | `radix`\n"
+    },
+    {
+     "role": "assistant",
+     "content": "Now re-running both conflicted-adjacent test files plus the docs-sync test:",
+     "tool_calls": [
+      {
+       "id": "call_e6297e01bfa64ee8b1270fbd",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"timeout 900 python3 -m pytest tests/test_unit_gguf_prefix_cache_runner.py tests/test_integration_generation_batch_scheduler.py -q 2>&1 | tail -4\",\"timeout\":920}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_e6297e01bfa64ee8b1270fbd",
+     "content": "0.01s call     tests/test_integration_generation_batch_scheduler.py::test_batch_c_sweep_skips_retained_when_scaling_reference_rate_arithmetic_mismatches\n0.01s call     tests/test_integration_generation_batch_scheduler.py::test_batch_c_sweep_profiler_precondition_rejects_empty_kernel_duration_or_share_keys\n\n(2 durations < 0.005s hidden.  Use -vv to show these durations.)\n"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "call_cbef5c37b7bd4c48bdb95fa9",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"timeout 900 python3 -m pytest tests/test_unit_gguf_prefix_cache_runner.py tests/test_integration_generation_batch_scheduler.py 2>&1 | grep -E \\\"passed|failed\\\" | tail -1\",\"timeout\":920}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_cbef5c37b7bd4c48bdb95fa9",
+     "content": "343 passed in 10.85s\n"
+    },
+    {
+     "role": "assistant",
+     "content": "343 passed. Running the campaign-area bundle on the merged tree, then committing the merge:",
+     "tool_calls": [
+      {
+       "id": "call_43b82118e9084010ab39f325",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"timeout 1200 python3 -m pytest tests/ -k \\\"prefix or kvcache or device_kv or pool\\\" 2>&1 | grep -E \\\"passed|failed\\\" | tail -1\",\"timeout\":1220}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_43b82118e9084010ab39f325",
+     "content": "1 failed, 321 passed, 8871 deselected, 1 warning in 3.21s\n"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "call_9f48f7d7c6324329a0cb220a",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"timeout 1200 python3 -m pytest tests/ -k \\\"prefix or kvcache or device_kv or pool\\\" -q 2>&1 | grep -E \\\"FAILED\\\" | head -2\",\"timeout\":1220}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_9f48f7d7c6324329a0cb220a",
+     "content": "FAILED tests/test_unit_grammar_masks.py::test_server_schema_does_not_use_json_tool_prefix_for_xml_engine\n"
+    },
+    {
+     "role": "assistant",
+     "content": "Only the pre-existing `llguidance` failure remains. Committing the merge with the resolutions recorded:",
+     "tool_calls": [
+      {
+       "id": "call_7460ea9c2387482d99c83369",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"git status -sb | head -8; git add tests/test_unit_gguf_prefix_cache_runner.py tests/test_integration_generation_batch_scheduler.py docs/ENVS.md && git status --porcelain | head -8\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_7460ea9c2387482d99c83369",
+     "content": "## main...origin/main\nM  README.md\nM  benchmarks/CHANGELOG.md\nM  benchmarks/README.md\nA  benchmarks/results/2026-09-18-gfx1151-prefix-cache-cost-attribution.json\nA  benchmarks/results/2026-09-18-gfx1151-prefix-cache-miss-path-diagnostic.json\nA  benchmarks/results/2026-09-18-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab.json\nA  benchmarks/results/2026-09-18-gfx1151-qwen36-gguf-prefix-cache-server-multiturn-ab.json\nM  README.md\nM  benchmarks/CHANGELOG.md\nM  benchmarks/README.md\nA  benchmarks/results/2026-09-18-gfx1151-prefix-cache-cost-attribution.json\nA  benchmarks/results/2026-09-18-gfx1151-prefix-cache-miss-path-diagnostic.json\nA  benchmarks/results/2026-09-18-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab.json\nA  benchmarks/results/2026-09-18-gfx1151-qwen36-gguf-prefix-cache-server-multiturn-ab.json\nA  benchmarks/results/2026-09-19-gfx1151-qwen36-gguf-prefix-cache-multiturn-ab-baseline-off.json\n"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "call_690febb677aa4b838e43f65c",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"git diff --name-only --diff-filter=U | head -3; git commit -m \\\"merge: integrate perf-prefix-caching with current main\\n\\nGapped slot-local prefill gather route + prefix-caching campaign:\\n\\n- Gapped device-KV placements keep the slot-local AOTriton prefill via\\n  block-table span swap + demand-sized head-major gather buffers; the\\n  512-token gapped-suffix guard now binds only where the gather is\\n  unavailable (kill-switch, no head-major KV, oversized context).\\n- Served A/B on gfx1151 (35B-A3B UD-Q4_K_M): retained 16 goes -11.0% ->\\n  -20.1% wall (21.58 tok/s, 18/27 hits, 0 declines, worst turn prefill\\n  15.1 s); default retention unchanged at -18.4%.\\n- Route-forced rocprof probe, reuse-gate correctness (KL 0, exact state\\n  bytes), unit tier green.\\n\\nMerge resolutions (semantic, tests/docs only):\\n\\n- test_configure_engine_loop_leases_packed_workspace_pages and the c1\\n  lease test came over from main asserting the union-slot-ceiling lease;\\n  the branch's packed-workspace lease sizing (one shared geometry, serving\\n  capacity slots, above-capacity allocations degrade to a private KV chunk\\n  instead of failing closed) superseded that contract, so the c1 test now\\n  pins the capacity-honest lease (4 pages at capacity 1).\\n- test_engine_loop_cli_env_defaults_match_docs and docs/ENVS.md still\\n  documented prefix_cache default off; the branch enabled radix by default\\n  (04b879ad3), so both now read radix.\\n\\nValidated on the merged tree: 343 passed across the two conflict-adjacent\\nfiles; the prefix/kvcache/device_kv/pool bundle is 321 passed with only the\\npre-existing llguidance import failure.\\\" 2>&1 | tail -3\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_690febb677aa4b838e43f65c",
+     "content": "[main 6a5860817] merge: integrate perf-prefix-caching with current main\n"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "call_403f72799ab8435db932cf91",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"git log --oneline --graph -6 | head -12; echo ===; git merge-base --is-ancestor perf-prefix-caching main && echo \\\"branch fully merged into main\\\"; git merge-base --is-ancestor a12d4b64e main && echo \\\"origin/main history included\\\"; git diff --stat perf-prefix-caching main -- hipengine/ | tail -2\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_403f72799ab8435db932cf91",
+     "content": "*   6a5860817 merge: integrate perf-prefix-caching with current main\n|\\  \n| * 0787c397c perf: complete the gapped gather route for served-class residents and 256-row chunks\n| * f4b087690 perf: keep gapped device-KV slots on the slot-local prefill route via head-major gather\n| * 4b5a17f1f bench: attribute the paged suffix-prefill route gap to the native three-pass kernel\n| * 9789b5949 perf: choose the prefix-cache route by placement cost\n| * cb6885e26 fix: confine KV pool allocations to one storage chunk\n===\nbranch fully merged into main\norigin/main history included\n"
+    },
+    {
+     "role": "assistant",
+     "content": "Merge verified — both parents present, branch fully contained, origin/main history included, and production code identical to the validated branch. Pushing main to origin:",
+     "tool_calls": [
+      {
+       "id": "call_c11335c61e5e4645b1eb939d",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"git -c credential.helper='!gh auth git-credential' push https://github.com/shisa-ai/hipEngine.git main:refs/heads/main 2>&1 | tail -2 && git -c credential.helper='!gh auth git-credential' fetch \\\"https://github.com/shisa-ai/hipEngine.git\\\" \\\"+refs/heads/main:refs/remotes/origin/main\\\" 2>&1 | tail -1 && git checkout perf-prefix-caching 2>&1 | tail -1 && git status -sb | head -2 && git -c credential.helper='!gh auth git-credential' ls-remote https://github.com/shisa-ai/hipEngine.git refs/heads/main refs/heads/perf-prefix-caching\",\"timeout\":180}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_c11335c61e5e4645b1eb939d",
+     "content": "To https://github.com/shisa-ai/hipEngine.git\n   a12d4b64e..6a5860817  main -> main\n   a12d4b64e..6a5860817  main       -> origin/main\nYour branch is up to date with 'origin/perf-prefix-caching'.\n## perf-prefix-caching...origin/perf-prefix-caching\n6a5860817516261a19bc9896e6d00766432f2809\trefs/heads/main\n0787c397ccdab85fc60f0e5c92a07096b0841001\trefs/heads/perf-prefix-caching\n"
+    },
+    {
+     "role": "assistant",
+     "content": "Done — the full sequence is complete and verified:\n\n## Push → sync → merge → push\n\n1. **Branch push**: `perf-prefix-caching` was already at origin (`0787c397c`) — re-verified against `ls-remote`.\n\n2. **Local main sync**: origin/main had moved (one commit, `a12d4b64e` — test repairs from another line of work). Local main was fast-forwarded `9493d4224 → a12d4b64e` to match.\n\n3. **Merge**: not a fast-forward — a real merge, with one content conflict in `tests/test_unit_gguf_prefix_cache_runner.py` plus **two semantic conflicts** the merge itself exposed, all resolved:\n   - **Lease contract**: main's tests asserted the earlier union-slot-ceiling lease (8-slot fallback); our branch's `660126b4a` deliberately replaced it with the capacity-honest shared-geometry lease (above-capacity allocations degrade to a private KV chunk instead of failing closed — recorded in the code comment and the lease-sizing worklog entry). The merged production keeps our behavior, so the c1 test now pins the capacity-honest lease (4 pages at capacity 1). \n   - **Prefix-cache default**: our branch's `04b879ad3` enabled `radix` by default but had left the defaults-sync test and `docs/ENVS.md` still saying `off` — our own debt, surfaced by the merge. Both now read `radix`.\n\n4. **Merge verification on the merged tree**: 343 passed across the two conflict-adjacent files; the campaign bundle (`prefix or kvcache or device_kv or pool`) is 321 passed with only the pre-existing `llguidance` import failure. Production code on main is byte-identical to the validated branch (`git diff` over `hipengine/` is empty), both parents present, origin/main's history included.\n\n5. **Push**: origin/main is now `6a5860817` (the merge commit), confirmed via `ls-remote`; tracking refs refreshed; the worktree is back on `perf-prefix-caching`, clean and in sync.\n\nFinal state: **origin/main = 6a5860817** (merge), **origin/perf-prefix-caching = 0787c397c** (branch tip, fully contained in main). One heads-up for whoever next touches the lease area: main's superseded 8-slot-ceiling expectation lives on in history only — the capacity-honest contract is now pinned in both the tests and the merge commit message."
+    }
+   ],
+   "request_ends": [
+    2,
+    4,
+    6,
+    8,
+    10,
+    12,
+    14,
+    16,
+    18,
+    20,
+    22,
+    24,
+    26,
+    28,
+    30,
+    32,
+    34,
+    36,
+    38,
+    40,
+    42,
+    44,
+    46,
+    48,
+    50,
+    52,
+    54,
+    56,
+    58,
+    60,
+    62,
+    64
+   ],
+   "slice": {
+    "tail_rounds": 32,
+    "tip_record": "77d12a62",
+    "start_reason": "tail_rounds",
+    "skipped_empty_messages": 1,
+    "synthesized_interrupt_results": 1,
+    "truncated_tool_results": 27,
+    "chain_messages": 805,
+    "excluded_off_chain_messages": 145
+   }
+  }
+ ]
+}

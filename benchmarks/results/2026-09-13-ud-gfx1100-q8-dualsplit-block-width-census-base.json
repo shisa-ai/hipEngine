@@ -1,0 +1,453 @@
+{
+  "schema": "hipengine.gguf_mtp_verifier_rocprof.v1",
+  "date": "2026-09-13",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "purpose": "Current GGUF MTP target verifier host/GPU split.",
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "hardware": "AMD Radeon RX 7900 XTX (gfx1100), visible ordinal 1 of 2",
+  "mode": "block-verify",
+  "quant": "gguf_ud_q4_k_m",
+  "block_rows": 3,
+  "block_verify_mode": "native",
+  "block_wmma_prefill": false,
+  "direct_state_commit": true,
+  "native_spec_target_cycle": true,
+  "native_device_accept_commit": true,
+  "return_logits": false,
+  "verify_dp4a": false,
+  "verify_dense_q8_dp4a": false,
+  "verify_dense_q8_dp4a_all": false,
+  "verify_dense_q8_dp4a_shared": false,
+  "verify_dense_q8_dp4a_f32": false,
+  "selected_down_x8_repack": "off",
+  "selected_gate_up_x8": false,
+  "q8_t16_pair_rowtile": false,
+  "q8_t16_rowtile_all": false,
+  "steps": 12,
+  "warmup": 3,
+  "prompt_ids": [
+    760,
+    4087,
+    369,
+    220,
+    16,
+    17,
+    18,
+    19
+  ],
+  "marker_prefix": "gguf_mtp_verify_block_",
+  "command": "python scripts/gguf_mtp_verifier_rocprof.py --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m --mode block-verify --block-rows 3 --block-verify-mode native --native-spec-target-cycle --steps 12 --warmup 3 --out /tmp/phase8/census-i13-base.json",
+  "rocprof_command": "/home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --marker-trace --output-format csv -d /tmp/hipengine-gguf-mtp-verifier-rocprof/block-verify-rows3-gguf_ud_q4_k_m/trace -- /home/lhl/hipEngine-main/.venv/bin/python /home/lhl/hipEngine-ud/scripts/gguf_mtp_verifier_rocprof.py --child --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --prompt-ids 760,4087,369,220,16,17,18,19 --steps 12 --warmup 3 --max-seq 512 --mode block-verify --block-rows 3 --block-verify-mode native --compiler-version-file /tmp/hipengine-hipcc-version.txt --child-json /tmp/hipengine-gguf-mtp-verifier-rocprof/block-verify-rows3-gguf_ud_q4_k_m/child.json --quant gguf_ud_q4_k_m --native-spec-target-cycle --no-return-logits --direct-state-commit --require-cached",
+  "raw_root": "/tmp/hipengine-gguf-mtp-verifier-rocprof/block-verify-rows3-gguf_ud_q4_k_m",
+  "kernel_trace_csv": "/tmp/hipengine-gguf-mtp-verifier-rocprof/block-verify-rows3-gguf_ud_q4_k_m/trace/epyc/879945_kernel_trace.csv",
+  "marker_trace_csv": "/tmp/hipengine-gguf-mtp-verifier-rocprof/block-verify-rows3-gguf_ud_q4_k_m/trace/epyc/879945_marker_api_trace.csv",
+  "child": {
+    "schema": "hipengine.gguf_mtp_verifier_rocprof.child.v1",
+    "mode": "block-verify",
+    "quant": "gguf_ud_q4_k_m",
+    "steps": 12,
+    "warmup": 3,
+    "return_logits": false,
+    "block_rows": 3,
+    "block_verify_mode": "native",
+    "block_wmma_prefill": false,
+    "direct_state_commit": true,
+    "native_spec_target_cycle": true,
+    "native_device_accept_commit": true,
+    "verify_dp4a": false,
+    "verify_dense_q8_dp4a": false,
+    "verify_dense_q8_dp4a_all": false,
+    "verify_dense_q8_dp4a_shared": false,
+    "verify_dense_q8_dp4a_f32": false,
+    "selected_down_x8_repack": "off",
+    "selected_gate_up_x8": false,
+    "q8_t16_pair_rowtile": false,
+    "q8_t16_rowtile_all": false,
+    "host_ms": [
+      39.985959418118,
+      40.34455493092537,
+      41.48908983916044,
+      41.779885068535805,
+      41.411979123950005,
+      41.65990184992552,
+      41.8432354927063,
+      41.70806333422661,
+      42.09914896637201,
+      41.474721394479275,
+      41.694583371281624,
+      41.76292382180691
+    ],
+    "avg_host_ms": 41.437837217623986,
+    "token_ids": [
+      24,
+      13,
+      271,
+      9764,
+      579,
+      1436,
+      1204,
+      567,
+      628,
+      615,
+      1017,
+      13
+    ],
+    "stage_timings_ms": null,
+    "stage_timing_totals_ms": null,
+    "native_capture_ms": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "native_submit_ms": [
+      39.263250306248665,
+      39.5810641348362,
+      40.90912267565727,
+      40.94256181269884,
+      40.870301425457,
+      40.8113207668066,
+      40.999612770974636,
+      40.85260257124901,
+      41.265666484832764,
+      40.904452092945576,
+      41.08556546270847,
+      40.914722718298435
+    ],
+    "native_readback_ms": [
+      0.13904180377721786,
+      0.12640096247196198,
+      0.21746288985013962,
+      0.14016125351190567,
+      0.15233177691698074,
+      0.15514157712459564,
+      0.1489119604229927,
+      0.15631131827831268,
+      0.14052260667085648,
+      0.13964157551527023,
+      0.18915347754955292,
+      0.15990156680345535
+    ]
+  },
+  "summary": {
+    "steps": 12,
+    "kernel_calls": 11820,
+    "kernel_calls_per_step": 985.0,
+    "total_host_ms": 497.25404661148787,
+    "avg_host_ms": 41.437837217623986,
+    "total_kernel_ms": 435.738384,
+    "avg_kernel_ms": 36.311532,
+    "kernel_time_share_of_host_wall": 0.8762892669638725,
+    "host_residual_ms_per_step": 5.126305217623989,
+    "buckets": [
+      {
+        "name": "other",
+        "calls": 6948,
+        "total_ms": 377.37790499999966,
+        "pct_kernel": 86.60653246467258,
+        "ms_per_step": 31.448158749999973,
+        "us_per_call": 54.31460924006904
+      },
+      {
+        "name": "gdn_linear_attn",
+        "calls": 1152,
+        "total_ms": 21.466410000000003,
+        "pct_kernel": 4.926444579644836,
+        "ms_per_step": 1.7888675000000003,
+        "us_per_call": 18.634036458333338
+      },
+      {
+        "name": "dense_q8_0_gemv",
+        "calls": 696,
+        "total_ms": 15.318298000000022,
+        "pct_kernel": 3.5154805182368376,
+        "ms_per_step": 1.2765248333333352,
+        "us_per_call": 22.009048850574747
+      },
+      {
+        "name": "moe_combine_silu",
+        "calls": 768,
+        "total_ms": 9.356414999999997,
+        "pct_kernel": 2.147255175022634,
+        "ms_per_step": 0.7797012499999997,
+        "us_per_call": 12.182832031249996
+      },
+      {
+        "name": "attn_core",
+        "calls": 1764,
+        "total_ms": 7.250751000000013,
+        "pct_kernel": 1.6640147543210269,
+        "ms_per_step": 0.604229250000001,
+        "us_per_call": 4.110403061224497
+      },
+      {
+        "name": "moe_selected_gemv",
+        "calls": 180,
+        "total_ms": 3.503832999999999,
+        "pct_kernel": 0.8041139198790435,
+        "ms_per_step": 0.29198608333333326,
+        "us_per_call": 19.465738888888882
+      },
+      {
+        "name": "rmsnorm_rope",
+        "calls": 216,
+        "total_ms": 1.0517270000000003,
+        "pct_kernel": 0.24136661781900773,
+        "ms_per_step": 0.0876439166666667,
+        "us_per_call": 4.869106481481483
+      },
+      {
+        "name": "memcpy_fill",
+        "calls": 60,
+        "total_ms": 0.20284400000000008,
+        "pct_kernel": 0.04655178599092617,
+        "ms_per_step": 0.016903666666666674,
+        "us_per_call": 3.3807333333333345
+      },
+      {
+        "name": "lm_head",
+        "calls": 24,
+        "total_ms": 0.14300100000000002,
+        "pct_kernel": 0.032818086551677304,
+        "ms_per_step": 0.011916750000000002,
+        "us_per_call": 5.958375
+      },
+      {
+        "name": "embedding",
+        "calls": 12,
+        "total_ms": 0.0672,
+        "pct_kernel": 0.015422097861362609,
+        "ms_per_step": 0.0056,
+        "us_per_call": 5.6000000000000005
+      }
+    ],
+    "top_kernels": [
+      {
+        "name": "gguf_iq4_xs_local32_gemv",
+        "calls": 1404,
+        "total_ms": 136.4751099999998,
+        "pct_kernel": 31.320424137800952,
+        "ms_per_step": 11.372925833333317,
+        "us_per_call": 97.20449430199417
+      },
+      {
+        "name": "q5_k_t16_dense_rowtile_single_wave_gemv",
+        "calls": 1512,
+        "total_ms": 95.72048000000002,
+        "pct_kernel": 21.96741979012802,
+        "ms_per_step": 7.976706666666669,
+        "us_per_call": 63.307195767195786
+      },
+      {
+        "name": "q4_k_t16_dense_rowtile_gemv",
+        "calls": 1104,
+        "total_ms": 51.553109999999926,
+        "pct_kernel": 11.83120695651176,
+        "ms_per_step": 4.296092499999994,
+        "us_per_call": 46.69665760869559
+      },
+      {
+        "name": "gguf_iq_dense_strict",
+        "calls": 132,
+        "total_ms": 38.577655000000014,
+        "pct_kernel": 8.853398373093524,
+        "ms_per_step": 3.2148045833333345,
+        "us_per_call": 292.2549621212122
+      },
+      {
+        "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8",
+        "calls": 168,
+        "total_ms": 24.544981,
+        "pct_kernel": 5.632962782548898,
+        "ms_per_step": 2.0454150833333333,
+        "us_per_call": 146.10107738095238
+      },
+      {
+        "name": "qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop",
+        "calls": 576,
+        "total_ms": 19.096913000000004,
+        "pct_kernel": 4.382655671665594,
+        "ms_per_step": 1.591409416666667,
+        "us_per_call": 33.15436284722223
+      },
+      {
+        "name": "q8_0_t16_dual_split_gemv",
+        "calls": 576,
+        "total_ms": 10.527816000000016,
+        "pct_kernel": 2.416086437774097,
+        "ms_per_step": 0.8773180000000013,
+        "us_per_call": 18.27745833333336
+      },
+      {
+        "name": "gguf_iq4_nl_local32_gemv",
+        "calls": 84,
+        "total_ms": 9.321159,
+        "pct_kernel": 2.1391640815375124,
+        "ms_per_step": 0.77676325,
+        "us_per_call": 110.96617857142857
+      },
+      {
+        "name": "gguf_norm_fixed5120_wave256",
+        "calls": 1536,
+        "total_ms": 8.10200499999999,
+        "pct_kernel": 1.8593737199888247,
+        "ms_per_step": 0.6751670833333324,
+        "us_per_call": 5.27474283854166
+      },
+      {
+        "name": "q4_k_t16_dense_dual_rowtile_silu_gemv",
+        "calls": 60,
+        "total_ms": 7.8932329999999995,
+        "pct_kernel": 1.8114614846508448,
+        "ms_per_step": 0.6577694166666667,
+        "us_per_call": 131.55388333333332
+      },
+      {
+        "name": "q6_k_t16_qmicro_planar_gemv_bf16",
+        "calls": 324,
+        "total_ms": 5.775695999999999,
+        "pct_kernel": 1.325496263831556,
+        "ms_per_step": 0.4813079999999999,
+        "us_per_call": 17.82622222222222
+      },
+      {
+        "name": "qwen35_paged_full_attn_decode_context_tensor",
+        "calls": 576,
+        "total_ms": 4.478407,
+        "pct_kernel": 1.0277742710864783,
+        "ms_per_step": 0.37320058333333334,
+        "us_per_call": 7.775012152777778
+      },
+      {
+        "name": "q8_0_t16_rowtile_gemv",
+        "calls": 84,
+        "total_ms": 4.301675,
+        "pct_kernel": 0.9872150716931103,
+        "ms_per_step": 0.3584729166666667,
+        "us_per_call": 51.21041666666667
+      },
+      {
+        "name": "linear_state_pair_commit_chunked_i32",
+        "calls": 12,
+        "total_ms": 4.170037000000001,
+        "pct_kernel": 0.9570047425521274,
+        "ms_per_step": 0.3475030833333334,
+        "us_per_call": 347.50308333333334
+      },
+      {
+        "name": "qk_t16_selected_direct_gemv",
+        "calls": 180,
+        "total_ms": 3.503832999999999,
+        "pct_kernel": 0.8041139198790435,
+        "ms_per_step": 0.29198608333333326,
+        "us_per_call": 19.465738888888882
+      },
+      {
+        "name": "qwen35_linear_attn_chain_conv_decode_lowp_tloop",
+        "calls": 576,
+        "total_ms": 2.3694969999999995,
+        "pct_kernel": 0.5437889079792427,
+        "ms_per_step": 0.19745808333333328,
+        "us_per_call": 4.113710069444443
+      },
+      {
+        "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_residual",
+        "calls": 12,
+        "total_ms": 1.496172,
+        "pct_kernel": 0.3433647470450985,
+        "ms_per_step": 0.124681,
+        "us_per_call": 124.681
+      },
+      {
+        "name": "silu_mul_separate_out",
+        "calls": 708,
+        "total_ms": 1.4631820000000042,
+        "pct_kernel": 0.3357936903717907,
+        "ms_per_step": 0.12193183333333368,
+        "us_per_call": 2.066641242937859
+      },
+      {
+        "name": "qwen35_write_paged_kv_mixed_value_position_tensor",
+        "calls": 576,
+        "total_ms": 1.3103279999999984,
+        "pct_kernel": 0.3007143846202905,
+        "ms_per_step": 0.10919399999999986,
+        "us_per_call": 2.274874999999997
+      },
+      {
+        "name": "qwen35_full_attn_gate_mul_bf16",
+        "calls": 576,
+        "total_ms": 0.9252930000000005,
+        "pct_kernel": 0.21235058328026493,
+        "ms_per_step": 0.07710775000000004,
+        "us_per_call": 1.6064114583333342
+      },
+      {
+        "name": "gguf_head_rmsnorm_partial_rotary_positions_f32_weight",
+        "calls": 192,
+        "total_ms": 0.8456030000000002,
+        "pct_kernel": 0.19406208657532456,
+        "ms_per_step": 0.07046691666666668,
+        "us_per_call": 4.404182291666667
+      },
+      {
+        "name": "qwen35_split_qgate_bf16",
+        "calls": 192,
+        "total_ms": 0.65681,
+        "pct_kernel": 0.15073494190954728,
+        "ms_per_step": 0.05473416666666667,
+        "us_per_call": 3.420885416666667
+      },
+      {
+        "name": "q8_0_t16_gemv",
+        "calls": 36,
+        "total_ms": 0.488807,
+        "pct_kernel": 0.11217900876962907,
+        "ms_per_step": 0.04073391666666667,
+        "us_per_call": 13.577972222222222
+      },
+      {
+        "name": "dflash_commit_chain_i32",
+        "calls": 24,
+        "total_ms": 0.46476300000000004,
+        "pct_kernel": 0.10666101887411417,
+        "ms_per_step": 0.03873025,
+        "us_per_call": 19.365125000000003
+      }
+    ]
+  },
+  "native_spec_leaf_evidence": {
+    "needle": "copy_i32_to_i64_kernel",
+    "count": 12,
+    "total_duration_ns": 23921,
+    "min_duration_ns": 1880,
+    "max_duration_ns": 2320,
+    "workgroup_sizes_x": [
+      256
+    ],
+    "grid_sizes_x": [
+      256
+    ],
+    "vgpr_counts": [
+      8
+    ],
+    "sgpr_counts": [
+      128
+    ],
+    "scratch_sizes": [
+      0
+    ],
+    "lds_block_sizes": [
+      0
+    ]
+  }
+}

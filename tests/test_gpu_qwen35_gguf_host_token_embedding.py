@@ -429,7 +429,7 @@ def test_private_c1_small_weight_arena_admits_geometry_scoped_policy(
     ) == 16 * 1024 * 1024
 
 
-def test_materializer_defers_token_embedding_without_allocating(
+def test_materializer_refuses_legacy_deferred_mock_without_model_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import hipengine.loading.qwen35_gguf_materialize as materialize
@@ -479,19 +479,17 @@ def test_materializer_defers_token_embedding_without_allocating(
 
     monkeypatch.setattr(materialize, "_materialize_or_alias", fake_materialize)
 
-    resident = materialize_qwen35_gguf_weights(
-        "/tmp/fake.gguf",
-        deferred_device_slots=("root.token_embedding",),
-        runtime=object(),
-        backend="hip_gfx1151",
-    )
-
-    assert allocated == ["root.output_norm"]
-    assert resident.root("token_embedding").allocations == {}
-    assert resident.root("token_embedding").spec is token_spec
+    # This historical mock has no validated model map or certificate. It is
+    # deliberately not permission to materialize (or execute) a partial model.
+    with pytest.raises(AttributeError, match="config"):
+        materialize_qwen35_gguf_weights(
+            "/tmp/fake.gguf", deferred_device_slots=("root.token_embedding",),
+            runtime=object(), backend="hip_gfx1151",
+        )
+    assert allocated == []
 
 
-def test_selective_weight_arena_owner_denial_falls_back_to_dedicated_allocations(
+def test_materializer_refuses_legacy_arena_mock_without_model_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import hipengine.loading.qwen35_gguf_materialize as materialize
@@ -556,17 +554,12 @@ def test_selective_weight_arena_owner_denial_falls_back_to_dedicated_allocations
 
     monkeypatch.setattr(materialize, "_materialize_or_alias", fake_materialize)
 
-    resident = materialize_qwen35_gguf_weights(
-        "/tmp/fake.gguf",
-        runtime=object(),
-        backend="hip_gfx1151",
-        use_selective_weight_arena=True,
-    )
-
-    assert allocated == ["root.output_norm"]
-    assert resident.allocation_mode == "dedicated_selective_arena_denied"
-    assert resident.allocation_arena is None
-    assert resident.allocation_arena_reason == "owner denied"
+    with pytest.raises(AttributeError, match="config"):
+        materialize_qwen35_gguf_weights(
+            "/tmp/fake.gguf", runtime=object(), backend="hip_gfx1151",
+            use_selective_weight_arena=True,
+        )
+    assert allocated == []
 
 
 def test_full_stack_host_placement_defers_before_materialization(

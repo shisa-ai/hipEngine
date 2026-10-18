@@ -1,0 +1,2072 @@
+{
+  "schema_version": 1,
+  "scope": "HTTP correctness gates on the mirror-free uniform INT8 MTP scope, with long-prompt rows added to the public matrix. Diagnostic execution of a rejected approximate-KV artifact under the documented override; no performance and no KV-quality claim.",
+  "code_commit": "e95c0f694",
+  "host": "gfx1151",
+  "backend": "hip_gfx1151",
+  "execution_profile": "production",
+  "max_context_tokens": 9216,
+  "max_active_requests": 4,
+  "speculative_candidate_budget": 3,
+  "server": {
+    "port": 18198,
+    "served_model_name": "int8-lru-diag-20260922",
+    "prefix_cache": "off",
+    "command": "bash /tmp/t17-env-int8-lru.sh /home/lhl/miniforge3/envs/vllm/bin/python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --served-model-name int8-lru-diag-20260922 --max-context-tokens 9216 --max-active-requests 4 --kv-storage int8_per_token_head --kv-scale-dtype fp32 --execution-profile production --speculative-mtp-serving enabled --speculative-candidate-budget 3 --prefix-cache off --no-startup-chat-smoke --no-startup-scratch-probe --host 127.0.0.1 --port 18198 --info"
+  },
+  "environment": {
+    "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED": "1",
+    "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": "1",
+    "HIPENGINE_GGUF_INT8_KV_BF16_PREFIX_FULL_LAYERS": "0"
+  },
+  "artifact": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "content_verified": true,
+    "error": null
+  },
+  "kv_capability": {
+    "capability_id": "22c71484da2499afe8765e1674cf21532b0103b3cc5e3211994998b7aaf8cf28",
+    "status": "rejected",
+    "runtime_action": "diagnostic_override",
+    "diagnostic_override": true,
+    "effective_kv_storage": "int8_per_token_head",
+    "max_packed_rows": 4,
+    "persistent_bf16_mirror": false,
+    "declaration": {
+      "backend": "hip_gfx1151",
+      "target_arch": "gfx1151",
+      "weight_quant": null,
+      "kv_storage": "int8_per_token_head",
+      "storage_layout": "uniform",
+      "scale_dtype": "fp32",
+      "scale_granularity": "per_token_head",
+      "max_direct_rows": 4,
+      "max_serial_resident_rows": 4,
+      "persistent_bf16_mirror": false,
+      "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans",
+      "reason": "registered int8 per-token-head paged decode chain; the row-batched producer and its strided reducer are implemented to physical c4"
+    },
+    "evidence": {
+      "decision": "rejected",
+      "scope": "native_no_mirror_quality",
+      "quality_artifact": "benchmarks/results/2026-08-15-gfx1151-qwen38-27b-int8-kv-quality-rejected.json",
+      "reason": "complete 1K/8 transfer rejected: minimum-prompt top-1 agreement 0.7778 is below the 0.90 gate",
+      "max_direct_rows": 0,
+      "max_serial_resident_rows": 0,
+      "persistent_bf16_mirror": false,
+      "decode_batch_variant": null
+    }
+  },
+  "gate_command": ".venv/bin/python scripts/int8_mtp_server_gate.py --base-url http://127.0.0.1:18198 --model int8-lru-diag-20260922 --allow-kv-diagnostic-override --long-prompt-tokens 2048,4096 --json /tmp/int8-lru-long-prompt-matrix-20260922.json",
+  "gate_report": {
+    "command": [
+      "scripts/int8_mtp_server_gate.py",
+      "--base-url",
+      "http://127.0.0.1:18198",
+      "--model",
+      "int8-lru-diag-20260922",
+      "--allow-kv-diagnostic-override",
+      "--long-prompt-tokens",
+      "2048,4096",
+      "--json",
+      "/tmp/int8-lru-long-prompt-matrix-20260922.json"
+    ],
+    "scope": "http_correctness",
+    "performance_claim": false,
+    "complete_prompt_suite": true,
+    "determinism_required": true,
+    "compact_required": true,
+    "rows": [
+      {
+        "id": "code_merge_intervals",
+        "category": "code",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654,
+          709,
+          421,
+          78161,
+          48142,
+          7629,
+          7308,
+          26126,
+          11,
+          5346,
+          264,
+          26864,
+          10970,
+          1228,
+          2424,
+          13,
+          2302
+        ],
+        "usage": {
+          "prompt_tokens": 28,
+          "completion_tokens": 24,
+          "total_tokens": 52,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 8,
+        "stream_mtp_cycles": 8
+      },
+      {
+        "id": "code_merge_intervals",
+        "category": "code",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          71093,
+          12305,
+          198,
+          727,
+          10562,
+          87682,
+          1494,
+          40798,
+          1590,
+          198,
+          262,
+          413,
+          524,
+          26126,
+          25,
+          198,
+          285,
+          460,
+          2958,
+          198,
+          262,
+          10300,
+          87682,
+          283
+        ],
+        "usage": {
+          "prompt_tokens": 63,
+          "completion_tokens": 24,
+          "total_tokens": 87,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 6,
+        "stream_mtp_cycles": 6
+      },
+      {
+        "id": "code_topological_sort",
+        "category": "code",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654,
+          709,
+          364,
+          1844,
+          5551,
+          27355,
+          421,
+          25,
+          198,
+          16,
+          13,
+          36363,
+          7552,
+          321,
+          12454,
+          430,
+          4868
+        ],
+        "usage": {
+          "prompt_tokens": 38,
+          "completion_tokens": 24,
+          "total_tokens": 62,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "code_topological_sort",
+        "category": "code",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          71093,
+          12305,
+          198,
+          727,
+          70058,
+          17885,
+          37423,
+          11,
+          12454,
+          1590,
+          198,
+          262,
+          4071,
+          198,
+          262,
+          24209,
+          1844,
+          5551,
+          3269,
+          383,
+          264,
+          15083,
+          4618,
+          13
+        ],
+        "usage": {
+          "prompt_tokens": 73,
+          "completion_tokens": 24,
+          "total_tokens": 97,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "code_lru_cache",
+        "category": "code",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654,
+          436,
+          34810,
+          18887,
+          523,
+          440,
+          496,
+          7,
+          16,
+          8,
+          615,
+          321,
+          2113,
+          7289,
+          11,
+          5346,
+          2250
+        ],
+        "usage": {
+          "prompt_tokens": 35,
+          "completion_tokens": 24,
+          "total_tokens": 59,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 8,
+        "stream_mtp_cycles": 8
+      },
+      {
+        "id": "code_lru_cache",
+        "category": "code",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          71093,
+          12305,
+          198,
+          1005,
+          43072,
+          5287,
+          1714,
+          25,
+          198,
+          262,
+          523,
+          5829,
+          25,
+          198,
+          285,
+          1259,
+          48093,
+          548,
+          283,
+          4178,
+          767,
+          504,
+          359,
+          927
+        ],
+        "usage": {
+          "prompt_tokens": 70,
+          "completion_tokens": 24,
+          "total_tokens": 94,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 8,
+        "stream_mtp_cycles": 8
+      },
+      {
+        "id": "code_markdown_table",
+        "category": "code",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654,
+          709,
+          421,
+          31637,
+          264,
+          1103,
+          314,
+          55588,
+          1083,
+          264,
+          31038,
+          11925,
+          72815,
+          48794,
+          1898,
+          13,
+          6558
+        ],
+        "usage": {
+          "prompt_tokens": 40,
+          "completion_tokens": 24,
+          "total_tokens": 64,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "code_markdown_table",
+        "category": "code",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          71093,
+          12305,
+          198,
+          727,
+          48794,
+          5070,
+          30863,
+          1590,
+          198,
+          262,
+          4071,
+          198,
+          262,
+          6943,
+          264,
+          1103,
+          314,
+          55588,
+          310,
+          264,
+          31038,
+          11925,
+          72815,
+          48794
+        ],
+        "usage": {
+          "prompt_tokens": 75,
+          "completion_tokens": 24,
+          "total_tokens": 99,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 6,
+        "stream_mtp_cycles": 6
+      },
+      {
+        "id": "general_en_plan",
+        "category": "general_en",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          14542,
+          11567,
+          3019,
+          364,
+          6992,
+          264,
+          2526,
+          27258,
+          878,
+          494,
+          27413,
+          310,
+          71100,
+          13,
+          2302,
+          1318,
+          424
+        ],
+        "usage": {
+          "prompt_tokens": 27,
+          "completion_tokens": 24,
+          "total_tokens": 51,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 8,
+        "stream_mtp_cycles": 8
+      },
+      {
+        "id": "general_en_plan",
+        "category": "general_en",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          8160,
+          369,
+          264,
+          61446,
+          11,
+          14542,
+          11567,
+          3019,
+          364,
+          6992,
+          264,
+          2526,
+          27258,
+          3638,
+          494,
+          27413,
+          310,
+          71100,
+          13,
+          271,
+          13962,
+          220,
+          16,
+          13
+        ],
+        "usage": {
+          "prompt_tokens": 62,
+          "completion_tokens": 24,
+          "total_tokens": 86,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "general_en_explain",
+        "category": "general_en",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          10597,
+          15673,
+          314,
+          3069,
+          41163,
+          42903,
+          369,
+          4779,
+          65393,
+          2998,
+          6973,
+          383,
+          2136,
+          68022,
+          13,
+          2302,
+          1318
+        ],
+        "usage": {
+          "prompt_tokens": 28,
+          "completion_tokens": 24,
+          "total_tokens": 52,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 8,
+        "stream_mtp_cycles": 8
+      },
+      {
+        "id": "general_en_explain",
+        "category": "general_en",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          44812,
+          42903,
+          369,
+          4779,
+          65393,
+          2998,
+          6973,
+          1521,
+          279,
+          33633,
+          19987,
+          318,
+          37,
+          1537,
+          19797,
+          791,
+          4763,
+          314,
+          4779,
+          23975,
+          8,
+          314,
+          279,
+          23681
+        ],
+        "usage": {
+          "prompt_tokens": 63,
+          "completion_tokens": 24,
+          "total_tokens": 87,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 10,
+        "stream_mtp_cycles": 10
+      },
+      {
+        "id": "general_ja_plan",
+        "category": "general_ja",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          176034,
+          14876,
+          95872,
+          113652,
+          24950,
+          247818,
+          29292,
+          185865,
+          28452,
+          114149,
+          104119,
+          153059,
+          247864,
+          192949,
+          247503,
+          170508,
+          247243,
+          28452,
+          247359,
+          196220,
+          95873
+        ],
+        "usage": {
+          "prompt_tokens": 31,
+          "completion_tokens": 24,
+          "total_tokens": 55,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 8,
+        "stream_mtp_cycles": 8
+      },
+      {
+        "id": "general_ja_plan",
+        "category": "general_ja",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          95872,
+          113652,
+          24950,
+          247818,
+          29292,
+          185865,
+          28452,
+          114149,
+          104119,
+          153059,
+          247864,
+          52020,
+          99720,
+          5205,
+          180367,
+          96588,
+          211352,
+          12512,
+          247208,
+          104119,
+          18602,
+          95879,
+          98227,
+          104119
+        ],
+        "usage": {
+          "prompt_tokens": 66,
+          "completion_tokens": 24,
+          "total_tokens": 90,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 9,
+        "stream_mtp_cycles": 9
+      },
+      {
+        "id": "general_ja_explain",
+        "category": "general_ja",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          369,
+          9859,
+          364,
+          264,
+          10597,
+          321,
+          3050,
+          15673,
+          303,
+          10452,
+          883,
+          3069,
+          436,
+          10673,
+          42903,
+          4478,
+          383,
+          2136,
+          68022
+        ],
+        "usage": {
+          "prompt_tokens": 31,
+          "completion_tokens": 24,
+          "total_tokens": 55,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "general_ja_explain",
+        "category": "general_ja",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          150110,
+          174267,
+          48213,
+          15685,
+          3950,
+          44,
+          15303,
+          96307,
+          98096,
+          98630,
+          27279,
+          241456,
+          246822,
+          96833,
+          9616,
+          10327,
+          16439,
+          2998,
+          7313,
+          19054,
+          96026,
+          98222,
+          170605,
+          217087
+        ],
+        "usage": {
+          "prompt_tokens": 66,
+          "completion_tokens": 24,
+          "total_tokens": 90,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "mixed_ja_en_translate",
+        "category": "mixed_ja_en",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          728,
+          310,
+          25,
+          198,
+          16,
+          13,
+          7860,
+          5437,
+          537,
+          279,
+          10452,
+          5020,
+          303,
+          6163,
+          198,
+          17,
+          13,
+          38256
+        ],
+        "usage": {
+          "prompt_tokens": 52,
+          "completion_tokens": 24,
+          "total_tokens": 76,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 9,
+        "stream_mtp_cycles": 9
+      },
+      {
+        "id": "mixed_ja_en_translate",
+        "category": "mixed_ja_en",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          332,
+          21874,
+          20858,
+          64700,
+          198,
+          2381,
+          1727,
+          1936,
+          579,
+          4722,
+          11,
+          279,
+          5077,
+          668,
+          381,
+          383,
+          66532,
+          279,
+          4203,
+          310,
+          1433,
+          2468,
+          35358,
+          11
+        ],
+        "usage": {
+          "prompt_tokens": 87,
+          "completion_tokens": 24,
+          "total_tokens": 111,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 8,
+        "stream_mtp_cycles": 8
+      },
+      {
+        "id": "mixed_ja_en_review",
+        "category": "mixed_ja_en",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          728,
+          310,
+          3286,
+          264,
+          87183,
+          4722,
+          5020,
+          364,
+          30246,
+          13,
+          2302,
+          1318,
+          821,
+          1965,
+          303,
+          6163,
+          31969,
+          11
+        ],
+        "usage": {
+          "prompt_tokens": 59,
+          "completion_tokens": 24,
+          "total_tokens": 83,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "mixed_ja_en_review",
+        "category": "mixed_ja_en",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          9,
+          256,
+          2972,
+          4904,
+          10432,
+          64700,
+          561,
+          11316,
+          369,
+          2708,
+          321,
+          70561,
+          31838,
+          11,
+          13057,
+          30506,
+          279,
+          8495,
+          318,
+          19755,
+          8,
+          7854,
+          539,
+          279
+        ],
+        "usage": {
+          "prompt_tokens": 94,
+          "completion_tokens": 24,
+          "total_tokens": 118,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 10,
+        "stream_mtp_cycles": 10
+      },
+      {
+        "id": "heldout_code_rate_limiter",
+        "category": "code",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654,
+          6638,
+          6369,
+          4127,
+          11231,
+          43,
+          17174,
+          440,
+          25,
+          198,
+          16,
+          13,
+          1510,
+          6957,
+          4702,
+          11,
+          11112
+        ],
+        "usage": {
+          "prompt_tokens": 43,
+          "completion_tokens": 24,
+          "total_tokens": 67,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "heldout_code_rate_limiter",
+        "category": "code",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          71093,
+          12305,
+          198,
+          464,
+          854,
+          198,
+          1445,
+          14856,
+          1120,
+          41489,
+          11,
+          40565,
+          1358,
+          1005,
+          6638,
+          6369,
+          4127,
+          11231,
+          43,
+          17174,
+          25,
+          198,
+          262,
+          4071
+        ],
+        "usage": {
+          "prompt_tokens": 78,
+          "completion_tokens": 24,
+          "total_tokens": 102,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 6,
+        "stream_mtp_cycles": 6
+      },
+      {
+        "id": "heldout_code_interval_schedule",
+        "category": "code",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654,
+          709,
+          421,
+          13325,
+          264,
+          6966,
+          6948,
+          25162,
+          314,
+          2397,
+          27335,
+          87502,
+          4139,
+          24868,
+          26126,
+          13,
+          6558
+        ],
+        "usage": {
+          "prompt_tokens": 40,
+          "completion_tokens": 24,
+          "total_tokens": 64,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 8,
+        "stream_mtp_cycles": 8
+      },
+      {
+        "id": "heldout_code_interval_schedule",
+        "category": "code",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          71093,
+          12305,
+          198,
+          727,
+          1866,
+          20974,
+          14980,
+          87502,
+          1494,
+          40798,
+          1590,
+          198,
+          262,
+          4071,
+          198,
+          262,
+          3301,
+          264,
+          6966,
+          6948,
+          25162,
+          314,
+          4139,
+          24868
+        ],
+        "usage": {
+          "prompt_tokens": 75,
+          "completion_tokens": 24,
+          "total_tokens": 99,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 6,
+        "stream_mtp_cycles": 6
+      },
+      {
+        "id": "heldout_general_en_incident",
+        "category": "general_en",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          61446,
+          10142,
+          56495,
+          50802,
+          364,
+          264,
+          3050,
+          14611,
+          25,
+          5492,
+          5165,
+          280,
+          24,
+          24,
+          37972,
+          33472,
+          1238
+        ],
+        "usage": {
+          "prompt_tokens": 33,
+          "completion_tokens": 24,
+          "total_tokens": 57,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "heldout_general_en_incident",
+        "category": "general_en",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          13962,
+          23288,
+          5165,
+          66413,
+          5764,
+          91690,
+          25,
+          280,
+          24,
+          24,
+          9632,
+          2179,
+          58219,
+          271,
+          332,
+          16,
+          13,
+          2025,
+          70147,
+          318,
+          50959,
+          21095,
+          17394,
+          31230
+        ],
+        "usage": {
+          "prompt_tokens": 68,
+          "completion_tokens": 24,
+          "total_tokens": 92,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 9,
+        "stream_mtp_cycles": 9
+      },
+      {
+        "id": "heldout_general_en_quant",
+        "category": "general_en",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          271,
+          248069,
+          271,
+          1206,
+          3418,
+          279,
+          6355,
+          31410,
+          1881,
+          2972,
+          19278,
+          16,
+          21,
+          93868,
+          2972,
+          54,
+          23,
+          32,
+          23,
+          8948,
+          23,
+          93868
+        ],
+        "usage": {
+          "prompt_tokens": 44,
+          "completion_tokens": 24,
+          "total_tokens": 68,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 10,
+        "stream_mtp_cycles": 10
+      },
+      {
+        "id": "heldout_general_en_quant",
+        "category": "general_en",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          1206,
+          3418,
+          279,
+          6355,
+          31410,
+          1881,
+          48804,
+          16,
+          21,
+          11,
+          457,
+          23,
+          32,
+          23,
+          8948,
+          23,
+          11,
+          321,
+          16030,
+          12,
+          7081,
+          8948,
+          19,
+          42903
+        ],
+        "usage": {
+          "prompt_tokens": 79,
+          "completion_tokens": 24,
+          "total_tokens": 103,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "heldout_general_ja_migration",
+        "category": "general_ja",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          369,
+          9859,
+          728,
+          310,
+          1791,
+          264,
+          61446,
+          3019,
+          303,
+          10452,
+          364,
+          81611,
+          449,
+          5138,
+          24609,
+          5165,
+          494,
+          63723,
+          8427
+        ],
+        "usage": {
+          "prompt_tokens": 41,
+          "completion_tokens": 24,
+          "total_tokens": 65,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "heldout_general_ja_migration",
+        "category": "general_ja",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          97155,
+          14876,
+          5205,
+          96163,
+          123572,
+          72945,
+          37037,
+          5165,
+          28452,
+          99681,
+          247264,
+          52122,
+          96365,
+          99681,
+          175517,
+          50040,
+          96760,
+          153059,
+          247864,
+          52020,
+          228379,
+          247243,
+          96252,
+          36298
+        ],
+        "usage": {
+          "prompt_tokens": 76,
+          "completion_tokens": 24,
+          "total_tokens": 100,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 9,
+        "stream_mtp_cycles": 9
+      },
+      {
+        "id": "heldout_general_ja_speculative",
+        "category": "general_ja",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          369,
+          9859,
+          728,
+          310,
+          10033,
+          303,
+          10452,
+          11,
+          30515,
+          11,
+          3069,
+          63520,
+          45543,
+          3070,
+          914,
+          2590,
+          2895,
+          310,
+          4478
+        ],
+        "usage": {
+          "prompt_tokens": 33,
+          "completion_tokens": 24,
+          "total_tokens": 57,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "heldout_general_ja_speculative",
+        "category": "general_ja",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          96259,
+          133437,
+          65037,
+          178498,
+          9616,
+          8068,
+          21473,
+          3588,
+          3574,
+          7313,
+          27279,
+          172510,
+          99158,
+          95909,
+          247981,
+          191040,
+          217087,
+          203830,
+          5205,
+          332,
+          12512,
+          112389,
+          174635,
+          9616
+        ],
+        "usage": {
+          "prompt_tokens": 68,
+          "completion_tokens": 24,
+          "total_tokens": 92,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 12,
+        "stream_mtp_cycles": 12
+      },
+      {
+        "id": "heldout_mixed_summary",
+        "category": "mixed_ja_en",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          728,
+          310,
+          25,
+          198,
+          16,
+          13,
+          7860,
+          5437,
+          537,
+          449,
+          6163,
+          7289,
+          5020,
+          303,
+          10452,
+          198,
+          17,
+          13
+        ],
+        "usage": {
+          "prompt_tokens": 40,
+          "completion_tokens": 24,
+          "total_tokens": 64,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 7,
+        "stream_mtp_cycles": 7
+      },
+      {
+        "id": "heldout_mixed_summary",
+        "category": "mixed_ja_en",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          332,
+          247359,
+          57750,
+          65377,
+          148638,
+          64700,
+          198,
+          148638,
+          213105,
+          192485,
+          159656,
+          19054,
+          247252,
+          104322,
+          28452,
+          96818,
+          95999,
+          148344,
+          104424,
+          5205,
+          239228,
+          220373,
+          217014,
+          105880
+        ],
+        "usage": {
+          "prompt_tokens": 75,
+          "completion_tokens": 24,
+          "total_tokens": 99,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 9,
+        "stream_mtp_cycles": 9
+      },
+      {
+        "id": "heldout_mixed_review",
+        "category": "mixed_ja_en",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          8160,
+          513,
+          279,
+          30246,
+          3286,
+          3387,
+          364,
+          279,
+          87183,
+          4953,
+          25,
+          271,
+          9,
+          256,
+          2972,
+          52486,
+          3855,
+          7065,
+          45522,
+          92217,
+          561,
+          4953,
+          5533
+        ],
+        "usage": {
+          "prompt_tokens": 44,
+          "completion_tokens": 24,
+          "total_tokens": 68,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 10,
+        "stream_mtp_cycles": 10
+      },
+      {
+        "id": "heldout_mixed_review",
+        "category": "mixed_ja_en",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          9,
+          256,
+          280,
+          24,
+          24,
+          37972,
+          181509,
+          96485,
+          122,
+          246826,
+          163400,
+          198808,
+          198,
+          9,
+          256,
+          1412,
+          4238,
+          181509,
+          247499,
+          155085,
+          198,
+          9,
+          256,
+          204015
+        ],
+        "usage": {
+          "prompt_tokens": 79,
+          "completion_tokens": 24,
+          "total_tokens": 103,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 8,
+        "stream_mtp_cycles": 8
+      },
+      {
+        "id": "long_2048",
+        "category": "long",
+        "endpoint": "/v1/completions",
+        "ids": [
+          369,
+          52965,
+          35718,
+          13,
+          1165,
+          1831,
+          279,
+          348,
+          6862,
+          7099,
+          9,
+          321,
+          348,
+          82,
+          42884,
+          18369,
+          11961,
+          524,
+          279,
+          1970,
+          13,
+          271,
+          332,
+          814
+        ],
+        "usage": {
+          "prompt_tokens": 2048,
+          "completion_tokens": 24,
+          "total_tokens": 2072,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 9,
+        "stream_mtp_cycles": 9
+      },
+      {
+        "id": "long_2048",
+        "category": "long",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          27775,
+          383,
+          279,
+          3766,
+          2790,
+          2128,
+          11,
+          1532,
+          369,
+          279,
+          9463,
+          314,
+          279,
+          1414,
+          321,
+          264,
+          11782,
+          314,
+          279,
+          41052,
+          23398,
+          13,
+          271,
+          13962
+        ],
+        "usage": {
+          "prompt_tokens": 2083,
+          "completion_tokens": 24,
+          "total_tokens": 2107,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 9,
+        "stream_mtp_cycles": 9
+      },
+      {
+        "id": "long_4096",
+        "category": "long",
+        "endpoint": "/v1/completions",
+        "ids": [
+          8981,
+          81726,
+          383,
+          12977,
+          71483,
+          198,
+          1031,
+          262,
+          687,
+          3462,
+          1153,
+          11,
+          3669,
+          816,
+          25,
+          592,
+          11,
+          1752,
+          25,
+          592,
+          8,
+          1411,
+          2168,
+          25
+        ],
+        "usage": {
+          "prompt_tokens": 4096,
+          "completion_tokens": 24,
+          "total_tokens": 4120,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 8,
+        "stream_mtp_cycles": 8
+      },
+      {
+        "id": "long_4096",
+        "category": "long",
+        "endpoint": "/v1/chat/completions",
+        "ids": [
+          760,
+          3766,
+          1414,
+          7701,
+          310,
+          381,
+          3799,
+          974,
+          4937,
+          1284,
+          17834,
+          303,
+          279,
+          1510,
+          5115,
+          69132,
+          63,
+          523,
+          4479,
+          889,
+          13,
+          5514,
+          369,
+          279
+        ],
+        "usage": {
+          "prompt_tokens": 4131,
+          "completion_tokens": 24,
+          "total_tokens": 4155,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "blocking_mtp_cycles": 8,
+        "stream_mtp_cycles": 8
+      }
+    ],
+    "passed": true,
+    "kv_capability": {
+      "schema_version": 1,
+      "capability_id": "22c71484da2499afe8765e1674cf21532b0103b3cc5e3211994998b7aaf8cf28",
+      "status": "rejected",
+      "runtime_action": "diagnostic_override",
+      "promotion_eligible": false,
+      "max_direct_rows": 0,
+      "max_serial_resident_rows": 0,
+      "persistent_bf16_mirror": false,
+      "decode_batch_variant": null,
+      "declaration": {
+        "backend": "hip_gfx1151",
+        "target_arch": "gfx1151",
+        "weight_quant": null,
+        "kv_storage": "int8_per_token_head",
+        "storage_layout": "uniform",
+        "scale_dtype": "fp32",
+        "scale_granularity": "per_token_head",
+        "max_direct_rows": 4,
+        "max_serial_resident_rows": 4,
+        "persistent_bf16_mirror": false,
+        "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans",
+        "reason": "registered int8 per-token-head paged decode chain; the row-batched producer and its strided reducer are implemented to physical c4"
+      },
+      "diagnostic_override": true,
+      "requested": {
+        "artifact_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+        "artifact_size_bytes": 17106775008,
+        "artifact_execution_fingerprint": "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa",
+        "backend": "hip_gfx1151",
+        "target_arch": "gfx1151",
+        "weight_quant": "gguf_q4_k_m",
+        "kv_storage": "int8_per_token_head",
+        "storage_layout": "uniform",
+        "scale_dtype": "fp32",
+        "scale_granularity": "per_token_head"
+      },
+      "effective_kv_storage": "int8_per_token_head",
+      "artifact": {
+        "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "size_bytes": 17106775008,
+        "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+        "content_verified": true,
+        "error": null
+      },
+      "evidence": {
+        "decision": "rejected",
+        "scope": "native_no_mirror_quality",
+        "quality_artifact": "benchmarks/results/2026-08-15-gfx1151-qwen38-27b-int8-kv-quality-rejected.json",
+        "reason": "complete 1K/8 transfer rejected: minimum-prompt top-1 agreement 0.7778 is below the 0.90 gate",
+        "max_direct_rows": 0,
+        "max_serial_resident_rows": 0,
+        "persistent_bf16_mirror": false,
+        "decode_batch_variant": null
+      },
+      "reason": "complete 1K/8 transfer rejected: minimum-prompt top-1 agreement 0.7778 is below the 0.90 gate; explicit unverified INT8 KV diagnostic override is enabled",
+      "max_packed_rows": 4
+    },
+    "startup": {
+      "eager_load": true,
+      "warmup_complete": true,
+      "last_timings_s": {
+        "engine_create_s": 0.001028,
+        "resident_prepare_s": 63.638156,
+        "warmup_s": 0.455627,
+        "scratch_probe_s": 2.3e-05,
+        "chat_smoke_s": null,
+        "mtp_smoke_s": null,
+        "startup_total_s": 64.141456
+      },
+      "checks": {
+        "raw_warmup": {
+          "status": "passed",
+          "max_tokens": 1
+        },
+        "scratch_probe": {
+          "enabled": false,
+          "status": "disabled"
+        },
+        "chat_smoke": {
+          "enabled": false,
+          "status": "disabled"
+        },
+        "mtp_smoke": {
+          "enabled": false,
+          "status": "disabled"
+        }
+      },
+      "memory": {
+        "startup_begin": {
+          "free_bytes": 128844787712,
+          "total_bytes": 128849018880,
+          "used_bytes": 4231168,
+          "free_gib": 119.996059,
+          "used_gib": 0.003941
+        },
+        "after_resident_prepare": {
+          "free_bytes": 104761016320,
+          "total_bytes": 128849018880,
+          "used_bytes": 24088002560,
+          "free_gib": 97.566299,
+          "used_gib": 22.433701
+        },
+        "after_raw_warmup": {
+          "free_bytes": 100794671104,
+          "total_bytes": 128849018880,
+          "used_bytes": 28054347776,
+          "free_gib": 93.872353,
+          "used_gib": 26.127647
+        },
+        "after_scratch_probe": {
+          "free_bytes": 100794671104,
+          "total_bytes": 128849018880,
+          "used_bytes": 28054347776,
+          "free_gib": 93.872353,
+          "used_gib": 26.127647
+        },
+        "guard": {
+          "free_bytes": 100794671104,
+          "total_bytes": 128849018880,
+          "used_bytes": 28054347776,
+          "free_gib": 93.872353,
+          "used_gib": 26.127647
+        }
+      },
+      "error": null
+    },
+    "long_prompt": {
+      "targets": [
+        2048,
+        4096
+      ],
+      "sources": [
+        "docs/PLAN.md",
+        "docs/KERNELS.md",
+        "docs/TESTING.md",
+        "docs/API.md",
+        "benchmarks/HISTORY.md",
+        "docs/RDNA3-TUNING-GUIDE.md"
+      ],
+      "rows": [
+        {
+          "id": "long_2048",
+          "target_prompt_tokens": 2048,
+          "prompt_tokens": 2048
+        },
+        {
+          "id": "long_4096",
+          "target_prompt_tokens": 4096,
+          "prompt_tokens": 4096
+        }
+      ],
+      "multichoice": {
+        "id": "long_4096",
+        "cycles": [
+          0,
+          0
+        ],
+        "speculates": false,
+        "ids": [
+          [
+            8981,
+            81726,
+            383,
+            12977,
+            71483,
+            198,
+            1031,
+            262,
+            687,
+            3462,
+            1153,
+            11,
+            3669,
+            816,
+            25,
+            592,
+            11,
+            1752,
+            25,
+            592,
+            8,
+            1411,
+            2168,
+            25
+          ],
+          [
+            8981,
+            81726,
+            383,
+            12977,
+            71483,
+            198,
+            1031,
+            262,
+            687,
+            3462,
+            1153,
+            11,
+            3669,
+            816,
+            25,
+            592,
+            11,
+            1752,
+            25,
+            592,
+            8,
+            1411,
+            2168,
+            25
+          ]
+        ],
+        "decline_reasons": [
+          "NotImplementedError:long-context packed AR decode requires a row-sized split-K workspace",
+          "request 121 unregistered or disabled"
+        ]
+      }
+    },
+    "determinism": {
+      "skipped": false,
+      "repeatability_rows": 20,
+      "repeatability_endpoint": "/v1/completions",
+      "second_schedule": "reversed",
+      "isolation": {
+        "id": "code_merge_intervals",
+        "endpoint": "/v1/completions",
+        "ids": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654,
+          709,
+          421,
+          78161,
+          48142,
+          7629,
+          7308,
+          26126,
+          11,
+          5346,
+          264,
+          26864,
+          10970,
+          1228,
+          2424,
+          13,
+          2302
+        ],
+        "neighbour_id": "long_4096",
+        "neighbour_ids": [
+          8981,
+          81726,
+          383,
+          12977,
+          71483,
+          198,
+          1031,
+          262,
+          687,
+          3462,
+          1153,
+          11,
+          3669,
+          816,
+          25,
+          592,
+          11,
+          1752,
+          25,
+          592,
+          8,
+          1411,
+          2168,
+          25
+        ]
+      }
+    },
+    "final_queue": {
+      "depth": 0,
+      "max_depth": null,
+      "worker_active": false,
+      "active_requests": 0,
+      "max_active_requests": 4,
+      "scheduler_fairness": {
+        "policy": "fifo_compatible_sampling_key",
+        "compatible_sampling_coalescing": true,
+        "continuous_decode": true,
+        "preemptive_fairness": false
+      },
+      "batch_window_ms": 0.0
+    }
+  },
+  "finding": {
+    "scope": "Diagnostic sweep and instrumented traces; not a gate result.",
+    "summary": "A multi-choice (n=2) MTP request at a prompt of about 1020 tokens or more returns the correct autoregressive ids but runs zero speculative cycles. Both choices fall back to autoregressive decoding inside the speculative cycle.",
+    "boundary_observations": {
+      "speculated": [
+        64,
+        256,
+        512,
+        768,
+        896,
+        960,
+        1000
+      ],
+      "declined": [
+        1020,
+        1023,
+        1024,
+        1025,
+        2048,
+        3072,
+        4096
+      ],
+      "units": "prompt tokens, n=2 group, /v1/completions, same server and flags",
+      "note": "Observed in an interactive sweep against the same server configuration, not by the gate. The gate's own long-prompt multi-choice row is recorded in gate_report.long_prompt.multichoice."
+    },
+    "guards": [
+      {
+        "path": "hipengine/runtime/qwen35_gguf_runner.py",
+        "line": 21839,
+        "message": "packed target verifier currently requires context < 1024",
+        "condition": "layout.max_live_count >= 1024"
+      },
+      {
+        "path": "hipengine/runtime/qwen35_gguf_runner.py",
+        "line": 5908,
+        "message": "long-context packed AR decode requires a row-sized split-K workspace",
+        "condition": "split_workspace is None or rows or num_splits too small"
+      }
+    ],
+    "traces": [
+      "[cycle-failure] ids=(3, 4) reason=NotImplementedError:packed target verifier currently requires context < 1024",
+      "[cycle-failure] ids=(2, 3) reason=NotImplementedError:long-context packed AR decode requires a row-sized split-K workspace",
+      "[packed-split] rows=2 ws_rows=None num_splits=4 ws_splits=None max_context_len=1024 block_size=256 retained_decode=False retained_append=False retained_kernel=False"
+    ],
+    "removal_experiment": "Removing the first guard (and nothing else) moved the refusal to the second: every grouped request at 1020-4096 tokens still failed before commit, except one 4096-token chat/completions group, which speculated eight cycles with ids identical to its autoregressive baseline. The guard was restored; the packed path is therefore not categorically incapable past 1024, and the remaining limit is admission or workspace sizing rather than arithmetic.",
+    "diagnostic_defect_fixed": "The refusal was invisible: the failed cycle is recovered by autoregressive decoding and its rows are retired, so every later step reported the planner reason no_provider with provider_decline_reason='request N unregistered or disabled'. The response now publishes the recorded cycle-failure detail (failure_reasons), which is why the gate report above names both the real cause and the planner reason."
+  },
+  "coverage": {
+    "covered": "36 short-prompt rows and 4 long-prompt rows over both completion endpoints as a blocking autoregressive / blocking MTP / streamed MTP triple, an inverted-schedule repeatability pass over all 20 rows, and a concurrent isolation check whose neighbour is the 4096-token row.",
+    "not_covered": "Packed multi-choice speculation past roughly 1016 prompt tokens (open work), prefix-cache interaction with the long rows, throughput, and approximate-KV quality."
+  }
+}

@@ -7,8 +7,14 @@ import os
 from collections.abc import Sequence
 
 from hipengine.execution_profiles import EXECUTION_PROFILE_ENV, ExecutionProfile
-from hipengine.kvcache import PREFIX_CACHE_CHOICES
+from hipengine.kvcache import (
+    PREFIX_CACHE_CHOICES,
+    PREFIX_CACHE_DEFAULT,
+    resolve_prefix_cache_mode,
+)
+from hipengine.kvcache.dms_config import DMSConfig
 from hipengine.server.api import ServerConfig, create_app
+from hipengine.server.log_style import COLOR_MODES, build_log_config
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -154,7 +160,8 @@ def build_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=_env_bool("HIPENGINE_STARTUP_CHAT_SMOKE", True),
         help=(
-            "Run a bounded production-shaped chat request during eager startup "
+            "Run bounded production-shaped chat requests during eager startup, "
+            "including one on the speculative MTP route when it is enabled "
             "(env HIPENGINE_STARTUP_CHAT_SMOKE; default: true)"
         ),
     )
@@ -186,25 +193,30 @@ def build_parser() -> argparse.ArgumentParser:
             "(env HIPENGINE_CHAT_DEFAULT_MAX_TOKENS; default: 4096)"
         ),
     )
+    parser.add_argument("--dms-metadata", help="External DMS sidecar metadata for single-request compact BF16 KV")
+    parser.add_argument("--dms-prefill-mode", choices=("dense_pool", "layer_outer"), default="dense_pool")
     parser.add_argument(
         "--kv-storage",
-        default=os.environ.get("HIPENGINE_KV_STORAGE", "int8_per_token_head"),
+        default=os.environ.get("HIPENGINE_KV_STORAGE", "bf16"),
         help=(
-            "Server-wide KV storage policy: auto, bf16, or int8_per_token_head "
-            "(default). int8_per_token_head is used only when the loaded "
-            "artifact is qualified for it; an unqualified artifact fails closed "
-            "to BF16 and records the reason in /ready and the KVCache summary. "
-            "Pass bf16 to force the previous behavior."
+            "Server-wide KV storage: auto, bf16, or int8_per_token_head "
+            "(default: bf16). With --dms-metadata-path, selects the compact DMS "
+            "codec; otherwise selects dense KV storage. BF16 uses higher-precision "
+            "payloads. INT8 uses per-token/head scales; requested and effective "
+            "storage are reported in diagnostics."
         ),
+    )
+    parser.add_argument(
+        "--dms-metadata-path",
+        help="DMS sidecar metadata for online eviction; uses one resident request and complete-prompt caching",
     )
     parser.add_argument(
         "--kv-scale-dtype",
         default=os.environ.get("HIPENGINE_KV_SCALE_DTYPE", "fp32"),
         help=(
-            "INT8 KV scale dtype: fp16 or fp32 (default: fp32). The retained "
-            "INT8 KV qualification evidence for the supported dense GGUF "
-            "artifacts is keyed on fp32 scales; fp16 scales resolve to no "
-            "matching contract and therefore fail closed to BF16."
+            "INT8 KV scale dtype: fp16 or fp32 (default: fp32). "
+            "The selected implementation resolves the effective dtype; compact "
+            "DMS INT8 uses fp32 scales."
         ),
     )
     parser.add_argument(
@@ -317,12 +329,49 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--vae-model",
+        default=os.environ.get("HIPENGINE_YUE2_VAE_DIR"),
+        help=(
+            "Companion decoder checkpoint for a model that needs one (YuE2 "
+            "decodes with m-a-p/YuE2-Vae; env HIPENGINE_YUE2_VAE_DIR)"
+        ),
+    )
+    parser.add_argument(
+        "--vision-max-pixels",
+        type=_positive_int,
+        default=(
+            None
+            if os.environ.get("HIPENGINE_VISION_MAX_PIXELS") is None
+            else _positive_int(os.environ["HIPENGINE_VISION_MAX_PIXELS"])
+        ),
+        help=(
+            "Decoded-pixel bound for HTTP vision input; default takes the "
+            "engine's declared vision_max_pixels, or 1 MP for the Qwen4Exp "
+            "scope (env HIPENGINE_VISION_MAX_PIXELS)"
+        ),
+    )
+    parser.add_argument(
+        "--vision-max-image-bytes",
+        type=_positive_int,
+        default=(
+            None
+            if os.environ.get("HIPENGINE_VISION_MAX_IMAGE_BYTES") is None
+            else _positive_int(os.environ["HIPENGINE_VISION_MAX_IMAGE_BYTES"])
+        ),
+        help=(
+            "Compressed base64 PNG payload bound for HTTP vision input; "
+            "default scales with the pixel bound "
+            "(env HIPENGINE_VISION_MAX_IMAGE_BYTES)"
+        ),
+    )
+    parser.add_argument(
         "--speculative-candidate-budget",
         type=_positive_int,
-        default=int(os.environ.get("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "4")),
+        default=_env_positive_int("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET"),
         help=(
-            "Fixed candidate budget for the explicit speculative owner "
-            "(env HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET; default: 4)"
+            "Candidate depth for the speculative owner; omit to resolve it from "
+            "the loaded model's serving evidence "
+            "(env HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET)"
         ),
     )
     parser.add_argument(
@@ -331,11 +380,26 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("HIPENGINE_METRICS", "off"),
         help="Metrics endpoint mode (env HIPENGINE_METRICS; default: off)",
     )
+    # HTTP uses the engine loop's radix default. HIPENGINE_PREFIX_CACHE is an
+    # explicit override; request-level capability decisions remain in the owner.
     parser.add_argument(
         "--prefix-cache",
         choices=PREFIX_CACHE_CHOICES,
-        default=os.environ.get("HIPENGINE_PREFIX_CACHE", "off"),
-        help="Prefix-cache mode (env HIPENGINE_PREFIX_CACHE; default: off)",
+        default=os.environ.get("HIPENGINE_PREFIX_CACHE"),
+        help=(
+            f"Prefix-cache mode (env HIPENGINE_PREFIX_CACHE; default: "
+            f"{PREFIX_CACHE_DEFAULT}; DMS reuses complete prompts, not partial prefixes)"
+        ),
+    )
+    parser.add_argument(
+        "--info",
+        action=argparse.BooleanOptionalAction,
+        default=_env_bool("HIPENGINE_INFO", False),
+        help=(
+            "Log one per-request summary at completion: tokens in/out, prefill and "
+            "decode rates, time to first token, wall time, and KV memory "
+            "(env HIPENGINE_INFO; default: false)"
+        ),
     )
     parser.add_argument(
         "--debug",
@@ -363,6 +427,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", default="127.0.0.1", help="Bind host")
     parser.add_argument("--port", type=int, default=8000, help="Bind port")
     parser.add_argument("--log-level", default="info", help="uvicorn log level")
+    parser.add_argument(
+        "--log-color",
+        choices=COLOR_MODES,
+        default=os.environ.get("HIPENGINE_LOG_COLOR", "auto"),
+        help=(
+            "ANSI color for server logs: auto styles a TTY only (honoring NO_COLOR "
+            "and FORCE_COLOR), always styles redirected output such as a tee'd "
+            "pane, never disables styling "
+            "(env HIPENGINE_LOG_COLOR; default: auto)"
+        ),
+    )
     return parser
 
 
@@ -383,7 +458,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         startup_min_free_mib=args.startup_min_free_mib,
         max_context_tokens=args.max_context_tokens,
         chat_default_max_tokens=args.chat_default_max_tokens,
+        dms=(DMSConfig(
+            args.dms_metadata, prefill_mode=args.dms_prefill_mode
+        ) if args.dms_metadata else None),
         kv_storage=args.kv_storage,
+        dms_metadata_path=args.dms_metadata_path,
         kv_scale_dtype=args.kv_scale_dtype,
         kv_scale_granularity=args.kv_scale_granularity,
         generation_batch_window_ms=args.generation_batch_window_ms,
@@ -392,6 +471,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         request_timeout_ms=args.request_timeout_ms,
         metrics=args.metrics,
         prefix_cache=args.prefix_cache,
+        info=args.info,
         debug=args.debug,
         replay_dir=args.replay_dir,
         replay_redaction=args.replay_redaction,
@@ -404,13 +484,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         draft_model=args.draft_model,
         speculative_candidate_budget=args.speculative_candidate_budget,
         vision_model=args.vision_model,
+        vae_model=args.vae_model,
+        vision_max_pixels=args.vision_max_pixels,
+        vision_max_image_bytes=args.vision_max_image_bytes,
     )
     app = create_app(config)
     try:
         import uvicorn
     except Exception as exc:  # pragma: no cover - dependency guard
         raise RuntimeError("uvicorn is required; reinstall hipengine with its default dependencies") from exc
-    uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level)
+    uvicorn.run(
+        app,
+        host=args.host,
+        port=args.port,
+        log_level=args.log_level,
+        log_config=build_log_config(mode=args.log_color),
+    )
     return 0
 
 

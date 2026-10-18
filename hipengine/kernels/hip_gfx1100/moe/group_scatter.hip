@@ -484,6 +484,54 @@ __global__ void qwen35_moe_gather_packed_hidden_kernel(
   packed_hidden[idx] = value;
 }
 
+// Row-block form of the gather above for the shapes that allow it: one block
+// per packed row, and each thread moves eight BF16 elements with one 128-bit
+// load/store pair. The element kernel spends an int64 divide and a 2-byte
+// global store on every element -- 480 us for 8192 x 2816 on a W7900, about
+// 96 GB/s -- where the row is a contiguous copy whose lane lookup and divide
+// are per row. The bytes written are the same: a live lane copies its token's
+// row, and a negative lane or an out-of-range token writes zeros.
+constexpr int kGatherRowThreads = 128;
+constexpr int kGatherRowSpan = 8;  // uint16 elements per 128-bit move
+
+__global__ void qwen35_moe_gather_packed_hidden_rows_kernel(
+    const uint16_t* __restrict__ hidden_states,
+    const int64_t* __restrict__ sorted_lanes,
+    uint16_t* __restrict__ packed_hidden,
+    int64_t rows,
+    int64_t tokens,
+    int64_t top_k,
+    int64_t hidden_size) {
+  const int64_t row = static_cast<int64_t>(blockIdx.x);
+  if (row >= rows) {
+    return;
+  }
+  const int64_t lane = sorted_lanes[row];
+  const int64_t token_idx = lane >= 0 ? lane / top_k : -1;
+  const bool live = token_idx >= 0 && token_idx < tokens;
+  const uint16_t* src = hidden_states + (live ? token_idx : 0) * hidden_size;
+  uint16_t* dst = packed_hidden + row * hidden_size;
+  const int spans = static_cast<int>(hidden_size / kGatherRowSpan);
+  for (int span = static_cast<int>(threadIdx.x); span < spans; span += kGatherRowThreads) {
+    const uint4 value = live
+        ? *reinterpret_cast<const uint4*>(src + span * kGatherRowSpan)
+        : make_uint4(0U, 0U, 0U, 0U);
+    *reinterpret_cast<uint4*>(dst + span * kGatherRowSpan) = value;
+  }
+}
+
+// The row form needs whole rows, a row width that is a whole number of
+// 128-bit spans, and 16-byte aligned bases so every span is an aligned move.
+bool gather_rows_form_applies(
+    const uint16_t* hidden_states, const uint16_t* packed_hidden,
+    int64_t total_elements, int64_t hidden_size) {
+  const int64_t rows = total_elements / hidden_size;
+  return hidden_size % kGatherRowSpan == 0 && total_elements % hidden_size == 0 &&
+      rows <= static_cast<int64_t>(INT32_MAX) &&
+      reinterpret_cast<uintptr_t>(hidden_states) % 16 == 0 &&
+      reinterpret_cast<uintptr_t>(packed_hidden) % 16 == 0;
+}
+
 int64_t next_power_of_two_i64(int64_t value) {
   int64_t out = 1;
   while (out < value) {
@@ -1121,6 +1169,23 @@ extern "C" int hipengine_qwen35_moe_gather_packed_hidden_lowp(
     hipStream_t stream) {
   if (total_elements <= 0 || tokens <= 0 || top_k <= 0 || hidden_size <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (gather_rows_form_applies(hidden_states, packed_hidden, total_elements, hidden_size)) {
+    const int64_t rows = total_elements / hidden_size;
+    hipLaunchKernelGGL(
+        qwen35_moe_gather_packed_hidden_rows_kernel,
+        dim3(static_cast<unsigned int>(rows)),
+        dim3(kGatherRowThreads),
+        0,
+        stream,
+        hidden_states,
+        sorted_lanes,
+        packed_hidden,
+        rows,
+        tokens,
+        top_k,
+        hidden_size);
+    return static_cast<int>(hipGetLastError());
   }
   const int threads = 256;
   const int blocks = static_cast<int>((total_elements + threads - 1) / threads);

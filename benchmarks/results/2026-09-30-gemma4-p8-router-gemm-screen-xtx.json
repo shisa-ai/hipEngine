@@ -1,0 +1,263 @@
+{
+  "kind": "gemma4-p8-router-gemm-screen",
+  "gpu": "AMD Radeon RX 7900 XTX",
+  "shape": {
+    "hidden": 2816,
+    "experts": 128
+  },
+  "repeats": {
+    "1": 2000,
+    "16": 2000,
+    "128": 600,
+    "256": 200,
+    "512": 200,
+    "640": 200,
+    "768": 200,
+    "896": 200,
+    "1024": 200,
+    "4096": 60
+  },
+  "weight_f16_downcast_maxabs": 6.102025508880615e-05,
+  "rows": [
+    {
+      "tokens": 1,
+      "candidate": "A' untiled 512 (production)",
+      "ms": 0.006484457291662693,
+      "maxabs": 1.430511474609375e-06
+    },
+    {
+      "tokens": 1,
+      "candidate": "B bf16_to_f32 + sgemm",
+      "ms": 0.052922246512025595,
+      "maxabs": 2.956390380859375e-05
+    },
+    {
+      "tokens": 1,
+      "candidate": "B' sgemm alone",
+      "ms": 0.04466450959444046,
+      "maxabs": 2.956390380859375e-05
+    },
+    {
+      "tokens": 1,
+      "candidate": "C f16 downcast route",
+      "ms": 0.07034620735794306,
+      "maxabs": 0.0029558539390563965
+    },
+    {
+      "tokens": 16,
+      "candidate": "A' untiled 512 (production)",
+      "ms": 0.008973436430096626,
+      "maxabs": 1.9073486328125e-06
+    },
+    {
+      "tokens": 16,
+      "candidate": "B bf16_to_f32 + sgemm",
+      "ms": 0.048240513540804386,
+      "maxabs": 2.956390380859375e-05
+    },
+    {
+      "tokens": 16,
+      "candidate": "B' sgemm alone",
+      "ms": 0.04504712484776974,
+      "maxabs": 2.956390380859375e-05
+    },
+    {
+      "tokens": 16,
+      "candidate": "C f16 downcast route",
+      "ms": 0.0709683308377862,
+      "maxabs": 0.00387728214263916
+    },
+    {
+      "tokens": 128,
+      "candidate": "A tt16/128 (production)",
+      "ms": 0.02424552881469329,
+      "maxabs": 3.814697265625e-06
+    },
+    {
+      "tokens": 128,
+      "candidate": "B bf16_to_f32 + sgemm",
+      "ms": 0.06821675691753626,
+      "maxabs": 4.57763671875e-05
+    },
+    {
+      "tokens": 128,
+      "candidate": "B' sgemm alone",
+      "ms": 0.0625938642770052,
+      "maxabs": 4.57763671875e-05
+    },
+    {
+      "tokens": 128,
+      "candidate": "C f16 downcast route",
+      "ms": 0.08597242956360181,
+      "maxabs": 0.004557132720947266
+    },
+    {
+      "tokens": 256,
+      "candidate": "A tt16/128 (production)",
+      "ms": 0.03696950152516365,
+      "maxabs": 3.814697265625e-06
+    },
+    {
+      "tokens": 256,
+      "candidate": "B bf16_to_f32 + sgemm",
+      "ms": 0.12275960762053728,
+      "maxabs": 4.57763671875e-05
+    },
+    {
+      "tokens": 256,
+      "candidate": "B' sgemm alone",
+      "ms": 0.11177701409906149,
+      "maxabs": 4.57763671875e-05
+    },
+    {
+      "tokens": 256,
+      "candidate": "C f16 downcast route",
+      "ms": 0.08778058923780918,
+      "maxabs": 0.004557132720947266
+    },
+    {
+      "tokens": 512,
+      "candidate": "A tt16/128 (production)",
+      "ms": 0.06690710783004761,
+      "maxabs": 3.814697265625e-06
+    },
+    {
+      "tokens": 512,
+      "candidate": "B bf16_to_f32 + sgemm",
+      "ms": 0.12978050392121077,
+      "maxabs": 4.673004150390625e-05
+    },
+    {
+      "tokens": 512,
+      "candidate": "B' sgemm alone",
+      "ms": 0.11321538593620062,
+      "maxabs": 4.673004150390625e-05
+    },
+    {
+      "tokens": 512,
+      "candidate": "C f16 downcast route",
+      "ms": 0.0983017310500145,
+      "maxabs": 0.004573822021484375
+    },
+    {
+      "tokens": 640,
+      "candidate": "A tt16/128 (production)",
+      "ms": 0.08287107106298208,
+      "maxabs": 3.814697265625e-06
+    },
+    {
+      "tokens": 640,
+      "candidate": "B bf16_to_f32 + sgemm",
+      "ms": 0.13180548325181007,
+      "maxabs": 4.673004150390625e-05
+    },
+    {
+      "tokens": 640,
+      "candidate": "B' sgemm alone",
+      "ms": 0.11308488436043262,
+      "maxabs": 4.673004150390625e-05
+    },
+    {
+      "tokens": 640,
+      "candidate": "C f16 downcast route",
+      "ms": 0.10168482083827257,
+      "maxabs": 0.004573822021484375
+    },
+    {
+      "tokens": 768,
+      "candidate": "A tt16/128 (production)",
+      "ms": 0.11660063173621893,
+      "maxabs": 3.814697265625e-06
+    },
+    {
+      "tokens": 768,
+      "candidate": "B bf16_to_f32 + sgemm",
+      "ms": 0.13321740087121725,
+      "maxabs": 4.673004150390625e-05
+    },
+    {
+      "tokens": 768,
+      "candidate": "B' sgemm alone",
+      "ms": 0.11302502825856209,
+      "maxabs": 4.673004150390625e-05
+    },
+    {
+      "tokens": 768,
+      "candidate": "C f16 downcast route",
+      "ms": 0.10341085493564606,
+      "maxabs": 0.005027294158935547
+    },
+    {
+      "tokens": 896,
+      "candidate": "A tt16/128 (production)",
+      "ms": 0.15443179290741682,
+      "maxabs": 3.814697265625e-06
+    },
+    {
+      "tokens": 896,
+      "candidate": "B bf16_to_f32 + sgemm",
+      "ms": 0.13226934242993593,
+      "maxabs": 4.673004150390625e-05
+    },
+    {
+      "tokens": 896,
+      "candidate": "B' sgemm alone",
+      "ms": 0.11146645527333021,
+      "maxabs": 4.673004150390625e-05
+    },
+    {
+      "tokens": 896,
+      "candidate": "C f16 downcast route",
+      "ms": 0.10588678065687418,
+      "maxabs": 0.005027294158935547
+    },
+    {
+      "tokens": 1024,
+      "candidate": "A tt16/128 (production)",
+      "ms": 0.17106751445680857,
+      "maxabs": 3.814697265625e-06
+    },
+    {
+      "tokens": 1024,
+      "candidate": "B bf16_to_f32 + sgemm",
+      "ms": 0.1337303640320897,
+      "maxabs": 4.673004150390625e-05
+    },
+    {
+      "tokens": 1024,
+      "candidate": "B' sgemm alone",
+      "ms": 0.1120875682681799,
+      "maxabs": 4.673004150390625e-05
+    },
+    {
+      "tokens": 1024,
+      "candidate": "C f16 downcast route",
+      "ms": 0.11702218558639288,
+      "maxabs": 0.005027294158935547
+    },
+    {
+      "tokens": 4096,
+      "candidate": "A tt16/128 (production)",
+      "ms": 0.7509190123528242,
+      "maxabs": 3.814697265625e-06
+    },
+    {
+      "tokens": 4096,
+      "candidate": "B bf16_to_f32 + sgemm",
+      "ms": 0.2442766446620226,
+      "maxabs": 7.534027099609375e-05
+    },
+    {
+      "tokens": 4096,
+      "candidate": "B' sgemm alone",
+      "ms": 0.18810505668322244,
+      "maxabs": 7.534027099609375e-05
+    },
+    {
+      "tokens": 4096,
+      "candidate": "C f16 downcast route",
+      "ms": 0.30178042749563855,
+      "maxabs": 0.0059812068939208984
+    }
+  ]
+}

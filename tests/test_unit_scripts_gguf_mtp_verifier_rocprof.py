@@ -11,11 +11,32 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
+from scripts import gguf_mtp_verifier_rocprof as profiler
 from scripts.gguf_mtp_verifier_rocprof import (
+    NATIVE_SPEC_TARGET_ROWS,
     _default_roctx_sdk,
     _prepare_roctx_override,
     _roctx_candidates,
 )
+
+
+def test_module_puts_its_own_worktree_first_on_sys_path() -> None:
+    """Child mode re-runs this file, so sys.path[0] is scripts/ and hipengine
+    would otherwise resolve to the editable install's other worktree."""
+
+    import importlib
+
+    saved = list(sys.path)
+    try:
+        sys.path[:] = [entry for entry in sys.path if entry != str(profiler.REPO_ROOT)]
+        assert str(profiler.REPO_ROOT) not in sys.path
+        importlib.reload(profiler)
+        assert sys.path[0] == str(profiler.REPO_ROOT), sys.path[:3]
+    finally:
+        sys.path[:] = saved
+    assert (profiler.REPO_ROOT / "hipengine" / "__init__.py").is_file()
 
 
 def test_candidates_cover_the_base_prefix_not_just_the_venv() -> None:
@@ -56,3 +77,207 @@ def test_a_missing_library_says_what_was_searched(tmp_path) -> None:
         assert "--roctx-sdk" in message
     else:  # pragma: no cover
         raise AssertionError("expected FileNotFoundError for a non-existent SDK path")
+
+
+def test_quant_selection_reaches_the_child(monkeypatch) -> None:
+    """A plain artifact aborts with a sentinel token when the prefill quant axis
+    is left at the generic default, so the flag must survive arg parsing."""
+
+    captured = {}
+    monkeypatch.setattr(profiler, "_run_child", lambda args: captured.update(vars(args)) or 0)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["gguf_mtp_verifier_rocprof.py", "--child", "--quant", "gguf_q4_k_m"],
+    )
+    assert profiler.main() == 0
+    assert captured["quant"] == "gguf_q4_k_m"
+
+
+def test_native_device_accept_commit_defaults_to_the_production_bucket(monkeypatch) -> None:
+    """The census must replay the same graph bucket production replays, so the
+    device-side accept/commit default is on; the opt-out stays available."""
+
+    captured = {}
+    monkeypatch.setattr(profiler, "_run_child", lambda args: captured.update(vars(args)) or 0)
+    monkeypatch.setattr(sys, "argv", ["gguf_mtp_verifier_rocprof.py", "--child"])
+    assert profiler.main() == 0
+    assert captured["native_device_accept_commit"] is True
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["gguf_mtp_verifier_rocprof.py", "--child", "--no-native-device-accept-commit"],
+    )
+    assert profiler.main() == 0
+    assert captured["native_device_accept_commit"] is False
+
+
+def test_native_cycle_accepts_every_bucket_row_count(monkeypatch) -> None:
+    """The census covers the whole native graph envelope, not just B1-B3."""
+
+    assert NATIVE_SPEC_TARGET_ROWS == frozenset({2, 3, 4, 5, 6, 7, 8})
+    monkeypatch.setattr(profiler, "_run_child", lambda _args: 0)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "gguf_mtp_verifier_rocprof.py",
+            "--child",
+            "--native-spec-target-cycle",
+            "--mode",
+            "block-verify",
+            "--block-rows",
+            "4",
+        ],
+    )
+    assert profiler.main() == 0
+
+
+@pytest.mark.parametrize("rows", ("5", "6", "7", "8"))
+def test_native_bucket_admits_rows_above_the_budget_envelope(monkeypatch, rows) -> None:
+    """Five to eight rows are reachable and must be capturable.
+
+    The fused rounded add/RMSNorm wrapper used to cap the whole chain at four
+    rows.  Its device kernel is one block per row with an identical reduction
+    tree, so the cap was a wrapper guard rather than a kernel limit, and rows
+    five to eight now run the real native cycle.
+    """
+
+    monkeypatch.setattr(profiler, "_run_child", lambda _args: 0)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "gguf_mtp_verifier_rocprof.py",
+            "--child",
+            "--native-spec-target-cycle",
+            "--mode",
+            "block-verify",
+            "--block-rows",
+            rows,
+        ],
+    )
+    assert profiler.main() == 0
+
+
+@pytest.mark.parametrize("rows", ("1", "9"))
+def test_native_cycle_rejects_rows_outside_the_bucket(monkeypatch, rows) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "gguf_mtp_verifier_rocprof.py",
+            "--child",
+            "--native-spec-target-cycle",
+            "--mode",
+            "block-verify",
+            "--block-rows",
+            rows,
+        ],
+    )
+    with pytest.raises(SystemExit) as excinfo:
+        profiler.main()
+    assert excinfo.value.code == 2
+
+
+_TWO_CARD_ROCminfo = """\
+=====================
+HSA Agents
+=====================
+*******
+Agent 1
+*******
+  Name:                    AMD Ryzen 9 5950X 16-Core Processor
+  Marketing Name:          AMD Ryzen 9 5950X 16-Core Processor
+*******
+Agent 2
+*******
+  Name:                    gfx1100
+  Marketing Name:          AMD Radeon Pro W7900
+*******
+Agent 3
+*******
+  Name:                    gfx1100
+  Marketing Name:          AMD Radeon RX 7900 XTX
+"""
+
+
+def _label_for(monkeypatch, visible: str | None) -> str:
+    class _Result:
+        stdout = _TWO_CARD_ROCminfo
+
+    monkeypatch.setattr(profiler.subprocess, "run", lambda *a, **k: _Result())
+    for name in ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES"):
+        monkeypatch.delenv(name, raising=False)
+    if visible is not None:
+        monkeypatch.setenv("HIP_VISIBLE_DEVICES", visible)
+    return profiler._hardware_label()
+
+
+def test_hardware_label_names_the_card_the_process_will_use(monkeypatch) -> None:
+    """The evidence policy binds a rate to a physical device.
+
+    rocminfo lists every card in the machine, so reporting the first gfx agent
+    mislabels a run pinned to a second card.
+    """
+
+    assert _label_for(monkeypatch, None) == (
+        "AMD Radeon Pro W7900 (gfx1100), visible ordinal 0 of 2"
+    )
+    assert _label_for(monkeypatch, "1") == (
+        "AMD Radeon RX 7900 XTX (gfx1100), visible ordinal 1 of 2"
+    )
+
+
+def test_hardware_label_survives_an_unmappable_visibility_selection(monkeypatch) -> None:
+    """A UUID selection cannot be mapped to an ordinal, so do not guess."""
+
+    assert _label_for(monkeypatch, "GPU-cc4d02090dc9c3ff") == "unknown AMD GPU (unknown)"
+
+
+def test_visible_gpu_index_prefers_hip_over_rocr(monkeypatch) -> None:
+    for name in ("HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES"):
+        monkeypatch.delenv(name, raising=False)
+    assert profiler._visible_gpu_index() == 0
+    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "1")
+    assert profiler._visible_gpu_index() == 1
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "0")
+    assert profiler._visible_gpu_index() == 0
+
+
+def test_default_raw_root_is_per_shape(monkeypatch) -> None:
+    """A row sweep must not delete the previous shape's kernel trace.
+
+    The default used to be one fixed path that every run removed first, so
+    only the last run's trace survived while earlier artifacts still pointed
+    at it.
+    """
+
+    import argparse
+
+    def root(**overrides):
+        base = {"mode": "block-verify", "block_rows": 4, "quant": "gguf_ud_q4_k_m"}
+        base.update(overrides)
+        return profiler._default_raw_root(argparse.Namespace(**base))
+
+    assert root() == Path("/tmp/hipengine-gguf-mtp-verifier-rocprof/block-verify-rows4-gguf_ud_q4_k_m")
+    assert root(block_rows=8) != root(block_rows=4)
+    assert root(quant="gguf_ud_q4_k_s") != root(quant="gguf_ud_q4_k_m")
+    assert root(mode="serial-step") == Path(
+        "/tmp/hipengine-gguf-mtp-verifier-rocprof/serial-step-gguf_ud_q4_k_m"
+    )
+
+
+def test_raw_root_resolution_honours_an_explicit_path() -> None:
+    """An explicit --raw-root wins; an unset one derives from the shape."""
+
+    import argparse
+
+    explicit = argparse.Namespace(
+        raw_root=Path("/tmp/mine"), mode="block-verify", block_rows=4, quant=None
+    )
+    assert profiler._resolve_raw_root(explicit) == Path("/tmp/mine")
+    derived = argparse.Namespace(
+        raw_root=None, mode="block-verify", block_rows=4, quant="gguf_ud_q4_k_m"
+    )
+    assert profiler._resolve_raw_root(derived) == profiler._default_raw_root(derived)

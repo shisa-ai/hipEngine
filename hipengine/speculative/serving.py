@@ -4,11 +4,24 @@ This module owns only immutable pre-mutation decisions.  Model plugins supply
 retained evidence; server/model code supplies mechanical request identity.  The
 key deliberately has no prompt text, token IDs, benchmark category, heldout, or
 oracle fields.
+
+Admission is a physical and ownership question: artifact execution identity,
+backend, arch, quant, KV storage, realized group width, resident capacity,
+candidate depth, sampling mode, and memory fit.  The artifact axis is layout
+coverage, not byte identity: a revision that routes through the same layouts
+inherits the retained qualification, while an artifact introducing an
+unmeasured layout still fails closed.  Request shape and runtime profile are not
+admission axes.  Session length, prompt context, output horizon, and the
+resolved variant-manifest hash describe the envelope a benchmark measured; they
+change with normal serving traffic and with any kernel or variant selection, so
+gating on them silently disables an already-qualified path.  The provider keeps
+its own profile authorization (for example FP16 recurrent-state spec-dec2 needs
+a complete production manifest).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 import hashlib
 import json
@@ -16,6 +29,18 @@ from typing import Mapping, Sequence
 
 
 _DEFAULT_STRICT_FALLBACK = "gguf_target_ar"
+
+# Failed axes that are correctness or resource boundaries rather than merely
+# unmeasured physical cells: sampling semantics change what the verifier is
+# allowed to do, and a memory-fit failure means the cell does not fit at all.
+# Everything else records only that no retained row measured the cell, which
+# never withholds a path the kernels implement.
+STRUCTURAL_REJECTION_AXES = frozenset(
+    {
+        "sampling_mode_unmeasured",
+        "insufficient_memory",
+    }
+)
 
 
 def _required_text(value: object, name: str) -> str:
@@ -41,7 +66,12 @@ def _canonical_sha256(payload: object) -> str:
 
 @dataclass(frozen=True, slots=True)
 class SpeculativeMTPServingKey:
-    """Complete content, runtime, and request-shape identity for one plan."""
+    """Complete content and physical-runtime identity for one plan.
+
+    ``artifact_sha256`` and ``artifact_size_bytes`` are provenance: they report
+    which file is resident.  Admission reads ``artifact_execution_fingerprint``,
+    which is the only artifact axis that participates in matching.
+    """
 
     artifact_sha256: str | None
     artifact_size_bytes: int | None
@@ -49,18 +79,16 @@ class SpeculativeMTPServingKey:
     backend: str
     target_arch: str
     weight_quant: str
-    execution_profile: str
-    execution_profile_manifest_sha256: str
     kv_storage: str
     kv_layout: str
     realized_group_rows: int
     resident_capacity: int
     candidate_budget: int
     sampling_mode: str
-    max_sequence_length: int
-    context_tokens: int
-    output_horizon_tokens: int
     memory_fit: bool
+    kv_scale_dtype: str | None = None
+    kv_scale_granularity: str | None = None
+    artifact_execution_fingerprint: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -70,17 +98,17 @@ class SpeculativeMTPServingKey:
         )
         object.__setattr__(
             self,
-            "execution_profile_manifest_sha256",
+            "artifact_execution_fingerprint",
             _sha256(
-                self.execution_profile_manifest_sha256,
-                "execution_profile_manifest_sha256",
+                self.artifact_execution_fingerprint,
+                "artifact_execution_fingerprint",
+                optional=True,
             ),
         )
         for name in (
             "backend",
             "target_arch",
             "weight_quant",
-            "execution_profile",
             "kv_storage",
             "kv_layout",
             "sampling_mode",
@@ -90,9 +118,6 @@ class SpeculativeMTPServingKey:
             "realized_group_rows",
             "resident_capacity",
             "candidate_budget",
-            "max_sequence_length",
-            "context_tokens",
-            "output_horizon_tokens",
         ):
             value = int(getattr(self, name))
             if value <= 0:
@@ -110,28 +135,32 @@ class SpeculativeMTPServingKey:
         return {
             "artifact_sha256": self.artifact_sha256,
             "artifact_size_bytes": self.artifact_size_bytes,
+            "artifact_execution_fingerprint": self.artifact_execution_fingerprint,
             "content_verified": self.content_verified,
             "backend": self.backend,
             "target_arch": self.target_arch,
             "weight_quant": self.weight_quant,
-            "execution_profile": self.execution_profile,
-            "execution_profile_manifest_sha256": self.execution_profile_manifest_sha256,
             "kv_storage": self.kv_storage,
             "kv_layout": self.kv_layout,
             "realized_group_rows": self.realized_group_rows,
             "resident_capacity": self.resident_capacity,
             "candidate_budget": self.candidate_budget,
             "sampling_mode": self.sampling_mode,
-            "max_sequence_length": self.max_sequence_length,
-            "context_tokens": self.context_tokens,
-            "output_horizon_tokens": self.output_horizon_tokens,
             "memory_fit": self.memory_fit,
+            **({"kv_scale_dtype": self.kv_scale_dtype} if self.kv_scale_dtype else {}),
+            **({"kv_scale_granularity": self.kv_scale_granularity} if self.kv_scale_granularity else {}),
         }
 
 
 @dataclass(frozen=True, slots=True)
 class SpeculativeMTPServingEvidence:
-    """One model-plugin-owned retained serving scope."""
+    """One model-plugin-owned retained serving scope.
+
+    ``artifact_sha256`` and ``artifact_size_bytes`` record the artifact the
+    evidence was measured on.  ``artifact_execution_fingerprint`` is the binding
+    that admits: a row that declares no identity never admits, and the recorded
+    bytes are provenance rather than a gate.
+    """
 
     evidence_key: str
     artifact_sha256: str
@@ -139,8 +168,6 @@ class SpeculativeMTPServingEvidence:
     backend: str
     target_arch: str
     weight_quant: str
-    execution_profile: str
-    execution_profile_manifest_sha256: str
     kv_storage: str
     kv_layout: str
     realized_group_rows: int
@@ -151,11 +178,6 @@ class SpeculativeMTPServingEvidence:
     # a shallower chain is strictly less speculative work on the same path.
     candidate_budget: int
     sampling_modes: tuple[str, ...]
-    max_sequence_length: int
-    min_context_tokens: int
-    max_context_tokens: int
-    min_output_horizon_tokens: int
-    max_output_horizon_tokens: int
     reason: str
     evidence_artifacts: tuple[str, ...]
     max_realized_group_rows: int | None = None
@@ -163,6 +185,12 @@ class SpeculativeMTPServingEvidence:
     automatic_eligible: bool = False
     # Target ownership is part of qualification, not inferred from N or backend.
     packed_c1_target: bool = False
+    # Layout-coverage binding: this row admits any artifact whose execution
+    # identity matches, which is what kernel routing and verification behaviour
+    # depend on.  ``None`` means the identity is unresolved, and an unresolved
+    # row never admits; record one with
+    # ``python3 scripts/gguf_execution_identity.py <artifact.gguf>``.
+    artifact_execution_fingerprint: str | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -170,7 +198,6 @@ class SpeculativeMTPServingEvidence:
             "backend",
             "target_arch",
             "weight_quant",
-            "execution_profile",
             "kv_storage",
             "kv_layout",
             "reason",
@@ -184,10 +211,11 @@ class SpeculativeMTPServingEvidence:
         )
         object.__setattr__(
             self,
-            "execution_profile_manifest_sha256",
+            "artifact_execution_fingerprint",
             _sha256(
-                self.execution_profile_manifest_sha256,
-                "execution_profile_manifest_sha256",
+                self.artifact_execution_fingerprint,
+                "artifact_execution_fingerprint",
+                optional=True,
             ),
         )
         for name in (
@@ -195,11 +223,6 @@ class SpeculativeMTPServingEvidence:
             "realized_group_rows",
             "resident_capacity",
             "candidate_budget",
-            "max_sequence_length",
-            "min_context_tokens",
-            "max_context_tokens",
-            "min_output_horizon_tokens",
-            "max_output_horizon_tokens",
         ):
             value = int(getattr(self, name))
             if value <= 0:
@@ -217,10 +240,6 @@ class SpeculativeMTPServingEvidence:
         object.__setattr__(self, "max_realized_group_rows", max_group_rows)
         if self.packed_c1_target and max_group_rows != 1:
             raise ValueError("packed_c1_target requires a one-row evidence scope")
-        if self.max_context_tokens < self.min_context_tokens:
-            raise ValueError("context-token bounds are invalid")
-        if self.max_output_horizon_tokens < self.min_output_horizon_tokens:
-            raise ValueError("output-horizon bounds are invalid")
         modes = tuple(_required_text(value, "sampling_mode") for value in self.sampling_modes)
         if not modes or len(set(modes)) != len(modes):
             raise ValueError("sampling_modes must be non-empty and unique")
@@ -239,11 +258,10 @@ class SpeculativeMTPServingEvidence:
             "evidence_key": self.evidence_key,
             "artifact_sha256": self.artifact_sha256,
             "artifact_size_bytes": self.artifact_size_bytes,
+            "artifact_execution_fingerprint": self.artifact_execution_fingerprint,
             "backend": self.backend,
             "target_arch": self.target_arch,
             "weight_quant": self.weight_quant,
-            "execution_profile": self.execution_profile,
-            "execution_profile_manifest_sha256": self.execution_profile_manifest_sha256,
             "kv_storage": self.kv_storage,
             "kv_layout": self.kv_layout,
             "realized_group_rows": self.realized_group_rows,
@@ -251,11 +269,6 @@ class SpeculativeMTPServingEvidence:
             "resident_capacity": self.resident_capacity,
             "candidate_budget": self.candidate_budget,
             "sampling_modes": list(self.sampling_modes),
-            "max_sequence_length": self.max_sequence_length,
-            "min_context_tokens": self.min_context_tokens,
-            "max_context_tokens": self.max_context_tokens,
-            "min_output_horizon_tokens": self.min_output_horizon_tokens,
-            "max_output_horizon_tokens": self.max_output_horizon_tokens,
             "reason": self.reason,
             "evidence_artifacts": list(self.evidence_artifacts),
             "strict_fallback_key": self.strict_fallback_key,
@@ -290,6 +303,7 @@ class SpeculativeMTPStaticEligibility:
     evidence_fingerprint: str | None = None
     evidence_artifacts: tuple[str, ...] = ()
     packed_c1_target: bool = False
+    implementation_key: str | None = None
 
     def __post_init__(self) -> None:
         state = SpeculativeMTPStaticState(self.state)
@@ -303,13 +317,20 @@ class SpeculativeMTPStaticEligibility:
             raise ValueError("packed_c1_target requires speculative eligibility with a positive row bound")
         if min(candidates, rows) < 0:
             raise ValueError("static eligibility bounds must be non-negative")
+        implementation = (
+            None if self.implementation_key is None
+            else _required_text(self.implementation_key, "implementation_key")
+        )
         if state is SpeculativeMTPStaticState.SPECULATIVE_CAPABLE:
             if candidates <= 0 or rows <= 0:
                 raise ValueError("speculative-capable eligibility requires positive bounds")
-            evidence_key = _required_text(self.evidence_key, "evidence_key")
-            evidence_fingerprint = _required_text(
-                self.evidence_fingerprint,
-                "evidence_fingerprint",
+            evidence_key = (
+                None if implementation is not None and self.evidence_key is None
+                else _required_text(self.evidence_key, "evidence_key")
+            )
+            evidence_fingerprint = (
+                None if implementation is not None and self.evidence_fingerprint is None
+                else _required_text(self.evidence_fingerprint, "evidence_fingerprint")
             )
         else:
             if candidates or rows or self.automatic_eligible:
@@ -336,6 +357,7 @@ class SpeculativeMTPStaticEligibility:
         object.__setattr__(self, "evidence_key", evidence_key)
         object.__setattr__(self, "evidence_fingerprint", evidence_fingerprint)
         object.__setattr__(self, "evidence_artifacts", artifacts)
+        object.__setattr__(self, "implementation_key", implementation)
 
     @property
     def eligible(self) -> bool:
@@ -358,6 +380,7 @@ class SpeculativeMTPStaticEligibility:
             "evidence_key": self.evidence_key,
             "evidence_fingerprint": self.evidence_fingerprint,
             "evidence_artifacts": list(self.evidence_artifacts),
+            **({"implementation_key": self.implementation_key} if self.implementation_key else {}),
         }
 
     @classmethod
@@ -375,13 +398,14 @@ class SpeculativeMTPStaticEligibility:
         artifacts = payload.get("evidence_artifacts")
         return cls(
             state=SpeculativeMTPStaticState(state),
-            reason=str(payload.get("reason") or "model_plugin_scope_not_qualified"),
+            reason=str(payload.get("reason") or "model_plugin_scope_unmeasured"),
             max_candidate_count=int(payload.get("max_candidate_count", 0) or 0),
             max_realized_group_rows=int(
                 payload.get("max_realized_group_rows", 0) or 0
             ),
             automatic_eligible=bool(payload.get("automatic_eligible")),
             packed_c1_target=bool(payload.get("packed_c1_target", False)),
+            implementation_key=payload.get("implementation_key"),
             strict_fallback_key=str(
                 payload.get("strict_fallback_key") or _DEFAULT_STRICT_FALLBACK
             ),
@@ -421,6 +445,28 @@ class SpeculativeMTPServingDecision:
     static_max_realized_group_rows: int | None = None
     static_eligibility_override: SpeculativeMTPStaticEligibility | None = None
     packed_c1_target: bool = False
+    failed_axes: tuple[str, ...] = ()
+    implementation_key: str | None = None
+    # ``explicit`` when the request asked for speculation, ``automatic`` when the
+    # server's own policy did.  Only an explicit request may admit on
+    # implementation capability.
+    request_mode: str = "automatic"
+
+    @property
+    def structural_rejection(self) -> str | None:
+        """Return the failed correctness axis, independent of the summary reason.
+
+        ``reason`` reports the first failed axis of the row that matched the
+        most key axes, which is useful for diagnostics but is not a statement
+        about the other axes. A caller deciding whether a rejection is an
+        unmeasured physical cell (overridable) or a correctness boundary
+        (never overridable) must read every failed axis, not the summary.
+        """
+
+        for axis in self.failed_axes:
+            if axis in STRUCTURAL_REJECTION_AXES:
+                return axis
+        return None
 
     @property
     def static_eligibility(self) -> SpeculativeMTPStaticEligibility:
@@ -450,10 +496,14 @@ class SpeculativeMTPServingDecision:
             evidence_key=self.evidence_key,
             evidence_fingerprint=self.evidence_fingerprint,
             evidence_artifacts=self.evidence_artifacts,
+            implementation_key=self.implementation_key,
         )
 
     @property
     def plan_fingerprint(self) -> str:
+        # ``failed_axes`` is deliberately absent: it is a pure function of the
+        # key and the selected evidence row, and both are already covered here
+        # (the key directly, the row through its evidence fingerprint).
         return _canonical_sha256(
             {
                 "admitted": self.admitted,
@@ -485,7 +535,78 @@ class SpeculativeMTPServingDecision:
             "automatic_eligible": self.automatic_eligible,
             "static_max_realized_group_rows": self.static_max_realized_group_rows,
             "static_eligibility": self.static_eligibility.as_dict(),
+            "failed_axes": list(self.failed_axes),
+            "request_mode": self.request_mode,
+            **(
+                {"admission_basis": "implementation", "implementation_key": self.implementation_key}
+                if self.implementation_key else {}
+            ),
         }
+
+
+@dataclass(frozen=True, slots=True)
+class SpeculativeMTPServingImplementation:
+    """Executable scope, independently of performance/quality evidence rows.
+
+    A declaration of what the kernels can execute for one KV contract.  It
+    answers the runnability question only: an explicit request that no evidence
+    row admits still runs when this declaration covers it, and a capability gap
+    is the only reason to refuse.  Automatic policy stays with the retained
+    evidence unless the declaration itself is automatic-eligible, which is for a
+    contract that has no evidence rows and no wider policy to widen.
+    """
+
+    name: str
+    kv_storage: str
+    backends: tuple[tuple[str, str], ...]
+    max_candidate_count: int
+    max_group_rows: int
+    group_rejection_reason: str
+    kv_layouts: tuple[str, ...] = ("uniform",)
+    sampling_modes: tuple[str, ...] = ("greedy_fast",)
+    automatic_eligible: bool = False
+
+    def resolve(
+        self,
+        key: SpeculativeMTPServingKey,
+        *,
+        request_mode: str = "automatic",
+    ) -> SpeculativeMTPServingDecision:
+        """Decide from implementation capability alone.
+
+        This is the runnability question of docs/EXECUTION-PROFILES.md section
+        1.1: implemented semantics, compatible storage and layout, supported
+        sampling, allocated bounds, and available memory.  A missing
+        measurement is not one of the checks.  The admission is automatic only
+        when the declaration says so: automatic policy otherwise stays with the
+        retained evidence.
+        """
+
+        checks = (
+            ((key.backend, key.target_arch) in self.backends, "mtp_backend_unsupported"),
+            (key.memory_fit, "insufficient_memory"),
+            (key.kv_storage == self.kv_storage, "mtp_kv_storage_unsupported"),
+            (key.kv_layout in self.kv_layouts, "mtp_kv_layout_unsupported"),
+            (key.kv_scale_dtype in {None, "fp16", "fp32"}, "mtp_kv_scale_dtype_unsupported"),
+            (key.kv_scale_granularity in {None, "per_token_head"}, "mtp_kv_scale_granularity_unsupported"),
+            (key.sampling_mode in self.sampling_modes, "mtp_sampling_unsupported"),
+            (key.candidate_budget <= self.max_candidate_count, "mtp_candidate_depth_unsupported"),
+            (key.realized_group_rows <= self.max_group_rows, self.group_rejection_reason),
+        )
+        failed = tuple(reason for passed, reason in checks if not passed)
+        admitted = not failed
+        return SpeculativeMTPServingDecision(
+            key=key, admitted=admitted,
+            selected_route="speculative_mtp" if admitted else "default",
+            selected_candidate_count=key.candidate_budget if admitted else 0,
+            reason=failed[0] if failed else f"implemented_{self.name}",
+            strict_fallback_key=_DEFAULT_STRICT_FALLBACK,
+            automatic_eligible=bool(admitted and self.automatic_eligible),
+            static_max_realized_group_rows=self.max_group_rows if admitted else None,
+            failed_axes=failed,
+            implementation_key=self.name,
+            request_mode=str(request_mode),
+        )
 
 
 def _reject(
@@ -494,6 +615,8 @@ def _reject(
     evidence: SpeculativeMTPServingEvidence | None,
     *,
     static_eligibility: SpeculativeMTPStaticEligibility | None = None,
+    failed_axes: Sequence[str] = (),
+    request_mode: str = "automatic",
 ) -> SpeculativeMTPServingDecision:
     return SpeculativeMTPServingDecision(
         key=key,
@@ -515,6 +638,47 @@ def _reject(
         ),
         automatic_eligible=False,
         static_eligibility_override=static_eligibility,
+        failed_axes=tuple(str(axis) for axis in failed_axes),
+        request_mode=str(request_mode),
+    )
+
+
+def unsupported_contract(
+    decision: SpeculativeMTPServingDecision,
+) -> SpeculativeMTPServingDecision:
+    """Relabel a terminal miss as the capability fact it actually is.
+
+    When no implementation declaration covers the contract, the request is
+    refused because nothing implements it -- not because nothing measured it.
+    The per-axis measurement detail stays in ``failed_axes``; only the summary
+    reason changes, so the caller reports a capability miss.
+    """
+
+    if decision.admitted:
+        return decision
+    return replace(decision, reason="mtp_contract_unsupported")
+
+
+def _artifact_identity_matches(
+    key: SpeculativeMTPServingKey,
+    row: SpeculativeMTPServingEvidence,
+) -> bool:
+    """Whether the row's declared execution identity covers this artifact.
+
+    This decides which retained measurement *applies*, never whether the cell
+    runs: a cell no row covers is unmeasured, and the implementation
+    declaration admits it.  Coverage is layout, not bytes, so a revision
+    routing through the same kernels inherits the row.  An unverified artifact
+    matches nothing, because attributing a measurement to a file we did not
+    verify would overstate its provenance -- it still runs, on capability.
+    """
+
+    fingerprint = key.artifact_execution_fingerprint
+    return bool(
+        key.content_verified
+        and fingerprint is not None
+        and row.artifact_execution_fingerprint is not None
+        and fingerprint == row.artifact_execution_fingerprint
     )
 
 
@@ -524,51 +688,27 @@ def _evidence_checks(
 ) -> tuple[tuple[bool, str], ...]:
     return (
         (
-            key.artifact_sha256 == row.artifact_sha256
-            and key.artifact_size_bytes == row.artifact_size_bytes,
-            "artifact_not_qualified",
+            _artifact_identity_matches(key, row),
+            "artifact_unmeasured",
         ),
-        (key.backend == row.backend, "backend_not_qualified"),
-        (key.target_arch == row.target_arch, "target_arch_not_qualified"),
-        (key.weight_quant == row.weight_quant, "weight_quant_not_qualified"),
-        (
-            key.execution_profile == row.execution_profile,
-            "execution_profile_not_qualified",
-        ),
-        (
-            key.execution_profile_manifest_sha256
-            == row.execution_profile_manifest_sha256,
-            "execution_profile_manifest_not_qualified",
-        ),
-        (key.kv_storage == row.kv_storage, "kv_storage_not_qualified"),
-        (key.kv_layout == row.kv_layout, "kv_layout_not_qualified"),
+        (key.backend == row.backend, "backend_unmeasured"),
+        (key.target_arch == row.target_arch, "target_arch_unmeasured"),
+        (key.weight_quant == row.weight_quant, "weight_quant_unmeasured"),
+        (key.kv_storage == row.kv_storage, "kv_storage_unmeasured"),
+        (key.kv_layout == row.kv_layout, "kv_layout_unmeasured"),
         (
             key.realized_group_rows == row.realized_group_rows,
-            "physical_group_not_qualified",
+            "physical_group_unmeasured",
         ),
         (
             key.resident_capacity == row.resident_capacity,
-            "resident_capacity_not_qualified",
+            "resident_capacity_unmeasured",
         ),
         (
             key.candidate_budget <= row.candidate_budget,
-            "candidate_budget_not_qualified",
+            "candidate_budget_unmeasured",
         ),
-        (key.sampling_mode in row.sampling_modes, "sampling_mode_not_qualified"),
-        (
-            key.max_sequence_length == row.max_sequence_length,
-            "max_sequence_length_not_qualified",
-        ),
-        (
-            row.min_context_tokens <= key.context_tokens <= row.max_context_tokens,
-            "context_bucket_not_qualified",
-        ),
-        (
-            row.min_output_horizon_tokens
-            <= key.output_horizon_tokens
-            <= row.max_output_horizon_tokens,
-            "output_horizon_not_qualified",
-        ),
+        (key.sampling_mode in row.sampling_modes, "sampling_mode_unmeasured"),
         (key.memory_fit, "insufficient_memory"),
     )
 
@@ -576,6 +716,8 @@ def _evidence_checks(
 def _admit(
     key: SpeculativeMTPServingKey,
     row: SpeculativeMTPServingEvidence,
+    *,
+    request_mode: str = "automatic",
 ) -> SpeculativeMTPServingDecision:
     return SpeculativeMTPServingDecision(
         key=key,
@@ -594,34 +736,91 @@ def _admit(
         automatic_eligible=row.automatic_eligible,
         packed_c1_target=row.packed_c1_target,
         static_max_realized_group_rows=row.max_realized_group_rows,
+        request_mode=str(request_mode),
     )
+
+
+def resolve_max_qualified_candidate_budget(
+    evidence_rows: Sequence[SpeculativeMTPServingEvidence],
+    *,
+    key: SpeculativeMTPServingKey,
+) -> int | None:
+    """Deepest candidate depth the retained rows qualify for this cell.
+
+    Every axis except the requested depth must match, so the answer is the
+    strongest depth the artifact's own evidence authorizes for this physical
+    identity rather than a global constant. Automatic-eligible rows are
+    preferred over explicit-only rows, mirroring the admission rule: a depth
+    retained only for explicit use never becomes the default selection.
+    ``None`` means no retained row describes the cell at all.
+    """
+
+    best: int | None = None
+    best_automatic = False
+    for row in evidence_rows:
+        if not all(
+            passed
+            for passed, reason in _evidence_checks(key, row)
+            if reason != "candidate_budget_unmeasured"
+        ):
+            continue
+        depth = int(row.candidate_budget)
+        automatic = bool(row.automatic_eligible)
+        if (
+            best is None
+            or (automatic and not best_automatic)
+            or (automatic == best_automatic and depth > best)
+        ):
+            best = depth
+            best_automatic = automatic
+    return best
 
 
 def resolve_speculative_mtp_serving_plan(
     evidence_rows: Sequence[SpeculativeMTPServingEvidence],
     *,
     key: SpeculativeMTPServingKey,
+    request_mode: str = "automatic",
 ) -> SpeculativeMTPServingDecision:
     """Resolve one exact model-plugin evidence row or fail closed to K0.
 
-    A model artifact may carry independently qualified profile/shape scopes.
-    The first exact row wins. When no row admits, rejection is attributed to the
-    row matching the most key axes (ties preserve declaration order), keeping a
-    stable and useful pre-mutation failure reason without merging scopes.
+    A model artifact may carry independently qualified physical scopes.  Every
+    axis is physical or ownership identity, so several rows can describe the
+    same cell; the cell then takes the strongest retained authorization.  An
+    automatic-eligible row wins over an explicit-only row for the same cell,
+    and ties preserve declaration order.  When no row admits, rejection is
+    attributed to the row matching the most key axes (ties preserve declaration
+    order), keeping a stable and useful pre-mutation failure reason without
+    merging scopes.
     """
 
     evidence = tuple(evidence_rows)
-    if not key.content_verified or key.artifact_sha256 is None:
-        return _reject(key, "artifact_identity_unverified", evidence[0] if evidence else None)
     if not evidence:
-        return _reject(key, "no_model_plugin_evidence", None)
+        return _reject(
+            key,
+            "no_model_plugin_evidence",
+            None,
+            request_mode=request_mode,
+        )
+
+    admitted: SpeculativeMTPServingEvidence | None = None
+    for row in evidence:
+        if all(passed for passed, _reason in _evidence_checks(key, row)):
+            if admitted is None or (
+                row.automatic_eligible and not admitted.automatic_eligible
+            ):
+                admitted = row
+            if admitted.automatic_eligible:
+                break
+    if admitted is not None:
+        return _admit(key, admitted, request_mode=request_mode)
 
     rejected: list[
         tuple[
             int,
             int,
             SpeculativeMTPServingEvidence,
-            str,
+            tuple[str, ...],
             SpeculativeMTPStaticEligibility | None,
         ]
     ] = []
@@ -630,11 +829,9 @@ def resolve_speculative_mtp_serving_plan(
         failed_reasons = tuple(
             reason for passed, reason in checks if not passed
         )
-        if not failed_reasons:
-            return _admit(key, row)
         static_eligibility = None
         if (
-            failed_reasons == ("physical_group_not_qualified",)
+            failed_reasons == ("physical_group_unmeasured",)
             and key.realized_group_rows < row.realized_group_rows
         ):
             static_eligibility = SpeculativeMTPStaticEligibility(
@@ -653,32 +850,44 @@ def resolve_speculative_mtp_serving_plan(
                 sum(bool(passed) for passed, _reason in checks),
                 -index,
                 row,
-                failed_reasons[0],
+                failed_reasons,
                 static_eligibility,
             )
         )
 
-    _matched, _order, row, reason, static_eligibility = max(
+    _matched, _order, row, failed_axes, static_eligibility = max(
         rejected,
         key=lambda item: (
             item[0],
             item[4] is not None,
+            # Same rule as admission: when several rows describe one physical
+            # cell, the strongest retained authorization wins over declaration
+            # order.
+            bool(item[4].automatic_eligible) if item[4] is not None else False,
             item[1],
         ),
     )
     return _reject(
         key,
-        reason,
+        # The summary reason is the first failed axis in declaration order.
+        # Consumers deciding whether the rejection is overridable must read
+        # ``failed_axes`` instead, which carries every failed axis.
+        failed_axes[0],
         row,
         static_eligibility=static_eligibility,
+        failed_axes=failed_axes,
+        request_mode=request_mode,
     )
 
 
 __all__ = [
     "SpeculativeMTPServingDecision",
     "SpeculativeMTPServingEvidence",
+    "SpeculativeMTPServingImplementation",
     "SpeculativeMTPServingKey",
     "SpeculativeMTPStaticEligibility",
     "SpeculativeMTPStaticState",
+    "resolve_max_qualified_candidate_budget",
     "resolve_speculative_mtp_serving_plan",
+    "STRUCTURAL_REJECTION_AXES",
 ]

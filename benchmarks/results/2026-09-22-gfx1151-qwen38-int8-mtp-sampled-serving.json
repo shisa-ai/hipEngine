@@ -1,0 +1,4280 @@
+{
+  "schema": 1,
+  "title": "Qwen3.8-27B Q4_K_M on gfx1151: sampled MTP on INT8 KV speculates, matches its own no-MTP INT8 autoregressive baseline, and is seed-repeatable",
+  "date": "2026-09-22",
+  "status": "measured_accepted",
+  "performance_claim": false,
+  "kind": "http_correctness",
+  "purpose": "Task 5 acceptance. The INT8 declaration states that temperature, penalty, logit_bias and suppress_token_ids requests are executed by the sampled MTP route; this records the live measurement of that statement through the HTTP surface, plus a re-run of the induced-law gate on the same revision. No speed claim is made or implied.",
+  "model": {
+    "file": "Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "quant": "gguf_q4_k_m"
+  },
+  "host": "gfx1151",
+  "backend": "hip_gfx1151",
+  "kv_storage": "int8_per_token_head",
+  "kv_scale_dtype": "fp32",
+  "kv_scale_granularity": "per_token_head",
+  "execution_profile": "production",
+  "git_head": "1ef7126af",
+  "max_context_tokens": 9216,
+  "speculative_candidate_budget": 3,
+  "server": {
+    "port": 18198,
+    "served_model_name": "int8-lru-diag-20260922",
+    "capability_id": "22c71484da2499afe8765e1674cf21532b0103b3cc5e3211994998b7aaf8cf28",
+    "capability_status": "rejected",
+    "runtime_action": "diagnostic_override",
+    "diagnostic_override": true,
+    "persistent_bf16_mirror": false,
+    "prefix_cache": "off",
+    "command": "bash /tmp/t17-env-int8-lru.sh /home/lhl/miniforge3/envs/vllm/bin/python -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --served-model-name int8-lru-diag-20260922 --max-context-tokens 9216 --max-active-requests 4 --kv-storage int8_per_token_head --kv-scale-dtype fp32 --execution-profile production --speculative-mtp-serving enabled --speculative-candidate-budget 3 --prefix-cache off --no-startup-chat-smoke --no-startup-scratch-probe --host 127.0.0.1 --port 18198 --info"
+  },
+  "environment": {
+    "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED": "1",
+    "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": "1",
+    "HIPENGINE_GGUF_INT8_KV_BF16_PREFIX_FULL_LAYERS": "0",
+    "HIPENGINE_MTP2_OUTPUT_SPANS": "1"
+  },
+  "acceptance": {
+    "speculates": "Every speculative arm reported used=true with a real cycle count (8-15 cycles per request); every baseline arm reported used=false, route=default, cycles=0, so the comparison is against true no-MTP autoregressive decoding.",
+    "baseline_parity": "Finish reason and the usage triple match in all 12 request pairs per run. The route-specific completion_tokens_details are reported per arm and are not compared: they carry draft accept counts that a no-MTP baseline cannot have.",
+    "repeatability": "Two runs of the whole matrix with the same seeds produced identical ids and identical cycle counts for both arms.",
+    "induced_law": "scripts/mtp_sampled_accept_distribution_gate.py re-run on the same revision: verdict pass, 824 induced-law comparisons with max total variation 4.53e-16 and max KL 9.03e-16 against a 1e-9 tolerance, 144/144 autoregressive-law agreements, and an 18-row Monte-Carlo arm with top-1 agreement 1.0."
+  },
+  "summary": {
+    "configs": [
+      "temperature_top_p",
+      "penalties",
+      "logit_bias",
+      "suppress_token_ids"
+    ],
+    "prompts": 3,
+    "rows_per_run": 12,
+    "runs": 2,
+    "speculated_every_row": true,
+    "cycle_range": [
+      8,
+      15
+    ],
+    "finish_reason_parity": true,
+    "usage_parity": true,
+    "ids_match_baseline_rows": 12,
+    "repeatable": true,
+    "deterministic_across_gate_versions": true
+  },
+  "observation": {
+    "ids_match_baseline": "12 of 12 seeded requests emitted exactly the token ids their own no-MTP baseline emitted. This was not required by the acceptance and is not a proof of the distribution: it is what a shared seeded draw stream produces when the coupling is exact, and it is the strongest end-to-end signal available from a token comparison. The induced-law gate above is what proves the law."
+  },
+  "gate_command": ".venv/bin/python scripts/int8_mtp_sampled_gate.py --base-url http://127.0.0.1:18198 --model int8-lru-diag-20260922 --allow-kv-diagnostic-override --json /tmp/int8-mtp-sampled-gate.json",
+  "induced_law_command": "bash /tmp/therock-env.sh /home/lhl/miniforge3/envs/vllm/bin/python scripts/mtp_sampled_accept_distribution_gate.py --use-wmma-prefill --use-gemv-decode --backend hip_gfx1151 --output /tmp/induced-law-20260922.json",
+  "gate_report": {
+    "scope": "sampled MTP on INT8 KV: speculative cycles, baseline parity, repeatability",
+    "base_url": "http://127.0.0.1:18198",
+    "prompts": [
+      "The capital of France is",
+      "A resident KV pool is allocated once per session and reused across requests. Explain in two sentences why its pages must never be freed while a captured graph still binds them.",
+      "Summarise the tradeoff between speculative decoding and plain autoregressive decoding for a single-user local server:"
+    ],
+    "configs": [
+      "temperature_top_p",
+      "penalties",
+      "logit_bias",
+      "suppress_token_ids"
+    ],
+    "runs": [
+      {
+        "index": 0,
+        "rows": [
+          {
+            "run": 0,
+            "config": "temperature_top_p",
+            "prompt_index": 0,
+            "seed": 1000,
+            "speculative": {
+              "ids": [
+                11751,
+                13,
+                198,
+                760,
+                6511,
+                314,
+                9564,
+                369,
+                19241,
+                13,
+                198,
+                760,
+                6511,
+                314,
+                14898,
+                369,
+                21047,
+                13,
+                198,
+                760,
+                6511,
+                314,
+                17163,
+                369
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 24,
+                "total_tokens": 29
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 14,
+                "rejected_prediction_tokens": 9
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 8,
+              "draft_tokens": 23,
+              "accepted_draft_tokens": 14,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                11751,
+                13,
+                198,
+                760,
+                6511,
+                314,
+                9564,
+                369,
+                19241,
+                13,
+                198,
+                760,
+                6511,
+                314,
+                14898,
+                369,
+                21047,
+                13,
+                198,
+                760,
+                6511,
+                314,
+                17163,
+                369
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 24,
+                "total_tokens": 29
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 0,
+            "config": "temperature_top_p",
+            "prompt_index": 1,
+            "seed": 1007,
+            "speculative": {
+              "ids": [
+                271,
+                79852,
+                32039,
+                3222,
+                279,
+                1328,
+                18509,
+                74451,
+                421,
+                16508,
+                52965,
+                37707,
+                1301,
+                321,
+                3165,
+                506,
+                8097,
+                3972,
+                13822,
+                2261,
+                33341,
+                13,
+                1368,
+                1782
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 33,
+                "completion_tokens": 24,
+                "total_tokens": 57
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 9,
+                "rejected_prediction_tokens": 29
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 13,
+              "draft_tokens": 38,
+              "accepted_draft_tokens": 9,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                271,
+                79852,
+                32039,
+                3222,
+                279,
+                1328,
+                18509,
+                74451,
+                421,
+                16508,
+                52965,
+                37707,
+                1301,
+                321,
+                3165,
+                506,
+                8097,
+                3972,
+                13822,
+                2261,
+                33341,
+                13,
+                1368,
+                1782
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 33,
+                "completion_tokens": 24,
+                "total_tokens": 57
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 0,
+            "config": "temperature_top_p",
+            "prompt_index": 2,
+            "seed": 1014,
+            "speculative": {
+              "ids": [
+                271,
+                332,
+                8068,
+                21473,
+                45543,
+                5972,
+                13,
+                13983,
+                211342,
+                45157,
+                45543,
+                332,
+                1892,
+                279,
+                6355,
+                1783,
+                369,
+                1786,
+                15513,
+                303,
+                3665,
+                314,
+                2972,
+                5351
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 21,
+                "completion_tokens": 24,
+                "total_tokens": 45
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 12,
+                "rejected_prediction_tokens": 18
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 10,
+              "draft_tokens": 30,
+              "accepted_draft_tokens": 12,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                271,
+                332,
+                8068,
+                21473,
+                45543,
+                5972,
+                13,
+                13983,
+                211342,
+                45157,
+                45543,
+                332,
+                1892,
+                279,
+                6355,
+                1783,
+                369,
+                1786,
+                15513,
+                303,
+                3665,
+                314,
+                2972,
+                5351
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 21,
+                "completion_tokens": 24,
+                "total_tokens": 45
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 0,
+            "config": "penalties",
+            "prompt_index": 0,
+            "seed": 1000,
+            "speculative": {
+              "ids": [
+                11751,
+                13,
+                198,
+                623,
+                220,
+                17,
+                15,
+                16,
+                19,
+                11,
+                279,
+                3130,
+                8801,
+                11454,
+                264,
+                3019,
+                310,
+                1870,
+                449,
+                17708,
+                17367,
+                3790,
+                303,
+                39429
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 24,
+                "total_tokens": 29
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 8,
+                "rejected_prediction_tokens": 34
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 15,
+              "draft_tokens": 42,
+              "accepted_draft_tokens": 8,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "repetition_penalty",
+                "presence_penalty",
+                "frequency_penalty"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                11751,
+                13,
+                198,
+                623,
+                220,
+                17,
+                15,
+                16,
+                19,
+                11,
+                279,
+                3130,
+                8801,
+                11454,
+                264,
+                3019,
+                310,
+                1870,
+                449,
+                17708,
+                17367,
+                3790,
+                303,
+                39429
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 24,
+                "total_tokens": 29
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "repetition_penalty",
+                "presence_penalty",
+                "frequency_penalty"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 0,
+            "config": "penalties",
+            "prompt_index": 1,
+            "seed": 1007,
+            "speculative": {
+              "ids": [
+                271,
+                79852,
+                32039,
+                3222,
+                279,
+                1328,
+                18509,
+                74451,
+                421,
+                513,
+                24001,
+                539,
+                3545,
+                26564,
+                22151,
+                4613,
+                52965,
+                37707,
+                506,
+                11969,
+                854,
+                13,
+                1368,
+                1782
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 33,
+                "completion_tokens": 24,
+                "total_tokens": 57
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 9,
+                "rejected_prediction_tokens": 30
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 13,
+              "draft_tokens": 39,
+              "accepted_draft_tokens": 9,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "repetition_penalty",
+                "presence_penalty",
+                "frequency_penalty"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                271,
+                79852,
+                32039,
+                3222,
+                279,
+                1328,
+                18509,
+                74451,
+                421,
+                513,
+                24001,
+                539,
+                3545,
+                26564,
+                22151,
+                4613,
+                52965,
+                37707,
+                506,
+                11969,
+                854,
+                13,
+                1368,
+                1782
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 33,
+                "completion_tokens": 24,
+                "total_tokens": 57
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "repetition_penalty",
+                "presence_penalty",
+                "frequency_penalty"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 0,
+            "config": "penalties",
+            "prompt_index": 2,
+            "seed": 1014,
+            "speculative": {
+              "ids": [
+                271,
+                332,
+                8068,
+                21473,
+                3588,
+                3574,
+                5972,
+                13,
+                41774,
+                233593,
+                45157,
+                318,
+                905,
+                8,
+                3588,
+                3574,
+                383,
+                264,
+                11000,
+                12,
+                1421,
+                8509,
+                8162,
+                332
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 21,
+                "completion_tokens": 24,
+                "total_tokens": 45
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 14,
+                "rejected_prediction_tokens": 12
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 9,
+              "draft_tokens": 26,
+              "accepted_draft_tokens": 14,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "repetition_penalty",
+                "presence_penalty",
+                "frequency_penalty"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                271,
+                332,
+                8068,
+                21473,
+                3588,
+                3574,
+                5972,
+                13,
+                41774,
+                233593,
+                45157,
+                318,
+                905,
+                8,
+                3588,
+                3574,
+                383,
+                264,
+                11000,
+                12,
+                1421,
+                8509,
+                8162,
+                332
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 21,
+                "completion_tokens": 24,
+                "total_tokens": 45
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "repetition_penalty",
+                "presence_penalty",
+                "frequency_penalty"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 0,
+            "config": "logit_bias",
+            "prompt_index": 0,
+            "seed": 1000,
+            "speculative": {
+              "ids": [
+                11751,
+                11,
+                264,
+                2029,
+                421,
+                1599,
+                1208,
+                1366,
+                494,
+                2812,
+                466,
+                494,
+                279,
+                1814,
+                579,
+                1379,
+                10919,
+                57902,
+                11,
+                1680,
+                430,
+                279,
+                242476,
+                300
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 24,
+                "total_tokens": 29
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 7,
+                "rejected_prediction_tokens": 38
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 15,
+              "draft_tokens": 45,
+              "accepted_draft_tokens": 7,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "logit_bias"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                11751,
+                11,
+                264,
+                2029,
+                421,
+                1599,
+                1208,
+                1366,
+                494,
+                2812,
+                466,
+                494,
+                279,
+                1814,
+                579,
+                1379,
+                10919,
+                57902,
+                11,
+                1680,
+                430,
+                279,
+                242476,
+                300
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 24,
+                "total_tokens": 29
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "logit_bias"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 0,
+            "config": "logit_bias",
+            "prompt_index": 1,
+            "seed": 1007,
+            "speculative": {
+              "ids": [
+                271,
+                79852,
+                32039,
+                3222,
+                279,
+                1328,
+                18509,
+                74451,
+                421,
+                16508,
+                52965,
+                37707,
+                1301,
+                321,
+                3165,
+                506,
+                8097,
+                3972,
+                13822,
+                2261,
+                33341,
+                26,
+                64462,
+                1782
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 33,
+                "completion_tokens": 24,
+                "total_tokens": 57
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 8,
+                "rejected_prediction_tokens": 31
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 14,
+              "draft_tokens": 39,
+              "accepted_draft_tokens": 8,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "logit_bias"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                271,
+                79852,
+                32039,
+                3222,
+                279,
+                1328,
+                18509,
+                74451,
+                421,
+                16508,
+                52965,
+                37707,
+                1301,
+                321,
+                3165,
+                506,
+                8097,
+                3972,
+                13822,
+                2261,
+                33341,
+                26,
+                64462,
+                1782
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 33,
+                "completion_tokens": 24,
+                "total_tokens": 57
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "logit_bias"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 0,
+            "config": "logit_bias",
+            "prompt_index": 2,
+            "seed": 1014,
+            "speculative": {
+              "ids": [
+                271,
+                332,
+                8068,
+                21473,
+                45543,
+                5972,
+                13983,
+                211342,
+                45157,
+                318,
+                905,
+                8,
+                45543,
+                383,
+                264,
+                3074,
+                8429,
+                11,
+                2136,
+                318,
+                48213,
+                8,
+                3421,
+                332
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 21,
+                "completion_tokens": 24,
+                "total_tokens": 45
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 15,
+                "rejected_prediction_tokens": 8
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 8,
+              "draft_tokens": 23,
+              "accepted_draft_tokens": 15,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "logit_bias"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                271,
+                332,
+                8068,
+                21473,
+                45543,
+                5972,
+                13983,
+                211342,
+                45157,
+                318,
+                905,
+                8,
+                45543,
+                383,
+                264,
+                3074,
+                8429,
+                11,
+                2136,
+                318,
+                48213,
+                8,
+                3421,
+                332
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 21,
+                "completion_tokens": 24,
+                "total_tokens": 45
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "logit_bias"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 0,
+            "config": "suppress_token_ids",
+            "prompt_index": 0,
+            "seed": 1000,
+            "speculative": {
+              "ids": [
+                11751,
+                11,
+                264,
+                2029,
+                421,
+                1599,
+                1208,
+                1366,
+                494,
+                2812,
+                466,
+                494,
+                279,
+                1814,
+                579,
+                1379,
+                10919,
+                57902,
+                11,
+                1680,
+                430,
+                279,
+                242476,
+                300
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 24,
+                "total_tokens": 29
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 7,
+                "rejected_prediction_tokens": 38
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 15,
+              "draft_tokens": 45,
+              "accepted_draft_tokens": 7,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "suppress_token_ids"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                11751,
+                11,
+                264,
+                2029,
+                421,
+                1599,
+                1208,
+                1366,
+                494,
+                2812,
+                466,
+                494,
+                279,
+                1814,
+                579,
+                1379,
+                10919,
+                57902,
+                11,
+                1680,
+                430,
+                279,
+                242476,
+                300
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 24,
+                "total_tokens": 29
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "suppress_token_ids"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 0,
+            "config": "suppress_token_ids",
+            "prompt_index": 1,
+            "seed": 1007,
+            "speculative": {
+              "ids": [
+                271,
+                79852,
+                32039,
+                3222,
+                279,
+                1328,
+                18509,
+                74451,
+                421,
+                16508,
+                52965,
+                37707,
+                1301,
+                321,
+                3165,
+                506,
+                8097,
+                3972,
+                13822,
+                2261,
+                33341,
+                26,
+                64462,
+                1782
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 33,
+                "completion_tokens": 24,
+                "total_tokens": 57
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 8,
+                "rejected_prediction_tokens": 31
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 14,
+              "draft_tokens": 39,
+              "accepted_draft_tokens": 8,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "suppress_token_ids"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                271,
+                79852,
+                32039,
+                3222,
+                279,
+                1328,
+                18509,
+                74451,
+                421,
+                16508,
+                52965,
+                37707,
+                1301,
+                321,
+                3165,
+                506,
+                8097,
+                3972,
+                13822,
+                2261,
+                33341,
+                26,
+                64462,
+                1782
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 33,
+                "completion_tokens": 24,
+                "total_tokens": 57
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "suppress_token_ids"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 0,
+            "config": "suppress_token_ids",
+            "prompt_index": 2,
+            "seed": 1014,
+            "speculative": {
+              "ids": [
+                271,
+                332,
+                8068,
+                21473,
+                45543,
+                5972,
+                13983,
+                211342,
+                45157,
+                318,
+                905,
+                8,
+                45543,
+                383,
+                264,
+                3074,
+                8429,
+                11,
+                2136,
+                318,
+                48213,
+                8,
+                3421,
+                332
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 21,
+                "completion_tokens": 24,
+                "total_tokens": 45
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 15,
+                "rejected_prediction_tokens": 8
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 8,
+              "draft_tokens": 23,
+              "accepted_draft_tokens": 15,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "suppress_token_ids"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                271,
+                332,
+                8068,
+                21473,
+                45543,
+                5972,
+                13983,
+                211342,
+                45157,
+                318,
+                905,
+                8,
+                45543,
+                383,
+                264,
+                3074,
+                8429,
+                11,
+                2136,
+                318,
+                48213,
+                8,
+                3421,
+                332
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 21,
+                "completion_tokens": 24,
+                "total_tokens": 45
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "suppress_token_ids"
+              ]
+            },
+            "ids_match_baseline": true
+          }
+        ]
+      },
+      {
+        "index": 1,
+        "rows": [
+          {
+            "run": 1,
+            "config": "temperature_top_p",
+            "prompt_index": 0,
+            "seed": 1000,
+            "speculative": {
+              "ids": [
+                11751,
+                13,
+                198,
+                760,
+                6511,
+                314,
+                9564,
+                369,
+                19241,
+                13,
+                198,
+                760,
+                6511,
+                314,
+                14898,
+                369,
+                21047,
+                13,
+                198,
+                760,
+                6511,
+                314,
+                17163,
+                369
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 24,
+                "total_tokens": 29
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 14,
+                "rejected_prediction_tokens": 9
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 8,
+              "draft_tokens": 23,
+              "accepted_draft_tokens": 14,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                11751,
+                13,
+                198,
+                760,
+                6511,
+                314,
+                9564,
+                369,
+                19241,
+                13,
+                198,
+                760,
+                6511,
+                314,
+                14898,
+                369,
+                21047,
+                13,
+                198,
+                760,
+                6511,
+                314,
+                17163,
+                369
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 24,
+                "total_tokens": 29
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 1,
+            "config": "temperature_top_p",
+            "prompt_index": 1,
+            "seed": 1007,
+            "speculative": {
+              "ids": [
+                271,
+                79852,
+                32039,
+                3222,
+                279,
+                1328,
+                18509,
+                74451,
+                421,
+                16508,
+                52965,
+                37707,
+                1301,
+                321,
+                3165,
+                506,
+                8097,
+                3972,
+                13822,
+                2261,
+                33341,
+                13,
+                1368,
+                1782
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 33,
+                "completion_tokens": 24,
+                "total_tokens": 57
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 9,
+                "rejected_prediction_tokens": 29
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 13,
+              "draft_tokens": 38,
+              "accepted_draft_tokens": 9,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                271,
+                79852,
+                32039,
+                3222,
+                279,
+                1328,
+                18509,
+                74451,
+                421,
+                16508,
+                52965,
+                37707,
+                1301,
+                321,
+                3165,
+                506,
+                8097,
+                3972,
+                13822,
+                2261,
+                33341,
+                13,
+                1368,
+                1782
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 33,
+                "completion_tokens": 24,
+                "total_tokens": 57
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 1,
+            "config": "temperature_top_p",
+            "prompt_index": 2,
+            "seed": 1014,
+            "speculative": {
+              "ids": [
+                271,
+                332,
+                8068,
+                21473,
+                45543,
+                5972,
+                13,
+                13983,
+                211342,
+                45157,
+                45543,
+                332,
+                1892,
+                279,
+                6355,
+                1783,
+                369,
+                1786,
+                15513,
+                303,
+                3665,
+                314,
+                2972,
+                5351
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 21,
+                "completion_tokens": 24,
+                "total_tokens": 45
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 12,
+                "rejected_prediction_tokens": 18
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 10,
+              "draft_tokens": 30,
+              "accepted_draft_tokens": 12,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                271,
+                332,
+                8068,
+                21473,
+                45543,
+                5972,
+                13,
+                13983,
+                211342,
+                45157,
+                45543,
+                332,
+                1892,
+                279,
+                6355,
+                1783,
+                369,
+                1786,
+                15513,
+                303,
+                3665,
+                314,
+                2972,
+                5351
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 21,
+                "completion_tokens": 24,
+                "total_tokens": 45
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 1,
+            "config": "penalties",
+            "prompt_index": 0,
+            "seed": 1000,
+            "speculative": {
+              "ids": [
+                11751,
+                13,
+                198,
+                623,
+                220,
+                17,
+                15,
+                16,
+                19,
+                11,
+                279,
+                3130,
+                8801,
+                11454,
+                264,
+                3019,
+                310,
+                1870,
+                449,
+                17708,
+                17367,
+                3790,
+                303,
+                39429
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 24,
+                "total_tokens": 29
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 8,
+                "rejected_prediction_tokens": 34
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 15,
+              "draft_tokens": 42,
+              "accepted_draft_tokens": 8,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "repetition_penalty",
+                "presence_penalty",
+                "frequency_penalty"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                11751,
+                13,
+                198,
+                623,
+                220,
+                17,
+                15,
+                16,
+                19,
+                11,
+                279,
+                3130,
+                8801,
+                11454,
+                264,
+                3019,
+                310,
+                1870,
+                449,
+                17708,
+                17367,
+                3790,
+                303,
+                39429
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 24,
+                "total_tokens": 29
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "repetition_penalty",
+                "presence_penalty",
+                "frequency_penalty"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 1,
+            "config": "penalties",
+            "prompt_index": 1,
+            "seed": 1007,
+            "speculative": {
+              "ids": [
+                271,
+                79852,
+                32039,
+                3222,
+                279,
+                1328,
+                18509,
+                74451,
+                421,
+                513,
+                24001,
+                539,
+                3545,
+                26564,
+                22151,
+                4613,
+                52965,
+                37707,
+                506,
+                11969,
+                854,
+                13,
+                1368,
+                1782
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 33,
+                "completion_tokens": 24,
+                "total_tokens": 57
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 9,
+                "rejected_prediction_tokens": 30
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 13,
+              "draft_tokens": 39,
+              "accepted_draft_tokens": 9,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "repetition_penalty",
+                "presence_penalty",
+                "frequency_penalty"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                271,
+                79852,
+                32039,
+                3222,
+                279,
+                1328,
+                18509,
+                74451,
+                421,
+                513,
+                24001,
+                539,
+                3545,
+                26564,
+                22151,
+                4613,
+                52965,
+                37707,
+                506,
+                11969,
+                854,
+                13,
+                1368,
+                1782
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 33,
+                "completion_tokens": 24,
+                "total_tokens": 57
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "repetition_penalty",
+                "presence_penalty",
+                "frequency_penalty"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 1,
+            "config": "penalties",
+            "prompt_index": 2,
+            "seed": 1014,
+            "speculative": {
+              "ids": [
+                271,
+                332,
+                8068,
+                21473,
+                3588,
+                3574,
+                5972,
+                13,
+                41774,
+                233593,
+                45157,
+                318,
+                905,
+                8,
+                3588,
+                3574,
+                383,
+                264,
+                11000,
+                12,
+                1421,
+                8509,
+                8162,
+                332
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 21,
+                "completion_tokens": 24,
+                "total_tokens": 45
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 14,
+                "rejected_prediction_tokens": 12
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 9,
+              "draft_tokens": 26,
+              "accepted_draft_tokens": 14,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "repetition_penalty",
+                "presence_penalty",
+                "frequency_penalty"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                271,
+                332,
+                8068,
+                21473,
+                3588,
+                3574,
+                5972,
+                13,
+                41774,
+                233593,
+                45157,
+                318,
+                905,
+                8,
+                3588,
+                3574,
+                383,
+                264,
+                11000,
+                12,
+                1421,
+                8509,
+                8162,
+                332
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 21,
+                "completion_tokens": 24,
+                "total_tokens": 45
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "repetition_penalty",
+                "presence_penalty",
+                "frequency_penalty"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 1,
+            "config": "logit_bias",
+            "prompt_index": 0,
+            "seed": 1000,
+            "speculative": {
+              "ids": [
+                11751,
+                11,
+                264,
+                2029,
+                421,
+                1599,
+                1208,
+                1366,
+                494,
+                2812,
+                466,
+                494,
+                279,
+                1814,
+                579,
+                1379,
+                10919,
+                57902,
+                11,
+                1680,
+                430,
+                279,
+                242476,
+                300
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 24,
+                "total_tokens": 29
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 7,
+                "rejected_prediction_tokens": 38
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 15,
+              "draft_tokens": 45,
+              "accepted_draft_tokens": 7,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "logit_bias"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                11751,
+                11,
+                264,
+                2029,
+                421,
+                1599,
+                1208,
+                1366,
+                494,
+                2812,
+                466,
+                494,
+                279,
+                1814,
+                579,
+                1379,
+                10919,
+                57902,
+                11,
+                1680,
+                430,
+                279,
+                242476,
+                300
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 24,
+                "total_tokens": 29
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "logit_bias"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 1,
+            "config": "logit_bias",
+            "prompt_index": 1,
+            "seed": 1007,
+            "speculative": {
+              "ids": [
+                271,
+                79852,
+                32039,
+                3222,
+                279,
+                1328,
+                18509,
+                74451,
+                421,
+                16508,
+                52965,
+                37707,
+                1301,
+                321,
+                3165,
+                506,
+                8097,
+                3972,
+                13822,
+                2261,
+                33341,
+                26,
+                64462,
+                1782
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 33,
+                "completion_tokens": 24,
+                "total_tokens": 57
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 8,
+                "rejected_prediction_tokens": 31
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 14,
+              "draft_tokens": 39,
+              "accepted_draft_tokens": 8,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "logit_bias"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                271,
+                79852,
+                32039,
+                3222,
+                279,
+                1328,
+                18509,
+                74451,
+                421,
+                16508,
+                52965,
+                37707,
+                1301,
+                321,
+                3165,
+                506,
+                8097,
+                3972,
+                13822,
+                2261,
+                33341,
+                26,
+                64462,
+                1782
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 33,
+                "completion_tokens": 24,
+                "total_tokens": 57
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "logit_bias"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 1,
+            "config": "logit_bias",
+            "prompt_index": 2,
+            "seed": 1014,
+            "speculative": {
+              "ids": [
+                271,
+                332,
+                8068,
+                21473,
+                45543,
+                5972,
+                13983,
+                211342,
+                45157,
+                318,
+                905,
+                8,
+                45543,
+                383,
+                264,
+                3074,
+                8429,
+                11,
+                2136,
+                318,
+                48213,
+                8,
+                3421,
+                332
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 21,
+                "completion_tokens": 24,
+                "total_tokens": 45
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 15,
+                "rejected_prediction_tokens": 8
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 8,
+              "draft_tokens": 23,
+              "accepted_draft_tokens": 15,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "logit_bias"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                271,
+                332,
+                8068,
+                21473,
+                45543,
+                5972,
+                13983,
+                211342,
+                45157,
+                318,
+                905,
+                8,
+                45543,
+                383,
+                264,
+                3074,
+                8429,
+                11,
+                2136,
+                318,
+                48213,
+                8,
+                3421,
+                332
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 21,
+                "completion_tokens": 24,
+                "total_tokens": 45
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "logit_bias"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 1,
+            "config": "suppress_token_ids",
+            "prompt_index": 0,
+            "seed": 1000,
+            "speculative": {
+              "ids": [
+                11751,
+                11,
+                264,
+                2029,
+                421,
+                1599,
+                1208,
+                1366,
+                494,
+                2812,
+                466,
+                494,
+                279,
+                1814,
+                579,
+                1379,
+                10919,
+                57902,
+                11,
+                1680,
+                430,
+                279,
+                242476,
+                300
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 24,
+                "total_tokens": 29
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 7,
+                "rejected_prediction_tokens": 38
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 15,
+              "draft_tokens": 45,
+              "accepted_draft_tokens": 7,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "suppress_token_ids"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                11751,
+                11,
+                264,
+                2029,
+                421,
+                1599,
+                1208,
+                1366,
+                494,
+                2812,
+                466,
+                494,
+                279,
+                1814,
+                579,
+                1379,
+                10919,
+                57902,
+                11,
+                1680,
+                430,
+                279,
+                242476,
+                300
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 24,
+                "total_tokens": 29
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "suppress_token_ids"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 1,
+            "config": "suppress_token_ids",
+            "prompt_index": 1,
+            "seed": 1007,
+            "speculative": {
+              "ids": [
+                271,
+                79852,
+                32039,
+                3222,
+                279,
+                1328,
+                18509,
+                74451,
+                421,
+                16508,
+                52965,
+                37707,
+                1301,
+                321,
+                3165,
+                506,
+                8097,
+                3972,
+                13822,
+                2261,
+                33341,
+                26,
+                64462,
+                1782
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 33,
+                "completion_tokens": 24,
+                "total_tokens": 57
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 8,
+                "rejected_prediction_tokens": 31
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 14,
+              "draft_tokens": 39,
+              "accepted_draft_tokens": 8,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "suppress_token_ids"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                271,
+                79852,
+                32039,
+                3222,
+                279,
+                1328,
+                18509,
+                74451,
+                421,
+                16508,
+                52965,
+                37707,
+                1301,
+                321,
+                3165,
+                506,
+                8097,
+                3972,
+                13822,
+                2261,
+                33341,
+                26,
+                64462,
+                1782
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 33,
+                "completion_tokens": 24,
+                "total_tokens": 57
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "suppress_token_ids"
+              ]
+            },
+            "ids_match_baseline": true
+          },
+          {
+            "run": 1,
+            "config": "suppress_token_ids",
+            "prompt_index": 2,
+            "seed": 1014,
+            "speculative": {
+              "ids": [
+                271,
+                332,
+                8068,
+                21473,
+                45543,
+                5972,
+                13983,
+                211342,
+                45157,
+                318,
+                905,
+                8,
+                45543,
+                383,
+                264,
+                3074,
+                8429,
+                11,
+                2136,
+                318,
+                48213,
+                8,
+                3421,
+                332
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 21,
+                "completion_tokens": 24,
+                "total_tokens": 45
+              },
+              "usage_details": {
+                "accepted_prediction_tokens": 15,
+                "rejected_prediction_tokens": 8
+              },
+              "used": true,
+              "effective_route": "speculative_mtp",
+              "draft_cycles": 8,
+              "draft_tokens": 23,
+              "accepted_draft_tokens": 15,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "suppress_token_ids"
+              ]
+            },
+            "autoregressive": {
+              "ids": [
+                271,
+                332,
+                8068,
+                21473,
+                45543,
+                5972,
+                13983,
+                211342,
+                45157,
+                318,
+                905,
+                8,
+                45543,
+                383,
+                264,
+                3074,
+                8429,
+                11,
+                2136,
+                318,
+                48213,
+                8,
+                3421,
+                332
+              ],
+              "finish_reason": "length",
+              "usage": {
+                "prompt_tokens": 21,
+                "completion_tokens": 24,
+                "total_tokens": 45
+              },
+              "usage_details": null,
+              "used": false,
+              "effective_route": "default",
+              "draft_cycles": 0,
+              "draft_tokens": 0,
+              "accepted_draft_tokens": 0,
+              "sampler_mode": "gpu_sample",
+              "fast_path_blockers": [
+                "temperature",
+                "suppress_token_ids"
+              ]
+            },
+            "ids_match_baseline": true
+          }
+        ]
+      }
+    ],
+    "passed": true,
+    "server": {
+      "status": "ready",
+      "served_model": "int8-lru-diag-20260922",
+      "effective_kv_storage": "int8_per_token_head",
+      "capability_id": "22c71484da2499afe8765e1674cf21532b0103b3cc5e3211994998b7aaf8cf28",
+      "capability_status": "rejected",
+      "runtime_action": "diagnostic_override",
+      "diagnostic_override": true,
+      "persistent_bf16_mirror": false
+    },
+    "repeatable": true,
+    "summary": {
+      "rows": 24,
+      "configs": 4,
+      "prompts": 3,
+      "runs": 2,
+      "repeatable": true
+    }
+  },
+  "induced_law_report": {
+    "title": "Sampled MTP acceptance distribution gate on real target logits",
+    "date": "2026-09-22",
+    "status": "measured",
+    "model": "Qwen3.8-27B-Q4_K_M.gguf",
+    "backend": "hip_gfx1151",
+    "host": "zbook",
+    "seed": 20260918,
+    "decode_steps": 8,
+    "monte_carlo_draws": 4000,
+    "sampler_configs": [
+      "temperature_0.7",
+      "temperature_0.8_top_p_0.9_min_p_0.02",
+      "temperature_1.0",
+      "temperature_1.0_presence_penalty_0.5",
+      "temperature_1.0_repetition_penalty_1.15",
+      "temperature_1.0_top_k_20"
+    ],
+    "draft_configs": [
+      "draft_temperature_0.5",
+      "draft_temperature_1.0_top_k_8",
+      "draft_temperature_1.4"
+    ],
+    "prompts": [
+      {
+        "prompt": "Write a Python function that merges two sorted lists into one sorted list, then explain its complexity.",
+        "prompt_tokens": 31,
+        "decode_steps": 8,
+        "generated_top1": [
+          71093,
+          12305,
+          198,
+          727,
+          10562,
+          39914,
+          36053,
+          7080
+        ],
+        "rows": [
+          {
+            "step": 0,
+            "position": 30,
+            "vocab": 248320,
+            "logit_top1": 71093,
+            "ar_law": {
+              "temperature_0.7": {
+                "checked": 1.0,
+                "agreement": 1.0,
+                "max_weight_deviation": 0.0,
+                "support": 248320,
+                "weight_sum": 1.0
+              },
+              "temperature_1.0": {
+                "checked": 1.0,
+                "agreement": 1.0,
+                "max_weight_deviation": 3.469446951953614e-18,
+                "support": 248320,
+                "weight_sum": 1.0
+              },
+              "temperature_1.0_top_k_20": {
+                "checked": 1.0,
+                "agreement": 1.0,
+                "max_weight_deviation": 3.469446951953614e-18,
+                "support": 20,
+                "weight_sum": 0.9999999999999999
+              },
+              "temperature_0.8_top_p_0.9_min_p_0.02": {
+                "checked": 1.0,
+                "agreement": 1.0,
+                "max_weight_deviation": 0.0,
+                "support": 1,
+                "weight_sum": 1.0
+              },
+              "temperature_1.0_repetition_penalty_1.15": {
+                "checked": 1.0,
+                "agreement": 1.0,
+                "max_weight_deviation": 3.469446951953614e-18,
+                "support": 248320,
+                "weight_sum": 1.0
+              },
+              "temperature_1.0_presence_penalty_0.5": {
+                "checked": 1.0,
+                "agreement": 1.0,
+                "max_weight_deviation": 6.938893903907228e-18,
+                "support": 248320,
+                "weight_sum": 1.0000000000000002
+              }
+            },
+            "point_mass_coupling": {
+              "temperature_0.7": {
+                "drafted_rank_0": {
+                  "support": 248320,
+                  "max_abs_deviation": 1.3617579286417936e-16,
+                  "total_variation": 1.2538952756027872e-16,
+                  "kl_p_to_induced": 2.514501989364201e-16,
+                  "kl_induced_to_p": -2.50694230160175e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 71093,
+                  "induced_top1": 71093,
+                  "drafted_token": 71093,
+                  "drafted_probability": 0.9874175892282121
+                },
+                "drafted_rank_1": {
+                  "support": 248320,
+                  "max_abs_deviation": 8.271806125530277e-25,
+                  "total_variation": 4.746477142444186e-25,
+                  "kl_p_to_induced": 1.5741444461217791e-24,
+                  "kl_induced_to_p": -6.2794161402964965e-25,
+                  "top1_agreement": 1.0,
+                  "target_top1": 71093,
+                  "induced_top1": 71093,
+                  "drafted_token": 8160,
+                  "drafted_probability": 0.006841174332061956
+                },
+                "drafted_rank_2": {
+                  "support": 248320,
+                  "max_abs_deviation": 0.0,
+                  "total_variation": 0.0,
+                  "kl_p_to_induced": 0.0,
+                  "kl_induced_to_p": 0.0,
+                  "top1_agreement": 1.0,
+                  "target_top1": 71093,
+                  "induced_top1": 71093,
+                  "drafted_token": 82919,
+                  "drafted_probability": 2.879762332146621e-23
+                }
+              },
+              "temperature_1.0": {
+                "drafted_rank_0": {
+                  "support": 248320,
+                  "max_abs_deviation": 1.8388068845354155e-16,
+                  "total_variation": 1.8700780056832688e-16,
+                  "kl_p_to_induced": -3.7462345682705435e-16,
+                  "kl_induced_to_p": 3.778253632223466e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 71093,
+                  "induced_top1": 71093,
+                  "drafted_token": 71093,
+                  "drafted_probability": 0.941288173534901
+                },
+                "drafted_rank_1": {
+                  "support": 248320,
+                  "max_abs_deviation": 3.3306690738754696e-16,
+                  "total_variation": 1.7254784680335512e-16,
+                  "kl_p_to_induced": -3.262155557939832e-16,
+                  "kl_induced_to_p": 4.3079060009405326e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 71093,
+                  "induced_top1": 71093,
+                  "drafted_token": 8160,
+                  "drafted_probability": 0.028984343038657767
+                },
+                "drafted_rank_2": {
+                  "support": 248320,
+                  "max_abs_deviation": 3.3306690738754696e-16,
+                  "total_variation": 1.758624502977339e-16,
+                  "kl_p_to_induced": -3.3289123081122437e-16,
+                  "kl_induced_to_p": 4.377335190441953e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 71093,
+                  "induced_top1": 71093,
+                  "drafted_token": 82919,
+                  "drafted_probability": 1.5816910365437527e-16
+                }
+              },
+              "temperature_1.0_top_k_20": {
+                "drafted_rank_0": {
+                  "support": 20,
+                  "max_abs_deviation": 1.0408340855860843e-17,
+                  "total_variation": 9.456275823147009e-18,
+                  "kl_p_to_induced": 2.006817212382746e-17,
+                  "kl_induced_to_p": -1.9576103191362025e-17,
+                  "top1_agreement": 1.0,
+                  "target_top1": 71093,
+                  "induced_top1": 71093,
+                  "drafted_token": 71093,
+                  "drafted_probability": 0.9415496168965871
+                },
+                "drafted_rank_1": {
+                  "support": 20,
+                  "max_abs_deviation": 1.1102230246251565e-16,
+                  "total_variation": 5.75728294248748e-17,
+                  "kl_p_to_induced": 2.1557749411975173e-16,
+                  "kl_induced_to_p": -1.0791938411868146e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 71093,
+                  "induced_top1": 71093,
+                  "drafted_token": 8160,
+                  "drafted_probability": 0.028992393457534092
+                },
+                "drafted_rank_2": {
+                  "support": 20,
+                  "max_abs_deviation": 1.1102230246251565e-16,
+                  "total_variation": 5.752539557982855e-17,
+                  "kl_p_to_induced": 2.1545776221626297e-16,
+                  "kl_induced_to_p": -1.078317435624931e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 71093,
+                  "induced_top1": 71093,
+                  "drafted_token": 2533,
+                  "drafted_probability": 1.6234612516710594e-05
+                }
+              },
+              "temperature_0.8_top_p_0.9_min_p_0.02": {
+                "drafted_rank_0": {
+                  "support": 1,
+                  "max_abs_deviation": 0.0,
+                  "total_variation": 0.0,
+                  "kl_p_to_induced": 0.0,
+                  "kl_induced_to_p": 0.0,
+                  "top1_agreement": 1.0,
+                  "target_top1": 71093,
+                  "induced_top1": 71093,
+                  "drafted_token": 71093,
+                  "drafted_probability": 1.0
+                }
+              },
+              "temperature_1.0_repetition_penalty_1.15": {
+                "drafted_rank_0": {
+                  "support": 248320,
+                  "max_abs_deviation": 6.938893903907228e-17,
+                  "total_variation": 7.196951474338666e-17,
+                  "kl_p_to_induced": -1.4663676129241372e-16,
+                  "kl_induced_to_p": 1.4369751669076814e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 71093,
+                  "induced_top1": 71093,
+                  "drafted_token": 71093,
+                  "drafted_probability": 0.9412892476617382
+                },
+                "drafted_rank_1": {
+                  "support": 248320,
+                  "max_abs_deviation": 1.1102230246251565e-16,
+                  "total_variation": 5.749749479938452e-17,
+                  "kl_p_to_induced": -1.0772461141418026e-16,
+                  "kl_induced_to_p": 2.1534116999553256e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 71093,
+                  "induced_top1": 71093,
+                  "drafted_token": 8160,
+                  "drafted_probability": 0.02898437611339682
+                },
+                "drafted_rank_2": {
+                  "support": 248320,
+                  "max_abs_deviation": 2.220446049250313e-16,
+                  "total_variation": 1.1664752543614333e-16,
+                  "kl_p_to_induced": -2.190155375352935e-16,
+                  "kl_induced_to_p": 2.2204459983605682e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 71093,
+                  "induced_top1": 71093,
+                  "drafted_token": 82919,
+                  "drafted_probability": 1.5816928414498783e-16
+                }
+              },
+              "temperature_1.0_presence_penalty_0.5": {
+                "drafted_rank_0": {
+                  "support": 248320,
+                  "max_abs_deviation": 1.734723475976807e-17,
+                  "total_variation": 1.9041329967520752e-17,
+                  "kl_p_to_induced": -3.607957905571891e-17,
+                  "kl_induced_to_p": 3.912880527872306e-17,
+                  "top1_agreement": 1.0,
+                  "target_top1": 71093,
+                  "induced_top1": 71093,
+                  "drafted_token": 71093,
+                  "drafted_probability": 0.9412887109380694
+                },
+                "drafted_rank_1": {
+                  "support": 248320,
+                  "max_abs_deviation": 1.1102230246251565e-16,
+                  "total_variation": 5.756428349195118e-17,
+                  "kl_p_to_induced": 2.1551291127115118e-16,
+                  "kl_induced_to_p": -1.0787219045440379e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 71093,
+                  "induced_top1": 71093,
+                  "drafted_token": 8160,
+                  "drafted_probability": 0.028984359586488942
+                },
+                "drafted_rank_2": {
+                  "support": 248320,
+                  "max_abs_deviation": 1.1102230246251565e-16,
+                  "total_variation": 5.919951856010525e-17,
+                  "kl_p_to_induced": -1.108531437861475e-16,
+                  "kl_induced_to_p": 2.21706287572295e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 71093,
+                  "induced_top1": 71093,
+                  "drafted_token": 82919,
+                  "drafted_probability": 1.5816919395677133e-16
+                }
+              }
+            },
+            "general_coupling": {
+              "temperature_0.7|draft_temperature_1.4": {
+                "support": 248320,
+                "max_abs_deviation": 0.0,
+                "total_variation": 0.0,
+                "kl_p_to_induced": 0.0,
+                "kl_induced_to_p": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "induced_top1": 71093,
+                "draft_support": 248320
+              },
+              "temperature_0.7|draft_temperature_0.5": {
+                "support": 248320,
+                "max_abs_deviation": 2.1337098754514727e-16,
+                "total_variation": 1.9780388526024329e-16,
+                "kl_p_to_induced": 3.94578500043186e-16,
+                "kl_induced_to_p": -3.959431716889177e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "induced_top1": 71093,
+                "draft_support": 248320
+              },
+              "temperature_0.7|draft_temperature_1.0_top_k_8": {
+                "support": 248320,
+                "max_abs_deviation": 3.3306690738754696e-16,
+                "total_variation": 1.66608497168984e-16,
+                "kl_p_to_induced": 4.3865081706132105e-16,
+                "kl_induced_to_p": -3.290265757384355e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "induced_top1": 71093,
+                "draft_support": 8
+              },
+              "temperature_1.0|draft_temperature_1.4": {
+                "support": 248320,
+                "max_abs_deviation": 0.0,
+                "total_variation": 0.0,
+                "kl_p_to_induced": 0.0,
+                "kl_induced_to_p": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "induced_top1": 71093,
+                "draft_support": 248320
+              },
+              "temperature_1.0|draft_temperature_0.5": {
+                "support": 248320,
+                "max_abs_deviation": 1.0408340855860843e-16,
+                "total_variation": 1.0617647860906798e-16,
+                "kl_p_to_induced": -2.124411197145681e-16,
+                "kl_induced_to_p": 2.096431971375908e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "induced_top1": 71093,
+                "draft_support": 248320
+              },
+              "temperature_1.0|draft_temperature_1.0_top_k_8": {
+                "support": 248320,
+                "max_abs_deviation": 6.158268339717665e-17,
+                "total_variation": 1.2979065407919914e-16,
+                "kl_p_to_induced": -2.5958309717760996e-16,
+                "kl_induced_to_p": 2.595585431117819e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "induced_top1": 71093,
+                "draft_support": 8
+              },
+              "temperature_1.0_top_k_20|draft_temperature_1.4": {
+                "support": 248320,
+                "max_abs_deviation": 0.0,
+                "total_variation": 0.0,
+                "kl_p_to_induced": 0.0,
+                "kl_induced_to_p": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "induced_top1": 71093,
+                "draft_support": 248320
+              },
+              "temperature_1.0_top_k_20|draft_temperature_0.5": {
+                "support": 248320,
+                "max_abs_deviation": 6.938893903907228e-18,
+                "total_variation": 5.812340084059009e-18,
+                "kl_p_to_induced": 1.3182608155990886e-17,
+                "kl_induced_to_p": -1.05340536710759e-17,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "induced_top1": 71093,
+                "draft_support": 248320
+              },
+              "temperature_1.0_top_k_20|draft_temperature_1.0_top_k_8": {
+                "support": 20,
+                "max_abs_deviation": 1.8973538018496328e-17,
+                "total_variation": 2.9591943045276237e-17,
+                "kl_p_to_induced": 5.918866863110977e-17,
+                "kl_induced_to_p": -5.919692740374182e-17,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "induced_top1": 71093,
+                "draft_support": 8
+              },
+              "temperature_0.8_top_p_0.9_min_p_0.02|draft_temperature_1.4": {
+                "support": 248320,
+                "max_abs_deviation": 0.0,
+                "total_variation": 0.0,
+                "kl_p_to_induced": 0.0,
+                "kl_induced_to_p": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "induced_top1": 71093,
+                "draft_support": 248320
+              },
+              "temperature_0.8_top_p_0.9_min_p_0.02|draft_temperature_0.5": {
+                "support": 248320,
+                "max_abs_deviation": 0.0,
+                "total_variation": 0.0,
+                "kl_p_to_induced": 0.0,
+                "kl_induced_to_p": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "induced_top1": 71093,
+                "draft_support": 248320
+              },
+              "temperature_0.8_top_p_0.9_min_p_0.02|draft_temperature_1.0_top_k_8": {
+                "support": 8,
+                "max_abs_deviation": 0.0,
+                "total_variation": 0.0,
+                "kl_p_to_induced": 0.0,
+                "kl_induced_to_p": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "induced_top1": 71093,
+                "draft_support": 8
+              },
+              "temperature_1.0_repetition_penalty_1.15|draft_temperature_1.4": {
+                "support": 248320,
+                "max_abs_deviation": 0.0,
+                "total_variation": 0.0,
+                "kl_p_to_induced": 0.0,
+                "kl_induced_to_p": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "induced_top1": 71093,
+                "draft_support": 248320
+              },
+              "temperature_1.0_repetition_penalty_1.15|draft_temperature_0.5": {
+                "support": 248320,
+                "max_abs_deviation": 3.469446951953614e-18,
+                "total_variation": 3.689631078012838e-18,
+                "kl_p_to_induced": -6.438409823028247e-18,
+                "kl_induced_to_p": 1.262054241166056e-17,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "induced_top1": 71093,
+                "draft_support": 248320
+              },
+              "temperature_1.0_repetition_penalty_1.15|draft_temperature_1.0_top_k_8": {
+                "support": 248320,
+                "max_abs_deviation": 4.0332320816460765e-17,
+                "total_variation": 8.498349616657368e-17,
+                "kl_p_to_induced": -1.699550751486114e-16,
+                "kl_induced_to_p": 1.7002333706610458e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "induced_top1": 71093,
+                "draft_support": 8
+              },
+              "temperature_1.0_presence_penalty_0.5|draft_temperature_1.4": {
+                "support": 248320,
+                "max_abs_deviation": 1.1102230246251565e-16,
+                "total_variation": 5.551115123125783e-17,
+                "kl_p_to_induced": -1.0450403997031781e-16,
+                "kl_induced_to_p": 2.0900807994063562e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "induced_top1": 71093,
+                "draft_support": 248320
+              },
+              "temperature_1.0_presence_penalty_0.5|draft_temperature_0.5": {
+                "support": 248320,
+                "max_abs_deviation": 5.551115123125783e-17,
+                "total_variation": 5.657472542270713e-17,
+                "kl_p_to_induced": 1.168383377605429e-16,
+                "kl_induced_to_p": -1.1352940071451414e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "induced_top1": 71093,
+                "draft_support": 248320
+              },
+              "temperature_1.0_presence_penalty_0.5|draft_temperature_1.0_top_k_8": {
+                "support": 248320,
+                "max_abs_deviation": 4.933119884809045e-18,
+                "total_variation": 1.0418281024547331e-17,
+                "kl_p_to_induced": 2.082948223939269e-17,
+                "kl_induced_to_p": -2.0822637458665557e-17,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "induced_top1": 71093,
+                "draft_support": 8
+              }
+            },
+            "monte_carlo": {
+              "temperature_0.7": {
+                "draws": 4000,
+                "checked_support": 1024,
+                "distinct_emitted_tokens": 4,
+                "total_variation": 0.001683181931723551,
+                "tv_band_mean": 0.002029516151616853,
+                "max_cell_excess": -1.0,
+                "cell_count_limit_slack": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "observed_top1": 71093,
+                "accepted_rate": 0.987,
+                "target_drafted_probability": 0.9874175910213049
+              },
+              "temperature_1.0": {
+                "draws": 4000,
+                "checked_support": 1024,
+                "distinct_emitted_tokens": 11,
+                "total_variation": 0.009841597381701882,
+                "tv_band_mean": 0.006706078968942474,
+                "max_cell_excess": -1.0,
+                "cell_count_limit_slack": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "observed_top1": 71093,
+                "accepted_rate": 0.94325,
+                "target_drafted_probability": 0.9412986008783769
+              },
+              "temperature_1.0_top_k_20": {
+                "draws": 4000,
+                "checked_support": 20,
+                "distinct_emitted_tokens": 9,
+                "total_variation": 0.009396597261955693,
+                "tv_band_mean": 0.00488663424433478,
+                "max_cell_excess": -4.0,
+                "cell_count_limit_slack": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "observed_top1": 71093,
+                "accepted_rate": 0.944,
+                "target_drafted_probability": 0.9415496168965871
+              },
+              "temperature_0.8_top_p_0.9_min_p_0.02": {
+                "draws": 4000,
+                "checked_support": 1,
+                "distinct_emitted_tokens": 1,
+                "total_variation": 0.0,
+                "tv_band_mean": 0.0,
+                "max_cell_excess": -316.22776601683836,
+                "cell_count_limit_slack": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "observed_top1": 71093,
+                "accepted_rate": 1.0,
+                "target_drafted_probability": 1.0
+              },
+              "temperature_1.0_repetition_penalty_1.15": {
+                "draws": 4000,
+                "checked_support": 1024,
+                "distinct_emitted_tokens": 11,
+                "total_variation": 0.00984049852762315,
+                "tv_band_mean": 0.006697122550275249,
+                "max_cell_excess": -1.0,
+                "cell_count_limit_slack": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "observed_top1": 71093,
+                "accepted_rate": 0.94325,
+                "target_drafted_probability": 0.9412996709045662
+              },
+              "temperature_1.0_presence_penalty_0.5": {
+                "draws": 4000,
+                "checked_support": 1024,
+                "distinct_emitted_tokens": 11,
+                "total_variation": 0.009841047101121277,
+                "tv_band_mean": 0.006702197697847429,
+                "max_cell_excess": -1.0,
+                "cell_count_limit_slack": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 71093,
+                "observed_top1": 71093,
+                "accepted_rate": 0.94325,
+                "target_drafted_probability": 0.9412991367226206
+              }
+            }
+          }
+        ],
+        "rows_omitted": 7
+      },
+      {
+        "prompt": "Summarize the trade-offs between paged attention and a contiguous KV cache in three sentences.",
+        "prompt_tokens": 31,
+        "decode_steps": 8,
+        "generated_top1": [
+          47,
+          3173,
+          6326,
+          57825,
+          5138,
+          4779,
+          84338,
+          539
+        ],
+        "rows": [
+          {
+            "step": 0,
+            "position": 30,
+            "vocab": 248320,
+            "logit_top1": 47,
+            "ar_law": {
+              "temperature_0.7": {
+                "checked": 1.0,
+                "agreement": 1.0,
+                "max_weight_deviation": 0.0,
+                "support": 248320,
+                "weight_sum": 1.0
+              },
+              "temperature_1.0": {
+                "checked": 1.0,
+                "agreement": 1.0,
+                "max_weight_deviation": 0.0,
+                "support": 248320,
+                "weight_sum": 1.0
+              },
+              "temperature_1.0_top_k_20": {
+                "checked": 1.0,
+                "agreement": 1.0,
+                "max_weight_deviation": 0.0,
+                "support": 20,
+                "weight_sum": 1.0
+              },
+              "temperature_0.8_top_p_0.9_min_p_0.02": {
+                "checked": 1.0,
+                "agreement": 1.0,
+                "max_weight_deviation": 0.0,
+                "support": 1,
+                "weight_sum": 1.0
+              },
+              "temperature_1.0_repetition_penalty_1.15": {
+                "checked": 1.0,
+                "agreement": 1.0,
+                "max_weight_deviation": 0.0,
+                "support": 248320,
+                "weight_sum": 1.0
+              },
+              "temperature_1.0_presence_penalty_0.5": {
+                "checked": 1.0,
+                "agreement": 1.0,
+                "max_weight_deviation": 0.0,
+                "support": 248320,
+                "weight_sum": 1.0
+              }
+            },
+            "point_mass_coupling": {
+              "temperature_0.7": {
+                "drafted_rank_0": {
+                  "support": 248320,
+                  "max_abs_deviation": 1.43982048506075e-16,
+                  "total_variation": 9.715792963139737e-17,
+                  "kl_p_to_induced": -1.9435461954164876e-16,
+                  "kl_induced_to_p": 1.9435051588350452e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 47,
+                  "induced_top1": 47,
+                  "drafted_token": 47,
+                  "drafted_probability": 0.9975686619621202
+                },
+                "drafted_rank_1": {
+                  "support": 248320,
+                  "max_abs_deviation": 1.1102230246251565e-16,
+                  "total_variation": 5.555393165438936e-17,
+                  "kl_p_to_induced": 2.2163688957767841e-16,
+                  "kl_induced_to_p": -1.1082585558283255e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 47,
+                  "induced_top1": 47,
+                  "drafted_token": 792,
+                  "drafted_probability": 0.001801806792998519
+                },
+                "drafted_rank_2": {
+                  "support": 248320,
+                  "max_abs_deviation": 0.0,
+                  "total_variation": 0.0,
+                  "kl_p_to_induced": 0.0,
+                  "kl_induced_to_p": 0.0,
+                  "top1_agreement": 1.0,
+                  "target_top1": 47,
+                  "induced_top1": 47,
+                  "drafted_token": 62498,
+                  "drafted_probability": 3.0321964653855105e-22
+                }
+              },
+              "temperature_1.0": {
+                "drafted_rank_0": {
+                  "support": 248320,
+                  "max_abs_deviation": 1.9255430583342559e-16,
+                  "total_variation": 1.8582691107817063e-16,
+                  "kl_p_to_induced": -3.723556006714495e-16,
+                  "kl_induced_to_p": 3.721267015536562e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 47,
+                  "induced_top1": 47,
+                  "drafted_token": 47,
+                  "drafted_probability": 0.9773075975128113
+                },
+                "drafted_rank_1": {
+                  "support": 248320,
+                  "max_abs_deviation": 3.3306690738754696e-16,
+                  "total_variation": 1.6851176505136656e-16,
+                  "kl_p_to_induced": -3.2963910928009686e-16,
+                  "kl_induced_to_p": 4.3804920236088653e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 47,
+                  "induced_top1": 47,
+                  "drafted_token": 792,
+                  "drafted_probability": 0.011742675796056838
+                },
+                "drafted_rank_2": {
+                  "support": 248320,
+                  "max_abs_deviation": 1.1102230246251565e-16,
+                  "total_variation": 5.718430796122083e-17,
+                  "kl_p_to_induced": -1.1138464940338467e-16,
+                  "kl_induced_to_p": 2.2165568232752826e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 47,
+                  "induced_top1": 47,
+                  "drafted_token": 62498,
+                  "drafted_probability": 8.472302480114107e-16
+                }
+              },
+              "temperature_1.0_top_k_20": {
+                "drafted_rank_0": {
+                  "support": 20,
+                  "max_abs_deviation": 1.0928757898653885e-16,
+                  "total_variation": 9.919772251884562e-17,
+                  "kl_p_to_induced": -1.9873470381564256e-16,
+                  "kl_induced_to_p": 1.9920226288948942e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 47,
+                  "induced_top1": 47,
+                  "drafted_token": 47,
+                  "drafted_probability": 0.9785874889887226
+                },
+                "drafted_rank_1": {
+                  "support": 20,
+                  "max_abs_deviation": 2.220446049250313e-16,
+                  "total_variation": 1.1206584705353295e-16,
+                  "kl_p_to_induced": -2.1935566993606408e-16,
+                  "kl_induced_to_p": 2.1949739557120476e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 47,
+                  "induced_top1": 47,
+                  "drafted_token": 792,
+                  "drafted_probability": 0.01175805411777869
+                },
+                "drafted_rank_2": {
+                  "support": 20,
+                  "max_abs_deviation": 2.220446049250313e-16,
+                  "total_variation": 1.1383445184739993e-16,
+                  "kl_p_to_induced": -2.233885436424564e-16,
+                  "kl_induced_to_p": 2.2209359016979765e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 47,
+                  "induced_top1": 47,
+                  "drafted_token": 4684,
+                  "drafted_probability": 6.583309097454427e-05
+                }
+              },
+              "temperature_0.8_top_p_0.9_min_p_0.02": {
+                "drafted_rank_0": {
+                  "support": 1,
+                  "max_abs_deviation": 0.0,
+                  "total_variation": 0.0,
+                  "kl_p_to_induced": 0.0,
+                  "kl_induced_to_p": 0.0,
+                  "top1_agreement": 1.0,
+                  "target_top1": 47,
+                  "induced_top1": 47,
+                  "drafted_token": 47,
+                  "drafted_probability": 1.0
+                }
+              },
+              "temperature_1.0_repetition_penalty_1.15": {
+                "drafted_rank_0": {
+                  "support": 248320,
+                  "max_abs_deviation": 8.500145032286355e-17,
+                  "total_variation": 8.213138076098065e-17,
+                  "kl_p_to_induced": 1.6504070603209104e-16,
+                  "kl_induced_to_p": -1.6389702755090557e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 47,
+                  "induced_top1": 47,
+                  "drafted_token": 47,
+                  "drafted_probability": 0.9773093593066274
+                },
+                "drafted_rank_1": {
+                  "support": 248320,
+                  "max_abs_deviation": 2.220446049250313e-16,
+                  "total_variation": 1.1229531825581476e-16,
+                  "kl_p_to_induced": -2.1959024460390203e-16,
+                  "kl_induced_to_p": 2.1948256211500686e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 47,
+                  "induced_top1": 47,
+                  "drafted_token": 792,
+                  "drafted_probability": 0.011742696964595437
+                },
+                "drafted_rank_2": {
+                  "support": 248320,
+                  "max_abs_deviation": 0.0,
+                  "total_variation": 0.0,
+                  "kl_p_to_induced": 0.0,
+                  "kl_induced_to_p": 0.0,
+                  "top1_agreement": 1.0,
+                  "target_top1": 47,
+                  "induced_top1": 47,
+                  "drafted_token": 62498,
+                  "drafted_probability": 8.472317753146012e-16
+                }
+              },
+              "temperature_1.0_presence_penalty_0.5": {
+                "drafted_rank_0": {
+                  "support": 248320,
+                  "max_abs_deviation": 9.194034422677078e-17,
+                  "total_variation": 8.861660425451562e-17,
+                  "kl_p_to_induced": 1.763814570334857e-16,
+                  "kl_induced_to_p": -1.7780291834405446e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 47,
+                  "induced_top1": 47,
+                  "drafted_token": 47,
+                  "drafted_probability": 0.9773084962340582
+                },
+                "drafted_rank_1": {
+                  "support": 248320,
+                  "max_abs_deviation": 4.440892098500626e-16,
+                  "total_variation": 2.2446391039077565e-16,
+                  "kl_p_to_induced": 4.3897976888760015e-16,
+                  "kl_induced_to_p": -4.3892346619214953e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 47,
+                  "induced_top1": 47,
+                  "drafted_token": 792,
+                  "drafted_probability": 0.011742686594491498
+                },
+                "drafted_rank_2": {
+                  "support": 248320,
+                  "max_abs_deviation": 4.440892098500626e-16,
+                  "total_variation": 2.270601281518935e-16,
+                  "kl_p_to_induced": 4.442001464135586e-16,
+                  "kl_induced_to_p": -4.441245438053903e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 47,
+                  "induced_top1": 47,
+                  "drafted_token": 62498,
+                  "drafted_probability": 8.472310271149671e-16
+                }
+              }
+            },
+            "general_coupling": {
+              "temperature_0.7|draft_temperature_1.4": {
+                "support": 248320,
+                "max_abs_deviation": 0.0,
+                "total_variation": 0.0,
+                "kl_p_to_induced": 0.0,
+                "kl_induced_to_p": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "induced_top1": 47,
+                "draft_support": 248320
+              },
+              "temperature_0.7|draft_temperature_0.5": {
+                "support": 248320,
+                "max_abs_deviation": 4.716279450311944e-16,
+                "total_variation": 3.2240502193276193e-16,
+                "kl_p_to_induced": -6.448593574619086e-16,
+                "kl_induced_to_p": 6.44845415497113e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "induced_top1": 47,
+                "draft_support": 248320
+              },
+              "temperature_0.7|draft_temperature_1.0_top_k_8": {
+                "support": 248320,
+                "max_abs_deviation": 2.220446049250313e-16,
+                "total_variation": 1.1141465922712676e-16,
+                "kl_p_to_induced": -2.2228907307106083e-16,
+                "kl_induced_to_p": 2.222903162420315e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "induced_top1": 47,
+                "draft_support": 8
+              },
+              "temperature_1.0|draft_temperature_1.4": {
+                "support": 248320,
+                "max_abs_deviation": 1.1102230246251565e-16,
+                "total_variation": 5.551115123125783e-17,
+                "kl_p_to_induced": -1.0850293968998184e-16,
+                "kl_induced_to_p": 2.170058793799637e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "induced_top1": 47,
+                "draft_support": 248320
+              },
+              "temperature_1.0|draft_temperature_0.5": {
+                "support": 248320,
+                "max_abs_deviation": 4.198030811863873e-16,
+                "total_variation": 4.0786359644796635e-16,
+                "kl_p_to_induced": -8.159308206018932e-16,
+                "kl_induced_to_p": 8.159106046921834e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "induced_top1": 47,
+                "draft_support": 248320
+              },
+              "temperature_1.0|draft_temperature_1.0_top_k_8": {
+                "support": 248320,
+                "max_abs_deviation": 2.5587171270657905e-17,
+                "total_variation": 1.4788685022169742e-16,
+                "kl_p_to_induced": -2.9579968047180124e-16,
+                "kl_induced_to_p": 2.9573937965605153e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "induced_top1": 47,
+                "draft_support": 8
+              },
+              "temperature_1.0_top_k_20|draft_temperature_1.4": {
+                "support": 248320,
+                "max_abs_deviation": 2.220446049250313e-16,
+                "total_variation": 1.1102230246251565e-16,
+                "kl_p_to_induced": -2.1729007237707934e-16,
+                "kl_induced_to_p": 2.1729007237707936e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "induced_top1": 47,
+                "draft_support": 248320
+              },
+              "temperature_1.0_top_k_20|draft_temperature_0.5": {
+                "support": 248320,
+                "max_abs_deviation": 1.0581813203458523e-16,
+                "total_variation": 9.728003992626189e-17,
+                "kl_p_to_induced": -1.944130170476132e-16,
+                "kl_induced_to_p": 1.9605508287138186e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "induced_top1": 47,
+                "draft_support": 248320
+              },
+              "temperature_1.0_top_k_20|draft_temperature_1.0_top_k_8": {
+                "support": 20,
+                "max_abs_deviation": 2.0220370516854658e-17,
+                "total_variation": 7.067642911889882e-17,
+                "kl_p_to_induced": -1.4136630869709121e-16,
+                "kl_induced_to_p": 1.4136833516220777e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "induced_top1": 47,
+                "draft_support": 8
+              },
+              "temperature_0.8_top_p_0.9_min_p_0.02|draft_temperature_1.4": {
+                "support": 248320,
+                "max_abs_deviation": 0.0,
+                "total_variation": 0.0,
+                "kl_p_to_induced": 0.0,
+                "kl_induced_to_p": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "induced_top1": 47,
+                "draft_support": 248320
+              },
+              "temperature_0.8_top_p_0.9_min_p_0.02|draft_temperature_0.5": {
+                "support": 248320,
+                "max_abs_deviation": 0.0,
+                "total_variation": 0.0,
+                "kl_p_to_induced": 0.0,
+                "kl_induced_to_p": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "induced_top1": 47,
+                "draft_support": 248320
+              },
+              "temperature_0.8_top_p_0.9_min_p_0.02|draft_temperature_1.0_top_k_8": {
+                "support": 8,
+                "max_abs_deviation": 0.0,
+                "total_variation": 0.0,
+                "kl_p_to_induced": 0.0,
+                "kl_induced_to_p": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "induced_top1": 47,
+                "draft_support": 8
+              },
+              "temperature_1.0_repetition_penalty_1.15|draft_temperature_1.4": {
+                "support": 248320,
+                "max_abs_deviation": 0.0,
+                "total_variation": 0.0,
+                "kl_p_to_induced": 0.0,
+                "kl_induced_to_p": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "induced_top1": 47,
+                "draft_support": 248320
+              },
+              "temperature_1.0_repetition_penalty_1.15|draft_temperature_0.5": {
+                "support": 248320,
+                "max_abs_deviation": 1.5092094240998222e-16,
+                "total_variation": 1.4699661165033374e-16,
+                "kl_p_to_induced": -2.941704006534246e-16,
+                "kl_induced_to_p": 2.9459835180929503e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "induced_top1": 47,
+                "draft_support": 248320
+              },
+              "temperature_1.0_repetition_penalty_1.15|draft_temperature_1.0_top_k_8": {
+                "support": 248320,
+                "max_abs_deviation": 1.3715157481941631e-17,
+                "total_variation": 7.913039842233528e-17,
+                "kl_p_to_induced": 1.5824886759021651e-16,
+                "kl_induced_to_p": -1.5827461892502823e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "induced_top1": 47,
+                "draft_support": 8
+              },
+              "temperature_1.0_presence_penalty_0.5|draft_temperature_1.4": {
+                "support": 248320,
+                "max_abs_deviation": 0.0,
+                "total_variation": 0.0,
+                "kl_p_to_induced": 0.0,
+                "kl_induced_to_p": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "induced_top1": 47,
+                "draft_support": 248320
+              },
+              "temperature_1.0_presence_penalty_0.5|draft_temperature_0.5": {
+                "support": 248320,
+                "max_abs_deviation": 1.43982048506075e-16,
+                "total_variation": 1.3951776621191444e-16,
+                "kl_p_to_induced": -2.7870144529008344e-16,
+                "kl_induced_to_p": 2.783358604007236e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "induced_top1": 47,
+                "draft_support": 248320
+              },
+              "temperature_1.0_presence_penalty_0.5|draft_temperature_1.0_top_k_8": {
+                "support": 248320,
+                "max_abs_deviation": 1.566672139241554e-17,
+                "total_variation": 9.042803782481149e-17,
+                "kl_p_to_induced": 1.809109572133566e-16,
+                "kl_induced_to_p": -1.8084796463745463e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "induced_top1": 47,
+                "draft_support": 8
+              }
+            },
+            "monte_carlo": {
+              "temperature_0.7": {
+                "draws": 4000,
+                "checked_support": 1024,
+                "distinct_emitted_tokens": 4,
+                "total_variation": 0.0008955067265534511,
+                "tv_band_mean": 0.0013221799632746904,
+                "max_cell_excess": -1.0,
+                "cell_count_limit_slack": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "observed_top1": 47,
+                "accepted_rate": 0.998,
+                "target_drafted_probability": 0.9975687287988679
+              },
+              "temperature_1.0": {
+                "draws": 4000,
+                "checked_support": 1024,
+                "distinct_emitted_tokens": 14,
+                "total_variation": 0.003990468671977498,
+                "tv_band_mean": 0.008843003061078169,
+                "max_cell_excess": -2.0,
+                "cell_count_limit_slack": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "observed_top1": 47,
+                "accepted_rate": 0.97925,
+                "target_drafted_probability": 0.9774072765059146
+              },
+              "temperature_1.0_top_k_20": {
+                "draws": 4000,
+                "checked_support": 20,
+                "distinct_emitted_tokens": 13,
+                "total_variation": 0.0030411673823099745,
+                "tv_band_mean": 0.003783843703672141,
+                "max_cell_excess": -6.0,
+                "cell_count_limit_slack": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "observed_top1": 47,
+                "accepted_rate": 0.98025,
+                "target_drafted_probability": 0.9785874889887226
+              },
+              "temperature_0.8_top_p_0.9_min_p_0.02": {
+                "draws": 4000,
+                "checked_support": 1,
+                "distinct_emitted_tokens": 1,
+                "total_variation": 0.0,
+                "tv_band_mean": 0.0,
+                "max_cell_excess": -316.22776601683836,
+                "cell_count_limit_slack": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "observed_top1": 47,
+                "accepted_rate": 1.0,
+                "target_drafted_probability": 1.0
+              },
+              "temperature_1.0_repetition_penalty_1.15": {
+                "draws": 4000,
+                "checked_support": 1024,
+                "distinct_emitted_tokens": 14,
+                "total_variation": 0.003988808254223595,
+                "tv_band_mean": 0.008836110624098196,
+                "max_cell_excess": -2.0,
+                "cell_count_limit_slack": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "observed_top1": 47,
+                "accepted_rate": 0.97925,
+                "target_drafted_probability": 0.9774089325147011
+              },
+              "temperature_1.0_presence_penalty_0.5": {
+                "draws": 4000,
+                "checked_support": 1024,
+                "distinct_emitted_tokens": 14,
+                "total_variation": 0.00398960538709593,
+                "tv_band_mean": 0.008839829350802698,
+                "max_cell_excess": -2.0,
+                "cell_count_limit_slack": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 47,
+                "observed_top1": 47,
+                "accepted_rate": 0.97925,
+                "target_drafted_probability": 0.9774081374984844
+              }
+            }
+          }
+        ],
+        "rows_omitted": 7
+      },
+      {
+        "prompt": "Translate this sentence to Japanese and then back to English: The cache is warm but the kernel is not.",
+        "prompt_tokens": 33,
+        "decode_steps": 8,
+        "generated_top1": [
+          49732,
+          25,
+          207224,
+          159879,
+          14876,
+          161154,
+          149512,
+          176373
+        ],
+        "rows": [
+          {
+            "step": 0,
+            "position": 32,
+            "vocab": 248320,
+            "logit_top1": 49732,
+            "ar_law": {
+              "temperature_0.7": {
+                "checked": 1.0,
+                "agreement": 1.0,
+                "max_weight_deviation": 1.3877787807814457e-17,
+                "support": 248320,
+                "weight_sum": 1.0
+              },
+              "temperature_1.0": {
+                "checked": 1.0,
+                "agreement": 1.0,
+                "max_weight_deviation": 1.3010426069826053e-18,
+                "support": 248320,
+                "weight_sum": 1.0
+              },
+              "temperature_1.0_top_k_20": {
+                "checked": 1.0,
+                "agreement": 1.0,
+                "max_weight_deviation": 3.469446951953614e-18,
+                "support": 20,
+                "weight_sum": 1.0
+              },
+              "temperature_0.8_top_p_0.9_min_p_0.02": {
+                "checked": 1.0,
+                "agreement": 1.0,
+                "max_weight_deviation": 2.7755575615628914e-17,
+                "support": 3,
+                "weight_sum": 1.0
+              },
+              "temperature_1.0_repetition_penalty_1.15": {
+                "checked": 1.0,
+                "agreement": 1.0,
+                "max_weight_deviation": 4.336808689942018e-19,
+                "support": 248320,
+                "weight_sum": 1.0
+              },
+              "temperature_1.0_presence_penalty_0.5": {
+                "checked": 1.0,
+                "agreement": 1.0,
+                "max_weight_deviation": 1.3010426069826053e-18,
+                "support": 248320,
+                "weight_sum": 0.9999999999999999
+              }
+            },
+            "point_mass_coupling": {
+              "temperature_0.7": {
+                "drafted_rank_0": {
+                  "support": 248320,
+                  "max_abs_deviation": 1.1102230246251565e-16,
+                  "total_variation": 8.033536459764991e-17,
+                  "kl_p_to_induced": 1.617314772434261e-16,
+                  "kl_induced_to_p": -1.5294387850994033e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 49732,
+                  "induced_top1": 49732,
+                  "drafted_token": 49732,
+                  "drafted_probability": 0.7572747575373877
+                },
+                "drafted_rank_1": {
+                  "support": 248320,
+                  "max_abs_deviation": 2.220446049250313e-16,
+                  "total_variation": 1.263422881699056e-16,
+                  "kl_p_to_induced": 2.042433547149652e-16,
+                  "kl_induced_to_p": -2.7989775347623005e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 49732,
+                  "induced_top1": 49732,
+                  "drafted_token": 8160,
+                  "drafted_probability": 0.1555665544090972
+                },
+                "drafted_rank_2": {
+                  "support": 248320,
+                  "max_abs_deviation": 2.220446049250313e-16,
+                  "total_variation": 1.33229737881988e-16,
+                  "kl_p_to_induced": 2.2204459682193228e-16,
+                  "kl_induced_to_p": -3.0606582734881715e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 49732,
+                  "induced_top1": 49732,
+                  "drafted_token": 380,
+                  "drafted_probability": 1.160729292621054e-21
+                }
+              },
+              "temperature_1.0": {
+                "drafted_rank_0": {
+                  "support": 248320,
+                  "max_abs_deviation": 2.7755575615628914e-17,
+                  "total_variation": 2.6549106295147368e-17,
+                  "kl_p_to_induced": 8.504789358778157e-17,
+                  "kl_induced_to_p": -4.653921990996387e-17,
+                  "top1_agreement": 1.0,
+                  "target_top1": 49732,
+                  "induced_top1": 49732,
+                  "drafted_token": 49732,
+                  "drafted_probability": 0.5971393833731967
+                },
+                "drafted_rank_1": {
+                  "support": 248320,
+                  "max_abs_deviation": 1.1102230246251565e-16,
+                  "total_variation": 7.006402103578291e-17,
+                  "kl_p_to_induced": -1.6121560763507388e-16,
+                  "kl_induced_to_p": 1.778679139824283e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 49732,
+                  "induced_top1": 49732,
+                  "drafted_token": 8160,
+                  "drafted_probability": 0.1972148628283782
+                },
+                "drafted_rank_2": {
+                  "support": 248320,
+                  "max_abs_deviation": 2.220446049250313e-16,
+                  "total_variation": 1.6228405611541343e-16,
+                  "kl_p_to_induced": -3.1059814887714046e-16,
+                  "kl_induced_to_p": 3.5563988736051595e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 49732,
+                  "induced_top1": 49732,
+                  "drafted_token": 380,
+                  "drafted_probability": 1.6066080553221653e-15
+                }
+              },
+              "temperature_1.0_top_k_20": {
+                "drafted_rank_0": {
+                  "support": 20,
+                  "max_abs_deviation": 2.7755575615628914e-17,
+                  "total_variation": 2.5804011705155006e-17,
+                  "kl_p_to_induced": 8.311863178139473e-17,
+                  "kl_induced_to_p": -4.531996161224102e-17,
+                  "top1_agreement": 1.0,
+                  "target_top1": 49732,
+                  "induced_top1": 49732,
+                  "drafted_token": 49732,
+                  "drafted_probability": 0.6096413125872211
+                },
+                "drafted_rank_1": {
+                  "support": 20,
+                  "max_abs_deviation": 8.673617379884035e-19,
+                  "total_variation": 8.131516293641283e-19,
+                  "kl_p_to_induced": 2.556546025473308e-18,
+                  "kl_induced_to_p": -1.1338668510686354e-18,
+                  "top1_agreement": 1.0,
+                  "target_top1": 49732,
+                  "induced_top1": 49732,
+                  "drafted_token": 8160,
+                  "drafted_probability": 0.201343825552468
+                },
+                "drafted_rank_2": {
+                  "support": 20,
+                  "max_abs_deviation": 0.0,
+                  "total_variation": 0.0,
+                  "kl_p_to_induced": 0.0,
+                  "kl_induced_to_p": 0.0,
+                  "top1_agreement": 1.0,
+                  "target_top1": 49732,
+                  "induced_top1": 49732,
+                  "drafted_token": 34,
+                  "drafted_probability": 0.0007799806604536773
+                }
+              },
+              "temperature_0.8_top_p_0.9_min_p_0.02": {
+                "drafted_rank_0": {
+                  "support": 3,
+                  "max_abs_deviation": 5.551115123125783e-17,
+                  "total_variation": 4.163336342344337e-17,
+                  "kl_p_to_induced": 6.139900749724096e-17,
+                  "kl_induced_to_p": -9.209851124586144e-17,
+                  "top1_agreement": 1.0,
+                  "target_top1": 49732,
+                  "induced_top1": 49732,
+                  "drafted_token": 49732,
+                  "drafted_probability": 0.7234834527145073
+                },
+                "drafted_rank_1": {
+                  "support": 3,
+                  "max_abs_deviation": 0.0,
+                  "total_variation": 0.0,
+                  "kl_p_to_induced": 0.0,
+                  "kl_induced_to_p": 0.0,
+                  "top1_agreement": 1.0,
+                  "target_top1": 49732,
+                  "induced_top1": 49732,
+                  "drafted_token": 8160,
+                  "drafted_probability": 0.18113755889974628
+                }
+              },
+              "temperature_1.0_repetition_penalty_1.15": {
+                "drafted_rank_0": {
+                  "support": 248320,
+                  "max_abs_deviation": 1.1102230246251565e-16,
+                  "total_variation": 1.084691845721611e-16,
+                  "kl_p_to_induced": 2.3548349198040167e-16,
+                  "kl_induced_to_p": -2.123245774210157e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 49732,
+                  "induced_top1": 49732,
+                  "drafted_token": 49732,
+                  "drafted_probability": 0.5973458001422078
+                },
+                "drafted_rank_1": {
+                  "support": 248320,
+                  "max_abs_deviation": 1.1102230246251565e-16,
+                  "total_variation": 8.258740781681758e-17,
+                  "kl_p_to_induced": 1.8722997620346699e-16,
+                  "kl_induced_to_p": -1.8613842740014746e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 49732,
+                  "induced_top1": 49732,
+                  "drafted_token": 8160,
+                  "drafted_probability": 0.19728303527842836
+                },
+                "drafted_rank_2": {
+                  "support": 248320,
+                  "max_abs_deviation": 0.0,
+                  "total_variation": 0.0,
+                  "kl_p_to_induced": 0.0,
+                  "kl_induced_to_p": 0.0,
+                  "top1_agreement": 1.0,
+                  "target_top1": 49732,
+                  "induced_top1": 49732,
+                  "drafted_token": 380,
+                  "drafted_probability": 1.607163421210065e-15
+                }
+              },
+              "temperature_1.0_presence_penalty_0.5": {
+                "drafted_rank_0": {
+                  "support": 248320,
+                  "max_abs_deviation": 8.326672684688674e-17,
+                  "total_variation": 8.110970324240312e-17,
+                  "kl_p_to_induced": 1.7780953825957117e-16,
+                  "kl_induced_to_p": -1.6539956297253867e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 49732,
+                  "induced_top1": 49732,
+                  "drafted_token": 49732,
+                  "drafted_probability": 0.5972425261826765
+                },
+                "drafted_rank_1": {
+                  "support": 248320,
+                  "max_abs_deviation": 1.3877787807814457e-17,
+                  "total_variation": 7.853504727532748e-18,
+                  "kl_p_to_induced": 2.5244947847373206e-17,
+                  "kl_induced_to_p": -1.055415944352782e-17,
+                  "top1_agreement": 1.0,
+                  "target_top1": 49732,
+                  "induced_top1": 49732,
+                  "drafted_token": 8160,
+                  "drafted_probability": 0.1972489273961988
+                },
+                "drafted_rank_2": {
+                  "support": 248320,
+                  "max_abs_deviation": 1.1102230246251565e-16,
+                  "total_variation": 8.1965018892101e-17,
+                  "kl_p_to_induced": -1.7917505212934612e-16,
+                  "kl_induced_to_p": 2.176802108176003e-16,
+                  "top1_agreement": 1.0,
+                  "target_top1": 49732,
+                  "induced_top1": 49732,
+                  "drafted_token": 380,
+                  "drafted_probability": 1.6068855618360092e-15
+                }
+              }
+            },
+            "general_coupling": {
+              "temperature_0.7|draft_temperature_1.4": {
+                "support": 248320,
+                "max_abs_deviation": 0.0,
+                "total_variation": 0.0,
+                "kl_p_to_induced": 0.0,
+                "kl_induced_to_p": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "induced_top1": 49732,
+                "draft_support": 248320
+              },
+              "temperature_0.7|draft_temperature_0.5": {
+                "support": 248320,
+                "max_abs_deviation": 2.220446049250313e-16,
+                "total_variation": 1.9993665872459775e-16,
+                "kl_p_to_induced": 3.7905328270349147e-16,
+                "kl_induced_to_p": -4.0478691595229216e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "induced_top1": 49732,
+                "draft_support": 248320
+              },
+              "temperature_0.7|draft_temperature_1.0_top_k_8": {
+                "support": 248320,
+                "max_abs_deviation": 2.220446049250313e-16,
+                "total_variation": 1.1467846349056544e-16,
+                "kl_p_to_induced": 1.7544386467679406e-16,
+                "kl_induced_to_p": -2.5956747018855453e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "induced_top1": 49732,
+                "draft_support": 8
+              },
+              "temperature_1.0|draft_temperature_1.4": {
+                "support": 248320,
+                "max_abs_deviation": 1.1102230246251565e-16,
+                "total_variation": 5.551115123125783e-17,
+                "kl_p_to_induced": 1.3259157846627825e-16,
+                "kl_induced_to_p": -1.3259157846627825e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "induced_top1": 49732,
+                "draft_support": 248320
+              },
+              "temperature_1.0|draft_temperature_0.5": {
+                "support": 248320,
+                "max_abs_deviation": 2.7755575615628914e-17,
+                "total_variation": 2.1983602192688147e-17,
+                "kl_p_to_induced": -4.345946892177322e-17,
+                "kl_induced_to_p": 4.4151167422707303e-17,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "induced_top1": 49732,
+                "draft_support": 248320
+              },
+              "temperature_1.0|draft_temperature_1.0_top_k_8": {
+                "support": 248320,
+                "max_abs_deviation": 4.336808689942018e-19,
+                "total_variation": 4.1450622484570866e-19,
+                "kl_p_to_induced": 8.289749741512691e-19,
+                "kl_induced_to_p": -1.454418774969054e-19,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "induced_top1": 49732,
+                "draft_support": 8
+              },
+              "temperature_1.0_top_k_20|draft_temperature_1.4": {
+                "support": 248320,
+                "max_abs_deviation": 0.0,
+                "total_variation": 0.0,
+                "kl_p_to_induced": 0.0,
+                "kl_induced_to_p": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "induced_top1": 49732,
+                "draft_support": 248320
+              },
+              "temperature_1.0_top_k_20|draft_temperature_0.5": {
+                "support": 248320,
+                "max_abs_deviation": 5.551115123125783e-17,
+                "total_variation": 5.5294310796760726e-17,
+                "kl_p_to_induced": 9.898424058334102e-17,
+                "kl_induced_to_p": -9.97458453995902e-17,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "induced_top1": 49732,
+                "draft_support": 248320
+              },
+              "temperature_1.0_top_k_20|draft_temperature_1.0_top_k_8": {
+                "support": 20,
+                "max_abs_deviation": 1.3877787807814457e-17,
+                "total_variation": 2.992397996059992e-17,
+                "kl_p_to_induced": 5.880613222935232e-17,
+                "kl_induced_to_p": -5.992206332706876e-17,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "induced_top1": 49732,
+                "draft_support": 8
+              },
+              "temperature_0.8_top_p_0.9_min_p_0.02|draft_temperature_1.4": {
+                "support": 248320,
+                "max_abs_deviation": 0.0,
+                "total_variation": 0.0,
+                "kl_p_to_induced": 0.0,
+                "kl_induced_to_p": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "induced_top1": 49732,
+                "draft_support": 248320
+              },
+              "temperature_0.8_top_p_0.9_min_p_0.02|draft_temperature_0.5": {
+                "support": 248320,
+                "max_abs_deviation": 2.7755575615628914e-17,
+                "total_variation": 2.7755575615628914e-17,
+                "kl_p_to_induced": 6.139900749724096e-17,
+                "kl_induced_to_p": -5.1877893542882703e-17,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "induced_top1": 49732,
+                "draft_support": 248320
+              },
+              "temperature_0.8_top_p_0.9_min_p_0.02|draft_temperature_1.0_top_k_8": {
+                "support": 8,
+                "max_abs_deviation": 0.0,
+                "total_variation": 0.0,
+                "kl_p_to_induced": 0.0,
+                "kl_induced_to_p": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "induced_top1": 49732,
+                "draft_support": 8
+              },
+              "temperature_1.0_repetition_penalty_1.15|draft_temperature_1.4": {
+                "support": 248320,
+                "max_abs_deviation": 2.220446049250313e-16,
+                "total_variation": 1.457167719820518e-16,
+                "kl_p_to_induced": 3.3530363629859376e-16,
+                "kl_induced_to_p": -2.777761578742081e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "induced_top1": 49732,
+                "draft_support": 248320
+              },
+              "temperature_1.0_repetition_penalty_1.15|draft_temperature_0.5": {
+                "support": 248320,
+                "max_abs_deviation": 8.326672684688674e-17,
+                "total_variation": 1.0539961571626476e-16,
+                "kl_p_to_induced": 2.149136607377322e-16,
+                "kl_induced_to_p": -2.1267464767894845e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "induced_top1": 49732,
+                "draft_support": 248320
+              },
+              "temperature_1.0_repetition_penalty_1.15|draft_temperature_1.0_top_k_8": {
+                "support": 248320,
+                "max_abs_deviation": 2.42861286636753e-17,
+                "total_variation": 9.025192480357125e-17,
+                "kl_p_to_induced": 1.8119664640485715e-16,
+                "kl_induced_to_p": -1.798781022770928e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "induced_top1": 49732,
+                "draft_support": 8
+              },
+              "temperature_1.0_presence_penalty_0.5|draft_temperature_1.4": {
+                "support": 248320,
+                "max_abs_deviation": 1.1102230246251565e-16,
+                "total_variation": 6.938893903907228e-17,
+                "kl_p_to_induced": 1.764125409262352e-16,
+                "kl_induced_to_p": -1.5451351084844762e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "induced_top1": 49732,
+                "draft_support": 248320
+              },
+              "temperature_1.0_presence_penalty_0.5|draft_temperature_0.5": {
+                "support": 248320,
+                "max_abs_deviation": 8.326672684688674e-17,
+                "total_variation": 1.051434022761509e-16,
+                "kl_p_to_induced": 2.1382748906877171e-16,
+                "kl_induced_to_p": -2.1242546334425734e-16,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "induced_top1": 49732,
+                "draft_support": 248320
+              },
+              "temperature_1.0_presence_penalty_0.5|draft_temperature_1.0_top_k_8": {
+                "support": 248320,
+                "max_abs_deviation": 2.6020852139652106e-18,
+                "total_variation": 7.350120887603304e-18,
+                "kl_p_to_induced": -1.4681704831019437e-17,
+                "kl_induced_to_p": 1.525194189581048e-17,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "induced_top1": 49732,
+                "draft_support": 8
+              }
+            },
+            "monte_carlo": {
+              "temperature_0.7": {
+                "draws": 4000,
+                "checked_support": 1024,
+                "distinct_emitted_tokens": 19,
+                "total_variation": 0.02300253693743983,
+                "tv_band_mean": 0.011316596229270191,
+                "max_cell_excess": -1.0,
+                "cell_count_limit_slack": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "observed_top1": 49732,
+                "accepted_rate": 0.7705,
+                "target_drafted_probability": 0.7572805019306328
+              },
+              "temperature_1.0": {
+                "draws": 4000,
+                "checked_support": 1024,
+                "distinct_emitted_tokens": 71,
+                "total_variation": 0.036931328836087546,
+                "tv_band_mean": 0.031523205155785806,
+                "max_cell_excess": -2.0,
+                "cell_count_limit_slack": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "observed_top1": 49732,
+                "accepted_rate": 0.60975,
+                "target_drafted_probability": 0.5989986825950314
+              },
+              "temperature_1.0_top_k_20": {
+                "draws": 4000,
+                "checked_support": 20,
+                "distinct_emitted_tokens": 20,
+                "total_variation": 0.025891511484037417,
+                "tv_band_mean": 0.013875824419326409,
+                "max_cell_excess": -13.0,
+                "cell_count_limit_slack": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "observed_top1": 49732,
+                "accepted_rate": 0.62,
+                "target_drafted_probability": 0.6096413125872211
+              },
+              "temperature_0.8_top_p_0.9_min_p_0.02": {
+                "draws": 4000,
+                "checked_support": 3,
+                "distinct_emitted_tokens": 3,
+                "total_variation": 0.025387558899746275,
+                "tv_band_mean": 0.007103533061354772,
+                "max_cell_excess": -56.17812041723994,
+                "cell_count_limit_slack": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "observed_top1": 49732,
+                "accepted_rate": 0.7385,
+                "target_drafted_probability": 0.7234834527145073
+              },
+              "temperature_1.0_repetition_penalty_1.15": {
+                "draws": 4000,
+                "checked_support": 1024,
+                "distinct_emitted_tokens": 74,
+                "total_variation": 0.036782592417275446,
+                "tv_band_mean": 0.03140054265684175,
+                "max_cell_excess": -2.0,
+                "cell_count_limit_slack": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "observed_top1": 49732,
+                "accepted_rate": 0.60975,
+                "target_drafted_probability": 0.5992058250822764
+              },
+              "temperature_1.0_presence_penalty_0.5": {
+                "draws": 4000,
+                "checked_support": 1024,
+                "distinct_emitted_tokens": 70,
+                "total_variation": 0.03667604143452378,
+                "tv_band_mean": 0.031472188483293494,
+                "max_cell_excess": -2.0,
+                "cell_count_limit_slack": 0.0,
+                "top1_agreement": 1.0,
+                "target_top1": 49732,
+                "observed_top1": 49732,
+                "accepted_rate": 0.60975,
+                "target_drafted_probability": 0.5991021220686482
+              }
+            }
+          }
+        ],
+        "rows_omitted": 7
+      }
+    ],
+    "summary": {
+      "verdict": "pass",
+      "exact_identity": {
+        "comparisons": 824,
+        "max_abs_deviation": 8.881784197001252e-16,
+        "max_total_variation": 4.531994899851369e-16,
+        "max_kl": 9.03266206465782e-16,
+        "top1_agreement": 1.0,
+        "tolerance": 1e-09,
+        "failures": []
+      },
+      "ar_law": {
+        "checks": 144,
+        "agreements": 144,
+        "agreement_rate": 1.0,
+        "max_support": 248320,
+        "mean_support": 165550.26388888888,
+        "failures": []
+      },
+      "monte_carlo": {
+        "rows": 18,
+        "max_total_variation": 0.036931328836087546,
+        "top1_agreement": 1.0,
+        "failures": []
+      }
+    },
+    "wall_seconds": 219.5573375225067
+  },
+  "coverage": {
+    "covered": "Four sampler families (temperature/top_p, penalties, logit_bias, suppress_token_ids) x three prompts x two runs, speculative against true no-MTP baseline, on the INT8 cell; the induced-law gate on the same revision.",
+    "not_covered": "Finish-rule parameters (min_tokens, eos_token_id, stop ids, stop sequences) and logprobs, which are refused by the servable-blocker set and belong to tasks 6 and 7; multi-choice and tool/structured requests, which belong to task 17; throughput, which this task does not claim."
+  },
+  "induced_law_report_note": "Summary plus one representative row per prompt, as the 2026-09-18 artifact of this gate does; the omitted rows are covered by the same maxima the summary reports."
+}

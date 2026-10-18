@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "path": "worklog/entries/20261017T161559.094347Z-mtp-repair-moe-native-state-fallback-fa8047.md",
+  "sha256": "2d2c02f0339658c81bd68873f46ce668241a18d8fb54792615ecc5a9d34d2b28",
+  "defects": [
+    "missing_required_sections"
+  ],
+  "reason": "the entry's final section is titled '## Scope and remaining work' instead of the required '## Next', so it was committed without that heading.",
+  "base_commit": null,
+  "superseded_by": "worklog/entries/20261017T182358.615698Z-worklog-compat-correct-moe-native-state-fallback-headings-8adfaf.md"
+}

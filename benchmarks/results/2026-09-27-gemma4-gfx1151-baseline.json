@@ -1,0 +1,107 @@
+{
+  "kind": "gemma4_campaign_baseline",
+  "verdict": "recorded",
+  "recorded": "2026-09-27, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B UD-Q4_K_XL public-path shape matrix",
+  "purpose": "Baseline shape matrix for the gfx1151 Gemma 4 campaign: separated prefill, decode, first-token and public-wall numbers on the public LLM.generate() path, with the artifact and harness provenance needed to compare against llama.cpp and against later hipEngine revisions. A coverage record, not a promotion claim: the campaign's gfx1100 rows are untouched.",
+  "platform": {
+    "host": "zbook (Strix Halo)",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "memory": "125 GiB unified",
+    "env": "HIPENGINE_HIP_ARCH=gfx1151",
+    "hipcc": "HIP version: 7.15.26333-0000000",
+    "python": "3.13.13"
+  },
+  "artifact": {
+    "path": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+    "bytes": 17010980576,
+    "mtime": "2026-09-26T19:11:54.689845+00:00",
+    "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+    "quant_mix": "29 of 30 layers are (gate/up Q4_K, down Q5_1); layer 29 is (gate/up Q5_K, down Q8_0). 128 experts, top-8, hidden 2816, expert ffn 704, 16 heads / 8 kv (2 on every 6th layer), head_dim 512, sliding window 1024."
+  },
+  "protocol": {
+    "harness": "scripts/gemma4_campaign_bench.py --artifact <above> --context 8192 --samples 3 --warmup 1 --expect-gpu 8060S, one invocation per shape",
+    "timing": "prefill_s is forward(prompt) plus an explicit device synchronize, and first_token_s is the same boundary measured through the public path; decode_s covers the remaining forwards after the first token; public_wall_s is the end-to-end request wall time on LLM.generate(). Decode throughput is decode_forwards / decode_s, and the public-wall figure explicitly includes prefill.",
+    "parity": "public_path_parity compares the harness's public-path token ids against the direct-runner ids for the same request; it is true on all five rows."
+  },
+  "rows": [
+    {
+      "shape": "128 prompt / 128 output",
+      "prefill_s": 1.045,
+      "prefill_tok_s": 122.50,
+      "first_token_s": 1.045,
+      "decode_tok_s": 21.96,
+      "public_wall_s": 6.847,
+      "public_path_parity": true
+    },
+    {
+      "shape": "512 prompt / 128 output",
+      "prefill_s": 4.240,
+      "prefill_tok_s": 120.75,
+      "first_token_s": 4.240,
+      "decode_tok_s": 21.05,
+      "public_wall_s": 10.298,
+      "public_path_parity": true
+    },
+    {
+      "shape": "1024 prompt / 128 output",
+      "prefill_s": 9.567,
+      "prefill_tok_s": 107.03,
+      "first_token_s": 9.567,
+      "decode_tok_s": 19.97,
+      "public_wall_s": 15.931,
+      "public_path_parity": true
+    },
+    {
+      "shape": "2048 prompt / 8 output",
+      "prefill_s": 21.959,
+      "prefill_tok_s": 93.26,
+      "first_token_s": 21.960,
+      "decode_tok_s": 19.53,
+      "public_wall_s": 22.348,
+      "public_path_parity": true
+    },
+    {
+      "shape": "4096 prompt / 128 output",
+      "prefill_s": 53.044,
+      "prefill_tok_s": 77.22,
+      "first_token_s": 53.044,
+      "decode_tok_s": 17.58,
+      "public_wall_s": 61.139,
+      "public_path_parity": true
+    }
+  ],
+  "comparator": {
+    "engine": "llama.cpp HIP, build 17252c769 (10685), ROCm backend",
+    "command": "llama-bench -m <same artifact> -ngl 99 -fa on -ctk bf16 -ctv bf16 -p 512 -n 128 -r 3",
+    "rows": {
+      "pp512": "1014.22 +/- 39.02 tok/s",
+      "tg128": "41.11 +/- 0.48 tok/s"
+    },
+    "gap_at_512_128": {
+      "prefill": "8.40x",
+      "decode": "1.95x"
+    },
+    "limits": "the comparator covers one shape (512/128) on the same host and artifact; no llama.cpp row exists for the other four shapes, and llama-bench's pp512 is a prefill-only measurement rather than the harness's first-token boundary."
+  },
+  "reading": {
+    "prefill_scales_sublinearly": "prefill throughput falls from 122.50 tok/s at 128 prompt to 77.22 at 4096 (-37%), so a per-token cost grows with prompt length. That is consistent with the compact-row gather, the attention prefill pass and the KV write all scaling with rows, and is the first thing to attribute when optimizing for long prompts.",
+    "decode_falls_with_context": "decode throughput falls from 21.96 to 17.58 tok/s across the same range (-20%), which tracks the attention pass's key walk.",
+    "wall_is_prefill_dominated": "at every row except 128/128 the public wall is dominated by prefill: 4.24 s of 10.30 s at 512/128 and 53.04 s of 61.14 s at 4096/128."
+  },
+  "context": {
+    "how_this_tree_got_here": "three units landed on the gfx1151 host before this measurement: the Q5_1 expert down projection moved to a weight-reusing grouped prefill (2048/8 prefill 39.82 -> 48.57 tok/s), the Q4_K gate/up followed (512/128 55.34 -> 92.57 tok/s, 2048/8 48.84 -> 75.17 tok/s), and the Q4_K kernel then got staged activations plus hoisted weight metadata (512/128 92.28 -> 121.90 tok/s). This host's 512/128 prefill was 11.617 s before those units and is 4.240 s in this matrix.",
+    "known_remaining": "the Q5_1 down projection has not had the staged-fetch treatment (23.0% of prefill kernel time), and Q8_0 dense projections (12.5%) plus attention prefill (12.2%) follow it."
+  },
+  "scope": {
+    "gfx1151_only": "every number here is gfx1151. No gfx1100 row is qualified, changed or compared by this artifact.",
+    "single_request": "all rows are single-request, greedy, fixed length, context 8192, BF16 KV. No served-path row, no multi-request row, and no speculative/MTP row is included."
+  },
+  "provenance": {
+    "commit": "9a0d52833",
+    "git_dirty": false,
+    "git_dirty_files": [],
+    "worktree": "hipEngine-gemma4, branch gemma4",
+    "bench_artifacts": "/tmp/t5-128p128o.json, /tmp/t5-512p128o.json, /tmp/t5-1024p128o.json, /tmp/t5-2048p8o.json, /tmp/t5-4096p128o.json (each carries the harness's own provenance block, including git state, artifact bytes and head sha256, rocm-smi clock/power, and the full HIP*/HSA*/ROCR* environment); the llama.cpp comparator output is /tmp/llamacpp-gemma4-baseline.md. Raw logs are not committed."
+  }
+}

@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import os
+import sys
+
 from dataclasses import dataclass, replace
 import time
+from types import SimpleNamespace
 from typing import Any, Callable, Sequence
 
 import numpy as np
@@ -158,10 +162,12 @@ class _StreamingNextNPromptSink:
         start_position: int = 0,
         initial_hidden: Tensor | None = None,
         transform_hidden_rows: Callable[[int, int, int], int] | None = None,
+        prefix_capture: Callable[[int, int], None] | None = None,
+        capture_boundary: int = 0,
     ) -> None:
         tokens = tuple(int(token) for token in prompt_tokens)
-        if not tokens:
-            raise ValueError("streaming NextN prompt sink requires prompt tokens")
+        if not tokens and not (int(start_position) > 0 and initial_hidden is not None):
+            raise ValueError("streaming NextN prompt sink requires prompt tokens or a restored boundary")
         if int(request_id) < 0:
             raise ValueError("streaming NextN prompt sink request_id must be non-negative")
         if int(hidden_size) <= 0:
@@ -187,6 +193,12 @@ class _StreamingNextNPromptSink:
         self.runtime = runtime
         self.checkpoint = checkpoint
         self.transform_hidden_rows = transform_hidden_rows
+        # Called once, when a consumed chunk brings the provider cursor to the
+        # request's block-aligned prefix boundary, with (prefix_len,
+        # boundary_hidden_ptr): the row this chunk ends on is the row the first
+        # draft step consumes at the boundary, because the sink feeds token[p]
+        # against row[p-1] and carries the last row forward.
+        self.prefix_capture = prefix_capture
         self.hidden_nbytes = self.hidden_size * DType.BF16.itemsize
         self._pending_hidden = malloc(self.hidden_nbytes, runtime=runtime)
         try:
@@ -203,6 +215,13 @@ class _StreamingNextNPromptSink:
             free(self._pending_hidden, runtime=runtime)
             raise
         self.consumed_rows = 0
+        # Absolute prefix length to capture at, in the same coordinates as
+        # ``start_position``; 0 means no capture for this sink.
+        self.capture_boundary = int(capture_boundary)
+        self.capture_boundaries: tuple[int, ...] = ()
+        self._capture_failed = False
+        self._capture_missed = False
+        self._captured = False
         self._stream: int | None = None
         self._finished = False
         self._failed = False
@@ -241,6 +260,19 @@ class _StreamingNextNPromptSink:
         """Append one contiguous target-hidden chunk to the draft timeline."""
 
         self._validate_owner(request_id)
+        if not getattr(self, "_traced_first_consume", False):
+            self._traced_first_consume = True
+            try:
+                if os.environ.get("HIPENGINE_MTP2_TRACE_DECLINE", "").strip() not in {"", "0"}:
+                    print(
+                        "[mtp2-prompt-sink] first consume "
+                        f"request={int(request_id)} chunk_start={int(chunk_start)} "
+                        f"rows={int(rows)}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+            except Exception:
+                pass
         if self._closed:
             raise RuntimeError("streaming NextN prompt sink is closed")
         if self._failed:
@@ -263,6 +295,20 @@ class _StreamingNextNPromptSink:
             self._stream = stream
         elif stream != self._stream:
             raise RuntimeError("streaming NextN prompt chunks must use one stream")
+        if self.capture_boundaries:
+            absolute_start = self.start_position + start
+            absolute_end = absolute_start + count
+            cuts = [point for point in self.capture_boundaries if absolute_start < point < absolute_end]
+            if cuts:
+                points = [absolute_start, *cuts, absolute_end]
+                for a, b in zip(points, points[1:]):
+                    self.consume(request_id=request_id, chunk_start=a - self.start_position,
+                                 hidden_ptr=int(hidden_ptr) + (a - absolute_start) * self.hidden_nbytes,
+                                 rows=b - a, stream=stream)
+                return
+            if absolute_end in self.capture_boundaries:
+                self.capture_boundary = absolute_end
+                self._captured = False
         if self.checkpoint is not None:
             self.checkpoint()
 
@@ -305,6 +351,43 @@ class _StreamingNextNPromptSink:
             self._failed = True
             raise
         self.consumed_rows += count
+        # The provider cursor is now at start_position + consumed_rows, and the
+        # row it would consume next is the one this chunk ended on -- still live
+        # in the caller's chunk buffer at this point in the call, which is why
+        # the capture is taken here rather than after the sink retires.
+        if self.prefix_capture is not None and self.capture_boundary > self.start_position:
+            reached = self.start_position + self.consumed_rows
+            if reached == self.capture_boundary:
+                try:
+                    self.prefix_capture(
+                        self.capture_boundary,
+                        draft_hidden_ptr + (count - 1) * self.hidden_nbytes,
+                    )
+                except Exception:
+                    # A checkpoint is an optimization: a row must not fail
+                    # because one could not be taken.
+                    self._capture_failed = True
+                else:
+                    self._captured = True
+            elif reached > self.capture_boundary and not self._captured:
+                # A chunk spans the boundary, so the cursor is never at it: the
+                # enqueues inside one chunk are batched, and the chunk's rows are
+                # only fully consumed at its end. Reachable boundaries are
+                # multiples of the chunk width, which the shipped configuration
+                # satisfies because chunk rows and the cache block size are the
+                # same constant. Record the miss instead of leaving a boundary
+                # that silently never captures.
+                self._capture_missed = True
+                try:
+                    if os.environ.get("HIPENGINE_MTP2_TRACE_DECLINE", "").strip() not in {"", "0"}:
+                        print(
+                            "[mtp2-prefix-checkpoint] boundary unreachable: "
+                            f"boundary={self.capture_boundary} chunk reached {reached}",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                except Exception:
+                    pass
 
     def finish(self, *, request_id: int, total_rows: int, stream: int) -> None:
         """Validate complete request ownership at the target activation seam."""
@@ -380,16 +463,86 @@ def _initial_state_only_journal_applies(
     requested: str,
     *,
     max_candidate_budget: int,
+    backend: str | None = None,
+    max_end_position: int | None = None,
 ) -> bool:
-    """Return whether the native row ladder can use a compact primary journal."""
+    """Return whether every reachable target row uses native session journals.
 
+    The row route is selected per verify cycle from the row count *and* the
+    resulting end position, but the journal is allocated once for the whole
+    request. A row-capable journal is therefore mandatory whenever any position
+    the session can reach selects the serial fallback, and an unbounded position
+    range can always reach it. ``backend`` and ``max_end_position`` are both
+    required for that reason.
+    """
+
+    if backend is None or max_end_position is None:
+        return False
     return (
         _effective_target_verify_mode(
             requested,
             rows=int(max_candidate_budget) + 1,
+            backend=backend,
+            end_position=int(max_end_position),
         )
         == "native"
     )
+
+
+def _verify_journal_plan(
+    requested: str,
+    *,
+    max_candidate_budget: int,
+    backend: str | None,
+    max_end_position: int | None,
+) -> tuple[bool, bool]:
+    """Resolve rollback storage for every row route the session can reach.
+
+    Returns ``(initial_state_only, producer_capture_initial_state)``. Producer
+    capture borrows a single rollback row from the target session, so it is only
+    valid together with an initial-state-only journal; a row-capable journal must
+    own its own multi-row snapshots.
+    """
+
+    initial_state_only = _initial_state_only_journal_applies(
+        requested,
+        max_candidate_budget=max_candidate_budget,
+        backend=backend,
+        max_end_position=max_end_position,
+    )
+    producer_capture = bool(requested == "native" and initial_state_only)
+    return initial_state_only, producer_capture
+
+
+def _journal_position_bound(
+    target: Qwen35GGUFResidentSession,
+    max_candidate_budget: int,
+) -> int:
+    """Return the largest target end position the resident session can reach.
+
+    ``end_position`` is ``initial_position + batch.rows`` and the resident cursor
+    cannot advance past the scratch position capacity, so this bound covers every
+    verify cycle the session can run.
+    """
+
+    scratch = getattr(target, "scratch", None)
+    if scratch is None:
+        raise RuntimeError("GGUF target session is closed")
+    return int(scratch.max_positions) + int(max_candidate_budget) + 1
+
+
+def _require_serial_capable_journal(
+    journal: _StateJournal,
+    effective_verify_mode: str,
+) -> None:
+    """Fail closed before mutation when the serial row route needs row snapshots."""
+
+    if effective_verify_mode != "native" and journal.initial_state_only:
+        raise RuntimeError(
+            "serial target verification requires a row-capable journal; "
+            "allocate initial_state_only=False for sessions whose native target "
+            "context limit can be exceeded"
+        )
 
 
 def _maybe_launch_device_proposal(
@@ -471,6 +624,7 @@ class Qwen35GGUFPreparedVerify:
     native_proposal_target_chained: bool = False
     device_proposal_top1_values: tuple[float, ...] = ()
     device_state_commit_buffers: TargetStateCommitBuffers | None = None
+    target_logits_device: DeviceBuffer | None = None
 
 
 @dataclass(frozen=True)
@@ -846,20 +1000,32 @@ class _StateJournal:
         )
         return True
 
+    @property
+    def state_row_capacity(self) -> int:
+        """Rollback rows the linear-state snapshots can hold."""
+
+        return 1 if self.initial_state_only else int(self.max_rows) + 1
+
     def _capture_state_index(self, index: int, *, stream: int) -> None:
+        index = int(index)
+        if index < 0 or index >= self.state_row_capacity:
+            raise ValueError("verify journal state index outside snapshot capacity")
         for state, snapshots in self.state_rows:
             self._copy_d2d(
-                snapshots.ptr + int(index) * int(state.nbytes),
+                snapshots.ptr + index * int(state.nbytes),
                 state.ptr,
                 int(state.nbytes),
                 stream=stream,
             )
 
     def _restore_state_index(self, index: int, *, stream: int) -> None:
+        index = int(index)
+        if index < 0 or index >= self.state_row_capacity:
+            raise ValueError("verify journal state index outside snapshot capacity")
         for state, snapshots in self.state_rows:
             self._copy_d2d(
                 state.ptr,
-                snapshots.ptr + int(index) * int(state.nbytes),
+                snapshots.ptr + index * int(state.nbytes),
                 int(state.nbytes),
                 stream=stream,
             )
@@ -904,6 +1070,184 @@ def _resolve_gguf_verifier_backend(
     return normalized
 
 
+class _DMSStoreJournal:
+    """Journal a compact-DMS row through the store's own transaction.
+
+    The resident ``_StateJournal`` snapshots the target's conv/recurrent state
+    and its hidden rows, but a compact-DMS row keeps its KV in per-head extents
+    with per-slot payload and scale planes, so its KV has to be journaled by
+    the store. The resident journal still owns every non-KV tap, so this class
+    composes it rather than replacing it.
+
+    Each row is captured *after* that row's append, matching how the resident
+    journal is used. That ordering is what lets a commit keep the accepted
+    prefix: restoring the selected row's snapshot is exactly "state as of the
+    accepted prefix", and the rejected rows' writes go with it. Restoring the
+    initial snapshot undoes the whole cycle. The final row can instead remain
+    in place while the accept-summary kernel runs: no further target writes
+    occur before commit/rollback, so accepting it needs no KV restore.
+    """
+
+    def __init__(
+        self,
+        *,
+        target: Qwen35GGUFResidentSession,
+        resident: _StateJournal,
+        max_rows: int,
+    ) -> None:
+        backend = getattr(target, "_dms_backend", None)
+        if backend is None:
+            raise ValueError("compact DMS journal requires a session with a DMS backend")
+        self.target = target
+        self.backend = backend
+        self.resident = resident
+        self.max_rows = int(max_rows)
+        self.producer_capture_initial_state = bool(
+            resident.producer_capture_initial_state
+        )
+        # A compact-DMS row cannot use the native target graph, so it always
+        # verifies through the serial route and needs row snapshots.
+        self.initial_state_only = False
+        self._request_id: int | None = None
+        self._initial: Any | None = None
+        self._rows: dict[int, Any] = {}
+        self._final_row: int | None = None
+        self.closed = False
+
+    # -- binding and delegation -------------------------------------------
+
+    def bind_request(self, request_id: int) -> None:
+        """Bind the row this journal serves; the store keys ownership by request."""
+
+        request_id = int(request_id)
+        if self._request_id is not None and self._request_id != request_id:
+            raise RuntimeError(
+                "compact DMS journal is bound to one request: "
+                f"bound={self._request_id} requested={request_id}"
+            )
+        self._request_id = request_id
+
+    @property
+    def row_hidden(self) -> DeviceBuffer:
+        return self.resident.row_hidden
+
+    def _copy_d2d(self, dst: int, src: int, nbytes: int, *, stream: int) -> None:
+        self.resident._copy_d2d(dst, src, nbytes, stream=stream)
+
+    def _lease_row(self) -> Any:
+        if self._request_id is None:
+            raise RuntimeError("compact DMS journal has no bound request")
+        # The engine's request ID is not the private store's row ID. A
+        # singleton resident session owns row zero even after the engine has
+        # served earlier requests; the binding above still guards engine identity.
+        store_request_id = getattr(self.target, "dms_store_request_id", self._request_id)
+        state = self.backend.state_for_request(int(store_request_id))
+        return SimpleNamespace(lease=state.lease)
+
+    def _snapshot(self) -> Any:
+        return self.backend.begin_transaction([self._lease_row()], None)
+
+    def _retire_transaction(self) -> None:
+        if self._initial is None:
+            return
+        self.backend.commit(self._initial, None)
+        self._initial = None
+        self._rows.clear()
+        self._final_row = None
+
+    # -- journal interface -------------------------------------------------
+
+    def hidden_nbytes(self) -> int:
+        return self.resident.hidden_nbytes()
+
+    def state_row_capacity(self) -> int:
+        return self.resident.state_row_capacity()
+
+    def hidden_rows_tensor(self, rows: int) -> Tensor:
+        return self.resident.hidden_rows_tensor(rows)
+
+    def capture_initial(
+        self,
+        *,
+        stream: int = 0,
+        force_consumer_state: bool = False,
+    ) -> None:
+        self._initial = self._snapshot()
+        self._rows.clear()
+        self._final_row = None
+        self.resident.capture_initial(
+            stream=stream,
+            force_consumer_state=force_consumer_state,
+        )
+
+    def mark_initial_state_captured(self) -> None:
+        self.resident.mark_initial_state_captured()
+
+    def capture_hidden_rows(self, hidden_rows: np.ndarray, *, stream: int = 0) -> None:
+        self.resident.capture_hidden_rows(hidden_rows, stream=stream)
+
+    def capture_row(self, row: int, *, stream: int = 0) -> None:
+        if self._final_row is not None:
+            raise RuntimeError("cannot capture another row after the final DMS row")
+        self.resident.capture_row(row, stream=stream)
+        self._rows[int(row)] = self._snapshot()
+
+    def capture_final_row(self, row: int, *, stream: int = 0) -> None:
+        """Keep final KV in place; accept-summary evaluation does not mutate it."""
+        if self._initial is None or self._final_row is not None:
+            raise RuntimeError("final DMS row requires an open unfinished cycle")
+        self.resident.capture_row(row, stream=stream)
+        self._final_row = int(row)
+
+    def restore_initial(self, *, stream: int = 0) -> None:
+        if self._initial is not None:
+            self.backend.rollback(self._initial)
+            self._initial = None
+        self._rows.clear()
+        self._final_row = None
+        self.resident.restore_initial(stream=stream)
+
+    def restore_row(self, row: int, *, stream: int = 0) -> None:
+        self._restore_store_row(int(row))
+        self.resident.restore_row(row, stream=stream)
+
+    def restore_native_row(self, row: int, *, position: int, stream: int = 0) -> None:
+        self._restore_store_row(int(row))
+        self.resident.restore_native_row(row, position=position, stream=stream)
+
+    def _restore_store_row(self, row: int) -> None:
+        if row == self._final_row:
+            self._retire_transaction()
+            return
+        snapshot = self._rows.get(row)
+        if snapshot is None:
+            raise RuntimeError(
+                f"compact DMS journal has no snapshot for row {row}; "
+                f"captured rows={sorted(self._rows)}"
+            )
+        self.backend.rollback(snapshot)
+        self._retire_transaction()
+
+    def close(self) -> None:
+        """Release the journal; an open cycle is rolled back, never dropped.
+
+        A shutdown or disconnect path can reach close() with a cycle still
+        open. Dropping the snapshot instead of applying it would strand exactly
+        the writes this journal exists to undo, so an open transaction is
+        rolled back here. The verifier normally rolls back before closing, in
+        which case there is nothing left to undo and this is a no-op.
+        """
+
+        if self.closed:
+            return
+        self.closed = True
+        if self._initial is not None:
+            self.backend.rollback(self._initial)
+            self._initial = None
+            self._rows.clear()
+        self.resident.close()
+
+
 class Qwen35GGUFTransactionalVerifier:
     """Shared-ABI chain verifier with journaled GGUF state/KV commit.
 
@@ -941,15 +1285,28 @@ class Qwen35GGUFTransactionalVerifier:
         self.quant = str(quant)
         self.target_verify_mode = selected_verify_mode
         self.workspace = RuntimeWorkspace(device=Device("hip", 0), runtime=target.runtime)
+        # Keep main's compact primary journal. _select_journal allocates a
+        # separate consumer-owned journal before any serial fallback executes.
+        initial_state_only = (
+            _effective_target_verify_mode(
+                selected_verify_mode, rows=self.max_candidate_budget + 1
+            ) == "native"
+        )
         self.journal = _StateJournal.allocate(
             target,
             max_rows=self.max_candidate_budget + 1,
-            producer_capture_initial_state=(selected_verify_mode == "native"),
-            initial_state_only=_initial_state_only_journal_applies(
-                selected_verify_mode,
-                max_candidate_budget=self.max_candidate_budget,
-            ),
+            producer_capture_initial_state=initial_state_only,
+            initial_state_only=initial_state_only,
         )
+        if getattr(target, "_dms_backend", None) is not None:
+            # A compact-DMS row keeps its KV in the store, not in the resident
+            # span planes this journal snapshots, so the store's own
+            # transaction has to carry the KV side of the cycle.
+            self.journal = _DMSStoreJournal(
+                target=target,
+                resident=self.journal,
+                max_rows=self.max_candidate_budget + 1,
+            )
         self._primary_journal = self.journal
         self._serial_journal: _StateJournal | None = None
         self._buckets: dict[object, Qwen35GGUFVerifyGraphBucket] = {}
@@ -1092,12 +1449,25 @@ class Qwen35GGUFTransactionalVerifier:
         device_proposal: Any | None = None,
         qualification_oracle: bool = True,
         allow_graph: bool = True,
+        sampled_accept: Any | None = None,
+        return_device_logits: bool = False,
     ) -> Qwen35GGUFPreparedVerify:
+        """Verify one drafted batch.
+
+        ``sampled_accept`` carries native sampler parameters, seed and absolute
+        step. The N2 graph samples each verified prefix using the AR sampler,
+        then commits the matching draft prefix and its correction/bonus token.
+        """
         if self.closed:
             raise RuntimeError("GGUF transactional verifier is closed")
         if self._prepared is not None:
             raise RuntimeError("a GGUF target verification transaction is already open")
         self._validate_chain(batch)
+        bind_request = getattr(self.journal, "bind_request", None)
+        if callable(bind_request):
+            # The store keys ownership by request id, so the journal has to know
+            # which row it is journaling before it snapshots anything.
+            bind_request(int(batch.request_ids[0]))
         budgets = tuple(int(value) for value in remaining_decode)
         if len(budgets) != len(batch.request_ids) or any(value < 0 for value in budgets):
             raise ValueError("remaining_decode must be non-negative and align with requests")
@@ -1126,6 +1496,10 @@ class Qwen35GGUFTransactionalVerifier:
             target=self.target,
         )
         self._select_journal(effective_verify_mode)
+        if return_device_logits and effective_verify_mode != "native":
+            # The serial oracle has no resident matrix of verified rows.
+            return_logits = True
+        _require_serial_capable_journal(self.journal, effective_verify_mode)
         self.journal.capture_initial(
             stream=stream,
             force_consumer_state=(effective_verify_mode == "serial_exact"),
@@ -1184,6 +1558,8 @@ class Qwen35GGUFTransactionalVerifier:
                                 request_id=int(batch.request_ids[0]),
                                 remaining_decode=int(budgets[0]),
                                 compact_result=not bool(qualification_oracle),
+                                sampled_accept=sampled_accept is not None,
+                                sampled_accept_state=sampled_accept,
                                 **native_kwargs,
                             )
                     except NativeSpecTargetGraphUnsupportedError:
@@ -1365,7 +1741,10 @@ class Qwen35GGUFTransactionalVerifier:
                     top1.append(int(result.token_id))
                     if return_logits:
                         logits.append(result.logits)
-                    self.journal.capture_row(row, stream=stream)
+                    capture = self.journal.capture_row
+                    if row == batch.rows - 1:
+                        capture = getattr(self.journal, "capture_final_row", capture)
+                    capture(row, stream=stream)
 
             if gpu_summary is None:
                 buffers = graph_bucket.owner.bind(batch, transaction_id=int(transaction_id))
@@ -1437,6 +1816,13 @@ class Qwen35GGUFTransactionalVerifier:
                         f"tokens={batch.tokens!r} top1={tuple(top1)!r}"
                     )
             graph_bucket.replay_count += 1
+            device_logits = None
+            if return_device_logits and effective_verify_mode == "native":
+                resident_logits = getattr(self.target, "_verify_logits_buf", None)
+                expected_bytes = batch.rows * int(self.target.runner.vocab_size) * 4
+                if resident_logits is None or int(resident_logits.nbytes) < expected_bytes:
+                    raise RuntimeError("native verifier omitted resident target logits")
+                device_logits = DeviceBuffer(int(resident_logits.ptr), expected_bytes)
             prepared = Qwen35GGUFPreparedVerify(
                 batch=batch,
                 buffers=buffers,
@@ -1461,6 +1847,7 @@ class Qwen35GGUFTransactionalVerifier:
                 native_proposal_target_chained=native_proposal_target_chained,
                 device_proposal_top1_values=device_proposal_top1_values,
                 device_state_commit_buffers=device_state_commit_buffers,
+                target_logits_device=device_logits,
             )
             self._prepared = prepared
             return prepared
@@ -1608,7 +1995,9 @@ class Qwen35GGUFTransactionalVerifier:
         }
 
     def _publish_position(self, next_position: int, *, stream: int) -> None:
-        owner = self.target._target_scratch_owner
+        owner = getattr(self.target, "scratch", None)
+        if owner is None:
+            owner = self.target._target_scratch_owner
         if owner is None:
             raise RuntimeError("GGUF target scratch is closed")
         positions = list(owner.position_host.tolist())
@@ -1628,6 +2017,78 @@ class Qwen35GGUFTransactionalVerifier:
     def _require_open(self, prepared: Qwen35GGUFPreparedVerify) -> None:
         if self._prepared is not prepared:
             raise ValueError("prepared GGUF verification is not the open transaction")
+
+    def adopt_accept_summary(
+        self,
+        prepared: Qwen35GGUFPreparedVerify,
+        summary: TargetAcceptSummary,
+    ) -> Qwen35GGUFPreparedVerify:
+        """Install a recomputed accept summary on the open transaction.
+
+        The prepared object *is* the transaction's identity: ``commit`` and
+        ``rollback`` accept only the instance ``prepare`` returned, and
+        ``commit`` validates its plan against ``prepared.summary``. A route that
+        recomputes the accept decision (the sampled route's ``min(1, p/q)``
+        coupling) therefore has to write the summary onto that instance rather
+        than into a copy: a copy is refused as "not the open transaction". Only
+        the accept decision changes; the verified rows, buffers, and journal
+        stay exactly as prepared.
+        """
+
+        self._require_open(prepared)
+        object.__setattr__(prepared, "summary", summary)
+        return prepared
+
+    def adopt_terminal_summary(
+        self,
+        prepared: Qwen35GGUFPreparedVerify,
+        summary: TargetAcceptSummary,
+    ) -> Qwen35GGUFPreparedVerify:
+        """Recommit an EOS-shortened chain from retained verifier state rows.
+
+        N2 may already have selected a later row inside the graph. Its producer
+        journals still own every row, so only the terminal cycle needs to stage
+        their hidden rows and select the earlier state through ordinary commit.
+        """
+
+        self._require_open(prepared)
+        if summary.request_ids != prepared.summary.request_ids or (
+            summary.accepted_counts[0] >= prepared.summary.accepted_counts[0]
+        ):
+            raise ValueError("terminal summary must shorten the prepared chain")
+        if prepared.native_device_accept_commit:
+            buffers = prepared.device_state_commit_buffers
+            if buffers is None or buffers.hidden_taps_src is None:
+                raise RuntimeError("terminal graph recommit requires captured hidden rows")
+            self.journal._copy_d2d(
+                self.journal.row_hidden.ptr,
+                buffers.hidden_taps_src.ptr,
+                prepared.batch.rows * self.journal.hidden_nbytes,
+                stream=0,
+            )
+            object.__setattr__(prepared, "native_device_accept_commit", False)
+        for name in ("accepted_counts", "commit_rows", "commit_tokens", "commit_positions", "next_tokens"):
+            tensor = getattr(prepared.buffers, name, None)
+            values = getattr(summary, name)
+            if tensor is not None and values is not None:
+                _copy_array(tensor, np.asarray(values, dtype=np.int32), self.target.runtime)
+        if prepared.buffers.full_accept is not None:
+            _copy_array(
+                prepared.buffers.full_accept,
+                np.asarray(summary.full_accept, dtype=np.uint8), self.target.runtime,
+            )
+        if prepared.buffers.committed_output_ids is not None:
+            values = np.full(prepared.buffers.committed_output_ids.shape, -1, dtype=np.int32)
+            prefix = (prepared.batch.tokens[prepared.batch.root_rows[0]], *summary.accepted_tokens[0])
+            values[0, :len(prefix)] = prefix
+            _copy_array(prepared.buffers.committed_output_ids, values, self.target.runtime)
+        if prepared.buffers.committed_output_lengths is not None:
+            _copy_array(
+                prepared.buffers.committed_output_lengths,
+                np.asarray([summary.accepted_counts[0] + 1], dtype=np.int32),
+                self.target.runtime,
+            )
+        return self.adopt_accept_summary(prepared, summary)
 
     def __enter__(self) -> "Qwen35GGUFTransactionalVerifier":
         return self
@@ -1650,6 +2111,7 @@ class Qwen35GGUFMTPDecodeSession:
         verifier: Qwen35GGUFTransactionalVerifier | None = None,
         owns_verifier: bool = True,
         draft_hidden_variant: str = "pre_output_norm",
+        allow_graph: bool = True,
     ) -> None:
         if int(candidate_budget) not in _GGUF_MTP_CANDIDATE_BUDGETS:
             raise ValueError(
@@ -1663,6 +2125,12 @@ class Qwen35GGUFMTPDecodeSession:
         self.draft_provider = draft_provider
         self.candidate_budget = int(candidate_budget)
         self.quant = selected_quant
+        # The cached native target graph is a different arithmetic route from
+        # the eager chain, and a caller that measures the eager route (the RF1
+        # long-context task packet binds eager cycle ownership) has to be able
+        # to refuse graph substitution instead of depending on the graph being
+        # ineligible at that context.
+        self.allow_graph = bool(allow_graph)
         self.draft_hidden_policy = Qwen35GGUFDraftHiddenPolicy(
             target_hidden_variant=str(draft_hidden_variant)
         )
@@ -1947,6 +2415,7 @@ class Qwen35GGUFMTPDecodeSession:
                     remaining_decode=(remaining,),
                     return_logits=return_cycle_logits,
                     device_proposal=device_proposal,
+                    allow_graph=bool(self.allow_graph),
                 )
                 verify_seconds += time.perf_counter() - verify_started
                 lifecycle_phase("after_target_prepare")
@@ -1988,6 +2457,13 @@ class Qwen35GGUFMTPDecodeSession:
                         target_batch=actual_work.target_batch,
                         work_item=actual_work.work_item,
                     )
+                from hipengine.speculative.streaming import limit_chain_accept_eos
+
+                terminal_summary, _ = limit_chain_accept_eos(
+                    prepared.batch, prepared.summary, eos_token_id=eos_token_id,
+                )
+                if terminal_summary is not prepared.summary:
+                    prepared = self.verifier.adopt_terminal_summary(prepared, terminal_summary)
                 target_rows += prepared.batch.rows
                 prepared_top1 = prepared.target_top1
                 prepared_logits = prepared.target_logits

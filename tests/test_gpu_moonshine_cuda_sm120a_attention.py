@@ -226,11 +226,13 @@ def test_moonshine_cuda_self_attention_matches_cpu_oracle() -> None:
             expected = moonshine_self_attention(
                 query, key_cache, value_cache, position=pos
             )  # (1, 8, 1, 52)
+            # Named local: the copy takes a bare address, so an inline
+            # temporary would be freed before the call.
+            position_host = np.array([pos], dtype=np.int64)
             copy_host_to_device(
-                device_position,
-                host_array_ptr(np.array([pos], dtype=np.int64)),
-                runtime=runtime,
+                device_position, host_array_ptr(position_host), runtime=runtime
             )
+            runtime.device_synchronize()
 
             moonshine_self_attention_fp16(
                 device_query.ptr,

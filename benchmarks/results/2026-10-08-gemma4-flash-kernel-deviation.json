@@ -1,0 +1,393 @@
+{
+ "note": "flash vs the single kernel, raw ABI, one input per case, seed 20260930",
+ "head_cases": [
+  {
+   "case": "sliding hd256 f32 keep k2047",
+   "slices": 64,
+   "max_abs": 1.6689300537109375e-06,
+   "max_abs_over_scale": 7.647963789732128e-07,
+   "rms_rel": 3.659651886018197e-07,
+   "p99_abs": 7.152557373046875e-07
+  },
+  {
+   "case": "global hd512 f32 keep k2047",
+   "slices": 64,
+   "max_abs": 1.430511474609375e-06,
+   "max_abs_over_scale": 5.478901662846654e-07,
+   "rms_rel": 2.2812121478971387e-07,
+   "p99_abs": 4.76837158203125e-07
+  },
+  {
+   "case": "sliding hd256 f32 keep k4096",
+   "slices": 64,
+   "max_abs": 1.7881393432617188e-06,
+   "max_abs_over_scale": 9.113985702708348e-07,
+   "rms_rel": 4.202627627888303e-07,
+   "p99_abs": 8.344650268554688e-07
+  },
+  {
+   "case": "global hd512 f32 keep k4096",
+   "slices": 64,
+   "max_abs": 1.5497207641601562e-06,
+   "max_abs_over_scale": 6.717697049432433e-07,
+   "rms_rel": 2.377606967107964e-07,
+   "p99_abs": 4.76837158203125e-07
+  },
+  {
+   "case": "sliding hd256 f32 window k2047",
+   "slices": 64,
+   "max_abs": 1.1920928955078125e-06,
+   "max_abs_over_scale": 5.393959714456719e-07,
+   "rms_rel": 3.3139687372360114e-07,
+   "p99_abs": 7.152557373046875e-07
+  },
+  {
+   "case": "global hd512 f32 window k2047",
+   "slices": 64,
+   "max_abs": 1.430511474609375e-06,
+   "max_abs_over_scale": 5.468988057644228e-07,
+   "rms_rel": 1.9722591816379266e-07,
+   "p99_abs": 4.172325134277344e-07
+  },
+  {
+   "case": "sliding hd256 f32 window k4096",
+   "slices": 64,
+   "max_abs": 1.3113021850585938e-06,
+   "max_abs_over_scale": 6.436664740348456e-07,
+   "rms_rel": 3.472313039892676e-07,
+   "p99_abs": 5.967915058136013e-07
+  },
+  {
+   "case": "global hd512 f32 window k4096",
+   "slices": 64,
+   "max_abs": 1.1920928955078125e-06,
+   "max_abs_over_scale": 5.14490575613085e-07,
+   "rms_rel": 2.093847615430881e-07,
+   "p99_abs": 4.172325134277344e-07
+  },
+  {
+   "case": "sliding hd256 f32 holes k2047",
+   "slices": 64,
+   "max_abs": 1.1920928955078125e-06,
+   "max_abs_over_scale": 5.446503840166463e-07,
+   "rms_rel": 3.203694147476995e-07,
+   "p99_abs": 7.152557373046875e-07
+  },
+  {
+   "case": "global hd512 f32 holes k2047",
+   "slices": 64,
+   "max_abs": 1.6689300537109375e-06,
+   "max_abs_over_scale": 6.38673253030208e-07,
+   "rms_rel": 2.3841022181025344e-07,
+   "p99_abs": 4.76837158203125e-07
+  },
+  {
+   "case": "sliding hd256 f32 holes k4096",
+   "slices": 64,
+   "max_abs": 1.7881393432617188e-06,
+   "max_abs_over_scale": 7.763615103564555e-07,
+   "rms_rel": 4.2030171849799297e-07,
+   "p99_abs": 7.748603820800781e-07
+  },
+  {
+   "case": "global hd512 f32 holes k4096",
+   "slices": 64,
+   "max_abs": 1.1920928955078125e-06,
+   "max_abs_over_scale": 4.707192835426559e-07,
+   "rms_rel": 2.762243832184078e-07,
+   "p99_abs": 5.960464477539062e-07
+  },
+  {
+   "case": "sliding hd256 bf16 keep k2047",
+   "slices": 64,
+   "max_abs": 0.0,
+   "max_abs_over_scale": 0.0,
+   "rms_rel": 0.0,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "global hd512 bf16 keep k2047",
+   "slices": 64,
+   "max_abs": 0.0,
+   "max_abs_over_scale": 0.0,
+   "rms_rel": 0.0,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "sliding hd256 bf16 keep k4096",
+   "slices": 64,
+   "max_abs": 0.0,
+   "max_abs_over_scale": 0.0,
+   "rms_rel": 0.0,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "global hd512 bf16 keep k4096",
+   "slices": 64,
+   "max_abs": 0.0,
+   "max_abs_over_scale": 0.0,
+   "rms_rel": 0.0,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "sliding hd256 bf16 window k2047",
+   "slices": 64,
+   "max_abs": 4.76837158203125e-07,
+   "max_abs_over_scale": 2.1798270089285714e-07,
+   "rms_rel": 1.3309134278277493e-08,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "global hd512 bf16 window k2047",
+   "slices": 64,
+   "max_abs": 0.00390625,
+   "max_abs_over_scale": 0.0014970059880239522,
+   "rms_rel": 7.755918309973341e-05,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "sliding hd256 bf16 window k4096",
+   "slices": 64,
+   "max_abs": 6.103515625e-05,
+   "max_abs_over_scale": 3.0048076923076925e-05,
+   "rms_rel": 1.944336047100724e-06,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "global hd512 bf16 window k4096",
+   "slices": 64,
+   "max_abs": 0.000244140625,
+   "max_abs_over_scale": 0.00010557432432432433,
+   "rms_rel": 5.148724156009289e-06,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "sliding hd256 bf16 holes k2047",
+   "slices": 64,
+   "max_abs": 0.0,
+   "max_abs_over_scale": 0.0,
+   "rms_rel": 0.0,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "global hd512 bf16 holes k2047",
+   "slices": 64,
+   "max_abs": 0.0,
+   "max_abs_over_scale": 0.0,
+   "rms_rel": 0.0,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "sliding hd256 bf16 holes k4096",
+   "slices": 64,
+   "max_abs": 0.00048828125,
+   "max_abs_over_scale": 0.00021404109589041095,
+   "rms_rel": 1.5759681299138927e-05,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "global hd512 bf16 holes k4096",
+   "slices": 64,
+   "max_abs": 0.0,
+   "max_abs_over_scale": 0.0,
+   "rms_rel": 0.0,
+   "p99_abs": 0.0
+  }
+ ],
+ "abf639894_cases": [
+  {
+   "case": "sliding hd256 f32 keep k2047",
+   "slices": 64,
+   "max_abs": 1.6689300537109375e-06,
+   "max_abs_over_scale": 7.647963789732128e-07,
+   "rms_rel": 3.659651886018197e-07,
+   "p99_abs": 7.152557373046875e-07
+  },
+  {
+   "case": "global hd512 f32 keep k2047",
+   "slices": 64,
+   "max_abs": 1.430511474609375e-06,
+   "max_abs_over_scale": 5.478901662846654e-07,
+   "rms_rel": 2.2812121478971387e-07,
+   "p99_abs": 4.76837158203125e-07
+  },
+  {
+   "case": "sliding hd256 f32 keep k4096",
+   "slices": 64,
+   "max_abs": 1.7881393432617188e-06,
+   "max_abs_over_scale": 9.113985702708348e-07,
+   "rms_rel": 4.202627627888303e-07,
+   "p99_abs": 8.344650268554688e-07
+  },
+  {
+   "case": "global hd512 f32 keep k4096",
+   "slices": 64,
+   "max_abs": 1.5497207641601562e-06,
+   "max_abs_over_scale": 6.717697049432433e-07,
+   "rms_rel": 2.377606967107964e-07,
+   "p99_abs": 4.76837158203125e-07
+  },
+  {
+   "case": "sliding hd256 f32 window k2047",
+   "slices": 64,
+   "max_abs": 1.1920928955078125e-06,
+   "max_abs_over_scale": 5.393959714456719e-07,
+   "rms_rel": 3.3139687372360114e-07,
+   "p99_abs": 7.152557373046875e-07
+  },
+  {
+   "case": "global hd512 f32 window k2047",
+   "slices": 64,
+   "max_abs": 1.430511474609375e-06,
+   "max_abs_over_scale": 5.468988057644228e-07,
+   "rms_rel": 1.9722591816379266e-07,
+   "p99_abs": 4.172325134277344e-07
+  },
+  {
+   "case": "sliding hd256 f32 window k4096",
+   "slices": 64,
+   "max_abs": 1.3113021850585938e-06,
+   "max_abs_over_scale": 6.436664740348456e-07,
+   "rms_rel": 3.472313039892676e-07,
+   "p99_abs": 5.967915058136013e-07
+  },
+  {
+   "case": "global hd512 f32 window k4096",
+   "slices": 64,
+   "max_abs": 1.1920928955078125e-06,
+   "max_abs_over_scale": 5.14490575613085e-07,
+   "rms_rel": 2.093847615430881e-07,
+   "p99_abs": 4.172325134277344e-07
+  },
+  {
+   "case": "sliding hd256 f32 holes k2047",
+   "slices": 64,
+   "max_abs": 1.1920928955078125e-06,
+   "max_abs_over_scale": 5.446503840166463e-07,
+   "rms_rel": 3.203694147476995e-07,
+   "p99_abs": 7.152557373046875e-07
+  },
+  {
+   "case": "global hd512 f32 holes k2047",
+   "slices": 64,
+   "max_abs": 1.6689300537109375e-06,
+   "max_abs_over_scale": 6.38673253030208e-07,
+   "rms_rel": 2.3841022181025344e-07,
+   "p99_abs": 4.76837158203125e-07
+  },
+  {
+   "case": "sliding hd256 f32 holes k4096",
+   "slices": 64,
+   "max_abs": 1.7881393432617188e-06,
+   "max_abs_over_scale": 7.763615103564555e-07,
+   "rms_rel": 4.2030171849799297e-07,
+   "p99_abs": 7.748603820800781e-07
+  },
+  {
+   "case": "global hd512 f32 holes k4096",
+   "slices": 64,
+   "max_abs": 1.1920928955078125e-06,
+   "max_abs_over_scale": 4.707192835426559e-07,
+   "rms_rel": 2.762243832184078e-07,
+   "p99_abs": 5.960464477539062e-07
+  },
+  {
+   "case": "sliding hd256 bf16 keep k2047",
+   "slices": 64,
+   "max_abs": 0.0,
+   "max_abs_over_scale": 0.0,
+   "rms_rel": 0.0,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "global hd512 bf16 keep k2047",
+   "slices": 64,
+   "max_abs": 0.0,
+   "max_abs_over_scale": 0.0,
+   "rms_rel": 0.0,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "sliding hd256 bf16 keep k4096",
+   "slices": 64,
+   "max_abs": 0.0,
+   "max_abs_over_scale": 0.0,
+   "rms_rel": 0.0,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "global hd512 bf16 keep k4096",
+   "slices": 64,
+   "max_abs": 0.0,
+   "max_abs_over_scale": 0.0,
+   "rms_rel": 0.0,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "sliding hd256 bf16 window k2047",
+   "slices": 64,
+   "max_abs": 4.76837158203125e-07,
+   "max_abs_over_scale": 2.1798270089285714e-07,
+   "rms_rel": 1.3309134278277493e-08,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "global hd512 bf16 window k2047",
+   "slices": 64,
+   "max_abs": 0.00390625,
+   "max_abs_over_scale": 0.0014970059880239522,
+   "rms_rel": 7.755918309973341e-05,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "sliding hd256 bf16 window k4096",
+   "slices": 64,
+   "max_abs": 6.103515625e-05,
+   "max_abs_over_scale": 3.0048076923076925e-05,
+   "rms_rel": 1.944336047100724e-06,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "global hd512 bf16 window k4096",
+   "slices": 64,
+   "max_abs": 0.000244140625,
+   "max_abs_over_scale": 0.00010557432432432433,
+   "rms_rel": 5.148724156009289e-06,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "sliding hd256 bf16 holes k2047",
+   "slices": 64,
+   "max_abs": 0.0,
+   "max_abs_over_scale": 0.0,
+   "rms_rel": 0.0,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "global hd512 bf16 holes k2047",
+   "slices": 64,
+   "max_abs": 0.0,
+   "max_abs_over_scale": 0.0,
+   "rms_rel": 0.0,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "sliding hd256 bf16 holes k4096",
+   "slices": 64,
+   "max_abs": 0.00048828125,
+   "max_abs_over_scale": 0.00021404109589041095,
+   "rms_rel": 1.5759681299138927e-05,
+   "p99_abs": 0.0
+  },
+  {
+   "case": "global hd512 bf16 holes k4096",
+   "slices": 64,
+   "max_abs": 0.0,
+   "max_abs_over_scale": 0.0,
+   "rms_rel": 0.0,
+   "p99_abs": 0.0
+  }
+ ],
+ "rows_identical": 24,
+ "cases": 24
+}

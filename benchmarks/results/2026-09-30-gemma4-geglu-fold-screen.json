@@ -1,0 +1,34 @@
+{
+  "schema": "gemma4-geglu-fold-screen/v1",
+  "created_utc": "2026-09-30T03:47:30+00:00",
+  "command": "python3 scripts/gemma4_geglu_down_fold_screen.py --gpu 1 --in-features 704 --out-features 2816 --experts 128 --iters 2000",
+  "git_commit": "8c931f9de90fee67b5fcac73588c16b74d2a2f38",
+  "arch": "x86_64",
+  "gpu_env": {
+    "HIP_VISIBLE_DEVICES": "1"
+  },
+  "geometry": {
+    "in_features": 704,
+    "out_features": 2816,
+    "experts": 128,
+    "iters": 2000,
+    "warmup": 200
+  },
+  "arms_us_per_call": {
+    "chain_r1": 12.201,
+    "fold_r1": 13.764,
+    "chain_r8": 55.532,
+    "fold_r8": 90.784
+  },
+  "delta_us": {
+    "rows1": -1.563,
+    "rows8": -35.252
+  },
+  "bit_equal": {
+    "1": true,
+    "8": true
+  },
+  "gate_us": 1.0,
+  "verdict": "record",
+  "evidence_note": "chain = gelu launch + plain t64 selected GEMV; fold = the fused t64 kernel consuming gate_up_out. Bitwise equality is asserted in test_q5_1_selected_geglu_down_matches_the_chain_bitwise at rows 1/8 with sentinels; re-checked in-process here. The shipped-path claim is the same-lane census A/B, not this projection."
+}

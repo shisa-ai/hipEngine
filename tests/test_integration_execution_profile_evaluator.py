@@ -909,6 +909,11 @@ def test_execution_profile_gate_cli_writes_valid_artifact(tmp_path) -> None:
     assert completed.returncode == 0, completed.stderr
     artifact = json.loads(output.read_text(encoding="utf-8"))
     assert validate_execution_profile_artifact(artifact)["decision"]["status"] == "passed"
+    diagnostics = artifact["quality"]["summary"]["diagnostics"]
+    assert diagnostics["gating"] is False
+    assert diagnostics["rows"] == 3
+    assert diagnostics["top1_flips"]["flips"] == 0
+    assert diagnostics["total_variation"]["max"] == 0.0
 
 
 def test_qwen36_teacher_fixture_adapter_preserves_categories_and_labels() -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -428,6 +429,27 @@ def test_legacy_manifest_rejects_mutation_and_missing_manifest(tmp_path: Path) -
     assert "legacy manifest" in missing.stderr.lower()
 
 
+def test_check_allows_sanctioned_retirement_of_the_frozen_journal(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    entry = _new_entry(repo)
+    _commit_entry(repo, entry)
+    legacy = repo / "WORKLOG-LEGACY.md"
+    legacy.write_text("# Legacy\n\n## 2026-08-10 - Frozen\n\n- Evidence.\n", encoding="utf-8")
+    _legacy_manifest(repo)
+    _git(repo, "add", "WORKLOG-LEGACY.md", "worklog/legacy-manifest.json")
+    _git(repo, "commit", "-m", "docs: freeze legacy worklog")
+
+    _git(repo, "rm", "-q", "WORKLOG-LEGACY.md", "worklog/legacy-manifest.json")
+    retired = _tool(repo, "check")
+    assert retired.returncode == 0
+
+    tracked_entry = next((repo / "worklog" / "entries").glob("*.md"))
+    _git(repo, "rm", "-q", str(tracked_entry.relative_to(repo)))
+    still_immutable = _tool(repo, "check", check=False)
+    assert still_immutable.returncode == 1
+    assert "immutable" in still_immutable.stderr.lower()
+
+
 def test_install_hook_preserves_lfs_hooks_and_refuses_unrelated_precommit(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path)
     hooks = repo / ".git" / "hooks"
@@ -497,3 +519,526 @@ def test_commit_succeeds_with_unfinished_unstaged_entry_present(tmp_path: Path) 
     assert _git(repo, "ls-files", "--others", "--exclude-standard").stdout.strip() == str(
         wip.relative_to(repo)
     )
+
+
+def _set_base_commit(entry: Path, value: str) -> None:
+    text = entry.read_text(encoding="utf-8")
+    entry.write_text(
+        re.sub(r"(?m)^base_commit: .*$", f"base_commit: {value}", text, count=1),
+        encoding="utf-8",
+    )
+
+
+def _resolved_base_commit(repo: Path, entry: Path) -> str:
+    """Resolve an entry's recorded base_commit, possibly abbreviated, to its full hash."""
+    for line in entry.read_text(encoding="utf-8").splitlines():
+        if line.startswith("base_commit: "):
+            recorded = line.removeprefix("base_commit: ")
+            return _git(repo, "rev-parse", f"{recorded}^{{commit}}").stdout.strip()
+    raise AssertionError(f"{entry} has no base_commit field")
+
+
+def _historical_abbreviated_entry(repo: Path) -> Path:
+    """A committed entry whose base_commit is a real abbreviation, as history left it."""
+    entry = _new_entry(repo, title="Historical outcome", topic="historical-outcome")
+    _set_base_commit(entry, _git(repo, "rev-parse", "--short=9", "HEAD").stdout.strip())
+    _commit_entry(repo, entry, "docs: record historical unit")
+    return entry
+
+
+def _historical_entry_without_next(repo: Path) -> Path:
+    entry = _new_entry(repo, title="Historical evidence", topic="historical-evidence")
+    text = entry.read_text(encoding="utf-8").replace(
+        "## Next", "## Remaining observations", 1
+    )
+    entry.write_text(text, encoding="utf-8")
+    _commit_entry(repo, entry, "docs: record historical evidence")
+    return entry
+
+
+def _superseding_entry(repo: Path, corrected: Path) -> Path:
+    """A new decision entry that names the historical entry it corrects."""
+    entry = _new_entry(
+        repo,
+        title="Correct historical evidence headings",
+        topic="correct-historical-evidence",
+        worker="worklog-compat",
+        status="decision",
+    )
+    text = entry.read_text(encoding="utf-8").replace(
+        "## Summary\n\nRecorded exact test evidence.",
+        f"## Summary\n\nSupersedes `{corrected.relative_to(repo)}`.",
+        1,
+    )
+    entry.write_text(text, encoding="utf-8")
+    return entry
+
+
+def _correction_payload(
+    repo: Path,
+    entry: Path,
+    *,
+    defects: list[str],
+    base_commit: str | None = None,
+    superseded_by: str | None = None,
+    sha256: str | None = None,
+) -> dict[str, object]:
+    return {
+        "schema": 1,
+        "path": str(entry.relative_to(repo)),
+        "sha256": sha256 or hashlib.sha256(entry.read_bytes()).hexdigest(),
+        "defects": list(defects),
+        "reason": "historical entry predates the current schema rule",
+        "base_commit": base_commit,
+        "superseded_by": superseded_by,
+    }
+
+
+def _write_correction(
+    repo: Path,
+    entry: Path,
+    payload: dict[str, object],
+    *,
+    name: str | None = None,
+    raw: str | None = None,
+) -> Path:
+    path = repo / "worklog" / "corrections" / (name or f"{entry.stem}.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if raw is not None:
+        path.write_text(raw, encoding="utf-8")
+    else:
+        path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def _stage(repo: Path, *paths: Path) -> None:
+    _git(repo, "add", *[str(path.relative_to(repo)) for path in paths])
+
+
+def test_hash_bound_correction_amends_a_historical_base_commit(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    entry = _historical_abbreviated_entry(repo)
+    rejected = _tool(repo, "check", check=False)
+    assert rejected.returncode == 1
+    assert "base_commit must be a full 40-character" in rejected.stderr
+
+    full_commit = _resolved_base_commit(repo, entry)
+    correction = _write_correction(
+        repo,
+        entry,
+        _correction_payload(
+            repo, entry, defects=["abbreviated_base_commit"], base_commit=full_commit
+        ),
+    )
+    _stage(repo, correction)
+
+    assert _tool(repo, "check").stdout.strip() == "worklog: 1 valid entry"
+    _tool(repo, "render")
+    rendered = (repo / ".worklog" / "WORKLOG.md").read_text(encoding="utf-8")
+    assert "Historical outcome" in rendered
+    assert str(entry.relative_to(repo)) in rendered
+
+
+def test_unstaged_correction_does_not_exempt_a_tracked_entry(tmp_path: Path) -> None:
+    """Corrections are read from the commit tree, not from an untracked working file."""
+    repo = _init_repo(tmp_path)
+    entry = _historical_abbreviated_entry(repo)
+    _write_correction(
+        repo,
+        entry,
+        _correction_payload(
+            repo,
+            entry,
+            defects=["abbreviated_base_commit"],
+            base_commit=_resolved_base_commit(repo, entry),
+        ),
+    )
+
+    result = _tool(repo, "check", check=False)
+    assert result.returncode == 1
+    assert "base_commit must be a full 40-character" in result.stderr
+
+
+def test_structural_correction_is_carried_by_a_linked_new_entry(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    entry = _historical_entry_without_next(repo)
+    superseding = _superseding_entry(repo, entry)
+    correction = _write_correction(
+        repo,
+        entry,
+        _correction_payload(
+            repo,
+            entry,
+            defects=["missing_required_sections"],
+            superseded_by=str(superseding.relative_to(repo)),
+        ),
+    )
+    _stage(repo, correction, superseding)
+
+    assert _tool(repo, "check").stdout.strip() == "worklog: 2 valid entries"
+    _tool(repo, "render")
+    rendered = (repo / ".worklog" / "WORKLOG.md").read_text(encoding="utf-8")
+    assert "Historical evidence" in rendered
+    assert "Correct historical evidence headings" in rendered
+
+
+def test_structural_correction_requires_a_valid_superseding_entry(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    entry = _historical_entry_without_next(repo)
+
+    missing = _write_correction(
+        repo,
+        entry,
+        _correction_payload(
+            repo,
+            entry,
+            defects=["missing_required_sections"],
+            superseded_by="worklog/entries/20990101T000000.000000Z-nobody-absent-topic-abcdef.md",
+        ),
+    )
+    _stage(repo, missing)
+    absent = _tool(repo, "check", check=False)
+    assert absent.returncode == 1
+    assert "superseded_by is not a valid entry in the commit tree" in absent.stderr
+
+    unlinked = _new_entry(
+        repo,
+        title="Unlinked correction",
+        topic="unlinked-correction",
+        status="decision",
+    )
+    _write_correction(
+        repo,
+        entry,
+        _correction_payload(
+            repo,
+            entry,
+            defects=["missing_required_sections"],
+            superseded_by=str(unlinked.relative_to(repo)),
+        ),
+    )
+    _stage(repo, unlinked, missing)
+    unnamed = _tool(repo, "check", check=False)
+    assert unnamed.returncode == 1
+    assert "must name the corrected path" in unnamed.stderr
+
+    wrong_status = _new_entry(
+        repo,
+        title="Completed correction",
+        topic="completed-correction",
+        status="completed",
+    )
+    wrong_status.write_text(
+        wrong_status.read_text(encoding="utf-8").replace(
+            "## Summary\n\nRecorded exact test evidence.",
+            f"## Summary\n\nSupersedes `{entry.relative_to(repo)}`.",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    _write_correction(
+        repo,
+        entry,
+        _correction_payload(
+            repo,
+            entry,
+            defects=["missing_required_sections"],
+            superseded_by=str(wrong_status.relative_to(repo)),
+        ),
+    )
+    _stage(repo, wrong_status, missing)
+    status_error = _tool(repo, "check", check=False)
+    assert status_error.returncode == 1
+    assert "must have status checkpoint or decision" in status_error.stderr
+
+
+@pytest.mark.parametrize("change", ["modify", "delete", "rename"])
+def test_committed_correction_records_are_immutable(tmp_path: Path, change: str) -> None:
+    repo = _init_repo(tmp_path)
+    entry = _historical_abbreviated_entry(repo)
+    correction = _write_correction(
+        repo,
+        entry,
+        _correction_payload(
+            repo,
+            entry,
+            defects=["abbreviated_base_commit"],
+            base_commit=_resolved_base_commit(repo, entry),
+        ),
+    )
+    _stage(repo, correction)
+    _git(repo, "commit", "-m", "docs: bind historical entry correction")
+    assert _tool(repo, "check").returncode == 0
+
+    if change == "modify":
+        correction.write_text(
+            correction.read_text(encoding="utf-8").replace("predates", "antedates"),
+            encoding="utf-8",
+        )
+    elif change == "delete":
+        correction.unlink()
+    else:
+        correction.rename(correction.with_name("renamed.json"))
+
+    result = _tool(repo, "check", check=False)
+    assert result.returncode == 1
+    assert "immutable" in result.stderr
+
+
+def test_correction_does_not_weaken_new_entry_schema(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    historical = _historical_abbreviated_entry(repo)
+    _stage(
+        repo,
+        _write_correction(
+            repo,
+            historical,
+            _correction_payload(
+                repo,
+                historical,
+                defects=["abbreviated_base_commit"],
+                base_commit=_resolved_base_commit(repo, historical),
+            ),
+        ),
+    )
+    assert _tool(repo, "check").returncode == 0
+
+    new_entry = _new_entry(repo, title="New outcome", topic="new-outcome")
+    _set_base_commit(new_entry, "0123456")
+    _stage(repo, new_entry)
+    abbreviated = _tool(repo, "check", check=False)
+    assert abbreviated.returncode == 1
+    assert f"{new_entry.relative_to(repo)}: base_commit must be a full 40-character" in (
+        abbreviated.stderr
+    )
+
+    _set_base_commit(new_entry, _git(repo, "rev-parse", "HEAD").stdout.strip())
+    new_entry.write_text(
+        new_entry.read_text(encoding="utf-8").replace(
+            "## Next", "## Remaining observations", 1
+        ),
+        encoding="utf-8",
+    )
+    _stage(repo, new_entry)
+    headings = _tool(repo, "check", check=False)
+    assert headings.returncode == 1
+    assert "expected exactly one '## Next' heading" in headings.stderr
+
+
+def test_correction_cannot_exempt_a_new_entry(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    new_entry = _new_entry(repo, title="New outcome", topic="new-outcome")
+    _set_base_commit(new_entry, "0123456")
+    _stage(repo, new_entry)
+    correction = _write_correction(
+        repo,
+        new_entry,
+        _correction_payload(
+            repo,
+            new_entry,
+            defects=["abbreviated_base_commit"],
+            base_commit=_git(repo, "rev-parse", "HEAD").stdout.strip(),
+        ),
+    )
+    _stage(repo, correction)
+
+    result = _tool(repo, "check", check=False)
+    assert result.returncode == 1
+    assert "must already be committed in HEAD" in result.stderr
+
+
+def test_correction_rejects_a_mismatched_sha256(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    entry = _historical_abbreviated_entry(repo)
+    correction = _write_correction(
+        repo,
+        entry,
+        _correction_payload(
+            repo,
+            entry,
+            defects=["abbreviated_base_commit"],
+            base_commit=_resolved_base_commit(repo, entry),
+            sha256="0" * 64,
+        ),
+    )
+    _stage(repo, correction)
+
+    result = _tool(repo, "check", check=False)
+    assert result.returncode == 1
+    assert "sha256 mismatch" in result.stderr
+    # A mismatched record is not applied, so the entry keeps failing on its own.
+    assert "base_commit must be a full 40-character" in result.stderr
+
+
+def test_correction_must_extend_the_recorded_abbreviation(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    entry = _new_entry(repo, title="Historical outcome", topic="historical-outcome")
+    _set_base_commit(entry, "abcdef123")
+    _commit_entry(repo, entry, "docs: record historical unit")
+    correction = _write_correction(
+        repo,
+        entry,
+        _correction_payload(
+            repo, entry, defects=["abbreviated_base_commit"], base_commit="0" * 40
+        ),
+    )
+    _stage(repo, correction)
+
+    result = _tool(repo, "check", check=False)
+    assert result.returncode == 1
+    assert "does not extend the recorded value" in result.stderr
+
+
+def test_correction_for_an_untracked_entry_is_rejected(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    absent = repo / "worklog" / "entries" / (
+        "20990101T000000.000000Z-nobody-absent-topic-abcdef.md"
+    )
+    correction = _write_correction(
+        repo,
+        absent,
+        _correction_payload(
+            repo,
+            absent,
+            defects=["abbreviated_base_commit"],
+            base_commit="0" * 40,
+            sha256="1" * 64,
+        ),
+    )
+    _stage(repo, correction)
+
+    result = _tool(repo, "check", check=False)
+    assert result.returncode == 1
+    assert "corrected entry is not tracked" in result.stderr
+
+
+def test_correction_for_an_already_valid_entry_is_rejected(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    entry = _new_entry(repo)
+    _commit_entry(repo, entry)
+    correction = _write_correction(
+        repo,
+        entry,
+        _correction_payload(
+            repo,
+            entry,
+            defects=["abbreviated_base_commit"],
+            base_commit=_resolved_base_commit(repo, entry),
+        ),
+    )
+    _stage(repo, correction)
+
+    result = _tool(repo, "check", check=False)
+    assert result.returncode == 1
+    assert "is unnecessary" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "mutation, expected",
+    [
+        (lambda p: {**p, "extra": 1}, "correction fields invalid"),
+        (
+            lambda p: {
+                "path": p["path"],
+                "schema": p["schema"],
+                "sha256": p["sha256"],
+                "defects": p["defects"],
+                "reason": p["reason"],
+                "base_commit": p["base_commit"],
+                "superseded_by": p["superseded_by"],
+            },
+            "fields are out of order",
+        ),
+        (lambda p: {**p, "schema": 2}, "correction schema must be 1"),
+        (lambda p: {**p, "defects": ["unknown_defect"]}, "unknown defect"),
+        (
+            lambda p: {**p, "defects": ["missing_required_sections", "abbreviated_base_commit"]},
+            "sorted",
+        ),
+        (lambda p: {**p, "base_commit": None}, "base_commit must carry the resolved full hash"),
+        (
+            lambda p: {**p, "defects": ["missing_required_sections"]},
+            "base_commit must carry the resolved full hash",
+        ),
+        (
+            lambda p: {**p, "defects": ["missing_required_sections"], "base_commit": None},
+            "superseded_by must name the new correcting entry",
+        ),
+        (lambda p: {**p, "sha256": "abc"}, "sha256 must be"),
+        (lambda p: {**p, "path": "docs/elsewhere.md"}, "path must name a path under"),
+        (lambda p: {**p, "path": "worklog/entries/nested/entry.md"}, "must name a file directly"),
+        (lambda p: {**p, "reason": ""}, "reason must be one non-empty line"),
+    ],
+)
+def test_correction_record_schema_is_strict(tmp_path: Path, mutation, expected: str) -> None:
+    repo = _init_repo(tmp_path)
+    entry = _historical_abbreviated_entry(repo)
+    payload = _correction_payload(
+        repo,
+        entry,
+        defects=["abbreviated_base_commit"],
+        base_commit=_resolved_base_commit(repo, entry),
+    )
+    correction = _write_correction(repo, entry, mutation(payload))
+    _stage(repo, correction)
+
+    result = _tool(repo, "check", check=False)
+    assert result.returncode == 1
+    assert expected in result.stderr
+
+
+def test_correction_record_rejects_bad_json_and_misnamed_files(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    entry = _historical_abbreviated_entry(repo)
+    payload = _correction_payload(
+        repo,
+        entry,
+        defects=["abbreviated_base_commit"],
+        base_commit=_resolved_base_commit(repo, entry),
+    )
+
+    broken = _write_correction(repo, entry, payload, raw="{not json")
+    _stage(repo, broken)
+    invalid = _tool(repo, "check", check=False)
+    assert invalid.returncode == 1
+    assert "not valid JSON" in invalid.stderr
+
+    misnamed = _write_correction(repo, entry, payload, name="unrelated-record.json")
+    _stage(repo, misnamed)
+    named = _tool(repo, "check", check=False)
+    assert named.returncode == 1
+    assert "correction filename must be" in named.stderr
+
+    nested = _write_correction(repo, entry, payload, name="nested/record.json")
+    _stage(repo, nested)
+    placement = _tool(repo, "check", check=False)
+    assert placement.returncode == 1
+    assert "unexpected path under worklog corrections" in placement.stderr
+
+
+def test_superseding_entry_must_pass_without_its_own_correction(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    entry = _historical_entry_without_next(repo)
+    superseding = _superseding_entry(repo, entry)
+    full_commit = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    _set_base_commit(superseding, full_commit[:7])
+    _stage(repo, superseding)
+    _git(repo, "commit", "-m", "docs: reproduce malformed superseding entry")
+    correction = _write_correction(
+        repo, entry,
+        _correction_payload(
+            repo, entry, defects=["missing_required_sections"],
+            superseded_by=str(superseding.relative_to(repo)),
+        ),
+    )
+    target_correction = _write_correction(
+        repo, superseding,
+        _correction_payload(
+            repo, superseding, defects=["abbreviated_base_commit"],
+            base_commit=full_commit,
+        ),
+    )
+    _stage(repo, correction, target_correction)
+    result = _tool(repo, "check", check=False)
+    assert result.returncode == 1
+    assert "superseded_by must pass the strict schema without a correction" in result.stderr

@@ -53,26 +53,60 @@ def test_private_resident_slot_kv_copy_segments_include_slot_base() -> None:
     ) == ((37, 37, 5),)
 
 
-def test_long_packed_prefill_requires_slot_local_full_attention() -> None:
-    layout = _build_gguf_packed_verify_layout(
+def test_long_packed_prefill_admits_the_paged_route_for_suffix_slabs() -> None:
+    """Suffix-shaped slabs select the paged route at any context length.
+
+    The <1024 paged-prefill policy gate was removed: slot-local (contiguous
+    AOTriton) selection is a pure function of per-slot slab rows, and a long
+    context with a short suffix slab must be admitted on the paged route
+    instead of refused.
+    """
+
+    suffix_slab = _build_gguf_packed_verify_layout(
         (
             _GGUFPackedVerifySlotBlock(
-                input_token_ids=(17,),
-                start_position=1023,
+                input_token_ids=tuple([17] * 200),
+                start_position=1024,
+            ),
+        ),
+        slot_capacity=1280,
+    )
+    assert suffix_slab.max_live_count == 1224
+    assert not gguf_runner._packed_prefill_requires_slot_local_full_attention(
+        suffix_slab
+    )
+
+    full_prefill_slab = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(
+                input_token_ids=tuple([17] * 1024),
+                start_position=0,
             ),
         ),
         slot_capacity=1024,
     )
-
-    gguf_runner._validate_packed_ar_prefill_context(
-        layout,
-        slot_local_full_prefill=True,
+    assert gguf_runner._packed_prefill_requires_slot_local_full_attention(
+        full_prefill_slab
     )
-    with pytest.raises(NotImplementedError, match="packed paged AR prefill"):
-        gguf_runner._validate_packed_ar_prefill_context(
-            layout,
-            slot_local_full_prefill=False,
-        )
+
+
+@pytest.mark.parametrize("start,tokens", [(0, 1023), (0, 1024), (2048, 64)])
+def test_packed_prefill_layout_preserves_long_context(start: int, tokens: int) -> None:
+    """The former 1024-token refusal must not truncate a suffix's live span."""
+
+    layout = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(
+                input_token_ids=tuple(range(tokens)),
+                start_position=start,
+            ),
+        ),
+        slot_capacity=max(1024, start + tokens),
+    )
+    assert int(layout.max_live_count) == start + tokens
+    assert int(layout.row_positions[0]) == start
+    assert int(layout.row_positions[-1]) == start + tokens - 1
+    assert int(layout.live_counts[-1]) == start + tokens
 
 
 def test_prefill_device_metadata_uses_backend_ceiling_and_explicit_override(
@@ -116,6 +150,7 @@ def test_gguf_resident_reset_invalidates_packed_state_metadata(monkeypatch) -> N
         lambda self, position, *, stream=0: calls.append(("set_position", int(position), int(stream))),
     )
     session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.scratch = FakeScratch()
     session._target_scratch_owner = object()
     session._reset_current_slot_only = True
@@ -175,10 +210,12 @@ def test_gguf_direct_resident_verify_route_requires_multi_session(monkeypatch) -
     """
 
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.backend = "hip_gfx1100"
     slab = SimpleNamespace(slot_count=17)
     owner._target_scratch_owner = slab
     peer = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    peer.use_iq_dense_mmq = False
     peer._resident_batch_owner = owner
     peer._target_scratch_owner = slab
     peer._resident_slot_index = 5
@@ -208,10 +245,12 @@ def test_gguf_direct_resident_verify_route_requires_multi_session(monkeypatch) -
 
 def test_gguf_direct_resident_linear_state_maps_owner_slots(monkeypatch) -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.backend = "hip_gfx1100"
     slab = SimpleNamespace(slot_count=17)
     owner._target_scratch_owner = slab
     peer = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    peer.use_iq_dense_mmq = False
     peer._resident_batch_owner = owner
     peer._target_scratch_owner = slab
     peer._resident_slot_index = 5
@@ -253,6 +292,7 @@ def test_gguf_direct_resident_linear_state_maps_owner_slots(monkeypatch) -> None
 
 def test_gguf_packed_verify_initial_state_uses_fused_pair_copy_when_enabled() -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.runner = SimpleNamespace(
         weights=SimpleNamespace(config=SimpleNamespace(layer_types=(LINEAR_ATTENTION,)))
     )
@@ -334,6 +374,7 @@ def test_gguf_packed_verify_initial_state_uses_fused_pair_copy_when_enabled() ->
 
 def test_gguf_packed_verify_binds_direct_resident_initial_state() -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     slab = SimpleNamespace(
         slot_count=8,
         layer_conv_states=(object(),),
@@ -380,6 +421,7 @@ def test_gguf_packed_verify_binds_direct_resident_initial_state() -> None:
 
 def test_gguf_fused_linear_state_pair_copy_batches_and_caches_tables(monkeypatch) -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._buffers = ()
     owner.runner = SimpleNamespace(
         weights=SimpleNamespace(
@@ -422,6 +464,11 @@ def test_gguf_fused_linear_state_pair_copy_batches_and_caches_tables(monkeypatch
         "copy_host_to_device",
         lambda buffer, host_ptr, nbytes, *, runtime: uploads.append((int(buffer.ptr), int(nbytes))),
     )
+    monkeypatch.setattr(
+        gguf_runner,
+        "copy_host_array_to_device",
+        lambda buffer, array, nbytes, *, runtime: uploads.append((int(buffer.ptr), int(nbytes))),
+    )
     monkeypatch.setattr(gguf_runner, "build_dflash_commit", lambda **kwargs: object())
     monkeypatch.setattr(
         gguf_runner,
@@ -447,6 +494,7 @@ def test_gfx1100_fused_linear_state_transfer_policy_is_default_on(
     monkeypatch,
 ) -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.backend = "hip_gfx1100"
 
     monkeypatch.delenv("HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER", raising=False)
@@ -462,6 +510,7 @@ def test_gfx1100_fused_linear_state_transfer_policy_is_default_on(
 
 def test_gguf_single_slot_state_import_uses_strict_unfused_copy() -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.backend = "hip_gfx1151"
     owner.runner = SimpleNamespace(
         weights=SimpleNamespace(
@@ -479,6 +528,7 @@ def test_gguf_single_slot_state_import_uses_strict_unfused_copy() -> None:
 
 def test_gguf_resident_discards_terminal_packed_decode_state_without_scatter() -> None:
     session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session._packed_decode_sessions = (object(),)
     session._packed_decode_last_layout = object()
     session._packed_decode_state_dirty = True
@@ -504,6 +554,7 @@ def test_gguf_resident_release_idle_packed_workspace_requires_safe_lifecycle(
         lambda buffer, *, runtime: freed.append((int(buffer.ptr), int(buffer.nbytes))),
     )
     session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.runtime = SimpleNamespace(name="runtime")
     session._packed_ar_attention_workspace = SimpleNamespace(
         buffers=(DeviceBuffer(ptr=0x1000, nbytes=10),)
@@ -798,6 +849,7 @@ def test_gguf_packed_ar_prefill_executes_each_round_with_all_active_slots(
         lambda: SimpleNamespace(attn_aotriton_min_tokens=4),
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._bulk_prefill_scratch = SimpleNamespace(rows=8)
     prompts = tuple(tuple(slot * 100 + row for row in range(6)) for slot in range(4))
 
@@ -847,6 +899,7 @@ def test_gguf_packed_ar_prefill_samples_only_each_slots_final_round(
         raising=False,
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.backend = "hip_gfx1151"
     owner._bulk_prefill_scratch = SimpleNamespace(rows=4)
 
@@ -889,6 +942,7 @@ def test_gguf_packed_ar_prefill_forwards_unsampled_rounds(
         raising=False,
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._bulk_prefill_scratch = SimpleNamespace(rows=4)
 
     results = owner.prefill_batch_native(
@@ -933,6 +987,7 @@ def test_gguf_packed_ar_prefill_preserves_full_prompt_attention_route_across_sch
         lambda: SimpleNamespace(attn_aotriton_min_tokens=4),
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._bulk_prefill_scratch = SimpleNamespace(rows=8)
 
     for chunk in ((10, 11), (12, 13), (14, 15)):
@@ -978,6 +1033,7 @@ def test_gguf_packed_ar_prefill_concatenates_hidden_seed_rounds(
         fake_single_slab,
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._bulk_prefill_scratch = SimpleNamespace(rows=4)
     prompts = ((10, 11, 12, 13), (20, 21, 22, 23))
 
@@ -1238,6 +1294,7 @@ def test_gguf_packed_workspace_resize_scatters_deferred_decode_state_first(
     monkeypatch,
 ) -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.runner = SimpleNamespace()
     owner._packed_verify_state = SimpleNamespace(slot_count=1, max_sequence_length=1024)
     owner._packed_verify_scratch = SimpleNamespace(
@@ -1415,6 +1472,7 @@ def test_gguf_packed_int8_copy_moves_payload_mirror_and_scale_planes() -> None:
         bf16_mirror_layer_indices=(0,),
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.runner = SimpleNamespace(weights=SimpleNamespace(config=cfg))
     owner._device_kv_layout = layout
 
@@ -1511,6 +1569,7 @@ def test_gguf_packed_single_row_prefill_uses_transient_oracle_without_persistent
         full_bf16_mirror_cache=lambda layer_id: None,
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._int8_prefill_oracle_cache_for_layer = lambda layer_id: (oracle_key, oracle_value)
     scratch = _DirectInt8PrefillScratch(
         append_spans=_DirectInt8PrefillSpans(kind="append_position"),
@@ -1586,7 +1645,9 @@ def test_gguf_packed_ar_admits_mirrored_int8_and_fails_closed_without_mirror() -
         layer_storage_dtypes=(DType.INT8_PER_TOKEN_HEAD,),
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     peer = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    peer.use_iq_dense_mmq = False
     owner._device_kv_layout = mirrored
     peer._device_kv_layout = mirrored
 
@@ -1599,10 +1660,18 @@ def test_gguf_packed_ar_admits_mirrored_int8_and_fails_closed_without_mirror() -
         (owner,),
         allow_direct_int8_prefill=True,
     ) == direct
-    with pytest.raises(NotImplementedError, match="single-row prefill"):
+    # Prefill and decode write the same packed physical cell, so the prefill
+    # class carries the same artifact-qualified width limit as decode instead
+    # of collapsing to a single row.
+    assert owner._packed_ar_kv_layout_for_sessions(
+        (owner, peer),
+        allow_direct_int8_prefill=True,
+    ) == direct
+    with pytest.raises(NotImplementedError, match="prefill physical width 9 exceeds artifact-qualified limit 8"):
         owner._packed_ar_kv_layout_for_sessions(
             (owner, peer),
             allow_direct_int8_prefill=True,
+            physical_rows=9,
         )
     with pytest.raises(NotImplementedError, match="without a bounded BF16 mirror"):
         owner._packed_ar_kv_layout_for_sessions((owner, peer))
@@ -1627,6 +1696,17 @@ def test_gguf_packed_ar_admits_mirrored_int8_and_fails_closed_without_mirror() -
         allow_direct_int8_decode=True,
         physical_rows=4,
     ) == direct
+    assert owner._packed_ar_kv_layout_for_sessions(
+        (owner, peer),
+        allow_direct_int8_prefill=True,
+        physical_rows=4,
+    ) == direct
+    with pytest.raises(NotImplementedError, match="prefill physical width 5 exceeds artifact-qualified limit 4"):
+        owner._packed_ar_kv_layout_for_sessions(
+            (owner, peer),
+            allow_direct_int8_prefill=True,
+            physical_rows=5,
+        )
     peer.packed_decode_max_rows = 1
     with pytest.raises(NotImplementedError, match="physical width 4"):
         owner._packed_ar_kv_layout_for_sessions(
@@ -1864,6 +1944,7 @@ def test_gguf_deferred_packed_decode_flush_copies_full_live_kv(monkeypatch) -> N
         key_length=4,
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.runner = SimpleNamespace(weights=SimpleNamespace(config=cfg))
     layout = _build_gguf_packed_verify_layout(
         (
@@ -2059,6 +2140,7 @@ def test_gguf_deferred_packed_state_scatter_follows_noncontiguous_device_pages(
         key_length=4,
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner.runner = SimpleNamespace(weights=SimpleNamespace(config=cfg))
     layout = _build_gguf_packed_verify_layout(
         (_GGUFPackedVerifySlotBlock(input_token_ids=(11, 12), start_position=255),),
@@ -2311,6 +2393,7 @@ def test_gguf_session_packed_kv_segments_walk_both_page_tables() -> None:
 
     layout = _segment_test_layout()
     session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    session.use_iq_dense_mmq = False
     session.runner = SimpleNamespace(
         weights=SimpleNamespace(
             config=SimpleNamespace(
@@ -2634,7 +2717,11 @@ def test_gguf_packed_target_state_allocate_private_without_lease(monkeypatch) ->
     assert all(buffer in state.buffers for buffer in state.full_key_caches)
 
     allocated.clear()
-    leaseless_pool = SimpleNamespace(workspace_pages=lambda key: None)
+    leaseless_pool = SimpleNamespace(
+        workspace_pages=lambda key: None,
+        reserve_private_workspace=lambda nbytes: object(),
+        release_private_workspace=lambda token: None,
+    )
     state2 = _GGUFPackedTargetState.allocate(
         _lease_test_runner(),
         slot_count=2,
@@ -2647,6 +2734,103 @@ def test_gguf_packed_target_state_allocate_private_without_lease(monkeypatch) ->
     assert len(allocated) == 2
 
 
+def test_gguf_packed_target_state_charges_its_scratch_by_name(monkeypatch) -> None:
+    """The state's own scratch buffers are priced through the pool budget.
+
+    The conv/recurrent state buffers are device mallocs this state owns, so they
+    belong in the same admission budget as the KV payload: an overload has to be
+    refused by name before they are allocated rather than surfacing as a HIP OOM
+    part-way through the loop. The charge is sized from exactly the bytes the
+    state then holds, and the state carries the token that releases it.
+    """
+
+    allocated: list[int] = []
+
+    def fake_malloc(nbytes, *, runtime):
+        allocated.append(int(nbytes))
+        return DeviceBuffer(ptr=0x500000 + len(allocated) * 0x10000, nbytes=int(nbytes))
+
+    monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
+    runner = _lease_test_runner()
+    runner.weights.config.layer_types = (LINEAR_ATTENTION, FULL_ATTENTION)
+    layout = gguf_runner.Qwen35GGUFKVChunkLayout(
+        storage_dtype=DType.BF16,
+        storage_layout="uniform",
+        scale_dtype=DType.FP16,
+        scale_granularity="per_token_head",
+        int8_kv_value_bf16=False,
+        layer_storage_dtypes=(None, DType.BF16),
+    )
+    charges: list[tuple[str, int]] = []
+    pool = SimpleNamespace(
+        workspace_pages=lambda key: None,
+        reserve_private_workspace=lambda nbytes: object(),
+        release_private_workspace=lambda token: None,
+        reserve_resident_bytes=lambda name, nbytes: (
+            charges.append((str(name), int(nbytes))) or object()
+        ),
+    )
+
+    state = _GGUFPackedTargetState.allocate(
+        runner,
+        slot_count=2,
+        max_sequence_length=512,
+        runtime=SimpleNamespace(),
+        kv_layout=layout,
+        kv_pool=pool,
+    )
+
+    assert [name for name, _ in charges] == ["packed_verify_scratch"]
+    held = sum(
+        int(buffer.nbytes)
+        for buffer in (*state.layer_conv_states, *state.layer_recurrent_states)
+        if buffer is not None
+    )
+    assert held > 0
+    assert charges[0][1] == held
+    assert state.resident_charge_pool is pool
+    assert state.resident_charge_token is not None
+
+
+def test_gguf_packed_target_state_skips_the_charge_when_the_pool_cannot_take_one(
+    monkeypatch,
+) -> None:
+    """A pool that does not implement the ledger is charged nothing."""
+
+    monkeypatch.setattr(
+        gguf_runner,
+        "malloc",
+        lambda nbytes, *, runtime: DeviceBuffer(ptr=0x500000, nbytes=int(nbytes)),
+    )
+    runner = _lease_test_runner()
+    runner.weights.config.layer_types = (LINEAR_ATTENTION, FULL_ATTENTION)
+    layout = gguf_runner.Qwen35GGUFKVChunkLayout(
+        storage_dtype=DType.BF16,
+        storage_layout="uniform",
+        scale_dtype=DType.FP16,
+        scale_granularity="per_token_head",
+        int8_kv_value_bf16=False,
+        layer_storage_dtypes=(None, DType.BF16),
+    )
+    pool = SimpleNamespace(
+        workspace_pages=lambda key: None,
+        reserve_private_workspace=lambda nbytes: object(),
+        release_private_workspace=lambda token: None,
+    )
+
+    state = _GGUFPackedTargetState.allocate(
+        runner,
+        slot_count=2,
+        max_sequence_length=512,
+        runtime=SimpleNamespace(),
+        kv_layout=layout,
+        kv_pool=pool,
+    )
+
+    assert state.resident_charge_token is None
+    assert state.resident_charge_pool is None
+
+
 def test_gguf_packed_target_state_allocate_rejects_bad_lease(monkeypatch) -> None:
     monkeypatch.setattr(
         gguf_runner,
@@ -2656,19 +2840,52 @@ def test_gguf_packed_target_state_allocate_rejects_bad_lease(monkeypatch) -> Non
     layout = _lease_test_layout()
     backing = _lease_test_backing(layout)
 
+    # 2026-09-19: a lease SHORTER than the request no longer fails closed.
+    # It is sized once at pool creation from caps known then, while
+    # `_packed_verify_union_geometry` may legitimately pack more slots than
+    # the serving capacity (an MTP verify group does so at C1). Degrading to
+    # the private KV chunk keeps that geometry servable; the arena lease is a
+    # fast path, never a correctness dependency. A layout-incompatible arena
+    # is different in kind and still fails closed, below.
     small_pool = SimpleNamespace(
         backing=backing,
         workspace_pages=lambda key: (1, 2),
+        reserve_private_workspace=lambda nbytes: object(),
+        release_private_workspace=lambda token: None,
     )
-    with pytest.raises(RuntimeError, match="pages"):
+    reached_private: list[int] = []
+
+    def _private_marker(*args, **kwargs):
+        reached_private.append(int(kwargs["pages"]))
+        raise RuntimeError("reached-private-branch")
+
+    monkeypatch.setattr(
+        gguf_runner, "_allocate_qwen35_gguf_kv_chunk", _private_marker
+    )
+    short_lease_runner = _lease_test_runner()
+    with pytest.raises(RuntimeError, match="reached-private-branch"):
         _GGUFPackedTargetState.allocate(
-            _lease_test_runner(),
+            short_lease_runner,
             slot_count=2,
             max_sequence_length=512,
             runtime=SimpleNamespace(),
             kv_layout=layout,
             kv_pool=small_pool,
         )
+    # 2 slots x ceil(512/256) = 4 pages requested against a 2-page lease.
+    assert reached_private == [4]
+    shortfalls = getattr(
+        short_lease_runner, "_packed_workspace_lease_shortfalls", []
+    )
+    assert len(shortfalls) == 1
+    assert shortfalls[0]["leased_pages"] == 2
+    assert shortfalls[0]["needed_pages"] == 4
+    monkeypatch.undo()
+    monkeypatch.setattr(
+        gguf_runner,
+        "malloc",
+        lambda nbytes, *, runtime: DeviceBuffer(ptr=0x500000, nbytes=int(nbytes)),
+    )
 
     mismatched_layout = gguf_runner.Qwen35GGUFKVChunkLayout(
         storage_dtype=DType.INT8_PER_TOKEN_HEAD,
@@ -2707,8 +2924,10 @@ def test_gguf_session_workspace_pool_binding_delegates_to_owner() -> None:
         close_storage=lambda: None,
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.use_iq_dense_mmq = False
     owner._workspace_kv_pool = None
     view = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    view.use_iq_dense_mmq = False
     view._workspace_kv_pool = None
     view._resident_batch_owner = owner
 

@@ -183,18 +183,112 @@ def test_native_target_rows_follow_implementation_ladder_and_context_limit(monke
     assert mtp_module._initial_state_only_journal_applies(
         "native",
         max_candidate_budget=3,
+        backend="hip_gfx1151",
+        max_end_position=95,
     )
     for budget in range(4, 8):
         assert mtp_module._initial_state_only_journal_applies(
             "native", max_candidate_budget=budget,
+            backend="hip_gfx1151", max_end_position=95,
         )
     assert not mtp_module._initial_state_only_journal_applies(
         "native", max_candidate_budget=8,
+        backend="hip_gfx1151",
+        max_end_position=4096,
     )
     assert not mtp_module._initial_state_only_journal_applies(
         "serial_exact",
         max_candidate_budget=3,
+        backend="hip_gfx1151",
+        max_end_position=4096,
     )
+
+
+def test_initial_state_only_journal_bounds_the_whole_reachable_position_range() -> None:
+    """A serial row route can appear at any decode position, not only by row count.
+
+    gfx1100's native target context limit is 95, so a session that can reach
+    position 96 uses ``serial_exact`` rows and needs row snapshots. The
+    natural25 suite reproduces it: the tenth prompt (71 prompt tokens plus 25
+    generated tokens) crosses 95 and previously failed at ``capture_row``.
+    """
+
+    assert (
+        mtp_module._effective_target_verify_mode(
+            "native", rows=4, backend="hip_gfx1100", end_position=96
+        )
+        == "serial_exact"
+    )
+    assert not mtp_module._initial_state_only_journal_applies(
+        "native",
+        max_candidate_budget=3,
+        backend="hip_gfx1100",
+        max_end_position=96,
+    )
+    assert mtp_module._initial_state_only_journal_applies(
+        "native",
+        max_candidate_budget=3,
+        backend="hip_gfx1100",
+        max_end_position=95,
+    )
+    # An unbounded position range can always reach the serial fallback.
+    assert not mtp_module._initial_state_only_journal_applies(
+        "native", max_candidate_budget=3, backend="hip_gfx1100"
+    )
+    assert not mtp_module._initial_state_only_journal_applies(
+        "native", max_candidate_budget=3, max_end_position=4096
+    )
+
+
+def test_serial_row_route_requires_a_serial_capable_journal_before_mutation() -> None:
+    """The journal route contract fails closed before any state mutation."""
+
+    mtp_module._require_serial_capable_journal(
+        SimpleNamespace(initial_state_only=True), "native"
+    )
+    with pytest.raises(RuntimeError, match="row-capable journal"):
+        mtp_module._require_serial_capable_journal(
+            SimpleNamespace(initial_state_only=True), "serial_exact"
+        )
+    mtp_module._require_serial_capable_journal(
+        SimpleNamespace(initial_state_only=False), "serial_exact"
+    )
+
+
+def test_journal_plan_pairs_producer_capture_with_initial_state_only() -> None:
+    """Producer capture lends one rollback row, so a row-capable journal owns its own.
+
+    A row-capable journal that kept borrowing the single producer row would write
+    past it at ``_capture_state_index(row + 1)``.
+    """
+
+    assert mtp_module._verify_journal_plan(
+        "native",
+        max_candidate_budget=3,
+        backend="hip_gfx1151",
+        max_end_position=4096,
+    ) == (True, True)
+    assert mtp_module._verify_journal_plan(
+        "native",
+        max_candidate_budget=3,
+        backend="hip_gfx1100",
+        max_end_position=260,
+    ) == (False, False)
+    assert mtp_module._verify_journal_plan(
+        "serial_exact",
+        max_candidate_budget=3,
+        backend="hip_gfx1151",
+        max_end_position=4096,
+    ) == (False, False)
+
+
+def test_state_row_capacity_matches_the_allocated_rollback_rows() -> None:
+    journal = mtp_module._StateJournal.__new__(mtp_module._StateJournal)
+    journal.max_rows = 4
+    journal.initial_state_only = True
+    assert journal.state_row_capacity == 1
+    journal.initial_state_only = False
+    assert journal.state_row_capacity == 5
 
 
 def test_serial_fallback_forces_consumer_owned_initial_state_snapshot() -> None:
@@ -304,7 +398,7 @@ def test_prepare_selects_serial_journal_before_context_fallback_mutation(monkeyp
         raise RuntimeError("stop after serial snapshot")
 
     primary = SimpleNamespace(initial_state_only=True)
-    serial = SimpleNamespace(capture_initial=capture_serial)
+    serial = SimpleNamespace(capture_initial=capture_serial, initial_state_only=False)
     verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
         mtp_module.Qwen35GGUFTransactionalVerifier
     )
@@ -1042,6 +1136,25 @@ def test_streaming_prompt_sink_transfers_final_carried_row_ownership(
         sink.take_final_pending_buffer()
 
 
+def test_streaming_prompt_sink_splits_multiple_cache_boundaries(monkeypatch):
+    monkeypatch.setattr(mtp_module, "malloc", lambda n, **kw: DeviceBuffer(0x1000, n))
+    monkeypatch.setattr(mtp_module, "free", lambda *args, **kw: None)
+    runtime = SimpleNamespace(memset=lambda *a: None, memcpy_async=lambda *a: None)
+    calls, captured = [], []
+    executor = SimpleNamespace(enqueue_prompt_rows=lambda *a, **kw: calls.append((a, kw)))
+    sink = mtp_module._StreamingNextNPromptSink(
+        request_id=7, prompt_tokens=(10, 20, 30, 40, 50), hidden_size=4,
+        executor=executor, runtime=runtime, checkpoint=None,
+        prefix_capture=lambda boundary, ptr: captured.append((boundary, ptr)), capture_boundary=5,
+    )
+    sink.capture_boundaries = (2, 4, 5)
+    sink.consume(request_id=7, chunk_start=0, hidden_ptr=0x5000, rows=5, stream=0)
+    sink.finish(request_id=7, total_rows=5, stream=0)
+    assert captured == [(2, 0x5008), (4, 0x5018), (5, 0x5020)]
+    assert [kw["position_start"] for _, kw in calls] == [0, 1, 2, 3, 4]
+    sink.close()
+
+
 def test_mtp_prompt_admission_preserves_target_default_bulk_selector(monkeypatch) -> None:
     allocations = iter((DeviceBuffer(0x1000, 8), DeviceBuffer(0x2000, 8)))
     monkeypatch.setattr(mtp_module, "malloc", lambda _nbytes, *, runtime: next(allocations))
@@ -1217,3 +1330,188 @@ def test_mtp_generate_cancellation_precedes_proposal_mutation(monkeypatch) -> No
     assert proposed == []
     assert device_proposals == []
     assert prepared == []
+
+
+def test_adopt_accept_summary_keeps_the_open_transaction_identity() -> None:
+    """A recomputed accept summary must be installed on the open transaction.
+
+    The prepared object *is* the transaction's identity: commit and rollback
+    accept only the instance prepare returned, and commit validates its plan
+    against ``prepared.summary``. The sampled route recomputes the accept
+    decision, and copying the prepared object instead of installing the summary
+    on it made the verifier refuse the copy as "not the open transaction", which
+    disabled the request and silently fell back to autoregressive decoding.
+    """
+
+    import dataclasses
+
+    import numpy as np
+
+    verifier = mtp_module.Qwen35GGUFTransactionalVerifier.__new__(
+        mtp_module.Qwen35GGUFTransactionalVerifier
+    )
+    prepared = mtp_module.Qwen35GGUFPreparedVerify(
+        batch=SimpleNamespace(),
+        buffers=SimpleNamespace(),
+        summary="argmax-summary",
+        target_top1=(1,),
+        target_logits=np.zeros((1, 1), dtype=np.float32),
+        graph_bucket=SimpleNamespace(),
+        initial_position=0,
+        kv_journal_positions=(0,),
+        gpu_accept_match_cpu=True,
+        target_verify_mode="native",
+    )
+    verifier._prepared = prepared
+
+    adopted = verifier.adopt_accept_summary(prepared, "sampled-summary")
+    assert adopted is prepared
+    assert prepared.summary == "sampled-summary"
+
+    # A copy is still refused: the identity check is what commit relies on.
+    copy = dataclasses.replace(prepared, summary="copied-summary")
+    assert copy is not prepared
+    with pytest.raises(ValueError, match="not the open transaction"):
+        verifier.adopt_accept_summary(copy, "other-summary")
+    with pytest.raises(ValueError, match="not the open transaction"):
+        verifier._require_open(copy)
+
+
+def test_sink_captures_once_at_the_boundary_it_was_configured_for(monkeypatch) -> None:
+    """The capture fires on the chunk whose cumulative rows reach the boundary.
+
+    The boundary row is the chunk's last row -- the row the sink carries
+    forward and the next draft step consumes -- so a capture that used the
+    chunk's first row, or fired on the chunk before the boundary, would
+    snapshot a state that cannot be resumed from.
+    """
+
+    hidden_size = 4
+    hidden_nbytes = hidden_size * DType.BF16.itemsize
+    pending = DeviceBuffer(0x1000, hidden_nbytes)
+    monkeypatch.setattr(mtp_module, "malloc", lambda _nbytes, *, runtime: pending)
+    monkeypatch.setattr(mtp_module, "free", lambda buffer, *, runtime: None)
+
+    class Runtime:
+        def memset(self, ptr, value, nbytes) -> None:
+            return None
+
+        def memcpy_async(self, dst, src, nbytes, kind, stream) -> None:
+            return None
+
+    class Executor:
+        def enqueue_prompt_rows(self, *args, **kwargs) -> None:
+            return None
+
+    prompt = tuple(range(101, 111))
+    captures: list[tuple[int, int]] = []
+    sink = mtp_module._StreamingNextNPromptSink(
+        request_id=7,
+        prompt_tokens=prompt,
+        hidden_size=hidden_size,
+        executor=Executor(),
+        runtime=Runtime(),
+        checkpoint=None,
+        prefix_capture=lambda boundary, ptr: captures.append((int(boundary), int(ptr))),
+        capture_boundary=8,
+    )
+    source_base = 0x4000
+    for start in range(0, len(prompt), 4):
+        count = min(4, len(prompt) - start)
+        sink.consume(
+            request_id=7,
+            chunk_start=start,
+            hidden_ptr=source_base + start * hidden_nbytes,
+            rows=count,
+            stream=3,
+        )
+
+    # Boundary 8 lands on the second chunk's end, and the captured row is that
+    # chunk's last row rather than the carried row or the first row.
+    assert captures == [(8, source_base + 7 * hidden_nbytes)]
+    assert sink._capture_missed is False
+
+
+def test_sink_capture_is_optional_and_contained(monkeypatch) -> None:
+    hidden_size = 4
+    hidden_nbytes = hidden_size * DType.BF16.itemsize
+    pending = DeviceBuffer(0x1000, hidden_nbytes)
+    monkeypatch.setattr(mtp_module, "malloc", lambda _nbytes, *, runtime: pending)
+    monkeypatch.setattr(mtp_module, "free", lambda buffer, *, runtime: None)
+
+    class Runtime:
+        def memset(self, ptr, value, nbytes) -> None:
+            return None
+
+        def memcpy_async(self, dst, src, nbytes, kind, stream) -> None:
+            return None
+
+    class Executor:
+        def enqueue_prompt_rows(self, *args, **kwargs) -> None:
+            return None
+
+    def boom(boundary: int, ptr: int) -> None:
+        raise RuntimeError("snapshot refused")
+
+    prompt = tuple(range(101, 105))
+    sink = mtp_module._StreamingNextNPromptSink(
+        request_id=7,
+        prompt_tokens=prompt,
+        hidden_size=hidden_size,
+        executor=Executor(),
+        runtime=Runtime(),
+        checkpoint=None,
+        prefix_capture=boom,
+        capture_boundary=4,
+    )
+    # A refused capture must not fail the request's prefill.
+    sink.consume(request_id=7, chunk_start=0, hidden_ptr=0x4000, rows=4, stream=3)
+    sink.finish(request_id=7, total_rows=4, stream=3)
+
+    assert sink.consumed_rows == 4
+    assert sink._capture_failed is True
+
+
+def test_sink_records_a_boundary_that_no_chunk_ends_on(monkeypatch) -> None:
+    """An unreachable boundary is recorded, not silently skipped.
+
+    One chunk's enqueues are batched, so the provider cursor only sits at a
+    chunk end. A boundary inside a chunk can never be captured by this route,
+    and a future change to the chunk width would otherwise disable capture with
+    nothing to see.
+    """
+
+    hidden_size = 4
+    hidden_nbytes = hidden_size * DType.BF16.itemsize
+    pending = DeviceBuffer(0x1000, hidden_nbytes)
+    monkeypatch.setattr(mtp_module, "malloc", lambda _nbytes, *, runtime: pending)
+    monkeypatch.setattr(mtp_module, "free", lambda buffer, *, runtime: None)
+
+    class Runtime:
+        def memset(self, ptr, value, nbytes) -> None:
+            return None
+
+        def memcpy_async(self, dst, src, nbytes, kind, stream) -> None:
+            return None
+
+    class Executor:
+        def enqueue_prompt_rows(self, *args, **kwargs) -> None:
+            return None
+
+    captures: list[tuple[int, int]] = []
+    sink = mtp_module._StreamingNextNPromptSink(
+        request_id=7,
+        prompt_tokens=tuple(range(101, 109)),
+        hidden_size=hidden_size,
+        executor=Executor(),
+        runtime=Runtime(),
+        checkpoint=None,
+        prefix_capture=lambda boundary, ptr: captures.append((int(boundary), int(ptr))),
+        capture_boundary=6,
+    )
+    sink.consume(request_id=7, chunk_start=0, hidden_ptr=0x4000, rows=4, stream=3)
+    assert sink._capture_missed is False
+    sink.consume(request_id=7, chunk_start=4, hidden_ptr=0x4010, rows=4, stream=3)
+
+    assert captures == []
+    assert sink._capture_missed is True

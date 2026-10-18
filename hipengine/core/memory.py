@@ -99,6 +99,20 @@ class DeviceMemoryArena:
         if expected is not None and expected != int(buffer.nbytes):
             raise ValueError("device arena view size does not match its allocation")
 
+    def rewind(self) -> None:
+        """Reuse the allocation from the start, invalidating every live view.
+
+        Keeps the same HIP owner instead of freeing and reallocating it, which
+        is what makes a per-call bump region cheap. Only valid when the caller
+        holds no outstanding views from the previous region.
+        """
+        if self.closed:
+            raise RuntimeError("device arena is closed")
+        self._offset = 0
+        self.requested_bytes = 0
+        self.allocation_count = 0
+        self._active.clear()
+
     def close(self) -> None:
         if self.closed:
             return
@@ -132,6 +146,61 @@ def copy_host_to_device(
     count = buffer.nbytes if nbytes is None else nbytes
     _check_copy_size(count, buffer.nbytes)
     runtime.memcpy(buffer.ptr, host_ptr, count, MemcpyKind.HOST_TO_DEVICE)
+
+
+def enqueue_host_to_device(
+    buffer: DeviceBuffer,
+    host_ptr: int,
+    nbytes: int | None = None,
+    *,
+    stream: int = 0,
+    runtime: DeviceRuntime | None = None,
+) -> None:
+    """Enqueue a H2D upload on ``stream`` without draining queued work.
+
+    ``copy_host_to_device`` uses the synchronous ``hipMemcpy``, which waits for
+    every kernel already enqueued on the stream. A caller that reads the result
+    immediately wants that; a caller whose copy is only a staging step in the
+    middle of a forward pass does not -- it stalls the host and starves the
+    device behind it (measured: a sync copy behind a deep queue costs
+    milliseconds of host time, an enqueued one ~11 us,
+    ``scratch/d8_async_h2d_screen.py``).
+
+    Ordering against later readers on the same stream is what makes the data
+    visible to kernels launched after this call. The host source may be a
+    temporary pageable allocation: ROCm stages pageable memory during the call,
+    so no reference needs to outlive it (covered by
+    ``test_enqueue_host_to_device_consumes_a_temporary_pageable_source``).
+    """
+
+    runtime = runtime or get_hip_runtime()
+    count = buffer.nbytes if nbytes is None else nbytes
+    _check_copy_size(count, buffer.nbytes)
+    runtime.memcpy_async(buffer.ptr, host_ptr, count, MemcpyKind.HOST_TO_DEVICE, stream)
+
+
+def copy_host_array_to_device(
+    buffer: DeviceBuffer,
+    array: object,
+    nbytes: int | None = None,
+    *,
+    runtime: DeviceRuntime | None = None,
+) -> None:
+    """Upload a contiguous array while retaining its owner through the copy.
+
+    Unlike passing ``host_array_ptr(temporary)`` to the pointer-only API, the
+    array argument remains alive until the synchronous H2D copy returns. This
+    helper adds no device-wide synchronization and is not an async upload API.
+    The default size is the source size, not the possibly padded destination.
+    """
+    flags = getattr(array, "flags", None)
+    if not getattr(flags, "c_contiguous", False):
+        raise ValueError("host upload requires a C-contiguous array")
+    source_size = int(getattr(array, "nbytes"))
+    count = source_size if nbytes is None else nbytes
+    _check_copy_size(count, source_size)
+    _check_copy_size(count, buffer.nbytes)
+    copy_host_to_device(buffer, host_array_ptr(array), count, runtime=runtime)
 
 
 def copy_device_to_host(
@@ -168,13 +237,31 @@ def memory_stats() -> dict[str, int]:
     """Return process-local hipEngine device allocation counters.
 
     The counters cover allocations made through :func:`malloc`, which is the
-    torch-free path used by hipEngine runtime/model buffers.  They do not include
-    allocations made internally by HIP/AOTriton libraries, but they do preserve a
-    real high-water mark for hipEngine-owned buffers even after temporary
+    torch-free path used by hipEngine runtime/model buffers, plus the physical
+    device bytes committed into a stable-address VMM arena (see
+    :func:`record_device_commit`).  They do not include allocations made
+    internally by HIP/AOTriton libraries, and they never count a VMM address
+    reservation, which is not physical memory.  They do preserve a real
+    high-water mark for hipEngine-owned device memory even after temporary
     workspaces are released.
     """
 
     return _MEMORY_STATS.snapshot()
+
+
+def record_device_commit(ptr: int, nbytes: int) -> None:
+    """Record the physical device bytes committed into a stable-address arena.
+
+    :class:`hipengine.core.virtual_memory.VirtualMemoryBuffer` maps physical
+    granules into a reserved address range. Those granules are real device
+    memory but are not allocated through :func:`malloc`, so without this they
+    are invisible to the allocation counters. Calling this with an increasing
+    ``nbytes`` for a stable ``ptr`` updates the live size in place; ``nbytes``
+    of zero releases the record. The address reservation itself is never
+    recorded because it is not physical.
+    """
+
+    _MEMORY_STATS.record_commit(int(ptr), int(nbytes))
 
 
 def live_allocation_histogram(*, min_bytes: int = 0) -> dict[str, int]:
@@ -229,6 +316,50 @@ class _MemoryStatsTracker:
                 self._stats.current_allocated_bytes,
             )
             self._stats.peak_allocations = max(self._stats.peak_allocations, self._stats.active_allocations)
+
+    def record_commit(self, ptr: int, nbytes: int) -> None:
+        """Record or release the physical commitment of a stable-address arena.
+
+        A growing VMM arena calls this repeatedly with the same ``ptr`` and a
+        larger ``nbytes``; the live size is updated in place and only the delta
+        moves the cumulative totals. ``nbytes`` of zero releases the record.
+        """
+
+        base = int(ptr)
+        size = int(nbytes)
+        if base == 0:
+            return
+        with self._lock:
+            old_nbytes = self._live.get(base)
+            if size <= 0:
+                if old_nbytes is None:
+                    return
+                self._live.pop(base, None)
+                self._stats.current_allocated_bytes -= old_nbytes
+                self._stats.total_freed_bytes += old_nbytes
+                self._stats.active_allocations -= 1
+                if self._stats.current_allocated_bytes < 0 or self._stats.active_allocations < 0:
+                    self._stats.current_allocated_bytes = max(0, self._stats.current_allocated_bytes)
+                    self._stats.active_allocations = max(0, self._stats.active_allocations)
+                return
+            if old_nbytes is not None:
+                self._stats.current_allocated_bytes -= old_nbytes
+            else:
+                self._stats.active_allocations += 1
+            delta = size - (0 if old_nbytes is None else old_nbytes)
+            self._live[base] = size
+            self._stats.current_allocated_bytes += size
+            if delta > 0:
+                self._stats.total_allocated_bytes += delta
+            elif delta < 0:
+                self._stats.total_freed_bytes += -delta
+            self._stats.peak_allocated_bytes = max(
+                self._stats.peak_allocated_bytes,
+                self._stats.current_allocated_bytes,
+            )
+            self._stats.peak_allocations = max(
+                self._stats.peak_allocations, self._stats.active_allocations
+            )
 
     def record_free(self, buffer: DeviceBuffer) -> None:
         if buffer.ptr == 0:

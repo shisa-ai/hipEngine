@@ -1,0 +1,187 @@
+{
+ "provenance": {
+  "timestamp_utc": "2026-09-12T05:56:46Z",
+  "hostname": "zbook",
+  "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+  "mem_total_gb": 125.1,
+  "os": "Linux 6.18.42-1-cachyos-lts",
+  "python": "3.13.13",
+  "numpy": "2.4.4",
+  "command": "scripts/surya_perf_compare.py --cases rect --lanes hipengine_gpu,torch_cuda --runs 3 --out benchmarks/results/2026-09-12-gfx1151-surya-rect-reference.json",
+  "git_revision": "bb1e2f5db5bee02580e4dd192abfb3194d2a5df5",
+  "git_branch": "surya",
+  "git_dirty": true,
+  "torch": "2.13.0+rocm10.0.0",
+  "torch_hip": "7.15.26333",
+  "gpu": "AMD Radeon 8060S Graphics"
+ },
+ "protocol": {
+  "boundary": "page image + prompt in, greedy token ids out",
+  "pipeline": "explicit preprocess -> vision -> prefill -> greedy loop on every lane",
+  "sync": "sync() on both sides of every timed region; CPU lanes are synchronous",
+  "init": "checkpoint load and runner construction measured as init_s, excluded",
+  "runs": 3,
+  "warmup": "one discarded warmup before every timed series",
+  "decode_derivation": "decode timed directly, never subtracted from other stages",
+  "gate": "PASS requires a reference (captured torch fixture, or the in-process CPU reference when a case declares none), full-sequence ids_match, termination agreement with the reference, decode_repeatable, e2e_agrees, e2e_termination_agrees, and the declared task format; gate_failures names every condition that failed",
+  "splits": "tuning cases must not be used to report held-out results"
+ },
+ "suite": [
+  {
+   "name": "rect",
+   "page": "page_rect.png",
+   "prompt": "Transcribe this page.",
+   "max_tokens": 64,
+   "split": "tuning",
+   "format": "any",
+   "oracle": null,
+   "oracle_key": null
+  }
+ ],
+ "results": [
+  {
+   "lane": "hipengine_gpu",
+   "backend": "HIP fp32 (gfx1151): GPU vision tower + GPU prefill/decode",
+   "init_s": 1.1506864080147352,
+   "stages_s": {
+    "preprocess": 0.0009426829928997904,
+    "vision": 0.03873218299122527,
+    "prefill": 0.10636560301645659,
+    "decode": 0.05504251198726706,
+    "vision_prefill": 0.14509778600768186
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.0009404779993928969,
+     "median_s": 0.0009426829928997904,
+     "mean_s": 0.0009593839931767434,
+     "max_s": 0.0009949909872375429,
+     "stdev_s": 3.085626384748675e-05
+    },
+    "vision": {
+     "n": 3,
+     "min_s": 0.03736005199607462,
+     "median_s": 0.03873218299122527,
+     "mean_s": 0.03905221100042885,
+     "max_s": 0.04106439801398665,
+     "stdev_s": 0.0018727942492733367
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.10439105998375453,
+     "median_s": 0.10636560301645659,
+     "mean_s": 0.10605415999695349,
+     "max_s": 0.10740581699064933,
+     "stdev_s": 0.0015313188820272636
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 0.05490139700123109,
+     "median_s": 0.05504251198726706,
+     "mean_s": 0.05509453699536001,
+     "max_s": 0.05533970199758187,
+     "stdev_s": 0.00022373593488042456
+    }
+   },
+   "decode_tokens": 3,
+   "decode_tok_per_s": 54.50332645962792,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 0.2003619110037107,
+    "median_s": 0.2017100160010159,
+    "mean_s": 0.20157039367283383,
+    "max_s": 0.20263925401377492,
+    "stdev_s": 0.0011450736187107442
+   },
+   "e2e_median_s": 0.2017100160010159,
+   "e2e_termination": "eos",
+   "generated_tokens": 3,
+   "termination": "eos",
+   "reference_present": true,
+   "correctness_basis": "cpu_reference",
+   "ids_match": true,
+   "reference_tokens": 3,
+   "first_divergence": null,
+   "reference_termination": "eos",
+   "termination_match": true,
+   "layout_json": false,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "e2e_termination_agrees": true,
+   "gate_failures": [],
+   "correctness": "PASS",
+   "case": "rect"
+  },
+  {
+   "lane": "torch_cuda",
+   "backend": "transformers fp32 (cuda), explicit prefill + greedy loop",
+   "init_s": 6.3329986830067355,
+   "stages_s": {
+    "preprocess": 0.006105920998379588,
+    "vision": 0.0,
+    "prefill": 0.18457408001995645,
+    "decode": 0.11427024900331162,
+    "vision_prefill": 0.18457408001995645
+   },
+   "stage_distributions_s": {
+    "preprocess": {
+     "n": 3,
+     "min_s": 0.0015740290109533817,
+     "median_s": 0.006105920998379588,
+     "mean_s": 0.009800163670054948,
+     "max_s": 0.021720541000831872,
+     "stdev_s": 0.010569108667598217
+    },
+    "prefill": {
+     "n": 3,
+     "min_s": 0.15432234900072217,
+     "median_s": 0.18457408001995645,
+     "mean_s": 0.17526822267488265,
+     "max_s": 0.18690823900396936,
+     "stdev_s": 0.018177164039560163
+    },
+    "decode": {
+     "n": 3,
+     "min_s": 0.11214829800883308,
+     "median_s": 0.11427024900331162,
+     "mean_s": 0.11621637101052329,
+     "max_s": 0.12223056601942517,
+     "stdev_s": 0.00531540922315181
+    }
+   },
+   "decode_tokens": 3,
+   "decode_tok_per_s": 26.25355266280253,
+   "e2e_distribution_s": {
+    "n": 3,
+    "min_s": 0.27897506300359964,
+    "median_s": 0.296383387001697,
+    "mean_s": 0.2909264790068846,
+    "max_s": 0.29742098701535724,
+    "stdev_s": 0.010363224006542033
+   },
+   "e2e_median_s": 0.296383387001697,
+   "e2e_termination": "eos",
+   "generated_tokens": 3,
+   "termination": "eos",
+   "reference_present": true,
+   "correctness_basis": "cpu_reference",
+   "ids_match": true,
+   "reference_tokens": 3,
+   "first_divergence": null,
+   "reference_termination": "eos",
+   "termination_match": true,
+   "layout_json": false,
+   "nondegenerate": true,
+   "task_format": true,
+   "decode_repeatable": true,
+   "e2e_agrees": true,
+   "e2e_termination_agrees": true,
+   "gate_failures": [],
+   "correctness": "PASS",
+   "case": "rect"
+  }
+ ]
+}

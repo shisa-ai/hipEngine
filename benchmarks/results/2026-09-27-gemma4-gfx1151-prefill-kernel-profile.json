@@ -1,0 +1,96 @@
+{
+  "date": "2026-09-27",
+  "platform": "gfx1151",
+  "gpu": "AMD Radeon 8060S Graphics",
+  "model": "gemma-4-26B-A4B-it UD-Q4_K_XL",
+  "status": "measurement",
+  "performance_claim": false,
+  "method": "rocprofv3 --kernel-trace on one 512-token prefill with a single decode step, after a non-profiled warmup so the profiled process never spawns hipcc (docs/OPTIMIZATION.md section 7). 1558 launches over 31 distinct kernels.",
+  "total_kernel_s": 2.013292745,
+  "wall_prefill_s": 1.991,
+  "top_kernels": [
+    {
+      "kernel": "void (anonymous namespace)::q5_1_selected_grouped_prefill_staged_bf16_bf16_kernel<4, 4, 256>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+      "ms": 714.906618,
+      "pct": 35.509322714019916,
+      "calls": 29
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_q8_0_exact_prefill_tiled_out_kernel<unsigned short, unsigned short, 4, 16>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+      "ms": 566.676761,
+      "pct": 28.14676417065219,
+      "calls": 205
+    },
+    {
+      "kernel": "void (anonymous namespace)::gemma4_attention_prefill_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned char const*, unsigned short*, long, long, long, float, long, long)",
+      "ms": 301.091641,
+      "pct": 14.95518432417537,
+      "calls": 30
+    },
+    {
+      "kernel": "(anonymous namespace)::gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_kernel((anonymous namespace)::block_q8_1_mmq_ds4 const*, long const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)",
+      "ms": 189.242743,
+      "pct": 9.399663485103355,
+      "calls": 29
+    },
+    {
+      "kernel": "(anonymous namespace)::gguf_q5_k_selected_grouped_row4_bf16_kernel(unsigned short const*, long const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)",
+      "ms": 110.887455,
+      "pct": 5.507766084956512,
+      "calls": 1
+    },
+    {
+      "kernel": "void q8_0_selected_grouped_prefill_bf16_bf16_kernel<8, 1>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+      "ms": 46.936577,
+      "pct": 2.331333936237872,
+      "calls": 1
+    },
+    {
+      "kernel": "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<unsigned short, float, 4>(unsigned short const*, float const*, float*, long, long, long)",
+      "ms": 16.711211,
+      "pct": 0.8300437699138483,
+      "calls": 30
+    },
+    {
+      "kernel": "(anonymous namespace)::qwen35_moe_group_compact_active_kernel(long const*, float const*, long*, long*, long*, long*, long*, long*, float*, long, long, long)",
+      "ms": 13.042822,
+      "pct": 0.6478353449786062,
+      "calls": 30
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_q8_1_mmq_ds4_pack_bf16_kernel<1>(unsigned short const*, (anonymous namespace)::block_q8_1_mmq_ds4*, long, long)",
+      "ms": 10.889079,
+      "pct": 0.5408591982980597,
+      "calls": 29
+    },
+    {
+      "kernel": "(anonymous namespace)::qwen35_moe_gather_packed_hidden_kernel(unsigned short const*, long const*, unsigned short*, long, long, long, long)",
+      "ms": 10.591472,
+      "pct": 0.5260770956585352,
+      "calls": 30
+    },
+    {
+      "kernel": "(anonymous namespace)::gemma4_moe_weighted_accumulate_kernel(unsigned short const*, int const*, float const*, unsigned short*, long, long, long)",
+      "ms": 4.79113,
+      "pct": 0.23797483063000854,
+      "calls": 30
+    },
+    {
+      "kernel": "void (anonymous namespace)::gemma4_head_rmsnorm_kernel<unsigned short>(unsigned short const*, float const*, unsigned short*, float, long)",
+      "ms": 4.21994,
+      "pct": 0.2096038944401004,
+      "calls": 60
+    }
+  ],
+  "findings": [
+    "The prefill is entirely kernel-bound. 2.013 s of kernel time against 1.991 s of measured prefill wall time is 101%, i.e. within noise of all of it, so there is no host-side or dispatch overhead to recover. This is why per-token cost is flat: it is the sum of a fixed per-layer kernel bill.",
+    "Matmuls are about 78% of the prefill - q5_1 staged grouped 35.5%, q8_0 dense tiled 28.1%, q4_k MMQ32 fused 9.4% and the single q5_k layer 5.5%. That confirms the flat per-token constant the length curve isolated is matmul cost, not attention and not launch overhead.",
+    "Layer 29 is visible as a single launch. gguf_q5_k_selected_grouped_row4_bf16_kernel is one call costing 110.89 ms, against 29 calls of the q5_1 kernel at 24.65 ms each. One layer is therefore about 4.5x a normal layer on the gate_up alone, before its q8_0 down, which is the campaign's second open item confirmed by kernel trace rather than estimated.",
+    "Attention is 15.0% at 512 tokens - 301.09 ms over 30 launches, about 10 ms per layer - and that is the baseline cost at a length where the length curve shows no penalty at all. This corrects the redirection in the previous entry: the curve measured only the growth past the window, and the tiled 512-wide-head kernel's headroom includes this flat 15%, not only the 12.6% that grows at 1024.",
+    "The MoE scheduler the campaign lists third is small on this platform - router logits 16.71 ms, group compact 13.04, gather 10.59 and router select 1.79, about 42 ms or 2.1% combined - rather than the 25 ms figure the campaign carries."
+  ],
+  "limits": [
+    "One 512-token prefill, one box, one artifact, one profiling run. Timestamps rather than DurationNs, so overlapping streams would be double-counted; total matching wall to 1% indicates they are not.",
+    "Kernel time is not a promotion claim. This locates the next unit."
+  ]
+}

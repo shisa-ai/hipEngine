@@ -1,0 +1,239 @@
+{
+ "window_kernels": 26599,
+ "steps": 32,
+ "launches_per_token": 831.22,
+ "pure_us_per_token": 46912.66,
+ "by_kernel": {
+  "void (anonymous namespace)::q5_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+   "us_per_token": 13380.23,
+   "launches_per_token": 98.81,
+   "vgpr": "96",
+   "lds": "0",
+   "workgroup": "32"
+  },
+  "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<2>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+   "us_per_token": 8120.19,
+   "launches_per_token": 33.91,
+   "vgpr": "56",
+   "lds": "2560",
+   "workgroup": "64"
+  },
+  "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+   "us_per_token": 5310.62,
+   "launches_per_token": 99.78,
+   "vgpr": "96",
+   "lds": "0",
+   "workgroup": "32"
+  },
+  "void gguf_iq4_xs_local32_dual_silu_kernel<2>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)": {
+   "us_per_token": 3237.4,
+   "launches_per_token": 19.38,
+   "vgpr": "96",
+   "lds": "2560",
+   "workgroup": "64"
+  },
+  "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+   "us_per_token": 2570.54,
+   "launches_per_token": 40.69,
+   "vgpr": "56",
+   "lds": "2560",
+   "workgroup": "128"
+  },
+  "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, float)": {
+   "us_per_token": 2534.18,
+   "launches_per_token": 15.5,
+   "vgpr": "40",
+   "lds": "0",
+   "workgroup": "256"
+  },
+  "void (anonymous namespace)::q5_k_t16_dense_dual_silu_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)": {
+   "us_per_token": 2065.52,
+   "launches_per_token": 8.72,
+   "vgpr": "208",
+   "lds": "512",
+   "workgroup": "128"
+  },
+  "void (anonymous namespace)::gguf_iq_dense_strict_kernel<3, true, 8, 1>(unsigned short const*, unsigned char const*, void*, long, long, long)": {
+   "us_per_token": 1482.93,
+   "launches_per_token": 6.78,
+   "vgpr": "72",
+   "lds": "2560",
+   "workgroup": "128"
+  },
+  "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>(unsigned short const*, unsigned char const*, float*, long, long, long)": {
+   "us_per_token": 1436.42,
+   "launches_per_token": 0.97,
+   "vgpr": "96",
+   "lds": "512",
+   "workgroup": "128"
+  },
+  "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+   "us_per_token": 954.09,
+   "launches_per_token": 22.28,
+   "vgpr": "96",
+   "lds": "512",
+   "workgroup": "128"
+  },
+  "void (anonymous namespace)::q8_0_t16_dual_split_gemv_kernel<unsigned short, unsigned short, true>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long, long)": {
+   "us_per_token": 932.59,
+   "launches_per_token": 47.47,
+   "vgpr": "64",
+   "lds": "512",
+   "workgroup": "128"
+  },
+  "void (anonymous namespace)::gguf_iq_dense_strict_kernel<2, true, 8, 1>(unsigned short const*, unsigned char const*, void*, long, long, long)": {
+   "us_per_token": 866.46,
+   "launches_per_token": 3.88,
+   "vgpr": "88",
+   "lds": "4608",
+   "workgroup": "128"
+  },
+  "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)": {
+   "us_per_token": 817.95,
+   "launches_per_token": 62.0,
+   "vgpr": "24",
+   "lds": "0",
+   "workgroup": "256"
+  },
+  "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)": {
+   "us_per_token": 677.18,
+   "launches_per_token": 62.97,
+   "vgpr": "16",
+   "lds": "0",
+   "workgroup": "256"
+  },
+  "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short, true, float>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, unsigned short*, float, long, long, long, long)": {
+   "us_per_token": 553.88,
+   "launches_per_token": 31.97,
+   "vgpr": "56",
+   "lds": "0",
+   "workgroup": "128"
+  },
+  "void gguf_iq4_nl_local32_gemv_kernel<2>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+   "us_per_token": 374.13,
+   "launches_per_token": 3.88,
+   "vgpr": "72",
+   "lds": "2560",
+   "workgroup": "64"
+  },
+  "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false, false, true>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)": {
+   "us_per_token": 297.17,
+   "launches_per_token": 10.66,
+   "vgpr": "128",
+   "lds": "512",
+   "workgroup": "128"
+  },
+  "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short, false, float>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, unsigned short*, float, long, long, long, long)": {
+   "us_per_token": 260.05,
+   "launches_per_token": 14.53,
+   "vgpr": "56",
+   "lds": "0",
+   "workgroup": "128"
+  },
+  "void gguf_iq4_nl_local32_gemv_kernel<4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)": {
+   "us_per_token": 250.56,
+   "launches_per_token": 2.91,
+   "vgpr": "72",
+   "lds": "2560",
+   "workgroup": "128"
+  },
+  "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)": {
+   "us_per_token": 174.65,
+   "launches_per_token": 62.0,
+   "vgpr": "24",
+   "lds": "0",
+   "workgroup": "256"
+  },
+  "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<unsigned short>(unsigned short const*, float*, float const*, float*, long, long)": {
+   "us_per_token": 155.93,
+   "launches_per_token": 46.5,
+   "vgpr": "16",
+   "lds": "0",
+   "workgroup": "256"
+  },
+  "void (anonymous namespace)::q8_0_t16_gemv_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)": {
+   "us_per_token": 112.6,
+   "launches_per_token": 5.81,
+   "vgpr": "64",
+   "lds": "512",
+   "workgroup": "128"
+  },
+  "gguf_head_rmsnorm_partial_rotary_position_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long)": {
+   "us_per_token": 78.22,
+   "launches_per_token": 15.5,
+   "vgpr": "16",
+   "lds": "0",
+   "workgroup": "256"
+  },
+  "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)": {
+   "us_per_token": 68.39,
+   "launches_per_token": 33.91,
+   "vgpr": "16",
+   "lds": "0",
+   "workgroup": "256"
+  },
+  "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)": {
+   "us_per_token": 54.87,
+   "launches_per_token": 15.5,
+   "vgpr": "24",
+   "lds": "0",
+   "workgroup": "256"
+  },
+  "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)": {
+   "us_per_token": 49.98,
+   "launches_per_token": 15.5,
+   "vgpr": "8",
+   "lds": "0",
+   "workgroup": "256"
+  },
+  "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)": {
+   "us_per_token": 28.09,
+   "launches_per_token": 15.5,
+   "vgpr": "16",
+   "lds": "0",
+   "workgroup": "256"
+  },
+  "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)": {
+   "us_per_token": 27.12,
+   "launches_per_token": 15.5,
+   "vgpr": "8",
+   "lds": "0",
+   "workgroup": "256"
+  },
+  "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)": {
+   "us_per_token": 24.5,
+   "launches_per_token": 14.53,
+   "vgpr": "8",
+   "lds": "0",
+   "workgroup": "256"
+  },
+  "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)": {
+   "us_per_token": 5.75,
+   "launches_per_token": 0.97,
+   "vgpr": "16",
+   "lds": "0",
+   "workgroup": "256"
+  },
+  "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)": {
+   "us_per_token": 5.35,
+   "launches_per_token": 0.97,
+   "vgpr": "16",
+   "lds": "0",
+   "workgroup": "128"
+  },
+  "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)": {
+   "us_per_token": 3.21,
+   "launches_per_token": 0.97,
+   "vgpr": "16",
+   "lds": "0",
+   "workgroup": "128"
+  },
+  "(anonymous namespace)::advance_decode_position_i64_kernel(long*, long*)": {
+   "us_per_token": 1.94,
+   "launches_per_token": 1.0,
+   "vgpr": "8",
+   "lds": "0",
+   "workgroup": "1"
+  }
+ }
+}

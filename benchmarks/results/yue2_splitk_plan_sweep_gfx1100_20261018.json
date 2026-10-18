@@ -1,0 +1,217 @@
+{
+  "schema": "hipengine.benchmark/1",
+  "kind": "yue2_splitk_plan_sweep",
+  "created": "2026-10-18",
+  "revision": "3531c86c4 plus the device-aware split-K plan",
+  "worktree": "vv_attention_spans production variant; split count planned from context and compute units",
+  "device": {
+    "backend": "hip_gfx1100",
+    "arch": "gfx1100",
+    "gpu": "AMD Radeon Pro W7900",
+    "host": "epyc",
+    "rocm": "7.2",
+    "compute_units": 96,
+    "compute_units_source": "rocminfo GPU agent (hipDeviceAttributeMultiprocessorCount reports 48 per shader engine on this ROCm and is not used)"
+  },
+  "geometry": {
+    "q_heads": 16,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "rows": 1
+  },
+  "claim": "The split-K decode attention plan picks the measured floor at product depth on this device and stays inside 12% of the floor at the longest context it serves.",
+  "protocol": {
+    "command": "python3 scripts/yue2_splitk_plan_sweep.py --context <ctx> --iters <n>",
+    "timing": "kernel-only, one (kv_head, split) grid per call, best of 3 timed blocks of n calls after 10 warmup calls, device synchronized per block",
+    "excludes": "layer stack and sampler; a decode step runs one call per layer per branch"
+  },
+  "contexts": {
+    "128": {
+      "policy": {
+        "splits": 16,
+        "chunk": 8
+      },
+      "blocks": 128,
+      "policy_ms_per_call": 0.0168,
+      "floor_ms_per_call": 0.0168,
+      "floor_splits": 8,
+      "sweep": [
+        {
+          "splits": 8,
+          "chunk": 16,
+          "blocks": 64,
+          "ms_per_call": 0.0168
+        },
+        {
+          "splits": 12,
+          "chunk": 11,
+          "blocks": 96,
+          "ms_per_call": 0.017
+        },
+        {
+          "splits": 16,
+          "chunk": 8,
+          "blocks": 128,
+          "ms_per_call": 0.0168
+        },
+        {
+          "splits": 24,
+          "chunk": 6,
+          "blocks": 192,
+          "ms_per_call": 0.018
+        },
+        {
+          "splits": 32,
+          "chunk": 4,
+          "blocks": 256,
+          "ms_per_call": 0.0191
+        },
+        {
+          "splits": 40,
+          "chunk": 4,
+          "blocks": 320,
+          "ms_per_call": 0.0204
+        },
+        {
+          "splits": 48,
+          "chunk": 3,
+          "blocks": 384,
+          "ms_per_call": 0.0318
+        },
+        {
+          "splits": 56,
+          "chunk": 3,
+          "blocks": 448,
+          "ms_per_call": 0.0235
+        },
+        {
+          "splits": 64,
+          "chunk": 2,
+          "blocks": 512,
+          "ms_per_call": 0.0261
+        }
+      ]
+    },
+    "998": {
+      "policy": {
+        "splits": 32,
+        "chunk": 32
+      },
+      "blocks": 256,
+      "policy_ms_per_call": 0.0258,
+      "floor_ms_per_call": 0.0258,
+      "floor_splits": 32,
+      "sweep": [
+        {
+          "splits": 8,
+          "chunk": 125,
+          "blocks": 64,
+          "ms_per_call": 0.0379
+        },
+        {
+          "splits": 12,
+          "chunk": 84,
+          "blocks": 96,
+          "ms_per_call": 0.0311
+        },
+        {
+          "splits": 16,
+          "chunk": 63,
+          "blocks": 128,
+          "ms_per_call": 0.0289
+        },
+        {
+          "splits": 24,
+          "chunk": 42,
+          "blocks": 192,
+          "ms_per_call": 0.026
+        },
+        {
+          "splits": 32,
+          "chunk": 32,
+          "blocks": 256,
+          "ms_per_call": 0.0258
+        },
+        {
+          "splits": 40,
+          "chunk": 25,
+          "blocks": 320,
+          "ms_per_call": 0.0266
+        },
+        {
+          "splits": 48,
+          "chunk": 21,
+          "blocks": 384,
+          "ms_per_call": 0.0322
+        },
+        {
+          "splits": 56,
+          "chunk": 18,
+          "blocks": 448,
+          "ms_per_call": 0.0299
+        },
+        {
+          "splits": 64,
+          "chunk": 16,
+          "blocks": 512,
+          "ms_per_call": 0.0306
+        }
+      ]
+    },
+    "4098": {
+      "policy": {
+        "splits": 64,
+        "chunk": 65
+      },
+      "blocks": 512,
+      "policy_ms_per_call": 0.0621,
+      "floor_ms_per_call": 0.0558,
+      "floor_splits": 48,
+      "sweep": [
+        {
+          "splits": 24,
+          "chunk": 171,
+          "blocks": 192,
+          "ms_per_call": 0.0837
+        },
+        {
+          "splits": 32,
+          "chunk": 129,
+          "blocks": 256,
+          "ms_per_call": 0.0713
+        },
+        {
+          "splits": 40,
+          "chunk": 103,
+          "blocks": 320,
+          "ms_per_call": 0.0638
+        },
+        {
+          "splits": 48,
+          "chunk": 86,
+          "blocks": 384,
+          "ms_per_call": 0.0558
+        },
+        {
+          "splits": 56,
+          "chunk": 74,
+          "blocks": 448,
+          "ms_per_call": 0.0639
+        },
+        {
+          "splits": 64,
+          "chunk": 65,
+          "blocks": 512,
+          "ms_per_call": 0.0621
+        }
+      ]
+    }
+  },
+  "finding": [
+    "At 998 tokens the floor is 24-32 splits (0.026 ms per call) and 48 splits costs 0.032 ms, so the plan's two-blocks-per-unit bound sits at the floor rather than a fourth wave.",
+    "At 128 tokens the plan lands within 0.2% of the floor; the MIN_CHUNK bound keeps it from splitting a short context into blocks of two or three tokens.",
+    "At 4098 tokens the plan reaches the 64-split cap and costs 0.062 ms against the 0.056 ms floor at 48, 11% over, on a call that is 2% of the step.",
+    "Plan policy is unit-tested for 40, 96, 128, 2 and unknown compute-unit counts in tests/test_unit_yue2_attention_splitk.py."
+  ],
+  "rollback": "attention_route=\"strict\" selects the parent vv_attention_spans kernel."
+}

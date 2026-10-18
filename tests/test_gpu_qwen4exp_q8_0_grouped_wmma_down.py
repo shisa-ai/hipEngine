@@ -54,7 +54,7 @@ def _quantize_q8_0(w: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return raw, d
 
 
-def _tile_map(expert_rows: list[int]) -> tuple[np.ndarray, np.ndarray, int]:
+def _tile_map(expert_rows: list[int]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Host re-implementation of qwen35_moe_wmma_tile_map (16-row tiles)."""
     starts = np.zeros(len(expert_rows) + 1, dtype=np.int64)
     for e, n in enumerate(expert_rows):
@@ -66,7 +66,7 @@ def _tile_map(expert_rows: list[int]) -> tuple[np.ndarray, np.ndarray, int]:
         padded = (n + 15) // 16
         tiles.extend([e] * padded)
         wmma_start[e + 1] = len(tiles) * 16
-    return starts, wmma_start, len(tiles)
+    return starts, wmma_start, np.asarray(tiles, dtype=np.int64)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime unavailable")
@@ -81,14 +81,13 @@ def test_q8_0_selected_grouped_wmma_matches_reference():
     raw_all = np.empty((experts, out_f, in_f // 32 * 34), dtype=np.uint8)
     d_all = np.empty((experts, out_f, in_f // 32), dtype=np.float32)
     for e in range(experts):
-        raw_all[e], d_all[e] = _quantize_q8_0(w[e])
+        raw, d_all[e] = _quantize_q8_0(w[e])
+        raw_all[e] = raw.reshape(raw_all[e].shape)
     x = rng.normal(0, 1.0, size=(compact, in_f)).astype(np.float32)
     x_bf16 = _f32_to_bf16_bits(x)
 
-    starts, wmma_start, total_tiles = _tile_map(expert_rows)
-    tiles = np.repeat(np.arange(experts, dtype=np.int64),
-                      [(n + 15) // 16 for n in expert_rows])
-    wmma_total_rows = total_tiles * 16
+    starts, wmma_start, tiles = _tile_map(expert_rows)
+    wmma_total_rows = len(tiles) * 16
 
     runtime = get_hip_runtime()
     allocations = []
@@ -106,12 +105,13 @@ def test_q8_0_selected_grouped_wmma_matches_reference():
             runtime=runtime, library=None,
         )
         runtime.device_synchronize()
-        bits = _download(out, (compact, out_f), np.uint16, runtime)
-        got = (bits.astype(np.uint32) << 16).view(np.float32)
+        got_bits = _download(out, (compact, out_f), np.uint16, runtime)
+        got = (got_bits.astype(np.uint32) << 16).view(np.float32)
     finally:
         while allocations:
             free(allocations.pop())
 
+    assert np.isfinite(got).all()
     # Reference: dequant to bf16 weights, bf16 activations, exact f32 dot.
     def dequant(e):
         blocks = in_f // 32
@@ -132,8 +132,8 @@ def test_q8_0_selected_grouped_wmma_matches_reference():
         # The kernel converts activations and dequantized weights to f16
         # before the WMMA dot; emulate both roundings.
         we16 = we.astype(np.float16).astype(np.float32)
-        rounded_x = (x_bf16[row:row + n].astype(np.uint32) << 16).view(np.float32)
-        x16 = rounded_x.astype(np.float16).astype(np.float32)
+        xb = (x_bf16[row:row + n].astype(np.uint32) << 16).view(np.float32)
+        x16 = xb.astype(np.float16).astype(np.float32)
         ref = x16 @ we16.T
         ref = (_f32_to_bf16_bits(ref).astype(np.uint32) << 16).view(np.float32)
         rel = np.abs(got[row:row + n] - ref) / np.maximum(np.abs(ref), 1e-6)

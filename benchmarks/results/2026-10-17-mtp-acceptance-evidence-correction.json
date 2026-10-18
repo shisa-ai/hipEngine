@@ -1,0 +1,48 @@
+{
+  "schema": "hipengine.acceptance_evidence_correction.v1",
+  "performance_claim": false,
+  "kind": "immutable_correction",
+  "date": "2026-10-17",
+  "repository_commit": "aaf510a7c",
+  "affected_prior_entries": [
+    "worklog/entries/20261017T143422.753855Z-followup-gfx1151-acceptance-matrix-2afc0d.md",
+    "worklog/entries/20261017T073514.416099Z-overnight-followup-mtp-gfx1151-qwen36-moe-complete-090659.md",
+    "worklog/entries/20261017T150858.589096Z-followup-qwen36-moe-ar-default-9e751b.md"
+  ],
+  "corrections": [
+    {
+      "topic": "gemma_row_a_shape",
+      "prior_claim": "The Gemma row was described as a 512-prompt/128-output AR-vs-MTP measurement.",
+      "corrected_fact": "The prior live Gemma row accounted for 517 prompt tokens and only 3 generated output tokens before stop. It is not a 512/128 throughput or long-output measurement.",
+      "action": "Do not use that row as Gemma 512/128 evidence; use the canonical 128-token rerun artifact instead.",
+      "canonical_revalidation_command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 .venv/bin/python scripts/gemma4_mtp_probe.py --artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf --draft /models/gguf/gemma-4-26B-A4B-it-GGUF/MTP/mtp-gemma-4-26B-A4B-it-Q8_0.gguf --suite benchmarks/prompts/mtpbench-code-general-ja.jsonl --suite benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --tokens 128 --samples 2 --budget 4 --json /tmp/mtp-repair/gemma-current-128.json",
+      "canonical_artifact": "/tmp/mtp-repair/gemma-current-128.json"
+    },
+    {
+      "topic": "last_cycle_output_room",
+      "prior_claim": "Last-cycle output-room telemetry was treated as a root-cause explanation for the MTP behavior.",
+      "corrected_fact": "Output-room telemetry only recorded a route/eligibility observation. It did not establish a root cause for the observed behavior, and no causal claim is retained here.",
+      "action": "Treat the cause as unestablished unless a targeted reproducer and control comparison proves it."
+    },
+    {
+      "topic": "capacity_gt_one_moe_owner",
+      "prior_claim": "Capacity>1 MoE behavior was attributed to the legacy MoE complete-cycle adapter.",
+      "corrected_fact": "The model-plugin key is `moe_nextn`, but `create_qwen35_gguf_moe_mtp2_adapter()` returns the legacy `Qwen35GGUFMoEMTP2Adapter` only at capacity 1. At capacity>1 it constructs the shared `Qwen35GGUFMTP2Adapter` and applies MoE physical flags.",
+      "source": "hipengine/generation/qwen35_gguf_moe_mtp2.py:create_qwen35_gguf_moe_mtp2_adapter",
+      "action": "Attribute capacity>1 traces, fixes, and measurements to `Qwen35GGUFMTP2Adapter`; do not infer the legacy complete-cycle implementation from the model key."
+    }
+  ],
+  "gates": {
+    "root_readme_edited": false,
+    "prior_entries_modified": false,
+    "canonical_gemma_rerun": "passed",
+    "qwen38_q4ks_original_prompt_serial_replay": "passed",
+    "targeted_unit_tests_after_q4ks_containment": "passed"
+  },
+  "raw_evidence": [
+    "/tmp/mtp-repair/gemma-current-128.json",
+    "/tmp/mtp-repair/qwen38-q4ks-http-matrix.json",
+    "/tmp/mtp-repair/qwen38-q4ks-original-serial.json",
+    "/tmp/mtp-repair/qwen38-q4ks-auto-fallback2.json"
+  ]
+}

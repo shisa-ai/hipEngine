@@ -56,6 +56,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+# Run against THIS checkout even when the shared environment's editable install
+# points at a different worktree. Observed here: the system interpreter's
+# ``hipengine`` resolved to another checkout, so a kernel edit in this tree was
+# silently not the code under test. Same guard as ``gemma4_campaign_bench.py``.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 import numpy as np
 
 from hipengine.quant.gguf_q4_k import pack_gguf_q4_k_mmq_tile16_preview, pack_q8_1_mmq_ds4_from_bf16
@@ -164,6 +172,7 @@ def parse_args() -> argparse.Namespace:
             "q8-1-ds4-dot",
             "q8-1-ds4-mmq32",
             "q8-1-ds4-mmq32-pack",
+            "q8-1-ds4-t16-mmq32",
             "q8-1-ds4-wmma",
             "q8-1-ds4-wmma32",
             "q8-1-ds4-wmma32-pack",
@@ -252,7 +261,11 @@ def main() -> None:
         row_tile_start_dev = start_wmma_dev
         row_tile_expert_dev = tile_expert_dev
         row_tile_total_rows = wmma_total_rows
-        if args.mode in {"q8-1-ds4-mmq32", "q8-1-ds4-mmq32-pack"}:
+        if args.mode in {
+            "q8-1-ds4-mmq32",
+            "q8-1-ds4-mmq32-pack",
+            "q8-1-ds4-t16-mmq32",
+        }:
             (
                 _,
                 expert_start_mmq32,
@@ -409,6 +422,7 @@ def main() -> None:
                 gguf_q4_k_selected_dual_q8_1_ds4_wmma32_prefill_compact32_bf16_bf16_out,
                 gguf_q4_k_selected_dual_q8_1_ds4_wmma64_prefill_compact32_bf16_bf16_out,
                 gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out,
+                gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
                 gguf_q8_1_mmq_ds4_pack_bf16,
             )
 
@@ -420,7 +434,21 @@ def main() -> None:
             qweight_b_dev = None
             out_dev = malloc(out_host.nbytes, runtime=runtime)
             bufs.append(out_dev)
-            if args.mode != "q8-1-ds4-preview-wmma32":
+            if args.mode == "q8-1-ds4-t16-mmq32":
+                # Same MMQ32 body, resident Q4T16 weight tiles instead of raw
+                # GGUF Q4_K blocks. This isolates the weight layout: the raw
+                # layout reads 16 bytes out of every 144-byte block per column
+                # tile, which the memory system rounds up to whole sectors.
+                from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
+
+                tiles_a = repack_gguf_q4_k_tile16(qweight_a).tiles
+                tiles_b = repack_gguf_q4_k_tile16(qweight_b).tiles
+                qweight_a_dev, _ = _copy_to_device(tiles_a, runtime=runtime)
+                qweight_b_dev, _ = _copy_to_device(tiles_b, runtime=runtime)
+                bufs.extend((qweight_a_dev, qweight_b_dev))
+                variant_extra["host_tiles_a_mib"] = tiles_a.nbytes / (1 << 20)
+                variant_extra["host_tiles_b_mib"] = tiles_b.nbytes / (1 << 20)
+            elif args.mode != "q8-1-ds4-preview-wmma32":
                 qweight_a_dev, _ = _copy_to_device(qweight_a, runtime=runtime)
                 qweight_b_dev, _ = _copy_to_device(qweight_b, runtime=runtime)
                 bufs.extend((qweight_a_dev, qweight_b_dev))
@@ -543,9 +571,15 @@ def main() -> None:
                         "q8-1-ds4-wmma32-ldspack",
                         "q8-1-ds4-wmma32-lds",
                     }
-                    if args.mode in {"q8-1-ds4-mmq32", "q8-1-ds4-mmq32-pack"}:
+                    if args.mode in {
+                        "q8-1-ds4-mmq32",
+                        "q8-1-ds4-mmq32-pack",
+                        "q8-1-ds4-t16-mmq32",
+                    }:
                         ds4_launcher = (
                             gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out
+                            if args.mode != "q8-1-ds4-t16-mmq32"
+                            else gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out
                         )
                     elif args.mode == "q8-1-ds4-wmma32-lds":
                         ds4_launcher = gguf_q4_k_selected_dual_q8_1_ds4_wmma32_lds_prefill_compact32_bf16_bf16_out
@@ -566,10 +600,18 @@ def main() -> None:
                         "host_raw_qweight_b_mib": qweight_b.nbytes / (1 << 20),
                         "activation_quantization_in_loop": pack_in_loop,
                         "activation_layout": "llama_cpp_block_q8_1_mmq_ds4",
-                        "weight_layout": "raw_gguf_q4_k",
+                        "weight_layout": (
+                            "gguf_q4_k_t16_v1_resident"
+                            if args.mode == "q8-1-ds4-t16-mmq32"
+                            else "raw_gguf_q4_k"
+                        ),
                         "integer_mma": use_wmma,
                         "packed_integer_dot": args.mode
-                        in {"q8-1-ds4-mmq32", "q8-1-ds4-mmq32-pack"},
+                        in {
+                            "q8-1-ds4-mmq32",
+                            "q8-1-ds4-mmq32-pack",
+                            "q8-1-ds4-t16-mmq32",
+                        },
                         "prototype_note": (
                             "Source-faithful 32x32 packed-dot MMQ with GPU BF16->Q8_1 pack in the timed loop and complete per-K32 Q4/Q8 LDS tile reuse over raw Q4_K source blocks."
                             if pack_in_loop
@@ -612,7 +654,11 @@ def main() -> None:
                             *(
                                 (compact_to_source_dev.ptr,)
                                 if args.mode
-                                in {"q8-1-ds4-mmq32", "q8-1-ds4-mmq32-pack"}
+                                in {
+                                    "q8-1-ds4-mmq32",
+                                    "q8-1-ds4-mmq32-pack",
+                                    "q8-1-ds4-t16-mmq32",
+                                }
                                 else ()
                             ),
                             start_compact_dev.ptr,

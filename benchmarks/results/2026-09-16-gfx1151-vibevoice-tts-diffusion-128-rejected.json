@@ -1,0 +1,490 @@
+{
+  "date": "2026-09-16",
+  "model": "microsoft/VibeVoice-1.5B",
+  "quant": "bf16",
+  "host": "zbook",
+  "gpu": "Radeon 8060S",
+  "backend": "hip_gfx1151",
+  "status": "rejected-early-confirmed-speech-regression",
+  "gemv_threads": 128,
+  "environment": {
+    "OPENBLAS_NUM_THREADS": "1"
+  },
+  "command": "uv run --with jiwer --with transformers python scripts/vibevoice_tts_quality_suite.py --seeds 20260915,20260916,20260917,20260919,20260920,20260921,20260922,20260923,20260924 --work /tmp/vv-drift-quality128-rest --out /tmp/vv-drift-quality128-rest.json",
+  "command_basis": "runtime _GEMV_THREADS was temporarily 128; production 64 subsequently restored",
+  "generated_requests": 60,
+  "scored_requests": 33,
+  "full_sixty_request_verdict": null,
+  "reason": "Single-numbers seed20260917 newly fails intelligibility: HIP ASR 16.67%; independent Whisper 25% vs 8.33% on old archived waveform. Stop after confirmed regression, not a completed 60-request score.",
+  "reference_diagnostic": "unchanged 0.15 bound passed (39.14 seconds)",
+  "scored_remaining_seeds": [
+    {
+      "seed": 20260915,
+      "request": "single-short",
+      "wer_fraction": 0.0,
+      "duration_ratio": 0.762,
+      "passed": true,
+      "baseline_wer_fraction": 0.0,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "fb0af620a190802f32e8688548e15a724d8f0c1160367a79558d754fa440c53e"
+    },
+    {
+      "seed": 20260915,
+      "request": "single-medium",
+      "wer_fraction": 0.0,
+      "duration_ratio": 0.711,
+      "passed": true,
+      "baseline_wer_fraction": 0.0,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "20c7de0aa24989c22b88565ec962e557c016ea9ec3156e94fc3d8dbe75beafb2"
+    },
+    {
+      "seed": 20260915,
+      "request": "single-numbers",
+      "wer_fraction": 0.0,
+      "duration_ratio": 0.889,
+      "passed": true,
+      "baseline_wer_fraction": 0.0,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "0812bcb7a46f0a70262ac9160c94d3b650b1e7817b59134dd502f98fad149b9c"
+    },
+    {
+      "seed": 20260915,
+      "request": "two-2turn",
+      "wer_fraction": 0.0,
+      "duration_ratio": 1.02,
+      "passed": true,
+      "baseline_wer_fraction": 0.0,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "700c34e4e3159631b10a5c3a1bbea472e9298f59284fd170b06a125929d56e51"
+    },
+    {
+      "seed": 20260915,
+      "request": "two-4turn",
+      "wer_fraction": 0.0,
+      "duration_ratio": 1.014,
+      "passed": true,
+      "baseline_wer_fraction": 0.0,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "ecb7f2a343abf4fffd489b53e3b2eadefa20051d627e375f8a4b8340ff34a251"
+    },
+    {
+      "seed": 20260915,
+      "request": "two-long",
+      "wer_fraction": 0.025,
+      "duration_ratio": 0.8,
+      "passed": true,
+      "baseline_wer_fraction": 0.025,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "824c17369bef7426796cab2fecb897ecf44edc634a9c280f88422b9882f453c3"
+    },
+    {
+      "seed": 20260916,
+      "request": "single-short",
+      "wer_fraction": 0.0,
+      "duration_ratio": 0.857,
+      "passed": true,
+      "baseline_wer_fraction": 0.0,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "724116a07737ec746a90dcb299b35fe466a3d024f86417a690344f1511ae0155"
+    },
+    {
+      "seed": 20260916,
+      "request": "single-medium",
+      "wer_fraction": 0.0,
+      "duration_ratio": 0.689,
+      "passed": true,
+      "baseline_wer_fraction": 0.0,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "b020c08d4accd58035f8a8c789356a3f6a5f0b04366fd70b8a75386c30a4b636"
+    },
+    {
+      "seed": 20260916,
+      "request": "single-numbers",
+      "wer_fraction": 0.0,
+      "duration_ratio": 0.944,
+      "passed": true,
+      "baseline_wer_fraction": 0.0,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "23d2240f3e0f60de46feaf5aee0106bee22427b0b8c9c654473bb0476aa54770"
+    },
+    {
+      "seed": 20260916,
+      "request": "two-2turn",
+      "wer_fraction": 0.0,
+      "duration_ratio": 1.078,
+      "passed": true,
+      "baseline_wer_fraction": 0.0588,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "1acb45257dc1d3cee03ae71eb630623e27d10e2741d2aa295097ff475f1e7028"
+    },
+    {
+      "seed": 20260916,
+      "request": "two-4turn",
+      "wer_fraction": 0.0,
+      "duration_ratio": 1.014,
+      "passed": true,
+      "baseline_wer_fraction": 0.0,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "c895e36969cb7803956d41078e552a1a8f27f675a172e2ddf35ad0100316a3f1"
+    },
+    {
+      "seed": 20260916,
+      "request": "two-long",
+      "wer_fraction": 0.025,
+      "duration_ratio": 0.783,
+      "passed": true,
+      "baseline_wer_fraction": 0.05,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "668f7017fd2d8746b422af2f14a5ab9ef914a7f38dd190621698bef966d00830"
+    },
+    {
+      "seed": 20260917,
+      "request": "single-short",
+      "wer_fraction": 0.0,
+      "duration_ratio": 0.81,
+      "passed": true,
+      "baseline_wer_fraction": 0.0,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "dc7f180e5d1c6c5c6e3c1b440d6482fc0a0e4df5c8de58f99692d8804b31bbb7"
+    },
+    {
+      "seed": 20260917,
+      "request": "single-medium",
+      "wer_fraction": 0.0,
+      "duration_ratio": 0.867,
+      "passed": true,
+      "baseline_wer_fraction": 0.0,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "94afe9b1aebeeabc4734dcff58efa942062a85aab541ea08146233086b967b25"
+    },
+    {
+      "seed": 20260917,
+      "request": "single-numbers",
+      "wer_fraction": 0.1667,
+      "duration_ratio": 0.75,
+      "passed": false,
+      "baseline_wer_fraction": 0.0,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "9ada4c81ff468e2058aeb88522d4a537b41151445c06f75cc6c6b8fb3234ba60"
+    },
+    {
+      "seed": 20260917,
+      "request": "two-2turn",
+      "wer_fraction": 0.0,
+      "duration_ratio": 0.882,
+      "passed": true,
+      "baseline_wer_fraction": 0.0,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "1c39616f645e9345ebcf47a5148e503fe8567e4e29626e5b1e06b0d93b998694"
+    },
+    {
+      "seed": 20260917,
+      "request": "two-4turn",
+      "wer_fraction": 0.0,
+      "duration_ratio": 1.058,
+      "passed": true,
+      "baseline_wer_fraction": 0.0,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "b897e0d4e22b6abccf3c2b10397d376b1468032e47cb65352291aa0c3d048313"
+    },
+    {
+      "seed": 20260917,
+      "request": "two-long",
+      "wer_fraction": 0.025,
+      "duration_ratio": 0.767,
+      "passed": true,
+      "baseline_wer_fraction": 0.025,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "9204477d4933b9ab801dfd983c18afb4ad20f08530a33160a89951a6c1c2ca05"
+    },
+    {
+      "seed": 20260919,
+      "request": "single-short",
+      "wer_fraction": 0.0,
+      "duration_ratio": 0.81,
+      "passed": true,
+      "baseline_wer_fraction": 0.0,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "c1b852ecc74ddc0b823469a163bc2fc3ab5700b81b698f01f40d7ec85d008a59"
+    },
+    {
+      "seed": 20260919,
+      "request": "single-medium",
+      "wer_fraction": 0.0,
+      "duration_ratio": 0.756,
+      "passed": true,
+      "baseline_wer_fraction": 0.0,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "ebc63476a1c9e796c2f8969ad42c499414084f05840484156e520bb166683adc"
+    },
+    {
+      "seed": 20260919,
+      "request": "single-numbers",
+      "wer_fraction": 0.0833,
+      "duration_ratio": 0.833,
+      "passed": true,
+      "baseline_wer_fraction": 0.0833,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "baca4f953ddf919d7423f9ad94cb79bf80102f1eff46d4a55e27779ee2790084"
+    },
+    {
+      "seed": 20260919,
+      "request": "two-2turn",
+      "wer_fraction": 0.1176,
+      "duration_ratio": 0.863,
+      "passed": false,
+      "baseline_wer_fraction": 0.1176,
+      "baseline_passed": false,
+      "pcm_npy_sha256": "02b1115b108466125877c3f9611c436ba7806f3dfac14a426f359ad5dfe1cb4c"
+    },
+    {
+      "seed": 20260919,
+      "request": "two-4turn",
+      "wer_fraction": 0.0,
+      "duration_ratio": 1.0,
+      "passed": true,
+      "baseline_wer_fraction": 0.0,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "c44c274fe2881d2ab88fbb8d5185db93a5913324c313de47197b0d8a29d37607"
+    },
+    {
+      "seed": 20260919,
+      "request": "two-long",
+      "wer_fraction": 0.025,
+      "duration_ratio": 0.825,
+      "passed": true,
+      "baseline_wer_fraction": 0.025,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "1f8edda7b0999035083684657f226b35a20c98b867e8e0001994720a6f3e7056"
+    },
+    {
+      "seed": 20260920,
+      "request": "single-short",
+      "wer_fraction": 0.0,
+      "duration_ratio": 1.143,
+      "passed": true,
+      "baseline_wer_fraction": 0.0,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "0391702c3a2b8303b2fdc3b8d8ecb5a868fc25aae62d157e2d6f8fe784e03574"
+    },
+    {
+      "seed": 20260920,
+      "request": "single-medium",
+      "wer_fraction": 0.0,
+      "duration_ratio": 0.8,
+      "passed": true,
+      "baseline_wer_fraction": 0.0,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "7f4e37e2f9a390a5e13967f585ffeebde0fc1a87271260d647170570df24c3ed"
+    },
+    {
+      "seed": 20260920,
+      "request": "single-numbers",
+      "wer_fraction": 0.0,
+      "duration_ratio": 0.861,
+      "passed": true,
+      "baseline_wer_fraction": 0.0,
+      "baseline_passed": true,
+      "pcm_npy_sha256": "4eb305285df6eb67d9e6aaadded42bea8e15be1d815c0d7b0ea9899402261e66"
+    }
+  ],
+  "seed20260918": {
+    "historical_invocation": "PYTHONPATH=/home/lhl/hipEngine OPENBLAS_NUM_THREADS=1 uv run --with jiwer --with transformers python /tmp/vv-drift-quality128.py --seeds 20260918 --work /tmp/vv-drift-quality128 --out /tmp/vv-drift-quality128.json",
+    "probe_source": "from hipengine.runtime.vibevoice_tts_diffusion import VibevoiceTTSDiffusionHeadGPU\nfrom hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_gemv_out_bf16\nfrom scripts.vibevoice_tts_quality_suite import main\n\ndef gemv(self,key,x,out,rows):\n w,n,k=self._linears[key]\n dense_gemv_out_bf16(x,w.ptr,out,rows,k,n,threads=128)\nVibevoiceTTSDiffusionHeadGPU._gemv=gemv\nmain()\n",
+    "passed_requests": 5,
+    "total_requests": 6,
+    "source_artifact_sha256": "587ab2ac6e58db0bbc93a02b5db6e01b4b4a4435bf35a02d40c2272b813c6f0c",
+    "requests": [
+      {
+        "base_seed": 20260918,
+        "name": "single-short",
+        "wer": 0.0,
+        "checks": {
+          "transcript_well_formed": true,
+          "not_truncated": true,
+          "has_audio": true,
+          "audible": true,
+          "not_clipping": true,
+          "no_long_silence": true,
+          "duration_plausible": true,
+          "intelligible": true,
+          "word_count_plausible": true,
+          "no_repeated_speech": true,
+          "no_join_click": true,
+          "sample_count_continuous": true,
+          "turn_count": true
+        },
+        "passed": true,
+        "wer_units": "fraction",
+        "pcm_npy_sha256": "b4fc8653ea231bff9c220facd37121522ca9abe8c4299be7c6377861ad2a37b1"
+      },
+      {
+        "base_seed": 20260918,
+        "name": "single-medium",
+        "wer": 0.0,
+        "checks": {
+          "transcript_well_formed": true,
+          "not_truncated": true,
+          "has_audio": true,
+          "audible": true,
+          "not_clipping": true,
+          "no_long_silence": true,
+          "duration_plausible": true,
+          "intelligible": true,
+          "word_count_plausible": true,
+          "no_repeated_speech": true,
+          "no_join_click": true,
+          "sample_count_continuous": true,
+          "turn_count": true
+        },
+        "passed": true,
+        "wer_units": "fraction",
+        "pcm_npy_sha256": "fb42326690f721a51826ac8a23b7deefa52b7804012a5d6f5bb066f134f27b07"
+      },
+      {
+        "base_seed": 20260918,
+        "name": "single-numbers",
+        "wer": 0.0,
+        "checks": {
+          "transcript_well_formed": true,
+          "not_truncated": true,
+          "has_audio": true,
+          "audible": true,
+          "not_clipping": true,
+          "no_long_silence": true,
+          "duration_plausible": true,
+          "intelligible": true,
+          "word_count_plausible": true,
+          "no_repeated_speech": true,
+          "no_join_click": true,
+          "sample_count_continuous": true,
+          "turn_count": true
+        },
+        "passed": true,
+        "wer_units": "fraction",
+        "pcm_npy_sha256": "b6c3d0b9016ccaa8571c6abbd780d3b313074a423d6ded4729279cfbe0b96145"
+      },
+      {
+        "base_seed": 20260918,
+        "name": "two-2turn",
+        "wer": 0.0,
+        "checks": {
+          "transcript_well_formed": true,
+          "not_truncated": true,
+          "has_audio": true,
+          "audible": true,
+          "not_clipping": true,
+          "no_long_silence": true,
+          "duration_plausible": true,
+          "intelligible": true,
+          "word_count_plausible": true,
+          "no_repeated_speech": true,
+          "no_join_click": true,
+          "sample_count_continuous": true,
+          "turn_count": true,
+          "voice_attribution": true
+        },
+        "passed": true,
+        "wer_units": "fraction",
+        "pcm_npy_sha256": "dda4a63239365b4569712d622e20f3062a1e8b7ef30bb52747c93c45e386e893"
+      },
+      {
+        "base_seed": 20260918,
+        "name": "two-4turn",
+        "wer": 0.0435,
+        "checks": {
+          "transcript_well_formed": true,
+          "not_truncated": true,
+          "has_audio": true,
+          "audible": true,
+          "not_clipping": true,
+          "no_long_silence": true,
+          "duration_plausible": true,
+          "intelligible": true,
+          "word_count_plausible": true,
+          "no_repeated_speech": true,
+          "no_join_click": true,
+          "sample_count_continuous": true,
+          "turn_count": true,
+          "voice_attribution": true
+        },
+        "passed": true,
+        "wer_units": "fraction",
+        "pcm_npy_sha256": "00555f006cf2b349ecd94d079f7f5e4c11d1c9f3f6fc0efe9dcf67109870cd57"
+      },
+      {
+        "base_seed": 20260918,
+        "name": "two-long",
+        "wer": 0.025,
+        "checks": {
+          "transcript_well_formed": true,
+          "not_truncated": true,
+          "has_audio": true,
+          "audible": true,
+          "not_clipping": true,
+          "no_long_silence": true,
+          "duration_plausible": true,
+          "intelligible": true,
+          "word_count_plausible": true,
+          "no_repeated_speech": true,
+          "no_join_click": true,
+          "sample_count_continuous": true,
+          "turn_count": true,
+          "voice_attribution": false
+        },
+        "passed": false,
+        "wer_units": "fraction",
+        "pcm_npy_sha256": "20d4ff3b691d193d7d10fa708ef86af9e84f4d812373279e169e657ff3b7ca2a"
+      }
+    ]
+  },
+  "independent_asr": {
+    "model": "openai/whisper-large-v3-turbo",
+    "dtype": "float32",
+    "device": "cpu",
+    "num_beams": 5,
+    "resampling": "torch interpolate linear 24k to 16k align_corners=False",
+    "normalization": "Whisper EnglishTextNormalizer",
+    "results": [
+      {
+        "arm": "old_archive",
+        "seed": 20260917,
+        "request": "single-numbers",
+        "pcm_npy_sha256": "9307afcfebb3d578dd52138a861450f965c7b80cfc290d73149c367f96d036e8",
+        "transcript": "The train to gristle leaves from platform 12 at half past four.",
+        "wer_fraction": 0.08333333333333333
+      },
+      {
+        "arm": "repair",
+        "seed": 20260917,
+        "request": "single-numbers",
+        "pcm_npy_sha256": "9ada4c81ff468e2058aeb88522d4a537b41151445c06f75cc6c6b8fb3234ba60",
+        "transcript": "Tuning to Bristol leads from platform 12 at half past four.",
+        "wer_fraction": 0.25
+      }
+    ],
+    "historical_invocation": "OPENBLAS_NUM_THREADS=1 /home/lhl/venvs/vibevoice-tts-oracle/bin/python /tmp/vv-drift128-whisper.py",
+    "probe_source": "import json,hashlib\nfrom pathlib import Path\nimport numpy as np\nimport torch\nfrom transformers import WhisperForConditionalGeneration,WhisperProcessor\nfrom transformers.models.whisper.english_normalizer import EnglishTextNormalizer\nfrom jiwer import wer\n\ntorch.set_num_threads(8)\nmodelid='openai/whisper-large-v3-turbo'\np=WhisperProcessor.from_pretrained(modelid,local_files_only=True)\nm=WhisperForConditionalGeneration.from_pretrained(modelid,torch_dtype=torch.float32,local_files_only=True).eval()\nnorm=EnglishTextNormalizer({})\nnew={'runs':[{'requests':json.load(open('/tmp/vv-drift-quality128-rest/synthesis.json'))}]}\nold=json.load(open('benchmarks/results/2026-09-15-gfx1151-vibevoice-tts-quality-suite.json'))\nres=[]\nfor label,data in [('old_archive',old),('repair',new)]:\n for run in data['runs']:\n  for r in run['requests']:\n   if (r['base_seed'],r['name']) not in [(20260917,'single-numbers')]:continue\n   path=Path(r['pcm']);a=np.load(path).astype(np.float32)\n   x=torch.from_numpy(a).reshape(1,1,-1)\n   x=torch.nn.functional.interpolate(x,size=int(a.size*16000/24000),mode='linear',align_corners=False)[0,0]\n   feats=p(x.numpy(),sampling_rate=16000,return_tensors='pt').input_features\n   with torch.inference_mode(): ids=m.generate(feats,language='en',task='transcribe',num_beams=5)\n   text=p.batch_decode(ids,skip_special_tokens=True)[0].strip()\n   ref=' '.join(line.split(':',1)[-1] for line in r['script'].splitlines())\n   row={'arm':label,'seed':r['base_seed'],'request':r['name'],'pcm_npy_sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'transcript':text,'wer_fraction':wer(norm(ref),norm(text))}\n   res.append(row);print(json.dumps(row),flush=True)\nPath('/tmp/vv-drift128-whisper.json').write_text(json.dumps({'model':modelid,'dtype':'float32','device':'cpu','num_beams':5,'resampling':'torch interpolate linear 24k to 16k align_corners=False','normalization':'Whisper EnglishTextNormalizer','results':res},indent=2)+'\\n')\n"
+  },
+  "gates": {
+    "wer_max": 0.1,
+    "duration_ratio_range": [
+      0.5,
+      2.5
+    ],
+    "max_internal_silence_seconds": 1.5,
+    "min_rms": 0.005,
+    "max_abs": 1.0,
+    "max_repeated_4grams": 0,
+    "turn_count_min": 1,
+    "voice_attribution": "for a script with more than one speaker, the encoder's window assignment must reproduce the script's whole speaker sequence, not only its endpoints"
+  },
+  "limitations": [
+    "The held-out axis is the script. Only the two voice sets the fixtures pin are used, because using any other voice file would mean reproducing the fork's WAV preprocessing (librosa 24 kHz resample plus its -25 dBFS normalizer) in-tree, and a subtly different reference is a subtly different request.",
+    "The random operands are the session's own: no recorded noise, negative condition or prompt embedding is injected. A request IS reproducible at a fixed seed, because the suite reseeds the session per request; it is not comparable to the torch lane, whose stream differs.",
+    "A seed does not align torch and HIP random streams, so this suite is not a torch comparison; it qualifies this lane's own output.",
+    "Voice attribution resolves speaker changes inside an utterance that contains both voices, not absolute voice identity: classifying single-voice audio against both references sits at the noise floor and is recorded as attribution_identity_control rather than gated.",
+    "The WER gate is measured by the same runtime it qualifies. The suite transcribes the reference implementation's own PCM as an evaluator floor, which bounds the ASR lane's systematic error, but a floor of 0.0 does not make every non-zero WER attributable to the TTS lane: the evaluator can still mishear audio whose phonetics differ from the reference. Separating those two needs an independent ASR on the same waveform, which this suite does not run."
+  ]
+}

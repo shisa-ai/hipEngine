@@ -16,6 +16,10 @@ import numpy as np
 
 from hipengine.quant.gguf import QK_K, unpack_q4_k_scale_min
 from hipengine.quant.registry import register_quant
+from hipengine.quant.gguf_repack import (
+    GGUFRepackShape, IQ4_XS_T16_SHAPE, Q5_K_T16_SHAPE, Q6_K_T16_SHAPE,
+    Q8_0_T16_SHAPE,
+)
 
 GGUF_T16_COLS = 16
 
@@ -74,6 +78,27 @@ GGUF_Q8_0_QK = 32
 GGUF_Q8_0_T16_D_OFFSET = 0
 GGUF_Q8_0_T16_Q_OFFSET = GGUF_Q8_0_T16_D_OFFSET + GGUF_T16_COLS * 2
 GGUF_Q8_0_T16_BLOCK_BYTES = GGUF_Q8_0_T16_Q_OFFSET + GGUF_Q8_0_QK * GGUF_T16_COLS
+
+# IQ4_XS T16. The raw 136-byte block is d (f16), scales_h (u16, 2 bits per
+# 32-element group), scales_l (4 bytes, one nibble per group) and 128 bytes of
+# qs, where group g's 16 bytes hold element e = nibble*16 + byte. The tile
+# keeps d, scales_h and scales_l as per-column records and transposes the qs
+# plane to [group][element][column pair], so one u32 read at a fixed element
+# yields eight columns' nibbles instead of one column's eight elements. Every
+# byte is preserved exactly once, so the layout is byte-neutral:
+# 2176 bytes == 16 * 136, i.e. no resident-footprint growth over raw.
+GGUF_IQ4_XS_BLOCK_BYTES = 136
+GGUF_IQ4_XS_GROUPS = 8
+GGUF_IQ4_XS_GROUP = 32
+GGUF_IQ4_XS_T16_D_OFFSET = 0
+GGUF_IQ4_XS_T16_SCALES_H_OFFSET = GGUF_IQ4_XS_T16_D_OFFSET + GGUF_T16_COLS * 2
+GGUF_IQ4_XS_T16_SCALES_L_OFFSET = GGUF_IQ4_XS_T16_SCALES_H_OFFSET + GGUF_T16_COLS * 2
+GGUF_IQ4_XS_T16_QS_OFFSET = GGUF_IQ4_XS_T16_SCALES_L_OFFSET + GGUF_T16_COLS * 4
+GGUF_IQ4_XS_T16_QS_BYTES = (
+    GGUF_IQ4_XS_GROUPS * GGUF_IQ4_XS_GROUP * (GGUF_T16_COLS // 2)
+)
+GGUF_IQ4_XS_T16_BLOCK_BYTES = GGUF_IQ4_XS_T16_QS_OFFSET + GGUF_IQ4_XS_T16_QS_BYTES
+assert GGUF_IQ4_XS_T16_BLOCK_BYTES == GGUF_T16_COLS * GGUF_IQ4_XS_BLOCK_BYTES
 
 
 @dataclass(frozen=True)
@@ -221,6 +246,26 @@ class GGUFQ80Tile16:
         return self.in_features // GGUF_Q8_0_QK
 
 
+@dataclass(frozen=True)
+class GGUFIQ4XSTile16:
+    """Tile-major IQ4_XS dense replacement layout.
+
+    ``tiles`` has shape ``[out_tiles16, blocks_per_row, 2176]``.
+    """
+
+    tiles: np.ndarray
+    out_features: int
+    in_features: int
+
+    @property
+    def out_tiles(self) -> int:
+        return self.out_features // GGUF_T16_COLS
+
+    @property
+    def blocks_per_row(self) -> int:
+        return self.in_features // QK_K
+
+
 GGUF_Q5_K_T16_V1 = register_quant(GGUFQ5KT16Quant())
 GGUF_Q5_K_QMICRO_T16_V1 = register_quant(GGUFQ5KQMicroT16Quant())
 GGUF_Q6_K_T16_V1 = register_quant(GGUFQ6KT16Quant())
@@ -228,6 +273,204 @@ GGUF_Q6_K_T16_QMICRO_PLANAR_V1 = register_quant(
     GGUFQ6KT16QMicroPlanarQuant()
 )
 GGUF_Q8_0_T16_V1 = register_quant(GGUFQ80T16Quant())
+
+
+@dataclass(frozen=True)
+class GGUFQ51T16Quant:
+    """T16 replacement-layout plugin key for GGUF block_q5_1 expert weights."""
+
+    name: str = "gguf_q5_1_t16_v1"
+    weight_storage: str = "gguf_block_q5_1_t16_v1"
+    activation_preprocess: str = "none"
+    compute_dtype: str = "fp32_accum"
+    scale_granularity: str = "block32_scale_min"
+    calibration_artifact: str = "gguf"
+    kernel_family: str = "gguf_t16_gemv"
+
+
+GGUF_Q5_1_T16_V1 = register_quant(GGUFQ51T16Quant())
+
+# Q5_1 tile layout: one tile per 16 output columns per 32-element K block.
+# A raw Q5_1 block is 24 bytes (d fp16, m fp16, 32 high bits, 16 low-nibble
+# bytes), so the header regions are 32 bytes each and the value region stores
+# one pre-combined byte per (column, K value): ``v = low | (high << 4)``, the
+# exact integer the production kernel decodes, stored col-major so one
+# lane's thirty-two values (both 16-value K tiles of one block) are one
+# contiguous 32-byte run: byte for (col, kt, k) at V + col*32 + kt*16 + k.
+GGUF_Q5_1_BLOCK_BYTES = 24
+GGUF_Q5_1_T16_D_OFFSET = 0
+GGUF_Q5_1_T16_M_OFFSET = GGUF_Q5_1_T16_D_OFFSET + GGUF_T16_COLS * 2
+GGUF_Q5_1_T16_V_OFFSET = GGUF_Q5_1_T16_M_OFFSET + GGUF_T16_COLS * 2
+GGUF_Q5_1_T16_K_TILE = 16
+GGUF_Q5_1_T16_V_KTILE_BYTES = GGUF_T16_COLS * GGUF_Q5_1_T16_K_TILE
+GGUF_Q5_1_T16_BLOCK_BYTES = (
+    GGUF_Q5_1_T16_V_OFFSET
+    + 2 * GGUF_Q5_1_T16_V_KTILE_BYTES
+)
+
+
+@dataclass(frozen=True)
+class GGUFQ51Tile16:
+    """Tile-major Q5_1 selected-expert replacement layout.
+
+    ``tiles`` has shape ``[experts, out_tiles16, blocks_per_row, 576]``
+    where ``blocks_per_row = in_features // 32`` and each tile block covers
+    16 output columns and one 32-element K block.
+    """
+
+    tiles: np.ndarray
+    experts: int
+    out_features: int
+    in_features: int
+
+    @property
+    def out_tiles(self) -> int:
+        return self.out_features // GGUF_T16_COLS
+
+    @property
+    def blocks_per_row(self) -> int:
+        return self.in_features // 32
+
+
+def repack_gguf_q5_1_tile16(raw_qweight: Any) -> GGUFQ51Tile16:
+    """Repack rank-3 raw GGUF Q5_1 expert weights into Q5_1T16 tiles.
+
+    Bit-lossless: :func:`unpack_gguf_q5_1_tile16` reconstructs the original
+    raw bytes exactly. The value region stores ``low | (high << 4)`` per
+    (column, K value) -- the same integer the device decoder derives from the
+    nibble and high-bit planes -- so the tiles carry no arithmetic the raw
+    blocks do not.
+    """
+
+    raw = np.ascontiguousarray(raw_qweight, dtype=np.uint8)
+    if raw.ndim != 3:
+        raise ValueError(
+            "raw_qweight must have GGUF Q5_1 expert byte shape "
+            "[experts, out_features, bytes_per_row] (rank-3)"
+        )
+    experts, out_features, bytes_per_row = raw.shape
+    if experts <= 0 or out_features <= 0 or out_features % GGUF_T16_COLS:
+        raise ValueError(
+            "out_features must be positive and divisible by "
+            f"{GGUF_T16_COLS}"
+        )
+    if bytes_per_row <= 0 or bytes_per_row % GGUF_Q5_1_BLOCK_BYTES:
+        raise ValueError(
+            "bytes_per_row must be a positive multiple of "
+            f"{GGUF_Q5_1_BLOCK_BYTES}"
+        )
+    blocks_per_row = bytes_per_row // GGUF_Q5_1_BLOCK_BYTES
+    out_tiles = out_features // GGUF_T16_COLS
+    blocks = raw.reshape(experts, out_features, blocks_per_row, GGUF_Q5_1_BLOCK_BYTES)
+    tiles = np.empty(
+        (experts, out_tiles, blocks_per_row, GGUF_Q5_1_T16_BLOCK_BYTES),
+        dtype=np.uint8,
+    )
+
+    for out_tile in range(out_tiles):
+        cols = blocks[:, out_tile * GGUF_T16_COLS : (out_tile + 1) * GGUF_T16_COLS]
+        # cols: [E, 16, B, 24]
+        dst = tiles[:, out_tile]
+        dst[..., GGUF_Q5_1_T16_D_OFFSET:GGUF_Q5_1_T16_M_OFFSET] = (
+            cols[..., 0:2].transpose(0, 2, 1, 3).reshape(
+                experts, blocks_per_row, GGUF_T16_COLS * 2
+            )
+        )
+        dst[..., GGUF_Q5_1_T16_M_OFFSET:GGUF_Q5_1_T16_V_OFFSET] = (
+            cols[..., 2:4].transpose(0, 2, 1, 3).reshape(
+                experts, blocks_per_row, GGUF_T16_COLS * 2
+            )
+        )
+        qh = cols[..., 4:8].view(np.uint32)  # [E, 16, B, 1]
+        qs = cols[..., 8:24]  # [E, 16, B, 16] nibble pairs
+        k = np.arange(32, dtype=np.uint16)
+        low = np.empty((experts, GGUF_T16_COLS, blocks_per_row, 32), dtype=np.uint8)
+        # A raw qs byte j holds elements j (low nibble) and j + 16 (high
+        # nibble), exactly as the production decoder reads them.
+        packed = qs[..., k & np.uint16(15)]  # [E, 16, B, 32]
+        low[..., :] = np.where(
+            k < 16,
+            (packed & np.uint8(0x0F)),
+            (packed >> np.uint8(4)),
+        )
+        high = ((qh >> k.reshape(1, 1, 1, 32)) & np.uint32(1)).astype(np.uint8)
+        v = (low | (high << np.uint8(4))).reshape(
+            experts, GGUF_T16_COLS, blocks_per_row, 2, GGUF_Q5_1_T16_K_TILE
+        )
+        # v: [E, 16, B, 2, 16] -- (col, k-tile, k-in-tile); store so that the
+        # byte for (col, kt, k) lands at V + col*32 + kt*16 + k.
+        v = v.transpose(0, 2, 1, 3, 4)  # [E, B, 16, 2, 16]
+        dst[..., GGUF_Q5_1_T16_V_OFFSET:] = v.reshape(
+            experts, blocks_per_row, GGUF_Q5_1_T16_BLOCK_BYTES - GGUF_Q5_1_T16_V_OFFSET
+        )
+
+    return GGUFQ51Tile16(
+        tiles=tiles,
+        experts=experts,
+        out_features=out_features,
+        in_features=blocks_per_row * 32,
+    )
+
+
+def unpack_gguf_q5_1_tile16(
+    packed: GGUFQ51Tile16 | np.ndarray,
+    *,
+    out_features: int | None = None,
+) -> np.ndarray:
+    """Reconstruct raw GGUF Q5_1 expert bytes from Q5_1T16 tiles."""
+
+    if isinstance(packed, GGUFQ51Tile16):
+        tiles = np.asarray(packed.tiles, dtype=np.uint8)
+        expected_out = packed.out_features
+    else:
+        tiles = np.asarray(packed, dtype=np.uint8)
+        expected_out = out_features
+    if tiles.ndim != 4 or tiles.shape[-1] != GGUF_Q5_1_T16_BLOCK_BYTES:
+        raise ValueError(
+            "tiles must have shape "
+            f"[experts, out_tiles16, blocks_per_row, {GGUF_Q5_1_T16_BLOCK_BYTES}]"
+        )
+    experts, out_tiles, blocks_per_row, _ = (
+        int(tiles.shape[0]), int(tiles.shape[1]), int(tiles.shape[2]), int(tiles.shape[3])
+    )
+    inferred_out = out_tiles * GGUF_T16_COLS
+    if expected_out is not None and int(expected_out) != inferred_out:
+        raise ValueError(
+            f"out_features mismatch: expected {expected_out}, "
+            f"tile layout implies {inferred_out}"
+        )
+
+    blocks = np.empty(
+        (experts, inferred_out, blocks_per_row, GGUF_Q5_1_BLOCK_BYTES),
+        dtype=np.uint8,
+    )
+    for out_tile in range(out_tiles):
+        src = tiles[:, out_tile]
+        cols = blocks[:, out_tile * GGUF_T16_COLS : (out_tile + 1) * GGUF_T16_COLS]
+        cols[..., 0:2] = src[..., GGUF_Q5_1_T16_D_OFFSET:GGUF_Q5_1_T16_M_OFFSET].reshape(
+            experts, blocks_per_row, GGUF_T16_COLS, 2
+        ).transpose(0, 2, 1, 3)
+        cols[..., 2:4] = src[..., GGUF_Q5_1_T16_M_OFFSET:GGUF_Q5_1_T16_V_OFFSET].reshape(
+            experts, blocks_per_row, GGUF_T16_COLS, 2
+        ).transpose(0, 2, 1, 3)
+        v = src[..., GGUF_Q5_1_T16_V_OFFSET:].reshape(
+            experts, blocks_per_row, GGUF_T16_COLS, 2, GGUF_Q5_1_T16_K_TILE
+        ).transpose(0, 2, 1, 3, 4)  # [E, 16, B, 2, 16]
+        v = v.reshape(experts, GGUF_T16_COLS, blocks_per_row, 32)
+        low = v & np.uint8(0x0F)
+        # A raw qs byte j holds elements j (low nibble) and j + 16 (high
+        # nibble), the inverse of the repack's pairing.
+        qs = low[..., 0:16] | (low[..., 16:32] << np.uint8(4))
+        cols[..., 8:24] = qs
+        high = (v >> np.uint8(4)) & np.uint8(1)
+        qh = np.zeros((experts, GGUF_T16_COLS, blocks_per_row), dtype=np.uint32)
+        for kk in range(32):
+            qh |= high[..., kk].astype(np.uint32) << np.uint32(kk)
+        cols[..., 4:8] = qh[..., :, :, None].view(np.uint8).reshape(
+            experts, GGUF_T16_COLS, blocks_per_row, 4
+        )
+
+    return blocks.reshape(experts, inferred_out, blocks_per_row * GGUF_Q5_1_BLOCK_BYTES)
 
 
 def _pack_q4_k_scale_min(scales: np.ndarray, mins: np.ndarray) -> np.ndarray:
@@ -244,30 +487,16 @@ def _pack_q4_k_scale_min(scales: np.ndarray, mins: np.ndarray) -> np.ndarray:
     return packed
 
 
-def _as_expert_raw(raw_qweight: Any, *, block_bytes: int, quant_name: str) -> tuple[np.ndarray, int, int, int, int]:
+def _as_expert_raw(raw_qweight: Any, *, shape: GGUFRepackShape) -> tuple[np.ndarray, int, int, int, int]:
     raw = np.ascontiguousarray(raw_qweight, dtype=np.uint8)
-    if raw.ndim != 3:
-        raise ValueError(f"raw_qweight must have GGUF {quant_name} expert byte shape [experts, out_features, bytes_per_row]")
-    experts, out_features, bytes_per_row = (int(raw.shape[0]), int(raw.shape[1]), int(raw.shape[2]))
-    if experts <= 0:
-        raise ValueError("experts must be positive")
-    if out_features <= 0 or out_features % GGUF_T16_COLS != 0:
-        raise ValueError("out_features must be positive and divisible by 16")
-    if bytes_per_row <= 0 or bytes_per_row % block_bytes != 0:
-        raise ValueError(f"bytes_per_row must be a positive multiple of {block_bytes}")
-    return raw, experts, out_features, bytes_per_row, bytes_per_row // block_bytes
+    experts, out_features, bytes_per_row = shape.validate(raw.shape)
+    return raw, experts, out_features, bytes_per_row, bytes_per_row // shape.block_bytes
 
 
-def _as_dense_raw(raw_qweight: Any, *, block_bytes: int, quant_name: str) -> tuple[np.ndarray, int, int, int]:
+def _as_dense_raw(raw_qweight: Any, *, shape: GGUFRepackShape) -> tuple[np.ndarray, int, int, int]:
     raw = np.ascontiguousarray(raw_qweight, dtype=np.uint8)
-    if raw.ndim != 2:
-        raise ValueError(f"raw_qweight must have GGUF {quant_name} dense byte shape [out_features, bytes_per_row]")
-    out_features, bytes_per_row = (int(raw.shape[0]), int(raw.shape[1]))
-    if out_features <= 0 or out_features % GGUF_T16_COLS != 0:
-        raise ValueError("out_features must be positive and divisible by 16")
-    if bytes_per_row <= 0 or bytes_per_row % block_bytes != 0:
-        raise ValueError(f"bytes_per_row must be a positive multiple of {block_bytes}")
-    return raw, out_features, bytes_per_row, bytes_per_row // block_bytes
+    out_features, bytes_per_row = shape.validate(raw.shape)
+    return raw, out_features, bytes_per_row, bytes_per_row // shape.block_bytes
 
 
 def repack_gguf_q5_k_tile16(raw_qweight: Any) -> GGUFQ5KTile16:
@@ -275,8 +504,7 @@ def repack_gguf_q5_k_tile16(raw_qweight: Any) -> GGUFQ5KTile16:
 
     raw, experts, out_features, _bytes_per_row, blocks_per_row = _as_expert_raw(
         raw_qweight,
-        block_bytes=GGUF_Q5_K_BLOCK_BYTES,
-        quant_name="Q5_K",
+        shape=Q5_K_T16_SHAPE,
     )
     out_tiles = out_features // GGUF_T16_COLS
     blocks = raw.reshape(experts, out_features, blocks_per_row, GGUF_Q5_K_BLOCK_BYTES)
@@ -691,8 +919,7 @@ def repack_gguf_q6_k_tile16(raw_qweight: Any) -> GGUFQ6KTile16:
 
     raw, experts, out_features, _bytes_per_row, blocks_per_row = _as_expert_raw(
         raw_qweight,
-        block_bytes=GGUF_Q6_K_BLOCK_BYTES,
-        quant_name="Q6_K",
+        shape=Q6_K_T16_SHAPE,
     )
     out_tiles = out_features // GGUF_T16_COLS
     blocks = raw.reshape(experts, out_features, blocks_per_row, GGUF_Q6_K_BLOCK_BYTES)
@@ -1027,8 +1254,7 @@ def repack_gguf_q8_0_tile16(raw_qweight: Any) -> GGUFQ80Tile16:
 
     raw, out_features, _bytes_per_row, blocks_per_row = _as_dense_raw(
         raw_qweight,
-        block_bytes=GGUF_Q8_0_BLOCK_BYTES,
-        quant_name="Q8_0",
+        shape=Q8_0_T16_SHAPE,
     )
     out_tiles = out_features // GGUF_T16_COLS
     blocks = raw.reshape(out_features, blocks_per_row, GGUF_Q8_0_BLOCK_BYTES)
@@ -1077,6 +1303,126 @@ def unpack_gguf_q8_0_tile16(packed: GGUFQ80Tile16 | np.ndarray, *, out_features:
     return blocks.reshape(inferred_out, blocks_per_row * GGUF_Q8_0_BLOCK_BYTES)
 
 
+def repack_gguf_iq4_xs_tile16(raw_qweight: Any) -> GGUFIQ4XSTile16:
+    """Repack rank-2 raw GGUF IQ4_XS weights into bit-lossless IQ4_XS T16 tiles."""
+
+    raw, out_features, _bytes_per_row, blocks_per_row = _as_dense_raw(
+        raw_qweight,
+        shape=IQ4_XS_T16_SHAPE,
+    )
+    out_tiles = out_features // GGUF_T16_COLS
+    blocks = raw.reshape(out_features, blocks_per_row, GGUF_IQ4_XS_BLOCK_BYTES)
+    tiles = np.empty(
+        (out_tiles, blocks_per_row, GGUF_IQ4_XS_T16_BLOCK_BYTES), dtype=np.uint8
+    )
+
+    for out_tile in range(out_tiles):
+        cols = blocks[out_tile * GGUF_T16_COLS : (out_tile + 1) * GGUF_T16_COLS]
+        dst = tiles[out_tile]
+        dst[:, GGUF_IQ4_XS_T16_D_OFFSET:GGUF_IQ4_XS_T16_SCALES_H_OFFSET] = (
+            cols[:, :, 0:2].transpose(1, 0, 2).reshape(blocks_per_row, GGUF_T16_COLS * 2)
+        )
+        dst[:, GGUF_IQ4_XS_T16_SCALES_H_OFFSET:GGUF_IQ4_XS_T16_SCALES_L_OFFSET] = (
+            cols[:, :, 2:4].transpose(1, 0, 2).reshape(blocks_per_row, GGUF_T16_COLS * 2)
+        )
+        dst[:, GGUF_IQ4_XS_T16_SCALES_L_OFFSET:GGUF_IQ4_XS_T16_QS_OFFSET] = (
+            cols[:, :, 4:8].transpose(1, 0, 2).reshape(blocks_per_row, GGUF_T16_COLS * 4)
+        )
+        # (column, block, group, byte) -> one nibble per (group, element)
+        qs = cols[:, :, 8:GGUF_IQ4_XS_BLOCK_BYTES].reshape(
+            GGUF_T16_COLS, blocks_per_row, GGUF_IQ4_XS_GROUPS, GGUF_IQ4_XS_GROUP // 2
+        )
+        packed = np.empty(
+            (blocks_per_row, GGUF_IQ4_XS_GROUPS, GGUF_IQ4_XS_GROUP, GGUF_T16_COLS // 2),
+            dtype=np.uint8,
+        )
+        for half, nibbles in ((0, qs & np.uint8(0x0F)), (1, qs >> np.uint8(4))):
+            by_column = nibbles.transpose(1, 2, 3, 0)  # (block, group, byte, column)
+            packed[
+                :,
+                :,
+                half * (GGUF_IQ4_XS_GROUP // 2) : (half + 1) * (GGUF_IQ4_XS_GROUP // 2),
+                :,
+            ] = (by_column[..., 0::2] & np.uint8(0x0F)) | (
+                (by_column[..., 1::2] & np.uint8(0x0F)) << np.uint8(4)
+            )
+        dst[:, GGUF_IQ4_XS_T16_QS_OFFSET:] = packed.reshape(
+            blocks_per_row, GGUF_IQ4_XS_T16_QS_BYTES
+        )
+
+    return GGUFIQ4XSTile16(
+        tiles=tiles,
+        out_features=out_features,
+        in_features=blocks_per_row * QK_K,
+    )
+
+
+def unpack_gguf_iq4_xs_tile16(
+    packed: GGUFIQ4XSTile16 | np.ndarray, *, out_features: int | None = None
+) -> np.ndarray:
+    """Reconstruct raw GGUF IQ4_XS dense bytes from IQ4_XS T16 tiles."""
+
+    if isinstance(packed, GGUFIQ4XSTile16):
+        tiles = np.asarray(packed.tiles, dtype=np.uint8)
+        expected_out = packed.out_features
+    else:
+        tiles = np.asarray(packed, dtype=np.uint8)
+        expected_out = out_features
+    if tiles.ndim != 3 or tiles.shape[-1] != GGUF_IQ4_XS_T16_BLOCK_BYTES:
+        raise ValueError("tiles must have shape [out_tiles16, blocks_per_row, 2176]")
+    out_tiles, blocks_per_row = int(tiles.shape[0]), int(tiles.shape[1])
+    inferred_out = out_tiles * GGUF_T16_COLS
+    if expected_out is not None and int(expected_out) != inferred_out:
+        raise ValueError(
+            f"out_features mismatch: expected {expected_out}, tile layout implies {inferred_out}"
+        )
+
+    blocks = np.empty(
+        (inferred_out, blocks_per_row, GGUF_IQ4_XS_BLOCK_BYTES), dtype=np.uint8
+    )
+    for out_tile in range(out_tiles):
+        src = tiles[out_tile]
+        cols = blocks[out_tile * GGUF_T16_COLS : (out_tile + 1) * GGUF_T16_COLS]
+        cols[:, :, 0:2] = src[
+            :, GGUF_IQ4_XS_T16_D_OFFSET:GGUF_IQ4_XS_T16_SCALES_H_OFFSET
+        ].reshape(blocks_per_row, GGUF_T16_COLS, 2).transpose(1, 0, 2)
+        cols[:, :, 2:4] = src[
+            :, GGUF_IQ4_XS_T16_SCALES_H_OFFSET:GGUF_IQ4_XS_T16_SCALES_L_OFFSET
+        ].reshape(blocks_per_row, GGUF_T16_COLS, 2).transpose(1, 0, 2)
+        cols[:, :, 4:8] = src[
+            :, GGUF_IQ4_XS_T16_SCALES_L_OFFSET:GGUF_IQ4_XS_T16_QS_OFFSET
+        ].reshape(blocks_per_row, GGUF_T16_COLS, 4).transpose(1, 0, 2)
+        tiled = src[:, GGUF_IQ4_XS_T16_QS_OFFSET:].reshape(
+            blocks_per_row, GGUF_IQ4_XS_GROUPS, GGUF_IQ4_XS_GROUP, GGUF_T16_COLS // 2
+        )
+        # One raw byte holds element `byte` in its low nibble and element
+        # `byte + 16` in its high nibble, so each tile half restores one nibble.
+        qs = np.zeros(
+            (GGUF_T16_COLS, blocks_per_row, GGUF_IQ4_XS_GROUPS, GGUF_IQ4_XS_GROUP // 2),
+            dtype=np.uint8,
+        )
+        for half in (0, 1):
+            lo = half * (GGUF_IQ4_XS_GROUP // 2)
+            window = tiled[:, :, lo : lo + GGUF_IQ4_XS_GROUP // 2, :]
+            by_column = np.empty(
+                (
+                    blocks_per_row,
+                    GGUF_IQ4_XS_GROUPS,
+                    GGUF_IQ4_XS_GROUP // 2,
+                    GGUF_T16_COLS,
+                ),
+                dtype=np.uint8,
+            )
+            by_column[..., 0::2] = window & np.uint8(0x0F)
+            by_column[..., 1::2] = (window >> np.uint8(4)) & np.uint8(0x0F)
+            qs |= by_column.transpose(3, 0, 1, 2) << np.uint8(4 * half)
+        cols[:, :, 8:GGUF_IQ4_XS_BLOCK_BYTES] = qs.reshape(
+            GGUF_T16_COLS, blocks_per_row, GGUF_IQ4_XS_BLOCK_BYTES - 8
+        )
+
+    return blocks.reshape(inferred_out, blocks_per_row * GGUF_IQ4_XS_BLOCK_BYTES)
+
+
 __all__ = [
     "GGUF_Q5_K_BLOCK_BYTES",
     "GGUF_Q5_K_QMICRO_T16_BLOCK_BYTES",
@@ -1094,6 +1440,15 @@ __all__ = [
     "GGUF_Q6_K_T16_QMICRO_PLANAR_V1",
     "GGUF_Q6_K_T16_QMICRO_RECORD_BYTES",
     "GGUF_Q6_K_T16_V1",
+    "GGUF_IQ4_XS_BLOCK_BYTES",
+    "GGUF_IQ4_XS_T16_BLOCK_BYTES",
+    "GGUF_IQ4_XS_T16_D_OFFSET",
+    "GGUF_IQ4_XS_T16_QS_OFFSET",
+    "GGUF_IQ4_XS_T16_SCALES_H_OFFSET",
+    "GGUF_IQ4_XS_T16_SCALES_L_OFFSET",
+    "GGUFIQ4XSTile16",
+    "repack_gguf_iq4_xs_tile16",
+    "unpack_gguf_iq4_xs_tile16",
     "GGUF_Q8_0_BLOCK_BYTES",
     "GGUF_Q8_0_T16_BLOCK_BYTES",
     "GGUF_Q8_0_T16_V1",
@@ -1124,103 +1479,3 @@ __all__ = [
     "unpack_gguf_q8_0_tile16",
 ]
 
-
-# Q5_1 T16 tile (2026-10-08 down-leg build, step 1).
-#
-# The raw GGUF Q5_1 block is 24 bytes for 32 values: d (2B f16), m (2B f16),
-# qh (4B uint32: one high bit per value) and ql (16B: the low nibbles packed
-# two per byte). One tile stages 16 output columns x blocks_per_row:
-# per-column d and m f16 pairs, the per-column ql nibble planes (16B each,
-# low nibble first in the raw byte order the dequant reference reads), and
-# the per-column qh words. Everything is a byte rearrangement - the repack
-# is bit-lossless and unpack_gguf_q5_1_tile16 reconstructs the raw bytes.
-GGUF_Q5_1_BLOCK_BYTES = 24
-GGUF_Q5_1_T16_D_OFFSET = 0
-GGUF_Q5_1_T16_DMIN_OFFSET = GGUF_Q5_1_T16_D_OFFSET + GGUF_T16_COLS * 2
-GGUF_Q5_1_T16_QL_OFFSET = GGUF_Q5_1_T16_DMIN_OFFSET + GGUF_T16_COLS * 2
-GGUF_Q5_1_T16_QH_OFFSET = GGUF_Q5_1_T16_QL_OFFSET + GGUF_T16_COLS * 16
-GGUF_Q5_1_T16_BLOCK_BYTES = GGUF_Q5_1_T16_QH_OFFSET + GGUF_T16_COLS * 4
-
-
-def repack_gguf_q5_1_tile16(raw_qweight: Any) -> GGUFQ5KTile16:
-    """Repack rank-3 raw GGUF Q5_1 expert weights into bit-lossless Q5_1 T16 tiles.
-
-    ``raw_qweight`` must have GGUF byte shape ``[experts, out_features,
-    bytes_per_row]`` with ``bytes_per_row = (in_features / 32) * 24``.
-    """
-
-    raw = np.ascontiguousarray(raw_qweight, dtype=np.uint8)
-    if raw.ndim != 3:
-        raise ValueError("raw_qweight must have GGUF expert byte shape")
-    experts, out_features, bytes_per_row = (int(raw.shape[0]), int(raw.shape[1]), int(raw.shape[2]))
-    if experts <= 0 or out_features <= 0 or out_features % GGUF_T16_COLS != 0:
-        raise ValueError("experts and out_features must be positive with out_features % 16 == 0")
-    if bytes_per_row <= 0 or bytes_per_row % GGUF_Q5_1_BLOCK_BYTES != 0:
-        raise ValueError("bytes_per_row must be a positive multiple of 24")
-    blocks_per_row = bytes_per_row // GGUF_Q5_1_BLOCK_BYTES
-    in_features = blocks_per_row * 32
-    out_tiles = out_features // GGUF_T16_COLS
-    blocks = raw.reshape(experts, out_features, blocks_per_row, GGUF_Q5_1_BLOCK_BYTES)
-    tiles = np.empty(
-        (experts, out_tiles, blocks_per_row, GGUF_Q5_1_T16_BLOCK_BYTES), dtype=np.uint8
-    )
-    for out_tile in range(out_tiles):
-        cols = blocks[:, out_tile * GGUF_T16_COLS : (out_tile + 1) * GGUF_T16_COLS]
-        dst = tiles[:, out_tile]
-        # d: bytes 0:2 per column-block, staged [blocks, 16 x 2].
-        dst[..., GGUF_Q5_1_T16_D_OFFSET:GGUF_Q5_1_T16_DMIN_OFFSET] = (
-            cols[..., 0:2].transpose(0, 2, 1, 3).reshape(experts, blocks_per_row, GGUF_T16_COLS * 2)
-        )
-        # m: bytes 2:4 per column-block, staged [blocks, 16 x 2].
-        dst[..., GGUF_Q5_1_T16_DMIN_OFFSET:GGUF_Q5_1_T16_QL_OFFSET] = (
-            cols[..., 2:4].transpose(0, 2, 1, 3).reshape(experts, blocks_per_row, GGUF_T16_COLS * 2)
-        )
-        # ql: bytes 8:24 per column-block (16 nibble bytes), staged [blocks, 16 x 16].
-        dst[..., GGUF_Q5_1_T16_QL_OFFSET:GGUF_Q5_1_T16_QH_OFFSET] = (
-            cols[..., 8:24].transpose(0, 2, 1, 3).reshape(experts, blocks_per_row, GGUF_T16_COLS * 16)
-        )
-        # qh: bytes 4:8 per column-block (uint32), staged [blocks, 16 x 4].
-        dst[..., GGUF_Q5_1_T16_QH_OFFSET:] = (
-            cols[..., 4:8].transpose(0, 2, 1, 3).reshape(experts, blocks_per_row, GGUF_T16_COLS * 4)
-        )
-    return GGUFQ5KTile16(tiles=tiles, experts=experts, out_features=out_features, in_features=in_features)
-
-
-def unpack_gguf_q5_1_tile16(packed: GGUFQ5KTile16 | np.ndarray, *, out_features: int | None = None) -> np.ndarray:
-    """Reconstruct raw GGUF Q5_1 expert bytes from Q5_1 T16 tiles."""
-
-    if isinstance(packed, GGUFQ5KTile16):
-        tiles = np.asarray(packed.tiles, dtype=np.uint8)
-        expected_out = packed.out_features
-    else:
-        tiles = np.asarray(packed, dtype=np.uint8)
-        if tiles.ndim != 4 or out_features is None:
-            raise ValueError("array input requires out_features")
-        expected_out = int(out_features)
-    if tiles.ndim != 4 or tiles.shape[-1] != GGUF_Q5_1_T16_BLOCK_BYTES:
-        raise ValueError("tiles must have shape [experts, out_tiles, blocks, tile_bytes]")
-    experts, out_tiles, blocks_per_row, _ = tiles.shape
-    if expected_out % GGUF_T16_COLS != 0 or out_tiles * GGUF_T16_COLS != expected_out:
-        raise ValueError("out_features must match the tile count")
-    raw = np.empty((experts, expected_out, blocks_per_row * GGUF_Q5_1_BLOCK_BYTES), dtype=np.uint8)
-    blocks = raw.reshape(experts, expected_out, blocks_per_row, GGUF_Q5_1_BLOCK_BYTES)
-    for out_tile in range(out_tiles):
-        src = tiles[:, out_tile]
-        cols = blocks[:, out_tile * GGUF_T16_COLS : (out_tile + 1) * GGUF_T16_COLS]
-        # d
-        d = src[..., GGUF_Q5_1_T16_D_OFFSET:GGUF_Q5_1_T16_DMIN_OFFSET].reshape(
-            experts, blocks_per_row, GGUF_T16_COLS, 2).transpose(0, 2, 1, 3)
-        cols[..., 0:2] = d
-        # m
-        m = src[..., GGUF_Q5_1_T16_DMIN_OFFSET:GGUF_Q5_1_T16_QL_OFFSET].reshape(
-            experts, blocks_per_row, GGUF_T16_COLS, 2).transpose(0, 2, 1, 3)
-        cols[..., 2:4] = m
-        # qh
-        qh = src[..., GGUF_Q5_1_T16_QH_OFFSET:].reshape(
-            experts, blocks_per_row, GGUF_T16_COLS, 4).transpose(0, 2, 1, 3)
-        cols[..., 4:8] = qh
-        # ql
-        ql = src[..., GGUF_Q5_1_T16_QL_OFFSET:GGUF_Q5_1_T16_QH_OFFSET].reshape(
-            experts, blocks_per_row, GGUF_T16_COLS, 16).transpose(0, 2, 1, 3)
-        cols[..., 8:24] = ql
-    return raw

@@ -1,0 +1,756 @@
+"""Public correctness-first Gemma 4 MTP provider.
+
+The cycle is the batched-verify one measured in
+``scripts/gemma4_mtp_batched_verify.py``: the whole draft goes through the
+backbone in **one** call with ``logits_rows=len(drafts) + 1``, so one backbone
+forward commits up to ``len(drafts) + 1`` tokens.
+
+Whether a verify row equals the one-token step for its position bit for bit is
+the runner's ``verify_dense_exact`` contract, which the execution profile
+decides. Under the strict profile it does: the block's dense projections run the
+row-exact schedule and each row is attended and routed as its own one-token
+step, so the cycle reproduces plain greedy decoding exactly. Under the
+production profile the block runs the WMMA dense kernels and one multi-row
+attention launch; its rows agree with one-token decode within that profile's
+numerical envelope, which is cheaper per cycle and can commit a different token
+where two candidates are nearly tied. The telemetry field
+``verify_equivalence`` reports which of the two a generation ran.
+
+Acceptance is exact speculative sampling
+(:func:`hipengine.generation.gemma4_sampling.speculative_accept`): a drafted
+token ``x`` drawn from the head's law ``q`` is accepted with probability
+``min(1, p(x) / q(x))`` against the target row's law ``p``, and a rejection
+emits a draw from ``normalize(max(0, p - q))``, so every committed token is
+distributed as the target's own sampler would have drawn it. Both laws are the
+request's sampler pipeline (temperature, top-k, top-p, min-p, penalties, bias)
+applied to the respective logits row, with the head's narrowed to its most
+likely tokens, which the rule permits because it is exact for any draft law. A greedy request is the degenerate case:
+both laws are point masses, a draft is accepted exactly when it is the target
+row's argmax, and a rejection emits that argmax. A sampled request draws each
+draft from the head's law rather than offering its argmax, because a point-mass
+draft is accepted only with probability ``p(x)`` while a sampled one is accepted
+with ``min(1, p(x) / q(x))``, which is higher wherever the two laws agree.
+
+Two details that are easy to get wrong and are load-bearing:
+
+* ``drafts[0]`` predicts the token *after* ``token``, not ``token`` itself. The
+  drafter is fed the sampled token together with the hidden row that produced
+  it, so its first output is a guess for the following position.
+* Accepting every draft still needs one more row, because row ``i`` is the
+  logits after the forward has processed row ``i``. The verify therefore
+  forwards ``[token, *drafts]`` and reads ``len(drafts) + 1`` rows.
+
+The seed row comes from the verify pass rather than from a later forward.
+``Gemma4Runner.rewind`` documents that contract from the other side: *"the hidden
+rows of the forward that was just rewound are still in the scratch buffer...
+That is what lets a caller draft from the last accepted position after
+rewinding: the row that produced an accepted token is indexed from the verify
+pass, not from a forward that has not happened yet."*
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import time
+from typing import Any
+
+import numpy as np
+
+from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.generation.finish import finish_details_with_sampling_state
+from hipengine.generation.gemma4_gguf import gemma4_token_logprob
+from hipengine.generation.gemma4_sampling import (
+    Gemma4Distribution,
+    Gemma4RowLaw,
+    Gemma4Sampler,
+    speculative_accept,
+)
+from hipengine.generation.registry import (
+    DecodeState,
+    FinishDetails,
+    GenerationOutput,
+    GenerationRequest,
+    GenerationStreamChunk,
+    GenerationTelemetry,
+)
+from hipengine.loading.gguf import scan_gguf
+from hipengine.loading.gemma4_assistant_device import load_gemma4_assistant_device_weights
+from hipengine.loading.gemma4_assistant_gguf import gemma4_assistant_config_from_metadata
+from hipengine.loading.gemma4_gguf import gemma4_gguf_config_from_metadata
+from hipengine.loading.gemma4_mtp_gguf import require_gemma4_mtp
+from hipengine.runtime.gemma4_assistant import (
+    Gemma4AssistantHead, Gemma4MtpDrafter, gemma4_assistant_geometry,
+)
+from hipengine.speculative.registry import (
+    QUANT_AGNOSTIC,
+    SpeculativeProviderCapabilities,
+    SpeculativeProviderConfig,
+    SpeculativeProviderKey,
+    register_speculative_provider,
+)
+
+_PROVIDER = "gemma4_mtp"
+_TARGET_MODEL = "gemma4_gguf"
+_EPS = 1e-6
+_VERIFY_EXACT = "bit_identical_to_target_ar_greedy"
+_VERIFY_ENVELOPE = "production_envelope_of_target_ar_greedy"
+
+# The assistant head is a small sidecar, so its scratch is sized by the same
+# context the backbone runs at rather than by a bring-up ceiling.
+_MAX_CANDIDATES = 8
+
+
+@dataclass(frozen=True)
+class Gemma4MTPCycle:
+    """One draft/verify round, recorded for the acceptance telemetry."""
+
+    start_position: int
+    candidates: tuple[int, ...]
+    accepted: int
+    committed: int
+
+
+@dataclass(frozen=True)
+class Gemma4MTPOperation:
+    """One bounded device operation or request-owned committed prefix."""
+
+    kind: str
+    runner: Any = None
+    tokens: tuple[int, ...] = ()
+    token: int = 0
+    hidden_row: int = -1
+    budget: int = 0
+    select: Any = None
+    output: GenerationOutput | None = None
+    terminal: bool = False
+
+
+class Gemma4MTPTextProvider:
+    """MTP with a batched verify and exact speculative accept on the backbone's logits."""
+
+    provider_name = _PROVIDER
+    #: Whether a sampled request draws each draft from the head's law. False
+    #: offers the head's most likely token as a point-mass draft instead, which
+    #: is the comparison arm for the acceptance a sampled draft gains; both are
+    #: exact. A greedy request's draft is a point mass either way.
+    draft_sampling = True
+
+    def __init__(
+        self,
+        *,
+        target_generator: Any,
+        config: SpeculativeProviderConfig,
+        drafter: Gemma4MtpDrafter | None = None,
+    ) -> None:
+        self.target_generator = target_generator
+        self.config = config
+        self.candidate_budget = int(config.candidate_budget)
+        if not 1 <= self.candidate_budget <= _MAX_CANDIDATES:
+            raise ValueError(
+                f"Gemma 4 MTP candidate budget must be in 1..{_MAX_CANDIDATES}"
+            )
+        # The head is built lazily: the provider attaches before the target is
+        # materialized, and the head needs the backbone's embedding and output
+        # norm, which do not exist until it is.
+        self._drafter = drafter
+        self._head: Gemma4AssistantHead | None = None
+        self._head_weights: Any | None = None
+        self.closed = False
+        self.last_cycles: tuple[Gemma4MTPCycle, ...] = ()
+
+    # --- construction ---------------------------------------------------
+
+    def _ensure_drafter(self) -> Gemma4MtpDrafter:
+        generator = self.target_generator
+        if self._drafter is None:
+            # Validate the target/sidecar contract before either device owner
+            # allocates. Standalone assistant shape checks cannot establish the
+            # target hidden width or shared vocabulary compatibility.
+            require_gemma4_mtp(generator.model_path, self.config.draft_model)
+            backbone_config = gemma4_gguf_config_from_metadata(scan_gguf(generator.model_path))
+            assistant_config = gemma4_assistant_config_from_metadata(
+                scan_gguf(self.config.draft_model).metadata
+            )
+            # Share the head's geometry checks rather than relying on aggregate
+            # KV width: equal widths can still have incompatible head layouts.
+            gemma4_assistant_geometry(assistant_config, backbone_config)
+        runner = generator._ensure_runner()
+        if self._drafter is not None:
+            self._drafter.runner = runner
+            return self._drafter
+        backbone_weights = generator._weights
+        if backbone_weights is None:
+            raise RuntimeError("Gemma 4 MTP requires a materialized target")
+        weights = load_gemma4_assistant_device_weights(str(self.config.draft_model))
+        try:
+            head = Gemma4AssistantHead(
+                weights=weights,
+                backbone=backbone_config,
+                backbone_embedding=backbone_weights.embed_tokens,
+                backbone_output_norm=backbone_weights.final_norm.buffer,
+                capacity=int(runner.capacity),
+                eps=_EPS,
+            )
+        except BaseException:
+            weights.free()
+            raise
+        self._head = head
+        self._head_weights = weights
+        self._drafter = Gemma4MtpDrafter(
+            head=head,
+            runner=runner,
+            max_drafts=self.candidate_budget,
+        )
+        return self._drafter
+
+    def capabilities(self) -> dict[str, Any]:
+        row = SpeculativeProviderCapabilities(
+            provider_name=self.provider_name,
+            artifact_fingerprint="model_attached_sidecar",
+            attachment_mode="model_attached",
+            supported_modes=("verify_chain",),
+            # The verify forwards the sampled token plus every draft.
+            max_verifier_rows=self.candidate_budget + 1,
+            transaction_mode="batched_exact_target_verify",
+            provider_state_key="gemma4_mtp_assistant_state",
+            provider_kv_key="gemma4_mtp_assistant_kv",
+            fixed_transaction_units=(("gemma4_mtp.request", 1),),
+            per_candidate_units=(("gemma4_mtp.candidate", 1),),
+            strict_fallback="target_ar",
+        )
+        return {
+            "provider_name": row.provider_name,
+            "artifact_fingerprint": row.artifact_fingerprint,
+            "attachment_mode": row.attachment_mode,
+            "supported_modes": list(row.supported_modes),
+            "max_verifier_rows": row.max_verifier_rows,
+            "transaction_mode": row.transaction_mode,
+            "strict_fallback": row.strict_fallback,
+            "candidate_budget": self.candidate_budget,
+            "streaming_mode": "buffered_public",
+            "verify_equivalence": self._verify_equivalence(),
+        }
+
+    def _verify_equivalence(self) -> str:
+        """What a verify row is to the one-token step at the same position."""
+
+        exact = bool(getattr(self.target_generator, "verify_dense_exact", True))
+        return _VERIFY_EXACT if exact else _VERIFY_ENVELOPE
+
+    # --- generation -----------------------------------------------------
+
+    def generate_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
+        self._require_open()
+        if request.kv_storage not in {"auto", "bf16"}:
+            raise NotImplementedError(
+                "Gemma 4 MTP requires BF16 shared KV; the assistant attention "
+                "does not implement INT8 shared-cache reads"
+            )
+        from hipengine.generation.gemma4_gguf import Gemma4GGUFGenerator
+
+        Gemma4GGUFGenerator._validate_request(request)
+        return [self._generate_one(prompt, request) for prompt in request.prompts]
+
+    def _generate_one(self, prompt: Any, request: GenerationRequest) -> GenerationOutput:
+        if request.max_tokens:
+            self._ensure_drafter()
+        runner = self.target_generator._ensure_runner() if request.max_tokens else None
+        steps = self.generation_steps(prompt, request, runner=runner)
+        result = None
+        while True:
+            try:
+                operation = steps.send(result)
+            except StopIteration as done:
+                return done.value
+            result = self.execute_operation(operation)
+
+    def execute_operation(self, operation: Gemma4MTPOperation):
+        """Execute a singleton operation; the resident owner packs device work."""
+        if operation.kind == "commit":
+            return None
+        if operation.kind == "draft":
+            drafter = self._ensure_drafter()
+            drafter.runner = operation.runner
+            drafter.max_drafts = operation.budget
+            return drafter.draft(operation.token, hidden_row=operation.hidden_row,
+                                 select=operation.select)
+        return operation.runner.forward(
+            operation.tokens,
+            logits_rows=len(operation.tokens) if operation.kind == "verify" else 1,
+            verification=operation.kind == "verify",
+        )
+
+    def generation_steps(self, prompt: Any, request: GenerationRequest, *, runner: Any,
+                         candidate_budget: int | None = None):
+        """Yield bounded operations with sampler and rollback state owned by this request.
+
+        A commit publishes a prefix, not a device transaction shared with a peer.
+        Closing a frame discards its unpublished tail; its runner must then be reset
+        before reuse. The shared engine remains the only scheduling owner.
+        """
+        raise_if_generation_deadline_expired(request)
+        generator = self.target_generator
+        tokenizer = generator.tokenizer
+        token_ids = (
+            [int(token) for token in prompt]
+            if not isinstance(prompt, str)
+            else [int(token) for token in tokenizer.encode(prompt)]
+        )
+        if not token_ids:
+            raise ValueError("Gemma 4 MTP prompt produced no token IDs")
+
+        if request.max_tokens == 0:
+            return GenerationOutput(
+                text="",
+                generated_token_ids=(),
+                finish_details=FinishDetails(
+                    reason="length",
+                    length_limit=0,
+                    sampler_mode=_sampler_mode(Gemma4Sampler(request, token_ids)),
+                ),
+            )
+
+        candidate_budget = self.candidate_budget if candidate_budget is None else int(candidate_budget)
+        stop_ids = set(request.stop_token_ids)
+        configured_eos = (
+            set(
+                getattr(tokenizer, "stop_token_ids", ())
+                or (
+                    ()
+                    if tokenizer.eos_token_id is None
+                    else (int(tokenizer.eos_token_id),)
+                )
+            )
+            if request.eos_token_id is None
+            else {int(request.eos_token_id)}
+        )
+        if not request.ignore_eos:
+            stop_ids.update(configured_eos)
+
+        phase_ms: dict[str, float] = {}
+        phase_calls: dict[str, int] = {}
+
+        def record(name: str, started: float) -> None:
+            phase_ms[name] = phase_ms.get(name, 0.0) + (
+                time.perf_counter() - started
+            ) * 1_000.0
+            phase_calls[name] = phase_calls.get(name, 0) + 1
+
+        prefill_started = time.perf_counter()
+        # A runner carries the previous request's position and KV, and this route
+        # has to give that back before its own prefill, the way the AR route does
+        # per prompt (``gemma4_gguf.py`` ``generate_detailed`` calls
+        # ``runner.reset()``). Without it the prefill appends this prompt after
+        # the last request's tokens and attends over them: the output becomes a
+        # function of what ran before it rather than of the prompt, which is both
+        # wrong for a server and enough to break the comparison this route's
+        # whole design rests on -- the batched verify reproduces a single-token
+        # forward *for this request's own context*.
+        runner.reset()
+        logits = yield Gemma4MTPOperation("prefill", runner, tuple(token_ids))
+        record("target_prefill", prefill_started)
+
+        sampler = Gemma4Sampler(
+            request, token_ids, eos_token_ids=tuple(sorted(configured_eos))
+        )
+        sampled_drafts = self.draft_sampling and not sampler.greedy
+        wants_logprobs = sampler.wants_logprobs
+        selection = sampler.select_row(logits)
+        token = selection.token_id
+        generated: list[int] = [token]
+        token_logprobs: list[Any] = (
+            [
+                gemma4_token_logprob(
+                    tokenizer, token, selection.logprob, selection.top_logprobs
+                )
+            ]
+            if wants_logprobs
+            else []
+        )
+        # The prefill's own last row produced `token`.
+        seed_row = -1
+        cycles: list[Gemma4MTPCycle] = []
+        reason = "length"
+        stop_sequence = sampler.stop_sequence_matched
+        sampler.discard_undo_history()
+        if token in stop_ids or stop_sequence:
+            reason = "stop"
+            if token in request.stop_token_ids:
+                stop_sequence = stop_sequence or (token,)
+
+        def output():
+            return self._cycle_output(
+                request=request, tokenizer=tokenizer, token_ids=token_ids,
+                generated=generated, token_logprobs=token_logprobs, sampler=sampler,
+                cycles=cycles, reason=reason, stop_sequence=stop_sequence, runner=runner,
+                phase_ms=phase_ms, phase_calls=phase_calls, sampled_drafts=sampled_drafts,
+            )
+
+        yield Gemma4MTPOperation("commit", runner, output=output(),
+                                terminal=reason == "stop" or len(generated) >= request.max_tokens)
+        while len(generated) < request.max_tokens and reason != "stop":
+            raise_if_generation_deadline_expired(request)
+            remaining = request.max_tokens - len(generated)
+            # A cycle commits `accepted + 1` tokens: the accepted drafts plus the
+            # row at `accepted`, which is always kept. Capping only the drafts at
+            # `remaining` therefore lets the final cycle commit one token past
+            # `max_tokens`. Leaving a row of headroom bounds the commit by
+            # construction, and `remaining == 1` falls through to a zero-draft
+            # cycle, which is a plain single-token verify.
+            budget = min(candidate_budget, remaining - 1)
+            start_position = int(runner.position)
+
+            proposal_started = time.perf_counter()
+            draft_laws: list[Gemma4Distribution] = []
+            controls_before_cycle = sampler.checkpoint_controls()
+
+            def propose(head_logits: np.ndarray) -> int:
+                # The law is the request's own sampler applied to the head's
+                # row, conditioned on the drafts before it. A sampled draft is
+                # drawn from it; otherwise its most likely token is offered as
+                # a point mass. The law kept is the one the token came from.
+                law = sampler.draft_distribution(head_logits)
+                if sampled_drafts:
+                    drafted = law.sample(sampler.draft_unit())
+                else:
+                    drafted = int(law.token_ids[int(np.argmax(law.probabilities))])
+                    law = Gemma4Distribution.point_mass(drafted)
+                draft_laws.append(law)
+                if sampler.pending_forced_token() is not None:
+                    sampler.pop_forced_token()
+                sampler.observe(drafted)
+                return drafted
+
+            drafts = (yield Gemma4MTPOperation(
+                "draft", runner, token=token, hidden_row=seed_row, budget=budget, select=propose
+            )) if budget > 0 else []
+            # The drafts were observed only to condition the next draft's law;
+            # the accept walk observes the ones it keeps.
+            for drafted in reversed(drafts):
+                sampler.unobserve(drafted)
+            sampler.restore_controls(controls_before_cycle)
+            record("proposal", proposal_started)
+            if not drafts and budget > 0:
+                break
+
+            # One forward for the whole draft. `drafts[i]` is tested against
+            # `rows[i]`, and the token after `accepted` drafts comes from
+            # `rows[accepted]`, so the row count is len(drafts) + 1.
+            verify_started = time.perf_counter()
+            rows = yield Gemma4MTPOperation("verify", runner, tuple([token, *drafts]))
+            if rows.ndim == 1:
+                # ``Gemma4Runner.forward`` returns a flat ``(vocab,)`` array for
+                # the one-row count and a ``(rows, vocab)`` array above it, and a
+                # zero-draft cycle is exactly that one-row case. Row 0 is read
+                # like any other row here, so give it the shape every other row
+                # count produces: ``rows[0]`` on a flat array is the scalar logit
+                # of vocabulary entry 0, whose argmax is 0, and a cycle that
+                # commits it emits ``<pad>`` instead of the model's next token.
+                rows = rows.reshape(1, -1)
+            record("target_verify", verify_started)
+
+            accept_started = time.perf_counter()
+            observed = 0
+            # Row ``r`` predicts the token after the prefix ending at ``r``, so
+            # the override governing the token this cycle commits at position
+            # ``r`` is the head of the queue once ``drafts[:r]`` are accepted.
+            # The queue drains as the walk descends, exactly as one
+            # autoregressive step per accepted token would drain it.
+            forced_at_row: list[int | None] = []
+            row_laws: list[Gemma4RowLaw] = []
+            # The stop matcher is immutable, so the state before this cycle's
+            # commits is what locates a sequence that completes inside the
+            # committed group -- including one that straddles the boundary from
+            # the previous cycle's last token.
+            stop_before = sampler.stop_state
+
+            def target_law(index: int) -> Gemma4Distribution:
+                # Row ``index`` is asked for once ``drafts[:index]`` are
+                # accepted, so its law sees exactly the committed history.
+                nonlocal observed
+                while observed < index:
+                    override = forced_at_row[observed]
+                    if override is not None:
+                        sampler.pop_forced_token()
+                    sampler.observe(drafts[observed])
+                    observed += 1
+                row = sampler.row_law(rows[index])
+                forced_at_row.append(row.forced_token_id)
+                row_laws.append(row)
+                return row.law
+
+            accepted, token = speculative_accept(
+                drafts, draft_laws, target_law, sampler.random_unit
+            )
+            # The position the walk settled on carries its own override: a
+            # thinking budget that reached its cap at this row made the row a
+            # point mass, so the walk can only have committed that token.
+            settled_override = forced_at_row[accepted]
+            if settled_override is not None:
+                consumed = sampler.pop_forced_token()
+                if consumed != token:
+                    raise RuntimeError(
+                        f"cycle committed token {token} but the pending forced "
+                        f"token is {consumed}"
+                    )
+            sampler.observe(token)
+            record("accept", accept_started)
+            committed = [*drafts[:accepted], token]
+            observed_tokens = list(committed)
+            stop_state = stop_before
+            for index, committed_token in enumerate(committed):
+                if committed_token in stop_ids:
+                    # A stop can be an accepted draft, not only the bonus.
+                    committed = committed[:index + 1]
+                    accepted = min(accepted, len(committed))
+                    reason = "stop"
+                    if committed_token in request.stop_token_ids:
+                        stop_sequence = (committed_token,)
+                    break
+                stop_state = stop_state.observe(committed_token)
+                if stop_state.matched:
+                    # A multi-token stop can complete on any committed token,
+                    # and the tokens after it in the same group are not part of
+                    # the reply.
+                    committed = committed[:index + 1]
+                    accepted = min(accepted, len(committed))
+                    stop_sequence = stop_state.matched_sequence
+                    reason = "stop"
+                    break
+            if len(committed) < len(observed_tokens):
+                # The walk had to observe every accepted draft and its bonus token
+                # to find where the stop landed, but only the published prefix
+                # exists for the request. Rewind the sampler to the state before
+                # the walk and re-observe exactly the published tokens, so the
+                # thinking-budget counts, the phase, the budget pressure and the
+                # stop matcher report what was published -- the state the
+                # autoregressive route leaves when it stops on the token it just
+                # emitted. Without this, a stop inside one group reports
+                # reasoning or answer tokens the reply never carried, and a
+                # discarded tail that reached the cap closes the reasoning phase
+                # of a reply that never got there.
+                for observed_token in reversed(observed_tokens):
+                    sampler.unobserve(observed_token)
+                sampler.restore_controls(controls_before_cycle)
+                for index, published_token in enumerate(committed):
+                    # One autoregressive step per published token: prepare the
+                    # row's control transitions, consume the override that row
+                    # carried, then observe the token it emitted.
+                    sampler.prepare_selection()
+                    override = forced_at_row[index]
+                    if override is not None:
+                        consumed = sampler.pop_forced_token()
+                        if consumed != published_token:
+                            raise RuntimeError(
+                                f"cycle row {index} emitted {published_token} but "
+                                f"the pending forced token is {consumed}"
+                            )
+                    sampler.observe(published_token)
+            if wants_logprobs:
+                for index, committed_token in enumerate(committed):
+                    row = row_laws[index]
+                    if row.report is not None:
+                        logprob, top_logprobs = row.report
+                    else:
+                        logprob, top_logprobs = sampler.reported_logprob(
+                            row.law, committed_token
+                        )
+                    token_logprobs.append(
+                        gemma4_token_logprob(
+                            tokenizer, committed_token, logprob, top_logprobs
+                        )
+                    )
+            generated.extend(committed)
+            sampler.discard_undo_history()
+            token = committed[-1]
+
+            # Keep the previously sampled seed and the committed prefix except
+            # its final token, which has been sampled but not consumed by AR.
+            runner.rewind(start_position + len(committed))
+            seed_row = len(committed) - 1
+
+            cycles.append(
+                Gemma4MTPCycle(
+                    start_position=start_position,
+                    candidates=tuple(int(draft) for draft in drafts),
+                    accepted=accepted,
+                    committed=len(committed),
+                )
+            )
+
+            yield Gemma4MTPOperation("commit", runner, output=output(),
+                                    terminal=reason == "stop" or len(generated) >= request.max_tokens)
+
+        return output()
+
+    def _cycle_output(self, *, request, tokenizer, token_ids, generated,
+                      token_logprobs, sampler, cycles, reason, stop_sequence,
+                      runner, phase_ms, phase_calls, sampled_drafts):
+        self.last_cycles = tuple(cycles)
+        verify_exact = bool(getattr(runner, "verify_dense_exact", True))
+        proposed = sum(len(cycle.candidates) for cycle in cycles)
+        accepted_total = sum(cycle.accepted for cycle in cycles)
+        telemetry = GenerationTelemetry(
+            decode_state=DecodeState(
+                prompt_tokens=len(token_ids),
+                generated_tokens=len(generated),
+                step_index=len(cycles),
+                sampler_mode=_sampler_mode(sampler),
+                execution_path=(
+                    "gemma4_mtp_batched_exact_verify"
+                    if verify_exact
+                    else "gemma4_mtp_batched_verify"
+                ),
+            ),
+            event="generation_complete",
+            diagnostics={
+                "speculative_provider": self.provider_name,
+                "candidate_budget": self.candidate_budget,
+                "proposed_draft_tokens": proposed,
+                "accepted_draft_tokens": accepted_total,
+                "draft_acceptance": (
+                    float(accepted_total / proposed) if proposed else 0.0
+                ),
+                "tokens_per_cycle": (
+                    float(len(generated) / len(cycles)) if cycles else 1.0
+                ),
+                "cycles": [
+                    {
+                        "start_position": cycle.start_position,
+                        "candidates": list(cycle.candidates),
+                        "accepted": cycle.accepted,
+                        "committed": cycle.committed,
+                    }
+                    for cycle in cycles
+                ],
+                "target_verify": (
+                    "batched_exact" if verify_exact else "batched_wmma"
+                ),
+                "draft_rollback": "cursor_rewind",
+                "accept_rule": "min(1, p/q) with residual resampling",
+                "draft_law": "sampled" if sampled_drafts else "point_mass",
+                "verify_equivalence": (
+                    _VERIFY_EXACT if verify_exact else _VERIFY_ENVELOPE
+                ),
+                "phase_census": {
+                    "cycles": len(cycles),
+                    "target_prefill": {
+                        "calls": phase_calls.get("target_prefill", 0),
+                        "ms": phase_ms.get("target_prefill", 0.0),
+                    },
+                    "proposal": {
+                        "calls": phase_calls.get("proposal", 0),
+                        "ms": phase_ms.get("proposal", 0.0),
+                    },
+                    "target_verify": {
+                        "calls": phase_calls.get("target_verify", 0),
+                        "rows": sum(len(cycle.candidates) + 1 for cycle in cycles),
+                        "ms": phase_ms.get("target_verify", 0.0),
+                    },
+                    "accept": {
+                        "calls": phase_calls.get("accept", 0),
+                        "ms": phase_ms.get("accept", 0.0),
+                    },
+                },
+            },
+        )
+        # A matched multi-token stop is held back from the reply; the generated
+        # ids keep the whole emitted run, as the AR route and the shared
+        # stop-sequence handling report it.
+        visible = len(generated) - len(stop_sequence) if stop_sequence else len(generated)
+        return GenerationOutput(
+            text=tokenizer.decode(generated[:visible], skip_special=False),
+            token_logprobs=tuple(token_logprobs[:visible]),
+            generated_token_ids=tuple(generated),
+            telemetry=telemetry,
+            finish_details=finish_details_with_sampling_state(
+                FinishDetails(
+                    reason=reason,
+                    eos_token_id=(
+                        generated[-1]
+                        if reason == "stop" and not stop_sequence
+                        else None
+                    ),
+                    stop_sequence=stop_sequence,
+                    length_limit=request.max_tokens if reason == "length" else None,
+                    sampler_mode=_sampler_mode(sampler),
+                ),
+                sampler,
+            ),
+        )
+
+    def stream_detailed(self, request: GenerationRequest):
+        self._require_open()
+        if len(request.prompts) != 1:
+            raise ValueError("Gemma 4 MTP streaming requires exactly one prompt")
+        output = self.generate_detailed(request)[0]
+        yield GenerationStreamChunk(
+            text=output.text,
+            token_logprobs=output.token_logprobs,
+            finish_details=output.finish_details,
+            telemetry=output.telemetry,
+            generated_token_ids=output.generated_token_ids,
+        )
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        head, self._head = self._head, None
+        weights, self._head_weights = self._head_weights, None
+        if head is not None:
+            head.close()
+        if weights is not None:
+            weights.free()
+        self._drafter = None
+
+    def _require_open(self) -> None:
+        if self.closed:
+            raise RuntimeError("Gemma 4 MTP provider is closed")
+
+
+def _sampler_mode(sampler: Gemma4Sampler) -> str:
+    return "greedy_speculative_mtp" if sampler.greedy else "sampled_speculative_mtp"
+
+
+def make_gemma4_mtp_provider(**kwargs: Any) -> Gemma4MTPTextProvider:
+    return Gemma4MTPTextProvider(**kwargs)
+
+
+def register_gemma4_mtp_providers(*, replace: bool = True) -> None:
+    """Register the Gemma 4 MTP provider as quantization-independent.
+
+    The provider has no quantization dependence to declare: the assistant head is
+    a separate sidecar and the verify pass reads whatever logits the backbone
+    produces, so the target's quantization is not an input to it. Registering it
+    under :data:`QUANT_AGNOSTIC` says that, instead of writing out a list of
+    known-good quantizations -- which would refuse a newly resolvable
+    quantization for a reason that is not a capability miss.
+
+    What the provider does require is a Gemma 4 backbone, which the
+    ``target_model`` key names, and an assistant sidecar, which it refuses by
+    name if the file is missing.
+    """
+
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        register_speculative_provider(
+            SpeculativeProviderKey(
+                provider=_PROVIDER,
+                target_model=_TARGET_MODEL,
+                backend=backend,
+                quant=QUANT_AGNOSTIC,
+            ),
+            make_gemma4_mtp_provider,
+            replace=replace,
+        )
+
+
+register_gemma4_mtp_providers()
+
+
+__all__ = [
+    "Gemma4MTPCycle",
+    "Gemma4MTPTextProvider",
+    "make_gemma4_mtp_provider",
+    "register_gemma4_mtp_providers",
+]

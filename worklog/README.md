@@ -6,15 +6,15 @@ workers can commit and merge distinct paths instead of appending to one shared
 file.
 
 The approved design and migration gates are in
-[`docs/PLAN-WORKLOG2-revamp.md`](../docs/PLAN-WORKLOG2-revamp.md).
+[`docs/archive/PLAN-WORKLOG2-revamp.md`](../docs/archive/PLAN-WORKLOG2-revamp.md).
 
 ## Source paths
 
 | Path | Role |
 | --- | --- |
 | `worklog/entries/*.md` | Tracked immutable current entries. |
-| `WORKLOG-LEGACY.md` | Tracked byte-frozen journal through cutoff commit `7c7c18875`. |
-| `worklog/legacy-manifest.json` | Hash, byte, line, heading, and cutoff invariant for the frozen journal. |
+| `worklog/corrections/*.json` | Tracked immutable hash-bound correction records for malformed historical entries. |
+| `worklog/legacy-port-manifest.json` | Entry-to-commit mapping for the ported pre-cutoff entries; pins the retired journal's sha256 and Git history ref. |
 | `WORKLOG.md` | Tracked GitHub/navigation page; never generated or appended per unit. |
 | `.worklog/WORKLOG.md` | Ignored local generated chronological view. |
 | `scripts/worklog.py` | Standard-library create/check/render/hook CLI. |
@@ -32,8 +32,10 @@ python3 scripts/worklog.py new \
 ```
 
 Optional `--topic` supplies the lowercase filename/frontmatter topic. Without
-it, the title is slugged. `WORKLOG_WORKER`, Git `user.name`, and the OS user are
-the fallback worker sources, in that order.
+it, the title is slugged. **It is truncated to 48 characters**, so a longer topic
+silently stops matching its own filename and the entry is rejected with a
+filename-metadata error -- keep topics short. `WORKLOG_WORKER`, Git `user.name`,
+and the OS user are the fallback worker sources, in that order.
 
 The command prints a collision-resistant path such as:
 
@@ -65,9 +67,70 @@ rename, or delete it. Correct an old conclusion with a new `decision` or
 
 Validation fails on malformed schema/frontmatter, filename mismatch, missing or
 reordered sections, placeholders, conflict markers, committed entry changes,
-staged/working-tree divergence, unexpected tracked paths under
-`worklog/entries/`, or any change to the frozen legacy journal or manifest. It
-gates staged and tracked content only; see "Validate" below.
+staged/working-tree divergence, or unexpected tracked paths under
+`worklog/entries/`. It gates staged and tracked content only; see "Validate"
+below.
+
+## Malformed historical entries
+
+A malformed committed entry keeps its bytes. When it cannot pass strict
+validation, one immutable record under `worklog/corrections/` binds
+a specific exemption to that exact entry:
+
+```json
+{
+  "schema": 1,
+  "path": "worklog/entries/<historical-entry>.md",
+  "sha256": "<sha256 of the entry's commit-tree bytes>",
+  "defects": ["abbreviated_base_commit", "missing_required_sections"],
+  "reason": "one line saying why the historical entry has this defect",
+  "base_commit": "<full 40-character commit hash>",
+  "superseded_by": "worklog/entries/<new-entry>.md"
+}
+```
+
+Rules:
+
+- Fields are exactly the seven above, in that order. `defects` is a non-empty,
+  sorted, duplicate-free list of the two known defect names, and `reason` is one
+  non-empty line.
+- The record filename must be the corrected entry's filename with `.json`
+  instead of `.md`, so there is at most one record per entry.
+- `sha256` must equal the sha256 of the entry's bytes **in the commit tree**:
+
+  ```bash
+  git cat-file blob :worklog/entries/<historical-entry>.md | sha256sum
+  ```
+
+- `abbreviated_base_commit` requires `base_commit`; `superseded_by` stays `null`
+  unless the entry also lacks required headings. The corrected hash must be the
+  full 40-character hash and must extend the value the entry recorded; resolve
+  the abbreviation against real history with
+  `git rev-parse <abbreviation>^{commit}`.
+- `missing_required_sections` requires `superseded_by`; `base_commit` stays
+  `null` unless the entry also has an abbreviated hash. That entry must be
+  tracked in the same commit, pass the full strict schema, have status
+  `decision` or `checkpoint`, and name the corrected entry's path in its body. It
+  carries the section content the historical entry cannot be edited to supply.
+- Both defects together set both fields.
+
+The exemption is narrow on purpose. A record is an error and is not applied when
+its sha256 does not match the entry, when the entry is untracked or not yet
+committed in `HEAD` (so the route cannot exempt a new entry), or when the entry
+already passes strict validation (so a record cannot broaden the schema).
+`missing_required_sections` permits missing non-summary headings and empty section
+bodies; heading order, frontmatter, title, placeholder, conflict-marker,
+and filename rules still apply. Every other entry, and every new entry, faces the
+full schema.
+
+Records are read from the Git index, gated as immutable tracked content, and
+committed with the entries they describe. Stage a new record before running
+`check`:
+
+```bash
+git add worklog/corrections/<historical-entry>.json worklog/entries/<new-entry>.md
+python3 scripts/worklog.py check
+```
 
 ## Validate
 
@@ -88,9 +151,13 @@ progress before staging it with:
 python3 scripts/worklog.py check --include-unstaged
 ```
 
-The check also rejects any change to an already-tracked entry or to the frozen
-legacy journal, and it rejects a staged entry whose working-tree copy has moved
-on (re-run `git add` to commit the final text).
+The check also rejects any change to an already-tracked entry or correction
+record, and it rejects a staged entry whose working-tree copy has moved on
+(re-run `git add` to commit the final text). Staged deletion of the retired
+legacy journal pair
+(`WORKLOG-LEGACY.md` and `worklog/legacy-manifest.json`) is the one sanctioned
+removal: it is allowed once, and the exact journal bytes stay pinned by the
+history ref in `worklog/legacy-port-manifest.json`.
 
 The optional local pre-commit checker can be installed in a trusted clone with:
 
@@ -112,25 +179,28 @@ Render current immutable entries to the ignored local view:
 python3 scripts/worklog.py render
 ```
 
-Include the complete frozen journal only when older context is needed:
-
-```bash
-python3 scripts/worklog.py render --include-legacy
-```
+`--include-legacy` is inert now that the legacy journal is retired from the
+tree; rendering prints a note with the `git show` ref for the original bytes.
 
 Rendering is atomic and never overwrites tracked root `WORKLOG.md`. The rendered
 view also includes unstaged entries from the working tree, so local work in
 progress shows up before it is committed; an entry that is not valid yet is
 skipped with a note on stderr. For routine handoff, inspect the latest relevant
-files in `worklog/entries/`; consult `WORKLOG-LEGACY.md` only for pre-cutoff
-evidence.
+files in `worklog/entries/`. Pre-cutoff history is readable as ported entries
+(front-matter `worker: legacy`).
 
-## Historical journal
+## Retired legacy journal
 
-`WORKLOG-LEGACY.md` is preserved byte-for-byte from cutoff parent
-`7c7c188750fcca6ff5ebefa969e7f2689a940172`. Its manifest is checked on every
-worklog validation. Do not fix old typos, duplicate headings, dates, or merge
-ordering.
+The pre-Worklog2 append-only journal was preserved byte-for-byte as
+`WORKLOG-LEGACY.md` at cutoff parent `7c7c188750fcca6ff5ebefa969e7f2689a940172`,
+ported verbatim into entries (see below), and then removed from the tree once
+the port was verified byte-for-byte. The exact original bytes remain in Git
+history, pinned by the sha256 and history ref recorded in
+`worklog/legacy-port-manifest.json`:
+
+```bash
+git show <source_history.commit>:WORKLOG-LEGACY.md
+```
 
 Historical Git provenance remains available with:
 
@@ -138,13 +208,48 @@ Historical Git provenance remains available with:
 git log --follow -- WORKLOG-LEGACY.md
 ```
 
+Do not resurrect the file into the tree; ported entries are the in-tree
+representation of pre-cutoff history.
+
+## Ported pre-cutoff entries
+
+All 7,232 pre-cutoff entries from the frozen journal are also imported as
+individual Worklog2 entries under `worklog/entries/` with front-matter
+`worker: legacy`, `branch`/`worktree: pre-cutoff`, and `status: completed`.
+Each ported entry's filename timestamp and `base_commit` come from the first
+Git commit that appended it to the journal, recovered from the full patch
+history of `WORKLOG.md`/`WORKLOG-LEGACY.md`; repeated heading texts bind their
+file occurrences to append events by author date.
+
+Bodies are verbatim. Entries whose bodies contain lines that would break the
+one-title schema rule (for example pasted `# ` shell-output comments) carry
+the verbatim body inside a fenced block one backtick run longer than any fence
+in the body; the manifest flags these as `wrapped`. Timestamps are commit
+author dates in UTC; file order and commit order disagree around old union
+merges, which the manifest records as timestamp inversions.
+
+`worklog/legacy-port-manifest.json` records the full mapping: source line
+ranges, attributed commits and subjects, timestamps, wrapped flags, duplicate
+groups, the anomaly lists (append-replay re-adds and in-place edit commits),
+and the retired journal's sha256 and Git history ref. Re-run the byte-exact
+verification with:
+
+```bash
+python3 scripts/worklog_port_legacy.py verify
+```
+
+`verify` re-derives every ported entry from the original journal bytes — read
+from the working tree while the journal exists there, or from the recorded Git
+history ref afterwards — and fails closed if either side drifts, so a history
+rewrite cannot silently degrade the port.
+
 ## Branches older than Worklog2
 
 A branch created before activation may contain an append to the old
 `WORKLOG.md`. When intentionally reviving such a branch, the designated merge
 owner extracts its missing material into one or more new immutable entries and
-identifies the source branch/commit. Never merge that append into
-`WORKLOG-LEGACY.md`; the manifest check fails closed on legacy mutation.
+identifies the source branch/commit. Never merge that append into a resurrected
+legacy file; convert it to entries instead.
 
 Worklog2 removes only worklog-content contention. Shared-worktree workers still
 share one Git index and must serialize staging and commits under `AGENTS.md`.

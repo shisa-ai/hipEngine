@@ -42,6 +42,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
     gguf_q4_k_wmma_prefill_dual_bf16_bf16_out,
     register_gguf_q4_k_prefill_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
+    register_gguf_q4_k_t16_selected_prefill_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_pack8_gemv import (
     register_gguf_q4_k_pack8_gemv_kernels,
 )
@@ -64,6 +67,12 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
     q6_dense_integer_mmq_workspace,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_iq_source_mmq_prefill import (
+    iq_dense_decode_strict_slots,
+    iq_dense_mmq_has_workspace,
+    iq_dense_mmq_strict_slots,
+    iq_dense_mmq_workspace,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     register_gguf_k_t16_selected_prefill_kernels,
@@ -118,7 +127,14 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
 from hipengine.kernels.hip_gfx1100.runtime.laguna_launch_batch import (
     register_laguna_launch_batch_kernels,
 )
-from hipengine.kernels.registry import KernelKey, generation, is_registered, resolve
+from hipengine.kernels.registry import (
+    _KERNELS as _REGISTRY_KERNELS,
+    KernelKey,
+    generation,
+    is_registered,
+    register,
+    resolve,
+)
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
@@ -1323,13 +1339,17 @@ _RAW_K_PREFILL_VARIANTS = frozenset(
         "coltile32",
     }
 )
-_raw_k_prefill_rowbatch: ContextVar[int] = ContextVar(
+# Default None means no execution owner selected a slab yet; owners that
+# explicitly disable row reuse set 0 and keep it.
+_raw_k_prefill_rowbatch: ContextVar[int | None] = ContextVar(
     "raw_k_prefill_rowbatch",
-    default=0,
+    default=None,
 )
-_raw_k_prefill_variant: ContextVar[str] = ContextVar(
+# Default None means no execution owner selected a geometry yet; the
+# accessor keeps the historical "rowbatch" for unset owners.
+_raw_k_prefill_variant: ContextVar[str | None] = ContextVar(
     "raw_k_prefill_variant",
-    default="rowbatch",
+    default=None,
 )
 
 # Quants currently shipping a batched ``wmma_prefill_*`` family. Values are
@@ -1360,6 +1380,14 @@ _Q8_T16_ROWTILE_THREADS = 128
 _Q8_T16_PAIR_ROWTILE_ENV = "HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE"
 _Q8_T16_PAIR_COL8_ENV = "HIPENGINE_GGUF_Q8_T16_PAIR_COL8"
 _Q8_T16_ROWTILE_ALL_ENV = "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL"
+# Shape-explicit Q8T16 rowtile admission for the UD verifier. `(in_features,
+# out_features)`. Measured on the RX 7900 XTX (gfx1100, physical GPU1)
+# UD-Q4_K_M verifier at rows 3: the attn_k/attn_v projections at (5120, 1024)
+# ran the 32-thread WMMA prefill owner (one wave32 per block, 32 blocks) for
+# 84 calls/step at 122.6 us each, and the 128-thread rowtile GEMV owner runs
+# the same 84 calls at ~52 us each.
+_Q8_T16_ALL_ROWTILE_SHAPES = frozenset({(5_120, 1_024)})
+_Q8_T16_ALL_ROWTILE_SHAPES_ENV = "HIPENGINE_GGUF_Q8_T16_ROWTILE_SHAPES"
 _q8_t16_pair_rowtile_min_rows_session: int | None = None
 _q8_t16_rowtile_all_session_enabled: bool | None = None
 _Q8_T16_QWEN35_ATTN_QKV_OUT = 8192
@@ -2196,129 +2224,20 @@ def resolve_q8_mmq_prefill_policy(
     return policy
 
 
-_DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
-    (LAYOUT_Q4_K_PACK8, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "pack8_bf16_bf16_out"),
-        "pack8",
-    ),
-    (LAYOUT_Q4_K_PACK8, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_FP16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "pack8_bf16_fp16_out"),
-        "pack8",
-    ),
-    (LAYOUT_Q4_K_PACK8, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_F32): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "pack8_bf16_f32_out"),
-        "pack8",
-    ),
-    (LAYOUT_RAW_GGUF, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "<from-weight>", "gemv_bf16_bf16_out"),
-        "raw",
-    ),
-    (LAYOUT_RAW_GGUF, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_FP16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "<from-weight>", "gemv_bf16_fp16_out"),
-        "raw",
-    ),
-    (LAYOUT_RAW_GGUF, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_F32): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "<from-weight>", "gemv_bf16_f32_out"),
-        "raw",
-    ),
-    (LAYOUT_RAW_GGUF, GGUF_ACTIVATION_F32, GGUF_OUTPUT_F32): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "<from-weight>", "gemv_f32_f32_out"),
-        "raw",
-    ),
-    (LAYOUT_DENSE_BF16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "dense_gemv", "bf16", "out"),
-        "dense_bf16",
-    ),
-    (LAYOUT_DENSE_BF16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_F32): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "dense_gemv", "bf16", "f32_out"),
-        "dense_bf16",
-    ),
-    (LAYOUT_DENSE_BF16, GGUF_ACTIVATION_F32, GGUF_OUTPUT_F32): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "dense_gemv", "bf16", "f32_hidden_f32_out"),
-        "dense_bf16",
-    ),
-    (LAYOUT_DENSE_F32, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "dense_gemv", "f32", "bf16_hidden_bf16_out"),
-        "dense_bf16",
-    ),
-    (LAYOUT_DENSE_F32, GGUF_ACTIVATION_F32, GGUF_OUTPUT_F32): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "dense_gemv", "f32", "f32_hidden_f32_out"),
-        "dense_bf16",
-    ),
-    (LAYOUT_GGUF_Q4_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
-        KernelKey(
-            "hip_gfx1100",
-            "linear",
-            "gguf_q4_k_t16_v1",
-            "dense_single_local32_bf16_bf16_out",
-        ),
-        "t16",
-    ),
-    (
-        LAYOUT_GGUF_Q4_K_QMICRO_T16,
-        GGUF_ACTIVATION_BF16,
-        GGUF_OUTPUT_BF16,
-    ): GGUFLinearDispatch(
-        KernelKey(
-            "hip_gfx1100",
-            "linear",
-            "gguf_q4_k_qmicro_t16_v1",
-            "dense_single_local32_bf16_bf16_out",
-        ),
-        "t16",
-    ),
-    (LAYOUT_GGUF_Q5_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "gguf_q5_k_t16_v1", "t16_gemv_decode_bf16_bf16_out"),
-        "t16",
-    ),
-    (LAYOUT_GGUF_Q6_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "gguf_q6_k_t16_v1", "t16_gemv_decode_bf16_bf16_out"),
-        "t16",
-    ),
-    (LAYOUT_GGUF_Q6_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_F32): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "gguf_q6_k_t16_v1", "t16_gemv_decode_bf16_f32_out"),
-        "t16",
-    ),
-    (
-        LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
-        GGUF_ACTIVATION_BF16,
-        GGUF_OUTPUT_BF16,
-    ): GGUFLinearDispatch(
-        KernelKey(
-            "hip_gfx1100",
-            "linear",
-            "gguf_q6_k_t16_qmicro_planar_v1",
-            "t16_gemv_decode_bf16_bf16_out",
-        ),
-        "t16",
-    ),
-    (
-        LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
-        GGUF_ACTIVATION_BF16,
-        GGUF_OUTPUT_F32,
-    ): GGUFLinearDispatch(
-        KernelKey(
-            "hip_gfx1100",
-            "linear",
-            "gguf_q6_k_t16_qmicro_planar_v1",
-            "t16_gemv_decode_bf16_f32_out",
-        ),
-        "t16",
-    ),
-    (LAYOUT_GGUF_Q8_0_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_bf16_bf16_out"),
-        "t16",
-    ),
-    (LAYOUT_GGUF_Q8_0_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_FP16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_fp16_fp16_out"),
-        "t16",
-    ),
-    (LAYOUT_GGUF_Q8_0_T16, GGUF_ACTIVATION_F32, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_f32_bf16_out"),
-        "t16",
-    ),
-}
+# Compatibility view; resolution below uses the shared CPU-safe owner.
+from hipengine.loading.qwen35_gguf_consumer_surface import (
+    GGUF_LINEAR_DISPATCH_SURFACE,
+    resolve_linear_consumer_contract,
+    linear_variant_for_rows,
+    linear_weight_pointers,
+)
 
+_DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
+    (row.layout, row.activation, row.output): GGUFLinearDispatch(
+        KernelKey("hip_gfx1100", row.layer, row.quant, row.variant), row.abi,
+    )
+    for row in GGUF_LINEAR_DISPATCH_SURFACE
+}
 
 def _weight_backend(
     *weights: GGUFDeviceWeight,
@@ -2516,6 +2435,24 @@ def _q8_t16_threads_override_active(threads: int = 0) -> bool:
     return int(threads) != 0 or bool(os.environ.get(_Q8_T16_THREADS_ENV, "").strip())
 
 
+def _resolve_q8_t16_dual_split_threads(
+    backend: str, rows: int, in_features: int,
+    out_features_a: int, out_features_b: int, threads: int,
+) -> int:
+    override = _resolve_q8_t16_threads(threads)
+    if override:
+        return override
+    policy = backend_package_capability(
+        backend, "GGUF_Q8_T16_DUAL_SPLIT_THREADS_BY_SHAPE", {}
+    )
+    value = int(policy.get(
+        (int(rows), int(in_features), int(out_features_a), int(out_features_b)), 0
+    ))
+    if value not in {0, 64, 128, 256, 512, 1024}:
+        raise ValueError("invalid Q8 T16 dual-split thread policy")
+    return value
+
+
 def set_q8_t16_pair_rowtile_min_rows(min_rows: int | None) -> None:
     """Set the owner-scoped minimum width for exact Q8T16 pair rowtiling."""
 
@@ -2587,14 +2524,27 @@ def _use_q8_t16_all_rowtile(
     *,
     rows: int,
     in_features: int,
+    out_features: int | None = None,
     threads: int = 0,
 ) -> bool:
-    return (
-        rows > 1
-        and in_features == _Q8_T16_QWEN35_ATTN_IN
-        and not _q8_t16_threads_override_active(threads)
-        and _resolve_use_q8_t16_all_rowtile()
-    )
+    if rows <= 1 or _q8_t16_threads_override_active(threads):
+        return False
+    if in_features == _Q8_T16_QWEN35_ATTN_IN:
+        return _resolve_use_q8_t16_all_rowtile()
+    # UD-Q4_K_M reaches a shape the gfx1100 decode-width audit packet C1 did
+    # not cover. C1 rejected the *broad* all-projection rowtile route on
+    # Qwen3.6-35B-A3B at c2/c4 with in_features 2048, and the broad boolean
+    # stays off. This set is a separate, shape-explicit policy: it admits only
+    # shapes measured to win, and only when an explicit out_features is known.
+    if (
+        out_features is not None
+        and (in_features, out_features) in _Q8_T16_ALL_ROWTILE_SHAPES
+    ):
+        raw = os.environ.get(_Q8_T16_ALL_ROWTILE_SHAPES_ENV, "").strip().lower()
+        if raw:
+            return raw in {"1", "true", "yes", "on"}
+        return True
+    return False
 
 
 def _use_q8_t16_pair_rowtile(
@@ -2744,7 +2694,8 @@ def _resolve_use_q4k_rowtile(kwarg: bool | None) -> bool:
 def raw_k_prefill_rowbatch() -> int:
     """Return the execution owner's exact raw-Q5/Q6 prefill row slab."""
 
-    return int(_raw_k_prefill_rowbatch.get())
+    value = _raw_k_prefill_rowbatch.get()
+    return 0 if value is None else int(value)
 
 
 @contextlib.contextmanager
@@ -2766,7 +2717,8 @@ def raw_k_prefill_rowbatch_session(row_batch: int) -> Iterator[None]:
 def raw_k_prefill_variant() -> str:
     """Return the execution owner's exact raw-Q5/Q6 prefill geometry."""
 
-    return str(_raw_k_prefill_variant.get())
+    value = _raw_k_prefill_variant.get()
+    return "rowbatch" if value is None else str(value)
 
 
 @contextlib.contextmanager
@@ -3163,6 +3115,21 @@ def _q4_t16_physical_dual_silu_variant(
         if enabled:
             return variant
     return None
+
+
+def _iq4_xs_admitted_prefill_variant(backend: str) -> str | None:
+    """Return the admitted IQ4_XS prefill owner variant for the backend.
+
+    Declared by the backend package as an explicit contract
+    (GGUF_IQ4_XS_ADMITTED_PREFILL_PAIR_VARIANT), not derived from the
+    live policy: reading the live policy would let a pinned policy (an
+    admission-gate incumbent arm) move both sides of the comparison and
+    re-engage the dual in an arm that declares one-wave singles.
+    """
+
+    variant = backend_package_capability(
+        backend, "GGUF_IQ4_XS_ADMITTED_PREFILL_PAIR_VARIANT", None)
+    return variant if isinstance(variant, str) else None
 
 
 def _q4_t16_grouped_pair_rows6_variant(
@@ -3924,6 +3891,52 @@ def _q8_dense_wide_dispatch(
     return GGUFLinearDispatch(key, "raw")
 
 
+def _q8_iu8_wmma_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Default-off iu8-WMMA route for Q8_0 F32/F32 prefill linears (T1).
+
+    Replaces the retained F32 coltile family for prefill-sized rows when
+    the geometry fits the dense iu8 kernel (in_features % 32 == 0). The
+    three-plane fp32 staging drift is gated by the production numerical
+    envelope; the exact coltile parents stay the default and the
+    sub-256-row path.
+    """
+
+    if (
+        dispatch.abi != "raw"
+        or dispatch.key.quant != "gguf_q8_0"
+        or dispatch.key.variant
+        not in {
+            "prefill_f32_f32_out",
+            "coltile8_rowbatch4_f32_f32_out",
+            "coltile8_rowbatch4_wave_scale_f32_f32_out",
+        }
+        or rows <= 256
+        or in_features <= 0
+        or in_features % 32 != 0
+        or out_features <= 0
+        or os.environ.get("HIPENGINE_QWEN4_EXP_Q8_IU8_WMM", "0")
+        in {"", "0", "false", "False"}
+    ):
+        return dispatch
+    key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        "iu8_wmma_prefill_f32_f32_out",
+    )
+    if not is_registered(key):
+        # Populate the raw families before deciding so the very first
+        # launch of a process cannot silently fall back past this route.
+        _ensure_linear_kernel_registered(key)
+    return GGUFLinearDispatch(key, "raw") if is_registered(key) else dispatch
+
+
 def _raw_k_wave_scale_dispatch(dispatch: GGUFLinearDispatch, *, enabled: bool) -> GGUFLinearDispatch:
     if not enabled or dispatch.abi != "raw" or dispatch.key.variant != "coltile8_rowbatch4_f32_f32_out":
         return dispatch
@@ -4159,26 +4172,11 @@ def resolve_gguf_linear_dispatch(
     """Resolve a GGUF linear launch without model/engine quant branches."""
 
     resolved_backend = _weight_backend(weight, backend=backend)
-    table_key = (weight.spec.layout, activation_dtype, output_dtype)
-    try:
-        dispatch = _DISPATCH_TABLE[table_key]
-    except KeyError as exc:
-        raise ValueError(
-            "unsupported GGUF linear dispatch: "
-            f"layout={weight.spec.layout!r}, activation={activation_dtype!r}, output={output_dtype!r}"
-        ) from exc
-    quant = weight.spec.quant_key if dispatch.key.quant == "<from-weight>" else dispatch.key.quant
-    if weight.spec.layout in {
-        LAYOUT_GGUF_Q4_K_T16,
-        LAYOUT_GGUF_Q4_K_QMICRO_T16,
-    } and rows > 1:
-        variant = "t16_wmma_prefill_bf16_bf16_out"
-    else:
-        variant = _variant_for_rows(dispatch.key.variant, rows=rows)
-    return GGUFLinearDispatch(
-        KernelKey(resolved_backend, dispatch.key.layer, quant, variant),
-        dispatch.abi,
+    contract = resolve_linear_consumer_contract(
+        weight.spec.layout, activation_dtype, output_dtype,
+        quant_key=weight.spec.quant_key, rows=rows,
     )
+    return GGUFLinearDispatch(contract.key(resolved_backend), contract.abi)
 
 
 # Memoized launch_gguf_linear dispatch resolution. The resolved (abi, fn) is a
@@ -4189,6 +4187,34 @@ def resolve_gguf_linear_dispatch(
 _DISPATCH_RESOLVE_CACHE: dict[tuple, tuple] = {}
 _PAIR_DISPATCH_RESOLVE_CACHE: dict[tuple, str] = {}
 _Q8_1_DISPATCH_RESOLVE_CACHE: dict[tuple, tuple | bool] = {}
+
+
+def _iq_dense_dispatch_cache_state() -> tuple | None:
+    """Return the semantic dense-IQ owner state used by dispatch resolution.
+
+    This is the *dynamic* half of the dense-IQ routing input: whether a
+    session is bound, whether it carries an activation plane, and which slots
+    it pinned to the strict owner. The three policy tables
+    (``GGUF_IQ_DENSE_{PREFILL,DECODE,VERIFY}_POLICY``) are deliberately not
+    part of the key because they are import-time constants - the registry
+    generation covers a registry swap, and these cover a session swap.
+
+    A caller that *reassigns* a policy table mid-process therefore changes a
+    resolution input the memo does not see, and every already-memoized
+    (weight, shape, rows, slot) keeps its old owner. Such a caller must call
+    ``clear_gguf_linear_dispatch_cache()`` when it flips the table - the
+    policy A/B gates do, and they additionally assert at the real launch site
+    that the two arms resolved different kernels, because a silent cache hit
+    is indistinguishable from a bit-exact route.
+    """
+
+    if iq_dense_mmq_workspace() is None:
+        return None
+    return (
+        bool(iq_dense_mmq_has_workspace()),
+        iq_dense_mmq_strict_slots(),
+        iq_dense_decode_strict_slots(),
+    )
 
 
 def clear_gguf_linear_dispatch_cache() -> None:
@@ -4750,19 +4776,49 @@ def launch_gguf_linear(
     ):
         return
     raw_k_rowbatch = raw_k_prefill_rowbatch()
+    if _raw_k_prefill_rowbatch.get() is None:
+        # No execution owner selected a raw-Q5/Q6 prefill slab. Fall back to
+        # the backend package's qualified default when it declares one, so
+        # raw-resident Q5/Q6 prefill routes through the fixed row-reuse
+        # kernels instead of the per-row generic prefill path. An owner that
+        # explicitly selected 0 keeps its disabled choice.
+        if backend_package_capability(
+            resolved_backend, "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED", False
+        ):
+            package_rowbatch = backend_package_capability(
+                resolved_backend, "GGUF_RAW_K_PREFILL_ROWBATCH", 0
+            )
+            if int(package_rowbatch) in _RAW_K_PREFILL_ROWBATCHES - {0}:
+                raw_k_rowbatch = int(package_rowbatch)
     raw_k_variant = raw_k_prefill_variant()
+    if _raw_k_prefill_variant.get() is None:
+        # Same fallback as the row-slab size: when no execution owner picked a
+        # raw-Q5/Q6 prefill geometry, use the backend package's declared
+        # variant (gfx1100-family declares "coltile") instead of the plain
+        # rowbatch default, so non-Laguna owners reach the same qualified
+        # coltile4_rowbatch8 route.
+        package_variant = backend_package_capability(
+            resolved_backend, "GGUF_RAW_K_PREFILL_VARIANT", None
+        )
+        if str(package_variant) in _RAW_K_PREFILL_VARIANTS:
+            raw_k_variant = str(package_variant)
     mmq_session = _q8_mmq_prefill_session.get()
     q5_raw_mmq_session = _q5_raw_mmq_target_session.get()
     q5_f32_ordered_session = _q5_f32_ordered_prefill_session.get()
+    # Capture the raw sidecar pointer itself, not a declared-allocation proxy.
+    # The raw-pointer-keyed resident Q5 plane lookup and the raw-K dispatch
+    # family read this exact pointer, so the memo key below must vary with it.
+    # Gating on ``spec.allocation_names`` (declared on five concrete spec types
+    # and no common base) made the key constant ``None`` for any spec that does
+    # not declare the attribute, so a resident plane selected for one raw
+    # pointer was reused for a second pointer that has no plane -- the dispatch
+    # then launched the resident wrapper and failed closed on the missing plane.
+    # An absent ``raw`` allocation still means no raw pointer, as before.
     try:
-        has_raw_weight_sidecar = int(weight.allocation("raw").tensor.ptr) > 0
+        raw_weight_ptr: int | None = int(weight.allocation("raw").tensor.ptr)
     except KeyError:
-        has_raw_weight_sidecar = False
-    raw_weight_ptr = (
-        int(weight.allocation("raw").tensor.ptr)
-        if weight.spec.layout == LAYOUT_RAW_GGUF
-        else None
-    )
+        raw_weight_ptr = None
+    has_raw_weight_sidecar = raw_weight_ptr is not None and raw_weight_ptr > 0
     # The wide route's decision depends on an enable flag, a layer scope, and
     # which layer owns this weight. All three must be in the memoization key or
     # the first resolution for a shape is replayed for every layer and the
@@ -4855,6 +4911,7 @@ def launch_gguf_linear(
             is None
             else id(q6_integer_workspace)
         ),
+        _iq_dense_dispatch_cache_state(),
         raw_weight_ptr,
         has_raw_weight_sidecar,
         os.environ.get(_DENSE_F16_GEMM_ENV, "0"),
@@ -4885,6 +4942,13 @@ def launch_gguf_linear(
             dispatch,
             rows=rows,
             variant=registered_variant,
+        )
+        dispatch = _q8_t16_tiles_decode_dispatch(
+            dispatch,
+            weight=weight,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
         )
         dispatch = _q4_t16_dense_native_dispatch(
             dispatch,
@@ -4917,6 +4981,14 @@ def launch_gguf_linear(
             rows=rows,
             in_features=in_features,
             use_wmma=use_wmma,
+        )
+        dispatch = _q8_t16_tiles_prefill_dispatch(
+            dispatch, weight=weight, rows=rows,
+            in_features=in_features, out_features=out_features,
+        )
+        dispatch = _q8_t16_tiles_small_rows_dispatch(
+            dispatch, weight=weight, rows=rows,
+            in_features=in_features, out_features=out_features,
         )
         dispatch = _q6_t16_f16_rocblas_prefill_dispatch(
             dispatch,
@@ -5019,6 +5091,25 @@ def launch_gguf_linear(
             in_features=in_features,
             out_features=out_features,
             weight=weight,
+        )
+        dispatch = _q8_iu8_wmma_dispatch(
+            dispatch,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        dispatch = _iq_dense_prefill_dispatch(
+            dispatch,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            slot_path=getattr(getattr(weight, "spec", None), "slot_path", None),
+        )
+        dispatch = _iq_dense_decode_dispatch(
+            dispatch,
+            rows=rows,
+            out_features=out_features,
+            slot_path=getattr(getattr(weight, "spec", None), "slot_path", None),
         )
         dispatch = _q4_pack8_wmma_dispatch(
             dispatch,
@@ -5129,6 +5220,7 @@ def launch_gguf_linear(
         and _use_q8_t16_all_rowtile(
             rows=rows,
             in_features=in_features,
+            out_features=out_features,
             threads=threads,
         )
     ):
@@ -5338,6 +5430,40 @@ def _target_verifier_production_q4_rowtile_scope_enabled(
         return False
 
 
+_Q5_T16_DENSE_DUAL_SILU_ROW_VARIANTS = (
+    (257, "dense_dual_wmma_prefill_bf16_bf16_out"),
+    (129, "dense_dual_wmma_prefill_row128_bf16_bf16_out"),
+    (65, "dense_dual_wmma_prefill_row64_bf16_bf16_out"),
+    (33, "dense_dual_wmma_prefill_row48_bf16_bf16_out"),
+    (2, "dense_dual_wmma_prefill_row32_bf16_bf16_out"),
+)
+# Every variant above is a WMMA *prefill* owner whose block owns a fixed
+# 32/48/64/128/256-row tile, so its cost is the tile, not the caller's rows.
+# The table is built so each entry's tile matches its own minimum rows - except
+# the last one, whose tile is 32 rows while its minimum is 2. At the verifier
+# row band (2-4) that entry runs a 32-row WMMA tile to produce 3 rows, which
+# measured 193 GB/s against 410 GB/s for the t16 rowtile owner the two singles
+# already use for every other Q5_K tensor on the same model and the same step.
+# The pair path therefore declines below a full tile and lets the two singles
+# take their normal verifier-row owner.
+_Q5_T16_DENSE_DUAL_SILU_MIN_TILE_ROWS = 32
+
+
+def _q5_t16_dense_pair_silu_variant(rows: int) -> str | None:
+    """Row-qualified Q5T16 gate/up dual fused-SiLU owner, if any.
+
+    Returns ``None`` below one full row tile, so a verifier-row call keeps the
+    two-singles path (see ``_Q5_T16_DENSE_DUAL_SILU_MIN_TILE_ROWS``).
+    """
+
+    if int(rows) < _Q5_T16_DENSE_DUAL_SILU_MIN_TILE_ROWS:
+        return None
+    for min_rows, variant in _Q5_T16_DENSE_DUAL_SILU_ROW_VARIANTS:
+        if rows >= min_rows:
+            return variant
+    return None
+
+
 def _target_verifier_production_q4_pair_key(
     dispatch_a: GGUFLinearDispatch,
     dispatch_b: GGUFLinearDispatch,
@@ -5517,6 +5643,30 @@ def _linear_residual_variant(variant: str) -> str | None:
     if not variant.endswith(suffix):
         return None
     return f"{variant[: -len(suffix)]}_bf16_residual_bf16_out"
+
+
+def _residual_rows1_decode_dispatch(dispatch, weight, *, out_features):
+    """Replay the production rows-1 raw decode-owner decision (E6c-2).
+
+    ``launch_gguf_linear``'s dispatch chain applies
+    ``_iq_dense_decode_dispatch`` before resolving the kernel, so with the
+    dense-IQ session bound an unpinned raw slot runs the policy's local32
+    owner while a pinned slot or a policy-less quant keeps the strict GEMV.
+    The rows-1 residual composite resolves from the contract key alone and
+    would therefore pick the wrong parent (and change arithmetic) on every
+    redirected layer. Replaying that one dynamic decision here keeps the
+    composite's parent identical to the unfused chain's owner; the helper
+    self-guards to ``raw`` and leaves every other ABI untouched.
+    """
+
+    if dispatch.abi != "raw":
+        return dispatch
+    return _iq_dense_decode_dispatch(
+        dispatch,
+        rows=1,
+        out_features=out_features,
+        slot_path=getattr(getattr(weight, "spec", None), "slot_path", None),
+    )
 
 
 def _resolve_registered_linear_residual(
@@ -5850,6 +6000,12 @@ def launch_gguf_linear_residual(
             weight,
             backend=resolved_backend,
             rows=rows,
+        )
+        # E6c-2: raw slots must composite under the parent production runs
+        # (session-redirected local32 vs pinned/no-policy strict), never the
+        # bare contract key.
+        dispatch = _residual_rows1_decode_dispatch(
+            dispatch, weight, out_features=out_features
         )
         resolved = _resolve_registered_linear_residual(
             dispatch.key,
@@ -6752,7 +6908,9 @@ def launch_gguf_linear_pair(
             in_features,
             out_features,
             out_features_b,
-            threads=_resolve_q8_t16_threads(threads),
+            threads=_resolve_q8_t16_dual_split_threads(
+                resolved_backend, rows, in_features, out_features, out_features_b, threads
+            ),
             stream=stream,
             runtime=runtime,
         )
@@ -7024,7 +7182,8 @@ def launch_gguf_linear_pair_silu(
         dense_pair_quant = (
             dispatch_a.key.quant
             if dispatch_a.key.quant == dispatch_b.key.quant
-            and dispatch_a.key.quant in _Q4_T16_DENSE_QUANTS
+            and dispatch_a.key.quant
+            in _Q4_T16_DENSE_QUANTS | {"gguf_q5_k_t16_v1"}
             else None
         )
         production_q4_pair_key = _target_verifier_production_q4_pair_key(
@@ -7060,6 +7219,111 @@ def launch_gguf_linear_pair_silu(
                 **kwargs,
             )
             return True
+        # Apply the same prefill-owner rewrite the two singles would get
+        # (the raw resolve above does not consult the dense-IQ session or
+        # the prefill policy), then gate the fusion on both operands
+        # actually taking the admitted cooperative owner: the fused pair
+        # is only bit-exact with (and only authorized by) that path.
+        # Without a dense-IQ session, or under a pinned incumbent policy,
+        # the singles keep the strict/one-wave owner and the pair must
+        # fall through to two singles.
+        dispatch_a_prefill = _iq_dense_prefill_dispatch(
+            dispatch_a,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            slot_path=getattr(getattr(weight_a, "spec", None), "slot_path", None),
+        )
+        dispatch_b_prefill = _iq_dense_prefill_dispatch(
+            dispatch_b,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            slot_path=getattr(getattr(weight_b, "spec", None), "slot_path", None),
+        )
+        iq4_xs_dual = (
+            dispatch_a.key.quant == dispatch_b.key.quant == "gguf_iq4_xs"
+            and int(rows) >= 129
+            and in_features % 256 == 0
+            and out_features % 16 == 0
+            and dispatch_a_prefill.key.variant == dispatch_b_prefill.key.variant
+            and dispatch_a_prefill.key.variant
+            == _iq4_xs_admitted_prefill_variant(resolved_backend)
+        )
+        if iq4_xs_dual:
+            # Fused IQ4_XS gate/up dual on the cooperative WMMA structure
+            # (2026-09-10): bit-exact with the two-singles path (both
+            # accumulators are bf16-rounded before the SiLU, exactly like
+            # the unfused pair) and measured 1.06x the two 64-column
+            # cooperative singles at the 512-row shapes on the XTX.
+            iq4_pair_key = KernelKey(
+                resolved_backend,
+                "linear_pair_silu",
+                "gguf_iq4_xs",
+                "dense_iq_wmma_prefill_dual_silu_bf16_bf16_out",
+            )
+            _ensure_linear_kernel_registered(iq4_pair_key)
+            if is_registered(iq4_pair_key):
+                fn = resolve(
+                    backend=iq4_pair_key.backend,
+                    layer=iq4_pair_key.layer,
+                    quant=iq4_pair_key.quant,
+                    variant=iq4_pair_key.variant,
+                )
+                kwargs = {"stream": stream, "runtime": runtime}
+                library = (
+                    None if libraries is None else libraries.get("gguf_iq4_xs")
+                )
+                if library is not None:
+                    kwargs["library"] = library
+                fn(
+                    x_ptr,
+                    weight_a.allocation("raw").tensor.ptr,
+                    weight_b.allocation("raw").tensor.ptr,
+                    out_ptr,
+                    rows,
+                    in_features,
+                    out_features,
+                    **kwargs,
+                )
+                return True
+        q5_pair_variant = (
+            _q5_t16_dense_pair_silu_variant(int(rows))
+            if dense_pair_quant == "gguf_q5_k_t16_v1"
+            else None
+        )
+        if q5_pair_variant is not None:
+            q5_pair_key = KernelKey(
+                resolved_backend,
+                "linear_pair_silu",
+                dense_pair_quant,
+                q5_pair_variant,
+            )
+            _ensure_linear_kernel_registered(q5_pair_key)
+            if is_registered(q5_pair_key):
+                fn = resolve(
+                    backend=q5_pair_key.backend,
+                    layer=q5_pair_key.layer,
+                    quant=q5_pair_key.quant,
+                    variant=q5_pair_key.variant,
+                )
+                kwargs = {"stream": stream, "runtime": runtime}
+                library = (
+                    None if libraries is None else libraries.get(dense_pair_quant)
+                )
+                if library is not None:
+                    kwargs["library"] = library
+                fn(
+                    x_ptr,
+                    weight_a.allocation("tiles").tensor.ptr,
+                    weight_b.allocation("tiles").tensor.ptr,
+                    out_ptr,
+                    rows,
+                    in_features,
+                    out_features,
+                    **kwargs,
+                )
+                return True
         production_q4_chunk_groups = (
             _rowtile8_row_chunks(rows)
             if rows > _ROWTILE_MAX_ROWS
@@ -7452,12 +7716,534 @@ def launch_gguf_linear_pair_silu(
             **kwargs,
         )
         return True
+    # IQ4_XS local32 gate/up decode dual (2026-09-11): fires only when both
+    # sides dispatch to the local32 decode owner at rows == 1 (the same
+    # execution-owner gate as the single route). The fused owner is
+    # bit-exact with single/single/silu_mul (per-column accumulation is
+    # the single's; both accumulators bf16-round before the SiLU exactly
+    # where the elementwise kernel would read them), so it needs no new
+    # accuracy evidence beyond the already-gated local32 route: the gate
+    # compares identical arithmetic, not an approximation class.
+    # Apply the same decode-owner rewrite the singles would get (the raw
+    # resolve above does not consult the dense-IQ session or the decode
+    # policy), then gate the fusion on both operands actually taking the
+    # local32 owner: the fused dual is only authorized on that path.
+    dispatch_a_decode = _iq_dense_decode_dispatch(
+        dispatch_a,
+        rows=rows,
+        out_features=out_features,
+    )
+    dispatch_b_decode = _iq_dense_decode_dispatch(
+        dispatch_b,
+        rows=rows,
+        out_features=out_features,
+    )
+    iq4_xs_local32_decode = KernelKey(
+        resolved_backend,
+        "linear",
+        "gguf_iq4_xs",
+        "local32_gemv_bf16_bf16_out",
+    )
+    iq4_xs_local32_pair = KernelKey(
+        resolved_backend,
+        "linear_pair_silu",
+        "gguf_iq4_xs",
+        "local32_pair_silu_bf16_bf16_out",
+    )
+    _ensure_linear_kernel_registered(iq4_xs_local32_pair)
+    if (
+        rows == 1
+        and dispatch_a_decode.key == iq4_xs_local32_decode
+        and dispatch_b_decode.key == iq4_xs_local32_decode
+        and in_features % 256 == 0
+        and out_features % 8 == 0
+        and is_registered(iq4_xs_local32_pair)
+    ):
+        fn = resolve(
+            backend=iq4_xs_local32_pair.backend,
+            layer=iq4_xs_local32_pair.layer,
+            quant=iq4_xs_local32_pair.quant,
+            variant=iq4_xs_local32_pair.variant,
+        )
+        kwargs = {"stream": stream, "runtime": runtime}
+        library = (
+            None
+            if libraries is None
+            else libraries.get(iq4_xs_local32_pair.quant)
+        )
+        if library is not None:
+            kwargs["library"] = library
+        fn(
+            x_ptr,
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("raw").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
     q4_decode = KernelKey(
         resolved_backend,
         "linear",
         "gguf_q4_k",
         "pack8_bf16_bf16_out",
     )
+    # E6b-1: (IQ4_XS gate, Q4_K up) mixed pair + SiLU (2026-09-25): the
+    # ordered (23, 12) family - 7 gate/up layers in the UD artifact. Side
+    # A takes the session-qualified local32 decode owner (the same
+    # execution-owner gate as the IQ4 same-quant dual); side B takes the
+    # Q4_K dense decode owner - the same side-B contract plain's q6_q4
+    # mixed route uses. The fused owner is bit-exact with
+    # single/single/silu_mul (side A is the local32 dual's split-K chain,
+    # side B the dense Q4T16 single's single-wave chain, both bf16-rounded
+    # exactly where silu_mul_separate_out would read them), so it owes no
+    # new accuracy evidence beyond the already-gated singles. The reversed
+    # order (12, 23) and the other mixed families are separate units.
+    iq4_q4_pair = KernelKey(
+        resolved_backend,
+        "linear_pair_silu",
+        "gguf_iq4_xs+gguf_q4_k_t16_v1",
+        "iq4_q4_pair_silu_bf16_bf16_out",
+    )
+    q4_t16_dense_decode = KernelKey(
+        resolved_backend,
+        "linear",
+        "gguf_q4_k_t16_v1",
+        "dense_single_local32_bf16_bf16_out",
+    )
+    _ensure_linear_kernel_registered(iq4_q4_pair)
+    if (
+        rows == 1
+        and dispatch_a_decode.key == iq4_xs_local32_decode
+        and dispatch_b.key == q4_t16_dense_decode
+        and in_features % 256 == 0
+        and out_features % 8 == 0
+        and is_registered(iq4_q4_pair)
+    ):
+        fn = resolve(
+            backend=iq4_q4_pair.backend,
+            layer=iq4_q4_pair.layer,
+            quant=iq4_q4_pair.quant,
+            variant=iq4_q4_pair.variant,
+        )
+        kwargs = {"stream": stream, "runtime": runtime}
+        library = (
+            None if libraries is None else libraries.get(iq4_q4_pair.quant)
+        )
+        if library is not None:
+            kwargs["library"] = library
+        fn(
+            x_ptr,
+            # Side A (IQ4_XS local32) reads the raw allocation - the local32
+            # column bytes live there, exactly as the IQ4 same-quant dual
+            # passes them; side B (Q4_K T16) reads its repacked tiles.
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
+    # E6b-2 mirror: (Q4_K gate, IQ4_XS up) mixed pair + SiLU (2026-09-25):
+    # the ordered (12, 23) family - 6 gate/up layers. Side A takes the
+    # Q4_K dense decode owner (tiles), side B the session-qualified
+    # local32 owner (raw), and the fused epilogue applies SiLU to the Q4
+    # chain - the geometry-order swap the mirror wrapper handles. Same
+    # exactness contract as E6b-1 with the gate/up roles exchanged; the
+    # other mixed families remain separate units.
+    q4_iq4_pair = KernelKey(
+        resolved_backend,
+        "linear_pair_silu",
+        "gguf_q4_k_t16_v1+gguf_iq4_xs",
+        "q4_iq4_pair_silu_bf16_bf16_out",
+    )
+    _ensure_linear_kernel_registered(q4_iq4_pair)
+    if (
+        rows == 1
+        and dispatch_a.key == q4_t16_dense_decode
+        and dispatch_b_decode.key == iq4_xs_local32_decode
+        and in_features % 256 == 0
+        and out_features % 16 == 0
+        and is_registered(q4_iq4_pair)
+    ):
+        fn = resolve(
+            backend=q4_iq4_pair.backend,
+            layer=q4_iq4_pair.layer,
+            quant=q4_iq4_pair.quant,
+            variant=q4_iq4_pair.variant,
+        )
+        kwargs = {"stream": stream, "runtime": runtime}
+        library = (
+            None if libraries is None else libraries.get(q4_iq4_pair.quant)
+        )
+        if library is not None:
+            kwargs["library"] = library
+        fn(
+            x_ptr,
+            # Gate first: Q4_K tiles; up second: IQ4_XS raw (local32).
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("raw").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
+    # E6b-3: (IQ4_XS gate, Q5_K up) mixed pair + SiLU (2026-09-25): the
+    # ordered (23, 4) family - 3 gate/up layers, the largest remaining
+    # mixed combo after 2a/2b. Side A is the session-qualified local32
+    # decode owner (raw), exactly like E6b-1; side B is the Q5_T16 decode
+    # owner the E4a policy table routes to the exact tile8 chain at this
+    # shape (t16 abi, resolved before this route runs). The fused owner
+    # is bit-exact with single/single/silu_mul - side A unchanged, side B
+    # the tile8 single's 4-group chain emulated in wave 0 - so it owes no
+    # new accuracy evidence beyond the already-gated singles. Other
+    # remaining mixed combos are separate units.
+    iq4_q5_pair = KernelKey(
+        resolved_backend,
+        "linear_pair_silu",
+        "gguf_iq4_xs+gguf_q5_k_t16_v1",
+        "iq4_q5_pair_silu_bf16_bf16_out",
+    )
+    q5_t16_tile8_decode = KernelKey(
+        resolved_backend,
+        "linear",
+        "gguf_q5_k_t16_v1",
+        "t16_gemv_decode_tile8_bf16_bf16_out",
+    )
+    # The raw resolve above does not consult the shape policy the singles
+    # get for their decode sibling; apply the same rewrite here so the
+    # route gates on the owner production actually selects (the E4a tile8
+    # entry for this (K, N)) rather than the direct parent.
+    dispatch_b_c1 = _t16_c1_variant_dispatch(
+        dispatch_b,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+    )
+    _ensure_linear_kernel_registered(iq4_q5_pair)
+    if (
+        rows == 1
+        and dispatch_a_decode.key == iq4_xs_local32_decode
+        and dispatch_b_c1.key == q5_t16_tile8_decode
+        and in_features % 256 == 0
+        and out_features % 16 == 0
+        and is_registered(iq4_q5_pair)
+    ):
+        fn = resolve(
+            backend=iq4_q5_pair.backend,
+            layer=iq4_q5_pair.layer,
+            quant=iq4_q5_pair.quant,
+            variant=iq4_q5_pair.variant,
+        )
+        kwargs = {"stream": stream, "runtime": runtime}
+        library = (
+            None if libraries is None else libraries.get(iq4_q5_pair.quant)
+        )
+        if library is not None:
+            kwargs["library"] = library
+        fn(
+            x_ptr,
+            # Gate first: IQ4_XS raw (local32); up second: Q5_K T16 tiles.
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
+    # E6b-4: (Q4_K gate, Q5_K up) mixed pair + SiLU (2026-09-25): the
+    # ordered (12, 4) family - 3 gate/up layers, tied for largest
+    # remaining (census-share tie-break over Q3_K->IQ4_XS). Neither
+    # side is IQ4: gate side A is the Q4_K T16 decode owner (dense
+    # single, raw-resolved like E6b-2), up side B the Q5_T16 tile8 c1
+    # owner the E4a policy selects at this shape (dispatch_b_c1 from the
+    # E6b-3 block above). Both sides read T16 tiles. Bit-exact with
+    # q4 single + q5 tile8 single + silu_mul; no new accuracy evidence
+    # beyond the already-gated singles. Other remaining mixed combos
+    # are separate units.
+    q4_q5_pair = KernelKey(
+        resolved_backend,
+        "linear_pair_silu",
+        "gguf_q4_k_t16_v1+gguf_q5_k_t16_v1",
+        "q4_q5_pair_silu_bf16_bf16_out",
+    )
+    _ensure_linear_kernel_registered(q4_q5_pair)
+    if (
+        rows == 1
+        and dispatch_a.key == q4_t16_dense_decode
+        and dispatch_b_c1.key == q5_t16_tile8_decode
+        and in_features % 256 == 0
+        and out_features % 16 == 0
+        and is_registered(q4_q5_pair)
+    ):
+        fn = resolve(
+            backend=q4_q5_pair.backend,
+            layer=q4_q5_pair.layer,
+            quant=q4_q5_pair.quant,
+            variant=q4_q5_pair.variant,
+        )
+        kwargs = {"stream": stream, "runtime": runtime}
+        library = (
+            None if libraries is None else libraries.get(q4_q5_pair.quant)
+        )
+        if library is not None:
+            kwargs["library"] = library
+        fn(
+            x_ptr,
+            # Gate first: Q4_K T16 tiles; up second: Q5_K T16 tiles.
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
+    # E6b-6: (Q5_K gate, Q4_K up) mixed pair + SiLU (2026-09-25): the
+    # ordered (4, 12) family - 2 gate/up layers (blocks 24, 26), the
+    # largest remaining mixed combo after 2a-2d (fresh census). Exact
+    # role-swap of the E6b-4 block above: gate side A is the Q5_T16
+    # tile8 c1 owner the E4a policy selects at this shape (dispatch_a_c1
+    # below applies the same single-policy rewrite the gate's own route
+    # gets), up side B the raw-resolved Q4_K dense decode owner. Both
+    # sides read T16 tiles; the wrapper reorders to C geometry order so
+    # side A runs the Q4 chain (up) and GATE_IS_Q4=true takes the gate
+    # from side B's tile8 chain. Bit-exact with q5 tile8 single + q4
+    # single + silu_mul; no new accuracy evidence beyond the gated
+    # singles. Other remaining mixed combos are separate units.
+    dispatch_a_c1 = _t16_c1_variant_dispatch(
+        dispatch_a,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+    )
+    q5_q4_pair = KernelKey(
+        resolved_backend,
+        "linear_pair_silu",
+        "gguf_q5_k_t16_v1+gguf_q4_k_t16_v1",
+        "q5_q4_pair_silu_bf16_bf16_out",
+    )
+    _ensure_linear_kernel_registered(q5_q4_pair)
+    if (
+        rows == 1
+        and dispatch_a_c1.key == q5_t16_tile8_decode
+        and dispatch_b.key == q4_t16_dense_decode
+        and in_features % 256 == 0
+        and out_features % 16 == 0
+        and is_registered(q5_q4_pair)
+    ):
+        fn = resolve(
+            backend=q5_q4_pair.backend,
+            layer=q5_q4_pair.layer,
+            quant=q5_q4_pair.quant,
+            variant=q5_q4_pair.variant,
+        )
+        kwargs = {"stream": stream, "runtime": runtime}
+        library = (
+            None if libraries is None else libraries.get(q5_q4_pair.quant)
+        )
+        if library is not None:
+            kwargs["library"] = library
+        fn(
+            x_ptr,
+            # Gate first: Q5_K T16 tiles; up second: Q4_K T16 tiles.
+            # The wrapper reorders to C geometry order (Q4 chain side A).
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
+    # E6 closeout (2026-09-25): the three remaining one-layer mixed
+    # families from the fresh per-block decode recount - (IQ3_S gate,
+    # IQ4_XS up) at layer 11, (IQ4_NL gate, Q5_K up) at layer 50, and
+    # (Q5_K gate, Q6_K qmicro-planar up) at layer 63. All three gate on
+    # the exact owners production selects (the dense-IQ session rewrite
+    # with the spec's slot_path for the raw-IQ sides - both sides of
+    # layer 11 take the session's local32 decode owner, no ffn_gate pin
+    # - and the E4a tile8 c1 rewrite for Q5) and passed the same
+    # allocations the singles read; all three are bit-exact with
+    # single/single/silu_mul. Screens (4 runs each, 2026-09-25) closed
+    # two negative: (IQ3_S, IQ4_XS) 0.97-0.99x and (Q5_K, Q6 planar)
+    # 0.60-0.61x, both below the pre-registered >=1.00 gate, so their
+    # routes do not fire here (dormant kernels + REFACTOR entries,
+    # E6b-5 pattern). Only (IQ4_NL gate, Q5_K up) shipped at 1.03-1.04x.
+    dispatch_a_slot = _iq_dense_decode_dispatch(
+        dispatch_a,
+        rows=rows,
+        out_features=out_features,
+        slot_path=getattr(getattr(weight_a, "spec", None), "slot_path", None),
+    )
+    dispatch_b_slot = _iq_dense_decode_dispatch(
+        dispatch_b,
+        rows=rows,
+        out_features=out_features,
+        slot_path=getattr(getattr(weight_b, "spec", None), "slot_path", None),
+    )
+    iq4nl_q5_pair = KernelKey(
+        resolved_backend,
+        "linear_pair_silu",
+        "gguf_iq4_nl+gguf_q5_k_t16_v1",
+        "iq4nl_q5_pair_silu_bf16_bf16_out",
+    )
+    iq4_nl_local32_decode = KernelKey(
+        resolved_backend,
+        "linear",
+        "gguf_iq4_nl",
+        "local32_gemv_bf16_bf16_out",
+    )
+    _ensure_linear_kernel_registered(iq4nl_q5_pair)
+    if (
+        rows == 1
+        and dispatch_a_slot.key == iq4_nl_local32_decode
+        and dispatch_b_c1.key == q5_t16_tile8_decode
+        and in_features % 256 == 0
+        and out_features % 16 == 0
+        and is_registered(iq4nl_q5_pair)
+    ):
+        fn = resolve(
+            backend=iq4nl_q5_pair.backend,
+            layer=iq4nl_q5_pair.layer,
+            quant=iq4nl_q5_pair.quant,
+            variant=iq4nl_q5_pair.variant,
+        )
+        kwargs = {"stream": stream, "runtime": runtime}
+        library = (
+            None if libraries is None else libraries.get(iq4nl_q5_pair.quant)
+        )
+        if library is not None:
+            kwargs["library"] = library
+        fn(
+            x_ptr,
+            # Gate first (IQ4_NL raw) already matches C geometry order;
+            # up second: Q5_K T16 tiles (the E4a tile8 c1 owner).
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
+    # E6 same-quant closeout (2026-09-25): (IQ4_NL gate, IQ4_NL up) -
+    # the only remaining same-quant combo without a fused owner (fresh
+    # production probe + census adjudication: Q4_K/Q4_K's 5 layers
+    # already run the pre-existing dense-dual route at 4.84
+    # launches/token, Q5_K/Q5_K closed negative 0.93x in E6a, and
+    # Q3_K/Q3_K's single layer has no A-side strict-Q3 kind - the
+    # strict-emulation class screened 0.60-0.61x in the E6 closeout
+    # unit, so it stays a recorded capability gap with a clearing
+    # command). Both sides take the dense-IQ session's local32 decode
+    # owner (raw layout, slot_path per side) - the same session keys
+    # the E6 closeout IQ4_NL gate routes on - and gate-first order
+    # matches the C geometry: side A = A_KIND=2 (the NL single's
+    # split-K verbatim), side B = B_KIND=4 (the same body mirrored
+    # into side B, staging only). Bit-exact with local32 + local32 +
+    # silu_mul. rows != 1 declines unchanged.
+    iq4nl_nl_pair = KernelKey(
+        resolved_backend,
+        "linear_pair_silu",
+        "gguf_iq4_nl+gguf_iq4_nl",
+        "iq4nl_nl_pair_silu_bf16_bf16_out",
+    )
+    _ensure_linear_kernel_registered(iq4nl_nl_pair)
+    if (
+        rows == 1
+        and dispatch_a_slot.key == iq4_nl_local32_decode
+        and dispatch_b_slot.key == iq4_nl_local32_decode
+        and in_features % 256 == 0
+        and out_features % 16 == 0
+        and is_registered(iq4nl_nl_pair)
+    ):
+        fn = resolve(
+            backend=iq4nl_nl_pair.backend,
+            layer=iq4nl_nl_pair.layer,
+            quant=iq4nl_nl_pair.quant,
+            variant=iq4nl_nl_pair.variant,
+        )
+        kwargs = {"stream": stream, "runtime": runtime}
+        library = (
+            None if libraries is None else libraries.get(iq4nl_nl_pair.quant)
+        )
+        if library is not None:
+            kwargs["library"] = library
+        fn(
+            x_ptr,
+            # Gate first (IQ4_NL raw) already matches C geometry order;
+            # up second: the same IQ4_NL raw layout.
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("raw").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
+    # Q5 T16 gate/up decode dual (2026-09-10): fires only when both sides
+    # dispatch to the Q5 T16 direct-GEMV decode owner at rows == 1; the
+    # registered variant defaults to the bit-exact dense dual SiLU GEMV.
+    # Mixed-quant pairs and every other row count decline unchanged.
+    q5_t16_decode = KernelKey(
+        resolved_backend,
+        "linear",
+        "gguf_q5_k_t16_v1",
+        "t16_gemv_decode_bf16_bf16_out",
+    )
+    q5_t16_pair_variant = (
+        registered_decode_variant or "q5_dense_dual_silu_gemv_decode_bf16_bf16_out"
+    )
+    q5_t16_pair_silu = KernelKey(
+        resolved_backend,
+        "linear_pair_silu",
+        "gguf_q5_k_t16_v1",
+        q5_t16_pair_variant,
+    )
+    _ensure_linear_kernel_registered(q5_t16_pair_silu)
+    if (
+        rows == 1
+        and dispatch_a.key == q5_t16_decode
+        and dispatch_b.key == q5_t16_decode
+        and is_registered(q5_t16_pair_silu)
+    ):
+        fn = resolve(
+            backend=q5_t16_pair_silu.backend,
+            layer=q5_t16_pair_silu.layer,
+            quant=q5_t16_pair_silu.quant,
+            variant=q5_t16_pair_silu.variant,
+        )
+        kwargs = {"stream": stream, "runtime": runtime}
+        library = (
+            None
+            if libraries is None
+            else libraries.get(q5_t16_pair_silu.quant)
+        )
+        if library is not None:
+            kwargs["library"] = library
+        fn(
+            x_ptr,
+            weight_a.allocation("tiles").tensor.ptr,
+            weight_b.allocation("tiles").tensor.ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        return True
     fused_key = KernelKey(
         resolved_backend,
         "linear_pair_silu",
@@ -8226,9 +9012,7 @@ def launch_gguf_linear_pair_concat(
 def _launch_pack8(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
     fn(
         x_ptr,
-        weight.allocation("qweight").tensor.ptr,
-        weight.allocation("scales").tensor.ptr,
-        weight.allocation("mins").tensor.ptr,
+        *linear_weight_pointers("pack8", weight),
         out_ptr,
         rows,
         in_features,
@@ -8311,7 +9095,37 @@ def _launch_dense_bf16_residual(
 def _launch_raw(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
     fn(
         x_ptr,
-        weight.allocation("raw").tensor.ptr,
+        *linear_weight_pointers("raw", weight),
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
+
+
+def _launch_raw_residual(
+    fn,
+    weight,
+    x_ptr,
+    residual_ptr,
+    out_ptr,
+    rows,
+    in_features,
+    out_features,
+    kwargs,
+) -> None:
+    """Raw-ABI composite launch: parent arg list with the residual inserted.
+
+    E6c-2: the raw consumer contract (``_launch_raw``) plus the same
+    ``residual`` slot every rounded-BF16 residual sibling takes before the
+    output pointer.
+    """
+
+    fn(
+        x_ptr,
+        *linear_weight_pointers("raw", weight),
+        residual_ptr,
         out_ptr,
         rows,
         in_features,
@@ -8323,7 +9137,7 @@ def _launch_raw(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwa
 def _launch_dense_bf16(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
     fn(
         x_ptr,
-        weight.allocation("raw").tensor.ptr,
+        *linear_weight_pointers("dense_bf16", weight),
         out_ptr,
         rows,
         in_features,
@@ -8335,7 +9149,7 @@ def _launch_dense_bf16(fn, weight, x_ptr, out_ptr, rows, in_features, out_featur
 def _launch_t16(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
     fn(
         x_ptr,
-        weight.allocation("tiles").tensor.ptr,
+        *linear_weight_pointers("t16", weight),
         out_ptr,
         rows,
         in_features,
@@ -8980,6 +9794,169 @@ def _pack8_gemv_decode_threads(
     return _PACK8_GEMV_WIDE_THREADS
 
 
+_Q8_T16_TILES_QUANT = "gguf_q8_0_t16_v1"
+# Above this many rows of an output wider than the second bound, a call that
+# asked for WMMA prefill keeps it instead of the per-row T16 GEMV.
+_Q8_T16_SMALL_ROWS_WIDE_MAX_ROWS = 4
+_Q8_T16_SMALL_ROWS_WIDE_OUT_FEATURES = 4608
+
+
+def _weight_has_tiles_allocation(weight) -> bool:
+    """Whether the weight ships the Q8T16 tiles side allocation.
+
+    ``has_allocation`` is not part of the ``GGUFDeviceWeight`` protocol, so
+    weight owners that predate side allocations cannot express tiles and
+    answer no -- their raw Q8_0 keeps the pack8 decoder it has today. The
+    answer is deliberately *not* inferred from ``allocation("tiles")``
+    succeeding: a t16-layout weight resolves that name too, and treating a
+    mere name match as capability would route weights whose dispatch already
+    lives elsewhere.
+    """
+
+    checker = getattr(weight, "has_allocation", None)
+    if not callable(checker):
+        return False
+    try:
+        return bool(checker("tiles"))
+    except Exception:
+        return False
+
+
+def _q8_t16_tiles_prefill_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    weight,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Preserve repaired T16 WMMA prefill for dual-resident Q8 projections."""
+    # Raw WMMA stages activations in FP16 and can overflow on finite GeGLU
+    # outputs; the registered T16 consumer repairs that range in FP32.
+    if (
+        rows > 1
+        and dispatch.abi == "wmma_raw"
+        and dispatch.key.quant == "gguf_q8_0"
+        and dispatch.key.variant == "wmma_prefill_bf16_bf16_out"
+        and not in_features % 16
+        and not out_features % 16
+        and _weight_has_tiles_allocation(weight)
+    ):
+        candidate = KernelKey(
+            dispatch.key.backend, dispatch.key.layer, _Q8_T16_TILES_QUANT,
+            f"t16_{dispatch.key.variant}",
+        )
+        _ensure_linear_kernel_registered(candidate)
+        if is_registered(candidate):
+            return GGUFLinearDispatch(candidate, "t16")
+    return dispatch
+
+
+def _q8_t16_tiles_small_rows_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    weight,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Run 2-8 rows of a dual-resident Q8_0 projection on the T16 GEMV.
+
+    A speculative verify block, or the short tail of a chunked prefill, is a
+    handful of rows. The one-row T16 decode kernel launched with one grid row
+    per input row serves it faster than either multi-row owner it replaces,
+    and each row is bit-identical to a one-row step. Gemma 4 26B-A4B dense
+    shapes on W7900, five rows, cold over all layers: the 4096x2816 output
+    projection 40.6 us against 103.4 us on the T16 WMMA prefill and 66.6 us on
+    the exact pack8 prefill; the 2816x4224 gate/up 44.9 against 76.1; the
+    2112x2816 down 23.2 against 53.5. The GEMV's cost grows with each row
+    while the WMMA tile's does not, so a call that asked for WMMA keeps it above
+    four rows of a wide output: the 2816x8192 QKV at five rows runs in 95.2 us
+    on the GEMV against 82.6 on WMMA. Without WMMA (the exact verify) the GEMV
+    is faster than the pack8 prefill at every measured shape. Only raw
+    ``gguf_q8_0`` weights that ship the tiles allocation are routed.
+    """
+
+    if (
+        not 2 <= rows <= _ROWTILE_MAX_ROWS
+        or in_features % 16
+        or out_features % 16
+        or getattr(getattr(weight, "spec", None), "quant_key", None) != "gguf_q8_0"
+        or not _weight_has_tiles_allocation(weight)
+    ):
+        return dispatch
+    from_wmma = (
+        dispatch.abi == "t16" and dispatch.key.quant == _Q8_T16_TILES_QUANT
+        and dispatch.key.variant == "t16_wmma_prefill_bf16_bf16_out"
+    )
+    if not from_wmma and not (
+        dispatch.abi == "raw" and dispatch.key.quant == "gguf_q8_0"
+        and dispatch.key.variant == "prefill_bf16_bf16_out"
+    ):
+        return dispatch
+    if (
+        from_wmma
+        and rows > _Q8_T16_SMALL_ROWS_WIDE_MAX_ROWS
+        and out_features > _Q8_T16_SMALL_ROWS_WIDE_OUT_FEATURES
+    ):
+        return dispatch
+    candidate = KernelKey(
+        dispatch.key.backend, dispatch.key.layer, _Q8_T16_TILES_QUANT,
+        "t16_gemv_decode_bf16_bf16_out",
+    )
+    if not is_registered(candidate):
+        return dispatch
+    return GGUFLinearDispatch(candidate, "t16")
+
+
+def _q8_t16_tiles_decode_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    weight,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Route rows==1 Q8_0 to the t16 sibling when the weight ships tiles.
+
+    A Gemma-4 Q8_0 projection ships a second, byte-neutral ``tiles``
+    allocation beside its raw blocks (``gemma4_gguf_device`` plans it). At
+    ``rows == 1`` the registered Q8T16 GEMV decode sibling beats the legacy
+    pack8 decoder at every production shape in the D9 screen (1.25x-2.09x,
+    0/844800 association-bit divergence vs a 9e-5..1.2e-4 control rate at
+    7.1e-6 bounds), so the presence of the tiles *is* the capability signal:
+    an artifact that ships tiles gets the sibling, one that does not keeps
+    the decoder it always had. Nothing here keys on a model name or path.
+
+    Explicit decisions preserved: a pack8 ``gemv_decode`` opt-in (the P9.B3
+    rejected-candidate route) is left alone -- it is an active user choice,
+    not the default legacy alias this replaces -- and any shape whose
+    ``in``/``out`` is not a tile-16 multiple stays raw, because the t16
+    repack contract would not have admitted it at plan time either.
+    """
+    if (
+        dispatch.abi != "raw"
+        or rows != 1
+        or in_features % 16
+        or out_features % 16
+        or dispatch.key.quant != "gguf_q8_0"
+        or not _weight_has_tiles_allocation(weight)
+        or not dispatch.key.variant.startswith("pack8_gemv")
+        or dispatch.key.variant.startswith("pack8_gemv_decode")
+    ):
+        return dispatch
+    suffix = dispatch.key.variant[len("pack8_gemv_") :]
+    candidate = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        _Q8_T16_TILES_QUANT,
+        f"t16_gemv_decode_{suffix}",
+    )
+    if not is_registered(candidate):
+        return dispatch
+    return GGUFLinearDispatch(candidate, "t16")
+
+
 _Q5_PLANAR_DP4A_TARGET_ENV = "HIPENGINE_C8_Q5_PLANAR_DP4A"
 _Q5_PLANAR_DP4A_VARIANT = "q8_1_dp4a_grouped_bf16_bf16_out"
 
@@ -9162,13 +10139,15 @@ def _exact_q8_prefill_dispatch(
         variant = "pack8_gemv_bf16_bf16_out"
         if rows >= 8:
             # Keep enough column blocks to fill the device at short/narrow
-            # shapes. Once the measured grid is large enough, 16x4 halves
-            # activation reloads while preserving every dot association.
+            # shapes. Once the measured grid is large enough, 4x16 reuses each
+            # block's weight bytes across sixteen rows instead of four, which is
+            # worth 1.27-1.37x at the route's own geometries and is bit-exact
+            # because every shape in this family keeps the same dot association.
             tile16_row_threshold = (
                 512 if out_features <= 512 else 64 if out_features <= 2048 else 32
             )
             if out_features % 16 == 0 and rows >= tile16_row_threshold:
-                variant = "exact_prefill_tile16x4_bf16_bf16_out"
+                variant = "exact_prefill_tile4x16_bf16_bf16_out"
             else:
                 variant = (
                     "exact_prefill_tile8x2_bf16_bf16_out"
@@ -9343,6 +10322,49 @@ def _q6_planar_rowtile_dispatch(
     return GGUFLinearDispatch(key, dispatch.abi)
 
 
+def _t16_native_rowtile_variant(quant: str, *, backend: str) -> str:
+    """Name the native rows 2-8 rowtile owner for a T16 quant.
+
+    ``t16_gemv_rowtile_bf16_bf16_out`` is the four-wave WG128 parent-parity
+    owner. A backend may declare a measured single-wave replacement for a
+    quant through ``GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT``; the four-
+    wave owner stays registered and reachable by clearing the entry's env
+    switch, so the change is a policy selection rather than a rebinding.
+    """
+
+    default = "t16_gemv_rowtile_bf16_bf16_out"
+    table = backend_package_capability(
+        backend,
+        "GGUF_T16_NATIVE_ROWTILE_SINGLE_WAVE_BY_QUANT",
+        {},
+    )
+    entry = table.get(quant) if isinstance(table, Mapping) else None
+    if not isinstance(entry, Mapping):
+        return default
+    variant = entry.get("variant")
+    if not isinstance(variant, str) or not variant:
+        return default
+    enabled_env = entry.get("enabled_env")
+    if isinstance(enabled_env, str) and enabled_env:
+        raw = os.environ.get(enabled_env, "").strip().lower()
+        if raw:
+            if raw in {"1", "true", "yes", "on"}:
+                enabled = True
+            elif raw in {"0", "false", "no", "off"}:
+                enabled = False
+            else:
+                raise ValueError(f"{enabled_env} must be a boolean value")
+        else:
+            enabled = bool(entry.get("enabled_default", False))
+        if not enabled:
+            return default
+    if not is_registered(
+        KernelKey(backend, "linear", quant, variant)
+    ):
+        return default
+    return variant
+
+
 def _native_batch_decode_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -9417,7 +10439,7 @@ def _native_batch_decode_dispatch(
                 dispatch.key.backend,
                 dispatch.key.layer,
                 dispatch.key.quant,
-                "t16_gemv_rowtile_bf16_bf16_out",
+                _t16_native_rowtile_variant(dispatch.key.quant, backend=dispatch.key.backend),
             )
             if is_registered(rewritten_key):
                 return GGUFLinearDispatch(rewritten_key, dispatch.abi)
@@ -9464,6 +10486,152 @@ def _native_batch_decode_dispatch(
         f"pack8_gemv_{variant[len('prefill_') :]}",
     )
     return GGUFLinearDispatch(rewritten_key, dispatch.abi)
+
+
+_IQ_DENSE_MMQ_K_ALIGN = 256
+_IQ_DENSE_MMQ_N_ALIGN = 128
+_IQ_DENSE_MMQ_OUTPUT_VARIANTS = frozenset({"prefill_bf16_bf16_out"})
+
+
+# The integer-MMQ route consumes a caller-owned Q8_1 activation plane; the
+# W4A16 route reads activations straight from the caller's buffer and needs
+# none. So the workspace is required per route, not for the family.
+_IQ_DENSE_INTEGER_MMQ_VARIANT = (
+    "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out"
+)
+
+
+def _iq_dense_decode_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    out_features: int,
+    slot_path: str | None = None,
+) -> GGUFLinearDispatch:
+    """Select the backend-declared dense raw-IQ owner for the caller's rows.
+
+    ``rows == 1`` is the decode owner (``GGUF_IQ_DENSE_DECODE_POLICY``) and
+    arrives under the ``gemv_bf16_bf16_out`` parent; ``rows`` 2-4 is its
+    verifier sibling (``GGUF_IQ_DENSE_VERIFY_POLICY``) and arrives under the
+    ``prefill_bf16_bf16_out`` alias, because above one row the strict per-row
+    GEMV is reached through the prefill name until a prefill policy claims it
+    (that policy starts at 8 rows, so at verifier row counts the alias still
+    means the strict GEMV). Both owners trade the strict GEMV's pinned
+    accumulation contract for lane-grouped contiguous k, a wave32 shuffle
+    tree and a fixed-order cross-wave sum, so both are approximate: both
+    require an opened dense-IQ session (the execution-owner gate) and a
+    backend policy entry, and any route admitting either owes the
+    production-referenced accuracy gate. Without a policy entry, or for an
+    unregistered variant, the strict GEMV keeps the call.
+    """
+
+    if dispatch.abi != "raw":
+        return dispatch
+    if rows == 1:
+        if dispatch.key.variant != "gemv_bf16_bf16_out":
+            return dispatch
+        policy_name = "GGUF_IQ_DENSE_DECODE_POLICY"
+    elif 2 <= rows <= 4:
+        if dispatch.key.variant != "prefill_bf16_bf16_out":
+            return dispatch
+        policy_name = "GGUF_IQ_DENSE_VERIFY_POLICY"
+    else:
+        return dispatch
+    if iq_dense_mmq_workspace() is None:
+        return dispatch
+    # Per-slot quality admission (the decode sibling of the prefill pin):
+    # an owning session may pin specific slots to the strict per-row GEMV
+    # for its artifact when the local32 family's accumulation-order tail
+    # compounds past the gate ceiling (UD-Q4_K_M's IQ3_S ffn_down slots,
+    # 2026-09-11). The pin covers the verifier rows too, so a slot that keeps
+    # the strict decode owner keeps the strict verify owner.
+    if slot_path is not None and slot_path in iq_dense_decode_strict_slots():
+        return dispatch
+    if out_features % 8:  # the local32 grid is N/8 blocks
+        return dispatch
+    policy = backend_package_capability(
+        dispatch.key.backend,
+        policy_name,
+        {},
+    )
+    if not isinstance(policy, Mapping):
+        return dispatch
+    entry = policy.get(dispatch.key.quant)
+    if not isinstance(entry, Mapping):
+        return dispatch
+    key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        str(entry.get("variant", "")),
+    )
+    return GGUFLinearDispatch(key, dispatch.abi) if is_registered(key) else dispatch
+
+
+def _iq_dense_prefill_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    slot_path: str | None = None,
+) -> GGUFLinearDispatch:
+    """Select the backend-declared dense raw-IQ prefill owner.
+
+    Inert unless the backend declares a route for this quant and the shape meets
+    the K256/N128 alignment both routes require. The integer-MMQ variant
+    additionally needs an execution owner to have bound its activation
+    workspace; W4A16 does not. The strict per-row GEMV remains the registered
+    owner everywhere else, so rows=1 decode is untouched.
+    """
+
+    # Both routes are approximate relative to the strict GEMV, so both require
+    # an execution owner to have opened a dense-IQ prefill session. Without
+    # one, an ad-hoc launch_gguf_linear caller keeps the strict owner.
+    if iq_dense_mmq_workspace() is None or dispatch.abi != "raw":
+        return dispatch
+    if dispatch.key.variant not in _IQ_DENSE_MMQ_OUTPUT_VARIANTS:
+        return dispatch
+    # Per-slot quality admission: an owning session may pin specific slots
+    # to the strict per-row GEMV for its artifact (the tokenized category
+    # gate showed the early-layer Q3_K tensor amplifies the route's 1-ULP
+    # accumulation-order class past the max-row ceiling on UD-Q4_K_M).
+    if slot_path is not None and slot_path in iq_dense_mmq_strict_slots():
+        return dispatch
+    if int(in_features) % _IQ_DENSE_MMQ_K_ALIGN or int(out_features) % _IQ_DENSE_MMQ_N_ALIGN:
+        return dispatch
+    policy = backend_package_capability(
+        dispatch.key.backend,
+        "GGUF_IQ_DENSE_PREFILL_POLICY",
+        {},
+    )
+    if not isinstance(policy, Mapping):
+        return dispatch
+    entry = policy.get(dispatch.key.quant)
+    if not isinstance(entry, Mapping):
+        return dispatch
+    try:
+        admitted = int(entry["min_rows"]) <= int(rows) <= int(entry["max_rows"])
+        variant = str(entry["variant"])
+    except (KeyError, TypeError, ValueError):
+        return dispatch
+    # Optional (in_features, out_features) allowlist, matching the shape of the
+    # planar-Q6 integer policy. Absent means every aligned shape is admitted;
+    # present, it restricts the route to the measured shapes.
+    shapes = entry.get("shapes")
+    if shapes is not None and (int(in_features), int(out_features)) not in shapes:
+        return dispatch
+    if not admitted:
+        return dispatch
+    if variant == _IQ_DENSE_INTEGER_MMQ_VARIANT and not iq_dense_mmq_has_workspace():
+        return dispatch
+    key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        variant,
+    )
+    return GGUFLinearDispatch(key, dispatch.abi) if is_registered(key) else dispatch
 
 
 def _q6_integer_mmq_prefill_dispatch(
@@ -9706,17 +10874,7 @@ def _dispatch_can_use_wmma_prefill(
 
 
 def _variant_for_rows(variant: str, *, rows: int) -> str:
-    if rows <= 0:
-        raise ValueError("rows must be positive")
-    if rows == 1:
-        return variant
-    if variant.startswith("pack8_"):
-        return f"pack8_prefill_{variant[len('pack8_') :]}"
-    if variant.startswith("gemv_"):
-        return f"prefill_{variant[len('gemv_') :]}"
-    if variant == "out":
-        return "prefill_out"
-    return variant
+    return linear_variant_for_rows(variant, rows=rows)
 
 
 def _q4_pack8_wmma_dispatch(
@@ -9876,12 +11034,34 @@ def _launch_wmma_raw(fn, weight, x_ptr, out_ptr, rows, in_features, out_features
     )
 
 
+# Generation at which the full repair sweep below last ran. Production registers
+# every family at import, so a key that is missing at dispatch time is normally
+# an unregistered *optional* candidate - the Gemma 4 grouped route probes a
+# variant preference list and falls through when a variant is not built - rather
+# than evidence that the registry is incomplete. Re-running the sweep for each
+# such probe costs ~650 registrations; a 29-layer MoE prefill probed one per
+# layer, which cProfile showed as 0.70 s of host CPU. Wall time did not move:
+# the prefill is GPU-bound, so this is waste removal, not a measured speedup.
+# Memoizing on the registry generation keeps the repair semantics - any
+# mutation, including the test-only clear/restore, re-arms the sweep - while
+# making a missing key cost one dict lookup.
+_REGISTRATION_SWEEP_GENERATION: int = -1
+
+
 def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     # Registry plan tests clear global registrations; keep GGUF runtime dispatch
     # independent of previous test/import order without overwriting tests that
     # deliberately replace one dispatch key with a fixture kernel.
     if is_registered(key):
         return
+    global _REGISTRATION_SWEEP_GENERATION
+    if _REGISTRATION_SWEEP_GENERATION == generation():
+        return
+    # The families below register with replace=True, so the sweep would overwrite
+    # any entry a caller had deliberately replaced - the fixture kernels the
+    # comment above promises to keep. Snapshot first and put those entries back
+    # afterwards; the sweep still adds everything that was missing.
+    preserved = dict(_REGISTRY_KERNELS)
     register_dense_gemv_kernels()
     register_dense_f16_gemm_kernels()
     register_gguf_k_gemv_kernels()
@@ -9889,6 +11069,7 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_gguf_k_mmq_prefill_kernels()
     register_gguf_q4_k_gemv_kernels()
     register_gguf_q4_k_prefill_kernels()
+    register_gguf_q4_k_t16_selected_prefill_kernels()
     register_gguf_q4_k_pack8_gemv_kernels()
     register_gguf_q5_k_f32_rocblas_prefill_kernels()
     register_gguf_q5_k_qmicro_planar_gemv_kernels()
@@ -9904,11 +11085,21 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_gguf_t16_selected_gemv_kernels()
     register_laguna_launch_batch_kernels()
     load_backend_kernel_package(key.backend)
+    for existing_key, existing_kernel in preserved.items():
+        if _REGISTRY_KERNELS.get(existing_key) is not existing_kernel:
+            # register() rather than a raw dict write: it invalidates the
+            # resolver memo, which is otherwise keyed on the kernel identity the
+            # sweep just replaced.
+            register(existing_key, existing_kernel, replace=True)
+    # Registered families bump the generation, so record it after the sweep:
+    # the next missing key in this generation returns at the check above.
+    _REGISTRATION_SWEEP_GENERATION = generation()
 
 
 _LAUNCH_RESIDUAL_ABI = {
     "dense_bf16": _launch_dense_bf16_residual,
     "pack8": _launch_pack8_residual,
+    "raw": _launch_raw_residual,
     "t16": _launch_t16_residual,
 }
 

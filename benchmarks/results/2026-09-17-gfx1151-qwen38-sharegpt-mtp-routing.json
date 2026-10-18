@@ -1,0 +1,821 @@
+{
+  "blocker": {
+    "consequences": [
+      "The driver thread exits, _fail_all cancels every in-flight child, and the service closes.",
+      "Every later request fails with 'hipEngine preparation failed to prepare resident session/KV cache: engine service is closed. Try a lower --max-context-tokens or --kv-storage int8_per...', which blames memory settings for a state bug.",
+      "Requests that survive a concurrent prefill report fallback_reason 'no_provider' with mtp_used false: the prompt activation never primed provider state, so the planner selects autoregressive decoding for the whole output."
+    ],
+    "evidence": {
+      "c4_harness": "4 completed (all mtp_used false, fallback_reason no_provider), 20 failed",
+      "c4_vllm_bench": "8 completed, 16 failed",
+      "c8_vllm_bench": "11 completed, 21 failed, 64 requests hit the closed-service message",
+      "driver_tracebacks": "one per server lifetime, reproduced on three fresh servers (ports 8053, 8054, 8055)"
+    },
+    "exception": "RuntimeError: GGUF MTP2 prompt activation claims are already reserved",
+    "source": "worklog/entries/20260917T162126.651176Z-lhl-sharegpt-mtp-routing-pass-8d7978.md",
+    "summary": "At concurrency >= 4 the engine service dies and every later request fails with HTTP 500. The crash is a single-slot prompt-activation guard in the MTP adapter: an incremental (multi-chunk) prefill opens prompt activation claims that stay open across ticks until the final chunk, so any other request's prompt activation raises.",
+    "traceback_chain": [
+      "engine_service._drive: events = tuple(self._driver.poll(max_ticks=1))",
+      "engine_loop.poll -> tick -> _tick_once -> _run_prefill",
+      "qwen35_gguf.prefill_batch: self._prefill_native_chunk(row, model_chunk, final_chunk=final_chunk)",
+      "qwen35_gguf._prefill_native_chunk (line 8876): streaming_sinks = self._begin_mtp2_prompt_streaming((row,))",
+      "qwen35_gguf._begin_mtp2_prompt_streaming (line 8366): adapter.begin_prompt_streaming(...)",
+      "qwen35_gguf_mtp2.begin_prompt_streaming (line 1372): raise RuntimeError('GGUF MTP2 prompt activation claims are already reserved')"
+    ]
+  },
+  "commands": {
+    "harness_c1": "python3 scripts/sharegpt_mtp_routing_pass.py --server-url http://127.0.0.1:8056 --model qwen3.8-27b-q4km --dataset <dataset> --gguf <gguf> --num-prompts 24 --max-concurrency 1 --output-len 128 --label c1-len128-v2 --out /tmp/sharegpt-pass2/c1-len128-v2.json",
+    "harness_c4": "same with --num-prompts 24 --max-concurrency 4 --label c4-len128",
+    "source_state": "commit 7c97e037f",
+    "vllm_bench": "python -m vllm.entrypoints.cli.main bench serve --backend openai-chat --base-url http://127.0.0.1:<port> --endpoint /v1/chat/completions --model qwen3.8-27b-q4km --tokenizer Qwen/Qwen3.8-27B --dataset-name sharegpt --dataset-path <dataset> --sharegpt-output-len 128 --num-prompts <n> --max-concurrency <c> --percentile-metrics ttft,tpot,itl,e2el --metric-percentiles 50,95,99 --save-result --result-dir /tmp/sharegpt-pass2 --result-filename vllm-bench-c<c>.json",
+    "vllm_version": "0.22.1rc1.dev499+g470229c37.d20260616"
+  },
+  "concurrency_fix": {
+    "after": {
+      "driver_tracebacks": 0,
+      "harness_c4": {
+        "decode_tokens_per_second": 25.04,
+        "failed_requests": 0,
+        "median_first_token_ms": 3693,
+        "mtp_output_share": 0.1274,
+        "mtp_request_share": 0.2083,
+        "mtp_requests": 5,
+        "non_mtp_reasons": {
+          "no_provider": 13,
+          "prompt_activation_in_flight": 6
+        },
+        "reading": [
+          "19 of 24 requests never entered speculation (mtp=0, first_fallback_position=0, reason no_provider or prompt_activation_in_flight) and the rate-cliff detector found nothing to measure, because no request left speculation mid-stream.",
+          "5 requests did run MTP: three (prompts 264, 423, 645 tokens) covered 127 of 128 tokens at depth 3, and two (prompts 805, 841 tokens) emitted 123-125 autoregressive tokens first and then caught up to 2-3 speculative cycles at the end of the request. Those two report first_fallback_position=null, which is correct: the field locates the first non-speculative token after speculative output, and their speculative output came last.",
+          "So the null reading means 'no fallback after speculation' in both directions: MTP covered the tail, either from the prompt root or after a late catch-up."
+        ],
+        "requests": 24,
+        "wall_seconds": 121.9
+      },
+      "long_prompt_probe": "four concurrent ~330-token prompts (the crash reproducer): 4 of 4 completed, 0 driver tracebacks, two rows reported prompt_activation_in_flight",
+      "vllm_bench_c4": {
+        "benchmark_duration_s": 107.53,
+        "completed": 24,
+        "failed": 0,
+        "mean_e2el_ms": 17803.13,
+        "mean_tpot_ms": 140.16,
+        "mean_ttft_ms": 118.71,
+        "median_tpot_ms": 142.52,
+        "median_ttft_ms": 55.42,
+        "output_token_throughput_per_second": 28.39,
+        "p99_ttft_ms": 429.6,
+        "total_token_throughput_per_second": 85.33
+      },
+      "vllm_bench_c8": {
+        "benchmark_duration_s": 147.29,
+        "completed": 32,
+        "failed": 0,
+        "mean_e2el_ms": 34700.94,
+        "mean_tpot_ms": 277.04,
+        "mean_ttft_ms": 552.73,
+        "median_tpot_ms": 299.88,
+        "median_ttft_ms": 125.96,
+        "output_token_throughput_per_second": 27.23,
+        "p99_ttft_ms": 2812.53,
+        "total_token_throughput_per_second": 82.13
+      }
+    },
+    "before": {
+      "driver_tracebacks": "one per server lifetime on three fresh servers",
+      "harness_c4": "4 requests completed, 20 failed",
+      "vllm_bench_c4": {
+        "completed": 8,
+        "failed": 16,
+        "mean_tpot_ms": 182.27,
+        "output_token_throughput_per_second": 8.7
+      },
+      "vllm_bench_c8": {
+        "completed": 11,
+        "failed": 21,
+        "mean_tpot_ms": 203.57,
+        "output_token_throughput_per_second": 8.71
+      }
+    },
+    "remaining_gap": "MTP still does not run for most concurrent requests, for reasons that are recorded rather than fatal: the serving evidence row for this cell matches only realized_group_rows == 1, so a request admitted while it is alone is later batched into a wider decode group and realizes effective_route=default; and a group mixing rows with and without a draft provider fails closed before provider mutation. 5 of 24 c=4 requests did run MTP, so the path is reachable under concurrency but not reliable.",
+    "source": "worklog/entries/20260917T165119.888504Z-lhl-mtp-prompt-activation-concurrency-1ff172.md",
+    "summary": "A prompt longer than max_prefill_chunk_tokens (256) holds the MTP prompt activation claim across ticks, so a second request starting its prefill hit a raise inside the driver thread, which closed the engine service. The guard now refuses only the rows that are not already streaming, records prompt_activation_in_flight on them, and keeps the engine alive."
+  },
+  "dataset": {
+    "loader": "vLLM ShareGPT pruning criteria (prompt 4..1024 tokens, total 4..2048), first turn as prompt, second turn as expected output length",
+    "output_len_override": 128,
+    "path": "/home/lhl/models/datasets/ShareGPT_V3_unfiltered_cleaned_split.json"
+  },
+  "date": "2026-09-17",
+  "hardware": "zbook / gfx1151 (Radeon 890M class RDNA3.5 APU)",
+  "harness_c1": {
+    "answer_requests": 4,
+    "ar_output_tokens": 29,
+    "completion_tokens": 3072,
+    "decode_tokens_per_second": 20.21,
+    "e2e_ms_median": 6069,
+    "failed_requests": 0,
+    "first_answer_ms_median": 5961,
+    "first_thinking_ms_median": 1150,
+    "first_token_ms": {
+      "max": 4314,
+      "median": 1150,
+      "min": 441,
+      "note": "the maximum is the first request on a cold server (4,314 ms); requests 2-24 span 441-2,715 ms, with the largest values on the longest prompts (841, 805, 645 tokens)"
+    },
+    "max_concurrency": 1,
+    "mtp_output_share": 0.9906,
+    "mtp_output_tokens": 3043,
+    "mtp_request_share": 1.0,
+    "mtp_requests": 24,
+    "non_mtp_reasons": {},
+    "num_prompts": 24,
+    "per_request": [
+      {
+        "accepted_draft_tokens": 80,
+        "answer_characters": 0,
+        "ar_output_tokens": 1,
+        "completion_tokens": 128,
+        "draft_cycles": 47,
+        "e2e_ms": 9728,
+        "first_token_ms": 4314,
+        "mtp_output_tokens": 127,
+        "prompt_tokens": 20,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "3": 47
+        },
+        "source_id": "IdI90Mo_0",
+        "thinking_characters": 505
+      },
+      {
+        "accepted_draft_tokens": 83,
+        "answer_characters": 0,
+        "ar_output_tokens": 1,
+        "completion_tokens": 128,
+        "draft_cycles": 44,
+        "e2e_ms": 5648,
+        "first_token_ms": 462,
+        "mtp_output_tokens": 127,
+        "prompt_tokens": 32,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "1": 1,
+          "2": 1,
+          "3": 42
+        },
+        "source_id": "oisxtIk_0",
+        "thinking_characters": 489
+      },
+      {
+        "accepted_draft_tokens": 87,
+        "answer_characters": 59,
+        "ar_output_tokens": 1,
+        "completion_tokens": 128,
+        "draft_cycles": 40,
+        "e2e_ms": 5093,
+        "first_token_ms": 515,
+        "mtp_output_tokens": 127,
+        "prompt_tokens": 34,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "2": 1,
+          "3": 39
+        },
+        "source_id": "5uAx1JP_32",
+        "thinking_characters": 489
+      },
+      {
+        "accepted_draft_tokens": 78,
+        "answer_characters": 0,
+        "ar_output_tokens": 1,
+        "completion_tokens": 128,
+        "draft_cycles": 49,
+        "e2e_ms": 6075,
+        "first_token_ms": 441,
+        "mtp_output_tokens": 127,
+        "prompt_tokens": 17,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "1": 1,
+          "3": 48
+        },
+        "source_id": "OVDuwvd_0",
+        "thinking_characters": 495
+      },
+      {
+        "accepted_draft_tokens": 89,
+        "answer_characters": 61,
+        "ar_output_tokens": 1,
+        "completion_tokens": 128,
+        "draft_cycles": 38,
+        "e2e_ms": 5879,
+        "first_token_ms": 1404,
+        "mtp_output_tokens": 127,
+        "prompt_tokens": 341,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "2": 1,
+          "3": 37
+        },
+        "source_id": "xVYFjJS_69",
+        "thinking_characters": 552
+      },
+      {
+        "accepted_draft_tokens": 79,
+        "answer_characters": 170,
+        "ar_output_tokens": 1,
+        "completion_tokens": 128,
+        "draft_cycles": 48,
+        "e2e_ms": 6056,
+        "first_token_ms": 517,
+        "mtp_output_tokens": 127,
+        "prompt_tokens": 36,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "2": 1,
+          "3": 47
+        },
+        "source_id": "wfMPLY6_0",
+        "thinking_characters": 351
+      },
+      {
+        "accepted_draft_tokens": 86,
+        "answer_characters": 0,
+        "ar_output_tokens": 2,
+        "completion_tokens": 128,
+        "draft_cycles": 40,
+        "e2e_ms": 6589,
+        "first_token_ms": 1722,
+        "mtp_output_tokens": 126,
+        "prompt_tokens": 430,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "3": 40
+        },
+        "source_id": "iMT3Zgo_11",
+        "thinking_characters": 583
+      },
+      {
+        "accepted_draft_tokens": 88,
+        "answer_characters": 0,
+        "ar_output_tokens": 1,
+        "completion_tokens": 128,
+        "draft_cycles": 39,
+        "e2e_ms": 5971,
+        "first_token_ms": 1391,
+        "mtp_output_tokens": 127,
+        "prompt_tokens": 336,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "1": 1,
+          "3": 38
+        },
+        "source_id": "NCXh9wK_31",
+        "thinking_characters": 563
+      },
+      {
+        "accepted_draft_tokens": 91,
+        "answer_characters": 0,
+        "ar_output_tokens": 1,
+        "completion_tokens": 128,
+        "draft_cycles": 36,
+        "e2e_ms": 5207,
+        "first_token_ms": 1045,
+        "mtp_output_tokens": 127,
+        "prompt_tokens": 215,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "2": 1,
+          "3": 35
+        },
+        "source_id": "CZaiQM7_0",
+        "thinking_characters": 585
+      },
+      {
+        "accepted_draft_tokens": 89,
+        "answer_characters": 8,
+        "ar_output_tokens": 1,
+        "completion_tokens": 128,
+        "draft_cycles": 38,
+        "e2e_ms": 6745,
+        "first_token_ms": 2112,
+        "mtp_output_tokens": 127,
+        "prompt_tokens": 610,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "2": 1,
+          "3": 37
+        },
+        "source_id": "M5zaN8c_10",
+        "thinking_characters": 465
+      },
+      {
+        "accepted_draft_tokens": 75,
+        "answer_characters": 0,
+        "ar_output_tokens": 2,
+        "completion_tokens": 128,
+        "draft_cycles": 51,
+        "e2e_ms": 6412,
+        "first_token_ms": 446,
+        "mtp_output_tokens": 126,
+        "prompt_tokens": 23,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "3": 51
+        },
+        "source_id": "9Wx58Dq_0",
+        "thinking_characters": 599
+      },
+      {
+        "accepted_draft_tokens": 88,
+        "answer_characters": 0,
+        "ar_output_tokens": 1,
+        "completion_tokens": 128,
+        "draft_cycles": 39,
+        "e2e_ms": 6258,
+        "first_token_ms": 1625,
+        "mtp_output_tokens": 127,
+        "prompt_tokens": 393,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "3": 39
+        },
+        "source_id": "oFVXmbr_51",
+        "thinking_characters": 539
+      },
+      {
+        "accepted_draft_tokens": 83,
+        "answer_characters": 0,
+        "ar_output_tokens": 1,
+        "completion_tokens": 128,
+        "draft_cycles": 44,
+        "e2e_ms": 6989,
+        "first_token_ms": 1711,
+        "mtp_output_tokens": 127,
+        "prompt_tokens": 423,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "3": 44
+        },
+        "source_id": "yRr7Soa_0",
+        "thinking_characters": 553
+      },
+      {
+        "accepted_draft_tokens": 87,
+        "answer_characters": 0,
+        "ar_output_tokens": 1,
+        "completion_tokens": 128,
+        "draft_cycles": 40,
+        "e2e_ms": 5081,
+        "first_token_ms": 525,
+        "mtp_output_tokens": 127,
+        "prompt_tokens": 16,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "1": 1,
+          "2": 1,
+          "3": 38
+        },
+        "source_id": "FT8sOxu_0",
+        "thinking_characters": 516
+      },
+      {
+        "accepted_draft_tokens": 88,
+        "answer_characters": 0,
+        "ar_output_tokens": 2,
+        "completion_tokens": 128,
+        "draft_cycles": 38,
+        "e2e_ms": 4856,
+        "first_token_ms": 443,
+        "mtp_output_tokens": 126,
+        "prompt_tokens": 19,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "3": 38
+        },
+        "source_id": "M51Gx9W_0",
+        "thinking_characters": 420
+      },
+      {
+        "accepted_draft_tokens": 80,
+        "answer_characters": 0,
+        "ar_output_tokens": 1,
+        "completion_tokens": 128,
+        "draft_cycles": 47,
+        "e2e_ms": 8638,
+        "first_token_ms": 2715,
+        "mtp_output_tokens": 127,
+        "prompt_tokens": 841,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "2": 1,
+          "3": 46
+        },
+        "source_id": "SaUokxc_83",
+        "thinking_characters": 553
+      },
+      {
+        "accepted_draft_tokens": 86,
+        "answer_characters": 0,
+        "ar_output_tokens": 1,
+        "completion_tokens": 128,
+        "draft_cycles": 41,
+        "e2e_ms": 6063,
+        "first_token_ms": 1256,
+        "mtp_output_tokens": 127,
+        "prompt_tokens": 264,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "2": 1,
+          "3": 40
+        },
+        "source_id": "9NhvySu_0",
+        "thinking_characters": 443
+      },
+      {
+        "accepted_draft_tokens": 87,
+        "answer_characters": 0,
+        "ar_output_tokens": 1,
+        "completion_tokens": 128,
+        "draft_cycles": 40,
+        "e2e_ms": 5063,
+        "first_token_ms": 522,
+        "mtp_output_tokens": 127,
+        "prompt_tokens": 15,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "1": 1,
+          "3": 39
+        },
+        "source_id": "efeSpXU_0",
+        "thinking_characters": 567
+      },
+      {
+        "accepted_draft_tokens": 75,
+        "answer_characters": 0,
+        "ar_output_tokens": 2,
+        "completion_tokens": 128,
+        "draft_cycles": 51,
+        "e2e_ms": 6418,
+        "first_token_ms": 443,
+        "mtp_output_tokens": 126,
+        "prompt_tokens": 21,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "3": 51
+        },
+        "source_id": "Y0SgEL6_0",
+        "thinking_characters": 521
+      },
+      {
+        "accepted_draft_tokens": 78,
+        "answer_characters": 0,
+        "ar_output_tokens": 2,
+        "completion_tokens": 128,
+        "draft_cycles": 48,
+        "e2e_ms": 7628,
+        "first_token_ms": 1745,
+        "mtp_output_tokens": 126,
+        "prompt_tokens": 438,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "3": 48
+        },
+        "source_id": "K05FvBo_53",
+        "thinking_characters": 561
+      },
+      {
+        "accepted_draft_tokens": 84,
+        "answer_characters": 0,
+        "ar_output_tokens": 1,
+        "completion_tokens": 128,
+        "draft_cycles": 43,
+        "e2e_ms": 7538,
+        "first_token_ms": 2243,
+        "mtp_output_tokens": 127,
+        "prompt_tokens": 645,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "3": 43
+        },
+        "source_id": "oF0gxsp_0",
+        "thinking_characters": 487
+      },
+      {
+        "accepted_draft_tokens": 85,
+        "answer_characters": 0,
+        "ar_output_tokens": 1,
+        "completion_tokens": 128,
+        "draft_cycles": 42,
+        "e2e_ms": 5447,
+        "first_token_ms": 615,
+        "mtp_output_tokens": 127,
+        "prompt_tokens": 66,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "3": 42
+        },
+        "source_id": "UuPGToV_0",
+        "thinking_characters": 524
+      },
+      {
+        "accepted_draft_tokens": 81,
+        "answer_characters": 0,
+        "ar_output_tokens": 1,
+        "completion_tokens": 128,
+        "draft_cycles": 46,
+        "e2e_ms": 5940,
+        "first_token_ms": 642,
+        "mtp_output_tokens": 127,
+        "prompt_tokens": 83,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "1": 1,
+          "2": 1,
+          "3": 44
+        },
+        "source_id": "mkc4tUd_27",
+        "thinking_characters": 598
+      },
+      {
+        "accepted_draft_tokens": 94,
+        "answer_characters": 0,
+        "ar_output_tokens": 1,
+        "completion_tokens": 128,
+        "draft_cycles": 33,
+        "e2e_ms": 6682,
+        "first_token_ms": 2611,
+        "mtp_output_tokens": 127,
+        "prompt_tokens": 805,
+        "route": "speculative_mtp",
+        "route_decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "selected_depth_histogram": {
+          "2": 1,
+          "3": 32
+        },
+        "source_id": "MiOogka_39",
+        "thinking_characters": 413
+      }
+    ],
+    "prompt_token_buckets": {
+      "0-511": {
+        "completion_tokens": 2560,
+        "mtp_output_tokens": 2535,
+        "mtp_requests": 20,
+        "requests": 20
+      },
+      "512-767": {
+        "completion_tokens": 256,
+        "mtp_output_tokens": 254,
+        "mtp_requests": 2,
+        "requests": 2
+      },
+      "768-1022": {
+        "completion_tokens": 256,
+        "mtp_output_tokens": 254,
+        "mtp_requests": 2,
+        "requests": 2
+      }
+    },
+    "requests": 24,
+    "selected_depth_histogram": {
+      "1": 6,
+      "2": 11,
+      "3": 24
+    },
+    "thinking_requests": 24,
+    "wall_seconds": 152.0
+  },
+  "harness_c1_reading_notes": [
+    "Every request ran MTP (24 of 24) and 3,043 of 3,072 emitted tokens (99.1%) came from speculative cycles. The remaining 29 tokens are the boundary tokens of each request: 19 requests emitted exactly one token outside a cycle and 5 emitted two.",
+    "Each request carries exactly one no_provider fallback event, which is the first output token - the step before a speculative cycle has a provider. No request abandoned speculation mid-stream: first_fallback_position is unset for all 24 and the harness's rate-cliff detector found no request.",
+    "All 24 requests streamed a thinking block before any answer text, and 20 of 24 had emitted no answer text at all when the 128-token budget ran out (median thinking block 522 characters, median answer 0). The 128-token budget therefore measures decode throughput, not answer completeness.",
+    "Selected depth was 3 for nearly every cycle; 14 requests spent one cycle at depth 2 or 1 and 10 spent none. No request was limited by the 1,023-token MTP window: the longest prompt is 841 tokens and its request generated 127 tokens."
+  ],
+  "harness_c4": {
+    "completion_tokens": 512,
+    "decode_tokens_per_second": 10.24,
+    "failed_requests": 20,
+    "max_concurrency": 4,
+    "median_ttft_ms": 19199.5,
+    "mtp_output_share": 0.0,
+    "mtp_output_tokens": 0,
+    "mtp_request_share": 0.0,
+    "mtp_requests": 0,
+    "non_mtp_reasons": {
+      "no_provider": 4
+    },
+    "num_prompts": 24,
+    "prompt_token_buckets": {
+      "0-511": {
+        "completion_tokens": 512,
+        "mtp_output_tokens": 0,
+        "requests": 4
+      }
+    },
+    "requests": 4,
+    "wall_seconds": 50.0
+  },
+  "model": "Qwen3.8-27B-Q4_K_M.gguf (17,106,775,008 B), served as qwen3.8-27b-q4km",
+  "next": "Fix the prompt-activation guard (allow concurrent activations or scope the guard per group) and make a request-level failure unable to kill the service, then re-run this pass at c=4 and c=8.",
+  "post_fix_pass": {
+    "harness": {
+      "c1": {
+        "decode_tokens_per_second": 20.64,
+        "failed_requests": 0,
+        "median_first_token_ms": 847,
+        "mtp_output_share": 0.9906,
+        "mtp_request_share": 1.0,
+        "mtp_requests": 24,
+        "non_mtp_reasons": {},
+        "requests": 24,
+        "wall_seconds": 148.9
+      },
+      "c4": {
+        "decode_tokens_per_second": 25.04,
+        "failed_requests": 0,
+        "median_first_token_ms": 3693,
+        "mtp_output_share": 0.1274,
+        "mtp_request_share": 0.2083,
+        "mtp_requests": 5,
+        "non_mtp_reasons": {
+          "no_provider": 13,
+          "prompt_activation_in_flight": 6
+        },
+        "requests": 24,
+        "wall_seconds": 121.9
+      },
+      "c8": {
+        "decode_tokens_per_second": 24.97,
+        "failed_requests": 0,
+        "median_first_token_ms": 22370,
+        "mtp_output_share": 0.1562,
+        "mtp_request_share": 0.4583,
+        "mtp_requests": 11,
+        "non_mtp_reasons": {
+          "no_provider": 10,
+          "prompt_activation_in_flight": 3
+        },
+        "requests": 24,
+        "wall_seconds": 122.3
+      }
+    },
+    "measurement_caveat": "The c=8 harness arm's per-window decode rates are consumer-limited: its timeline shows 16-token windows at 2,100-2,500 tok/s for two requests, which is chunk-delivery burst after stream backpressure, not decode. The harness's aggregate rate (24.97 tok/s) and the vllm bench rate (27.23 tok/s) agree within 10%, so the aggregate is the trustworthy figure and the rate-cliff detector should not be read from that arm.",
+    "protocol": "identical to the first pass: same dataset slice, seed, 128-output override, default server configuration, 24 prompts (32 at c=8 for the vllm bench arm only)",
+    "routing_change": "At c=1 nothing changed: 24 of 24 requests still run MTP and 99.1% of output tokens still come from speculative cycles. At c=4 the pass became measurable at all (4 of 24 completing before, 24 of 24 after) and 5 requests ran MTP; at c=8, 11 of 24 ran MTP with 15.6% of output tokens from cycles. The remaining non-MTP reasons are no_provider and prompt_activation_in_flight, both recorded per request.",
+    "serving_metric_change": "c=4 output throughput went from 8.70 tok/s with 16 of 24 requests failing to 28.39 tok/s with none failing; c=8 from 8.71 with 21 of 32 failing to 27.23 with none failing. c=1 is unchanged within run-to-run variance (20.68 before, 20.69 after).",
+    "vllm_bench": {
+      "c1": {
+        "benchmark_duration_s": 148.51,
+        "completed": 24,
+        "failed": 0,
+        "mean_e2el_ms": 6187.82,
+        "mean_tpot_ms": 48.7,
+        "mean_ttft_ms": 2.96,
+        "output_token_throughput_per_second": 20.69
+      },
+      "c4": {
+        "benchmark_duration_s": 107.53,
+        "completed": 24,
+        "failed": 0,
+        "mean_e2el_ms": 17803.13,
+        "mean_tpot_ms": 140.16,
+        "mean_ttft_ms": 118.71,
+        "output_token_throughput_per_second": 28.39
+      },
+      "c8": {
+        "benchmark_duration_s": 147.29,
+        "completed": 32,
+        "failed": 0,
+        "mean_e2el_ms": 34700.94,
+        "mean_tpot_ms": 277.04,
+        "mean_ttft_ms": 552.73,
+        "output_token_throughput_per_second": 27.23
+      }
+    }
+  },
+  "purpose": "Answer, on a real workload, how many requests run MTP and why the others do not, with the standard serving metrics from the same load.",
+  "server": "python -m hipengine.server --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --served-model-name qwen3.8-27b-q4km --max-context-tokens 16384 --kv-storage bf16 --metrics prometheus --host 127.0.0.1 --port <port> --log-level info (no speculative flags; automatic MTP resolves to depth 3 from model evidence)",
+  "settings_classification": {
+    "capability_gaps": {
+      "ignore_eos=true": {
+        "observed": "sampling_mode_not_qualified; 5.5 s against 2.9 s",
+        "why": "cycle termination and stop semantics are not wired for a request that must not stop on EOS"
+      },
+      "logit_bias, penalties other than identity": {
+        "observed": "sampling_mode_not_qualified; 5.5 s against 2.9 s",
+        "why": "processors change the selected token, so the verifier would have to apply them at each verified position"
+      },
+      "logprobs / top_logprobs": {
+        "observed": "sampling_mode_not_qualified; 6.7 s against 2.9 s",
+        "why": "token selection is unchanged under greedy, but the verified positions must expose the top-k logits the response contract promises"
+      },
+      "min_tokens": {
+        "observed": "rejected with 'min_tokens requires eos_token_id' (a coherent validation chain, not a silent downgrade)",
+        "why": "min_tokens and eos_token_id are both on the incompatible list, so no route can be admitted"
+      },
+      "multi-token stop sequences": {
+        "observed": "sampling_mode_not_qualified; 5.5 s against 2.9 s",
+        "why": "a cycle can cross a stop sequence inside the cycle, so the commit path would have to trim to the boundary"
+      },
+      "temperature > 0": {
+        "impact": "this is the setting real clients send most often, so it is the largest lost-opportunity item",
+        "observed": "route=default, decision_reason=sampling_mode_not_qualified, requested_route=speculative_mtp; 7.9 s for the probe against 2.9 s with MTP",
+        "why": "the verifier accepts a draft when it matches the target's greedy token, which is not the sampling distribution at temperature > 0; correct speculation needs a rejection test, which is not implemented"
+      }
+    },
+    "documentation_inconsistency": "stop_token_ids is listed in SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS but the API rejects the parameter outright with HTTP 400 unsupported_parameter, so the condition can never be reached through the OpenAI surface.",
+    "method": "One request per setting against a live default-configuration server (gfx1151, Qwen3.8-27B-Q4_K_M, greedy unless stated), same prompt and 64-token budget, reading hipengine.generation_shape.route / .route_decision and hipengine.speculative_mtp.effective_route/.used.",
+    "not_a_blocker": "The response contract already distinguishes selected from realized routing: a refused or downgraded request reports effective_route=default with used=false and a specific fallback_reason, alongside selected_route=speculative_mtp. The recorder did not capture effective_route, which is why the first pass read as a route that lied.",
+    "verified_non_blockers": {
+      "candidate budget": "auto resolved to depth 3 and nearly every cycle selected depth 3",
+      "max_tokens 2..8": "MTP ran with a smaller depth; max_tokens=1 emitted the single token autoregressively with no fallback reason",
+      "prompt length to 841 tokens": "MTP ran; the 1,023-token window did not limit the longest prompt",
+      "repetition_penalty=1.0, presence_penalty=0.0": "MTP ran (identity values)",
+      "seed=42": "MTP ran",
+      "streaming": "MTP ran with stream=true; a stream=false response carries no hipengine telemetry block at all, so the route is invisible to a blocking client even though it runs",
+      "temperature=0.0 explicit": "MTP ran (2.9 s for the probe)",
+      "thinking enabled or disabled": "MTP ran in both cases (24 of 24 ShareGPT requests streamed a thinking block and all ran MTP)",
+      "top_p=0.9, top_p=1e-8, top_k=50": "MTP ran; these cannot change an argmax"
+    }
+  },
+  "source": "worklog/entries/20260917T163015.016458Z-lhl-sharegpt-mtp-routing-pass-281f2d.md",
+  "status": "diagnostic serving measurement; not a retained benchmark row (the c>=4 arms are blocked, and the c=1 rate will be re-measured after the prompt-activation fix)",
+  "superseded_reading": "worklog/entries/20260917T162126.651176Z-lhl-sharegpt-mtp-routing-pass-8d7978.md (c=1 first-token latency and token-level fallback attribution)",
+  "title": "ShareGPT routing through the speculative MTP path (c=1 valid; c>=4 blocked by a prompt-activation crash)",
+  "ttft_note": "Three different first-token figures exist for this load and they measure different things. vLLM bench reports time to the first SSE chunk (3.04 ms at c=1), and the server opens the stream with a role-only chunk, so that is a first-byte figure. The recorder reports time to the first generated token of either channel: 1,150 ms median, 441 ms minimum, 4,314 ms on the first request of a cold server. Its earlier revision counted only delta.content, which for a thinking reply is the first answer token after the whole reasoning block, and that is the 5,961 ms median over the 4 requests of 24 that reached answer text within 128 tokens.",
+  "vllm_bench_c1": {
+    "benchmark_duration_s": 148.54,
+    "completed": 24,
+    "failed": 0,
+    "max_concurrency": 1,
+    "mean_e2el_ms": 6188.85,
+    "mean_tpot_ms": 48.71,
+    "mean_ttft_ms": 3.04,
+    "median_tpot_ms": 47.89,
+    "median_ttft_ms": 2.88,
+    "num_prompts": 24,
+    "output_token_throughput_per_second": 20.68,
+    "p99_tpot_ms": 66.32,
+    "p99_ttft_ms": 4.47,
+    "request_throughput_per_second": 0.1616,
+    "total_token_throughput_per_second": 61.9
+  },
+  "vllm_bench_c4": {
+    "benchmark_duration_s": 58.87,
+    "completed": 8,
+    "failed": 16,
+    "max_concurrency": 4,
+    "mean_e2el_ms": 25672.83,
+    "mean_tpot_ms": 182.27,
+    "mean_ttft_ms": 9.03,
+    "median_tpot_ms": 182.26,
+    "median_ttft_ms": 6.89,
+    "num_prompts": 24,
+    "output_token_throughput_per_second": 8.7,
+    "p99_tpot_ms": 182.32,
+    "p99_ttft_ms": 13.86,
+    "request_throughput_per_second": 0.1359,
+    "total_token_throughput_per_second": 29.32
+  },
+  "vllm_bench_c8": {
+    "benchmark_duration_s": 58.8,
+    "completed": 11,
+    "failed": 21,
+    "max_concurrency": 8,
+    "mean_e2el_ms": 40012.45,
+    "mean_tpot_ms": 203.57,
+    "mean_ttft_ms": 3763.46,
+    "median_tpot_ms": 203.56,
+    "median_ttft_ms": 16.3,
+    "num_prompts": 32,
+    "output_token_throughput_per_second": 8.71,
+    "p99_tpot_ms": 225.52,
+    "p99_ttft_ms": 27675.09,
+    "request_throughput_per_second": 0.1871,
+    "total_token_throughput_per_second": 49.66
+  }
+}

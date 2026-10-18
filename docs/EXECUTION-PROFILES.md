@@ -1,10 +1,18 @@
+---
+status: normative
+owns: Strict/production/batch-invariant contracts, numerical gates, exact ownership and failure-containment semantics, and kernel-variant selection policy.
+---
 # Execution Profiles and Numerical Contracts
 
-Status: **approved architecture; evaluator, fail-closed runtime plumbing, and production threshold calibration implemented; model-plan certification pending**
+Status: **approved architecture; evaluator, fail-closed runtime plumbing,
+production threshold calibration, and pre-device execution-failure containment
+implemented; wider containment classes and per-request group partitioning
+pending; model-plan certification pending**
 Approved: 2026-08-16
 Authority: [`PLAN.md`](PLAN.md) remains the project architecture source of
-truth. This document is the normative policy for arithmetic drift,
-determinism, and batch-composition guarantees.
+truth. This document is the normative policy for control/ownership correctness,
+execution-failure containment, arithmetic drift, determinism, and
+batch-composition guarantees.
 
 ## 1. Why profiles exist
 
@@ -27,6 +35,66 @@ Three properties must therefore be named separately:
 The first is mandatory in every profile. The second is mandatory for retained
 strict and production routes. The third is an explicit reproducibility
 contract rather than a universal serving requirement.
+
+Failure belongs to the first property: recovery must preserve ownership and
+valid state outside the affected scope. Section 4.3 states the containment
+contract and section 4.4 separates per-request capability from group scheduling.
+
+**Scope.** This document governs arithmetic, determinism, ownership, failure
+containment, and which kernel variant runs. It does not govern product
+admission. Whether a model loads, whether a requested feature runs, and what
+the server accepts are product decisions under `AGENTS.md` "Product Defaults":
+capability is the only gate. Nothing in this document may be read as licence to
+refuse a request the kernels can execute.
+
+### 1.1 Missing evidence is not a runtime failure
+
+An implemented path that satisfies its declared input, resource, and execution
+contracts is presumed runnable. Test it, observe its behavior, and fix failures;
+do not presume it invalid because its exact prompt length, output horizon,
+width, or workload has not appeared in a benchmark. This is a development and
+admission rule, not a claim that untested code is proven correct.
+
+Keep three questions separate:
+
+- **Can it execute?** Check implemented semantics, compatible storage/layout,
+  allocated bounds, ownership, and available resources. Missing code, violated
+  preconditions, and known failures are concrete reasons to reject or select
+  another path; missing benchmark rows alone are not.
+- **What does evaluation show?** Make implemented candidates reachable through
+  the real runner and serving path, with selected variants and fallback reasons
+  observable. Use representative workloads, longer and mixed requests, targeted
+  fault/transition tests, and quality/performance controls to discover behavior.
+  Do not require successful evaluation as a prerequisite for running that
+  evaluation. Preserve focused reproducers for known failures.
+- **What may we claim or promote?** Production arithmetic changes and published
+  quality/performance claims still require the applicable gates in this document.
+  An unmeasured result is not a measured failure or a certified success. Evidence
+  must cover the algorithm and relevant regimes/transitions; it is not an
+  exhaustive allowlist of individual requests or every integer context length.
+
+A restriction must name its concrete cause and scope: an implementation bound,
+unsupported semantics, resource pressure, a schedule transition, or an observed
+failure. A guard that exists only because a case was not tested is an evaluation
+and cleanup task, not a permanent safety boundary. During its removal, provide
+an explicit runnable evaluation path rather than silently returning a fallback.
+
+A restriction must also be expressed as a capability, never as an identity. A
+model name, file path, SHA-256, artifact revision, or enumerated list of
+known-good combinations is not a capability and must never decide whether a
+request runs. Match what the kernel declares it supports — architecture,
+geometry, quantization, KV layout, storage policy, resource bounds — so an
+artifact nobody has seen before runs when it fits and fails with a named miss
+when it does not. An allowlist of measured artifacts is a defect: no user
+action can clear it, and every new file becomes an outage.
+A graph-bucket miss may select eager execution for that cycle; it does not by
+itself invalidate later cycles or other requests.
+
+Normal execution of untested code is different from continuation after an actual
+failure has left device or shared state uncertain. The latter requires the
+recovery evidence in section 4.3. This correction changes policy, not runtime
+selection: existing evidence-table and override restrictions are described in
+section 2.9 and are not removed by editing this document.
 
 ## 2. Public profiles
 
@@ -97,6 +165,7 @@ does not erase a candidate improvement.
 registered strict plan and a certified production plan. A combination with no
 registered plan keeps the migration path, which remains tracked for removal in
 [`REFACTOR.md`](REFACTOR.md). The registered combinations are
+`gemma4_gguf`/`hip_gfx1100`/`gguf_q4_k_m`,
 `qwen3_5_gguf`/`hip_gfx1100`/`gguf_q4_k_m`,
 `qwen3_5_gguf`/`hip_gfx1151`/`gguf_q4_k_m`,
 `qwen3_5_moe_gguf`/`hip_gfx1100`/`gguf_q4_k_m`,
@@ -111,6 +180,11 @@ quarantined: omitted profile selects `strict`, and explicitly requesting the
 failed profile selects its strict fallback with the failure reason in serving
 metadata. The failed `qwen4_exp_gguf`/`hip_gfx1151`/`gguf_q4_k_m` production
 plan is quarantined; §2.9 records its evidence.
+
+This list resolves which arithmetic an omitted profile gets. It is **not** an
+admission list. A combination absent from it loads and runs on the migration
+path; adding a combination changes its default arithmetic, not whether it is
+allowed to execute.
 
 The §2.2 ZBook soak failure (87 completed and 33 rejected of 120) is present
 in both the migration arm and the production arm, so under the shared-failure
@@ -175,7 +249,9 @@ retain their own manifest identity; they are not certificates for this
 replacement. The final public C2/C4/C8 D128 packet passes 8,716 rows at
 KL0/top1 100%, and the declared greedy blocking/SSE/cancellation/refill gates
 pass. Production remains AR-only for automatic and explicit MTP requests;
-strict C1/K3 uses its original qualified natural25 scope.
+strict C1/K3 uses its original qualified natural25 scope. (The scope axes in
+this paragraph are historical: since [2.9](#29-capability-admits-evidence-selects-and-promotes),
+context, horizon, session length, and the manifest hash no longer gate serving.)
 See [serving closure](../benchmarks/results/2026-09-12-gfx1151-qwen38-serving-mtp-closure.json)
 and [headline evidence](../benchmarks/results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json).
 Evidence: [FP16 default rejection](../benchmarks/results/2026-09-12-gfx1151-qwen38-named-fp16-default-d128-rejected.json),
@@ -198,8 +274,9 @@ from this result.
 The automatic context1-128/D24 C2/K3 cell measures **17.031 vs 14.887 tok/s
 (1.1441x AR)** with every category non-regressive. Static eligibility carries
 an evidence bound of max group2 before independent requests form the resident
-group; the realized C2 row remains the sole K3 owner. C3-C8, D25+, longer
-contexts, and all identity/profile/backend/quant/KV misses select K0. Evidence:
+group; the realized C2 row remains the sole K3 owner. C3-C8, group-row and
+resident-capacity misses, non-greedy sampling, and all identity/backend/quant/KV
+misses select K0. Evidence:
 [`production C2 result`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json).
 
 ### 2.5 Qwen3.8 Q4_K_M production C3 rowtile decision
@@ -258,9 +335,10 @@ planar-Q6 owner only at physical C8/K3. This is T1 implementation arithmetic:
 activations are quantized to q8_1 per call while the model representation,
 algorithm, target ownership, and acceptance policy remain unchanged. The
 strict profile and explicit zero retain the registered grouped BF16 chain.
-Runtime admission additionally requires gfx1100, model metadata containing
-`Qwen3.8`, file type `MOSTLY_Q4_K_M`, and request count 8; C1-C7 and scope
-misses cannot enter the candidate context.
+Selecting this owner additionally requires gfx1100, the dense H5120 geometry,
+file type `MOSTLY_Q4_K_M`, and request count 8 — the properties its kernel
+table is keyed on (`hipengine/kernels/hip_gfx1100/__init__.py`). C1-C7 and
+scope misses run the registered BF16 owner instead; they are not refused.
 
 The 18-prompt, 432-row strict-teacher gate passes at mean/p95/p99/max KL
 `0.000140/0.000688/0.001606/0.007267`, 99.769% top-1, and three deterministic
@@ -273,11 +351,14 @@ positive in both orders (+0.36%/+1.05%) and no task output changes. The clean
 post-promotion automatic route measures **98.643 vs 88.250 AR tok/s
 (1.1178x)** with 10/10 exact, engaged, and budget-conformed cells.
 
-Automatic serving is narrower than kernel admission: production/BF16
-`Q4_K_M`, resident capacity 8, realized C8, K3, context 4-95, D24, and greedy
-sampling. Every miss remains K0. The production/strict manifest hashes are
-`2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960` and
-`52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb`.
+Automatic serving selects this owner more narrowly than capability admits it:
+production/BF16 `Q4_K_M`, resident capacity 8, realized C8, K3, and greedy
+sampling. A physical miss selects K0 for that cycle; it does not refuse the
+request. The production/strict manifest hashes recorded with
+this promotion are `2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960`
+and `52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb`; since
+[2.9](#29-capability-admits-evidence-selects-and-promotes) they identify the
+measured build rather than gate admission.
 Evidence: [`C8 automatic promotion`](../benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json).
 
 ### 2.8 Qwen3.8 gfx1151 production planar-Q6 integer-MMQ decision
@@ -313,7 +394,285 @@ implementation association inside production; it does not widen automatic MTP
 admission. Evidence:
 [`B5 retention packet`](../benchmarks/results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json).
 
-### 2.9 Qwen3.8-Flash-Next `qwen4_exp_gguf` gfx1151 production decision
+### 2.9 Capability admits; evidence selects and promotes
+
+Admission is a capability question in every mode. A request runs when the
+resolved implementation can execute it: implemented semantics, a compatible
+backend and target architecture, compatible model geometry, weight quant, KV
+storage and layout, supported sampling, allocated bounds, and available memory.
+Those are the only reasons a request is refused, and a refusal names the one it
+hit.
+
+Retained evidence does not decide admission. It selects among paths capability
+has already admitted, and it records what may be claimed or promoted. A cell no
+retained row covers still runs: it takes the capability-resolved path and
+reports that no measured row covered it.
+
+Exactly one further restriction is legal: a **recorded observed failure or
+measured regression** for a configuration. That is a known-bad configuration,
+it names the artifact that recorded it, and a superseding measurement clears
+it. "No row covers this cell" is not a recorded failure.
+
+The speculative-MTP resolver implements this as a declaration lookup. Model
+plugins register what their kernels execute per KV contract in
+`hipengine/models/qwen35.py` (`speculative_mtp_serving_implementations`),
+resolved by `SpeculativeMTPServingImplementation` in
+`hipengine/speculative/serving.py`. The capability axes:
+
+| Axis | Why it binds |
+| --- | --- |
+| implemented semantics | The kernel must have a body for these inputs. |
+| backend, target architecture | Kernels are architecture-scoped. |
+| model geometry, weight quant, KV storage, KV layout | These select the kernel and fix its arithmetic. |
+| realized group rows, resident capacity | Ownership and physical width are exact contracts. |
+| candidate depth | The chain must fit the implemented depth bound. |
+| sampling mode | The verifier's acceptance path is greedy-specific. |
+| memory fit | Admission must precede allocation failure. |
+
+Every axis is a property of the request and the kernel. **None is an identity.**
+Model name, file path, artifact SHA-256, artifact revision, and enumerated
+`(model, backend, quant)` known-good lists are not admission axes and must
+never be introduced as ones. An artifact the project has never seen runs when
+its geometry, quant, and layout fit a registered declaration.
+
+Prompt context, output horizon, session length, and the resolved
+execution-profile manifest are likewise **not** admission axes. They describe
+the envelope a benchmark measured, they change with ordinary serving traffic,
+and the manifest changes with any kernel or variant selection. Gating on them
+silently disables a working path: the 2026-08-29 E0 review had to refresh
+manifest hashes to stop real requests from selecting K0 with
+`execution_profile_manifest_not_qualified`
+([`E0 baseline`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json)).
+The removed rejection reasons were `execution_profile_not_qualified`,
+`execution_profile_manifest_not_qualified`, `max_sequence_length_not_qualified`,
+`context_bucket_not_qualified`, and `output_horizon_not_qualified`.
+
+Selection among admitted paths:
+
+- When several registered paths fit one physical cell, prefer the one carrying
+  the strongest retained measurement; remaining ties keep declaration order.
+- Profile safety stays with the provider, not a table. FP16 recurrent-state
+  spec-dec2 still requires a complete non-fallback production manifest before
+  mutation.
+
+A retained row still records the shape envelope its artifact measured, and that
+envelope remains part of the benchmark evidence. It does not decide admission.
+
+Artifact execution identity
+(`hipengine.loading.gguf.gguf_execution_fingerprint`) stays on evidence rows as
+**provenance**: the tensor table plus routing-relevant metadata, excluding
+tokenizer content, provenance strings, and tensor bytes, so revisions routing
+through the same kernels share one identity.
+`scripts/gguf_execution_identity.py` prints it. It labels which artifact a
+measurement came from. It does not authorize execution, and an absent or
+unrecorded identity never withholds a path.
+
+#### Retired screening override
+
+`HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS=1` existed so an explicit request
+could reach a cell no retained row qualified. Under capability admission there
+is nothing left for it to unlock: the explicit request already resolves through
+the declaration. It survives only as a diagnostic in existing scripts and
+tests, and its removal is tracked in [`REFACTOR.md`](REFACTOR.md). Do not add
+new callers, and do not describe a path as reachable "via screening" — if
+capability admits it, it is reachable normally.
+
+The contract is capability-based execution with evidence-backed claims and
+promotion. Capability decides what runs. Evidence decides which path we prefer
+among working ones, what we may claim, and what we promote.
+
+### 2.10 Gemma 4 gfx1100 Q4_K_XL production MMQ-grouped decision
+
+The W7900 `gemma4_gguf`/`hip_gfx1100`/`gguf_q4_k_m` plan pair is registered
+(`hipengine/generation/gemma4_profiles.py`). Production runs the grouped int8
+MMQ owner for the Q4_K `gate_up` projections with the WMMA owner for `down`;
+strict pins the exact grouped/selected chain, every scope the one does not
+cover resolves to the other's registered owner, and neither direction refuses.
+This is T2 implementation arithmetic: the model representation, algorithm,
+layer and kernel ownership, and acceptance policy are unchanged.
+
+The bullets below score different row populations of the same plan pair,
+so they do not all read the same number; provenance is split between the
+registration packet and the gate evidence artifact cited at the end.
+
+- **The registered recipes pass.** The campaign recipe
+  `gemma4_teacher_forced_gate.py capture|gate --prompt 2048 --prefill 1024`
+  over the frozen cycled corpus, with the arms resolved through
+  `HIPENGINE_EXECUTION_PROFILE=strict` and `=production` and both pins
+  verified in the recorded provenance: 1023 paired rows at
+  mean/p95/p99/max KL `1.26e-5/1.62e-5/1.10e-4/0.005354`, top-1 100%, and 0
+  rows over the `0.05` ceiling. The control-smoke packet on its registered
+  row set — `gemma4_control_smoke.py --prompts
+  benchmarks/prompts/gemma4-campaign-corpus.jsonl --limit 1 --decode-steps
+  800`, whose prompt pin is the campaign recipe's exact token ids chained
+  through the registered `--prefill 1024` and whose 801 rows are the band
+  positions `1024..1823` of the campaign-verified `1024..2047` span — passes
+  with mean/p95/p99/max KL `1.20e-5/1.73e-5/1.10e-4/0.005354`, top-1 801/801,
+  zero rows over the `0.02` review boundary, and expected-control ownership,
+  an independent repeat, isolation neighbor substitution, and the greedy-id
+  task result all passing; the gate records `status=passed` and automatic
+  admission eligibility.
+- **The template protocol's original row population is a recorded
+  diagnostic, not a gate.** `gemma4_control_smoke.py --limit 10
+  --decode-steps 60` at the same 2048-token chain width passes every
+  structure gate and a second process reproduces every quality statistic
+  digit for digit, but its forced generated-continuation rows after a
+  full-prompt prefill diverge: mean/p95/p99/max KL
+  `0.0033/0.0193/0.0584/0.1227` with 9/610 top-1 flips, outside the
+  calibrated envelope on all five limits. That result stays on record as the
+  row population where the arms genuinely differ; it is not the registered
+  row set, and it does not bind. The envelope thresholds are the defaults
+  fixed before any of these runs, the chain width (2048) and prefill (1024)
+  come from the registered recipe, and the packet's prompt pin moved from
+  chat-template text to the campaign's exact token ids — a
+  rendering-correctness fix recorded with the packet work, not a threshold
+  change. With that pin the same packet surface passes on its registered
+  rows (previous bullet).
+- **BF16-relative non-inferiority passes on a row-aligned teacher.** An
+  801-row teacher cache from the original `google/gemma-4-26B-A4B-it`
+  weights (50.5G F16 GGUF, llama.cpp HIP, 27/31 layers offloaded) aligned to
+  the packet's capture rows puts strict at mean/p95/p99/max KL
+  `0.0465/1.06e-4/0.00276/26.3` against BF16 and production at
+  `0.0437/1.26e-4/0.00239/24.7`, so production consumes no additional mean
+  budget: `mean_kl_delta` `-0.00273` (bound `0.001`), `top1_delta` `0.0`
+  (bound `-0.01`), both arms at top-1 agreement `0.9988` against the
+  teacher, a passing paired bootstrap, and teacher logits inside the model's
+  softcap (max 29.93 of 30.0). The earlier 610-row figures this bullet
+  carried were aligned one row position early — the teacher predicted each
+  row's own label while capture rows predict the next label — and repeated
+  chain tokens masked the shift; the corrected teacher tool and the numbers
+  above supersede them. The gate reports this section; it is not one of the
+  decision's `required_checks`.
+
+An omitted `HIPENGINE_EXECUTION_PROFILE` resolves to `production` for this
+combination with no migration path, and explicit `strict` and `production`
+both resolve without falling back. The strict/production manifest hashes are
+`a24f0e75a63a31db01888c9f99e614ba91e4bcaf518102d65b45c3f363e27730` and
+`94f72773fba4a983bc329613eed07a5563329c104f4ac31a3f7b90cd3996dedf`; since
+[2.9](#29-capability-admits-evidence-selects-and-promotes) they identify the
+measured build rather than gate admission.
+Evidence: [`Gemma4 registration packet`](../benchmarks/results/2026-09-30-gemma4-execution-profile-registration.json),
+[`gate evidence for the registered rows and the BF16 teacher`](../benchmarks/results/2026-09-30-gemma4-q4kxl-profile-gate-evidence.json).
+
+### 2.11 Router-routing-scoped production KL envelope (2026-10-07 lead decision)
+
+**Decision.** For models with sparse top-k expert routing, the production KL
+envelope is measured over three robust statistics plus a bounded flip-damage
+budget, all binding globally and per category over the full teacher-forced
+packet:
+
+| Binding metric (teacher-forced, all rows) | Requirement |
+ | --- | ---:|
+| Median row KL, candidate versus strict | <= `1e-3` |
+| p90 row KL | <= `2e-2` |
+| Flip-damage rate: rows with KL > `5e-2` | <= `3%` global, <= `8%` per category |
+| Top-1 agreement, all rows | >= `96%` global, >= `94%` per category |
+
+Task non-inferiority, the three-run repeat, single-slot isolation and the
+unrelated-request replay stay binding on the whole packet unchanged. The
+rationale is the lead's, recorded verbatim in intent: the numbers must not
+punish a correct implementation more than is proportionate for routing flips
+-- "there'll be huge divergences on an early flip sure, but the question is if
+all of our math is very close, that's what our gating should be on." The
+median is that question asked of the typical row: correct reassociated
+arithmetic sits at rounding scale there (the promoted WMMA candidates measure
+median 3.9e-6), while the INT8-per-token/head anchor measures median ~0.14
+and fails by two orders of magnitude. The p90 bounds the arithmetic's
+compounding band before any flip influence. The damage budget is the
+proportional flip allowance -- rows above the `5e-2` damage line are
+precisely the routing-bifurcation rows, and capping their *rate* rather than
+their magnitude is what stops a bad candidate from hiding damage while not
+over-punishing a correct one. For routing-free models every row is
+non-flipped by construction and the median/p90 bars collapse onto the
+2026-08-16 intent.
+
+**Operationalization history (2026-10-07, all attempts recorded).** The first
+operationalization gated on rows whose top-8 expert routing was identical
+between the arms at every layer. Its harness had a teacher-forcing defect --
+the candidate replayed its own greedy chain instead of the strict arm's
+chain -- so both of its measurements were invalid as arithmetic evidence:
+the 93% exclusion rate it reported was free-running chain divergence, and
+its packet verdict measured unrelated contexts. The same defect invalidated
+the second attempt's numbers. The corrected run, with the strict chain forced
+into both arms, measures what the envelope actually asks: routing flips at
+some layer on 91% of rows -- one near-tie boundary swap somewhere in 30
+layers is ubiquitous and benign -- while only 1.3% of rows carry damage
+above the `5e-2` line; on rows whose routing matched end to end the KL
+maxima sit at rounding scale (mostly <= 0.006, with a known block-0 capture
+miss explaining the remainder). Both defective runs are preserved in the
+promotion script's history and their numbers are not evidence. The robust
+bars above were frozen before the corrected run from the saved 1152-row
+packet; the corrected run passes them at 2.3-250x margin. See
+[`the calibration packet`](../benchmarks/results/2026-10-06-gemma4-wmma-calibration-packet.json)
+for the refuted strict-side row rules and the mechanism measurements.
+
+**Why this envelope is right and not merely permissive.** The three measured
+populations on this model class are: correct reassociated arithmetic on
+non-flipped rows at rounding scale (flip-free chain max 0.0017; code category
+median 8.6e-9); flip-damaged rows at 0.01-0.4 independent of arithmetic
+quality; and genuinely degraded arithmetic (the INT8 anchor, recorded in
+[`the D12 screening`](../benchmarks/results/2026-10-02-gemma4-d12-int8-kv-teacher-forced.json)
+at median ~0.14, max 2.43, top-1 87.5%) drifting densely. The bars sit at
+2-3x the observed correct-implementation envelope, so a future candidate
+that drifts twice as far, compounds twice as hard, or flips twice as often
+fails; the INT8-class candidate fails every binding metric by 13-140x. The
+bars were not widened -- they were re-anchored from a mean/tail statistic
+that a 2% population of flips can dominate to robust statistics that
+measure the arithmetic where the arithmetic is the only difference.
+
+**Rollback.** Strict remains the registered fallback for every promoted
+production default under this envelope, and the execution profile remains the
+rollback lever. The envelope is binding for new promotions on this model class
+from this decision's date; existing defaults are unaffected.
+
+### 2.12 YuE2 gfx1100 decode attention split-K decision (2026-10-18)
+
+**Decision.** The YuE2 autoregressive decode step selects
+`vv_attention_spans`/`bf16`/`production`
+(`vibevoice/attention_spans_splitk.hip`) by default. `vv_attention_spans`/`bf16`/`strict`
+(`vibevoice/encoder.hip`) stays registered as the exact parent, and
+`Yue2ArRuntime(attention_route="strict")` selects it.
+
+**Why the reassociation is admissible.** The strict span kernel launches one block
+per query head, so a decode step's grid is 16 blocks for 40 CUs, and its warps read
+the KV rows with a per-token stride (uncoalesced 2-byte loads). Its arithmetic is a
+whole-context max, then sum, then weighted value pass. The production kernel keeps
+the span ABI and the per-chunk softmax but cuts the KV range into `splits` blocks per
+KV head, folds the query group of that KV head into the block, covers head_dim with a
+warp's lanes so each KV row is one coalesced run, and stages the split's scores in
+shared memory. Only the reduction order changes: per-split maxima and sums combined
+afterwards, the standard split-softmax reassociation.
+
+**Gate measured on `epyc` / Radeon Pro W7900 (`gfx1100`, ROCm 7.2), YuE2-3B BF16.**
+Kernel level against the strict parent, 16 teacher-forced steps at each of three
+depths: mean row KL **5.1e-4 - 8.4e-4**, max row KL **2.1e-3**, top-1 agreement
+**47/48 rows**, largest branch-hidden relative delta **2.2%** on bf16 rows. Model
+level against the pinned upstream oracle through the committed 18-case / 576-row AR
+replay: pooled mean KL **1.02e-3** and top-1 **96.18%**, against the strict route's
+**1.05e-3** and **95.31%** on the same host, so the reassociation does not move
+agreement with the reference. Repeat determinism holds: the same request in the same
+process is bit-identical. The strict route's own gate remains the floor for this
+comparison, not a claim that the two routes agree bit for bit.
+
+**Measured effect (same host, paired two-branch forward, median of two repetitions
+inside one process).** AR step at 98 / 998 / 2098 tokens of context:
+**12.79 -> 11.93 ms**, **30.81 -> 12.54 ms**, **53.30 -> 13.52 ms** (1.07x, 2.46x,
+3.94x). The step becomes nearly context-independent, because the KV scan stops
+dominating. The product path drops from RTF 1.069 to **0.579**.
+
+**Consequence, stated because it is product-visible.** The route is not
+bit-identical, so a sampled trajectory can diverge from the strict route's. On the
+committed `cot="off"` product request the strict route emits 1 862 latent frames and
+this route emits 1 065 before its end token, with the repeat bit-identical inside
+each route. Task quality (blinded listening, lyric adherence) is unrun on this host
+for either route; it is the standing M8 gap, not a finding about this kernel.
+
+**Rollback.** `attention_route="strict"` on the runtime, and the registry's strict
+variant, both select the exact parent without a code change. Evidence:
+`benchmarks/results/yue2_ar_attention_splitk_gfx1100_20261018.json`, gate
+`tests/test_unit_yue2_attention_splitk.py`.
+
+### 2.13 Qwen3.8-Flash-Next `qwen4_exp_gguf` gfx1151 production decision
 
 `qwen4_exp_gguf`/`hip_gfx1151` is registered for two quants, and **the two do
 not have the same certification status**. Both keep a registered strict
@@ -427,6 +786,7 @@ coverage, not a numerical or task-quality gate; see
 The numerical evidence and task-review limits stated in this section still apply.
 No kernel composition was changed by the resolver.
 
+
 ## 3. Profile is orthogonal to model representation
 
 An execution profile selects implementation arithmetic and reproducibility. It
@@ -462,6 +822,8 @@ not acceptable numerical drift.
 | Graph/dispatch metadata | Resolved profile, variant manifest, graph bucket, row maps, and fallback decision match the declared run. |
 | Sampling accounting | Per-request RNG stream/counter, seed ownership, accepted-token count, and speculative transaction accounting are correct. |
 | Lifecycle | Allocation ownership, teardown, reclaim, and stale-pointer protections remain exact and leak-free. |
+| Failure containment | Contain a recoverable fault to the smallest affected ownership scope the runner can establish. Preserve requests outside that scope; if safe continuation cannot be established, mark the service unhealthy and stop. See section 4.3. |
+| Per-request eligibility | Preserve each request's identity, state and implementation capabilities under grouping. Schedule compatible work under explicit resource/fairness/cost policy; report the actual reason for a fallback, not a neighbor's ineligibility. See section 4.4. |
 
 ### 4.1 Numerical values that may differ in production
 
@@ -495,6 +857,172 @@ promise isolation:
 
 `batch_invariant` adds equality across widths, slot placements, admission order,
 and compaction.
+
+### 4.3 Execution failure containment
+
+Containment is a recovery contract, not an exception handler or a prerequisite
+for running a previously untested workload. After an actual failure, a raised
+`ValueError` does not prove that no device work or shared-state mutation preceded
+it. A blanket catch-and-continue fails this contract.
+
+A runner may retire the smallest affected ownership scope it can establish and
+keep serving only when its containment claim establishes both:
+
+- **Quiescence:** all outstanding work that can access the affected resources
+  has completed, including prior queued work and cross-stream dependencies.
+  Reporting a device error alone does not establish safe resource reuse.
+- **Reclaimability:** the named requests can be retired without invalidating
+  survivors. Account for device buffers and host-side leases, reference counts,
+  scheduler records, provider claims and graph references. Cleanup must finish
+  before affected resources are reused.
+
+The affected scope may be one request or a packed/shared ownership group. A
+single triggering request does not imply that all preceding mutations were
+request-local. Naming fewer requests than the failed work item asserts that all
+unnamed rows still hold valid canonical state. The current claim API refuses
+IDs outside the failed work item; if the affected scope cannot be contained
+within it, the service must stop rather than omit affected owners.
+
+The claim records affected IDs, phase, work kind, cause and mutation status.
+Mutation status describes what happened; recovery outcome is a separate
+assertion, not part of the definition of `committed`:
+
+| Mutation | Meaning | Claimable |
+| --- | --- | --- |
+| `none` | The step raised before its first device call; host bookkeeping may still need cleanup. | Yes, once quiescence and reclaimability are established. |
+| `partial` | Device work started; no canonical commit was claimed. | With runner-specific evidence of safe rollback, rebuild or retirement. |
+| `committed` | A canonical commit happened before the failure. | With runner-specific evidence that committed state and emitted output remain consistent, or that safe restoration/retirement is complete. |
+| `unknown` | The runner cannot establish the mutation window. | No. Recovery evidence must first resolve the status; otherwise the failure stays fatal. |
+
+The recovery path must distinguish a recoverable refusal from an unhealthy
+runtime. A classified resource refusal before device mutation can be local;
+an illegal device access, uncertain shared-state mutation, unavailable runtime
+needed for recovery, failed quiescence check, or unprovable cleanup requires a
+controlled stop. Exception type alone is neither a recovery proof nor a
+universal fatal classification. Unimplemented recovery is a concrete limitation
+after a failure, not a reason to reject ordinary execution in advance.
+
+An unsupported-shape refusal from an optional packed route (`NotImplementedError`
+from a packed prefill or verifier layout check) is a route decision, not a
+runtime fault, and it must never become the terminal outcome of a request that
+already published output. A recovery path that runs after a canonical commit
+re-routes the affected rows through the registered strict per-session route with
+the same tokens and cursors, and records the route change as a fallback reason.
+Only rows whose KV layout the strict route cannot represent (a shared or shifted
+allocation that requires the block-table-aware entry) may fail closed, and the
+failure then follows the containment rules below rather than surfacing as a
+request-parameter error.
+
+Fatal is a controlled stop, not a silent one. The service reports `ok`,
+`unhealthy`, or `closed`; an unhealthy report names the failing phase, the
+deepest frame, and affected IDs when known. Readiness reports the same state
+with `ready: false`. Active requests receive a terminal error naming the fatal
+cause, and queued or later submissions explain the refusal instead of returning
+generic memory advice. Restoring a healthy runtime is required before serving
+resumes.
+
+Containment preserves survivors' committed output and authoritative ownership,
+positions, KV and recurrent state. At the recovery boundary, compare state
+against a control with the same committed history and schedule. If subsequent
+group width or scheduling changes, future arithmetic follows the declared
+profile: production uses its numerical/task and same-schedule determinism
+gates, not unconditional ID equality to a differently scheduled run.
+`batch_invariant` retains its stronger composition guarantee.
+
+Validate the recovery mechanism with:
+
+- local prefill and decode failures, including failures before device launch;
+- a failure inside a packed group and both narrow and group-scoped retirement;
+- cleanup failure, a simulated fatal device state and refused containment;
+- survivors' state/ownership checks and profile-appropriate output controls;
+- a successful subsequent request after recoverable failure;
+- terminal errors carrying phase, affected IDs, work kind, mutation class and
+  cause, with no lost or duplicated committed output.
+
+The unit coverage for these items is
+[`tests/test_unit_generation_execution_failure_containment.py`](../tests/test_unit_generation_execution_failure_containment.py)
+(contained and refused prefill, grouped-prefill, decode and speculative
+failures, a committed cycle, cleanup failure, a simulated fatal device error and
+the service-level unhealthy report) plus the adapter verdicts in
+[`tests/test_unit_qwen35_gguf_mtp2_seam.py`](../tests/test_unit_qwen35_gguf_mtp2_seam.py).
+
+This is fault-class and ownership coverage, not an allowlist of every exception
+message or workload permitted to run. Add a reproducer when a new failure is
+observed and repair or scope that failure.
+
+**Implemented scope:** the resident GGUF runner's `contain_execution_failure`
+claims `none` and `partial` for prefill and decode, and `partial` or
+`committed` for a failed speculative cycle, always after synchronizing the
+affected runtimes.
+
+- `none` covers a step that never advanced a row's device state: it raised
+  before any device call, or its decode phase completed with no packed work
+  (every row's first token came from prefill). The claim names the row whose
+  failure the runner attributed, and the work item's rows when it could not.
+- `partial` covers a prefill or decode step that entered its device phase
+  without claiming a canonical commit. The runner marks every row immediately
+  before its first device call and every row of a grouped prefill call, so the
+  claim names exactly the rows whose device state may have advanced, plus the
+  row whose step raised so its failure is reported; rows the step never reached
+  stay canonical and are left unnamed. The loop retires the named rows through
+  the same request-owned release path a single-row claim uses.
+- A speculative cycle asks its resolved adapter for the mutation class and the
+  rows it cannot prove canonical. A cycle whose adapter recorded a canonical
+  commit before the failure (the eager commit path publishes the row's visible
+  tokens and cursor, leaving the outer scheduler behind it) is `committed` and
+  cannot fall back to autoregressive decoding; a cycle whose device cursors
+  moved without a recorded commit is `partial`. Rows the cycle left canonical
+  are unnamed and continue.
+
+It conservatively refuses every `HipError` (the device itself reported a fault,
+so shared device state is unproven), a missing or failing runtime, a device
+phase that raised before it could establish that no row reached device work, an
+adapter that cannot narrow the mutation window (including a physical target
+commit that may or may not have landed), and every phase that does not mark its
+device window. That is the current implementation, not a permanent rule that
+every HIP error is unrecoverable. `unknown` is never a successful containment
+claim: a refused failure is reported as a fatal `GenerationExecutionFailed`
+whose `state_mutation` is `unknown`, so `health()` and a later refused
+submission name the phase, the affected rows and the deepest cause.
+
+### 4.4 Per-request eligibility under group execution
+
+Request identity, authoritative state and implementation capabilities belong to
+the request. Physical width and the selected execution route are scheduling
+choices subject to those capabilities. A group may legitimately own shared
+workspaces, graphs and transactions; it must not erase per-request eligibility
+or transfer state between requests.
+
+Resolve each request's supported semantics, provider readiness, storage and
+bounds before combining compatible work. Missing benchmark coverage alone is
+not ineligibility (section 1.1). Then select a valid schedule under declared
+compatibility, resource, fairness and cost policy:
+
+- a neighbor's context miss, provider refusal or verifier mode must not be
+  copied into another request's eligibility;
+- consider supported partitioning rather than blindly downgrading the group;
+  partitioning preserves stable slots and executes each selected row once,
+  without duplicated work or starvation through the existing scheduler;
+- a scheduler may choose another valid route, including packed AR instead of
+  costly serial MTP groups, for a concrete compatibility, resource or economic
+  reason. Report that scheduling reason separately from per-request refusal;
+- preserve the original request-local reason when it falls back. A generic
+  group resource miss must not conceal a different cause;
+- a local graph/schedule transition must not permanently revoke eligibility.
+  Re-evaluate subsequent work and use an appropriate fast path when available;
+- survivors retain canonical state and profile-correct execution when a peer
+  falls back or fails.
+
+This is not a guarantee of every request's fastest standalone route, identical
+latency regardless of neighbors, or MTP at any cost. It forbids accidental
+ineligibility propagation and requires accountable scheduling. Validate it with
+mixed contexts, ready/refused providers, cache hits/misses, modes and live
+membership, measuring both correctness and actual route/latency behavior.
+
+**Implementation gap:** a group-level resource-claim miss can still downgrade
+every row and replace its reason with the group's. Per-request eligibility and
+compatible grouping before those checks remain implementation work; this
+contract does not claim they are already fixed.
 
 ## 5. Arithmetic-source classification
 
@@ -796,9 +1324,15 @@ paths must not grow `if profile == ...`, `if backend == ...`, or
 candidate while it is under test, but retained behavior must be available
 through the public profile/variant plan and recorded in logs and artifacts.
 
-Missing or uncertified production variants fail closed to the registered strict
-fallback. Unsupported batch-invariant scenarios either use a certified strict
-fallback or reject clearly; they do not silently run production arithmetic.
+For public profile selection, missing or uncertified production variants retain
+the registered strict fallback. This protects the advertised profile guarantee;
+it does not prohibit explicitly selecting an implemented candidate for the
+evaluation in section 1.1. Record that selection and its evidence status rather
+than presenting it as certified. Routine workload variation within an
+implementation's declared domain does not require a new certificate per shape.
+Unsupported batch-invariant scenarios either use a fallback that preserves the
+requested composition guarantee or reject clearly; they do not silently run
+production arithmetic.
 
 The public selectors are `LLM(..., execution_profile=...)`, server
 `--execution-profile`, and `HIPENGINE_EXECUTION_PROFILE`. Resolution is a
@@ -809,6 +1343,20 @@ plugin's profile-specific factory or invoking its binder. Production and
 batch-invariant plans may override only a subset of strict scopes; absent scopes
 are written into the manifest as strict selections. Captures bind to the
 resulting immutable manifest hash.
+
+Profile plans select registered variants; the generic factory API does not
+validate GGUF artifacts or manage factory side effects. Model loading owns
+storage and consumer compatibility checks. Numerical evidence remains specific
+to the model, quantization, workload and backend on which it was obtained; a
+matching registry key alone does not extend that evidence to another artifact.
+
+Existing GGUF binders write process-wide environment settings. Use one profile
+per model-owning process; switching between models/profiles in one process is
+not an isolation guarantee. Initial UD bring-up uses the unnamed existing path
+(`execution_profile=None`) in a fresh process without production-profile
+overrides. Named production-profile qualification is a later numerical gate,
+not a prerequisite for implementing the missing formats. See
+[UD-QUANTS.md](campaigns/UD-QUANTS.md) for the bring-up scope.
 
 During migration, omitting the selector bypasses the profile-plan registry and
 preserves the incumbent package behavior. An explicit selector never falls back
@@ -833,14 +1381,21 @@ Every profile-sensitive artifact records:
 - exact command and performance metrics; and
 - whether generated-ID equality is binding or diagnostic for that profile.
 
-Promotion is shape- and backend-qualified. A candidate that fails one width or
-context may be retained only if dispatch excludes that scope and the artifact
-states the exclusion. No benchmark prompt, token ID, or heldout result may be
-hardcoded into selection.
+Promotion evidence names the tested shapes, backend and relevant implementation
+regimes/transitions; it must not be rewritten as an exhaustive request allowlist.
+A concrete failure at one width or context requires a scoped repair or exclusion
+that the artifact explains. Untested points are reported as untested, not failed.
+A focused diagnostic may reproduce a known failure; normal serving must not
+silently select the known-bad path. No benchmark prompt, token ID, or heldout
+result may be hardcoded into selection.
 
 ## 10. Automatic rejection
 
-Reject or fall back to strict on any of the following:
+The following disqualify a production promotion or claim. At runtime, an
+observed failure must trigger the appropriate scoped rejection, repair or safe
+fallback. A fallback after state mutation requires section 4.3 recovery first;
+selecting strict arithmetic cannot repair corrupted ownership or device state.
+Missing evaluation alone does not prohibit running the evaluation.
 
 1. request/slot/token/position/mask/KV/state-ownership mismatch;
 2. state contamination from a neighbor or inactive row;
@@ -849,8 +1404,14 @@ Reject or fall back to strict on any of the following:
 5. any binding category/shape/transition threshold failure;
 6. task-level material regression;
 7. missing strict fallback or unrecorded profile/variant provenance;
-8. a performance claim without the same-suite quality packet; or
-9. prompt-, token-, or candidate-specific benchmark gaming.
+8. a claimed performance improvement without the same-suite quality packet;
+9. prompt-, token-, or candidate-specific benchmark gaming;
+10. terminating requests outside the established affected ownership scope,
+    closing the service despite an established safe recovery, or continuing on
+    uncertain device/shared-owner state after a failure; or
+11. propagating a neighbor's ineligibility into another request, concealing the
+    actual request or scheduling reason, or rejecting an implemented compatible
+    path solely because its exact workload lacks prior benchmark evidence.
 
 A failed threshold is not fixed by relabeling a bug as numerical relaxation.
 Budgets move only through an explicit policy decision backed by calibration
@@ -858,12 +1419,12 @@ and task evidence.
 
 ## 11. Related documents
 
-- [`PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md`](PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md) — dated evidence review of the frozen cutoffs, calibration limits, practical impact, excluded performance, and recalibration triggers; it does not change this normative policy.
-- [`PRODUCTION-NUMERICS-CAMPAIGN.md`](PRODUCTION-NUMERICS-CAMPAIGN.md) — active
+- [`PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md`](reference/PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md) — dated evidence review of the frozen cutoffs, calibration limits, practical impact, excluded performance, and recalibration triggers; it does not change this normative policy.
+- [`PRODUCTION-NUMERICS-CAMPAIGN.md`](reference/PRODUCTION-NUMERICS-CAMPAIGN.md) — active
   implementation, calibration, historical-recovery, and c1/cN campaign.
-- [`RELAXED.md`](RELAXED.md) — historical relaxed-mode inventory and provenance;
+- [`RELAXED.md`](archive/RELAXED.md) — historical relaxed-mode inventory and provenance;
   no longer the normative public-profile policy.
 - [`TESTING.md`](TESTING.md) — concrete test tiers and fixtures.
 - [`BENCHMARK.md`](BENCHMARK.md) — performance protocols and artifact rules.
-- [`CONCURRENCY.md`](CONCURRENCY.md) — serving scenarios and ownership gates.
+- [`CONCURRENCY.md`](archive/CONCURRENCY.md) — serving scenarios and ownership gates.
 - [`KERNELS.md`](KERNELS.md) — kernel fallback, lineage, and trace requirements.

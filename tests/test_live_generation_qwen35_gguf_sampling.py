@@ -85,6 +85,7 @@ def test_speculative_stream_event_decorator_attaches_tokenizer_text() -> None:
         qwen35_gguf.Qwen35GGUFResidentModelRunner
     )
     runner.generator = SimpleNamespace(tokenizer=_FakeTokenizer())
+    runner._cycle_token_samples = {}
     events = (
         GeneratedTokenEvent(
             request_id=0,
@@ -429,7 +430,7 @@ def test_gguf_generator_prepares_explicit_int8_session_policy_and_rejects_switch
         "fp16",
         "per_token_head",
     )
-    assert generator.kv_capability_provenance["status"] == "unknown"
+    assert generator.kv_capability_provenance["status"] == "unsupported"
     assert generator.kv_capability_provenance["runtime_action"] == "diagnostic_override"
     assert generator.kv_capability_provenance["promotion_eligible"] is False
 
@@ -451,6 +452,9 @@ def test_eager_model_load_prepare_honors_a_server_policy_hint(monkeypatch) -> No
     generator = _generator()
     generator.model_plugin = Qwen35GGUFModel()
     generator.weight_index = SimpleNamespace(file_type_name="MOSTLY_Q4_K_M")
+    generator._artifact_execution_fingerprint = lambda: (
+        "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+    )
     generator._kv_model_artifact_identity = lambda: qwen35_gguf.ModelArtifactIdentity(
         path="/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
         size_bytes=17_106_773_984,
@@ -487,25 +491,18 @@ def test_eager_model_load_prepare_without_hint_keeps_auto_bf16() -> None:
     )
 
 
-def test_gguf_unknown_int8_artifact_fails_closed_to_bf16(monkeypatch) -> None:
+def test_gguf_without_int8_implementation_refuses_explicit_int8_without_override(monkeypatch) -> None:
     for name in qwen35_gguf._GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS:
         monkeypatch.delenv(name, raising=False)
     generator = _generator()
 
-    generator._prepare_kv_policy(
-        _request(kv_storage="int8_per_token_head", kv_scale_dtype="fp32")
-    )
+    with pytest.raises(ValueError, match="explicit kv_storage='int8_per_token_head'.*refusing to silently substitute BF16"):
+        generator._prepare_kv_policy(
+            _request(kv_storage="int8_per_token_head", kv_scale_dtype="fp32")
+        )
 
-    assert generator._prepared_kv_signature == (
-        "bf16",
-        "uniform",
-        "fp16",
-        "per_token_head",
-    )
-    assert generator._prepared_session_kv_kwargs() == {}
-    assert generator.kv_capability_provenance["status"] == "unknown"
+    assert generator.kv_capability_provenance["status"] == "unsupported"
     assert generator.kv_capability_provenance["runtime_action"] == "fallback_bf16"
-    assert generator.kv_capability_provenance["effective_kv_storage"] == "bf16"
 
 
 def test_gguf_exact_gfx1100_qwen38_artifact_admits_fp32_scale_int8(monkeypatch) -> None:
@@ -514,6 +511,9 @@ def test_gguf_exact_gfx1100_qwen38_artifact_admits_fp32_scale_int8(monkeypatch) 
     generator = _generator()
     generator.model_plugin = Qwen35GGUFModel()
     generator.weight_index = SimpleNamespace(file_type_name="MOSTLY_Q4_K_M")
+    generator._artifact_execution_fingerprint = lambda: (
+        "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+    )
     generator._kv_model_artifact_identity = lambda: qwen35_gguf.ModelArtifactIdentity(
         path="/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
         size_bytes=17_106_773_984,
@@ -539,7 +539,7 @@ def test_gguf_exact_gfx1100_qwen38_artifact_admits_fp32_scale_int8(monkeypatch) 
     assert kwargs["kv_capability"]["evidence"]["max_serial_resident_rows"] == 4
 
 
-def test_gguf_exact_gfx1151_qwen38_rejected_artifact_falls_back_to_bf16(
+def test_gguf_exact_gfx1151_qwen38_rejected_artifact_refuses_explicit_int8(
     monkeypatch,
 ) -> None:
     for name in qwen35_gguf._GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS:
@@ -548,6 +548,9 @@ def test_gguf_exact_gfx1151_qwen38_rejected_artifact_falls_back_to_bf16(
     generator.backend = "hip_gfx1151"
     generator.model_plugin = Qwen35GGUFModel()
     generator.weight_index = SimpleNamespace(file_type_name="MOSTLY_Q4_K_M")
+    generator._artifact_execution_fingerprint = lambda: (
+        "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+    )
     generator._kv_model_artifact_identity = lambda: qwen35_gguf.ModelArtifactIdentity(
         path="/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
         size_bytes=17_106_775_008,
@@ -555,19 +558,13 @@ def test_gguf_exact_gfx1151_qwen38_rejected_artifact_falls_back_to_bf16(
         content_verified=True,
     )
 
-    generator._prepare_kv_policy(
-        _request(kv_storage="int8_per_token_head", kv_scale_dtype="fp32")
-    )
+    with pytest.raises(ValueError, match="explicit kv_storage='int8_per_token_head'.*refusing to silently substitute BF16"):
+        generator._prepare_kv_policy(
+            _request(kv_storage="int8_per_token_head", kv_scale_dtype="fp32")
+        )
 
-    assert generator._prepared_kv_signature == (
-        "bf16",
-        "uniform",
-        "fp16",
-        "per_token_head",
-    )
     assert generator.kv_capability_provenance["status"] == "rejected"
     assert generator.kv_capability_provenance["runtime_action"] == "fallback_bf16"
-    assert generator.kv_capability_provenance["promotion_eligible"] is False
 
 
 def test_gguf_mtp_hot_vocab_defaults_only_in_production_with_rollback(
@@ -1978,6 +1975,7 @@ def test_gguf_mtp_metadata_reports_packed_slot_batch() -> None:
 
 
 def test_gguf_submit_poll_sampled_rows_use_packed_model_ticks(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "0")
     calls: list[tuple] = []
 
     class FakeFullStackRunner:
@@ -2360,7 +2358,7 @@ def test_gguf_submit_poll_stochastic_rows_use_batched_native_sampler_without_log
 
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeFullStackRunner)
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
-    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "1")
+    monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
     generator = _generator()
     generator.backend = "hip_gfx1100"
     generator._shared_runner = None
@@ -2427,6 +2425,7 @@ def test_gguf_submit_poll_stochastic_rows_use_batched_native_sampler_without_log
 
 
 def test_gguf_sampled_packed_unavailable_reports_model_serial_fallback(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "0")
     calls: list[tuple] = []
     tokenizer = _FakeTokenizer()
 
@@ -2676,7 +2675,11 @@ def test_gguf_resident_full_prefill_uses_block_table_path_when_required(
     )
     runner.generator = SimpleNamespace(tokenizer=_FakeTokenizer())
     runner._route_counts = Counter()
+    runner._prefix_cache = None
+    runner._prefix_cache_mode = "off"
     runner._refresh_prefix_cache = lambda candidate: None
+    runner._mtp2_adapter = None
+    runner._mtp2_adapter_resolved = True
 
     runner._prefill_native_row(row)
 
@@ -2701,9 +2704,11 @@ def test_gguf_resident_full_prefill_uses_block_table_path_when_required(
     ids=("shifted-allocation", "direct-int8-base-zero"),
 )
 def test_gguf_resident_sampled_prefill_uses_block_table_path_when_required(
+    monkeypatch,
     attention_source: str | None,
     block_ids: tuple[int, ...],
 ) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "0")
     calls: list[tuple] = []
 
     class FakeSession:
@@ -2773,6 +2778,7 @@ def test_gguf_resident_sampled_prefill_uses_block_table_path_when_required(
 
 
 def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "0")
     calls: list[tuple] = []
 
     class FakeFullStackRunner:
@@ -2982,6 +2988,7 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
 
     observability = adapter.live_loop_snapshot()["runner"]
     assert observability["model_runner"] == {
+        "dms": None,
         "capacity": 2,
         "max_active_requests": 2,
         "max_context_tokens": None,
@@ -3274,32 +3281,6 @@ def test_gguf_resident_runner_lowers_c13_to_declared_physical_groups(monkeypatch
     assert runner._last_execution_manifest["physical_group"]["physical_rows"] == 5
 
 
-def test_gguf_compact_serial_capability_is_artifact_scoped_and_bounded() -> None:
-    qualified = SimpleNamespace(
-        kv_capability_provenance={
-            "status": "qualified",
-            "runtime_action": "admit",
-            "promotion_eligible": True,
-            "effective_kv_storage": "int8_per_token_head",
-            "evidence": {
-                "max_direct_rows": 1,
-                "max_serial_resident_rows": 4,
-                "persistent_bf16_mirror": False,
-            },
-        }
-    )
-    diagnostic = SimpleNamespace(
-        kv_capability_provenance={
-            **qualified.kv_capability_provenance,
-            "runtime_action": "diagnostic_override",
-            "promotion_eligible": False,
-        }
-    )
-
-    assert qwen35_gguf._qualified_compact_serial_int8_max_rows(qualified) == 4
-    assert qwen35_gguf._qualified_compact_serial_int8_max_rows(diagnostic) == 0
-
-
 def test_gguf_resident_request_diagnostics_retain_kv_layout_audit() -> None:
     audit = {
         "kv_attention_source": "int8_direct",
@@ -3444,6 +3425,85 @@ def test_gguf_resident_direct_int8_c4_uses_capability_qualified_packed_width(
     runner._step_native_rows(rows)
 
     assert calls == [((200, 201, 202, 203), 4, (0, 1, 2, 3))]
+    group = runner._last_physical_group_plan["groups"][0]
+    assert group["execution_path"] == "packed_native"
+    assert group["physical_rows"] == 4
+    assert "serial_decode_fallback" not in runner._last_execution_manifest
+
+
+def test_gguf_resident_bf16_c4_uses_the_declared_standard_packed_width(
+    monkeypatch,
+) -> None:
+    """A BF16 session packs a c4 group instead of serializing one row per step.
+
+    The width comes from the session's own policy with the inputs its
+    constructor resolves for a BF16 KV policy, so this pins the policy-to-
+    consumer link rather than a hand-written session attribute.
+    """
+
+    from hipengine.core.dtype import DType
+    from hipengine.runtime.qwen35_gguf_runner import _gguf_packed_decode_max_rows
+
+    width = _gguf_packed_decode_max_rows(
+        kv_storage_dtype=DType.BF16,
+        direct_rows=1,
+        retained_decode_kernel=None,
+        bf16_full_attention_layer_indices=(),
+    )
+    assert width == 8
+    calls: list[tuple[tuple[int, ...], int, tuple[int, ...]]] = []
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner.generator = SimpleNamespace(
+        kv_capability_provenance={
+            "status": "qualified",
+            "runtime_action": "admit",
+            "promotion_eligible": True,
+            "effective_kv_storage": "bf16",
+            "evidence": {
+                "max_direct_rows": 0,
+                "max_serial_resident_rows": 4,
+                "persistent_bf16_mirror": False,
+            },
+        }
+    )
+    runner._last_execution_manifest = {"mode": "native_bf16_batch"}
+    runner._last_physical_group_plan = {}
+
+    def step_chunk(rows, *, physical_rows, active_slot_indices, allow_graph=True):
+        calls.append(
+            (
+                tuple(int(row.request_id) for row in rows),
+                int(physical_rows),
+                tuple(int(index) for index in active_slot_indices),
+            )
+        )
+        return True
+
+    runner._step_native_chunk = step_chunk
+    runner._step_native_serial = lambda *args, **kwargs: pytest.fail(
+        "BF16 c4 must not serialize once the packed width is the declared standard"
+    )
+    rows = [
+        SimpleNamespace(
+            request_id=300 + index,
+            native_sampler=False,
+            native_sampled=False,
+            slot=SimpleNamespace(
+                session=SimpleNamespace(
+                    kv_attention_source="bf16",
+                    packed_decode_max_rows=width,
+                )
+            ),
+        )
+        for index in range(4)
+    ]
+    monkeypatch.delenv("HIPENGINE_GGUF_AR_PACKED_DECODE", raising=False)
+
+    runner._step_native_rows(rows)
+
+    assert calls == [((300, 301, 302, 303), 4, (0, 1, 2, 3))]
     group = runner._last_physical_group_plan["groups"][0]
     assert group["execution_path"] == "packed_native"
     assert group["physical_rows"] == 4
@@ -3639,6 +3699,8 @@ def test_gguf_resident_runner_device_kv_admission_is_atomic_at_high_water() -> N
     observability = runner.observability_snapshot()
     assert observability["kv_pool"] == {
         **runner.kv_pool_stats.to_json_dict(), "max_pages": None, "budget_bytes": None,
+        "private_workspace_bytes": 0,
+        "accounted_bytes": runner.kv_pool_stats.current_bytes,
     }
     assert observability["kv_pool"]["current_pages"] == 2
     assert observability["kv_pool"]["high_water_observed_pages"] == 2
@@ -4155,6 +4217,11 @@ def test_gguf_resident_runner_skips_sampling_for_nonfinal_prefill_chunks() -> No
     )
     runner._route_counts = Counter()
     runner._refresh_prefix_cache = lambda row: None
+    runner._mtp2_adapter = None
+    runner._mtp2_adapter_resolved = True
+    runner._prefix_phase_ms = Counter()
+    runner._prefix_phase_calls = Counter()
+    runner._prefix_cache = None
 
     runner._prefill_native_chunk(row, (10, 11), final_chunk=False)
 
@@ -4204,6 +4271,8 @@ def test_gguf_resident_direct_int8_buffers_scheduler_chunks_for_exact_full_prefi
         qwen35_gguf.Qwen35GGUFResidentModelRunner
     )
     runner._fallback_reasons = Counter()
+    runner._prefix_cache = None
+    runner._prefix_cache_mode = "off"
 
     runner._prefill_native_chunk(row, (10, 11), final_chunk=False)
 
@@ -4211,6 +4280,125 @@ def test_gguf_resident_direct_int8_buffers_scheduler_chunks_for_exact_full_prefi
     assert row.incremental_prefill is False
     assert row.prefill_chunk_count == 0
     assert runner._fallback_reasons["int8_direct_full_prompt_prefill"] == 1
+
+
+def test_gguf_resident_native_prefill_falls_back_when_packed_route_refuses_context() -> None:
+    """A packed-route shape refusal must not end a response mid-stream.
+
+    ``prefill_batch_native`` refuses contexts it cannot serve
+    (``packed paged AR prefill currently requires context < 1024``). A row that
+    reaches the single-row native prefill may already own committed prompt
+    chunks, so the refusal has to finish the prompt on the registered strict
+    per-session route instead of failing the request.
+    """
+
+    events: list[tuple] = []
+    finished: list[tuple] = []
+
+    class FakeSession:
+        position = 0
+
+        def prefill(self, token_ids, *, return_logits=False):
+            events.append(("prefill", tuple(token_ids), bool(return_logits)))
+            return SimpleNamespace(token_id=7, logits=None)
+
+        def prefill_batch_native(self, *args, **kwargs):
+            events.append(("prefill_batch_native", tuple(args[0][0])))
+            raise NotImplementedError(
+                "packed paged AR prefill currently requires context < 1024"
+            )
+
+    prompt_ids = tuple(range(1024))
+    row = qwen35_gguf._GGUFResidentLoopRow(
+        request_id=1,
+        batch_id=1,
+        row_index=0,
+        request=_request(prompts=("long",), max_tokens=8, ignore_eos=True),
+        prompt_ids=prompt_ids,
+        native_greedy=True,
+        native_sampled=False,
+        submitted_at=0.0,
+        lease=qwen35_gguf._GGUFResidentSessionLease(
+            session=FakeSession(),
+            pool_key=("continuous_ar_dynamic_kv", True, True, 256),
+        ),
+        mtp2_candidate_budget=3,
+    )
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner._route_counts = Counter()
+    runner._fallback_reasons = Counter()
+    runner._prefix_cache = None
+    runner._prefix_cache_mode = "off"
+    runner._refresh_prefix_cache = lambda row: None
+    runner._resolved_mtp2_adapter = lambda: None
+    runner._finish_native_prefill = (
+        lambda row, result, *, native_compact_prefill: finished.append(
+            (int(result.token_id), bool(native_compact_prefill))
+        )
+    )
+
+    runner._prefill_native_row(row)
+
+    assert events == [
+        ("prefill_batch_native", prompt_ids),
+        ("prefill", prompt_ids, False),
+    ]
+    assert finished == [(7, False)]
+    assert row.mtp2_candidate_budget == 0
+    assert row.mtp2_prompt_fallback_reason == "packed_prefill_unsupported_k0"
+    assert runner._fallback_reasons["packed_prefill_unsupported_k0"] == 1
+
+
+def test_gguf_resident_native_prefill_keeps_block_table_route_fail_closed() -> None:
+    """Sessions only the block-table-aware route can serve still fail closed."""
+
+    events: list[tuple] = []
+
+    class FakeSession:
+        kv_attention_source = "int8_direct"
+        position = 0
+
+        def prefill(self, token_ids, *, return_logits=False):
+            events.append(("prefill", tuple(token_ids)))
+            return SimpleNamespace(token_id=7, logits=None)
+
+        def prefill_batch_native(self, *args, **kwargs):
+            events.append(("prefill_batch_native",))
+            raise NotImplementedError(
+                "packed paged AR prefill currently requires context < 1024"
+            )
+
+    row = qwen35_gguf._GGUFResidentLoopRow(
+        request_id=1,
+        batch_id=1,
+        row_index=0,
+        request=_request(prompts=("long",), max_tokens=8, ignore_eos=True),
+        prompt_ids=(10, 11, 12, 13),
+        native_greedy=True,
+        native_sampled=False,
+        submitted_at=0.0,
+        lease=qwen35_gguf._GGUFResidentSessionLease(
+            session=FakeSession(),
+            pool_key=("continuous_ar_dynamic_kv", True, True, 256),
+        ),
+    )
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner._route_counts = Counter()
+    runner._fallback_reasons = Counter()
+    runner._prefix_cache = None
+    runner._prefix_cache_mode = "off"
+    runner._refresh_prefix_cache = lambda row: None
+    runner._resolved_mtp2_adapter = lambda: None
+
+    with pytest.raises(NotImplementedError, match="requires context < 1024"):
+        runner._prefill_native_row(row)
+
+    assert events == [("prefill_batch_native",)]
+    assert runner._fallback_reasons["packed_prefill_unsupported_k0"] == 0
 
 
 def test_gguf_resident_runner_commits_incremental_prefill_chunks() -> None:
@@ -4243,6 +4431,7 @@ def test_gguf_resident_runner_commits_incremental_prefill_chunks() -> None:
         target_arch = "gfx1100"
         tokenizer = _FakeTokenizer()
         _prepared_max_sequence_length = 64
+        supports_speculative_mtp = False
 
         def __init__(self) -> None:
             self.session = FakeSession()
@@ -4986,6 +5175,113 @@ def test_resident_ar_packed_prefill_survives_one_over_long_lane(monkeypatch) -> 
     assert runner._route_counts["native_full_prefill_groups"] == 1
 
 
+def test_resident_packed_prefill_falls_back_when_the_slab_hits_the_context_bound(
+    monkeypatch,
+) -> None:
+    """RED: a slab the packed route refuses must be served, not rejected.
+
+    ``_validate_packed_ar_prefill_context`` refuses a slab whose longest slot is
+    at or above 1024 live tokens while no slot needs slot-local full attention.
+    The grouped work-batch prefill re-raised that refusal, so the containment
+    layer retired every row of the item with an ``execution_failed`` 500 for a
+    prompt well inside the configured context. The method's own contract is to
+    report only the rows it consumed, so the refusal has to leave every row to
+    the caller's serial route.
+    """
+
+    from hipengine.dispatch.batch import WorkItem, WorkKind
+    from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
+
+    prompt = tuple(range(2000, 2000 + 1024))  # exactly the bound
+
+    class FakeSession:
+        def __init__(self, slot_id):
+            self.slot_id = slot_id
+            self.position = 0
+            self.prefilled: list[tuple[int, ...]] = []
+
+        def prefill(self, token_ids, *, return_logits=False):
+            self.prefilled.append(tuple(int(token) for token in token_ids))
+            self.position = len(token_ids)
+            return SimpleNamespace(token_id=7)
+
+    class FakeLease:
+        def __init__(self, slot_id):
+            self.session = FakeSession(slot_id)
+
+    class RefusingOwner:
+        def __init__(self):
+            self.calls: list[tuple] = []
+
+        def prefill_batch_native(self, prompt_token_ids, *, sessions, **kwargs):
+            self.calls.append(tuple(tuple(int(t) for t in row) for row in prompt_token_ids))
+            raise NotImplementedError(
+                "packed paged AR prefill currently requires context < 1024"
+            )
+
+    rows = {}
+    for request_id in (1, 2):
+        rows[request_id] = SimpleNamespace(
+            request_id=request_id,
+            prompt_ids=prompt,
+            request=SimpleNamespace(deadline_at=None, cancellation_token=None),
+            lease=FakeLease(request_id),
+            native_greedy=True,
+            native_sampled=False,
+            slot=None,
+            prefill_tokens_seen=0,
+            prefix_reused_tokens=0,
+            mtp2_candidate_budget=0,
+            incremental_prefill=None,
+            prefill_ms=0.0,
+            prefill_chunk_count=0,
+            first_token_emitted=False,
+        )
+
+    owner = RefusingOwner()
+    runner = Qwen35GGUFResidentModelRunner.__new__(Qwen35GGUFResidentModelRunner)
+    runner.generator = SimpleNamespace(target_arch="hip_gfx1100", tokenizer=None)
+    runner.packed_prefill_max_rows = 8
+    runner._route_counts = Counter(native_full_prefill_rows=0, native_full_prefill_groups=0)
+    runner._fallback_reasons = Counter()
+    runner._execution_stepped_request_ids = set()
+    runner._execution_committed_request_ids = set()
+    runner._row = lambda request_id: rows[int(request_id)]
+    runner._packed_execution_owner = lambda session: owner
+    runner._begin_mtp2_prompt_streaming = lambda _rows: [None] * len(tuple(_rows))
+    runner._finish_mtp2_prompt_streaming = lambda *args, **kwargs: None
+    runner._prefix_cache = None
+    runner._prefix_cache_mode = "off"
+    runner._refresh_prefix_cache = lambda _row: None
+    runner._finish_native_prefill = lambda *args, **kwargs: None
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_PREFILL", "1")
+
+    work = WorkItem(
+        kind=WorkKind.PREFILL,
+        request_ids=(1, 2),
+        row_to_request=(1, 2),
+        token_rows=(prompt, prompt),
+    )
+
+    handled = runner._try_prefill_native_work_batch(work)
+
+    assert handled == frozenset(), (
+        "the refused slab was reported as handled; the caller will not prefill it"
+    )
+    assert len(owner.calls) == 1
+    assert runner._fallback_reasons["packed_prefill_unsupported_k0"] == 1
+    assert runner._route_counts["native_full_prefill_rows"] == 0
+    assert all(row.prefill_tokens_seen == 0 for row in rows.values())
+
+    # The scheduler then runs the same work item: every row must be served by
+    # the serial route instead of failing the request.
+    runner.prefill_batch(work, commit=True)
+
+    for row in rows.values():
+        assert row.prefill_tokens_seen == len(prompt)
+        assert row.lease.session.prefilled == [prompt]
+
+
 def test_gguf_gfx1100_packed_prefill_capability_is_declared() -> None:
     """gfx1100 ships grouped prefill; this replaces the earlier "undeclared" tripwire.
 
@@ -5345,6 +5641,8 @@ def test_specdec2_streaming_prompt_rollback_selects_k0_before_prefill(
     )
     runner = object.__new__(qwen35_gguf.Qwen35GGUFResidentModelRunner)
 
+    runner._mtp2_adapter = None
+    runner._mtp2_adapter_resolved = True
     assert runner._begin_mtp2_prompt_streaming((row,)) == (None,)
     assert row.mtp2_candidate_budget == 0
     assert row.mtp2_prompt_fallback_reason == "operator_disabled_streaming_prompt_k0"
@@ -5458,6 +5756,10 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
     monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_PREFILL", "0")
     monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL", "1")
     monkeypatch.setenv("HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP", "1")
+    monkeypatch.setattr(
+        qwen35_gguf.Qwen35GGUFBringupGenerator, "_load_mtp_serving_assets",
+        lambda self: pytest.fail("target scratch probe must not load legacy draft assets"),
+    )
     monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", raising=False)
 
     generator = _generator()
@@ -5471,16 +5773,7 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
     assert result["packed_mtp_verify_skipped"] is False
     assert result["packed_mtp_verify_widths"] == [2, 4, 8]
     assert result["packed_mtp_verify_prompt_lengths"] == [4]
-    assert [call for call in calls if call[0] == "draft_init"] == [
-        ("draft_init", 0),
-        ("draft_init", 1),
-        ("draft_init", 2),
-        ("draft_init", 3),
-        ("draft_init", 4),
-        ("draft_init", 5),
-        ("draft_init", 6),
-        ("draft_init", 7),
-    ]
+    assert [call for call in calls if call[0] == "draft_init"] == []
     assert [call for call in calls if call[0] == "prefill_batch"] == [
         (
             "prefill_batch",
@@ -6319,7 +6612,7 @@ def test_gguf_non_greedy_request_uses_host_logits_sampler(
     if native_requested:
         monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "1")
     else:
-        monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
+        monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "0")
 
     generator = _generator()
     out = generator.generate(_request(temperature=0.7, top_k=1, seed=5))
@@ -6378,7 +6671,7 @@ def test_gguf_generate_detailed_records_scheduler_token_chunks_for_serial_rows(m
             )
 
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
-    monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
+    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "0")
 
     generator = _generator()
     outputs = generator.generate_detailed(
@@ -6568,7 +6861,9 @@ def test_gguf_generate_detailed_uses_native_compact_rows_for_greedy_prompts(
 
     assert [output.text for output in outputs] == ["BC", "BC"]
     assert calls == [
-        ("init", {"max_sequence_length": 256, "max_batch_size": 2}),
+        ("init", {"max_sequence_length": 256, "max_batch_size": 2,
+                  "backend": "hip_gfx1100",
+                  "execution_routes": ("eager", "native_rows", "native_graph")}),
         ("prefill_slot", (10, 11), 0, False),
         ("prefill_slot", (20,), 1, False),
         ("step_rows_native", (1, 1), False),
@@ -6720,7 +7015,9 @@ def test_gguf_native_scheduler_reclaims_compacts_and_readmits(monkeypatch) -> No
 
     assert [output.text for output in outputs] == ["B<eos>", "BCD}", "B<eos>", "BCD}"]
     assert calls == [
-        ("init", {"max_sequence_length": 256, "max_batch_size": 2}),
+        ("init", {"max_sequence_length": 256, "max_batch_size": 2,
+                  "backend": "hip_gfx1100",
+                  "execution_routes": ("eager", "native_rows", "native_graph")}),
         ("prefill_slot", (10, 11), 0, False),
         ("prefill_slot", (20,), 1, False),
         ("step_rows_native", (1, 1), False),
@@ -6920,7 +7217,7 @@ def test_gguf_stream_detailed_emits_live_sampled_telemetry(
     if native_requested:
         monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "1")
     else:
-        monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
+        monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "0")
 
     generator = _generator()
     chunks = list(generator.stream_detailed(_request(temperature=0.7, top_k=1, seed=5)))
@@ -7295,6 +7592,7 @@ def test_gguf_host_sampler_stops_on_request_eos_token_id(monkeypatch) -> None:
 
 
 def test_gguf_host_sampler_stops_on_multi_token_stop_sequence(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "0")
     calls = []
 
     class FakeSession:

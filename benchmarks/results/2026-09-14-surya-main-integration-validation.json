@@ -1,0 +1,158 @@
+{
+  "schema": 1,
+  "date": "2026-09-14",
+  "host": "zbook",
+  "hardware": "AMD Ryzen AI MAX+ PRO 395 / Radeon 8060S gfx1151",
+  "source": {
+    "pre_rebase_surya": "6978ce7fd",
+    "origin_main": "110db96d4",
+    "local_main_merge": "40bc24c7d",
+    "rebased_tip": "67a54d516c5e3af05b2c40aa5cf9c814cc102fb6",
+    "integration_repairs": "Committed with this artifact; tracked changes include test tier migration and read-only offset probe classification."
+  },
+  "scope": "Integration correctness only, not new speed measurements or a monolithic all-tier execution. Suites overlap; do not sum pass counts as unique coverage.",
+  "collection": {
+    "command": "uv run --extra surya --extra dev pytest --suite all --collect-only -q",
+    "tests": 16833,
+    "errors": 0
+  },
+  "suites": [
+    {
+      "name": "unit",
+      "command": "uv run --extra surya --extra dev pytest --suite unit --junitxml=/tmp/surya-rebase-unit.xml",
+      "errors": 0,
+      "failures": 0,
+      "skipped": 21,
+      "tests": 8914,
+      "time": "41.762",
+      "timestamp": "2026-09-14T04:15:07.421744+09:00",
+      "hostname": "zbook",
+      "passed": 8893,
+      "skips": [
+        {
+          "test": "tests.test_unit_agentic_quality2_fixture_freeze::test_agentic_quality2_draft_schemas_reject_missing_language_and_license",
+          "reason": "could not import 'jsonschema': No module named 'jsonschema'"
+        },
+        {
+          "test": "tests.test_unit_chat_cli::test_rich_chat_renders_status_reasoning_markdown_and_stats",
+          "reason": "could not import 'rich': No module named 'rich'"
+        },
+        {
+          "test": "tests.test_unit_chat_cli::test_rich_chat_loop_exits_on_ctrl_c_or_ctrl_d[KeyboardInterrupt]",
+          "reason": "could not import 'rich': No module named 'rich'"
+        },
+        {
+          "test": "tests.test_unit_chat_cli::test_rich_chat_loop_exits_on_ctrl_c_or_ctrl_d[EOFError]",
+          "reason": "could not import 'rich': No module named 'rich'"
+        },
+        {
+          "test": "tests.test_unit_chat_cli::test_prompt_toolkit_ctrl_c_clears_typed_input_before_quitting",
+          "reason": "could not import 'prompt_toolkit': No module named 'prompt_toolkit'"
+        },
+        {
+          "test": "tests.test_unit_chat_cli::test_prompt_toolkit_session_quits_on_ctrl_c",
+          "reason": "could not import 'prompt_toolkit': No module named 'prompt_toolkit'"
+        },
+        {
+          "test": "tests.test_unit_chat_cli::test_rich_chat_usage_command_reports_tokens_and_context_share",
+          "reason": "could not import 'rich': No module named 'rich'"
+        },
+        {
+          "test": "tests.test_unit_maple_correctness_script::test_hf_flash_attention_shim_matches_bottom_right_causal_gqa_window",
+          "reason": "optional torch runtime is unavailable: No module named 'torch'"
+        },
+        {
+          "test": "tests.test_unit_quant_quality_harness::test_paro_transformers_depthwise_fallback_matches_conv1d",
+          "reason": "optional torch runtime is unavailable: No module named 'torch'"
+        },
+        {
+          "test": "tests.test_unit_specdec2_simulator_c1_depth_matrix::test_c1_rejection_at_every_candidate_position[1-1]",
+          "reason": "position beyond this depth"
+        },
+        {
+          "test": "tests.test_unit_specdec2_simulator_c1_depth_matrix::test_c1_rejection_at_every_candidate_position[2-1]",
+          "reason": "position beyond this depth"
+        },
+        {
+          "test": "tests.test_unit_specdec2_simulator_c1_depth_matrix::test_c1_rejection_at_every_candidate_position[2-2]",
+          "reason": "position beyond this depth"
+        },
+        {
+          "test": "tests.test_unit_specdec2_simulator_c1_depth_matrix::test_c1_rejection_at_every_candidate_position[3-1]",
+          "reason": "position beyond this depth"
+        },
+        {
+          "test": "tests.test_unit_specdec2_simulator_c1_depth_matrix::test_c1_rejection_at_every_candidate_position[3-2]",
+          "reason": "position beyond this depth"
+        },
+        {
+          "test": "tests.test_unit_specdec2_simulator_c1_depth_matrix::test_c1_rejection_at_every_candidate_position[3-3]",
+          "reason": "position beyond this depth"
+        },
+        {
+          "test": "tests.test_unit_specdec2_simulator_c1_depth_matrix::test_c1_eos_replacement_correction_at_every_candidate_position[2-1]",
+          "reason": "position beyond this depth"
+        },
+        {
+          "test": "tests.test_unit_specdec2_simulator_c1_depth_matrix::test_c1_eos_replacement_correction_at_every_candidate_position[3-1]",
+          "reason": "position beyond this depth"
+        },
+        {
+          "test": "tests.test_unit_specdec2_simulator_c1_depth_matrix::test_c1_eos_replacement_correction_at_every_candidate_position[3-2]",
+          "reason": "position beyond this depth"
+        },
+        {
+          "test": "tests.test_unit_specdec2_simulator_c1_depth_matrix::test_c1_eos_replacement_correction_at_every_candidate_position[4-1]",
+          "reason": "position beyond this depth"
+        },
+        {
+          "test": "tests.test_unit_specdec2_simulator_c1_depth_matrix::test_c1_eos_replacement_correction_at_every_candidate_position[4-2]",
+          "reason": "position beyond this depth"
+        },
+        {
+          "test": "tests.test_unit_specdec2_simulator_c1_depth_matrix::test_c1_eos_replacement_correction_at_every_candidate_position[4-3]",
+          "reason": "position beyond this depth"
+        }
+      ]
+    },
+    {
+      "name": "integration",
+      "command": "uv run --extra surya --extra dev pytest -q tests/test_integration_server_api.py tests/test_integration_generation_registry.py tests/test_integration_qwen4_exp_server_multimodal.py tests/test_integration_benchmark_readme_sync.py --junitxml=/tmp/surya-rebase-integration.xml",
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 607,
+      "time": "25.232",
+      "timestamp": "2026-09-14T04:15:35.246137+09:00",
+      "hostname": "zbook",
+      "passed": 607,
+      "skips": []
+    },
+    {
+      "name": "acceptance",
+      "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run --extra surya --extra dev python scripts/surya_acceptance.py --junitxml=/tmp/surya-rebase-acceptance.xml",
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 415,
+      "time": "416.775",
+      "timestamp": "2026-09-14T04:14:48.205735+09:00",
+      "hostname": "zbook",
+      "passed": 415,
+      "skips": []
+    },
+    {
+      "name": "gpu",
+      "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run --extra surya --extra dev pytest -q tests/test_gpu_timesfm_gpu_decode.py tests/test_gpu_timesfm3_gpu_decode.py tests/test_gpu_evie_gpu_batch_ownership.py tests/test_gpu_qwen35_paged_attn_decode_direct_gate.py tests/test_gpu_device_memory_hygiene.py tests/test_gpu_h2d_source_lifetime.py --junitxml=/tmp/surya-rebase-gpu.xml",
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 52,
+      "time": "69.365",
+      "timestamp": "2026-09-14T04:22:25.940664+09:00",
+      "hostname": "zbook",
+      "passed": 52,
+      "skips": []
+    }
+  ]
+}

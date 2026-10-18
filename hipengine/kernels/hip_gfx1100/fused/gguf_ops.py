@@ -68,17 +68,12 @@ def gguf_rmsnorm_bf16_f32_weight(
     _check_positive(rows, "rows")
     _check_positive(hidden_size, "hidden_size")
     _check_threads(threads)
-    _launch_rmsnorm(
-        "hipengine_gguf_rmsnorm_bf16_f32_weight",
-        (x_ptr, weight_ptr, out_ptr),
-        rows,
-        hidden_size,
-        eps,
-        threads=threads,
-        stream=stream,
-        library=library,
-        runtime=runtime,
-    )
+    from hipengine.loading.qwen35_gguf_consumer_surface import RMSNORM
+    library = library or build_gguf_ops(load=True)
+    runtime = runtime or get_hip_runtime()
+    err = RMSNORM.launch(library, locals())
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
 
 
 def gguf_rmsnorm_bf16_f32_weight_fixed1024_wave256(
@@ -139,6 +134,7 @@ def gguf_rmsnorm_bf16_f32_weight_fixed5120_wave256(
             rows=rows,
             hidden_size=hidden_size,
             threads=threads,
+            max_rows=8,
         )
     _launch_rmsnorm(
         "hipengine_gguf_rmsnorm_bf16_f32_weight_fixed5120_wave256",
@@ -390,6 +386,7 @@ def gguf_add_rmsnorm_bf16_f32_weight_fixed5120_wave256(
             rows=rows,
             hidden_size=hidden_size,
             threads=threads,
+            max_rows=8,
         )
     _launch_add_rmsnorm(
         "hipengine_gguf_add_rmsnorm_bf16_f32_weight_fixed5120_wave256",
@@ -419,7 +416,13 @@ def gguf_rounded_add_rmsnorm_bf16_f32_weight(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Add BF16 inputs, round, then normalize that rounded residual."""
+    """Add BF16 inputs, round, then normalize that rounded residual.
+
+    The device kernel is one block per row with an identical 256-thread
+    reduction tree, so it is row-count agnostic; the guard matches the
+    ``2 <= rows <= 8`` envelope every caller already declares (B1-B7
+    verifier rows plus the root row).
+    """
 
     if not 2 <= int(rows) <= 8:
         raise ValueError("rows must be between 2 and 8")
@@ -436,6 +439,59 @@ def gguf_rounded_add_rmsnorm_bf16_f32_weight(
         _check_nonzero_pointer(pointer, name)
     _launch_add_rmsnorm(
         "hipengine_gguf_rounded_add_rmsnorm_bf16_f32_weight",
+        (residual_ptr, add_ptr, weight_ptr, norm_out_ptr, residual_out_ptr),
+        rows,
+        hidden_size,
+        eps,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_rounded_add_rmsnorm_bf16_f32_weight_fixed5120_wave256(
+    residual_ptr: int,
+    add_ptr: int,
+    weight_ptr: int,
+    norm_out_ptr: int,
+    residual_out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    eps: float,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    _prevalidated: bool = False,
+) -> None:
+    """Fixed-5120 register-cached owner for the rounded add-plus-RMSNorm leaf.
+
+    Same rounded arithmetic and the same 256-thread reduction tree as
+    :func:`gguf_rounded_add_rmsnorm_bf16_f32_weight`, with both passes fully
+    unrolled over the 20 values each thread owns so the residual is read once
+    and the second pass does not reload it.
+    """
+
+    if not _prevalidated:
+        if not 2 <= rows <= 8:
+            raise ValueError("rows must be 2 to 8")
+        _check_fixed5120_wave256(
+            (
+                (residual_ptr, "residual_ptr"),
+                (add_ptr, "add_ptr"),
+                (weight_ptr, "weight_ptr"),
+                (norm_out_ptr, "norm_out_ptr"),
+                (residual_out_ptr, "residual_out_ptr"),
+            ),
+            rows=rows,
+            hidden_size=hidden_size,
+            threads=threads,
+            max_rows=8,
+        )
+    _launch_add_rmsnorm(
+        "hipengine_gguf_rounded_add_rmsnorm_bf16_f32_weight_fixed5120_wave256",
         (residual_ptr, add_ptr, weight_ptr, norm_out_ptr, residual_out_ptr),
         rows,
         hidden_size,
@@ -1045,6 +1101,16 @@ def register_gguf_ops(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "add+rmsnorm",
+            "gguf_f32_weight",
+            "rounded_bf16_out_fixed5120_wave256",
+        ),
+        gguf_rounded_add_rmsnorm_bf16_f32_weight_fixed5120_wave256,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "add_rmsnorm",
             "gguf_f32_weight",
             "bf16_out_staged_f32_local256",
@@ -1406,9 +1472,13 @@ def _check_fixed5120_wave256(
     rows: int,
     hidden_size: int,
     threads: int,
+    max_rows: int = 1,
 ) -> None:
-    if rows != 1:
-        raise ValueError("rows must be exactly 1")
+    if rows < 1 or rows > max_rows:
+        raise ValueError(
+            "rows must be exactly 1" if max_rows == 1
+            else f"rows must be between 1 and {max_rows}"
+        )
     if hidden_size != 5_120:
         raise ValueError("hidden_size must be exactly 5120")
     if threads != 256:
@@ -1453,6 +1523,7 @@ __all__ = [
     "gguf_add_rmsnorm_bf16_f32_weight",
     "gguf_add_rmsnorm_bf16_f32_weight_fixed1024_wave256",
     "gguf_add_rmsnorm_bf16_f32_weight_fixed5120_wave256",
+    "gguf_rounded_add_rmsnorm_bf16_f32_weight_fixed5120_wave256",
     "gguf_add_rmsnorm_bf16_f32_weight_staged_f32_local256",
     "gguf_rounded_add_rmsnorm_bf16_f32_weight",
     "gguf_add_rmsnorm_f32_bf16_f32_weight",

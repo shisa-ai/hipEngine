@@ -99,6 +99,10 @@ __device__ __forceinline__ void qwen35_full_attn_decode_impl(
     __syncthreads();
   }
   const float max_score = partial[0];
+  // barrier before reusing partial: every thread must have read the
+  // pass-1 row max before any thread overwrites partial with its
+  // partial exponential sum.
+  __syncthreads();
 
   float local_sum = 0.0f;
   for (int64_t token = threadIdx.x; token < context_len; token += blockDim.x) {
@@ -666,6 +670,10 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_c1_exact_kern
     __syncthreads();
   }
   const float max_score = partial[0];
+  // barrier before reusing partial: every thread must have read the
+  // pass-1 row max before any thread overwrites partial with its
+  // partial exponential sum.
+  __syncthreads();
 
   float local_sum = 0.0f;
   for (int64_t token = threadIdx.x; token < context_len; token += blockDim.x) {
@@ -1843,6 +1851,10 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_fp16_kernel(
     __syncthreads();
   }
   const float max_score = partial[0];
+  // barrier before reusing partial: every thread must have read the
+  // pass-1 row max before any thread overwrites partial with its
+  // partial exponential sum.
+  __syncthreads();
 
   float local_sum = 0.0f;
   for (int64_t token = threadIdx.x; token < visible_len; token += blockDim.x) {
@@ -2777,6 +2789,10 @@ __global__ void qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_kernel(
     __syncthreads();
   }
   const float max_score = partial[0];
+  // barrier before reusing partial: every thread must have read the
+  // pass-1 row max before any thread overwrites partial with its
+  // partial exponential sum.
+  __syncthreads();
 
   float local_sum = 0.0f;
   for (int64_t token = threadIdx.x; token < visible_len; token += blockDim.x) {
@@ -2955,6 +2971,10 @@ __global__ void qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_kernel(
     __syncthreads();
   }
   const float max_score = partial[0];
+  // barrier before reusing partial: every thread must have read the
+  // pass-1 row max before any thread overwrites partial with its
+  // partial exponential sum.
+  __syncthreads();
 
   float local_sum = 0.0f;
   for (int64_t token = threadIdx.x; token < visible_len; token += blockDim.x) {
@@ -3603,7 +3623,7 @@ __global__ void qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_kernel
   }
 }
 
-template <typename scale_t, int64_t q_per_kv, int64_t num_q_heads, int64_t num_kv_heads>
+template <typename scale_t, int64_t q_per_kv, int64_t num_q_heads, int64_t num_kv_heads, bool shared_table = false>
 __global__ void qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_batch_kernel(
     const float* __restrict__ query,         // strided [rows, num_q_heads, 256]
     const int8_t* __restrict__ key_cache,    // [num_blocks, 256, num_kv_heads, 256]
@@ -3633,7 +3653,7 @@ __global__ void qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_batch_
   const int64_t context_len = context_len_ptr[row];
   const int64_t token_start = split_idx * chunk_size;
   const int64_t q_base = kv_head * q_per_kv;
-  const int32_t* __restrict__ block_table = block_tables + row * block_table_len;
+  const int32_t* __restrict__ block_table = block_tables + (shared_table ? 0 : row * block_table_len);
 
   if (token_start >= context_len) {
     if (threadIdx.x == 0) {
@@ -4639,7 +4659,7 @@ int launch_qwen35_paged_full_attn_decode_split_k_gqa_context_int8(
   return static_cast<int>(hipGetLastError());
 }
 
-template <typename scale_t>
+template <typename scale_t, bool shared_table = false>
 int launch_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_batch(
     const float* query,
     const int8_t* key_cache,
@@ -4680,7 +4700,7 @@ int launch_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_batch(
       static_cast<size_t>(chunk_size + 2) * sizeof(int32_t);
 #define HIPENGINE_LAUNCH_INT8_GQA_CONTEXT_BATCH(Q_PER_KV, Q_HEADS, KV_HEADS) \
   hipLaunchKernelGGL( \
-      HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_batch_kernel<scale_t, Q_PER_KV, Q_HEADS, KV_HEADS>), \
+      HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_batch_kernel<scale_t, Q_PER_KV, Q_HEADS, KV_HEADS, shared_table>), \
       dim3(static_cast<unsigned int>(num_kv_heads), static_cast<unsigned int>(num_splits), static_cast<unsigned int>(rows)), \
       dim3(threads), \
       shared_bytes, \
@@ -6865,22 +6885,24 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_
       stream);
 }
 
-#define DEFINE_INT8_GQA_BATCH_ATTN(SUFFIX, SCALE_T)                                           \
-extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_scale_##SUFFIX##_batch_spans(\
+#define DEFINE_INT8_GQA_BATCH_ATTN(SUFFIX, SCALE_T, MODE, SHARED_TABLE)                        \
+extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_scale_##SUFFIX##_##MODE##_spans(\
     const float* query, const int8_t* key_cache, const int8_t* value_cache,                    \
     const SCALE_T* k_scale, const SCALE_T* v_scale, float* partial_out, float* partial_m,      \
     float* partial_l, const int32_t* base_offsets, const int64_t* live_counts, int64_t rows,   \
     int64_t query_row_stride, int64_t chunk_size, int64_t num_splits, int64_t block_size,     \
     int64_t block_table_len, int64_t num_q_heads, int64_t num_kv_heads, int64_t head_dim,     \
     float scale, hipStream_t stream) {                                                         \
-  return launch_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_batch<SCALE_T>(         \
+  return launch_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_batch<SCALE_T, SHARED_TABLE>( \
       query, key_cache, value_cache, k_scale, v_scale, partial_out, partial_m, partial_l,      \
       base_offsets, live_counts, rows, query_row_stride, chunk_size, num_splits, block_size,   \
       block_table_len, num_q_heads, num_kv_heads, head_dim, scale, stream);                    \
 }
 
-DEFINE_INT8_GQA_BATCH_ATTN(f32, float)
-DEFINE_INT8_GQA_BATCH_ATTN(fp16, half_t)
+DEFINE_INT8_GQA_BATCH_ATTN(f32, float, batch, false)
+DEFINE_INT8_GQA_BATCH_ATTN(fp16, half_t, batch, false)
+DEFINE_INT8_GQA_BATCH_ATTN(f32, float, verify_chain, true)
+DEFINE_INT8_GQA_BATCH_ATTN(fp16, half_t, verify_chain, true)
 #undef DEFINE_INT8_GQA_BATCH_ATTN
 
 extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_block16_scale_f32_spans(

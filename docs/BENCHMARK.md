@@ -1,6 +1,10 @@
+---
+status: normative
+owns: Benchmark protocols, baselines to beat, required evidence fields, correctness thresholds, and artifact/rollup format.
+---
 # hipEngine Benchmark Procedures
 
-Protocols, baselines, and artifact formats for every perf claim hipEngine retains. This doc is the companion to the "Evidence Policy" rule in `AGENTS.md` and `docs/PLAN.md`: when the rule says "record the exact command", it means the commands here.
+Protocols, baselines, and artifact formats for every perf claim hipEngine retains. This doc is the companion to [`OPTIMIZATION.md`](OPTIMIZATION.md) (the scoped kernel/performance/benchmark rules) and the "Evidence Policy" section in `docs/PLAN.md`: when the rule says "record the exact command", it means the commands here.
 
 See `docs/ROOFLINE.md` for the RDNA3 / W7900 hardware model, per-bucket decode analysis, and the "what not to chase" catalog. This doc is the operational layer on top of it. Execution-profile correctness and determinism contracts are normative in [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md).
 
@@ -177,7 +181,7 @@ acceptance rows are INVALID.
 > ~3-4 min, not ~40+). **Every GGUF AR/MTP optimization must pass `--scope full`
 > before it is retained or made default; microbenches and partials routinely do
 > not translate to e2e (dp4a, split-K, rowtile, non-temporal were all isolated
-> wins that went flat at e2e).** See `docs/MTP-LLAMACPP-PARITY.md` →
+> wins that went flat at e2e).** See `docs/campaigns/MTP-LLAMACPP-PARITY.md` →
 > "Validation protocol — run the suite for EVERY change". The manual two-step
 > below is the underlying mechanism; note its `--true-ar-baseline-json` *attach*
 > is currently broken (it still demands the #8-retired `graph_replay` AR contract,
@@ -835,7 +839,7 @@ events), but run that as a separate traced-incidence experiment: profiler
 instrumentation can suppress this timing-sensitive failure, and the traced
 process must use prebuilt `require_cached` kernels. The canonical symptom,
 control matrix, KFD/MES capture plan, and upstream-report checklist live in
-[`DEBUG-GFX1151-STALL.md`](DEBUG-GFX1151-STALL.md).
+[`DEBUG-GFX1151-STALL.md`](reference/DEBUG-GFX1151-STALL.md).
 
 The APU exposes a 512 MiB visible-VRAM aperture in
 `mem_info_vram_{total,used}` but a 120 GiB system-backed allocation domain in
@@ -846,7 +850,7 @@ silently presented as the other.
 
 ## Baselines to Beat
 
-These numbers are measured on the shared `/home/lhl/` workspace and recorded in `~/amd-gpu-tuning/WORKLOG.md`. They are the "must beat" bar for hipEngine on the same hardware. When hipEngine claims a win, the claim is per-column vs the row it beats.
+These numbers are measured on the shared `~/` workspace and recorded in `~/amd-gpu-tuning/WORKLOG.md`. They are the "must beat" bar for hipEngine on the same hardware. When hipEngine claims a win, the claim is per-column vs the row it beats.
 
 ### Qwen3.6-35B-A3B Q8_K_XL on llama.cpp ROCm (current W7900 target)
 
@@ -879,7 +883,7 @@ performance claims. Use them to answer "what does current llama.cpp do on this
 model and prompt mix?" before comparing hipEngine changes.
 
 For cross-engine decode-only tables, follow the
-[`Cross-Engine Decode Timing Boundary`](MTP-LLAMACPP-PARITY.md#cross-engine-decode-timing-boundary).
+[`Cross-Engine Decode Timing Boundary`](campaigns/MTP-LLAMACPP-PARITY.md#cross-engine-decode-timing-boundary).
 llama.cpp starts `predicted_ms` after sampling the first output while including
 that token in `predicted_n`; native `predicted_per_second` is therefore a
 self-reported diagnostic, not the cross-engine rate. Request `N+1` outputs and
@@ -893,7 +897,7 @@ Default config:
 - Config: `benchmarks/configs/llamacpp-mtp-qwen36-27b.json`
 - Prompt suite: `benchmarks/prompts/mtpbench-code-general-ja.jsonl`
 - Model: `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf`
-- Server: `/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server`
+- Server: `~/llama.cpp/llama.cpp-hip/build/bin/llama-server`
 - Hardware: W7900/gfx1100
 - Server flags: `-ngl 99 -fa on -ctk f16 -ctv f16 -c 8192 --no-cache-prompt`
 - MTP flags: `--spec-type draft-mtp --spec-draft-n-max 2`
@@ -902,7 +906,7 @@ Run both natural prompts and token-repeat prompts:
 
 ```bash
 python3 scripts/llamacpp_mtp_bench.py \
-  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server \
+  --server-bin ~/llama.cpp/llama.cpp-hip/build/bin/llama-server \
   --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf \
   --ctx-size 8192 \
   --draft-max 2 \
@@ -946,7 +950,7 @@ numerical profiles do not unlock a context. Reduced position/control fixtures
 are exempt only when they do not instantiate a full long-context run. Existing
 long-context evidence stays retained but is not rerun below the threshold.
 Only explicit user direction may override this ladder. The campaign-specific
-basic gate and evidence are normative in `docs/QWEN3.8-FLASH-NEXT.md`.
+basic gate and evidence are normative in `docs/campaigns/QWEN3.8-FLASH-NEXT.md`.
 
 ## Standard Workloads
 
@@ -1142,7 +1146,7 @@ still requires fixed-seed repeatability, CPU-reference distribution sanity, zero
 full-vocabulary D2H on supported rows, one warmup plus three measurements for all
 frozen C1/C4/C8 conditions, no C1 regression, and the medium-C4 guard.
 
-The complete active board is [`AGENTIC-OPT.md`](AGENTIC-OPT.md).
+The complete active board is [`AGENTIC-OPT.md`](campaigns/AGENTIC-OPT.md).
 
 ### Speculative decode / DFlash rows
 
@@ -1392,7 +1396,7 @@ ledgers, final token, recurrent/KV hash, final-logit hash, and context teardown.
 Native API call wall includes the required stream drain and finite native wait;
 HIP call wall is asynchronous issue time, so synchronized replay is the primary
 cross-transport metric. The harness remains `performance_claim=false` until
-natural prompt/category and heldout gates satisfy `docs/PM4.md` promotion policy.
+natural prompt/category and heldout gates satisfy `docs/reference/PM4.md` promotion policy.
 It never performs submit-plus-queue-recreate stress.
 
 For the SOL-G6 replacement-residency gate, run a clean persistent-session
@@ -1435,7 +1439,7 @@ claiming legacy-schema acceptance.
     "kind": "hipengine_artifact_provenance",
     "schema_version": 1,
     "collected_at": "2026-07-11T12:00:00+00:00",
-    "repo_root": "/home/lhl/hipEngine-main",
+    "repo_root": "<absolute path to your checkout>",
     "hipengine_commit": "<sha>",
     "git_branch": "main",
     "staged_dirty": false,
@@ -1489,7 +1493,7 @@ claiming legacy-schema acceptance.
   "workload": {
     "shape": "c1-short",
     "model": "Qwen3-0.6B",
-    "model_path": "/home/lhl/gpu-tuning/models/Qwen3-0.6B",
+    "model_path": "~/gpu-tuning/models/Qwen3-0.6B",
     "model_revision": "<hf snapshot or git/ref>",
     "quant": "fp16",
     "prompt_tokens": 4096,

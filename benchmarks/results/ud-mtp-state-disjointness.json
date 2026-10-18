@@ -1,0 +1,31 @@
+{
+  "unit": "U6-ud-mtp-state-disjointness",
+  "kind": "correctness-diagnostic",
+  "not_a_performance_claim": "This artifact records no token rates.",
+  "claim": "U6 item 3: the draft's device state is a private allocation set, disjoint from the target session's KV/recurrent scratch and from the transactional verifier's rollback journal.",
+  "host": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900"
+  },
+  "method": {
+    "construction": "The same target session + NextN provider the benchmark suite builds (Qwen35GGUFResidentSession with wmma prefill and gemv decode, then Qwen35GGUFNextNDraftProvider.from_model with the borrowed fallback weights).",
+    "collection": "Every reachable device pointer is collected by walking dataclass fields and tuples, taking each object's .ptr; the sets are then intersected.",
+    "command": "python /tmp/ud6-state-disjoint.py (read-only diagnostic; grants MTP scope in-process, writes nothing)",
+    "artifact_under_test": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf (quant gguf_ud_q4_k_m)"
+  },
+  "measurement": {
+    "draft_executor_state_buffers": 62,
+    "target_session_state_buffers": 188,
+    "verifier_journal_buffers": 381,
+    "checks": {
+      "draft & target session": "disjoint",
+      "draft & verifier journal": "disjoint"
+    },
+    "result": "PASS"
+  },
+  "note": "The verifier deliberately holds a reference to the target session, so walking the verifier object reaches the target's own buffers. That is the verifier doing its job, not aliasing, so the check walks the verifier's journal object separately and intersects it with the draft's set only.",
+  "not_measured": [
+    "The serving path's Qwen35GGUFResidentMTPDraftRunner private buffers: this check covers the benchmark suite's provider path, which is the path the paired measurement uses.",
+    "Cross-request isolation at widths above one: this check is c1, matching the declared envelope."
+  ]
+}

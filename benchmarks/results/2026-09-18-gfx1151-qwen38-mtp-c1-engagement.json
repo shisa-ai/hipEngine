@@ -1,0 +1,59 @@
+{
+  "title": "Qwen3.8-27B Q4_K_M on gfx1151: c=1 MTP engages and is 1.68x / 1.52x its in-load AR control at 512 / 1024 prompt tokens",
+  "date": "2026-09-18",
+  "status": "measured",
+  "performance_claim": true,
+  "purpose": "Re-check the external porting record's finding that a request asking for MTP on this model/backend was served autoregressively, and record what the c=1 speculative route costs and returns today.",
+  "model": {
+    "file": "Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "quant": "gguf_q4_k_m"
+  },
+  "hardware": "zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)",
+  "backend": "hip_gfx1151",
+  "kv_storage": "bf16",
+  "execution_profile": "production",
+  "tree": {"commit": "f46912963", "clean": true},
+  "protocol": {
+    "harness": "/home/lhl/atlas/scripts/strix/bench_1to1.py (the external porting record's own client: identical prompts to both engines, greedy, thinking pinned off, streaming, TTFT to the first streamed token, decode rate over the window between the first and last chunk)",
+    "shapes": [512, 1024, 4096],
+    "decode_tokens": 128,
+    "repeats": "one discarded warmup then three measured runs per shape",
+    "prompt_tokens_observed": [517, 945, 3530],
+    "server": "python -m hipengine.server --model Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --served-model-name qwen3.8-27b-q4km --max-context-tokens 16384 --kv-storage bf16 --execution-profile production --speculative-mtp-serving {enabled,auto} --speculative-candidate-budget 3 --host 127.0.0.1 --port 8093 --log-level info"
+  },
+  "results": {
+    "decode_tokens_per_second_median": {
+      "ar_request_false": {"512": 11.90, "1024": 11.75, "4096": 10.97},
+      "mtp_request_true": {"512": 20.01, "1024": 17.84, "4096": 10.95},
+      "mtp_auto_default": {"512": 19.98, "1024": 17.81, "4096": 10.94}
+    },
+    "ratio_mtp_over_ar": {"512": 1.68, "1024": 1.52, "4096": 1.00},
+    "cv_percent": "at or below 0.07% on every row",
+    "ttft_ms_median": {
+      "ar_request_false": {"512": 1433, "1024": 2384, "4096": 8641},
+      "mtp_request_true": {"512": 1634, "1024": 2739, "4096": 8648}
+    },
+    "prefill_tokens_per_second_median": {
+      "ar_request_false": {"512": 360.8, "1024": 396.4, "4096": 408.5},
+      "mtp_request_true": {"512": 316.5, "1024": 345.0, "4096": 408.2}
+    }
+  },
+  "correctness": {
+    "exactness": "the arms' first 600 generated characters are byte-identical on all three shapes (AR against both the explicit MTP request and the auto default). Greedy MTP is an exact verifier of the autoregressive path, so identical text is the expected outcome, not a coincidence.",
+    "scope": "the client keeps only the first 600 characters per row, so this is a prefix identity check rather than a full-output digest",
+    "gate": "the measurement is an engagement and rate check with an in-load control; it is not a qualification of a new execution profile"
+  },
+  "readings": [
+    "The route engages for an explicit request and for the production default: --speculative-mtp-serving auto with no request field lands within 0.2% of an explicit speculative_mtp: true request.",
+    "At 4096 prompt tokens the route declines by design: the adapter's qualified MTP context window is 1,023 tokens, so a 3,530-token prompt reports target_context_k0 and decodes autoregressively.",
+    "The MTP rows' higher TTFT at 512/1024 (1634/2739 against 1433/2384 ms) is the provider's prompt catch-up, not slower prefill; prefill rates are within 12% of the AR rows.",
+    "The in-load AR control reproduces the external record's 2026-09-17 hipEngine AR rows (11.88/11.72/10.96 against 11.90/11.75/10.97), so the MTP rows are comparable to that record's Atlas MTP K=4 rows (35.19/28.70/21.01), which remain 1.76x/1.61x/1.92x ahead."
+  ],
+  "raw": {
+    "ar": "/tmp/c1-mtp/ar-512-4096.json",
+    "mtp_requested": "/tmp/c1-mtp/mtp-requested.json",
+    "auto_default": "/tmp/c1-mtp/auto-default.json"
+  },
+  "cross_reference": "The external porting record that raised this question is ~/atlas/docs/porting/QWEN38_STRIX_PORT.md; its finding 3 is marked superseded with a pointer to the 2026-09-18 section."
+}

@@ -8,18 +8,38 @@ from __future__ import annotations
 
 import os
 import inspect
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from numbers import Integral
 from pathlib import Path
 from typing import Any
 
+from hipengine.kvcache.dms_config import DMSConfig
+from hipengine.speculative.registry import DEFAULT_PROVIDER_CANDIDATE_BUDGET
 from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
 
 AUTO_QUANT = "auto"
 
 
-def _factory_capacity_kwargs(factory, *, max_sequence_length, resident_capacity):
+def _declare_serving_context(generator: Any, max_sequence_length: int | None) -> None:
+    """Publish the serving context this LLM was constructed with.
+
+    ``max_sequence_length`` is a declaration about the resident session, and
+    resident sizing reads the generator's own pin. Without this the declaration
+    was dropped on the floor: the session was sized by automatic selection, which
+    takes the largest context that fits, and the caller's stated bound was
+    silently replaced by something larger. Generators without the hook are
+    unaffected.
+    """
+
+    if max_sequence_length is None:
+        return
+    declare = getattr(generator, "declare_max_sequence_length", None)
+    if callable(declare):
+        declare(int(max_sequence_length))
+
+
+def _factory_capacity_kwargs(factory, *, max_sequence_length, resident_capacity, vision_max_scratch_bytes=None, prefill_max_scratch_bytes=None, vision_max_seconds=None):
     """Forward configured limits only to factories that explicitly declare them."""
     try:
         parameters = inspect.signature(factory).parameters
@@ -27,7 +47,10 @@ def _factory_capacity_kwargs(factory, *, max_sequence_length, resident_capacity)
         return {}
     return {
         name: value for name,value in (
-            ("max_sequence_length",max_sequence_length),("resident_capacity",resident_capacity))
+            ("max_sequence_length",max_sequence_length),("resident_capacity",resident_capacity),
+            ("vision_max_scratch_bytes",vision_max_scratch_bytes),
+            ("prefill_max_scratch_bytes",prefill_max_scratch_bytes),
+            ("vision_max_seconds",vision_max_seconds))
         if value is not None and name in parameters and parameters[name].kind in (
             inspect.Parameter.POSITIONAL_OR_KEYWORD,inspect.Parameter.KEYWORD_ONLY)
     }
@@ -37,6 +60,30 @@ _ENGINE_LOOP_GENERATOR_DEFAULT_ENVS = {
     "max_prefill_chunk_tokens": "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS",
     "fair_prefill_burst_chunks": "HIPENGINE_FAIR_PREFILL_BURST_CHUNKS",
 }
+
+_ENGINE_COMMAND_TIMEOUT_ENV = "HIPENGINE_ENGINE_COMMAND_TIMEOUT_SECONDS"
+
+
+def _engine_command_timeout_seconds(environ: Mapping[str, str] | None = None) -> float:
+    """Resolve the engine-service command budget, environment override first.
+
+    A control command waits behind whatever the single driver thread is already
+    doing, so this budget guards liveness rather than bounding engine work.
+    """
+
+    from hipengine.generation.engine_service import DEFAULT_COMMAND_TIMEOUT_SECONDS
+
+    env = os.environ if environ is None else environ
+    raw = str(env.get(_ENGINE_COMMAND_TIMEOUT_ENV, "")).strip()
+    if not raw:
+        return DEFAULT_COMMAND_TIMEOUT_SECONDS
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError(f"{_ENGINE_COMMAND_TIMEOUT_ENV} must be a number") from exc
+    if not value > 0:
+        raise ValueError(f"{_ENGINE_COMMAND_TIMEOUT_ENV} must be positive")
+    return value
 
 
 def _server_plain_ar_capacity(
@@ -146,6 +193,10 @@ class SamplingParams:
         compare=False,
         repr=False,
     )
+    # User-facing explicit request (M7): when true, generate() takes the
+    # model-owned speculative MTP route instead of plain autoregressive
+    # decoding, and an unsupported model fails rather than downgrading.
+    speculative_mtp: bool = False
     speculative_mtp_static_eligibility: SpeculativeMTPStaticEligibility | None = None
     logprobs: bool = False
     top_logprobs: int = 0
@@ -271,20 +322,53 @@ class LLM:
         execution_profile: str | None = None,
         max_active_requests: int | None = None,
         max_sequence_length: int | None = None,
+        vision_max_scratch_bytes: int | None = None,
+        prefill_max_scratch_bytes: int | None = None,
+        vision_max_seconds: float | None = None,
         prefix_cache: str | None = None,
         speculative_mtp_serving: str | None = None,
         speculative_provider: str | None = None,
         draft_model: str | None = None,
-        speculative_candidate_budget: int = 4,
+        speculative_candidate_budget: int | None = None,
         kv_storage: str | None = None,
         kv_scale_dtype: str | None = None,
         kv_scale_granularity: str | None = None,
+        dms_metadata_path: str | None = None,
         vision_model: str | None = None,
+        vae_model: str | None = None,
+        dms: "DMSConfig | None" = None,
+        engine_command_timeout_seconds: float | None = None,
     ) -> None:
+        from hipengine.kvcache.dms_serving import resolve_dms_serving_options
+
+        dms_metadata_path, max_active_requests, prefix_cache = resolve_dms_serving_options(
+            dms_metadata_path, max_active_requests, prefix_cache
+        )
+        self.dms_metadata_path = dms_metadata_path
+        if dms is not None:
+            if not isinstance(dms, DMSConfig):
+                raise TypeError("dms must be a DMSConfig")
+            if max_active_requests not in (None, 1):
+                raise ValueError("DMS compact serving requires max_active_requests=1")
+            if kv_storage not in (None, "auto", "bf16"):
+                raise ValueError("DMS public serving currently implements BF16 compact storage only")
+            if prefix_cache not in (None, "off"):
+                raise ValueError("DMS compact KV has no radix prefix-cache adapter")
+            if speculative_mtp_serving not in (None, "off") or speculative_provider is not None:
+                raise ValueError("DMS compact KV has no speculative serving adapter")
+            max_active_requests, kv_storage = 1, "bf16"
+            prefix_cache, speculative_mtp_serving = "off", "off"
+        self.dms = dms
         if max_active_requests is not None and int(max_active_requests) <= 0:
             raise ValueError("max_active_requests must be positive when set")
         if max_sequence_length is not None and int(max_sequence_length) <= 0:
             raise ValueError("max_sequence_length must be positive when set")
+        if vision_max_scratch_bytes is not None and int(vision_max_scratch_bytes) <= 0:
+            raise ValueError("vision_max_scratch_bytes must be positive when set")
+        if prefill_max_scratch_bytes is not None and int(prefill_max_scratch_bytes) <= 0:
+            raise ValueError("prefill_max_scratch_bytes must be positive when set")
+        if vision_max_seconds is not None and not float(vision_max_seconds) > 0:
+            raise ValueError("vision_max_seconds must be positive when set")
         provider = (
             None
             if speculative_provider is None
@@ -299,9 +383,12 @@ class LLM:
             raise ValueError("draft_model requires speculative_provider")
         if provider is not None and drafter is None:
             raise ValueError("speculative_provider requires draft_model")
-        candidate_budget = int(speculative_candidate_budget)
-        if candidate_budget <= 0:
-            raise ValueError("speculative_candidate_budget must be positive")
+        if speculative_candidate_budget is None:
+            candidate_budget = None
+        else:
+            candidate_budget = int(speculative_candidate_budget)
+            if candidate_budget <= 0:
+                raise ValueError("speculative_candidate_budget must be positive")
         from hipengine.execution_profiles import resolve_requested_execution_profile
 
         requested_profile = resolve_requested_execution_profile(execution_profile)
@@ -317,9 +404,28 @@ class LLM:
         self.max_sequence_length = (
             None if max_sequence_length is None else int(max_sequence_length)
         )
+        self.vision_max_scratch_bytes = (
+            None
+            if vision_max_scratch_bytes is None
+            else int(vision_max_scratch_bytes)
+        )
+        self.prefill_max_scratch_bytes = (
+            None
+            if prefill_max_scratch_bytes is None
+            else int(prefill_max_scratch_bytes)
+        )
+        self.vision_max_seconds = (
+            None if vision_max_seconds is None else float(vision_max_seconds)
+        )
         self.speculative_provider = provider
         self.draft_model = drafter
         self.speculative_candidate_budget = candidate_budget
+        # An omitted budget resolves from capability data when the resident
+        # generator loads; ``requested`` keeps the caller's intent for reporting.
+        self.speculative_candidate_budget_requested = candidate_budget
+        self.speculative_candidate_budget_source = (
+            "explicit" if candidate_budget is not None else "pending"
+        )
         self.kv_storage = None if kv_storage is None else str(kv_storage)
         self.kv_scale_dtype = None if kv_scale_dtype is None else str(kv_scale_dtype)
         self.kv_scale_granularity = (
@@ -330,6 +436,18 @@ class LLM:
         )
         if self.vision_model == "":
             raise ValueError("vision_model must be non-empty when set")
+        self.vae_model = (
+            None if vae_model is None else str(vae_model).strip()
+        )
+        if self.vae_model == "":
+            raise ValueError("vae_model must be non-empty when set")
+        if engine_command_timeout_seconds is None:
+            self.engine_command_timeout_seconds = _engine_command_timeout_seconds()
+        else:
+            budget = float(engine_command_timeout_seconds)
+            if not budget > 0:
+                raise ValueError("engine_command_timeout_seconds must be positive when set")
+            self.engine_command_timeout_seconds = budget
         if prefix_cache is None:
             self.prefix_cache = None
         else:
@@ -373,6 +491,12 @@ class LLM:
         prompt_tuple = _normalize_prompts(prompts)
         if not prompt_tuple:
             return []
+        if sampling_params is not None and bool(getattr(sampling_params, "speculative_mtp", False)):
+            # An explicit request runs the MTP route or raises naming the
+            # capability; it is never folded back into plain autoregressive
+            # decoding, which would give the caller a silently different
+            # result from the one it asked for.
+            return self.generate_speculative_mtp_detailed(prompt_tuple, sampling_params)
         generator = self._get_text_generator()
         request = _generation_request(prompt_tuple, sampling_params or SamplingParams())
         detailed = getattr(generator, "generate_detailed", None)
@@ -431,10 +555,198 @@ class LLM:
         output = detailed(str(prompt), image, request)
         return output if isinstance(output, GenerationOutput) else GenerationOutput(text=str(output))
 
+    def transcribe(self, audio, *, sample_rate=24000, context="", max_new_tokens=256, seed=20260914):
+        """Transcribe mono PCM through a model-owned audio generator.
+
+        Returns raw text, validated segments (or None), token IDs and finish
+        reason. Context supplies hotwords or other transcription guidance.
+        """
+        generator = self._get_text_generator()
+        transcribe = getattr(generator, "transcribe", None)
+        if not callable(transcribe):
+            raise NotImplementedError("audio transcription is not supported")
+        return transcribe(audio, sample_rate=sample_rate, context=context,
+                          max_new_tokens=max_new_tokens, seed=seed)
+
+    def synthesize(self, script, speaker_references, *, sample_rate=24000,
+                   max_new_tokens=None, seed=None, cfg_scale=None, cancel=None):
+        """Speak ``script`` in the voices of ``speaker_references``.
+
+        ``speaker_references`` is one mono float waveform per speaker in script
+        order. Returns PCM, the sample rate and the completion status (``eos``,
+        ``length``, ``cancelled`` or ``error``); a cancelled or failed request
+        carries the audio produced so far and is not a completed synthesis.
+        """
+        generator = self._get_text_generator()
+        synthesize = getattr(generator, "synthesize", None)
+        if not callable(synthesize):
+            raise NotImplementedError("speech synthesis is not supported")
+        kwargs = {"sample_rate": sample_rate, "max_new_tokens": max_new_tokens,
+                  "seed": seed, "cancel": cancel}
+        if cfg_scale is not None:
+            kwargs["cfg_scale"] = cfg_scale
+        return synthesize(script, speaker_references, **kwargs)
+
+    def generate_song(
+        self,
+        style: str | None = None,
+        lyrics: str | None = None,
+        *,
+        request: Any = None,
+        cot: str | None = None,
+        seed: int | None = None,
+        abc: str | None = None,
+        cfg_scale: float | None = None,
+        request_id: str | None = None,
+        steps: int | None = None,
+        context: int | None = None,
+        tiled: bool = True,
+        cancelled: Callable[[], bool] | None = None,
+        on_token: Callable[[str, int], None] | None = None,
+        abc_sampling: Any = None,
+        semantic_sampling: Any = None,
+    ):
+        """Generate one song from lyrics and a style prompt through a model-owned path.
+
+        ``style`` and ``lyrics`` are the request; ``cot`` selects the mode (``off``,
+        ``melody`` or ``full``), and ``abc`` supplies an external score in the
+        symbolic modes. Pass ``request`` instead to send a model-owned request
+        object or a mapping of its fields. ``steps`` overrides the product's ODE
+        step count, and ``cancelled`` is polled between stages so a disconnected
+        client stops the pipeline.
+
+        Returns the model-owned result: ``audio`` is ``[channels, samples]`` FP32
+        at ``sample_rate``, alongside the plan, the raw semantic codes, the
+        latents, the effective settings, and the checkpoint identities.
+        """
+
+        generator = self._get_text_generator()
+        generate = getattr(generator, "generate_song", None)
+        if not callable(generate):
+            raise NotImplementedError("song generation is not supported by this model")
+        return generate(
+            request,
+            style=style,
+            lyrics=lyrics,
+            cot=cot,
+            seed=seed,
+            abc=abc,
+            cfg_scale=cfg_scale,
+            request_id=request_id,
+            steps=steps,
+            context=context,
+            tiled=tiled,
+            cancelled=cancelled,
+            on_token=on_token,
+            abc_sampling=abc_sampling,
+            semantic_sampling=semantic_sampling,
+        )
+
+    def song_generator(self) -> Any:
+        """Return the model-owned song generator for staged use.
+
+        The generator carries the same pipeline one stage at a time
+        (``plan``, ``generate_semantic``, ``synthesize``, ``decode``) over one
+        resident session, which is what a caller needs to reuse a plan or to
+        re-decode saved latents.
+        """
+
+        generator = self._get_text_generator()
+        if not callable(getattr(generator, "generate_song", None)):
+            raise NotImplementedError("song generation is not supported by this model")
+        return generator
+
+    def reset(self) -> None:
+        """Return a loaded engine to its initial state.
+
+        KV caches, streaming state and the random stream -- everything a request
+        leaves behind. Weights stay resident, so this is what makes one engine able
+        to serve request after request. A no-op on an engine whose generator has no
+        state to reset; unlike the request paths this does not load the model.
+        """
+        generator = self._text_generator
+        if generator is None:
+            return
+        reset = getattr(generator, "reset", None)
+        if not callable(reset):
+            raise NotImplementedError("this engine has no resettable state")
+        return reset()
+
+    @property
+    def generation_surfaces(self) -> tuple[str, ...]:
+        """Return the generation surfaces this model declares.
+
+        A surface names what the model produces -- ``text`` for prompt-to-text,
+        ``song`` for lyrics-to-audio. Reading the model plugin's declaration is
+        what lets a caller route to an implemented path and refuse an unimplemented
+        one without matching on the model's name or artifact.
+        """
+
+        from hipengine.models import generation_surfaces
+
+        _weight_index, model_plugin = self._load_model_metadata()
+        return generation_surfaces(model_plugin)
+
+    @property
+    def supports_song_generation(self) -> bool:
+        """Whether this model declares the song generation surface."""
+
+        return "song" in self.generation_surfaces
+
     @property
     def supports_vision(self) -> bool:
         generator = self._text_generator
         return bool(generator is not None and getattr(generator, "supports_vision", False))
+
+    def _generator_vision_declaration(self, name: str) -> Any:
+        """Read a vision declaration off the wrapped generator.
+
+        ``LLM`` is the object a serving front end holds, but the declarations
+        live on the generator it wraps, so a front end that reads them off
+        ``LLM`` gets ``None`` and silently falls back to a default it was not
+        meant to use.
+
+        An undeclared attribute raises ``AttributeError`` rather than returning
+        ``None``, so ``getattr(engine, name, default)`` in a caller still sees
+        the absence and applies its own default. That distinction matters:
+        Qwen4Exp declares no vision bounds and must keep the caller's default,
+        while Surya declares them and must override it.
+        """
+
+        generator = self._text_generator
+        if generator is None:
+            raise AttributeError(name)
+        return getattr(generator, name)
+
+    @property
+    def vision_max_pixels(self) -> int:
+        """Decoded-image ceiling the wrapped generator admits."""
+
+        return self._generator_vision_declaration("vision_max_pixels")
+
+    @property
+    def vision_media_input(self) -> str:
+        """Media form the wrapped generator accepts (``"items"`` / ``"image_array"``)."""
+
+        return self._generator_vision_declaration("vision_media_input")
+
+    @property
+    def vision_prompt_marker(self) -> str:
+        """Prompt text the wrapped generator wants where its media sits."""
+
+        return self._generator_vision_declaration("vision_prompt_marker")
+
+    @property
+    def vision_video_prompt_marker(self) -> str:
+        """Prompt text the wrapped generator wants where its video frames sit."""
+
+        return self._generator_vision_declaration("vision_video_prompt_marker")
+
+    @property
+    def vision_default_prompt(self) -> str:
+        """Prompt the wrapped generator wants for an image-only request."""
+
+        return self._generator_vision_declaration("vision_default_prompt")
 
     def generate_speculative_mtp_detailed(
         self,
@@ -455,7 +767,10 @@ class LLM:
         detailed = getattr(generator, "generate_speculative_mtp_detailed", None)
         if not callable(detailed):
             raise NotImplementedError("speculative MTP generation is not supported by this generator")
-        request = _generation_request(prompt_tuple, sampling_params or SamplingParams())
+        params = self._mtp_sampling_params(
+            sampling_params or SamplingParams(), realized_group_rows=len(prompt_tuple),
+        )
+        request = _generation_request(prompt_tuple, params)
         outputs = list(detailed(request))
         if len(outputs) != len(prompt_tuple):
             raise RuntimeError(f"generator returned {len(outputs)} MTP outputs for {len(prompt_tuple)} prompts")
@@ -475,8 +790,42 @@ class LLM:
         stream = getattr(generator, "stream_speculative_mtp_detailed", None)
         if not callable(stream):
             raise NotImplementedError("speculative streaming is not supported by this generator")
-        request = _generation_request(prompt_tuple, sampling_params or SamplingParams())
+        params = self._mtp_sampling_params(
+            sampling_params or SamplingParams(), realized_group_rows=len(prompt_tuple),
+        )
+        request = _generation_request(prompt_tuple, params)
         yield from stream(request)
+
+    def _mtp_sampling_params(
+        self, params: SamplingParams, *, realized_group_rows: int,
+    ) -> SamplingParams:
+        """Resolve request intent for direct callers as the HTTP layer does."""
+
+        if params.speculative_mtp_static_eligibility is not None:
+            return params
+        from hipengine.generation.sampling import speculative_serving_sampling_mode
+
+        decision = self.resolve_speculative_mtp_serving_plan(
+            realized_group_rows=realized_group_rows,
+            sampling_mode=speculative_serving_sampling_mode(params),
+            kv_storage=str(params.kv_storage),
+            memory_fit=True,
+            request_mode="explicit",
+        )
+        if decision is None:
+            return params
+        eligibility = getattr(decision, "static_eligibility", None)
+        if isinstance(decision, Mapping):
+            eligibility = decision.get("static_eligibility")
+        if isinstance(eligibility, Mapping):
+            eligibility = SpeculativeMTPStaticEligibility.from_mapping(eligibility)
+        if eligibility is None:
+            return params
+        if not eligibility.eligible:
+            raise NotImplementedError(
+                f"requested speculative MTP cannot execute: {eligibility.reason}"
+            )
+        return replace(params, speculative_mtp_static_eligibility=eligibility)
 
     @property
     def supports_speculative_mtp(self) -> bool:
@@ -490,15 +839,100 @@ class LLM:
             return False
         return callable(getattr(generator, "generate_speculative_mtp_detailed", None))
 
+    def _resident_capacity(self, generator: Any) -> int:
+        """Return the capacity the resident serving cell is sized for."""
+
+        return int(
+            getattr(
+                generator,
+                "resident_capacity",
+                self.max_active_requests if self.max_active_requests is not None else 32,
+            )
+        )
+
+    def _resolve_candidate_budget(self, generator: Any) -> tuple[int | None, str]:
+        """Resolve an omitted candidate budget from capability data.
+
+        An explicit caller value is used unchanged. An omitted one comes from
+        the resident artifact's own serving evidence (the deepest depth it
+        qualifies for the default physical cell), from an attached speculative
+        provider's declared default, or from the generator's own dense-MTP
+        default. No backend or model name is consulted.
+        """
+
+        requested = self.speculative_candidate_budget_requested
+        if requested is not None:
+            return int(requested), "explicit"
+        if self.speculative_provider is not None:
+            return int(DEFAULT_PROVIDER_CANDIDATE_BUDGET), "provider_default"
+        evidence_resolver = getattr(
+            generator, "max_qualified_speculative_candidate_budget", None
+        )
+        if callable(evidence_resolver):
+            depth = evidence_resolver(
+                realized_group_rows=1,
+                resident_capacity=self._resident_capacity(generator),
+                sampling_mode="greedy_fast",
+                kv_storage=str(self.kv_storage or "auto"),
+                memory_fit=True,
+            )
+            if depth is not None:
+                return int(depth), "model_plugin_evidence"
+        default_resolver = getattr(
+            generator, "speculative_candidate_budget_default", None
+        )
+        if callable(default_resolver):
+            return int(default_resolver()), "generator_default"
+        return None, "unresolved"
+
+    def _publish_candidate_budget(self, generator: Any | None = None) -> None:
+        """Publish the resolved candidate depth on the loaded owner.
+
+        Evidence describes a physical cell, so an evidence lookup waits until
+        the owner declares the capacity it will actually serve: a generator that
+        is constructed but not yet prepared has no resident runner and only a
+        fallback capacity. A provider default and a generator's own declared
+        default do not depend on that, so they publish as soon as the owner is
+        constructed.
+        """
+
+        owner = generator if generator is not None else self._get_text_generator()
+        if self.speculative_candidate_budget_requested is not None:
+            owner.speculative_candidate_budget = int(
+                self.speculative_candidate_budget_requested
+            )
+            return
+        if self.speculative_candidate_budget is not None:
+            return
+        if self.speculative_provider is None and callable(
+            getattr(owner, "max_qualified_speculative_candidate_budget", None)
+        ):
+            if getattr(owner, "resident_capacity", None) is None:
+                return
+        budget, source = self._resolve_candidate_budget(owner)
+        self.speculative_candidate_budget = budget
+        self.speculative_candidate_budget_source = source
+        if budget is not None:
+            owner.speculative_candidate_budget = int(budget)
+
+    @property
+    def speculative_candidate_budget_resolution(self) -> dict[str, Any]:
+        """Report the requested and effective candidate depth for operators."""
+
+        return {
+            "requested_candidate_budget": self.speculative_candidate_budget_requested,
+            "candidate_budget": self.speculative_candidate_budget,
+            "candidate_budget_source": self.speculative_candidate_budget_source,
+        }
+
     def resolve_speculative_mtp_serving_plan(
         self,
         *,
         realized_group_rows: int,
         sampling_mode: str,
-        context_tokens: int,
-        output_horizon_tokens: int,
         kv_storage: str = "auto",
         memory_fit: bool = True,
+        request_mode: str = "automatic",
     ):
         """Resolve one model-plugin serving plan before request mutation."""
 
@@ -506,44 +940,101 @@ class LLM:
         resolver = getattr(generator, "resolve_speculative_mtp_serving_plan", None)
         if not callable(resolver):
             return None
-        manifest_sha256 = self.execution_profile_manifest_sha256 or ("0" * 64)
-        resident_capacity = int(
-            getattr(
-                generator,
-                "resident_capacity",
-                self.max_active_requests if self.max_active_requests is not None else 32,
-            )
-        )
+        # The resident owner is prepared by now, so an omitted depth resolves
+        # against the real physical capacity rather than a pre-load fallback.
+        self._publish_candidate_budget(generator)
+        if self.speculative_candidate_budget is None:
+            # No evidence qualified a depth for this cell and the owner declares
+            # no default, so there is no typed plan to resolve.
+            return None
+        resident_capacity = self._resident_capacity(generator)
         return resolver(
-            execution_profile_manifest_sha256=manifest_sha256,
             realized_group_rows=int(realized_group_rows),
             resident_capacity=resident_capacity,
             candidate_budget=int(self.speculative_candidate_budget),
             sampling_mode=str(sampling_mode),
-            max_sequence_length=int(self.max_sequence_length or 1),
-            context_tokens=int(context_tokens),
-            output_horizon_tokens=int(output_horizon_tokens),
             kv_storage=str(kv_storage or "auto"),
             memory_fit=bool(memory_fit),
+            request_mode=str(request_mode),
         )
 
     @property
+    def speculative_mtp_sampling_modes(self) -> tuple[str, ...]:
+        """Return implemented sampling modes admitted by the serving resolver.
+
+        Evidence may describe additional scopes, but its absence must not hide
+        a mode the model plugin declares. Resolve each candidate against the
+        loaded engine before advertising it; declarations do not bypass the
+        request's backend, storage, depth or resource checks.
+        """
+
+        _weight_index, model_plugin = self._load_model_metadata()
+        evidence = tuple(
+            getattr(model_plugin, "speculative_mtp_serving_evidence", ()) or ()
+        )
+        scopes = [
+            (row.sampling_modes, int(row.realized_group_rows), str(row.kv_storage))
+            for row in evidence
+        ]
+        scopes.extend(
+            (declaration.sampling_modes, 1, str(self.kv_storage or declaration.kv_storage))
+            for declaration in tuple(
+                getattr(model_plugin, "speculative_mtp_serving_implementations", ()) or ()
+            )
+        )
+        admitted: list[str] = []
+        for modes, group_rows, storage in scopes:
+            for mode in modes:
+                mode = str(mode)
+                if mode in admitted:
+                    continue
+                decision = self.resolve_speculative_mtp_serving_plan(
+                    realized_group_rows=group_rows,
+                    sampling_mode=mode,
+                    kv_storage=storage,
+                    memory_fit=True,
+                )
+                if decision is not None and bool(getattr(decision, "admitted", False)):
+                    admitted.append(mode)
+        return tuple(admitted)
+
+    @property
     def speculative_mtp_serving_capability(self):
-        """Resolve the loaded artifact against its model-plugin evidence scope."""
+        """Resolve the loaded artifact against its model-plugin serving scope.
+
+        Retained evidence is consulted first. A plugin that declares executable
+        implementations but keeps no evidence rows is answered from that
+        declaration, so the capability banner and the ``enabled`` default route
+        read the same capability answer the per-request resolver gives. This is
+        the same fallback ``speculative_mtp_sampling_modes`` already applies.
+        """
 
         _weight_index, model_plugin = self._load_model_metadata()
         evidence = tuple(
             getattr(model_plugin, "speculative_mtp_serving_evidence", ()) or ()
         )
         if not evidence:
+            declarations = tuple(
+                getattr(
+                    model_plugin, "speculative_mtp_serving_implementations", ()
+                )
+                or ()
+            )
+            for declaration in declarations:
+                decision = self.resolve_speculative_mtp_serving_plan(
+                    realized_group_rows=1,
+                    sampling_mode=str(declaration.sampling_modes[0]),
+                    kv_storage=str(self.kv_storage or declaration.kv_storage),
+                    memory_fit=True,
+                )
+                if decision is not None:
+                    return decision
             return None
         first_decision = None
         for row in evidence:
             decision = self.resolve_speculative_mtp_serving_plan(
                 realized_group_rows=int(row.realized_group_rows),
                 sampling_mode=str(row.sampling_modes[0]),
-                context_tokens=int(row.max_context_tokens),
-                output_horizon_tokens=int(row.max_output_horizon_tokens),
                 kv_storage=str(row.kv_storage),
                 memory_fit=True,
             )
@@ -699,6 +1190,26 @@ class LLM:
         payload = snapshot()
         return dict(payload) if isinstance(payload, dict) else None
 
+    def engine_service_health(self) -> dict[str, object] | None:
+        """Report resident engine service health without forcing model load.
+
+        Returns None when the configured generator is not served by a shared
+        engine service, so a readiness probe can distinguish "no resident
+        service" from "resident service stopped serving".
+        """
+
+        generator = self._text_generator
+        if generator is None:
+            return None
+        health = getattr(generator, "health", None)
+        if not callable(health):
+            return None
+        try:
+            payload = health()
+        except Exception:
+            return None
+        return dict(payload) if isinstance(payload, dict) else None
+
     def drain_generation_cancellations(self) -> int:
         """Acknowledge queued resident cancellations without forcing model load."""
 
@@ -830,10 +1341,14 @@ class LLM:
         preparer = getattr(generator, "prepare", None)
         if not callable(preparer):
             return None
-        return preparer(
+        prepared = preparer(
             max_sequence_length=requested,
             sampling_params=sampling_params or SamplingParams(),
         )
+        # The resident runner now exists, so evidence can resolve an omitted
+        # candidate depth against the capacity admission will actually use.
+        self._publish_candidate_budget(generator)
+        return prepared
 
     def prepare_request_scratch(
         self,
@@ -863,9 +1378,31 @@ class LLM:
             release_after_probe=release_after_probe,
         )
 
+    def resident_capacity_estimate(
+        self,
+        *,
+        max_batch_size: int = 1,
+        requested_context_tokens: int | None = None,
+    ) -> Any | None:
+        """Price one resident session against current free HIP memory.
+
+        Server startup multiplies this per-session price by the width it is about to
+        allocate, so a probe that needs several resident sessions can be reduced
+        before it allocates them. Backends without a resident capacity model return
+        ``None``, which leaves the caller's width unchanged.
+        """
+
+        generator = self._get_text_generator()
+        estimator = getattr(generator, "resident_capacity_estimate", None)
+        if not callable(estimator):
+            return None
+        return estimator(
+            max_batch_size=max_batch_size,
+            requested_context_tokens=requested_context_tokens,
+        )
+
     def count_tokens(self, text: str) -> int:
         """Return tokenizer token count when the resolved generator exposes one."""
-
         generator = self._get_text_generator()
         counter = getattr(generator, "count_tokens", None)
         if not callable(counter):
@@ -935,9 +1472,16 @@ class LLM:
         }
         if self.vision_model is not None:
             factory_kwargs["vision_model_path"] = self.vision_model
+        if self.vae_model is not None:
+            # The companion decoder checkpoint. YuE2 needs it to turn latents into
+            # audio, so it is a model input rather than a server-only setting.
+            factory_kwargs["vae_model_path"] = self.vae_model
         effective_factory = factory if profile_resolution is None else (profile_resolution.factory or factory)
         factory_kwargs.update(_factory_capacity_kwargs(
             effective_factory,max_sequence_length=self.max_sequence_length,
+            vision_max_scratch_bytes=self.vision_max_scratch_bytes,
+            prefill_max_scratch_bytes=self.prefill_max_scratch_bytes,
+            vision_max_seconds=self.vision_max_seconds,
             resident_capacity=(self.max_active_requests if self.max_active_requests is not None
                                else base_loop_config.max_active_requests)))
         try:
@@ -946,6 +1490,14 @@ class LLM:
                 if profile_resolution is None
                 else profile_resolution.construct_generator(factory, **factory_kwargs)
             )
+            if self.dms_metadata_path is not None:
+                configure_metadata_dms = getattr(generator, "configure_dms", None)
+                if not callable(configure_metadata_dms):
+                    raise NotImplementedError(
+                        "the selected model generator has no DMS sidecar implementation"
+                    )
+                configure_metadata_dms(self.dms_metadata_path)
+            _declare_serving_context(generator, self.max_sequence_length)
         except Exception as exc:
             # Generator construction sizes the resident session, so its
             # refusals are configuration errors, not request faults. Naming the
@@ -955,10 +1507,29 @@ class LLM:
         # The loaded resident model owns staged MTP candidate depth. Publish the
         # public LLM setting on that owner before its cold adapter is resolved;
         # model-plugin evidence still decides whether the resulting key admits.
-        generator.speculative_candidate_budget = int(
-            self.speculative_candidate_budget
-        )
-        if self.speculative_provider is not None:
+        if self.dms is not None:
+            configure_dms = getattr(generator, "configure_dms", None)
+            if not callable(configure_dms):
+                raise ValueError("this model generator has no compact DMS serving adapter")
+            configure_dms(self.dms)
+        self._publish_candidate_budget(generator)
+        effective_provider = self.speculative_provider
+        effective_draft_model = self.draft_model
+        if effective_provider is None and effective_draft_model is None:
+            discover_head = getattr(
+                model_plugin, "resolve_speculative_mtp_draft_model", None
+            )
+            declared_provider = getattr(model_plugin, "speculative_mtp_provider", None)
+            if callable(discover_head) and declared_provider:
+                discovered_head = discover_head(self.model)
+                if discovered_head is not None:
+                    effective_provider = str(declared_provider)
+                    effective_draft_model = str(discovered_head)
+        if effective_provider is not None:
+            provider_budget = self.speculative_candidate_budget
+            if provider_budget is None:
+                provider_budget = int(DEFAULT_PROVIDER_CANDIDATE_BUDGET)
+            self.speculative_candidate_budget = provider_budget
             from hipengine.speculative.registry import (
                 SpeculativeProviderConfig,
                 register_builtin_speculative_providers,
@@ -967,7 +1538,7 @@ class LLM:
 
             register_builtin_speculative_providers()
             provider_factory = resolve_speculative_provider(
-                provider=self.speculative_provider,
+                provider=effective_provider,
                 target_model=model_plugin.name,
                 backend=backend,
                 quant=quant,
@@ -975,9 +1546,9 @@ class LLM:
             provider = provider_factory(
                 target_generator=generator,
                 config=SpeculativeProviderConfig(
-                    provider=self.speculative_provider,
-                    draft_model=self.draft_model or "",
-                    candidate_budget=self.speculative_candidate_budget,
+                    provider=effective_provider,
+                    draft_model=effective_draft_model or "",
+                    candidate_budget=provider_budget,
                 ),
             )
             attach = getattr(generator, "attach_speculative_provider", None)
@@ -1036,7 +1607,11 @@ class LLM:
             config=loop_config,
         )
         self._text_generator = (
-            EngineService(resident_driver, idle_wait_seconds=0.0)
+            EngineService(
+                resident_driver,
+                idle_wait_seconds=0.0,
+                command_timeout_seconds=self.engine_command_timeout_seconds,
+            )
             if resident_driver.supports_controlled_streaming
             else resident_driver
         )
@@ -1046,9 +1621,18 @@ class LLM:
         if self._resolved_backend is not None:
             return self._resolved_backend
 
-        from hipengine.kernels.backends import resolve_backend
+        from hipengine.kernels.backends import (
+            require_backend_device_compatibility,
+            resolve_backend,
+        )
 
-        self._resolved_backend = resolve_backend(self.backend)
+        resolved = resolve_backend(self.backend, execution_device=True)
+        # Refuse an explicit backend the selected device cannot execute before
+        # any model load or kernel launch, so a mismatch fails with a named
+        # capability error instead of a HIP segmentation fault at first launch.
+        # Automatic selection above already used the same device identity.
+        require_backend_device_compatibility(resolved)
+        self._resolved_backend = resolved
         return self._resolved_backend
 
     @property
@@ -1187,21 +1771,10 @@ class LLM:
         if self._weight_index is not None and self._model_plugin is not None:
             return self._weight_index, self._model_plugin
 
-        from hipengine.loading import discover_gguf_files, load_gguf_index, load_weight_index, resolve_model_path
-        from hipengine.models import resolve_model
-
-        model_path = resolve_model_path(self.model)
-        if _looks_like_gguf_path(model_path):
-            gguf_files = discover_gguf_files(model_path)
-            index = load_gguf_index(gguf_files[0])
-            self.model = str(model_path if len(gguf_files) > 1 else index.path)
-            plugin = resolve_model(index.architecture or "")
-        else:
-            index = load_weight_index(self.model)
-            # Store resolved filesystem path so downstream code (tokenizer, runner) gets a
-            # real directory instead of an HF model ID string.
-            self.model = str(index.model_path)
-            plugin = resolve_model(_primary_architecture(index.config))
+        index, plugin, resolved_path = _resolve_model_metadata(self.model)
+        # Store resolved filesystem path so downstream code (tokenizer, runner) gets a
+        # real directory instead of an HF model ID string.
+        self.model = resolved_path
         self._weight_index = index
         self._model_plugin = plugin
         return index, plugin
@@ -1260,6 +1833,47 @@ def _looks_like_gguf_path(path: Path) -> bool:
     if path.is_dir():
         return any(path.glob("*.gguf"))
     return path.suffix.lower() == ".gguf"
+
+
+def _resolve_model_metadata(model: str) -> tuple[Any, Any, str]:
+    """Resolve ``(weight index, model plugin, model path)`` for a model reference.
+
+    Metadata only: this reads a checkpoint's config and index and never loads
+    weights, so a caller that needs to know what a model declares can ask without
+    paying for residency.
+    """
+
+    from hipengine.loading import (
+        discover_gguf_files,
+        load_gguf_index,
+        load_weight_index,
+        resolve_model_path,
+    )
+    from hipengine.models import resolve_model
+
+    model_path = resolve_model_path(model)
+    if _looks_like_gguf_path(model_path):
+        gguf_files = discover_gguf_files(model_path)
+        index = load_gguf_index(gguf_files[0])
+        plugin = resolve_model(index.architecture or "")
+        return index, plugin, str(model_path if len(gguf_files) > 1 else index.path)
+    index = load_weight_index(model)
+    plugin = resolve_model(_primary_architecture(index.config))
+    return index, plugin, str(index.model_path)
+
+
+def resolve_generation_surfaces(model: str) -> tuple[str, ...]:
+    """Return the generation surfaces a model declares, without loading it.
+
+    A server uses this to route a request to an implemented path before any
+    weights are resident, which is what keeps the refusal cheap and named rather
+    than a failure discovered mid-generation.
+    """
+
+    from hipengine.models import generation_surfaces
+
+    _index, plugin, _path = _resolve_model_metadata(model)
+    return generation_surfaces(plugin)
 
 
 def _normalize_prompts(prompts: Any) -> tuple[Any, ...]:

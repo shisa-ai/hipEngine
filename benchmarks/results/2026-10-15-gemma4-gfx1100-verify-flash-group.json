@@ -1,0 +1,143 @@
+{
+ "schema": 1,
+ "kind": "gemma4_gfx1100_verify_flash_group",
+ "date": "2026-10-15",
+ "performance_claim": true,
+ "question": "How far can the flash attention of a multi-row Gemma 4 verify block come down at long context?",
+ "model": "Gemma 4 26B-A4B-it UD-Q4_K_XL, BF16 KV; MTP head mtp-gemma-4-26B-A4B-it-Q8_0",
+ "hardware": {
+  "device": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "host": "epyc"
+ },
+ "hipengine_commit": "44bc2c2d8 plus this change",
+ "steps_5_rows_32k_ms": {
+  "start_of_item": 39.64,
+  "token_groups_sharing_loads_bit_identical": 37.4,
+  "thread_per_dot_phase_a": 34.15,
+  "vector_loads": 33.49,
+  "parallel_row_max_and_denominator": 32.83,
+  "queries_from_global_lds_only_logits": 29.6,
+  "group_cap_16_rows": 29.1,
+  "group_cap_32": 29.6,
+  "group_cap_64": 31.47
+ },
+ "rejected": {
+  "wmma_flash_prefill_kernels_for_verify": {
+   "8k_5_rows": [
+    38.03,
+    26.94
+   ],
+   "32k_5_rows": [
+    41.12,
+    39.73
+   ],
+   "columns": [
+    "wmma",
+    "flash"
+   ]
+  }
+ },
+ "kernel_trace_global_flash_5_rows_32k_ms": {
+  "per_token_kernel": 14.873,
+  "token_groups": 13.211,
+  "thread_per_dot": 11.15
+ },
+ "change": "gemma4_attention_decode_flash_multi_kernel: one block per (token group, KV head, key slice) for a 2-16 row verify block outside graph captures; one thread per query-key dot product (eight-element vector loads), warp-reduced row maxima and denominators, shared V walk; groups up to 16 query rows. The single-token flash kernel (decode) is unchanged.",
+ "verify_block_ms": {
+  "method": "scratch: production runner, verify_dense_exact off, median of 8 after 2, rewind between",
+  "8192": {
+   "rows_3": [
+    21.55,
+    18.88
+   ],
+   "rows_5": [
+    27.01,
+    23.17
+   ]
+  },
+  "32768": {
+   "rows_3": [
+    29.02,
+    23.25
+   ],
+   "rows_5": [
+    39.64,
+    29.12
+   ]
+  },
+  "600_keys": {
+   "rows": [
+    1,
+    3,
+    5,
+    7,
+    9
+   ],
+   "ms": [
+    12.82,
+    18.52,
+    21.81,
+    25.34,
+    30.58
+   ],
+   "before": [
+    12.9,
+    18.68,
+    22.58,
+    26.74,
+    32.55
+   ]
+  },
+  "columns": [
+   "before",
+   "after"
+  ]
+ },
+ "row_agreement_with_one_token_decode": {
+  "max_row_kl": {
+   "600": 6.9e-07,
+   "1100": 1e-06,
+   "8192": 4.2e-07,
+   "32768": 6.7e-08
+  },
+  "argmax_changes": 0,
+  "note": "a 9-row block after a 120-token prompt (129 keys, below this kernel's 256-key entry) has a row with KL 0.70 and one argmax change against one-token decode at a 0.43-logit near tie; present since 5823df24c (production expert arithmetic) and unaffected by this change"
+ },
+ "public_path_long_prompt": {
+  "method": "hipengine.LLM speculative_provider gemma4_mtp, budget 4, generate_detailed vs generate_speculative_mtp_detailed on one raw prompt of cycled campaign prose, 128 greedy tokens; decode phase = call less the shared prefill; draft acceptance 100% on this prompt",
+  "8192": {
+   "plain_s": 4.26,
+   "mtp_s": 3.32,
+   "decode_phase_plain_s": 1.82,
+   "decode_phase_mtp_s": 0.88,
+   "identical": true
+  },
+  "32768": {
+   "plain_s": 14.66,
+   "mtp_s": 13.66,
+   "decode_phase_plain_s": 2.12,
+   "decode_phase_mtp_s": 1.12,
+   "identical": true
+  },
+  "before_this_unit": {
+   "8192": [
+    1.81,
+    1.03
+   ],
+   "32768": [
+    2.18,
+    1.43
+   ]
+  }
+ },
+ "validation": [
+  "tests/test_gpu_gemma4_flash_decode.py: multi-token launch within two bf16 ulps of each head row's scale against per-token launches (sliding/global, 2/5/9 tokens, 700/4096 keys)",
+  "GPU flash + verify-rows tests 141 passed",
+  "cleaned kernel bitwise equal to the measured build at 8K/32K"
+ ],
+ "limitations": [
+  "Exact (strict) verify blocks attend each row with the single-token kernel and are unaffected.",
+  "Not measured on hip_gfx1151."
+ ]
+}

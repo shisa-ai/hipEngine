@@ -1,0 +1,157 @@
+{
+  "schema": "hipengine.gemma4_decode_route_ablation.v1",
+  "prompt": 8,
+  "short_output": 8,
+  "long_output": 40,
+  "repeats": 2,
+  "results": [
+    {
+      "arm": "baseline",
+      "decode_ms_per_token": 35.35,
+      "decode_tps": 28.29,
+      "short_s": [
+        0.3173,
+        0.3179
+      ],
+      "long_s": [
+        1.4457,
+        1.4517
+      ]
+    },
+    {
+      "arm": "no_dense_q8_bf16",
+      "decode_ms_per_token": 27.5,
+      "decode_tps": 36.36,
+      "short_s": [
+        0.262,
+        0.2711
+      ],
+      "long_s": [
+        1.1417,
+        1.1514
+      ],
+      "delta_ms": 7.85,
+      "share_pct": 22.2
+    },
+    {
+      "arm": "no_lm_head_q8_f32",
+      "decode_ms_per_token": 31.49,
+      "decode_tps": 31.75,
+      "short_s": [
+        0.2847,
+        0.2846
+      ],
+      "long_s": [
+        1.2902,
+        1.2947
+      ],
+      "delta_ms": 3.86,
+      "share_pct": 10.9
+    },
+    {
+      "arm": "no_dense_q8_both",
+      "decode_ms_per_token": 19.79,
+      "decode_tps": 50.54,
+      "short_s": [
+        0.2225,
+        0.2307
+      ],
+      "long_s": [
+        0.8596,
+        0.8599
+      ],
+      "delta_ms": 15.56,
+      "share_pct": 44.0
+    },
+    {
+      "arm": "no_all_gemv",
+      "decode_ms_per_token": 20.56,
+      "decode_tps": 48.65,
+      "short_s": [
+        0.198,
+        0.2008
+      ],
+      "long_s": [
+        0.864,
+        0.8504
+      ],
+      "delta_ms": 14.79,
+      "share_pct": 41.8
+    },
+    {
+      "arm": "no_experts",
+      "decode_ms_per_token": 29.7,
+      "decode_tps": 33.67,
+      "short_s": [
+        0.2446,
+        0.259
+      ],
+      "long_s": [
+        1.201,
+        1.2032
+      ],
+      "delta_ms": 5.65,
+      "share_pct": 16.0
+    },
+    {
+      "arm": "no_attention",
+      "decode_ms_per_token": 34.51,
+      "decode_tps": 28.97,
+      "short_s": [
+        0.3058,
+        0.3068
+      ],
+      "long_s": [
+        1.4146,
+        1.4067
+      ],
+      "delta_ms": 0.84,
+      "share_pct": 2.4
+    },
+    {
+      "arm": "no_router",
+      "decode_ms_per_token": 33.0,
+      "decode_tps": 30.3,
+      "short_s": [
+        0.3019,
+        0.3033
+      ],
+      "long_s": [
+        1.366,
+        1.3511
+      ],
+      "delta_ms": 2.35,
+      "share_pct": 6.6
+    },
+    {
+      "arm": "no_moe_elementwise",
+      "decode_ms_per_token": 32.22,
+      "decode_tps": 31.04,
+      "short_s": [
+        0.2706,
+        0.2721
+      ],
+      "long_s": [
+        1.301,
+        1.3037
+      ],
+      "delta_ms": 3.13,
+      "share_pct": 8.9
+    },
+    {
+      "arm": "no_norm_rope",
+      "decode_ms_per_token": 31.3,
+      "decode_tps": 31.95,
+      "short_s": [
+        0.273,
+        0.2728
+      ],
+      "long_s": [
+        1.2718,
+        1.2769
+      ],
+      "delta_ms": 4.05,
+      "share_pct": 11.5
+    }
+  ]
+}

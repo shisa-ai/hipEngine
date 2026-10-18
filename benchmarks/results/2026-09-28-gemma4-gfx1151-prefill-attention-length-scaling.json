@@ -1,0 +1,89 @@
+{
+ "kind": "gemma4_gfx1151_prefill_attention_length_scaling",
+ "performance_claim": false,
+ "recorded": "2026-09-28, gfx1151 Strix Halo (AMD Radeon 8060S, 126976 MiB), Gemma 4 26B-A4B UD-Q4_K_XL",
+ "why": "The gfx1151 prefill attribution records that this engine's prefill degrades with prompt length (271.0 tok/s at 512 against 220.0 at 2048) while the same-host llama.cpp reference is flat (1012.98 against 1067.14), and names attention as the first candidate because it is the only O(n^2) term in the route list. That framing is wrong, and the difference changes which fix is worth writing: a falling *rate* would mean a length-dependent inefficiency in the kernel, while a flat rate with growing FLOPs means the kernel is simply slow at every length and its share grows.",
+ "command": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=0 PYTHONPATH=. python3 scripts/gemma4_attention_prefill_bench.py --tokens <512|1024|2048> --iters 3 --warmup 1",
+ "rows": [
+  {
+   "tokens": 512,
+   "swa_256d_16q_8kv_window1024": {
+    "ms_per_launch": 5.04,
+    "gflops": 426.9,
+    "all_25_layers_ms": 126.0
+   },
+   "swa_256d_16q_8kv_window0": {
+    "ms_per_launch": 4.88,
+    "gflops": 441.1,
+    "all_25_layers_ms": 121.9
+   },
+   "full_512d_16q_2kv_window0": {
+    "ms_per_launch": 7.12,
+    "gflops": 604.6,
+    "all_5_layers_ms": 35.6
+   },
+   "all_30_layers_ms": 283.5
+  },
+  {
+   "tokens": 1024,
+   "swa_256d_16q_8kv_window1024": {
+    "ms_per_launch": 19.01,
+    "gflops": 452.2,
+    "all_25_layers_ms": 475.3
+   },
+   "swa_256d_16q_8kv_window0": {
+    "ms_per_launch": 19.27,
+    "gflops": 446.3,
+    "all_25_layers_ms": 481.7
+   },
+   "full_512d_16q_2kv_window0": {
+    "ms_per_launch": 29.96,
+    "gflops": 574.0,
+    "all_5_layers_ms": 149.8
+   },
+   "all_30_layers_ms": 1106.8
+  },
+  {
+   "tokens": 2048,
+   "swa_256d_16q_8kv_window1024": {
+    "ms_per_launch": 61.2,
+    "gflops": 421.2,
+    "all_25_layers_ms": 1530.0
+   },
+   "swa_256d_16q_8kv_window0": {
+    "ms_per_launch": 77.23,
+    "gflops": 445.1,
+    "all_5_layers_ms": 1930.8
+   },
+   "full_512d_16q_2kv_window0": {
+    "ms_per_launch": 130.15,
+    "gflops": 528.2,
+    "all_5_layers_ms": 650.8
+   },
+   "all_30_layers_ms": 4111.6
+  }
+ ],
+ "finding": "The rate is flat: 426.9, 452.2 and 421.2 GFLOP/s on the sliding-window layers at 512, 1024 and 2048 tokens, and 604.6, 574.0 and 528.2 on the full layers. Time grows with the FLOP count and nothing else. So there is no length-dependent inefficiency to remove; the kernel is at about 1.4 percent of this part's fp32 rate at every length, and the prefill's falling tok/s is the growing *share* of a constant low rate.",
+ "mechanism": {
+  "observation": "The kernel launches one block of 256 threads per (token, head) and runs three passes over the keys: logits into a shared `logits_s` array of `keys` floats, a block max and denominator, then a weighted sum over V. With head_dim 256 or 512 and 256 threads, pass 1 gives each thread exactly one multiply-add per key; everything else is the warp tree plus the cross-warp reduction the file's own comment describes.",
+  "arithmetic": "At 2048 tokens the sliding-window launch is 32768 blocks over about 1536 keys each in 61.2 ms, so about 1.87 us per block and 3.5 cycles per key at 2.9 GHz -- for one FMA per thread. The reduction, not the arithmetic, is the cost, which is the same conclusion the file's comment reaches from the other direction (147 GFLOP/s before the register-tree rewrite, 286 after).",
+  "consequence": "A query tile of R rows amortizes both the K/V reads and the reduction tree by R, because one loaded K row then feeds R dot products and one warp-tree round serves R logits. That is the classic FlashAttention block shape, and it is the fix that this mechanism implies -- not a rate-vs-length fix, since there is no rate-vs-length problem.",
+  "budget": "The shared logits array is `keys` floats per query row, so the tile height is bounded by shared memory: R = 4 at 1024 keys is 16 KB, and the full layers' 2048 keys with head_dim 512 allow R = 4 at 32 KB. The full layers are the cheaper half already (650.8 ms against 1530.0 ms at 2048)."
+ },
+ "the_prize": {
+  "at_2048": "sliding-window attention 1530.0 ms, full attention 650.8 ms, routed experts 3.070 s, of a 7.536 s prefill. Attention is 2180.8 ms of it, 28.9 percent.",
+  "a_4x_attention": "2180.8 ms to about 545 ms, taking the prefill from 7.536 s to 5.90 s, or 271.8 to 347 tok/s. That is 1.28x, and it does not close a 4.85x gap.",
+  "the_bigger_half": "The routed-expert projections alone are 3.070 s against llama.cpp's 1.92 s for the entire 2048-token prefill. No attention improvement reaches llama.cpp's prefill while the expert route costs more than llama.cpp's whole forward pass, so the expert GEMM is the ratio prize and attention is the shape prize."
+ },
+ "not_established": [
+  "SUPERSEDED 2026-09-28: this entry read the bench's double-counted all-layers total (4111.6 ms, which summed both sliding-window rows) as an isolated bench 1.79x slower than the in-situ 2295 ms. The bench's true 2048 total is 2180.8 ms, 1.05x the in-situ figure. The script no longer double-counts. The absolute milliseconds do transfer.",
+  "The gfx1100 record for this kernel at 2048 is 133.02 ms for the route against 2295 ms here, which the CU and bandwidth ratio between the two parts does not explain. The artifact is built for the host: the cache manifest records target_arch=gfx1151, -O3 and -mcumode. This is not attributed.",
+  "Whether a tiled kernel keeps bit-identical logits. The per-(query, key) reduction order is unchanged by tiling, so it should, but that is the gate and it has not been run."
+ ],
+ "superseded": {
+  "scope": "the_prize and the first not_established entry only; the flat-rate finding and the mechanism stand",
+  "why": "both rested on the pre-Q5_1-MMQ prefill baseline of 7.536 s and on an ablation arm that does not work. The current default prefill at 2048 is 5.242 s and the shares moved; see benchmarks/results/2026-09-28-gemma4-gfx1151-prefill-kernel-census.json.",
+  "the_prize_restated": "attention 1993.9 ms (38.0 percent) and routed experts 1980.2 ms (37.8 percent) of a 5.242 s prefill. The two are now the same size, so neither is 'the ratio prize' on its own.",
+  "not_established_1_superseded": "the bench's all-layers total double-counted its two sliding-window rows. Its true 2048 total is 1530.0 + 650.8 = 2180.8 ms, which is 1.05x the in-situ 2295 ms rather than 1.79x, so the isolated bench's absolute milliseconds do transfer. The script now sums only the rows the model has."
+ }
+}

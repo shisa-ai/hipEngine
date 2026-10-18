@@ -1,0 +1,62 @@
+{
+ "kind": "gemma4_campaign_candidate",
+ "verdict": "accepted and promoted (bit-exact, default path)",
+ "recorded": "2026-09-27, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B UD-Q4_K_XL, 512 prompt / 128 output",
+ "candidate": "select the exact Q8_0 prefill's col4 row16 tile instead of col16 row4 for the dense projection route. The family's tile space had never been swept: only three of its legal shapes (8x2, 8x4, 16x4) had ever been instantiated.",
+ "reason": "the tile shape is a launch shape and not an arithmetic choice, so the change is bit-exact and needs no numerical gate. The k-loop stride is blockDim.x and the per-(row, column) shuffle tree and four-wave sum are unchanged, so every shape in the space is bit-identical: 0 of 1,081,344 and 0 of 2,097,152 bf16 outputs differ across the whole sweep at the two geometries measured.",
+ "geometry": {
+  "source": "recorded from a live 512-token forward by wrapping the registered kernel. The route is 205 calls over eight shapes: in 2816 out 2112 over 60 calls, in 2816 out 2048 over 50, in 2112 out 2816 over 30, in 2816 out 4096 over 25, in 4096 out 2816 over 25, in 2816 out 8192 over 5, in 2816 out 1024 over 5, and in 8192 out 2816 over 5, all at 512 rows.",
+  "why_it_matters": "the eight shapes span 1684 GFLOP per prefill over 717 ms, 2349 GFLOP/s, and the selected shape has to hold across all of them rather than at one favourable geometry."
+ },
+ "sweep_ms": {
+  "unit": "ms per launch, minimum of six timed launches, both geometries in one process",
+  "in_2816_out_2112": {
+   "col4_row16": 2.32,
+   "col8_row8": 2.42,
+   "col4_row8": 2.74,
+   "col2_row16": 2.99,
+   "col16_row4_incumbent": 3.18,
+   "col8_row4": 3.32,
+   "col16_row2": 4.49,
+   "col8_row2": 4.92,
+   "col32_row2": 5.75,
+   "col2_row32": 2.37,
+   "col16_row1": 7.9
+  },
+  "in_2816_out_4096": {
+   "col4_row16": 4.1,
+   "col8_row8": 4.29,
+   "col2_row32": 4.6,
+   "col4_row8": 5.1,
+   "col16_row4_incumbent": 5.19,
+   "col8_row4": 6.41,
+   "col2_row16": 6.41,
+   "col32_row2": 9.44,
+   "col8_row2": 9.98,
+   "col16_row2": 11.12,
+   "col16_row1": 19.7
+  },
+  "row_tile_dominates": "at col4, row1 7.90, row2 4.49, row4 3.18, row8 2.42, row16 2.32 ms. A block's weight bytes are re-read once per row tile, so the row tile is the weight-reuse lever and the column tile mostly trades activation reloads. The same shape was the best at both geometries, so the choice is not geometry specific.",
+  "short_rows": "measured separately, because the selection rule routes short and narrow shapes differently. At 2816 x 2112: rows 8 favours col8 row8 (0.077 against col4 row16's 0.145, because a 16-row tile half-fills at 8 rows), rows 16 and up favour col4 row16 (0.107 at 16, 0.265 at 64, 0.535 at 128, 2.304 at 512, against col16 row4's 0.136, 0.415, 0.589 and 2.375). The change is therefore made only in the branch the route's own geometries take - rows at or above the existing per-width threshold, which is 32, 64 or 512 - and every row count that branch can see was measured.",
+  "all_bit_exact": true
+ },
+ "performance": {
+  "platform": "gfx1151 Strix Halo (Radeon 8060S, zbook), ROCm, bf16 activations",
+  "protocol": "kernel isolation at the route's real geometries (minimum of six timed launches per shape, all shapes in one process) plus the public path with the same timing script in two git worktrees, one warm-up and five timed 512-token forwards each.",
+  "primary": {
+   "row": "512 prompt prefill, public path",
+   "incumbent_s": 2.993,
+   "candidate_s": 2.77,
+   "delta": "-0.223 s (1.081x)",
+   "sample": "medians of five timed forwards per tree; minima 2.972 against 2.765 s"
+  },
+  "route_share": "the route is 717.2 ms of a 3003 ms prefill (23.9%), measured by a rocprofv3 kernel trace whose per-kernel unions sum to the prefill span.",
+  "agreement": "the route's own shapes predict roughly -167 ms from the measured 1.27-1.37x; the public A/B measures -223 ms, so the public effect is larger than the kernel-level prediction rather than being an unexplained excess. The additional gain is consistent with the same change also cutting activation reloads."
+ },
+ "selection": {
+  "flag": "none - this is the default shape of the existing kernel family",
+  "route_confirmation": "the public path was re-run with the registered kernel wrapped: all 205 calls resolve to the new shape across the same eight geometries, so the intended route ran rather than silently falling back.",
+  "fallback": "unchanged. The short and narrow branch still selects tile8x2 or tile8x4, and the non-tiled pack8 GEMV still owns rows below 8."
+ },
+ "leaves_open": "rows 8 with a wide output favours col8 row8 by 1.9x over any 16-row tile, and the short/narrow branch was left alone because the change would be unmeasured there. A 32-token prompt is the case that would exercise it."
+}

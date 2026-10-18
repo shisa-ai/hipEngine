@@ -788,6 +788,93 @@ __global__ void dense_dual_gemv_out_kernel(
   }
 }
 
+// Two rows per block for the BF16-output dual GEMV (`gate`/`up`). One weight read
+// per K vector serves both rows, and each row keeps the scalar kernel's K
+// traversal and local256 reduction order, so a row is bit-identical to
+// `dense_dual_gemv_out_bf16`'s.
+__global__ void dense_dual_gemv_out_bf16_rowtile2_kernel(
+    const uint16_t* __restrict__ x,
+    const uint16_t* __restrict__ weight_a,
+    const uint16_t* __restrict__ weight_b,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b) {
+  const int64_t global_col = blockIdx.x;
+  const int64_t row_base = static_cast<int64_t>(blockIdx.y) * 2;
+  const int tid = threadIdx.x;
+  const bool use_b = global_col >= out_features_a;
+  const int64_t local_col = use_b ? (global_col - out_features_a) : global_col;
+  const int64_t out_features = out_features_a + out_features_b;
+  const uint16_t* __restrict__ weight = use_b ? weight_b : weight_a;
+  const int64_t w_base = local_col * in_features;
+
+  float acc[2] = {0.0f, 0.0f};
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  const int64_t main_end = (in_features / vec_stride) * vec_stride;
+  for (int64_t k_base = static_cast<int64_t>(tid) * 8;
+       k_base < main_end;
+       k_base += vec_stride) {
+    const uint16_t* __restrict__ w_ptr = weight + w_base + k_base;
+#pragma unroll
+    for (int local_row = 0; local_row < 2; ++local_row) {
+      const int64_t row = row_base + local_row;
+      if (row < rows) {
+        const uint16_t* __restrict__ x_ptr = x + row * in_features + k_base;
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[0]), bf16_bits_to_float(w_ptr[0]), acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[1]), bf16_bits_to_float(w_ptr[1]), acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[2]), bf16_bits_to_float(w_ptr[2]), acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[3]), bf16_bits_to_float(w_ptr[3]), acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[4]), bf16_bits_to_float(w_ptr[4]), acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[5]), bf16_bits_to_float(w_ptr[5]), acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[6]), bf16_bits_to_float(w_ptr[6]), acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[7]), bf16_bits_to_float(w_ptr[7]), acc[local_row]);
+      }
+    }
+  }
+  for (int64_t in_col = main_end + tid;
+       in_col < in_features;
+       in_col += blockDim.x) {
+    const float w = bf16_bits_to_float(weight[w_base + in_col]);
+#pragma unroll
+    for (int local_row = 0; local_row < 2; ++local_row) {
+      const int64_t row = row_base + local_row;
+      if (row < rows) {
+        acc[local_row] = fmaf(
+            bf16_bits_to_float(x[row * in_features + in_col]),
+            w,
+            acc[local_row]);
+      }
+    }
+  }
+
+  __shared__ float sdata[2][256];
+#pragma unroll
+  for (int local_row = 0; local_row < 2; ++local_row) {
+    sdata[local_row][tid] = acc[local_row];
+  }
+  __syncthreads();
+  for (int s = blockDim.x >> 1; s > 0; s >>= 1) {
+    if (tid < s) {
+#pragma unroll
+      for (int local_row = 0; local_row < 2; ++local_row) {
+        sdata[local_row][tid] += sdata[local_row][tid + s];
+      }
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+#pragma unroll
+    for (int local_row = 0; local_row < 2; ++local_row) {
+      const int64_t row = row_base + local_row;
+      if (row < rows) {
+        out[row * out_features + global_col] = float_to_bf16_bits(sdata[local_row][0]);
+      }
+    }
+  }
+}
+
 template <typename scalar_t>
 __global__ void dense_dual_gemv_separate_out_kernel(
     const scalar_t* __restrict__ x,
@@ -1180,6 +1267,225 @@ extern "C" int hipengine_dense_gemv_out_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
+// Two rows per block for the unrounded-F32-output GEMVs (q/k/v/o and the LM head).
+// Each row keeps the scalar kernel's K traversal and local256 reduction order, so a
+// row's result is bit-identical to `dense_gemv_bf16_f32_out`'s; the weight stream is
+// issued once for both rows, which is what the head's 756 MB read per call needs.
+__global__ void dense_gemv_bf16_f32_out_rowtile2_kernel(
+    const uint16_t* __restrict__ x,
+    const uint16_t* __restrict__ weight,
+    float* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t out_col = blockIdx.x;
+  const int64_t row_base = static_cast<int64_t>(blockIdx.y) * 2;
+  const int tid = threadIdx.x;
+  const int64_t w_base = out_col * in_features;
+
+  float acc[2] = {0.0f, 0.0f};
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  const int64_t main_end = (in_features / vec_stride) * vec_stride;
+  for (int64_t k_base = static_cast<int64_t>(tid) * 8;
+       k_base < main_end;
+       k_base += vec_stride) {
+    const uint16_t* __restrict__ w_ptr = weight + w_base + k_base;
+#pragma unroll
+    for (int local_row = 0; local_row < 2; ++local_row) {
+      const int64_t row = row_base + local_row;
+      if (row < rows) {
+        const uint16_t* __restrict__ x_ptr = x + row * in_features + k_base;
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[0]), bf16_bits_to_float(w_ptr[0]), acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[1]), bf16_bits_to_float(w_ptr[1]), acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[2]), bf16_bits_to_float(w_ptr[2]), acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[3]), bf16_bits_to_float(w_ptr[3]), acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[4]), bf16_bits_to_float(w_ptr[4]), acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[5]), bf16_bits_to_float(w_ptr[5]), acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[6]), bf16_bits_to_float(w_ptr[6]), acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[7]), bf16_bits_to_float(w_ptr[7]), acc[local_row]);
+      }
+    }
+  }
+  for (int64_t in_col = main_end + tid;
+       in_col < in_features;
+       in_col += blockDim.x) {
+    const float w = bf16_bits_to_float(weight[w_base + in_col]);
+#pragma unroll
+    for (int local_row = 0; local_row < 2; ++local_row) {
+      const int64_t row = row_base + local_row;
+      if (row < rows) {
+        acc[local_row] = fmaf(
+            bf16_bits_to_float(x[row * in_features + in_col]),
+            w,
+            acc[local_row]);
+      }
+    }
+  }
+
+  __shared__ float sdata[2][256];
+#pragma unroll
+  for (int local_row = 0; local_row < 2; ++local_row) {
+    sdata[local_row][tid] = acc[local_row];
+  }
+  __syncthreads();
+  for (int s = blockDim.x >> 1; s > 0; s >>= 1) {
+    if (tid < s) {
+#pragma unroll
+      for (int local_row = 0; local_row < 2; ++local_row) {
+        sdata[local_row][tid] += sdata[local_row][tid + s];
+      }
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+#pragma unroll
+    for (int local_row = 0; local_row < 2; ++local_row) {
+      const int64_t row = row_base + local_row;
+      if (row < rows) {
+        out[row * out_features + out_col] = sdata[local_row][0];
+      }
+    }
+  }
+}
+
+extern "C" int hipengine_dense_gemv_bf16_f32_out_rowtile2(
+    const uint16_t* x,
+    const uint16_t* weight,
+    float* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || out_features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (dense_gemv_bf16_f32_out_rowtile2_kernel),
+      dim3(static_cast<unsigned int>(out_features),
+           static_cast<unsigned int>((rows + 1) / 2)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      x,
+      weight,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+// Two rows per block for the BF16-output GEMVs (`o`'s bf16 staging, and the MLP's
+// `down`). Same contract as the F32-output variant above: the weight stream is
+// issued once for both rows, and each row keeps the scalar kernel's K traversal
+// and local256 reduction order, so a row's result is bit-identical to
+// `dense_gemv_out_bf16`'s.
+__global__ void dense_gemv_out_bf16_rowtile2_kernel(
+    const uint16_t* __restrict__ x,
+    const uint16_t* __restrict__ weight,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t out_col = blockIdx.x;
+  const int64_t row_base = static_cast<int64_t>(blockIdx.y) * 2;
+  const int tid = threadIdx.x;
+  const int64_t w_base = out_col * in_features;
+
+  float acc[2] = {0.0f, 0.0f};
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  const int64_t main_end = (in_features / vec_stride) * vec_stride;
+  for (int64_t k_base = static_cast<int64_t>(tid) * 8;
+       k_base < main_end;
+       k_base += vec_stride) {
+    const uint16_t* __restrict__ w_ptr = weight + w_base + k_base;
+#pragma unroll
+    for (int local_row = 0; local_row < 2; ++local_row) {
+      const int64_t row = row_base + local_row;
+      if (row < rows) {
+        const uint16_t* __restrict__ x_ptr = x + row * in_features + k_base;
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[0]), bf16_bits_to_float(w_ptr[0]), acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[1]), bf16_bits_to_float(w_ptr[1]), acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[2]), bf16_bits_to_float(w_ptr[2]), acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[3]), bf16_bits_to_float(w_ptr[3]), acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[4]), bf16_bits_to_float(w_ptr[4]), acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[5]), bf16_bits_to_float(w_ptr[5]), acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[6]), bf16_bits_to_float(w_ptr[6]), acc[local_row]);
+        acc[local_row] = fmaf(bf16_bits_to_float(x_ptr[7]), bf16_bits_to_float(w_ptr[7]), acc[local_row]);
+      }
+    }
+  }
+  for (int64_t in_col = main_end + tid;
+       in_col < in_features;
+       in_col += blockDim.x) {
+    const float w = bf16_bits_to_float(weight[w_base + in_col]);
+#pragma unroll
+    for (int local_row = 0; local_row < 2; ++local_row) {
+      const int64_t row = row_base + local_row;
+      if (row < rows) {
+        acc[local_row] = fmaf(
+            bf16_bits_to_float(x[row * in_features + in_col]),
+            w,
+            acc[local_row]);
+      }
+    }
+  }
+
+  __shared__ float sdata[2][256];
+#pragma unroll
+  for (int local_row = 0; local_row < 2; ++local_row) {
+    sdata[local_row][tid] = acc[local_row];
+  }
+  __syncthreads();
+  for (int s = blockDim.x >> 1; s > 0; s >>= 1) {
+    if (tid < s) {
+#pragma unroll
+      for (int local_row = 0; local_row < 2; ++local_row) {
+        sdata[local_row][tid] += sdata[local_row][tid + s];
+      }
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+#pragma unroll
+    for (int local_row = 0; local_row < 2; ++local_row) {
+      const int64_t row = row_base + local_row;
+      if (row < rows) {
+        out[row * out_features + out_col] = float_to_bf16_bits(sdata[local_row][0]);
+      }
+    }
+  }
+}
+
+extern "C" int hipengine_dense_gemv_out_bf16_rowtile2(
+    const uint16_t* x,
+    const uint16_t* weight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || out_features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (dense_gemv_out_bf16_rowtile2_kernel),
+      dim3(static_cast<unsigned int>(out_features),
+           static_cast<unsigned int>((rows + 1) / 2)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      x,
+      weight,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_dense_gemv_bf16_f32_out(
     const uint16_t* x,
     const uint16_t* weight,
@@ -1470,6 +1776,45 @@ extern "C" int hipengine_dense_prefill_wmma_out_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
+// Low-row variant: same BM=128 accumulation order, but BM=64 halves the tile so
+// the grid carries twice as many workgroups. The semantic encoder's deep stages
+// run at rows=1 with K up to 8192, where the kernel is weight-traffic bound and
+// 64 workgroups on 40 CUs cannot hide the K-loop's shared-memory latency; the
+// per-element accumulation order (k0 ascending, then kk ascending) is unchanged,
+// so results stay bit-identical to the BM=128 path.
+extern "C" int hipengine_dense_prefill_wmma_out_bf16_m64(
+    const uint16_t* x,
+    const uint16_t* weight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  constexpr int BM = 64;
+  constexpr int BN = 64;
+  constexpr int BK = 32;
+  if (rows <= 0 || in_features <= 0 || out_features <= 0 ||
+      (in_features % BK) != 0 || (out_features % BM) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (dense_prefill_wmma_out_kernel<BM, BN, BK, false>),
+      dim3(
+          static_cast<unsigned int>(out_features / BM),
+          static_cast<unsigned int>((rows + BN - 1) / BN)),
+      dim3(256),
+      0,
+      stream,
+      x,
+      weight,
+      nullptr,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_dense_prefill_wmma_out_bf16_residual_bf16_out(
     const uint16_t* x,
     const uint16_t* weight,
@@ -1611,6 +1956,38 @@ extern "C" int hipengine_dense_dual_gemv_out_bf16(
   hipLaunchKernelGGL(
       (dense_dual_gemv_out_kernel<uint16_t>),
       dim3(static_cast<unsigned int>(out_features_a + out_features_b), static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      x,
+      weight_a,
+      weight_b,
+      out,
+      rows,
+      in_features,
+      out_features_a,
+      out_features_b);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dense_dual_gemv_out_bf16_rowtile2(
+    const uint16_t* x,
+    const uint16_t* weight_a,
+    const uint16_t* weight_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || out_features_a <= 0 || out_features_b <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (dense_dual_gemv_out_bf16_rowtile2_kernel),
+      dim3(static_cast<unsigned int>(out_features_a + out_features_b),
+           static_cast<unsigned int>((rows + 1) / 2)),
       dim3(static_cast<unsigned int>(threads)),
       0,
       stream,

@@ -253,7 +253,7 @@ def build_decision(
         ],
         "long_term_note": (
             "This diagnostic policy does not replace the MTP seed contract: "
-            "docs/MTP-gguf.md still requires a post-output_norm fp32 hidden seed."
+            "docs/reference/MTP-gguf.md still requires a post-output_norm fp32 hidden seed."
         ),
     }
 

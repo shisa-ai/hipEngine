@@ -1,6 +1,6 @@
 """C1 singleton depth matrix through K7 on the deterministic cycle simulator.
 
-Campaign contract (docs/QWEN38-27B-GFX1100-CONCURRENCY2-BETTER-MTP.md,
+Campaign contract (docs/campaigns/QWEN38-27B-GFX1100-CONCURRENCY2-BETTER-MTP.md,
 Packet 5): rejection and EOS at every candidate position, zero/all
 accepted, correction/bonus handling, output-horizon clipping,
 cancellation, rollback, retry and following-cycle state at every depth

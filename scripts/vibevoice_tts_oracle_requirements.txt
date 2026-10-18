@@ -1,0 +1,55 @@
+# Pinned dependencies for the VibeVoice-TTS torch oracle venv.
+#
+# Recreate the environment with:
+#     scripts/setup_vibevoice_tts_oracle_env.sh
+#
+# Resolved on 2026-09-14 for the environment that produced the milestone-1
+# oracle fixtures. This is a lock, not a wish list: every pin below was produced
+# by a single `pip install` resolution, so the set is mutually satisfiable.
+#
+# Apply the huggingface-hub constraint with the rest of the set, not afterwards.
+# Installing transformers first and diffusers second silently leaves
+# huggingface-hub at 1.x and an inconsistent tree; the whole set must resolve
+# together, which is what makes diffusers resolve to 0.39.0 rather than 0.40.0.
+#
+# Why transformers is held at 4.51.3: 5.15.0 already registers model type
+# `vibevoice_acoustic_tokenizer`, and AutoModel.register keys on the model_type
+# string. The fork declares the same model type, so importing it under 5.15.0
+# aborts with:
+#     ValueError: '<class '...VibeVoiceAcousticTokenizerConfig'>' is already
+#     used by a Transformers model.
+# See docs/MODEL-VIBEVOICE-TTS.md "Oracle environment".
+
+transformers==4.51.3
+tokenizers==0.21.4
+huggingface-hub==0.36.2
+
+# Runtime support pulled in by the fork's import chain and audio paths.
+diffusers==0.39.0
+librosa==1.0.0
+numba==0.67.0
+soundfile==0.14.0
+ml-collections==1.1.0
+absl-py==2.5.0
+av==18.1.0
+numpy==2.5.2
+scipy==1.18.1
+
+# Transitive pins that the resolution fixed. Listed so the lock is complete.
+llvmlite==0.49.0
+soxr==1.1.0
+pooch==1.9.0
+scikit-learn==1.9.1
+joblib==1.6.0
+lazy-loader==0.5
+decorator==5.3.1
+cloudpickle==3.1.2
+threadpoolctl==3.6.0
+safetensors==0.8.0
+tqdm==4.67.3
+
+# Inherited from the host through --system-site-packages, deliberately NOT pinned
+# here: a pip torch wheel would not match the host's ROCm build, and accelerate is
+# the host's copy (the oracle's device_map path uses it).
+#   torch==2.13.0+rocm10.0.0
+#   accelerate==1.14.0

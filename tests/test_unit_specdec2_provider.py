@@ -6,22 +6,16 @@ import pytest
 
 from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
 from hipengine.speculative import (
-    CandidateGraph,
     ProviderAttachment,
     ProviderCatchupMode,
-    SpecCycleResult,
-    SpecCycleTransaction,
-    SpecRequestPlan,
     SpecTransactionMode,
     SpeculativeCapability,
-    SpeculativeProviderKey,
     SpeculativeRequestSemantics,
-    StagedSpeculativeProvider,
-    construct_staged_speculative_provider,
-    register_staged_speculative_provider,
-    registered_staged_speculative_providers,
-    resolve_staged_speculative_provider,
-    validate_staged_speculative_provider,
+    StagedSpeculativeRunner,
+    StagedTargetAdapter,
+    resolve_staged_speculative_runner,
+    validate_staged_speculative_runner,
+    validate_staged_target_adapter,
 )
 
 
@@ -51,84 +45,6 @@ def _capability() -> SpeculativeCapability:
     )
 
 
-class _StagedProvider:
-    provider_name = "test_mtp2"
-
-    def capability(self, target_key, request_semantics):
-        assert target_key == "model"
-        assert request_semantics
-        return _capability()
-
-    def resource_claims(self, plan):
-        return {
-            "provider": ResourceClaimSet.from_mapping(
-                f"{plan.operation_id}:provider",
-                {"provider.kv": sum(plan.candidate_counts)},
-                lifetime=ClaimLifetime.TRANSACTION,
-            )
-        }
-
-    def prepare_requests(self, plan, request_semantics, *, stream=None):
-        return None
-
-    def propose_batch(self, plan, request_semantics, *, stream=None):
-        return CandidateGraph(
-            provider_key="test_mtp2",
-            method_key="mtp2",
-            policy_fingerprint="policy:v1",
-            cycle_id=plan.cycle_id,
-            transaction_id=1,
-            request_ids=plan.request_ids,
-            resident_slots=plan.resident_slots,
-            root_positions=tuple(row.context_tokens - 1 for row in request_semantics),
-            row_offsets=(0, 1),
-            row_to_request=plan.request_ids,
-            parent_candidate_rows=(-1,),
-            draft_depths=(1,),
-            active_mask=(True,),
-            candidate_tokens=(77,),
-        )
-
-    def commit_batch(self, result: SpecCycleResult, *, stream=None):
-        return None
-
-    def rollback_batch(self, transaction: SpecCycleTransaction, *, stream=None):
-        return None
-
-    def close_requests(self, request_ids):
-        return None
-
-
-class _LegacyOnlyProvider:
-    provider_name = "legacy"
-
-    def generate_detailed(self, request):
-        return []
-
-    def stream_detailed(self, request):
-        return iter(())
-
-    def capabilities(self):
-        return {}
-
-    def close(self):
-        return None
-
-
-class _HybridProvider(_StagedProvider):
-    def generate_detailed(self, request):
-        return []
-
-
-def _factory(**kwargs):
-    assert kwargs == {"marker": "ok"}
-    return _StagedProvider()
-
-
-def _legacy_factory(**kwargs):
-    return _LegacyOnlyProvider()
-
-
 def test_request_semantics_are_typed_and_pre_mutation() -> None:
     semantics = SpeculativeRequestSemantics(
         request_id=7,
@@ -148,74 +64,192 @@ def test_request_semantics_are_typed_and_pre_mutation() -> None:
         replace(semantics, mode="decode")
 
 
-def test_staged_provider_protocol_rejects_legacy_and_hybrid_generation_owners() -> None:
-    provider = _StagedProvider()
+class _StagedRunner:
+    """A complete duck-typed scheduler-facing staged lifecycle owner."""
 
-    assert isinstance(provider, StagedSpeculativeProvider)
-    assert validate_staged_speculative_provider(provider) is provider
-    with pytest.raises(TypeError, match="staged methods"):
-        validate_staged_speculative_provider(_LegacyOnlyProvider())
-    with pytest.raises(TypeError, match="whole-request generation"):
-        validate_staged_speculative_provider(_HybridProvider())
+    def speculative_capability(self, request_semantics):
+        return _capability()
 
+    def speculative_component_claims(self, plan):
+        return {"provider": ResourceClaimSet.from_mapping(
+            f"{plan.operation_id}:provider", {"provider.kv": 1}
+        )}
 
-def test_staged_registry_resolves_exact_four_axis_key_without_legacy_alias() -> None:
-    key = SpeculativeProviderKey(
-        provider="test_mtp2",
-        target_model="model",
-        backend="backend",
-        quant="quant",
-    )
-    register_staged_speculative_provider(key, _factory, replace=True)
+    def reserve_speculative_claims(self, claims):
+        return claims.claim_id
 
-    assert key in registered_staged_speculative_providers()
-    assert (
-        resolve_staged_speculative_provider(
-            provider="test_mtp2",
-            target_model="model",
-            backend="backend",
-            quant="quant",
-        )
-        is _factory
-    )
-    with pytest.raises(KeyError, match="unregistered staged speculative provider"):
-        resolve_staged_speculative_provider(
-            provider="test_mtp2",
-            target_model="model",
-            backend="other_backend",
-            quant="quant",
-        )
+    def release_speculative_claims(self, reservation):
+        return None
+
+    def prepare_speculative_requests(self, plan, request_semantics, *, stream=None):
+        return None
+
+    def propose_speculative_batch(self, plan, request_semantics, *, stream=None):
+        return None
+
+    def execute_target_frontier(
+        self, plan, frontier, complete_claims, *, commit, cancelled_request_ids
+    ):
+        return None
 
 
-def test_staged_registry_constructs_and_validates_provider() -> None:
-    key = SpeculativeProviderKey(
-        provider="constructed_mtp2",
-        target_model="model",
-        backend="backend",
-        quant="quant",
-    )
-    register_staged_speculative_provider(key, _factory, replace=True)
+class _IncompleteRunner:
+    """Exposes only the cold-plan hook, not the staged-frontier lifecycle."""
 
-    provider = construct_staged_speculative_provider(
-        provider="constructed_mtp2",
-        target_model="model",
-        backend="backend",
-        quant="quant",
-        marker="ok",
-    )
-    assert isinstance(provider, _StagedProvider)
+    def speculative_capability(self, request_semantics):
+        return None
 
-    legacy_key = SpeculativeProviderKey(
-        provider="legacy_only",
-        target_model="model",
-        backend="backend",
-        quant="quant",
-    )
-    register_staged_speculative_provider(legacy_key, _legacy_factory, replace=True)
-    with pytest.raises(TypeError, match="staged methods"):
-        construct_staged_speculative_provider(
-            provider="legacy_only",
-            target_model="model",
-            backend="backend",
-            quant="quant",
-        )
+
+class _OptInIncompleteRunner:
+    def staged_speculative_owner(self):
+        return _IncompleteRunner()
+
+
+def test_staged_runner_protocol_rejects_incomplete_owners() -> None:
+    runner = _StagedRunner()
+
+    assert isinstance(runner, StagedSpeculativeRunner)
+    assert validate_staged_speculative_runner(runner) is runner
+    with pytest.raises(TypeError, match="missing staged methods"):
+        validate_staged_speculative_runner(_IncompleteRunner())
+
+
+def test_staged_runner_resolver_prefers_explicit_opt_in_and_fails_closed() -> None:
+    # An explicit opt-in that cannot own a bounded cycle is rejected, not
+    # silently demoted to autoregressive decoding.
+    with pytest.raises(
+        TypeError, match="missing staged methods: speculative_component_claims"
+    ):
+        resolve_staged_speculative_runner(_OptInIncompleteRunner())
+    # A complete owner resolves by duck typing without an accessor.
+    runner = _StagedRunner()
+    assert resolve_staged_speculative_runner(runner) is runner
+    # A target-only runner with no staged methods is not a staged owner.
+    assert resolve_staged_speculative_runner(object()) is None
+
+
+# ------------------------------------------------------- staged adapter face
+
+
+class _AdapterDouble:
+    """The complete staged adapter face; no optional hooks."""
+
+    def capability(self, request_semantics):
+        return _capability()
+
+    def claims_fit(self, plan):
+        return True
+
+    def component_claims(self, plan):
+        return {}
+
+    def reserve_claims(self, claims):
+        return object()
+
+    def release_claims(self, reservation):
+        return None
+
+    def prepare_requests(self, plan, request_semantics, *, stream=None):
+        return None
+
+    def propose_batch(self, plan, request_semantics, *, stream=None):
+        raise AssertionError("not driven in this test")
+
+    def execute_target_frontier(
+        self, plan, frontier, complete_claims, *, commit, cancelled_request_ids
+    ):
+        raise AssertionError("not driven in this test")
+
+    def rollback_cycle(self, plan, *args):
+        return None
+
+    def recover_cycle_failure(self, plan, error):
+        return False
+
+    def prepare_k0(self, plan, request_semantics, *, stream=None):
+        return None
+
+    def register_request(self, request_id, candidate_budget):
+        return None
+
+    def close(self):
+        return None
+
+
+def test_staged_adapter_validator_accepts_the_complete_face_and_keeps_hooks_optional() -> None:
+    adapter = _AdapterDouble()
+
+    assert isinstance(adapter, StagedTargetAdapter)
+    assert validate_staged_target_adapter(adapter) is adapter
+
+    # Optional hooks are absent on the double and the adapter still validates,
+    # exactly as an adapter without execute_cycle / kv_live_spans_owner /
+    # staged_frontier / note_speculative_ar_commit / release_request keeps
+    # working through the runner seam.
+    for hook in (
+        "execute_cycle",
+        "kv_live_spans_owner",
+        "staged_frontier",
+        "note_speculative_ar_commit",
+        "release_request",
+        "close_requests",
+    ):
+        assert not callable(getattr(adapter, hook, None))
+
+
+def test_staged_adapter_validator_rejects_each_missing_lifecycle_method() -> None:
+    for name in (
+        "capability",
+        "claims_fit",
+        "component_claims",
+        "reserve_claims",
+        "release_claims",
+        "prepare_requests",
+        "propose_batch",
+        "execute_target_frontier",
+        "rollback_cycle",
+        "recover_cycle_failure",
+        "prepare_k0",
+        "register_request",
+        "close",
+    ):
+        broken = _AdapterDouble()
+        setattr(broken, name, None)
+        with pytest.raises(TypeError, match=f"missing staged lifecycle methods: {name}"):
+            validate_staged_target_adapter(broken)
+
+
+def test_every_production_adapter_class_declares_the_complete_staged_face() -> None:
+    """The three production adapters conform without needing a device.
+
+    Construction-time validation (``validate_staged_target_adapter(self)`` at
+    each adapter ``__init__`` tail) fails loudly on a GPU host; this pins the
+    same conformance CPU-only by checking the class-level method surface.
+    """
+
+    from hipengine.generation.qwen35_gguf_moe_mtp2 import Qwen35GGUFMoEMTP2Adapter
+    from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
+    from hipengine.generation.qwen35_paro_mtp2 import Qwen35ParoMTP2Adapter
+
+    for adapter_cls in (
+        Qwen35GGUFMTP2Adapter,
+        Qwen35GGUFMoEMTP2Adapter,
+        Qwen35ParoMTP2Adapter,
+    ):
+        for name in (
+            "capability",
+            "claims_fit",
+            "component_claims",
+            "reserve_claims",
+            "release_claims",
+            "prepare_requests",
+            "propose_batch",
+            "execute_target_frontier",
+            "rollback_cycle",
+            "recover_cycle_failure",
+            "prepare_k0",
+            "register_request",
+            "close",
+        ):
+            method = getattr(adapter_cls, name, None)
+            assert callable(method), f"{adapter_cls.__name__}.{name}"

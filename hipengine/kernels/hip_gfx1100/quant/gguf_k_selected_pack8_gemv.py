@@ -307,7 +307,7 @@ def register_gguf_k_selected_pack8_gemv_kernels(*, replace: bool = True) -> None
             fn_fp16,
             replace=replace,
         )
-        # Shorthand aliases matching the docs/GGUF.md P9 pipeline language.
+        # Shorthand aliases matching the docs/reference/GGUF.md P9 pipeline language.
         register(
             KernelKey(
                 "hip_gfx1100",

@@ -73,7 +73,7 @@ def test_device_payloads_flag_controls_mode() -> None:
     assert os.environ.get("HIPENGINE_DMS_DEVICE_PAYLOADS") is None
 
 
-def test_int8_device_payloads_require_qualification() -> None:
+def test_int8_payloads_do_not_require_an_evidence_allowlist() -> None:
     retrofit = DMSRetrofitConfig(
         artifact_fingerprint="fixture:dms-device-int8",
         model_family="qwen35",
@@ -91,16 +91,17 @@ def test_int8_device_payloads_require_qualification() -> None:
         evidence_source="unit fixture",
         source_path="tests/fixtures/dms_device_int8",
     )
-    with pytest.raises(ValueError, match="requires artifact qualification"):
-        DMSCompactBackend(
-            retrofit=retrofit,
-            codec="int8_per_token_head",
-            slots_per_layer=32,
-            max_request_rows=8,
-            max_pack_rows=64,
-            codec_qualification=None,
-            device_payloads=True,
-        )
+    backend = DMSCompactBackend(
+        retrofit=retrofit,
+        codec="int8_per_token_head",
+        slots_per_layer=32,
+        max_request_rows=8,
+        max_pack_rows=64,
+        codec_qualification=None,
+        device_payloads=False,
+    )
+    assert backend.codec == "int8_per_token_head"
+    assert backend.codec_qualification is None
 
 
 def _fixture_data(prompts: list[int], layers: int, heads: int, dim: int, seed: int):
@@ -159,6 +160,26 @@ def _compare_metadata(a: DMSCompactBackend, b: DMSCompactBackend) -> None:
             sa.evict_mask, sb.evict_mask, err_msg=f"{rid} evict_mask"
         )
         assert sa.logical_tokens == sb.logical_tokens
+
+
+def _live_k_payload(backend: DMSCompactBackend, rid: int, layer: int) -> list[np.ndarray]:
+    """The written K payload for one layer, one array per head.
+
+    Only ``[base_offset, base_offset + live_count)`` holds defined bytes: the
+    slot planes are allocated lazily without initialization and the pack kernel
+    writes only live rows. Comparing whole planes would compare unwritten
+    allocation bytes, which no contract defines.
+    """
+
+    state = backend.state_for_request(rid)
+    view = backend.device_layer_view(rid, layer)
+    return [
+        view.k_bits[
+            int(state.base_offsets[layer, h]) : int(state.base_offsets[layer, h])
+            + int(state.live_counts[layer, h])
+        ].copy()
+        for h in range(state.live_counts.shape[1])
+    ]
 
 
 def _softmax_kl_max(ref: np.ndarray, cand: np.ndarray) -> float:
@@ -395,16 +416,26 @@ def test_device_transaction_rollback_restores_payload_bytes_and_counters() -> No
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
-def test_device_determinism_across_backends() -> None:
+@pytest.mark.parametrize("poison_bytes", [None, (0x35, 0x6A)], ids=["allocator", "poisoned"])
+def test_device_determinism_across_backends(poison_bytes) -> None:
     layers, heads, dim, window = 1, 2, 16, 2
     data = _fixture_data([6], layers, heads, dim, seed=7)
     outs = []
-    for _ in range(2):
+    for instance in range(2):
         b = _make_backend(
             num_layers=layers, heads=heads, dim=dim, window=window, slots=64,
             device=True,
         )
         try:
+            if poison_bytes is not None:
+                # Unwritten allocation bytes differ deliberately. Only live
+                # payload and attention output have a determinism contract.
+                from hipengine.core.hip import get_hip_runtime
+
+                store = b._device_store
+                store._ensure_layer(0)
+                for plane in (store._k_slot[0], store._v_slot[0]):
+                    get_hip_runtime().memset(plane.ptr, poison_bytes[instance], plane.nbytes)
             k, v, evict = data[0][0]
             steps = data[1]
             _admit(b, request_id=0, tokens=int(k.shape[0]))
@@ -413,15 +444,21 @@ def test_device_determinism_across_backends() -> None:
                 b.append_decode(
                     0, kn, vn, flags_per_request[0], position=int(k.shape[0]) + step
                 )
-            view = b.device_layer_view(0, 0)
             q = np.random.default_rng(555).standard_normal(
                 (heads * 4, dim)
             ).astype(np.float32)
-            outs.append((view.k_bits.copy(), b.compact_decode_attention(0, 0, q)))
+            outs.append(
+                (
+                    _live_k_payload(b, 0, 0),
+                    b.compact_decode_attention(0, 0, q),
+                )
+            )
         finally:
             b.close()
     (k1, o1), (k2, o2) = outs
-    np.testing.assert_array_equal(k1, k2, err_msg="payload non-deterministic")
+    assert len(k1) == len(k2) == heads
+    for h, (a, b) in enumerate(zip(k1, k2)):
+        np.testing.assert_array_equal(a, b, err_msg=f"live K payload H{h} non-deterministic")
     np.testing.assert_array_equal(o1, o2, err_msg="attention non-deterministic")
 
 

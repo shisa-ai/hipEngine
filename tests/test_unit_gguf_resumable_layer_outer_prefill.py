@@ -595,6 +595,11 @@ class _WiringHost:
     def _packed_execution_owner(self, fallback):
         return self._resident_batch_owner
 
+    def _int8_boundary_split_boundary(self, row):
+        # The wiring rows are not prefix-eligible, so the compact-INT8 boundary
+        # split never applies and the resumable path is exercised directly.
+        return 0
+
     def _refresh_prefix_cache(self, row):
         return None
 

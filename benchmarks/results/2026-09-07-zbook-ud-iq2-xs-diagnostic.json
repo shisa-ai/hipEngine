@@ -1,0 +1,585 @@
+{
+  "schema_version": 1,
+  "status": "diagnostic_only_defaults_unchanged",
+  "date": "2026-09-07",
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S",
+  "backend": "hip_gfx1151",
+  "reproduction_runtime_commit": "e4e0f6bd7",
+  "workload": {
+    "concurrency": 1,
+    "prompt_tokens_min": 39,
+    "prompt_tokens_max": 71,
+    "teacher_steps": 9,
+    "prompts": 18,
+    "logit_rows": 162,
+    "prefill": "hipEngine serial eager; llama.cpp batched causal",
+    "profile": null,
+    "hipengine_kv": "session default; not separately logged by this diagnostic",
+    "llama_kv": "default F16",
+    "independent_teacher": "same published UD artifact, llama.cpp HIP",
+    "bf16_model_teacher": false
+  },
+  "model_sha256": "75bc9c8adba2842e72f0ab5201aaa07133c5010b566305c09187fcbdcd364017",
+  "teacher": {
+    "commit": "17252c769a63c1cb650ce98ae309cf4de0da7778",
+    "source": "scripts/quant_quality/llama_teacher_logits.cpp",
+    "source_sha256": "9fec5dcb1c9154cc92de877e0e5f96b6766af62ce98993588953c20d9925592a",
+    "binary_sha256": "5995199361d635f410a445b45f24a5054a3e4a0c4ef73d78890cc54a0e03a62c",
+    "libllama_sha256": "f27465fcadea69490a4c243f69f7e9bb40bee7764efccb1c7635217dc8ffc2de",
+    "libggml_hip_sha256": "02043adae248b4b37fd6922d0f12e0f8866fe2f3fededc52c351905f90596943"
+  },
+  "baseline_protocol_artifact": "2026-09-07-zbook-ud-c1-residency-logits-diagnostic.json",
+  "candidate": "Only layers.0.ffn_gate IQ2_XS BF16 expansion replaced by registered raw IQ2_XS leaf; Q5/Q6 unchanged.",
+  "baseline_weight_buffer_bytes": 21125912576,
+  "weight_byte_delta": -152494080,
+  "weight_byte_delta_percent": -0.7218342850345838,
+  "vs_hipengine_baseline": {
+    "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+    "mode": "raw_iq2_xs",
+    "allocated_weight_buffer_bytes": 20973418496,
+    "prompt_count": 18,
+    "teacher_steps": 9,
+    "independent_teacher": false,
+    "kl_mean": 6.799243094243477e-05,
+    "kl_max": 0.0009226271320127502,
+    "top1": 1.0,
+    "prompts": [
+      {
+        "id": "code_merge_intervals",
+        "category": "code",
+        "kl": [
+          3.6571557821512166e-05,
+          4.0774730910867375e-08,
+          1.0917635651713464e-07,
+          3.998365713987817e-05,
+          6.821128490997602e-10,
+          1.2360198351527229e-07,
+          1.0132923306692722e-08,
+          9.078153855206978e-10,
+          5.721847730591182e-06
+        ],
+        "top1": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "id": "code_topological_sort",
+        "category": "code",
+        "kl": [
+          1.8447374360758252e-05,
+          8.266427179325188e-08,
+          1.2119703420712537e-06,
+          0.0002260274925128609,
+          1.2974707087242667e-07,
+          8.392477816406397e-10,
+          3.09155376923935e-08,
+          3.2738527840328987e-06,
+          4.662210930031515e-08
+        ],
+        "top1": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "id": "code_lru_cache",
+        "category": "code",
+        "kl": [
+          6.995556646814029e-05,
+          2.824506404485875e-07,
+          2.2709575722921482e-07,
+          3.863862445066068e-05,
+          6.749040460628423e-05,
+          3.636873056666651e-07,
+          1.5313098010260828e-07,
+          2.0123360399923543e-06,
+          8.614496347298021e-07
+        ],
+        "top1": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "id": "code_markdown_table",
+        "category": "code",
+        "kl": [
+          9.163838415565314e-06,
+          1.861315458031263e-07,
+          2.03925333556132e-06,
+          0.00010740878299488066,
+          1.85044159814029e-07,
+          3.5693890674972972e-09,
+          3.5734352879059124e-09,
+          0.00017220860885167063,
+          1.5936664362507577e-08
+        ],
+        "top1": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "id": "general_en_plan",
+        "category": "general_en",
+        "kl": [
+          0.00036390856259076464,
+          0.0006215797081251735,
+          0.00023293470752076644,
+          1.2633390102707344e-05,
+          3.210511346628975e-09,
+          2.9748539852389563e-08,
+          4.551232462606307e-08,
+          3.655301183602581e-07,
+          1.1172540831992286e-06
+        ],
+        "top1": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "id": "general_en_explain",
+        "category": "general_en",
+        "kl": [
+          0.000172660809853347,
+          4.102208331216574e-06,
+          8.698289934537325e-05,
+          5.914174181723814e-05,
+          7.4624537202206165e-06,
+          3.3614119991805405e-05,
+          0.00015776446260336606,
+          2.0763367051964548e-05,
+          1.0171944487518338e-05
+        ],
+        "top1": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "id": "general_ja_plan",
+        "category": "general_ja",
+        "kl": [
+          0.00015091665708951655,
+          1.8671731460261743e-08,
+          2.5827092787334695e-07,
+          1.5887386016984428e-05,
+          9.360504314577653e-06,
+          1.6761896761634437e-05,
+          1.407690903334345e-05,
+          0.0002556936098135097,
+          1.4832876095242491e-06
+        ],
+        "top1": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "id": "general_ja_explain",
+        "category": "general_ja",
+        "kl": [
+          8.439208311006796e-06,
+          1.0503633774984422e-07,
+          1.0163405845653524e-05,
+          0.00010312960524445133,
+          0.0005855554073345521,
+          0.00018683908824656398,
+          9.457054821591671e-06,
+          0.00022061019284334502,
+          2.234125129717496e-05
+        ],
+        "top1": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "id": "mixed_ja_en_translate",
+        "category": "mixed_ja_en",
+        "kl": [
+          0.00018438946148671906,
+          4.732758426172799e-06,
+          4.5561173270110554e-08,
+          0.0001786099564585399,
+          1.0488972361079934e-05,
+          8.753691641084685e-05,
+          2.2307403084416953e-06,
+          1.3724147747953447e-09,
+          5.4231199420226815e-05
+        ],
+        "top1": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "id": "mixed_ja_en_review",
+        "category": "mixed_ja_en",
+        "kl": [
+          0.00012701425457689518,
+          1.5525680643963705e-05,
+          0.00012663300956282763,
+          1.5956536353561895e-08,
+          6.31138250544778e-05,
+          1.310877937853141e-06,
+          4.298799546318486e-05,
+          6.483626348808243e-07,
+          2.2065909493481495e-06
+        ],
+        "top1": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "id": "heldout_code_rate_limiter",
+        "category": "code",
+        "kl": [
+          2.8494631502538615e-05,
+          2.436558805924579e-07,
+          2.0028949963353494e-07,
+          1.479780912995961e-05,
+          2.4046873554317613e-05,
+          3.7593098303432855e-06,
+          2.8315264507226838e-06,
+          2.3374234655255176e-06,
+          4.7397462709216335e-09
+        ],
+        "top1": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "id": "heldout_code_interval_schedule",
+        "category": "code",
+        "kl": [
+          0.00013118504253381696,
+          1.9954852987844275e-07,
+          2.141082645807343e-08,
+          2.779032139651018e-05,
+          6.240322267157847e-08,
+          2.8983608800962942e-08,
+          7.209105393016842e-07,
+          7.731830865037742e-10,
+          5.981450564260975e-07
+        ],
+        "top1": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "id": "heldout_general_en_incident",
+        "category": "general_en",
+        "kl": [
+          7.504414683379593e-05,
+          0.0006242810012024284,
+          5.5278966716065856e-05,
+          0.0001716322570522558,
+          4.486637837578169e-06,
+          1.153205154485886e-06,
+          0.0002149700608312758,
+          0.000255402637755541,
+          1.8345457317724543e-08
+        ],
+        "top1": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "id": "heldout_general_en_quant",
+        "category": "general_en",
+        "kl": [
+          0.0002958782856777448,
+          1.916039638331203e-05,
+          2.2029251183849215e-07,
+          2.0793954165339817e-05,
+          1.0611788713072712e-05,
+          1.7258490493877773e-05,
+          0.00019112836046580425,
+          7.490753000733901e-06,
+          1.52968791365517e-05
+        ],
+        "top1": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "id": "heldout_general_ja_migration",
+        "category": "general_ja",
+        "kl": [
+          0.0009226271320127502,
+          0.0005661438473569449,
+          5.611826289908529e-06,
+          8.971893923358665e-05,
+          1.332131789859777e-07,
+          1.3849327054844533e-07,
+          8.908182755419215e-06,
+          1.6860939934412772e-08,
+          2.420341403457973e-05
+        ],
+        "top1": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "id": "heldout_general_ja_speculative",
+        "category": "general_ja",
+        "kl": [
+          2.059049913326192e-05,
+          8.945640534243596e-06,
+          1.1095240497819415e-06,
+          1.6250047700015313e-05,
+          1.2391872267929758e-05,
+          2.3742837485576316e-07,
+          1.3884989707395314e-09,
+          3.7900987959354634e-08,
+          1.0930809136432634e-07
+        ],
+        "top1": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "id": "heldout_mixed_summary",
+        "category": "mixed_ja_en",
+        "kl": [
+          0.00024224531559003632,
+          7.467569302337931e-05,
+          0.00025796275284883756,
+          2.373842389957444e-06,
+          1.698926601860727e-07,
+          4.0846073196539956e-05,
+          1.3220453996598398e-05,
+          3.95087815193996e-06,
+          4.586997306788527e-06
+        ],
+        "top1": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      },
+      {
+        "id": "heldout_mixed_review",
+        "category": "mixed_ja_en",
+        "kl": [
+          0.0003344410807743087,
+          4.790870160992703e-05,
+          0.00018521249704547544,
+          0.0005577595954121446,
+          7.420318430265398e-08,
+          2.93099418407075e-07,
+          4.582549945474986e-06,
+          6.012556405239428e-05,
+          0.00018862297796470601
+        ],
+        "top1": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      }
+    ]
+  },
+  "vs_llama": {
+    "rows": 162,
+    "kl_mean": 0.0006036070873249031,
+    "kl_p95": 0.0024469664439186,
+    "kl_p99": 0.005104008360443564,
+    "kl_max": 0.013713063158709333,
+    "top1": 0.9938271604938271
+  },
+  "vs_llama_slices": {
+    "code": {
+      "rows": 54,
+      "kl_mean": 0.0002426238412079167,
+      "kl_p95": 0.0012708544100311775,
+      "kl_p99": 0.002419044311432078,
+      "kl_max": 0.0024419846837440574,
+      "top1": 1.0
+    },
+    "general_en": {
+      "rows": 36,
+      "kl_mean": 0.0012185049180424225,
+      "kl_p95": 0.004353915709132678,
+      "kl_p99": 0.010731199342413665,
+      "kl_max": 0.013713063158709333,
+      "top1": 0.9722222222222222
+    },
+    "general_ja": {
+      "rows": 36,
+      "kl_mean": 0.0005154608547180219,
+      "kl_p95": 0.0021968044575465103,
+      "kl_p99": 0.004127360535325778,
+      "kl_max": 0.005046822919656815,
+      "top1": 1.0
+    },
+    "mixed_ja_en": {
+      "rows": 36,
+      "kl_mean": 0.0006183303583897448,
+      "kl_p95": 0.002482024968958903,
+      "kl_p99": 0.0026030714632914505,
+      "kl_max": 0.0026120408933271323,
+      "top1": 1.0
+    },
+    "prefill": {
+      "rows": 18,
+      "kl_mean": 0.001534561640911869,
+      "kl_p95": 0.004124234112676334,
+      "kl_p99": 0.011795297349502718,
+      "kl_max": 0.013713063158709333,
+      "top1": 0.9444444444444444
+    },
+    "decode": {
+      "rows": 144,
+      "kl_mean": 0.0004872377681265324,
+      "kl_p95": 0.0024464420481107533,
+      "kl_p99": 0.004628539247556044,
+      "kl_max": 0.005193452255007458,
+      "top1": 1.0
+    }
+  },
+  "capture_sha256": "ffbc29921a08603d2b3b1a3f91e22aae9d1be95e08d5656b5537838c6e86ee84",
+  "reproduction_source": "\"\"\"Diagnostic only: raw IQ2_XS versus baseline UD K_S, same forced tokens.\"\"\"\nimport json\nimport sys\nfrom pathlib import Path\nimport numpy as np\nimport hipengine.loading.qwen35_gguf_consumer_surface as surface\nimport hipengine.loading.qwen35_gguf_admission as admission\nsurface.RAW_LINEAR_SOURCE_QUANT_KEYS = dict(surface.RAW_LINEAR_SOURCE_QUANT_KEYS, IQ2_XS='gguf_iq2_xs')\nadmission.RAW_LINEAR_SOURCE_QUANT_KEYS = surface.RAW_LINEAR_SOURCE_QUANT_KEYS\nsurface._RAW_LINEAR_OUTPUTS = dict(surface._RAW_LINEAR_OUTPUTS, IQ2_XS=frozenset({'bf16','f32'}))\nadmission.CERTIFIED_OPERATION_COVERAGE = admission._certified_coverage()\nadmission._COVERAGE_INDEX = admission._build_coverage_index(admission.CERTIFIED_OPERATION_COVERAGE)\nfrom hipengine.loading.gguf import load_gguf_index\nfrom hipengine.tokenization.gguf import Qwen35GGUFTokenizer\nfrom hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession\nfrom scripts.gguf_mtp_bench import build_chat_prompt\nfrom scripts.gguf_mtp_category_bench import load_prompt_rows\nimport hipengine.loading.qwen35_gguf_materialize as materialize\n\nmodel='/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf'\nassert len(sys.argv) == 1 or (len(sys.argv) == 2 and sys.argv[1] in ('repeat2', 'repeat3'))\nprefix='/tmp/ud-iq2-xs-suite-S' + ('-'+sys.argv[1] if len(sys.argv)>1 else '')\nteacher=np.load('/tmp/ud-q56-suite-S-baseline.npz')\noriginal=materialize._spec_for_tensor\ndef candidate(slot_path,tensor,**kwargs):\n    if len(tensor.shape)==2 and slot_path.startswith('layers.') and tensor.ggml_type_name=='IQ2_XS':\n        return materialize.Qwen35GGUFWeightSpec(slot_path=slot_path, source=tensor,\n            quant_key='gguf_iq2_xs', layout=materialize.LAYOUT_RAW_GGUF, allocation_names=('raw',))\n    return original(slot_path,tensor,**kwargs)\nmaterialize._spec_for_tensor=candidate\nrows=[]\nfor filename in ('mtpbench-code-general-ja.jsonl','gdn-prefill-category-heldouts.jsonl'):\n    rows.extend(load_prompt_rows(Path('benchmarks/prompts')/filename))\nassert len(rows)==18 and len({r['id'] for r in rows})==18\ntok=Qwen35GGUFTokenizer.from_gguf_info(load_gguf_index(model))\ninputs=[list(build_chat_prompt(tok,row['prompt'],reasoning='off')) for row in rows]\nlogits=[]\nprint('raw IQ2_XS S prompts',[(r['id'],len(p)) for r,p in zip(rows,inputs)],flush=True)\nwith Qwen35GGUFResidentSession(model,backend='hip_gfx1151',max_sequence_length=max(map(len,inputs))+16,compiler_version=Path('/tmp/ud-hipcc-version.txt').read_text()) as session:\n    allocations={a.buffer.ptr:a.buffer.nbytes for w in session.runner.weights.weights for a in w.allocations.values()}\n    allocated_weight_bytes=sum(allocations.values())\n    print('weight_buffer_bytes',allocated_weight_bytes,'allocation_mode',session.runner.weights.allocation_mode,flush=True)\n    for i,prompt in enumerate(inputs):\n        session.reset()\n        result=session.prefill(prompt,use_bulk=False,return_logits=True)\n        for j in range(9):\n            assert np.isfinite(result.logits).all()\n            logits.append(result.logits.copy())\n            if j<8:result=session.step(int(teacher['tokens'][9*i+j]),return_logits=True)\n        print('raw IQ2_XS S',i,rows[i]['id'],flush=True)\nnp.savez(prefix+'.npz',logits=np.asarray(logits),tokens=teacher['tokens'])\na=teacher['logits'].astype(np.float64); b=np.asarray(logits,dtype=np.float64)\na=a.reshape(-1,a.shape[-1]);b=b.reshape(a.shape)\ndef logsoft(x):\n    x=x-x.max(axis=-1,keepdims=True)\n    return x-np.log(np.exp(x).sum(axis=-1,keepdims=True))\nla,lb=logsoft(a),logsoft(b)\nkl=np.sum(np.exp(la)*(la-lb),axis=-1)\nmatch=a.argmax(-1)==b.argmax(-1)\nsummary={'model':model,'mode':'raw_iq2_xs','allocated_weight_buffer_bytes':allocated_weight_bytes,'prompt_count':len(rows),'teacher_steps':9,'independent_teacher':False,'kl_mean':float(kl.mean()),'kl_max':float(kl.max()),'top1':float(match.mean()),'prompts':[dict(id=r['id'],category=r['category'],kl=kl[9*i:9*(i+1)].tolist(),top1=match[9*i:9*(i+1)].tolist()) for i,r in enumerate(rows)]}\nPath(prefix+'.json').write_text(json.dumps(summary,indent=2)+'\\n')\nprint(json.dumps(summary),flush=True)\n",
+  "command": "PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/ud-hipcc-version.txt .venv/bin/python -u /tmp/ud-iq2-xs-suite.py",
+  "limitations": [
+    "One completed capture; repeat2/repeat3 are separate pending work.",
+    "Same K_S prefill top1 disagreement as baseline: no independent-teacher transition qualification.",
+    "No BF16 model teacher, task, graph, serving, long-context, peak-memory or throughput gate.",
+    "A separate llama.cpp n_ubatch=1 all-outputs capture has suspicious trailing-row predictions; it is excluded from qualification pending explicit tokenwise API diagnosis."
+  ]
+}

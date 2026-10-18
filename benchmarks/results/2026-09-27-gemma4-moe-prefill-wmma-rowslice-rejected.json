@@ -1,0 +1,44 @@
+{
+  "kind": "gemma4_campaign_candidate",
+  "verdict": "rejected",
+  "recorded": "2026-09-27, gfx1151 Strix Halo (zbook) prefill attribution",
+  "candidate": "route the Q4_K expert gate/up projection through the per-expert WMMA row-slice prefill family (one launch per non-empty expert with use_wmma_prefill=True) in addition to the accepted grouped Q5_1 down route",
+  "reason": "faster than the accepted row by a wide margin and numerically worse than the binding production profile allows. It is rejected on kl_max, not on speed: 2 of 1023 teacher-forced rows breach the 5e-2 maximum, at 0.167959 and 0.059740, while mean/p95/p99 and top-1 all pass with wide margins.",
+  "mechanism": {
+    "what_it_does": "gemma4_project_experts_by_offset(use_wmma_prefill=True) launches one row-batched WMMA prefill per non-empty expert over that expert's contiguous compact row slice, so each expert's weight matrix is read once per expert instead of once per lane",
+    "why_it_is_not_bit_exact": "the WMMA prefill family accumulates K in 16-wide mma fragments, which is a different association from the selected GEMV's `column = t, t + 256, ...` walk with a strict 256-wide tree. The Q5_1 grouped family matches that association exactly and is therefore free; this one does not and is therefore a changed-arithmetic candidate that owes the production profile gate."
+  },
+  "correctness": {
+    "gate": "scripts/gemma4_teacher_forced_gate.py gate --baseline /tmp/gemma4-gate-strict-gfx1151.npz, 1023 teacher-forced rows at keys 1025-2047 with the decode split engaged (30690 split launches): kl_mean 2.2622e-04 (bar 1e-3, pass), kl_p95 1.261e-05 (5e-3, pass), kl_p99 9.158e-05 (2e-2, pass), kl_max 0.167959 (5e-2, FAIL), top-1 rate 1.0 with zero flips (0.99, pass). passed false, failed [\"kl_max\"], promotion_qualified false.",
+    "diagnosis": "scripts/gemma4_kl_row_report.py, per-row KL(baseline || candidate) in float64 over all 1023 rows: 1021 rows are at or below 1e-3, p50 is 1.8e-07. The two breaching rows are the chain's most confident ones - row 602 (key 1627) has baseline top-1 p=0.9881 against candidate p=1.0000, row 864 (key 1889) has 0.9955 against 1.0000 - and neither changes its top-1 token. The divergence is in the tail: the candidate is sharper, and a near-one-hot row converts a small logit move into a large KL because the baseline's ~1% tail is compressed toward zero. This is the same signature the 2026-09-26 slice-count rejection recorded (teacher near-deterministic, decision never moves, divergence in the tail) and the same class the execution-profile calibration places above the rejected-routes floor of ~0.059.",
+    "why_not_accepted_on_that_argument": "the tail breach is diagnosable and the top-1 is untouched, but kl_max is a binding admission limit and the calibration record shows accepted maxima at 0.03-0.044 against rejected routes from 0.059 upward. A 0.168 maximum is not inside the accepted band, so it is not promotable by argument.",
+    "measured_control": "the incumbent's own promoted decode split gates at KL exactly 0.0 against the single-kernel path on this chain (a --slices 1 arm, split_launches 0, 1023 rows), so the shipped default consumes none of the production KL budget and there is no incumbent precedent that this candidate could be measured against."
+  },
+  "performance": {
+    "platform": "zbook, Strix Halo, Radeon 8060S Graphics, gfx1151; artifact gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+    "protocol": "scripts/gemma4_campaign_bench.py --prompt 2048 --output 8 --samples 3 --warmup 1 --context 8192, greedy, fixed length, back to back with the incumbent and accepted arms in one thermal window",
+    "tree_state": "the candidate existed in the tree as a temporary opt-in while it was evaluated and was removed afterwards, so these rows and the gate below come from that candidate tree rather than from the committed tree. The gate's provenance records the file under test as dirty at capture time, and its chain hash is b8c28ab5066a519b3acc1e09293382f2cca1e084ac554e422788006341542d43 -- the same teacher-forced chain as the accepted candidate's gate, so the two verdicts are directly comparable.",
+    "primary": {
+      "row": "2048 prompt / 8 output",
+      "prefill_s_incumbent": 51.594,
+      "prefill_s_accepted_grouped_only": 41.807,
+      "prefill_s_candidate": [18.378, 18.380, 18.403],
+      "prefill_tok_s_candidate": 111.43,
+      "prefill_delta_vs_incumbent": "+180.7% (2.807x)",
+      "public_wall_s": "52.026 -> 18.836",
+      "decode_tok_s": "19.588 (unchanged)"
+    },
+    "reading": "the Q4_K gate/up carries 70% of the available prefill saving on this artifact (23.4 s of the 33.2 s total), because it is 53.4% of prefill kernel time and has no bit-exact grouped family. The accepted route recovers only the Q5_1 down share."
+  },
+  "next": {
+    "named_follow_up": "a single-output, weight-reusing Q4_K expert prefill kernel whose per-row reduction reproduces the selected GEMV's association. The selected Q4_K GEMV is gguf_q4_k_selected_prefill_out_kernel, which accumulates `k = threadIdx.x, threadIdx.x + blockDim.x, ...` and reduces with reduce_block_sum() (a 32-lane shfl tree per wave, then a sequential sum of wave totals by thread 0). A row-reusing kernel that keeps that exact per-row reduction and walks the expert's rows inside the block would be bit-exact the way the Q5_1 grouped family is, and would move the remaining 53.4% of prefill kernel time onto the same free footing. Until that kernel exists, the Q4_K gate/up keeps the per-lane GEMV.",
+    "not_a_flag": "no environment variable, default-off switch or model condition was added for this candidate; the code path was removed rather than hidden, and this artifact is the record of what it measured"
+  },
+  "provenance": {
+    "commit": "8ff1b66733894e76c9e8f50a56a5208537b00887",
+    "worktree": "hipEngine-gemma4, branch gemma4",
+    "gate_verdict": "/tmp/gemma4-gate-rowreuse-verdict.json (2026-09-27 04:23, candidate tree)",
+    "candidate_capture": "/tmp/gemma4-gate-rowreuse.npz",
+    "baseline_capture": "/tmp/gemma4-gate-strict-gfx1151.npz (strict tree, captured before the change)"
+  }
+}

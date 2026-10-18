@@ -1,0 +1,99 @@
+{
+  "kind": "gemma4_decode_mtp_capability_finding",
+  "performance_claim": false,
+  "recorded": "2026-09-27, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B UD-Q4_K_XL",
+  "mtp_finding": {
+    "verdict": "this artifact carries no MTP/NextN head, so speculative decoding is unavailable from it. That is a property of the artifact, not of the model: Gemma 4's MTP head ships separately as google/gemma-4-26B-A4B-it-assistant, and GGUF MTP quants of it exist (ironbcc/gemma-4-26B-A4B-it-MTP-GGUF). Neither has been downloaded or run here, and the engine does not refuse them - the route keys on tensor presence.",
+    "artifact_measurement": {
+      "artifact": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+      "tensors": 658,
+      "tensor_name_matches": {
+        "mtp": 0,
+        "nextn": 0,
+        "next_n": 0,
+        "draft": 0,
+        "spec": 0,
+        "eagle": 0,
+        "head": 0
+      },
+      "top_level_prefixes": [
+        "blk",
+        "output_norm",
+        "rope_freqs",
+        "token_embd"
+      ],
+      "architecture": "gemma4",
+      "metadata_fields_matching_mtp": [],
+      "note": "the base instruct artifact is what was measured. It is not the MTP carrier; the assistant artifact is."
+    },
+    "engine_route": "the in-tree speculative path is a NextN head: it reads tensors named nextn.enorm and nextn.hnorm (hipengine/runtime/qwen35_gguf_nextn.py, qwen4_exp_mtp.py). Presence of those tensors is what the route keys on, so an artifact that carried a NextN head is what the existing path reads; nothing in the engine refuses a Gemma 4 MTP head by model name.",
+    "declaration": "Gemma4GGUFGenerator.supports_speculative_mtp is already False (hipengine/generation/gemma4_gguf.py) and is surfaced through engine_service.supports_speculative_mtp, so the server already reports the capability as absent. This finding confirms the declaration against the artifact rather than changing it.",
+    "consequence": "speculative decoding cannot be sourced from this artifact, so decode work proceeds on the single-token path until a draft artifact is wired. Wiring one is deferred by the campaign's own sequencing (base decode and prefill first), not blocked by a capability miss.",
+    "draft_artifact_route": {
+      "assistant": "google/gemma-4-26B-A4B-it-assistant",
+      "gguf_mtp_quants": "ironbcc/gemma-4-26B-A4B-it-MTP-GGUF",
+      "engine_status": "not downloaded, not run. The in-tree speculative path keys on nextn.enorm and nextn.hnorm tensor presence, so no engine change is required to admit one.",
+      "when": "after base decode and prefill reach their targets"
+    }
+  },
+  "decode_lever_closed": {
+    "candidate": "raise the decode attention kernel's barrier batch. The 2026-09-24 decode specialization batches barrier rounds across 8 keys and halved the reduction barrier cost, so a larger batch is the obvious next step.",
+    "measured": "the batch is not a tunable. gemma4_attention.hip derives it per launch as the largest candidate from 8, 4, 2, 1 whose partial rows fit the 64 KB LDS budget, and the switch already carries a case 16 that the search never selects. It is therefore already at the hardware budget maximum on this target, and raising it needs a different reduction layout rather than a larger constant.",
+    "verdict": "closed by reading the selection rule against the hardware limit"
+  },
+  "decode_state": {
+    "current_tok_s": 19.97,
+    "baseline_tok_s": 16.09,
+    "improvement": "1.24x over the 16.09 gfx1151 baseline at 1024 prompt / 128 output (19.97 tok/s), with public-path token-id parity exact",
+    "source": "recorded campaign rows: the 2026-09-24 bit-exact decode attention specialization (16.09 -> 20.48 tok/s) plus the later accepted units (-> 21.06 tok/s at 1024 prompt / 128 output). No decode throughput was added by this unit.",
+    "where_the_time_goes": "decode is device-bound. At KV~4096 attention is 79.2% of decode device time; at KV~129 it is 24%, with q4_k 23% and pack8 19% over 410 launches per step. The campaign's decode row is at 1024 prompt / 128 output, between those two.",
+    "remaining_levers_and_why_they_are_blocked": {
+      "attention split": "rejected at the numerical gate (kl_max 0.304 against 0.05, attributed to bf16-KV amplification), so it is changed arithmetic rather than an open optimization.",
+      "q4_k decode re-route": "blocked on a missing Q5_1 compact down kernel (no table entry in any family) and an expert_ffn % 256 guard the artifact's ffn=704 fails.",
+      "pack8 dense decode rewrite": "rejected: not bit-exact, and the measured mechanism is pinned by tests/test_gpu_gguf_q8_0_pack8_gemv_decode_parity.py.",
+      "pack8 launch count": "410 launches per step is a real cost but the route is already selected; cutting the count means graph capture or a batched dense GEMV, and the campaign records graph capture as following stable pointer and state ownership rather than preceding it."
+    },
+    "by_shape_decode_tok_s": {
+      "128 prompt / 128 output": 21.96,
+      "512 prompt / 128 output": 21.05,
+      "1024 prompt / 128 output": 19.97,
+      "2048 prompt / 8 output": 19.53,
+      "4096 prompt / 128 output": 17.58
+    }
+  },
+  "fresh_public_row": {
+    "why": "the decode figure cited above is the recorded campaign measurement. This re-measures it on the current tree through the same public runner, so that the acceptance's public-path parity claim is not resting on a number taken before this session's prefill units.",
+    "command": "run_instrumented from scripts/gemma4_campaign_bench.py, 1024 prompt / 128 output, one warm repeat and three timed repeats, capacity 8192",
+    "prefill_s": [
+      5.978,
+      6.03,
+      6.021
+    ],
+    "prefill_tok_s_median": 170.08,
+    "decode_s": [
+      6.339,
+      6.326,
+      6.349
+    ],
+    "decode_tok_s_median": 20.03,
+    "recorded_decode_tok_s": 21.06,
+    "repeat_token_id_parity": true,
+    "observation": "decode measures 20.03 tok/s at 1024 prompt / 128 output against the gfx1151 baseline artifact's 19.97 tok/s at the same shape, so decode is at parity with the baseline and this session's units did not move it. An earlier reading of this row compared it against 21.06, which is the baseline's 512-prompt row, and reported a 5% gap; that comparison mixed two shapes and was wrong. Prefill in the same process is within 1% of its own earlier measurement (6.021 s against 5.963 s at 1024 tokens).",
+    "next_check": null,
+    "baseline_same_shape_decode_tok_s": 19.97,
+    "verdict": "parity with the baseline at the same shape"
+  },
+  "llama_cpp_comparator": {
+    "engine": "llama.cpp HIP, build 17252c769 (10685), ROCm backend",
+    "command": "llama-bench -m <same artifact> -ngl 99 -fa on -ctk bf16 -ctv bf16 -p 512 -n 128 -r 3",
+    "same_artifact": true,
+    "same_host": true,
+    "pp512_tok_s": 1014.22,
+    "tg128_tok_s": 41.11,
+    "our_decode_at_512_128_tok_s": 21.05,
+    "decode_gap": "1.95x (51% of llama.cpp)",
+    "prefill_gap": "8.40x at the time of the baseline; 1.32x better after this session's prefill units, so about 6.4x",
+    "limits": "one shape only. No llama.cpp row exists for the other four shapes, and llama-bench's pp512 is prefill-only rather than the harness's first-token boundary.",
+    "unresolved_discrepancy": "benchmarks/results/2026-09-26-gemma4-26b-a4b-target-gap-arithmetic.json cites llama.cpp at 68.92 tok/s and the engine at 45.94 tok/s for 1024 prompt / 128 output. Both are 1.7x to 2.3x above this baseline artifact's same-host, same-artifact figures (41.11 tok/s llama.cpp tg128 and 19.97 tok/s at 1024 prompt), and the two ratios do not match each other, so a single configuration difference does not explain them. The target-gap artifact records no provenance or platform fields. Any gap-to-llama.cpp claim should cite the baseline artifact's comparator until that is resolved."
+  }
+}

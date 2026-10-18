@@ -22,6 +22,7 @@ Q4_K_BLOCK_BYTES = 144
 Q5_K_BLOCK_BYTES = 176
 Q6_K_BLOCK_BYTES = 210
 Q8_0_BLOCK_BYTES = 34
+Q5_1_BLOCK_BYTES = 24
 
 
 def _pack_q4_k_scales(scales: np.ndarray, mins: np.ndarray) -> np.ndarray:
@@ -184,4 +185,86 @@ def make_q8_0_weight(out_features: int, in_features: int) -> np.ndarray:
         for block_idx in range(blocks_per_row):
             start = block_idx * Q8_0_BLOCK_BYTES
             data[out_idx, start : start + Q8_0_BLOCK_BYTES] = _make_q8_0_block(out_idx, block_idx)
+    return data
+
+
+def _make_q5_1_block(out_idx: int, block_idx: int) -> np.ndarray:
+    d = np.float16(0.015625 * (1 + (out_idx % 5)))
+    m = np.float16(0.0078125 * (1 + (block_idx % 3)))
+    q = ((np.arange(32, dtype=np.int64) + out_idx * 7 + block_idx * 13) % 32).astype(np.uint8)
+    # Q5_1 layout: fp16 d, fp16 m, uint32 qh (bit i = high bit of element i,
+    # little-endian), qs[16] (low nibble = elements 0..15, high = 16..31).
+    # Dequant: w = d*q5 + m, matching hipengine/quant/gguf.py and the GPU
+    # dequant_q5_1 helper bit for bit.
+    qh_u32 = np.uint32(0)
+    for i in range(32):
+        qh_u32 |= np.uint32((q[i] >> 4) & 1) << np.uint32(i)
+    qh = np.asarray([qh_u32], dtype=np.uint32).view(np.uint8)
+    low = (q[:16] & 0x0F).astype(np.uint8)
+    high = ((q[16:] & 0x0F) << 4).astype(np.uint8)
+    qs = (low | high).astype(np.uint8)
+    return np.concatenate(
+        [
+            np.asarray([d], dtype=np.float16).view(np.uint8),
+            np.asarray([m], dtype=np.float16).view(np.uint8),
+            qh,
+            qs,
+        ]
+    )
+
+
+def make_q5_1_weight(out_features: int, in_features: int) -> np.ndarray:
+    """Build raw Q5_1 bytes ``[out_features, blocks * 24]`` (32 per block)."""
+
+    if in_features % 32:
+        raise ValueError("in_features must be a multiple of 32")
+    blocks_per_row = in_features // 32
+    data = np.empty((out_features, blocks_per_row * Q5_1_BLOCK_BYTES), dtype=np.uint8)
+    for out_idx in range(out_features):
+        for block_idx in range(blocks_per_row):
+            start = block_idx * Q5_1_BLOCK_BYTES
+            data[out_idx, start : start + Q5_1_BLOCK_BYTES] = _make_q5_1_block(out_idx, block_idx)
+    return data
+
+
+Q3_K_BLOCK_BYTES = 110
+
+
+def _make_q3_k_block(out_idx: int, block_idx: int) -> np.ndarray:
+    """One synthetic GGUF block_q3_K (110 bytes).
+
+    Inverts the strict kernel's reader exactly: hmask[32] (sign-flip bit
+    per 32-lane group), qs[64] (2-bit codes, 4 groups per byte at shifts
+    0/2/4/6 within each 128-element half), scales[12] (six-bit signed
+    scales: low nibbles in bytes 0-7 banked by g>>3, high bits in bytes
+    8-11 packed 4-per-byte), fp16 d at bytes 108-109.
+    """
+    rng = np.random.default_rng(1000 + out_idx * 31 + block_idx)
+    d = np.float16(0.03125 * (1 + (out_idx % 5)))
+    hmask = [int(v) for v in rng.integers(0, 256, 32, dtype=np.uint8)]
+    qs = [int(v) for v in rng.integers(0, 256, 64, dtype=np.uint8)]
+    scales = [int(v) for v in rng.integers(0, 64, 16, dtype=np.uint8)]
+    scales_bytes = [0] * 12
+    for g in range(16):
+        low4 = scales[g] & 15
+        hi2 = (scales[g] >> 4) & 3
+        scales_bytes[g & 7] |= low4 << (4 * (g >> 3))
+        scales_bytes[8 + (g & 3)] |= hi2 << (2 * (g >> 2))
+    d_bytes = [int(v) for v in np.asarray([d], dtype=np.float16).view(np.uint8)]
+    return np.asarray(hmask + qs + scales_bytes + d_bytes, dtype=np.uint8)
+
+
+def make_q3_k_weight(out_features: int, in_features: int) -> np.ndarray:
+    """Build raw Q3_K bytes ``[out_features, blocks * 110]``."""
+    if in_features % QK_K:
+        raise ValueError("in_features must be a multiple of 256")
+    blocks_per_row = in_features // QK_K
+    data = np.empty((out_features, blocks_per_row * Q3_K_BLOCK_BYTES), dtype=np.uint8)
+    for out_idx in range(out_features):
+        for block_idx in range(blocks_per_row):
+            start = block_idx * Q3_K_BLOCK_BYTES
+            data[out_idx, start : start + Q3_K_BLOCK_BYTES] = _make_q3_k_block(
+                out_idx, block_idx
+            )
+    return data
     return data

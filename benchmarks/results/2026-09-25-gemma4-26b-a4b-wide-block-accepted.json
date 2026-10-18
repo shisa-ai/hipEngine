@@ -1,0 +1,121 @@
+{
+  "kind": "gemma4_campaign_candidate",
+  "verdict": "accepted",
+  "recorded": "2026-09-25, gemma4-moe-perf/g0 iteration 24",
+  "candidate": "512-thread decode attention block (16 key classes instead of 8), keys-per-tile 2, with the denominator reduction pinned to the block kernel's 256 lanes",
+  "reason": "pass 1's shuffle tree was the measured bottleneck (108 us of the 318 us sliding launch, with all loads and FMAs still live) and it is latency-bound, not throughput-bound, because 8 warps per block cannot hide it. Doubling the warps per block gives sliding 318.9 -> 288.4 us and full 339.8 -> 270.1 us at keys=1024, full 509.5 -> 399 us at keys=2048. Campaign metric 41.9049 -> 43.6297 tok/s (+4.1%), +171% over the 16.0931 baseline",
+  "mechanism": {
+    "diagnosis": "clean ablations of the iteration-23 kernel, each keeping the data dependencies alive so the compiler cannot delete the measured work: replacing the shuffle tree with in-lane adds (all loads and FMAs still live) saved 108 us of 318 at sliding and 75 us of 354 at full; removing pass 1's LDS logit store saved nothing; skipping the pass-2 loop entirely saved nothing; replacing the K loads with a constant saved only 25-31 us. So the tree was the single largest item and the K loads were already fine",
+    "cause": "the tree issues 40 warp-wide shuffles per key (8 elements x 5 shuffle levels) and is a dependent chain per key, so it needs many warps in flight to hide its latency. The block had 8 warps and the launch has one block per (token, head) - 16 blocks for a decode step - leaving the machine mostly idle",
+    "fix": "kThreads 256 -> 512, so the block has 16 key classes and each warp walks half as many keys while still evaluating the full 256-lane tree per key. Only the key-class split changed: every key's own reduction order is untouched, so the kernel stays bit-exact",
+    "second_fix": "keys-per-tile re-swept at the new block size: 2/4/8 -> 290.3/294.1/303.1 us sliding and 271.2/280.4/422.2 us full, so 2 replaces 4",
+    "denominator_pinning": "gemma4_decode_tree1's addition order depends on its lane count, so a 512-thread block would have rounded the denominator differently from the block kernel and stopped being bit-exact (measured: 3.3% of elements off by 1-2 bf16 ulps). Pass 2 now runs its 256-lane partition and tree with the block kernel's lane count on group 0 only, while the other 256-thread groups execute gemma4_decode_tree1 with an empty sum purely so that all threads reach its barriers; every thread reads group 0's result from `partial[0]`. The LDS layout reserves one 256-float denominator region per group",
+    "rejected": [
+      "level-major interleaving of the four in-flight trees (bit-exact, since the keys are independent): no gain at sliding and 11% worse at full, so the compiler was already interleaving and the extra live registers cost more than they bought",
+      "1024-thread blocks: 298.6 us sliding and 289.2 us full, worse than 512 on both",
+      "16-byte vector loads for pass 1's K octet (one load instead of eight per key per half): neutral at 325.1 us sliding and 340.6 us full against 318.9 and 339.8, consistent with the K loads costing only 25-31 us"
+    ]
+  },
+  "correctness": {
+    "contract": "bit-exact with the block kernel (same-schedule arithmetic): only the key-class split, the keys-per-tile, and which threads compute the (now pinned) denominator changed",
+    "parity_suite": "tests/test_gpu_gemma4_attention_decode_parity.py",
+    "parity_result": "green together with tests/test_gpu_gemma4_attention_geometry.py - bitwise equality on every shape, both dtypes, keep and holes masks, keys 1..8192",
+    "note": "the first two 512-thread attempts failed parity (100% of elements, then 3.3% off by 1-2 bf16 ulps) and both causes are recorded above: an undersized denominator region that overran max_s, and the unpinned reduction order. Parity was the gate that caught them; the campaign row numbers were never taken from a non-parity state",
+    "public_path_parity": "true on all four re-measured campaign rows"
+  },
+  "performance": {
+    "microbench": {
+      "tool": "scripts/gemma4_attention_decode_bench.py",
+      "protocol": "one launch per measurement window, 30 iterations, device sync at the end",
+      "rows": [
+        {
+          "geometry": "sliding head_dim=256 keys=1024",
+          "iteration_23_us": 318.9,
+          "candidate_us": 288.4
+        },
+        {
+          "geometry": "full head_dim=512 keys=1024",
+          "iteration_23_us": 339.8,
+          "candidate_us": 270.1
+        },
+        {
+          "geometry": "sliding head_dim=256 keys=2048",
+          "iteration_23_us": 441.1,
+          "candidate_us": "413-421"
+        },
+        {
+          "geometry": "full head_dim=512 keys=2048",
+          "iteration_23_us": 509.5,
+          "candidate_us": "393-405"
+        }
+      ]
+    },
+    "campaign_rows": {
+      "metric": "decode_tps",
+      "command": "scripts/gemma4_campaign_bench.py --prompt P --output 128 --samples 3",
+      "label": "g3-wide-block",
+      "primary": {
+        "row": "1024p",
+        "incumbent": 41.9049,
+        "candidate": 43.6297,
+        "delta": "+4.1%",
+        "prefill_tok_s": 129,
+        "public_wall_s": "10.58 -> 10.90"
+      },
+      "other_rows": [
+        {
+          "row": "128p",
+          "decode_incumbent": 48.56,
+          "decode_candidate": 48.2,
+          "prefill_tok_s": "139 -> 139",
+          "public_wall_s": "3.58 -> 3.60",
+          "note": "inside the 47.6-48.8 band this row has held across the last three iterations; a bounded paired rerun was run to confirm",
+          "paired_rerun": {
+            "value": 48.491,
+            "verdict": "inside the row's noise band and above the iteration-23 incumbent, so the 48.20 reading was run noise rather than a regression"
+          }
+        },
+        {
+          "row": "512p",
+          "decode_incumbent": 46.43,
+          "decode_candidate": 47.32,
+          "prefill_tok_s": "135 -> 135",
+          "public_wall_s": "6.56 -> 6.48"
+        },
+        {
+          "row": "4096p",
+          "decode_incumbent": 25.78,
+          "decode_candidate": 28.49,
+          "prefill_tok_s": "108 -> 108",
+          "public_wall_s": "42.73 -> 42.42"
+        }
+      ],
+      "regression_check": "decode improved on three rows (+1.9% to +10.5%) and held within noise on the fourth, prefill is unchanged on all four, public wall improved or held on all four"
+    },
+    "campaign_position": {
+      "campaign_baseline": 16.0931,
+      "candidate": 43.6297,
+      "vs_baseline": "+171%",
+      "llamacpp_same_artifact_decode_tok_s": 68.92,
+      "fraction_of_llamacpp": "63% (23% at the campaign baseline)",
+      "campaign_target": "70% of the Qwen3.6-35B-A3B reference 114.57 tok/s = 80.2 tok/s"
+    }
+  },
+  "changes": {
+    "kernel": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip - kGemma4ReduceThreads (256) added; gemma4_attention_decode_class_kernel's LDS layout reserves one denominator region per 256-thread group; pass 2 runs on group 0 and every thread reads partial[0]; gemma4_decode_class_launch uses kThreads 512, keys-per-tile 2, and sizes the shared allocation for both groups",
+    "tests": "none changed: the parity and geometry suites already cover the block sizes and both load paths",
+    "flags": "none: one measured block shape, no env var and no fallback chain"
+  },
+  "provenance": {
+    "commit": "pending (this unit)",
+    "worklog_entry": "pending (this unit)",
+    "gates": {
+      "parity": "green (decode parity + attention geometry)",
+      "guard": "pytest tests/test_unit_gemma4_*.py tests/test_gpu_gemma4_*.py -q exit 0"
+    }
+  },
+  "next": [
+    "pass 1's tree is still the largest single item: the 512-thread block cut its wall time but it still issues 40 shuffles per key, and any cheaper reduction changes the addition order (a changed-arithmetic candidate that needs the production-profile gate rather than parity)",
+    "the 8.0 ms/token host gap from iteration 19 (1116 launches x 7.2 us) is now larger than the whole attention kernel and is untouched"
+  ]
+}

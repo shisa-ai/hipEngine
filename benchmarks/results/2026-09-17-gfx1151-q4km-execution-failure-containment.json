@@ -1,0 +1,249 @@
+{
+  "backend": "hip_gfx1151",
+  "checks": {
+    "control_closed_service": true,
+    "control_failed_healthy_row": true,
+    "control_injected_row_sees_raw_fault": true,
+    "fault_fired_in_decode": true,
+    "follow_up_completed": true,
+    "follow_up_matches_reference": true,
+    "healthy_matches_reference": true,
+    "injected_row_not_an_engine_fault": true,
+    "injected_row_reported": true,
+    "service_healthy_after_fault": true
+  },
+  "contained": {
+    "classifier_calls": [
+      {
+        "contained": true,
+        "contained_request_ids": [
+          2
+        ],
+        "error_type": "GenerationCancelled",
+        "mutation_window": "none",
+        "phase": "decode",
+        "request_ids": [
+          1,
+          2
+        ],
+        "row_present": [
+          true,
+          true
+        ],
+        "runtime_paths": {
+          "1": {
+            "lease_session_runtime": "HipRuntime",
+            "row_attrs": [
+              "lease"
+            ],
+            "row_type": "_GGUFResidentLoopRow",
+            "session_runtime": "HipRuntime",
+            "session_type": "Qwen35GGUFResidentSession",
+            "slot_attrs": [
+              "session",
+              "session_pool_key"
+            ],
+            "slot_type": "_GGUFARServingSlot"
+          },
+          "2": {
+            "lease_session_runtime": "HipRuntime",
+            "row_attrs": [
+              "lease"
+            ],
+            "row_type": "_GGUFResidentLoopRow",
+            "session_runtime": "HipRuntime",
+            "session_type": "Qwen35GGUFResidentSession",
+            "slot_attrs": [
+              "session",
+              "session_pool_key"
+            ],
+            "slot_type": "_GGUFARServingSlot"
+          },
+          "shared_runner": {
+            "has_runtime": false,
+            "type": "Qwen35GGUFFullStackRunner"
+          }
+        },
+        "step_request_id": 2,
+        "work_kind": "decode"
+      }
+    ],
+    "fault_fired": 1,
+    "fault_fired_in": "decode_batch",
+    "fault_matches_seen": 3,
+    "follow_up_error": null,
+    "follow_up_tokens": [
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707
+    ],
+    "health_after_fault": {
+      "object": "hipengine.engine_service.health",
+      "serving": true,
+      "status": "ok",
+      "unhealthy": null
+    },
+    "health_final": {
+      "object": "hipengine.engine_service.health",
+      "serving": true,
+      "status": "ok",
+      "unhealthy": null
+    },
+    "healthy_error": null,
+    "healthy_tokens": [
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707,
+      9707
+    ],
+    "injected_error": {
+      "cause_type": null,
+      "is_cancellation": true,
+      "is_execution_failure": false,
+      "message": "request cancelled",
+      "mutation": null,
+      "phase": null,
+      "type": "GenerationCancelled"
+    },
+    "quiesce_calls": [
+      {
+        "request_ids": [
+          1,
+          2
+        ],
+        "runtimes": {
+          "1": {
+            "lease_session_runtime": "HipRuntime",
+            "row_attrs": [
+              "lease"
+            ],
+            "row_type": "_GGUFResidentLoopRow",
+            "session_runtime": "HipRuntime",
+            "session_type": "Qwen35GGUFResidentSession",
+            "slot_attrs": [
+              "session",
+              "session_pool_key"
+            ],
+            "slot_type": "_GGUFARServingSlot"
+          },
+          "2": {
+            "lease_session_runtime": "HipRuntime",
+            "row_attrs": [
+              "lease"
+            ],
+            "row_type": "_GGUFResidentLoopRow",
+            "session_runtime": "HipRuntime",
+            "session_type": "Qwen35GGUFResidentSession",
+            "slot_attrs": [
+              "session",
+              "session_pool_key"
+            ],
+            "slot_type": "_GGUFARServingSlot"
+          },
+          "shared_runner": {
+            "has_runtime": false,
+            "type": "Qwen35GGUFFullStackRunner"
+          }
+        },
+        "synchronized": true
+      }
+    ]
+  },
+  "control_no_containment": {
+    "fault_fired": 1,
+    "fault_fired_in": "decode_batch",
+    "fault_matches_seen": 3,
+    "follow_up_error": {
+      "cause_type": null,
+      "is_cancellation": false,
+      "is_execution_failure": false,
+      "message": "engine service command timed out",
+      "mutation": null,
+      "phase": null,
+      "type": "TimeoutError"
+    },
+    "follow_up_tokens": [],
+    "health_after_fault": {
+      "object": "hipengine.engine_service.health",
+      "serving": false,
+      "status": "unhealthy",
+      "unhealthy": {
+        "exception_type": "GenerationCancelled",
+        "location": "/home/lhl/hipEngine-main/scripts/gguf_execution_failure_containment_proof.py:219 in patched",
+        "message": "request cancelled",
+        "phase": null,
+        "request_ids": null
+      }
+    },
+    "health_final": {
+      "object": "hipengine.engine_service.health",
+      "serving": false,
+      "status": "unhealthy",
+      "unhealthy": {
+        "exception_type": "GenerationCancelled",
+        "location": "/home/lhl/hipEngine-main/scripts/gguf_execution_failure_containment_proof.py:219 in patched",
+        "message": "request cancelled",
+        "phase": null,
+        "request_ids": null
+      }
+    },
+    "healthy_error": {
+      "cause_type": null,
+      "is_cancellation": true,
+      "is_execution_failure": false,
+      "message": "request cancelled",
+      "mutation": null,
+      "phase": null,
+      "type": "GenerationCancelled"
+    },
+    "healthy_tokens": [],
+    "injected_error": {
+      "cause_type": null,
+      "is_cancellation": true,
+      "is_execution_failure": false,
+      "message": "request cancelled",
+      "mutation": null,
+      "phase": null,
+      "type": "GenerationCancelled"
+    }
+  },
+  "elapsed_s": 103.538,
+  "max_tokens": 12,
+  "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "passed": true,
+  "performance_claim": false,
+  "prepared_context_tokens": 4096,
+  "protocol": "execution-failure-containment-proof",
+  "quant": "auto",
+  "reference_tokens": [
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707
+  ]
+}

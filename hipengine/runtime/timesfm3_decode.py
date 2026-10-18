@@ -29,6 +29,7 @@ from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
     copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -59,6 +60,7 @@ from hipengine.kernels.hip_gfx1100.timesfm.timesfm import (
 from hipengine.kernels.hip_gfx1100.timesfm3.timesfm3 import (
     timesfm3_qkv_norm_scatter_f16,
     timesfm3_relu,
+    timesfm3_sgemm_f64acc,
     timesfm3_var_attention,
 )
 from hipengine.loading.timesfm3 import TimesFM3LoadedModel
@@ -309,6 +311,8 @@ class TimesFM3GPUDecoder:
             q_offset=malloc(batch * variates * 4),
         )
         runtime = get_hip_runtime()
+        # Read-only causal offset: this runner attends a full sequence at once.
+        # Unlike TimesFM 2.5's AR offset, it is never advanced or mutated.
         runtime.memset(buffers.q_offset.ptr, 0, buffers.q_offset.nbytes)
         self._buffers[key] = buffers
         return buffers
@@ -321,9 +325,13 @@ class TimesFM3GPUDecoder:
                 x_ptr, w_ptr, out_ptr, rows=rows, in_features=fin, out_features=fout
             )
         else:
-            self.rocblas.sgemm_rowmajor_nt(
-                x_ptr, w_ptr, out_ptr, rows=rows, in_features=fin, out_features=fout
-            )
+            # Strict fp32 parity: accumulate the dot products in double so the
+            # GEMM matches the CPU/torch fp32 oracle. rocBLAS SGEMM's fp32
+            # accumulation order is arch-dependent (gfx1100 differs from the
+            # gfx1151 solution the strict gate was calibrated on) and the
+            # resulting ~1e-6-per-GEMM difference is amplified past the 5e-5
+            # gate by the 20-layer stack and the CPM RevIN refinement.
+            timesfm3_sgemm_f64acc(x_ptr, w_ptr, out_ptr, rows, fin, fout)
 
     # -- one forward pass ----------------------------------------------------
 
@@ -346,12 +354,12 @@ class TimesFM3GPUDecoder:
         dt = "f16" if self.precision == "fp16" else "f32"
         itemsize = 2 if self.precision == "fp16" else 4
 
-        copy_host_to_device(
+        copy_host_array_to_device(
             bufs.front_masked,
-            host_array_ptr(np.ascontiguousarray(front_masked_host.astype(np.int32))),
+            np.ascontiguousarray(front_masked_host.astype(np.int32)),
         )
         pos_host = np.tile(np.arange(n, dtype=np.float32), (seq_batch, 1))
-        copy_host_to_device(bufs.pos, host_array_ptr(np.ascontiguousarray(pos_host)))
+        copy_host_array_to_device(bufs.pos, np.ascontiguousarray(pos_host))
 
         # Tokenizer ResidualBlock (ReLU, no biases).
         self._gemm(bufs.tok_in.ptr, self._w["tok_hidden"], bufs.hidden.ptr, rows, spec.tokenizer_input_dims, d)

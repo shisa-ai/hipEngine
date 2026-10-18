@@ -8,7 +8,7 @@ normal device-resident lowering.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import Sequence
 
@@ -72,6 +72,144 @@ class SpecTransactionMode(StrEnum):
     REVERSIBLE_JOURNAL = "reversible_journal"
 
 
+@dataclass(frozen=True, slots=True)
+class SpeculativeKVBinding:
+    """Typed KV ownership binding for one speculative target capability.
+
+    ``storage_view_key`` identifies the backend-owned storage view used by the
+    target frontier. ``live_spans_owner`` identifies the request/slot owner of
+    the liveness metadata. The backend fingerprint, generation, and layout
+    fingerprint make the binding safe to compare across dense, quantized, and
+    compact-retention backends without teaching the scheduler their layouts.
+    """
+
+    backend_fingerprint: str
+    generation: int
+    topology_key: str
+    storage_view_key: str
+    layout_fingerprint: str
+    storage_dtype: str
+    storage_layout: str
+    transaction_mode: SpecTransactionMode
+    scale_dtype: str | None = None
+    scale_granularity: str | None = None
+    retention_key: str = "dense"
+    live_spans_owner: str | None = None
+
+    def __post_init__(self) -> None:
+        for field in (
+            "backend_fingerprint",
+            "topology_key",
+            "storage_view_key",
+            "layout_fingerprint",
+            "storage_dtype",
+            "storage_layout",
+            "retention_key",
+        ):
+            object.__setattr__(self, field, _required_text(getattr(self, field), field))
+        owner = self.live_spans_owner
+        if owner is not None:
+            object.__setattr__(self, "live_spans_owner", _required_text(owner, "live_spans_owner"))
+        generation = int(self.generation)
+        if generation <= 0:
+            raise ValueError("KV binding generation must be positive")
+        object.__setattr__(self, "generation", generation)
+        object.__setattr__(
+            self,
+            "transaction_mode",
+            SpecTransactionMode(self.transaction_mode),
+        )
+        for field in ("scale_dtype", "scale_granularity"):
+            value = getattr(self, field)
+            if value is not None:
+                object.__setattr__(self, field, _required_text(value, field))
+        if self.storage_dtype == "int8_per_token_head":
+            if self.scale_dtype is None or self.scale_granularity is None:
+                raise ValueError(
+                    "INT8 KV binding requires scale_dtype and scale_granularity"
+                )
+        elif self.scale_dtype is not None or self.scale_granularity is not None:
+            raise ValueError(
+                "scale metadata is only valid for int8_per_token_head KV bindings"
+            )
+
+    def with_live_spans_owner(self, owner: str) -> "SpeculativeKVBinding":
+        """Bind a capability template to one request-owned liveness plane."""
+
+        return replace(
+            self,
+            live_spans_owner=_required_text(owner, "live_spans_owner"),
+        )
+
+    @classmethod
+    def for_resident_target(
+        cls,
+        *,
+        target: object,
+        storage_view_key: str,
+        topology_key: str,
+        transaction_mode: SpecTransactionMode,
+        retention_key: str = "dense",
+        backend_fingerprint: str | None = None,
+        layout_fingerprint: str | None = None,
+    ) -> "SpeculativeKVBinding":
+        """Build a binding from a resident target session's declared KV store.
+
+        Reads the storage dtype and INT8 scale ABI the session already declares
+        (``kv_storage_dtype``, ``kv_scale_dtype``, ``kv_scale_granularity``), so
+        a capability's binding describes the store its frontier will actually
+        touch instead of restating a layout by hand. The generation stays 1
+        until resident sessions expose their pool epoch; the compatibility
+        key remains distinct across dtype, topology, retention, and scale
+        metadata, which is what the frontier and capability checks consume.
+        """
+
+        storage_dtype = str(getattr(target, "kv_storage_dtype", "bf16"))
+        scale_dtype: str | None = None
+        scale_granularity: str | None = None
+        if storage_dtype == "int8_per_token_head":
+            scale_dtype = str(getattr(target, "kv_scale_dtype", "fp16"))
+            scale_granularity = str(
+                getattr(target, "kv_scale_granularity", "per_token_head")
+            )
+        return cls(
+            backend_fingerprint=(
+                _required_text(backend_fingerprint, "backend_fingerprint")
+                if backend_fingerprint is not None
+                else f"resident:{type(target).__name__}:{storage_dtype}"
+            ),
+            generation=1,
+            topology_key=topology_key,
+            storage_view_key=storage_view_key,
+            layout_fingerprint=(
+                _required_text(layout_fingerprint, "layout_fingerprint")
+                if layout_fingerprint is not None
+                else f"{topology_key}:uniform"
+            ),
+            storage_dtype=storage_dtype,
+            storage_layout="uniform",
+            transaction_mode=transaction_mode,
+            scale_dtype=scale_dtype,
+            scale_granularity=scale_granularity,
+            retention_key=retention_key,
+        )
+
+    @property
+    def compatibility_key(self) -> tuple[str, ...]:
+        return (
+            self.backend_fingerprint,
+            str(self.generation),
+            self.topology_key,
+            self.storage_view_key,
+            self.layout_fingerprint,
+            self.storage_dtype,
+            self.storage_layout,
+            self.scale_dtype or "",
+            self.scale_granularity or "",
+            self.retention_key,
+        )
+
+
 class SpecK0Class(StrEnum):
     """Whether a K0 row is provider-free or keeps an eligible provider synced."""
 
@@ -123,9 +261,10 @@ class SpeculativeCapability:
     provider_transaction_mode: SpecTransactionMode
     graph_supported: bool
     eager_supported: bool
-    strict_fallback_key: str
+    strict_fallback_key: str = "target_ar"
     max_context_tokens: int | None = None
     terminal_zero_accept_supported: bool = False
+    kv_binding: SpeculativeKVBinding | None = None
 
     def __post_init__(self) -> None:
         for field in (
@@ -181,6 +320,19 @@ class SpeculativeCapability:
             if max_context_tokens <= 0:
                 raise ValueError("max_context_tokens must be positive when set")
             object.__setattr__(self, "max_context_tokens", max_context_tokens)
+        binding = self.kv_binding
+        if binding is not None:
+            if not isinstance(binding, SpeculativeKVBinding):
+                raise TypeError("kv_binding must be SpeculativeKVBinding")
+            if binding.transaction_mode is not self.target_transaction_mode:
+                raise ValueError(
+                    "KV binding transaction mode must match target_transaction_mode"
+                )
+            if binding.storage_view_key != self.kv_backend_key:
+                raise ValueError(
+                    "KV binding storage_view_key must match kv_backend_key"
+                )
+            object.__setattr__(self, "kv_binding", binding)
 
     def supports_shape(
         self,
@@ -634,6 +786,7 @@ class TargetFrontier:
     kv_storage_view_key: str
     kv_live_spans_owner: str
     execution_route: str
+    kv_binding: SpeculativeKVBinding | None = None
     candidate_graph: CandidateGraph | None = None
     target_batch: TargetVerifyBatch | None = None
     provider_transaction_id: int | None = None
@@ -685,6 +838,20 @@ class TargetFrontier:
         route = str(self.execution_route)
         if route not in {"ar", "graph", "eager"}:
             raise ValueError("execution_route must be ar, graph, or eager")
+        binding = self.kv_binding
+        if binding is not None:
+            if binding.storage_view_key != self.kv_storage_view_key:
+                raise ValueError(
+                    "KV binding storage_view_key must match frontier storage view key"
+                )
+            if binding.live_spans_owner != self.kv_live_spans_owner:
+                raise ValueError(
+                    "KV binding live_spans_owner must match frontier owner"
+                )
+            if binding.transaction_mode is not self.transaction_mode:
+                raise ValueError(
+                    "KV binding transaction mode must match frontier transaction_mode"
+                )
         if self.candidate_graph is None and route != "ar":
             raise ValueError("root-only frontier must use ar execution_route")
         if self.candidate_graph is not None and route == "ar":
@@ -721,6 +888,7 @@ class TargetFrontier:
         kv_storage_view_key: str,
         kv_live_spans_owner: str,
         execution_route: str = "ar",
+        kv_binding: SpeculativeKVBinding | None = None,
     ) -> "TargetFrontier":
         return cls(
             operation_id=operation_id,
@@ -734,6 +902,7 @@ class TargetFrontier:
             kv_storage_view_key=kv_storage_view_key,
             kv_live_spans_owner=kv_live_spans_owner,
             execution_route=execution_route,
+            kv_binding=kv_binding,
         )
 
     @classmethod
@@ -748,6 +917,7 @@ class TargetFrontier:
         kv_storage_view_key: str,
         kv_live_spans_owner: str,
         execution_route: str,
+        kv_binding: SpeculativeKVBinding | None = None,
     ) -> "TargetFrontier":
         roots = tuple(int(value) for value in root_tokens)
         target = None
@@ -769,6 +939,7 @@ class TargetFrontier:
             kv_storage_view_key=kv_storage_view_key,
             kv_live_spans_owner=kv_live_spans_owner,
             execution_route=execution_route,
+            kv_binding=kv_binding,
             candidate_graph=candidate_graph,
             target_batch=target,
             provider_transaction_id=candidate_graph.transaction_id,
@@ -799,6 +970,7 @@ __all__ = [
     "SpecPlanReason",
     "SpecRequestPlan",
     "SpecTransactionMode",
+    "SpeculativeKVBinding",
     "SpeculativeCapability",
     "TargetFrontier",
 ]

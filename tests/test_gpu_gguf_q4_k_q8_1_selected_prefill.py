@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import inspect
+
 import numpy as np
 import pytest
 
@@ -17,6 +19,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_dual_interleaved_selected_dual_q8_1_ds8_f32_mmq128x32_wavecols_direct_doublebuf_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4x3_guarded_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_q8_1_ds4x3_mmq32_prefill_compact32_bf16_bf16_out,
@@ -24,6 +27,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     gguf_q4_k_t16_selected_dual_sparse_exact_correct_bf16,
     gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+    gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_bf16_bf16_out,
+    gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_preview_wmma32_prefill_compact32_bf16_bf16_out,
     gguf_q4_k_selected_dual_q8_1_ds4_wmma_prefill_compact32_bf16_bf16_out,
@@ -34,12 +39,16 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     gguf_q4_k_selected_dual_q8_1_prefill_compact32_bf16_bf16_out,
     plan_gguf_q4_k_q8_1_selected_prefill_build,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+    gguf_q5_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out as _gguf_q5_k_mmq32_launcher,
+)
 from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
 from hipengine.quant.gguf_q4_k import (
     GGUF_Q4_K_BLOCK_BYTES,
     GGUF_Q4_K_SUBBLOCK,
     GGUF_Q4_K_SUBBLOCKS,
+    GGUF_Q4_K_TILE16_COLS,
     gguf_q4_k_mmq_tile16_preview_matmul,
     interleave_gguf_q4_k_tile16_dual,
     pack_gguf_q4_k_mmq_tile16_preview,
@@ -419,6 +428,39 @@ def test_gguf_q4_k_q8_1_selected_prefill_wrapper_validates_common_contract() -> 
     with pytest.raises(ValueError, match="mmq_total_rows.*multiple of 32"):
         gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
             **{**mmq32_kwargs, "mmq_total_rows": 31}
+        )
+    with pytest.raises(ValueError, match="expert_stride_rows must not be negative"):
+        gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+            **{**mmq32_kwargs, "expert_stride_rows": -1}
+        )
+    with pytest.raises(ValueError, match="expert_stride_rows must span both halves"):
+        gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+            **{**mmq32_kwargs, "expert_stride_rows": 16}
+        )
+
+    # X8 and T16 are thin forwards onto that same leaf. If they do not carry the
+    # stride themselves a fused ``gate | up`` stack silently degrades to split
+    # reads on those layouts, which is exactly the defect the stride exists to
+    # remove -- so the contract has to hold at every entry point.
+    for entry in (
+        gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+        gguf_q4_k_x8_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+        gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+    ):
+        param = inspect.signature(entry).parameters["expert_stride_rows"]
+        assert param.kind is inspect.Parameter.KEYWORD_ONLY
+        assert param.default == 0
+        with pytest.raises(ValueError, match="expert_stride_rows must not be negative"):
+            entry(**{**mmq32_kwargs, "expert_stride_rows": -1})
+        with pytest.raises(ValueError, match="expert_stride_rows must span both halves"):
+            entry(**{**mmq32_kwargs, "expert_stride_rows": 16})
+
+    # The T16 branch strides a fused stack in whole 16-column tile columns;
+    # a non-multiple would floor-divide and silently misindex, so it fails
+    # loudly at the wrapper instead.
+    with pytest.raises(ValueError, match="multiple of the T16 tile width"):
+        gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
+            **{**mmq32_kwargs, "expert_stride_rows": 40}
         )
 
 
@@ -1191,7 +1233,11 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
     *,
     source_remap: bool = False,
     layout: str = "raw",
+    quant: str = "gguf_q4_k",
     activation_passes: int = 1,
+    fused_stride: bool = False,
+    fused_stride_rows: int | None = None,
+    fused: bool = False,
 ) -> np.ndarray:
     from hipengine.core.hip import get_hip_runtime
 
@@ -1209,10 +1255,53 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
     if activation_passes not in (1, 3):
         raise ValueError("activation_passes must be 1 or 3")
     q8_ds4 = pack_q8_1_mmq_ds4_from_bf16(source_x)
-    if layout == "raw":
+    # ``fused`` mirrors Gemma 4's ``ffn_gate_up_exps``: one per-expert row block
+    # with the gate first. The fixture keeps the halves apart, so the fused
+    # weight is the two concatenated on the output axis and both weight
+    # pointers address one allocation. The raw launcher takes the up half as a
+    # row offset into that allocation; the T16 launcher takes the tile base for
+    # both halves, because its tile index comes from the fused width rather than
+    # from the pointer.
+    qweight_b_offset = 0
+    fused_raw = (
+        np.concatenate((fixture.qweight_a, fixture.qweight_b), axis=1)
+        if fused
+        else None
+    )
+    if fused and layout == "raw":
+        qweight_a = qweight_b = fused_raw
+        qweight_b_offset = (
+            fixture.out_features_a * (fixture.in_features // 256) * 144
+        )
+        launcher = (
+            gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out
+        )
+    elif fused and layout == "t16":
+        qweight_a = qweight_b = repack_gguf_q4_k_tile16(fused_raw).tiles
+        launcher = (
+            gguf_q4_k_t16_selected_dual_q8_1_ds4_mmq32_fused_prefill_compact32_bf16_bf16_out
+        )
+    elif fused:
+        raise ValueError(f"fused MMQ32 has no {layout} route")
+    elif layout == "raw":
         qweight_a = fixture.qweight_a
         qweight_b = fixture.qweight_b
-        launcher = gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out
+        # Q5_K shares the raw block layout -- no repack -- and reaches device
+        # code through its own export, so only the launcher differs. A lookup
+        # rather than a conditional keeps an unknown quant loud instead of
+        # silently falling back to Q4_K.
+        launcher = {
+            "gguf_q4_k": gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
+            "gguf_q5_k": _gguf_q5_k_mmq32_launcher,
+        }[quant]
+    elif layout == "raw_k128":
+        # The 128-wide K pass: same weights and same arithmetic as ``raw``, four
+        # Q4_K subblocks staged per pass instead of one.
+        qweight_a = fixture.qweight_a
+        qweight_b = fixture.qweight_b
+        launcher = (
+            gguf_q4_k_selected_dual_q8_1_ds4_mmq32x128_prefill_compact32_bf16_bf16_out
+        )
     elif layout == "x8":
         qweight_a = repack_gguf_q4_k_x8(fixture.qweight_a).tiles
         qweight_b = repack_gguf_q4_k_x8(fixture.qweight_b).tiles
@@ -1229,6 +1318,37 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
         raise ValueError(f"unsupported MMQ32 weight layout: {layout}")
     if activation_passes == 3 and layout != "t16":
         raise ValueError("residual DS4 MMQ32 is currently implemented for T16")
+    # ``fused_stride`` models the on-disk Gemma 4 layout: one allocation per
+    # expert holding its gate rows followed by its up rows, read through the
+    # leaf's explicit expert stride with the up half addressed one half in.
+    fused_up_offset = 0
+    fused_expert_stride = 0
+    if fused_stride:
+        if activation_passes != 1:
+            raise ValueError("fused_stride requires the single-pass layout")
+        if layout == "raw":
+            # The up half sits one half of a raw row frame into the expert
+            # block: ``shape[-1]`` is the raw bytes-per-row.
+            row_bytes = int(qweight_a.shape[-1])
+            fused_up_offset = fixture.out_features_a * row_bytes
+        else:
+            # T16 tiles are (experts, out_tiles, blocks, block_bytes): the up
+            # half starts at tile column out_features_a / 16 into the expert
+            # block, so a raw row-byte offset would land past it.
+            blocks_per_row = int(qweight_a.shape[2])
+            block_bytes = int(qweight_a.shape[3])
+            fused_up_offset = (
+                fixture.out_features_a // GGUF_Q4_K_TILE16_COLS
+            ) * blocks_per_row * block_bytes
+        fused_expert_stride = (
+            fixture.out_features_a + fixture.out_features_b
+            if fused_stride_rows is None
+            else fused_stride_rows
+        )
+        qweight_a = np.ascontiguousarray(
+            np.concatenate([qweight_a, qweight_b], axis=1)
+        )
+        qweight_b = None
     expert_start_mmq32, tile_expert, mmq_total_rows = _mmq32_metadata(fixture)
 
     bufs = []
@@ -1240,10 +1360,13 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
         start_mmq32_dev = malloc(expert_start_mmq32.nbytes, runtime=runtime)
         tile_expert_dev = malloc(tile_expert.nbytes, runtime=runtime)
         qweight_a_dev = malloc(qweight_a.nbytes, runtime=runtime)
-        qweight_b_dev = malloc(qweight_b.nbytes, runtime=runtime)
+        qweight_b_dev = (
+            None if qweight_b is None else malloc(qweight_b.nbytes, runtime=runtime)
+        )
         out_dev = malloc(host_out.nbytes, runtime=runtime)
         bufs.extend(
-            (
+            buf
+            for buf in (
                 source_x_dev,
                 q8_ds4_dev,
                 compact_to_source_dev,
@@ -1254,6 +1377,7 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
                 qweight_b_dev,
                 out_dev,
             )
+            if buf is not None
         )
         for dev, arr in (
             (source_x_dev, source_x),
@@ -1264,6 +1388,8 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
             (qweight_a_dev, qweight_a),
             (qweight_b_dev, qweight_b),
         ):
+            if dev is None:
+                continue
             copy_host_to_device(
                 dev,
                 host_array_ptr(np.ascontiguousarray(arr)),
@@ -1292,7 +1418,11 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
             start_mmq32_dev.ptr,
             tile_expert_dev.ptr,
             qweight_a_dev.ptr,
-            qweight_b_dev.ptr,
+            (
+                qweight_a_dev.ptr + fused_up_offset
+                if qweight_b_dev is None
+                else qweight_b_dev.ptr + qweight_b_offset
+            ),
             out_dev.ptr,
             fixture.compact_rows,
         ]
@@ -1309,6 +1439,9 @@ def _run_q8_1_ds4_mmq32_selected_dual_gpu(
         )
         launcher(
             *launch_args,
+            **(
+                {"expert_stride_rows": fused_expert_stride} if fused_stride else {}
+            ),
             library=library,
             runtime=runtime,
         )
@@ -1417,6 +1550,92 @@ def test_q4_k_q8_1_ds4_selected_prefill_bf16_matches_ds4_cpu_reference(
             True,
             id="empty-first-multi-block-source-remap",
         ),
+        pytest.param(
+            [64] * 8,
+            4608,
+            4608,
+            4608,
+            False,
+            id="gemma-gate-up-fused-t16",
+        ),
+    ],
+)
+def test_q4_k_q8_1_ds4_mmq32_fused_stride_matches_split_tensors(
+    counts: list[int],
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    source_remap: bool,
+) -> None:
+    """A fused ``gate | up`` stack must read bit-identically to split halves.
+
+    This is the layout the Gemma 4 loader keeps resident: one allocation per
+    expert with the gate rows followed by the up rows. The leaf reaches the up
+    half through ``expert_stride_rows`` instead of a second copy, so the two
+    forms have to agree exactly -- the same bytes are read either way, and any
+    difference is an indexing bug rather than a rounding one.
+    """
+
+    fixture = _build_compact_fixture(
+        counts=counts,
+        in_features=in_features,
+        out_features_a=out_features_a,
+        out_features_b=out_features_b,
+        dtype="bf16",
+        seed=23,
+    )
+    split = _run_q8_1_ds4_mmq32_selected_dual_gpu(fixture, source_remap=source_remap)
+    fused = _run_q8_1_ds4_mmq32_selected_dual_gpu(
+        fixture, source_remap=source_remap, fused_stride=True
+    )
+    np.testing.assert_array_equal(fused, split)
+    # A stride that stops at the first half is the bug this guards against: it
+    # must not reproduce the split result, or the comparison above would pass on
+    # an ignored stride. ``max`` still satisfies the wrapper's span check.
+    truncated = _run_q8_1_ds4_mmq32_selected_dual_gpu(
+        fixture,
+        source_remap=source_remap,
+        fused_stride=True,
+        fused_stride_rows=max(out_features_a, out_features_b),
+    )
+    assert not np.array_equal(truncated, split)
+
+    # The Gemma 4 loader converts this same fused stack to the T16 tiles
+    # layout, and production then wires it fused into the t16 mmq32 leaf. The
+    # split-tensors t16 form was the only t16 combination covered before, so
+    # the fused t16 read has its own contract: same bytes, same result, and a
+    # stride that is not honored must show up as a difference.
+    t16_split = _run_q8_1_ds4_mmq32_selected_dual_gpu(
+        fixture, source_remap=source_remap, layout="t16"
+    )
+    np.testing.assert_array_equal(t16_split, split)
+    t16_fused = _run_q8_1_ds4_mmq32_selected_dual_gpu(
+        fixture, source_remap=source_remap, layout="t16", fused_stride=True
+    )
+    np.testing.assert_array_equal(t16_fused, split)
+    t16_truncated = _run_q8_1_ds4_mmq32_selected_dual_gpu(
+        fixture,
+        source_remap=source_remap,
+        layout="t16",
+        fused_stride=True,
+        fused_stride_rows=max(out_features_a, out_features_b),
+    )
+    assert not np.array_equal(t16_truncated, split)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    ("counts", "in_features", "out_features_a", "out_features_b", "source_remap"),
+    [
+        pytest.param([4, 0, 5], 256, 32, 32, False, id="empty-middle-tail"),
+        pytest.param(
+            [0, 17, 31],
+            512,
+            32,
+            64,
+            True,
+            id="empty-first-multi-block-source-remap",
+        ),
     ],
 )
 def test_q4_k_q8_1_ds4_mmq32_selected_prefill_bf16_matches_ds4_cpu_reference(
@@ -1443,6 +1662,53 @@ def test_q4_k_q8_1_ds4_mmq32_selected_prefill_bf16_matches_ds4_cpu_reference(
     assert float(
         np.mean(np.argmax(expected, axis=-1) == np.argmax(actual, axis=-1))
     ) >= 0.9
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    ("counts", "in_features", "out_features_a", "out_features_b", "source_remap"),
+    [
+        pytest.param([4, 0, 5], 256, 32, 32, False, id="empty-middle-tail"),
+        pytest.param(
+            [0, 17, 31],
+            512,
+            32,
+            64,
+            True,
+            id="empty-first-multi-block-source-remap",
+        ),
+        pytest.param([6, 3], 768, 64, 32, False, id="six-128-groups-uneven"),
+    ],
+)
+def test_q4_k_q8_1_ds4_mmq32x128_selected_prefill_matches_mmq32(
+    counts: list[int],
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    source_remap: bool,
+) -> None:
+    """The 128-wide K pass is the same arithmetic with four times fewer passes.
+
+    It is checked against the 32-wide route *bitwise*, not just against the
+    reference: the accumulation order into each output element is unchanged, so
+    any difference is a staging bug rather than rounding. The reference check
+    then confirms both are correct rather than merely equal.
+    """
+    fixture = _build_compact_fixture(
+        counts=counts,
+        in_features=in_features,
+        out_features_a=out_features_a,
+        out_features_b=out_features_b,
+        dtype="bf16",
+        seed=23,
+    )
+    narrow = _run_q8_1_ds4_mmq32_selected_dual_gpu(fixture, source_remap=source_remap)
+    wide = _run_q8_1_ds4_mmq32_selected_dual_gpu(
+        fixture, source_remap=source_remap, layout="raw_k128"
+    )
+    np.testing.assert_array_equal(wide, narrow)
+    expected = _q8_1_ds4_selected_reference(fixture)
+    np.testing.assert_allclose(wide, expected, **_TOLERANCE_BF16)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
@@ -1533,6 +1799,44 @@ def test_q4_k_t16_q8_1_ds4_mmq32_selected_prefill_matches_raw_mmq32(
     assert float(
         np.mean(np.argmax(expected, axis=-1) == np.argmax(actual, axis=-1))
     ) >= 0.9
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    ("counts", "in_features", "out_features_a", "out_features_b"),
+    [
+        pytest.param([4, 0, 5], 256, 32, 32, id="empty-middle-tail"),
+        pytest.param([0, 17, 31], 512, 32, 64, id="empty-first-multi-block"),
+        pytest.param([33, 5, 40], 256, 64, 32, id="uneven-crosses-tile-boundary"),
+    ],
+)
+def test_q4_k_t16_fused_q8_1_ds4_mmq32_selected_prefill_matches_raw_fused(
+    counts: list[int],
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+) -> None:
+    """The T16 fused route must reproduce the raw fused route bit for bit.
+
+    Both changes are exercised at once: the resident 16-wide tile layout and the
+    fused gate | up tile run. The raw fused route is the production gemma4
+    expert gate/up owner, so bit equality against it is the contract a route
+    swap depends on.
+    """
+
+    fixture = _build_compact_fixture(
+        counts=counts,
+        in_features=in_features,
+        out_features_a=out_features_a,
+        out_features_b=out_features_b,
+        dtype="bf16",
+        seed=29,
+    )
+    raw = _run_q8_1_ds4_mmq32_selected_dual_gpu(fixture, fused=True)
+    actual = _run_q8_1_ds4_mmq32_selected_dual_gpu(fixture, fused=True, layout="t16")
+    expected = _q8_1_ds4_selected_reference(fixture)
+    np.testing.assert_array_equal(actual, raw)
+    np.testing.assert_allclose(actual, expected, **_TOLERANCE_BF16)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
@@ -2432,3 +2736,95 @@ def test_q4_k_t16_ds4_f32_mmq64x32_matches_cpu_quality_gate(
     assert np.mean(
         fixture.reference.argmax(axis=-1) == actual.argmax(axis=-1)
     ) >= 0.9
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    ("tokens", "top_k", "hidden"),
+    [(4, 8, 256), (3, 2, 512), (5, 4, 128)],
+)
+def test_q8_1_mmq_gather_ds4_pack_is_byte_exact_to_gather_then_pack(
+    tokens: int, top_k: int, hidden: int
+) -> None:
+    """The fused gather+pack must match gather-then-pack byte for byte.
+
+    ``gemma4_experts_forward_bf16`` runs ``qwen35_moe_gather_packed_hidden_lowp``
+    and then ``gguf_q8_1_mmq_ds4_pack_bf16``, and on the MMQ route nothing reads
+    the BF16 ``packed_hidden`` in between: the pack is its only consumer. The
+    fused kernel skips that write-then-read by quantizing straight out of the
+    source rows. Because the gather is a bit copy, reading ``hidden_states``
+    through the same lane index must reproduce the exact float the unfused pack
+    saw, so the whole pipeline has to stay byte-identical -- a fused variant that
+    only approximately agrees would change expert arithmetic.
+    """
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+        gguf_q8_1_mmq_gather_ds4_pack_bf16,
+    )
+
+    rng = np.random.default_rng(20260928)
+    lanes = tokens * top_k
+
+    def _bf16_bits(values: np.ndarray) -> np.ndarray:
+        """Round float32 to BF16 bits (nearest-even), the storage the kernels read."""
+
+        u = np.ascontiguousarray(values, dtype=np.float32).view(np.uint32)
+        u = u + ((((u >> np.uint32(16)) & np.uint32(1))) + np.uint32(0x7FFF))
+        return (u >> np.uint32(16)).astype(np.uint16)
+
+    # Activation-scale values rather than uniform random bits: the CPU oracle
+    # stores scale and sum as float16, so bits encoding 1e30+ would overflow it
+    # to inf and desync from the GPU for reasons unrelated to the fusion.
+    hidden_bits = _bf16_bits(rng.standard_normal((tokens, hidden)) * 4.0)
+    # A permutation of lane ids so every source row is used exactly once, with a
+    # few lanes invalidated to exercise the gather's bounds path (it writes 0).
+    order = rng.permutation(lanes).astype(np.int64)
+    order[: max(1, lanes // 7)] = -1
+
+    # Unfused reference: gather on the host, then the existing CPU pack oracle.
+    packed = np.zeros((lanes, hidden), dtype=np.uint16)
+    ok = order >= 0
+    source = np.where(ok, order, 0)
+    token_idx = source // top_k
+    ok &= (token_idx >= 0) & (token_idx < tokens)
+    packed[ok] = hidden_bits[token_idx[ok]]
+    expected = pack_q8_1_mmq_ds4_from_bf16(packed)
+
+    actual = np.zeros_like(expected)
+    runtime = get_hip_runtime()
+    library = build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    bufs = []
+    try:
+        hidden_dev = malloc(hidden_bits.nbytes, runtime=runtime)
+        lanes_dev = malloc(order.nbytes, runtime=runtime)
+        out_dev = malloc(actual.nbytes, runtime=runtime)
+        bufs.extend((hidden_dev, lanes_dev, out_dev))
+        copy_host_to_device(
+            hidden_dev,
+            host_array_ptr(np.ascontiguousarray(hidden_bits)),
+            runtime=runtime,
+        )
+        copy_host_to_device(
+            lanes_dev,
+            host_array_ptr(np.ascontiguousarray(order)),
+            runtime=runtime,
+        )
+        gguf_q8_1_mmq_gather_ds4_pack_bf16(
+            hidden_dev.ptr,
+            lanes_dev.ptr,
+            out_dev.ptr,
+            lanes,
+            hidden,
+            tokens,
+            top_k,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(actual), out_dev, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    np.testing.assert_array_equal(actual, expected)

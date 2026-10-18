@@ -50,6 +50,15 @@ def _pair(tmp_path: pathlib.Path, b_extra: dict | None = None):
     )
 
 
+def test_prompt_fixture_link_is_not_a_result_artifact(tmp_path):
+    repo = _repo(tmp_path, {"a.json": dict(BASE)}, cited=[
+        "[fixture](prompts/session.json)", "[result](results/a.json)",
+    ])
+    report = _load().check_repo(repo)
+    assert report["violations"] == []
+    assert report["artifacts_checked"] == 1
+
+
 def test_clean_published_set_passes(tmp_path):
     report = _load().check_repo(_pair(tmp_path))
     assert report["violations"] == []
@@ -114,6 +123,14 @@ def test_doubly_decorated_quant_key_is_not_a_conflict(tmp_path):
 
 def test_model_without_a_quant_token_is_not_a_conflict(tmp_path):
     repo = _pair(tmp_path, {"model": "Qwen3.6-35B-A3B", "quant": "Q8_K_XL"})
+    assert _load().check_repo(repo)["violations"] == []
+
+
+def test_nested_gguf_ud_quant_prefix_matches_the_model(tmp_path):
+    repo = _pair(tmp_path, {
+        "model": "Qwen3.8-27B-UD-Q4_K_M",
+        "quant": "gguf_ud_q4_k_m",
+    })
     assert _load().check_repo(repo)["violations"] == []
 
 

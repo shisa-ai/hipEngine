@@ -38,7 +38,16 @@ __device__ inline float dequant_q5_1(const uint8_t* block, int index) {
   return d * static_cast<float>(low | (high << 4)) + m;
 }
 
-template <int ROW_BATCH, int OUT_BATCH, bool SHARED_METADATA = false>
+// ``AMORTIZE_INPUT`` swaps the loop nest so a CTA covers ``OUT_BATCH`` output
+// columns with the row batch outermost, which lets one input load feed every
+// output column instead of being repeated per column. Without it the owner
+// re-reads the expert's whole input slice once per column, so its input traffic
+// is ``out_features * rows * in_features * 2`` bytes -- 32 GB for one Gemma down
+// projection call against 1.4 GB of weight traffic. The swap is layout only:
+// a thread still owns columns ``t, t+256, ...`` in ascending order and the
+// reduction is still the same 256-thread tree per output.
+template <int ROW_BATCH, int OUT_BATCH, bool SHARED_METADATA = false,
+          bool AMORTIZE_INPUT = false>
 __global__ void q5_1_selected_grouped_prefill_bf16_bf16_kernel(
     const uint16_t* __restrict__ input,
     const int64_t* __restrict__ expert_start,
@@ -51,9 +60,13 @@ __global__ void q5_1_selected_grouped_prefill_bf16_bf16_kernel(
     int64_t row_bytes) {
   extern __shared__ float partial[];
   const int64_t blocks_per_row = in_features / 32;
-  float* shared_d = partial + ROW_BATCH * blockDim.x;
-  float* shared_m = shared_d + blocks_per_row;
-  uint32_t* shared_qh = reinterpret_cast<uint32_t*>(shared_m + blocks_per_row);
+  // One metadata slab per output column the CTA owns, and one partial per
+  // (output column, row) when the nest is amortized.
+  constexpr int META_SLOTS = AMORTIZE_INPUT ? OUT_BATCH : 1;
+  constexpr int PARTIAL_ROWS = AMORTIZE_INPUT ? OUT_BATCH * ROW_BATCH : ROW_BATCH;
+  float* shared_d = partial + PARTIAL_ROWS * blockDim.x;
+  float* shared_m = shared_d + META_SLOTS * blocks_per_row;
+  uint32_t* shared_qh = reinterpret_cast<uint32_t*>(shared_m + META_SLOTS * blocks_per_row);
   const int64_t out_base = blockIdx.x * OUT_BATCH;
   if (out_base >= out_features) return;
   // A full Y grid remains the original one-expert CTA. A smaller fixed worker
@@ -62,6 +75,114 @@ __global__ void q5_1_selected_grouped_prefill_bf16_bf16_kernel(
     const int64_t start = expert_start[expert];
     const int64_t end = expert_start[expert + 1];
     if (start < 0 || end < start || end > compact_rows || start == end) continue;
+    if constexpr (AMORTIZE_INPUT) {
+      const int64_t out_count = out_features - out_base < OUT_BATCH
+          ? out_features - out_base : OUT_BATCH;
+      const uint8_t* weight_rows[OUT_BATCH];
+#pragma unroll
+      for (int out_offset = 0; out_offset < OUT_BATCH; ++out_offset) {
+        weight_rows[out_offset] = weights
+            + (expert * out_features + out_base + out_offset) * row_bytes;
+      }
+      if (SHARED_METADATA) {
+        for (int64_t metadata = threadIdx.x;
+             metadata < out_count * blocks_per_row; metadata += blockDim.x) {
+          const int out_offset = static_cast<int>(metadata / blocks_per_row);
+          const int64_t block_index = metadata % blocks_per_row;
+          const uint8_t* block =
+              weight_rows[out_offset] + block_index * 24;
+          const int slot = out_offset * static_cast<int>(blocks_per_row)
+              + static_cast<int>(block_index);
+          shared_d[slot] = load_fp16(block);
+          shared_m[slot] = load_fp16(block + 2);
+          shared_qh[slot] = *reinterpret_cast<const uint32_t*>(block + 4);
+        }
+        __syncthreads();
+      }
+      for (int64_t base = start; base < end; base += ROW_BATCH) {
+        float value[OUT_BATCH][ROW_BATCH] = {};
+        for (int64_t column = threadIdx.x; column < in_features;
+             column += blockDim.x) {
+          const int64_t block_index = column / 32;
+          const int within = static_cast<int>(column & 31);
+          float xv[ROW_BATCH];
+#pragma unroll
+          for (int row = 0; row < ROW_BATCH; ++row) {
+            const int64_t compact_row = base + row;
+            // A row past the expert's end would read a neighbouring expert's
+            // slice, so the load is guarded. The zero it substitutes can only
+            // reach a partial whose publish is guarded by the same test.
+            xv[row] = compact_row < end
+                ? bf16_bits_to_float(input[compact_row * in_features + column])
+                : 0.0f;
+          }
+#pragma unroll
+          for (int out_offset = 0; out_offset < OUT_BATCH; ++out_offset) {
+            if (out_offset < out_count) {
+              float weight;
+              if (SHARED_METADATA) {
+                const int slot = out_offset * static_cast<int>(blocks_per_row)
+                    + static_cast<int>(block_index);
+                const uint8_t packed =
+                    weight_rows[out_offset][block_index * 24 + 8 + (within & 15)];
+                const uint8_t low =
+                    within < 16 ? (packed & 0x0fU) : (packed >> 4);
+                const uint8_t high = static_cast<uint8_t>(
+                    (shared_qh[slot] >> within) & 1U);
+                weight = shared_d[slot] * static_cast<float>(low | (high << 4))
+                    + shared_m[slot];
+              } else {
+                weight = dequant_q5_1(
+                    weight_rows[out_offset] + block_index * 24, within);
+              }
+#pragma unroll
+              for (int row = 0; row < ROW_BATCH; ++row) {
+                value[out_offset][row] += xv[row] * weight;
+              }
+            }
+          }
+        }
+#pragma unroll
+        for (int out_offset = 0; out_offset < OUT_BATCH; ++out_offset) {
+#pragma unroll
+          for (int row = 0; row < ROW_BATCH; ++row) {
+            partial[(out_offset * ROW_BATCH + row) * blockDim.x + threadIdx.x] =
+                value[out_offset][row];
+          }
+        }
+        __syncthreads();
+        for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+          if (threadIdx.x < stride) {
+#pragma unroll
+            for (int out_offset = 0; out_offset < OUT_BATCH; ++out_offset) {
+#pragma unroll
+              for (int row = 0; row < ROW_BATCH; ++row) {
+                const int slot =
+                    (out_offset * ROW_BATCH + row) * blockDim.x + threadIdx.x;
+                partial[slot] += partial[slot + stride];
+              }
+            }
+          }
+          __syncthreads();
+        }
+        if (threadIdx.x == 0) {
+#pragma unroll
+          for (int out_offset = 0; out_offset < OUT_BATCH; ++out_offset) {
+            if (out_offset >= out_count) break;
+            const int64_t out = out_base + out_offset;
+#pragma unroll
+            for (int row = 0; row < ROW_BATCH; ++row) {
+              const int64_t compact_row = base + row;
+              if (compact_row < end) {
+                output[compact_row * out_features + out] = float_to_bf16_bits(
+                    partial[(out_offset * ROW_BATCH + row) * blockDim.x]);
+              }
+            }
+          }
+        }
+        __syncthreads();
+      }
+    } else {
 #pragma unroll
     for (int out_offset = 0; out_offset < OUT_BATCH; ++out_offset) {
       const int64_t out = out_base + out_offset;
@@ -134,6 +255,203 @@ __global__ void q5_1_selected_grouped_prefill_bf16_bf16_kernel(
         __syncthreads();
       }
     }
+    }
+  }
+}
+
+// Grouped variant with the block's activation columns held in registers across
+// an output tile, so one activation element feeds OUT_TILE output columns
+// instead of one.
+//
+// The plain grouped kernel launches one block per output column, so every block
+// re-reads the expert's whole activation block from L2: at Gemma 4's down
+// geometry (in 704, out 2816, 128 experts, 4096 compact rows) the kernel moves
+// ~17 GB in 38.7 ms, 441 GB/s, of which the weight bytes are 0.3 GB. A wider
+// OUT_TILE alone does not help, because the plain kernel's inner loop still
+// reloads each activation element once per output column (the existing out8
+// variant measures 30.3 ms against 31.0 ms); the columns have to be *held*
+// across the tile. Holding them takes the same geometry to 20.2 ms with 0 of
+// 11,534,336 outputs differing, and Qwen4Exp's shape from 58.7 to 37.8 ms with
+// the same zero difference.
+//
+// Each thread owns two logical slots - t and t + 128 - and every activation
+// element it needs for the current k-chunk, so the tile's outputs share one
+// load. The contraction order is unchanged: slot t still accumulates columns
+// t, t + 256, t + 512, ... in increasing order, and the tree is still the
+// incumbent's 256-wide stride-128 -> 1 tree, whose first level is now
+// register-local. Outputs are therefore bit-identical to
+// q5_1_selected_grouped_prefill_bf16_bf16_kernel and to the selected GEMV.
+template <int ROW_BATCH, int OUT_TILE, int K_TILE>
+__launch_bounds__(128, 2)
+__global__ void q5_1_selected_grouped_prefill_staged_bf16_bf16_kernel(
+    const uint16_t* __restrict__ input,
+    const int64_t* __restrict__ expert_start,
+    const uint8_t* __restrict__ weights,
+    uint16_t* __restrict__ output,
+    int compact_rows,
+    int num_experts,
+    int in_features,
+    int out_features,
+    int row_bytes) {
+  constexpr int THREADS = 128;
+  constexpr int LOGICAL = 256;
+  constexpr int SUBS = K_TILE / 32;
+  const int out_base = blockIdx.x * OUT_TILE;
+  const int expert = blockIdx.y;
+  if (out_base >= out_features || expert >= num_experts) return;
+  const int start = static_cast<int>(expert_start[expert]);
+  const int end = static_cast<int>(expert_start[expert + 1]);
+  if (start < 0 || end > compact_rows || start >= end) return;
+
+  const uint8_t* __restrict__ weight_base =
+      weights + (static_cast<int64_t>(expert) * out_features + out_base) * row_bytes;
+  // The staged weights cover every k-chunk at once, so they are sized by the
+  // whole row rather than by one chunk and live in dynamic shared memory. The
+  // slot count is chunks*SUBS, not in_features/32: a row whose width is not a
+  // multiple of K_TILE still gets a full SUBS-wide tail chunk, and the compute
+  // reads sub+4 into it exactly as the per-chunk staging did.
+  const int chunks = (in_features + K_TILE - 1) / K_TILE;
+  const int total_subs = chunks * SUBS;
+  extern __shared__ unsigned char staged_raw[];
+  float* __restrict__ weight_d = reinterpret_cast<float*>(staged_raw);
+  float* __restrict__ weight_m = weight_d + OUT_TILE * total_subs;
+  uint32_t* __restrict__ weight_qh =
+      reinterpret_cast<uint32_t*>(weight_m + OUT_TILE * total_subs);
+  __shared__ float slot[OUT_TILE][ROW_BATCH][LOGICAL / 2];
+  const int sub = threadIdx.x >> 5;
+  const int within = threadIdx.x & 31;
+
+  // Stage once for the whole block. These bytes depend only on the expert and
+  // the output column, never on the row, so the previous per-chunk staging
+  // re-fetched the same 8448 bytes for each of the 8 row batches: 88 global
+  // round trips where 11 suffice, each one closed by two block-wide barriers.
+  for (int idx = threadIdx.x; idx < OUT_TILE * total_subs; idx += THREADS) {
+    const int o = idx / total_subs;
+    const int s = idx - o * total_subs;
+    // Slots are laid out [chunk][out][sub], so the compute side indexes with a
+    // compile-time inner stride and hoists chunk*OUT_TILE*SUBS out of its out
+    // loop. Indexing [out][global sub] instead costs a runtime multiply per
+    // access and measured 300 extra VALU instructions per wave.
+    const int slot = (s / SUBS) * (OUT_TILE * SUBS) + o * SUBS + (s % SUBS);
+    if (out_base + o < out_features && s * 32 < in_features) {
+      const uint8_t* block = weight_base +
+                             static_cast<int64_t>(o) * row_bytes +
+                             static_cast<int64_t>(s) * 24;
+      weight_d[slot] = load_fp16(block);
+      weight_m[slot] = load_fp16(block + 2);
+      weight_qh[slot] = *reinterpret_cast<const uint32_t*>(block + 4);
+    } else {
+      weight_d[slot] = 0.0f;
+      weight_m[slot] = 0.0f;
+      weight_qh[slot] = 0U;
+    }
+  }
+  __syncthreads();
+
+  for (int base = start; base < end; base += ROW_BATCH) {
+    float value0[OUT_TILE][ROW_BATCH];
+    float value1[OUT_TILE][ROW_BATCH];
+#pragma unroll
+    for (int o = 0; o < OUT_TILE; ++o) {
+#pragma unroll
+      for (int r = 0; r < ROW_BATCH; ++r) {
+        value0[o][r] = 0.0f;
+        value1[o][r] = 0.0f;
+      }
+    }
+    for (int chunk = 0; chunk < chunks; ++chunk) {
+      const int k0 = chunk * K_TILE;
+      const int sub_base = chunk * (OUT_TILE * SUBS);
+      const int column0 = k0 + threadIdx.x;
+      const int column1 = k0 + threadIdx.x + THREADS;
+      float x0[ROW_BATCH];
+      float x1[ROW_BATCH];
+#pragma unroll
+      for (int r = 0; r < ROW_BATCH; ++r) {
+        const int row = base + r;
+        const bool live = row < end;
+        x0[r] = (live && column0 < in_features)
+                    ? bf16_bits_to_float(
+                          input[static_cast<int64_t>(row) * in_features + column0])
+                    : 0.0f;
+        x1[r] = (live && column1 < in_features)
+                    ? bf16_bits_to_float(
+                          input[static_cast<int64_t>(row) * in_features + column1])
+                    : 0.0f;
+      }
+#pragma unroll
+      for (int o = 0; o < OUT_TILE; ++o) {
+        if (out_base + o >= out_features) break;
+        const uint8_t* __restrict__ row_ptr =
+            weight_base + static_cast<int64_t>(o) * row_bytes;
+        const uint8_t* block0 =
+            row_ptr + static_cast<int64_t>(chunk * SUBS + sub) * 24;
+        const uint8_t* block1 = block0 + 4 * 24;
+        const uint8_t packed0 = block0[8 + (within & 15)];
+        const uint8_t packed1 =
+            (chunk * SUBS + sub + 4 < (in_features + 31) / 32) ? block1[8 + (within & 15)]
+                                                              : static_cast<uint8_t>(0);
+        const uint8_t low0 = within < 16 ? (packed0 & 0x0fU) : (packed0 >> 4);
+        const uint8_t low1 = within < 16 ? (packed1 & 0x0fU) : (packed1 >> 4);
+        const int wi0 = sub_base + o * SUBS + sub;
+        const int wi1 = wi0 + 4;
+        const float w0 =
+            weight_d[wi0] *
+                static_cast<float>(low0 |
+                                   (static_cast<uint8_t>(
+                                        (weight_qh[wi0] >> within) & 1U)
+                                    << 4)) +
+            weight_m[wi0];
+        const float w1 =
+            weight_d[wi1] *
+                static_cast<float>(low1 |
+                                   (static_cast<uint8_t>(
+                                        (weight_qh[wi1] >> within) & 1U)
+                                    << 4)) +
+            weight_m[wi1];
+#pragma unroll
+        for (int r = 0; r < ROW_BATCH; ++r) {
+          value0[o][r] += x0[r] * w0;
+          value1[o][r] += x1[r] * w1;
+        }
+      }
+    }
+    // Level one of the incumbent's tree pairs slots t and t + 128, which this
+    // thread already owns; the remaining levels run on the shared 128 slots.
+#pragma unroll
+    for (int o = 0; o < OUT_TILE; ++o) {
+#pragma unroll
+      for (int r = 0; r < ROW_BATCH; ++r) {
+        slot[o][r][threadIdx.x] = value0[o][r] + value1[o][r];
+      }
+    }
+    __syncthreads();
+    for (int stride = LOGICAL / 4; stride > 0; stride >>= 1) {
+      if (threadIdx.x < stride) {
+#pragma unroll
+        for (int o = 0; o < OUT_TILE; ++o) {
+#pragma unroll
+          for (int r = 0; r < ROW_BATCH; ++r) {
+            slot[o][r][threadIdx.x] += slot[o][r][threadIdx.x + stride];
+          }
+        }
+      }
+      __syncthreads();
+    }
+    if (threadIdx.x == 0) {
+#pragma unroll
+      for (int o = 0; o < OUT_TILE; ++o) {
+        if (out_base + o >= out_features) break;
+#pragma unroll
+        for (int r = 0; r < ROW_BATCH; ++r) {
+          const int row = base + r;
+          if (row >= end) continue;
+          output[static_cast<int64_t>(row) * out_features + out_base + o] =
+              float_to_bf16_bits(slot[o][r][0]);
+        }
+      }
+    }
+    __syncthreads();
   }
 }
 
@@ -564,7 +882,14 @@ __global__ void q5_1_selected_grouped_prefill_pair2_bf16_kernel(
   }
 }
 
-template <int TILE_M, int TILE_N>
+// ``COMP`` selects the compensated weight path: each dequantised weight is
+// carried as an fp16 high part plus an fp16 residual and applied with a second
+// WMMA per k-tile. The plain path rounds every weight to fp16 (~2^-11 relative),
+// which is visible as a tail divergence against the strict f32 dequant
+// reference; the compensated pair represents the weight to ~2^-22 while the
+// activation operand stays exact. See the matching note on the Q4_K dual
+// compact kernel in gguf_q4_k_selected_prefill.hip.
+template <int TILE_M, int TILE_N, bool COMP = false>
 __launch_bounds__(32, 8)
 __global__ void q5_1_selected_grouped_wmma_prefill_bf16_bf16_kernel(
     const uint16_t* __restrict__ input,
@@ -630,24 +955,45 @@ __global__ void q5_1_selected_grouped_wmma_prefill_bf16_bf16_kernel(
       half16_t activation[TN];
 #pragma unroll
       for (int tn = 0; tn < TN; ++tn) {
+        // One 32-byte aligned span per row: two 128-bit loads instead of
+        // sixteen scalar 16-bit gathers. Every row pointer stays 32-byte
+        // aligned (in_features is even and k_base is a multiple of 16).
+        const uint16_t* __restrict__ src =
+            input + safe_row[tn] * in_features + k_base;
+        const uint4 v[2] = {*reinterpret_cast<const uint4*>(src),
+                            *reinterpret_cast<const uint4*>(src + 8)};
 #pragma unroll
-        for (int kk = 0; kk < 16; ++kk) {
-          activation[tn][kk] = static_cast<half_t>(bf16_bits_to_float(
-              input[safe_row[tn] * in_features + k_base + kk]));
+        for (int half8 = 0; half8 < 2; ++half8) {
+          const uint16_t* __restrict__ elems =
+              reinterpret_cast<const uint16_t*>(&v[half8]);
+#pragma unroll
+          for (int kk = 0; kk < 8; ++kk) {
+            activation[tn][half8 * 8 + kk] = static_cast<half_t>(
+                bf16_bits_to_float(elems[kk]));
+          }
         }
       }
 #pragma unroll
       for (int tm = 0; tm < TM; ++tm) {
         half16_t weight;
+        half16_t weight_lo;
 #pragma unroll
         for (int kk = 0; kk < 16; ++kk) {
-          weight[kk] = static_cast<half_t>(
-              dequant_q5_1(block_ptr[tm], kt * 16 + kk));
+          const float w = dequant_q5_1(block_ptr[tm], kt * 16 + kk);
+          const half_t hi = static_cast<half_t>(w);
+          weight[kk] = hi;
+          if (COMP) {
+            weight_lo[kk] = static_cast<half_t>(w - static_cast<float>(hi));
+          }
         }
 #pragma unroll
         for (int tn = 0; tn < TN; ++tn) {
           acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
               weight, activation[tn], acc[tm][tn]);
+          if (COMP) {
+            acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+                weight_lo, activation[tn], acc[tm][tn]);
+          }
         }
       }
     }
@@ -992,6 +1338,159 @@ __global__ void q5_1_selected_gemv_bf16_bf16_kernel(
     if (threadIdx.x == 0) {
       output[pair] = float_to_bf16_bits(reduced);
     }
+  }
+}
+
+// Eight output columns per block. The same arithmetic as the one-output kernel
+// above, and a bit-exact sibling of it rather than a numerical candidate: the k
+// walk, the per-element dequant and the reduction tree are properties of an
+// output, not of the block, and this reproduces all three per output. The k walk
+// is the same `column = threadIdx.x; column += blockDim.x` order, the dequant is
+// the same `dequant_q5_1`, and the tree is the same strided halving from
+// `blockDim.x / 2` down to 32 followed by the same warp shuffle over offsets
+// 16..1, applied per output lane. What changes is only that the block reads the
+// x row once for eight outputs and pays that reduction once for eight outputs
+// instead of once for one. It deliberately does NOT borrow the Q4_K pack8 tree,
+// which reduces within each warp and then sums the per-warp partials: that tree
+// is a different association order and would make this a numerical candidate
+// against the route it replaces.
+__global__ void q5_1_selected_pack8_gemv_bf16_bf16_kernel(
+    const uint16_t* __restrict__ input,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ weights,
+    uint16_t* __restrict__ output,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t row_bytes) {
+  constexpr int PACK8 = 8;
+  extern __shared__ float partial[];
+  const int64_t pack = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int64_t out_col = pack * PACK8;
+  if (row >= rows || out_col >= out_features) return;
+  const int64_t input_row = row / (rows / x_rows);
+  const int64_t expert = selected[row];
+  if (expert < 0 || expert >= num_experts) return;
+  const uint8_t* weight_row[PACK8];
+#pragma unroll
+  for (int j = 0; j < PACK8; ++j) {
+    weight_row[j] =
+        weights + (expert * out_features + out_col + j) * row_bytes;
+  }
+  const uint16_t* __restrict__ input_row_ptr = input + input_row * in_features;
+  float value[PACK8] = {};
+  for (int64_t column = threadIdx.x; column < in_features;
+       column += blockDim.x) {
+    const int64_t block_index = column / 32;
+    const int within = static_cast<int>(column & 31);
+    const float xv = bf16_bits_to_float(input_row_ptr[column]);
+#pragma unroll
+    for (int j = 0; j < PACK8; ++j) {
+      value[j] +=
+          xv * dequant_q5_1(weight_row[j] + block_index * 24, within);
+    }
+  }
+#pragma unroll
+  for (int j = 0; j < PACK8; ++j) {
+    partial[j * blockDim.x + threadIdx.x] = value[j];
+  }
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride >= 32; stride >>= 1) {
+    if (threadIdx.x < stride) {
+#pragma unroll
+      for (int j = 0; j < PACK8; ++j) {
+        partial[j * blockDim.x + threadIdx.x] +=
+            partial[j * blockDim.x + threadIdx.x + stride];
+      }
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x < 32) {
+#pragma unroll
+    for (int j = 0; j < PACK8; ++j) {
+      float reduced = partial[j * blockDim.x + threadIdx.x];
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        reduced += __shfl_down(reduced, offset, 32);
+      }
+      if (threadIdx.x == 0) {
+        output[row * out_features + out_col + j] =
+            float_to_bf16_bits(reduced);
+      }
+    }
+  }
+}
+
+
+// Production arithmetic for the pack8 selected Q5_1 GEMV (the 256-thread
+// kernel above is the strict owner). That kernel is ALU-bound on a W7900: each
+// thread dequantizes one input per block of 256, re-reading d, m and the high
+// bits for every weight, then joins a 256-wide shared-memory tree. Here one wave
+// owns a (lane, eight-column pack) and each thread takes runs of eight
+// consecutive inputs of one 32-wide block: d, m and the high bits are read once
+// per eight weights and one load of eight activations feeds all eight output
+// columns. Each weight is dequant_q5_1's value; the input partition, and so the
+// summation order, differs: a production variant.
+__global__ __launch_bounds__(32) void q5_1_selected_pack8_chunk8_gemv_bf16_bf16_kernel(
+    const uint16_t* __restrict__ input,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ weights,
+    uint16_t* __restrict__ output,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t row_bytes) {
+  constexpr int PACK8 = 8;
+  constexpr int kChunk = 8;
+  const int64_t pack = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int64_t out_col = pack * PACK8;
+  if (row >= rows || out_col >= out_features) return;
+  const int64_t expert = selected[row];
+  if (expert < 0 || expert >= num_experts) return;
+  const int64_t input_row = row / (rows / x_rows);
+  const uint16_t* __restrict__ x_row = input + input_row * in_features;
+  const uint8_t* __restrict__ w0 = weights + (expert * out_features + out_col) * row_bytes;
+  const int64_t units = (in_features / 32) * 4;
+  float value[PACK8];
+#pragma unroll
+  for (int j = 0; j < PACK8; ++j) value[j] = 0.0f;
+  for (int64_t u = threadIdx.x; u < units; u += 32) {
+    const int64_t blk = u >> 2;
+    const int within0 = static_cast<int>(u & 3) * kChunk;
+    const uint4 xq = *reinterpret_cast<const uint4*>(x_row + blk * 32 + within0);
+    const uint32_t xw[4] = {xq.x, xq.y, xq.z, xq.w};
+    float xv[kChunk];
+#pragma unroll
+    for (int kk = 0; kk < kChunk; ++kk) {
+      xv[kk] = bf16_bits_to_float(static_cast<uint16_t>(xw[kk >> 1] >> (16 * (kk & 1))));
+    }
+#pragma unroll
+    for (int j = 0; j < PACK8; ++j) {
+      const uint8_t* __restrict__ b = w0 + j * row_bytes + blk * 24;
+      const float d = load_fp16(b);
+      const float m = load_fp16(b + 2);
+      const uint32_t qh = *reinterpret_cast<const uint32_t*>(b + 4);
+      const uint8_t* __restrict__ qs = b + 8 + (within0 & 15);
+#pragma unroll
+      for (int kk = 0; kk < kChunk; ++kk) {
+        const int index = within0 + kk;
+        const uint8_t packed = qs[kk];
+        const uint8_t low = index < 16 ? (packed & 0x0fU) : (packed >> 4);
+        const uint8_t high = static_cast<uint8_t>((qh >> index) & 1U);
+        value[j] += xv[kk] * (d * static_cast<float>(low | (high << 4)) + m);
+      }
+    }
+  }
+#pragma unroll
+  for (int j = 0; j < PACK8; ++j) {
+    float reduced = value[j];
+    for (int offset = 16; offset > 0; offset >>= 1) reduced += __shfl_down(reduced, offset, 32);
+    if (threadIdx.x == 0) output[row * out_features + out_col + j] = float_to_bf16_bits(reduced);
   }
 }
 
@@ -1546,6 +2045,108 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatc
   return static_cast<int>(hipGetLastError());
 }
 
+static int launch_q5_1_staged_grouped(
+    const void* input,
+    const void* expert_start,
+    const void* weights,
+    void* output,
+    int64_t compact_rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (input == nullptr || expert_start == nullptr || weights == nullptr ||
+      output == nullptr || compact_rows <= 0 || num_experts <= 0 ||
+      in_features <= 0 || (in_features % 32) != 0 || out_features <= 0 ||
+      compact_rows > INT32_MAX || num_experts > INT32_MAX ||
+      in_features > INT32_MAX || out_features > INT32_MAX) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int64_t out_tile = 4;
+  const int64_t row_bytes = (in_features / 32) * 24;
+  // The staged weights are float d, float m and uint32 qh for every 32-column
+  // block, four output columns, over the row's chunks*SUBS slot count. They are
+  // the only dynamic shared memory this route needs; the slot array is static.
+  const int64_t staged_bytes = out_tile * ((in_features + 255) / 256) * 8 * 12;
+  if (staged_bytes > 65536 - 8192) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + out_tile - 1) / out_tile),
+      static_cast<unsigned int>(num_experts));
+  const dim3 block(128);
+  hipLaunchKernelGGL(
+      // OUT_TILE is the launcher's own `out_tile`: the grid and the staged shared
+      // bytes above are sized from it, so a wider template tile overruns both.
+      (q5_1_selected_grouped_prefill_staged_bf16_bf16_kernel<
+          4, static_cast<int>(out_tile), 256>),
+      grid, block, static_cast<size_t>(staged_bytes), stream,
+      static_cast<const uint16_t*>(input),
+      static_cast<const int64_t*>(expert_start),
+      static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
+      static_cast<int>(compact_rows), static_cast<int>(num_experts),
+      static_cast<int>(in_features), static_cast<int>(out_features),
+      static_cast<int>(row_bytes));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_prefill_staged_out4_bf16_bf16_out(
+    const void* input,
+    const void* expert_start,
+    const void* weights,
+    void* output,
+    int64_t compact_rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_1_staged_grouped(
+      input, expert_start, weights, output, compact_rows, num_experts,
+      in_features, out_features, stream);
+}
+
+extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out4_amortized_bf16_bf16_out(
+    const void* input,
+    const void* expert_start,
+    const void* weights,
+    void* output,
+    int64_t compact_rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!input || !expert_start || !weights || !output || compact_rows <= 0 ||
+      num_experts <= 0 || in_features <= 0 || (in_features % 32) ||
+      out_features <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  // Measured on the Gemma down projection (8192 compact rows, in 704, out 2816,
+  // 128 experts) as interleaved medians against the row-batch owner's 37.1 ms:
+  // <4, 4> and <2, 4> both reach 28.1 ms, <2, 8> 30.7, <4, 8> 71.0 because the
+  // 34 KB of partial scratch drops the CTA count. <4, 4> is taken over <2, 4>
+  // because it halves the weight passes at the same speed.
+  constexpr int row_batch = 4;
+  constexpr int out_batch = 4;
+  const int64_t row_bytes = (in_features / 32) * 24;
+  const int64_t blocks_per_row = in_features / 32;
+  // The kernel publishes all OUT_BATCH partials even when the output tensor
+  // is narrower. Metadata starts after that full slab as well.
+  const size_t shared_bytes =
+      static_cast<size_t>(out_batch * row_batch) * threads * sizeof(float) +
+      3 * static_cast<size_t>(out_batch * blocks_per_row) * sizeof(float);
+  hipLaunchKernelGGL(
+      (q5_1_selected_grouped_prefill_bf16_bf16_kernel<row_batch, out_batch, true, true>),
+      dim3(static_cast<uint32_t>((out_features + out_batch - 1) / out_batch),
+           static_cast<uint32_t>(num_experts)),
+      dim3(threads), shared_bytes, stream,
+      static_cast<const uint16_t*>(input),
+      static_cast<const int64_t*>(expert_start),
+      static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
+      compact_rows, num_experts, in_features, out_features, row_bytes);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out(
     const void* input,
     const void* expert_start,
@@ -1722,6 +2323,232 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf
       static_cast<const int64_t*>(tile_expert),
       static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
       compact_rows, num_experts, in_features, out_features, row_bytes);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_comp_bf16_bf16_out(
+    const void* input,
+    const void* expert_start_compact,
+    const void* expert_start_wmma,
+    const void* tile_expert,
+    const void* weights,
+    void* output,
+    int64_t compact_rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t wmma_total_rows,
+    hipStream_t stream) {
+  if (!input || !expert_start_compact || !expert_start_wmma || !tile_expert ||
+      !weights || !output || compact_rows <= 0 || num_experts <= 0 ||
+      in_features <= 0 || (in_features % 32) || out_features <= 0 ||
+      wmma_total_rows <= 0 || (wmma_total_rows % 16)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int tile_m = 32;
+  constexpr int tile_n = 16;
+  const int64_t row_bytes = (in_features / 32) * 24;
+  hipLaunchKernelGGL(
+      (q5_1_selected_grouped_wmma_prefill_bf16_bf16_kernel<tile_m, tile_n, true>),
+      dim3(static_cast<uint32_t>((out_features + tile_m - 1) / tile_m),
+           static_cast<uint32_t>(wmma_total_rows / tile_n)),
+      dim3(32), 0, stream,
+      static_cast<const uint16_t*>(input),
+      static_cast<const int64_t*>(expert_start_compact),
+      static_cast<const int64_t*>(expert_start_wmma),
+      static_cast<const int64_t*>(tile_expert),
+      static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
+      compact_rows, num_experts, in_features, out_features, row_bytes);
+  return static_cast<int>(hipGetLastError());
+}
+
+// Q5_1T16 selected grouped prefill: the same 32-column x 16-row output tile,
+// the same accumulation order, and the same decoded weight values as
+// ``q5_1_selected_grouped_wmma_prefill_bf16_bf16_kernel``, but the weight
+// bytes come from Q5_1T16 tiles (``[E, out_tiles16, blocks_per_row, 576]``)
+// and each 16-value weight fragment is read through LDS.  The value region
+// holds the pre-combined integer the raw decoder computes
+// (``low | (high << 4)``), so the arithmetic per value is unchanged: the same
+// ``d * (float)v + m`` in f32, the same fp16 rounding of the weight, and the
+// same WMMA operand sequence.
+//
+// Staging: each K block, lanes 0-15 copy tile0's 32-byte value run and lanes
+// 16-31 tile1's into LDS with one 128-bit load/store pair per 16 bytes; the
+// fragment decode then reads its sixteen values from LDS as four uint32
+// words instead of sixteen scalar global byte loads, and the d/m headers
+// stay global (two fp16 loads per out-tile per K block).
+__launch_bounds__(32, 8)
+__global__ void q5_1_t16_selected_grouped_prefill_bf16_bf16_kernel(
+    const uint16_t* __restrict__ input,
+    const int64_t* __restrict__ expert_start_compact,
+    const int64_t* __restrict__ expert_start_wmma,
+    const int64_t* __restrict__ tile_expert,
+    const uint8_t* __restrict__ tiles,
+    uint16_t* __restrict__ output,
+    int64_t compact_rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features) {
+  constexpr int TILE_M = 32;   // two 16-column out-tiles
+  constexpr int TILE_N = 16;   // one 16-row WMMA tile
+  constexpr int TILE_BYTES = 576;
+  constexpr int D_OFF = 0;
+  constexpr int M_OFF = 32;
+  constexpr int V_OFF = 64;
+  const int tid = threadIdx.x;
+  const int lane16 = tid & 15;
+  const int half_id = tid >> 4;
+  const int out_start = blockIdx.x * TILE_M;
+  const int64_t row_tile = blockIdx.y;
+  if (out_start >= out_features) return;
+  const int64_t expert = tile_expert[row_tile];
+  if (expert < 0 || expert >= num_experts) return;
+  const int64_t compact_start = expert_start_compact[expert];
+  const int64_t compact_end = expert_start_compact[expert + 1];
+  const int64_t expert_rows = compact_end - compact_start;
+  const int64_t local_start = row_tile * TILE_N - expert_start_wmma[expert];
+  if (expert_rows <= 0 || compact_start < 0 || compact_end > compact_rows) return;
+
+  const int blocks_per_row = static_cast<int>(in_features / 32);
+  const int out_tiles_total = static_cast<int>(out_features / 16);
+
+  // Column ownership: both halves of the wave decode the same fragment for
+  // WMMA's per-lane operand layout, exactly as the production kernel's 32
+  // threads cover the same (column, k) elements.
+  const int ot0 = out_start / 16;
+  const int ot1 = (out_start + 16 < out_features) ? (ot0 + 1) : ot0;
+  const uint8_t* __restrict__ tile0_base =
+      tiles + ((expert * out_tiles_total + ot0) * blocks_per_row) * TILE_BYTES;
+  const uint8_t* __restrict__ tile1_base =
+      tiles + ((expert * out_tiles_total + ot1) * blocks_per_row) * TILE_BYTES;
+
+  // Out-of-range rows read a clamped address and are discarded by the store
+  // loop, as in the production kernel.
+  int64_t local_row = local_start + lane16;
+  if (local_row >= expert_rows) local_row = expert_rows - 1;
+  const int64_t safe_row = compact_start + local_row;
+
+  float8_t acc[2] = {
+      {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f},
+      {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f},
+  };
+
+  // Two 512-byte LDS windows: the current K block's 32-byte value run for
+  // each of the two out-tiles. Lanes 0-15 fill window 0, lanes 16-31 window 1,
+  // one 128-bit load/store pair per 16 bytes of the run.
+  __shared__ uint8_t stage[1024];
+
+  for (int blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* __restrict__ t0 = tile0_base + blk * TILE_BYTES;
+    const uint8_t* __restrict__ t1 = tile1_base + blk * TILE_BYTES;
+    __builtin_amdgcn_s_barrier();
+    {
+      const int fill_win = tid >> 4;
+      const uint8_t* __restrict__ fill_src =
+          (fill_win ? t1 : t0) + V_OFF + lane16 * 32;
+      uint8_t* __restrict__ fill_dst = stage + fill_win * 512 + lane16 * 32;
+      *reinterpret_cast<uint4*>(fill_dst) =
+          *reinterpret_cast<const uint4*>(fill_src);
+      *reinterpret_cast<uint4*>(fill_dst + 16) =
+          *reinterpret_cast<const uint4*>(fill_src + 16);
+    }
+    __builtin_amdgcn_s_barrier();
+
+    const int64_t k_base = static_cast<int64_t>(blk) * 32;
+    // Headers: d/m per (column, K block), two fp16 loads per out-tile.
+    const float d0 = load_fp16(t0 + D_OFF + lane16 * 2);
+    const float m0 = load_fp16(t0 + M_OFF + lane16 * 2);
+    const float d1 = load_fp16(t1 + D_OFF + lane16 * 2);
+    const float m1 = load_fp16(t1 + M_OFF + lane16 * 2);
+
+#pragma unroll
+    for (int kt = 0; kt < 2; ++kt) {
+      half16_t a_reg;
+      const uint16_t* __restrict__ src =
+          input + safe_row * in_features + k_base + kt * 16;
+      const uint4 v[2] = {*reinterpret_cast<const uint4*>(src),
+                          *reinterpret_cast<const uint4*>(src + 8)};
+#pragma unroll
+      for (int half8 = 0; half8 < 2; ++half8) {
+        const uint16_t* __restrict__ elems =
+            reinterpret_cast<const uint16_t*>(&v[half8]);
+#pragma unroll
+        for (int kk = 0; kk < 8; ++kk) {
+          a_reg[half8 * 8 + kk] =
+              static_cast<half_t>(bf16_bits_to_float(elems[kk]));
+        }
+      }
+
+      const uint8_t* __restrict__ w0 = stage + lane16 * 32 + kt * 16;
+      const uint8_t* __restrict__ w1 = stage + 512 + lane16 * 32 + kt * 16;
+      half16_t b_reg[2];
+#pragma unroll
+      for (int p = 0; p < 2; ++p) {
+        const float d_f = p ? d1 : d0;
+        const float m_f = p ? m1 : m0;
+        const uint8_t* __restrict__ w = p ? w1 : w0;
+#pragma unroll
+        for (int j = 0; j < 4; ++j) {
+          const uint32_t word = *reinterpret_cast<const uint32_t*>(w + 4 * j);
+#pragma unroll
+          for (int i = 0; i < 4; ++i) {
+            const uint32_t q = (word >> (8 * i)) & 0xFFu;
+            b_reg[p][4 * j + i] = static_cast<half_t>(
+                d_f * static_cast<float>(q) + m_f);
+          }
+        }
+      }
+      acc[0] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(b_reg[0], a_reg, acc[0]);
+      acc[1] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(b_reg[1], a_reg, acc[1]);
+    }
+  }
+
+#pragma unroll
+  for (int tm = 0; tm < 2; ++tm) {
+    const int out_col0 = out_start + tm * 16;
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int col_j = out_col0 + 2 * j + half_id;
+      const int64_t out_row = compact_start + local_start + lane16;
+      if (col_j < out_features && local_start + lane16 < expert_rows &&
+          out_row < compact_rows) {
+        output[out_row * out_features + col_j] =
+            float_to_bf16_bits(static_cast<float>(acc[tm][j]));
+      }
+    }
+  }
+}
+
+extern "C" int hipengine_qwen4_exp_q5_1_t16_selected_grouped_prefill_bf16_bf16_out(
+    const void* input,
+    const void* expert_start_compact,
+    const void* expert_start_wmma,
+    const void* tile_expert,
+    const void* tiles,
+    void* output,
+    int64_t compact_rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t wmma_total_rows,
+    hipStream_t stream) {
+  if (!input || !expert_start_compact || !expert_start_wmma || !tile_expert ||
+      !tiles || !output || compact_rows <= 0 || num_experts <= 0 ||
+      in_features <= 0 || (in_features % 32) || out_features <= 0 ||
+      (out_features % 16) || wmma_total_rows <= 0 || (wmma_total_rows % 16)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (q5_1_t16_selected_grouped_prefill_bf16_bf16_kernel),
+      dim3(static_cast<uint32_t>((out_features + 31) / 32),
+           static_cast<uint32_t>(wmma_total_rows / 16)),
+      dim3(32), 0, stream,
+      static_cast<const uint16_t*>(input),
+      static_cast<const int64_t*>(expert_start_compact),
+      static_cast<const int64_t*>(expert_start_wmma),
+      static_cast<const int64_t*>(tile_expert),
+      static_cast<const uint8_t*>(tiles), static_cast<uint16_t*>(output),
+      compact_rows, num_experts, in_features, out_features);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -2022,6 +2849,71 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_gemv_bf16_bf16_out(
       q5_1_selected_gemv_bf16_bf16_kernel,
       dim3(static_cast<uint32_t>(rows * out_features)), dim3(threads),
       threads * sizeof(float), stream,
+      static_cast<const uint16_t*>(input), static_cast<const int64_t*>(selected),
+      static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
+      x_rows, rows, num_experts, in_features, out_features, row_bytes);
+  return static_cast<int>(hipGetLastError());
+}
+
+// The pack8 sibling of the launcher above. The width guards are the scalar
+// launcher's plus the one the shape adds: eight output columns per block means
+// `out_features` must be a multiple of 8, which the caller already checks before
+// it asks for this variant, and the guard is repeated here because a launcher is
+// reachable without the caller. A width that fails either guard is an error
+// rather than a silent tail, so the caller falls back to the scalar route.
+extern "C" int hipengine_qwen4_exp_q5_1_selected_pack8_chunk8_gemv_bf16_bf16_out(
+    const void* input,
+    const void* selected,
+    const void* weights,
+    void* output,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!input || !selected || !weights || !output || x_rows <= 0 || rows <= 0 ||
+      rows % x_rows || num_experts <= 0 || in_features <= 0 ||
+      (in_features % 32) || out_features <= 0 || (out_features % 8)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int PACK8 = 8;
+  const int64_t row_bytes = (in_features / 32) * 24;
+  hipLaunchKernelGGL(
+      q5_1_selected_pack8_chunk8_gemv_bf16_bf16_kernel,
+      dim3(static_cast<uint32_t>((out_features + PACK8 - 1) / PACK8),
+           static_cast<uint32_t>(rows)),
+      dim3(32), 0, stream,
+      static_cast<const uint16_t*>(input), static_cast<const int64_t*>(selected),
+      static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
+      x_rows, rows, num_experts, in_features, out_features, row_bytes);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_q5_1_selected_pack8_gemv_bf16_bf16_out(
+    const void* input,
+    const void* selected,
+    const void* weights,
+    void* output,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!input || !selected || !weights || !output || x_rows <= 0 || rows <= 0 ||
+      rows % x_rows || num_experts <= 0 || in_features <= 0 ||
+      (in_features % 32) || out_features <= 0 || (out_features % 8)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  constexpr int PACK8 = 8;
+  const int64_t row_bytes = (in_features / 32) * 24;
+  hipLaunchKernelGGL(
+      q5_1_selected_pack8_gemv_bf16_bf16_kernel,
+      dim3(static_cast<uint32_t>((out_features + PACK8 - 1) / PACK8),
+           static_cast<uint32_t>(rows)),
+      dim3(threads), threads * PACK8 * sizeof(float), stream,
       static_cast<const uint16_t*>(input), static_cast<const int64_t*>(selected),
       static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
       x_rows, rows, num_experts, in_features, out_features, row_bytes);

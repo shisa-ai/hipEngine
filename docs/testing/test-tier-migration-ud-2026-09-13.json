@@ -1,0 +1,213 @@
+{
+  "schema": 1,
+  "date": "2026-09-13",
+  "purpose": "UD integration rename evidence; never used for pytest selection.",
+  "classification": "Source-reviewed, conservative whole-module execution tiers; no assertions removed.",
+  "modules": [
+    {
+      "old": "tests/test_gguf_iq4_xs_t16_local32_parity.py",
+      "new": "tests/test_gpu_gguf_iq4_xs_t16_local32_parity.py",
+      "tier": "gpu"
+    },
+    {
+      "old": "tests/test_gguf_iq_dense_mmq_route.py",
+      "new": "tests/test_gpu_gguf_iq_dense_mmq_route.py",
+      "tier": "gpu"
+    },
+    {
+      "old": "tests/test_gguf_iq_local32_decode.py",
+      "new": "tests/test_gpu_gguf_iq_local32_decode.py",
+      "tier": "gpu"
+    },
+    {
+      "old": "tests/test_gguf_iq_local32_rows.py",
+      "new": "tests/test_gpu_gguf_iq_local32_rows.py",
+      "tier": "gpu"
+    },
+    {
+      "old": "tests/test_gguf_iq_wmma_prefill.py",
+      "new": "tests/test_gpu_gguf_iq_wmma_prefill.py",
+      "tier": "gpu"
+    },
+    {
+      "old": "tests/test_gguf_q5_k_t16_dense.py",
+      "new": "tests/test_gpu_gguf_q5_k_t16_dense.py",
+      "tier": "gpu"
+    },
+    {
+      "old": "tests/test_gguf_q5_selected_local32_decode.py",
+      "new": "tests/test_gpu_gguf_q5_selected_local32_decode.py",
+      "tier": "gpu"
+    },
+    {
+      "old": "tests/test_gguf_ud_dense.py",
+      "new": "tests/test_gpu_gguf_ud_dense.py",
+      "tier": "gpu"
+    },
+    {
+      "old": "tests/test_gguf_ud_dense_rowbatch.py",
+      "new": "tests/test_gpu_gguf_ud_dense_rowbatch.py",
+      "tier": "gpu"
+    },
+    {
+      "old": "tests/test_qwen35_gguf_policy_capability_parity.py",
+      "new": "tests/test_gpu_qwen35_gguf_policy_capability_parity.py",
+      "tier": "gpu"
+    },
+    {
+      "old": "tests/test_gguf_execution_authorization.py",
+      "new": "tests/test_integration_gguf_execution_authorization.py",
+      "tier": "integration"
+    },
+    {
+      "old": "tests/test_gguf_gdn_geometry_contract.py",
+      "new": "tests/test_integration_gguf_gdn_geometry_contract.py",
+      "tier": "integration"
+    },
+    {
+      "old": "tests/test_gguf_invocation_contract.py",
+      "new": "tests/test_integration_gguf_invocation_contract.py",
+      "tier": "integration"
+    },
+    {
+      "old": "tests/test_gguf_native_physical_operands.py",
+      "new": "tests/test_integration_gguf_native_physical_operands.py",
+      "tier": "integration"
+    },
+    {
+      "old": "tests/test_gguf_router_invocation_contract.py",
+      "new": "tests/test_integration_gguf_router_invocation_contract.py",
+      "tier": "integration"
+    },
+    {
+      "old": "tests/test_gguf_selected_call_intents.py",
+      "new": "tests/test_integration_gguf_selected_call_intents.py",
+      "tier": "integration"
+    },
+    {
+      "old": "tests/test_hipengine_public_api.py",
+      "new": "tests/test_integration_hipengine_public_api.py",
+      "tier": "integration"
+    },
+    {
+      "old": "tests/test_qwen35_gguf_consumer_surface_parity.py",
+      "new": "tests/test_integration_qwen35_gguf_consumer_surface_parity.py",
+      "tier": "integration"
+    },
+    {
+      "old": "tests/test_qwen35_gguf_nextn_prerequisites.py",
+      "new": "tests/test_integration_qwen35_gguf_nextn_prerequisites.py",
+      "tier": "integration"
+    },
+    {
+      "old": "tests/test_qwen35_gguf_resident_prerequisites.py",
+      "new": "tests/test_integration_qwen35_gguf_resident_prerequisites.py",
+      "tier": "integration"
+    },
+    {
+      "old": "tests/test_gguf_iq4_xs_t16_layout.py",
+      "new": "tests/test_live_gguf_iq4_xs_t16_layout.py",
+      "tier": "live"
+    },
+    {
+      "old": "tests/test_gguf_ud_admission.py",
+      "new": "tests/test_live_gguf_ud_admission.py",
+      "tier": "live"
+    },
+    {
+      "old": "tests/test_gguf_ud_dense_t16_roles.py",
+      "new": "tests/test_live_gguf_ud_dense_t16_roles.py",
+      "tier": "live"
+    },
+    {
+      "old": "tests/test_gguf_ud_km_raw_q56.py",
+      "new": "tests/test_live_gguf_ud_km_raw_q56.py",
+      "tier": "live"
+    },
+    {
+      "old": "tests/test_gguf_ud_ks.py",
+      "new": "tests/test_live_gguf_ud_ks.py",
+      "tier": "live"
+    },
+    {
+      "old": "tests/test_gguf_ud_q56_roles.py",
+      "new": "tests/test_live_gguf_ud_q56_roles.py",
+      "tier": "live"
+    },
+    {
+      "old": "tests/test_gguf_ud_repack_eligibility.py",
+      "new": "tests/test_live_gguf_ud_repack_eligibility.py",
+      "tier": "live"
+    },
+    {
+      "old": "tests/test_ud_mtp_certification.py",
+      "new": "tests/test_live_ud_mtp_certification.py",
+      "tier": "live"
+    },
+    {
+      "old": "tests/test_ud_strict_manifest.py",
+      "new": "tests/test_live_ud_strict_manifest.py",
+      "tier": "live"
+    },
+    {
+      "old": "tests/test_gguf_ar_eager_graph_equivalence.py",
+      "new": "tests/test_unit_gguf_ar_eager_graph_equivalence.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_gguf_iq_dense_tables_closed_form.py",
+      "new": "tests/test_unit_gguf_iq_dense_tables_closed_form.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_gguf_iq_dual_owner_gate.py",
+      "new": "tests/test_unit_gguf_iq_dual_owner_gate.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_gguf_ud_codecs.py",
+      "new": "tests/test_unit_gguf_ud_codecs.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_gguf_ud_ffn_callers.py",
+      "new": "tests/test_unit_gguf_ud_ffn_callers.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_gguf_ud_km.py",
+      "new": "tests/test_unit_gguf_ud_km.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_gguf_ud_linear_callers.py",
+      "new": "tests/test_unit_gguf_ud_linear_callers.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_loading_qwen35_gguf_policy.py",
+      "new": "tests/test_unit_loading_qwen35_gguf_policy.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_scripts_gguf_route_mix.py",
+      "new": "tests/test_unit_scripts_gguf_route_mix.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_scripts_ud_mtp_ar_verify_numerics_gate.py",
+      "new": "tests/test_unit_scripts_ud_mtp_ar_verify_numerics_gate.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_ud_hip_guard.py",
+      "new": "tests/test_unit_ud_hip_guard.py",
+      "tier": "unit"
+    },
+    {
+      "old": "tests/test_ud_mtp_paired.py",
+      "new": "tests/test_unit_ud_mtp_paired.py",
+      "tier": "unit"
+    }
+  ]
+}

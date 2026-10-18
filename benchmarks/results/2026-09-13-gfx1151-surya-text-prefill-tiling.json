@@ -1,0 +1,426 @@
+{
+ "date": "2026-09-13",
+ "generated_utc": "2026-09-12T22:54:17Z",
+ "model": "datalab-to/surya-ocr-2",
+ "provenance": {
+  "timestamp_utc": "2026-09-12T22:54:17Z",
+  "hostname": "zbook",
+  "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+  "os": "Linux 6.18.42-1-cachyos-lts",
+  "python": "3.13.13",
+  "numpy": "2.4.4",
+  "command": "scripts/surya_attention_memory.py --max-seq 16384 --tokens 2048,4096,8580,16384 --text-budget-bytes 0 536870912 134217728 --runs 3 --out benchmarks/results/2026-09-13-gfx1151-surya-text-prefill-tiling.json",
+  "git_revision": "d266a9ffc9fb15c2878e33758b5cbdc80f21dc15",
+  "git_branch": "surya",
+  "git_dirty": true,
+  "torch": "2.13.0+rocm10.0.0",
+  "torch_hip": "7.15.26333",
+  "gpu": "AMD Radeon 8060S Graphics"
+ },
+ "vision_attention": {
+  "budget_bytes": 536870912,
+  "grids": [
+   {
+    "grid": [
+     1,
+     220,
+     156
+    ],
+    "patches": 34320,
+    "merged_image_tokens": 8580,
+    "dense_score_bytes": 56537395200,
+    "query_block": 320,
+    "tiled_score_bytes": 527155200,
+    "reduction_x": 107.25
+   },
+   {
+    "grid": [
+     1,
+     256,
+     256
+    ],
+    "patches": 65536,
+    "merged_image_tokens": 16384,
+    "dense_score_bytes": 206158430208,
+    "query_block": 160,
+    "tiled_score_bytes": 503316480,
+    "reduction_x": 409.6
+   }
+  ]
+ },
+ "text_attention": {
+  "budget_bytes_list": [
+   null,
+   536870912,
+   134217728
+  ],
+  "runs": 3,
+  "tile_plan": [
+   {
+    "tokens": 2048,
+    "dense_score_bytes": 134217728,
+    "plans": [
+     {
+      "budget_bytes": null,
+      "query_block": 2048,
+      "score_tile_bytes": 134217728,
+      "reduction_x": 1.0
+     },
+     {
+      "budget_bytes": 536870912,
+      "query_block": 128,
+      "score_tile_bytes": 8388608,
+      "reduction_x": 16.0
+     },
+     {
+      "budget_bytes": 134217728,
+      "query_block": 128,
+      "score_tile_bytes": 8388608,
+      "reduction_x": 16.0
+     }
+    ]
+   },
+   {
+    "tokens": 4096,
+    "dense_score_bytes": 536870912,
+    "plans": [
+     {
+      "budget_bytes": null,
+      "query_block": 4096,
+      "score_tile_bytes": 536870912,
+      "reduction_x": 1.0
+     },
+     {
+      "budget_bytes": 536870912,
+      "query_block": 128,
+      "score_tile_bytes": 16777216,
+      "reduction_x": 32.0
+     },
+     {
+      "budget_bytes": 134217728,
+      "query_block": 128,
+      "score_tile_bytes": 16777216,
+      "reduction_x": 32.0
+     }
+    ]
+   },
+   {
+    "tokens": 8580,
+    "dense_score_bytes": 2355724800,
+    "plans": [
+     {
+      "budget_bytes": null,
+      "query_block": 8580,
+      "score_tile_bytes": 2355724800,
+      "reduction_x": 1.0
+     },
+     {
+      "budget_bytes": 536870912,
+      "query_block": 256,
+      "score_tile_bytes": 70287360,
+      "reduction_x": 33.515625
+     },
+     {
+      "budget_bytes": 134217728,
+      "query_block": 256,
+      "score_tile_bytes": 70287360,
+      "reduction_x": 33.515625
+     }
+    ]
+   },
+   {
+    "tokens": 16384,
+    "dense_score_bytes": 8589934592,
+    "plans": [
+     {
+      "budget_bytes": null,
+      "query_block": 16384,
+      "score_tile_bytes": 8589934592,
+      "reduction_x": 1.0
+     },
+     {
+      "budget_bytes": 536870912,
+      "query_block": 512,
+      "score_tile_bytes": 268435456,
+      "reduction_x": 32.0
+     },
+     {
+      "budget_bytes": 134217728,
+      "query_block": 256,
+      "score_tile_bytes": 134217728,
+      "reduction_x": 64.0
+     }
+    ]
+   }
+  ]
+ },
+ "protocol": {
+  "measurement": "hipengine.core.memory process-local device allocation counter (hipEngine-owned buffers)",
+  "boundary": "peak scratch = peak_allocated_bytes - resident_bytes, where resident is the runner's long-lived allocation after construction",
+  "prompt": "synthetic text-only ids of the given length with plain 1-D rope positions; no image, so this isolates the text stack",
+  "isolation": "a fresh runner per token count, with reset_memory_stats() after construction, so the peak is one prefill's footprint and not a previous run's high-water mark",
+  "score_tile_bytes": "the planner's causal score tile (nq * tokens * block * 4) for the row's budget; budget_bytes null means the dense path",
+  "timing": "prefill_seconds is the mean of prefill_seconds_runs, which are wall-clock repeats on an already-warm runner"
+ },
+ "page_tokens": {
+  "300dpi_a4": 8580
+ },
+ "results": [
+  {
+   "max_seq": 16384,
+   "resident_components": {
+    "weights_bytes": 2663047936,
+    "kv_planes_bytes": 402653184,
+    "gdn_state_bytes": 18883584,
+    "conv_state_bytes": 1778688,
+    "span_metadata_bytes": 147728,
+    "span_decode_partial_bytes": 528384,
+    "span_num_splits": 64,
+    "span_block_size": 256,
+    "resident_bytes": 3087053368
+   },
+   "budgets": [
+    {
+     "max_seq": 16384,
+     "budget_bytes": null,
+     "skipped_over_context": [],
+     "rows": [
+      {
+       "tokens": 2048,
+       "query_block": 2048,
+       "resident_bytes": 3087053368,
+       "peak_scratch_bytes": 513579012,
+       "retained_scratch_bytes": 513579012,
+       "score_tile_bytes": 134217728,
+       "dense_score_bytes": 134217728,
+       "non_attention_scratch_bytes": 379361284,
+       "linear_bytes_per_token": 185235.001953125,
+       "peak_total_bytes": 3600632380,
+       "prefill_seconds": 1.604035218556722,
+       "prefill_seconds_runs": [
+        1.6099114418029785,
+        1.6016144752502441,
+        1.6005797386169434
+       ]
+      },
+      {
+       "tokens": 4096,
+       "query_block": 4096,
+       "resident_bytes": 3087053368,
+       "peak_scratch_bytes": 1295308804,
+       "retained_scratch_bytes": 1295308804,
+       "score_tile_bytes": 536870912,
+       "dense_score_bytes": 536870912,
+       "non_attention_scratch_bytes": 758437892,
+       "linear_bytes_per_token": 185165.5009765625,
+       "peak_total_bytes": 4382362172,
+       "prefill_seconds": 3.3605809211730957,
+       "prefill_seconds_runs": [
+        3.3568665981292725,
+        3.3602676391601562,
+        3.3646085262298584
+       ]
+      },
+      {
+       "tokens": 8580,
+       "query_block": 8580,
+       "resident_bytes": 3087053368,
+       "peak_scratch_bytes": 3944133156,
+       "retained_scratch_bytes": 3944133156,
+       "score_tile_bytes": 2355724800,
+       "dense_score_bytes": 2355724800,
+       "non_attention_scratch_bytes": 1588408356,
+       "linear_bytes_per_token": 185129.17902097903,
+       "peak_total_bytes": 7031186524,
+       "prefill_seconds": 7.494734048843384,
+       "prefill_seconds_runs": [
+        7.491880416870117,
+        7.490662097930908,
+        7.501659631729126
+       ]
+      },
+      {
+       "tokens": 16384,
+       "query_block": 16384,
+       "resident_bytes": 3087053368,
+       "peak_scratch_bytes": 11622832132,
+       "retained_scratch_bytes": 11622832132,
+       "score_tile_bytes": 8589934592,
+       "dense_score_bytes": 8589934592,
+       "non_attention_scratch_bytes": 3032897540,
+       "linear_bytes_per_token": 185113.37524414062,
+       "peak_total_bytes": 14709885500,
+       "prefill_seconds": 16.648609797159832,
+       "prefill_seconds_runs": [
+        16.654648303985596,
+        16.652222871780396,
+        16.6389582157135
+       ]
+      }
+     ],
+     "fitted_linear_bytes_per_token": 185096.00000000003
+    },
+    {
+     "max_seq": 16384,
+     "budget_bytes": 536870912,
+     "skipped_over_context": [],
+     "rows": [
+      {
+       "tokens": 2048,
+       "query_block": 128,
+       "resident_bytes": 3087053368,
+       "peak_scratch_bytes": 387767172,
+       "retained_scratch_bytes": 387767172,
+       "score_tile_bytes": 8388608,
+       "dense_score_bytes": 134217728,
+       "non_attention_scratch_bytes": 379378564,
+       "linear_bytes_per_token": 185243.439453125,
+       "peak_total_bytes": 3474820540,
+       "prefill_seconds": 1.585893710454305,
+       "prefill_seconds_runs": [
+        1.5892229080200195,
+        1.5846221446990967,
+        1.5838360786437988
+       ]
+      },
+      {
+       "tokens": 4096,
+       "query_block": 128,
+       "resident_bytes": 3087053368,
+       "peak_scratch_bytes": 775250820,
+       "retained_scratch_bytes": 775250820,
+       "score_tile_bytes": 16777216,
+       "dense_score_bytes": 536870912,
+       "non_attention_scratch_bytes": 758473604,
+       "linear_bytes_per_token": 185174.2197265625,
+       "peak_total_bytes": 3862304188,
+       "prefill_seconds": 3.3300647735595703,
+       "prefill_seconds_runs": [
+        3.3288655281066895,
+        3.33085560798645,
+        3.3304731845855713
+       ]
+      },
+      {
+       "tokens": 8580,
+       "query_block": 256,
+       "resident_bytes": 3087053368,
+       "peak_scratch_bytes": 1658734308,
+       "retained_scratch_bytes": 1658734308,
+       "score_tile_bytes": 70287360,
+       "dense_score_bytes": 2355724800,
+       "non_attention_scratch_bytes": 1588446948,
+       "linear_bytes_per_token": 185133.6769230769,
+       "peak_total_bytes": 4745787676,
+       "prefill_seconds": 7.543250560760498,
+       "prefill_seconds_runs": [
+        7.556386232376099,
+        7.542195796966553,
+        7.531169652938843
+       ]
+      },
+      {
+       "tokens": 16384,
+       "query_block": 512,
+       "resident_bytes": 3087053368,
+       "peak_scratch_bytes": 3301368708,
+       "retained_scratch_bytes": 3301368708,
+       "score_tile_bytes": 268435456,
+       "dense_score_bytes": 8589934592,
+       "non_attention_scratch_bytes": 3032933252,
+       "linear_bytes_per_token": 185115.55493164062,
+       "peak_total_bytes": 6388422076,
+       "prefill_seconds": 17.17040554682414,
+       "prefill_seconds_runs": [
+        17.163306951522827,
+        17.170459747314453,
+        17.177449941635132
+       ]
+      }
+     ],
+     "fitted_linear_bytes_per_token": 185096.89110423214
+    },
+    {
+     "max_seq": 16384,
+     "budget_bytes": 134217728,
+     "skipped_over_context": [],
+     "rows": [
+      {
+       "tokens": 2048,
+       "query_block": 128,
+       "resident_bytes": 3087053368,
+       "peak_scratch_bytes": 387767172,
+       "retained_scratch_bytes": 387767172,
+       "score_tile_bytes": 8388608,
+       "dense_score_bytes": 134217728,
+       "non_attention_scratch_bytes": 379378564,
+       "linear_bytes_per_token": 185243.439453125,
+       "peak_total_bytes": 3474820540,
+       "prefill_seconds": 1.5817499955495198,
+       "prefill_seconds_runs": [
+        1.5790939331054688,
+        1.5844213962554932,
+        1.5817346572875977
+       ]
+      },
+      {
+       "tokens": 4096,
+       "query_block": 128,
+       "resident_bytes": 3087053368,
+       "peak_scratch_bytes": 775250820,
+       "retained_scratch_bytes": 775250820,
+       "score_tile_bytes": 16777216,
+       "dense_score_bytes": 536870912,
+       "non_attention_scratch_bytes": 758473604,
+       "linear_bytes_per_token": 185174.2197265625,
+       "peak_total_bytes": 3862304188,
+       "prefill_seconds": 3.3313092390696206,
+       "prefill_seconds_runs": [
+        3.3346328735351562,
+        3.322816848754883,
+        3.3364779949188232
+       ]
+      },
+      {
+       "tokens": 8580,
+       "query_block": 256,
+       "resident_bytes": 3087053368,
+       "peak_scratch_bytes": 1658734308,
+       "retained_scratch_bytes": 1658734308,
+       "score_tile_bytes": 70287360,
+       "dense_score_bytes": 2355724800,
+       "non_attention_scratch_bytes": 1588446948,
+       "linear_bytes_per_token": 185133.6769230769,
+       "peak_total_bytes": 4745787676,
+       "prefill_seconds": 7.553604364395142,
+       "prefill_seconds_runs": [
+        7.560588359832764,
+        7.547308444976807,
+        7.5529162883758545
+       ]
+      },
+      {
+       "tokens": 16384,
+       "query_block": 256,
+       "resident_bytes": 3087053368,
+       "peak_scratch_bytes": 3167187844,
+       "retained_scratch_bytes": 3167187844,
+       "score_tile_bytes": 134217728,
+       "dense_score_bytes": 8589934592,
+       "non_attention_scratch_bytes": 3032970116,
+       "linear_bytes_per_token": 185117.80493164062,
+       "peak_total_bytes": 6254241212,
+       "prefill_seconds": 17.398064533869427,
+       "prefill_seconds_runs": [
+        17.40207076072693,
+        17.38042163848877,
+        17.411701202392578
+       ]
+      }
+     ],
+     "fitted_linear_bytes_per_token": 185099.51123406913
+    }
+   ]
+  }
+ ]
+}

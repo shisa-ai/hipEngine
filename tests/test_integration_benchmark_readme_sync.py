@@ -5,6 +5,7 @@ import json
 import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 
@@ -36,6 +37,31 @@ def _heading_slug(heading: str) -> str:
     plain = re.sub(r"[`*_\[\]]", "", heading).strip().lower()
     plain = re.sub(r"[^\w\s-]", "", plain)
     return re.sub(r"\s+", "-", plain)
+
+
+def _assert_no_duplicate_prose_sentences(text: str) -> None:
+    """A fact stated twice on the product page is a defect (docs/HOWTO-README.md Rule 1).
+
+    Tables, headings, fenced code, and HTML markers are excluded, so this only
+    compares prose against prose.
+    """
+    body = re.sub(r"```.*?```", "", text, flags=re.S)
+    body = re.sub(r"<!--.*?-->", "", body, flags=re.S)
+    body = re.sub(r"^\|.*$", "", body, flags=re.M)
+    body = re.sub(r"^#{1,6}.*$", "", body, flags=re.M)
+
+    seen: dict[str, int] = {}
+    for sentence in re.split(r"(?<=[.!?])\s+", body):
+        normalized = re.sub(r"[^a-z0-9 ]", "", " ".join(sentence.split()).lower())
+        if len(normalized.split()) < 6:
+            continue
+        seen[normalized] = seen.get(normalized, 0) + 1
+
+    repeated = sorted(sentence for sentence, count in seen.items() if count > 1)
+    assert not repeated, (
+        "README states the same sentence more than once; say it once, in the "
+        f"section that needs it (docs/HOWTO-README.md Rule 1): {repeated}"
+    )
 
 
 def _assert_local_markdown_links_exist(text: str, base_dir: Path) -> None:
@@ -157,28 +183,52 @@ def test_root_readme_is_compact_model_first_and_synced() -> None:
     readme = (repo_root / "README.md").read_text(encoding="utf-8")
     assert len(readme.splitlines()) <= 500
     assert readme.index("## Supported models") < readme.index("## Performance highlights")
-    assert readme.index("## Performance highlights") < readme.index("## Status")
+    assert readme.index("## Performance highlights") < readme.index("## Limits")
+    models = (repo_root / "docs/MODELS.md").read_text(encoding="utf-8")
+    assert "[model support reference](docs/MODELS.md)" in readme
+    model_section = readme.split("## Supported models", 1)[1].split("## Performance highlights", 1)[0]
+    assert not any(line.startswith("|") for line in model_section.splitlines())
+    assert readme.count("| KV configuration |") == 1
     for model_url in (
         "https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed",
         "https://huggingface.co/poolside/Laguna-S-2.1-GGUF",
         "https://huggingface.co/deepgrove/maple-preview-2bit-mlx",
     ):
-        assert model_url in readme
+        assert model_url in models
+    _assert_markdown_tables_are_rectangular(models)
+    _assert_local_markdown_links_exist(models, repo_root / "docs")
     assert readme.count("<!-- BEGIN TOPLINE:") == 1
     assert "<!-- BEGIN TOPLINE:README_HIGHLIGHTS -->" in readme
     assert "## Memory Usage" not in readme
     assert "## Speculative decode (DFlash / MTP)" not in readme
     assert "H8C-H8Q" not in readme
     assert "SH14-C1" not in readme
-    assert "**93.644 tok/s public**" in readme
-    assert "**214.788**" in readme
-    assert "**Current release: v0.5.0.**" in readme
+    # Retired from the product page: this detail belongs to the benchmark report,
+    # and repeating it here made the performance summary unreadable.
+    # See docs/HOWTO-README.md for the rules behind this list.
+    for retired_phrase in (
+        "AR measured",
+        "In these tests,",
+        "September 20: Framework Desktop",
+        "one adapted transcript",
+        "not a general agent-quality benchmark",
+        "will not silently use PyTorch",
+        "can still change before 1.0",
+        "keep a conservative context limit",
+    ):
+        assert retired_phrase not in readme
+    project = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
+    assert f"**Current release: v{project['project']['version']}.**" in readme
     assert "NVIDIA Blackwell (`sm_120a`)" in readme
-    assert "Current development is\ntherefore focused on GGUF compatibility" in readme
+    assert "[GGUF](docs/reference/GGUF.md) for the\nbroader model and quantization ecosystem" in readme
     for internal_phrase in ("source-pinned", "physical c8", "packet reaches"):
         assert internal_phrase not in readme
     _assert_markdown_tables_are_rectangular(readme)
     _assert_local_markdown_links_exist(readme, repo_root)
+    _assert_no_duplicate_prose_sentences(readme)
+    rules = repo_root / "docs/HOWTO-README.md"
+    assert rules.is_file(), "the root README editing rules must exist"
+    assert "docs/HOWTO-README.md" in (repo_root / "AGENTS.md").read_text(encoding="utf-8")
 
 
 def test_benchmark_readme_is_a_compact_current_scoreboard() -> None:
@@ -186,8 +236,8 @@ def test_benchmark_readme_is_a_compact_current_scoreboard() -> None:
     scoreboard_path = repo_root / "benchmarks/README.md"
     scoreboard = scoreboard_path.read_text(encoding="utf-8")
 
-    assert len(scoreboard.splitlines()) < 2500
-    assert len(scoreboard.encode("utf-8")) < 150_000
+    assert len(scoreboard.splitlines()) < 3000
+    assert len(scoreboard.encode("utf-8")) < 200_000
     assert scoreboard.count("<!-- BEGIN TOPLINE:") == 1
     assert scoreboard.count("results/") < 300
     assert "## Platform Index" not in scoreboard
@@ -208,8 +258,6 @@ def test_benchmark_readme_is_a_compact_current_scoreboard() -> None:
     assert artifact_path.name in scoreboard
 
     labels = {
-        "512/128": "512/128",
-        "4K/128": "4K/128",
         "32K/128": "32K/128",
         "64K/128": "64K/128",
     }
@@ -220,6 +268,22 @@ def test_benchmark_readme_is_a_compact_current_scoreboard() -> None:
             f"**{row['decode_tok_s_median']:.3f} tok/s** | "
             f"{row['tracked_peak_gib']:.3f} GiB | "
             f"{row['whole_gtt_peak_gib']:.3f} GiB |"
+        )
+        assert expected in scoreboard
+
+    refresh = json.loads(
+        (repo_root / "benchmarks/results/2026-09-20-gfx1151-v060-headline-refresh.json")
+        .read_text(encoding="utf-8")
+    )
+    current = refresh["qwen36_ud_q4_k_m"]
+    assert current["correctness"]["passed"] is True
+    assert current["correctness"]["graph_eager_prompts"] == 18
+    assert current["cross_batch_diagnostic"]["passed"] is False
+    for label, row in current["measurements"].items():
+        expected = (
+            f"| {label} | **{row['prefill_tok_s']['median']:.3f} tok/s** | "
+            f"**{row['decode_tok_s']['median']:.3f} tok/s** | "
+            f"{row['tracked_peak_allocated_gib']['median']:.3f} GiB | Not sampled |"
         )
         assert expected in scoreboard
     assert "| 128K/128 | — | — | — | — |" in scoreboard

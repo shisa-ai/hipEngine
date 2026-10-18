@@ -1,0 +1,156 @@
+{
+ "kind": "gemma4_prefill_attention_variant_ab",
+ "performance_claim": false,
+ "created": "2026-10-05",
+ "command": "scripts/gemma4_prefill_attention_variant_ab.py --merge /tmp/gemma4-ab/ab-8192.json,/tmp/gemma4-ab/ab-32768.json,/tmp/gemma4-ab/ab-65536.json,/tmp/gemma4-ab/ab-131072.json --out benchmarks/results/2026-10-04-gemma4-gfx1151-prefill-attention-variant-ab.json",
+ "model": "Gemma 4 26B-A4B-it",
+ "quant": "UD-Q4_K_XL",
+ "physical_host": "zbook",
+ "hardware": "AMD Radeon 8060S Graphics (gfx1151)",
+ "kv_dtype": "bf16",
+ "execution_profile": "production (both arms measured under it; only the variant request differs)",
+ "arms": {
+  "staged": [
+   "gemma4_staged"
+  ],
+  "wmma": [
+   "gemma4_wmma_flash",
+   "gemma4_wmma_flash_full"
+  ]
+ },
+ "why": "the WMMA prefill candidates are registered but not selected, so the only way to price them is to request them directly. This changes no shipped default and is not a promotion row: the candidates fail the production numerical envelope, which is why they are not selected.",
+ "rows": [
+  {
+   "prompt_tokens": 8192,
+   "context": 8448,
+   "staged_route": "gemma4_staged",
+   "wmma_route": "gemma4_wmma_flash_full",
+   "staged_prefill_s": 14.5427,
+   "wmma_prefill_s": 7.0165,
+   "staged_prefill_tps": 563.31,
+   "wmma_prefill_tps": 1167.53,
+   "speedup": 2.0726,
+   "warmup": 1,
+   "repeats": 2,
+   "command": "scripts/gemma4_prefill_attention_variant_ab.py --prompt 8192 --repeats 2 --warmup 1 --out /tmp/gemma4-ab/ab-8192.json"
+  },
+  {
+   "prompt_tokens": 32768,
+   "context": 33024,
+   "staged_route": "gemma4_staged",
+   "wmma_route": "gemma4_wmma_flash_full",
+   "staged_prefill_s": 112.4477,
+   "wmma_prefill_s": 36.7488,
+   "staged_prefill_tps": 291.41,
+   "wmma_prefill_tps": 891.68,
+   "speedup": 3.0599,
+   "warmup": 1,
+   "repeats": 1,
+   "command": "scripts/gemma4_prefill_attention_variant_ab.py --prompt 32768 --warmup 1 --repeats 1 --out /tmp/gemma4-ab/ab-32768.json"
+  },
+  {
+   "prompt_tokens": 65536,
+   "context": 65792,
+   "staged_route": "gemma4_staged",
+   "wmma_route": "gemma4_wmma_flash_full",
+   "staged_prefill_s": 394.956,
+   "wmma_prefill_s": 98.3995,
+   "staged_prefill_tps": 165.93,
+   "wmma_prefill_tps": 666.02,
+   "speedup": 4.0138,
+   "warmup": 1,
+   "repeats": 1,
+   "command": "scripts/gemma4_prefill_attention_variant_ab.py --prompt 65536 --warmup 1 --repeats 1 --out /tmp/gemma4-ab/ab-65536.json"
+  },
+  {
+   "prompt_tokens": 131072,
+   "context": 131328,
+   "staged_route": "gemma4_staged",
+   "wmma_route": "gemma4_wmma_flash_full",
+   "staged_prefill_s": 1404.8288,
+   "wmma_prefill_s": 274.3382,
+   "staged_prefill_tps": 93.3,
+   "wmma_prefill_tps": 477.78,
+   "speedup": 5.1208,
+   "warmup": 0,
+   "repeats": 1,
+   "command": "scripts/gemma4_prefill_attention_variant_ab.py --prompt 131072 --warmup 0 --repeats 1 --out /tmp/gemma4-ab/ab-131072.json"
+  }
+ ],
+ "provenance": {
+  "host": "zbook",
+  "git_commit": "80d1f446c325fccd1a0de1926f6f5af878bb1892",
+  "git_dirty": true,
+  "git_dirty_files": [
+   "M benchmarks/HARNESSES.md",
+   " M benchmarks/results/2026-10-02-gemma4-gfx1151-262144-capacity-tier1.json",
+   " M scripts/gguf_capacity_probe.py",
+   " M tests/test_unit_gguf_capacity_probe.py",
+   "?? scripts/gemma4_prefill_attention_variant_ab.py",
+   "?? worklog/entries/20261003T080759.400176Z-lhl-gemma4-capacity-probe-depth-rehearsal-494d0d.md",
+   "?? worklog/entries/20261003T081954.711360Z-lhl-gemma4-capacity-probe-review-corrections-94a1b1.md"
+  ],
+  "gpu_name_device0": "AMD Radeon 8060S Graphics",
+  "artifact": {
+   "path": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+   "bytes": 17010980576,
+   "mtime": "2026-09-26T19:11:54.689845+00:00",
+   "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992"
+  },
+  "env": {
+   "GPU_MAX_HW_QUEUES": "2",
+   "HIPENGINE_HIP_ARCH": "gfx1151"
+  },
+  "hipcc": [
+   "HIP version: 7.15.26333-0000000",
+   "AMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)"
+  ],
+  "rocm_smi_clock_power": [
+   "============================ ROCm System Management Interface ============================",
+   "====================================== Temperature =======================================",
+   "GPU[0]\t\t: Temperature (Sensor edge) (C): 67.0",
+   "==========================================================================================",
+   "=============================== Current clock frequencies ================================",
+   "GPU[0]\t\t: mclk clock level: 2: (1000Mhz)",
+   "GPU[0]\t\t: sclk clock level: 1: (1847Mhz)",
+   "==========================================================================================",
+   "=================================== Power Consumption ====================================",
+   "GPU[0]\t\t: Current Socket Graphics Package Power (W): 66.048",
+   "==========================================================================================",
+   "================================== End of ROCm SMI Log ==================================="
+  ],
+  "python": "3.13.13",
+  "platform": "Linux-7.2.7-1-cachyos-x86_64-with-glibc2.44"
+ },
+ "note": "diagnostic variant comparison; prefill only",
+ "findings": {
+  "prefill_ratio_vs_llamacpp": [
+   {
+    "prompt_tokens": 8192,
+    "llamacpp_prefill_tps": 1267.8975219351532,
+    "shipped_staged_ratio": 0.4443,
+    "candidate_wmma_ratio": 0.9208
+   },
+   {
+    "prompt_tokens": 32768,
+    "llamacpp_prefill_tps": 873.0400061364312,
+    "shipped_staged_ratio": 0.3338,
+    "candidate_wmma_ratio": 1.0214
+   },
+   {
+    "prompt_tokens": 65536,
+    "llamacpp_prefill_tps": 623.4107655684154,
+    "shipped_staged_ratio": 0.2662,
+    "candidate_wmma_ratio": 1.0683
+   },
+   {
+    "prompt_tokens": 131072,
+    "llamacpp_prefill_tps": 397.2903099148921,
+    "shipped_staged_ratio": 0.2348,
+    "candidate_wmma_ratio": 1.2026
+   }
+  ],
+  "source": "2026-10-04-gemma4-gfx1151-depth-ladder-paired.json",
+  "note": "the candidate column is what the same-session A/B says the WMMA arm achieves; it is not a promotion, because the candidates fail the production numerical envelope"
+ }
+}

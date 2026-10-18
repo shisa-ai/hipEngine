@@ -37,6 +37,11 @@ def test_teardown_failure_cannot_publish_pass(tmp_path, close_fails):
 @pytest.mark.parametrize('budget', range(1,8))
 @pytest.mark.parametrize('capacity,widths', [(2, (1, 2)), (8, (1, 2)), (8, tuple(range(1, 9)))])
 def test_lifecycle_scope_extension_is_diagnostic_only(monkeypatch, capacity, widths, budget):
+    """The lifecycle injects diagnostic rows only; it promotes nothing.
+
+    Output horizon is not an admission axis, so one injected row per width
+    covers both the short and the long retirement child.
+    """
     from types import SimpleNamespace
     from hipengine.models import qwen35
     from scripts.qwen38_packed_c1_lifecycle import install_lifecycle_evidence
@@ -47,16 +52,17 @@ def test_lifecycle_scope_extension_is_diagnostic_only(monkeypatch, capacity, wid
     rows = plugin.speculative_mtp_serving_evidence
     assert rows[:-len(widths)] == original
     for width, row in zip(widths, rows[-len(widths):], strict=True):
-        assert row.min_output_horizon_tokens == 8
-        assert row.max_output_horizon_tokens == 24
         assert row.resident_capacity == capacity
         assert row.candidate_budget == budget
-        assert f'-k{budget}-diagnostic' in row.evidence_key
+        assert f'-k{budget}-d24-k4probe' in row.evidence_key
         assert row.realized_group_rows == width
         assert row.packed_c1_target is (width == 1)
         assert not row.automatic_eligible
-        assert 'unqualified' in row.reason
-        assert row.evidence_artifacts == ('scripts/qwen38_packed_c1_lifecycle.py',)
+        assert 'diagnostic' in row.reason
+        assert row.evidence_artifacts == (
+            'scripts/qwen38_packet5_k4_watchdog_probe.py'
+            ' (runtime-injected diagnostic row)',
+        )
 
 
 def engine_intent():

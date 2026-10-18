@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import warnings
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from functools import lru_cache
 from math import ceil, prod
 from pathlib import Path
 from types import SimpleNamespace
@@ -61,6 +63,30 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(8 * 1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _model_file_version(path: Path) -> tuple[int, ...]:
+    stat = path.stat()
+    return (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+
+
+@lru_cache(maxsize=16)
+def _model_digest_for_version(path: Path, version: tuple[int, ...]) -> str:
+    digest = _sha256_file(path)
+    if _model_file_version(path) != version:
+        raise ValueError("DMS model file changed during SHA-256 verification")
+    return digest
+
+
+def _model_sha256_file(path: Path) -> str:
+    """Reuse model verification only while its filesystem version is unchanged.
+
+    Process-local and bounded: replacements, writes (even with restored mtime),
+    and truncation invalidate the entry. Sidecar files are still read and hashed
+    on every load. Model artifacts must not be modified while inference runs.
+    """
+    resolved = path.resolve(strict=True)
+    return _model_digest_for_version(resolved, _model_file_version(resolved))
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,6 +226,13 @@ class DMSRetrofitConfig:
     sidecar: DMSLinearSidecarSpec | None = None
     training: DMSTrainingProvenance | None = None
     prefill_selection_mode: str = "threshold"
+    artifact_fingerprint_verified: bool = True
+    """Whether the resident model matched the fingerprint this was trained on.
+
+    ``False`` means the sidecar loaded against a different artifact.  It runs --
+    geometry is what decides whether it can -- but its trained quality evidence
+    describes another file, so nothing may be claimed from it.
+    """
 
     def __post_init__(self) -> None:
         for name in (
@@ -584,13 +617,22 @@ def load_dms_retrofit_config(
         training=training_provenance,
     )
     if schema_version == 2:
-        if model.is_file():
-            if _sha256_file(model) != config.artifact_fingerprint:
-                raise ValueError("DMS model artifact hash does not match metadata")
-        elif expected_artifact_fingerprint is None:
-            raise ValueError(
-                "DMS schema v2 requires a verified model artifact fingerprint for non-file models"
+        # The artifact hash is provenance, not capability: a sidecar whose
+        # geometry fits the model runs on it.  A mismatch means the trained
+        # quality evidence describes a different file, so record it and warn
+        # rather than refusing a sidecar the caller explicitly passed.
+        if model.is_file() and _model_sha256_file(model) != config.artifact_fingerprint:
+            config = replace(config, artifact_fingerprint_verified=False)
+            warnings.warn(
+                "DMS sidecar was trained against a different model artifact "
+                f"({config.artifact_fingerprint}); it will run because its "
+                "geometry fits, but its trained quality evidence does not "
+                "describe this file",
+                RuntimeWarning,
+                stacklevel=2,
             )
+        # Geometry is the capability check and stays hard: a layer map that does
+        # not match the model cannot be executed at all.
         if expected_physical_layer_ids is not None and config.physical_layer_ids != tuple(
             int(layer_id) for layer_id in expected_physical_layer_ids
         ):
@@ -985,6 +1027,29 @@ class CompactExtentPool:
             "free_ranges_by_layer": [list(ranges) for ranges in self._free],
         }
 
+    def state_snapshot(self) -> dict[str, Any]:
+        """Return a restorable copy of allocation ownership and free ranges.
+
+        ``snapshot`` above reports pool health; this captures the allocator
+        itself so a rolled-back transaction can put ownership back exactly as
+        it was, including the free ranges that a compaction coalesced.
+        """
+
+        return {
+            "free": [list(ranges) for ranges in self._free],
+            "owners": dict(self._owners),
+            "allocation_failures": int(self.allocation_failures),
+            "high_water_slots": int(self.high_water_slots),
+        }
+
+    def restore_state(self, snapshot: dict[str, Any]) -> None:
+        """Restore ownership and free ranges captured by ``state_snapshot``."""
+
+        self._free = [list(ranges) for ranges in snapshot["free"]]
+        self._owners = dict(snapshot["owners"])
+        self.allocation_failures = int(snapshot["allocation_failures"])
+        self.high_water_slots = int(snapshot["high_water_slots"])
+
     def assert_conserved(self) -> None:
         occupied = sum(
             extent.length
@@ -1039,6 +1104,23 @@ class CompactExtentPool:
 
 
 @dataclass(frozen=True, slots=True)
+class DMSAllocatorSnapshot:
+    """Restorable allocation ownership for one DMS transaction.
+
+    A speculative cycle evicts and compacts, which releases provisional
+    slots, shrinks per-head extents and coalesces free ranges. Restoring the
+    payload planes alone would leave the allocator holding the post-cycle
+    layout, so the ownership records travel with the payload snapshot.
+    """
+
+    extent_pool: dict[str, Any]
+    ledger: dict[str, Any]
+    range_capacity: np.ndarray
+    base_offsets: np.ndarray
+    extents: tuple[CompactExtent, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class DMSOperation:
     operation_id: str
     lease: KVLease
@@ -1052,6 +1134,7 @@ class DMSOperation:
     logical_tokens: int
     device_snapshot: DMSDevicePayloadSnapshot | None
     counter_snapshot: tuple[int, int, int, int]
+    allocator_snapshot: DMSAllocatorSnapshot | None = None
 
 
 _CODEC_EVALUATION_ACCESS = object()
@@ -1083,8 +1166,6 @@ class DMSCompactBackend:
         if evaluation_only and (codec != "int8_per_token_head" or codec_qualification is not None):
             raise ValueError("codec evaluation cannot carry qualification")
         if codec == "int8_per_token_head":
-            if codec_qualification is None and not evaluation_only:
-                raise ValueError("compact INT8 DMS requires artifact qualification")
             if codec_qualification is not None and codec_qualification.artifact_fingerprint != retrofit.artifact_fingerprint:
                 raise ValueError("compact INT8 qualification artifact mismatch")
         elif codec_qualification is not None:
@@ -1917,6 +1998,13 @@ class DMSCompactBackend:
                 int(self.evicted_tokens),
                 int(self.released_provisional_slots),
             ),
+            allocator_snapshot=DMSAllocatorSnapshot(
+                extent_pool=self.extents.state_snapshot(),
+                ledger=self.ledger.state_snapshot(),
+                range_capacity=state.range_capacity.copy(),
+                base_offsets=state.base_offsets.copy(),
+                extents=tuple(state.extents),
+            ),
         )
 
     def commit(self, operation: Any, result: Any) -> ResourceDelta:
@@ -1959,6 +2047,12 @@ class DMSCompactBackend:
             self.evicted_tokens,
             self.released_provisional_slots,
         ) = operation.counter_snapshot
+        if operation.allocator_snapshot is not None:
+            self.extents.restore_state(operation.allocator_snapshot.extent_pool)
+            self.ledger.restore_state(operation.allocator_snapshot.ledger)
+            state.range_capacity[...] = operation.allocator_snapshot.range_capacity
+            state.base_offsets[...] = operation.allocator_snapshot.base_offsets
+            state.extents = tuple(operation.allocator_snapshot.extents)
         return ResourceDelta(
             operation_id=f"rollback:{operation.operation_id}",
             lease_id=operation.lease.lease_id,
@@ -2021,6 +2115,8 @@ class DMSCompactBackend:
                 "artifact_fingerprint": self.retrofit.artifact_fingerprint,
                 "retrofit_fingerprint": self.retrofit.fingerprint,
                 "decision_source": self.retrofit.decision_source,
+                "window_size": self.retrofit.window_size,
+                "prefill_selection_mode": self.retrofit.prefill_selection_mode,
                 "physical_layer_ids": list(self.retrofit.physical_layer_ids),
                 "prefix_mode": "off",
                 "no_dense_shadow": True,
@@ -2269,7 +2365,7 @@ def create_dms_bf16_backend(**kwargs: Any) -> DMSCompactBackend:
 
 def create_dms_int8_backend(
     *,
-    codec_qualification: DMSCodecQualification,
+    codec_qualification: DMSCodecQualification | None = None,
     **kwargs: Any,
 ) -> DMSCompactBackend:
     return DMSCompactBackend(

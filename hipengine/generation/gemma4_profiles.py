@@ -1,0 +1,681 @@
+"""Gemma 4 GGUF gfx1100 execution-profile cold-path plans.
+
+Registers the ``strict`` and ``production`` ``RuntimeProfilePlan`` entries for
+``(gemma4_gguf, hip_gfx1100, gguf_q4_k_m)`` -- the combination
+``llm.resolved_quant`` actually supplies to ``resolve_runtime_profile`` on the
+shipped UD-Q4_K_XL artifact (measured, not inferred from the filename) -- so
+that an explicit profile resolves to one immutable variant manifest at LLM
+construction and applies its route policy before the first forward.
+
+``production`` selects the registered fused-stride T16 WMMA owner for wide
+Q4_K gate/up prefill, with narrow calls retaining their selected decode route
+and the exact selected T16 owner as the strict fallback. Other quant layouts
+keep their grouped int8 gate/up owners; dense prefill uses ``wmma_prefill`` and
+decode uses the pack8/selected GEMVs. The expert down projection defaults to the
+grouped WMMA owner, which reads the BF16 activations directly; the int8 MMQ down
+stays off by default after its observed generated-history failure, and explicit
+MMQ controls remain available for diagnostics. The binder pins
+``HIPENGINE_GEMMA4_MOE_PREFILL=auto``; the manifest names the wide Q4 owner, its
+strict selected-row fallback, and the WMMA down owner.
+
+Two scopes are not projections. ``decode_attention`` /
+``global_head_dim_512``: ``production`` prefers the staged singleton attention
+candidate for the one-token global decode step, where the strict native/exact
+kernel's resident logit row overflows LDS and it keeps the same arithmetic on
+owned global scratch; ``strict`` keeps that native kernel.
+``exact_prefill_attention`` / ``sliding_multi_row``: ``production`` prefers the
+staged multi-row candidate for a sliding prefill block the tiled and AOTriton
+routes refuse (a sliding layer whose presented key count exceeds its window),
+which the native exact kernel serves by walking all presented keys from column
+0; ``strict`` keeps the native kernel. The layer consumes each preference only
+at its native/exact attention call site, so the tiled and aotriton prefills and
+the profile-selected prefill variants are unchanged.
+
+A third scope pair is ``prefill_attention`` / ``sliding_head_dim_256`` and
+``full_head_dim_512``: ``production`` requests ``gemma4_wmma_flash`` and
+``gemma4_wmma_flash_full`` for multi-row prefill blocks under the
+EXECUTION-PROFILES section 2.11 envelope. Decode steps do not take this
+request: the plan's decode scope owns them.
+
+``strict`` pins ``HIPENGINE_GEMMA4_MOE_PREFILL=grouped``, the exact arm
+``gemma4_experts.py::_prefill_route_flags`` documents as the rollback lever,
+measured with the same probe: the MMQ owner disappears and the grouped exact
+owners take over. Four scopes do not have a reachable exact arm yet, so they
+carry today's variant with the blocker recorded rather than an exact variant
+the tree cannot execute:
+
+- ``dense_prefill_q8_0``: the exact owner ``prefill_bf16_bf16_out`` exists but
+  ``gemma4_layer.py`` passes ``use_wmma_prefill=True`` as an explicit kwarg,
+  which outranks the session toggle and the env var, so no profile can reach
+  it without that call site taking profile policy (curation entry
+  ``...gemma4-strict-curation-6312b4.md``, blocker B1).
+- ``moe_decode_q5_k``: no route pin exists for this decode GEMV (B2).
+  ``moe_decode_q4_k`` and ``moe_decode_q5_1`` select production siblings that
+  the selected-expert chain offers only on the unpinned route this plan binds;
+  ``strict`` pins ``grouped`` and so keeps the selected owners.
+- ``lm_head_f32_q8_0``: its call counts are data-dependent, so no phase or arm
+  difference was measurable (B4).
+- ``down_q8_0`` (revised B3): the grouped flow's q8_0 chain is three *probe*
+  attempts (fold128 -> amortized -> rowbatch8, first resolvable wins) and all
+  three are unregistered, so under ``strict`` the q8_0 down projection falls
+  through to the selected owner under the **``linear``** layer key while
+  production runs ``grouped_wmma`` under **``moe_linear``**. One logical scope
+  cannot span two registry layers, so the scope is omitted from both plans
+  until either a grouped q8_0 owner registers or the axis can express it; the
+  observed 3x3 resolve calls were failed probes, not three owners. The
+  fallback that does run is declared by ``linear/moe_selected_q8_0``.
+
+- ``prefill_attention`` / both geometries (B5): ``production`` requests the
+  WMMA flash candidates for multi-row prefill blocks. ``strict`` declares
+  ``gemma4_plain`` as each scope's rollback key but forwards no request, so a
+  strict prefill block is still served by the layer's own route chain (tiled,
+  AOTriton, or the native kernel), as it was before the scope existed. Binding
+  the plain kernel for strict changes which kernel strict prefill runs and is a
+  separate change with its own measurement.
+
+``batch_invariant`` is deliberately not registered: the composition gate has
+not run for this model, so it falls back to strict fail-closed.
+
+Probe method and full tables: worklog entries
+``...gemma4-strict-curation-6312b4.md`` and
+``...gemma4-dispatch-attribution-d6c87d.md``.
+"""
+
+from __future__ import annotations
+
+import os
+from typing import Any
+
+from hipengine.execution_profiles import (
+    ExecutionProfile,
+    ResolvedRuntimeProfile,
+    RuntimeProfilePlan,
+    VariantSelection,
+    register_runtime_profile_plan,
+    registered_runtime_profile_keys,
+)
+from hipengine.generation import gemma4_gguf_profiles as _gguf_profiles
+from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+    DECODE_ATTENTION_LAYER as _DECODE_ATTENTION_LAYER,
+    DECODE_ATTENTION_PLAIN as _DECODE_ATTENTION_PLAIN,
+    DECODE_ATTENTION_QUANT as _DECODE_ATTENTION_QUANT,
+    DECODE_ATTENTION_STAGED as _DECODE_ATTENTION_STAGED,
+    DECODE_ATTENTION_FLASH as _DECODE_ATTENTION_FLASH,
+    DECODE_ATTENTION_FLASH_LONG as _DECODE_ATTENTION_FLASH_LONG,
+    EXACT_PREFILL_ATTENTION_LAYER as _EXACT_PREFILL_ATTENTION_LAYER,
+    EXACT_PREFILL_ATTENTION_PLAIN as _EXACT_PREFILL_ATTENTION_PLAIN,
+    EXACT_PREFILL_ATTENTION_QUANT as _EXACT_PREFILL_ATTENTION_QUANT,
+    EXACT_PREFILL_ATTENTION_STAGED as _EXACT_PREFILL_ATTENTION_STAGED,
+)
+
+# Model plugin identity (``hipengine/models/gemma4.py``: name = "gemma4_gguf",
+# default_quant = "gguf_q4_k_m"); backend is the resolved gfx1100 tree.
+GEMMA4_GGUF_MODEL = "gemma4_gguf"
+GEMMA4_GGUF_BACKEND = "hip_gfx1100"
+GEMMA4_GGUF_QUANT = "gguf_q4_k_m"
+
+# Route pin read per prefill call by gemma4_experts._prefill_mode().
+MOE_PREFILL_ENV = "HIPENGINE_GEMMA4_MOE_PREFILL"
+_PRODUCTION_ROUTE = "auto"
+_STRICT_ROUTE = "grouped"
+
+# The one-token global decode step: the strict native/exact attention entry holds
+# one FP32 logit per live key in LDS and, past 15,616 keys at head_dim 512, keeps
+# the same arithmetic on owned global scratch (its ``global_class`` variant).
+# ``production`` prefers the staged singleton candidate for exactly that shape;
+# ``strict`` keeps the native kernel. Registered under its own layer key so the
+# preference is a decode scope, not a prefill one, and consumed only at the
+# layer's native/exact attention call site -- the tiled and aotriton prefills and
+# the profile-selected prefill variants are untouched.
+#
+# The layer resolves this scope through the kernel registry, so the names and the
+# structural quant key are the kernel module's own: one source of truth for what
+# is registered and what is resolved.
+DECODE_ATTENTION_LAYER = _DECODE_ATTENTION_LAYER
+DECODE_ATTENTION_SCOPE = "global_head_dim_512"
+DECODE_ATTENTION_PLAIN = _DECODE_ATTENTION_PLAIN
+DECODE_ATTENTION_STAGED = _DECODE_ATTENTION_STAGED
+DECODE_ATTENTION_FLASH = _DECODE_ATTENTION_FLASH
+DECODE_ATTENTION_FLASH_LONG = _DECODE_ATTENTION_FLASH_LONG
+DECODE_ATTENTION_QUANT = _DECODE_ATTENTION_QUANT
+
+# The multi-row sliding prefill block: the native/exact route's own geometry once
+# the tiled and AOTriton prefills refuse it (a sliding layer whose presented key
+# count exceeds its window). ``production`` prefers the staged multi-row
+# candidate, which keeps the same arithmetic in a bounded shared footprint;
+# ``strict`` keeps the native kernel. Registered under its own layer key and
+# consumed only at the layer's native/exact call site, so the tiled, AOTriton,
+# and profile-selected prefill variants are untouched.
+EXACT_PREFILL_ATTENTION_LAYER = _EXACT_PREFILL_ATTENTION_LAYER
+EXACT_PREFILL_ATTENTION_SCOPE = "sliding_multi_row"
+EXACT_PREFILL_ATTENTION_PLAIN = _EXACT_PREFILL_ATTENTION_PLAIN
+EXACT_PREFILL_ATTENTION_STAGED = _EXACT_PREFILL_ATTENTION_STAGED
+EXACT_PREFILL_ATTENTION_QUANT = _EXACT_PREFILL_ATTENTION_QUANT
+
+# Multi-row prefill attention: ``production`` requests the WMMA flash candidates,
+# one per head geometry, under the EXECUTION-PROFILES section 2.11 envelope. The
+# names, scopes and registration are ``gemma4_gguf_profiles``' own, so the two
+# backends' plans cannot drift apart. The request serves prefill blocks only:
+# this plan declares a decode scope above, and the runner forwards no prefill
+# request on a decode step when one exists.
+PREFILL_ATTENTION_LAYER = _gguf_profiles.PREFILL_ATTENTION_LAYER
+PREFILL_ATTENTION_SCOPE = _gguf_profiles.PREFILL_ATTENTION_SCOPE
+PREFILL_ATTENTION_SCOPE_FULL = _gguf_profiles.PREFILL_ATTENTION_SCOPE_FULL
+PREFILL_ATTENTION_PLAIN = _gguf_profiles.PREFILL_ATTENTION_PLAIN
+PREFILL_ATTENTION_WMMA_FLASH = _gguf_profiles.PREFILL_ATTENTION_WMMA_FLASH
+PREFILL_ATTENTION_WMMA_FLASH_FULL = _gguf_profiles.PREFILL_ATTENTION_WMMA_FLASH_FULL
+PREFILL_ATTENTION_EVIDENCE = (
+    "benchmarks/results/2026-10-09-gemma4-gfx1100-wmma-promotion-packet.json"
+)
+
+_KV_POLICY = "paged_bf16"
+_GRAPH_POLICY = "serial_eager"
+
+# Registry-quant strings the rows resolve under.
+_Q8_0 = "gguf_q8_0"
+_Q5_1 = "gguf_q5_1"
+_Q5_K = "gguf_q5_k"
+# The fused gate_up stacks convert to the T16 tiles layout at load, so every
+# Q4_K gate_up scope (prefill and decode) dispatches under the layout's own
+# registry key -- worklog 20260930T014202-land-the-t16-gate-up-repack-
+# dispatch-wiring-0bf1f8.
+_Q4_K_T16 = "gguf_q4_k_t16_v1"
+
+# Production (measured, no route pin) MoE owners.
+_T16_FUSED_WMMA = "selected_dual_wmma_prefill_fused_bf16_bf16_out"
+_MMQ32 = "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
+_GROUPED_DUAL = "selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out"
+# The unpinned default's Q5_1 expert down owner: the grouped WMMA kernel, which
+# the route runs through its bit-identical Q5_1T16 tile form when the tensor
+# carries the tiles. ``HIPENGINE_GEMMA4_MOE_DOWN_WMMA=0`` restores the exact
+# staged grouped owner the default ran before.
+_GROUPED_DOWN_PRODUCTION = "selected_grouped_wmma_prefill_compact_bf16_bf16_out"
+# The T16-converted gate_up scope's exact owner (registered at moe_linear;
+# the dense-key ``selected_gemv`` chain lands on the same function).
+_T16_DECODE = "selected_t16_gemv_decode_bf16_bf16_out"
+
+# Strict (measured under HIPENGINE_GEMMA4_MOE_PREFILL=grouped) MoE owners.
+_GROUPED_DOWN_Q5_1 = "selected_grouped_prefill_pair2_fold128_bf16_bf16_out"
+
+# Dense / embedding owners, arm-invariant (identical in both probe arms).
+_LOOKUP = "lookup_bf16_out"
+_WMMA_PREFILL = "wmma_prefill_bf16_bf16_out"
+_PACK8_DECODE = "pack8_gemv_bf16_bf16_out"
+_PACK8_LM_HEAD_F32 = "pack8_gemv_bf16_f32_out"
+_SELECTED_GEMV = "selected_gemv_bf16_bf16_out"
+# Production expert decode owners: the selected GEMVs with eight-input runs per
+# thread (``gemma4_experts._SELECTED_CHUNK8_VARIANT`` and its pack8 sibling),
+# chosen on the unpinned MoE route this plan binds.
+_SELECTED_CHUNK8 = "selected_chunk8_gemv_bf16_bf16_out"
+_SELECTED_PACK8_CHUNK8 = "selected_pack8_chunk8_gemv_bf16_bf16_out"
+
+
+def _selection(
+    *,
+    layer: str,
+    scope: str,
+    selected_variant: str,
+    strict_fallback_variant: str | None = None,
+    registry_quant: str,
+    evidence_artifact: str | None = None,
+) -> VariantSelection:
+    return VariantSelection(
+        layer=layer,
+        scope=scope,
+        selected_variant=selected_variant,
+        strict_fallback_variant=(
+            selected_variant if strict_fallback_variant is None
+            else strict_fallback_variant
+        ),
+        evidence_artifact=evidence_artifact,
+        registry_quant=registry_quant,
+    )
+
+
+def _production_selections() -> tuple[VariantSelection, ...]:
+    """The measured default path: what an omitted profile executes today.
+
+    ``strict_fallback_variant`` is each scope's rollback key, so it names the
+    ``strict`` plan's variant for that scope (the rule
+    ``resolve_runtime_profile`` enforces, and the same shape qwen's plans use)
+    -- for the MoE scopes that is the grouped exact owner, for the
+    arm-invariant dense scopes today's own variant.
+    """
+
+    return (
+        _selection(
+            layer="embedding", scope="lookup_q8_0", selected_variant=_LOOKUP,
+            registry_quant=_Q8_0,
+        ),
+        _selection(
+            layer="linear", scope="dense_prefill_q8_0",
+            selected_variant=_WMMA_PREFILL, registry_quant=_Q8_0,
+        ),
+        _selection(
+            layer="linear", scope="dense_decode_q8_0",
+            selected_variant=_PACK8_DECODE, registry_quant=_Q8_0,
+        ),
+        _selection(
+            layer="linear", scope="lm_head_f32_q8_0",
+            selected_variant=_PACK8_LM_HEAD_F32, registry_quant=_Q8_0,
+        ),
+        # MoE work that resolves through the dense ``linear`` layer key: 29
+        # decode calls/step matches the MoE layer count, and the selected owner
+        # was site-attributed to gemma4_experts.py:1401. The T16 conversion of
+        # the gate_up stacks changes the registry key, not the owner. Both
+        # projections run the eight-input-run production owners; gate:
+        # ``benchmarks/results/2026-10-15-gemma4-gfx1100-expert-chunk8.json``.
+        _selection(
+            layer="linear", scope="moe_decode_q4_k",
+            selected_variant=_SELECTED_CHUNK8, strict_fallback_variant=_SELECTED_GEMV,
+            registry_quant=_Q4_K_T16,
+        ),
+        _selection(
+            layer="linear", scope="moe_decode_q5_1",
+            selected_variant=_SELECTED_PACK8_CHUNK8, strict_fallback_variant=_SELECTED_GEMV,
+            registry_quant=_Q5_1,
+        ),
+        _selection(
+            layer="linear", scope="moe_decode_q5_k",
+            selected_variant=_SELECTED_GEMV, registry_quant=_Q5_K,
+        ),
+        _selection(
+            layer="linear", scope="moe_selected_q8_0",
+            selected_variant=_SELECTED_GEMV, registry_quant=_Q8_0,
+        ),
+        _selection(
+            layer=DECODE_ATTENTION_LAYER, scope=DECODE_ATTENTION_SCOPE,
+            # ``gemma4_flash``: the key-sliced route is the production decode for
+            # the one-token global step. It reassociates across key slices, so it
+            # is a production variant rather than the exact chain; the staged
+            # singleton it replaced stays registered as the rollback lever, and
+            # the strict plain kernel remains the fallback.
+            # Gate: over the 527 teacher-forced rows at keys 15,857-16,383 it
+            # reads mean KL 2.90e-6 against a 1e-3 limit, p95 1.50e-6, p99
+            # 2.29e-5, max 5.38e-4 against 5e-2, and zero top-1 flips (100%),
+            # with all 15,790 decode launches on the flash route.
+            # ``benchmarks/results/2026-10-09-gemma4-flash-global-decode-gate.json``
+            # The short-context end of the same scope is gated separately: over
+            # 4,095 rows at keys 4,097-8,191 it reads mean KL 6.87e-6, max
+            # 5.59e-3, zero flips, with 122,695 of 122,695 decode launches on
+            # flash at both head dimensions.
+            # ``benchmarks/results/2026-10-09-gemma4-sliding-band-4096-gate.json``
+            # ``gemma4_flash_long`` is the same route with more, shorter key
+            # slices past 8192 keys (``flash_long_row_slices``); it equals
+            # ``gemma4_flash`` at and below 8192 keys, so the gates above stand
+            # there, and its own gate covers the long rows:
+            # ``benchmarks/results/2026-10-15-gemma4-gfx1100-flash-long-rows.json``
+            selected_variant=DECODE_ATTENTION_FLASH_LONG,
+            strict_fallback_variant=DECODE_ATTENTION_PLAIN,
+            registry_quant=DECODE_ATTENTION_QUANT,
+        ),
+        _selection(
+            layer=EXACT_PREFILL_ATTENTION_LAYER, scope=EXACT_PREFILL_ATTENTION_SCOPE,
+            selected_variant=EXACT_PREFILL_ATTENTION_STAGED,
+            strict_fallback_variant=EXACT_PREFILL_ATTENTION_PLAIN,
+            registry_quant=EXACT_PREFILL_ATTENTION_QUANT,
+        ),
+        # Section 2.11 packet on W7900, 18 cases and 1,134 rows: median row KL
+        # 2.5e-6 against 1e-3, p90 5.8e-3 against 2e-2, rows above the 5e-2
+        # damage line 0.62% against 3%, top-1 98.94% against 96%.
+        _selection(
+            layer=PREFILL_ATTENTION_LAYER, scope=PREFILL_ATTENTION_SCOPE,
+            selected_variant=PREFILL_ATTENTION_WMMA_FLASH,
+            strict_fallback_variant=PREFILL_ATTENTION_PLAIN,
+            registry_quant=GEMMA4_GGUF_QUANT,
+            evidence_artifact=PREFILL_ATTENTION_EVIDENCE,
+        ),
+        _selection(
+            layer=PREFILL_ATTENTION_LAYER, scope=PREFILL_ATTENTION_SCOPE_FULL,
+            selected_variant=PREFILL_ATTENTION_WMMA_FLASH_FULL,
+            strict_fallback_variant=PREFILL_ATTENTION_PLAIN,
+            registry_quant=GEMMA4_GGUF_QUANT,
+            evidence_artifact=PREFILL_ATTENTION_EVIDENCE,
+        ),
+        _selection(
+            layer="moe_linear", scope="gate_up_q4_k",
+            selected_variant=_T16_FUSED_WMMA, strict_fallback_variant=_T16_DECODE,
+            registry_quant=_Q4_K_T16,
+        ),
+        _selection(
+            layer="moe_linear", scope="gate_up_q5_k",
+            selected_variant=_MMQ32, strict_fallback_variant=_GROUPED_DUAL,
+            registry_quant=_Q5_K,
+        ),
+        _selection(
+            layer="moe_linear", scope="down_q5_1",
+            selected_variant=_GROUPED_DOWN_PRODUCTION,
+            strict_fallback_variant=_GROUPED_DOWN_Q5_1,
+            registry_quant=_Q5_1,
+        ),
+        # ``moe_linear``/``down_q8_0`` deliberately absent (B3): no grouped q8_0
+        # owner registers, so strict resolves that projection under the
+        # ``linear`` layer key instead -- see the module docstring.
+    )
+
+
+def _strict_selections() -> tuple[VariantSelection, ...]:
+    """The exact arm for the MoE scopes; blockers recorded where unreachable.
+
+    Every scope the production plan declares must appear here, so the
+    arm-invariant dense and embedding scopes carry the variant that actually
+    runs under strict today with the blocker noted in the module docstring --
+    naming an exact variant the runtime cannot select would make the manifest
+    describe execution that does not happen.
+    """
+
+    return (
+        _selection(
+            layer="embedding", scope="lookup_q8_0", selected_variant=_LOOKUP,
+            registry_quant=_Q8_0,
+        ),
+        # B1: exact owner prefill_bf16_bf16_out is unreachable (hard-coded
+        # use_wmma_prefill=True outranks session and env).
+        _selection(
+            layer="linear", scope="dense_prefill_q8_0",
+            selected_variant=_WMMA_PREFILL, registry_quant=_Q8_0,
+        ),
+        # B2: no route pin exists for the decode GEMVs.
+        _selection(
+            layer="linear", scope="dense_decode_q8_0",
+            selected_variant=_PACK8_DECODE, registry_quant=_Q8_0,
+        ),
+        # B4: counts data-dependent; no arm difference measurable.
+        _selection(
+            layer="linear", scope="lm_head_f32_q8_0",
+            selected_variant=_PACK8_LM_HEAD_F32, registry_quant=_Q8_0,
+        ),
+        _selection(
+            layer="linear", scope="moe_decode_q4_k",
+            selected_variant=_SELECTED_GEMV, registry_quant=_Q4_K_T16,
+        ),
+        _selection(
+            layer="linear", scope="moe_decode_q5_1",
+            selected_variant=_SELECTED_GEMV, registry_quant=_Q5_1,
+        ),
+        _selection(
+            layer="linear", scope="moe_decode_q5_k",
+            selected_variant=_SELECTED_GEMV, registry_quant=_Q5_K,
+        ),
+        _selection(
+            layer="linear", scope="moe_selected_q8_0",
+            selected_variant=_SELECTED_GEMV, registry_quant=_Q8_0,
+        ),
+        _selection(
+            layer=DECODE_ATTENTION_LAYER, scope=DECODE_ATTENTION_SCOPE,
+            selected_variant=DECODE_ATTENTION_PLAIN,
+            registry_quant=DECODE_ATTENTION_QUANT,
+        ),
+        _selection(
+            layer=EXACT_PREFILL_ATTENTION_LAYER, scope=EXACT_PREFILL_ATTENTION_SCOPE,
+            selected_variant=EXACT_PREFILL_ATTENTION_PLAIN,
+            registry_quant=EXACT_PREFILL_ATTENTION_QUANT,
+        ),
+        # Declared so each production prefill-attention scope has its rollback
+        # key. The binder forwards no request for an all-plain set, so strict
+        # prefill is still served by the layer's own route chain (blocker B5 in
+        # the module docstring).
+        _selection(
+            layer=PREFILL_ATTENTION_LAYER, scope=PREFILL_ATTENTION_SCOPE,
+            selected_variant=PREFILL_ATTENTION_PLAIN,
+            registry_quant=GEMMA4_GGUF_QUANT,
+        ),
+        _selection(
+            layer=PREFILL_ATTENTION_LAYER, scope=PREFILL_ATTENTION_SCOPE_FULL,
+            selected_variant=PREFILL_ATTENTION_PLAIN,
+            registry_quant=GEMMA4_GGUF_QUANT,
+        ),
+        # The T16-converted gate_up scope: grouped has no T16 owner, so the
+        # strict arm resolves this scope through the exact selected owner
+        # (also production's declared fallback; the raw grouped arm still
+        # serves the unconverted Q5_K stack at layer 29).
+        _selection(
+            layer="moe_linear", scope="gate_up_q4_k",
+            selected_variant=_T16_DECODE, registry_quant=_Q4_K_T16,
+        ),
+        _selection(
+            layer="moe_linear", scope="gate_up_q5_k",
+            selected_variant=_GROUPED_DUAL, registry_quant=_Q5_K,
+        ),
+        _selection(
+            layer="moe_linear", scope="down_q5_1",
+            selected_variant=_GROUPED_DOWN_Q5_1, registry_quant=_Q5_1,
+        ),
+    )
+
+
+def _binder(route: str):
+    def bind(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
+        # The route pin is read per prefill call, so a construction-time write
+        # holds for the whole run. Pinning (rather than only filling a default)
+        # keeps the manifest true: the profile declares which route executes
+        # even if the process environment already carried a diagnostic pin.
+        os.environ[MOE_PREFILL_ENV] = route
+        # The decode-attention preference is read from the resolved manifest, so
+        # the generator carries exactly what the plan declares: production
+        # selects the staged candidate, strict keeps the native kernel.
+        variants = tuple(
+            sorted(
+                {
+                    str(selection["selected_variant"])
+                    for selection in resolved.manifest["selections"]
+                    if selection["layer"] == DECODE_ATTENTION_LAYER
+                }
+            )
+        )
+        if variants:
+            try:
+                generator.decode_attention_variants = variants
+            except AttributeError:
+                # A construction stub that only carries environment bindings.
+                pass
+        # The exact-prefill preference rides the same manifest contract: the
+        # production plan selects the staged multi-row candidate, strict keeps
+        # the registered native kernel.
+        exact_prefill_variants = tuple(
+            sorted(
+                {
+                    str(selection["selected_variant"])
+                    for selection in resolved.manifest["selections"]
+                    if selection["layer"] == EXACT_PREFILL_ATTENTION_LAYER
+                }
+            )
+        )
+        if exact_prefill_variants:
+            try:
+                generator.exact_prefill_attention_variants = exact_prefill_variants
+            except AttributeError:
+                # A construction stub that only carries environment bindings.
+                pass
+        # The multi-row prefill request: the plan's non-plain selections in
+        # scope order (sliding, then full). An all-plain plan forwards nothing,
+        # which leaves prefill on the layer's own route chain.
+        prefill_variants = tuple(
+            str(selection["selected_variant"])
+            for scope in (PREFILL_ATTENTION_SCOPE, PREFILL_ATTENTION_SCOPE_FULL)
+            for selection in resolved.manifest["selections"]
+            if selection["layer"] == PREFILL_ATTENTION_LAYER
+            and selection["scope"] == scope
+            and selection["selected_variant"] != PREFILL_ATTENTION_PLAIN
+        )
+        if prefill_variants:
+            try:
+                generator.prefill_attention_variants = prefill_variants
+            except AttributeError:
+                # A construction stub that only carries environment bindings.
+                pass
+
+    return bind
+
+
+def _register_decode_attention_variants() -> None:
+    """Register plain and staged decode attention under the decode layer key.
+
+    ``resolve_runtime_profile`` refuses a plan that names a variant the registry
+    does not hold, and the layer resolves the same key at its native/exact call
+    site, so this is the single registration both read. The functions are the
+    same launchers the prefill-attention scope registers; the decode scope's own
+    structural quant key (``gemma4_decode_attention``) is what distinguishes it,
+    not the artifact's weight quant.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        DECODE_ATTENTION_FLASH,
+        DECODE_ATTENTION_FLASH_LONG,
+        gemma4_attention_decode_flash_bf16,
+        gemma4_attention_decode_flash_long_bf16,
+        gemma4_attention_prefill_bf16,
+    )
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_staged import (
+        gemma4_attention_staged_bf16,
+    )
+    from hipengine.kernels.registry import KernelKey, is_registered, register
+
+    for variant, fn in (
+        (DECODE_ATTENTION_PLAIN, gemma4_attention_prefill_bf16),
+        (DECODE_ATTENTION_STAGED, gemma4_attention_staged_bf16),
+        (DECODE_ATTENTION_FLASH, gemma4_attention_decode_flash_bf16),
+        (DECODE_ATTENTION_FLASH_LONG, gemma4_attention_decode_flash_long_bf16),
+    ):
+        key = KernelKey(
+            GEMMA4_GGUF_BACKEND, DECODE_ATTENTION_LAYER, DECODE_ATTENTION_QUANT, variant
+        )
+        if not is_registered(key):
+            register(key, fn)
+
+
+def _register_exact_prefill_attention_variants() -> None:
+    """Register plain and staged attention under the exact-prefill layer key.
+
+    The same two launchers as the decode scope, under a distinct structural
+    layer key so a production plan can prefer the staged multi-row sliding
+    candidate at the layer's native/exact prefill call site without touching the
+    decode scope, the tiled route, or the AOTriton route. The layer resolves
+    this key for both choices -- the staged candidate and the registered strict
+    fallback -- so the registration is executable rather than decorative.
+    """
+
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+        gemma4_attention_prefill_bf16,
+    )
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_staged import (
+        gemma4_attention_staged_bf16,
+    )
+    from hipengine.kernels.registry import KernelKey, is_registered, register
+
+    for variant, fn in (
+        (EXACT_PREFILL_ATTENTION_PLAIN, gemma4_attention_prefill_bf16),
+        (EXACT_PREFILL_ATTENTION_STAGED, gemma4_attention_staged_bf16),
+    ):
+        key = KernelKey(
+            GEMMA4_GGUF_BACKEND,
+            EXACT_PREFILL_ATTENTION_LAYER,
+            EXACT_PREFILL_ATTENTION_QUANT,
+            variant,
+        )
+        if not is_registered(key):
+            register(key, fn)
+
+
+def _registered_key() -> tuple[str, str, str]:
+    return (GEMMA4_GGUF_MODEL, GEMMA4_GGUF_BACKEND, GEMMA4_GGUF_QUANT)
+
+
+def _already_registered() -> bool:
+    from hipengine.execution_profiles import RuntimeProfileKey
+
+    model, backend, quant = _registered_key()
+    return any(
+        key.model == model and key.backend == backend and key.quant == quant
+        for key in registered_runtime_profile_keys()
+    )
+
+
+def register_gemma4_gguf_profiles() -> bool:
+    """Register the strict and production plans once; idempotent.
+
+    ``batch_invariant`` is left unregistered on purpose (fail-closed fallback
+    to strict). Registration loads no kernels and touches no GPU: the plans are
+    cold-path provenance plus a construction-time route policy.
+    """
+
+    _register_decode_attention_variants()
+    _register_exact_prefill_attention_variants()
+    _gguf_profiles.register_gemma4_gguf_profiles()
+    if _already_registered():
+        return False
+    register_runtime_profile_plan(
+        model=GEMMA4_GGUF_MODEL,
+        backend=GEMMA4_GGUF_BACKEND,
+        quant=GEMMA4_GGUF_QUANT,
+        profile=ExecutionProfile.STRICT,
+        plan=RuntimeProfilePlan(
+            selections=_strict_selections(),
+            kv_policy=_KV_POLICY,
+            graph_policy=_GRAPH_POLICY,
+            binder=_binder(_STRICT_ROUTE),
+        ),
+    )
+    register_runtime_profile_plan(
+        model=GEMMA4_GGUF_MODEL,
+        backend=GEMMA4_GGUF_BACKEND,
+        quant=GEMMA4_GGUF_QUANT,
+        profile=ExecutionProfile.PRODUCTION,
+        plan=RuntimeProfilePlan(
+            selections=_production_selections(),
+            kv_policy=_KV_POLICY,
+            graph_policy=_GRAPH_POLICY,
+            binder=_binder(_PRODUCTION_ROUTE),
+        ),
+    )
+    return True
+
+
+def gemma4_gguf_profiles_registered() -> bool:
+    """Return whether the strict and production plans are both registered."""
+
+    from hipengine.execution_profiles import RuntimeProfileKey
+
+    model, backend, quant = _registered_key()
+    wanted = {
+        RuntimeProfileKey(
+            model=model,
+            backend=backend,
+            quant=quant,
+            profile=profile,
+        )
+        for profile in (ExecutionProfile.STRICT, ExecutionProfile.PRODUCTION)
+    }
+    return wanted <= set(registered_runtime_profile_keys())
+
+
+# Register the decode- and exact-prefill attention variants when this module is
+# imported, the same way ``gemma4_gguf_profiles`` registers its prefill variants.
+# The profile plan names them, and ``resolve_runtime_profile`` refuses a plan
+# whose variants are not registered; registering at import also keeps them in the
+# collection-time kernel baseline so the profile-dependency guard is
+# order-independent. It registers Python launch wrappers only: no build, no
+# device.
+_register_decode_attention_variants()
+_register_exact_prefill_attention_variants()
+_gguf_profiles.register_gemma4_gguf_profiles()
+
+
+__all__ = [
+    "DECODE_ATTENTION_LAYER",
+    "DECODE_ATTENTION_PLAIN",
+    "DECODE_ATTENTION_QUANT",
+    "DECODE_ATTENTION_SCOPE",
+    "DECODE_ATTENTION_STAGED",
+    "EXACT_PREFILL_ATTENTION_LAYER",
+    "EXACT_PREFILL_ATTENTION_PLAIN",
+    "EXACT_PREFILL_ATTENTION_QUANT",
+    "EXACT_PREFILL_ATTENTION_SCOPE",
+    "EXACT_PREFILL_ATTENTION_STAGED",
+    "GEMMA4_GGUF_BACKEND",
+    "GEMMA4_GGUF_MODEL",
+    "GEMMA4_GGUF_QUANT",
+    "MOE_PREFILL_ENV",
+    "gemma4_gguf_profiles_registered",
+    "register_gemma4_gguf_profiles",
+]

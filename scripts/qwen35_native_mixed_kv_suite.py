@@ -252,7 +252,7 @@ def _gguf_layout_audit(
 def _diagnostic_capability_mapping() -> dict[str, Any]:
     """Build an explicit diagnostic no-mirror INT8 capability mapping.
 
-    Mirrors exactly what `_qualified_no_mirror_int8_capability` accepts so the
+    Mirrors exactly what `_admitted_no_mirror_int8_capability` accepts so the
     candidate session takes the real compact route for artifacts that have no
     retained plugin evidence yet. The payload records that this injection was
     used; such runs are diagnostic evidence, not promotions.

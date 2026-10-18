@@ -1,0 +1,95 @@
+{
+  "kind": "gemma4_campaign_candidate",
+  "verdict": "rejected",
+  "recorded": "2026-09-26, gemma4-moe-perf/g0 iteration 36",
+  "candidate": "raise the two-phase decode split's slice cap from 4 to 16, for both head geometries, and retire the 512-keys-per-slice doubling rule (hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py)",
+  "reason": "the change was faster and passed the production gate against its own incumbent, but it made a binding correctness metric worse: the number of teacher-forced rows over the production kl_max bar rose from 1 to 2 and the worst value rose from 0.0556 to 0.1508. The bar it breaches was already breached by the incumbent, so this change is not the cause of that failure - but it amplifies it, and a change that worsens a binding correctness metric should not be promoted on the strength of a speed win. Reverted; the slice table below is kept because the +5.3% is recoverable once the underlying tail behaviour is fixed.",
+  "mechanism": {
+    "structure": "unchanged from the accepted two-phase split: phase 1 writes pass 2's weights and denominator, phase 2 accumulates a slice's weighted-V sum, a combine sums the slices in ascending order and divides by phase 1's denominator. Only the number of slices changes, so the only arithmetic change is the association order of the same f32 sum over more partials.",
+    "per_launch_ab": {
+      "method": "paired interleaved arms, one pass per arm per run, two runs per arm, both GPUs idle, monkeypatching decode_slices; us per launch on GPU1",
+      "table_4_8_16_32_slices": {
+        "sliding_1024": "192.0/168.0/159.3/165.6",
+        "sliding_2048": "322.5/288.5/264.3/265.7",
+        "sliding_8192": "865.9/708.6/617.4/632.0",
+        "full_1024": "227.9/189.8/197.6/197.8",
+        "full_2048": "357.4/297.9/292.4/290.6",
+        "full_8192": "1043.4/667.5/658.7/609.9"
+      },
+      "reading": "16 is optimal or within 4% at every point but full/8192, where 32 is 8% better. The 4-slice cap the policy carried was an assertion, not a measurement, and it was wrong by 4x; the 512-keys-per-slice doubling rule was wrong in the same direction, returning 2 slices at exactly 1024 keys where 64 keys per slice measures fastest."
+    }
+  },
+  "performance": {
+    "metric": "decode_tps",
+    "command": "scripts/gemma4_campaign_bench.py --prompt P --output 128 --samples 3",
+    "label": "split-16-slices",
+    "campaign_rows": {
+      "primary": {
+        "row": "1024p",
+        "incumbent": 45.8427,
+        "candidate": 48.263,
+        "delta": "+5.3%",
+        "samples": "48.16 / 48.26 / 48.36 tok/s"
+      },
+      "other_rows": [
+        {
+          "row": "4096p",
+          "decode_incumbent": 42.7662,
+          "decode_candidate": 45.9349,
+          "delta": "+7.4%"
+        },
+        {
+          "row": "512p",
+          "decode_incumbent": 47.9667,
+          "decode_candidate": 48.0076,
+          "delta": "+0.1% (flat)"
+        },
+        {
+          "row": "128p",
+          "decode_incumbent": 51.7789,
+          "decode_candidate": 52.0185,
+          "delta": "+0.5% (flat)"
+        }
+      ],
+      "regression_check": "no row regressed; the 128p and 512p rows are below the split's entry threshold and are untouched by construction"
+    },
+    "note": "these rows are real measurements of a real speedup and are not in question. The rejection is on the correctness gate, not on the performance claim."
+  },
+  "correctness": {
+    "gate": "scripts/gemma4_teacher_forced_gate.py, 1023 paired teacher-forced rows, prompt 2048 with a 1024-id prefill so every scored row runs at key counts 1025-2047 and the decode split is engaged on all of them. Three arms against the same frozen strict baseline:",
+    "gate_arms": {
+      "candidate_16_vs_incumbent_4": "PASSED - kl_max 0.005212 (bar 0.05), kl_mean 7.216e-06 (0.001), kl_p95 4.023e-06 (0.005), kl_p99 3.401e-05 (0.02), top-1 rate 1.0 with zero flips (0.99)",
+      "incumbent_4_vs_strict": "FAILED on kl_max - 0.055589 against the 0.05 bar; kl_mean 9.189e-05, kl_p95 4.003e-06, kl_p99 4.149e-05, top-1 rate 1.0 with zero flips",
+      "candidate_16_vs_strict": "FAILED on kl_max - 0.150817 against the 0.05 bar; kl_mean 2.075e-04, kl_p95 3.548e-06, kl_p99 3.785e-05, top-1 rate 1.0 with zero flips"
+    },
+    "outlier_analysis": {
+      "rows_over_bar": "4 slices: 1 of 1023 (row 864). 16 slices: 2 of 1023 (rows 602, 864).",
+      "character": "on every outlier row the teacher is near-deterministic and top-1 never moves. Row 864: top-1 6605 -> 6605, teacher p_top1 0.995465, split p_top1 0.999999, max|delta logit| 18.202. Row 602: top-1 6605 -> 6605, teacher p_top1 0.988141, 4-slice p_top1 0.999385 and 16-slice p_top1 0.999995, max|delta logit| 4.209 at 4 slices and 20.038 at 16.",
+      "reading": "the divergence is in the tail, not the decision. KL from a 0.995-peaked distribution to a slightly sharper one is dominated by the residual 0.005 spread over the remaining 262143 tokens, so a tail that is sharper by a few orders of magnitude produces a large KL while both arms still agree on the token. The max|delta logit| figures say the split's attention output differs by far more than f32 association error on these rows, which is the thing to understand next: on a row whose softmax is near a tie, reordering the weighted-V sum changes which keys dominate."
+    },
+    "gate_coverage_defect_this_iteration_found": {
+      "finding": "the teacher-forced gate never exercised the decode split before this iteration, and its own history is wrong because of it.",
+      "mechanism": "capture_chain fed the prompt one token at a time from an empty cache, so key counts ran 1, 2, 3, ... 1023 - one token below the split's 1024-key entry threshold - and decode_slices returned 1 for every row. Instrumented: 30 calls per forward (one per layer), keys [1] at position 0 through [5] at position 4, slices=1 at every one.",
+      "consequence": "the 2026-09-25 split gate result (kl_max 0.006746) measured the sliding read range, not the split. The split was promoted to the default path on a gate that could not see it.",
+      "fix": "scripts/gemma4_teacher_forced_gate.py now takes --prefill (ids pushed through the cache in one forward before scoring) and --slices (pin the split for one arm, 1 selects the strict path). A baseline records both, and gate refuses to compare arms whose scored key range differs. Reversible within one process, and unit-tested."
+    },
+    "parity": "tests/test_gpu_gemma4_attention_decode_parity.py passes at 16 slices (f32 within 1e-4, bf16 within one bf16 ulp on both real geometries at 1024, 2055 and 8192 keys), and 128 greedy positions produce identical token ids at 4 and 16 slices. Kernel-level parity does not bound this failure: the outlier is a tail effect at a near-tie, which is exactly the class of divergence a parity test on typical shapes will not see.",
+    "guard": "tests/test_unit_gemma4_*.py tests/test_gpu_gemma4_*.py: 410 passed, exit 0"
+  },
+  "next": {
+    "blocker_escalated": "the two-phase decode split - at both 4 and 16 slices, so as shipped since 2026-09-26 - fails the production kl_max bar against the strict path on 1-2 rows out of 1023, with top-1 unchanged. This is a campaign-level question, not a slice-count question: either the split's tail behaviour on near-tie rows is fixed, or the applicability of the max-KL bar to near-deterministic rows is re-derived with the lead, or the strict path returns as the default. The slice table above is worth +5.3% at the metric row and +7.4% at 4096p whenever that is resolved.",
+    "reverted": "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py and its two test files were restored to the pre-change policy (4 slices for a 256-wide head, the doubling rule capped at 4 for a 512-wide head)."
+  },
+  "scope": {
+    "files_kept": [
+      "scripts/gemma4_teacher_forced_gate.py",
+      "tests/test_unit_gemma4_teacher_forced_gate.py"
+    ],
+    "files_reverted": [
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py",
+      "tests/test_unit_gemma4_attention_routing.py",
+      "tests/test_gpu_gemma4_attention_decode_parity.py"
+    ],
+    "flags_added": "none. --prefill and --slices are harness-only evaluator controls; nothing in the engine reads them."
+  }
+}

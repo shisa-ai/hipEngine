@@ -87,6 +87,18 @@ def _upload(array: np.ndarray, runtime, allocations):
     return device
 
 
+def _zero_count(d_count, runtime) -> None:
+    """Upload an int32 zero to ``d_count`` from a bound host source.
+
+    ``copy_host_to_device`` is the synchronous ``hipMemcpy``, so a temporary
+    would in fact survive the call. The repo hygiene rule forbids an inline
+    temporary as an H2D source everywhere, because the same shape is a real
+    use-after-free on the enqueued path, so the array is bound here.
+    """
+    host = np.zeros(1, dtype=np.int32)
+    copy_host_to_device(d_count, host_array_ptr(host), runtime=runtime)
+
+
 def _alloc(count: int, dtype, runtime, allocations):
     device = malloc(int(count) * np.dtype(dtype).itemsize, runtime=runtime)
     allocations.append(device)
@@ -124,9 +136,7 @@ def _run_tile(
     capacity = fixture.compact_rows * total_out
     d_count = _alloc(1, np.int32, runtime, allocations)
     d_indices = _alloc(capacity, np.int32, runtime, allocations)
-    copy_host_to_device(
-        d_count, host_array_ptr(np.zeros(1, dtype=np.int32)), runtime=runtime
-    )
+    _zero_count(d_count, runtime)
 
     launcher = (
         q4.gguf_q4_k_selected_dual_wmma_iu8_risk_j32_prefill_bf16_bf16_out
@@ -264,10 +274,7 @@ def test_j32_tile_survives_the_exact_repair_chain() -> None:
             assert count <= capacity
             d_count = _alloc(1, np.int32, runtime, allocations)
             d_indices = _alloc(capacity, np.int32, runtime, allocations)
-            copy_host_to_device(
-                d_count, host_array_ptr(np.zeros(1, dtype=np.int32)),
-                runtime=runtime,
-            )
+            _zero_count(d_count, runtime)
             # Re-run the risk prefill to fill the index buffer, then repair.
             d_tile = _upload(tile_expert, runtime, allocations)
             d_wmma = _upload(expert_start_wmma, runtime, allocations)
@@ -336,9 +343,7 @@ def _run_down_tile(
     d_out = _alloc(total, np.uint16, runtime, allocations)
     d_count = _alloc(1, np.int32, runtime, allocations)
     d_indices = _alloc(total, np.int32, runtime, allocations)
-    copy_host_to_device(
-        d_count, host_array_ptr(np.zeros(1, dtype=np.int32)), runtime=runtime
-    )
+    _zero_count(d_count, runtime)
     launcher = (
         q51.qwen4_exp_q5_1_selected_wmma_iu8_risk_j32_prefill_bf16_bf16_out
         if tile_rows == 32
@@ -457,16 +462,12 @@ def test_risk_counter_accumulates_so_the_queue_must_start_zeroed() -> None:
             )
             return int(_download(d_count, (1,), np.int32, runtime)[0])
 
-        copy_host_to_device(
-            d_count, host_array_ptr(np.zeros(1, dtype=np.int32)), runtime=runtime
-        )
+        _zero_count(d_count, runtime)
         first = launch()
         assert 0 < first <= capacity
         # No reset: the second launch appends behind the first queue.
         assert launch() == 2 * first
-        copy_host_to_device(
-            d_count, host_array_ptr(np.zeros(1, dtype=np.int32)), runtime=runtime
-        )
+        _zero_count(d_count, runtime)
         assert launch() == first
     finally:
         for device in allocations:

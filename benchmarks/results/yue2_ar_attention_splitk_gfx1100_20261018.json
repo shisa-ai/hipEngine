@@ -1,0 +1,164 @@
+{
+  "schema": "hipengine.benchmark/1",
+  "kind": "yue2_ar_attention_splitk",
+  "created": "2026-10-18",
+  "revision": "e4f624c17 (paired CFG branch forward) plus the split-K decode attention",
+  "worktree": "vv_attention_spans production variant, split over the KV range",
+  "device": {
+    "backend": "hip_gfx1100",
+    "arch": "gfx1100",
+    "gpu": "AMD Radeon Pro W7900",
+    "host": "epyc",
+    "rocm": "7.2"
+  },
+  "model": {
+    "checkpoint": "m-a-p/YuE2-3B@29b3558",
+    "vae": "m-a-p/YuE2-Vae@9a94e1d",
+    "quant": "bf16",
+    "branches": 2,
+    "q_heads": 16,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "ar_context": 16000
+  },
+  "claim": {
+    "what": "The decode attention route is now the split-K production variant: one block per (KV head, KV split) with the query group folded in, a warp covering head_dim so each KV row is one coalesced run, and the split's scores staged in shared memory. Only the softmax reduction order changes, so it is a production variant with the strict span kernel as its registered parent.",
+    "not_claimed": "No reference (torch) arm exists on this host, so the oracle comparison is the committed fixture replay, not a same-host speed ratio. Task quality (blinded listening, lyric adherence) is unrun on this host for either route."
+  },
+  "strict_parent": {
+    "kernel": "vv_attention_spans (vibevoice/encoder.hip)",
+    "grid": "one 256-thread block per query head (16 blocks for 40 CUs on a decode step)",
+    "access": "per-token stride over the KV rows, 2-byte scalar loads",
+    "arithmetic": "whole-context max, then sum, then weighted value pass"
+  },
+  "production_variant": {
+    "kernel": "vv_attention_spans_splitk (vibevoice/attention_spans_splitk.hip)",
+    "grid": "kv_heads * splits blocks (8 * 32 = 256 at product depth), 256 threads each",
+    "splits": "ceil(context / 32), clamped to 64",
+    "access": "one coalesced run per KV row, shared by the query group of that KV head",
+    "arithmetic": "per-split max and sum, combined by a second kernel",
+    "gate": "tests/test_unit_yue2_attention_splitk.py",
+    "gate_result": "11 passed"
+  },
+  "kernel_level_numerics": {
+    "protocol": "teacher-forced: both routes replay the same recorded token trajectory from the same prefill, comparing the combined CFG row (semantic window) and both branches' hidden rows at every step",
+    "command": "uv run python scripts/yue2_ar_attention_splitk.py --depths 0 900 2000 --numerics-steps 16",
+    "rows": [
+      {
+        "depth": 0,
+        "context": 98,
+        "steps": 16,
+        "mean_kl": 0.0005965462105322441,
+        "max_kl": 0.0016791346440970037,
+        "top1_agreement": 0.9375,
+        "max_hidden_abs_delta": 0.25,
+        "max_hidden_rel_delta": 0.022222222222222223
+      },
+      {
+        "depth": 900,
+        "context": 998,
+        "steps": 16,
+        "mean_kl": 0.0005133678924227674,
+        "max_kl": 0.0017518458433583633,
+        "top1_agreement": 1.0,
+        "max_hidden_abs_delta": 0.25,
+        "max_hidden_rel_delta": 0.012658227848101266
+      },
+      {
+        "depth": 2000,
+        "context": 2098,
+        "steps": 16,
+        "mean_kl": 0.0008397117120659393,
+        "max_kl": 0.0021145152729195116,
+        "top1_agreement": 1.0,
+        "max_hidden_abs_delta": 0.25,
+        "max_hidden_rel_delta": 0.02
+      }
+    ],
+    "summary": {
+      "mean_kl_range": [
+        0.0005133678924227674,
+        0.0008397117120659393
+      ],
+      "max_kl": 0.0021145152729195116,
+      "top1_agreement_rows": "47/48",
+      "max_hidden_rel_delta": 0.022222222222222223
+    }
+  },
+  "model_level_numerics": {
+    "protocol": "the committed 18-case / 576-row AR replay against the pinned upstream oracle's recorded logits, run on the promoted route",
+    "command": "uv run python scripts/yue2_ar_replay.py --attention-route splitk",
+    "pooled_mean_kl": 0.0010185679685566224,
+    "top1_agreement": 0.9618055555555556,
+    "top8_recall": 0.9602864583333334,
+    "cases": 18,
+    "rows": 576,
+    "strict_route_reference": {
+      "source": "benchmarks/results/yue2_ar_replay_gfx1100_20261018.json",
+      "pooled_mean_kl": 0.00105,
+      "top1_agreement": 0.9531,
+      "top8_recall": 0.9592
+    },
+    "conclusion": "the reassociation does not move agreement with the reference: 1.02e-3 and 96.18% against the strict route's 1.05e-3 and 95.31% on the same host"
+  },
+  "timing": {
+    "protocol": "paired two-branch forward through the product decode loop, the two routes alternating inside one repetition so device state is shared, median of two repetitions",
+    "command": "uv run python scripts/yue2_ar_attention_splitk.py --depths 0 900 2000 --steps 30 --repeats 2",
+    "rows": [
+      {
+        "depth": 0,
+        "context": 98,
+        "steps": 30,
+        "strict_ms": 12.792508490383625,
+        "splitk_ms": 11.932856123894453,
+        "speedup": 1.0720407886899597,
+        "repeats": 2
+      },
+      {
+        "depth": 900,
+        "context": 998,
+        "steps": 30,
+        "strict_ms": 30.806588226308428,
+        "splitk_ms": 12.535267385343712,
+        "speedup": 2.4575932271159706,
+        "repeats": 2
+      },
+      {
+        "depth": 2000,
+        "context": 2098,
+        "steps": 30,
+        "strict_ms": 53.29662195096414,
+        "splitk_ms": 13.516681672384342,
+        "speedup": 3.943025606636382,
+        "repeats": 2
+      }
+    ]
+  },
+  "product_path": {
+    "protocol": "one live request through hipengine.LLM.generate() with the registered yue2 plugin (cot=off, seed 20260916, 32 ODE steps, tiled decoder), then a repeat in the same process",
+    "strict_route": {
+      "e2e_seconds": 79.598,
+      "rtf": 1.069,
+      "ar_seconds": 58.695,
+      "latent_frames": 1862
+    },
+    "splitk_route": {
+      "e2e_seconds": 24.657,
+      "rtf": 0.579,
+      "ar_seconds": 13.724,
+      "ar_tok_s": 77.68,
+      "nar_seconds": 6.169,
+      "vae_seconds": 4.764,
+      "latent_frames": 1065,
+      "non_silent_fraction": 0.9999,
+      "repeat_bit_identical": true,
+      "torch_imported": false
+    },
+    "consequence": "The route is not bit-identical, so the sampled trajectory can diverge from the strict route's: 1 065 latent frames against 1 862 on this request, each repeat bit-identical within its own route. RTF normalizes by audio duration, so 1.069 -> 0.579 is a like-for-like ratio even though the two runs emitted different lengths."
+  },
+  "determinism": {
+    "repeat_bit_identical": true,
+    "scope": "same request, same seed, same process, same schedule"
+  },
+  "rollback": "Yue2ArRuntime(attention_route=\"strict\"), or the registry's strict variant"
+}

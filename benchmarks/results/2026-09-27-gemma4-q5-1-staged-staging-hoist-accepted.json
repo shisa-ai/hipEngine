@@ -1,0 +1,86 @@
+{
+ "kind": "gemma4_campaign_candidate",
+ "verdict": "accepted",
+ "recorded": "2026-09-27, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B UD-Q4_K_XL, Q5_1 grouped-prefill fetch strategy",
+ "performance_claim": true,
+ "candidate": "hoist the Q5_1 staged grouped-prefill kernel's weight staging out of the row-batch loop. The staged bytes depend only on the expert and the output column, so the per-chunk staging re-fetched the same 8448 bytes for each of the 8 row batches: 88 global round trips per block where 11 suffice, each closed by two block-wide barriers.",
+ "reason": "The counter profile (benchmarks/results/2026-09-27-gemma4-q5-1-staged-kernel-counter-profile.json) measured this route at 18.1% SIMD issue utilization and named 248 __syncthreads() per block, 176 of them (71%) around the per-chunk staging. The staging is loop-invariant across row batches, so the barriers and the redundant fetches share one cause.",
+ "mechanism": {
+  "barriers_before": "248 per block: 8 row-batches x (11 chunks x 2 staging barriers + 1 + 7 tree + 1)",
+  "barriers_after": "73 per block: 1 after the single staging pass + 8 row-batches x (1 + 7 + 1)",
+  "barriers_removed": "176 of 248, 71%",
+  "smem": "the staged weights moved from a static [OUT_TILE][SUBS] array to dynamic shared memory sized by the whole row. Slot count is chunks*SUBS, not in_features/32: a row whose width is not a multiple of K_TILE still gets a full SUBS-wide tail chunk, and the compute reads sub+4 into it exactly as the per-chunk staging did. 4224 bytes at the artifact geometry; static slot array unchanged at 8192.",
+  "layout": "slots are laid out [chunk][out][sub] so the compute side indexes with a compile-time inner stride and hoists chunk*OUT_TILE*SUBS out of its out loop.",
+  "bit_exactness": "the compute loop's FMAs, their order and their inputs are unchanged; only the shared-memory location the weight values are read from changed. The contract is bit-identical outputs, verified rather than argued."
+ },
+ "correctness": {
+  "method": "A/B on the same kernel at seeded inputs, before and after the change: run the modified kernel, git stash the change, run the original on identical inputs, compare bf16 output bits. The reference is the kernel's own prior behaviour, so no cross-kernel equivalence is assumed.",
+  "artifact_geometry": "in 2816, out 1408, 128 experts, 4096 compact rows: 5,767,168 bf16 outputs, 0 differ",
+  "ragged_geometry": "in 320 (not a multiple of K_TILE=256), out 40, 24 experts, ragged occupancy 1/7/33/64/65/3 rows: 27,680 outputs, 0 differ",
+  "why_two_geometries": "the artifact geometry is the acceptance case; the ragged one exercises the partial final row batch, the row < end guard, and the tail chunk where in_features is not a multiple of K_TILE. That tail is where the change was first wrong: indexing slots by [out][global sub] read past total_subs into the next output column. The [chunk][out][sub] layout fixes it.",
+  "route_unit": "pytest tests/test_unit_gemma4_expert_route.py: 48 passed"
+ },
+ "performance": {
+  "platform": "zbook, Strix Halo, Radeon 8060S Graphics, gfx1151, 125 GiB unified memory, HIPENGINE_HIP_ARCH=gfx1151; artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma4-26B-A4B-it-UD-Q4_K_XL.gguf",
+  "protocol": "scripts/gemma4_campaign_bench.py --prompt 512 --output 128 --samples 3 --warmup 1 --context 8192, greedy, fixed length. Both arms ran back to back in one session on one device.",
+  "primary.row": "512 prompt / 128 output",
+  "primary.prefill_s_incumbent": [
+   1.94,
+   1.95,
+   1.95
+  ],
+  "primary.prefill_s_candidate": [
+   1.87,
+   1.88,
+   1.89
+  ],
+  "primary.prefill_tok_s_incumbent": 263.0,
+  "primary.prefill_tok_s_candidate": 272.3,
+  "primary.prefill_delta": "+3.5% (1.0355x)",
+  "primary.public_wall_s": "8.02 -> 7.94",
+  "primary.decode_tok_s": "20.98 -> 20.98 (unchanged; different kernel)",
+  "kernel_level.method": "rocprofv3 --kernel-trace over two 512-token prefills through the public path, kernel time summed by name",
+  "kernel_level.incumbent_ms_per_prefill": 714.91,
+  "kernel_level.candidate_ms_per_prefill": 670.5,
+  "kernel_level.delta": "1.066x",
+  "counters.method": "rocprofv3 --pmc, kernel-filtered, warm JIT cache",
+  "counters.vgpr_incumbent": 112,
+  "counters.vgpr_candidate": 88,
+  "counters.instructions_per_wave_incumbent": "VALU 4221, LDS 814",
+  "counters.instructions_per_wave_candidate": "VALU 4304, LDS 792",
+  "counters.addressing_regression": "the first version of this change indexed shared memory as [out][global sub], which needs a runtime multiply per access where the old [out][sub] had a compile-time stride the compiler hoisted. It measured VALU 4521 per wave, +300 over the incumbent, and the [chunk][out][sub] layout brought it back to 4304. The residual +83 is the staging loop's index arithmetic, which now runs 2.75 times per thread instead of 88.",
+  "scratch_probe.method": "same kernel with the two global packed-byte loads in the inner loop replaced by a constant, so the remainder could be timed; scratch edit, not committed",
+  "scratch_probe.ms_per_prefill": 604.5,
+  "scratch_probe.reading": "the inner loop's global byte loads cost 66 ms, 9.9% of the kernel. Together with the 44 ms the barriers cost (714.91 -> 670.5), that accounts for 110 ms of 715. The remaining 85% is latency: the kernel issues an instruction on about a fifth of cycles and is not short of resident waves (88 VGPRs holds 23 of 32 waves)."
+ },
+ "honest_reading": [
+  "The barrier hypothesis was only partly right. Removing 176 of 248 barriers bought 1.066x on the kernel, not the large multiple the count suggests. Barriers that warps reach together are nearly free, so a barrier count is not a cost model.",
+  "The change is a strict improvement and ships on the default path: fewer barriers, 24 fewer registers, one eighth the weight fetches, bit-identical output. But it is a 3.5% wall gain, not a step change, and the 35.5% line is still the largest single prefill cost.",
+  "The measurement that matters for the next unit is the scratch probe: the inner loop's global byte loads are worth 9.9% and they are re-read 8 times per block for the same 5632 bytes. Staging them in shared memory is the named next candidate. It is a real hypothesis with a measured upper bound, not a guess."
+ ],
+ "limits": [
+  "One box, one artifact, one geometry, one session. The ragged geometry is a correctness check only; no timing was taken on it.",
+  "The scratch probe removes work rather than moving it, so its 604.5 ms is an upper bound on what staging the byte loads could recover, not a prediction.",
+  "No 2048- or 4096-token prompt row, no llama.cpp comparator on this host, and no multi-request or served-path row.",
+  "The 2.5 GHz nominal clock behind the cycle arithmetic is not measured."
+ ],
+ "scope": {
+  "gfx1151": "measured on gfx1151 only. The kernel is registered under the gfx1100 backend package and is reachable on both backends; only the gfx1151 numbers above are measured.",
+  "no_flag": "the change is unconditional on the default path. There is no environment variable, no default-off switch, and no model-name or artifact-path condition anywhere in the change.",
+  "capability_bound": "the route now stages the whole row at once, so it is bounded at 38144 input features by the 65536-byte shared-memory limit. Beyond that the Python host raises a named error stating the byte count, the budget and the bound, and pointing at the per-chunk routes. That is a capability miss, not a silent fallback."
+ },
+ "provenance": {
+  "commit": "base bfc042de6; this unit is the next commit on the gemma4 branch",
+  "worktree": "hipEngine-gemma4, branch gemma4",
+  "gates": {
+   "route_unit": "pytest tests/test_unit_gemma4_expert_route.py -q: 48 passed",
+   "audit": "audit.py check: ok",
+   "ab_harness": "/tmp/q5_staged_ab.py (scratch, not committed)",
+   "bench_artifacts": "/tmp/bench-final-base.json, /tmp/bench-final-cand.json; raw logs not committed"
+  }
+ },
+ "changes": [
+  "hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.hip: staging hoisted out of the row-batch loop into one pass over the whole row; weight arrays moved to dynamic shared memory; slot layout [chunk][out][sub]; launcher sizes the dynamic shared memory and returns a named error above the budget.",
+  "hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.py: the host raises a named capability error above 38144 input features, naming the byte count, the budget and the bound."
+ ]
+}

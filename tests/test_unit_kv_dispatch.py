@@ -106,6 +106,99 @@ def test_paged_kv_write_resolution_uses_int8_policy_metadata() -> None:
     )
 
 
+def _grouped_int8_policy_spans(granularity: str) -> KVLiveSpans:
+    """INT8 per-token/head storage with a grouped scale granularity."""
+
+    groups = 2 if granularity == "block16" else 1  # head_dim=32, group 16 or 32
+    metadata = KVScaleMetadata(
+        k_scale=_tensor(0x3000, (1, 4, 2, groups), "fp16"),
+        v_scale=_tensor(0x4000, (1, 4, 2, groups), "fp16"),
+        scale_dtype="fp16",
+        granularity=granularity,
+    )
+    return KVLiveSpans.paged_uniform(
+        block_table=_tensor(0x1000, (1,), "int32"),
+        live_counts=_tensor(0x2000, (1,), "int64"),
+        max_live_count=2,
+        storage_dtype="int8_per_token_head",
+        scale_metadata=metadata,
+    )
+
+
+def test_paged_kv_write_resolution_selects_bf16_source_writer() -> None:
+    """A BF16-source INT8 append must resolve to a typed sibling, not the FP32 route."""
+
+    from hipengine.kernels.hip_gfx1100.attention import paged_kv_write as paged_kv_write_module
+
+    spans = _int8_policy_spans()
+    register_qwen35_paged_kv_write_kernels()
+
+    decode = plan_paged_kv_write(spans, kind=PagedKVWriteKind.DECODE, source_dtype="bf16")
+    prompt = plan_paged_kv_write(spans, kind="prompt", source_dtype="bf16")
+    batch = plan_paged_kv_write(spans, kind="batch", source_dtype="bf16")
+
+    assert decode.key("hip_gfx1100") == KernelKey(
+        "hip_gfx1100", "paged_kv_write", "int8_per_token_head", "per_token_head_bf16_spans"
+    )
+    assert prompt.key("hip_gfx1100") == KernelKey(
+        "hip_gfx1100",
+        "paged_kv_write",
+        "int8_per_token_head",
+        "per_token_head_bf16_prompt_spans",
+    )
+    assert batch.key("hip_gfx1100") == KernelKey(
+        "hip_gfx1100", "paged_kv_write", "int8_per_token_head", "per_token_head_bf16_batch_spans"
+    )
+
+    bf16_decode = getattr(
+        paged_kv_write_module, "qwen35_write_paged_kv_int8_per_token_head_bf16_spans", None
+    )
+    bf16_prompt = getattr(
+        paged_kv_write_module,
+        "qwen35_write_paged_kv_int8_per_token_head_bf16_prompt_spans",
+        None,
+    )
+    bf16_batch = getattr(
+        paged_kv_write_module,
+        "qwen35_write_paged_kv_int8_per_token_head_bf16_batch_spans",
+        None,
+    )
+    assert callable(bf16_decode)
+    assert callable(bf16_prompt)
+    assert callable(bf16_batch)
+    assert (
+        resolve_paged_kv_write(backend="hip_gfx1100", spans=spans, kind="decode", source_dtype="bf16")
+        is bf16_decode
+    )
+    assert (
+        resolve_paged_kv_write(backend="hip_gfx1100", spans=spans, kind="prompt", source_dtype="bf16")
+        is bf16_prompt
+    )
+    assert (
+        resolve_paged_kv_write(backend="hip_gfx1100", spans=spans, kind="batch", source_dtype="bf16")
+        is bf16_batch
+    )
+    # The FP32 route must stay intact alongside the new BF16-source sibling.
+    assert (
+        resolve_paged_kv_write(backend="hip_gfx1100", spans=spans, kind="decode", source_dtype="fp32")
+        is qwen35_write_paged_kv_int8_per_token_head_spans
+    )
+
+
+def test_paged_kv_write_bf16_source_rejects_grouped_granularity() -> None:
+    """A BF16 source must not fall through a grouped INT8 granularity to the
+    per-token/head writer. Only ``per_token_head`` has a BF16-source route."""
+
+    register_qwen35_paged_kv_write_kernels()
+    for granularity in ("block16", "hadamard_group32"):
+        spans = _grouped_int8_policy_spans(granularity)
+        for kind in ("decode", "prompt", "batch"):
+            with pytest.raises(ValueError, match="no paged KV write route"):
+                plan_paged_kv_write(spans, kind=kind, source_dtype="bf16")
+            # Existing FP32 behavior for the same grouped metadata is unchanged.
+            plan_paged_kv_write(spans, kind=kind, source_dtype="fp32")
+
+
 def test_paged_attn_decode_resolution_uses_storage_aware_keys() -> None:
     int8_spans = _int8_policy_spans()
     bf16_spans = _bf16_policy_spans()

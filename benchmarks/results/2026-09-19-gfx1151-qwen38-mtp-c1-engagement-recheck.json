@@ -1,0 +1,219 @@
+{
+  "schema": "hipengine.benchmark.artifact/1",
+  "date": "2026-09-19",
+  "title": "Qwen3.8-27B Q4_K_M on gfx1151: c=1 MTP engagement rechecked at b25740a50, still 1.68x / 1.52x its in-load AR control at 512 / 1024 prompt tokens",
+  "purpose": "Re-run the external porting record's own c=1 protocol at the current revision, to confirm the 2026-09-18 engagement rows still hold after 50 commits of routing, verifier and admission work, and to record the route each arm actually took.",
+  "status": "measured",
+  "performance_claim": true,
+  "hardware": "zbook, Ryzen AI MAX+ PRO 395 / Radeon 8060S (gfx1151)",
+  "backend": "hip_gfx1151",
+  "execution_profile": "production",
+  "kv_storage": "bf16",
+  "tree": {
+    "commit": "b25740a50119117a7c353ecbdbf8614d32c403a7",
+    "clean": true
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "size_bytes": 17106775008,
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "protocol": {
+    "harness": "~/atlas/scripts/strix/bench_1to1.py (the external porting record's own client: streaming /v1/chat/completions, greedy, thinking pinned off, TTFT to the first streamed token, decode rate over the window between the first and last chunk)",
+    "shapes": [
+      512,
+      1024,
+      4096
+    ],
+    "decode_tokens": 128,
+    "repeats": "one discarded warmup then three measured runs per shape",
+    "prompt_tokens_observed": {
+      "512": 517,
+      "1024": 945,
+      "4096": 3530
+    },
+    "server": "python -m hipengine.server --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --kv-storage bf16 --max-context-tokens 16384 --execution-profile production --speculative-mtp-serving auto --speculative-candidate-budget 3 --host 127.0.0.1 --port 8081",
+    "client": "BENCH_EXTRA_JSON=<arm> python3 ~/atlas/scripts/strix/bench_1to1.py --url http://127.0.0.1:8081 --model Qwen3.8-27B-Q4_K_M.gguf --tag <tag> --shapes 512,1024,4096 --decode 128 --repeats 3 --out <json>",
+    "arms": {
+      "ar_control": "{\"speculative_mtp\": false}",
+      "mtp_explicit": "{\"speculative_mtp\": true}",
+      "auto_default": "{}"
+    },
+    "single_load": "one auto-policy server served all three arms; the 2026-09-18 table used enabled for the explicit row and auto for the default row",
+    "route_probe": "non-streaming /v1/chat/completions with the same prompts, reading hipengine.generation_shape.route and hipengine.speculative_mtp"
+  },
+  "admission": {
+    "serving_route": true,
+    "configured_policy": "auto",
+    "default_enabled": true,
+    "admitted": true,
+    "reason": "qualified_automatic_realized_singleton_c1_b3",
+    "plan_fingerprint": "sha256:4f49f71155326381603f7ef522a0fa97d8886a8514552b5b9d1ddc2fc3af689e",
+    "evidence_key": "qwen38-q4km-gfx1151-strict-bf16-cap4-realized-c1-b3",
+    "candidate_budget": {
+      "requested": 3,
+      "resolved": 3,
+      "source": "explicit"
+    },
+    "automatic_route_promoted": true
+  },
+  "results": {
+    "ar_request_false": {
+      "decode_tokens_per_second": {
+        "512": 11.98,
+        "1024": 11.827,
+        "4096": 11.056
+      },
+      "ttft_ms": {
+        "512": 1432.0,
+        "1024": 2381.8,
+        "4096": 8622.4
+      },
+      "prefill_tokens_per_second": {
+        "512": 361.0,
+        "1024": 396.8,
+        "4096": 409.4
+      },
+      "decode_cv": {
+        "512": 0.00032280674844075677,
+        "1024": 0.0009008872169645468,
+        "4096": 0.0006351009488040548
+      }
+    },
+    "mtp_request_true": {
+      "decode_tokens_per_second": {
+        "512": 20.082,
+        "1024": 17.983,
+        "4096": 11.035
+      },
+      "ttft_ms": {
+        "512": 1630.9,
+        "1024": 2736.8,
+        "4096": 8636.7
+      },
+      "prefill_tokens_per_second": {
+        "512": 317.0,
+        "1024": 345.3,
+        "4096": 408.7
+      },
+      "decode_cv": {
+        "512": 0.0009214422172640332,
+        "1024": 0.0005925416297552032,
+        "4096": 0.00036717768599603406
+      }
+    },
+    "mtp_auto_default": {
+      "decode_tokens_per_second": {
+        "512": 20.085,
+        "1024": 17.974,
+        "4096": 11.025
+      },
+      "ttft_ms": {
+        "512": 1632.6,
+        "1024": 2737.5,
+        "4096": 8632.8
+      },
+      "prefill_tokens_per_second": {
+        "512": 316.7,
+        "1024": 345.2,
+        "4096": 408.9
+      },
+      "decode_cv": {
+        "512": 0.00035163364042033613,
+        "1024": 0.0004892697327855013,
+        "4096": 0.0005257965769249708
+      }
+    },
+    "ratio_mtp_over_matched_ar": {
+      "512": 1.676,
+      "1024": 1.521,
+      "4096": 0.998
+    },
+    "ratio_auto_over_matched_ar": {
+      "512": 1.677,
+      "1024": 1.52,
+      "4096": 0.997
+    },
+    "cv_percent": "at or below 0.09% on every row",
+    "route_and_acceptance": {
+      "512": {
+        "selected_route": "speculative_mtp",
+        "effective_route": "speculative_mtp",
+        "decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "used": true,
+        "draft_cycles": 55,
+        "draft_tokens": 163,
+        "accepted_draft_tokens": 72,
+        "acceptance_rate": 0.44171779141104295,
+        "ar_control_route": "default"
+      },
+      "1024": {
+        "selected_route": "speculative_mtp",
+        "effective_route": "speculative_mtp",
+        "decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+        "used": true,
+        "draft_cycles": 23,
+        "draft_tokens": 66,
+        "accepted_draft_tokens": 54,
+        "acceptance_rate": 0.8181818181818182,
+        "ar_control_route": "default"
+      },
+      "4096": {
+        "selected_route": "speculative_mtp",
+        "effective_route": "default",
+        "decision_reason": "backend_k0_fallback",
+        "used": false,
+        "draft_cycles": 0,
+        "draft_tokens": 0,
+        "accepted_draft_tokens": 0,
+        "acceptance_rate": null,
+        "ar_control_route": "default"
+      }
+    }
+  },
+  "correctness": {
+    "exactness": "the arms' first 600 generated characters are byte-identical on all three shapes (AR against both the explicit MTP request and the auto default), and the AR control's own route is default with no speculative use on every shape",
+    "scope": "the client keeps only the first 600 characters per row, so this is a prefix identity check rather than a full-output comparison; the exact-ID gate for this route is the mtp-bench category suite recorded separately",
+    "sample_identity": {
+      "512": {
+        "ar_vs_mtp_lcp_chars": 600,
+        "ar_vs_auto_lcp_chars": 600,
+        "identical": true
+      },
+      "1024": {
+        "ar_vs_mtp_lcp_chars": 600,
+        "ar_vs_auto_lcp_chars": 600,
+        "identical": true
+      },
+      "4096": {
+        "ar_vs_mtp_lcp_chars": 600,
+        "ar_vs_auto_lcp_chars": 600,
+        "identical": true
+      }
+    }
+  },
+  "cross_reference": "The external porting record is ~/atlas/docs/porting/QWEN38_STRIX_PORT.md; its 2026-09-19 section records these rows, and its 2026-09-18 rows are the comparison basis (20.01 / 17.84 against 11.90 / 11.75).",
+  "links": [
+    "benchmarks/results/2026-09-18-gfx1151-qwen38-mtp-c1-engagement.json"
+  ],
+  "raw": {
+    "ar": "/tmp/task10/atlas/ar-control.json",
+    "mtp_requested": "/tmp/task10/atlas/mtp-explicit.json",
+    "auto_default": "/tmp/task10/atlas/auto-default.json",
+    "route_probe": "/tmp/task10/atlas/routes.json",
+    "capabilities": "/tmp/task10/atlas/capabilities.json"
+  },
+  "readings": [
+    "The 2026-09-18 rows reproduce: an explicit speculative_mtp request is 1.676x its matched in-load AR control at a 517-token prompt and 1.521x at 945, and the no-field auto default lands within 0.05% of the explicit request (20.085 against 20.082).",
+    "The AR control reproduces the 2026-09-18 AR row (11.90) to within 0.7%, so the arms are comparable to that table; every measured CV is at or below 0.09%.",
+    "The 3,530-token shape still declines inside the adapter's 1,023-token qualified window: the selected route is speculative_mtp and the effective route is default with decision_reason backend_k0_fallback, so its MTP row is the AR rate (11.035 against 11.056).",
+    "The route probe confirms engagement rather than inferring it from the rate: the 517- and 945-token shapes report effective_route speculative_mtp with 55 and 23 cycles and 0.442 and 0.818 acceptance."
+  ],
+  "not_measured": [
+    "No Atlas arm was run in this recheck; the Atlas MTP K=4 rows in the comparison document are from 2026-09-17.",
+    "The 1,023-token qualified window is unchanged and is not a promotion target here.",
+    "Long-context MTP above the window needs HIPENGINE_MTP2_MAX_CONTEXT_TOKENS and is measured elsewhere.",
+    "Concurrency above one request is out of scope for this protocol."
+  ]
+}

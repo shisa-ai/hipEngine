@@ -1,0 +1,46 @@
+{
+  "schema": "gemma4-norm-fusion-screen/v1",
+  "created_utc": "2026-09-30T03:19:44+00:00",
+  "command": "python3 scripts/gemma4_norm_fusion_screen.py --gpu 1 --rows 1 --hidden 2816 --iters 5000",
+  "git_commit": "e1ffab1d5a4d600f21e92f50e7295c2053d36182",
+  "arch": "x86_64",
+  "gpu_env": {
+    "HIP_VISIBLE_DEVICES": "1"
+  },
+  "geometry": {
+    "rows": 1,
+    "hidden": 2816,
+    "layers": 30,
+    "iters": 5000,
+    "warmup": 500
+  },
+  "arms_us_per_call": {
+    "chain_g3": 16.652,
+    "multi_g3": 10.249,
+    "chain_g4": 12.086,
+    "multi_g4": 9.258,
+    "probe_single": 5.579,
+    "probe_multi1": 6.169,
+    "chain_tail": 14.339,
+    "fold_tail": 7.867
+  },
+  "bit_equal": {
+    "g3": true,
+    "g4": true,
+    "tail": true
+  },
+  "delta_us": {
+    "g3": 6.403,
+    "g4": 2.828,
+    "tail": 6.472
+  },
+  "projected_norm_family_ms_per_token": 0.8553,
+  "probe": {
+    "multi1_minus_single_us": 0.59,
+    "limit_us": 1.0,
+    "ratio": 1.106,
+    "ratio_note": "informational; the gate is the absolute overhead (see evidence_note)"
+  },
+  "verdict": "wire",
+  "evidence_note": "Bitwise agreement asserted in-process at the screen geometry. Projected saving counts 3 G3 sites and 1 G4 site per layer x 30 layers plus the tail fold. The G3/G4 arms are kernel-level capability: at the real layer, pre_ffw runs on the main stream and pre_ffw_2 on moe_stream, so those sites need stream-aware wiring (recorded in the worklog entry); the tail fold is strictly sequential same-stream and wires directly. The shipped-path claim is the same-lane census A/B, not this projection."
+}

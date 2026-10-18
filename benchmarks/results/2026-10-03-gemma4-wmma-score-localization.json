@@ -1,0 +1,209 @@
+{
+  "kind": "gemma4_wmma_score_localization",
+  "sources": {
+    "diagnostic_scores.hip": "e3afcd86b9647e5de30ad0f81f860d740494278759a1525e08fb4b28967223f4",
+    "gemma4_attention_decode_wmma_full.hip": "dcaabb26375e3455e9494046e23e324b39c234160ec57b0a5d985179ce3d18bb",
+    "gemma4_attention_prefill_wmma.hip": "d235550e6dae1d2708a28afec4591e7cf7c564f75334c02121b7b1408ee05e22",
+    "gemma4_attention_prefill_wmma_full.hip": "40d79bb366c88f2d0f2068362f09b5d3ce193c213e2c9c1d89c56c6fcbef359b"
+  },
+  "loading": {
+    "resolve_s": 0.46428529103286564,
+    "load_s": 15.22805433999747,
+    "internal_load_s": 14.982284173020162,
+    "resolution": {
+      "_resolved_backend": "hip_gfx1151",
+      "_resolved_quant": "gguf_q4_k_m",
+      "_resolved_execution_profile": {
+        "profile": "production",
+        "manifest_sha256": "11bd3c240c725a4e9330801feff134153098d7ba2748a39c0fe9548a3a10ccf3",
+        "fell_back_to_strict": false
+      },
+      "generator_type": "SubmitPollTextGenerator"
+    },
+    "context_length": 8255,
+    "runner_capacity": 8255,
+    "max_block": 512
+  },
+  "arms": [
+    {
+      "arm": "wmma_scores_scalar_pv_nosplit",
+      "cases": [
+        {
+          "id": "code_merge_intervals",
+          "numerical": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.0009791177536085812,
+            "kl_p95": 0.0029395926097569333,
+            "kl_p99": 0.027725289502436513,
+            "kl_max": 0.027725289502436513,
+            "top1_rate": 1.0,
+            "top1_flips": 0,
+            "top1_flip_rows": [],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [
+              "kl_p99"
+            ],
+            "passed": false,
+            "requires_review": true
+          },
+          "position": 576,
+          "calls": 1950
+        },
+        {
+          "id": "heldout_mixed_summary",
+          "numerical": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.004610629596647341,
+            "kl_p95": 0.029039189263499687,
+            "kl_p99": 0.07522566597782454,
+            "kl_max": 0.07522566597782454,
+            "top1_rate": 0.984375,
+            "top1_flips": 1,
+            "top1_flip_rows": [
+              30
+            ],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [
+              "kl_mean",
+              "kl_p95",
+              "kl_p99",
+              "kl_max"
+            ],
+            "passed": false,
+            "requires_review": true
+          },
+          "position": 1094,
+          "calls": 1980
+        }
+      ]
+    }
+  ],
+  "export_checks": [
+    {
+      "geometry": {
+        "tokens": 512,
+        "keys": 512,
+        "num_heads": 16,
+        "num_kv_heads": 8,
+        "head_dim": 256,
+        "row_offset": 0
+      },
+      "visible_scores": 2101248,
+      "finite_visible": true,
+      "masked_negative_infinity": true,
+      "sampled_dot_maxabs_error": 1.5751458704471588e-05,
+      "sampled_dot_tolerance": "1e-4 absolute + 1e-5 relative vs CPU float64 BF16 QK dot; helper check only"
+    },
+    {
+      "geometry": {
+        "tokens": 512,
+        "keys": 512,
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 512,
+        "row_offset": 0
+      },
+      "visible_scores": 2101248,
+      "finite_visible": true,
+      "masked_negative_infinity": true,
+      "sampled_dot_maxabs_error": 2.2305757738649845e-06,
+      "sampled_dot_tolerance": "1e-4 absolute + 1e-5 relative vs CPU float64 BF16 QK dot; helper check only"
+    },
+    {
+      "geometry": {
+        "tokens": 512,
+        "keys": 1024,
+        "num_heads": 16,
+        "num_kv_heads": 8,
+        "head_dim": 256,
+        "row_offset": 512
+      },
+      "visible_scores": 6295552,
+      "finite_visible": true,
+      "masked_negative_infinity": true,
+      "sampled_dot_maxabs_error": 1.8551480025053024e-05,
+      "sampled_dot_tolerance": "1e-4 absolute + 1e-5 relative vs CPU float64 BF16 QK dot; helper check only"
+    },
+    {
+      "geometry": {
+        "tokens": 512,
+        "keys": 1024,
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 512,
+        "row_offset": 512
+      },
+      "visible_scores": 6295552,
+      "finite_visible": true,
+      "masked_negative_infinity": true,
+      "sampled_dot_maxabs_error": 1.864507794380188e-06,
+      "sampled_dot_tolerance": "1e-4 absolute + 1e-5 relative vs CPU float64 BF16 QK dot; helper check only"
+    },
+    {
+      "geometry": {
+        "tokens": 7,
+        "keys": 1030,
+        "num_heads": 16,
+        "num_kv_heads": 8,
+        "head_dim": 256,
+        "row_offset": 1023
+      },
+      "visible_scores": 114688,
+      "finite_visible": true,
+      "masked_negative_infinity": true,
+      "sampled_dot_maxabs_error": 1.288577914237976e-05,
+      "sampled_dot_tolerance": "1e-4 absolute + 1e-5 relative vs CPU float64 BF16 QK dot; helper check only"
+    },
+    {
+      "geometry": {
+        "tokens": 7,
+        "keys": 1031,
+        "num_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 512,
+        "row_offset": 1024
+      },
+      "visible_scores": 115136,
+      "finite_visible": true,
+      "masked_negative_infinity": true,
+      "sampled_dot_maxabs_error": 2.8201029635965824e-06,
+      "sampled_dot_tolerance": "1e-4 absolute + 1e-5 relative vs CPU float64 BF16 QK dot; helper check only"
+    }
+  ],
+  "performance_claim": false,
+  "parent_commit": "fbc8f0a2e804ece95a7fa09698af76636ca011fa",
+  "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. OPENBLAS_NUM_THREADS=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_EXECUTION_PROFILE=production .venv/bin/python /tmp/priority_wmma_score.py",
+  "driver_sha256": "b9857c2bcae0f2e8ec07e751a8fe10d5ea68d6d5b2c63555ecd2f09d8035310c",
+  "driver_source": "\"\"\"Screen softmax-weight residual precision on saved strict teacher chains.\"\"\"\nimport sys, json, hashlib, ctypes\nfrom dataclasses import replace\nfrom pathlib import Path\nimport numpy as np\nROOT=Path('<repository>');sys.path.insert(0,str(ROOT))\nfrom scripts.gemma4_campaign_bench import DEFAULT_ARTIFACT,_resolve_generator\nfrom scripts.gemma4_production_quality import padded_chat,replay_capture,paired_summary\nfrom hipengine.core.build import build_hip\nfrom hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention_prefill_wmma_full as full\nfrom hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention_prefill_wmma as sliding\nfrom scripts.gemma4_public_route_probe import observe_attention_launches\nfrom hipengine.kernels.hip_gfx1100.gemma4 import gemma4_layer as layer\nfrom hipengine.core.memory import malloc,free\nfrom hipengine.core.hip import get_hip_runtime\nDIR=Path('/tmp/priority-quality-full-v2');saved=json.loads((DIR/'report.json').read_text());sources=Path('/tmp/priority-wmma-score')\nlibs={}\nfor name,filename in [('full','gemma4_attention_prefill_wmma_full.hip'),('decode','gemma4_attention_decode_wmma_full.hip'),('sliding','gemma4_attention_prefill_wmma.hip')]:\n libs[name]=build_hip(sources=[sources/filename],family=f'priority_wmma_score_{name}',profile='prefill',include_dirs=[sources],output_name=f'residual_{name}.so',load=True)\noriginal=(full.build_gemma4_attention_prefill_wmma_full,full.build_gemma4_attention_decode_wmma_full,sliding.build_gemma4_attention_prefill_wmma)\noriginal_select=layer.select_prefill_attention\noriginal_slices=full.plan_gemma4_attention_wmma_full_slices\nscore_lib=build_hip(sources=[sources/'diagnostic_scores.hip'],family='priority_wmma_score_helper',profile='decode',include_dirs=[ROOT/'hipengine/kernels/hip_gfx1100/gemma4'],load=True)\nscore_fn=score_lib.diagnostic_initialize_scores\nscore_fn.argtypes=[ctypes.c_void_p]*2+[ctypes.c_int64]*3;score_fn.restype=ctypes.c_int\nstats_fn=score_lib.diagnostic_global_stats\nstats_fn.argtypes=[ctypes.c_void_p]*2+[ctypes.c_int64]*3+[ctypes.c_float];stats_fn.restype=ctypes.c_int\npv_fn=score_lib.diagnostic_scalar_pv\npv_fn.argtypes=[ctypes.c_void_p]*4+[ctypes.c_int64]*5+[ctypes.c_float];pv_fn.restype=ctypes.c_int\nfor lib in libs.values():\n lib.diagnostic_set_exact_scores.argtypes=[ctypes.c_void_p];lib.diagnostic_set_exact_scores.restype=ctypes.c_int\n lib.diagnostic_set_global_stats.argtypes=[ctypes.c_void_p];lib.diagnostic_set_global_stats.restype=ctypes.c_int\n lib.diagnostic_set_export_scores.argtypes=[ctypes.c_void_p];lib.diagnostic_set_export_scores.restype=ctypes.c_int\nrt=get_hip_runtime();score_buffer=None;stats_buffer=None;arm='';checked=set();export_checks=[]\nfrom hipengine.core.runtime import MemcpyKind\n\ndef selected(**geometry):\n selection=original_select(**geometry);launch=selection.launcher\n if selection.variant=='gemma4_plain':return selection\n def invoked(*args,**kw):\n  global score_buffer,stats_buffer\n  rt.device_synchronize();size=kw['tokens']*kw['num_heads']*kw['keys']*4\n  if score_buffer is None or score_buffer.nbytes<size:\n   if score_buffer is not None:free(score_buffer)\n   score_buffer=malloc(size)\n  err=score_fn(args[3],score_buffer.ptr,kw['tokens'],kw['num_heads'],kw['keys']);rt.check(err);rt.device_synchronize()\n  lib=libs['sliding' if kw['head_dim']==256 else ('decode' if kw['tokens']==1 else 'full')]\n  rt.check(lib.diagnostic_set_exact_scores(0));rt.check(lib.diagnostic_set_global_stats(0));rt.check(lib.diagnostic_set_export_scores(score_buffer.ptr))\n  result=launch(*args,**kw);rt.device_synchronize()\n  signature=tuple(kw[key] for key in ('tokens','keys','num_heads','num_kv_heads','head_dim','row_offset'))\n  if signature not in checked:\n   values=np.empty((kw['tokens'],kw['num_heads'],kw['keys']),np.float32);mask=np.empty((kw['tokens'],kw['keys']),np.uint8)\n   rt.memcpy(values.ctypes.data,score_buffer.ptr,values.nbytes,MemcpyKind.DEVICE_TO_HOST);rt.memcpy(mask.ctypes.data,args[3],mask.nbytes,MemcpyKind.DEVICE_TO_HOST)\n   visible=np.broadcast_to(mask[:,None,:].astype(bool),values.shape)\n   entry={'geometry':dict(zip(('tokens','keys','num_heads','num_kv_heads','head_dim','row_offset'),signature)), 'visible_scores':int(visible.sum()),'finite_visible':bool(np.isfinite(values[visible]).all()),'masked_negative_infinity':bool(np.isneginf(values[~visible]).all())}\n   assert entry['finite_visible'] and entry['masked_negative_infinity'],entry\n   query=np.empty((kw['tokens'],kw['num_heads'],kw['head_dim']),np.uint16);key=np.empty((kw['keys'],kw['num_kv_heads'],kw['head_dim']),np.uint16)\n   rt.memcpy(query.ctypes.data,args[0],query.nbytes,MemcpyKind.DEVICE_TO_HOST);rt.memcpy(key.ctypes.data,args[1],key.nbytes,MemcpyKind.DEVICE_TO_HOST)\n   from scripts.gemma4_attention_input_diagnostic import bf16_to_f64\n   qf,kf=map(bf16_to_f64,(query,key));sample_errors=[]\n   for row in sorted(set((0,kw['tokens']//2,kw['tokens']-1))):\n    keep=mask[row].astype(bool)\n    for head in sorted(set((0,kw['num_heads']//2,kw['num_heads']-1))):\n     reference=kf[keep,head//(kw['num_heads']//kw['num_kv_heads'])]@qf[row,head]\n     error=np.abs(values[row,head,keep]-reference)\n     assert np.all(error <= 1e-4+1e-5*np.abs(reference)),(signature,row,head,float(np.max(error)))\n     sample_errors.append(float(np.max(error)))\n   entry['sampled_dot_maxabs_error']=max(sample_errors);entry['sampled_dot_tolerance']='1e-4 absolute + 1e-5 relative vs CPU float64 BF16 QK dot; helper check only'\n   export_checks.append(entry);checked.add(signature)\n  if arm=='wmma_scores_scalar_pv_nosplit':\n   stats_size=kw['tokens']*kw['num_heads']*2*4\n   if stats_buffer is None or stats_buffer.nbytes<stats_size:\n    if stats_buffer is not None:free(stats_buffer)\n    stats_buffer=malloc(stats_size)\n   rt.check(stats_fn(score_buffer.ptr,stats_buffer.ptr,kw['tokens'],kw['num_heads'],kw['keys'],kw['scale']));rt.device_synchronize()\n   rt.check(lib.diagnostic_set_global_stats(stats_buffer.ptr))\n  else:rt.check(lib.diagnostic_set_global_stats(0))\n  rt.check(pv_fn(score_buffer.ptr,stats_buffer.ptr,args[2],args[4],kw['tokens'],kw['num_heads'],kw['num_kv_heads'],kw['head_dim'],kw['keys'],kw['scale']));rt.device_synchronize()\n  return result\n return replace(selection,launcher=invoked)\nllm,runner,loading=_resolve_generator(DEFAULT_ARTIFACT,8255);gen=llm._get_text_generator()\nfixtures=[]\nfor filename in ('mtpbench-code-general-ja.jsonl','gdn-prefill-category-heldouts.jsonl'):\n fixtures.extend(json.loads(l) for l in (ROOT/'benchmarks/prompts'/filename).read_text().splitlines())\nresult={'kind':'gemma4_probability_residual_screen','sources':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sources.glob('*.hip')},'loading':loading,'arms':[]}\nchosen=['heldout_mixed_summary','code_merge_intervals']\ntry:\n layer.select_prefill_attention=selected\n full.plan_gemma4_attention_wmma_full_slices=lambda **kw:1\n for arm in ['wmma_scores_scalar_pv_nosplit']:\n  full.build_gemma4_attention_prefill_wmma_full=lambda **kw:libs['full']\n  full.build_gemma4_attention_decode_wmma_full=lambda **kw:libs['decode']\n  sliding.build_gemma4_attention_prefill_wmma=lambda **kw:libs['sliding']\n  entries=[]\n  for i,case in enumerate(saved['cases']):\n   if case['id'] not in chosen:continue\n   message='\\n'.join(m['content'] for m in fixtures[i]['messages']);ids=padded_chat(gen,message,case['prompt_tokens'],20261003+i)\n   assert hashlib.sha256(np.array(ids,dtype=np.int32).tobytes()).hexdigest()==case['prompt_ids_sha256']\n   with observe_attention_launches() as calls: c=replay_capture(runner,ids,case['teacher_tokens'])\n   name=case['id'];np.save(DIR/f'{name}-{arm}.npy',c);b=np.load(DIR/f'{name}-strict.npy')\n   verdict=paired_summary(b,c,scope=True);entries.append({'id':name,'numerical':verdict,'position':runner.position,'calls':len(calls)})\n   print(f\"arm={arm} case={name} maxKL={verdict['kl_max']:.6g} meanKL={verdict['kl_mean']:.6g} top1={verdict['top1_rate']} failures={verdict['failed']}\",flush=True)\n  result['arms'].append({'arm':arm,'cases':entries})\n  result['export_checks']=export_checks\n  Path('/tmp/priority-wmma-score-result.json').write_text(json.dumps(result,indent=2)+'\\n')\nfinally:\n layer.select_prefill_attention=original_select\n full.plan_gemma4_attention_wmma_full_slices=original_slices\n rt.device_synchronize()\n if score_buffer is not None:free(score_buffer)\n if stats_buffer is not None:free(stats_buffer)\n full.build_gemma4_attention_prefill_wmma_full,full.build_gemma4_attention_decode_wmma_full,sliding.build_gemma4_attention_prefill_wmma=original\n llm.close()\n",
+  "scope": "Two saved 64-row teacher chains with matching prompt hashes. Export raw actual WMMA scores from external builds with exactly one writer per visible element, global 256-lane softmax statistics, ascending FP32 PV, and slices=1. Ordinary expert routing. Diagnostic only.",
+  "patches_against_global_stats_control": {
+    "diagnostic_scores.hip": "--- global_stats/diagnostic_scores.hip\n+++ wmma_score/diagnostic_scores.hip\n@@ -37,6 +37,61 @@\n   return hipGetLastError();\n }\n \n+__global__ void diagnostic_initialize_scores_kernel(const uint8_t* mask, float* scores,\n+ int64_t elements, int64_t heads, int64_t keys) {\n+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;\n+  if (index < elements) {\n+    const int64_t row = index / (heads * keys), key = index % keys;\n+    scores[index] = mask[row * keys + key] ? NAN : -INFINITY;\n+  }\n+}\n+extern \"C\" int diagnostic_initialize_scores(const uint8_t* mask, float* scores,\n+ int64_t tokens, int64_t heads, int64_t keys) {\n+  const int64_t elements = tokens * heads * keys;\n+  hipLaunchKernelGGL(diagnostic_initialize_scores_kernel,dim3((elements+255)/256),\n+                    dim3(256),0,0,mask,scores,elements,heads,keys);\n+  return hipGetLastError();\n+}\n+\n+__global__ void diagnostic_weights_kernel(float* scores, const float* stats,\n+ int64_t elements, int64_t keys, float scale) {\n+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;\n+  if (index < elements) {\n+    scores[index] = expf(scores[index] * scale - stats[(index / keys) * 2]);\n+  }\n+}\n+__global__ void diagnostic_scalar_pv_kernel(const float* weights, const float* stats,\n+ const uint16_t* value, uint16_t* out, int64_t heads, int64_t kv_heads,\n+ int64_t dim, int64_t keys) {\n+  const int64_t row = blockIdx.x;\n+  const int64_t head = row % heads;\n+  const int64_t kv_head = head / (heads / kv_heads);\n+  extern __shared__ float weights_shared[];\n+  for (int64_t key = threadIdx.x; key < keys; key += blockDim.x) {\n+    weights_shared[key] = weights[row * keys + key];\n+  }\n+  __syncthreads();\n+  if (dim == 512) {\n+    gemma4_decode_pass3<2,4>(weights_shared, value + kv_head * dim, out + row * dim,\n+       kv_heads * dim, dim, keys, stats[row * 2 + 1], blockDim.x, threadIdx.x);\n+  } else {\n+    gemma4_decode_pass3<1,4>(weights_shared, value + kv_head * dim, out + row * dim,\n+       kv_heads * dim, dim, keys, stats[row * 2 + 1], blockDim.x, threadIdx.x);\n+  }\n+}\n+extern \"C\" int diagnostic_scalar_pv(float* scores, const float* stats,\n+ const uint16_t* value, uint16_t* out, int64_t tokens, int64_t heads,\n+ int64_t kv_heads, int64_t dim, int64_t keys, float scale) {\n+  if (keys * sizeof(float) > 64 * 1024) return hipErrorInvalidValue;\n+  const int64_t elements = tokens * heads * keys;\n+  hipLaunchKernelGGL(diagnostic_weights_kernel, dim3((elements+255)/256),dim3(256),\n+                    0,0,scores,stats,elements,keys,scale);\n+  int rc = hipGetLastError(); if (rc) return rc;\n+  hipLaunchKernelGGL(diagnostic_scalar_pv_kernel, dim3(tokens * heads),dim3(256),\n+       keys*sizeof(float),0,scores,stats,value,out,heads,kv_heads,dim,keys);\n+  return hipGetLastError();\n+}\n+\n extern \"C\" int diagnostic_strict_scores(const uint16_t* query,const uint16_t* key,\n  const uint8_t* mask,float* out,int64_t tokens,int64_t heads,int64_t kv_heads,int64_t dim,int64_t keys) {\n  dim3 grid(keys,heads,tokens);\n",
+    "gemma4_attention_prefill_wmma.hip": "--- global_stats/gemma4_attention_prefill_wmma.hip\n+++ wmma_score/gemma4_attention_prefill_wmma.hip\n@@ -64,6 +64,7 @@\n \n namespace {\n __device__ float* diagnostic_exact_scores = nullptr;\n+__device__ float* diagnostic_export_scores = nullptr;\n __device__ float* diagnostic_global_stats = nullptr;\n \n using half_t = _Float16;\n@@ -348,6 +349,10 @@\n         if (visible) {\n           visible = mask_row[k_base + key_local] != 0;\n         }\n+        if (visible && diagnostic_export_scores != nullptr) {\n+          diagnostic_export_scores[\n+              (static_cast<int64_t>(query_row) * num_heads + query_head) * keys + k_base + key_local] = scores[key_tile][element];\n+        }\n         if (visible && diagnostic_exact_scores != nullptr) {\n           scores[key_tile][element] = diagnostic_exact_scores[\n               (static_cast<int64_t>(query_row) * num_heads + query_head) * keys + k_base + key_local];\n@@ -469,6 +474,11 @@\n extern \"C\" hipError_t diagnostic_set_global_stats(void* pointer) {\n   float* ptr = static_cast<float*>(pointer);\n   return hipMemcpyToSymbol(HIP_SYMBOL(diagnostic_global_stats), &ptr, sizeof(ptr));\n+}\n+\n+extern \"C\" hipError_t diagnostic_set_export_scores(void* pointer) {\n+  float* ptr = static_cast<float*>(pointer);\n+  return hipMemcpyToSymbol(HIP_SYMBOL(diagnostic_export_scores), &ptr, sizeof(ptr));\n }\n \n extern \"C\" hipError_t diagnostic_set_exact_scores(void* pointer) {\n",
+    "gemma4_attention_prefill_wmma_full.hip": "--- global_stats/gemma4_attention_prefill_wmma_full.hip\n+++ wmma_score/gemma4_attention_prefill_wmma_full.hip\n@@ -97,6 +97,7 @@\n \n namespace {\n __device__ float* diagnostic_exact_scores = nullptr;\n+__device__ float* diagnostic_export_scores = nullptr;\n __device__ float* diagnostic_global_stats = nullptr;\n \n using bf16_t = __bf16;\n@@ -571,6 +572,10 @@\n           const int byte_index = key_local + mask_shift;\n           visible = (mask_word[byte_index >> 2] >> (8 * (byte_index & 3))) & 0xFF;\n         }\n+        if (visible && diagnostic_export_scores != nullptr && dim_group == 0) {\n+          diagnostic_export_scores[\n+              (static_cast<int64_t>(query_row) * num_heads + query_head) * keys + k_base + key_local] = scores[key_tile][element];\n+        }\n         if (visible && diagnostic_exact_scores != nullptr) {\n           scores[key_tile][element] = diagnostic_exact_scores[\n               (static_cast<int64_t>(query_row) * num_heads + query_head) * keys + k_base + key_local];\n@@ -815,6 +820,11 @@\n extern \"C\" hipError_t diagnostic_set_global_stats(void* pointer) {\n   float* ptr = static_cast<float*>(pointer);\n   return hipMemcpyToSymbol(HIP_SYMBOL(diagnostic_global_stats), &ptr, sizeof(ptr));\n+}\n+\n+extern \"C\" hipError_t diagnostic_set_export_scores(void* pointer) {\n+  float* ptr = static_cast<float*>(pointer);\n+  return hipMemcpyToSymbol(HIP_SYMBOL(diagnostic_export_scores), &ptr, sizeof(ptr));\n }\n \n extern \"C\" hipError_t diagnostic_set_exact_scores(void* pointer) {\n"
+  },
+  "result": "WMMA score reassociation alone also fails frozen bars: code p99 KL 0.027725; mixed mean/max KL 0.004611/0.075226. Strict-score/global-statistics/ascending-PV control was bitwise equal to strict on the same chains. A PV-only arithmetic repair is not sufficient for these screens."
+}

@@ -910,6 +910,206 @@ __global__ void sampler_apply_processors_rows_kernel(
   }
 }
 
+// Original in-tree full-vocabulary ordering. No bounded candidate approximation.
+// 256-key tile bitonic sort followed by parallel binary-search merges (O(V log²V)).
+// Scratch is caller-owned and every consumed element is overwritten per launch.
+constexpr int kSamplerTile = 256;
+
+__device__ inline uint64_t sampler_order_key(float value, uint32_t id) {
+  if (!isfinite(value)) return UINT64_MAX;
+  if (value == 0.0f) value = 0.0f;  // +/- zero have token-ID ties.
+  uint32_t bits = __float_as_uint(value);
+  uint32_t ascending = bits ^ ((bits & 0x80000000u) ? 0xffffffffu : 0x80000000u);
+  return (static_cast<uint64_t>(~ascending) << 32) | id;
+}
+
+__global__ void sampler_sort_tiles_kernel(const float* logits, uint64_t* keys, int64_t vocab) {
+  __shared__ uint64_t tile[kSamplerTile];
+  const int t = threadIdx.x;
+  const int64_t i = static_cast<int64_t>(blockIdx.x) * kSamplerTile + t;
+  const int64_t base = static_cast<int64_t>(blockIdx.y) * vocab;
+  uint64_t key = i < vocab ? sampler_order_key(logits[base + i], i) : UINT64_MAX;
+  tile[t] = key;
+  __syncthreads();
+  for (int size = 2; size <= kSamplerTile; size *= 2) {
+    for (int stride = size / 2; stride; stride /= 2) {
+      uint64_t other = tile[t ^ stride];
+      bool take_min = ((t & size) == 0) == ((t & stride) == 0);
+      key = take_min ? (key < other ? key : other) : (key > other ? key : other);
+      __syncthreads();
+      tile[t] = key;
+      __syncthreads();
+    }
+  }
+  if (i < vocab) keys[base + i] = key;
+}
+
+__global__ void sampler_merge_keys_kernel(const uint64_t* src, uint64_t* dst, int64_t vocab, int64_t width) {
+  int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (i >= vocab) return;
+  int64_t base = static_cast<int64_t>(blockIdx.y) * vocab;
+  int64_t pair = (i / (2 * width)) * (2 * width);
+  bool right = i - pair >= width;
+  int64_t own = right ? pair + width : pair;
+  int64_t other = right ? pair : min(pair + width, vocab);
+  int64_t end = min(other + width, vocab);
+  int64_t lo = other, hi = end;
+  uint64_t key = src[base + i];
+  while (lo < hi) {
+    int64_t mid = (lo + hi) / 2;
+    uint64_t probe = src[base + mid];
+    if (probe < key || (right && probe == key)) lo = mid + 1;
+    else hi = mid;
+  }
+  dst[base + pair + (i - own) + (lo - other)] = key;
+}
+
+__device__ inline double sampler_centered_score(float value, float maximum, float temperature) {
+  // Widen BEFORE subtraction and divide AFTER centering. Every finite FP32
+  // logit difference / positive FP32 temperature fits FP64, including opposite
+  // FLT_MAX endpoints and subnormal temperatures. Equal maxima stay exactly 0.
+  return (static_cast<double>(value) - static_cast<double>(maximum)) /
+      static_cast<double>(temperature);
+}
+
+__device__ inline float sampler_sorted_weight(const float* logits, const uint64_t* keys,
+    int64_t base, int64_t rank, float temperature, float maximum) {
+  uint64_t key = keys[base + rank];
+  return key == UINT64_MAX ? 0.0f : expf(static_cast<float>(
+      sampler_centered_score(logits[base + static_cast<uint32_t>(key)], maximum, temperature)));
+}
+
+__global__ void sampler_weight_scan_tiles_kernel(const float* logits, const uint64_t* keys,
+    const float* temperatures, double* prefix, double* tile_totals, int64_t vocab, int64_t tiles) {
+  __shared__ double scan[kSamplerTile];
+  int t = threadIdx.x;
+  int64_t row = blockIdx.y, base = row * vocab;
+  int64_t i = static_cast<int64_t>(blockIdx.x) * kSamplerTile + t;
+  float temp = temperatures[row];
+  uint64_t first = keys[base];
+  float maximum = first == UINT64_MAX ? 0.0f : logits[base + static_cast<uint32_t>(first)];
+  double value = i < vocab && temp > 0.0f && isfinite(temp)
+      ? sampler_sorted_weight(logits, keys, base, i, temp, maximum) : 0.0;
+  scan[t] = value;
+  __syncthreads();
+  for (int stride = 1; stride < kSamplerTile; stride *= 2) {
+    double add = t >= stride ? scan[t - stride] : 0.0;
+    __syncthreads();
+    value += add;
+    scan[t] = value;
+    __syncthreads();
+  }
+  if (i < vocab) prefix[base + i] = value;
+  if (t == kSamplerTile - 1) tile_totals[row * tiles + blockIdx.x] = value;
+}
+
+__device__ inline double sampler_prefix_at(const double* prefix, const double* tiles, int64_t rank) {
+  int64_t tile = rank / kSamplerTile;
+  return prefix[rank] + (tile ? tiles[tile - 1] : 0.0);
+}
+
+__device__ inline int64_t sampler_prefix_lower_bound(const double* prefix, const double* tiles,
+    int64_t count, double target) {
+  int64_t lo = 0, hi = count - 1;
+  while (lo < hi) {
+    int64_t mid = (lo + hi) / 2;
+    if (sampler_prefix_at(prefix, tiles, mid) < target) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+__global__ void sampler_sorted_select_kernel(const float* logits, const uint64_t* keys,
+    const float* temperatures, const float* top_ps, const float* min_ps, const uint64_t* seeds,
+    const double* prefix, double* tile_totals, int32_t* out_indices, float* out_logprobs,
+    int32_t* out_counts, int32_t* out_top_indices, float* out_top_logprobs,
+    int64_t* out_commit_indices, float* out_commit_values, int64_t vocab, int64_t tiles,
+    int top_logprobs, uint64_t step) {
+  __shared__ double scan[kSamplerTile];
+  __shared__ double carry;
+  int t = threadIdx.x;
+  int64_t row = blockIdx.x, base = row * vocab, top_base = row * top_logprobs;
+  const uint64_t* row_keys = keys + base;
+  const double* row_prefix = prefix + base;
+  double* row_tiles = tile_totals + row * tiles;
+  if (t == 0) carry = 0.0;
+  __syncthreads();
+  // Scan tile totals cooperatively too: a serial 970-load chain costs more
+  // than the weight scan at model vocabulary sizes on gfx1151.
+  for (int64_t start = 0; start < tiles; start += kSamplerTile) {
+    int64_t index = start + t;
+    double value = index < tiles ? row_tiles[index] : 0.0;
+    scan[t] = value;
+    __syncthreads();
+    for (int stride = 1; stride < kSamplerTile; stride *= 2) {
+      double add = t >= stride ? scan[t - stride] : 0.0;
+      __syncthreads();
+      value += add;
+      scan[t] = value;
+      __syncthreads();
+    }
+    if (index < tiles) row_tiles[index] = carry + value;
+    __syncthreads();
+    if (t == 0) carry += scan[kSamplerTile - 1];
+    __syncthreads();
+  }
+  if (t != 0) return;
+  double total = carry;
+  if (row_keys[0] == UINT64_MAX) {
+    out_indices[row] = -1;
+    if (out_logprobs) out_logprobs[row] = kNegInf;
+    if (out_counts) out_counts[row] = 0;
+    write_sampler_top_logprob_empty(out_top_indices, out_top_logprobs, top_base, top_logprobs);
+    write_sampler_commit(out_commit_indices, out_commit_values, row, -1, kNegInf);
+    return;
+  }
+  int32_t argmax = static_cast<uint32_t>(row_keys[0]);
+  float temperature = temperatures[row], max_value = logits[base + argmax];
+  if (!(temperature > 0.0f) || !isfinite(temperature) || !(total > 0.0) || !isfinite(total)) {
+    out_indices[row] = argmax;
+    if (out_logprobs) out_logprobs[row] = 0.0f;
+    if (out_counts) out_counts[row] = 1;
+    write_sampler_top_logprob_argmax(out_top_indices, out_top_logprobs, top_base, top_logprobs, argmax);
+    write_sampler_commit(out_commit_indices, out_commit_values, row, argmax, max_value);
+    return;
+  }
+  // Find the finite extent, not a fixed-size candidate list.
+  int64_t lo = 0, hi = vocab;
+  while (lo < hi) { int64_t mid = (lo + hi) / 2;
+    if (row_keys[mid] != UINT64_MAX) lo = mid + 1; else hi = mid; }
+  int64_t count = lo;
+  float top_p = top_ps[row], min_p = min_ps[row];
+  if (top_p <= 0.0f) count = 1;
+  else if (top_p < 1.0f) count = sampler_prefix_lower_bound(row_prefix, row_tiles, count, top_p * total) + 1;
+  // Contract: nucleus on the full distribution, then min-p, retaining >=1.
+  if (min_p > 0.0f) {
+    lo = 0; hi = count;
+    while (lo < hi) { int64_t mid = (lo + hi) / 2;
+      if (sampler_sorted_weight(logits, keys, base, mid, temperature, max_value) >= min_p) lo = mid + 1;
+      else hi = mid; }
+    count = max(static_cast<int64_t>(1), lo);
+  }
+  double retained_sum = sampler_prefix_at(row_prefix, row_tiles, count - 1);
+  double target = static_cast<double>(sampler_uniform01(seeds[row], step, row)) * retained_sum;
+  int64_t rank = sampler_prefix_lower_bound(row_prefix, row_tiles, count, target);
+  int32_t selected = static_cast<uint32_t>(row_keys[rank]);
+  out_indices[row] = selected;
+  if (out_logprobs) out_logprobs[row] =
+      sampler_centered_score(logits[base + selected], max_value, temperature) - log(retained_sum);
+  if (out_counts) out_counts[row] = count;
+  if (out_top_indices && out_top_logprobs) {
+    double denom = log(retained_sum);
+    for (int pos = 0; pos < top_logprobs; ++pos) {
+      bool valid = pos < count;
+      int32_t id = valid ? static_cast<uint32_t>(row_keys[pos]) : -1;
+      out_top_indices[top_base + pos] = id;
+      out_top_logprobs[top_base + pos] = valid ?
+          sampler_centered_score(logits[base + id], max_value, temperature) - denom : kNegInf;
+    }
+  }
+  write_sampler_commit(out_commit_indices, out_commit_values, row, selected, logits[base + selected]);
+}
+
 bool valid_threads(int64_t threads) {
   return threads == 64 || threads == 128;
 }
@@ -1025,6 +1225,45 @@ extern "C" int hipengine_sampler_apply_processors_f32_rows(
       step_indices,
       rows,
       vocab_size);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_sampler_sorted_f32_rows_i32(
+    const float* logits, const float* temperatures, const float* top_ps, const float* min_ps,
+    const uint64_t* seeds, int32_t* out_indices, float* out_logprobs, int32_t* out_counts,
+    int32_t* out_top_indices, float* out_top_logprobs, int64_t* out_commit_indices,
+    float* out_commit_values, void* scratch, uint64_t scratch_bytes,
+    int64_t rows, int64_t vocab, int64_t top_logprobs, uint64_t step, hipStream_t stream) {
+  if (!logits || !temperatures || !top_ps || !min_ps || !seeds || !out_indices || !scratch ||
+      rows <= 0 || rows > 65535 || vocab <= 0 || vocab > INT32_MAX || top_logprobs < 0 ||
+      top_logprobs > kMaxSamplerTopK || ((out_top_indices == nullptr) != (out_top_logprobs == nullptr)))
+    return static_cast<int>(hipErrorInvalidValue);
+  int64_t tiles = (vocab + kSamplerTile - 1) / kSamplerTile;
+  uint64_t required = static_cast<uint64_t>(rows) * (24ull * vocab + 8ull * tiles);
+  if (scratch_bytes < required || (reinterpret_cast<uintptr_t>(scratch) & 7))
+    return static_cast<int>(hipErrorInvalidValue);
+  auto* a = static_cast<uint64_t*>(scratch);
+  auto* b = a + rows * vocab;
+  auto* prefix = reinterpret_cast<double*>(b + rows * vocab);
+  auto* totals = prefix + rows * vocab;
+  dim3 grid(static_cast<unsigned int>(tiles), static_cast<unsigned int>(rows));
+  hipLaunchKernelGGL(sampler_sort_tiles_kernel, grid, dim3(kSamplerTile), 0, stream, logits, a, vocab);
+  hipError_t err = hipGetLastError();
+  if (err != hipSuccess) return static_cast<int>(err);
+  for (int64_t width = kSamplerTile; width < vocab; width *= 2) {
+    hipLaunchKernelGGL(sampler_merge_keys_kernel, grid, dim3(kSamplerTile), 0, stream, a, b, vocab, width);
+    err = hipGetLastError();
+    if (err != hipSuccess) return static_cast<int>(err);
+    auto* tmp = a; a = b; b = tmp;
+  }
+  hipLaunchKernelGGL(sampler_weight_scan_tiles_kernel, grid, dim3(kSamplerTile), 0, stream,
+      logits, a, temperatures, prefix, totals, vocab, tiles);
+  err = hipGetLastError();
+  if (err != hipSuccess) return static_cast<int>(err);
+  hipLaunchKernelGGL(sampler_sorted_select_kernel, dim3(rows), dim3(kSamplerTile), 0, stream,
+      logits, a, temperatures, top_ps, min_ps, seeds, prefix, totals, out_indices, out_logprobs,
+      out_counts, out_top_indices, out_top_logprobs, out_commit_indices, out_commit_values,
+      vocab, tiles, static_cast<int>(top_logprobs), step);
   return static_cast<int>(hipGetLastError());
 }
 

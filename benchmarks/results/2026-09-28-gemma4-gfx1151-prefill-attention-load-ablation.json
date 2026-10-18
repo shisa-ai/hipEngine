@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "date": "2026-09-28",
+  "host_arch": "gfx1151",
+  "tokens": 2048,
+  "iters": 5,
+  "script_sha256": "7acacdec8ebc93abcbc835d559ac427cc2aa041b4d061badf2606cb5e88b73bd",
+  "note": "Load-removing ablation. mask=zero skips every K/V load while leaving the key loop and reductions intact. The kernel gets SLOWER, so it is not traffic-bound.",
+  "keep": {
+    "swa_256d_window1024_ms": 62.23,
+    "full_512d_ms": 130.27,
+    "total_30_layer_ms": 2207.2
+  },
+  "zero": {
+    "swa_256d_window1024_ms": 83.44,
+    "full_512d_ms": 172.91,
+    "total_30_layer_ms": 2950.5
+  },
+  "delta_pct": {
+    "swa": 34.1,
+    "full": 32.7,
+    "total": 33.7
+  },
+  "conclusion": "Removing 100% of the K/V traffic makes the kernel 34% slower. The prefill attention cost is not memory traffic; it is per-key loop overhead, consistent with the kernel source comment that the cost is invariant to the work inside the key iteration."
+}

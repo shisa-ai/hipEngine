@@ -1,0 +1,134 @@
+{
+ "engine": "hipengine",
+ "trace": "/tmp/g4_scoreboard_t16/trace_4096/run_kernel_trace.csv",
+ "prefill": {
+  "busy_ms": 2714.9941,
+  "span_ms": 2631.1177,
+  "families": {
+   "attn.sliding": {
+    "ms": 1215.5546,
+    "launches": 200.0
+   },
+   "moe.gate_up": {
+    "ms": 467.265,
+    "launches": 240.0
+   },
+   "dense.q8_0": {
+    "ms": 440.0942,
+    "launches": 1008.0
+   },
+   "moe.down": {
+    "ms": 192.1933,
+    "launches": 232.0
+   },
+   "moe.router_gemm": {
+    "ms": 112.2456,
+    "launches": 480.0
+   },
+   "attn.global": {
+    "ms": 100.872,
+    "launches": 40.0
+   },
+   "moe.route_glue": {
+    "ms": 73.0688,
+    "launches": 2160.0
+   },
+   "norm": {
+    "ms": 38.9989,
+    "launches": 2401.0
+   },
+   "elementwise": {
+    "ms": 29.0247,
+    "launches": 968.0
+   },
+   "moe.act_quant": {
+    "ms": 25.9952,
+    "launches": 240.0
+   },
+   "other": {
+    "ms": 6.6035,
+    "launches": 200.0
+   },
+   "runtime_copy_fill": {
+    "ms": 6.4817,
+    "launches": 788.0
+   },
+   "moe.l29_experts": {
+    "ms": 5.6307,
+    "launches": 8.0
+   },
+   "lm_head": {
+    "ms": 0.9657,
+    "launches": 1.0
+   }
+  },
+  "other_top": {
+   "(anonymous namespace)::gemma4_qkv_split_bf16_kernel(unsigned short const*, long, long, long, long, i": 6.6035
+  }
+ },
+ "decode_per_token": {
+  "busy_ms": 17.7696,
+  "span_ms": 21.7755,
+  "families": {
+   "attn.sliding": {
+    "ms": 3.6208,
+    "launches": 50.0
+   },
+   "attn.global": {
+    "ms": 2.8019,
+    "launches": 10.0
+   },
+   "dense.q8_0": {
+    "ms": 2.7049,
+    "launches": 126.0
+   },
+   "moe.down": {
+    "ms": 2.6126,
+    "launches": 29.0
+   },
+   "norm": {
+    "ms": 1.5218,
+    "launches": 301.0
+   },
+   "moe.route_glue": {
+    "ms": 1.1664,
+    "launches": 240.0
+   },
+   "moe.gate_up": {
+    "ms": 1.0404,
+    "launches": 29.0
+   },
+   "lm_head": {
+    "ms": 0.9646,
+    "launches": 1.0
+   },
+   "moe.router_gemm": {
+    "ms": 0.6806,
+    "launches": 60.0
+   },
+   "moe.l29_experts": {
+    "ms": 0.2361,
+    "launches": 2.0
+   },
+   "elementwise": {
+    "ms": 0.2281,
+    "launches": 121.0
+   },
+   "runtime_copy_fill": {
+    "ms": 0.1424,
+    "launches": 67.0
+   },
+   "other": {
+    "ms": 0.0491,
+    "launches": 25.0
+   }
+  },
+  "other_top": {
+   "(anonymous namespace)::gemma4_qkv_split_bf16_kernel(unsigned short const*, long, long, long, long, i": 0.0491
+  }
+ },
+ "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/g4_scoreboard_t16/trace_4096 -o run -- /home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_family_census.py drive --prompt 4096 --decode 64 --prefill-repeats 2",
+ "trace_kernel_rows": 103676,
+ "prefill_prompt_tokens": 4096,
+ "classifier": "ENGINE_FAMILIES with the t16 gate_up patterns (q4_k_t16_selected, qk_t16_selected_direct_gemv qtype-4); re-rolled up from the kept trace after the first post-landing rollup misbucketed both t16 owners into other."
+}

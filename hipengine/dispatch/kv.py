@@ -112,6 +112,18 @@ _PAGED_KV_WRITE_ROUTES: dict[tuple[DType, PagedKVWriteKind, DType], _RouteTempla
 _PAGED_KV_WRITE_GRANULARITY_ROUTES: dict[
     tuple[str, PagedKVWriteKind, DType], _RouteTemplate
 ] = {
+    # ``per_token_head`` + BF16 lives here, not in the storage table, so a
+    # grouped granularity (``block16``/``hadamard_group32``) with a BF16 source
+    # has no storage-table fallback to the per-token/head writer.
+    ("per_token_head", PagedKVWriteKind.DECODE, DType.BF16): _RouteTemplate(
+        "paged_kv_write", "per_token_head_bf16_spans", quant=DType.INT8_PER_TOKEN_HEAD.value
+    ),
+    ("per_token_head", PagedKVWriteKind.PROMPT, DType.BF16): _RouteTemplate(
+        "paged_kv_write", "per_token_head_bf16_prompt_spans", quant=DType.INT8_PER_TOKEN_HEAD.value
+    ),
+    ("per_token_head", PagedKVWriteKind.BATCH, DType.BF16): _RouteTemplate(
+        "paged_kv_write", "per_token_head_bf16_batch_spans", quant=DType.INT8_PER_TOKEN_HEAD.value
+    ),
     ("hadamard_group32", PagedKVWriteKind.DECODE, DType.FP32): _RouteTemplate(
         "paged_kv_write", "hadamard_group32_spans", quant="int8_hadamard_group32"
     ),

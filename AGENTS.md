@@ -4,26 +4,71 @@ hipEngine is a ROCm-native inference engine built around a clean Python host and
 
 This `AGENTS.md` (`CLAUDE.md` symlinked) is read every session. It covers only ground rules that apply to every review / coding / benchmarking task. Activity-specific playbooks live in `docs/`.
 
+**If your task is kernel work, a measured performance claim, or a benchmark row, read [docs/OPTIMIZATION.md](docs/OPTIMIZATION.md) as well.** If it is not, you do not need that file, and its gates do not apply to you.
+
+**If your task touches `README.md` — or you are considering touching it — stop and read [docs/HOWTO-README.md](docs/HOWTO-README.md) first.** Read it, internalize it, and run its self-check on every line you intend to add, change, or delete before you write anything. That file is normative: it governs what belongs on the product page, and it lists the exact patterns (restating a fact a second section already carries, per-row provenance and methodology caveats under result tables, internal vocabulary such as `retained` and `qualified`) that have repeatedly made the page worse. **The default is to not edit `README.md` at all.** The page is lead-reviewed. Edit it only when the lead asked for a specific README change; never as a side effect of another task, and never to reword prose you merely dislike. When you are asked for a change, touch only the lines that request names: every other line stays as it is, even if you would have written it differently.
+
 Instruction precedence: if this file conflicts with platform / system / developer instructions, follow those first.
 
-## Summary
+## Decision Authority
+
+The human lead owns product and production direction. Their decisions are directives, not hypotheses.
+
+- **Execute, then report.** When the lead makes a product, default, or production call, make the change and report what it means. Do not open a pre-execution review of a decision they already made. Post-change validation still runs as this file requires — that verifies the implementation, not the decision.
+- **Evidence obligations bind claims, not decisions.** The Evidence Policy governs what the agent asserts. It does not gate what the lead decides.
+- **State disagreement once, and late.** If a decision looks wrong or a premise looks incomplete, say so once, briefly, after the work — or before it only when the action is irreversible, destructive, or materially wider in scope than the request. Then let the call stand.
+- **"Let me check first" is not a neutral move.** It converts a directive into a negotiation and spends the lead's time re-deciding what they already decided. Before any pre-execution check, ask: would this change what I *do*, or only what I *say about it*? If only the latter, do the work first.
+- **Reversible changes default to action.** A default flip, a flag, a doc fix, or a threshold change is reversible. Make it, and let the report carry the caveats.
+- **Documentation outranks nothing here.** A normative gate in `docs/EXECUTION-PROFILES.md`, a `docs/REFACTOR.md` blocker note, or a calibration envelope describes the evidence behind a default. It does not overrule a lead decision to change that default. Record the new decision; do not litigate the old gate.
+
+## What Evidence Is For
+
+hipEngine's evidence discipline exists because a fast kernel row is worthless if the output is wrong. That is its job. It is **not** a general-purpose permission system, and using it as one is the most common way agents damage this project.
+
+**Evidence governs:**
+
+- **Claims.** Any number you assert — throughput, latency, memory, acceptance rate, quality — carries its full provenance. See [docs/OPTIMIZATION.md](docs/OPTIMIZATION.md) §2.
+- **Arithmetic promotion.** Making a changed-arithmetic kernel path the default requires its execution-profile gate.
+- **Automated gating.** Wherever a script, CI job, or agentic loop decides keep/kill with no human in the loop, the threshold *is* the decision — so it must be explicit, pre-registered, and measured.
+- **Your own optimization choices.** Profile before you tune; prefer a measurement over a hunch.
+
+**Evidence does not govern:**
+
+- **Whether a feature is enabled.** Shipping a working implementation on the default path is a product decision, not a claim.
+- **Whether an implemented path may run.** Absence of a benchmark row is not a finding. Untested is not failed.
+- **Which models, artifacts, or configurations may load.** Support is decided by what the kernels implement, not by what has been measured. A model, file, quantization, or feature request the kernels can execute runs, whether or not a benchmark, evidence row, or model card mentions it.
+- **Product, API, and server behavior.** Defaults, naming, error shapes, endpoint semantics, and UX are design decisions. They must be correct and tested; they do not need a benchmark artifact.
+- **The lead's decisions.** See "Decision Authority" above.
+
+If you are about to block, gate, revert, or default-off something *because evidence is missing*, you are in the second column. Run it instead.
+
+## Product Defaults
+
+Each of these names a failure that has actually happened in this repo.
+
+- **Ship it on.** A working implementation lands **enabled on the default path**. A flag is a rollback lever for something already on, not a hiding place for something that has never been on. "Default off until qualified" requires a named concrete cause written where the flag is defined — an observed failure, an unmet precondition, a resource conflict, a missing dependency. "Not yet benchmarked" and "not yet qualified" are not causes.
+- **Capability is the only gate.** The question a gate may ask is "can the kernels execute this?" — never "have we measured this?" The complete list of legal reasons to refuse: no implementation for these inputs or semantics; an incompatible backend, architecture, quantization, KV layout, or storage policy; insufficient memory or other resources; or a recorded observed failure for this configuration. Nothing else refuses. Absence of an evidence row, a benchmark, a model card, or a qualification record is not a capability miss.
+- **Never key admission on identity.** Do not gate execution on a model name, a file path, a SHA-256, an artifact revision, or any enumerated list of known-good `(model, backend, quant)` combinations. An allowlist of measured artifacts turns every new file into an outage and can never be cleared by a user. Match the request against what the kernel declares it supports: an unfamiliar artifact that fits the declaration runs, and one that does not fit fails with a named capability miss.
+- **An explicit request runs or fails loudly.** When the user asks for something by name — a model path, `speculative_mtp: true`, a DMS sidecar, a quantization, a backend — it either runs or raises an error naming the capability it lacks. Silently downgrading it, disabling it, labelling it `unqualified`, or routing it through a diagnostic env var is a defect. Automatic selection may be conservative about *which variant* it picks among working paths; it may not decide the feature does not run at all.
+- **A gate nothing can clear is a bug in the gate.** If you restrict a path, you own the route that lifts the restriction: name the command that would clear it. A guard justified only by "nobody has exercised this case" makes the case permanently unexercisable, because the guard is what prevents exercising it. If you cannot name the clearing command, do not add the guard.
+- **Validate the space, not the gate point.** When behavior depends on a threshold — context length, batch width, prompt size, sequence count — exercise values on both sides of it and at least one value unrelated to it. Testing a length-gated path at exactly 512 and 1024 because those are the configured thresholds proves the thresholds, not the feature.
+- **Works in the harness is not works.** A route reachable only from a benchmark script, a test fixture, or an explicit env var is not shipped. Before calling a change done, exercise it the way a user reaches it — `hipengine.LLM.generate()` or `hipengine serve` — and confirm the intended path actually ran (selected variant, sampler mode, fallback reason). A path that silently falls back in production while passing its own targeted test is a defect, not coverage.
+
+## Ground Rules
 
 - **Source of truth:** [docs/PLAN.md](docs/PLAN.md). Update it when architecture or phase plans move.
-- **Cross-session handoff:** immutable files under `worklog/entries/`; root `WORKLOG.md` is a tracked navigation page and `WORKLOG-LEGACY.md` is frozen pre-cutoff history. Use `python3 scripts/worklog.py new/check/render`.
-- **Testing discipline:** math changes are guilty until proven correct. Follow RED/GREEN where practical, and use `docs/TESTING.md` for fixture/oracle/gate details. Execution-profile contracts are normative in `docs/EXECUTION-PROFILES.md`: control/ownership is exact in every profile; arithmetic equality, deterministic repeatability, and batch-composition invariance are separate gates.
+- **Cross-session handoff:** immutable files under `worklog/entries/`; root `WORKLOG.md` is a tracked navigation page. Pre-cutoff journal history lives in `worklog/entries/` as ported entries with `worker: legacy`; `worklog/legacy-port-manifest.json` holds the entry-to-commit mapping and the retired journal's pinned history ref. Use `python3 scripts/worklog.py new/check/render`.
+- **Untested is not failed.** Presume implemented paths runnable within their input, resource, and execution contracts. Run representative workloads and targeted tests to find and fix defects, rather than blocking evaluation behind missing qualification. Do not require successful evaluation as a prerequisite for running that evaluation. `docs/EXECUTION-PROFILES.md` §1.1 is the normative statement and separates runnability, evaluation, and promotion.
+- **Testing discipline:** follow RED/GREEN where practical; `docs/TESTING.md` has fixture/oracle/gate details. Claims and production arithmetic promotion still require the applicable correctness gates in [docs/OPTIMIZATION.md](docs/OPTIMIZATION.md). Control/ownership, deterministic repeatability, arithmetic equality, and batch-composition invariance remain distinct contracts — do not collapse them.
 - **Test naming and scope:** new/migrated modules use `test_<tier>_<subject>.py`; follow `docs/TESTING.md` "Test Naming and Discovery". Default pytest discovers the reviewed unit tier only. Use explicit file/node targets or `--suite <tier>` for other work; a full milestone run requires `--suite all`. Never classify cost by product-name substrings or introduce manual filename exclusion lists.
-- **Evidence policy:** every performance claim carries model + quant + workload shape + physical host identity + hardware + exact command + result + correctness gate. No exceptions (see `docs/PLAN.md` "Evidence Policy" and `docs/BENCHMARK.md`). Two machines with the same backend/GPU architecture are independent lanes: never report their absolute rates as an old→new comparison unless one declared same-host protocol measured both.
-- **No benchmark gaming.** Tuning a metric to the specific inputs being measured is an INVALID benchmark, not a win. Concretely: never hardcode token IDs / candidate-id reranks / prompt-conditioned branches that lift acceptance, top-1, or speed on the fixed prompt(s) under test. Optimize the model/kernels, not the score. Acceptance/speed/quality for speculative or sampling paths must be validated on the **full multi-prompt mtp-bench category suite** (`benchmarks/prompts/mtpbench-code-general-ja.jsonl`, all of `code`/`general_en`/`general_ja`/`mixed_ja_en`) plus category-heldouts, never a single fixed prompt. MTP speedup claims require a true no-MTP autoregressive baseline from the same benchmark protocol; verifier-derived `off`/`B0` rows are diagnostic only. Single-prompt-overfit numbers are not retainable and any prior rows derived from them are marked INVALID. See `docs/BENCHMARK.md` "Anti-gaming".
-- **Benchmark rollup stays current.** Every retained benchmark updates `benchmarks/README.md` (`Last updated` plus table row), `benchmarks/CHANGELOG.md` (dated one-liner with old→new metric, % delta, reason, artifact/source), and a compact artifact under `benchmarks/results/`.
-- **The root `README.md` is a public product page, never a worklog.** Keep it concise, model-first, and useful to prospective users. It may show current result tables and brief user-visible caveats; it must not contain implementation diaries, optimization history, kernel/planner internals, candidate ladders, exact benchmark commands, evidence inventories, or internal blockers. Put those in `worklog/entries/`, `benchmarks/results/`, `benchmarks/CHANGELOG.md`, or `benchmarks/HISTORY.md`. Exported benchmark prose must pass `scripts/sync_benchmark_readme.py --check`.
+- **Flags are a cost, not a feature.** Prefer no flag. When one is genuinely warranted, it defaults to the behavior you want in production, and you add a `docs/REFACTOR.md` entry naming the concrete condition for removing it. The ledger entry is the price of the flag, not a licence to add one. Temporary flags, rejected paths, duplicate dispatch routes, and fallback chains that should disappear all go in `docs/REFACTOR.md` while the context is fresh.
+- **The root `README.md` is a public product page, never a worklog.** Keep it concise, model-first, and useful to prospective users. It may show current result tables and brief user-visible caveats; it must not contain implementation diaries, optimization history, kernel/planner internals, candidate ladders, exact benchmark commands, evidence inventories, or internal blockers. Put those in `worklog/entries/`, `benchmarks/results/`, `benchmarks/CHANGELOG.md`, or `benchmarks/HISTORY.md`. Exported benchmark prose must pass `scripts/sync_benchmark_readme.py --check`. **Read [docs/HOWTO-README.md](docs/HOWTO-README.md) before editing `README.md`, and do not edit that file at all unless the lead asked for a specific README change.** The page's recurring failure mode is agents restating a fact a second section already carries, appending per-row provenance and methodology caveats under result tables, and leaking internal vocabulary (`retained`, `qualified`, `migration path`). State each fact once, in the section that needs it; keep only caveats that change what a reader does; move removed detail to `benchmarks/README.md` or the model card rather than deleting it from the repository.
+- **The kernel catalog is a reference, not a journal.** `docs/KERNELS.md` owns the kernel inventory, source trees, model/quant organization, registry mappings, exact/production implementations, and fused/unfused relationships. Keep descriptions brief. Do not append implementation history, benchmark results, tuning narratives, or worklog summaries. General porting/build/runtime gotchas go in `docs/LESSONS-LEARNED.md`; architecture-specific guidance goes in `docs/RDNA3-TUNING-GUIDE.md`. History already recorded in worklogs stays there; do not duplicate it in these guides.
 - **Public-facing prose is self-contained.** Write for a reader with no session or worklog context. State current behavior and the comparison basis directly. Do not use unexplained campaign labels, commit shorthand, or backward-looking phrases such as “retained,” “remains non-regressive,” or “supersedes.” Include history only when it is the subject and introduce it explicitly. Use emphasis only for clear leaders, recommendations, or headline results.
-- **Performance wins are first-class.** Every measured, exact, non-regressive performance improvement is kept and promoted to the default path unless there is a concrete blocker recorded in a durable worklog entry. Production-profile T1/T2 arithmetic wins are also retainable when the complete same-suite profile quality/task gate passes; they are not required to match strict generated IDs across widths. Cycle-wall, verified sub-window, launch-count, and H2D/D2H reductions count even when same-session AR variance hides the headline ratio; microseconds compound.
-- **Refactor debt is tracked.** Temporary flags, rejected paths, duplicate dispatch routes, and fallback chains that should disappear after the optimal path is proven go in `docs/REFACTOR.md`. Add to it while the context is fresh instead of relying on future archeology.
-- **Correctness gate for any new/ported kernel:** KL ≤ 0.05 AND top-1 agreement ≥ 90% vs `kernels/cpu_reference/` on fixture inputs is the outer smoke/safety floor. Strict variants additionally satisfy their declared exact/parent-parity RED contract. Production-profile variants satisfy the tighter calibrated mean/tail/max KL, top-1, deterministic/isolation, BF16-relative, and task gates in `docs/EXECUTION-PROFILES.md`; the broad floor alone cannot promote a production default.
-- **Default hardware:** AMD Radeon Pro W7900, gfx1100/RDNA3. Claims about other backends require the corresponding hardware or are marked explicitly unverified.
-- **Kernel work happens in this tree.** hipEngine is not a thin port of `~/amd-gpu-tuning/`; it is substantively different (torch-free runtime, four-axis registry, `KVLiveSpans` ABI, verifier-shaped kernels). New kernels, fused variants, small-batch/verifier-shaped kernels, micro-tuning, and `rocprofv3` iteration loops all live here under `kernels/<backend>/` with a strict exact/parent-parity RED test or a production-profile numerical RED test, plus the applicable correctness gate and a registered strict fallback. `~/amd-gpu-tuning/` and `nano-vllm-amd` remain read-only *references* for kernel lineage, prior evidence, and the device-code gotcha catalog — cite source file + commit when porting an idea, but do the development and measurement in-tree.
-- **IMPORTANT: there is no "exactness contract" — the contract is production correctness.** When optimizing, do **not** automatically discard a candidate because it is not bit-identical to the strict/exact parent (no BF16-flip-free / bit-exact requirement gates promotion). The binding contract is the one in [docs/EXECUTION-PROFILES.md](docs/EXECUTION-PROFILES.md): exact control/ownership in every profile, plus the calibrated production numerical envelope (mean/p95/p99/max KL, top-1 by category, determinism, isolation, task quality). A candidate that is not bit-exact must be re-reviewed under those production gates before any rejection; "strict" is a debugging oracle, not the promotion bar.
-- **Kernel catalog must stay current.** Before any kernel port, check `docs/KERNELS.md` and run `scripts/check_lineage.py`; update the catalog/path map if parent kernels or dispatch changed.
+- **Cleanup debt is inventoried, not remembered.** `audit/` has two halves sharing one decision store. `audit.py inventory` keeps a live, idempotent catalogue of debt already written down — flags, kernels, `docs/REFACTOR.md` entries, campaign candidates — and re-matches each row to its existing decision across rescans even when its text was edited. `audit.py scan` runs code checks that queue concrete fixes: violated architectural invariants, documented paths that moved, unguarded GPU tests, branches on flags with no removal condition. A row is evidence, never a verdict; extractors are routinely wrong and `NOT-DEBT` is a normal outcome. `python3 audit/audit.py check` is the gate: it fails when untriaged rows grow past `audit/budget.json`, so new debt cannot land untriaged. Work it with the assignments in `audit/agents/` (`triage.md` decides, `fix.md` edits), and never raise the budget to get past the gate.
+- **No hard-coded home directories in prose.** A path like `/home/<you>/llama.cpp` is correct for exactly one reader. Use `~/` for anything outside the repository and a repo-relative path (`.venv/bin/python`, `scripts/foo.py`) for anything inside it. `scripts/docs/check_docs.py` fails on `/home/<user>/` and `/Users/<user>/` in `AGENTS.md`, `docs/`, and `benchmarks/` prose; dated evidence under `docs/testing/`, `docs/examples/`, and `benchmarks/results/` is exempt because it records what something said rather than instructing.
+- **Docs declare their own status.** Every file under `docs/` carries front-matter: `status: normative | current | closed | superseded` plus an `owns:` line. `normative` binds, `current` describes today's contract, `closed` is evidence from finished work, `superseded` names its replacement. Check the status before treating a document as binding — most of `docs/campaigns/` is closed history, not policy. Top-level `docs/` is the small set every agent should know exists; `reference/` holds live subsystem contracts, `campaigns/` closed campaign evidence, `model-cards/` per-model status, `archive/` superseded material. When you add or move a document, add the front-matter and run `python3 scripts/docs/check_docs.py --write` to refresh the generated indexes. `python3 scripts/docs/check_all.py` runs every documentation gate.
+- **Kernel, performance, and benchmark rules live in [docs/OPTIMIZATION.md](docs/OPTIMIZATION.md).** That file owns the evidence-claim fields, anti-gaming rules, correctness gates, promotion rules, lineage workflow, profiling recipes, and benchmark rollup. It applies to kernel work, measured claims, and benchmark rows — and to nothing else.
 
 ## Architectural Invariants
 
@@ -31,27 +76,36 @@ Do not drift these casually. They define what hipEngine is.
 
 - **Torch-free runtime.** `import torch` is **not** allowed in any module reached by `hipengine.LLM.generate()`. Torch lives behind the optional `hipengine[torch]` extra and appears only as a dlpack bridge at the user boundary. Adding `import torch` anywhere on the hot path is an architectural change, not a refactor.
 - **Four-axis plugin registry.** Kernels are keyed by `(backend, layer, quant, variant)`. Models, quant schemes, and layers are plugins. **Never** add `if backend == "hip_gfx1100"` or `if quant == "..."` branches in dispatch / engine / model code; register against a registry key instead. See `docs/PLAN.md` "Extensibility Design" for mechanics.
-- **Fused kernels require a strict unfused fallback.** Every fused composite (`rmsnorm+rotate`, `gate_combine_residual`, …) must have a registered strict unfused chain under its primitives. Strict fused variants meet their declared exact/parent-parity contract; production variants may reassociate only after the full profile gate.
+- **Fused kernels require a strict unfused fallback.** Every fused composite (`rmsnorm+rotate`, `gate_combine_residual`, …) must have a registered strict unfused chain under its primitives. Strict fused variants meet their declared exact/parent-parity contract. Production candidates may reassociate during evaluation; default promotion requires the full profile gate.
 - **Kernel bodies take raw device pointers.** `__global__` signatures use `void*` / typed pointers, never `torch::Tensor`. Only the host-side launch wrappers convert.
 - **`KVLiveSpans` is the attention kernel ABI, not a DMS-only concept.** Every paged-KV-write and attention-decode kernel reads `(base_offsets, live_counts, token_positions, evict_mask)`. Dense policies fill it uniformly; DMS/H2O/SnapKV fill it variably. Do not shortcut to `(block_table, context_len)`.
-- **Backend tree is a peer structure.** `kernels/hip_gfx1100/`, `kernels/hip_gfx1151/`, `kernels/cuda_sm86/`, `kernels/cpu_reference/` are siblings. There is no "AMD directory".
+- **Backend tree is a peer structure.** `hipengine/kernels/hip_gfx1100/`, `hipengine/kernels/hip_gfx1151/`, `hipengine/kernels/cuda_sm86/`, `hipengine/kernels/cpu_reference/` are siblings. There is no "AMD directory".
 
 ## Key Files
 
 | Path | Purpose |
 | --- | --- |
+| `docs/README.md` | Generated index of the docs tree, with each document's status and what it owns. Start here when you do not know which document you need. |
 | `docs/PLAN.md` | Architecture, phase roadmap, LoC budgets, extensibility design. |
-| `docs/BENCHMARK.md` | Benchmark protocols, baselines to beat, correctness gate, artifact/rollup format. |
+| `docs/HOWTO-README.md` | **Rules for editing the root `README.md`** — what belongs on the product page, the duplication and caveat patterns that have damaged it, and the self-check to run before committing a README change. |
+| `docs/OPTIMIZATION.md` | **Rules for kernel work, performance claims, and benchmark rows** — evidence fields, anti-gaming, correctness gates, promotion, lineage, profiling. Scoped: it does not govern product behavior. |
+| `docs/EXECUTION-PROFILES.md` | Normative strict/production/batch-invariant contracts, numerical gates, exact ownership and failure-containment semantics, and variant-selection policy. Scoped to arithmetic and kernel-variant selection; it does not decide which models, artifacts, or features may run. §1.1 is the "missing evidence is not a runtime failure" rule. |
 | `docs/TESTING.md` | RED/GREEN workflow, correctness oracles, fixture policy, validation matrix. |
-| `docs/KERNELS.md` | Kernel catalog, source-lineage drift workflow, Qwen3.5/PARO optimal path map, port playbook, JIT cache gotcha, build profiles. |
-| `docs/source_lineage.json` | External parent-file manifest used by `scripts/check_lineage.py`. |
+| `docs/BENCHMARK.md` | Benchmark protocols, baselines to beat, correctness gate, artifact/rollup format. |
+| `docs/KERNELS.md` | Kernel inventory, source trees, model/quant and registry mappings, exact/production variants, and fused/unfused implementations. |
 | `docs/ROOFLINE.md` | RDNA3 W7900 performance model: hardware, regimes, decision tree, what-not-to-chase. |
-| `docs/EXECUTION-PROFILES.md` | Normative strict/production/batch-invariant contracts, numerical gates, exact ownership semantics, and registry resolution policy. |
-| `docs/PRODUCTION-NUMERICS-CAMPAIGN.md` | Approved evaluator, calibration, historical-candidate, c1, and c>N/A4 execution plan. |
+| `docs/RDNA3-TUNING-GUIDE.md` | RDNA3 tuning technique. Externally referenced; the current respin of the kernel-level findings in `docs/LESSONS-LEARNED.md`. |
+| `docs/API.md` | OpenAI-compatible server usage, endpoint support, current limitations. |
+| `docs/ENVS.md` | Complete env-var reference and recommended profiles. |
+| `docs/MODELS.md` | Models, quantizations, and backends hipEngine has measured. A coverage record, not an admission list. |
 | `docs/REFACTOR.md` | Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code to remove after optimal paths are proven. |
+| `docs/reference/PRODUCTION-NUMERICS-CAMPAIGN.md` | Approved evaluator, calibration, historical-candidate, c1, and c>N/A4 execution plan. |
+| `docs/source_lineage.json` | External parent-file manifest used by `scripts/check_lineage.py`. |
+| `scripts/docs/` | Documentation tooling: `check_all.py` runs every doc gate, `check_docs.py` validates front-matter and regenerates the indexes. |
+| `audit/` | Cleanup audit: mechanical debt inventory, durable triage, and the budget gate. `audit/README.md` has the model. |
 | `AGENTS.md` / `CLAUDE.md` | Ground rules (this file). |
 | `WORKLOG.md` | Tracked worklog navigation page. |
-| `WORKLOG-LEGACY.md` | Byte-frozen pre-Worklog2 journal; never edit. |
+| `worklog/legacy-port-manifest.json` | Ported pre-cutoff entries: entry-to-commit mapping plus the retired journal's sha256 and Git history ref. |
 | `worklog/entries/` | Immutable per-unit current decisions, results, blockers, and handoffs. |
 | `worklog/README.md` / `scripts/worklog.py` | Worklog schema, commands, validator, renderer, and optional pre-commit hook. |
 | `benchmarks/README.md` | Canonical topline scoreboard, platform freshness, protocols, artifacts, and root README exports. |
@@ -66,35 +120,28 @@ Do not drift these casually. They define what hipEngine is.
 ### Before Starting
 
 1. `git status -sb` — note unrelated changes and leave them alone.
-2. Read the relevant section of [docs/PLAN.md](docs/PLAN.md) and the latest relevant files under `worklog/entries/` (or run `python3 scripts/worklog.py render`). Read the `WORKLOG-LEGACY.md` tail only when pre-cutoff context matters.
-3. For kernel / GPU work, confirm ROCm is alive:
-   ```bash
-   python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
-   rocminfo | grep -E 'Name:|gfx'
-   ```
-4. Before any kernel port, read `docs/KERNELS.md` for the current catalog/path map and run `python3 scripts/check_lineage.py --kind kernel --diff stat` (or a narrower `--file` filter). Inspect DRIFT commits/diffs and parent WORKLOG/OPTIMAL evidence before copying code.
-5. For a perf claim, define the baseline (model, quant, workload shape, hardware, command) from `docs/BENCHMARK.md` and `benchmarks/README.md` before making the change.
+2. Read the relevant section of [docs/PLAN.md](docs/PLAN.md) and the latest relevant files under `worklog/entries/` (or run `python3 scripts/worklog.py render`). Pre-cutoff context is in ported entries (`worker: legacy`); the original journal bytes live in Git history at the ref recorded in `worklog/legacy-port-manifest.json`.
+3. For kernel work, a perf claim, or a benchmark row, follow [docs/OPTIMIZATION.md](docs/OPTIMIZATION.md) §3 — ROCm liveness, lineage check, and baseline definition — before changing code.
+4. **Before touching `README.md`: read [docs/HOWTO-README.md](docs/HOWTO-README.md) in full and work its self-check list.** Confirm the lead asked for this specific change, `grep` the file for every fact you intend to state, and confirm each detail you remove is already recorded in `benchmarks/README.md`, a `docs/model-cards/` page, or a worklog entry. If the change was not requested, stop.
 
 ### During Work
 
 - Keep changes scoped to one logical unit (one kernel family, one plugin, one doc, one phase milestone).
 - Write or update the targeted test/fixture before implementation when behavior or math changes. If RED-first is impractical, record why in the unit's worklog entry.
-- If a performance path is exact and same-suite non-regressive, make it the default and keep the old path as an opt-out only when rollback/bisection still has value. If a T1/T2 production path changes arithmetic, require exact control/ownership, same-schedule determinism, strict-teacher mean/tail/max KL and top-1 by category/shape/transition, applicable BF16-relative/task gates, and a registered strict fallback; cross-width generated-ID equality is diagnostic rather than universally binding. A small cycle-wall or sub-window win can be retained even if the aggregate ratio is flat within noise; document the distinction. If a path remains gated off, record the concrete blocker, not a vague "needs more evidence".
-- When adding an env flag or retaining a default-off/default-on experiment, add or update a `docs/REFACTOR.md` entry that says when the flag/path should be removed.
+- Land new working behavior on by default. Gate it only with a named concrete cause and a named clearing command (see "Product Defaults"); record the blocker in `docs/REFACTOR.md`.
 - When adding tests that call HIP/ROCm runtime, `hipcc`, or GPU kernels, add an explicit HIP-availability guard (for example `ctypes.CDLL("libamdhip64.so")` + `pytest.skip`) so no-ROCm CI/publish runners skip them instead of failing release validation.
 - For a substantial unit, create a unique entry with `python3 scripts/worklog.py new`, update it with non-trivial decisions, measurements, and dependency additions as work proceeds, and commit it with the unit.
-- When profiling Python/ctypes JIT-built kernels with `rocprofv3`, prebuild the `.so` outside the profiler and run the profiled command with a precomputed compiler-version file plus `require_cached`; do not let the profiled process spawn `hipcc`/clang.
-- For MTP profiling, do **not** wrap the prompt-suite/economics parent harness (`scripts/mtp-bench.py --mode hipengine-current` or `scripts/mtp_prompt_suite_economics.py`) in `rocprofv3`; it launches nested Python children and profiler/JIT state propagates into them. Use `scripts/mtp_verifier_rocprof.py` or profile the final `mtp_chain_e2e_smoke.py` child after a non-profiled cache warmup.
 - Do not silently add `import torch`, `flash_attn`, or other CUDA-only deps to hot-path modules.
 - Do not add `if backend == "..."` or `if quant == "..."` branches in engine / dispatch / model code.
 
 ### After Changes (before claiming done)
 
 - Run the narrowest relevant test, then the applicable `docs/TESTING.md` gate before claiming done.
+- Exercise the change through the surface a user reaches, not only through its test or harness. Confirm the intended path ran.
 - **Do not automatically rerun a broad suite after an isolated failure.** If a completed broad run establishes that all other tests passed and the repair is scoped, rerun only the failing node(s), the changed test file, and any genuinely affected narrow bundle. Preserve the original broad-run result plus the repaired focused result as the validation evidence. Repeat the full suite only when the fix can affect previously passing tests (for example shared test infrastructure, collection/order/global-state behavior, or broadly shared production code), multiple unrelated failures indicate wider risk, a release protocol explicitly requires a fresh all-green run, or the user explicitly approves it.
 - **An assigned task is standing approval for in-scope expensive validation.** State the concrete reason and expected duration before starting a test or benchmark expected to take more than five minutes, then proceed without another approval when it is necessary to complete the user-assigned task or campaign; use a background task when appropriate. Do not spend an equivalent expensive rerun when existing evidence plus focused repair is sufficient. Ask only before work that materially expands beyond the assigned scope or adds unusual destructive/reset-risk behavior.
-- For a new / ported kernel: the applicable strict or production-profile correctness gate vs `kernels/cpu_reference/` + a `rocprofv3 --kernel-trace` entry showing the kernel ran under the expected name with plausible duration (`DurationNs` or `End_Timestamp - Start_Timestamp`). Production-profile evidence also names the execution profile and variant-manifest hash. See `docs/KERNELS.md` and `docs/EXECUTION-PROFILES.md`.
-- For a perf change: record baseline + new measurements in the unit's immutable worklog entry with exact commands, emit/update the JSON artifact under `benchmarks/results/`, update `benchmarks/README.md` with the retained row and `Last updated` date, and add a dated changelog one-liner with old→new metric, % delta, reason, and artifact/source.
+- For a new / ported kernel or a perf change, run the gates and rollup in [docs/OPTIMIZATION.md](docs/OPTIMIZATION.md) §4, §6, and §8.
+- **For any `README.md` change, re-read the diff against [docs/HOWTO-README.md](docs/HOWTO-README.md) and work its self-check before committing**, then run `python3 scripts/sync_benchmark_readme.py --check` and `uv run pytest tests/test_integration_benchmark_readme_sync.py`. If a line you added restates something the page already says, delete it rather than explaining it.
 - Update `docs/PLAN.md` if architectural plans shifted.
 - **Commit immediately** when the logical unit is complete and validation passes.
 
@@ -104,11 +151,11 @@ Run the narrowest tier for your change; escalate at milestone boundaries.
 
 | Scope | What to run |
 | --- | --- |
-| Docs / process | Re-read the changed file end-to-end; no GPU run needed. |
+| Docs / process | Re-read the changed file end-to-end, then `python3 scripts/docs/check_all.py`. No GPU run needed. |
+| Flag, kernel, or ledger cleanup | `python3 audit/audit.py check` plus the narrowest relevant `pytest`. Record the triage decision with the change. |
 | Code / registry / dispatch | The narrowest relevant `pytest` + applicable CPU deterministic bundle (see `docs/TESTING.md`). |
-| New or ported kernel | Strict exact/parent-parity or production-profile numerical RED gate + CPU-reference outer gate + `rocprofv3 --kernel-trace` smoke (see `docs/KERNELS.md`, `docs/TESTING.md`, and `docs/EXECUTION-PROFILES.md`). |
-| Perf claim | Re-run the exact benchmark command from `docs/BENCHMARK.md` on stated hardware; record both runs in the unit's worklog entry. |
-| Capacity / does-it-fit | Tier-1 allocation probe (`scripts/gguf_capacity_probe.py`, ~3 min) at the target context; escalate to a full-prompt harness point ONLY to confirm a found bound or to certify completion at depth. See `benchmarks/HARNESSES.md` "Capacity testing". Never bracket bounds with full prompts. |
+| Server / API / product surface | The narrowest relevant `pytest`, plus one real request through `hipengine serve` or `LLM.generate()` confirming the intended route ran. |
+| Kernel, perf claim, or capacity | See [docs/OPTIMIZATION.md](docs/OPTIMIZATION.md) §8. |
 | Milestone closure | One full `uv run pytest --suite all -v` + the phase's named perf target vs prior baseline. If that completed run has isolated failures, apply the focused-repair rule above rather than automatically repeating the full suite. |
 
 ## Git Discipline
@@ -153,6 +200,7 @@ Prefixes: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, `perf:`, `po
 - Model weights, `*.safetensors` outside fixtures
 - Compiled `.so` / JIT caches, `rocprofv3` dumps, raw benchmark logs
 - Local env / secrets, Python caches
+- Agent-runner config folders (`.claude/`, `.codex/`, `.pi/`, `.multiloop/`) — per-user state, git-ignored; register runner subagents locally, never in the repo
 - Vendored upstream repos (nano-vllm-amd, FastDMS, etc. — referenced by absolute path)
 
 ### Never Discard Others' Work
@@ -163,15 +211,15 @@ Do not run `git restore`, `git checkout --`, `git reset --hard`, `git clean -fd`
 
 Working tree is shared state. Other agents or the human may be editing concurrently.
 
-- **High-conflict files:** `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md`, `docs/BENCHMARK.md`, `docs/TESTING.md`, `docs/KERNELS.md`, `docs/IMPLEMENTATION.md`, `pyproject.toml`, `scripts/worklog.py`, `worklog/README.md`, `hipengine/kernels/registry.py`, `hipengine/quant/registry.py`, `hipengine/models/registry.py`, `hipengine/dispatch/fusion.py`, `hipengine/core/*`.
+- **High-conflict files:** `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md`, `docs/OPTIMIZATION.md`, `docs/BENCHMARK.md`, `docs/TESTING.md`, `docs/KERNELS.md`, `docs/reference/IMPLEMENTATION.md`, `pyproject.toml`, `scripts/worklog.py`, `worklog/README.md`, `hipengine/kernels/registry.py`, `hipengine/quant/registry.py`, `hipengine/models/registry.py`, `hipengine/dispatch/fusion.py`, `hipengine/core/*`.
 - Same-file contention: stop and coordinate. The designated agent stages and commits their scoped hunks first to unblock others.
 - Worklog entry filenames are unique and should not conflict. A committed entry is immutable; correct it with a new `decision` or `checkpoint` entry that links the superseded path.
-- `WORKLOG-LEGACY.md` is byte-frozen and manifest-checked. If an old branch carries an append to pre-cutoff `WORKLOG.md`, the designated merge owner converts its missing material into a new immutable entry instead of changing legacy.
+- The pre-cutoff journal was ported verbatim into entries and retired from the tree; its exact bytes are pinned by the history ref in `worklog/legacy-port-manifest.json`. If an old branch carries an append to pre-cutoff `WORKLOG.md`, the designated merge owner converts its missing material into a new immutable entry instead of resurrecting a legacy file.
 - Do not clean up another agent's benchmark outputs, staged files, or local artifacts unless the task explicitly asks for that cleanup.
 
 ## External Reference Repos
 
-Read-only peers under `/home/lhl/`. Do not edit as part of a hipEngine task. When porting, record source file + commit in the commit message. If an external reference disagrees with `docs/PLAN.md`, `docs/PLAN.md` wins unless we explicitly decide the reference is correct and update `docs/PLAN.md`.
+Read-only peers under `~/`. Do not edit as part of a hipEngine task. When porting, record source file + commit in the commit message. If an external reference disagrees with `docs/PLAN.md`, `docs/PLAN.md` wins unless we explicitly decide the reference is correct and update `docs/PLAN.md`.
 
 - `~/amd-gpu-tuning/` — parent workspace; kernel lineage reference, benchmark history, `LESSONS-LEARNED.md`. Read-only; kernel development now happens in this tree.
 - `~/amd-gpu-tuning/nano-vllm-amd/` — kernel source of truth for the Phase-0 port.
@@ -183,18 +231,20 @@ Read-only peers under `/home/lhl/`. Do not edit as part of a hipEngine task. Whe
 
 | Situation | Action |
 | --- | --- |
-| ROCm env appears corrupted | Record symptoms in a new worklog entry before any restore; follow the `~/amd-gpu-tuning` `therock` restore commands if clearly required. |
-| Kernel hangs with GPU at 0%, no error | Stale JIT cache. See `docs/KERNELS.md` "JIT cache gotcha". |
-| `rocprofv3` reports unexpected kernel | Registry / dispatch bug, not a kernel bug. Check `fusion.plan()` output before touching the kernel. |
-| Math change lacks an oracle/test | Stop and add a CPU-reference/golden fixture first, or record an explicit no-RED rationale in the unit's worklog entry. |
-| KL / top-1 regression after a kernel edit | Stop, add a fixture that captures and localizes the failure, and compare against the declared profile gate. Never land a strict perf win that breaks strict parity or a production win that fails any binding mean/tail/category/task threshold; do not relabel state/control bugs as numerical drift. |
-| Kernel micro-opt shows neutral / negative results | Re-audit the rocprof kernel-family / launch breakdown in-tree (e.g. `scripts/mtp_verifier_rocprof.py`) before more tweaks; consult `~/amd-gpu-tuning/` evidence for context, but do not keep tweaking blindly. |
+| A path is implemented but has never been exercised | Run it. That is the task. Do not gate it, and do not report it as unqualified. |
+| A model, artifact, or quant is not in a support matrix or model card | Load it. Those pages record what we measured, not what may run. Refuse only on a named kernel capability miss. |
+| Tempted to gate on a hash, model name, or known-good combination list | Do not. Gate on the kernel's declared capability instead. See "Never key admission on identity". |
+| A user explicitly asked for a feature and no evidence row covers it | Run it and report the capability result. `unqualified` is not a refusal reason. |
+| Tempted to default-off something that works | Name the concrete cause and the command that would clear it. If you cannot name both, ship it on. |
+| Math change lacks an oracle/test | Add a CPU-reference/golden fixture first, or record an explicit no-RED rationale in the unit's worklog entry. |
 | Merge conflict in a high-conflict file | Stop and coordinate. Do not force-stage or revert. |
 | Unclear whether a change crosses a plugin-registry boundary | Check `docs/PLAN.md` "Extensibility Design" first; if still unclear, ask the human lead. |
 | Unrelated files changed in the worktree | Leave them. Another agent or the human owns them. |
+| Kernel, profiler, ROCm-environment, or numerical-regression blocker | See [docs/OPTIMIZATION.md](docs/OPTIMIZATION.md) §9. |
 
 ## Communication
 
 - Lead with the substantive finding or result, not just what command was run.
 - Distinguish measured from inferred: "measured X tok/s on Y hardware with Z command" vs "expected to be X based on Y".
 - If work is still in progress, state the current concrete result or explicitly say there is no result yet.
+- Do not report a missing benchmark as a defect, or an ungated implemented path as a risk. Report what ran, what it did, and what is actually broken.

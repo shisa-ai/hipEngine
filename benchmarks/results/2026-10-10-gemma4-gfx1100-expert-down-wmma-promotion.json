@@ -1,0 +1,411 @@
+{
+ "schema": 1,
+ "kind": "gemma4_gfx1100_expert_down_wmma_promotion",
+ "date": "2026-10-10",
+ "performance_claim": true,
+ "question": "Does the grouped WMMA expert down owner pass the EXECUTION-PROFILES section 2.11 envelope against the exact grouped owner on gfx1100, and what does it change through the public path?",
+ "model": "Gemma 4 26B-A4B-it UD-Q4_K_XL, BF16 KV",
+ "hardware": {
+  "device": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "host": "epyc"
+ },
+ "hipengine_commit": "6aec43d09 plus this change",
+ "lever": "HIPENGINE_GEMMA4_MOE_DOWN_WMMA (strict arm 0, candidate arm 1)",
+ "profile_finding": {
+  "source": "rocprofv3 --kernel-trace of scripts/gemma4_campaign_bench.py at 6aec43d09",
+  "q5_1_selected_grouped_prefill_staged_share_of_prefill_kernel_time": {
+   "512": 0.593,
+   "8192": 0.601
+  },
+  "avg_ms_per_call": {
+   "512": 8.75,
+   "8192": 17.97
+  }
+ },
+ "packet": {
+  "command": "scripts/gemma4_wmma_promotion_packet.py --artifact <gguf> --directory <dir> --candidate-kind down_wmma",
+  "rows_per_case": 64,
+  "cases": 18,
+  "bars": {
+   "kl_median": 0.001,
+   "kl_p90": 0.02,
+   "damage_line_kl": 0.05,
+   "flip_damage_rate_global": 0.03,
+   "flip_damage_rate_category": 0.08,
+   "top1_global": 0.96,
+   "top1_scope": 0.94
+  },
+  "global": {
+   "rows": 1134,
+   "kl_median": 2.073958463180363e-06,
+   "kl_p90": 0.005818935099821185,
+   "flip_damage_rate": 0.009700176366843033,
+   "damage_line_kl": 0.05,
+   "top1_rate": 0.9841269841269841,
+   "thresholds": {
+    "kl_median": 0.001,
+    "kl_p90": 0.02,
+    "flip_damage_rate": 0.03,
+    "top1_rate": 0.96
+   },
+   "failed": [],
+   "passed": true
+  },
+  "routing_flip_rate_diagnostic": 0.8500881834215167,
+  "passed": true,
+  "promotion_eligible": true,
+  "elapsed_s": 424.3,
+  "case_rows": [
+   {
+    "id": "code_merge_intervals",
+    "category": "code",
+    "split": "canonical",
+    "prompt_tokens": 513,
+    "routing_identical_rows": 5,
+    "routing_flip_rows": 58,
+    "flip_rate_diagnostic": 0.9206349206349206,
+    "routing_identical_kl_max": 0.0009187745820494332,
+    "flipped_kl_max": 0.022422929642292425,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "code_topological_sort",
+    "category": "code",
+    "split": "canonical",
+    "prompt_tokens": 1031,
+    "routing_identical_rows": 13,
+    "routing_flip_rows": 50,
+    "flip_rate_diagnostic": 0.7936507936507936,
+    "routing_identical_kl_max": 0.015584131956874823,
+    "flipped_kl_max": 0.007331122931745988,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "code_lru_cache",
+    "category": "code",
+    "split": "canonical",
+    "prompt_tokens": 2053,
+    "routing_identical_rows": 8,
+    "routing_flip_rows": 55,
+    "flip_rate_diagnostic": 0.873015873015873,
+    "routing_identical_kl_max": 3.6459854273703295e-05,
+    "flipped_kl_max": 0.09279588398595923,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "code_markdown_table",
+    "category": "code",
+    "split": "canonical",
+    "prompt_tokens": 4093,
+    "routing_identical_rows": 6,
+    "routing_flip_rows": 57,
+    "flip_rate_diagnostic": 0.9047619047619048,
+    "routing_identical_kl_max": 0.011509352467040206,
+    "flipped_kl_max": 0.012521270588204077,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "general_en_plan",
+    "category": "general_en",
+    "split": "canonical",
+    "prompt_tokens": 8191,
+    "routing_identical_rows": 16,
+    "routing_flip_rows": 47,
+    "flip_rate_diagnostic": 0.746031746031746,
+    "routing_identical_kl_max": 0.011627071071857335,
+    "flipped_kl_max": 0.016139694588977786,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "general_en_explain",
+    "category": "general_en",
+    "split": "canonical",
+    "prompt_tokens": 513,
+    "routing_identical_rows": 14,
+    "routing_flip_rows": 49,
+    "flip_rate_diagnostic": 0.7777777777777778,
+    "routing_identical_kl_max": 0.005813877053533197,
+    "flipped_kl_max": 0.019165472450353355,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "general_ja_plan",
+    "category": "general_ja",
+    "split": "canonical",
+    "prompt_tokens": 1031,
+    "routing_identical_rows": 15,
+    "routing_flip_rows": 48,
+    "flip_rate_diagnostic": 0.7619047619047619,
+    "routing_identical_kl_max": 0.033426221738335864,
+    "flipped_kl_max": 0.034789296548006186,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "general_ja_explain",
+    "category": "general_ja",
+    "split": "canonical",
+    "prompt_tokens": 2053,
+    "routing_identical_rows": 9,
+    "routing_flip_rows": 54,
+    "flip_rate_diagnostic": 0.8571428571428571,
+    "routing_identical_kl_max": 0.023666730228062774,
+    "flipped_kl_max": 0.01431710987814079,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "mixed_ja_en_translate",
+    "category": "mixed_ja_en",
+    "split": "canonical",
+    "prompt_tokens": 4093,
+    "routing_identical_rows": 8,
+    "routing_flip_rows": 55,
+    "flip_rate_diagnostic": 0.873015873015873,
+    "routing_identical_kl_max": 0.0010297522819020441,
+    "flipped_kl_max": 0.02713074028959253,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "mixed_ja_en_review",
+    "category": "mixed_ja_en",
+    "split": "canonical",
+    "prompt_tokens": 8191,
+    "routing_identical_rows": 4,
+    "routing_flip_rows": 59,
+    "flip_rate_diagnostic": 0.9365079365079365,
+    "routing_identical_kl_max": 0.0009455222928161864,
+    "flipped_kl_max": 0.06269467390789046,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "heldout_code_rate_limiter",
+    "category": "code",
+    "split": "heldout",
+    "prompt_tokens": 513,
+    "routing_identical_rows": 5,
+    "routing_flip_rows": 58,
+    "flip_rate_diagnostic": 0.9206349206349206,
+    "routing_identical_kl_max": 0.00014193340383553645,
+    "flipped_kl_max": 0.02018482284384645,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "heldout_code_interval_schedule",
+    "category": "code",
+    "split": "heldout",
+    "prompt_tokens": 1031,
+    "routing_identical_rows": 8,
+    "routing_flip_rows": 55,
+    "flip_rate_diagnostic": 0.873015873015873,
+    "routing_identical_kl_max": 0.018198054006754262,
+    "flipped_kl_max": 0.09031184908647995,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "heldout_general_en_incident",
+    "category": "general_en",
+    "split": "heldout",
+    "prompt_tokens": 2053,
+    "routing_identical_rows": 12,
+    "routing_flip_rows": 51,
+    "flip_rate_diagnostic": 0.8095238095238095,
+    "routing_identical_kl_max": 0.003122283300757957,
+    "flipped_kl_max": 0.23662715014339988,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "heldout_general_en_quant",
+    "category": "general_en",
+    "split": "heldout",
+    "prompt_tokens": 4093,
+    "routing_identical_rows": 5,
+    "routing_flip_rows": 58,
+    "flip_rate_diagnostic": 0.9206349206349206,
+    "routing_identical_kl_max": 0.01240433275920785,
+    "flipped_kl_max": 0.06595079946583857,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "heldout_general_ja_migration",
+    "category": "general_ja",
+    "split": "heldout",
+    "prompt_tokens": 8191,
+    "routing_identical_rows": 15,
+    "routing_flip_rows": 48,
+    "flip_rate_diagnostic": 0.7619047619047619,
+    "routing_identical_kl_max": 0.004290979224203604,
+    "flipped_kl_max": 0.18848556346735118,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "heldout_general_ja_speculative",
+    "category": "general_ja",
+    "split": "heldout",
+    "prompt_tokens": 513,
+    "routing_identical_rows": 13,
+    "routing_flip_rows": 50,
+    "flip_rate_diagnostic": 0.7936507936507936,
+    "routing_identical_kl_max": 0.018752035279972795,
+    "flipped_kl_max": 0.17564684864986396,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "heldout_mixed_summary",
+    "category": "mixed_ja_en",
+    "split": "heldout",
+    "prompt_tokens": 1031,
+    "routing_identical_rows": 4,
+    "routing_flip_rows": 59,
+    "flip_rate_diagnostic": 0.9365079365079365,
+    "routing_identical_kl_max": 0.011036375220018782,
+    "flipped_kl_max": 0.2755719987697908,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   },
+   {
+    "id": "heldout_mixed_review",
+    "category": "mixed_ja_en",
+    "split": "heldout",
+    "prompt_tokens": 2053,
+    "routing_identical_rows": 10,
+    "routing_flip_rows": 53,
+    "flip_rate_diagnostic": 0.8412698412698413,
+    "routing_identical_kl_max": 0.009503105361274036,
+    "flipped_kl_max": 0.1093054408834204,
+    "three_run_repeat_equal": true,
+    "after_unrelated_request_equal": true,
+    "passed": true
+   }
+  ]
+ },
+ "generated_history_screen": {
+  "command": "scripts/gemma4_generated_history_gate.py --model <gguf> --output-dir <dir>, production against strict, once per lever value",
+  "note": "Both arms fail the single-chain mean/tail bars that section 2.11 replaced for routing models; the comparison of interest is between the arms.",
+  "lever_0_exact_down": {
+   "rows": 610,
+   "top1_flips": 6,
+   "kl_max": 0.21351306654601998,
+   "kl_mean_of_cases": 0.002886
+  },
+  "lever_1_wmma_down": {
+   "rows": 610,
+   "top1_flips": 5,
+   "kl_max": 0.11411250139941267,
+   "kl_mean_of_cases": 0.002902
+  }
+ },
+ "public_path_rows": {
+  "protocol": "scripts/gemma4_campaign_bench.py --prompt P --output 128 --context P+256 --warmup 1 --samples 3, production profile",
+  "before": {
+   "512": {
+    "prefill_tps": 1253.2,
+    "decode_tps": 70.38,
+    "public_path_parity": true
+   },
+   "8192": {
+    "prefill_tps": 1194.3,
+    "decode_tps": 69.22,
+    "public_path_parity": true
+   },
+   "32768": {
+    "prefill_tps": 1086.4,
+    "decode_tps": 53.86,
+    "public_path_parity": true
+   },
+   "65536": {
+    "prefill_tps": 970.8,
+    "decode_tps": 41.67,
+    "public_path_parity": true
+   }
+  },
+  "after": {
+   "512": {
+    "prefill_tps": 3164.7,
+    "decode_tps": 70.75,
+    "public_path_parity": true
+   },
+   "8192": {
+    "prefill_tps": 2936.1,
+    "decode_tps": 70.2,
+    "public_path_parity": true
+   },
+   "32768": {
+    "prefill_tps": 2335.8,
+    "decode_tps": 53.62,
+    "public_path_parity": true
+   },
+   "65536": {
+    "prefill_tps": 1874.3,
+    "decode_tps": 41.6,
+    "public_path_parity": true
+   }
+  }
+ },
+ "teacher_forced_before_vs_after": {
+  "keys_1025_2047": {
+   "rows": 1023,
+   "kl_mean": 6.6e-06,
+   "kl_max": 0.0012,
+   "top1_flips": 0
+  },
+  "keys_4097_8191": {
+   "rows": 4095,
+   "kl_mean": 4.1e-05,
+   "kl_max": 0.032,
+   "top1_flips": 0
+  },
+  "keys_15857_16383": {
+   "rows": 527,
+   "kl_mean": 1.8e-05,
+   "kl_max": 0.0054,
+   "top1_flips": 0
+  }
+ },
+ "llamacpp_reference_rows_2026_10_06": {
+  "note": "Saved rows from benchmarks/results/2026-10-06-gfx1100-gemma4-current-vs-llamacpp-matrix.json; not re-measured here.",
+  "prefill_tps": {
+   "512": 3171.0,
+   "32768": 2464.7,
+   "65536": 1790.2
+  },
+  "decode_tps": {
+   "512": 72.87,
+   "32768": 54.2,
+   "65536": 45.8
+  }
+ },
+ "limits": "One host, one artifact. The packet arms share one runner on the native prefill attention and differ only in the lever. llama.cpp was not re-run."
+}

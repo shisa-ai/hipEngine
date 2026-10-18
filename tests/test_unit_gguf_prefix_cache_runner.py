@@ -3,9 +3,15 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
+from hipengine.generation import qwen35_gguf as qwen35_gguf_generation
 from hipengine.generation.engine_loop import EngineLoopConfig
-from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
+from hipengine.generation.qwen35_gguf import (
+    _GGUF_PREFIX_RETAINED_SNAPSHOTS_ENV,
+    _PREFIX_RETAINED_SNAPSHOTS_WIDE,
+    Qwen35GGUFResidentModelRunner,
+)
 from hipengine.generation.registry import GenerationRequest
 from hipengine.dispatch import WorkItem, WorkKind
 from hipengine.kvcache import DeviceChunkedKVPool
@@ -31,6 +37,7 @@ class _FakePrefixSession:
         self.allocation = None
         self.pool = None
         self.prefill_calls: list[tuple[tuple[int, ...], int, int]] = []
+        self.prefill_batch_kwargs: list[dict] = []
         self.step_calls: list[tuple[int, int, int]] = []
         self.clone_calls: list[tuple[int, int]] = []
         self.snapshot_capture_calls: list[int] = []
@@ -67,7 +74,9 @@ class _FakePrefixSession:
         assert int(position) == int(source.position)
         assert self.allocation is not None
         assert source.allocation is not None
-        assert self.allocation.reused_block_ids == source.allocation.block_ids[:1]
+        assert self.allocation.reused_block_ids == source.allocation.block_ids[
+            : int(position) // 256
+        ]
         self.position = int(source.position)
         self.clone_calls.append((int(source.slot_id), int(source.position)))
         return 384
@@ -117,6 +126,7 @@ class _FakePrefixSession:
         start = int(self.position)
         self.position += len(prompt)
         self.prefill_calls.append((prompt, start, int(self.position)))
+        self.prefill_batch_kwargs.append(dict(kwargs))
         return [self._result(return_logits=bool(kwargs.get("return_logits", False)))]
 
     def step(self, token_id: int, *, return_logits: bool):
@@ -146,6 +156,10 @@ class _FakePrefixOwner:
     backend = "hip_gfx1151"
     target_arch = "gfx1151"
     _prepared_max_sequence_length = 1024
+    # The runner asks whether an MTP adapter exists before it will let a
+    # reused-prefix row open a prompt sink; this owner has none.
+    supports_speculative_mtp = False
+    model_plugin = SimpleNamespace()
     tokenizer = SimpleNamespace(eos_token_id=None, decode=lambda tokens: "".join(str(token) for token in tokens))
 
     def __init__(self) -> None:
@@ -267,7 +281,11 @@ def test_resident_runner_reuses_exact_current_prefix_and_reclaims_source_first()
         ),
         commit=True,
     )
+    # A one-token suffix stays on the serial step: a single-row prefill leaves
+    # the bulk schedule (MoE has no rows==1 bulk path), and one token costs one
+    # step either way, so there is no batching win to trade correctness for.
     assert continued_session.prefill_calls == []
+    assert continued_session.prefill_batch_kwargs == []
     assert continued_session.step_calls == [(999, 256, 257)]
     assert continued_row.slot is not None
     assert continued_row.slot.generated_ids == [777]
@@ -355,8 +373,13 @@ def test_processed_argmax_reuses_completed_prefix_with_suffix_only_prefill() -> 
         commit=True,
     )
 
+    # One-token suffix: serial step, not a one-row batched prefill.
     assert session.prefill_calls == []
+    assert session.prefill_batch_kwargs == []
     assert session.step_calls == [(999, 256, 257)]
+    # The reused-suffix route - batched by default, serial on fallback - must
+    # record the phase, or a served run cannot tell which route paid.
+    assert runner._prefix_cache_observability()["phase_calls"]["suffix_prefill"] == 1
     assert continued.slot is not None
     assert continued.slot.generated_ids == [812]
     assert continued.sampling_state is not None
@@ -376,6 +399,130 @@ def test_processed_argmax_reuses_completed_prefix_with_suffix_only_prefill() -> 
     assert runner.kv_pool.refcount(shared_block) == 1
     assert runner._evict_prefix_snapshot(prefix) is True
     assert runner.kv_pool.refcount(shared_block) == 0
+    runner.close()
+
+
+def test_reused_suffix_prefill_falls_back_to_serial_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX=0 restores the serial suffix loop."""
+
+    monkeypatch.setenv("HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX", "0")
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=3,
+            kv_pool_initial_pages=6,
+            kv_pool_low_water_pages=6,
+            kv_pool_high_water_pages=6,
+            kv_pool_chunk_pages=6,
+            prefix_cache="radix",
+        )
+    )
+    prefix = tuple(range(1, 257))
+    source_request = _request(prefix, max_tokens=3)
+    runner.register_batch((1,), source_request, prompt_rows=(prefix,))
+    runner.reserve_admission(SimpleNamespace(request_id=1))
+    source_row = runner._rows[1]
+    assert source_row.lease is not None
+    source_row.prefill_tokens_seen = len(prefix)
+    source_row.lease.session.position = len(prefix)
+    runner._refresh_prefix_cache(source_row)
+
+    continued_prompt = (*prefix, 999)
+    continued_request = _request(continued_prompt, max_tokens=2)
+    runner.register_batch((2,), continued_request, prompt_rows=(continued_prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=2))
+    continued_row = runner._rows[2]
+    assert continued_row.lease is not None
+    continued_session = continued_row.lease.session
+    assert continued_row.prefix_reused_tokens == 256
+
+    runner.prefill_batch(
+        WorkItem(
+            kind=WorkKind.PREFILL,
+            request_ids=(2,),
+            row_to_request=(2,),
+            token_rows=(continued_prompt,),
+        ),
+        commit=True,
+    )
+    assert continued_session.prefill_calls == []
+    assert continued_session.step_calls == [(999, 256, 257)]
+    assert continued_row.slot is not None
+    assert continued_row.slot.generated_ids == [777]
+    assert runner._fallback_reasons["prefix_batched_suffix_unavailable"] == 1
+    assert runner._prefix_cache_observability()["phase_calls"]["suffix_prefill"] == 1
+
+    runner.rollback_admission(SimpleNamespace(request_id=1))
+    runner.rollback_admission(SimpleNamespace(request_id=2))
+    assert runner.kv_pool.stats.refcounted_pages == 0
+    runner.close()
+
+
+def test_batched_reused_suffix_splits_at_an_interior_prompt_boundary() -> None:
+    """A suffix crossing the deepest prompt boundary captures it mid-prefill.
+
+    The snapshot is only capturable while the session sits exactly on the
+    boundary, so the batched suffix must run as two segments with the capture
+    in between: [reused, boundary) then [boundary, prompt_end).
+    """
+
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=3,
+            kv_pool_initial_pages=8,
+            kv_pool_low_water_pages=8,
+            kv_pool_high_water_pages=8,
+            kv_pool_chunk_pages=8,
+            prefix_cache="radix",
+        )
+    )
+    prefix = tuple(range(1, 257))
+    source_request = _request(prefix, max_tokens=3)
+    runner.register_batch((1,), source_request, prompt_rows=(prefix,))
+    runner.reserve_admission(SimpleNamespace(request_id=1))
+    source_row = runner._rows[1]
+    assert source_row.lease is not None
+    source_row.prefill_tokens_seen = len(prefix)
+    source_row.lease.session.position = len(prefix)
+    runner._refresh_prefix_cache(source_row)
+
+    # 600-token prompt: reuse 256, suffix 344, deepest prompt boundary 512 sits
+    # inside the suffix (256 < 512 < 600).
+    continued_prompt = tuple(range(1, 601))
+    continued_request = _request(continued_prompt, max_tokens=2)
+    runner.register_batch((2,), continued_request, prompt_rows=(continued_prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=2))
+    continued_row = runner._rows[2]
+    assert continued_row.lease is not None
+    continued_session = continued_row.lease.session
+    assert continued_row.prefix_reused_tokens == 256
+
+    runner.prefill_batch(
+        WorkItem(
+            kind=WorkKind.PREFILL,
+            request_ids=(2,),
+            row_to_request=(2,),
+            token_rows=(continued_prompt,),
+        ),
+        commit=True,
+    )
+    assert continued_session.prefill_calls == [
+        (continued_prompt[256:512], 256, 512),
+        (continued_prompt[512:], 512, 600),
+    ]
+    assert continued_session.step_calls == []
+    # The capture fired between the two segments, at the exact boundary.
+    assert continued_session.snapshot_capture_calls == [512]
+    assert continued_row.slot is not None
+    assert continued_row.slot.generated_ids == [777]
+
+    runner.rollback_admission(SimpleNamespace(request_id=1))
+    runner.rollback_admission(SimpleNamespace(request_id=2))
     runner.close()
 
 
@@ -433,6 +580,379 @@ def test_processed_argmax_radix_miss_captures_aligned_boundaries() -> None:
 
     runner._release_row_resources(row, retain_prefix_snapshots=True)
     runner._rows.pop(12)
+    assert runner._evict_prefix_snapshot(prompt[:512]) is True
+    assert runner.kv_pool.stats.refcounted_pages == 0
+    runner.close()
+
+
+def test_incremental_prefill_captures_only_the_prompt_aligned_boundary() -> None:
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=3,
+            kv_pool_initial_pages=9,
+            kv_pool_low_water_pages=9,
+            kv_pool_high_water_pages=9,
+            kv_pool_chunk_pages=9,
+            prefix_cache="radix",
+        )
+    )
+    prompt = tuple(range(1, 513))
+    request = _request(prompt, max_tokens=2)
+    runner.register_batch((13,), request, prompt_rows=(prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=13))
+    row = runner._rows[13]
+    assert row.native_greedy is True
+
+    for chunk in (prompt[:256], prompt[256:]):
+        runner.prefill_batch(
+            WorkItem(
+                kind=WorkKind.PREFILL,
+                request_ids=(13,),
+                row_to_request=(13,),
+                token_rows=(chunk,),
+            ),
+            commit=True,
+        )
+
+    assert row.lease is not None
+    session = row.lease.session
+    assert session.prefill_calls == [(prompt[:256], 0, 256), (prompt[256:], 256, 512)]
+    # One hybrid-state capture per request, at the deepest prompt-aligned
+    # boundary.  Capturing every 256-token chunk clones the full Conv/GDN state
+    # once per chunk and is the measured prefill regression on real multi-turn
+    # traffic; only the deepest boundary is reachable by the next turn.
+    assert session.snapshot_capture_calls == [512]
+    assert tuple(runner._prefix_state_snapshots) == (prompt,)
+    assert runner._prefix_cache is not None
+    match = runner._prefix_cache.match(prompt)
+    assert match.hit is True
+    assert match.matched_token_count == 512
+
+    # The captured boundary is what a following turn actually reuses.
+    continued_prompt = (*prompt, 900, 901)
+    continued_request = _request(continued_prompt, max_tokens=2)
+    runner.register_batch((14,), continued_request, prompt_rows=(continued_prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=14))
+    continued_row = runner._rows[14]
+    assert continued_row.prefix_reused_tokens == 512
+    assert continued_row.prefix_fallback_reason is None
+
+    runner._release_row_resources(row, retain_prefix_snapshots=True)
+    runner._rows.pop(13)
+    assert runner._evict_prefix_snapshot(prompt) is True
+    runner.rollback_admission(SimpleNamespace(request_id=14))
+    assert runner.kv_pool.stats.refcounted_pages == 0
+    runner.close()
+
+
+def _kv_source_prefix_runner(
+    kv_attention_source: str,
+    *,
+    prefix_cache: str = "radix",
+) -> Qwen35GGUFResidentModelRunner:
+    """Radix-enabled runner whose sessions declare the given KV attention source.
+
+    ``kv_attention_source`` is what routes a chunked prefill: ``bf16_mirror``
+    keeps the slot-local chunked route, while ``int8_direct`` takes the compact
+    INT8 route that owns one transient BF16 oracle per call.
+    """
+
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=3,
+            kv_pool_initial_pages=9,
+            kv_pool_low_water_pages=9,
+            kv_pool_high_water_pages=9,
+            kv_pool_chunk_pages=9,
+            prefix_cache=prefix_cache,
+        )
+    )
+    for lease in runner._available:
+        lease.session.kv_attention_source = str(kv_attention_source)
+    return runner
+
+
+def _drive_chunked_prefill(
+    runner: Qwen35GGUFResidentModelRunner,
+    request_id: int,
+    prompt: tuple[int, ...],
+    chunks: tuple[tuple[int, ...], ...],
+):
+    request = _request(prompt, max_tokens=2)
+    runner.register_batch((request_id,), request, prompt_rows=(prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=request_id))
+    for chunk in chunks:
+        runner.prefill_batch(
+            WorkItem(
+                kind=WorkKind.PREFILL,
+                request_ids=(request_id,),
+                row_to_request=(request_id,),
+                token_rows=(chunk,),
+            ),
+            commit=True,
+        )
+    return runner._rows[request_id]
+
+
+def test_int8_miss_prefill_splits_at_the_aligned_boundary_and_reuses() -> None:
+    """A cold compact-INT8 prompt exposes its deepest boundary for reuse.
+
+    Both compact-INT8 executors commit the session cursor only at the (usually
+    unaligned) prompt end, so a single full-prompt call leaves the radix cache
+    empty and every following turn re-prefills. Prefilling the aligned prefix
+    and the tail as two block-table-aware calls -- the reused-suffix shape --
+    makes the 256-token boundary a real cursor position, so its Conv/GDN state
+    is captured and the next turn reuses it.
+    """
+
+    prompt = tuple(range(1, 446))
+    int8 = _kv_source_prefix_runner("int8_direct")
+    row = _drive_chunked_prefill(int8, 13, prompt, (prompt[:256], prompt[256:]))
+    session = row.lease.session
+    # Two genuine prefill calls, split at the deepest aligned boundary, not one
+    # full-prompt call that advances straight to the unaligned prompt end.
+    assert session.prefill_calls == [
+        (prompt[:256], 0, 256),
+        (prompt[256:], 256, 445),
+    ]
+    assert session.snapshot_capture_calls == [256]
+    assert int8._prefix_cache.stats.entries == 1
+    assert tuple(int8._prefix_state_snapshots) == (prompt[:256],)
+    assert row.prefix_reused_tokens == 0
+    assert int8._fallback_reasons.get("int8_direct_full_prompt_prefill", 0) == 0
+
+    # The captured boundary is what a following turn actually reuses.
+    continued = (*prompt, 900)
+    continued_row = _drive_chunked_prefill(
+        int8, 14, continued, (continued[:256], continued[256:])
+    )
+    assert continued_row.prefix_reused_tokens == 256
+    assert continued_row.prefix_snapshot_hit is True
+    assert continued_row.prefix_source_kind == "completed_snapshot"
+    assert continued_row.prefix_fallback_reason is None
+    assert int8._prefix_request_telemetry(continued_row)["reused_tokens"] == 256
+    int8.close()
+
+
+def test_int8_miss_single_chunk_fallback_also_splits_at_the_boundary() -> None:
+    """The fallback full-prompt path splits too, not only the chunked path.
+
+    A scheduler configured with one chunk larger than the prompt (or a prompt
+    delivered as a single chunk) takes ``_prefill_native_row`` rather than
+    ``_prefill_native_chunk``; the boundary capture must still happen there.
+    """
+
+    prompt = tuple(range(1, 446))
+    int8 = _kv_source_prefix_runner("int8_direct")
+    row = _drive_chunked_prefill(int8, 13, prompt, (prompt,))
+    session = row.lease.session
+    assert session.prefill_calls == [
+        (prompt[:256], 0, 256),
+        (prompt[256:], 256, 445),
+    ]
+    assert session.snapshot_capture_calls == [256]
+    assert int8._prefix_cache.stats.entries == 1
+    int8.close()
+
+
+def test_int8_miss_without_prefix_cache_keeps_the_full_prompt_prefill() -> None:
+    """Prefix mode off is unchanged: one full-prompt call and no capture."""
+
+    prompt = tuple(range(1, 446))
+    int8 = _kv_source_prefix_runner("int8_direct", prefix_cache="off")
+    row = _drive_chunked_prefill(int8, 13, prompt, (prompt[:256], prompt[256:]))
+    session = row.lease.session
+    assert int8._prefix_cache is None
+    assert session.prefill_calls == [(prompt, 0, 445)]
+    assert session.snapshot_capture_calls == []
+    assert row.prefix_eligible is False
+    int8.close()
+
+
+def test_bf16_miss_prefill_still_captures_the_aligned_boundary() -> None:
+    """The bf16 chunked route is unchanged by the INT8 split."""
+
+    prompt = tuple(range(1, 446))
+    bf16 = _kv_source_prefix_runner("bf16_mirror")
+    row = _drive_chunked_prefill(bf16, 13, prompt, (prompt[:256], prompt[256:]))
+    assert row.lease.session.snapshot_capture_calls == [256]
+    assert bf16._prefix_cache.stats.entries == 1
+    bf16.close()
+
+
+def test_int8_aligned_prompt_keeps_the_single_full_prompt_capture() -> None:
+    """An already-aligned prompt needs no split; the full call captures it.
+
+    With no interior boundary the prompt end is the boundary, so the plain
+    full-prompt route already leaves an aligned cursor and the existing capture
+    (the shape the INT8 prefix gate exercises) is preserved.
+    """
+
+    prompt = tuple(range(1, 513))
+    int8 = _kv_source_prefix_runner("int8_direct")
+    row = _drive_chunked_prefill(int8, 13, prompt, (prompt[:256], prompt[256:]))
+    session = row.lease.session
+    assert session.prefill_calls == [(prompt, 0, 512)]
+    assert session.snapshot_capture_calls == [512]
+    assert tuple(int8._prefix_state_snapshots) == (prompt,)
+    int8.close()
+
+
+def test_int8_prompt_below_one_block_does_not_split() -> None:
+    """A prompt shorter than one block is ineligible and keeps its route."""
+
+    prompt = tuple(range(1, 100))
+    int8 = _kv_source_prefix_runner("int8_direct")
+    row = _drive_chunked_prefill(int8, 13, prompt, (prompt,))
+    session = row.lease.session
+    assert row.prefix_eligible is False
+    assert session.prefill_calls == [(prompt, 0, 99)]
+    assert session.snapshot_capture_calls == []
+    assert int8._prefix_cache.stats.entries == 0
+    int8.close()
+
+
+def test_decode_time_capture_keeps_the_reachable_prompt_boundary() -> None:
+    """A decode-time capture must not supersede the prompt-aligned boundary.
+
+    The decode path refreshes the prefix cache after every token, so a reply
+    long enough to cross the next 256-token boundary captures a boundary *past*
+    this request's own prompt. Capturing it used to evict the prompt-aligned
+    snapshot (``superseded_by_row``), so the one entry a following turn can
+    reach died with the row: that turn then matched no live prefix at all and
+    re-prefilled the whole prompt instead of reusing it.
+    """
+
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=3,
+            kv_pool_initial_pages=9,
+            kv_pool_low_water_pages=9,
+            kv_pool_high_water_pages=9,
+            kv_pool_chunk_pages=9,
+            prefix_cache="radix",
+        )
+    )
+    prompt = tuple(range(1, 701))
+    request = _request(prompt, max_tokens=80)
+    runner.register_batch((21,), request, prompt_rows=(prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=21))
+    row = runner._rows[21]
+
+    for chunk in (prompt[:256], prompt[256:512], prompt[512:]):
+        runner.prefill_batch(
+            WorkItem(
+                kind=WorkKind.PREFILL,
+                request_ids=(21,),
+                row_to_request=(21,),
+                token_rows=(chunk,),
+            ),
+            commit=True,
+        )
+
+    assert row.lease is not None
+    session = row.lease.session
+    assert session.snapshot_capture_calls == [512]
+    assert tuple(runner._prefix_state_snapshots) == (prompt[:512],)
+
+    # Decode across the next 256-token boundary.  This is the per-step
+    # ``_refresh_prefix_cache`` call the native decode path makes after each
+    # token; the row's own prompt ended at 700, so 768 is a boundary only a
+    # client resending this request's generated text verbatim could reach.
+    for _ in range(768 - len(prompt)):
+        session.step(901, return_logits=False)
+        assert row.slot is not None
+        row.slot.generated_ids.append(901)
+    assert int(session.position) == 768
+    runner._refresh_prefix_cache(row)
+
+    # Both boundaries are captured; neither replaces the other.
+    assert row.slot is not None
+    deeper = tuple(row.prompt_ids) + tuple(
+        row.slot.generated_ids[: 768 - len(prompt)]
+    )
+    assert len(deeper) == 768
+    assert session.snapshot_capture_calls == [512, 768]
+    assert tuple(runner._prefix_state_snapshots) == (prompt[:512], deeper)
+
+    runner._release_row_resources(row, retain_prefix_snapshots=True)
+    runner._rows.pop(21)
+    assert runner._prefix_cache is not None
+    match = runner._prefix_cache.match(prompt)
+    assert match.hit is True, "the following turn matched no live prefix"
+    assert match.matched_token_count == 512
+    # A cumulative turn that resends the generated text still reaches deeper.
+    assert runner._prefix_cache.match(deeper).matched_token_count == 768
+    assert runner.observability_snapshot()["prefix_cache"]["retained_snapshot_entries"] == 2
+
+    for tokens in (prompt[:512], deeper):
+        assert runner._evict_prefix_snapshot(tokens) is True
+    assert runner.kv_pool.stats.refcounted_pages == 0
+    runner.close()
+
+
+def test_retained_budget_drops_the_decode_time_boundary_before_the_prompt_one() -> None:
+    """Under a squeezed budget the reachable boundary is the one that survives.
+
+    Retained entries are trimmed oldest-first and a decode-time capture is
+    inserted after the prompt-aligned one, so without an explicit priority the
+    squeeze dropped the boundary every following turn reaches and kept the one
+    only a verbatim continuation reaches.
+    """
+
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=1,
+            kv_pool_initial_pages=9,
+            kv_pool_low_water_pages=9,
+            kv_pool_high_water_pages=9,
+            kv_pool_chunk_pages=9,
+            prefix_cache="radix",
+        )
+    )
+    prompt = tuple(range(1, 701))
+    request = _request(prompt, max_tokens=80)
+    runner.register_batch((22,), request, prompt_rows=(prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=22))
+    row = runner._rows[22]
+    assert row.lease is not None
+    session = row.lease.session
+
+    for chunk in (prompt[:256], prompt[256:512], prompt[512:]):
+        runner.prefill_batch(
+            WorkItem(
+                kind=WorkKind.PREFILL,
+                request_ids=(22,),
+                row_to_request=(22,),
+                token_rows=(chunk,),
+            ),
+            commit=True,
+        )
+    for _ in range(768 - len(prompt)):
+        session.step(901, return_logits=False)
+        assert row.slot is not None
+        row.slot.generated_ids.append(901)
+    runner._refresh_prefix_cache(row)
+
+    runner._release_row_resources(row, retain_prefix_snapshots=True)
+    runner._rows.pop(22)
+
+    observability = runner.observability_snapshot()["prefix_cache"]
+    assert observability["retained_snapshot_entries"] == 1
+    assert tuple(runner._prefix_state_snapshots) == (prompt[:512],)
+    assert runner._prefix_cache is not None
+    match = runner._prefix_cache.match(prompt)
+    assert match.hit is True
+    assert match.matched_token_count == 512
+
     assert runner._evict_prefix_snapshot(prompt[:512]) is True
     assert runner.kv_pool.stats.refcounted_pages == 0
     runner.close()
@@ -571,6 +1091,556 @@ def test_completed_prefix_survives_unaligned_tail_and_lru_residency_is_bounded()
     runner.close()
 
 
+def test_retained_prefix_survives_a_later_requests_capture() -> None:
+    """A retained boundary must outlive the next request's own captures.
+
+    Multi-turn serving only reuses anything if the boundary captured for turn N
+    is still resolvable when turn N+1 arrives. A transient (unretained) snapshot
+    from the current request must be sacrificed first.
+    """
+
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=1,
+            kv_pool_initial_pages=4,
+            kv_pool_low_water_pages=4,
+            kv_pool_high_water_pages=4,
+            kv_pool_chunk_pages=4,
+            prefix_cache="radix",
+        )
+    )
+    prompt = tuple(range(1, 514))
+    source_request = _request(prompt, max_tokens=2)
+    runner.register_batch((10,), source_request, prompt_rows=(prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=10))
+    source = runner._rows[10]
+    assert source.lease is not None
+    source.prefill_tokens_seen = len(prompt)
+    source.lease.session.position = 512
+    assert runner._refresh_prefix_cache(source) is True
+    retained_snapshot = source.lease.session.snapshots[-1]
+    runner._release_row_resources(source, retain_prefix_snapshots=True)
+    runner._rows.pop(10)
+    assert runner.observability_snapshot()["prefix_cache"]["retained_snapshot_entries"] == 1
+
+    later_prompt = tuple(range(1, 257))
+    later_request = _request(later_prompt, max_tokens=2)
+    runner.register_batch((11,), later_request, prompt_rows=(later_prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=11))
+    later = runner._rows[11]
+    assert later.lease is not None
+    later.prefill_tokens_seen = len(later_prompt)
+    later.lease.session.position = 256
+    assert runner._refresh_prefix_cache(later) is True
+
+    assert retained_snapshot.closed is False, (
+        "the later request's capture evicted the retained snapshot"
+    )
+    assert runner._prefix_cache is not None
+    assert runner._prefix_cache.match(prompt[:512]).matched_token_count == 512
+    assert runner.observability_snapshot()["prefix_cache"]["retained_snapshot_entries"] == 1
+
+    runner.rollback_admission(SimpleNamespace(request_id=11))
+    runner._evict_prefix_snapshot(prompt[:512])
+    assert runner.kv_pool.stats.refcounted_pages == 0
+    runner.close()
+
+
+def _retain_boundary(
+    runner: Qwen35GGUFResidentModelRunner,
+    request_id: int,
+    prompt: tuple[int, ...],
+    boundary: int,
+) -> None:
+    """Admit, capture one aligned boundary, and retain it like a finished turn."""
+
+    request = _request(prompt, max_tokens=2, forced_token_id=811)
+    runner.register_batch((request_id,), request, prompt_rows=(prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=request_id))
+    row = runner._rows[request_id]
+    assert row.lease is not None
+    row.prefill_tokens_seen = len(prompt)
+    row.lease.session.position = boundary
+    assert runner._refresh_prefix_cache(row) is True
+    runner._release_row_resources(row, retain_prefix_snapshots=True)
+    runner._rows.pop(request_id)
+
+
+def test_retained_prefixes_from_two_conversations_coexist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retention must cover the working set, not one boundary.
+
+    Served lanes interleave, so a conversation's next turn arrives after other
+    conversations have captured and retained their own boundaries. A retained
+    budget of one made every conversation miss its second hand-off. The wider
+    working set is opt-in (HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS) because it
+    is a measured regression until the shared-admission contiguity path lands.
+    """
+
+    monkeypatch.setenv(
+        _GGUF_PREFIX_RETAINED_SNAPSHOTS_ENV, str(_PREFIX_RETAINED_SNAPSHOTS_WIDE)
+    )
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=1,
+            kv_pool_initial_pages=8,
+            kv_pool_low_water_pages=8,
+            kv_pool_high_water_pages=8,
+            kv_pool_chunk_pages=8,
+            prefix_cache="radix",
+        )
+    )
+    first = tuple(range(1, 301))
+    second = tuple(range(1001, 1301))
+    _retain_boundary(runner, 40, first, 256)
+    _retain_boundary(runner, 41, second, 256)
+
+    cache = runner.observability_snapshot()["prefix_cache"]
+    assert cache["retained_snapshot_entries"] == 2
+    assert runner._prefix_cache is not None
+    assert runner._prefix_cache.match(first).matched_token_count == 256
+    assert runner._prefix_cache.match(second).matched_token_count == 256
+
+    for tokens in (first[:256], second[:256]):
+        assert runner._evict_prefix_snapshot(tokens) is True
+    assert runner.kv_pool.stats.refcounted_pages == 0
+    runner.close()
+
+
+def test_retained_working_set_under_pressure_evicts_oldest_and_keeps_survivors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """More conversations than the budget: evict oldest-first, reuse what survives.
+
+    Served lanes interleave, so the retained working set is wider than its
+    budget and the trim runs while requests are live. Under that pressure the
+    trim must drop the oldest entry with its reason recorded, keep every
+    survivor reusable at its captured depth, and make an evicted conversation
+    miss cleanly -- never hand back a stale or partial boundary. The pool
+    pressure path must release the same entries and account the same pages.
+    """
+
+    monkeypatch.setenv(
+        _GGUF_PREFIX_RETAINED_SNAPSHOTS_ENV, str(_PREFIX_RETAINED_SNAPSHOTS_WIDE)
+    )
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=1,
+            kv_pool_initial_pages=64,
+            kv_pool_low_water_pages=64,
+            kv_pool_high_water_pages=64,
+            kv_pool_chunk_pages=64,
+            prefix_cache="radix",
+        )
+    )
+    conversations = {
+        index: tuple(range(1 + index * 1000, 1 + index * 1000 + 900))
+        for index in range(_PREFIX_RETAINED_SNAPSHOTS_WIDE + 1)
+    }
+    for index, prompt in conversations.items():
+        _retain_boundary(runner, 100 + index, prompt, 768)
+
+    cache = runner.observability_snapshot()["prefix_cache"]
+    assert cache["retained_snapshot_limit"] == _PREFIX_RETAINED_SNAPSHOTS_WIDE
+    assert cache["retained_snapshot_entries"] == _PREFIX_RETAINED_SNAPSHOTS_WIDE
+    assert cache["retained_snapshot_evictions_by_reason"] == {"trim_retained": 1}
+    assert cache["retained_kv_pages"] == 3 * _PREFIX_RETAINED_SNAPSHOTS_WIDE
+    assert runner._prefix_cache is not None
+
+    # The oldest conversation was dropped; the rest still resolve.
+    assert runner._prefix_cache.match(conversations[0]).hit is False
+    for index in range(1, _PREFIX_RETAINED_SNAPSHOTS_WIDE + 1):
+        assert (
+            runner._prefix_cache.match(conversations[index]).matched_token_count == 768
+        ), f"conversation {index} lost its retained boundary under pressure"
+
+    # An evicted conversation reports a clean miss and re-prefills everything.
+    evicted = _request(conversations[0], max_tokens=2)
+    runner.register_batch((200,), evicted, prompt_rows=(conversations[0],))
+    runner.reserve_admission(SimpleNamespace(request_id=200))
+    evicted_row = runner._rows[200]
+    assert evicted_row.prefix_fallback_reason == "miss"
+    assert evicted_row.prefix_reused_tokens == 0
+    assert evicted_row.lease is not None
+    evicted_session = evicted_row.lease.session
+    before = len(evicted_session.prefill_calls)
+    runner.prefill_batch(
+        WorkItem(
+            kind=WorkKind.PREFILL,
+            request_ids=(200,),
+            row_to_request=(200,),
+            token_rows=(conversations[0],),
+        ),
+        commit=True,
+    )
+    executed = evicted_session.prefill_calls[before:]
+    assert [start for _, start, _ in executed] == [0]
+    assert sum(end - start for _, start, end in executed) == len(conversations[0])
+    runner.rollback_admission(SimpleNamespace(request_id=200))
+    runner._rows.pop(200)
+
+    # A survivor still reuses, and only the suffix is prefilled.  The fake
+    # session asserts the reused block ids equal the snapshot's, so a corrupted
+    # boundary cannot pass this.
+    survivor = _PREFIX_RETAINED_SNAPSHOTS_WIDE
+    resumed = _request(conversations[survivor], max_tokens=2)
+    runner.register_batch((201,), resumed, prompt_rows=(conversations[survivor],))
+    runner.reserve_admission(SimpleNamespace(request_id=201))
+    resumed_row = runner._rows[201]
+    assert resumed_row.prefix_reused_tokens == 768
+    assert resumed_row.lease is not None
+    resumed_session = resumed_row.lease.session
+    before = len(resumed_session.prefill_calls)
+    runner.prefill_batch(
+        WorkItem(
+            kind=WorkKind.PREFILL,
+            request_ids=(201,),
+            row_to_request=(201,),
+            token_rows=(conversations[survivor],),
+        ),
+        commit=True,
+    )
+    executed = resumed_session.prefill_calls[before:]
+    assert [start for _, start, _ in executed] == [768]
+    assert sum(end - start for _, start, end in executed) == (
+        len(conversations[survivor]) - 768
+    )
+    runner.rollback_admission(SimpleNamespace(request_id=201))
+    runner._rows.pop(201)
+
+    # Pool pressure releases the oldest retained entries first, accounting the
+    # pages it actually freed, and leaves the newest ones reusable.
+    released = runner.evict_prefix_cache_for_pressure(9)
+    assert released == 9
+    cache = runner.observability_snapshot()["prefix_cache"]
+    assert cache["retained_snapshot_entries"] == _PREFIX_RETAINED_SNAPSHOTS_WIDE - 3
+    assert cache["retained_snapshot_evictions_by_reason"] == {
+        "trim_retained": 1,
+        "pool_pressure": 3,
+    }
+    for index in range(1, 4):
+        assert runner._prefix_cache.match(conversations[index]).hit is False
+    assert (
+        runner._prefix_cache.match(conversations[survivor]).matched_token_count == 768
+    )
+
+    for tokens in tuple(runner._prefix_state_snapshots):
+        assert runner._evict_prefix_snapshot(tokens) is True
+    assert runner.kv_pool.stats.refcounted_pages == 0
+    assert runner.observability_snapshot()["prefix_cache"]["retained_snapshot_entries"] == 0
+    runner.close()
+
+
+def test_cancelled_request_drops_its_prefix_state_and_nothing_else() -> None:
+    """Cancellation releases the cancelled row's boundary, not the cache.
+
+    A cancelled request releases its lease without promoting its capture, so its
+    transient boundary, trie entry, and pinned pages must go with it. A later
+    identical request then misses cleanly instead of resuming from a boundary
+    whose blocks were released underneath it, and other conversations keep
+    theirs.
+    """
+
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=2)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=2,
+            kv_pool_initial_pages=32,
+            kv_pool_low_water_pages=32,
+            kv_pool_high_water_pages=32,
+            kv_pool_chunk_pages=32,
+            prefix_cache="radix",
+        )
+    )
+    kept = tuple(range(1, 901))
+    _retain_boundary(runner, 300, kept, 768)
+
+    cancelled = tuple(range(5001, 5901))
+    request = _request(cancelled, max_tokens=4)
+    runner.register_batch((301,), request, prompt_rows=(cancelled,))
+    runner.reserve_admission(SimpleNamespace(request_id=301))
+    row = runner._rows[301]
+    assert row.lease is not None
+    row.prefill_tokens_seen = len(cancelled)
+    row.lease.session.position = 768
+    assert runner._refresh_prefix_cache(row) is True
+    cancelled_snapshot = row.lease.session.snapshots[-1]
+    assert tuple(runner._prefix_state_snapshots) == (kept[:768], cancelled[:768])
+
+    runner.rollback_admission(SimpleNamespace(request_id=301))
+    runner._rows.pop(301)
+
+    assert cancelled_snapshot.closed is True
+    assert tuple(runner._prefix_state_snapshots) == (kept[:768],)
+    assert runner._prefix_cache is not None
+    assert runner._prefix_cache.match(cancelled).hit is False
+    assert runner._prefix_cache.match(kept).matched_token_count == 768
+
+    # A later identical request misses cleanly and prefills from the start.
+    retry = _request(cancelled, max_tokens=2)
+    runner.register_batch((302,), retry, prompt_rows=(cancelled,))
+    runner.reserve_admission(SimpleNamespace(request_id=302))
+    retry_row = runner._rows[302]
+    assert retry_row.prefix_fallback_reason == "miss"
+    assert retry_row.prefix_reused_tokens == 0
+    assert retry_row.lease is not None
+    retry_session = retry_row.lease.session
+    before = len(retry_session.prefill_calls)
+    runner.prefill_batch(
+        WorkItem(
+            kind=WorkKind.PREFILL,
+            request_ids=(302,),
+            row_to_request=(302,),
+            token_rows=(cancelled,),
+        ),
+        commit=True,
+    )
+    executed = retry_session.prefill_calls[before:]
+    assert [start for _, start, _ in executed] == [0]
+    assert sum(end - start for _, start, end in executed) == len(cancelled)
+    runner.rollback_admission(SimpleNamespace(request_id=302))
+    runner._rows.pop(302)
+
+    assert runner._evict_prefix_snapshot(kept[:768]) is True
+    assert runner.kv_pool.stats.refcounted_pages == 0
+    runner.close()
+
+
+def test_retained_budget_defaults_to_the_pre_fix_effective_value() -> None:
+    """The wider retained working set is opt-in, not the shipped default.
+
+    Enabling a 16-entry retained set today is a measured serving regression
+    (docs/REFACTOR.md), so the default stays at the pre-fix effective budget
+    max(1, capacity): at capacity 1 a second retained boundary evicts the first.
+    """
+
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=1,
+            kv_pool_initial_pages=8,
+            kv_pool_low_water_pages=8,
+            kv_pool_high_water_pages=8,
+            kv_pool_chunk_pages=8,
+            prefix_cache="radix",
+        )
+    )
+    first = tuple(range(1, 301))
+    second = tuple(range(1001, 1301))
+    _retain_boundary(runner, 40, first, 256)
+    _retain_boundary(runner, 41, second, 256)
+
+    cache = runner.observability_snapshot()["prefix_cache"]
+    assert cache["retained_snapshot_entries"] == 1
+    assert cache["retained_snapshot_evictions_by_reason"] == {"trim_retained": 1}
+    assert runner._prefix_cache is not None
+    assert runner._prefix_cache.match(first).matched_token_count == 0
+    assert runner._prefix_cache.match(second).matched_token_count == 256
+
+    assert runner._evict_prefix_snapshot(second[:256]) is True
+    assert runner.kv_pool.stats.refcounted_pages == 0
+    runner.close()
+
+
+def test_reuse_chain_deepens_across_three_turns() -> None:
+    """Turn N+1 must be able to match the deepest boundary turn N retained.
+
+    A cumulative conversation resends its whole history, so the boundary a turn
+    reaches during decode is a prefix of the next turn's prompt. If the chain
+    works, the third turn matches deeper than the first hand-off. A turn retains
+    two boundaries -- the prompt-aligned one and the deepest decode-time one --
+    and the budget holds one per turn plus the decode-time entry, so the chain
+    deepens whenever the budget has slack for it. Under pressure the
+    prompt-aligned boundary is what survives, because a resend reaches only that
+    one (see
+    ``test_retained_budget_drops_the_decode_time_boundary_before_the_prompt_one``).
+    """
+
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=3,
+            kv_pool_initial_pages=8,
+            kv_pool_low_water_pages=8,
+            kv_pool_high_water_pages=8,
+            kv_pool_chunk_pages=8,
+            prefix_cache="radix",
+        )
+    )
+    first_prompt = tuple(range(1, 301))
+    reply_one = tuple(811 for _ in range(256))
+
+    def admit(request_id: int, prompt: tuple[int, ...]):
+        request = _request(prompt, max_tokens=2, forced_token_id=811)
+        runner.register_batch((request_id,), request, prompt_rows=(prompt,))
+        runner.reserve_admission(SimpleNamespace(request_id=request_id))
+        return runner._rows[request_id]
+
+    # Turn 1: no reuse, capture the prompt boundary, retain it.
+    first = admit(30, first_prompt)
+    assert first.prefix_fallback_reason == "miss"
+    first.prefill_tokens_seen = len(first_prompt)
+    first.lease.session.position = 256
+    assert runner._refresh_prefix_cache(first) is True
+    runner._release_row_resources(first, retain_prefix_snapshots=True)
+    runner._rows.pop(30)
+
+    # Turn 2: the client resends the transcript including the reply, so the
+    # boundary turn 1 reached during decode is now inside the prompt.
+    second_prompt = (*first_prompt, *reply_one[:212])
+    second = admit(31, second_prompt)
+    assert second.prefix_reused_tokens == 256
+    runner.prefill_batch(
+        WorkItem(
+            kind=WorkKind.PREFILL,
+            request_ids=(31,),
+            row_to_request=(31,),
+            token_rows=(second_prompt,),
+        ),
+        commit=True,
+    )
+    assert second.slot is not None
+    second.slot.generated_ids = [811] * 256
+    second.lease.session.position = 768
+    assert runner._refresh_prefix_cache(second) is True
+    runner._release_row_resources(second, retain_prefix_snapshots=True)
+    runner._rows.pop(31)
+
+    # Turn 3: the client adds the next user turn, so the prompt extends past the
+    # boundary turn 2 retained and can reuse it.
+    third_prompt = (*second_prompt, *reply_one, *range(5000, 5010))
+    third = admit(32, third_prompt)
+    assert third.prefix_reused_tokens == 768, (
+        "turn 3 did not reach the boundary turn 2 retained"
+    )
+
+    runner.rollback_admission(SimpleNamespace(request_id=32))
+    for tokens in tuple(runner._prefix_state_snapshots):
+        runner._evict_prefix_snapshot(tokens)
+    assert runner.kv_pool.stats.refcounted_pages == 0
+    runner.close()
+
+
+def test_prefix_fallback_reasons_are_counted_per_reason() -> None:
+    """The served harness can only see counters, so each reason needs one."""
+
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=1,
+            kv_pool_initial_pages=8,
+            kv_pool_low_water_pages=8,
+            kv_pool_high_water_pages=8,
+            kv_pool_chunk_pages=8,
+            prefix_cache="radix",
+        )
+    )
+    short = tuple(range(1, 101))
+    request = _request(short, max_tokens=2, forced_token_id=811)
+    runner.register_batch((50,), request, prompt_rows=(short,))
+    runner.reserve_admission(SimpleNamespace(request_id=50))
+    row = runner._rows[50]
+    assert row.prefix_fallback_reason == "prompt_too_short"
+    assert runner._prefix_cache_observability()["fallback_reasons"] == {
+        "prompt_too_short": 1
+    }
+
+    runner.rollback_admission(SimpleNamespace(request_id=50))
+    runner.close()
+
+
+def test_prefix_phase_counters_attribute_admission_refresh_and_capture() -> None:
+    """Serving diagnostics attribute prefix cost to the phase that paid it."""
+
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=3,
+            kv_pool_initial_pages=9,
+            kv_pool_low_water_pages=9,
+            kv_pool_high_water_pages=9,
+            kv_pool_chunk_pages=9,
+            prefix_cache="radix",
+        )
+    )
+    prefix = tuple(range(1, 513))
+    source_request = _request(prefix, max_tokens=2, forced_token_id=811)
+    runner.register_batch((10,), source_request, prompt_rows=(prefix,))
+    runner.reserve_admission(SimpleNamespace(request_id=10))
+    source = runner._rows[10]
+    assert source.prefix_fallback_reason == "miss"
+
+    admission = runner._prefix_cache_observability()
+    admission_calls = admission["phase_calls"]
+    # A miss still pays the packed-owner flush, the trie probe, and the pool
+    # reservation; it pays nothing for state restore because there is no source.
+    assert admission_calls["admission_lookup"] == 1
+    assert admission_calls["lookup_flush_packed"] == 1
+    assert admission_calls["lookup_match"] == 1
+    assert admission_calls["admission_pool"] == 1
+    assert "admission_restore_state" not in admission_calls
+    assert "capture_total" not in admission_calls
+
+    assert source.lease is not None
+    source.prefill_tokens_seen = len(prefix)
+    source.lease.session.position = len(prefix)
+    assert runner._refresh_prefix_cache(source) is True
+
+    captured = runner._prefix_cache_observability()
+    captured_calls = captured["phase_calls"]
+    assert captured_calls["capture_total"] == 1
+    assert captured_calls["capture_clone_state"] == 1
+    assert captured_calls["refresh_trie"] == 1
+    assert captured_calls["processed_tokens"] >= 1
+    assert captured_calls["refresh_total"] == 1
+    # Every recorded phase carries a non-negative wall time and a call count.
+    assert set(captured["phase_ms"]) == set(captured_calls)
+    for name, calls in captured_calls.items():
+        assert calls >= 1, name
+        assert float(captured["phase_ms"][name]) >= 0.0, name
+    # Counters accumulate across requests rather than reporting one call.
+    assert captured_calls["admission_lookup"] == 1
+    assert captured["phase_ms"]["admission_lookup"] >= admission["phase_ms"]["admission_lookup"]
+
+    runner._release_row_resources(source, retain_prefix_snapshots=True)
+    runner._rows.pop(10)
+    continued_prompt = (*prefix, 999, 998)
+    continued_request = _request(continued_prompt, max_tokens=2, forced_token_id=812)
+    runner.register_batch((11,), continued_request, prompt_rows=(continued_prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=11))
+    continued = runner._rows[11]
+    assert continued.prefix_snapshot_hit is True
+
+    reused = runner._prefix_cache_observability()
+    reused_calls = reused["phase_calls"]
+    assert reused_calls["admission_lookup"] == 2
+    assert reused_calls["lookup_resolve"] == 1
+    assert reused_calls["admission_restore_state"] == 1
+    # A hit refreshes the new owner's boundary from the cloned session position,
+    # so it re-inserts the trie entry; the capture is skipped because the same
+    # token tuple is already resident.
+    assert reused_calls["admission_refresh"] == 1
+    assert reused_calls["refresh_trie"] == 2
+    assert reused_calls["capture_total"] == 1
+    assert reused_calls["capture_clone_state"] == 1
+
+    runner.rollback_admission(SimpleNamespace(request_id=11))
+    runner._evict_prefix_snapshot(prefix)
+    runner.close()
+
+
 def test_prefix_reuse_falls_back_for_exact_prompt_and_sampled_boundary() -> None:
     owner = _FakePrefixOwner()
     runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
@@ -623,6 +1693,21 @@ def test_prefix_reuse_falls_back_for_exact_prompt_and_sampled_boundary() -> None
         "cache_resident_bytes": 384,
     }
     runner.rollback_admission(SimpleNamespace(request_id=21))
+
+    # A one-token suffix still reuses the prefix; only the suffix route
+    # changes. It goes through the serial step rather than a one-row batched
+    # prefill, which would leave the bulk schedule (MoE has no rows==1 bulk
+    # path) for no speedup - one token costs one step either way.
+    single_prompt = (*prefix, 998)
+    single_request = _request(single_prompt, max_tokens=2)
+    runner.register_batch((23,), single_request, prompt_rows=(single_prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=23))
+    single = runner._rows[23]
+    assert single.prefix_lookup is True
+    assert single.prefix_matched_tokens == 512
+    assert single.prefix_reused_tokens == 512
+    assert single.prefix_fallback_reason is None
+    runner.rollback_admission(SimpleNamespace(request_id=23))
 
     sampled_prompt = (*prefix, 999)
     sampled_request = _request(sampled_prompt, max_tokens=2, temperature=0.7)
@@ -754,16 +1839,13 @@ def test_configure_engine_loop_leases_packed_workspace_pages() -> None:
 
     pool = runner.kv_pool
     batch_owner = owner.sessions[0]
-    # capacity=2 requests * 3 pages/request = 6 request pages; the packed
-    # workspace lease adds capacity slots * max(3, 1024/256) = 8 pinned pages
-    # on top (the lease is capacity-honest: serving can never open more
-    # resident slots than max_active_requests, and the 1024-token per-slot
-    # union floor still applies to short request contexts).
-    assert pool.current_pages == 12
+    # Eight request pages plus two serving slots * four workspace pages.
+    # Wider physical verifier layouts use separately budgeted private KV.
+    assert pool.current_pages == 16
     lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
-    assert lease is not None and len(lease) == 4
+    assert lease is not None and len(lease) == 8
     assert pool.stats.free_pages == 8
-    assert pool.stats.pinned_pages == 4
+    assert pool.stats.pinned_pages == 8
     assert batch_owner.bound_workspace_pools == [pool]
     snapshot = runner.observability_snapshot()
     assert snapshot["model_runner"]["max_active_requests"] == 2
@@ -778,22 +1860,52 @@ def test_configure_engine_loop_leases_packed_workspace_pages() -> None:
     assert new_pool is not pool
     assert batch_owner.workspace_release_calls == 1
     assert pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY) is None
-    assert len(new_pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)) == 4
+    assert len(new_pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)) == 8
     assert batch_owner.bound_workspace_pools[-1] is new_pool
 
     runner.close()
     assert runner.kv_pool is None
 
 
-def test_configure_engine_loop_leases_single_slot_workspace_at_c1() -> None:
-    """At capacity=1 the packed workspace leases one slot, not the 8-slot floor.
+def test_long_context_does_not_eagerly_reserve_full_workspace_per_slot() -> None:
+    from hipengine.runtime.qwen35_gguf_runner import _GGUF_PACKED_WORKSPACE_LEASE_KEY
 
-    Only one resident slot can ever be opened at C1 (MTP serving widths and
-    packed group layouts are both bounded by max_active_requests), so leasing
-    eight slots pins 4x more arena pages than the serving loop can touch.
+    owner = _FakeGlobalPoolOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=4)
+    runner._reserve_sessions()
+    for lease in runner._available:
+        lease.session.scratch.max_positions = 40960
+    runner.configure_engine_loop(EngineLoopConfig(
+        max_active_requests=4, kv_pool_initial_pages=8,
+        kv_pool_low_water_pages=8, kv_pool_chunk_pages=8,
+        prefix_cache="off",
+    ))
+    try:
+        pool = runner.kv_pool
+        assert len(pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)) == 16
+        assert pool.current_pages == 24
+    finally:
+        runner.close()
+
+
+def test_configure_engine_loop_leases_the_capacity_workspace_at_c1() -> None:
+    """A C1 pool leases the serving capacity's workspace, not a fixed ceiling.
+
+    The lease's slot term is the runner's serving capacity (one slot at C1)
+    times the per-slot union floor of max(ceil(max_positions/256),
+    _PACKED_VERIFY_MIN_MAX_SEQUENCE/256) pages. An above-capacity geometry
+    (an MTP verify group packs four physical slots at C1) is deliberately
+    not covered by the pool-creation-time lease: ``_GGUFPackedTargetState``
+    uses private KV charged against the pool budget. The lease is an eager
+    reservation, not an upper bound on total workspace demand.
     """
 
-    from hipengine.runtime.qwen35_gguf_runner import _GGUF_PACKED_WORKSPACE_LEASE_KEY
+    from hipengine.runtime.qwen35_gguf_runner import (
+        _GGUF_PACKED_WORKSPACE_LEASE_KEY,
+        _PACKED_VERIFY_MIN_MAX_SEQUENCE,
+        packed_verify_lease_slot_ceiling,
+        packed_verify_workspace_lease_pages,
+    )
 
     owner = _FakeGlobalPoolOwner()
     runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)
@@ -809,28 +1921,36 @@ def test_configure_engine_loop_leases_single_slot_workspace_at_c1() -> None:
 
     pool = runner.kv_pool
     assert pool is not None
-    # capacity=1 request * 3 pages/request = 3 request pages; the workspace
-    # lease is one slot * max(3, 4) = 4 pages.
-    assert pool.current_pages == 12
+    expected_lease_pages = packed_verify_workspace_lease_pages(
+        1,
+        768,
+    )
+    assert expected_lease_pages == packed_verify_lease_slot_ceiling(1) * max(
+        (768 + 255) // 256,
+        _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,
+    )
+    assert expected_lease_pages == 4
+    assert pool.current_pages == 8 + expected_lease_pages
     lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
-    assert lease is not None and len(lease) == 4
-    assert pool.stats.pinned_pages == 4
+    assert lease is not None and len(lease) == expected_lease_pages
+    assert pool.stats.pinned_pages == expected_lease_pages
     assert pool.stats.free_pages == 8
 
     runner.close()
 
 
 def test_packed_verify_union_geometry_is_capacity_honest() -> None:
-    """The union geometry caps workspace slots at the real serving capacity."""
+    """Serving capacity floors short contexts; long contexts follow demand."""
 
     from types import SimpleNamespace
 
     from hipengine.runtime.qwen35_gguf_runner import (
         Qwen35GGUFResidentSession,
         _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY,
+        _PACKED_VERIFY_MIN_MAX_SEQUENCE,
     )
 
-    def geometry(max_batch_size, slot_count=1):
+    def geometry(max_batch_size, slot_count=1, max_sequence_length=1024):
         namespace = SimpleNamespace(
             max_batch_size=max_batch_size,
             _packed_verify_state=None,
@@ -842,24 +1962,379 @@ def test_packed_verify_union_geometry_is_capacity_honest() -> None:
             namespace,
             slot_count=slot_count,
             rows=8,
-            max_sequence_length=3072,
+            max_sequence_length=max_sequence_length,
         )
 
-    # C1 serves one slot: state slots and GDN segments follow the real cap.
+    # At or below the 1024-token floor the capacity term holds, so a one-slot
+    # request still opens the resident width and later slots reuse it without
+    # churn.
     union_slots, _union_rows, _union_max_seq, union_segments = geometry(1)
     assert union_slots == 1
     assert union_segments == 1
 
-    # The default C8 geometry is unchanged.
     union_slots, _union_rows, _union_max_seq, union_segments = geometry(8)
     assert union_slots == _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
     assert union_segments == _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
 
-    # C4 right-sizes to four slots.
     union_slots, _union_rows, _union_max_seq, union_segments = geometry(4)
     assert union_slots == 4
     assert union_segments == 4
 
+    # Physical verifier layouts may be wider than the serving capacity.
+    union_slots, _, _, union_segments = geometry(1, slot_count=4)
+    assert union_slots == union_segments == 4
+
     # Absent serving caps keep the historical 8-slot fallback.
     union_slots, _union_rows, _union_max_seq, union_segments = geometry(None)
     assert union_slots == _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
+
+    # Past the short-context floor the slot axis follows the live request, so
+    # idle capacity and a wider short-context shape do not inflate the private
+    # KV planes.
+    long_context = _PACKED_VERIFY_MIN_MAX_SEQUENCE + 256
+    union_slots, _union_rows, union_max_seq, union_segments = geometry(
+        4, slot_count=1, max_sequence_length=long_context
+    )
+    assert union_slots == 1
+    assert union_max_seq == long_context
+    # GDN scratch segments keep the capacity floor: they are cheap and must
+    # stay wide enough for any concurrent slot.
+    assert union_segments == 4
+    assert geometry(8, slot_count=2, max_sequence_length=long_context)[0] == 2
+    assert geometry(None, slot_count=1, max_sequence_length=long_context)[0] == 1
+
+
+def test_gapped_placement_declines_a_hit_whose_suffix_exceeds_the_paged_budget(
+    monkeypatch,
+) -> None:
+    """Placement decides the route, so a gapped hit is only worth a short suffix.
+
+    A contiguous shared allocation keeps the fast slot-local prefill. A gapped
+    one drops to the packed paged route, which is far slower per token, so past
+    a few hundred suffix tokens the full prefill the hit would replace is the
+    cheaper answer. Declining there is what turns a wide retained working set
+    from a regression into a win.
+    """
+
+    from hipengine.kvcache.pool import DeviceKVContiguityError
+
+    # Small budget so the shapes fit the fixture's resident capacity; the
+    # default is 512 tokens, measured against the full prefill a hit replaces.
+    monkeypatch.setenv("HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX", "64")
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=3,
+            kv_pool_initial_pages=32,
+            kv_pool_low_water_pages=32,
+            kv_pool_high_water_pages=32,
+            kv_pool_chunk_pages=32,
+            prefix_cache="radix",
+        )
+    )
+    prefix = tuple(range(1, 513))
+    source_request = _request(prefix, max_tokens=2)
+    runner.register_batch((60,), source_request, prompt_rows=(prefix,))
+    runner.reserve_admission(SimpleNamespace(request_id=60))
+    source = runner._rows[60]
+    source.prefill_tokens_seen = len(prefix)
+    source.lease.session.position = len(prefix)
+    assert runner._refresh_prefix_cache(source) is True
+
+    pool = runner.kv_pool
+    real_admit = pool.admit_with_shared_prefix
+
+    def only_gapped(*args, **kwargs):
+        if kwargs.get("require_contiguous"):
+            raise DeviceKVContiguityError("no contiguous run for the test")
+        return real_admit(*args, **kwargs)
+
+    monkeypatch.setattr(pool, "admit_with_shared_prefix", only_gapped)
+
+    # A long suffix is declined: the paged route would cost more than the miss.
+    long_prompt = (*prefix, *range(9000, 9000 + 128))
+    runner.register_batch((61,), _request(long_prompt, max_tokens=2), prompt_rows=(long_prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=61))
+    long_row = runner._rows[61]
+    assert long_row.prefix_matched_tokens == 512
+    assert long_row.prefix_reused_tokens == 0
+    assert long_row.prefix_fallback_reason == "gapped_suffix_exceeds_paged_budget"
+    runner.rollback_admission(SimpleNamespace(request_id=61))
+
+    # A short suffix still takes the gapped hit.
+    short_prompt = (*prefix, *range(9000, 9000 + 32))
+    runner.register_batch((62,), _request(short_prompt, max_tokens=2), prompt_rows=(short_prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=62))
+    short_row = runner._rows[62]
+    assert short_row.prefix_reused_tokens == 512
+    assert short_row.prefix_fallback_reason is None
+    assert runner._prefix_gapped_admissions >= 1
+    runner.rollback_admission(SimpleNamespace(request_id=62))
+    runner.close()
+
+
+def test_gapped_placement_takes_a_long_suffix_when_the_gather_route_is_fast(
+    monkeypatch,
+) -> None:
+    """With the gapped gather route available, any suffix length is worth a hit.
+
+    The gapped gather route swaps a gapped slot's identity spans for its real
+    block table and runs the same AOTriton attention the contiguous route
+    uses, so a gapped hit no longer pays the paged-route penalty the suffix
+    budget guarded against. The decline below only binds when that fast
+    route is unavailable (kill-switch, no head-major KV, oversized context).
+    """
+
+    monkeypatch.setenv("HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX", "64")
+    monkeypatch.setattr(
+        qwen35_gguf_generation,
+        "_gguf_prefix_gapped_fast_route_available",
+        lambda lease, context_tokens: True,
+    )
+    from hipengine.kvcache.pool import DeviceKVContiguityError
+
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=3,
+            kv_pool_initial_pages=32,
+            kv_pool_low_water_pages=32,
+            kv_pool_high_water_pages=32,
+            kv_pool_chunk_pages=32,
+            prefix_cache="radix",
+        )
+    )
+    prefix = tuple(range(1, 513))
+    source_request = _request(prefix, max_tokens=2)
+    runner.register_batch((70,), source_request, prompt_rows=(prefix,))
+    runner.reserve_admission(SimpleNamespace(request_id=70))
+    source = runner._rows[70]
+    source.prefill_tokens_seen = len(prefix)
+    source.lease.session.position = len(prefix)
+    assert runner._refresh_prefix_cache(source) is True
+
+    pool = runner.kv_pool
+    real_admit = pool.admit_with_shared_prefix
+
+    def only_gapped(*args, **kwargs):
+        if kwargs.get("require_contiguous"):
+            raise DeviceKVContiguityError("no contiguous run for the test")
+        return real_admit(*args, **kwargs)
+
+    monkeypatch.setattr(pool, "admit_with_shared_prefix", only_gapped)
+
+    # The same long suffix the budget would decline on the slow route now
+    # takes the gapped hit: the gather route makes it pay contiguous cost.
+    long_prompt = (*prefix, *range(9000, 9000 + 128))
+    runner.register_batch((71,), _request(long_prompt, max_tokens=2), prompt_rows=(long_prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=71))
+    long_row = runner._rows[71]
+    assert long_row.prefix_matched_tokens == 512
+    assert long_row.prefix_reused_tokens == 512
+    assert long_row.prefix_fallback_reason is None
+    assert runner._prefix_gapped_admissions >= 1
+    runner.rollback_admission(SimpleNamespace(request_id=71))
+    runner.close()
+
+
+def test_workspace_telemetry_separates_private_kv_and_request_pins():
+    from hipengine.generation.engine_loop import EngineLoopConfig
+
+    owner = _FakeGlobalPoolOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    runner._reserve_sessions()
+    runner.configure_engine_loop(EngineLoopConfig(
+        max_active_requests=1, kv_pool_initial_pages=8, kv_pool_low_water_pages=8,
+    ))
+    pool = runner.kv_pool
+    allocation = pool.allocate(99, 1)
+    pool.pin(allocation.block_ids)
+    token = pool.reserve_private_workspace(4 * pool.page_bytes)
+    snapshot = runner.kv_pool_memory_snapshot()
+    assert snapshot["private_workspace_kv_bytes"] == 4 * pool.page_bytes
+    assert snapshot["accounted_kv_bytes"] == 16 * pool.page_bytes
+    model = runner.observability_snapshot()["model_runner"]
+    assert model["packed_workspace_leased_pool_bytes"] == 4 * pool.page_bytes
+    pool.release_private_workspace(token)
+    pool.unpin(allocation.block_ids)
+    pool.release(99)
+    runner.close()
+
+
+def _pressure_guard_runner(pool) -> Qwen35GGUFResidentModelRunner:
+    """Minimal runner carrying the real prefix-retention state for one pool."""
+
+    from hipengine.kvcache.radix import RadixCache
+
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._kv_pool = pool
+    runner._prefix_cache = RadixCache(block_size=256)
+    runner._prefix_state_snapshots = {}
+    runner._prefix_snapshot_evictions = 0
+    runner._prefix_retained_evictions_by_reason = {}
+    runner._mtp2_adapter = None
+    return runner
+
+
+def _retain_pressure_prefix(runner, pool, *, request_id, tokens, block_ids) -> None:
+    from hipengine.generation.qwen35_gguf import _GGUFPrefixSnapshotEntry
+
+    pool.retain_blocks(block_ids)
+    runner._prefix_cache.insert(request_id, tokens, block_ids)
+    runner._prefix_cache.retain_entry(tokens, block_ids)
+    runner._prefix_state_snapshots[tokens] = _GGUFPrefixSnapshotEntry(
+        tokens=tuple(tokens),
+        block_ids=tuple(block_ids),
+        snapshot=SimpleNamespace(close=lambda: None),
+        owner_request_id=None,
+        retained=True,
+        prompt_boundary=True,
+    )
+
+
+def _guard_pressure_pool():
+    from hipengine.kvcache.device_global import GlobalDeviceKVPool
+
+    grown: list[tuple[int, int]] = []
+
+    def grow(count: int, start: int):
+        grown.append((count, start))
+        return (
+            {
+                role: tuple(
+                    0x100000 + (start + index) * 0x1000 for index in range(count)
+                )
+                for role in ("k", "v")
+            },
+            {"k": 0x90000, "v": 0x91000},
+            {"arena": start},
+        )
+
+    pool = GlobalDeviceKVPool(
+        page_bytes=4096,
+        backend_fingerprint="gguf:pressure-guard",
+        generation=1,
+        backing={"arena": 0},
+        plane_page_pointers={
+            "k": tuple(0x1000 + index * 0x100 for index in range(12)),
+            "v": tuple(0x2000 + index * 0x100 for index in range(12)),
+        },
+        pointer_table_pointers={"k": 0x8000, "v": 0x8100},
+        metadata_descriptor_pointer=0x9000,
+        close_storage=lambda: None,
+        grow_storage=grow,
+        max_pages=24,
+        growth_chunk_pages=12,
+    )
+    return pool, grown
+
+
+def test_pressure_skips_a_prefix_an_admission_is_still_holding() -> None:
+    """Pressure must not reclaim a retained prefix whose pages are live.
+
+    A shared-prefix admission holds the prefix under a transient guard while it
+    tries a contiguous placement, then a gapped one. The guard makes the pages
+    active, so dropping the cache references frees nothing -- but it discarded
+    the entry the fallback was about to reuse. The guard is released between the
+    two attempts, so the fallback then found the prefix pages free and raised
+    ``KV page N is not shareable`` instead of admitting them.
+    """
+
+    from hipengine.kvcache import KVPageState
+    from hipengine.kvcache.pool import DeviceKVContiguityError
+
+    pool, grown = _guard_pressure_pool()
+    runner = _pressure_guard_runner(pool)
+
+    guarded_tokens = tuple(range(512))
+    guarded = pool.allocate(1, 2)
+    assert guarded.block_ids == (0, 1)
+    _retain_pressure_prefix(
+        runner, pool, request_id=1, tokens=guarded_tokens, block_ids=guarded.block_ids
+    )
+    pool.release(1)
+    # Pages 2,3 block a contiguous suffix after the guarded prefix.
+    pool.allocate(90, 2)
+    # A second, idle retained boundary pressure can reclaim instead.
+    idle_tokens = tuple(range(1000, 1512))
+    idle = pool.allocate(2, 2)
+    assert idle.block_ids == (4, 5)
+    _retain_pressure_prefix(
+        runner, pool, request_id=2, tokens=idle_tokens, block_ids=idle.block_ids
+    )
+    pool.release(2)
+    pool._on_pressure = runner.evict_prefix_cache_for_pressure
+    assert pool.stats.free_pages == 6
+
+    # The contiguous attempt needs seven private pages but six are free, so it
+    # runs the pressure callback while the guard still holds the prefix active.
+    with pytest.raises((DeviceKVContiguityError, MemoryError)):
+        pool.admit_with_shared_prefix(
+            3, guarded.block_ids, suffix_pages=7, require_contiguous=True
+        )
+
+    # Pressure reclaimed the idle entry and skipped the guarded one: the guard
+    # still retains its pages as cache-owned rather than free.
+    assert idle_tokens not in runner._prefix_state_snapshots
+    assert runner._prefix_state_snapshots[guarded_tokens].retained is True
+    assert pool.refcount(0) == 1
+    assert pool.global_pool.page(0).state is KVPageState.CACHED_EVICTABLE
+
+    # The gapped fallback therefore still finds a materialized prefix to share.
+    fallback = pool.admit_with_shared_prefix(
+        3, guarded.block_ids, suffix_pages=7, require_contiguous=False
+    )
+    assert fallback.reused_block_ids == guarded.block_ids
+    assert grown == []
+    pool.release(3)
+
+    # With no live lease left, the same pressure callback reclaims the entry.
+    released = runner.evict_prefix_cache_for_pressure(2)
+    assert released == 2
+    assert guarded_tokens not in runner._prefix_state_snapshots
+    pool.release(90)
+    assert pool.stats.free_pages == pool.current_pages
+    pool.close()
+
+
+def test_global_pool_refuses_to_share_free_or_credit_owned_pages() -> None:
+    """The pool's sharing invariant is unchanged by the pressure skip.
+
+    A cached prefix is shareable only while it is materialized. A freed page
+    and a page reserved as another lease's growth credit are both refused, so
+    the admission path cannot silently share storage it does not own.
+    """
+
+    from hipengine.kvcache import GlobalKVPoolSet, KVPageState
+
+    pool = GlobalKVPoolSet(
+        backend_fingerprint="dense:share-invariant",
+        generation=1,
+        plane_page_pointers={
+            "k_payload": tuple(0x1000 + index * 0x100 for index in range(4)),
+            "v_payload": tuple(0x2000 + index * 0x100 for index in range(4)),
+        },
+        pointer_table_pointers={"k_payload": 0x500, "v_payload": 0x600},
+    )
+
+    # A page reserved as a growth credit is not shareable.
+    credit_owner = pool.allocate("credit-owner", private_pages=1, growth_credit_pages=1)
+    credit_page = credit_owner.growth_credit_page_ids[0]
+    assert pool.page(credit_page).state is KVPageState.RESERVED_CREDIT
+    with pytest.raises(ValueError, match="not shareable"):
+        pool.allocate("credit-thief", private_pages=0, growth_credit_pages=0,
+                      shared_page_ids=(credit_page,))
+    pool.release("credit-owner")
+
+    # A page that has been freed is not shareable either.
+    transient = pool.allocate("transient", private_pages=1, growth_credit_pages=0)
+    freed_page = transient.private_page_ids[0]
+    pool.release("transient")
+    assert pool.page(freed_page).state is KVPageState.FREE
+    with pytest.raises(ValueError, match="not shareable"):
+        pool.allocate("free-thief", private_pages=0, growth_credit_pages=0,
+                      shared_page_ids=(freed_page,))
+
+    pool.assert_conserved()

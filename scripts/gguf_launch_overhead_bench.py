@@ -67,7 +67,9 @@ def main(argv: list[str] | None = None) -> int:
     rows = int(args.rows)
     xbuf = malloc(rows * IN * 2, runtime=rt)
     obuf = malloc(rows * OUT * 2, runtime=rt)
-    copy_host_to_device(xbuf, host_array_ptr(np.zeros(rows * IN, np.uint16)), runtime=rt)
+    x_host = np.zeros(rows * IN, np.uint16)
+    copy_host_to_device(xbuf, host_array_ptr(x_host), runtime=rt)
+    rt.device_synchronize()
     xptr, outptr = xbuf.ptr, obuf.ptr
     qwptr = weight.allocation("raw").tensor.ptr
     N = int(args.iters)

@@ -35,6 +35,32 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
 from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.generation.mtp_sampled_accept import (
+    chain_edge_rows,
+    chain_token_logprobs,
+    observe_published_tokens,
+    published_forced_positions,
+    row_forced_token_ids,
+    row_prefix_states,
+    sampled_accept_summary,
+)
+from hipengine.generation.sampling import (
+    constraint_skips_token_text,
+    logprobs_requested,
+    speculative_sampling_mode,
+)
+from hipengine.speculative.accounting import (
+    PRIMING_SOURCE_ABSENT,
+    PRIMING_SOURCE_BUFFERED,
+    PRIMING_SOURCE_LIVE,
+    PRIMING_SOURCE_RESTORED,
+    PROVIDER_ABSENT,
+    PROVIDER_DECLINED,
+    PROVIDER_PROMPT_BUFFERED,
+    PROVIDER_READY,
+    record_autoregressive_step,
+    record_speculative_outputs,
+)
 from hipengine.runtime.gguf_linear import (
     mtp_serving_target_use_wmma_prefill,
     target_verifier_wide_q6_shared4_leaf_session,
@@ -50,6 +76,7 @@ from hipengine.runtime.qwen35_gguf_nextn import (
 )
 from hipengine.speculative.frontier import (
     CandidateGraph,
+    SpeculativeKVBinding,
     ProviderAttachment,
     ProviderCatchupMode,
     SpecK0Class,
@@ -74,12 +101,16 @@ from hipengine.speculative.interfaces import (
     TargetVerifyBuffers,
 )
 from hipengine.speculative.mtp import MtpProposalContext
+from hipengine.speculative.prefix_checkpoint import PrefixCheckpointStore
 from hipengine.speculative.ngram_mod import (
     NgramModConfig,
     NgramModProposal,
     RequestLocalNgramMod,
 )
-from hipengine.speculative.provider import SpeculativeRequestSemantics
+from hipengine.speculative.provider import (
+    SpeculativeRequestSemantics,
+    validate_staged_target_adapter,
+)
 from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
 from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.core.specdec2_scope import (
@@ -111,9 +142,26 @@ _Q6_MIXED_TARGET_ROWTILES_ENV = (
 # Screening-only admission for explicitly unqualified width/depth cells
 # (Qwen3.8 gfx1100 better-MTP campaign Packet 0). Default off; scoped to
 # static eligibility rows that are NOT automatic_eligible so no automatic
-# model policy can widen. Remove with the campaign's screening harness
-# (docs/REFACTOR.md).
-_MTP2_SCREEN_UNQUALIFIED_CELLS_ENV = "HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS"
+# model policy can widen. The serving layer reads the same switch through
+# ``unqualified_mtp_screening_enabled`` to keep typed intent for an explicit
+# request that no evidence row admits, so the resident owner can screen it
+# instead of the request falling to pre-mutation K0. Remove with the campaign's
+# screening harness (docs/REFACTOR.md).
+MTP2_SCREEN_UNQUALIFIED_CELLS_ENV = "HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS"
+# The adapter no longer carries a fixed MTP context window. Prompt context is not
+# an admission axis (docs/EXECUTION-PROFILES.md section 2.9): gating on it
+# silently disables an already-qualified path, and the 1,023 sentinel existed
+# only because no measurement had been taken past the 1,024 attention
+# transition. Both of its stated causes are resolved. The staged linear-attention
+# chain is byte-exact above the split threshold on the dense Q4_K_M path, so
+# ``strict_long_rows`` no longer covers it and the multi-row verifier is what runs
+# there (docs/REFACTOR.md, 2026-09-19); and measured long-context MTP reaches
+# 1.42x-1.74x from 1,804 to 12,142 prompt tokens at 0.992-0.996 coverage with
+# greedy output identical to AR. What remains as a bound is the target's own
+# ``max_sequence_length``, which is allocated capacity rather than an evidence
+# gap. Graph and draft bucket misses above the transition stay observable
+# fallbacks for the cycle that hits them; they do not refuse the request.
+#
 # Preserve the incumbent C4 allocation floor. Wider production owners round
 # their real K+1 frontier up to the backend's admitted row multiple.
 _PHYSICAL_ACCEPT_MIN_ROWS = 24
@@ -121,11 +169,52 @@ _NGRAM_MOD_N_MIN_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_MIN"
 _NGRAM_MOD_PROBE_MAX_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_PROBE_MAX"
 
 
+def sampled_route_qualified_for(generator: Any) -> bool:
+    """Whether the loaded plugin declares the sampled accept route.
+
+    This is a static mode advertisement, not request admission. The serving
+    resolver and physical-cell planner still check storage, depth, width,
+    resources and request semantics before provider mutation.
+
+    The answer comes from the plugin's capability declaration alone: a
+    ``speculative_mtp_serving_implementations`` row whose ``backends`` cover the
+    active ``(backend, target_arch)`` and whose ``sampling_modes`` contain
+    ``sampled``. An artifact no evidence row describes still qualifies, because
+    admission is never keyed on a model name, path, quant string, or digest.
+    """
+
+    if generator is None:
+        return False
+    plugin = getattr(generator, "model_plugin", None)
+    backend = str(getattr(generator, "backend", "") or "")
+    arch = str(getattr(generator, "target_arch", "") or "")
+    declarations = tuple(
+        getattr(plugin, "speculative_mtp_serving_implementations", ()) or ()
+    )
+    return any(
+        "sampled" in declaration.sampling_modes
+        and (backend, arch) in declaration.backends
+        for declaration in declarations
+    )
+
+
 def _env_enabled(name: str, default: bool = False) -> bool:
     raw = os.environ.get(name)
     if raw is None:
         return bool(default)
     return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def unqualified_mtp_screening_enabled() -> bool:
+    """Return whether explicit screening of unqualified MTP cells is enabled.
+
+    This is an operator override for tuning campaigns. It never widens
+    automatic model policy: every screening admission still requires a group
+    whose requests all carry non-automatic static eligibility, and the serving
+    layer marks the resulting response metadata as unqualified.
+    """
+
+    return _env_enabled(MTP2_SCREEN_UNQUALIFIED_CELLS_ENV)
 
 
 def _positive_env(name: str, default: int) -> int:
@@ -198,6 +287,18 @@ def _target_verify_mode_for_context(
     end_position: int,
     target: Any | None = None,
 ) -> str:
+    """Select the target verifier mode from execution context, not identity.
+
+    The only inputs are the requested mode, the backend package's declared
+    capabilities, the target's execution contract (compact-DMS storage), and the
+    resulting context position. Selection never reads a quant name, file-type
+    string, model name, artifact path, or digest: an unfamiliar artifact whose
+    kernels can execute the native row path runs it. Cross-path numerical or
+    generated-ID differences do not establish a state-ownership failure.
+    """
+
+    if target is not None and getattr(target, "_dms_backend", None) is not None:
+        return "serial_exact"
     selected = str(requested)
     if selected != "native":
         return selected
@@ -249,6 +350,24 @@ class _NgramBatchDeviceProposal:
             raise ValueError("n-gram proposal token_ids must be packed INT32 candidates")
 
 
+def _trace_prefix_checkpoint(message: str) -> None:
+    """Echo prefix-checkpoint capture activity under the opt-in trace flag.
+
+    The capture is silent by design -- a checkpoint is an optimization and a
+    request must not fail because one could not be taken -- which leaves a
+    swallowed failure indistinguishable from capture being switched off. This is
+    the operator's way to tell those apart.
+    """
+
+    try:
+        if os.environ.get("HIPENGINE_MTP2_TRACE_DECLINE", "").strip() not in {"", "0"}:
+            print(f"[mtp2-prefix-checkpoint] {message}", file=sys.stderr, flush=True)
+    except Exception:
+        # Diagnostics never fail a request: an operator-visible line is not
+        # worth a partially-mutated prefill.
+        pass
+
+
 @dataclass(slots=True)
 class _MTP2RequestState:
     request_id: int
@@ -263,9 +382,56 @@ class _MTP2RequestState:
     proposal_device: Qwen35GGUFNextNDeviceProposal | None = None
     proposal_device_batch: Qwen35GGUFNextNBatchDeviceProposal | None = None
     proposal_ngram: _NgramBatchDeviceProposal | None = None
+    sampled_accept_plan: "_DeviceSampledAcceptPlan | None" = None
     ngram_candidate_tokens: tuple[int, ...] = ()
     proposal_source: str = "mtp2"
     device_chain_prepare_error: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _DeviceSampledAcceptPlan:
+    """Immutable native RNG inputs; live counters advance only at commit."""
+
+    params: Any
+    seed: int
+    step_index: int
+    rows: int
+
+
+@dataclass(frozen=True, slots=True)
+class _GGUFMTPTokenSample:
+    """Per-published-token metadata for a committed speculative cycle.
+
+    The resident runner reads ``row.samples`` to build
+    ``GenerationOutput.token_logprobs`` and the streaming chunk's metadata, so a
+    cycle that publishes several tokens appends one of these per token. Only
+    ``token_id``, ``logprob``, and ``top_logprobs`` are read; the token text is
+    derived from the tokenizer.
+    """
+
+    token_id: int
+    logprob: float | None
+    top_logprobs: tuple[tuple[int, float], ...] = ()
+
+
+def publish_cycle_token_samples(
+    owner: Any,
+    request_id: int,
+    samples: Sequence[Any],
+) -> None:
+    """Record a committed cycle's per-token metadata for its stream events.
+
+    The stream events of a cycle are decorated after the commit, and a cycle
+    that finishes the request has already reclaimed the row by then, so the
+    metadata is recorded on the runner under the request id rather than only on
+    the row. A runner without that store is left alone: its events then keep
+    whatever metadata the scheduler produced.
+    """
+
+    cycle_samples = getattr(owner, "_cycle_token_samples", None)
+    if cycle_samples is None:
+        return
+    cycle_samples[int(request_id)] = list(samples)
 
 
 @dataclass(frozen=True, slots=True)
@@ -288,6 +454,64 @@ class _C1ShadowAdapterState:
 
 class _PhysicalTargetCommitError(RuntimeError):
     """Target state may be committed; AR fallback requires canonical rebuild."""
+
+
+def _row_eos_token_id(row: Any, tokenizer: Any = None) -> int | None:
+    for source in (getattr(row, "sampling_request", None), row.request, tokenizer):
+        eos = getattr(source, "eos_token_id", None)
+        if eos is not None:
+            return int(eos)
+    return None
+
+
+def _commit_eager_cycle_row(
+    row: Any,
+    *,
+    visible: Sequence[int],
+    accepted: int,
+    candidate_count: int,
+    plan_reason: Any | None,
+    target_position: int,
+    eos_token_id: int | None = None,
+) -> bool:
+    """Commit one eager cycle's visible tokens and attribute their execution mode.
+
+    Returns whether the row finished on EOS. The pre-append token count is read
+    first so a non-speculative cycle can report where speculation stopped, and
+    the committed visible tokens are attributed exactly once (to the speculative
+    path or to autoregressive decoding) by the shared accounting helper.
+    """
+
+    tokens = tuple(int(token) for token in visible)
+    if not tokens:
+        raise RuntimeError("eager MTP2 cycle commit requires visible tokens")
+    committed_position = len(row.slot.generated_ids)
+    sampling_state = getattr(row, "sampling_state", None)
+    if sampling_state is not None:
+        for token in tokens:
+            sampling_state.observe(token)
+    row.slot.generated_ids.extend(tokens)
+    row.slot.prev_token = int(tokens[-1])
+    row.slot.seq_position = int(target_position)
+    row.slot.native_decode_steps += 1
+    eos = _row_eos_token_id(row) if eos_token_id is None else eos_token_id
+    eos_finished = (
+        eos is not None
+        and not bool(getattr(row.request, "ignore_eos", False))
+        and int(tokens[-1]) == int(eos)
+    )
+    row.slot.done = eos_finished or len(row.slot.generated_ids) >= int(
+        row.request.max_tokens
+    )
+    record_speculative_outputs(
+        row,
+        candidate_count=int(candidate_count),
+        accepted_count=int(accepted),
+        visible_count=len(tokens),
+        output_position=committed_position,
+        plan_reason=plan_reason,
+    )
+    return eos_finished
 
 
 def _device_chain_oracle_trace_rows(
@@ -541,6 +765,11 @@ def _physical_prompt_streaming_widths(owner: Any, generator: Any) -> tuple[int, 
     if not isinstance(policies, Mapping):
         raise RuntimeError("backend prompt-streaming policies must be a mapping")
     raw = policies.get((geometry, file_type_name, profile), ())
+    if not raw:
+        # Physical prompt streaming is a geometry/profile capability. A
+        # quantization file-type label must not turn an otherwise executable
+        # Qwen lane into an admission miss.
+        raw = policies.get((geometry, None, profile), ())
     if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes, bytearray)):
         raise RuntimeError("backend prompt-streaming widths must be a sequence")
     widths = tuple(sorted({int(value) for value in raw}))
@@ -614,6 +843,47 @@ def _physical_width_depths(generator: Any) -> tuple[tuple[int, int], ...]:
     if not cells:
         raise RuntimeError("backend MTP2 physical width/depth policy must not be empty")
     return tuple(sorted(cells))
+
+
+def _constraint_text_observer(
+    params: Any,
+    *,
+    token_text_for_id: Callable[[int], str] | None,
+    encode_text: Callable[[str], Any] | None,
+    remaining_decode: int,
+    drafted: bool = False,
+):
+    """Build the per-row text observer the text-keyed constraints need.
+
+    ``json_object_close_forcing`` and ``tool_call_constraint`` read the decoded
+    text of the tokens a request has emitted: they advance a text DFA, mask the
+    row's support from it, and queue a closing suffix when the remaining budget
+    is exactly enough to close the structure. A cycle publishes several tokens at
+    once, so each row has to see the text of the tokens before it, exactly as one
+    autoregressive step per token would.
+
+    ``depth`` is the number of tokens published before the row's own token, so
+    ``remaining_decode - depth - 1`` is the same budget the autoregressive route
+    compares the closing suffix against. Returns ``None`` when no tokenizer is
+    available, which leaves the walk a pure token walk.
+    """
+
+    if token_text_for_id is None or encode_text is None:
+        return None
+
+    def observe_text(state: Any, token_id: int, depth: int) -> None:
+        if constraint_skips_token_text(params, state, int(token_id)):
+            # The autoregressive route observes no text for an EOS token under a
+            # constraint. The rule is shared so the two routes cannot drift.
+            return
+        state.observe_selected_token_text(
+            token_text_for_id(int(token_id)),
+            remaining_tokens=max(0, int(remaining_decode) - int(depth) - 1),
+            encode_text=encode_text,
+            drafted=bool(drafted),
+        )
+
+    return observe_text
 
 
 class Qwen35GGUFMTP2Adapter:
@@ -794,13 +1064,34 @@ class Qwen35GGUFMTP2Adapter:
         self._last_partition_contract: dict[str, Any] = {}
         self._last_screening_cell: dict[str, Any] | None = None
         self._intents: dict[int, int] = {}
+        # The planner's resolved sampling mode per request. The adapter's
+        # own route probe reads the row's request, which is not the resolved
+        # sampler block the planner saw; the two disagree on a request whose
+        # mode comes from the scheduler's params (temperature plus EOS, for
+        # instance), so the planner's answer is recorded here and reused.
+        self._sampling_mode_by_request: dict[int, str] = {}
         self._static_eligibility_by_request: dict[
             int, SpeculativeMTPStaticEligibility
         ] = {}
         self._prompt_hidden_rows: dict[int, np.ndarray] = {}
+        # Prefix-checkpoint capture. The store is built lazily on the first
+        # capture, and both halves of the key come from the runner: the block
+        # size decides which boundary is worth taking, and the block ids are
+        # what a later lookup validates. With no capacity or no key provider the
+        # capture is off, which is the default until the runner wires them.
+        self.prefix_checkpoint_capacity: int = 0
+        self.prefix_checkpoint_block_size: int = 0
+        self.prefix_checkpoint_key: Any = None
+        self._prefix_checkpoint_store_instance: PrefixCheckpointStore | None = None
         self._prompt_streaming_sinks: dict[int, _StreamingNextNPromptSink] = {}
         self._prompt_streaming_group_keys: dict[int, tuple[int, ...]] = {}
         self._prompt_streaming_norm_buffers: dict[int, DeviceBuffer] = {}
+        # Rows whose prompt activation was refused while another activation was
+        # in flight. The refusal is about the sink, not about the row's
+        # eligibility: a prompt that already started cannot open a sink later
+        # without leaving a partial hidden-row buffer behind, so the sink stays
+        # refused for that prompt while the row's speculative intent survives.
+        self._streaming_refused_requests: set[int] = set()
         self._states: dict[int, _MTP2RequestState] = {}
         self._c1_shadow_states: dict[int, _C1ShadowAdapterState] = {}
         self._provider_groups: dict[tuple[int, ...], _MTP2ProviderGroup] = {}
@@ -818,6 +1109,7 @@ class Qwen35GGUFMTP2Adapter:
         self._cycle_repair_hidden: Tensor | None = None
         self._cycle_ngram_tokens: Tensor | None = None
         self._cycle_workspace_shape: tuple[int, int] | None = None
+        validate_staged_target_adapter(self)
 
     def _physical_width_depth_policy(self) -> tuple[tuple[int, int], ...]:
         """Return policy cells that fit this adapter's resident capacity."""
@@ -869,9 +1161,19 @@ class Qwen35GGUFMTP2Adapter:
 
         if self._physical_width_depth_admitted(width, depth):
             return True
-        if not _env_enabled(_MTP2_SCREEN_UNQUALIFIED_CELLS_ENV):
-            return False
         ids = tuple(int(value) for value in request_ids)
+        if len(ids) == int(width) == 1:
+            eligibility = self._static_eligibility(ids[0])
+            if (
+                eligibility is not None
+                and eligibility.eligible
+                and eligibility.implementation_key is not None
+                and 1 <= int(depth) <= eligibility.max_candidate_count
+                and int(width) <= eligibility.max_realized_group_rows
+            ):
+                return True
+        if not unqualified_mtp_screening_enabled():
+            return False
         if not ids:
             return False
         eligibilities = tuple(self._static_eligibility(rid) for rid in ids)
@@ -926,7 +1228,7 @@ class Qwen35GGUFMTP2Adapter:
 
     @staticmethod
     def _target_graph_supported(target: Any) -> bool:
-        return not bool(
+        return getattr(target, "_dms_backend", None) is None and not bool(
             getattr(getattr(target, "runner", None), "fp16_recurrent_state", False)
         )
 
@@ -972,6 +1274,8 @@ class Qwen35GGUFMTP2Adapter:
         Existing Qwen3.6 and gfx1151 evidence retains the legacy singleton.
         """
 
+        if getattr(getattr(self, "generator", None), "dms_metadata_path", None) is not None:
+            return False
         if not self._physical_c1_enabled():
             return False
         eligibility = self._static_eligibility(request_id)
@@ -986,6 +1290,21 @@ class Qwen35GGUFMTP2Adapter:
             self.candidate_budget,
             (request_id,),
         )
+
+    def eos_finish_supported(self, request_id: int) -> bool:
+        """EOS is supported by both eager selection and graph terminal recommit."""
+
+        rid = int(request_id)
+        if not self.enabled:
+            return False
+        state = self._states.get(rid)
+        verifier = None if state is None else getattr(state, "verifier", None)
+        if verifier is None:
+            return False
+        target = getattr(verifier, "target", None)
+        if target is None or not self._target_graph_supported(target):
+            return False
+        return True
 
     def register_request(
         self,
@@ -1218,6 +1537,19 @@ class Qwen35GGUFMTP2Adapter:
         widths = tuple(getattr(self, "physical_prompt_streaming_widths", ()))
         return not widths or int(request_count) in widths
 
+    def prompt_activation_available(self) -> bool:
+        """Whether a new prompt activation can start on this tick.
+
+        ``begin_prompt_streaming`` mutates provider state, so it admits one
+        activation at a time. A chunked prefill holds that claim from its first
+        chunk to its final one, and a request whose first chunk runs without a
+        sink cannot prime a provider later in its prompt. The scheduler reads
+        this probe to defer a speculative row's first chunk instead of letting
+        it forfeit its draft provider.
+        """
+
+        return self._active_prompt_claims is None
+
     def begin_prompt_streaming(
         self,
         request_ids: Sequence[int],
@@ -1227,6 +1559,7 @@ class Qwen35GGUFMTP2Adapter:
         """Open exact shifted NextN sinks before target prompt prefill."""
 
         ids = tuple(int(value) for value in request_ids)
+        _trace_prefix_checkpoint(f"begin_prompt_streaming ids={ids}")
         if not ids or len(set(ids)) != len(ids):
             raise ValueError("streaming prompt request IDs must be non-empty and unique")
         if any(request_id not in self._intents for request_id in ids):
@@ -1236,25 +1569,66 @@ class Qwen35GGUFMTP2Adapter:
         existing = tuple(self._prompt_streaming_sinks.get(request_id) for request_id in ids)
         if all(sink is not None for sink in existing):
             return tuple(sink for sink in existing if sink is not None)
-        if any(sink is not None for sink in existing) or any(
-            request_id in self._states for request_id in ids
-        ):
+        streaming = tuple(
+            request_id
+            for request_id, sink in zip(ids, existing, strict=True)
+            if sink is not None
+        )
+        pending = tuple(
+            request_id
+            for request_id, sink in zip(ids, existing, strict=True)
+            if sink is None
+        )
+        if any(request_id in self._streaming_refused_requests for request_id in pending):
+            # A previous chunk of these rows' prompts ran without a sink, so the
+            # only buffer they could still produce is a partial one. Refuse the
+            # sink without touching the rows' budget: whether they can speculate
+            # is decided by their priming source (see _priming_source), not by
+            # this refusal. A mixed call still carries its streaming rows.
+            pending = tuple(
+                request_id
+                for request_id in pending
+                if request_id not in self._streaming_refused_requests
+            )
+            if not pending:
+                if not streaming:
+                    return None
+                return tuple(
+                    self._prompt_streaming_sinks.get(request_id) for request_id in ids
+                )
+        if any(request_id in self._states for request_id in pending):
             raise RuntimeError("streaming prompt ownership is only opened once per request")
-        rows = tuple(self.owner._row(request_id) for request_id in ids)
+        # Only the rows that are not streaming yet need a new activation; rows
+        # that already hold a sink keep it and are carried through the return.
+        rows = tuple(self.owner._row(request_id) for request_id in pending)
         automatic_singleton = bool(
-            len(ids) == 1 and self._singleton_only(ids[0])
+            len(pending) == 1 and self._singleton_only(pending[0])
         )
         if (
             int(getattr(self.owner, "capacity", 1)) > 1
             and not automatic_singleton
-            and not self._physical_prompt_streaming_admitted(len(ids))
+            and not self._physical_prompt_streaming_admitted(len(pending))
         ):
             for row in rows:
                 row.mtp2_prompt_fallback_reason = "physical_streaming_category_rejected"
             return None
-        if any(row.lease is None or int(row.prefix_reused_tokens) > 0 for row in rows):
+        # A reused prefix has no prompt rows to prime from, so such a row is
+        # refused unless a checkpoint captured at that boundary can be restored
+        # and its suffix streamed -- see _restore_prefix_checkpoint_for_streaming.
+        restorable = set(self.restorable_prefix_rows(rows))
+        if any(
+            row.lease is None
+            or (
+                int(row.prefix_reused_tokens) > 0
+                and int(row.request_id) not in restorable
+            )
+            for row in rows
+        ):
             for row in rows:
-                if int(getattr(row, "prefix_reused_tokens", 0)) > 0:
+                if (
+                    int(getattr(row, "prefix_reused_tokens", 0)) > 0
+                    and int(row.request_id) not in restorable
+                ):
                     row.mtp2_prompt_fallback_reason = "prefix_reuse_k0"
             return None
         targets = tuple(row.lease.session for row in rows)
@@ -1262,11 +1636,15 @@ class Qwen35GGUFMTP2Adapter:
             for row in rows:
                 row.mtp2_prompt_fallback_reason = "target_profile_k0"
             return None
+        # A request is refused here only when its prompt leaves no room for even
+        # one generated token inside the target's own capacity. Prompt length is
+        # otherwise not an admission axis: the staged long-context verifier is
+        # qualified and measured, so a long prompt takes the same route a short
+        # one does.
         context_misses = tuple(
             (row, target)
             for row, target in zip(rows, targets, strict=True)
-            if len(row.prompt_ids) + 1
-            >= min(1023, int(target.target_layout.max_sequence_length))
+            if len(row.prompt_ids) + 1 >= int(target.target_layout.max_sequence_length)
         )
         if context_misses:
             for row, _target in context_misses:
@@ -1274,9 +1652,38 @@ class Qwen35GGUFMTP2Adapter:
                 row.mtp2_prompt_fallback_reason = "target_context_k0"
             return None
         if self._active_prompt_claims is not None:
-            raise RuntimeError("GGUF MTP2 prompt activation claims are already reserved")
+            # One prompt activation runs at a time: it mutates provider state
+            # that a second activation would interleave with. A chunked prefill
+            # holds its claim across ticks (see the non-final chunk path), so a
+            # second request arriving while another is mid-prompt is a normal
+            # scheduling outcome, not a broken invariant. Refuse only the rows
+            # that are not already streaming, and refuse only the *sink*: this
+            # row's prompt has already started, so it cannot open one later
+            # without leaving a partial hidden-row buffer, but its speculative
+            # intent is not this refusal's business. Whether it can speculate is
+            # decided by its priming source -- live provider state or a
+            # complete, current prompt buffer -- and _priming_source refuses the
+            # row when neither exists. Zeroing the budget here instead made a
+            # transient scheduling outcome permanent for the row's whole life.
+            for request_id in pending:
+                refused = self.owner._row(request_id)
+                refused.mtp2_prompt_fallback_reason = "prompt_activation_in_flight"
+                # The caller prefills a refused row's chunk without a sink, so
+                # this prompt runs without one from here on: a later chunk
+                # could only add a partial hidden-row buffer, which the
+                # catch-up walk cannot use. Refuse the sink for the rest of
+                # this prompt. The row's budget is deliberately untouched --
+                # whether it can speculate is decided by its priming source
+                # (see _priming_source), and a row deferred before its first
+                # chunk still activates normally on a later tick.
+                self._streaming_refused_requests.add(int(request_id))
+            if not streaming:
+                return None
+            return tuple(
+                self._prompt_streaming_sinks.get(request_id) for request_id in ids
+            )
         self._active_prompt_claims = ResourceClaimSet.from_mapping(
-            "gguf-mtp2-prompt:" + ",".join(str(request_id) for request_id in ids),
+            "gguf-mtp2-prompt:" + ",".join(str(request_id) for request_id in pending),
             {
                 "gguf_mtp2.prompt_rows": sum(len(row.prompt_ids) for row in rows),
                 "gguf_mtp2.carried_hidden_rows": len(rows),
@@ -1284,7 +1691,7 @@ class Qwen35GGUFMTP2Adapter:
             },
             lifetime=ClaimLifetime.WORK_ITEM,
         )
-        missing = len(ids)
+        missing = len(pending)
         group = (
             None
             if automatic_singleton
@@ -1306,7 +1713,7 @@ class Qwen35GGUFMTP2Adapter:
             provider_capacity = (
                 1
                 if automatic_singleton
-                else max(len(ids), self._max_physical_requests())
+                else max(len(pending), self._max_physical_requests())
             )
             provider, pool_key, _reused = self.generator._acquire_dense_mtp_draft_provider(
                 targets[0],
@@ -1321,7 +1728,7 @@ class Qwen35GGUFMTP2Adapter:
                     row.mtp2_prompt_fallback_reason = "provider_no_streaming_prompt_abi"
                 return None
             group = _MTP2ProviderGroup(
-                key=tuple(sorted(ids)),
+                key=tuple(sorted(pending)),
                 provider=provider,
                 provider_pool_key=pool_key,
                 request_ids=set(),
@@ -1332,7 +1739,7 @@ class Qwen35GGUFMTP2Adapter:
             self._prompt_streaming_norm_buffers = {}
         checkpoint_by_id = {} if checkpoints is None else dict(checkpoints)
         try:
-            for request_id, row, target in zip(ids, rows, targets, strict=True):
+            for request_id, row, target in zip(pending, rows, targets, strict=True):
                 group.provider.reset_request(request_id)
                 checkpoint = checkpoint_by_id.get(request_id)
                 if checkpoint is None:
@@ -1383,14 +1790,78 @@ class Qwen35GGUFMTP2Adapter:
                     )
                     return int(norm_buffer.ptr)
 
+                # The sink is the route the served engine primes a provider
+                # through, so this is the hook a first-turn prefix-cache hit
+                # depends on; the catch-up walks only run on the attach paths.
+                # The callback is bound to this request rather than read from
+                # adapter state, so two sinks in flight cannot swap rows.
+                def capture_streamed_prefix(
+                    boundary: int,
+                    boundary_hidden_ptr: int,
+                    *,
+                    request_id: int = int(request_id),
+                    prompt_ids: tuple[int, ...] = tuple(row.prompt_ids),
+                    provider: Any = group.provider,
+                    target: Any = target,
+                    hidden_nbytes: int = int(hidden_nbytes),
+                ) -> None:
+                    self._capture_prefix_checkpoint(
+                        provider,
+                        request_id,
+                        prompt_ids,
+                        None,
+                        int(boundary),
+                        DeviceBuffer(int(boundary_hidden_ptr), hidden_nbytes),
+                        target,
+                    )
+
+                # A prefix-cache hit is prefilled only after the reused prefix,
+                # so its provider state comes from the checkpoint a previous turn
+                # captured at that boundary: restore it, then stream the suffix
+                # the target is about to run. The sink feeds tokens[0] against
+                # the row it carries, so the suffix sink starts at the boundary
+                # with the checkpoint's boundary row as the carried row.
+                sink_tokens = row.prompt_ids
+                sink_start_position = 0
+                sink_initial_hidden = None
+                reused = int(getattr(row, "prefix_reused_tokens", 0) or 0)
+                if reused > 0:
+                    restored = self._restore_prefix_checkpoint_for_streaming(
+                        row,
+                        int(request_id),
+                        reused,
+                        provider=group.provider,
+                        hidden_size=int(hidden_size),
+                    )
+                    if restored is None:
+                        # The checkpoint is absent, stale, or cannot be put back
+                        # into a provider slot. The row's reason is already
+                        # recorded; it decodes autoregressively like every hit
+                        # row does today instead of failing its request.
+                        self._free_prompt_streaming_norm_buffer(
+                            int(request_id),
+                            target=target,
+                        )
+                        continue
+                    sink_tokens, sink_start_position, sink_initial_hidden = restored
                 sink = _StreamingNextNPromptSink(
                     request_id=request_id,
-                    prompt_tokens=row.prompt_ids,
+                    prompt_tokens=sink_tokens,
                     hidden_size=hidden_size,
                     executor=group.provider.executor,
                     runtime=target.runtime,
                     checkpoint=checkpoint,
+                    start_position=int(sink_start_position),
+                    initial_hidden=sink_initial_hidden,
                     transform_hidden_rows=transform_hidden_rows,
+                    prefix_capture=(
+                        capture_streamed_prefix
+                        if self.prefix_checkpoint_capacity > 0
+                        else None
+                    ),
+                    capture_boundary=self._prefix_checkpoint_boundary(
+                        len(tuple(row.prompt_ids))
+                    ),
                 )
                 self._prompt_streaming_sinks[request_id] = sink
                 self._prompt_streaming_group_keys[request_id] = group.key
@@ -1398,13 +1869,29 @@ class Qwen35GGUFMTP2Adapter:
                 created.append(request_id)
         except Exception:
             self._abort_prompt_streaming(tuple(created), stream=0)
-            for request_id in ids:
+            for request_id in pending:
                 self._free_prompt_streaming_norm_buffer(request_id, target=None)
             if acquired and not group.request_ids:
                 self._provider_groups.pop(group.key, None)
             self._active_prompt_claims = None
             raise
-        return tuple(self._prompt_streaming_sinks[request_id] for request_id in ids)
+        return tuple(
+            self._prompt_streaming_sinks.get(request_id) for request_id in ids
+        )
+
+    def _prompt_streaming_sink_is_incomplete(self, sink: Any) -> bool:
+        """Whether a prompt sink is missing rows it was built to consume.
+
+        A sink that does not report its progress (a lightweight test double, or
+        an executor that streams without a timeline) is treated as complete: the
+        adapter only refuses a row it can prove is missing rows.
+        """
+
+        consumed = getattr(sink, "consumed_rows", None)
+        total = getattr(sink, "total_rows", None)
+        if consumed is None or total is None:
+            return False
+        return int(consumed) != int(total)
 
     def finish_prompt_streaming(
         self,
@@ -1415,10 +1902,36 @@ class Qwen35GGUFMTP2Adapter:
     ) -> None:
         """Commit carried prompt rows or roll back every provider/sink owner."""
 
+        _trace_prefix_checkpoint(
+            f"finish_prompt_streaming ids={tuple(int(v) for v in request_ids)} "
+            f"success={bool(success)}"
+        )
+
         ids = tuple(int(value) for value in request_ids)
         if not success:
             self._abort_prompt_streaming(ids, stream=int(stream))
             return
+        # A chunked prefill route can end a prompt without every row reaching the
+        # sink (a tail chunk on a route with no hidden-row source, for example).
+        # Priming from a timeline with holes in it would silently corrupt the
+        # provider, so such a request falls back to autoregressive decoding with
+        # the refusal recorded instead of failing.
+        incomplete = tuple(
+            request_id
+            for request_id in ids
+            if self._prompt_streaming_sink_is_incomplete(
+                self._prompt_streaming_sinks[request_id]
+            )
+        )
+        if incomplete:
+            for request_id in incomplete:
+                self.owner._row(request_id).mtp2_prompt_fallback_reason = (
+                    "prompt_stream_incomplete_k0"
+                )
+            self._abort_prompt_streaming(incomplete, stream=int(stream))
+            ids = tuple(value for value in ids if value not in incomplete)
+            if not ids:
+                return
         buffers: dict[int, DeviceBuffer] = {}
         try:
             for request_id in ids:
@@ -1429,6 +1942,17 @@ class Qwen35GGUFMTP2Adapter:
                 finish = getattr(group.provider.executor, "finish_prompt_priming", None)
                 if callable(finish):
                     finish(request_id, stream=int(stream), synchronize=False)
+                # The prefill call that consumed the last row is not necessarily
+                # the one that owns the whole timeline (a reused-prefix suffix is
+                # prefilled in chunks), so the sink is closed here, where the
+                # prompt is known to be complete.
+                close_sink = getattr(sink, "finish", None)
+                if callable(close_sink):
+                    close_sink(
+                        request_id=int(request_id),
+                        total_rows=int(getattr(sink, "total_rows", 0)),
+                        stream=int(stream),
+                    )
                 buffers[request_id] = sink.take_final_pending_buffer()
             pending_states: dict[int, _MTP2RequestState] = {}
             for request_id in ids:
@@ -1472,7 +1996,9 @@ class Qwen35GGUFMTP2Adapter:
                 target._last_target_hidden_ptr = int(state.root_hidden_buffer.ptr)
                 self._states[request_id] = state
                 row.mtp2_prompt_streaming = True
-                row.mtp2_prompt_prime_rows = len(row.prompt_ids)
+                row.mtp2_prompt_prime_rows = int(getattr(
+                    self._prompt_streaming_sinks[request_id], "total_rows", len(row.prompt_ids)
+                ))
                 row.mtp2_prompt_carried_bytes = int(state.root_hidden_buffer.nbytes)
                 row.mtp2_prompt_fallback_reason = None
                 self._prompt_hidden_rows.pop(request_id, None)
@@ -1562,14 +2088,33 @@ class Qwen35GGUFMTP2Adapter:
 
     def observe_prefill_result(self, request_id: int, prompt_ids: Sequence[int], result: Any) -> None:
         rid = int(request_id)
+        if os.environ.get("HIPENGINE_DEBUG_SAMPLED_ROUTE"):
+            print(
+                f"[prefill-debug] rid={rid} registered={rid in self._intents} "
+                f"hidden_seeds={getattr(result, 'hidden_seeds', None) is not None} "
+                f"budget={getattr(self.owner._row(rid), 'mtp2_candidate_budget', None)}",
+                file=sys.stderr,
+                flush=True,
+            )
         if rid not in self._intents:
             return
+        # Resolve the row's prefill-time identity once: the sampled accept
+        # variant is warmed below (outside the capacity-1 warmup), and the
+        # capacity-1 warmup reuses the same names.
+        row = self.owner._row(rid)
+        target = None if row.lease is None else row.lease.session
+        if target is not None:
+            # Sampled graphs can be captured before provider creation. Bind the
+            # same immutable profile here so opening the provider cannot change
+            # the graph identity at its first device-proposal handoff.
+            self._bind_target_profile_metadata(target)
+        token_id = getattr(result, "token_id", None)
+        budget = int(self._intents[rid])
+        state = self._states.get(rid)
         if (
             int(getattr(self.owner, "capacity", 1)) > 1
             or self._physical_c1_request(rid)
         ):
-            row = self.owner._row(rid)
-            target = None if row.lease is None else row.lease.session
             prepare_device_commit = getattr(
                 target,
                 "prepare_external_verify_state_commit",
@@ -1577,12 +2122,44 @@ class Qwen35GGUFMTP2Adapter:
             )
             if callable(prepare_device_commit):
                 prepare_device_commit()
+        if (
+            target is not None
+            and token_id is not None
+            and self._sampled_accept_candidate(rid)
+            and getattr(
+                target,
+                f"_native_spec_b{budget}_target_graph_n2_sampled",
+                None,
+            )
+            is None
+        ):
+            # Warm the sampled accept variant independently of the row's
+            # verifier. This hook is the only capture site and it runs at
+            # prefill, while the verifier is created on the row's first
+            # admitted cycle; the verify path never captures with an
+            # in-flight proposal, so without this a sampled row keeps the
+            # host accept (one full-vocabulary logits row per verified
+            # prefix) for its whole life and every cycle declines the
+            # device plan for a missing graph.
+            warm_target = getattr(
+                target,
+                "prepare_native_spec_target_graph",
+                None,
+            )
+            if callable(warm_target):
+                try:
+                    warm_target(
+                        (int(token_id), *((0,) * budget)),
+                        request_id=rid,
+                        sampled_accept=True,
+                    )
+                except Exception as exc:
+                    if state is not None:
+                        state.device_chain_prepare_error = (
+                            f"sampled-warmup {type(exc).__name__}:{exc}"
+                        )
+
         if int(getattr(self.owner, "capacity", 1)) == 1:
-            state = self._states.get(rid)
-            row = self.owner._row(rid)
-            target = None if row.lease is None else row.lease.session
-            token_id = getattr(result, "token_id", None)
-            budget = int(self._intents[rid])
             if (
                 state is not None
                 and state.verifier is not None
@@ -1607,6 +2184,15 @@ class Qwen35GGUFMTP2Adapter:
                             (int(token_id), *((0,) * budget)),
                             request_id=rid,
                         )
+                        if self._sampled_accept_candidate(rid):
+                            # The sampled variant is warmed at prefill, before
+                            # this verifier exists; this second call covers a row
+                            # that reaches prefill already owning one.
+                            prepare_target(
+                                (int(token_id), *((0,) * budget)),
+                                request_id=rid,
+                                sampled_accept=True,
+                            )
                     for bucket_budget in range(1, budget + 1):
                         draft = DraftBatch(
                             request_ids=(rid,),
@@ -1646,6 +2232,19 @@ class Qwen35GGUFMTP2Adapter:
             self._prompt_hidden_rows.pop(rid, None)
             if rid in self._states:
                 return
+            # The prompt finish returned no hidden rows and this row owns no
+            # provider state: record why, because a row in this state is refused
+            # by every later capability call and would otherwise publish no
+            # reason at all. A reused prefix is the common cause -- the reused
+            # tokens are never prefilled, so the full-prompt rows a provider
+            # needs cannot exist.
+            row = self.owner._row(rid)
+            if row is not None and getattr(row, "mtp2_prompt_fallback_reason", None) is None:
+                row.mtp2_prompt_fallback_reason = (
+                    "prefix_reuse_k0"
+                    if int(getattr(row, "prefix_reused_tokens", 0) or 0) > 0
+                    else "prompt_hidden_rows_unavailable"
+                )
             return
         rows = np.ascontiguousarray(hidden, dtype=np.float32)
         expected_rows = len(tuple(prompt_ids))
@@ -1663,9 +2262,13 @@ class Qwen35GGUFMTP2Adapter:
         Admission has many independent gates; without a recorded reason a
         non-engaging cell is indistinguishable from a disabled one. The
         attribute is always set (cheap) and echoed to stderr only when
-        HIPENGINE_MTP2_TRACE_DECLINE is set.
+        HIPENGINE_MTP2_TRACE_DECLINE is set. ``_decline_serial`` lets the
+        caller tell a decline recorded by *this* call from a stale one left by
+        an earlier call, which is what makes the per-row readiness report
+        trustworthy.
         """
 
+        self._decline_serial = int(getattr(self, "_decline_serial", 0)) + 1
         self._last_capability_decline = str(reason)
         if os.environ.get("HIPENGINE_MTP2_TRACE_DECLINE", "").strip() not in {"", "0"}:
             seen = getattr(self, "_declines_traced", None)
@@ -1677,12 +2280,469 @@ class Qwen35GGUFMTP2Adapter:
                 print(f"[mtp2-decline] {reason}", file=sys.stderr, flush=True)
         return None
 
+    def _sampled_route_qualified(self) -> bool:
+        """Advertise processed acceptance when the plugin implements it.
+
+        This is a static mode advertisement, not request admission. The serving
+        resolver and physical-cell planner still check storage, depth, width,
+        resources and request semantics before provider mutation. The answer is
+        the plugin's capability declaration, so an unfamiliar artifact that the
+        kernels can execute is not withheld for want of a measurement.
+        """
+
+        return sampled_route_qualified_for(getattr(self, "generator", None))
+
+    def _sampled_route_request(self, request_id: int) -> bool:
+        """Return whether this request's due cycle must use the sampled route."""
+
+        _qualified = self._sampled_route_qualified()
+        import os as _os
+        if _os.environ.get("HIPENGINE_DEBUG_SAMPLED_ROUTE"):
+            import sys as _sys
+            _row = self.owner._row(int(request_id))
+            _params = getattr(_row, "sampling_request", None) or getattr(_row, "request", None)
+            print(
+                f"[route-debug] rid={request_id} qualified={_qualified} "
+                f"row={type(_row).__name__ if _row is not None else None} "
+                f"native_greedy={getattr(_row, 'native_greedy', None)} "
+                f"native_sampler={getattr(_row, 'native_sampler', None)} "
+                f"params={type(_params).__name__ if _params is not None else None} "
+                f"mode={None if _params is None else speculative_sampling_mode(_params)}",
+                file=_sys.stderr,
+                flush=True,
+            )
+        if not _qualified:
+            return False
+        row = self.owner._row(int(request_id))
+        if row is None:
+            return False
+        recorded = self._sampling_mode_by_request.get(int(request_id))
+        if recorded is not None:
+            return recorded == "sampled"
+        params = getattr(row, "sampling_request", None) or getattr(row, "request", None)
+        if params is None:
+            return False
+        return speculative_sampling_mode(params) == "sampled"
+
+    def _sampled_accept_candidate(self, request_id: int) -> bool:
+        """Whether this row may need the captured sampled accept variant.
+
+        The warmup runs at prefill, before the planner has published a mode for
+        the row, and the row's raw request still carries the thinking-budget
+        fields the server relaxes for the MTP path, so the planner's own
+        predicate answers "processed" at that point. The variant is therefore
+        captured for native full-vocabulary rows without processors; the plan
+        gate still decides whether a cycle uses it.
+        """
+
+        if not self._sampled_route_qualified():
+            return False
+        row = self.owner._row(int(request_id))
+        if row is None or not bool(getattr(row, "native_sampler", False)):
+            return False
+        params = getattr(row, "sampling_request", None) or getattr(row, "request", None)
+        if params is None:
+            return False
+        from hipengine.runtime.native_sampler import _needs_processors
+
+        return (
+            float(getattr(params, "temperature", 0.0)) > 0.0
+            and int(getattr(params, "top_k", 0)) == 0
+            and not _needs_processors(params)
+            and getattr(self.generator, "native_sampler_algorithm", "sorted") == "sorted"
+        )
+
+    def _device_sampled_accept_plan(
+        self,
+        request_id: int,
+        target: Any,
+        candidate_budget: int,
+    ) -> "_DeviceSampledAcceptPlan | None":
+        """Return a device sampled-accept plan for this row, or None.
+
+        The graph uses the same sorted native sampler as AR, with immutable
+        request parameters and absolute-position RNG inputs. Processor-bearing
+        and bounded-top-k requests use the eager acceptance path.
+        """
+
+        from hipengine.runtime.native_sampler import _needs_processors
+
+        def _decline(reason: str) -> None:
+            if os.environ.get("HIPENGINE_DEBUG_SAMPLED_ROUTE"):
+                print(
+                    f"[sampled-plan] rid={int(request_id)} declined: {reason}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+
+        row = self.owner._row(int(request_id))
+        if row is None or not bool(getattr(row, "native_sampler", False)):
+            _decline("row missing or host sampler")
+            return None
+        if getattr(target, "native_sampler_algorithm", "sorted") != "sorted":
+            _decline("strict sampler uses eager native selection")
+            return None
+        state = getattr(row, "sampling_state", None)
+        params = getattr(row, "sampling_request", None) or getattr(row, "request", None)
+        if state is None or params is None:
+            _decline("no sampling state or params")
+            return None
+        # The planner's resolved mode, not the row's raw request: a temperature
+        # request carries EOS, and the raw request then reads as "processed"
+        # while the planner (which sees the scheduler's resolved params) calls
+        # the same row "sampled". Reading the raw request here silently kept
+        # every sampled row on the host accept, which is the 5.3x cycle.
+        recorded = self._sampling_mode_by_request.get(int(request_id))
+        if recorded is not None:
+            if recorded != "sampled":
+                _decline(f"planner mode {recorded!r}")
+                return None
+        elif speculative_sampling_mode(params) != "sampled":
+            _decline(
+                "raw request mode "
+                f"{speculative_sampling_mode(params)!r} with no recorded planner mode"
+            )
+            return None
+        if _needs_processors(params):
+            _decline("parameters need logits processors")
+            return None
+        if int(getattr(params, "top_k", 0)) != 0:
+            _decline("bounded top-k uses eager native selection")
+            return None
+        if getattr(state, "tool_call_constraint_state", None) is not None:
+            _decline("active tool-call constraint")
+            return None
+        if getattr(state, "_json_object_constraint", None) is not None:
+            _decline("active json-object constraint")
+            return None
+        if bool(getattr(state, "has_forced_tokens", False)):
+            _decline("pending forced tokens")
+            return None
+        if logprobs_requested(params):
+            # The captured graph accepts on the device and returns no logits row
+            # to the host, so there is nothing to report a published token's
+            # logprob from. The eager native path reports the sampler's own
+            # per-row value, which is what the autoregressive route reports.
+            _decline("logprobs requested; the graph accept has no host logits rows")
+            return None
+        temperature = float(getattr(params, "temperature", 0.0))
+        if not temperature > 0.0:
+            _decline("temperature is zero")
+            return None
+        budget = int(candidate_budget)
+        graph_name = f"_native_spec_b{budget}_target_graph_n2_sampled"
+        if getattr(target, graph_name, None) is None:
+            request_state = self._states.get(int(request_id))
+            warmup_error = getattr(request_state, "device_chain_prepare_error", None)
+            _decline(
+                f"eager native sampler for uncaptured depth {budget}"
+                + (f" (warmup error: {warmup_error})" if warmup_error else "")
+            )
+            return None
+        return _DeviceSampledAcceptPlan(
+            params=params,
+            seed=int(state.seed),
+            step_index=int(state.step_index),
+            rows=budget + 1,
+        )
+
     def capability(
         self,
         request_semantics: Sequence[SpeculativeRequestSemantics],
     ) -> SpeculativeCapability | None:
+        """Resolve the capability and publish the outcome on every row it asked about.
+
+        The resolution itself lives in ``_capability_impl``; this wrapper exists
+        so every refusal path -- recorded or silent -- reports the row's own
+        provider readiness. A row refused here used to publish nothing but the
+        planner's ``no_provider``, which is indistinguishable from a row whose
+        provider was still priming.
+        """
+
         semantics = tuple(request_semantics)
+        decline_serial = int(getattr(self, "_decline_serial", 0))
+        silent_serial = int(getattr(self, "_silent_decline_serial", 0))
+        result = self._capability_impl(semantics)
+        self._note_capability_readiness(
+            semantics,
+            result,
+            decline_serial=decline_serial,
+            silent_serial=silent_serial,
+        )
+        return result
+
+    def _priming_source(self, request_id: int) -> tuple[str, str | None]:
+        """Classify this row's draft-provider priming source.
+
+        Returns ``(source, invalid_reason)``. ``source`` names where provider
+        state would come from; ``invalid_reason`` is None only when that source
+        is complete and current for the row's decode position, and otherwise
+        names why the row must be served autoregressively instead.
+
+        The buffered prompt rows are the one source that can be *present but
+        unusable*, in two ways that used to be invisible:
+
+        * Incomplete. The catch-up walk requires one hidden row per prompt
+          token and raises ``ValueError`` when the shape disagrees, so a prompt
+          that started without a sink -- leaving only a partial buffer -- turned
+          a scheduling outcome into an engine execution failure instead of an
+          autoregressive fallback.
+        * Stale. The catch-up walk leaves the provider at the row's first draft
+          step: it hands the target the last prompt hidden row, which the draft
+          step consumes together with the next root token. That is the row's
+          current position only while the row has generated at most that one
+          token. A row admitted later -- after a refusal that has since cleared
+          -- would draft from the prompt's end while the target is several
+          tokens ahead, and because the target verifies every candidate the
+          cost is silent acceptance loss rather than a wrong answer.
+
+        Live provider state needs no such check: it advances with the row. A
+        source that cannot be inspected (no ``shape``, no ``prompt_ids``) is
+        reported valid, because every production buffer is an array and every
+        production row carries its prompt, so the guard is active where it
+        matters and a test double is not turned into a fabricated refusal.
+        """
+
+        rid = int(request_id)
+        if rid in self._states:
+            return PRIMING_SOURCE_LIVE, None
+        row = self.owner._row(rid)
+        reused = int(getattr(row, "prefix_reused_tokens", 0) or 0)
+        if reused > 0:
+            # A prefix-cache hit is prefilled only after the reused prefix, so
+            # its provider state cannot come from prompt rows at all: it comes
+            # from the checkpoint a previous turn captured at this boundary.
+            return self._restored_priming_source(row, rid, reused)
+        buffered = self._prompt_hidden_rows.get(rid)
+        if buffered is None:
+            return PRIMING_SOURCE_ABSENT, "provider_state_absent"
+        prompt_ids = tuple(getattr(row, "prompt_ids", ()) or ())
+        shape = getattr(buffered, "shape", None)
+        if (
+            shape is not None
+            and len(shape) == 2
+            and prompt_ids
+            and int(shape[0]) != len(prompt_ids)
+        ):
+            return PRIMING_SOURCE_BUFFERED, "prompt_buffer_incomplete_k0"
+        slot = getattr(row, "slot", None)
+        generated = (
+            len(tuple(getattr(slot, "generated_ids", ()) or ()))
+            if slot is not None
+            else 0
+        )
+        if generated > 1:
+            return PRIMING_SOURCE_BUFFERED, "prompt_buffer_stale_k0"
+        return PRIMING_SOURCE_BUFFERED, None
+
+    def _restored_priming_source(
+        self,
+        row: Any,
+        request_id: int,
+        reused: int,
+    ) -> tuple[str, str | None]:
+        """Classify a prefix-cache hit row's restored-checkpoint source.
+
+        The checkpoint is content, not ownership: it is keyed by the token
+        prefix and validated against the row's current block ids, so a hit whose
+        ids have moved is a miss rather than a restore into the wrong blocks.
+        The currency rule is the same one the buffered source carries -- a
+        restore lands the provider at the boundary, which is the row's current
+        position only while the row has generated at most that first token.
+        """
+
+        checkpoint = self._lookup_prefix_checkpoint(row, request_id, reused)
+        if checkpoint is None:
+            return PRIMING_SOURCE_RESTORED, "restored_checkpoint_absent_k0"
+        slot = getattr(row, "slot", None)
+        generated = (
+            len(tuple(getattr(slot, "generated_ids", ()) or ()))
+            if slot is not None
+            else 0
+        )
+        if generated > 1:
+            return PRIMING_SOURCE_RESTORED, "restored_checkpoint_stale_k0"
+        if checkpoint.boundary_hidden is None:
+            # A restore without the boundary row cannot hand the first draft
+            # step the row it consumes, so the row is served autoregressively.
+            return PRIMING_SOURCE_RESTORED, "restored_checkpoint_hidden_absent_k0"
+        # The checkpoint is complete and current, and the sink that streams the
+        # row's suffix is built from it at activation (see
+        # _restore_prefix_checkpoint_for_streaming), so the row can prime.
+        return PRIMING_SOURCE_RESTORED, None
+
+    def restorable_prefix_rows(self, rows: Any) -> tuple[int, ...]:
+        """Request ids whose reused prefix has a checkpoint that can be restored.
+
+        A pure query: it validates the checkpoint the same way priming does
+        without restoring or consuming anything, so the runner can decide
+        whether a hit row may claim a provider before it opens a sink.
+        """
+
+        restorable: list[int] = []
+        for row in rows:
+            reused = int(getattr(row, "prefix_reused_tokens", 0) or 0)
+            if reused <= 0:
+                continue
+            request_id = int(row.request_id)
+            checkpoint = self._lookup_prefix_checkpoint(row, request_id, reused)
+            if checkpoint is None or checkpoint.boundary_hidden is None:
+                continue
+            restorable.append(request_id)
+        return tuple(restorable)
+
+    def _restore_prefix_checkpoint_for_streaming(
+        self,
+        row: Any,
+        request_id: int,
+        reused: int,
+        *,
+        provider: Any,
+        hidden_size: int,
+    ) -> tuple[tuple[int, ...], int, Any] | None:
+        """Restore a hit row's checkpoint and return its warm sink inputs.
+
+        Returns ``(suffix_tokens, start_position, initial_hidden)`` for the sink
+        that will stream the suffix the target is about to prefill, or ``None``
+        after recording why the row cannot be primed. A restore that cannot be
+        performed is never raised: the checkpoint is an optimization, and a
+        request must not fail because its prefix could not be put back.
+        """
+
+        checkpoint = self._lookup_prefix_checkpoint(row, request_id, reused)
+        if checkpoint is None:
+            row.mtp2_prompt_fallback_reason = "restored_checkpoint_absent_k0"
+            return None
+        if checkpoint.boundary_hidden is None:
+            # Without the boundary row there is nothing for the first draft step
+            # to consume, so the restored provider would draft from a position
+            # the walk never reached.
+            row.mtp2_prompt_fallback_reason = "restored_checkpoint_hidden_absent_k0"
+            return None
+        restore = getattr(provider.executor, "restore_prefix_state", None)
+        if not callable(restore):
+            row.mtp2_prompt_fallback_reason = "restored_checkpoint_unrestorable_k0"
+            return None
+        try:
+            restore(checkpoint, int(request_id))
+        except Exception:
+            row.mtp2_prompt_fallback_reason = "restored_checkpoint_restore_failed_k0"
+            return None
+        prompt_ids = tuple(int(token) for token in row.prompt_ids)
+        prefix_len = int(checkpoint.prefix_len)
+        initial_hidden = Tensor.from_handle(
+            int(checkpoint.boundary_hidden.ptr),
+            (1, int(hidden_size)),
+            DType.BF16,
+            Device("hip", 0),
+        )
+        return prompt_ids[prefix_len:], prefix_len, initial_hidden
+
+    def _lookup_prefix_checkpoint(
+        self,
+        row: Any,
+        request_id: int,
+        reused: int,
+    ) -> Any | None:
+        """Return the validated checkpoint for this row's reused prefix, if any."""
+
+        store = getattr(self, "_prefix_checkpoint_store_instance", None)
+        if store is None:
+            return None
+        key_provider = getattr(self, "prefix_checkpoint_key", None)
+        if not callable(key_provider):
+            return None
+        prompt_ids = tuple(getattr(row, "prompt_ids", ()) or ())
+        if len(prompt_ids) < int(reused):
+            return None
+        try:
+            block_ids = key_provider(int(request_id), int(reused))
+        except Exception:
+            return None
+        if not block_ids:
+            return None
+        return store.get(prompt_ids[: int(reused)], tuple(block_ids))
+
+    def _note_capability_readiness(
+        self,
+        semantics: Sequence[SpeculativeRequestSemantics],
+        result: SpeculativeCapability | None,
+        *,
+        decline_serial: int,
+        silent_serial: int,
+    ) -> None:
+        """Publish readiness (and the decline reason) for each request asked about."""
+
+        note = getattr(self.owner, "note_provider_readiness", None)
+        if not callable(note):
+            return
+        if result is not None:
+            for item in semantics:
+                request_id = int(item.request_id)
+                source, invalid_reason = self._priming_source(request_id)
+                if invalid_reason is not None:
+                    # A granted capability whose source is unusable cannot be
+                    # reported ready: the buffer is present but the row will be
+                    # refused, and readiness exists to make that visible.
+                    note(
+                        request_id,
+                        PROVIDER_ABSENT,
+                        invalid_reason,
+                        source == PRIMING_SOURCE_LIVE,
+                    )
+                    continue
+                readiness = (
+                    PROVIDER_READY
+                    if source == PRIMING_SOURCE_LIVE
+                    else PROVIDER_PROMPT_BUFFERED
+                )
+                note(request_id, readiness, None, source == PRIMING_SOURCE_LIVE)
+            return
+        declined = int(getattr(self, "_decline_serial", 0)) != int(decline_serial)
+        if declined:
+            state = PROVIDER_DECLINED
+            reason = self._last_capability_decline
+        elif int(getattr(self, "_silent_decline_serial", 0)) != int(silent_serial):
+            state = PROVIDER_ABSENT
+            reason = getattr(self, "_last_capability_silent_reason", None)
+        else:
+            # A refusal with no recorded gate: report the absence without
+            # inventing a reason for it.
+            state = PROVIDER_ABSENT
+            reason = "capability_refused_without_a_recorded_reason"
+        for item in semantics:
+            request_id = int(item.request_id)
+            # A refusal says nothing about whether this row still holds provider
+            # state, and the two have opposite lifecycle consequences: a row
+            # refused by its realized width keeps the provider it may use again
+            # when its group narrows, while a row whose state is gone cannot
+            # speculate until something primes it again.
+            note(
+                request_id,
+                state,
+                reason,
+                int(request_id) in self._states,
+            )
+
+    def _capability_impl(
+        self,
+        request_semantics: Sequence[SpeculativeRequestSemantics],
+    ) -> SpeculativeCapability | None:
+        semantics = tuple(request_semantics)
+        for item in semantics:
+            mode = str(getattr(item, "sampling_mode", "") or "")
+            if mode:
+                self._sampling_mode_by_request[int(item.request_id)] = mode
         physical_max_requests = self._max_physical_requests()
+        import os as _os
+        if _os.environ.get("HIPENGINE_DEBUG_SAMPLED_ROUTE"):
+            import sys as _sys
+            print(
+                f"[cap-debug] enabled={self.enabled} max_width={physical_max_requests} "
+                f"semantics={[(s.request_id, s.sampling_mode) for s in semantics]}",
+                file=_sys.stderr,
+                flush=True,
+            )
         if not self.enabled or not (
             1 <= len(semantics) <= physical_max_requests
         ):
@@ -1736,18 +2796,65 @@ class Qwen35GGUFMTP2Adapter:
             if rid not in self._intents or rid in self._disabled_requests:
                 return self._decline(f"request {rid} unregistered or disabled")
             row = self.owner._row(rid)
+            source_reason = self._priming_source(rid)[1]
             if (
-                not row.native_greedy
+                not (row.native_greedy or self._sampled_route_request(rid))
                 or not row.first_token_emitted
                 or row.lease is None
                 or row.slot is None
-                or (
-                    rid not in self._states
-                    and rid not in self._prompt_hidden_rows
-                )
+                or source_reason is not None
             ):
+                if _os.environ.get("HIPENGINE_DEBUG_SAMPLED_ROUTE"):
+                    import sys as _sys
+
+                    print(
+                        f"[cap-silent-none] rid={rid} "
+                        f"sampled_route={self._sampled_route_request(rid)} "
+                        f"native_greedy={row.native_greedy} "
+                        f"first_token_emitted={row.first_token_emitted} "
+                        f"lease={row.lease is not None} "
+                        f"budget={getattr(row, 'mtp2_candidate_budget', None)} "
+                        f"intent={rid in self._intents} "
+                        f"state={rid in self._states} "
+                        f"prompt_hidden={rid in self._prompt_hidden_rows} "
+                        f"slot_type={type(row.slot).__name__ if row.slot is not None else None} "
+                        f"slot_tokens={len(row.slot.generated_ids) if row.slot is not None else None} "
+                        f"prefill_seen={getattr(row, 'prefill_tokens_seen', None)} "
+                        f"fallback_output={row.fallback_output is not None} "
+                        f"prompt_fallback={getattr(row, 'mtp2_prompt_fallback_reason', None)} "
+                        f"owner={type(self.owner).__name__}",
+                        file=_sys.stderr,
+                        flush=True,
+                    )
+                # A silent refusal is still a refusal: name the condition that
+                # failed so the row's readiness is reported as absent-with-reason
+                # instead of as an unexplained ``no_provider`` planner reason.
+                if not (row.native_greedy or self._sampled_route_request(rid)):
+                    silent_reason = "row_not_admitted_to_speculation"
+                elif not row.first_token_emitted:
+                    silent_reason = "first_token_pending"
+                elif row.lease is None:
+                    silent_reason = "row_has_no_lease"
+                elif row.slot is None:
+                    silent_reason = "row_has_no_slot"
+                elif source_reason is not None:
+                    silent_reason = source_reason
+                else:
+                    silent_reason = "provider_state_unavailable"
+                self._silent_decline_serial = (
+                    int(getattr(self, "_silent_decline_serial", 0)) + 1
+                )
+                self._last_capability_silent_reason = silent_reason
                 return None
             target = row.lease.session
+            # A compact-DMS row is journaled by the store's own transaction
+            # (Qwen35GGUFTransactionalVerifier selects _DMSStoreJournal for a
+            # session carrying a _dms_backend, which snapshots per-head live
+            # counts, token positions, eviction, host payload and scales, the
+            # allocator ownership, and the device store). The resident span
+            # journal could not serve this row: its writes land in per-head
+            # extents with per-slot payload and scale planes, so a journaled
+            # commit would publish a prefix the store never wrote.
             if not self._target_profile_supported(target):
                 return self._decline("target execution profile unsupported")
             targets.append(target)
@@ -1784,13 +2891,14 @@ class Qwen35GGUFMTP2Adapter:
                     f"slot_count={int(getattr(owner, 'slot_count', 1))}, "
                     f"capacity={int(getattr(self.owner, 'capacity', 1))}"
                 )
-        # Streaming activation is retained only through the already-qualified
-        # short target context. Longer requests stay K0 until an exact shifted-
-        # page eager target owner is qualified independently of graph capture.
+        # Streaming activation spans the target's whole capacity. The 1,023
+        # admission window is gone: it was a guard over unmeasured territory, not
+        # a capability bound, and the long-context verifier is now qualified and
+        # measured (see the note at the head of this module).
         max_context = min(
-            1023,
-            *(int(target.target_layout.max_sequence_length) for target in targets),
+            int(target.target_layout.max_sequence_length) for target in targets
         )
+        sampled_route_qualified = self._sampled_route_qualified()
         realized_verify_modes = {
             str(state.verifier.target_verify_mode)
             for item in semantics
@@ -1860,7 +2968,9 @@ class Qwen35GGUFMTP2Adapter:
             attachment=ProviderAttachment.TARGET_ATTACHED,
             catchup_mode=ProviderCatchupMode.TARGET_OUTPUT,
             supported_modes=("verify_chain",),
-            supported_sampling_modes=("greedy",),
+            supported_sampling_modes=(
+                ("greedy", "sampled") if sampled_route_qualified else ("greedy",)
+            ),
             max_requests=max_requests,
             max_candidates_per_request=max_candidate_count,
             max_frontier_rows=max_frontier_rows,
@@ -1872,6 +2982,12 @@ class Qwen35GGUFMTP2Adapter:
             eager_supported=True,
             strict_fallback_key="gguf_target_ar",
             max_context_tokens=max_context,
+            kv_binding=SpeculativeKVBinding.for_resident_target(
+                target=target,
+                storage_view_key=str(getattr(target, "kv_storage_dtype", "bf16")),
+                topology_key="gguf_paged_dense",
+                transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
+            ),
         )
 
     def partition_max_requests(self, request_ids: Sequence[int]) -> int:
@@ -2042,13 +3158,15 @@ class Qwen35GGUFMTP2Adapter:
                 self.owner._flush_row_owner(self.owner._row(request_id))
             self._ensure_request_states(attach)
         for rid in ids:
+            row = self.owner._row(rid)
+            if row.lease is None or row.slot is None:
+                continue
             if k0_by_id[rid] is not SpecK0Class.TRANSITIONAL:
+                continue
+            if not row.first_token_emitted:
                 continue
             state = self._states.get(rid)
             if state is None:
-                continue
-            row = self.owner._row(rid)
-            if row.lease is None or row.slot is None or not row.first_token_emitted:
                 continue
             target = row.lease.session
             root_token = int(row.slot.generated_ids[-1])
@@ -2061,6 +3179,46 @@ class Qwen35GGUFMTP2Adapter:
             )
             row.mtp2_k0_catchups += 1
             self._post_reject_pending.discard(int(rid))
+
+    def note_speculative_ar_commit(
+        self,
+        request_id: int,
+        reason: Any | None = None,
+    ) -> None:
+        """Attribute one autoregressive token to the decode that emitted it.
+
+        The resident loop calls this after the AR decode that produced the
+        token, carrying the reason its plan selected autoregressive decoding.
+        Counting here rather than in :meth:`prepare_k0` is what keeps a plan
+        that is prepared more than once for the same row (a mixed group retried
+        as its speculative subset) from counting one emitted token twice.
+
+        The request may already have left speculation when the decode returns:
+        the token that reaches ``max_new_tokens`` retires it inside the decode.
+        That is why this does not require live intent, only a row that still
+        owns a lease and a slot. The loop calls it only for a row whose decode
+        just emitted output, so an unknown or released row means the caller and
+        this owner disagree and nothing should be recorded.
+
+        ``output_position`` is the index the token just occupied, which is what
+        locates the first fallback after speculative output.
+        """
+
+        rid = int(request_id)
+        rows = getattr(self.owner, "_rows", None)
+        if isinstance(rows, Mapping) and rid not in rows:
+            return
+        row = self.owner._row(rid)
+        if row.lease is None or row.slot is None:
+            return
+        generated = getattr(row.slot, "generated_ids", None)
+        record_autoregressive_step(
+            row,
+            plan_reason=reason,
+            output_position=(
+                None if generated is None else max(0, len(generated) - 1)
+            ),
+        )
 
     def _cycle_hidden_tensors(
         self,
@@ -2469,6 +3627,7 @@ class Qwen35GGUFMTP2Adapter:
             proposal_started = time.perf_counter()
             device_draft = None
             device_proposal = None
+            sampled_device_plan = None
             ngram_proposal = None
             ngram_candidate_rows: tuple[tuple[int, ...], ...] = ()
             ngram_selection = self._try_ngram_proposal(
@@ -2498,7 +3657,21 @@ class Qwen35GGUFMTP2Adapter:
                         remaining_decode=remaining_by_id[ids[0]],
                     )
                 )
-                if target_device_ready and callable(launch_device):
+                sampled_route = self._sampled_route_request(ids[0])
+                sampled_device_state = None
+                if sampled_route:
+                    sampled_device_plan = self._device_sampled_accept_plan(
+                        ids[0],
+                        targets[0],
+                        budgets[0],
+                    )
+                    if sampled_device_plan is not None:
+                        sampled_device_state = sampled_device_plan
+                if (
+                    (not sampled_route or sampled_device_state is not None)
+                    and target_device_ready
+                    and callable(launch_device)
+                ):
                     device_proposal = launch_device(
                         context,
                         candidate_budget=budgets[0],
@@ -2508,7 +3681,7 @@ class Qwen35GGUFMTP2Adapter:
                         context,
                         candidate_budget=budgets[0],
                         return_logits=False,
-                        allow_graph=target_device_ready,
+                        allow_graph=target_device_ready and not sampled_route,
                     )
                 else:
                     draft = None
@@ -2540,6 +3713,7 @@ class Qwen35GGUFMTP2Adapter:
                 state.proposal_device = device_proposal
                 state.proposal_device_batch = device_draft
                 state.proposal_ngram = ngram_proposal
+                state.sampled_accept_plan = sampled_device_plan
                 state.ngram_candidate_tokens = (
                     () if ngram_proposal is None else ngram_candidate_rows[index]
                 )
@@ -2710,6 +3884,10 @@ class Qwen35GGUFMTP2Adapter:
         if len(plan.speculative_request_ids) != 1:
             raise NotImplementedError("GGUF MTP2 target has no speculative rows")
         rid = int(plan.speculative_request_ids[0])
+        # The singleton frontier commits only this row, so its cycle record and
+        # its output attribution both index the plan by that row rather than by
+        # plan position 0 (a mixed plan may list a K0 row first).
+        plan_index = plan.request_ids.index(rid)
         state = self._states[rid]
         if state.verifier is None:
             raise NotImplementedError(
@@ -2760,6 +3938,9 @@ class Qwen35GGUFMTP2Adapter:
                 ),
                 cancelled_request_ids=(rid,),
             )
+        sampled_route = self._sampled_route_request(rid)
+        sampled_device_plan = state.sampled_accept_plan
+        sampled_device_state = sampled_device_plan
         batch = frontier.target_batch
         device_proposal = state.proposal_device
         if batch is None:
@@ -2802,8 +3983,24 @@ class Qwen35GGUFMTP2Adapter:
                 transaction_id=transaction_id,
                 graph_bucket=bucket,
                 remaining_decode=(remaining,),
-                return_logits=False,
-                device_proposal=device_proposal,
+                return_logits=(
+                    sampled_route and sampled_device_plan is None
+                    and not row.native_sampler
+                ),
+                **(
+                    # A staged sampled plan can still take an eager verifier
+                    # path (for example when the final cycle shrinks depth).
+                    # Keep its resident logits available for the accept walk.
+                    {"return_device_logits": True}
+                    if sampled_route and row.native_sampler
+                    else {}
+                ),
+                device_proposal=(
+                    device_proposal
+                    if sampled_device_plan is not None or not sampled_route
+                    else None
+                ),
+                sampled_accept=sampled_device_state,
                 qualification_oracle=bool(
                     getattr(
                         self,
@@ -2812,11 +4009,18 @@ class Qwen35GGUFMTP2Adapter:
                     )
                 ),
                 allow_graph=(
-                    int(batch.candidate_count) == int(self.candidate_budget)
+                    (not sampled_route or sampled_device_plan is not None)
+                    and int(batch.candidate_count) == int(self.candidate_budget)
                 ),
             )
             target_finished_ns = time.perf_counter_ns()
             target_seconds = (target_finished_ns - target_started_ns) / 1e9
+            sampled_logit_readback_bytes = (
+                int(prepared.target_logits.nbytes) if sampled_route else 0
+            )
+            # The launch consumed the staged draws: drop the plan now so a
+            # rollback or a later cycle cannot reuse a stale stream position.
+            state.sampled_accept_plan = None
             cancelled = tuple(int(value) for value in cancelled_request_ids())
             if cancelled:
                 state.verifier.rollback(prepared)
@@ -2834,6 +4038,54 @@ class Qwen35GGUFMTP2Adapter:
                     cancelled_request_ids=cancelled,
                 )
             summary = prepared.summary
+            device_sampled_commit = bool(
+                getattr(prepared, "native_device_accept_commit", False)
+            )
+            row_logprob_metadata: (
+                tuple[tuple[float | None, tuple[tuple[int, float], ...]], ...] | None
+            ) = None
+            forced_ids: tuple[int | None, ...] | None = None
+            if sampled_route and not device_sampled_commit:
+                (
+                    summary,
+                    row_logprob_metadata,
+                    forced_ids,
+                ) = self._sampled_accept_summary(
+                    row,
+                    prepared,
+                    batch,
+                    transaction_id=transaction_id,
+                    remaining_decode=remaining,
+                )
+                # The prepared object is the open transaction's identity, so the
+                # recomputed summary is written onto it; a copy is refused by
+                # the verifier's own commit/rollback identity check.
+                adopt = getattr(state.verifier, "adopt_accept_summary", None)
+                if not callable(adopt):
+                    raise RuntimeError(
+                        "sampled MTP route requires a verifier that adopts a "
+                        "recomputed accept summary"
+                    )
+                prepared = adopt(prepared, summary)
+            from hipengine.speculative.streaming import limit_chain_accept_finish
+
+            terminal_summary, chain_finish = limit_chain_accept_finish(
+                prepared.batch, summary,
+                eos_token_id=_row_eos_token_id(row, getattr(self.generator, "tokenizer", None)),
+                published_tokens=tuple(slot.generated_ids),
+                generated_tokens=len(slot.generated_ids),
+                stop_token_ids=tuple(getattr(row.request, "stop_token_ids", ()) or ()),
+                stop_token_sequences=tuple(
+                    getattr(row.request, "stop_token_sequences", ()) or ()
+                ),
+                min_tokens=int(getattr(row.request, "min_tokens", 0) or 0),
+                ignore_eos=bool(getattr(row.request, "ignore_eos", False)),
+            )
+            eos_finished = chain_finish is not None
+            finish_reason = None if chain_finish is None else chain_finish.reason
+            if terminal_summary is not summary:
+                prepared = state.verifier.adopt_terminal_summary(prepared, terminal_summary)
+                summary = terminal_summary
             commit_plan = TargetCommitPlan(
                 transaction_id=transaction_id,
                 request_ids=summary.request_ids,
@@ -2848,6 +4100,17 @@ class Qwen35GGUFMTP2Adapter:
                 mode=summary.mode,
             )
             accepted = int(summary.accepted_counts[0])
+            # Logprob metadata is read from the verified rows the accept just
+            # used, so it must be collected while the prepared transaction still
+            # owns them. The tokens scored are the ones this cycle publishes,
+            # which is the finish rule's terminal prefix when it limited one.
+            logprob_metadata = self._cycle_token_logprobs(
+                row,
+                prepared,
+                summary,
+                row_metadata=row_logprob_metadata,
+                remaining_decode=remaining,
+            )
             provider_update_started = time.perf_counter()
             if state.proposal_source == "ngram_mod":
                 hidden_source = (
@@ -2868,7 +4131,7 @@ class Qwen35GGUFMTP2Adapter:
                 self._repair_provider_state(
                     state,
                     accepted_count=accepted,
-                    candidate_count=int(plan.candidate_counts[0]),
+                    candidate_count=int(plan.candidate_counts[plan_index]),
                 )
             else:
                 self._repair_provider_state_device(
@@ -2908,14 +4171,101 @@ class Qwen35GGUFMTP2Adapter:
             )
             if not output_ids:
                 raise RuntimeError("GGUF MTP2 committed cycle produced no visible token")
+            committed_position = len(slot.generated_ids)
+            if logprob_metadata is not None:
+                if len(logprob_metadata) != len(output_ids):
+                    raise RuntimeError(
+                        "sampled MTP route produced logprob metadata for "
+                        f"{len(logprob_metadata)} of {len(output_ids)} published tokens"
+                    )
+                # The row's per-token sample list is what the resident runner
+                # turns into ``GenerationOutput.token_logprobs`` for the
+                # blocking output. The stream events for these tokens are
+                # published after the commit, and a cycle that finishes the
+                # request reclaims its row before that happens, so the same
+                # records are also handed to the runner under the request id
+                # where the event decorator can still reach them.
+                published_samples = [
+                    _GGUFMTPTokenSample(
+                        token_id=int(token),
+                        logprob=logprob,
+                        top_logprobs=tuple(
+                            (int(top_token), float(top_logprob))
+                            for top_token, top_logprob in top_logprobs
+                        ),
+                    )
+                    for token, (logprob, top_logprobs) in zip(
+                        output_ids, logprob_metadata, strict=True
+                    )
+                ]
+                row.samples.extend(published_samples)
+                publish_cycle_token_samples(
+                    self.owner,
+                    int(row.request_id),
+                    published_samples,
+                )
+            if sampled_route:
+                sampling_state = getattr(row, "sampling_state", None)
+                if sampling_state is None:
+                    raise RuntimeError(
+                        "sampled MTP route lost the row's live sampler state"
+                    )
+                # A forced token is emitted by the autoregressive route without a
+                # draw, so a cycle that published one consumed that queue entry.
+                # The pops are applied here rather than in the accept so a row the
+                # walk never reached -- which published nothing -- keeps its
+                # pending tokens.
+                forced_positions = None
+                if forced_ids is not None:
+                    forced_positions = published_forced_positions(
+                        batch,
+                        summary.accepted_counts,
+                        output_ids,
+                        forced_ids,
+                    )
+                commit_params = getattr(row, "sampling_request", None) or getattr(
+                    row, "request", None
+                )
+                commit_tokenizer = getattr(self.generator, "tokenizer", None)
+                observe_published_tokens(
+                    sampling_state,
+                    output_ids,
+                    forced_positions=(
+                        forced_positions
+                        if forced_positions is not None
+                        else (False,) * len(output_ids)
+                    ),
+                    observe_text=(
+                        None
+                        if commit_params is None or commit_tokenizer is None
+                        else _constraint_text_observer(
+                            commit_params,
+                            token_text_for_id=lambda token_id: commit_tokenizer.decode(
+                                [int(token_id)]
+                            ),
+                            encode_text=lambda text: tuple(
+                                int(t) for t in commit_tokenizer.encode(str(text))
+                            ),
+                            remaining_decode=int(remaining),
+                        )
+                    ),
+                )
+                if bool(getattr(row, "native_sampler", False)):
+                    row.full_vocab_logits_d2h = sampled_logit_readback_bytes > 0
+                    row.logits_d2h_bytes = sampled_logit_readback_bytes
             slot.generated_ids.extend(output_ids)
             slot.prev_token = int(output_ids[-1])
             slot.seq_position = int(target.position)
             slot.native_decode_steps += 1
-            slot.done = len(slot.generated_ids) >= int(row.request.max_tokens)
-            row.mtp2_cycles += 1
-            row.mtp2_candidate_counts.append(int(plan.candidate_counts[0]))
-            row.mtp2_accepted_counts.append(accepted)
+            slot.done = eos_finished or len(slot.generated_ids) >= int(row.request.max_tokens)
+            record_speculative_outputs(
+                row,
+                candidate_count=int(plan.candidate_counts[plan_index]),
+                accepted_count=accepted,
+                visible_count=len(output_ids),
+                output_position=committed_position,
+                plan_reason=plan.reasons[plan_index],
+            )
             row.mtp2_proposal_ms += float(state.last_proposal_seconds) * 1000.0
             row.mtp2_target_ms += float(target_seconds) * 1000.0
             row.mtp2_target_pass_ms.append(float(target_seconds) * 1000.0)
@@ -2938,7 +4288,7 @@ class Qwen35GGUFMTP2Adapter:
                 ),
                 target_cursor_deltas=(len(output_ids),),
                 provider_cursor_deltas=summary.accepted_counts,
-                finish_reasons=(None,),
+                finish_reasons=(finish_reason,),
             )
             actual_execution_route = (
                 "graph" if native_graph_submitted else "eager"
@@ -2973,6 +4323,235 @@ class Qwen35GGUFMTP2Adapter:
                 state.verifier.rollback(prepared)
             self._restore_provider_checkpoint(state)
             raise
+
+    def _sampled_accept_summary(
+        self,
+        row: Any,
+        prepared: Any,
+        batch: TargetVerifyBatch,
+        *,
+        transaction_id: int,
+        remaining_decode: int,
+    ) -> tuple[
+        TargetAcceptSummary,
+        tuple[tuple[float | None, tuple[tuple[int, float], ...]], ...] | None,
+        tuple[int | None, ...] | None,
+    ]:
+        """Accept the verified chain by sampling from the request's own law.
+
+        The verifier produced one logits row per verified prefix; each row is
+        processed against its own drafted history and coupled against the
+        drafted chain with ``min(1, p/q)`` plus residual resampling, drawing from
+        the row's live sampler stream.
+
+        The second element is per-row logprob metadata for the rows the native
+        sampler selected from, or ``None`` when the request asked for no logprobs
+        or the host sampler path produced it from the logits rows instead. It is
+        returned rather than recomputed because the native sampler's reported
+        value is the one the autoregressive route reports for the same request,
+        and a host rebuild could differ in the last digits.
+
+        The third element is each row's pending forced-token override, or ``None``
+        when the route that produced the summary resolved no overrides. It is the
+        walk the accept coupled against, returned so the caller can consume
+        exactly the overrides its published tokens used.
+        """
+
+        sampling_state = getattr(row, "sampling_state", None)
+        params = getattr(row, "sampling_request", None) or getattr(
+            row, "request", None
+        )
+        if sampling_state is None or params is None:
+            raise RuntimeError(
+                "sampled MTP route requires the row's live sampler request/state"
+            )
+        tokenizer = getattr(self.generator, "tokenizer", None)
+        token_text_for_id = (
+            None
+            if tokenizer is None
+            else (lambda token_id: tokenizer.decode([int(token_id)]))
+        )
+        observe_text = _constraint_text_observer(
+            params,
+            token_text_for_id=token_text_for_id,
+            encode_text=(
+                None
+                if tokenizer is None
+                else (lambda text: tuple(int(t) for t in tokenizer.encode(str(text))))
+            ),
+            remaining_decode=int(remaining_decode),
+            # This is the verification walk: it advances each row by the draft's
+            # token, which the constraint may reject.
+            drafted=True,
+        )
+        if bool(getattr(row, "native_sampler", False)):
+            # Eager verifier/processor shapes still use the native sampler.
+            # Speculative prefixes are private clones; only committed outputs
+            # are observed into the live state by the transaction owner.
+            # ``row_prefix_states`` and ``row_forced_token_ids`` come from the
+            # module import: a function-local import would bind the name for the
+            # whole function and leave the host path below reading an unbound
+            # local.
+            session = row.lease.session
+            workspace = session._native_sampler()
+            device = getattr(prepared, "target_logits_device", None)
+            expected_shape = (int(batch.rows), int(workspace.vocab_size))
+            expected_bytes = expected_shape[0] * expected_shape[1] * 4
+            if device is None:
+                logits = np.ascontiguousarray(prepared.target_logits, dtype=np.float32)
+                if logits.shape != expected_shape:
+                    raise RuntimeError(
+                        f"sampled MTP requires logits shaped {expected_shape}, "
+                        f"received {logits.shape}"
+                    )
+                device = workspace._upload("mtp_eager_logits", logits)
+            if int(device.ptr) <= 0 or int(device.nbytes) < expected_bytes:
+                raise RuntimeError(
+                    f"sampled MTP requires {expected_bytes} bytes of resident logits"
+                )
+            prefixes = row_prefix_states(
+                batch,
+                {int(batch.request_ids[0]): sampling_state},
+                observe_text=observe_text,
+            )
+            if any(
+                forced is not None
+                for forced in row_forced_token_ids(
+                    batch,
+                    {int(batch.request_ids[0]): sampling_state},
+                    observe_text=observe_text,
+                )
+            ):
+                # The device sampler draws each row's token on its own stream and
+                # returns no host row, so it cannot be given the point mass a
+                # forced token needs. ``supports_native_gpu_sampling`` already
+                # refuses those requests; this keeps a future native shape from
+                # publishing a token the request forced to something else.
+                raise RuntimeError(
+                    "native GGUF sampler cannot honor a pending forced token"
+                )
+            results = [
+                workspace.sample(
+                    device.ptr + index * workspace.vocab_size * 4, params, prefix,
+                )
+                for index, prefix in enumerate(prefixes)
+            ]
+            accepted = batch.accept_from_top1(
+                [result.token_id for result in results],
+                remaining_decode=(int(remaining_decode),),
+                transaction_id=int(transaction_id),
+            )
+            row_metadata = (
+                tuple(
+                    (result.logprob, tuple(result.top_logprobs))
+                    for result in results
+                )
+                if logprobs_requested(params)
+                else None
+            )
+            return TargetAcceptSummary.from_accept_result(batch, accepted), row_metadata, None
+        summary = sampled_accept_summary(
+            batch,
+            prepared.target_logits,
+            {int(batch.request_ids[0]): sampling_state},
+            params_for=lambda request_id: params,
+            draws=sampling_state.random_unit,
+            token_text_for_id=token_text_for_id,
+            transaction_id=int(transaction_id),
+            remaining_decode=(int(remaining_decode),),
+            observe_text=observe_text,
+        )
+        forced_ids = row_forced_token_ids(
+            batch,
+            {int(batch.request_ids[0]): sampling_state},
+            # The same walk the summary's own laws came from: a row's override is
+            # what the text walk queued for it.
+            observe_text=observe_text,
+        )
+        return summary, None, forced_ids
+
+    def _cycle_token_logprobs(
+        self,
+        row: Any,
+        prepared: Any,
+        summary: Any,
+        *,
+        row_metadata: (
+            tuple[tuple[float | None, tuple[tuple[int, float], ...]], ...] | None
+        ) = None,
+        remaining_decode: int = 0,
+    ) -> tuple[tuple[float | None, tuple[tuple[int, float], ...]], ...] | None:
+        """Return this cycle's published-token logprob metadata, or ``None``.
+
+        ``None`` means the request did not ask for logprobs, so no logits row is
+        touched. When it did, every published token is scored against the row
+        that predicted it -- the same verified rows the accept just used -- and
+        the value is the one the autoregressive route reports for that token:
+        ``row_metadata`` is the native sampler's own report when that sampler
+        selected the rows, and otherwise ``reported_logprob`` applies the branch
+        rule ``select_token`` reports with. The tokens scored are the ones the
+        cycle publishes after the finish rule selected its terminal prefix, so a
+        cycle that stopped early reports metadata for the tokens it published and
+        none for the rest.
+        """
+
+        params = getattr(row, "sampling_request", None) or getattr(row, "request", None)
+        if params is None or not logprobs_requested(params):
+            return None
+        sampling_state = getattr(row, "sampling_state", None)
+        if sampling_state is None:
+            raise RuntimeError(
+                "logprob metadata requires the row's live sampler state; the "
+                "sampled route owns it and an autoregressive row cannot reach "
+                "this commit"
+            )
+        batch = prepared.batch
+        if len(batch.request_ids) != 1:
+            raise RuntimeError(
+                "logprob metadata is collected for the row that owns the commit"
+            )
+        next_tokens = summary.next_tokens
+        next_token = None if next_tokens is None else next_tokens[0]
+        published = (
+            *tuple(int(token) for token in summary.accepted_tokens[0]),
+            *(() if next_token is None else (int(next_token),)),
+        )
+        accepted = int(summary.accepted_counts[0])
+        if row_metadata is not None:
+            rows = chain_edge_rows(batch, [accepted])[0]
+            if len(row_metadata) < len(rows):
+                raise RuntimeError(
+                    "native sampler reported "
+                    f"{len(row_metadata)} of {len(rows)} verified rows"
+                )
+            return tuple(row_metadata[row] for row in rows[: len(published)])
+        tokenizer = getattr(self.generator, "tokenizer", None)
+        metadata = chain_token_logprobs(
+            batch,
+            prepared.target_logits,
+            {int(batch.request_ids[0]): sampling_state},
+            [published],
+            [accepted],
+            params_for=lambda request_id: params,
+            token_text_for_id=(
+                None
+                if tokenizer is None
+                else (lambda token_id: tokenizer.decode([int(token_id)]))
+            ),
+            observe_text=(
+                None
+                if tokenizer is None
+                else _constraint_text_observer(
+                    params,
+                    token_text_for_id=lambda token_id: tokenizer.decode([int(token_id)]),
+                    encode_text=lambda text: tuple(
+                        int(t) for t in tokenizer.encode(str(text))
+                    ),
+                    remaining_decode=int(remaining_decode),
+                )
+            ),
+        )
+        return metadata[0]
 
     def _target_group_pad_rows(self, *, request_count: int, candidate_rows: int) -> int:
         """Return inactive pad rows lifting a physical group to admitted multiples."""
@@ -3201,7 +4780,7 @@ class Qwen35GGUFMTP2Adapter:
         return True
 
     @staticmethod
-    def _limit_target_batch_eos(proposal, results, rows, remaining, *, runtime):
+    def _limit_target_batch_eos(proposal, results, rows, remaining, *, runtime, tokenizer=None):
         """Read only EOS requests' bounded IDs before selecting committed state."""
         from hipengine.speculative.streaming import greedy_chain_eos_limit
 
@@ -3213,7 +4792,7 @@ class Qwen35GGUFMTP2Adapter:
             if int(result.request_id) != int(rid):
                 raise ValueError("EOS target/proposal request identities differ")
             request = row.request
-            eos = getattr(request, "eos_token_id", None)
+            eos = _row_eos_token_id(row, tokenizer)
             if eos is not None and not bool(getattr(request, "ignore_eos", False)):
                 candidates = np.empty((int(count),), dtype=np.int32)
                 target = np.empty((int(count) + 1,), dtype=np.int32)
@@ -3694,6 +5273,101 @@ class Qwen35GGUFMTP2Adapter:
         )
         return replace(summary, transaction_id=int(transaction_id)), buffers
 
+    def _packed_native_sampler(self, owner: Any, count: int):
+        from hipengine.runtime.native_sampler import NativeSamplerChainWorkspace
+
+        cache = getattr(self, "_packed_sampler_workspaces", None)
+        if cache is None:
+            cache = self._packed_sampler_workspaces = {}
+        key = (id(owner), int(count))
+        if key not in cache:
+            base = owner._native_sampler()
+            cache[key] = NativeSamplerChainWorkspace(
+                runtime=owner.runtime, vocab_size=int(owner.runner.vocab_size),
+                rows=count, sampler_library=base.sampler_library,
+            )
+        return cache[key]
+
+    def _sample_packed_target_rows(self, owner, results, rows, *, transaction_id):
+        """Replace packed target IDs with request-owned draws before any commit."""
+        from hipengine.runtime.native_sampler import _needs_processors
+        from hipengine.generation.mtp_sampled_accept import row_prefix_states
+        from hipengine.speculative.interfaces import TargetVerifyBatch
+
+        if len(results) != len(rows) or any(
+            result.request_id != row.request_id
+            or result.transaction_id != transaction_id
+            for result, row in zip(results, rows, strict=True)
+        ):
+            raise ValueError("packed sampling request/transaction identities differ")
+        vocab = int(owner.runner.vocab_size)
+        logits = owner._verify_logits_buf
+        for result, row in zip(results, rows, strict=True):
+            if not getattr(row, "native_sampled", getattr(row, "native_sampler", False)):
+                continue
+            if row.sampling_state is None or row.sampling_request is None:
+                raise ValueError("sampled packed row has no state or parameters")
+            if (
+                logits is None or result.row_start < 0 or result.rows <= 0
+                or (result.row_start + result.rows) * vocab * 4 > logits.nbytes
+            ):
+                raise ValueError("packed sampler logits span exceeds its owner")
+        for result, row in zip(results, rows, strict=True):
+            if not getattr(row, "native_sampled", getattr(row, "native_sampler", False)):
+                continue
+            state, params = row.sampling_state, row.sampling_request
+            ptr = logits.ptr + result.row_start * vocab * 4
+            if (
+                row.native_sampler and int(params.top_k) == 0
+                and not _needs_processors(params)
+                and getattr(owner, "native_sampler_algorithm", "sorted") == "sorted"
+            ):
+                sampler = self._packed_native_sampler(owner, result.rows)
+                sampler.stage(_DeviceSampledAcceptPlan(
+                    params=params, seed=int(state.seed), step_index=int(state.step_index),
+                    rows=result.rows,
+                ))
+                sampler.enqueue(ptr, result.target_top1.ptr)
+                row.full_vocab_logits_d2h = False
+                row.logits_d2h_bytes = 0
+                continue
+            # History processors need each hypothetical drafted prefix, not the
+            # neighbor's history. Only bounded candidate IDs leave the device.
+            tokens = np.empty(result.rows, dtype=np.int64)
+            copy_device_to_host(host_array_ptr(tokens), DeviceBuffer(
+                result.input_token_ids.ptr, tokens.nbytes), runtime=owner.runtime)
+            local = TargetVerifyBatch(
+                request_ids=(row.request_id,), tokens=tuple(int(t) for t in tokens),
+                positions=tuple(range(result.start_position, result.start_position + result.rows)),
+                row_to_request=(row.request_id,) * result.rows,
+                parent_rows=(-1, *range(result.rows - 1)), root_rows=(0,),
+                candidate_rows=tuple(range(1, result.rows)),
+                draft_depths=tuple(range(result.rows)), active_mask=(True,) * result.rows,
+            )
+            prefixes = row_prefix_states(local, {row.request_id: state})
+            selected = []
+            if row.native_sampler:
+                workspace = owner._native_sampler()
+                for index, prefix in enumerate(prefixes):
+                    selected.append(workspace.sample(ptr + index * vocab * 4, params, prefix).token_id)
+                row.full_vocab_logits_d2h = False
+                row.logits_d2h_bytes = 0
+            else:
+                from hipengine.generation.sampling import select_token
+
+                host_logits = np.empty((result.rows, vocab), dtype=np.float32)
+                copy_device_to_host(host_array_ptr(host_logits), DeviceBuffer(
+                    ptr, host_logits.nbytes), runtime=owner.runtime)
+                for index, prefix in enumerate(prefixes):
+                    for _ in range(index):
+                        prefix.random_unit()
+                    selected.append(select_token(host_logits[index], params, prefix).token_id)
+                row.full_vocab_logits_d2h = True
+                row.logits_d2h_bytes = host_logits.nbytes
+            selected = np.asarray(selected, dtype=np.int32)
+            copy_host_to_device(DeviceBuffer(result.target_top1.ptr, selected.nbytes),
+                                host_array_ptr(selected), selected.nbytes, runtime=owner.runtime)
+
     def _execute_target_frontier_batch(
         self,
         plan: SpecRequestPlan,
@@ -3842,6 +5516,7 @@ class Qwen35GGUFMTP2Adapter:
                 "capture_linear_state_rows": True,
                 "defer_linear_state_commit": True,
                 "defer_state_scatter": True,
+                "require_logits": self._sampled_route_request(request_id),
             }
             if batch is not None:
                 root_row = root_row_by_id[request_id]
@@ -3875,8 +5550,6 @@ class Qwen35GGUFMTP2Adapter:
             raise RuntimeError("physical target owner has no packed verifier")
         target_started_ns = time.perf_counter_ns()
         device_result = batch is None or ngram_proposal is not None
-        if not device_result and any(getattr(row.request, "eos_token_id", None) is not None for row in rows):
-            raise ValueError("EOS requires native device acceptance before selected commit")
         with (
             target_verifier_active_slots_session(len(jobs)),
             q4_t16_physical_extra_rowtiles_session(
@@ -3926,6 +5599,12 @@ class Qwen35GGUFMTP2Adapter:
             row.mtp2_target_pass_end_ns.append(int(target_finished_ns))
         if len(results) != len(ids):
             raise RuntimeError("physical target verifier returned wrong result count")
+        if any(self._sampled_route_request(rid) for rid in ids):
+            if not device_result:
+                raise RuntimeError("sampled physical verification requires resident device results")
+            self._sample_packed_target_rows(
+                owner, results, rows, transaction_id=transaction_id,
+            )
         candidate_readback_seconds = 0.0
         bounded_readback_seconds = 0.0
         accept_upload_seconds = 0.0
@@ -3976,7 +5655,8 @@ class Qwen35GGUFMTP2Adapter:
                     cancelled_request_ids=cancelled,
                 )
             remaining = self._limit_target_batch_eos(
-                device_candidates, results, rows, remaining, runtime=targets[0].runtime
+                device_candidates, results, rows, remaining, runtime=targets[0].runtime,
+                tokenizer=getattr(self.generator, "tokenizer", None),
             )
             accept_started = time.perf_counter()
             accept_enqueue_started = time.perf_counter()
@@ -4107,6 +5787,22 @@ class Qwen35GGUFMTP2Adapter:
                     strict=True,
                 ):
                     target_top1[row_index] = int(token)
+            from hipengine.speculative.streaming import greedy_chain_eos_limit
+
+            remaining = tuple(
+                greedy_chain_eos_limit(
+                    tuple(batch.tokens[index] for index in candidate_rows_by_id[request_id]),
+                    tuple(target_top1[index] for index in (
+                        root_row_by_id[request_id], *candidate_rows_by_id[request_id],
+                    )),
+                    remaining_decode=budget,
+                    eos_token_id=(
+                        None if bool(getattr(row.request, "ignore_eos", False))
+                        else _row_eos_token_id(row, getattr(self.generator, "tokenizer", None))
+                    ),
+                )
+                for request_id, row, budget in zip(ids, rows, remaining, strict=True)
+            )
             accept_started = time.perf_counter()
             gpu_summary, accept_buffers = self._accept_target_batch_on_device(
                 batch,
@@ -4195,6 +5891,7 @@ class Qwen35GGUFMTP2Adapter:
         output_ids: list[tuple[int, ...]] = []
         finish_reasons: list[str | None] = []
         next_tokens = accept.next_tokens or (None,) * len(ids)
+        note_commit = getattr(self.owner, "note_execution_commit", None)
         for index, (request_id, target, row, accepted, accepted_tokens, next_token) in enumerate(
             zip(
                 ids,
@@ -4217,20 +5914,26 @@ class Qwen35GGUFMTP2Adapter:
                     f"next={next_token} remaining={remaining[index]} "
                     f"summary={gpu_summary!r}"
                 )
-            row.slot.generated_ids.extend(visible)
-            row.slot.prev_token = int(visible[-1])
-            row.slot.seq_position = int(target.position)
-            row.slot.native_decode_steps += 1
-            eos = getattr(row.request, "eos_token_id", None)
-            eos_finished = (eos is not None and not row.request.ignore_eos
-                            and int(visible[-1]) == int(eos))
-            row.slot.done = eos_finished or len(row.slot.generated_ids) >= int(row.request.max_tokens)
-            finish_reasons.append("eos" if eos_finished else None)
-            row.mtp2_cycles += 1
-            row.mtp2_candidate_counts.append(
-                int(plan.candidate_counts[plan.request_ids.index(request_id)])
+            eos_finished = _commit_eager_cycle_row(
+                row,
+                visible=visible,
+                accepted=int(accepted),
+                candidate_count=int(
+                    plan.candidate_counts[plan.request_ids.index(request_id)]
+                ),
+                plan_reason=plan.reasons[plan.request_ids.index(request_id)],
+                target_position=int(target.position),
+                eos_token_id=_row_eos_token_id(row, getattr(self.generator, "tokenizer", None)),
             )
-            row.mtp2_accepted_counts.append(int(accepted))
+            if self._sampled_route_request(request_id) and not row.native_sampler:
+                for _ in visible:
+                    row.sampling_state.random_unit()
+            if callable(note_commit):
+                # This row's visible tokens and cursor are committed, so a
+                # later failure in this cycle cannot fall back to
+                # autoregressive decoding without losing them.
+                note_commit(int(request_id))
+            finish_reasons.append("eos" if eos_finished else None)
             if (
                 self.post_reject_cooldown_enabled
                 and int(accepted) == 0
@@ -4827,6 +6530,13 @@ class Qwen35GGUFMTP2Adapter:
         """Fall back to AR only while every target cursor is still canonical."""
 
         reason = f"{type(error).__name__}:{error}"
+        if os.environ.get("HIPENGINE_DEBUG_SAMPLED_ROUTE"):
+            print(
+                f"[cycle-failure] ids={tuple(plan.speculative_request_ids)} "
+                f"reason={reason}",
+                file=sys.stderr,
+                flush=True,
+            )
         rows = tuple(
             self.owner._row(int(request_id))
             for request_id in plan.speculative_request_ids
@@ -4851,6 +6561,18 @@ class Qwen35GGUFMTP2Adapter:
                     ("postcommit_target_rebuild_ar_fallback", reason)
                 )
             return True
+        committed = self._committed_request_ids(plan)
+        if committed:
+            # A row of this cycle already published its committed tokens and
+            # advanced its cursor, so the outer scheduler is behind it.  An
+            # autoregressive fallback would decode from the advanced position
+            # and drop the committed tokens from the client stream; containment
+            # retires exactly those rows instead.
+            for row in rows:
+                row.mtp2_failure_reasons.extend(
+                    ("postcommit_eager_commit_ar_fallback_refused", reason)
+                )
+            return False
         for row in rows:
             if row.slot is None or row.lease is None:
                 return False
@@ -4862,6 +6584,56 @@ class Qwen35GGUFMTP2Adapter:
                 ("precommit_failure_ar_fallback", reason)
             )
         return True
+
+    def _committed_request_ids(self, plan: SpecRequestPlan) -> tuple[int, ...]:
+        """Rows of this cycle whose canonical commit the owner already recorded."""
+
+        committed = getattr(self.owner, "execution_committed_request_ids", None)
+        recorded = (
+            frozenset() if not callable(committed) else frozenset(committed())
+        )
+        if not recorded:
+            return ()
+        return tuple(
+            int(request_id)
+            for request_id in plan.speculative_request_ids
+            if int(request_id) in recorded
+        )
+
+    def containment_evidence(
+        self,
+        plan: SpecRequestPlan,
+        error: BaseException,
+    ) -> tuple[str, tuple[int, ...]] | None:
+        """Mutation class and retirable rows for a failed speculative cycle.
+
+        Returns ``("committed", rows)`` when this cycle recorded a canonical
+        commit before the failure, ``("partial", rows)`` when no commit was
+        recorded but rows cannot be proven canonical (their device cursor moved
+        past the slot record, or their lease is unreachable), and ``None`` when
+        the mutation window stays unresolved: a ``_PhysicalTargetCommitError``
+        may or may not have landed its physical commit, and a cycle whose rows
+        are all canonical is recovery's business, not containment's.
+        """
+
+        if isinstance(error, _PhysicalTargetCommitError):
+            return None
+        committed = self._committed_request_ids(plan)
+        retirable: list[int] = []
+        for request_id in plan.speculative_request_ids:
+            rid = int(request_id)
+            if rid in committed:
+                continue
+            row = self.owner._row(rid)
+            if row is None or row.slot is None or row.lease is None:
+                retirable.append(rid)
+                continue
+            if int(row.lease.session.position) != int(row.slot.seq_position):
+                retirable.append(rid)
+        if not committed and not retirable:
+            return None
+        rows = (*committed, *retirable)
+        return ("committed" if committed else "partial", rows)
 
     def release_request(self, request_id: int) -> None:
         rid = int(request_id)
@@ -4876,7 +6648,22 @@ class Qwen35GGUFMTP2Adapter:
         self._prompt_hidden_rows.pop(rid, None)
         self._disabled_requests.discard(rid)
 
+    def discard_prefix_checkpoint(self, tokens: Sequence[int]) -> None:
+        store = getattr(self, "_prefix_checkpoint_store_instance", None)
+        if store is not None:
+            store.drop(tokens)
+
+    def has_prefix_checkpoint(
+        self, tokens: Sequence[int], block_ids: Sequence[int],
+    ) -> bool:
+        store = getattr(self, "_prefix_checkpoint_store_instance", None)
+        checkpoint = None if store is None else store.get(tokens, block_ids)
+        return checkpoint is not None and getattr(checkpoint, "boundary_hidden", None) is not None
+
     def close(self) -> None:
+        store = getattr(self, "_prefix_checkpoint_store_instance", None)
+        if store is not None:
+            store.clear()
         if self._prompt_streaming_sinks:
             self._abort_prompt_streaming(
                 tuple(self._prompt_streaming_sinks),
@@ -4895,6 +6682,9 @@ class Qwen35GGUFMTP2Adapter:
         ):
             self._free_prompt_streaming_norm_buffer(request_id, target=None)
         self._close_cycle_workspace()
+        for workspace in getattr(self, "_packed_sampler_workspaces", {}).values():
+            workspace.close()
+        getattr(self, "_packed_sampler_workspaces", {}).clear()
         ngram = getattr(self, "_ngram", None)
         if ngram is not None:
             ngram.close()
@@ -5012,6 +6802,13 @@ class Qwen35GGUFMTP2Adapter:
         targets: Sequence[Any],
     ) -> dict[int, DeviceBuffer]:
         prompt_lengths = tuple(len(row.prompt_ids) for row in rows)
+        boundaries = tuple(
+            self._prefix_checkpoint_boundary(length) for length in prompt_lengths
+        )
+        _trace_prefix_checkpoint(
+            f"walk batch rows={len(rows)} lengths={prompt_lengths} "
+            f"boundaries={boundaries}"
+        )
         hidden_size = int(provider.executor.hidden_size)
         count = len(rows)
         hidden_batch = malloc(
@@ -5078,6 +6875,27 @@ class Qwen35GGUFMTP2Adapter:
                         active_tokens,
                         (position,) * len(active),
                         hidden,
+                    )
+                for offset, index in enumerate(active):
+                    boundary = boundaries[index]
+                    if not boundary or position + 1 != boundary:
+                        continue
+                    # The rows are packed into the batch buffer in active order,
+                    # not at their own index, so the slice is the row's offset
+                    # within this iteration's active set.
+                    request_id = request_ids[index]
+                    self._capture_prefix_checkpoint(
+                        provider,
+                        request_id,
+                        tuple(rows[index].prompt_ids),
+                        self._prompt_hidden_rows[request_id],
+                        boundary,
+                        DeviceBuffer(
+                            hidden_batch.ptr
+                            + offset * hidden_size * DType.BF16.itemsize,
+                            hidden_size * DType.BF16.itemsize,
+                        ),
+                        targets[index],
                     )
             for request_id, row, target in zip(request_ids, rows, targets, strict=True):
                 bits = np.ascontiguousarray(
@@ -5180,6 +6998,11 @@ class Qwen35GGUFMTP2Adapter:
         hidden_size = int(provider.executor.hidden_size)
         if rows.shape != (len(tuple(prompt_ids)), hidden_size):
             raise ValueError("GGUF MTP2 prompt hidden rows do not align")
+        boundary = self._prefix_checkpoint_boundary(len(tuple(prompt_ids)))
+        _trace_prefix_checkpoint(
+            f"walk single request={request_id} length={len(tuple(prompt_ids))} "
+            f"boundary={boundary}"
+        )
         hidden_buffer = malloc(hidden_size * DType.BF16.itemsize, runtime=target.runtime)
         try:
             zero_bits = np.zeros((hidden_size,), dtype=np.uint16)
@@ -5210,6 +7033,18 @@ class Qwen35GGUFMTP2Adapter:
                     ),
                     return_logits=False,
                 )
+                if boundary and position + 1 == boundary:
+                    # The cursor is at the boundary now, so this is the one
+                    # iteration that can snapshot it.
+                    self._capture_prefix_checkpoint(
+                        provider,
+                        request_id,
+                        prompt_ids,
+                        rows,
+                        boundary,
+                        hidden_buffer,
+                        target,
+                    )
             final_hidden_bits = np.ascontiguousarray(
                 float_array_to_bf16_bits(rows[-1]),
                 dtype=np.uint16,
@@ -5225,8 +7060,130 @@ class Qwen35GGUFMTP2Adapter:
             free(hidden_buffer, runtime=target.runtime)
             raise
 
+    def _prefix_checkpoint_boundary(self, prompt_length: int) -> int:
+        """Return the block-aligned prefix length to checkpoint, or 0 for none.
+
+        The prefix cache only matches whole blocks, so a checkpoint taken at the
+        prompt's end would never be looked up: the reusable prefix stops at the
+        last full block. The block size belongs to the runner (it is the radix
+        cache's), so this returns 0 -- capture disabled -- until the runner
+        publishes it, which keeps the default behavior unchanged.
+        """
+
+        block = int(getattr(self, "prefix_checkpoint_block_size", 0) or 0)
+        if block <= 0:
+            return 0
+        return (int(prompt_length) // block) * block
+
+    def _prefix_checkpoint_store(self, provider: Any) -> PrefixCheckpointStore | None:
+        """Return the capture store, or None when capture is not configured.
+
+        Built on first use because the release callback belongs to the
+        provider's executor, which owns the buffers the store holds. A
+        provider whose executor cannot release a checkpoint does not get a
+        store at all rather than one that would leak.
+        """
+
+        capacity = int(getattr(self, "prefix_checkpoint_capacity", 0) or 0)
+        if capacity <= 0:
+            return None
+        store = getattr(self, "_prefix_checkpoint_store_instance", None)
+        if store is not None:
+            return store
+        release = getattr(provider.executor, "release_prefix_state", None)
+        if not callable(release):
+            return None
+        store = PrefixCheckpointStore(capacity=capacity, release=release)
+        self._prefix_checkpoint_store_instance = store
+        return store
+
+    def _capture_prefix_checkpoint(
+        self,
+        provider: Any,
+        request_id: int,
+        prompt_ids: Sequence[int],
+        rows: np.ndarray | None,
+        boundary: int,
+        hidden_buffer: DeviceBuffer,
+        target: Any,
+    ) -> None:
+        """Store provider state at a block-aligned prefix boundary.
+
+        Two routes reach this with the provider cursor at the boundary. The
+        catch-up walk passes ``rows`` and the row that produces the token *after*
+        the prefix is ``rows[boundary - 1]``, which is staged into
+        ``hidden_buffer`` here. The streaming prompt sink passes ``rows=None``
+        and a ``hidden_buffer`` that already points at the chunk's boundary row
+        in device memory, because that row is what the sink would feed next. The
+        snapshot takes its own copy in both cases.
+
+        A capture that cannot be taken is skipped, never raised: the checkpoint
+        is an optimization, and a request must not fail because its prefix could
+        not be cached. A later turn then simply misses and decodes
+        autoregressively, which is today's behavior for every prefix hit.
+        """
+
+        store = self._prefix_checkpoint_store(provider)
+        if store is None:
+            _trace_prefix_checkpoint(
+                f"skipped prefix={boundary}: capture disabled or unreleasable"
+            )
+            return
+        key_provider = getattr(self, "prefix_checkpoint_key", None)
+        if not callable(key_provider):
+            _trace_prefix_checkpoint(f"skipped prefix={boundary}: no key provider")
+            return
+        try:
+            block_ids = key_provider(int(request_id), int(boundary))
+        except Exception:
+            _trace_prefix_checkpoint(f"skipped prefix={boundary}: key provider raised")
+            return
+        if not block_ids:
+            _trace_prefix_checkpoint(f"skipped prefix={boundary}: no block ids")
+            return
+        hidden_size = int(provider.executor.hidden_size)
+        if rows is not None:
+            boundary_bits = np.ascontiguousarray(
+                float_array_to_bf16_bits(rows[boundary - 1]),
+                dtype=np.uint16,
+            )
+            copy_host_to_device(
+                DeviceBuffer(hidden_buffer.ptr, boundary_bits.nbytes),
+                host_array_ptr(boundary_bits),
+                boundary_bits.nbytes,
+                runtime=target.runtime,
+            )
+        snapshot = getattr(provider.executor, "snapshot_prefix_state", None)
+        if not callable(snapshot):
+            _trace_prefix_checkpoint(
+                f"skipped prefix={boundary}: executor cannot snapshot"
+            )
+            return
+        try:
+            checkpoint = snapshot(
+                int(request_id),
+                prefix_len=int(boundary),
+                boundary_hidden=DeviceBuffer(
+                    hidden_buffer.ptr, hidden_size * DType.BF16.itemsize
+                ),
+            )
+        except Exception as exc:
+            # Silent to the request, visible to an operator: a swallowed capture
+            # failure is otherwise indistinguishable from capture being off.
+            _trace_prefix_checkpoint(
+                f"capture failed at prefix={boundary}: {type(exc).__name__}:{exc}"
+            )
+            return
+        store.put(tuple(prompt_ids[:boundary]), tuple(block_ids), checkpoint)
+        _trace_prefix_checkpoint(
+            f"captured prefix={boundary} blocks={len(tuple(block_ids))} "
+            f"held={len(store)}"
+        )
+
     def _drop_request(self, request_id: int, *, disable: bool) -> None:
         rid = int(request_id)
+        self._streaming_refused_requests.discard(rid)
+        self._sampling_mode_by_request.pop(rid, None)
         self._post_reject_pending.discard(rid)
         self.drop_c1_shadow_lifecycle(rid, reason="request_drop")
         state = self._states.pop(rid, None)
@@ -5257,5 +7214,7 @@ class Qwen35GGUFMTP2Adapter:
 __all__ = [
     "C1ShadowOwnershipError",
     "C1ShadowSessionLifecycle",
+    "MTP2_SCREEN_UNQUALIFIED_CELLS_ENV",
     "Qwen35GGUFMTP2Adapter",
+    "unqualified_mtp_screening_enabled",
 ]

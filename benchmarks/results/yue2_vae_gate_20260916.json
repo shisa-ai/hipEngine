@@ -1,0 +1,77 @@
+{
+  "cases": [
+    {
+      "case": "recorded small latent",
+      "frames": 3,
+      "full": {
+        "max_abs": 1.2665987014770508e-06,
+        "produced_peak": 0.4835410714149475,
+        "produced_rms": 0.1294491359548695,
+        "reference_peak": 0.48354101181030273,
+        "reference_rms": 0.12944913999318283,
+        "relative_l2": 1.9849353260247574e-06,
+        "rms": 2.569481708959929e-07
+      },
+      "full_seconds": 0.03579293400980532,
+      "natural_length": 5696,
+      "passed": true
+    },
+    {
+      "case": "recorded 64-frame latent",
+      "frames": 64,
+      "full": {
+        "max_abs": 2.995133399963379e-06,
+        "produced_peak": 0.9915995597839355,
+        "produced_rms": 0.16576790004121433,
+        "reference_peak": 0.9915993809700012,
+        "reference_rms": 0.16576791046480457,
+        "relative_l2": 1.8840661654918956e-06,
+        "rms": 3.123177114310282e-07
+      },
+      "full_seconds": 0.6837296740850434,
+      "natural_length": 122816,
+      "passed": true,
+      "tiled": {
+        "core_frames": 16,
+        "halo_frames": 16,
+        "required_halo": 12,
+        "seconds": 1.506401762017049,
+        "vs_full_bit_exact": true,
+        "vs_reference": {
+          "max_abs": 2.7939677238464355e-06,
+          "produced_peak": 0.9915995597839355,
+          "produced_rms": 0.16576790004121433,
+          "reference_peak": 0.9916004538536072,
+          "reference_rms": 0.16576791022573817,
+          "relative_l2": 1.8838859208736298e-06,
+          "rms": 3.1228783220691196e-07
+        }
+      },
+      "tiled_seconds": 1.506401762017049
+    }
+  ],
+  "decoder": {
+    "blocks": 6,
+    "bytes": 265424384,
+    "downsampling_ratio": 1920,
+    "latent_dim": 64,
+    "required_halo_core16": 12
+  },
+  "passed": true,
+  "provenance": {
+    "command_line": "scripts/yue2_vae_gate.py --json benchmarks/results/yue2_vae_gate_20260916.json",
+    "fixture": "/home/lhl/hipEngine/tests/fixtures/yue2/vae/decode.npz",
+    "host": {
+      "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+      "gpu": "gfx1151",
+      "hostname": "zbook",
+      "platform": "linux"
+    },
+    "protocol": "yue2-vae-fixture-gate-v1",
+    "revision": "3972d118618736f682a061e351576a6c19ed708d"
+  },
+  "thresholds": {
+    "max_abs": 0.0001
+  },
+  "worst_max_abs": 2.995133399963379e-06
+}

@@ -79,6 +79,30 @@ __device__ inline void store_output<uint16_t>(uint16_t* out, int64_t idx, float 
   out[idx] = float_to_bf16_bits(value);
 }
 
+// If FP16 operand narrowing overflows, recompute from the original input and
+// raw Q8 bytes in FP32. Never clamp finite BF16/F32 values to the FP16 range.
+template <typename scalar_t>
+__device__ inline float finite_or_repair_raw_q8(
+    float value, const scalar_t* x, const uint8_t* weights,
+    int row, int col, int in_features) {
+  if ((__float_as_uint(value) & 0x7f800000U) != 0x7f800000U) return value;
+  const int blocks = in_features / Q8_0_BLOCK;
+  const uint8_t* weight_row = weights +
+      static_cast<int64_t>(col) * blocks * Q8_0_BLOCK_BYTES;
+  const scalar_t* input = x + static_cast<int64_t>(row) * in_features;
+  float sum = 0.0f;
+  for (int block = 0; block < blocks; ++block) {
+    const uint8_t* raw = weight_row + block * Q8_0_BLOCK_BYTES;
+    const float scale = fp16_bytes_to_float(raw);
+    const int8_t* quants = reinterpret_cast<const int8_t*>(raw + 2);
+    for (int k = 0; k < Q8_0_BLOCK; ++k) {
+      sum = fmaf(scalar_to_float(input[block * Q8_0_BLOCK + k]),
+                 scale * static_cast<float>(quants[k]), sum);
+    }
+  }
+  return sum;
+}
+
 // Load 16 K-elements from an activation row into a half16_t WMMA b operand.
 // For fp16 input this is a single packed vector load. For bf16 / f32 input,
 // each lane converts element-by-element. Per-K-tile lookups are 16 elements
@@ -231,7 +255,9 @@ __global__ void gguf_q8_0_prefill_wmma_kernel(
         if (col < out_features) {
           const int64_t idx =
               static_cast<int64_t>(out_row) * out_features + col;
-          store_output<out_t>(out, idx, static_cast<float>(acc[tm][tn][j]));
+          store_output<out_t>(out, idx, finite_or_repair_raw_q8(
+              static_cast<float>(acc[tm][tn][j]), x, qweight,
+              out_row, col, in_features));
         }
       }
     }
@@ -258,7 +284,7 @@ int launch_gguf_q8_0_prefill_wmma(
       rows <= 0 || in_features <= 0 || out_features <= 0 ||
       (in_features % Q8_0_BLOCK) != 0 ||
       (tile_m != 16 && tile_m != 32 && tile_m != 64) ||
-      (tile_n != 16 && tile_n != 32)) {
+      (tile_n != 16 && tile_n != 32 && tile_n != 64)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   const dim3 block(32);
@@ -286,7 +312,15 @@ int launch_gguf_q8_0_prefill_wmma(
   if (tile_m == 16 && tile_n == 32) { HIPENGINE_LAUNCH_Q8_0_WMMA(16, 32); }
   if (tile_m == 32 && tile_n == 32) { HIPENGINE_LAUNCH_Q8_0_WMMA(32, 32); }
   if (tile_m == 64 && tile_n == 16) { HIPENGINE_LAUNCH_Q8_0_WMMA(64, 16); }
-  HIPENGINE_LAUNCH_Q8_0_WMMA(64, 32);
+  if (tile_m == 16 && tile_n == 64) { HIPENGINE_LAUNCH_Q8_0_WMMA(16, 64); }
+  if (tile_m == 32 && tile_n == 64) { HIPENGINE_LAUNCH_Q8_0_WMMA(32, 64); }
+  if (tile_m == 64 && tile_n == 32) { HIPENGINE_LAUNCH_Q8_0_WMMA(64, 32); }
+  // (64, 64) passes the range check above -- 64 is a legal value for both axes --
+  // but is not instantiated: it wants 4096 accumulators, 128 floats per lane
+  // against (32, 64)'s 64. It used to fall through to the unguarded (64, 32)
+  // launch below, so a caller asking for it silently got a different tile.
+  // Rejecting it here is the difference between a wrong answer and an error.
+  return static_cast<int>(hipErrorInvalidValue);
 #undef HIPENGINE_LAUNCH_Q8_0_WMMA
 }
 
@@ -411,7 +445,9 @@ __global__ void gguf_q8_0_prefill_dual_wmma_kernel(
           const int concat_col = use_b ? (out_features_a + local_col) : local_col;
           const int64_t idx =
               static_cast<int64_t>(out_row) * out_features_total + concat_col;
-          store_output<out_t>(out, idx, static_cast<float>(acc[tm][tn][j]));
+          store_output<out_t>(out, idx, finite_or_repair_raw_q8(
+              static_cast<float>(acc[tm][tn][j]), x, qweight,
+              out_row, local_col, in_features));
         }
       }
     }
@@ -435,7 +471,7 @@ int launch_gguf_q8_0_prefill_dual_wmma(
       rows <= 0 || in_features <= 0 || out_features_a <= 0 || out_features_b <= 0 ||
       (in_features % Q8_0_BLOCK) != 0 ||
       (tile_m != 16 && tile_m != 32 && tile_m != 64) ||
-      (tile_n != 16 && tile_n != 32) ||
+      (tile_n != 16 && tile_n != 32 && tile_n != 64) ||
       (out_features_a % tile_m) != 0 || (out_features_b % tile_m) != 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
@@ -467,7 +503,12 @@ int launch_gguf_q8_0_prefill_dual_wmma(
   if (tile_m == 16 && tile_n == 32) { HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA(16, 32); }
   if (tile_m == 32 && tile_n == 32) { HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA(32, 32); }
   if (tile_m == 64 && tile_n == 16) { HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA(64, 16); }
-  HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA(64, 32);
+  if (tile_m == 16 && tile_n == 64) { HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA(16, 64); }
+  if (tile_m == 32 && tile_n == 64) { HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA(32, 64); }
+  if (tile_m == 64 && tile_n == 32) { HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA(64, 32); }
+  // Same as the single-output launcher above: the range check admits (64, 64)
+  // and this chain does not implement it. It used to run (64, 32) instead.
+  return static_cast<int>(hipErrorInvalidValue);
 #undef HIPENGINE_LAUNCH_Q8_0_DUAL_WMMA
 }
 

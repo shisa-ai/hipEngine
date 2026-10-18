@@ -1,0 +1,248 @@
+{
+ "kind": "gemma4-q5_1-down-decode-screen",
+ "note": "Punchlist D3 row 2: five-arm same-run same-bytes screen at Gemma down decode geometry (in 704, out 2816, E 128). wave64 arm added for the rows=8 rerun; rows=1 and rows=16 ran the four-arm family. All candidates bit-exact with the incumbent. The winner (logical256_t64) was registered as the linear/gguf_q5_1 selected decode owner.",
+ "runs": {
+  "rows_1": {
+   "agreement": {
+    "logical_t128": {
+     "bit_equal_fraction": 1.0,
+     "kl_vs_production": 0.0,
+     "max_abs": 0.0,
+     "rel_to_peak": 0.0
+    },
+    "logical_t64": {
+     "bit_equal_fraction": 1.0,
+     "kl_vs_production": 0.0,
+     "max_abs": 0.0,
+     "rel_to_peak": 0.0
+    },
+    "pack8": {
+     "bit_equal_fraction": 1.0,
+     "kl_vs_production": 0.0,
+     "max_abs": 0.0,
+     "rel_to_peak": 0.0
+    },
+    "production_peak_abs": 0.0859375
+   },
+   "kind": "gemma4-q5_1-down-decode-screen",
+   "provenance": {
+    "command_args": {
+     "experts": 128,
+     "in_features": 704,
+     "iters": 200,
+     "out": "scratch/d3_q5_1_down_screen_r1.json",
+     "out_features": 2816,
+     "rows": 1,
+     "warmup": 20
+    },
+    "git": "311f37e98bd57a49d3181cab5d5d198db8cea67b",
+    "gpu_env": {},
+    "iters": 200,
+    "protocol": "same-run same-bytes A/B; all arms warmed before timing (agreement phase runs every arm against production first)",
+    "warmup": 20
+   },
+   "reference": {
+    "census_situ_gbps": 123.0,
+    "census_situ_us": 96.85,
+    "note": "in-situ census: 2.81 ms over 28 launches for the down family; 122-123 GB/s at rows=8 against a 933 GB/s roofline weight-fetch floor of 12.8 us (D3 row 2)"
+   },
+   "shape": {
+    "bytes_per_row": 528,
+    "experts": 128,
+    "in_features": 704,
+    "out_features": 2816,
+    "rows": 1,
+    "selected_bytes": 1486848
+   },
+   "speedup_production_over": {
+    "logical_t128": 1.3436237323262181,
+    "logical_t64": 1.4757111631450064,
+    "pack8": 1.2464374837868153,
+    "production": 1.0
+   },
+   "timing": {
+    "logical_t128": {
+     "gbps": 125.75740486362564,
+     "ms_per_call": 0.011823144741356373
+    },
+    "logical_t64": {
+     "gbps": 138.1202205204434,
+     "ms_per_call": 0.010764882899820805
+    },
+    "pack8": {
+     "gbps": 116.66118982164598,
+     "ms_per_call": 0.012745009735226631
+    },
+    "production": {
+     "gbps": 93.59570081863741,
+     "ms_per_call": 0.015885857865214348
+    }
+   }
+  },
+  "rows_16": {
+   "agreement": {
+    "logical_t128": {
+     "bit_equal_fraction": 1.0,
+     "kl_vs_production": 0.0,
+     "max_abs": 0.0,
+     "rel_to_peak": 0.0
+    },
+    "logical_t64": {
+     "bit_equal_fraction": 1.0,
+     "kl_vs_production": 0.0,
+     "max_abs": 0.0,
+     "rel_to_peak": 0.0
+    },
+    "pack8": {
+     "bit_equal_fraction": 1.0,
+     "kl_vs_production": 0.0,
+     "max_abs": 0.0,
+     "rel_to_peak": 0.0
+    },
+    "production_peak_abs": 0.1005859375
+   },
+   "kind": "gemma4-q5_1-down-decode-screen",
+   "provenance": {
+    "command_args": {
+     "experts": 128,
+     "in_features": 704,
+     "iters": 200,
+     "out": "scratch/d3_q5_1_down_screen_r16.json",
+     "out_features": 2816,
+     "rows": 16,
+     "warmup": 20
+    },
+    "git": "311f37e98bd57a49d3181cab5d5d198db8cea67b",
+    "gpu_env": {},
+    "iters": 200,
+    "protocol": "same-run same-bytes A/B; all arms warmed before timing (agreement phase runs every arm against production first)",
+    "warmup": 20
+   },
+   "reference": {
+    "census_situ_gbps": 123.0,
+    "census_situ_us": 96.85,
+    "note": "in-situ census: 2.81 ms over 28 launches for the down family; 122-123 GB/s at rows=8 against a 933 GB/s roofline weight-fetch floor of 12.8 us (D3 row 2)"
+   },
+   "shape": {
+    "bytes_per_row": 528,
+    "experts": 128,
+    "in_features": 704,
+    "out_features": 2816,
+    "rows": 16,
+    "selected_bytes": 23789568
+   },
+   "speedup_production_over": {
+    "logical_t128": 1.4123405170674517,
+    "logical_t64": 1.7669714988484164,
+    "pack8": 1.695113648212859,
+    "production": 1.0
+   },
+   "timing": {
+    "logical_t128": {
+     "gbps": 150.2515842356109,
+     "ms_per_call": 0.15833156183362007
+    },
+    "logical_t64": {
+     "gbps": 187.97893552781716,
+     "ms_per_call": 0.12655443511903286
+    },
+    "pack8": {
+     "gbps": 180.33435140147878,
+     "ms_per_call": 0.13191922567784786
+    },
+    "production": {
+     "gbps": 106.38481472413572,
+     "ms_per_call": 0.22361807990819216
+    }
+   }
+  },
+  "rows_8": {
+   "agreement": {
+    "logical_t128": {
+     "bit_equal_fraction": 1.0,
+     "kl_vs_production": 0.0,
+     "max_abs": 0.0,
+     "rel_to_peak": 0.0
+    },
+    "logical_t64": {
+     "bit_equal_fraction": 1.0,
+     "kl_vs_production": 0.0,
+     "max_abs": 0.0,
+     "rel_to_peak": 0.0
+    },
+    "pack8": {
+     "bit_equal_fraction": 1.0,
+     "kl_vs_production": 0.0,
+     "max_abs": 0.0,
+     "rel_to_peak": 0.0
+    },
+    "production_peak_abs": 0.1005859375,
+    "wave64": {
+     "bit_equal_fraction": 1.0,
+     "kl_vs_production": 0.0,
+     "max_abs": 0.0,
+     "rel_to_peak": 0.0
+    }
+   },
+   "kind": "gemma4-q5_1-down-decode-screen",
+   "provenance": {
+    "command_args": {
+     "experts": 128,
+     "in_features": 704,
+     "iters": 200,
+     "out": "scratch/d3_q5_1_down_screen_r8.json",
+     "out_features": 2816,
+     "rows": 8,
+     "warmup": 20
+    },
+    "git": "311f37e98bd57a49d3181cab5d5d198db8cea67b",
+    "gpu_env": {},
+    "iters": 200,
+    "protocol": "same-run same-bytes A/B; all arms warmed before timing (agreement phase runs every arm against production first)",
+    "warmup": 20
+   },
+   "reference": {
+    "census_situ_gbps": 123.0,
+    "census_situ_us": 96.85,
+    "note": "in-situ census: 2.81 ms over 28 launches for the down family; 122-123 GB/s at rows=8 against a 933 GB/s roofline weight-fetch floor of 12.8 us (D3 row 2)"
+   },
+   "shape": {
+    "bytes_per_row": 528,
+    "experts": 128,
+    "in_features": 704,
+    "out_features": 2816,
+    "rows": 8,
+    "selected_bytes": 11894784
+   },
+   "speedup_production_over": {
+    "logical_t128": 1.3688743278199658,
+    "logical_t64": 1.725853625373953,
+    "pack8": 1.6371923875179155,
+    "production": 1.0,
+    "wave64": 1.6657178525305527
+   },
+   "timing": {
+    "logical_t128": {
+     "gbps": 143.4754747119214,
+     "ms_per_call": 0.08290464989840984
+    },
+    "logical_t64": {
+     "gbps": 180.89145449762947,
+     "ms_per_call": 0.0657564727589488
+    },
+    "pack8": {
+     "gbps": 171.59862685712562,
+     "ms_per_call": 0.06931747775524855
+    },
+    "production": {
+     "gbps": 104.81274416214438,
+     "ms_per_call": 0.11348604690283537
+    },
+    "wave64": {
+     "gbps": 174.58845912360133,
+     "ms_per_call": 0.06813041400164366
+    }
+   }
+  }
+ }
+}

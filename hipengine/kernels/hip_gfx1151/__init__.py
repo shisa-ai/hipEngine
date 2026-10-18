@@ -110,6 +110,26 @@ BACKEND = "hip_gfx1151"
 STAGED_F32_VARIANT = "staged_f32_bm128_bn64_bk32"
 TARGET_ARCH = hip_target_arch_for_backend(BACKEND)
 
+# Concrete GGUF consumer layers this backend registers (UD-U1 F3 admission
+# metadata; see the hip_gfx1100 declaration for the contract).  The gfx1151
+# alias registrar covers the full certified consumer surface (its exclusion
+# list removes only non-admission tuning variants), verified by the parity
+# test that checks every certified consumer key is registered here too.
+GGUF_CONSUMER_LAYERS: frozenset[str] = frozenset(
+    {
+        "linear",
+        "dense_gemv",
+        "embedding",
+        "rmsnorm",
+        "router_logits",
+        "gdn_recurrent_rmsnorm_gate",
+        "gdn_prefill_recurrent",
+        "linear_attn_conv_decode",
+        "linear_attn_conv_prefill",
+        "moe_linear",
+    }
+)
+
 
 def _qwen35_08b_q4_pack8_dual_silu_t128(*args, **kwargs):
     """Bind the qualified 0.8B fused gate/up schedule to 128 threads."""
@@ -1216,7 +1236,19 @@ GGUF_DENSE_BF16_WMMA_BULK_PREFILL_SHAPES = frozenset(
 # residual limits remain unchanged for their quant families.
 GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
     "gguf_q4_k_t16_v1": 4,
+    "gguf_q5_k_t16_v1": 1,
     "gguf_q6_k_t16_qmicro_planar_v1": 3,
+    # E6c-2: the raw dense-IQ residual siblings are rows-1 decode
+    # composites (their parents are rows-1 owners too); the verifier
+    # rows 2-4 local32/strict owners have no residual variant, so cap
+    # these quants before the rows 2-4 residual path could try one.
+    "gguf_iq4_xs": 1,
+    "gguf_iq4_nl": 1,
+    "gguf_iq3_s": 1,
+    "gguf_q3_k": 1,
+    "gguf_iq3_xxs": 1,
+    "gguf_iq2_s": 1,
+    "gguf_iq2_xs": 1,
     "bf16": 512,
 }
 # The attention-RMSNorm source range is statically bounded from resident F32
@@ -1597,6 +1629,20 @@ GGUF_AOTRITON_HEAD_MAJOR_KV = True
 # real-Uvicorn serving A/B admit FP16 recurrent-state storage for dense Q4_K_S.
 # The environment remains an explicit rollback: =0 restores FP32 storage.
 GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES = frozenset({"mostly_q4_k_s"})
+# Dense linear-attention verifier rows above the full-attention split threshold
+# stage the batched projection/head-norm/rotary/KV-write/output-projection chain
+# instead of the per-row scalar c1 owner. The staged chain reassociates BF16
+# projections, so the default binds the loader-qualified plain artifact identity
+# (a UD/unknown-manifest preset never inherits it) and the file types whose
+# eager-route teacher parity, straddle-band and task packets were measured:
+# Qwen3.8-27B Q4_K_M on 2026-09-19 is byte-exact against the serial-exact
+# teacher at the 1024/3530/8192 straddles with the staged owner confirmed by
+# route counters, and the committed long-context task packet binds task,
+# AR-id and eager-ownership equality at a 4,096-token context. The row-wise c1
+# route remains the registered strict fallback behind
+# ``HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG=0``. Other file types keep the
+# row-wise route until their own packet is measured.
+GGUF_STAGED_LINEAR_ROWS_LONG_DEFAULT_FILE_TYPES = frozenset({"mostly_q4_k_m"})
 # Default AOTriton ON for gfx1151. An earlier 2026-08-20 slice measurement
 # (64..2048) claimed native causal_gqa_gate_bf16 was ~2-5% faster with no
 # crossover, which set this to False; but the native full-attention path scales
@@ -1693,6 +1739,20 @@ GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
         (1, 5_120, 17_408): "dense_dual_local32_bf16_bf16_out",
     },
+    # 2026-09-24, UD-GFX1151-OPTIMIZE2 E2c: a bound UD admission preset
+    # extends the policy identity to (geometry, file_type, preset), so the
+    # plain rows above never apply to a UD artifact that merely shares the
+    # stamp (see _gguf_policy_identity). Without this explicit row the
+    # rows==1 pair launcher was never entered for the UD artifact: gate/up
+    # pairs ran as two projections plus the separate SiLU, and the registered
+    # IQ4_XS local32 dual owner - measured bit-exact with the
+    # single/single/silu chain on the real blk.1 pair (E2b') - could not
+    # fire. The value mirrors the plain Q4_K_M row so shared-quant pairs take
+    # the same qualified owner in both arms; the IQ4_XS dual branch selects
+    # its own key and does not read this value.
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): {
+        (1, 5_120, 17_408): "dense_dual_local32_bf16_bf16_out",
+    },
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
         (1, 5_120, 17_408): (
             "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out"
@@ -1701,6 +1761,12 @@ GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
 }
 GGUF_DENSE_PAIR_SILU_NATIVE_DECODE_POLICIES = {
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
+        (1, 5_120, 17_408): "dense_dual_q8_1x2_dp4a_bf16_bf16_out",
+    },
+    # 2026-09-24, E2c: native-session mirror of the explicit UD row in the
+    # serial table above, so the UD stamp resolves the same qualified owner
+    # regardless of which capability table is consulted first.
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): {
         (1, 5_120, 17_408): "dense_dual_q8_1x2_dp4a_bf16_bf16_out",
     },
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
@@ -1766,6 +1832,20 @@ GGUF_DENSE_DOWN_RESIDUAL_DECODE_POLICIES = {
         (1, 17_408, 5_120): True,
     },
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): {
+        (1, 17_408, 5_120): True,
+    },
+    # E6c down-residual fold, unqualified-manifest lane (kept for unpinned
+    # Q4_K_M-stamped H5120 artifacts) and the certificate-bound UD preset
+    # lane the resident Qwen3.8-27B UD-Q4_K_M artifact resolves to at
+    # runtime. Both rows are capability-shaped: dense H5120 geometry +
+    # plain-lane stamp + rows-1 down shape. Kernels resolve per quant -
+    # registered exact siblings (Q5T16/Q4T16/planar Q6) fold, raw-IQ down
+    # owners fall back to the unfused chain because they have no residual
+    # sibling or raw-ABI launcher yet.
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "gguf-unqualified-manifest"): {
+        (1, 17_408, 5_120): True,
+    },
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): {
         (1, 17_408, 5_120): True,
     },
 }
@@ -2014,6 +2094,139 @@ GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS = {
 # B5 changed-arithmetic candidate. Generic dispatch reads this backend-owned
 # map only while a caller-owned integer-MMQ workspace context is active.
 # Standard Q6 QKV and all Q4/Q5 shapes remain on their current owners.
+# UD item 3: dense raw-IQ integer-MMQ prefill. The selected/MoE kernel reads
+# weights as qweight + expert*expert_bytes + out_row*weight_row_bytes, so at
+# expert 0 it consumes the dense raw GGUF layout unchanged - the dense route is
+# the degenerate single-expert case, with no repack and no weight sidecar. The
+# strict per-row GEMV stays the registered fallback and the rows=1 decode owner;
+# this route is inert unless an execution owner binds its workspace.
+#
+# min_rows is a measured crossover, not a capability. The GEMV re-reads the
+# weight column once per 8-row slab so it grows with rows, while the MMQ pads to
+# 128 rows so a short prompt pays for work it does not use. Swept over the six
+# distinct IQ4_XS dense shapes in the published UD file
+# (scripts/gguf_iq_dense_mmq_crossover.py, 2026-09-08, gfx1151), min-of-5
+# interleaved, worst case over shapes:
+#
+#   rows=2  0.59x   rows=4  0.68x   rows=8  1.58x   rows=16  2.62x   rows=32  4.34x
+#
+# so 8 is the first row count where the MMQ wins on every measured shape; 4
+# still loses on attn_gate (6144x5120). Agreement held across all 96
+# (shape, rows) cells at max relative error 0.0025-0.0099.
+# Dense raw-IQ prefill route selection. Scored the way
+# EXECUTION-PROFILES.md section 6 specifies - candidate production against
+# hipEngine strict, not against an external engine - over 162 teacher-forced
+# rows:
+#
+#   route                     prefill      mean       p95       p99       max  >5e-2
+#   two-quant integer MMQ      127.2   0.001038  0.003479  0.014385  0.049730    0
+#   four-quant integer MMQ     171.9   0.002110  0.006797  0.024044  0.170390    1
+#   four-quant W4A16 (below)   150.9   0.000827  0.004547  0.012475  0.023513    0
+#
+# The integer-MMQ route breaches the binding 5e-2 absolute maximum-row ceiling
+# by 3.4x at one position; W4A16 passes every threshold in the calibrated
+# envelope. W4A16 is therefore the default at a 12% throughput cost, and the
+# integer-MMQ variant name is kept below so a route swap is a one-word edit.
+#
+# Route coverage differs. The integer-MMQ route needs each K32 group to be
+# expressible as scale*int8, which excludes Q3_K, IQ2_S and IQ2_XS: they carry
+# a scale per 16 elements, so under a per-32 scale their residuals reach +/-128
+# and +/-1333. W4A16 expands per element and has no such contract, so it serves
+# every dense IQ/Q3_K quant. Measured against the strict GEMV at 512 rows:
+# Q3_K 86.7 -> 14.8 ms (5.9x), IQ2_S 82.3 -> 14.9 (5.5x), IQ2_XS 80.8 -> 13.3
+# (6.1x). Swapping the policy back to the integer variant must therefore also
+# drop these three, or they will find no registered owner and fall through to
+# the strict GEMV - correct, but silently slower.
+_IQ_DENSE_W4A16_VARIANT = "dense_wmma_w4a16_prefill_bf16_bf16_out"
+_IQ_DENSE_INTEGER_MMQ_VARIANT = (
+    "dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out"
+)
+# min_rows is a measured crossover for the integer-MMQ route (worst case over
+# shapes: 0.59x at 2 rows, 0.68x at 4, 1.58x at 8). W4A16 has no 128-row
+# padding so it does not need a floor, but the shared value is kept because it
+# is safe for both and keeps a route swap free of a second variable.
+GGUF_IQ_DENSE_PREFILL_POLICY = {
+    quant: {
+        "min_rows": 8,
+        "max_rows": 131072,
+        "variant": _IQ_DENSE_W4A16_VARIANT,
+    }
+    for quant in ("gguf_iq4_xs", "gguf_iq3_xxs", "gguf_iq3_s", "gguf_iq4_nl",
+                 "gguf_q3_k", "gguf_iq2_s", "gguf_iq2_xs")
+}
+# Q3_K, IQ2_S and IQ2_XS history: the integer-MMQ contract could never
+# express them (per-16 scales put their residuals at +/-128 and +/-1333),
+# but W4A16 expands per element and has no such constraint. Routed unsplit
+# they measured 176.5 tok/s on the zbook - faster than the integer-MMQ route
+# ever was - but moved the strict-referenced mean 0.000827 -> 0.001061, 6%
+# over the calibrated 1e-3 limit, which held them out (2026-09-09 record:
+# the entire delta was Q3_K alone, +0.000234 mean for +26 tok/s).
+#
+# 2026-09-10 unblock (gfx1100 lane, shared source): the W4A16 kernel now
+# expands these three through the hi+lo split path - the WMMA products of
+# fp16 operands are exact in the f32 accumulator, so a second pass over the
+# fp16 rounding residual restores the weight to ~22 mantissa bits and the
+# route's intrinsic error drops under the bf16 output floor (bf16-ULP flip
+# rate 1.1% vs the unsplit 10.4%; verified against an exact f64 dot). On
+# natural self-generated prompts the split route's delta vs the four-quant
+# incumbent measures mean 4.8-6.7e-5 and max <= 1.4e-3 (top-1 100%), 20x
+# under the envelope, at +7.5% leaf cost on the affected quants only. The
+# originally routed four quants keep the single-pass path. The definitive
+# 162-row production-referenced gate on this backend's prompts is owed as
+# the confirming measurement.
+
+# Dense raw-IQ decode and verifier owners (2026-09-21). register_gfx1151_kernels
+# aliases the whole gfx1100 key space into this backend, so local32_gemv and its
+# rows sibling below are the *same kernel objects* gfx1100 routes - the
+# arithmetic is identical by construction, not merely similar. The routing
+# tables are not aliased, and this package declared only the prefill policy, so
+# every dense raw-IQ projection on gfx1151 kept the strict per-row GEMV: a zbook
+# kernel census measured 61.64 ms/token, 53.42% of UD-Q4_K_M's 115.39 ms pure
+# decode, in gguf_iq_dense_strict_kernel at 130.78 launches/token and
+# 442.1 us/launch on the dominant template, against zero launches for plain
+# Q4_K_M (benchmarks/results/
+# 2026-09-21-zbook-ud-vs-plain-q4km-decode-attribution.json).
+#
+# These two tables mirror gfx1100's exactly, and
+# tests/test_unit_gfx1151_iq_dense_policy_parity.py holds them there. The pins
+# below are not an optimization knob: they are the per-artifact admission
+# gfx1100's tokenized category suite required, and because the owner kernels are
+# shared the requirement transfers by construction. Do not drop a pin to gain a
+# route.
+GGUF_IQ_DENSE_DECODE_POLICY = {
+    quant: {"variant": "local32_gemv_bf16_bf16_out"}
+    for quant in ("gguf_iq4_xs", "gguf_iq4_nl", "gguf_iq3_s", "gguf_iq3_xxs",
+                  "gguf_iq2_s", "gguf_iq2_xs")
+}
+# Verifier sibling at rows 2-4. Each row's output is bit-identical to the
+# rows==1 owner's output for that row, so it adds no arithmetic of its own; it
+# keeps the same per-slot strict pin as the decode policy below.
+GGUF_IQ_DENSE_VERIFY_POLICY = {
+    quant: {
+        "min_rows": 2,
+        "max_rows": 4,
+        "variant": "local32_rows_gemv_bf16_bf16_out",
+    }
+    for quant in ("gguf_iq4_xs", "gguf_iq4_nl", "gguf_iq3_s", "gguf_iq3_xxs",
+                  "gguf_iq2_s", "gguf_iq2_xs")
+}
+# Per-artifact strict pins, keyed by (file_type, artifact preset). UD-Q4_K_M's
+# layers.0.ffn_up is its only Q3_K ffn_up, and it is the slot whose W4A16 hi+lo
+# split reached a 5.3e-2 max-row KL against the incumbent on natural tokenized
+# prompts (one position of the 18-prompt category suite) - above the 5e-2
+# pooled ceiling - so it keeps the strict per-row GEMV in prefill. The decode
+# pins keep the same artifact's IQ3_S population (0.82 ms/token, 4 launches) on
+# the strict owner: unpinned the family's accumulation-order tail measured
+# 5.19e-2 max, and with three of the four slots pinned, 1.785e-1.
+GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS = {
+    ("MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): ("layers.0.ffn_up",),
+}
+GGUF_IQ_DENSE_DECODE_STRICT_SLOTS = {
+    ("MOSTLY_Q4_K_M", "gguf_ud_q4_k_m"): (
+        "layers.11.ffn_gate", "layers.14.ffn_down", "layers.15.ffn_down",
+        "layers.17.ffn_down"),
+}
+
 GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY = {
     "gguf_q6_k_t16_qmicro_planar_v1": {
         "min_rows": 17,
@@ -2130,8 +2343,18 @@ GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE = {
     "gguf_q4_k_t16_v1": {
         (5_120, 1_024): "dense_single_col4_bf16_bf16_out",
     },
+    # E4a (UD-GFX1151-OPTIMIZE2): rows=1 Q5_T16 decode shapes routed to the
+    # tile8 owner. Per-shape screen (bit-exact vs direct and the gguf_quant_gemv
+    # reference at rows=1): ffn_up 1.16x, ffn_down 1.28x, attn_gate 1.36x,
+    # attn_qkv 1.39x, attn_q 1.18x, ssm_out 1.56x. attn_v (5_120, 1_024) is
+    # deliberately absent: 0.99x, no win over the direct owner.
     "gguf_q5_k_t16_v1": {
+        (5_120, 6_144): "t16_gemv_decode_tile8_bf16_bf16_out",
+        (5_120, 10_240): "t16_gemv_decode_tile8_bf16_bf16_out",
+        (5_120, 12_288): "t16_gemv_decode_tile8_bf16_bf16_out",
+        (5_120, 17_408): "t16_gemv_decode_tile8_bf16_bf16_out",
         (6_144, 5_120): "t16_gemv_decode_tile8_bf16_bf16_out",
+        (17_408, 5_120): "t16_gemv_decode_tile8_bf16_bf16_out",
     },
 }
 # Qwen3.8-27B P2: use byte-neutral planar-qmicro Q6 where architecture-local
@@ -2241,17 +2464,23 @@ GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK = True
 # complete-wall packet. These capabilities expose adapters and AR fallback only.
 GGUF_SPECDEC2_MTP2_C1 = True
 # Production MTP admission is intentionally non-monotonic. C1-C4 retain their
-# certified K1-K3 cells; the B5 suite admits only the profitable wide C8-K3
-# cell. C5-C7 and shallower C8 remain on one full-width AR step. Keeping width
-# and depth together prevents a scalar C8 maximum from silently broadening the
-# three measured-losing widths.
+# certified K1-K3 cells; C5-C8 stay on one full-width AR step, so a scalar
+# maximum cannot silently broaden the measured-losing widths.
+# The wide C8-K3 cell admitted on 2026-09-05 is withdrawn. This backend's
+# prompt-streaming policy admits widths (1,2,3,4), so a pending set of eight rows
+# is refused (`physical_streaming_category_rejected`) and the provider opens
+# without prompt state, while the route still ran its cycles. Measured on the
+# instrument that qualified the cell (one synchronized 8-row batch per cell, 10
+# prompts, 24-token horizon, same-run true-AR baseline) it is 46.88 tok/s against
+# 50.10 true AR (0.936x) with 0 of 10 cells reproducing the AR output, against
+# the retained 1.0015x with 40 of 40 cells AR-equal. gfx1100's prompt-streaming
+# policy admits width 8, so its own C8-K3 cell is unaffected.
 GGUF_SPECDEC2_MTP2_PHYSICAL = True
 GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS: dict[
     str, tuple[tuple[int, int], ...]
 ] = {
     "production": (
         *((width, depth) for width in range(1, 5) for depth in range(1, 4)),
-        (8, 3),
     )
 }
 # M5 whole-batch routing (scaling campaign, 2026-08-31): measured at the
@@ -2272,7 +2501,9 @@ GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS: dict[str, int] = {"production": 4
 # with acceptance trajectory an observational diagnostic. Strict C1,
 # other models/quants/profiles, and peers retain replay.
 GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES = {
+    (QWEN35_DENSE_H5120_GEOMETRY, None, "production"): (1, 2, 3, 4),
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (1, 2, 3, 4),
+    (QWEN35_MOE_H2048_E256_GEOMETRY, None, "production"): (1, 2),
 }
 # E1b reuses the exact Q6 F32 small-B rowtile only for physical proposal-head
 # dimensions/rows2-4 that have actual Qwen3.8 evidence. Wide request groups
@@ -2632,24 +2863,6 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "moe_linear",
             "gguf_iq4_xs",
             "selected_weighted_down_gemv_decode_bf16_bf16_out",
-        ),
-        # WPF-1 fixed-grid-Y raw Q5/Q6 row reuse is W7900-only pending an
-        # independent gfx1151 gate. Keep every output/slab key unaliased.
-        *(
-            ("linear", quant, f"rowbatch{row_batch}_bf16_{output_dtype}_out")
-            for quant in ("gguf_q5_k", "gguf_q6_k")
-            for row_batch in (4, 8, 16, 32)
-            for output_dtype in ("bf16", "f32")
-        ),
-        *(
-            (
-                "linear",
-                quant,
-                f"coltile{col_tile}_rowbatch{row_batch}_bf16_{output_dtype}_out",
-            )
-            for quant in ("gguf_q5_k", "gguf_q6_k")
-            for col_tile, row_batch in ((2, 16), (4, 8))
-            for output_dtype in ("bf16", "f32")
         ),
         # WPF-H7C transfers the exact H6U reduction instruction form to two
         # W7900 raw-Q6 leaves and remains absent without a gfx1151 screen.
@@ -3616,6 +3829,7 @@ __all__ = [
     "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES",
     "GGUF_PACKED_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_POLICY",
     "GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES",
+    "GGUF_STAGED_LINEAR_ROWS_LONG_DEFAULT_FILE_TYPES",
     "GGUF_GDN_INDEXED_SINGLETON_DECODE",
     "GGUF_GDN_PREFILL_AUTO_MODE",
     "GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE",
@@ -3692,6 +3906,11 @@ __all__ = [
     "GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES",
     "GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MIN_ROWS",
     "GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MAX_ROWS",
+    "GGUF_IQ_DENSE_PREFILL_POLICY",
+    "GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS",
+    "GGUF_IQ_DENSE_DECODE_POLICY",
+    "GGUF_IQ_DENSE_DECODE_STRICT_SLOTS",
+    "GGUF_IQ_DENSE_VERIFY_POLICY",
     "GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY",
     "GGUF_Q6_PLANAR_PREFILL_SHARED3R1_SHAPES",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS",
@@ -3891,7 +4110,21 @@ __all__ = [
     "PARO_FULL_ATTN_NATIVE_EXACT_WIDTHS",
     "PARO_NATIVE_BATCH_DECODE_DEFAULT",
     "PARO_RETAINED_BATCH_DEFAULTS",
+    "GGUF_CONSUMER_LAYERS",
     "TARGET_ARCH",
     "register_backend_kernels",
     "register_gfx1151_kernels",
 ]
+
+
+def register_vibevoice_kernels():
+    from hipengine.kernels.hip_gfx1100.vibevoice.registered import register_vibevoice_kernels as register_shared
+    register_shared('hip_gfx1151')
+
+
+def register_vibevoice_q4_kernels():
+    from hipengine.kernels.hip_gfx1100.vibevoice.q4 import register_vibevoice_q4_kernels as register_q4
+    register_q4('hip_gfx1151')
+
+
+register_vibevoice_kernels()

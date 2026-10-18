@@ -1,3 +1,7 @@
+---
+status: current
+owns: OpenAI-compatible server usage, endpoint support, request/response semantics, and current limitations.
+---
 # OpenAI-Compatible Server API
 
 Last updated: 2026-10-18
@@ -7,6 +11,12 @@ torch-free `hipengine.LLM.generate()` library API. Server dependencies are
 installed by default. HTTP requests route through the in-process generation
 batcher; compatible queued prompts can coalesce into one engine call, while the
 remaining async lock is limited to short model/session preparation mutations.
+
+The model plugin owns chat formatting, reasoning parsing, tool parsing and
+grammar capabilities. Qwen-style XML is one protocol, not a universal prompt
+format: Qwen4Exp uses its declared protocol. Query
+`/v1/hipengine/capabilities` rather than inferring grammar or tool support from
+a model name.
 
 ## Install
 
@@ -75,20 +85,41 @@ The resident KV policy is server-wide: set `--kv-storage` (`auto`, `bf16`, or
 startup. Requests that ask for a different KV policy are rejected instead of
 rebuilding the resident model.
 
-The defaults are `--kv-storage int8_per_token_head`, `--kv-scale-dtype fp32`,
-`--kv-scale-granularity per_token_head`, and four resident request slots. On the supported
-dense GGUF artifact this selects **176,128 tokens** of resident context on a
-48 GiB W7900 at the configured KV memory budget. Context length, request
-concurrency, and KV-pool memory are independent settings.
+The defaults are `--kv-storage bf16`, `--kv-scale-dtype fp32`,
+`--kv-scale-granularity per_token_head`, and four resident request slots.
+Context length, request concurrency, and KV-pool memory are independent
+settings. BF16 is the higher-precision baseline, and it is the storage the
+speculative (MTP) route has retained evidence for. `int8_per_token_head` opts
+into the compressed policy, which stores roughly half the per-token KV bytes at
+lower KV precision; on the supported dense GGUF artifact that policy selects
+**176,128 tokens** of resident context on a 48 GiB W7900 at the configured KV
+memory budget. That figure belongs to the int8 policy, so the BF16 default
+holds proportionally less resident context at the same KV memory budget.
 
-INT8 KV is used only when the loaded artifact is qualified for it. Qualification
-is keyed on the exact artifact SHA-256, size, backend, target architecture,
-weight quant, storage layout, **and scale dtype** — the retained evidence for the
-supported dense artifacts is keyed on `fp32` scales, so `--kv-scale-dtype fp16`
-matches no contract and the server falls back to BF16. An unqualified or unknown
-artifact also falls back to BF16; the reason is recorded in `/ready` and the
-KVCache summary rather than raised. Pass `--kv-storage bf16` to force the
-previous behavior outright.
+INT8 KV admission requires an implementation declaration covering the backend,
+target architecture, weight quant, storage layout, scale dtype, and scale
+granularity. Evidence additionally matches the artifact's execution fingerprint:
+a measured quality rejection falls back to BF16, while an implemented contract
+without a matching measurement runs as `unmeasured`, not as a qualified quality
+guarantee. Artifact SHA-256 and size remain provenance. The current dense
+declarations use `fp32` scales, so `--kv-scale-dtype fp16` falls back to BF16.
+The reason and requested/effective storage are recorded in `/ready` and the
+KVCache summary. Passing `--kv-storage bf16` explicitly matches the default.
+
+Resident memory is admitted as one budget. A request's target KV and scales, its
+draft KV, the verifier scratch, the decode graph, and the retained prefix
+entries are priced together, and a request that does not fit is refused before
+anything is allocated, naming the consumer that did not fit. That refusal is
+answered as capacity rather than as an internal fault.
+
+`/ready` also reports `model.kv_capability.max_packed_rows`, the effective
+row width a packed decode batch may use. It can be below the declared
+`max_direct_rows`: the direct INT8 batch leaf reads retained INT8 planes on
+every full-attention layer it covers, and a long-context INT8 session keeps a
+BF16 prefix of those layers for quality, so those layers have no retained
+planes. One packed batch cannot run both leaves, so such a session caps the
+width at one row and serializes the rows instead. The packed leaf then runs at
+full declared width only when the full-attention stack is uniformly INT8.
 
 Set `--max-active-requests` to change the maximum number of requests processed
 in flight. Requests beyond that limit remain queued. The shared KV pool starts
@@ -120,64 +151,193 @@ Per-request deadlines are opt-in via request `timeout_ms`. Set
 deadline to requests that omit the field. A request-level `timeout_ms` overrides
 the server default.
 
-GGUF MTP serving defaults to the fail-closed `auto` policy. Most scopes use
-exact/default AR; `enabled` cannot convert a broad dense `supports_default_mtp`
-boolean into default admission. Default routing requires an immutable
-model-plugin plan with `automatic_eligible=true`.
+GGUF MTP serving defaults to the capability-based `auto` policy: on gfx1151,
+a model with a declared MTP/NextN head receives MTP when a request omits
+`speculative_mtp`. Default routing uses the model plugin's executable
+implementation declaration; retained evidence describes measured cells but is
+not an admission gate.
 
-One exact scope is automatic: content-verified Qwen3.8 Q4_K_M on gfx1151,
-strict profile/manifest, BF16 uniform KV, resident and physical C1, B3,
-max-sequence 1024, prompt context 1-67, natural25 output, raw greedy, and memory
-fit. It uses Generation-2 staged `gguf_specdec2_mtp2` and plan fingerprint
-`sha256:5bee87fc6e6a157aca61d7704795ca97aa667798f1876c958db1d19a831b7ded`.
-Capabilities expose the complete key under `certified_explicit_scope`, include
-it under `certified_default_scopes`, and report
-`automatic_route_promoted=true`/`default_enabled=true`. The same fingerprint
-appears in automatic/explicit route decisions and rollback. Wrong artifact,
-backend, quant, profile/manifest, KV, resident capacity, group, B, sampler,
-context, horizon, or memory fit selects K0 before backend mutation with a stable
-reason. Q4_K_S and all other evidence rows remain K0 automatically.
+The implementation declaration is the automatic scope for every artifact the
+kernels implement, whether or not a measurement covers it. Admission is
+capability-only: backend and architecture, KV storage, layout, scale dtype and
+granularity, sampling mode, candidate depth, group width, and memory fit. A
+missing measurement never withholds the path, and an artifact that routes
+through the same kernels as a measured one inherits that measurement's identity
+by execution fingerprint rather than by file hash. A cell whose own retained row
+was measured slower than AR keeps `automatic_eligible=false` on that row, so
+automatic policy does not select it.
+
+What bounds automatic speculation is the backend's physical cell table: which
+`(width, depth)` pairs the active backend package lists, capped by resident
+capacity. A cell the table does not list falls back to whole-group AR rather
+than running a cell nothing measured, and a width no declaration covers is a
+capability miss rather than a measurement miss.
+
+Capabilities expose the resolved plan under `certified_explicit_scope`, and
+report `automatic_route_promoted`, `default_enabled`, and
+`certified_default_scopes` from it. The same plan fingerprint appears in
+automatic/explicit route decisions and rollback. Wrong backend, quant, KV,
+capacity, group, depth, sampler, or memory fit selects K0 before backend
+mutation with a stable reason. The startup summary states the resolved route and
+depth rather than the configured policy. An admitted plan without automatic
+eligibility is reported as `MTP explicit-only (default AR; <reason>)`, even with
+the `enabled` policy. The summary marks admitted plans as `(unmeasured)` when
+they lack an evidence key, evidence fingerprint, or evidence artifacts. Reason
+names do not determine measurement status; sampled evidence counts too.
+
+Qwen3.8-27B dense models and the declared Qwen3.6-35B-A3B MoE lane
+route when their MTP head is available. Gemma 4 26B-A4B uses its external MTP
+head on the same capability-based route. Temperature, top-p, top-k, min-p,
+penalties, and seeds use the native sampled verifier; only committed outputs
+advance the request's sampler counter.
+The sampled route serves logprob responses, explicit token stops, and the
+min-token/EOS floor, and reports the same per-token logprob the autoregressive
+route reports for the request. Forced tokens and dynamic constraints retain
+their ordinary-decoding fallback, and so does every one of these fields on a
+greedy request, whose raw-argmax route still refuses them.
+`"speculative_mtp": false` always disables MTP for a request.
 
 Operators may still select explicit diagnostics with
 `--speculative-mtp-serving opt_in` plus `"speculative_mtp": true`. Explicit
 false always forces AR. `serial_exact` remains the token-exact slow rollback
-control for the legacy direct hook; MoE and unqualified dense scopes are not
-automatic. The capabilities manifest reports
+control for the legacy direct hook. Dense and MoE automatic admission follows
+the implementation and evidence rules above. The capabilities manifest reports
 `sampling.speculative_mtp.serving_route=true` only when this policy is enabled
 and the loaded engine exposes a real MTP hook, and
 `sampling.speculative_mtp.default_enabled=true` when the default policy routes
-compatible requests through MTP. With a positive
-`--generation-batch-window-ms` and a matching `--max-active-requests`, compatible
-non-streaming MTP requests can coalesce into one backend call. The promoted
-scope requires resident capacity C1. Other shapes use strict AR or independent
-explicit diagnostics; no route-coalescing row is
-reported as hidden physical concurrency. Capabilities report the Generation-2
-frontier ceiling separately from the admitted plan's `resident_capacity=1` and
-`realized_group_rows=1`. Capabilities also expose the
+compatible requests through MTP. Independent MTP requests are submitted
+separately to the resident scheduler, which can batch their proposal and target
+work within supported physical width/depth cells; a positive
+`--generation-batch-window-ms` is not required. HTTP queue-group width is not
+proof of physical verifier concurrency. Capabilities report the Generation-2
+frontier ceiling separately
+from the admitted plan's `resident_capacity` and `realized_group_rows`.
+Dense uniform INT8 KV MTP supports both single-request and packed multi-request
+verification when the admitted storage layout supplies retained INT8 payload
+and scale planes for every required attention layer. The effective physical
+width is bounded by the resolved capability; a wider resident capacity does not
+by itself prove a wider verifier. Compact-DMS serving supports singleton native
+NextN verification with transactional rollback; it does not support packed DMS
+ownership. See
+[INT8 MTP serving](reference/INT8-MTP-SERVER-READINESS.md) and
+[DMS serving](reference/DMS-SERVING.md) for their separate contracts. The
+complete per-model/per-backend policy matrix — what is automatic, what is
+explicit-only, and the per-request force semantics — is
+[MTP-SERVING.md](MTP-SERVING.md).
+Explicit requests for missing implementation capabilities return HTTP 501 with
+the reason; automatic requests can use AR. MTP context is bounded by the
+target's allocated capacity, with no fixed 1,023-token admission cap.
+Capabilities also expose the
 restart-scoped circuit breaker. Repeated backend/runtime failures open one
-model/backend/profile/context scope; request cancellation and deadline errors do
-not count. `POST /v1/hipengine/speculative_mtp/rollback` disables MTP for all new
-requests without racing in-flight cycles, and restart resets the state.
+model/backend/profile/context scope, where the context bucket is the realized
+prompt length rounded up to 256 tokens; client validation errors, request
+cancellation, and deadline errors do not count.
+`POST /v1/hipengine/speculative_mtp/rollback` disables MTP for all new requests without
+racing in-flight cycles, and restart resets the state. An explicit MTP request
+then fails with `engine_unavailable` and the reason `mtp_circuit_breaker_open`
+or `mtp_operator_rollback` (HTTP 503, or an error event after SSE has started).
+Automatic selection may use AR and reports the substitution through
+`generation_shape.route="default"`, `generation_shape.route_decision.reason`
+with the breaker snapshot, and `speculative_mtp.effective_route="default"` plus
+the matching `speculative_mtp.decision_reason`.
 
-**MTP + thinking (reasoning effort).** The raw-argmax MTP proposer/verifier is
+**DMS sidecars.** Pass `--dms-metadata-path /path/to/dms_metadata.json`
+when starting the server, or `dms_metadata_path="/path/to/dms_metadata.json"`
+to `hipengine.LLM`. The metadata selects the retention policy; `--kv-storage`
+(or the library's `kv_storage`) selects `bf16` or `int8_per_token_head` compact
+payloads. Compact INT8 uses FP32 per-token/head scales. Dense INT8 policy
+records do not select the compact codec.
+
+DMS defaults to one resident request; wider residency fails because packed
+ownership is not implemented. The default `radix` cache supports complete-prompt
+hits, extensions, and branches that share a cached block boundary, for both
+compact codecs and NextN MTP. Complete hits restore compact KV, INT8 scales,
+token positions, eviction flags, and Conv/GDN state into a fresh private session;
+they do not reuse generated output. Set `--prefix-cache off` to disable caching.
+
+Extensions and branches restore cold pre-compaction BF16 KV and recurrent state,
+compute only the uncached suffix, then reselect retention over the combined
+prompt. The cache retains raw predictor scores so exact-budget selection uses
+the new prompt length rather than the previous prompt's eviction mask. These
+host copies preserve dense prompt-attention semantics without keeping a dense
+device decode shadow. They consume more host memory than compact snapshots alone.
+
+The target cache retains up to 16 prompt entries within the existing
+`HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES` host budget (1 GiB by default).
+It captures complete-prompt boundaries and a memory-bounded selection of
+256-token-aligned recurrent-state boundaries that the prefill's existing chunks
+reach in every recurrent layer. Cache capture does not split target chunks.
+Lookup chooses the longest available
+compatible prefix; eviction or absence of a suitable boundary causes a cache
+miss, not a feature refusal. An extension resumes the cached computation rather
+than recomputing its prefix at the longer prompt's chunk widths. Width-dependent
+arithmetic can therefore produce different tokens from a fresh whole-prompt
+prefill; exact cache hits do not have this partition difference.
+
+NextN checkpoints restore draft KV and the carried hidden row at the same
+boundary. If the source request was autoregressive or its draft checkpoint was
+evicted, cached target hidden rows prime NextN without replaying target prefill.
+MTP continues through the serial transactional verifier rather than dense target
+graphs. Completed requests release their private sessions; owned cache entries
+survive until eviction, reconfiguration, or engine close.
+
+Prefix telemetry reports `reuse_scope="prompt_prefix"`, reused and executed
+prefill tokens, `cache_host_bytes`, and `cache_provider_device_bytes`.
+`cache_resident_bytes` includes both cache tiers, separate from live target KV.
+MTP timing fields `specdec2_mtp2_prompt_prime_rows` and
+`specdec2_mtp2_prompt_reused_rows` distinguish draft work from restored state.
+
+After a session has been prepared, `/ready.dms.policy` reports the loaded
+window, target compression, prefill selection mode, decision source and compact
+storage. Non-streaming choice telemetry exposes `hipengine.diagnostics.dms`,
+including actual compression, live rows, device bytes and eviction counters.
+Target compression is a policy setting, not a promise of achieved compression:
+the protected recent window and generated tokens affect the retained size.
+A local W256/2× sidecar is a different policy from a published W8192 sidecar;
+use the loaded metadata rather than the sidecar's name to identify it.
+
+**MTP + thinking (reasoning effort).** The Qwen raw-argmax MTP proposer/verifier is
 exact only for the greedy fast path, so host-sampler thinking-budget enforcement
 (soft-close bias, EOS suppression, hard-close forcing) would make MTP inexact.
 When MTP is explicitly selected, the default **hint** policy
 (`--speculative-mtp-thinking hint`, env
 `HIPENGINE_SPECULATIVE_MTP_THINKING=hint`) keeps reasoning hints in the rendered
 prompt but relaxes host-sampler enforcement, so the request can remain
-raw-greedy-compatible. The complete typed plan still applies: rendered thinking
-prompts beyond context 67 select K0. S3 validates truthful hint/hard/context
-fallback behavior; thinking controls are not a separate promoted scope.
+raw-greedy-compatible. The complete typed plan and target capacity still apply;
+prompt length alone is not an MTP qualification gate.
 Responses that realize MTP report `thinking_policy` and
 `thinking_controls="prompt_hint_only"`. Set `--speculative-mtp-thinking hard`
 (or
 `HIPENGINE_SPECULATIVE_MTP_THINKING=hard`) to keep full host-sampler
-enforcement; then the thinking budget is a hard MTP blocker and thinking
-requests fall back to plain AR. A request can override the server policy with
+enforcement. The budget then stays a hard blocker for the raw-argmax MTP route,
+which cannot enforce it: automatic selection can use AR, while explicit MTP
+returns a named capability error. A request that actually samples is served by
+the sampled MTP route, which applies
+the budget per verified row: the phase machine, EOS suppression, and soft-close
+bias run on each row's own state, and a reached hard cap queues its close
+sequence from inside the cycle that reaches it. A request can override the server
+policy with
 `"speculative_mtp": {"enabled": true, "thinking": "hint" | "hard"}`; the
 capabilities manifest reports the active policy as
 `sampling.speculative_mtp.thinking_policy`.
+
+Gemma 4 MTP applies the autoregressive controls to each verified target row,
+including thinking budgets, forced closing sequences, `min_tokens`, logprobs,
+and token-stop sequences. Those controls do not require an AR substitution.
+Rejected speculative rows do not advance the committed control state.
+Gemma's resident MTP route physically packs up to four requests into target
+verification and assistant projection calls. Requests keep independent KV,
+sampler state, and unpublished output; cancellation releases only that request.
+Prompt prefill and attention execute against each request's own cache. Packed
+verification uses the row-exact target implementation, including under the
+production profile. `GenerationOutput.telemetry.diagnostics` reports
+`physical_target_request_widths` and `physical_proposal_request_widths`.
+Gemma defaults to fair prefill/decode scheduling so arriving requests can join
+active generation; an explicit `HIPENGINE_PREFILL_DECODE_POLICY` overrides it.
+Physical widths can be smaller than the live request count when requests reach
+their next speculative cycle at different times. When a request needs another
+cycle, peers may compute ahead with at most two cycles of unpublished output;
+cancellation discards that private output.
 
 Generic draft-model providers are a separate explicit-only route. The
 model-owned Laguna B4 DFlash provider has direct-library evidence, but its
@@ -226,8 +386,8 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `GET /health` | Built in | Unauthenticated liveness probe; does not imply model readiness. |
 | `GET /ready` | Built in | Unauthenticated readiness/capacity probe. Returns HTTP 200 when ready and HTTP 503 while startup is not ready or the engine service cannot accept work; loaded-model metadata includes artifact-scoped approximate-KV capability provenance. |
 | `GET /v1/models` | Built in | Returns the single served model id plus `hipengine` status metadata: backend/quant, loaded state, compact capability summary, context defaults, KV policy/estimate and artifact-scoped capability decision, routing count, and capabilities URL. |
-| `GET /v1/hipengine/capabilities` | Built in | Authenticated hipEngine manifest for served model/config, immutable approximate-KV capability identity/decision, context defaults, tokenizer availability, streaming/logprobs/tool/reasoning support, sampling execution/native/MTP/generic speculative-provider status, request-timeout support, cache/session status, routing count, tensor-parallel topology/status, the decode route with its opt-in AR batch envelope, and unsupported fields. |
-| `POST /v1/hipengine/speculative_mtp/rollback` | Built in | Authenticated runtime rollback: routes every new MTP request to AR until server restart, while in-flight owned cycles retire through the RF3 lifecycle contract. Returns direct circuit-breaker state. |
+| `GET /v1/hipengine/capabilities` | Built in | Authenticated hipEngine manifest for served model/config, immutable approximate-KV capability identity/decision, context defaults, tokenizer availability, streaming/logprobs/tool/reasoning support, sampling execution/native/MTP/generic speculative-provider status, request-timeout support, cache/session status, routing count, tensor-parallel topology/status, and unsupported fields. |
+| `POST /v1/hipengine/speculative_mtp/rollback` | Built in | Authenticated runtime rollback: automatic requests use AR and explicit MTP requests fail until server restart, while in-flight owned cycles retire through the RF3 lifecycle contract. Returns direct circuit-breaker state. |
 | `GET /v1/hipengine/decode` | Built in | Authenticated read-only decode-path telemetry: the active execution path and, when the engine batches decode, the physical batch state (state slots, max positions, live slots, steps, step-width histogram, imports, releases, failure). Reports `available: false` with a fixed `reason` when the engine has no hook or the hook fails. |
 | `GET /v1/hipengine/sessions` | Built in | Authenticated metadata-only listing for app-local chat transcript sessions plus continuation-handle counts. Does not include prompt, generated, or tool-result text. |
 | `DELETE /v1/hipengine/sessions/{session_id}` | Built in | Authenticated deletion of one app-local chat transcript session. Returns whether a session was removed. |
@@ -240,8 +400,9 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `POST /v1/hipengine/detokenize` | Built in | Decodes token ids with the served tokenizer when available. |
 | `POST /v1/hipengine/count_tokens` | Built in | Counts raw text or rendered chat messages after applying the server chat template, tool markup, thinking controls, and optional app-local `session.id` transcript prefix. Chat diagnostics include lowered thinking-budget close-token metadata when tokenizer support is available. |
 | `POST /v1/hipengine/fit_context` | Built in | Reports prompt tokens, effective max tokens, max allowed/recommended `max_tokens`, required/overflow context, and clear/truncation policy using the same admission arithmetic as generation, including optional app-local `session.id` transcript prefixes plus `session.context_overflow_policy` for chat. Chat diagnostics include the same thinking-budget close-token metadata as `count_tokens`. |
+| `POST /v1/audio/songs` | Built in for a song model | Lyrics plus a style prompt to one song, on the model's own pipeline (`LLM.generate_song()`). Returns `audio/wav` (48 kHz stereo PCM), or a JSON provenance document with `response_format: "json"`. One request runs at a time; a second concurrent request is refused with a retryable 429. Only a model whose plugin declares the `song` surface serves it; a text model answers 501. |
 | `POST /v1/completions` | Built in | Text prompt(s), one token-ID row, or token-ID rows to `LLM.generate()`. Exact-token prompts support live SSE for one row and buffered SSE for multiple rows; they do not support `echo`, continuations, or sessions. For a single prompt with `n=1` and `echo=false`, `stream=true` uses token/chunk SSE from `LLM.stream()` when available; multi-prompt, `n>1`, and echo streaming fall back to buffered SSE. |
-| `POST /v1/chat/completions` | Built in | Renders text messages with roles `system`, `developer`, `user`, `assistant`, or `tool` to a Qwen-style prompt and calls `LLM.generate()` / `LLM.stream()`. With Qwen4Exp `--vision-model`, one multipart user message may include bounded base64 `image/png` `image_url` parts and uses the model-owned multimodal path (`n=1`, non-streaming, no tools/session/continuation). Text supports token-level `stream=true` SSE for `n=1`; `n>1` streaming returns buffered per-choice chunks. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). Accepts OpenAI `tools` / `tool_choice` and returns `tool_calls` from Qwen-style `<tool_call>{...}</tool_call>` output. |
+| `POST /v1/chat/completions` | Built in | Renders text messages with roles `system`, `developer`, `user`, `assistant`, or `tool` to a Qwen-style prompt and calls `LLM.generate()` / `LLM.stream()`. With Qwen4Exp `--vision-model`, one multipart user message may include bounded base64 `image/png` `image_url` parts and uses the model-owned multimodal path (`n=1`, non-streaming, no tools/session/continuation). Text supports token-level `stream=true` SSE for `n=1`; `n>1` streaming returns buffered per-choice chunks. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). Accepts OpenAI `tools` / `tool_choice` and returns `tool_calls` from Qwen-style XML function envelopes or legacy `<tool_call>{...}</tool_call>` output. |
 
 ### Decode telemetry
 
@@ -430,6 +591,69 @@ curl http://127.0.0.1:8000/v1/chat/completions \
   }'
 ```
 
+### Song generation
+
+A model that declares the `song` surface serves `POST /v1/audio/songs` instead of
+the text endpoints. YuE2 is the current example; see
+[model-cards/MODEL-YUE2.md](model-cards/MODEL-YUE2.md).
+
+```bash
+hipengine serve \
+  --model ~/models/YuE2-3B \
+  --vae-model ~/models/YuE2-Vae \
+  --served-model-name yue2
+
+curl -sS http://127.0.0.1:8000/v1/audio/songs \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "yue2",
+    "style": "warm acoustic pop, brushed drums, female lead",
+    "lyrics": "[verse]\nStreetlights hum a quiet tune\n[chorus]\nWe are the echo in the room"
+  }' \
+  --output song.wav
+```
+
+`--vae-model` (or `HIPENGINE_YUE2_VAE_DIR`) names the companion decoder
+checkpoint. Without either, hipEngine looks for the `m-a-p/YuE2-Vae` snapshot in
+the local Hugging Face cache and reports a missing decoder by name. The server
+builds the pipeline during startup, so `/ready` returning 200 means the first
+request is served without a load.
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `style` | required | Free-text style description. |
+| `lyrics` | required | Song lyrics with optional `[verse]`/`[chorus]` section tags. |
+| `cot` | `full` | Planning mode: `full` (melody plus sections), `melody` (melody only), or `off` (none). |
+| `abc` | — | An external ABC score, used in the `melody` and `full` modes. |
+| `seed` | `831001` | Sampling seed. |
+| `steps` | `32` | Override the product's ODE step count (reported as `ode_steps.default` in the capabilities manifest). Fewer steps trade fidelity for time. |
+| `cfg_scale` | model default | Classifier-free guidance scale. |
+| `request_id` | `song` | Filename-safe id, returned as the `Content-Disposition` filename and echoed in the response. |
+| `response_format` | `wav` | `wav` returns the audio; `json` returns the same audio as base64 plus the plan, the semantic token count, the truncation flags, the checkpoint identities, and the timing. |
+
+A `wav` response carries the audio with these headers:
+
+| Header | Meaning |
+| --- | --- |
+| `X-Hipengine-Request-Id` | The pipeline's request id, unique per generation. |
+| `X-Hipengine-Frames` | Semantic frames generated. |
+| `X-Hipengine-Duration-Seconds` | Audio duration in seconds. |
+| `X-Hipengine-Latent-Identity` | sha256 of the latents. |
+| `X-Hipengine-Audio-Identity` | sha256 of the decoded audio. |
+| `X-Hipengine-Generation-Seconds` | Wall-clock time the request took. |
+
+The two identities make a repeat run comparable, and they are not advisory: the
+same request, seed, and settings on the same hardware return byte-identical audio
+with the same two identities. The truncation flags in the `json` form report
+whether the plan or the semantic decode stopped at its cap rather than at its own
+end.
+
+A song takes minutes rather than seconds, so this endpoint is not part of the
+batched text path: one request runs at a time, a concurrent request is a
+retryable 429, and a client that disconnects stops the pipeline between stages.
+The capabilities manifest reports the endpoint under `song_generation`, with
+`loaded: true` once the resident pipeline is built.
+
 ### Logprobs
 
 Non-streaming completions accept OpenAI-style `logprobs: N` and return
@@ -510,9 +734,15 @@ final SSE payload with `choices: []` and `usage` before `data: [DONE]`.
 Set `"stream_options": {"include_hipengine": true}` to request hipEngine
 extension metadata on SSE payloads. Each payload gets a top-level `hipengine`
 object with `metadata_version`, `event`, and `timing.elapsed_ms`. After the
-first generated chunk, timing also includes server-measured `ttft_ms`; final
-done/usage payloads include `decode_elapsed_ms` and `decode_tokens_per_second`
-when generated-token counts are available. The top-level `hipengine` object also
+first generated chunk, timing also includes server-measured `ttft_ms`. On live
+streams, final done/usage payloads can include `decode_elapsed_ms` and
+`decode_tokens_per_second`: the interval runs from the first to the last
+token-bearing chunk and counts only tokens delivered after the first chunk.
+A rate requires known counts at both ends and a positive interval. Terminal SSE
+flushing is excluded. Buffered responses omit this decode rate, including a
+completed backend chunk split into reasoning/content fragments; their flush
+speed is not model throughput. Backend phase timing remains available separately.
+The top-level `hipengine` object also
 includes backend `GenerationTelemetry.timing` values with a `backend_` prefix
 when a live stream chunk or final buffered response provides them, for example
 `backend_prefill_ms` and `backend_decode_ms`. It also includes `routing`
@@ -637,9 +867,11 @@ the optional
 backend-authored field vocabulary under
 `features.choice_telemetry.decode_state_fields`.
 
-Cache hit/miss, budget pressure, per-request KV-byte deltas, and
+Cache budget pressure, per-request KV-byte deltas, and
 backend-authored per-phase token metadata are omitted until the runtime exposes
-those signals.
+those signals. Prefix-cache hit/miss is reported under
+`usage.prompt_tokens_details.cached_tokens` and
+`choices[].hipengine.diagnostics.prefix_cache`.
 
 ### Exact generated-token accounting
 
@@ -677,6 +909,43 @@ validation. A legacy generator that does not provide exact IDs retains the old
 retokenized usage fallback and omits `hipengine.token_accounting`, so benchmark
 harnesses can fail closed instead of treating that fallback as exact evidence.
 
+### Prefix-cache usage
+
+When the backend reports per-request prefix-cache reuse, the OpenAI-compatible
+`usage` carries the vLLM-compatible cached prompt-token count:
+
+```json
+{
+  "usage": {
+    "prompt_tokens": 1035,
+    "completion_tokens": 24,
+    "total_tokens": 1059,
+    "prompt_tokens_details": {
+      "cached_tokens": 1024
+    }
+  }
+}
+```
+
+`prompt_tokens` stays the full prompt length; `cached_tokens` is the subset of
+it that the prefix cache served, summed from backend `prefix_cache`
+diagnostics (`reused_tokens`) and clamped to the prompt it came from. A request
+whose cache was consulted and missed reports `cached_tokens: 0`. A request whose
+outputs carried no prefix-cache telemetry omits `prompt_tokens_details`
+entirely, because a zero there would describe a cache nobody consulted. The
+field appears wherever a response carries backend generation telemetry: both
+blocking endpoints and single-choice streams. Multi-choice streams that do not
+carry per-row backend telemetry omit it.
+
+The per-request prefix-cache block itself is available under
+`choices[].hipengine.diagnostics.prefix_cache` when
+`stream_options.include_hipengine=true`. It reports `mode`, `block_size_tokens`,
+`eligible`, `lookup`, `hit`, `matched_tokens`, `reused_tokens`,
+`avoided_prefill_tokens`, `executed_prefill_tokens`, `reused_pages`, the source
+that served the match, `fallback_reason` when the cache was not used, and
+resident cache size in entries, pages, and bytes. `hipengine chat` reads it to
+show per-reply prefill, decode, and cached-token stats and to run `/bench`.
+
 ### Speculative MTP usage and effective-state reporting
 
 When a request is served through the speculative MTP route, the OpenAI-compatible
@@ -697,9 +966,10 @@ accepted and `rejected_prediction_tokens` is the number it rejected, summed
 from ownership-bearing backend `GenerationTelemetry.timing` payloads. Copied
 batch-timing payloads with `timing_owner=false` are ignored. The fields are
 present in non-streaming responses, including zero-draft MTP requests, and
-non-MTP requests omit both fields. Speculative MTP requests are currently
-non-streaming (`streaming_compatible=false`), so no MTP SSE usage contract is
-advertised yet.
+non-MTP requests omit both fields. The same counts appear in the usage event of
+an MTP SSE stream, taken from the terminal owner-bearing chunk; streaming MTP
+is advertised as `streaming_compatible=true` and serves the speculative route
+directly.
 
 The per-request effective MTP state is also reported in the top-level
 `hipengine.speculative_mtp` extension of non-streaming completion and chat
@@ -714,10 +984,70 @@ responses:
     "accepted_draft_tokens": 17,
     "rejected_draft_tokens": 3,
     "acceptance_rate": 0.85,
-    "draft_cycles": 5
+    "draft_cycles": 5,
+    "mtp_output_tokens": 20,
+    "ar_output_tokens": 5,
+    "output_accounting": {
+      "completion_tokens": 25,
+      "mtp_output_tokens": 20,
+      "ar_output_tokens": 5,
+      "ar_output_tokens_in_cycles": 0,
+      "mtp_coverage": 0.8,
+      "mtp_output_tokens_explained_by_cycles": 20,
+      "unexplained_mtp_output_tokens": 0,
+      "speculative_cycles": 4,
+      "reconciled": true,
+      "reconciled_reasons": []
+    },
+    "selected_depth_histogram": {"0": 1, "3": 4},
+    "fallback_event_counts": {"target_graph_context_bucket_miss": 4},
+    "fallback_event_total": 4,
+    "fallback_reason": "target_graph_context_bucket_miss",
+    "first_fallback_position": 21
   }
 }
 ```
+
+`used` reports that the request took the speculative route; it is **not** proof
+that every token came from a speculative cycle. `mtp_output_tokens` counts the
+visible tokens emitted by accepted speculative cycles and `ar_output_tokens`
+counts every other emitted token (including the target-prefill root token),
+with `ar_output_tokens = completion_tokens - mtp_output_tokens` always holding.
+Because that identity holds by construction, `output_accounting.reconciled` is
+decided by independent checks rather than by it: `mtp_output_tokens` may not
+exceed `mtp_output_tokens_explained_by_cycles` (one verified token per committed
+speculative cycle plus its accepted drafts, which
+`unexplained_mtp_output_tokens` reports as a signed shortfall or excess),
+speculative output requires committed cycles, and `ar_output_tokens_in_cycles`
+may not exceed `ar_output_tokens`. `reconciled_reasons` names every failed check
+and is empty when the split is attributable. A response that reports five
+completion tokens, three speculative ones and ninety-nine in-cycle
+autoregressive ones satisfies the arithmetic and fails here.
+`selected_depth_histogram` keys the number of admitted candidates per cycle, so
+a `"0"` bucket records a cycle that ran autoregressively inside an otherwise
+speculative request. `output_accounting.ar_output_tokens_in_cycles` counts the
+autoregressive tokens emitted while the request was still owned by the
+speculative plan; the rest of `ar_output_tokens` was emitted after the request
+left the plan. `fallback_event_counts` counts non-speculative **steps and
+refusals** by planner reason (with `fallback_event_total` their sum) and
+`fallback_reason` names the most frequent one; these are event counts, not token
+counts, and are never comparable to `ar_output_tokens`. Per-reason *token*
+attribution comes from `output_accounting.span_accounting.ar_tokens_by_reason`,
+which is present only when the server runs with `HIPENGINE_MTP2_OUTPUT_SPANS=1`.
+`first_fallback_position` is `null` when speculation covered every token after
+the prompt root, `0` when it covered none, and the emitted-token index of the
+first non-speculative token after speculative output otherwise.
+
+With `HIPENGINE_MTP2_OUTPUT_SPANS=1` the backend also records one committed
+output span per non-speculative step and per speculative cycle — execution mode,
+the planner reason it ran under, the emitted-token position it starts at, and
+its token count — and reports them as `output_accounting.span_accounting`:
+`tokens`, `mtp_tokens`, `ar_tokens`, `ar_tokens_by_reason`, `contiguous`,
+`covers_completion`, and the two match flags. Those spans must tile the emitted
+output (allowing the prompt root token to precede the first span) and agree with
+both counters, so a failure means the split cannot be traced back to what the
+backend committed. The switch is off by default because the span list grows with
+the cycle count.
 
 `hipengine.generation_shape.route` records the selected scheduling route;
 `effective_route` and `used` are derived from ownership-bearing backend
@@ -728,8 +1058,10 @@ did not use. An MTP execution path remains `used=true` even when it proposes zer
 drafts, in which case `acceptance_rate` is `null`. If an MTP-selected request
 realizes backend K0 before mutation, the compact summary reports
 `effective_route="default"`, `selected_route="speculative_mtp"`, `used=false`,
-and `decision_reason="backend_k0_fallback"`; it does not claim MTP usage or
-increment MTP request metrics. Speculative Generation-2 streaming publishes
+and `decision_reason="backend_k0_fallback"`, with `fallback_reason` naming the
+specific refusal (for example `target_context_k0`) instead of collapsing every
+refusal into the compatibility label; it does not claim MTP usage or increment
+MTP request metrics. Speculative Generation-2 streaming publishes
 canonical token IDs and attaches model-tokenizer text to each committed event;
 blocking and stream text/IDs are byte-exact on the qualified C1 scope. Requests
 with `stream_options.include_hipengine` expose per-choice backend telemetry.
@@ -749,10 +1081,13 @@ operators but is not an RF4/RF6 dependency:
 `hipengine_mtp_draft_acceptance_rate` gauge, and a static
 `hipengine_mtp_serving` gauge (1 when the server's effective MTP route is
 enabled for the loaded engine, 0 otherwise). Eager startup logs the effective
-state on one line, e.g. `EFFECTIVE_MTP: serving=enabled engine_supported=True
-default_enabled=True policy=enabled thinking=hint`. Lazy startup first reports
-`serving=pending engine_supported=unknown`; immediately after first-request
-model creation it logs the loaded engine's effective state.
+state on one line once the model is resident, e.g. `EFFECTIVE_MTP:
+serving=enabled engine_supported=True default_enabled=True policy=enabled
+thinking=hint`. Lazy startup first reports `serving=pending
+engine_supported=unknown` and logs the loaded engine's effective state once the
+first request prepares the model. Either way exactly one line states a resolved
+state, emitted when the engine resolves its generator rather than while the
+model is still loading.
 
 ### Choice telemetry
 
@@ -815,11 +1150,29 @@ as separate dimensions:
 `route_cap.value` limits compatible queued HTTP requests, not choices, prompt
 rows, backend width, or verifier rows. `queue_group` identifies the coalesced
 request group and this response's prompt slice. `backend_groups` records every
-actual generator call, including any future scheduler partitioning.
-`verifier_rows` counts target-model verification rows and is zero for
-non-speculative work. A c8 client benchmark under a four-request route cap
-therefore reports two queue groups with backend widths `[4, 4]`, not a width-8
-verifier.
+actual generator call, including any scheduler partitioning within that call.
+`verifier_rows` counts verification rows reported by that call. Zero can mean
+non-speculative work **or** a generator call that does not publish verifier
+rows; it does not prove that MTP did not run.
+
+Independent MTP requests enter the shared resident scheduler separately, so
+`queue_group` and `backend_groups` can each report one row even when the
+scheduler batches work across those requests. For GGUF MTP2, inspect
+`choices[i].hipengine.diagnostics.specdec2_mtp2.physical_execution` instead:
+
+- `proposal_batch_calls` counts batched proposal launches;
+  `proposal_rows_histogram` maps physical proposal width to launch count.
+- `target_pass_count` counts recorded target passes, including singleton passes
+  on the staged adapter; `target_batch_calls` counts batched calls.
+- `target_rows_histogram` maps packed target **token-row** width to pass count.
+  Its width includes each request's seed plus draft rows, not just requests.
+
+The histograms describe only batched paths; an empty histogram with positive
+`target_pass_count` means singleton target work occurred. Each participating
+request records shared calls, so do not sum these counts across responses as
+if they were distinct GPU launches. Zero counters do not prove that no work
+occurred on an adapter without pass recording. Backends without these fields
+omit `physical_execution` rather than reporting an inferred width.
 
 The object is repeated on every response participating in one queue group so a
 client harness can validate complete item indices/slices and deduplicate by
@@ -832,8 +1185,20 @@ Automatic decisions add `route_decision` to the same object. It records
 `realized_group_rows`, `output_horizon_tokens`, the exact-default requirement,
 and the evidence artifact. The promoted exact scope reports
 `qualified_automatic_c1_b3` and selects `speculative_mtp`; unqualified scopes
-select `default` with a stable reason such as `context_bucket_not_qualified` or
-`sampling_mode_not_qualified`. Explicit MTP uses the same typed plan.
+select `default` with a stable reason such as `physical_group_not_qualified`,
+`resident_capacity_not_qualified`, or `sampling_mode_not_qualified`. Explicit
+MTP uses the same typed plan.
+
+Admission is a physical and ownership question: artifact content, backend,
+architecture, weight quant, KV storage and layout, realized group width,
+resident capacity, candidate depth, sampling mode, and memory fit. Prompt
+context, output horizon, session length, and the resolved execution-profile
+manifest are reported for provenance but do not gate serving, because they
+change with ordinary traffic and with any kernel or variant selection. When
+several evidence rows describe the same physical cell, the cell takes the
+strongest authorization: an automatic-eligible row wins over an explicit-only
+row. See
+[`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md#29-capability-admits-evidence-selects-and-promotes).
 
 ### Finish details
 
@@ -978,8 +1343,17 @@ Qwen-style tool block into the rendered chat prompt and expects the model to
 emit tool calls as:
 
 ```text
-<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>
+<tool_call>
+<function=read>
+<parameter=path>
+README.md
+</parameter>
+</function>
+</tool_call>
 ```
+
+Legacy `<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>`
+blocks are also accepted by the compatibility parser.
 
 The server converts those blocks to OpenAI-compatible `message.tool_calls` in
 non-streaming responses or `delta.tool_calls` chunks in streaming responses, with
@@ -989,10 +1363,16 @@ remaining assistant text. If that entire remainder consists only of Qwen
 `<|endoftext|>` / `<|im_start|>` / `<|im_end|>` controls, whitespace, and a
 marker-bound chat role label, it is discarded as leaked template residue.
 Ordinary or interior literal text is preserved, and non-tool outputs are
-unchanged. Long streaming `function.arguments` strings are
-split into concatenable fragments after the full tool-call block has been parsed
-and validated; the first chunk carries the function name, and all chunks carry
-the same tool-call id and index. Buffered c>N streams can preserve backend
+unchanged. For single-choice streams using the XML host constraint, content and
+string-typed argument values stream incrementally; non-string values wait until
+the parameter closes so they can be decoded as JSON. The first argument chunk
+carries the function name, and all chunks carry the same tool-call id and index.
+The server validates the completed call and checks it against the streamed
+arguments before emitting `finish_reason: "tool_calls"`. Clients must wait for
+that finish event before executing a call. Truncated or invalid live calls end
+with an SSE error, never a successful empty response. Legacy JSON compatibility
+and other buffered paths split arguments after parsing and validation.
+Buffered c>N streams can preserve backend
 scheduler chunk telemetry on those argument fragments when the validated
 argument string is a contiguous span of the raw tool-call block. Prior assistant
 `tool_calls` and `role: "tool"`
@@ -1020,16 +1400,20 @@ Tokenizer encode/decode-backed tool requests combine prompt/rendering, host
 processed-logits constraints, and post-generation parsing/validation. If either
 capability is unavailable, the strict mask is not installed and the existing
 prompt/parse plus fail-closed result validator remains authoritative. In
-`tool_choice="auto"`, candidate masking admits either normal text or one
-canonical `<tool_call>` envelope and prevents switching from visible content to
-a later tool call. Required and specific choices admit only the envelope. The
-envelope grammar enforces a declared tool name plus strict root-object JSON
-arguments before token selection; full function JSON Schema semantics remain in
-the post-generation validator. Unless thinking is explicitly disabled, the
+`tool_choice="auto"`, the XML host constraint admits normal text, including a
+preamble before a tool call. Required and specific choices admit only tool
+calls. The constraint enforces declared function names and parameter-envelope
+structure; values are opaque text until parsing, and full function JSON Schema
+semantics remain in the post-generation validator. Parallel calls are allowed
+when `parallel_tool_calls` is omitted or `true`; explicit `false` limits output
+to at most one call. The closing XML tag is preserved for parsing rather
+than registered as a stop sequence; generic outer-tag repair is not used for
+XML because it can close an unfinished parameter incorrectly. Unless thinking
+is explicitly disabled, the
 grammar also accepts one optional `<think>...</think>` prefix before applying
 the final text/tool branch, including when no tokenized thinking budget owns the
 phase. Once a tool block parses successfully, the
-server also rejects multiple parsed calls unless `parallel_tool_calls=true` is
+server also rejects multiple parsed calls when `parallel_tool_calls=false` is
 explicitly supplied. It does strict result validation when `tool_choice` is
 `none`, `required`, or a specific function, when any tool function declares
 `"strict": true`, or when `parallel_tool_calls` is explicitly supplied. Strict
@@ -1045,7 +1429,9 @@ ended because the generation budget was exhausted; in that case
 `invalid_tool_call` failures, chat requests may set
 `invalid_tool_call_error_mode="hard_error"` to receive an HTTP error in
 non-streaming responses or an SSE `error` chunk in streaming responses. The
-default remains the normal chat response described above.
+default remains the normal chat response described above on buffered and
+non-streaming paths. Live XML streams always surface final validation failures
+as SSE errors, because argument fragments may already have reached the client.
 For buffered c>N streams that have backend scheduler chunks, final done choices
 also include private `choices[].hipengine.withheld_scheduler_tool_chunks`
 diagnostics when those chunks were withheld because the parsed tool call was
@@ -1097,8 +1483,9 @@ unique deterministic envelope/structural suffix exactly fits the remaining
 budget, that suffix is queued through the same forced-token path. Every forced
 token is revalidated against the grammar; token decode failures, empty token
 text, and an empty constrained candidate set fail closed. Tool constraints block
-native GPU sampling and raw-target MTP, so this is a host processed-logits
-correctness route rather than native-sampler parity. Full JSON Schema argument
+native GPU sampling and raw-target MTP. They use host processed logits, and can
+use MTP when the model plugin implements processed acceptance for the request's
+constraint contract. This is not native-sampler parity. Full JSON Schema argument
 constraints remain post-generation.
 
 The current post-generation schema subset covers `type`, `enum`, `const`,
@@ -1285,7 +1672,8 @@ the sampler when the request does not supply `eos_token_id`. If a soft-biased
 first close token is selected, the remaining close suffix is forced through
 normal token selection so KV state remains consistent. If tokenization is
 unavailable, generation remains prompt-hint-only rather than failing. Native GPU
-sampler parity and speculative/MTP parity are not implemented yet. Generic
+sampler parity is separate from the model-specific MTP control support described
+under **MTP + thinking**. Generic
 sampler `min_tokens` / `eos_token_id` still suppresses EOS for ordinary
 generation independent of thinking-budget phase policy. Chat `count_tokens`
 diagnostics honor app-local `session.id` transcript prefixes exactly as stored.
@@ -1505,7 +1893,7 @@ when `invalid_tool_call_error_mode="hard_error"`.
 | --- | ---: | --- | --- |
 | `unsupported_parameter` | 400 | no | Unsupported request field/value. Legacy `error.code` can be `unsupported_content_type` for non-text chat content parts. |
 | `unsupported_feature` | 501 | no | Requested optional runtime feature is unavailable for the served model, for example tokenizer/counting diagnostics without tokenizer hooks. |
-| `invalid_tool_call` | 400 | no | Normal chat `finish_details.reason` for parsed undeclared tool names, multi-call output without `parallel_tool_calls=true`, strict tool result-validation failures, and unparseable `<tool_call>` markup in tool-enabled requests; opt-in HTTP/SSE hard-error payload when `invalid_tool_call_error_mode="hard_error"`. Compatibility parsing recovers a duplicated `<tool_call>` start marker only when the wrapped inner JSON is valid. |
+| `invalid_tool_call` | 400 | no | Normal chat `finish_details.reason` for parsed undeclared tool names, multi-call output with `parallel_tool_calls=false`, strict tool result-validation failures, and unparseable `<tool_call>` markup in tool-enabled requests; opt-in HTTP/SSE hard-error payload when `invalid_tool_call_error_mode="hard_error"`, or an SSE error by default for live XML streams. Compatibility parsing recovers a duplicated `<tool_call>` start marker only when the wrapped inner JSON is valid. |
 | `schema_violation` | 422 | no | Request body or server-side request validation errors; also normal `finish_details.reason` for invalid `response_format` or strict tool schema results. Legacy `error.code` is `validation_error` or `invalid_request`. |
 | `invalid_continuation` | 400 | no | Unknown, consumed, wrong-endpoint, wrong-model, or otherwise incompatible `continuation_id`. |
 | `continuation_expired` | 410 | no | Known `continuation_id` that expired before resume. |
@@ -1513,6 +1901,9 @@ when `invalid_tool_call_error_mode="hard_error"`.
 | `deadline_exceeded` | 408 | yes | `timeout_ms` or server default deadline expired. |
 | `cancelled` | 499 | yes | Client disconnect/cancel observed at server await or stream boundaries. |
 | `engine_busy` | 429 | yes | Generation queue or chat-session cap rejected the request before generation; matched request routes include `error.hipengine.routing` with an `overload_source`. |
+| `engine_unavailable` | 503 | yes | The resident engine service is closed, unhealthy, or unresponsive and cannot accept work. `error.message` names the fatal cause the service recorded, or for an engine command that outlived its liveness budget the method, the budget, and the activity that held the driver thread. A closed or unhealthy service is also reported as `unhealthy` by `/ready`; restart the server to restore serving. |
+| `internal_error` | 500 | no | An unexpected server fault escaped request handling. The payload still carries `error.message`, `error.code`, and `error.hipengine.exception_type`, so a client never receives a bodyless or non-JSON 500; the traceback stays in the server log. |
+| `execution_failed` | 500 | yes | The request's own execution step failed before its result could be applied, so the engine contained the failure and kept serving; `error.hipengine.execution` names the phase, the affected `request_ids`, the `work_kind`, and whether the failed step may have mutated device state (`state_mutation`). A fatal failure that closes the resident service is reported separately: `/ready` turns `unhealthy` and in-flight requests fail with `engine_unavailable`. |
 | `model_unavailable` | 404 | no | Requested model is not served; legacy `error.code` is `model_not_found`; `error.hipengine.routing` describes the failed single-model match. |
 | `routing_failed` | 502 | yes | Reserved for future multi-model or multi-worker routing failures. |
 
@@ -1542,11 +1933,13 @@ continuation-handle counts. It intentionally omits prompts, generated text,
 tool results, and raw
 request/response payloads.
 
-If eager startup fails, the process stays live but unready. `/ready` returns
-HTTP 503 with `status: "error"`, a redacted `startup.error` containing the
-failed stage, exception type, generic message, and operator guidance, plus a
-matching diagnostics entry. Raw exception text is kept in server logs, not the
-readiness payload.
+If eager startup fails, the server does not stay up unready. The failed stage,
+exception type, generic message, and operator guidance are recorded in
+`startup.error` with a matching diagnostics entry and logged, and then startup
+ends with a non-zero exit so a supervisor can act on the failure. A process left
+listening with nothing behind it answers every request with 503 and puts the
+reason somewhere only `/ready` can find it. Raw exception text is kept in server
+logs, not the readiness payload.
 
 For engines exposing service health, the `service` object reports
 `accepting_requests`, `driver_alive`, `closing`, `closed`, and `failure`
@@ -1570,6 +1963,98 @@ HIPENGINE_DEBUG=1 hipengine serve --model /path/to/model
 
 Debug payload logs include prompts and generated text; do not enable them for
 shared or sensitive deployments.
+
+Server logs are colorized when the output is a supporting terminal. `--log-color`
+(or `HIPENGINE_LOG_COLOR`) selects `auto` (default), `always`, or `never`:
+
+```bash
+hipengine serve --model /path/to/model --log-color always
+```
+
+`auto` colorizes a TTY only and honors `NO_COLOR` and `FORCE_COLOR`. `always`
+also colorizes redirected output, which is what a `| tee` pane needs, at the cost
+of writing ANSI codes into that file. `never` disables colorization. Styling only
+adds ANSI codes, so the text is unchanged and `grep`, `cut`, and log shippers keep
+working: level prefixes, the leading label of each structured line
+(`REQUEST_INFO`, `MODEL_LOAD`, `REQUEST_FAILED`, `UNHANDLED_ERROR`, ...), and
+model-load progress bars are styled. Inside a structured line the `key=` is
+dimmed and its value is colored by what it says, so the numbers in a timing or
+memory line read as one column: quantities in cyan with their unit dimmed,
+`true`/`enabled` in green, `false`/`off` in yellow, absent markers such as `None`
+or `pending` in gray, paths in blue, and other identifiers brightened.
+
+To log one summary line per completed generation request, pass `--info` or set
+`HIPENGINE_INFO=1`:
+
+```bash
+HIPENGINE_INFO=1 hipengine serve --model /path/to/model
+# or: hipengine serve --model /path/to/model --info
+```
+
+Each line reports the endpoint, stream mode, served model, prompt and completion
+token counts, backend prefill time and rate, server-observed time to first token
+and stream window, wall time, the request's persistent KV allocation in the shared
+pool, and the pool's own bytes, pages, pins, and growth count:
+
+```text
+INFO:     REQUEST_INFO: endpoint=/v1/chat/completions stream=true model=qwen3.8-27b tokens_in=49 tokens_out=51 prefill_ms=345.2 prefill_tok_s=142.0 ttft_ms=364.9 stream_decode_ms=5077.7 stream_tok_s=10.04 wall_ms=5442.6 kv_request_alloc_mib=16.0 kv_pool_gib=66.00 kv_pool_pages=4224 kv_pool_pinned_pages=4096 kv_pool_grows=0
+```
+
+`kv_request_alloc_mib` is the request's persistent KV allocation, meaning the
+space it reserves in the shared pool for its own context. It is a capacity
+number, not the bytes the prompt's tokens touched: the request above reserved
+16 MiB for a short prompt, while a 7,975-token agent request reserving a much
+larger context reported 2,560 MiB and grew the pool by one chunk.
+
+Unlike `--debug`, `--info` never logs prompts, tool arguments, or generated text.
+The summary needs no client cooperation: stream timing is tracked even when the
+request did not ask for `stream_options.include_hipengine`. Phases the backend does
+not report are omitted instead of logged as zero.
+
+A live streamed request with countable tokens after its first chunk reports
+`stream_decode_ms` and `stream_tok_s`: the window
+between the first and last token the server delivered, which is the window the
+client saw, with `ttft_ms` marking where it starts. That window equals the engine's
+decode span only while the stream keeps moving. Known buffered output omits
+these fields rather than reporting its flush speed. If the server cannot flush a token
+while the engine is generating, the delivered tokens arrive in a burst, the window
+shrinks, and the rate is inflated; an implausible `stream_tok_s` means a compressed
+window, not a fast decode. The engine's own telemetry cannot substitute here, because
+the `request_total_ms` it carries inside a stream is a prefill-time snapshot rather
+than a decode span.
+
+A blocking request has no first-token timestamp, so it reports `decode_ms` and
+`decode_tok_s` derived from the engine's phase accounting instead
+(`request_total_ms - prefill_ms`, which covers the whole blocking request). The two
+field sets never appear on the same line, so a rate is always labelled with the
+basis it was measured on.
+
+### Engine command budget
+
+The resident engine runs on a single driver thread, so a command the server issues
+to it (tokenizing a prompt, preparing a context, submitting a batch) waits behind
+whatever that thread is already doing. Preparing a context grows the KV pool and
+captures graphs, and one scheduling tick prefills a chunk of a large prompt; both
+can exceed half a minute on a long-context request. The budget is therefore a
+liveness guard for a driver that has stopped making progress, not a bound on engine
+work, and defaults to 300 seconds. Set
+`HIPENGINE_ENGINE_COMMAND_TIMEOUT_SECONDS` to change it.
+
+A command that waits longer than 10 seconds logs one diagnostic naming what blocked
+it:
+
+```text
+WARNING:  ENGINE_COMMAND_SLOW: method=tokenize waited_ms=41230.5 driver_command=control:prepare driver_command_s=41.2 queued_commands=1 active_requests=0 driver_alive=yes
+```
+
+`driver_command` is the command occupying the driver thread, or `driver_tick_s` when
+the driver is inside a scheduling tick; `queued_commands` and `active_requests` are
+the service's own depth; and `driver_alive` separates a busy driver from a stopped
+one. A command that exhausts its budget raises an error carrying the same detail,
+and the server answers the request with HTTP 503 `engine_unavailable` - retryable,
+the same shape as a closed engine service, because an engine that cannot answer is
+not the request's fault. The budget abandons the caller, not the work: the command
+still runs on the driver thread once that thread is free.
 
 Replay artifacts are separately opt-in. Pass `--replay-dir /path/to/replays` or
 set `HIPENGINE_REPLAY_DIR` to write finite JSON artifacts for failed HTTP
@@ -1628,6 +2113,17 @@ generated text.
 
 ## Current limitations
 
+- `POST /v1/audio/songs` is outside the batched text path. One request runs at a
+time on the resident pipeline, so a second concurrent request is refused with a
+retryable 429 `engine_busy` rather than queued, and a song holds the pipeline for
+its whole duration (minutes, not seconds). There is no streaming form: the
+response is the finished song. The request carries the product's own sampling
+arithmetic; phase-level overrides (`abc_sampling`, `semantic_sampling`) exist on
+`LLM.generate_song()` and `LLM.song_generator()`, not on the HTTP body. A client
+that disconnects stops the pipeline at the next stage or decode-loop boundary,
+which is the same cooperative cancellation described below and not preemption of
+a running kernel. A model that declares the `song` surface serves this endpoint
+instead of the text endpoints, and a text model refuses it.
 - Streaming responses necessarily send HTTP `200 OK` once the SSE stream starts;
   runtime failures after that point are reported as SSE error chunks and
   `REQUEST_FAILED` logs, not a different HTTP status.
@@ -1666,19 +2162,18 @@ generated text.
   which PARO c=1 native sampling checks after each selected token.
 - The capabilities manifest reports `sampling.speculative_mtp` with
   `compatibility_guard: "supports_speculative_mtp_sampling"`, the complete typed
-  plan, evidence links, strict fallback, and automatic decision. The exact
-  Qwen3.8 Q4_K_M C1/B3/natural25 scope above is automatic; other scopes are K0
-  unless an independent explicit diagnostic exists. Blocking and streaming
+  plan, evidence links, strict fallback, and automatic decision. Automatic
+  eligibility follows the model's evidence rows and implementation declarations.
+  Blocking and streaming
   completion/chat share Generation-2 and report exact IDs/text plus terminal MTP
-  telemetry and usage. Current promoted compatibility is greedy-fast only;
-  `logit_bias`, penalties, token suppressions, min-token/EOS policy, explicit EOS
-  finish policy, token stops, `ignore_eos=true`, pending forced-token queues,
-  post-thinking forced-token queues, token-sequence completion repair, JSON
-  object close forcing, tool-call constraints, temperature sampling, and
-  requested logprobs require autoregressive fallback. The manifest also includes
-  `incompatible_conditions`, for example `temperature > 0`, `eos_token_id set`,
-  and `ignore_eos=true`, so inert greedy `top_p`/`top_k`/`min_p` settings are not
-  mistaken for MTP blockers.
+  telemetry and usage. Sampled MTP is supported in the BF16 gfx1151 scope
+  described above; it is not general sampled support for every artifact or KV
+  format. EOS terminates accepted chains without publishing later candidates.
+  Logprobs, explicit token stops, forced-token queues, tool/structured
+  constraints, and unsupported processor combinations retain AR fallback or a
+  named explicit-capability error. The manifest's `incompatible_conditions`
+  describes request restrictions; inert greedy `top_p`/`top_k`/`min_p`
+  settings are not MTP blockers.
 - `sampling.speculative` describes the generic draft-model provider configured
   by `--speculative-provider`, `--draft-model`, and
   `--speculative-candidate-budget`. It remains explicit-only through the

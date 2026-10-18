@@ -1,7 +1,7 @@
 """Raw-pointer wrappers for GGUF K-quant batched WMMA prefill kernels.
 
 This module owns the C ABI exports defined in ``gguf_q4_k_prefill.hip``
-(see docs/GGUF.md "P8: real batched prefill GEMM" for the wider plan).
+(see docs/reference/GGUF.md "P8: real batched prefill GEMM" for the wider plan).
 The single-output kernels are real GEMM-style batched WMMA prefill: one
 wave32 block computes a TM x TN output tile via
 ``__builtin_amdgcn_wmma_f32_16x16x16_f16_w32``, with raw GGUF Q4_K

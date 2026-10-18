@@ -1,0 +1,64 @@
+{
+ "kind": "gemma4_campaign_candidate",
+ "verdict": "rejected - bit-identical but not faster",
+ "recorded": "2026-09-28, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B UD-Q4_K_XL, Q5_1 staged grouped-prefill",
+ "performance_claim": true,
+ "candidate": "software-pipeline the Q5_1 staged grouped-prefill kernel's packed byte loads, so chunk c+1's two global loads are issued before chunk c's arithmetic instead of in front of it. The inner loop's critical path runs load -> nibble select -> or with the staged qh bit -> cvt -> multiply-add -> fused multiply-add, and the chunk loop carries no unroll, so the intent was to take the load latency off that path.",
+ "reason": "The change is bit-identical at all three geometries and is not faster. It also shows why: it adds more instructions than the latency it hides.",
+ "mechanism": {
+  "bit_exactness": "verified by A/B against the kernel's own prior behaviour on the same kernel, not against another kernel: run the pipelined kernel on seeded inputs, git stash the change, rebuild, run the original on identical inputs, compare bf16 output bits.",
+  "geometry_results": {
+   "artifact (in 2816, out 1408, 128 experts, 4096 rows)": "5,767,168 outputs, 0 differ",
+   "ragged (in 320, out 40, 24 experts, occupancy 1/7/33/64/65/3)": "27,680 outputs, 0 differ",
+   "gemma4 (in 704, out 2816, 128 experts, 4096 rows)": "11,534,336 outputs, 0 differ"
+  },
+  "why_gemma4_geometry_matters": "chunks = ceil(704/256) = 3, an odd count, so the pipeline's last-iteration guard runs at a different point in the rotation than at the 11-chunk Qwen4Exp geometry. Both are covered.",
+  "cost": {
+   "vgpr": "88 -> 96",
+   "valu_per_wave": "4304 -> 4710.5, +9.4%",
+   "lds_per_wave": "792 -> 792, unchanged",
+   "flat_per_wave": 382.2,
+   "waves": "20,905,984 over 2 prefills",
+   "reading": "the prefetch's addressing arithmetic is computed twice per chunk instead of once (next_chunk * SUBS + sub, the row pointer, the bound test) and the rotation adds a copy, which is where the 406 extra VALU per wave comes from."
+  }
+ },
+ "performance": {
+  "platform": "zbook, Strix Halo, Radeon 8060S Graphics, gfx1151, 125 GiB unified memory, HIPENGINE_HIP_ARCH=gfx1151",
+  "protocol": "paired, back to back in one session on one device, one warm-up then three timed 512-token forwards through scripts.gemma4_campaign_bench._public_wall",
+  "prefill_s_pipelined": [
+   1.893,
+   1.922,
+   1.923
+  ],
+  "prefill_s_incumbent": [
+   1.88,
+   1.9,
+   1.91
+  ],
+  "mean_pipelined": 1.913,
+  "mean_incumbent": 1.897,
+  "delta": "+0.8% slower, inside the 2% run-to-run spread of either arm",
+  "reading": "neutral to slightly negative. Not a win, and not evidence of a loss either."
+ },
+ "what_this_establishes": [
+  "The packed-load latency is not what the kernel is waiting on. This is the third refutation in this family, after rowbatch8 (1.31x slower) and shared-memory staging (1.13x slower), and it is the first that was aimed at latency rather than instruction count.",
+  "Adding 9.4% more VALU instructions per wave cost 0.8% of the time, so VALU issue is not the binding resource either. That is a useful asymmetry against the earlier probe, which removed the dequant and its loads and recovered 20%: removing that work helps far more than its instruction count predicts, while adding instruction count elsewhere barely registers.",
+  "The compiler was already scheduling this loop. The chunk loop is a simple counted loop and LLVM's scheduler software-pipelines it; the manual rotation duplicated the address arithmetic without shortening any dependency."
+ ],
+ "next_candidate": {
+  "hypothesis": "one pipeline stage is not deep enough. The load for chunk c+1 is issued ~92 instructions per thread before it is used, which is roughly 92 issue cycles against a latency that is a few hundred cycles even on an L2 hit. A two- or three-deep pipeline would put the load further ahead.",
+  "why_it_is_not_obvious": "the same measurement says the extra registers and addressing cost real time, and a deeper pipeline multiplies both. VGPR went 88 -> 96 for one stage, and the kernel is resident at 23 of 32 waves, so there is headroom before occupancy drops but not a lot.",
+  "cheaper_first_step": "if the address arithmetic is what made this neutral, hoisting the per-chunk row pointer and sub index out of the prefetch is a strictly cheaper version of the same idea and is not yet measured."
+ },
+ "limits": [
+  "One box, one artifact, one session. Both arms ran in one session but in two processes, so the comparison carries process-to-process drift; the incumbent's 1.897 s mean here against its recorded 1.880 s mean in the previous unit is that drift, about 1%.",
+  "No counter profile was taken of the incumbent in the same session, so the 4304 VALU per wave it is compared against is the previous unit's reading rather than a paired one.",
+  "The prefill-only harness was used; decode was not re-measured because the change is in a prefill kernel and the timing was not a win."
+ ],
+ "provenance": {
+  "commit": "base c64d4e08d; reverted, no commit",
+  "worktree": "hipEngine-gemma4, branch gemma4",
+  "reverted": "the kernel file was restored byte for byte (md5 matched the pre-change copy)",
+  "scratch": "/tmp/q5_staged_ab.py (bit-exactness A/B, three geometries), /tmp/run3.py (paired prefill timing), /tmp/g4_prefill_once.py (single prefill for counters)"
+ }
+}

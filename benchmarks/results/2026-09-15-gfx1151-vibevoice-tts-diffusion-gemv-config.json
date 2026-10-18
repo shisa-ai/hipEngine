@@ -1,0 +1,97 @@
+{
+  "model": "microsoft/VibeVoice-1.5B",
+  "quant": "bf16",
+  "measurement_basis": "real-request-path",
+  "comparison": "same-host A/B of the diffusion head's GEMV configuration",
+  "change": {
+    "summary": "head GEMV threads 256 -> 64, and the fused dual gate/up GEMV replaced by two single GEMVs",
+    "files": [
+      "hipengine/runtime/vibevoice_tts_diffusion.py"
+    ],
+    "kernels": [
+      "dense_gemv_out_bf16 (threads=64)",
+      "dense_dual_gemv_separate_out_bf16 (no longer used here)"
+    ]
+  },
+  "host": {
+    "name": "zbook",
+    "gpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S"
+  },
+  "command": "uv run python scripts/vibevoice_tts_session_bench.py --repeats 3",
+  "request": {
+    "script": "Speaker 1: The quick brown fox jumps over the lazy dog.",
+    "prompt_tokens": 121,
+    "generated_tokens": 27,
+    "diffusion_frames": 25,
+    "cfg_scale": 1.3,
+    "ddpm_steps": 20,
+    "seed": 20260915,
+    "reference_pcm_sha256": "f2eff090a813b99b747a1cc37953485e8b72349b3fcb723037a0a6dd277d42c9",
+    "reference_pcm_samples": 222480,
+    "voice_files": {
+      "en-Alice_woman.wav": {
+        "expected": "c27ae47421436287a6bd2c3062de2dc2a2855b78c0bb626d472202c359704203",
+        "actual": "c27ae47421436287a6bd2c3062de2dc2a2855b78c0bb626d472202c359704203",
+        "verified": true
+      }
+    },
+    "injected": "recorded random operands only (voice VAE draws, per-frame initial noise)",
+    "not_injected": "prompt embeddings, negative conditions",
+    "tracing_during_timing": false
+  },
+  "workload": {
+    "output_audio_seconds": 3.333,
+    "sample_rate": 24000
+  },
+  "arms": {
+    "before_threads256_fused_dual": {
+      "pooled_rtf": 1.836,
+      "warm_synthesis_seconds": 6.121,
+      "time_to_first_audio_seconds": 0.438,
+      "stages": {
+        "lm_total_seconds": 1.525,
+        "prompt_seconds": 0.174,
+        "diffusion_seconds": 2.114,
+        "decode_seconds": 1.291,
+        "semantic_seconds": 1.016
+      },
+      "chain_exact": true,
+      "negative_conditions_match": true
+    },
+    "after_threads64_split_dual": {
+      "pooled_rtf": 1.642,
+      "warm_synthesis_seconds": 5.474,
+      "time_to_first_audio_seconds": 0.422,
+      "stages": {
+        "lm_total_seconds": 1.587,
+        "prompt_seconds": 0.182,
+        "diffusion_seconds": 1.39,
+        "decode_seconds": 1.303,
+        "semantic_seconds": 1.013
+      },
+      "chain_exact": true,
+      "negative_conditions_match": true
+    }
+  },
+  "delta": {
+    "pooled_rtf": -0.194,
+    "pooled_rtf_percent": -10.6,
+    "diffusion_seconds": -0.724,
+    "diffusion_percent": -34.2,
+    "other_stages_seconds": {
+      "lm_total_seconds": 0.062,
+      "prompt_seconds": 0.008,
+      "decode_seconds": 0.012,
+      "semantic_seconds": -0.003
+    }
+  },
+  "correctness": {
+    "diffusion_unit_and_gpu_suites": "13 passed on both arms",
+    "note": "the two-speaker request's late trajectory is unreproducible against the oracle; the frozen gates split at the step-6 amplification onset (see worklog 20260915T110608)"
+  },
+  "caveats": [
+    "cold_start_seconds in this artifact follows a traced synthesis, so it is not a cold measurement",
+    "the generation budget is the oracle's expected token count rather than an independently specified cap"
+  ],
+  "artifact": "benchmarks/results/2026-09-15-gfx1151-vibevoice-tts-session-real-request.json"
+}

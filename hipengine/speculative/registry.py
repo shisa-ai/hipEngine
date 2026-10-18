@@ -13,16 +13,11 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
-from hipengine.speculative.provider import (
-    StagedSpeculativeProvider,
-    validate_staged_speculative_provider,
-)
 
 
 @dataclass(frozen=True, slots=True)
 class SpeculativeProviderKey:
     """Concrete public speculative-provider implementation key."""
-
     provider: str
     target_model: str
     backend: str
@@ -114,13 +109,25 @@ class SpeculativeProviderCapabilities:
         )
 
 
+# Shape a generic speculative provider declares when the caller pins no depth.
+# The adapter validates the depth it was built for, so an omitted server budget
+# must resolve to this declared value instead of inventing one.
+DEFAULT_PROVIDER_CANDIDATE_BUDGET = 4
+
+# The ``quant`` axis value a provider registers under when its behaviour does not
+# depend on the target's quantization. ``resolve_speculative_provider`` falls back
+# to it after an exact-key miss, so a provider that genuinely has no quantization
+# dependence never has to enumerate the quantizations it would accept.
+QUANT_AGNOSTIC = "*"
+
+
 @dataclass(frozen=True, slots=True)
 class SpeculativeProviderConfig:
     """User-selected sidecar and fixed provider shape."""
 
     provider: str
     draft_model: str | Path
-    candidate_budget: int = 4
+    candidate_budget: int = DEFAULT_PROVIDER_CANDIDATE_BUDGET
 
     def __post_init__(self) -> None:
         provider = str(self.provider).strip()
@@ -152,10 +159,8 @@ class SpeculativeTextProvider(Protocol):
 
 
 SpeculativeProviderFactory = Callable[..., SpeculativeTextProvider]
-StagedSpeculativeProviderFactory = Callable[..., StagedSpeculativeProvider]
 
 _REGISTRY: dict[SpeculativeProviderKey, SpeculativeProviderFactory] = {}
-_STAGED_REGISTRY: dict[SpeculativeProviderKey, StagedSpeculativeProviderFactory] = {}
 _BUILTINS_REGISTERED = False
 
 
@@ -183,7 +188,21 @@ def resolve_speculative_provider(
     backend: str,
     quant: str,
 ) -> SpeculativeProviderFactory:
-    """Resolve one exact provider implementation or fail closed."""
+    """Resolve one provider implementation, or fail closed.
+
+    An exact ``(provider, target_model, backend, quant)`` key wins. Failing that,
+    a provider registered with ``quant=QUANT_AGNOSTIC`` is accepted: some
+    providers genuinely do not depend on the target's quantization -- a
+    model-attached sidecar whose verify reads whatever logits the backbone
+    produces is the case this exists for -- and without this an exact-key
+    registry would force every such provider to carry a written list of
+    known-good quantizations. That list would refuse a newly resolvable
+    quantization for a reason that is not a capability miss, which is the
+    failure mode this registry must not have.
+
+    A provider that *does* depend on the quantization still registers exact keys
+    and is never matched by the wildcard.
+    """
 
     key = SpeculativeProviderKey(
         provider=provider,
@@ -193,6 +212,16 @@ def resolve_speculative_provider(
     )
     try:
         return _REGISTRY[key]
+    except KeyError:
+        pass
+    agnostic = SpeculativeProviderKey(
+        provider=provider,
+        target_model=target_model,
+        backend=backend,
+        quant=QUANT_AGNOSTIC,
+    )
+    try:
+        return _REGISTRY[agnostic]
     except KeyError as exc:
         raise KeyError(f"unregistered speculative provider: {key}") from exc
 
@@ -201,78 +230,13 @@ def registered_speculative_providers() -> tuple[SpeculativeProviderKey, ...]:
     return tuple(sorted(_REGISTRY, key=lambda key: (key.provider, key.target_model, key.backend, key.quant)))
 
 
-def register_staged_speculative_provider(
-    key: SpeculativeProviderKey,
-    factory: StagedSpeculativeProviderFactory,
-    *,
-    replace: bool = False,
-) -> None:
-    """Register one exact staged-provider factory without aliasing legacy routes."""
-
-    if not isinstance(key, SpeculativeProviderKey):
-        raise TypeError("key must be a SpeculativeProviderKey")
-    if not callable(factory):
-        raise TypeError("staged speculative provider factory must be callable")
-    if key in _STAGED_REGISTRY and not replace:
-        raise KeyError(f"staged speculative provider already registered: {key}")
-    _STAGED_REGISTRY[key] = factory
-
-
-def resolve_staged_speculative_provider(
-    *,
-    provider: str,
-    target_model: str,
-    backend: str,
-    quant: str,
-) -> StagedSpeculativeProviderFactory:
-    """Resolve one exact staged factory or fail closed."""
-
-    key = SpeculativeProviderKey(
-        provider=provider,
-        target_model=target_model,
-        backend=backend,
-        quant=quant,
-    )
-    try:
-        return _STAGED_REGISTRY[key]
-    except KeyError as exc:
-        raise KeyError(f"unregistered staged speculative provider: {key}") from exc
-
-
-def registered_staged_speculative_providers() -> tuple[SpeculativeProviderKey, ...]:
-    return tuple(
-        sorted(
-            _STAGED_REGISTRY,
-            key=lambda key: (key.provider, key.target_model, key.backend, key.quant),
-        )
-    )
-
-
-def construct_staged_speculative_provider(
-    *,
-    provider: str,
-    target_model: str,
-    backend: str,
-    quant: str,
-    **factory_kwargs: Any,
-) -> StagedSpeculativeProvider:
-    """Construct and validate one bounded provider at the cold boundary."""
-
-    factory = resolve_staged_speculative_provider(
-        provider=provider,
-        target_model=target_model,
-        backend=backend,
-        quant=quant,
-    )
-    return validate_staged_speculative_provider(factory(**factory_kwargs))
-
-
 def register_builtin_speculative_providers() -> None:
     """Import built-in adapters once without eagerly loading model weights."""
 
     global _BUILTINS_REGISTERED
     if _BUILTINS_REGISTERED:
         return
+    from hipengine.generation import gemma4_mtp as _gemma4_mtp  # noqa: F401
     from hipengine.generation import laguna_dflash as _laguna_dflash  # noqa: F401
     from hipengine.generation import qwen4_exp_mtp as _qwen4_exp_mtp  # noqa: F401
 
@@ -280,18 +244,15 @@ def register_builtin_speculative_providers() -> None:
 
 
 __all__ = [
+    "DEFAULT_PROVIDER_CANDIDATE_BUDGET",
+    "QUANT_AGNOSTIC",
     "SpeculativeProviderCapabilities",
     "SpeculativeProviderConfig",
     "SpeculativeProviderFactory",
-    "StagedSpeculativeProviderFactory",
     "SpeculativeProviderKey",
     "SpeculativeTextProvider",
-    "construct_staged_speculative_provider",
     "register_builtin_speculative_providers",
     "register_speculative_provider",
-    "register_staged_speculative_provider",
     "registered_speculative_providers",
-    "registered_staged_speculative_providers",
     "resolve_speculative_provider",
-    "resolve_staged_speculative_provider",
 ]

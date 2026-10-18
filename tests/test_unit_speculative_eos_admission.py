@@ -7,8 +7,15 @@ from hipengine.generation.registry import GenerationRequest
 @pytest.mark.parametrize('supported,fields,expected', [
     (False, {}, 'greedy'), (False, {'eos_token_id': 7}, 'processed'),
     (True, {'eos_token_id': 7}, 'greedy'),
-    (True, {'eos_token_id': 7, 'min_tokens': 1}, 'processed'),
-    (True, {'eos_token_id': 7, 'temperature': 1.0}, 'processed'),
+    # A finish-rule field no longer disqualifies the sampled route: the cycle
+    # commit applies EOS, stop ids, stop sequences, and the min-token EOS floor
+    # to the whole verified chain (limit_chain_accept_finish). min_tokens is also
+    # an EOS-suppression processor, so it leaves the raw-greedy fast path and the
+    # sampled route -- which applies the request's pipeline per row -- serves it.
+    (True, {'eos_token_id': 7, 'min_tokens': 1}, 'sampled'),
+    (True, {'eos_token_id': 7, 'temperature': 1.0}, 'sampled'),
+    # ignore_eos is a finish-rule relaxation and does not leave the fast path, so
+    # the request stays unqualified rather than being called sampled.
     (True, {'eos_token_id': 7, 'ignore_eos': True}, 'processed'),
 ])
 def test_runner_eos_permission_does_not_relax_other_sampling(supported, fields, expected):
@@ -26,9 +33,53 @@ def test_runner_eos_permission_does_not_relax_other_sampling(supported, fields, 
 def test_gguf_runner_requires_enabled_physical_owner(enabled,physical,expected):
     from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
     runner = NS(_resolved_mtp2_adapter=lambda: NS(enabled=enabled,
-        _physical_c1_request=lambda rid: rid == 41 and physical))
+        _physical_c1_request=lambda rid: rid == 41 and physical,
+        eos_finish_supported=lambda rid: rid == 41 and physical))
     assert Qwen35GGUFResidentModelRunner.speculative_eos_supported(runner,41) is expected
     assert not Qwen35GGUFResidentModelRunner.speculative_eos_supported(runner,42)
+
+
+@pytest.mark.parametrize('device_ready,expected', [(True, True), (False, True)])
+def test_eos_admission_supports_eager_and_device_accept(device_ready, expected):
+    """Both routes now select the terminal prefix before publishing output."""
+
+    from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
+
+    verifier = NS(
+        target=NS(runner=NS(fp16_recurrent_state=False)),
+        device_proposal_ready=lambda budget: device_ready,
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter._states = {41: NS(verifier=verifier)}
+    adapter._static_eligibility_by_request = {}
+    adapter.enabled = True
+    adapter.candidate_budget = 3
+    adapter._physical_c1_request = lambda rid: rid == 41
+    assert adapter.eos_finish_supported(41) is expected
+    assert adapter.eos_finish_supported(42) is False
+
+
+def test_eos_admission_stays_closed_without_a_verifier_or_target() -> None:
+    from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
+
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter._states = {}
+    adapter._static_eligibility_by_request = {}
+    adapter.enabled = True
+    adapter.candidate_budget = 3
+    adapter._physical_c1_request = lambda rid: rid == 41
+    assert adapter.eos_finish_supported(41) is False
+    adapter._states = {41: NS(verifier=NS(device_proposal_ready=lambda budget: True))}
+    assert adapter.eos_finish_supported(41) is False
+    adapter._states = {
+        41: NS(
+            verifier=NS(
+                target=NS(runner=NS(fp16_recurrent_state=True)),
+                device_proposal_ready=lambda budget: True,
+            )
+        )
+    }
+    assert adapter.eos_finish_supported(41) is False
 
 
 def test_missing_runner_eos_contract_stays_closed():

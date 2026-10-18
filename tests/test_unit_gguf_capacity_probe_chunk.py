@@ -59,6 +59,18 @@ def _run(monkeypatch, argv: list[str]) -> dict:
         "Qwen35GGUFResidentSession",
         _Recorder,
     )
+    # The probe reads the GGUF architecture to pick its branch, which would open
+    # the model file. A stub keeps the test on the flag-to-config mapping it
+    # pins, with no artifact on disk.
+    from hipengine.loading import gguf as gguf_module
+
+    class _Reader:
+        info = type("_Info", (), {"architecture": "qwen35"})()
+
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+    monkeypatch.setattr(gguf_module, "GGUFReader", _Reader)
 
     class _Logits:
         logits = np.zeros((1, 4), dtype=np.float32)

@@ -82,12 +82,13 @@ def test_maple_graph_cache_self_validation_detects_noop() -> None:
         # The eager body leaves argmax untouched, so the eager ref is whatever we
         # clear it to; a faithful no-op graph would also leave it there. This
         # exercises the capture path's parity machinery without corrupting KV.
-        copy_host_to_device(
-            index_buf, host_array_ptr(np.zeros(1, np.int64)), runtime=runtime
-        )
-        copy_host_to_device(
-            value_buf, host_array_ptr(np.zeros(1, np.float32)), runtime=runtime
-        )
+        # Named locals: copy_host_to_device takes a bare address, so a
+        # same-statement temporary is freed before the copy is entered.
+        index_seed = np.zeros(1, np.int64)
+        value_seed = np.zeros(1, np.float32)
+        copy_host_to_device(index_buf, host_array_ptr(index_seed), runtime=runtime)
+        copy_host_to_device(value_buf, host_array_ptr(value_seed), runtime=runtime)
+        runtime.device_synchronize()
 
         status = cache.run(
             (),

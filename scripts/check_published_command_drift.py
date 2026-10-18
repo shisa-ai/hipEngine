@@ -31,7 +31,10 @@ disabled script is visible instead of silently ignored.
 
 A recorded test path may name a file the explicit-tier migration renamed. Rewriting the artifact
 would falsify the provenance of a measured row and a per-file exception would hide the drift, so
-the path is resolved through the migration's own record and reported in `renamed_targets`.
+the path is resolved through the migration's own record and reported in `renamed_targets`. A
+recorded target may instead be a wildcard (`pytest tests/test_unit_yue2_*.py`); it is expanded
+against the tree and reported in `glob_targets`, and an expansion that matches nothing is a
+violation, so a wildcard cannot stand in for targets that no longer exist.
 
 Usage:
     .venv/bin/python scripts/check_published_command_drift.py [--repo .] [--json out.json]
@@ -82,6 +85,11 @@ EXCEPTIONS: dict[str, str] = {
 # own record is the rename map: resolving through it keeps a historical command checkable without
 # editing the artifact or hiding the redirect behind an exception.
 TIER_RENAME_RECORD = "docs/testing/test-tier-migration-2026-09-12.json"
+UD_TIER_RENAME_RECORD = "docs/testing/test-tier-migration-ud-2026-09-13.json"
+
+# A recorded target may be a wildcard rather than one path (`pytest tests/test_unit_yue2_*.py`).
+# Expanding it against the tree keeps the artifact's own text as measured.
+GLOB_CHARS = frozenset("*?[")
 
 
 def exception_key(artifact: str, problem: str, detail: str) -> str:
@@ -290,13 +298,14 @@ def _declared_flags(script: Path, repo: Path) -> frozenset[str] | None:
 @lru_cache(maxsize=None)
 def _tier_renames(repo: Path) -> dict[str, str]:
     """Recorded old -> new test paths from the explicit-tier migration."""
-    try:
-        payload = json.loads((repo / TIER_RENAME_RECORD).read_text())
-    except (OSError, json.JSONDecodeError):
-        return {}
-    modules = payload.get("modules")
-    if not isinstance(modules, list):
-        return {}
+    modules = []
+    for record in (TIER_RENAME_RECORD, UD_TIER_RENAME_RECORD):
+        try:
+            payload = json.loads((repo / record).read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(payload.get("modules"), list):
+            modules.extend(payload["modules"])
     return {
         str(module["old"]): str(module["new"])
         for module in modules
@@ -354,17 +363,18 @@ def _resolve_target(
 
 def _violations_for_command(
     artifact: str, command: str, repo: Path, *, worktrees: tuple[Path, ...] = ()
-) -> tuple[list[dict[str, str]], list[dict[str, str]], list[str]]:
-    """(violations, renamed targets, un-inspectable scripts) for one recorded command."""
+) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, str]], list[str]]:
+    """(violations, renamed targets, glob targets, un-inspectable scripts) for one command."""
     try:
         tokens = shlex.split(command)
     except ValueError as exc:
-        return [{"artifact": artifact, "problem": "COMMAND-UNPARSEABLE", "detail": str(exc)}], [], []
+        return [{"artifact": artifact, "problem": "COMMAND-UNPARSEABLE", "detail": str(exc)}], [], [], []
     targets = [token for token in tokens if token.endswith(".py")]
     if not targets:
-        return [], [], []  # not a python invocation (a pytest -k string, a shell pipeline, etc.)
+        return [], [], [], []  # not a python invocation (a pytest -k string, a shell pipeline, etc.)
     violations: list[dict[str, str]] = []
     renamed: list[dict[str, str]] = []
+    globs: list[dict[str, str]] = []
     scripts: list[tuple[str, Path]] = []
     # Every `.py` token is a target: `python -m pytest tests/a.py tests/b.py` has two, and a
     # renamed or deleted second one used to pass unnoticed because only the first was checked.
@@ -374,6 +384,25 @@ def _violations_for_command(
             violations.append(
                 {"artifact": artifact, "problem": problem or "SCRIPT-NOT-IN-REPO",
                  "detail": raw, "command": command}
+            )
+            continue
+        if GLOB_CHARS.intersection(relative):
+            # `pytest tests/test_unit_yue2_*.py` is reproducible; it is just not one path. Expand
+            # it against the tree and fail when it matches nothing, so a wildcard cannot quietly
+            # stand in for targets that were deleted.
+            matches = [
+                match
+                for match in sorted(repo.glob(relative))
+                if match.is_file() and match.resolve().is_relative_to(repo)
+            ]
+            if matches:
+                globs.append(
+                    {"artifact": artifact, "pattern": relative, "matches": str(len(matches))}
+                )
+                continue
+            violations.append(
+                {"artifact": artifact, "problem": "SCRIPT-MISSING", "detail": relative,
+                 "command": command}
             )
             continue
         if not path.is_file():
@@ -392,7 +421,7 @@ def _violations_for_command(
         relative, path = scripts[0]
         declared = _declared_flags(path, repo)
         if declared is None:
-            return violations, renamed, [relative]
+            return violations, renamed, globs, [relative]
         for token in tokens[tokens.index(targets[0]) + 1:]:
             if not token.startswith("--"):
                 continue
@@ -407,7 +436,7 @@ def _violations_for_command(
                         "command": command,
                     }
                 )
-    return violations, renamed, []
+    return violations, renamed, globs, []
 
 
 def check_repo(repo: Path, exceptions: dict[str, str] | None = None) -> dict[str, Any]:
@@ -418,9 +447,16 @@ def check_repo(repo: Path, exceptions: dict[str, str] | None = None) -> dict[str
     readme = repo / "benchmarks" / "README.md"
     if not readme.is_file():
         raise FileNotFoundError(f"no benchmarks/README.md under {repo}")
-    cited = cited_result_paths(readme.read_text())
+    # Prompt JSON is benchmark input, not an executable-result citation.
+    text = re.sub(
+        r"\[[^\]]*\]\((?:\.\./)?(?:benchmarks/)?prompts/[^)]+\)",
+        "",
+        readme.read_text(),
+    )
+    cited = cited_result_paths(text)
     violations: list[dict[str, str]] = []
     renamed: list[dict[str, str]] = []
+    globs: list[dict[str, str]] = []
     skipped: set[str] = set()
     for name in cited:
         path = repo / "benchmarks" / "results" / name
@@ -437,11 +473,13 @@ def check_repo(repo: Path, exceptions: dict[str, str] | None = None) -> dict[str
             )
             continue
         for command in _commands(payload):
-            command_violations, command_renamed, command_skipped = _violations_for_command(
+            (command_violations, command_renamed,
+             command_globs, command_skipped) = _violations_for_command(
                 name, command, repo, worktrees=worktrees
             )
             violations.extend(command_violations)
             renamed.extend(command_renamed)
+            globs.extend(command_globs)
             skipped.update(command_skipped)
 
     matched: list[str] = []
@@ -465,6 +503,10 @@ def check_repo(repo: Path, exceptions: dict[str, str] | None = None) -> dict[str
         # a reader needs the current path, and the row's own text stays as measured.
         "renamed_targets": sorted(
             {f"{entry['artifact']}::{entry['recorded']}->{entry['current']}" for entry in renamed}
+        ),
+        # Wildcard test targets, expanded against the tree rather than rewritten in the artifact.
+        "glob_targets": sorted(
+            {f"{entry['artifact']}::{entry['pattern']}->{entry['matches']}" for entry in globs}
         ),
         "scripts_skipped": sorted(skipped),
     }
@@ -495,6 +537,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  STALE EXCEPTION (remove it): {key}")
         for target in report["renamed_targets"]:
             print(f"  renamed by the tier migration: {target}")
+        for target in report["glob_targets"]:
+            print(f"  expanded wildcard target: {target}")
         for script in report["scripts_skipped"]:
             print(f"  SKIPPED (CLI not statically readable): {script}")
     return 1 if report["violations"] or report["exceptions_unmatched"] else 0

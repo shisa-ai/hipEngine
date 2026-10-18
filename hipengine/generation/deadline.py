@@ -96,6 +96,19 @@ def generation_deadline_expired(deadline_at: float | None) -> bool:
     return deadline_at is not None and time.perf_counter() >= float(deadline_at)
 
 
+def generation_deadline_remaining(deadline_at: Any) -> float | None:
+    """Seconds left before an absolute monotonic deadline, or ``None`` if unset.
+
+    Negative once the deadline has passed; callers that need that case should
+    use :func:`generation_deadline_expired` instead. Used to reject work whose
+    known cost cannot fit the remaining budget before it starts.
+    """
+
+    if deadline_at is None:
+        return None
+    return float(deadline_at) - time.perf_counter()
+
+
 def raise_if_generation_cancelled(request_or_token: Any) -> None:
     """Raise ``GenerationCancelled`` when a request cancellation token is set."""
 

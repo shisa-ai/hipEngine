@@ -10,6 +10,7 @@ import pytest
 
 from hipengine import LLM
 from hipengine.generation import (
+    EngineCommandTimeout,
     EngineLoopEvent,
     EngineService,
     FinishDetails,
@@ -162,6 +163,194 @@ class _FakeSoleDriver:
         self.closed = True
         self._active.clear()
         self._outputs.clear()
+
+
+class _BlockingControlDriver:
+    """Driver whose control call blocks, modeling long engine-side work.
+
+    ``EngineService`` runs the engine on one driver thread, so a command waits
+    behind whatever that thread is already doing: a context prepare that grows the
+    KV pool and captures graphs, or one prefill tick of a large prompt.
+    """
+
+    supports_controlled_streaming = False
+    supports_stream_many = False
+    supports_speculative_mtp = False
+
+    def __init__(self) -> None:
+        self.prepare_entered = threading.Event()
+        self.prepare_release = threading.Event()
+        self.calls: list[str] = []
+
+    def prepare(self, **_kwargs: object) -> str:
+        self.calls.append("prepare")
+        self.prepare_entered.set()
+        assert self.prepare_release.wait(timeout=10.0)
+        return "prepared"
+
+    def tokenize(self, text: str) -> tuple[int, ...]:
+        self.calls.append("tokenize")
+        return (len(str(text)),)
+
+
+class _BlockingTickDriver(_FakeSoleDriver):
+    """A fake driver whose first scheduling tick blocks, like a long prefill."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.tick_entered = threading.Event()
+        self.tick_release = threading.Event()
+        self.tokenized: list[str] = []
+
+    def poll(self, *, max_ticks: int = 1):
+        self.tick_entered.set()
+        assert self.tick_release.wait(timeout=10.0)
+        return ()
+
+    def tokenize(self, text: str) -> tuple[int, ...]:
+        self.tokenized.append(str(text))
+        return (len(str(text)),)
+
+
+def _warned_messages(caplog) -> list[str]:
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if "ENGINE_COMMAND_SLOW" in record.getMessage()
+    ]
+
+
+def test_engine_service_warns_with_driver_activity_when_a_command_waits(caplog) -> None:
+    """A command blocked by one engine tick logs what it waited behind."""
+
+    driver = _BlockingTickDriver()
+    service = EngineService(
+        driver,
+        command_queue_size=8,
+        idle_wait_seconds=0.001,
+        command_timeout_seconds=30.0,
+        slow_command_warn_seconds=0.05,
+    )
+    try:
+        service.submit_child(_request("prompt:4"))
+        assert driver.tick_entered.wait(timeout=5.0)
+
+        tokenized: list[tuple[int, ...]] = []
+        waiting = threading.Thread(target=lambda: tokenized.append(service.tokenize("hello")))
+        with caplog.at_level("WARNING", logger="uvicorn.error"):
+            waiting.start()
+            deadline = time.monotonic() + 5.0
+            while time.monotonic() < deadline and not _warned_messages(caplog):
+                time.sleep(0.01)
+            driver.tick_release.set()
+            waiting.join(timeout=5.0)
+    finally:
+        service.close()
+
+    assert tokenized == [(5,)]
+    warnings = _warned_messages(caplog)
+    assert len(warnings) == 1, warnings
+    assert "method=tokenize" in warnings[0]
+    assert "driver_tick_s=" in warnings[0]
+    assert "driver_alive=yes" in warnings[0]
+    assert "active_requests=1" in warnings[0]
+
+
+def test_engine_service_command_timeout_names_the_blocking_activity() -> None:
+    """An exhausted budget reports the driver's activity, not a bare timeout."""
+
+    driver = _BlockingTickDriver()
+    service = EngineService(
+        driver,
+        command_queue_size=8,
+        idle_wait_seconds=0.001,
+        command_timeout_seconds=0.2,
+        slow_command_warn_seconds=0.0,
+    )
+    try:
+        service.submit_child(_request("prompt:4"))
+        assert driver.tick_entered.wait(timeout=5.0)
+
+        # The typed error is what lets the server answer 503 rather than an
+        # internal fault, while staying a TimeoutError for callers that only know
+        # it was a timeout.
+        with pytest.raises(EngineCommandTimeout) as excinfo:
+            service.tokenize("hello")
+        driver.tick_release.set()
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline and not driver.tokenized:
+            time.sleep(0.01)
+    finally:
+        service.close()
+
+    assert isinstance(excinfo.value, TimeoutError)
+    message = str(excinfo.value)
+    assert "method=tokenize" in message
+    assert "budget_s=0.2" in message
+    assert "driver_tick_s=" in message
+    assert "driver_alive=yes" in message
+    # The budget abandons the caller, not the work: the command the driver never
+    # reached still runs once the tick finishes.
+    assert driver.tokenized == ["hello"]
+
+
+def test_engine_service_does_not_report_a_command_blocking_itself(caplog) -> None:
+    """A long command owns the driver thread; it is not waiting behind anything."""
+
+    driver = _BlockingControlDriver()
+    service = EngineService(
+        driver,
+        command_queue_size=8,
+        idle_wait_seconds=0.001,
+        command_timeout_seconds=30.0,
+        slow_command_warn_seconds=0.02,
+    )
+    try:
+        with caplog.at_level("WARNING", logger="uvicorn.error"):
+            released = threading.Timer(0.2, driver.prepare_release.set)
+            released.start()
+            try:
+                assert service.prepare(max_sequence_length=4096) == "prepared"
+            finally:
+                released.cancel()
+                driver.prepare_release.set()
+    finally:
+        service.close()
+
+    assert _warned_messages(caplog) == []
+
+
+def test_activity_snapshot_samples_each_field_once() -> None:
+    """A driver finishing its tick mid-snapshot must not break the diagnostic.
+
+    The snapshot runs on a waiting caller's thread while the driver thread clears
+    its activity, so checking one read and reporting from another raced: a cleared
+    timestamp arrived as ``now - None`` and raised ``TypeError`` inside the very
+    code meant to explain a slow command.
+    """
+
+    class _ClearingService(EngineService):
+        @property
+        def _tick_started_at(self):
+            value = self.__dict__.get("_tick_started_at")
+            # The driver thread finishes its tick between the check and the read.
+            self.__dict__["_tick_started_at"] = None
+            return value
+
+        @_tick_started_at.setter
+        def _tick_started_at(self, value) -> None:
+            self.__dict__["_tick_started_at"] = value
+
+    driver = _FakeSoleDriver()
+    service = _ClearingService(driver, command_queue_size=8, idle_wait_seconds=0.001)
+    try:
+        service._tick_started_at = time.monotonic()
+        snapshot = service._activity_snapshot()
+    finally:
+        service.close()
+
+    assert "driver_tick_s=" in snapshot
+    assert "driver_alive=yes" in snapshot
 
 
 def test_engine_service_serializes_idle_reconfiguration_on_driver_thread() -> None:
@@ -737,18 +926,19 @@ def test_engine_service_stop_holdback_is_owned_per_child_collector() -> None:
     assert chunks[0].finish_details.reason == "stop"
 
 
-def test_engine_service_backpressure_and_cancel_are_child_scoped() -> None:
+def test_engine_service_slow_consumer_and_cancel_are_child_scoped() -> None:
     driver = _FakeSoleDriver()
     service = EngineService(driver, command_queue_size=16, stream_queue_max_chunks=1)
     try:
+        # A consumer that has not started reading yet buffers the child's whole
+        # output budget instead of losing the request; the bound is the budget
+        # (20 tokens), not the configured floor of one chunk.
         slow = service.submit_child(_request("slow:20"), streaming=True)
         neighbor = service.submit_child(_request("neighbor:4"))
 
-        with pytest.raises(GenerationCancelled) as overflow:
-            slow.result(timeout=2.0)
-        assert overflow.value.finish_details.budget_pressure == "client_backpressure"
         assert neighbor.result(timeout=2.0).generated_tokens == 4
-        assert slow.backend_request_id in driver.abort_reasons
+        assert slow.result(timeout=2.0).generated_tokens == 20
+        assert slow.backend_request_id not in driver.abort_reasons
 
         cancelled = service.submit_child(_request("cancelled:20"))
         survivor = service.submit_child(_request("survivor:3"))
@@ -756,6 +946,27 @@ def test_engine_service_backpressure_and_cancel_are_child_scoped() -> None:
         with pytest.raises(GenerationCancelled):
             cancelled.result(timeout=2.0)
         assert survivor.result(timeout=2.0).generated_tokens == 3
+    finally:
+        service.close()
+
+
+def test_engine_service_stream_budget_overrun_is_client_backpressure() -> None:
+    driver = _FakeSoleDriver()
+    service = EngineService(driver, command_queue_size=16, stream_queue_max_chunks=1)
+    try:
+        # A child that publishes past its own budget (a runaway child, not a slow
+        # client) still trips the backpressure guard and stays child-scoped.
+        overrun = service.submit_child(
+            replace(_request("slow:20"), max_tokens=8),
+            streaming=True,
+        )
+        survivor = service.submit_child(_request("survivor:3"))
+
+        with pytest.raises(GenerationCancelled) as overflow:
+            overrun.result(timeout=2.0)
+        assert overflow.value.finish_details.budget_pressure == "client_backpressure"
+        assert survivor.result(timeout=2.0).generated_tokens == 3
+        assert overrun.backend_request_id in driver.abort_reasons
     finally:
         service.close()
 

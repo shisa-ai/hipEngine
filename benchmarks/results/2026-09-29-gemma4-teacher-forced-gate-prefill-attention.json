@@ -1,0 +1,88 @@
+{
+  "schema": "hipengine.gemma4.teacher_forced_gate.v1",
+  "date": "2026-09-29",
+  "subject": "gemma4_wmma_flash + gemma4_wmma_flash_full prefill attention (production profile default)",
+  "gate": "docs/EXECUTION-PROFILES.md section 6 KL envelope over full-vocabulary teacher-forced rows",
+  "command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_EXECUTION_PROFILE=production .venv/bin/python scripts/gemma4_teacher_forced_gate.py gate --prompt 2048 --prefill 1024 --baseline /tmp/gate3_strict.npz",
+  "baseline_command": "env -u HIP_VISIBLE_DEVICES PYTHONPATH=. HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_EXECUTION_PROFILE=strict .venv/bin/python scripts/gemma4_teacher_forced_gate.py capture --slices 1 --prompt 2048 --prefill 1024 --out /tmp/gate3_strict.npz",
+  "baseline": {
+    "chain": {
+      "corpus": "frozen",
+      "corpus_seed": null
+    },
+    "chain_sha256": "b8c28ab5066a519b3acc1e09293382f2cca1e084ac554e422788006341542d43",
+    "sha256": "03697b7da430efaa0649f70171f3de391bc302a4866a6785ba28283c77cf8816",
+    "artifact": {
+      "bytes": 17010980576,
+      "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+      "mtime": "2026-09-26T19:11:54.689845+00:00",
+      "path": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+    },
+    "forced_slices": 1,
+    "stored_outside_repo": true
+  },
+  "candidate": {
+    "profile": "production",
+    "artifact": {
+      "bytes": 17010980576,
+      "head_sha256_64MiB": "b256e042318652435d0316df8b8066c9d636feed8a6aa00597d0210e0dd95992",
+      "mtime": "2026-09-26T19:11:54.689845+00:00",
+      "path": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+    },
+    "attention_source_sha256": {
+      "hip": "d2ac43e9be568251001be62016bb79dc9af8b77a5b05b67060036c7d69699fe2",
+      "py": "a77e64a781259f14381381b1e0f6ef280603d3335dc9afe0df7c31be3ff74ef5"
+    }
+  },
+  "rows": 1023,
+  "prefill_tokens": 1024,
+  "vocab": 262144,
+  "scored_key_range": [
+    1025,
+    2047
+  ],
+  "percentile_method": "nearest-rank",
+  "measured": {
+    "kl_mean": 4.679231707095747e-06,
+    "kl_p95": 1.091250132708674e-05,
+    "kl_p99": 5.206134577873866e-05,
+    "kl_max": 0.0017403842526825053,
+    "top1_rate": 1.0,
+    "top1_flips": 0,
+    "top1_flips_close_margin": 0
+  },
+  "thresholds": {
+    "kl_max": 0.05,
+    "kl_mean": 0.001,
+    "kl_p95": 0.005,
+    "kl_p99": 0.02,
+    "top1_rate": 0.99
+  },
+  "observed_routes": {
+    "decode_launches": 30690,
+    "head_dims": [
+      256,
+      512
+    ],
+    "selections": [
+      2
+    ],
+    "split_key_range": [
+      1024,
+      2047
+    ],
+    "split_launches": 30690
+  },
+  "verdict": {
+    "passed": true,
+    "failed": [],
+    "promotion_qualified": false
+  },
+  "not_supplied_by_this_evaluator": [
+    "category gates",
+    "isolation gates",
+    "task gates",
+    "the 500-1000 paired-row promotion standard (this is 1023 single-chain rows)"
+  ],
+  "note": "Every KL threshold and the top-1 threshold pass. An earlier run of this gate reported kl_max 1.389e-02 with no_decode_launches_observed: the layer's variant selection was geometry-only, so decode at one token per layer ran the multi-row WMMA prefill tiling instead of the strict path's decode kernel. Passing the block width to the selector fixed both the route observation and an 8x KL reduction."
+}

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-08",
+  "status": "diagnostic",
+  "diagnostic_only": true,
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S (laptop; the published 396.1 row came from the desktop gfx1151 Strix Halo host)",
+  "backend": "hip_gfx1151",
+  "purpose": "Item 0 of docs/UD-OPTIMIZED-ROUTE-PLAN.md: reconstruct the published prefill protocol and re-measure the plain and UD files under it so before/afters can be quoted honestly.",
+  "published_protocol": {
+    "source": "benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-clean-publication.json",
+    "command": "scripts/qwen35_readme_sweep.py --engine gguf --quant gguf_q4_k_s --backend hip_gfx1151 --workloads 512/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode (plus a prebuild pass with --no-graph-replay-decode)",
+    "note": "The earlier 160.5 plain-file figure used the resident-session default prefill (no WMMA, no forced bulk attention), explaining the discrepancy with the published row."
+  },
+  "measurements": {
+    "plain_Q4_K_S": {
+      "prefill_tok_s_median": 294.787,
+      "decode_tok_s_median": 12.56,
+      "note": "decode reproduces the published protocol (12.56 vs 13.1 desktop); prefill is the zbook floor for this host (desktop publishes 396.1)"
+    },
+    "UD_Q4_K_M": {
+      "prefill_tok_s_median": 22.096,
+      "decode_tok_s_median": 6.21
+    },
+    "ratio_same_host_same_protocol": {
+      "prefill": "13.3x",
+      "decode": "2.0x"
+    }
+  },
+  "commands": {
+    "plain": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/ud-hipcc-version.txt .venv/bin/python scripts/qwen35_readme_sweep.py --engine gguf --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --quant gguf_q4_k_s --backend hip_gfx1151 --workloads 512/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/ud-hipcc-version.txt --json /tmp/ud-sweep-plain.json",
+    "ud_km": "same with --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --quant gguf_ud_q4_k_m --json /tmp/ud-sweep-udkm.json"
+  },
+  "limitations": [
+    "Laptop power/clock variability: gross numbers; the plain/UD ratio is same-host same-protocol and is the quotable comparison.",
+    "UD file cannot use the WMMA prefill flags meaningfully today (its tensors are not T16); the flags are applied identically and the fallback serves it."
+  ]
+}

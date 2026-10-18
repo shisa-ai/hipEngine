@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from typing import Any
 
 from hipengine.kvcache.global_pool import GlobalKVPoolSet
 from hipengine.kvcache.pool import (
+    DeviceKVContiguityError,
     DeviceKVPoolAllocation,
     DeviceKVPoolStats,
     KVPoolChunk,
@@ -38,11 +40,18 @@ class GlobalDeviceKVPool:
         pointer_table_pointers: Mapping[str, int],
         metadata_descriptor_pointer: int,
         close_storage: Callable[[], None],
-        grow_storage: Callable[[int, int], tuple[Mapping[str, Sequence[int]], Mapping[str, int]]] | None = None,
+        grow_storage: Callable[
+            [int, int],
+            tuple[Mapping[str, Sequence[int]], Mapping[str, int]]
+            | tuple[Mapping[str, Sequence[int]], Mapping[str, int], Any],
+        ]
+        | None = None,
         before_grow: Callable[[], None] | None = None,
         max_pages: int | None = None,
         growth_chunk_pages: int | None = None,
         on_pressure: Callable[[int], None] | None = None,
+        contiguous_growth: bool = False,
+        physical_bytes_for_pages: Callable[[int], int] | None = None,
     ) -> None:
         if int(page_bytes) <= 0:
             raise ValueError("page_bytes must be positive")
@@ -76,8 +85,22 @@ class GlobalDeviceKVPool:
         )
         self.idle_grace_seconds = 0.0
         self._backing = backing
+        # Storage chunks in page-id order: (start_page, page_count, backing).
+        # Growth appends a chunk with its own device buffers, and consumers
+        # address a chunk from its own base, so an allocation must not span two.
+        self._chunks: list[tuple[int, int, Any]] = [
+            (0, int(self.global_pool.page_capacity), backing)
+        ]
         self._close_storage = close_storage
         self._grow_storage = grow_storage
+        # Only stable-address providers may merge growth into one binding.
+        self._contiguous_growth = bool(contiguous_growth)
+        # A stable-address VMM arena commits granularity-aligned physical bytes
+        # that trail its logical page payload. When the provider supplies this,
+        # the budget prices the real physical commitment -- prospective as well
+        # as current -- instead of the logical pages, so alignment padding is
+        # never silently free. A plain ``hipMalloc`` provider leaves it None.
+        self._physical_bytes_for_pages = physical_bytes_for_pages
         self._before_grow = before_grow
         self._max_pages = None if max_pages is None else int(max_pages)
         if self._max_pages is not None and self._max_pages < self.global_pool.page_capacity:
@@ -91,6 +114,7 @@ class GlobalDeviceKVPool:
         self._primary_plane = sorted(planes)[0]
         self._request_allocations: dict[int, DeviceKVPoolAllocation] = {}
         self._workspace_leases: dict[str, tuple[int, ...]] = {}
+        self._private_workspace_reservations: dict[object, tuple[str, int]] = {}
         self._pin_counts: dict[int, int] = {}
         self._last_active_seconds = 0.0
         self._high_water_observed_pages = 0
@@ -118,6 +142,162 @@ class GlobalDeviceKVPool:
     @property
     def budget_bytes(self) -> int | None:
         return None if self._max_pages is None else self._max_pages * self.page_bytes
+
+    @property
+    def private_workspace_bytes(self) -> int:
+        with self._lock:
+            return sum(
+                charged
+                for _name, charged in self._private_workspace_reservations.values()
+            )
+
+    @property
+    def _arena_physical_bytes(self) -> int:
+        """Physical device bytes the arena holds, granularity overhead included.
+
+        Falls back to the logical page payload when the storage provider does
+        not report a physical commitment (a plain ``hipMalloc`` chunk), where
+        the two are equal.
+        """
+
+        return self._physical_bytes(self.current_pages)
+
+    def _physical_bytes(self, pages: int) -> int:
+        """Prospective physical bytes for a page count, padding included.
+
+        Non-VMM providers have no padding, so this is the logical payload.
+        """
+
+        count = max(0, int(pages))
+        if self._physical_bytes_for_pages is None:
+            return count * self.page_bytes
+        return max(0, int(self._physical_bytes_for_pages(count)))
+
+    def _prospective_growth_bytes(self, pages: int) -> int:
+        """Additional physical bytes a growth of ``pages`` would commit.
+
+        The growth budget must be checked against the padded physical delta, not
+        ``pages * page_bytes``, so a granularity boundary refuses before any
+        physical memory is mapped.
+        """
+
+        count = max(0, int(pages))
+        if self._physical_bytes_for_pages is None:
+            return count * self.page_bytes
+        return max(0, self._physical_bytes(self.current_pages + count) - self._arena_physical_bytes)
+
+    def _max_pages_within_budget(self, upper: int) -> int:
+        """Largest page count at or below ``upper`` whose physical bytes fit.
+
+        The remaining budget is ``budget_bytes`` minus every private-workspace
+        charge. Binary search inverts the monotonic prospective pricing so a
+        granularity boundary is respected before any commit.
+        """
+
+        ceiling = max(0, int(upper))
+        if self._physical_bytes_for_pages is None:
+            budget = self.budget_bytes - self.private_workspace_bytes
+            return max(0, min(ceiling, budget // self.page_bytes))
+        budget = self.budget_bytes - self.private_workspace_bytes
+        if budget <= 0:
+            return 0
+        low, high = 0, ceiling
+        while low < high:
+            mid = (low + high + 1) // 2
+            if self._physical_bytes(mid) <= budget:
+                low = mid
+            else:
+                high = mid - 1
+        return low
+
+    @property
+    def resident_consumers(self) -> tuple[Any, ...]:
+        """Every charged resident consumer: the arena first, then charges in order."""
+
+        from hipengine.runtime.memory_admission import MemoryConsumer
+
+        with self._lock:
+            return (
+                MemoryConsumer("kv_arena", self._arena_physical_bytes),
+                *(
+                    MemoryConsumer(name, charged)
+                    for name, charged in self._private_workspace_reservations.values()
+                ),
+            )
+
+    @property
+    def accounted_bytes(self) -> int:
+        """Arena physical commitment plus every reserved resident consumer."""
+
+        with self._lock:
+            return self._arena_physical_bytes + self.private_workspace_bytes
+
+    def reserve_resident_bytes(self, name: str, nbytes: int) -> object:
+        """Charge a resident device consumer before allocating it.
+
+        The charge is retained until the consumer's buffers are freed, so the
+        budget prices the whole resident footprint rather than only the arena.
+        The charge is refused, naming this consumer, before the caller allocates
+        anything.
+        """
+
+        count = int(nbytes)
+        if count <= 0:
+            raise ValueError("resident consumer bytes must be positive")
+        label = str(name).strip()
+        if not label:
+            raise ValueError("resident consumer needs a name")
+        with self._lock:
+            self._require_open()
+            self._check_byte_budget(count, name=label)
+            token = object()
+            self._private_workspace_reservations[token] = (label, count)
+            return token
+
+    def reserve_private_workspace(
+        self, nbytes: int, name: str = "private_workspace"
+    ) -> object:
+        """Charge private KV before allocation; retain the charge until buffers free."""
+
+        return self.reserve_resident_bytes(name, nbytes)
+
+    def release_private_workspace(self, token: object) -> None:
+        with self._lock:
+            del self._private_workspace_reservations[token]
+
+    def _check_byte_budget(
+        self, additional_bytes: int, name: str = "private_workspace"
+    ) -> None:
+        """Refuse a charge that does not fit, naming the consumer that does not.
+
+        Imported here rather than at module scope: ``hipengine.runtime`` pulls in
+        the KV cache, so a module-scope edge from this package to that one is a
+        cycle. The budget itself is shared, not duplicated.
+        """
+
+        budget = self.budget_bytes
+        if budget is None:
+            return
+        from hipengine.runtime.memory_admission import (
+            MemoryAdmissionRefused,
+            MemoryConsumer,
+            price_memory_admission,
+        )
+
+        decision = price_memory_admission(
+            free_bytes=budget,
+            consumers=(
+                MemoryConsumer("kv_arena", self._arena_physical_bytes),
+                *(
+                    MemoryConsumer(charged_name, charged)
+                    for charged_name, charged in self._private_workspace_reservations.values()
+                ),
+                MemoryConsumer(str(name), int(additional_bytes)),
+            ),
+            reserve_bytes=0,
+        )
+        if not decision.admitted:
+            raise MemoryAdmissionRefused(decision)
 
     @property
     def allocations(self) -> dict[int, DeviceKVPoolAllocation]:
@@ -173,6 +353,18 @@ class GlobalDeviceKVPool:
     def refcount(self, block_id: int) -> int:
         record = self.global_pool.page(int(block_id))
         return len(record.active_lease_ids) + int(record.cache_references)
+
+    def actively_leased(self, block_id: int) -> bool:
+        """True while a live lease still holds this page active.
+
+        A cache-owned prefix page can carry cache references and no active
+        lease, in which case releasing those references frees it. While any
+        lease is active on it -- including the transient guard a shared-prefix
+        admission holds -- releasing the cache references frees nothing and
+        only discards a reusable prefix entry.
+        """
+
+        return bool(self.global_pool.page(int(block_id)).active_lease_ids)
 
     def pin_count(self, block_id: int) -> int:
         return int(self.global_pool.page(int(block_id)).session_pins)
@@ -248,7 +440,17 @@ class GlobalDeviceKVPool:
         pages: int,
         *,
         now_seconds: float = 0.0,
+        require_contiguous: bool = False,
     ) -> DeviceKVPoolAllocation:
+        """Lease request pages, optionally requiring one contiguous page-id run.
+
+        The long-context packed prefill path can only reach a context at or above
+        the AOTriton slot threshold through a slot-local contiguous KV view, so a
+        caller that will need one asks for a run here. Cached prefix pages are
+        reclaimable and can occupy the only free run, so a failed placement asks
+        for them once before reporting the failure.
+        """
+
         rid = int(request_id)
         count = int(pages)
         if count <= 0:
@@ -258,16 +460,46 @@ class GlobalDeviceKVPool:
             if rid in self._request_allocations:
                 raise ValueError(f"request_id {rid} already has a device KV allocation")
             lease_id = self._lease_id(rid)
+            pressure_released = False
             while True:
                 try:
-                    lease = self.global_pool.allocate(
+                    lease = self._allocate_within_one_chunk(
                         lease_id,
                         private_pages=count,
-                        growth_credit_pages=0,
+                        require_contiguous=bool(require_contiguous),
                     )
                     break
+                except DeviceKVContiguityError:
+                    if pressure_released or not callable(self._on_pressure):
+                        raise
+                    pressure_released = True
+                    self._on_pressure(count)
                 except MemoryError:
-                    self._ensure_free_pages(count, now_seconds=now_seconds)
+                    if not pressure_released and callable(self._on_pressure):
+                        pressure_released = True
+                        free = self.global_pool.free_pages
+                        self._on_pressure(count - free if free < count else count)
+                        continue
+                    # Request KV must fit within one backing chunk. Growing
+                    # only the aggregate free-page deficit can leave every
+                    # chunk too small and retry forever once total free >= count.
+                    needed = (
+                        max(1, count - self.global_pool.free_pages)
+                        if self._contiguous_growth else count
+                    )
+                    growth = max(self._growth_chunk_pages, needed)
+                    if self.budget_bytes is not None:
+                        remaining = (
+                            self.budget_bytes - self.accounted_bytes
+                        ) // self.page_bytes
+                        growth = min(growth, remaining)
+                    if growth < needed:
+                        self._allocation_failures += 1
+                        raise MemoryError(
+                            f"cannot allocate {count} KV pages in one backing "
+                            "chunk within the pool budget"
+                        )
+                    self.grow(growth, now_seconds=now_seconds)
             allocation = self._allocation(rid, lease)
             self._request_allocations[rid] = allocation
             self._last_active_seconds = float(now_seconds)
@@ -281,6 +513,7 @@ class GlobalDeviceKVPool:
         *,
         suffix_pages: int,
         now_seconds: float = 0.0,
+        require_contiguous: bool = False,
     ) -> DeviceKVPoolAllocation:
         rid = int(request_id)
         shared = tuple(int(page_id) for page_id in prefix_block_ids)
@@ -293,17 +526,32 @@ class GlobalDeviceKVPool:
             self._require_open()
             if rid in self._request_allocations:
                 raise ValueError(f"request_id {rid} already has a device KV allocation")
-            self._ensure_free_pages(private, now_seconds=now_seconds)
+            # Hold the chosen prefix before pressure callbacks can evict its
+            # cache entry. The temporary lease transfers protection to the
+            # request lease on success and releases it on every failure.
+            guard = f"admission:{rid}"
+            if shared:
+                self.global_pool.allocate(
+                    guard, private_pages=0, growth_credit_pages=0,
+                    shared_page_ids=shared,
+                )
             try:
-                lease = self.global_pool.allocate(
+                if self._contiguous_growth:
+                    self._ensure_free_pages(private, now_seconds=now_seconds)
+                elif self.global_pool.free_pages < private and callable(self._on_pressure):
+                    self._on_pressure(private - self.global_pool.free_pages)
+                lease = self._allocate_within_one_chunk(
                     self._lease_id(rid),
                     private_pages=private,
-                    growth_credit_pages=0,
+                    require_contiguous=bool(require_contiguous),
                     shared_page_ids=shared,
                 )
             except MemoryError:
                 self._allocation_failures += 1
                 raise
+            finally:
+                if shared:
+                    self.global_pool.release(guard)
             allocation = self._allocation(rid, lease)
             self._request_allocations[rid] = allocation
             self._last_active_seconds = float(now_seconds)
@@ -327,7 +575,7 @@ class GlobalDeviceKVPool:
             self._growth_chunk_pages, missing
         )
         if self._max_pages is not None:
-            target = min(target, self._max_pages)
+            target = min(target, self._max_pages_within_budget(self._max_pages))
         if target <= self.global_pool.page_capacity:
             self._allocation_failures += 1
             raise MemoryError(
@@ -343,6 +591,7 @@ class GlobalDeviceKVPool:
         suffix_pages: int,
         first_divergent_token: int,
         now_seconds: float = 0.0,
+        require_contiguous: bool = False,
     ) -> DeviceKVPoolAllocation:
         divergent = int(first_divergent_token)
         if divergent < 0:
@@ -354,17 +603,9 @@ class GlobalDeviceKVPool:
             prefix_block_ids,
             suffix_pages=int(suffix_pages),
             now_seconds=now_seconds,
+            require_contiguous=bool(require_contiguous),
         )
-        fork = DeviceKVPoolAllocation(
-            request_id=allocation.request_id,
-            block_ids=allocation.block_ids,
-            pointers=allocation.pointers,
-            chunk_start_block_id=0,
-            backing=allocation.backing,
-            reused_block_ids=allocation.reused_block_ids,
-            allocated_block_ids=allocation.allocated_block_ids,
-            first_divergent_token=divergent,
-        )
+        fork = replace(allocation, first_divergent_token=divergent)
         with self._lock:
             self._request_allocations[int(request_id)] = fork
             self._cow_fork_events += 1
@@ -438,11 +679,39 @@ class GlobalDeviceKVPool:
         with self._lock:
             self._require_open()
             try:
+                # Price the padded physical delta, not the logical pages, so a
+                # granularity boundary refuses before any mapping is committed.
+                self._check_byte_budget(self._prospective_growth_bytes(count))
                 if callable(self._before_grow):
                     self._before_grow()
-                appended = grow_storage(count, int(self.global_pool.page_capacity))
-                plane_pointers, pointer_tables = appended
+                chunk_start = int(self.global_pool.page_capacity)
+                appended = grow_storage(count, chunk_start)
+                # A provider may return its new chunk's backing as a third
+                # element; without it the pool cannot confine allocations to the
+                # appended chunk and growth stays unusable for consumers that
+                # address one chunk at a time.
+                if len(appended) == 3:
+                    plane_pointers, pointer_tables, chunk_backing = appended
+                else:
+                    plane_pointers, pointer_tables = appended
+                    chunk_backing = None
                 self.global_pool.append_pages(plane_pointers, pointer_tables)
+                added = int(self.global_pool.page_capacity) - chunk_start
+                if added > 0:
+                    if self._contiguous_growth:
+                        if chunk_backing is not None:
+                            self._backing = chunk_backing
+                        self._chunks[:] = [
+                            (0, int(self.global_pool.page_capacity), self._backing)
+                        ]
+                    else:
+                        self._chunks.append(
+                            (
+                                chunk_start,
+                                added,
+                                self._backing if chunk_backing is None else chunk_backing,
+                            )
+                        )
             except MemoryError:
                 self._allocation_failures += 1
                 raise
@@ -458,6 +727,8 @@ class GlobalDeviceKVPool:
                 raise RuntimeError(
                     "cannot close global device KV pool with live request allocations"
                 )
+            if self._private_workspace_reservations:
+                raise RuntimeError("cannot close global device KV pool with private workspace")
             snapshot = self.global_pool.snapshot()
             if int(snapshot["free_pages"]) != int(snapshot["page_capacity"]):
                 raise RuntimeError(
@@ -475,16 +746,87 @@ class GlobalDeviceKVPool:
     def _lease_id(request_id: int) -> str:
         return f"request:{int(request_id)}"
 
+    def _allocate_within_one_chunk(
+        self,
+        lease_id: str,
+        *,
+        private_pages: int,
+        require_contiguous: bool,
+        shared_page_ids: tuple[int, ...] = (),
+    ) -> Any:
+        """Lease pages from a single storage chunk.
+
+        Every consumer of this pool addresses KV as ``chunk_base + page *
+        page_stride`` with the page id taken straight from the block table, so an
+        allocation whose pages straddle two appended chunks indexes past the end
+        of the first one. Before this confinement a grown pool produced exactly
+        that: a GPU memory fault inside the paged-KV write kernel.
+
+        With one chunk this is the previous behaviour. With several, the chunk
+        holding any shared pages is required; otherwise chunks are tried in
+        page-id order and the last failure is reported, so a caller still sees
+        ``MemoryError`` (which admission turns into a clean rejection) or
+        ``DeviceKVContiguityError`` rather than an unbindable placement.
+        """
+
+        if len(self._chunks) == 1:
+            return self.global_pool.allocate(
+                lease_id,
+                private_pages=int(private_pages),
+                growth_credit_pages=0,
+                shared_page_ids=shared_page_ids,
+                require_contiguous=bool(require_contiguous),
+            )
+        if shared_page_ids:
+            owning = self._chunk_for_page(int(shared_page_ids[0]))
+            if any(
+                self._chunk_for_page(int(page_id)) is not owning
+                for page_id in shared_page_ids
+            ):
+                raise MemoryError("shared KV prefix pages span two storage chunks")
+            candidates = [owning]
+        else:
+            candidates = list(self._chunks)
+        failure: BaseException | None = None
+        for start, page_count, _chunk_backing in candidates:
+            try:
+                return self.global_pool.allocate(
+                    lease_id,
+                    private_pages=int(private_pages),
+                    growth_credit_pages=0,
+                    shared_page_ids=shared_page_ids,
+                    require_contiguous=bool(require_contiguous),
+                    within_page_range=(int(start), int(start) + int(page_count)),
+                )
+            except (MemoryError, DeviceKVContiguityError) as exc:
+                failure = exc
+        assert failure is not None
+        raise failure
+
+    def _chunk_for_page(self, page_id: int) -> tuple[int, int, Any]:
+        for chunk in self._chunks:
+            start, page_count, _ = chunk
+            if start <= int(page_id) < start + int(page_count):
+                return chunk
+        raise ValueError(f"KV page {int(page_id)} is outside every storage chunk")
+
     def _allocation(self, request_id: int, lease: Any) -> DeviceKVPoolAllocation:
         block_ids = tuple(int(page_id) for page_id in lease.logical_page_ids)
+        # Confinement guarantees one chunk owns every page, so the first page
+        # names the chunk whose buffers the consumer must bind.
+        chunk_start, _chunk_pages, chunk_backing = self._chunk_for_page(block_ids[0])
         return DeviceKVPoolAllocation(
             request_id=int(request_id),
             block_ids=block_ids,
             pointers=tuple(self.pointer_for(page_id) for page_id in block_ids),
-            chunk_start_block_id=0,
-            backing=self._backing,
+            chunk_start_block_id=int(chunk_start),
+            backing=chunk_backing,
             reused_block_ids=tuple(int(page_id) for page_id in lease.shared_page_ids),
             allocated_block_ids=tuple(int(page_id) for page_id in lease.private_page_ids),
+            # Growth appends backing chunks while keeping page ids stable, so
+            # the first chunk's page count stops being the right bound as soon
+            # as the pool grows. The pointer tables cover every page.
+            pool_page_capacity=int(self.global_pool.page_capacity),
         )
 
     def _active_lease_for(self, page_ids: tuple[int, ...]) -> str:

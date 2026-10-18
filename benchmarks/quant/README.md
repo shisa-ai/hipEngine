@@ -123,7 +123,7 @@ caveat.
 Create the BF16 teacher fixture and reference cache (about 45 MiB). This CPU
 step loads the 72 GB BF16 checkpoint and may take several minutes. Use a Python
 environment with the optional Torch/Transformers dependencies (the current
-ZBook uses `/home/lhl/miniforge3/bin/python3`):
+ZBook uses `~/miniforge3/bin/python3`):
 
 ```bash
 PYTHONPATH=. python3 scripts/quant_quality/qwen36_teacher.py capture-bf16 \
@@ -148,7 +148,7 @@ Capture the optional same-checkpoint ParoQuant/Transformers implementation
 reference in the Torch environment:
 
 ```bash
-PYTHONPATH=. /home/lhl/miniforge3/bin/python3 \
+PYTHONPATH=. ~/miniforge3/bin/python3 \
   scripts/quant_quality/qwen36_teacher.py capture-transformers-paro \
   --model ~/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 \
   --model-sha256 a5c9100b17846ff0b2b507dc16dfc3ff1d622adbfc4782f30b4f1b9fac58cc60 \

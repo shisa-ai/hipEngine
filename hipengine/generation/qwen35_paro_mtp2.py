@@ -16,6 +16,7 @@ from hipengine.runtime.qwen35_paro_runner import (
 )
 from hipengine.speculative.frontier import (
     CandidateGraph,
+    SpeculativeKVBinding,
     ProviderAttachment,
     ProviderCatchupMode,
     SpecRequestPlan,
@@ -29,7 +30,10 @@ from hipengine.speculative.mtp_native import (
     NativeMtpStateSnapshot,
     NativeMtpW8A16Head,
 )
-from hipengine.speculative.provider import SpeculativeRequestSemantics
+from hipengine.speculative.provider import (
+    SpeculativeRequestSemantics,
+    validate_staged_target_adapter,
+)
 from hipengine.speculative.transaction import (
     SpecCycleResult,
     SpecCycleStage,
@@ -80,6 +84,7 @@ class Qwen35ParoMTP2Adapter:
         self._transaction_sequence = 0
         self._proposer_builds = 0
         self._proposer_reuses = 0
+        validate_staged_target_adapter(self)
 
     def register_request(self, request_id: int, candidate_budget: int) -> None:
         rid = int(request_id)
@@ -253,6 +258,12 @@ class Qwen35ParoMTP2Adapter:
             eager_supported=True,
             strict_fallback_key="paro_target_c1_loop_exact",
             max_context_tokens=int(session.max_sequence_length) - 2,
+            kv_binding=SpeculativeKVBinding.for_resident_target(
+                target=session,
+                storage_view_key="paged_bf16_kv_live_spans",
+                topology_key="paro_paged_bf16",
+                transaction_mode=SpecTransactionMode.PACKED_SCRATCH,
+            ),
         )
 
     def claims_fit(self, plan: SpecRequestPlan) -> bool:

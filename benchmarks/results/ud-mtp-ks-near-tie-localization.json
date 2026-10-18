@@ -1,0 +1,68 @@
+{
+  "unit": "U6-ud-mtp-ks-near-tie-localization",
+  "kind": "correctness-diagnostic",
+  "not_a_performance_claim": "This artifact records no token rates. It localizes the one exactness failure in benchmarks/results/ud-mtp-certification-u6.json (ud-q4-k-s, general_ja_plan).",
+  "host": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "note": "Both GPUs idle at measurement time; a --collect-only pytest (CPU only) was running on the host."
+  },
+  "protocol": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_id": "general_ja_plan",
+    "prompt_tokens": 43,
+    "max_new_tokens": 25,
+    "candidate_budget": 3,
+    "target_verify_mode": "native",
+    "ar": "true no-MTP single-row greedy (target.prefill + target.step)",
+    "mtp": "Qwen35GGUFMTPDecodeSession B3 over the same target weights",
+    "command": "python /tmp/ud6-ks-localize.py --model <artifact> --quant <quant> (read-only diagnostic; builds the same objects scripts/qwen36_dense_gguf_suite.py builds)"
+  },
+  "finding": {
+    "summary": "The UD Q4_K_S exactness failure is a single near-tie argmax flip on a 0.0096-logit spread, not a defect in the AR path or in the MTP path.",
+    "divergent_artifact": "ud-q4-k-s",
+    "output_position": 12,
+    "ar_token": 99720,
+    "ar_token_logit": 21.181459,
+    "ar_rank1_token": 211768,
+    "ar_rank1_logit": 21.171841,
+    "top1_minus_top2_spread": 0.009619,
+    "mtp_token": 211768,
+    "mtp_token_is_ar_rank": 1,
+    "determinism": "Reproduced identically in the two certification runs (identical token_sha256_i64 per run) and again in this diagnostic.",
+    "mechanism": "The verifier evaluates that output row inside a 4-row batch (target_logits_shape [4, 248320] for budget 3); the AR path evaluates the same row as a single-row step. The two routes differ by roughly one part in a thousand in logit space at that position, which is enough to flip a 0.0096 near-tie. This is a batch-composition-invariance deviation, which docs/EXECUTION-PROFILES.md defines as a gate separate from arithmetic equality."
+  },
+  "paired_control": [
+    {
+      "artifact": "Qwen3.8-27B-Q4_K_S.gguf",
+      "quant": "gguf_q4_k_s",
+      "role": "plain control, same quant tier as the failing UD artifact",
+      "general_ja_plan": "AR and MTP agree on every output position"
+    },
+    {
+      "artifact": "Qwen3.8-27B-Q4_K_M.gguf",
+      "quant": "gguf_q4_k_m",
+      "role": "plain control, K_M tier",
+      "general_ja_plan": "AR and MTP agree on every output position"
+    },
+    {
+      "artifact": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "quant": "gguf_ud_q4_k_m",
+      "role": "UD K_M",
+      "general_ja_plan": "AR and MTP agree on every output position"
+    }
+  ],
+  "implication_for_u6_item_5": {
+    "gate_as_written": "exact_ar_mtp_control_behavior requires greedy token IDs exactly equal to the true no-MTP AR denominator.",
+    "state": "Unqualified for ud-q4-k-s: the gate as written is not met.",
+    "decision_required": [
+      "Strict profile: the 0.0096-logit batch-composition flip is a genuine failure, so ud-q4-k-s cannot carry MTP scope at this profile.",
+      "Production profile: replace exact-ID equality with the calibrated mean/tail/max KL and top-1 agreement gates from docs/EXECUTION-PROFILES.md, and record this near-tie as a known batch-composition deviation. This is a contract decision, not a measurement outcome, and was not taken here."
+    ]
+  },
+  "not_measured": [
+    "The verifier's own row logits at that position: only target_logits_shape is exposed by the production cycle record, so the ~0.01-logit route difference is strongly indicated (near-tie spread, deterministic flip onto the AR rank-1, verifier batch shape) but not closed by a logit-level diff.",
+    "Whether the same class of flip occurs on other prompts or budgets: this diagnostic covers general_ja_plan at B3, which is the only failure in the certification artifact.",
+    "Any token rate: task #22 (paired UD/plain performance) remains gated on U6 certification."
+  ]
+}

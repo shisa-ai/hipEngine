@@ -1,0 +1,944 @@
+"""Capture one Gemma 4 decode step as a HIP graph and replay it per token.
+
+The decode step launches roughly 780 kernels whose arguments never change
+between positions: embeddings, norms, projections, rotary, MLP/MoE and the
+lm_head all read the same buffers every step. Only two things move:
+
+* the KV append destinations (the cache slot of the live position), and
+* the position-dependent *content* — token ids, rope tables, the keep-mask —
+  which is already staged into pointer-stable buffers before any launch.
+
+A capture freezes everything, so this module freezes the launch shape to a
+context bucket and re-targets the two things that must move:
+
+* **Bucket keying.** A step at position ``p`` runs with ``keys_extent`` and
+  ``kv_write_offset`` frozen to the bucket end (``ceil((p+1)/width)*width``)
+  and ``key_begin`` frozen to ``bucket_start - window``. Both are constants
+  for every position in the bucket, so the captured graph never changes
+  shape; a bucket crossing recaptures. The keep-mask staged for the step is
+  built with the frozen extent but the step's *actual* positions as content,
+  so columns past the live range read False and the bucket-shaped attention
+  sees exactly the live context. Frozen values are always ≤ their actual
+  counterparts, so the graph attends a superset of the true range and the
+  mask — not a host argument — is what bounds it.
+
+  A bounded sliding layer rebases, so its cache slot ``s`` holds absolute
+  position ``base + s``. The step rebases the caches on the session stream
+  *before* capture, and every frozen absolute offset is translated to a slot
+  by subtracting the layer's base: the append slot is ``bucket.end - 1 -
+  base``, the frozen ``key_begin`` stays at or above the base, and the replay
+  targets ``position - base``. The per-layer bases are part of the capture
+  key, so a rebase recaptures instead of replaying a graph whose slots no
+  longer line up.
+
+  The captured attention shape must not change when the base moves: the
+  presented key count is ``bucket.end - key_begin``, and the flash/split
+  partition follows it. So a bounded sliding cache keeps one bucket of
+  history extra (``Gemma4Runner.sliding_reserve``) below the block, which
+  keeps the frozen bucket origin and end inside the retained band at every
+  rebase. ``_capture`` refuses a runner whose reserve is smaller than the
+  bucket width rather than clamping the mask and changing the shape.
+
+* **Memcpy node updates.** The KV append is a device-to-device copy whose
+  destination is the live position, which the host knows and the capture
+  cannot. Each replay re-targets the captured append nodes with
+  ``hipGraphExecMemcpyNodeSetParams1D``; every other parameter is verified
+  at capture (source buffer, byte count, capture-time destination) so a node
+  is only ever updated by the layer and cache it belongs to.
+
+* **Tail zeroing.** The bucket shape reads cache slots ``[live, end)`` that
+  no step has written yet. The mask keeps them out of the arithmetic, but
+  ``q·k`` on uninitialized memory can be a NaN, and a NaN poisons the
+  reduction regardless of the mask that would have zeroed a finite value.
+  (Measured: a fresh cache held 1,644 NaN-pattern elements past live, and
+  the first bucket-crossing replay returned NaN logits for every element.)
+  So each capture zeroes the not-yet-written tail of every layer's key and
+  value cache for ``[position + 1, end)`` in *cache slots* (``base``
+  subtracted), once, on the capture stream, before the first replay — after
+  that, every slot the graph can read is either written by an append or
+  exactly zero, and a zeroed masked lane is bit-identical to the live-shaped
+  launch.
+
+The capture runs on its own stream. Position-dependent content is staged on
+that stream *before* ``hipStreamBeginCapture``, so it executes immediately
+and is not part of the graph, and each replay stages the next step's content
+on the same stream ahead of the graph launch. The logits copy stays host-side
+after the graph — the sampler reads it, so that wait is inherent (D8 row) —
+and the runner's position bookkeeping happens in the collect phase, exactly
+as on the normal path.
+
+v1 scope: single-step capture with host-side sampling, Global capture mode
+(the layer's parallel MoE stream and its event dependencies are recorded
+into the graph, so replay keeps the launched path's two-stream overlap).
+Not wired into `Gemma4Runner.forward`: the default-on attempt measured
+**negative** at the campaign workload — 64.43 tok/s launched vs 61.21 with
+the route at 1024/128 (−5.0%, three design variants, artifacts
+`benchmarks/results/2026-09-30-gemma4-x7-graph-{pre,post,post2,post3}.json`)
+— because launched decode is already device-bound: its 10.5 ms/step of host
+submission is hidden under device work, while the graph adds serial host
+(the per-step append retarget ≈ 0.17 ms, `hipGraphLaunch` ≈ 0.27 ms) plus
+~10.5 ms of capture recording per bucket crossing. The clearing route for a
+future attempt is device-positioned appends — the qwen
+`record_i64_scalar_indexed` pattern — which removes the retarget entirely
+(phase probe: `scratch/x7_graph_phase_probe.py`).
+
+The runner must be warm before the first capture: run at least one normal
+forward (prefill) and one normal decode step first, so every kernel the graph
+records is already registered and loaded. A cold route would try to load
+modules while capture is active, which HIP rejects.
+"""
+
+from __future__ import annotations
+
+import weakref
+from dataclasses import dataclass
+
+import numpy as np
+
+from hipengine.core.hip import (
+    HIP_GRAPH_NODE_TYPE_MEMCPY,
+    get_hip_runtime,
+)
+from hipengine.core.memory import MemcpyKind
+from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_tiled import KEY_TILE
+from hipengine.runtime.gemma4 import GEMMA4_SLIDING_BUCKET_WIDTH, Gemma4Runner
+
+#: The decode-graph capture window, from the measured launch-bound prize:
+#: replaying the whole step from a captured graph wins at 1024 prompt tokens
+#: (+15.4 percent decode, 38.81 vs 33.63 tok/s) and 2048 (+2.2 percent,
+#: 37.74 vs 36.91) and is flat-to-negative from 2560 on, where the step is
+#: device-bound and the per-bucket capture cost (~10.5 ms per 64 positions)
+#: plus the staged-mask superset walk outweighs the launch-gap savings
+#: (2026-10-10 sweep, 3 samples per arm, campaign corpus). Correctness is not
+#: the bound: every route below 15328 keys replays bit-exactly since the
+#: live-extent slot landed (flash), and the split and class routes always did;
+#: the class-global kernel and the staged singleton above 15328 keys remain
+#: unvalidated for capture, so the guard never admits them either way.
+_CAPTURE_MAX_KEYS = 2176
+
+#: Backend-package attribute that replaces ``_CAPTURE_MAX_KEYS`` for that
+#: backend. The window is a measured launch-bound prize, so it is a property of
+#: the hardware the step runs on: a backend whose launched step leaves no gap
+#: to recover declares a smaller window, or ``0`` to keep every step launched.
+CAPTURE_MAX_KEYS_CAPABILITY = "GEMMA4_DECODE_GRAPH_CAPTURE_MAX_KEYS"
+
+
+def _capture_max_keys(backend: str | None) -> int:
+    """The capture window for ``backend``: its declared value, else the default."""
+
+    if backend is None:
+        return _CAPTURE_MAX_KEYS
+    from hipengine.kernels.backends import backend_package_capability
+
+    return int(backend_package_capability(backend, CAPTURE_MAX_KEYS_CAPABILITY, _CAPTURE_MAX_KEYS))
+
+#: Positions per capture window. Small enough that a bucket crossing costs a
+#: recapture only once per ``width`` steps, large enough that the frozen
+#: ``key_begin`` walks at most ``width`` keys past the true sliding window.
+#: A bounded sliding cache keeps one window of history extra so the frozen
+#: bucket origin and end stay inside the retained band at every rebase; the
+#: runner owns that reserve (``Gemma4Runner.sliding_reserve``), and ``_capture``
+#: refuses a runner whose reserve is smaller than this width.
+BUCKET_WIDTH = GEMMA4_SLIDING_BUCKET_WIDTH
+
+
+@dataclass(frozen=True)
+class _Bucket:
+    """One capture window: positions ``[start, end)`` in the sequence."""
+
+    start: int
+    end: int
+
+    @staticmethod
+    def for_position(position: int, width: int = BUCKET_WIDTH) -> "_Bucket":
+        """The bucket holding ``position``, cut so the route stays constant.
+
+        Three rules, all of which keep every launch argument inside the bucket
+        equal to what the live-shaped path would have used:
+
+        1. The bucket covers the position and is ``width`` positions wide on
+           the normal grid.
+        2. The global layers' tiled route admits exactly at key counts that
+           are multiples of ``KEY_TILE`` (128), so a bucket whose key-count
+           range contains such a multiple would replay one route while the
+           launched path used another at some step. A grid bucket crossing
+           that point stops one position short (``end = multiple - 1``).
+        3. The position exactly at ``multiple - 1`` becomes a singleton
+           bucket ``[multiple - 1, multiple)``: its key count *is* the
+           multiple, so graph and launched path agree on the tiled route with
+           identical parameters.
+
+        A bounded sliding cache's history reserve keeps the frozen origin and
+        end inside the retained band, so this never cuts at the sliding band;
+        ``_capture`` asserts that invariant instead of silently changing shape.
+        It is cut at the physical context end by :func:`_context_end_bucket`, which
+        every global layer's full-context cache requires.
+        """
+
+        live = int(position) + 1
+        end = ((live + width - 1) // width) * width
+        start = end - width
+        boundary = (start // KEY_TILE + 1) * KEY_TILE  # smallest multiple > start
+        if int(position) == boundary - 1:
+            return _Bucket(start=int(position), end=int(position) + 1)
+        if boundary <= end:
+            end = boundary - 1
+        return _Bucket(start=start, end=end)
+
+
+def _context_end_bucket(position: int, capacity: int) -> _Bucket:
+    """The capture bucket for ``position``, cut at the physical context end.
+
+    ``_Bucket.for_position`` rounds the end up to a bucket boundary, so at a
+    context that is not a multiple of the bucket width the last bucket's end
+    runs past ``capacity``. Every *global* layer's cache holds exactly
+    ``capacity`` rows indexed by absolute position, and a bounded runner keeps
+    those global caches at the full context, so the frozen end has to be cut
+    here for a bounded runner as much as for an unbounded one.
+
+    The cut only ever lowers the end (``min``), so a bounded sliding layer's
+    reserve invariant -- ``base <= bucket.start - window`` and ``bucket.end -
+    base <= band`` -- still holds; ``_capture`` asserts it against the cut
+    bucket. Clamping to the sliding band instead would change the frozen
+    attention shape at every rebase, which is why this cuts at the context and
+    not at the band.
+    """
+
+    bucket = _Bucket.for_position(position)
+    if bucket.end > capacity:
+        bucket = _Bucket(bucket.start, capacity)
+    return bucket
+
+
+@dataclass(frozen=True)
+class _CaptureAppend:
+    """One captured KV append node, with everything a re-target needs."""
+
+    node: int
+    src: int
+    count: int
+    cache_base: int
+    kv_width: int
+    #: The layer's cache base: the captured slot is ``frozen_write - base`` and
+    #: a replay targets ``position - base``. 0 for a global layer.
+    base: int = 0
+
+
+class Gemma4DecodeGraphSession:
+    """Replay a captured decode step for one runner.
+
+    Usage: warm the runner (one forward, one decode step), then call
+    :meth:`step` per token. The session owns a HIP stream and one executable
+    graph, recapturing whenever the bucket or any baked pointer changes.
+    ``close()`` releases them; the runner is untouched.
+    """
+
+    def __init__(self, runner: Gemma4Runner) -> None:
+        # Weak: the runner owns this session (``_decode_graph``), so a strong
+        # back-reference would make the pair a cycle whose bulk is the
+        # runner's weight map -- unreachable at refcount-zero until a cyclic
+        # gc that allocation pressure may never trigger. See ``_runner``.
+        self._runner_ref = weakref.ref(runner)
+        self._stream = get_hip_runtime().stream_create(nonblocking=True)
+        self._graph = 0
+        self._exec = 0
+        self._key: tuple[object, ...] | None = None
+        self._bucket: _Bucket | None = None
+        self._appends: tuple[_CaptureAppend, ...] = ()
+        self._captures = 0
+        self._launched_fallbacks = 0
+
+    # --- public API -------------------------------------------------------
+
+    @property
+    def _runner(self) -> Gemma4Runner:
+        """The runner this session drives, held weakly.
+
+        The runner owns the session, so a strong back-reference would make the
+        pair a reference cycle; a cycle whose bulk is a 17 GB weight map never
+        hits refcount-zero at request end and waits for a cyclic gc the
+        process may never trigger. Weak keeps runner teardown prompt: when the
+        runner dies, the session dies with it.
+        """
+
+        runner = self._runner_ref()
+        if runner is None:
+            raise RuntimeError("the decode-graph session's runner has been freed")
+        return runner
+
+    @property
+    def stream(self) -> int:
+        return self._stream
+
+    @property
+    def captures(self) -> int:
+        """How many times this session has captured a graph."""
+
+        return self._captures
+
+    @property
+    def launched_fallbacks(self) -> int:
+        """Steps replayed through the launched path instead of the graph.
+
+        Every step whose capture window reaches the decode split route takes
+        this path (see ``_capture_max_keys``); zero means every step in
+        the window replayed from a captured graph.
+        """
+
+        return self._launched_fallbacks
+
+    def step(self, token: int, *, apply_softcap: bool = True) -> np.ndarray:
+        """Run one decode step for ``token`` and return its logits.
+
+        Mirrors ``runner.forward([token])``: same staged content, same
+        launches, same collect phase — the launches come from the captured
+        graph instead of 780 host-side submissions.
+        """
+
+        result = self._step(token, apply_softcap=apply_softcap, collect_argmax=False)
+        return result  # type: ignore[return-value]  # np.ndarray by _collect_block
+
+    def step_argmax(self, token: int, *, apply_softcap: bool = True) -> int:
+        """Run one decode step for ``token`` and return the greedy token.
+
+        Mirrors ``runner.forward_argmax([token])``: identical launches, the
+        collect phase argmaxes on the device and brings home 16 bytes instead
+        of the full-vocab logits. The returned token equals
+        ``int(np.argmax(step(...)))`` exactly, by the same
+        ``_collect_block_argmax`` contract the launched route uses.
+        """
+
+        result = self._step(token, apply_softcap=apply_softcap, collect_argmax=True)
+        return result  # type: ignore[return-value]  # int by _collect_block_argmax
+
+    def _step(self, token: int, *, apply_softcap: bool, collect_argmax: bool) -> np.ndarray | int:
+        runner = self._runner
+        if runner.uses_int8_kv:
+            # The direct INT8 consumer validates its live counts, row positions
+            # and page table with a synchronous device-to-host read, so it
+            # cannot run inside a HIP graph capture. Refusing capture up front
+            # names the limitation instead of silently disabling the storage
+            # the caller asked for; the requested INT8 cache is still exactly
+            # what runs without capture. Nothing is staged before the refusal.
+            raise RuntimeError(
+                "decode-graph capture is not supported with int8_per_token_head KV "
+                "storage: the direct INT8 consumer performs a checked device-to-host "
+                "readback that is not graph-capturable. Run without capture, or "
+                "request bf16 KV storage."
+            )
+        position = runner.position
+        if int(token) < 0:
+            raise ValueError(f"token {token} must be non-negative")
+        vocab = int(runner.weights.config.vocab_size or 0)
+        if vocab <= 0:
+            raise ValueError("config carries no vocab_size, so logits cannot be sized")
+        if not int(token) < vocab:
+            raise ValueError(f"token id {token} is outside the vocabulary of {vocab}")
+        if position + 1 > runner.capacity:
+            raise ValueError(f"one token from position {position} exceeds capacity {runner.capacity}")
+
+        bucket = _context_end_bucket(position, runner.capacity)
+        if bucket.end >= _capture_max_keys(getattr(runner.weights, "backend", None)):
+            # A replay of this window is exact (every route below 15328 keys
+            # replays bit-identically), but past the backend's window (2176
+            # keys unless it declares another) the step is device-bound and the capture cost plus the frozen superset walk
+            # outweigh the launch-gap savings -- measured flat-to-negative
+            # from 2560 on. Fall back to the launched step, which re-selects
+            # the exact live shape every position.
+            self._launched_fallbacks += 1
+            if collect_argmax:
+                return runner.forward_argmax([int(token)], apply_softcap=apply_softcap)
+            return runner.forward([int(token)], apply_softcap=apply_softcap)
+        # Rebase the bounded sliding caches before staging against the bucket. The
+        # capture bakes cache-relative slots and the replay targets
+        # ``position - base``, so it must see the base the replay will run
+        # with; a base change is part of the capture key, so a rebase
+        # recaptures. The rebase copies run on this session's stream ahead of
+        # ``stream_begin_capture``, so they execute immediately and are not
+        # recorded into the graph.
+        if getattr(runner, "_bounded_sliding", False):
+            runner._prepare_sliding_caches(position, 1, stream=self._stream)
+        tables, masks = runner._stage_block_content(
+            [int(token)], stream=self._stream, keys_extent=bucket.end,
+            key_begin_at=lambda attention: self._frozen_key_begin(attention, bucket),
+        )
+        self._stage_live_extents(bucket, tables)
+        key = self._capture_key(bucket, tables, masks)
+        if key != self._key or self._exec == 0:
+            self._capture(bucket, tables, masks, key, token=int(token))
+        # Every replay, capture included: the capture records the bucket's
+        # frozen slot, and only this call knows the live position.
+        self._retarget_appends(int(position))
+        get_hip_runtime().graph_launch(self._exec, self._stream)
+        runner._last_logits_rows = 1
+        runner._normalized_hidden_rows = 0
+        if collect_argmax:
+            return runner._collect_block_argmax(
+                [int(token)],
+                apply_softcap=apply_softcap,
+                needs_logits=True,
+                stream=self._stream,
+            )
+        return runner._collect_block(
+            [int(token)],
+            apply_softcap=apply_softcap,
+            needs_logits=True,
+            stream=self._stream,
+        )
+
+    def close(self) -> None:
+        """Destroy the executable graph, its captured graph and the stream."""
+
+        runtime = get_hip_runtime()
+        if self._exec:
+            runtime.graph_exec_destroy(self._exec)
+            self._exec = 0
+        if self._graph:
+            runtime.graph_destroy(self._graph)
+            self._graph = 0
+        if self._stream:
+            runtime.stream_destroy(self._stream)
+            self._stream = 0
+        self._key = None
+        self._bucket = None
+        self._appends = ()
+
+    def __enter__(self) -> "Gemma4DecodeGraphSession":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+    # --- capture ----------------------------------------------------------
+
+    def _frozen_key_begin(self, attention, bucket: _Bucket) -> int:
+        window = attention.sliding_window
+        if window is None:
+            return 0
+        # The smallest actual ``key_begin`` inside the bucket is at the bucket
+        # start; freezing one below it walks a superset, which the staged mask
+        # then bounds. Never above, which would skip live keys.
+        return max(0, bucket.start - int(window))
+
+    def _live_extent_slot(self, attention) -> int:
+        """Stable device pointer holding this geometry's ``[delta, live]`` pair.
+
+        The flash route's slice partitioning is a function of the live key
+        count (see ``gemma4_attention._capture_live_slots``), so a captured
+        flash launch reads its extent from this slot instead of a baked
+        scalar. The buffer is a reusable named staging upload, so the pointer
+        baked at capture time stays valid for every replay.
+        """
+
+        runner = self._runner
+        name = f"live-extent-{attention.head_dim}-{attention.num_kv_heads}"
+        # Allocation only, never an upload: this runs inside ``_capture``, and
+        # the step's ``_stage_live_extents`` has already staged this buffer's
+        # content for the replay that follows. Uploading zeros here would
+        # clobber that pair on the stream order and the first replay would
+        # read live == 0 (every slice dead, NaN output).
+        return runner._staging_buffer(name, 2 * np.dtype(np.int32).itemsize).ptr
+
+    def _stage_live_extents(self, bucket: _Bucket, tables: dict) -> None:
+        """Upload every geometry's live-extent pair for this replay position.
+
+        One pair per distinct geometry, staged ahead of the graph launch on
+        the session stream exactly like the keep-mask. ``delta`` is the live
+        read range's first key relative to the frozen ``key_begin`` the
+        captured launches walk from; ``live`` is the live key count the
+        launched path would pass as ``keys`` at this position.
+        """
+
+        runner = self._runner
+        position = runner.position
+        seen = set()
+        for index in range(len(runner.weights.layers)):
+            attention = runner.weights.config.geometry(index)
+            identity = (attention.head_dim, attention.num_kv_heads)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            window = attention.sliding_window
+            live_begin = 0 if window is None else max(0, position + 1 - int(window))
+            frozen_begin = self._frozen_key_begin(attention, bucket)
+            pair = np.array(
+                [live_begin - frozen_begin, position + 1 - live_begin],
+                dtype=np.int32,
+            )
+            name = f"live-extent-{attention.head_dim}-{attention.num_kv_heads}"
+            runner._stage_upload(name, pair, stream=self._stream)
+
+    def _capture_key(
+        self,
+        bucket: _Bucket,
+        tables: dict,
+        masks: dict,
+    ) -> tuple[object, ...]:
+        runner = self._runner
+        staged = tuple(
+            buffer.ptr
+            for group in (tuple(tables.values()), tuple(masks.values()))
+            for buffers in group
+            for buffer in (buffers if isinstance(buffers, tuple) else (buffers,))
+        )
+        kv = tuple(
+            (layer.key_cache, layer.value_cache) for layer in runner._kv
+        )
+        return (
+            bucket.start,
+            bucket.end,
+            staged,
+            kv,
+            # A rebase moves a sliding layer's base without moving any pointer,
+            # so the base is what makes the frozen slots valid: capture the
+            # bases and recapture when one changes.
+            tuple(runner._kv_base),
+            runner._hidden.ptr,
+            runner._token_ids.ptr,
+            runner._logits.ptr,
+            runner._normalized.ptr,
+        )
+
+    def _capture(
+        self,
+        bucket: _Bucket,
+        tables: dict,
+        masks: dict,
+        key: tuple[object, ...],
+        *,
+        token: int,
+    ) -> None:
+        """Record one decode step with the bucket's frozen launch shape."""
+
+        runner = self._runner
+        if runner.position == 0:
+            raise RuntimeError(
+                "decode-graph capture requires a warmed runner: run at least one "
+                "normal forward and one decode step first so every kernel the "
+                "graph records is registered and loaded"
+            )
+        self._retire()
+
+        # The sliding history reserve must cover this graph's bucket. A runner
+        # built with a smaller reserve would have a base above the frozen origin
+        # or an end past the band, which would silently change the captured
+        # attention shape across a rebase; refuse by name instead of clamping.
+        if getattr(runner, "_bounded_sliding", False):
+            reserve = int(getattr(runner, "sliding_reserve", 0))
+            if reserve < BUCKET_WIDTH:
+                raise RuntimeError(
+                    f"decode-graph capture needs a sliding history reserve of at "
+                    f"least {BUCKET_WIDTH} rows, but the runner was built with "
+                    f"{reserve}. Construct Gemma4Runner with "
+                    f"sliding_reserve >= {BUCKET_WIDTH}."
+                )
+            for index in range(len(runner.weights.layers)):
+                attention = runner.weights.config.geometry(index)
+                if attention.sliding_window is None:
+                    continue
+                base = int(runner._kv_base[index])
+                origin = self._frozen_key_begin(attention, bucket)
+                band = int(runner._kv_capacity[index])
+                if base > origin or bucket.end - base > band:
+                    raise RuntimeError(
+                        f"decode-graph bucket [{bucket.start}, {bucket.end}) does "
+                        f"not fit layer {index}'s retained band: base {base}, "
+                        f"frozen origin {origin}, band {band}. The sliding history "
+                        f"reserve ({reserve}) must cover the bucket width "
+                        f"({BUCKET_WIDTH})."
+                    )
+
+        frozen_write = bucket.end - 1
+        runtime = get_hip_runtime()
+
+        def launch(b: _Bucket, tbl: dict, msk: dict) -> None:
+            runner._launch_block(
+                [token],
+                tables=tbl,
+                masks=msk,
+                kv_write_offset=b.end - 1,
+                key_begin_at=lambda attention: self._frozen_key_begin(attention, b),
+                stream=self._stream,
+                # -1 lets the layer use its parallel MoE stream; Global mode
+                # below captures that stream's nodes and event dependencies
+                # into this graph, so replay keeps the launched path's
+                # two-stream overlap (folding it onto one stream measured
+                # 1.6 ms/step slower on device).
+                stream_moe=-1,
+                needs_logits=True,
+                return_hidden=False,
+                # The captured launch is one incremental decode step.
+                decode_phase=True,
+            )
+
+        # Reserve workspace on the capture stream for the selected route. The
+        # owner is shared across layers, but each stream has its own allocation;
+        # warming eager decode on another stream cannot prepare this one.
+        # Split sizes are not monotonic in the key count, and staged attention
+        # needs global scores even below the split threshold.
+        from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+            DECODE_ATTENTION_FLASH,
+            DECODE_ATTENTION_FLASH_LONG,
+            PREFILL_ATTENTION_STAGED,
+            build_gemma4_attention,
+            decode_slices,
+            flash_admits,
+            flash_decode_engages,
+            flash_long_row_slices,
+            flash_request_slices,
+            flash_slices,
+            flash_workspace_bytes,
+            select_prefill_attention,
+            split_workspace_bytes,
+        )
+        from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention_staged import (
+            build_gemma4_attention_staged,
+            staged_workspace_bytes,
+        )
+
+        library = build_gemma4_attention(load=True)
+        # A cold staged library must be built and loaded *before* the stream
+        # enters capture: the first launch inside a capture cannot dlopen or
+        # compile, and doing it here also matches the native library, which the
+        # line above already loads. Built at most once per capture, and only
+        # when a layer actually selects the staged route.
+        staged_loaded = False
+        decode_backend = str(getattr(runner.weights, "backend", "hip_gfx1100"))
+        for index in range(len(runner.weights.layers)):
+            attention = runner.weights.config.geometry(index)
+            base = int(runner._kv_base[index]) if getattr(runner, "_kv", None) else 0
+            # The launch the capture records uses cache-relative slots; reserve
+            # for exactly the keys it will walk, which for a rebased sliding
+            # layer starts at the base when the frozen key is below it.
+            key_begin = max(0, self._frozen_key_begin(attention, bucket) - base)
+            keys = (frozen_write - base) + 1 - key_begin
+            # Mirrors the runner: a plan with a decode scope routes its decode
+            # steps through that scope, not through the prefill request.
+            if (runner.prefill_attention_variants is not None
+                    and getattr(runner, "decode_attention_variants", None) is None):
+                selected = select_prefill_attention(
+                    requested_variant=runner.prefill_attention_variants,
+                    tokens=1, keys=keys, head_dim=attention.head_dim,
+                    num_heads=attention.num_heads, num_kv_heads=attention.num_kv_heads,
+                )
+                if selected.variant == PREFILL_ATTENTION_STAGED:
+                    runner._scratches[index].attention.buffer(
+                        staged_workspace_bytes(1, attention.num_heads, keys),
+                        stream=self._stream, runtime=runtime,
+                    )
+                    continue
+                if not selected.is_strict:
+                    continue
+            # A production decode preference can route this exact shape to the
+            # staged singleton or to key-sliced flash at the layer's
+            # native/exact attention call site; the first needs its own global
+            # scores, which the split reservation below does not cover, and the
+            # second needs the staged library loaded because that is where it
+            # falls back. Ask the layer's own selector so the reservation
+            # matches the launch the capture records.
+            decode_route = None
+            if getattr(runner, "decode_attention_variants", None) is not None:
+                from hipengine.kernels.hip_gfx1100.gemma4.gemma4_layer import (
+                    _EXACT_DECODE_STAGED,
+                    _select_exact_decode_attention,
+                )
+
+                _, decode_route = _select_exact_decode_attention(
+                    decode_attention_variants=runner.decode_attention_variants,
+                    backend=decode_backend,
+                    tokens=1,
+                    keys=keys,
+                    num_heads=attention.num_heads,
+                    num_kv_heads=attention.num_kv_heads,
+                    head_dim=attention.head_dim,
+                    sliding_window=attention.sliding_window,
+                    key_begin=key_begin,
+                )
+                if decode_route in (
+                    _EXACT_DECODE_STAGED, DECODE_ATTENTION_FLASH, DECODE_ATTENTION_FLASH_LONG,
+                ):
+                    # Both routes can reach the staged singleton: the staged
+                    # variant is it, and the flash variant falls back to it
+                    # when its own admission rejects a shape. A cold staged
+                    # library cannot be loaded once the stream is recording, so
+                    # it is loaded here for either.
+                    if not staged_loaded:
+                        build_gemma4_attention_staged(load=True)
+                        staged_loaded = True
+                    runner._scratches[index].attention.buffer(
+                        staged_workspace_bytes(1, attention.num_heads, keys),
+                        stream=self._stream, runtime=runtime,
+                    )
+            slices = decode_slices(keys, attention.head_dim)
+            # The same expression the launcher uses: a plan that prefers flash
+            # takes it on a short row too, below the split policy's count.
+            if flash_decode_engages(
+                keys=keys, head_dim=attention.head_dim,
+                prefer_flash=decode_route
+                in (DECODE_ATTENTION_FLASH, DECODE_ATTENTION_FLASH_LONG),
+            ):
+                need = split_workspace_bytes(
+                    1,
+                    attention.num_heads,
+                    attention.head_dim,
+                    keys,
+                    slices,
+                    library=library,
+                )
+                # The launched route may be flash-decoding (negative slices),
+                # whose partials need more than the split's weights buffer;
+                # size for whichever the admission can pick, exactly as
+                # _launch_prefill does. The count is the launcher's own
+                # :func:`flash_request_slices`, not the occupancy-target policy
+                # value: for the global packing the two differ, and a capture
+                # that reserved the smaller one would have the launch allocate
+                # its workspace inside the capture.
+                if flash_admits(
+                    tokens=1,
+                    head_dim=attention.head_dim,
+                    num_heads=attention.num_heads,
+                    num_kv_heads=attention.num_kv_heads,
+                ):
+                    request_slices = flash_request_slices(
+                        keys=keys,
+                        num_heads=attention.num_heads,
+                        num_kv_heads=attention.num_kv_heads,
+                        head_dim=attention.head_dim,
+                        library=library,
+                        long_rows=decode_route == DECODE_ATTENTION_FLASH_LONG,
+                    )
+                    if (
+                        decode_route == DECODE_ATTENTION_FLASH_LONG
+                        and flash_long_row_slices(keys) != flash_slices(keys)
+                    ):
+                        # A captured flash launch re-derives its slices on the
+                        # device with the default rule, which the long-row
+                        # count leaves above 8192 keys; the replay would walk
+                        # longer slices than the launch sized its LDS for.
+                        raise RuntimeError(
+                            f"a {keys}-key bucket is past the long-row flash "
+                            "variant's capturable range; keep the capture window "
+                            "at or below 8192 keys"
+                        )
+                    if request_slices:
+                        need = max(
+                            need,
+                            flash_workspace_bytes(
+                                1,
+                                attention.num_heads,
+                                attention.head_dim,
+                                request_slices,
+                                library=library,
+                            ),
+                        )
+                runner._scratches[index].attention.buffer(
+                    need, stream=self._stream, runtime=runtime
+                )
+        # A reservation above that grew a buffer retired the old one behind a
+        # stream event, which ``buffer`` would poll from inside the recording;
+        # an event query is refused while the stream captures. Settle them now.
+        for index in range(len(runner.weights.layers)):
+            settle = getattr(runner._scratches[index].attention, "settle", None)
+            if settle is not None:
+                settle(runtime)
+        # Register the live-extent slots the flash launches read during the
+        # recording: each block re-derives the live partitioning from the slot
+        # on the device, so the captured launch is exact at every replay
+        # position instead of baking the frozen bucket partitioning. Cleared
+        # in the finally below so launches outside a capture keep the scalar
+        # path.
+        import hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention as _attn
+        live_slots: dict = {}
+        seen_geometries = set()
+        for index in range(len(runner.weights.layers)):
+            attention = runner.weights.config.geometry(index)
+            identity = (attention.head_dim, attention.num_kv_heads)
+            if identity not in seen_geometries:
+                seen_geometries.add(identity)
+                live_slots[identity] = self._live_extent_slot(attention)
+        _attn._capture_live_slots = live_slots
+        # Global capture mode: see ``launch`` above.
+        runtime.stream_begin_capture(self._stream, mode=0)
+        try:
+            launch(bucket, tables, masks)
+            graph = runtime.stream_end_capture(self._stream)
+        except Exception:
+            # Leave capturing state behind and drop the partial graph: the
+            # stream is unusable for capture until EndCapture has run.
+            try:
+                leaked = runtime.stream_end_capture(self._stream)
+                if leaked:
+                    runtime.graph_destroy(leaked)
+            except Exception:
+                pass
+            raise
+        finally:
+            _attn._capture_live_slots = None
+        if graph == 0:
+            raise RuntimeError("stream capture produced no graph")
+        self._finalize_capture(graph, frozen_write=frozen_write, bucket=bucket, key=key)
+
+    def _finalize_capture(
+        self,
+        graph: int,
+        *,
+        frozen_write: int,
+        bucket: _Bucket,
+        key: tuple[object, ...],
+    ) -> None:
+        """Instantiate the captured graph and adopt it, releasing on any failure.
+
+        ``graph_instantiate``, ``_identify_appends`` and ``_zero_pending_tail``
+        all run after ``stream_end_capture`` and can all fail. Each must release
+        the captured graph (and the executable, once instantiated) or a failed
+        capture leaks both until the process exits.
+        """
+
+        runtime = get_hip_runtime()
+        exec_handle = 0
+        try:
+            exec_handle = runtime.graph_instantiate(graph)
+            appends = self._identify_appends(graph, frozen_write=frozen_write)
+            self._zero_pending_tail(bucket)
+        except BaseException:
+            if exec_handle:
+                runtime.graph_exec_destroy(exec_handle)
+            runtime.graph_destroy(graph)
+            raise
+        self._graph = graph
+        self._exec = exec_handle
+        self._key = key
+        self._bucket = bucket
+        self._appends = appends
+        self._captures += 1
+
+    def _identify_appends(self, graph: int, *, frozen_write: int) -> tuple[_CaptureAppend, ...]:
+        """Match every captured memcpy node to the layer and cache it belongs to.
+
+        The sources are unique per layer (the scratch's rotated-K and V
+        buffers), and a node whose destination is not exactly the frozen
+        append slot is a memcpy this model does not expect — a capture that
+        contains one is wrong, so it fails here rather than replaying a copy
+        nobody re-targets.
+        """
+
+        runner = self._runner
+        config = runner.weights.config
+        layers = len(runner.weights.layers)
+        expected: dict[int, tuple[int, str, int, int, int]] = {}
+        for index in range(layers):
+            geometry = config.geometry(index)
+            kv_width = int(geometry.num_kv_heads) * int(geometry.head_dim)
+            base = int(runner._kv_base[index]) if runner._kv else 0
+            scratch = runner._scratches[index]
+            kv = runner._kv[index]
+            expected[scratch.buffer("k_rot").ptr] = (
+                index, "k", kv.key_cache, kv_width, base
+            )
+            expected[scratch.buffer("v").ptr] = (
+                index, "v", kv.value_cache, kv_width, base
+            )
+
+        found: dict[tuple[int, str], _CaptureAppend] = {}
+        runtime = get_hip_runtime()
+        for node in runtime.graph_nodes(graph):
+            if runtime.graph_node_type(node) != HIP_GRAPH_NODE_TYPE_MEMCPY:
+                continue
+            src, dst, count = runtime.graph_memcpy_node_params(node)
+            entry = expected.get(int(src))
+            if entry is None:
+                raise RuntimeError(
+                    f"capture contains a memcpy from {src:#x}, which is not a "
+                    "layer's rotated-K or V scratch buffer"
+                )
+            layer, which, cache_base, kv_width, base = entry
+            if int(count) != kv_width * 2:
+                raise RuntimeError(
+                    f"append for layer {layer} ({which}) copied {count} bytes, "
+                    f"expected one row of {kv_width * 2}"
+                )
+            want = int(cache_base) + (frozen_write - base) * kv_width * 2
+            if int(dst) != want:
+                raise RuntimeError(
+                    f"append for layer {layer} ({which}) captured dst {dst:#x}, "
+                    f"expected the frozen slot {want:#x}"
+                )
+            slot = (layer, which)
+            if slot in found:
+                raise RuntimeError(f"duplicate capture of the {which} append for layer {layer}")
+            found[slot] = _CaptureAppend(
+                node=int(node),
+                src=int(src),
+                count=int(count),
+                cache_base=int(cache_base),
+                kv_width=kv_width,
+                base=base,
+            )
+        if len(found) != 2 * layers:
+            raise RuntimeError(
+                f"capture holds {len(found)} KV appends, expected {2 * layers} "
+                f"(one key and one value per layer over {layers} layers)"
+            )
+        return tuple(found[key] for key in sorted(found))
+
+    def _zero_pending_tail(self, bucket: _Bucket) -> None:
+        """Zero every cache slot in ``[position + 1, bucket.end)`` once.
+
+        Called per capture: the graph will read up to ``bucket.end`` slots,
+        and everything above the live position is either stale-but-finite
+        (safe: the mask zeroes it exactly) or never written (not safe: a NaN
+        pattern in uninitialized device memory poisons the reduction before
+        the mask can drop it). Zeroing on the capture stream puts a defined
+        value in every slot the frozen shape can address, ahead of the first
+        replay; appends overwrite the early part of the range as the bucket
+        fills.
+        """
+
+        runner = self._runner
+        config = runner.weights.config
+        runtime = get_hip_runtime()
+        for index in range(len(runner.weights.layers)):
+            geometry = config.geometry(index)
+            kv_width = int(geometry.num_kv_heads) * int(geometry.head_dim)
+            kv = runner._kv[index]
+            base = int(runner._kv_base[index]) if runner._kv else 0
+            # The frozen shape addresses cache slots ``[0, bucket.end - base)``;
+            # everything at or above the live slot is either stale-but-finite
+            # (the mask drops it) or unwritten (a NaN would poison the
+            # reduction), so zero it once per capture.
+            first_pending = int(runner.position) + 1 - base
+            end_slot = bucket.end - base
+            if first_pending >= end_slot:
+                continue
+            slot_bytes = kv_width * 2  # one row of BF16
+            offset = first_pending * slot_bytes
+            nbytes = (end_slot - first_pending) * slot_bytes
+            runtime.memset_async(int(kv.key_cache) + offset, 0, nbytes, self._stream)
+            runtime.memset_async(int(kv.value_cache) + offset, 0, nbytes, self._stream)
+
+    def _retarget_appends(self, position: int) -> None:
+        """Point every captured append at the live position's cache slot."""
+
+        runtime = get_hip_runtime()
+        for append in self._appends:
+            dst = append.cache_base + (int(position) - append.base) * append.kv_width * 2
+            runtime.graph_exec_memcpy_node_set_1d(
+                self._exec,
+                append.node,
+                dst=dst,
+                src=append.src,
+                count=append.count,
+                kind=MemcpyKind.DEVICE_TO_DEVICE,
+            )
+
+    def _retire(self) -> None:
+        """Destroy the current capture, if any, before recording a new one."""
+
+        runtime = get_hip_runtime()
+        if self._exec:
+            runtime.graph_exec_destroy(self._exec)
+            self._exec = 0
+        if self._graph:
+            runtime.graph_destroy(self._graph)
+            self._graph = 0
+        self._appends = ()

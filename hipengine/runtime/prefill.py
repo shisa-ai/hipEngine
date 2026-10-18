@@ -63,7 +63,7 @@ class PrefillConfig:
     rewrites the supported ``prefill_*`` variants (currently ``gguf_q8_0``)
     to the matching ``wmma_prefill_*`` registry keys. Otherwise the existing
     decode-shaped ``prefill_*`` aliases are used (see
-    ``docs/GGUF.md`` "P8: real batched prefill GEMM"). Defaults to ``False``
+    ``docs/reference/GGUF.md`` "P8: real batched prefill GEMM"). Defaults to ``False``
     so the rollout can be correctness-bisected; the env var
     ``HIPENGINE_GGUF_WMMA_PREFILL=1`` provides an equivalent process-wide
     override that does not require a config change."""

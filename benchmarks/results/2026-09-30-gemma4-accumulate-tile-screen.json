@@ -1,0 +1,32 @@
+{
+  "schema": "gemma4-accumulate-tile-screen/v1",
+  "created_utc": "2026-09-30T03:32:52+00:00",
+  "command": "python3 scripts/gemma4_accumulate_grid_screen.py --gpu 1 --hidden 2816 --iters 3000",
+  "git_commit": "9564aaa6754713d3c727dbdc767cd8d55acc99f6",
+  "arch": "x86_64",
+  "gpu_env": {
+    "HIP_VISIBLE_DEVICES": "1"
+  },
+  "geometry": {
+    "hidden": 2816,
+    "top_k": 8,
+    "iters": 3000,
+    "warmup": 300
+  },
+  "arms_us_per_call": {
+    "tiles1_t1": 16.392,
+    "auto_t1": 5.386,
+    "tiles11_t1": 5.374,
+    "tiles1_t8": 15.228,
+    "auto_t8": 5.082,
+    "tiles11_t8": 5.027
+  },
+  "bit_equal": {
+    "1": true,
+    "8": true
+  },
+  "delta_us_decode": 11.006,
+  "tokens8_auto_minus_tiles1_us": -10.146,
+  "verdict": "wire",
+  "evidence_note": "tiles1 = the pre-change one-block-per-token geometry, auto = the new shipped default (hidden/256 tiles), tiles11 = explicit tile count. Bitwise equality is re-checked in-process per token count; the standing proof is test_weighted_accumulate_is_bitwise_grid_independent. The shipped-path claim is the same-lane census A/B, not this projection."
+}

@@ -1,0 +1,69 @@
+{
+  "kind": "gemma4_prefill_kernel_census",
+  "recorded": "2026-09-28, gfx1151 Strix Halo (AMD Radeon 8060S, 40 CU at 2.9 GHz), Gemma 4 26B-A4B UD-Q4_K_XL, gfx1151 build",
+  "why": "The previous census (2026-09-28-gemma4-gfx1151-prefill-kernel-census.json) found layer 29 costing 11.7 percent of a 2048-token prefill because it is quantized differently from its 29 siblings and fell off both fast expert routes. Both named fixes have since landed. This re-measures the same protocol to confirm the finding is closed and to re-aim the campaign, because the shares it recorded are no longer the shares the tree has.",
+  "command": "HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python scripts/gemma4_prefill_kernel_census.py --prompt <N> --repeats <R> --warmup <W> --json-out <path>   # N=512 R=5 W=2, and N=2048 R=3 W=1",
+  "method": "The same wrapper-patching census the previous artifact used, at both 512 and 2048 tokens. Kernel time is HIP event elapsed time around each patched Python wrapper, so it includes any host-submission gap; the accounting closing at 98.1 and 98.7 percent of wall time is the evidence those gaps are small.",
+  "result": {
+    "prefill_512": {
+      "prefill_s": 0.728,
+      "prefill_tps": 703.5,
+      "accounted_ms": 714.1,
+      "accounted_share": "98.1 percent of the step",
+      "host_and_unmeasured_ms": 13.7
+    },
+    "prefill_2048": {
+      "prefill_s": 4.1665,
+      "prefill_tps": 491.54,
+      "accounted_ms": 4111.636,
+      "accounted_share": "98.7 percent of the step",
+      "host_and_unmeasured_ms": 54.829
+    }
+  },
+  "baseline": {
+    "prefill_2048_s": 5.242,
+    "prefill_2048_tps": 390.7,
+    "note": "the previous census artifact's own baseline, at the same protocol and prompt length",
+    "delta": "+25.8 percent, 390.7 to 491.5 tok/s"
+  },
+  "route_shares": {
+    "at_512": {
+      "routed_experts": "320.25 ms, 44.0 percent",
+      "dense_projections_and_lm_head": "184.85 ms, 25.4 percent",
+      "prefill_attention": "173.97 ms, 23.9 percent",
+      "router": "17.14 ms, 2.4 percent",
+      "norms_rotary_residual_gelu": "13.05 ms, 1.8 percent"
+    },
+    "at_2048": {
+      "prefill_attention": "2010.70 ms, 48.3 percent",
+      "routed_experts": "1246.91 ms, 29.9 percent",
+      "dense_projections_and_lm_head": "717.62 ms, 17.2 percent",
+      "router": "65.94 ms, 1.6 percent",
+      "norms_rotary_residual_gelu": "70.00 ms, 1.7 percent"
+    }
+  },
+  "layer_29_closed": {
+    "statement": "Layer 29 no longer falls off either expert route. The previous census measured 116 of 120 gate_up calls and 116 of 120 down calls on the MMQ routes, with the remaining 4 of each taking fp32 grouped fallbacks that cost 606.6 ms. This census measures 120 of 120 on both, and the two grouped fallback rows (q5_k grouped_row4 and q8_0 grouped_prefill) are absent from the table entirely.",
+    "gate_up_fix": "gemma4_project_experts_gate_up_mmq routes gguf_q5_k to _gemma4_project_experts_gate_up_wmma_iu8, whose geometry guard is now `intermediate % 16` rather than `% 128`. The leaf resolves the gate/up half per column, so a 128-wide block straddling the seam at 704 already reads the right weight for each of its columns and a half does not have to be a multiple of 128.",
+    "down_fix": "gemma4_project_experts_down_mmq now accepts gguf_q8_0 as well as gguf_q5_1; the two quants share the DS4 activation pack and differ only in the weight decode.",
+    "verified": "the live call counts above, on the default path with no environment variable set"
+  },
+  "finding": {
+    "statement": "The bottleneck has moved to prefill attention, which is length-dependent and is now the largest single term at 2048 tokens.",
+    "detail": "At 512 tokens the three terms are close -- experts 44.0 percent, dense and lm head 25.4 percent, attention 23.9 percent. At 2048 attention is 48.3 percent on its own, larger than the expert block. Attention is also the only term that grows with prompt length: 173.97 ms at 512 against 2010.70 ms at 2048, 11.6x for 4x the tokens.",
+    "why_it_matters": "The expert routes have been the campaign's focus and have been improved repeatedly, most recently by 24.9 percent on the down projection. Attention has not, and its absolute cost is now the one that sets the 2048-token number."
+  },
+  "named_next_step": {
+    "unit": "give prefill attention tensor-core QK and PV",
+    "why_this_and_not_tuning": "the kernel is issue- or latency-bound, not traffic-bound, and this is measured three ways rather than argued: a --dtype f32 probe that doubles every byte moved at identical arithmetic costs 7.8 percent on the sliding layers and 14.2 percent on the full ones, so it is not paying for bytes; the tiled variant is a wash against the untiled one at this shape (150.65 against 150.5 ms over six geometries); and the kernel runs at 464 GFLOP/s on the 256d layers against an fp32 FMA ceiling near 25 TFLOP/s, about 2 percent.",
+    "shape_of_the_work": "QK and PV currently run as fp32 FMA. Tensor cores need a rewrite of both, plus the causal mask, the sliding window and the fp32 softmax max and sum kept outside them.",
+    "expected": "not estimated here. Attention is 2010.70 ms of a 4166 ms step at 2048, so the ceiling is large but unmeasured.",
+    "against_the_target": "llama.cpp pp2048 on this host is 1067.14 tok/s against 491.5 here, a 2.17x gap. At 512 llama.cpp is 909.3 against 703.5, a 1.29x gap, so the deficit is concentrated at length and attention is where the length dependence lives."
+  },
+  "caveats": [
+    "The 512 and 2048 censuses ran in separate sessions, so the two columns are not a controlled A/B against each other; each is internally consistent and both are far outside the 8 percent session-to-session drift this campaign has measured on isolated kernels.",
+    "The previous census artifact's 5.242 s baseline was recorded before the Q5_1 down projection's load-width fix as well as before the layer-29 fixes, so the +25.8 percent is the sum of three changes and not attributable to layer 29 alone. The layer-29 share is the previous artifact's own 11.7 percent measurement.",
+    "Both censuses time kernels by patching Python wrappers, so a launch reached through a reference captured before the patch is missed. The accounting closing at 98.1 and 98.7 percent is what rules that out here.",
+    "The per-kernel milliseconds are upper bounds on GPU work, not lower bounds, because HIP event elapsed time includes host-submission gaps."
+  ]
+}

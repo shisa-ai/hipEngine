@@ -1,0 +1,433 @@
+{
+  "schema": 1,
+  "kind": "qwen35_gguf_mtp_e2e",
+  "created_at": "2026-09-13T10:20:50.458612+00:00",
+  "status": "diagnostic_nohold",
+  "performance_claim": false,
+  "decision": "keep GGUF MTP disabled by default; exact integration is economics-negative",
+  "hardware": {
+    "hip_visible_devices": "1",
+    "hip_arch": null,
+    "default_hardware_note": "device identity is recorded by the exact command and WORKLOG evidence"
+  },
+  "software": {
+    "hipengine_commit": "3784a27b375960328e2806d0bb81de6541e7a93a",
+    "hipengine_dirty": true,
+    "script": "scripts/qwen35_gguf_mtp_e2e.py"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+    "size_bytes": 16464440224,
+    "mtime_ns": 1787911206396589212,
+    "architecture": "qwen35",
+    "tensor_count": 866,
+    "file_type": "MOSTLY_Q4_K_M"
+  },
+  "workload": {
+    "prompt": "Write a Python function that returns the n-th Fibonacci number using memoization. Include a docstring.",
+    "prompt_tokens": [
+      7734,
+      264,
+      12654,
+      709,
+      421,
+      4523,
+      279,
+      307,
+      7324,
+      76938,
+      1324,
+      1608,
+      20781,
+      1954,
+      13,
+      28763,
+      264,
+      4479,
+      889,
+      13
+    ],
+    "prompt_length": 20,
+    "max_new_tokens": 12,
+    "candidate_budgets": [
+      1
+    ],
+    "target_verify_mode": "serial-exact",
+    "runs": 1,
+    "max_sequence_length": 41,
+    "quant": "gguf_ud_q4_k_m",
+    "sampling": "exact greedy raw target top-1"
+  },
+  "contract": {
+    "draft_batch": "candidate-only DraftBatch",
+    "target_verify_batch": "root+candidate TargetVerifyBatch",
+    "accept_result": "GPU TargetAcceptSummary validated against CPU AcceptResult oracle",
+    "kv_spans": "KVLiveSpans(span_role=verify_chain)",
+    "commit": "scheduler-owned KVTransaction plus target state/KV append journal",
+    "graph_buckets": "BatchShapeKey scheduler buckets with stable TargetVerifyBuffers; eager target replay"
+  },
+  "summary": {
+    "1": {
+      "runs": 1,
+      "exact_greedy_match": true,
+      "gpu_accept_match_cpu": true,
+      "ar_decode_tok_s_median": 17.54454363499773,
+      "mtp_decode_tok_s_median": 14.813552896163216,
+      "speedup_vs_ar_median": 0.8443395966489118,
+      "accepted_draft_tokens_mean": 5.0,
+      "cycles_mean": 6.0,
+      "visible_tokens_per_cycle": 1.8333333333333335,
+      "non_regressive": false
+    }
+  },
+  "runs": {
+    "1": [
+      {
+        "run": 0,
+        "ar": {
+          "token_ids": [
+            271,
+            248068,
+            198,
+            760,
+            1156,
+            6587,
+            264,
+            12654,
+            709,
+            421,
+            25,
+            198
+          ],
+          "prefill_seconds": 1.6336013823747635,
+          "decode_seconds": 0.6839733337983489,
+          "decode_tok_s": 17.54454363499773
+        },
+        "mtp": {
+          "request_id": 0,
+          "token_ids": [
+            271,
+            248068,
+            198,
+            760,
+            1156,
+            6587,
+            264,
+            12654,
+            709,
+            421,
+            25,
+            198
+          ],
+          "candidate_budget": 1,
+          "accepted_counts": [
+            0,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "accepted_draft_tokens": 5,
+          "target_forward_rows": 12,
+          "cycles": 6,
+          "visible_tokens_per_cycle": 1.8333333333333335,
+          "prefill_seconds": 1.6328653125092387,
+          "decode_seconds": 0.8100690012797713,
+          "proposal_seconds": 0.02521693054586649,
+          "verify_seconds": 0.7780269803479314,
+          "decode_tok_s": 14.813552896163216,
+          "gpu_accept_match_cpu": true,
+          "graph_stats": {
+            "entries": 1,
+            "hits": 5,
+            "misses": 1,
+            "replay_kernel_hits": 0,
+            "replay_hit_rate": 0.8333333333333334,
+            "miss_reasons": {
+              "cache_absent": 1
+            },
+            "kernel_time_histogram_ns": {
+              "le_10us": 0,
+              "le_100us": 0,
+              "le_1ms": 0,
+              "le_10ms": 0,
+              "gt_10ms": 0
+            }
+          },
+          "cycle_records": [
+            {
+              "cycle": 1,
+              "budget": 1,
+              "cycle_wall_ms": 143.9259210601449,
+              "root_token": 271,
+              "root_position": 20,
+              "draft_tokens": [
+                8160
+              ],
+              "target_top1": [
+                248068,
+                579
+              ],
+              "accepted": 0,
+              "commit_row": 0,
+              "commit_position": 20,
+              "next_token": 248068,
+              "span_role": "verify_chain",
+              "transaction_id": 0,
+              "graph_bucket": "gguf-mtp-v2-r1",
+              "graph_replay_count": 1,
+              "quant": "gguf_ud_q4_k_m",
+              "experts_per_token": 0,
+              "target_verify_mode": "serial_exact",
+              "target_native_graph_submitted": false,
+              "target_native_graph_capture_ms": 0.0,
+              "target_native_graph_submit_ms": 0.0,
+              "target_native_graph_readback_ms": 0.0,
+              "target_native_graph_fallback_reason": null,
+              "device_proposal_fallback_reason": "target_graph_verify_mode_miss",
+              "target_native_device_accept_commit": false,
+              "proposal_target_device_chained": false,
+              "draft_tail_advanced": false,
+              "lifecycle_phases": [
+                "before_proposal",
+                "after_proposal_before_target",
+                "after_target_prepare",
+                "after_target_commit",
+                "after_draft_repair",
+                "before_output_publication",
+                "after_output_publication"
+              ]
+            },
+            {
+              "cycle": 2,
+              "budget": 1,
+              "cycle_wall_ms": 132.59587157517672,
+              "root_token": 248068,
+              "root_position": 21,
+              "draft_tokens": [
+                198
+              ],
+              "target_top1": [
+                198,
+                760
+              ],
+              "accepted": 1,
+              "commit_row": 1,
+              "commit_position": 22,
+              "next_token": 760,
+              "span_role": "verify_chain",
+              "transaction_id": 1,
+              "graph_bucket": "gguf-mtp-v2-r1",
+              "graph_replay_count": 2,
+              "quant": "gguf_ud_q4_k_m",
+              "experts_per_token": 0,
+              "target_verify_mode": "serial_exact",
+              "target_native_graph_submitted": false,
+              "target_native_graph_capture_ms": 0.0,
+              "target_native_graph_submit_ms": 0.0,
+              "target_native_graph_readback_ms": 0.0,
+              "target_native_graph_fallback_reason": null,
+              "device_proposal_fallback_reason": "target_graph_verify_mode_miss",
+              "target_native_device_accept_commit": false,
+              "proposal_target_device_chained": false,
+              "draft_tail_advanced": true,
+              "lifecycle_phases": [
+                "before_proposal",
+                "after_proposal_before_target",
+                "after_target_prepare",
+                "after_target_commit",
+                "after_draft_repair",
+                "before_output_publication",
+                "after_output_publication"
+              ]
+            },
+            {
+              "cycle": 3,
+              "budget": 1,
+              "cycle_wall_ms": 137.31800019741058,
+              "root_token": 760,
+              "root_position": 23,
+              "draft_tokens": [
+                1156
+              ],
+              "target_top1": [
+                1156,
+                6587
+              ],
+              "accepted": 1,
+              "commit_row": 1,
+              "commit_position": 24,
+              "next_token": 6587,
+              "span_role": "verify_chain",
+              "transaction_id": 2,
+              "graph_bucket": "gguf-mtp-v2-r1",
+              "graph_replay_count": 3,
+              "quant": "gguf_ud_q4_k_m",
+              "experts_per_token": 0,
+              "target_verify_mode": "serial_exact",
+              "target_native_graph_submitted": false,
+              "target_native_graph_capture_ms": 0.0,
+              "target_native_graph_submit_ms": 0.0,
+              "target_native_graph_readback_ms": 0.0,
+              "target_native_graph_fallback_reason": null,
+              "device_proposal_fallback_reason": "target_graph_verify_mode_miss",
+              "target_native_device_accept_commit": false,
+              "proposal_target_device_chained": false,
+              "draft_tail_advanced": true,
+              "lifecycle_phases": [
+                "before_proposal",
+                "after_proposal_before_target",
+                "after_target_prepare",
+                "after_target_commit",
+                "after_draft_repair",
+                "before_output_publication",
+                "after_output_publication"
+              ]
+            },
+            {
+              "cycle": 4,
+              "budget": 1,
+              "cycle_wall_ms": 133.96114856004715,
+              "root_token": 6587,
+              "root_position": 25,
+              "draft_tokens": [
+                264
+              ],
+              "target_top1": [
+                264,
+                12654
+              ],
+              "accepted": 1,
+              "commit_row": 1,
+              "commit_position": 26,
+              "next_token": 12654,
+              "span_role": "verify_chain",
+              "transaction_id": 3,
+              "graph_bucket": "gguf-mtp-v2-r1",
+              "graph_replay_count": 4,
+              "quant": "gguf_ud_q4_k_m",
+              "experts_per_token": 0,
+              "target_verify_mode": "serial_exact",
+              "target_native_graph_submitted": false,
+              "target_native_graph_capture_ms": 0.0,
+              "target_native_graph_submit_ms": 0.0,
+              "target_native_graph_readback_ms": 0.0,
+              "target_native_graph_fallback_reason": null,
+              "device_proposal_fallback_reason": "target_graph_verify_mode_miss",
+              "target_native_device_accept_commit": false,
+              "proposal_target_device_chained": false,
+              "draft_tail_advanced": true,
+              "lifecycle_phases": [
+                "before_proposal",
+                "after_proposal_before_target",
+                "after_target_prepare",
+                "after_target_commit",
+                "after_draft_repair",
+                "before_output_publication",
+                "after_output_publication"
+              ]
+            },
+            {
+              "cycle": 5,
+              "budget": 1,
+              "cycle_wall_ms": 131.34088832885027,
+              "root_token": 12654,
+              "root_position": 27,
+              "draft_tokens": [
+                709
+              ],
+              "target_top1": [
+                709,
+                421
+              ],
+              "accepted": 1,
+              "commit_row": 1,
+              "commit_position": 28,
+              "next_token": 421,
+              "span_role": "verify_chain",
+              "transaction_id": 4,
+              "graph_bucket": "gguf-mtp-v2-r1",
+              "graph_replay_count": 5,
+              "quant": "gguf_ud_q4_k_m",
+              "experts_per_token": 0,
+              "target_verify_mode": "serial_exact",
+              "target_native_graph_submitted": false,
+              "target_native_graph_capture_ms": 0.0,
+              "target_native_graph_submit_ms": 0.0,
+              "target_native_graph_readback_ms": 0.0,
+              "target_native_graph_fallback_reason": null,
+              "device_proposal_fallback_reason": "target_graph_verify_mode_miss",
+              "target_native_device_accept_commit": false,
+              "proposal_target_device_chained": false,
+              "draft_tail_advanced": true,
+              "lifecycle_phases": [
+                "before_proposal",
+                "after_proposal_before_target",
+                "after_target_prepare",
+                "after_target_commit",
+                "after_draft_repair",
+                "before_output_publication",
+                "after_output_publication"
+              ]
+            },
+            {
+              "cycle": 6,
+              "budget": 1,
+              "cycle_wall_ms": 130.88713120669127,
+              "root_token": 421,
+              "root_position": 29,
+              "draft_tokens": [
+                25
+              ],
+              "target_top1": [
+                25,
+                198
+              ],
+              "accepted": 1,
+              "commit_row": 1,
+              "commit_position": 30,
+              "next_token": 198,
+              "span_role": "verify_chain",
+              "transaction_id": 5,
+              "graph_bucket": "gguf-mtp-v2-r1",
+              "graph_replay_count": 6,
+              "quant": "gguf_ud_q4_k_m",
+              "experts_per_token": 0,
+              "target_verify_mode": "serial_exact",
+              "target_native_graph_submitted": false,
+              "target_native_graph_capture_ms": 0.0,
+              "target_native_graph_submit_ms": 0.0,
+              "target_native_graph_readback_ms": 0.0,
+              "target_native_graph_fallback_reason": null,
+              "device_proposal_fallback_reason": "target_graph_verify_mode_miss",
+              "target_native_device_accept_commit": false,
+              "proposal_target_device_chained": false,
+              "draft_tail_advanced": false,
+              "lifecycle_phases": [
+                "before_proposal",
+                "after_proposal_before_target",
+                "after_target_prepare",
+                "after_target_commit",
+                "after_draft_repair",
+                "before_output_publication",
+                "after_output_publication"
+              ]
+            }
+          ],
+          "budget_policy": null
+        },
+        "exact_greedy_match": true,
+        "speedup_vs_ar": 0.8443395966489118
+      }
+    ]
+  },
+  "memory": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 18220471856,
+    "total_allocated_bytes": 18220471943,
+    "total_freed_bytes": 18220471943,
+    "active_allocations": 0,
+    "peak_allocations": 1466
+  }
+}

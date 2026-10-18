@@ -1,0 +1,141 @@
+{
+  "status": "serving-observability evidence; not a retained benchmark row",
+  "date": "2026-09-17",
+  "purpose": "Verify on a real server that a speculative request reports how much of its output came from speculative cycles versus autoregressive decoding, that the two counts reconcile against the emitted token list and the reported usage, that a streaming response reports the same execution counters as a blocking one, and that a refused request names the specific refusal instead of only the backend_k0_fallback compatibility label.",
+  "host": {
+    "machine": "gfx1151",
+    "gpu": "Radeon 8060S (gfx1151)",
+    "backend": "hip_gfx1151",
+    "model": "Qwen3.8-27B-Q4_K_M.gguf",
+    "model_size_bytes": 17106775008,
+    "kv_storage": "bf16",
+    "session_tokens": 16384,
+    "execution_profile": "default (no explicit profile flag)",
+    "server_flags": "(none: candidate budget resolves to 3 from model-plugin evidence and the automatic route promotes)"
+  },
+  "protocol": "One server process started with no speculative flags, then three greedy requests (temperature 0, enable_thinking=false, 128 outputs) from /tmp/accounting_probe.py: a 945-token prompt blocking, the same prompt streaming with stream_options include_usage/include_hipengine, and a 3,530-token prompt blocking. Exact command: /tmp/run-accounting-e2e.sh. A second run (/tmp/run-accounting-ids.sh) then served the same 945-token / 128-output request from a pinned unqualified depth (--speculative-candidate-budget 4, so the route stays default) and compared the emitted IDs against the speculative route's, to tie the reported split to one token sequence.",
+  "arms": {
+    "A_945_blocking": {
+      "prompt_tokens": 945,
+      "max_tokens": 128,
+      "effective_route": "speculative_mtp",
+      "used": true,
+      "decision_reason": "qualified_automatic_realized_singleton_c1_b3",
+      "draft_cycles": 23,
+      "draft_tokens": 66,
+      "accepted_draft_tokens": 54,
+      "rejected_draft_tokens": 12,
+      "selected_depth_histogram": {"1": 1, "2": 1, "3": 21},
+      "mtp_output_tokens": 77,
+      "ar_output_tokens": 51,
+      "output_accounting": {
+        "completion_tokens": 128,
+        "mtp_output_tokens": 77,
+        "ar_output_tokens": 51,
+        "ar_output_tokens_in_cycles": 51,
+        "mtp_coverage": 0.6015625,
+        "reconciled": true
+      },
+      "fallback_reason": "target_graph_context_bucket_miss",
+      "fallback_reason_counts": {
+        "no_provider": 1,
+        "target_graph_context_bucket_miss": 49,
+        "target_graph_output_room_miss": 1
+      },
+      "first_fallback_position": 78,
+      "exact_generated_token_ids": 128,
+      "request_wall_seconds": 13.944,
+      "output_characters": 690
+    },
+    "B_945_streaming": {
+      "prompt_tokens": 945,
+      "max_tokens": 128,
+      "effective_route": "speculative_mtp",
+      "used": true,
+      "draft_cycles": 23,
+      "draft_tokens": 66,
+      "accepted_draft_tokens": 54,
+      "mtp_output_tokens": 77,
+      "ar_output_tokens": 51,
+      "output_accounting": {
+        "completion_tokens": 128,
+        "mtp_output_tokens": 77,
+        "ar_output_tokens": 51,
+        "ar_output_tokens_in_cycles": 51,
+        "mtp_coverage": 0.6015625,
+        "reconciled": true
+      },
+      "fallback_reason": "target_graph_context_bucket_miss",
+      "first_fallback_position": 78,
+      "sse_usage_completion_tokens_details": {
+        "accepted_prediction_tokens": 54,
+        "rejected_prediction_tokens": 12
+      },
+      "request_wall_seconds": 10.192,
+      "output_characters": 690
+    },
+    "C_3530_blocking": {
+      "prompt_tokens": 3530,
+      "max_tokens": 128,
+      "effective_route": "default",
+      "used": false,
+      "decision_reason": "backend_k0_fallback",
+      "fallback_reason": "target_context_k0",
+      "fallback_reason_counts": {"target_context_k0": 1},
+      "draft_cycles": 0,
+      "draft_tokens": 0,
+      "accepted_draft_tokens": 0,
+      "mtp_output_tokens": 0,
+      "ar_output_tokens": 128,
+      "output_accounting": {
+        "completion_tokens": 128,
+        "mtp_output_tokens": 0,
+        "ar_output_tokens": 128,
+        "ar_output_tokens_in_cycles": 0,
+        "mtp_coverage": 0.0,
+        "reconciled": true
+      },
+      "first_fallback_position": 0,
+      "exact_generated_token_ids": 128,
+      "request_wall_seconds": 21.86,
+      "output_characters": 666
+    },
+    "D_945_blocking_ar_reference": {
+      "prompt_tokens": 945,
+      "max_tokens": 128,
+      "server_flags": "--speculative-candidate-budget 4",
+      "capability_candidate_budget": {
+        "requested": 4,
+        "resolved": 4,
+        "source": "explicit"
+      },
+      "effective_route": "default",
+      "used": false,
+      "accounting_block_present": false,
+      "exact_generated_token_ids": 128,
+      "generated_token_ids_identical_to_arm_A": true,
+      "output_characters": 690,
+      "output_sha256_identical_to_arm_A": true
+    }
+  },
+  "gates": {
+    "every_emitted_token_is_attributed_to_one_execution_mode": true,
+    "mtp_plus_autoregressive_equals_reported_completion_tokens": true,
+    "exact_generated_token_ids_equal_completion_tokens": true,
+    "streaming_reports_the_same_execution_counters_as_blocking": true,
+    "first_fallback_position_matches_the_speculative_block": true,
+    "every_autoregressive_token_carries_a_planner_reason": true,
+    "refused_request_names_its_specific_reason": true,
+    "speculative_and_autoregressive_routes_emit_the_same_token_sequence": true,
+    "plain_autoregressive_response_stays_unchanged": true
+  },
+  "notes": {
+    "why_the_run_is_mixed": "The 945-token prompt crosses the 1,023-token MTP context window after 77 emitted tokens, so the head of the request runs speculative cycles and the tail runs autoregressive steps. That is exactly the shape the accounting exists to describe: `used: true` with `mtp_coverage` 0.60, not a full-coverage claim.",
+    "first_fallback_position_arithmetic": "The prompt root token is emitted by target prefill and is not part of any speculative cycle, so the first non-speculative token after the speculative block sits at index mtp_output_tokens + 1 (77 + 1 = 78).",
+    "reason_coverage": "In arm A the fallback reason counts total 51, equal to `ar_output_tokens`: every autoregressive token in this run was emitted while the request was still owned by the speculative plan, and each one carries the planner reason that selected it.",
+    "split_describes_the_same_token_sequence": "Arm D is the same request served by the autoregressive route. It emitted the identical 128 token IDs and the identical 690-character text (sha256 733cb9781ae74639...), so arm A's 77/51 split describes the sequence the speculative route actually emitted rather than a different one. Arm D, which carried no speculative intent, omitted the accounting block entirely instead of reporting zeros - a plain autoregressive response is byte-identical to what it was before this change.",
+    "previously_unreported": "Before this change a streamed speculative request reported `effective_route: default` with `decision_reason: backend_k0_fallback` and zero draft counters, because the streaming chunk path published no MTP timing fields. Arm B is the same request as arm A and now reports identical counters and identical 690-character output.",
+    "not_a_rate_claim": "Wall times are recorded for context only. This unit changes observability, not arithmetic or scheduling: the arms are the same greedy requests the campaign already measures, and no throughput comparison is made here."
+  },
+  "source": "worklog/entries/20260917T121319.033073Z-lhl-mtp-output-accounting-e77e00.md"
+}

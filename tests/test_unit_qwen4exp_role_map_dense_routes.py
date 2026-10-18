@@ -77,7 +77,11 @@ GRID = ("1", "1", "1")
 
 # Dtype conversions share these sources but are neither dense linears nor routed
 # projections. They are asserted positively rather than skipped.
-CONVERSION_TOKENS = ("f32_to_f16", "f16_to_f32", "f32_to_bf16", "bf16_to_f32")
+CONVERSION_TOKENS = (
+    "f32_to_f16", "f16_to_f32", "f32_to_bf16", "bf16_to_f32",
+    # Q8_0 tiles to the f16 weight operand the dense prefill kernel loads.
+    "tiles_to_f16w",
+)
 
 # Fused hyper-connection helpers live in the dense-wide source but are
 # intentionally attributed to the hyper_connection family, not dense GEMM.

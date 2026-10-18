@@ -94,6 +94,12 @@ class Qwen4ExpServingMTP:
     def speculative_desired_candidate_count(self, request):
         return self.generator._speculative_provider.candidate_budget
 
+    # The planner's ``sampled`` mode is the min(1, p/q) accept variant. This
+    # provider serves temperature rows through its processed verifier and
+    # reports them as ``sampled_speculative_mtp`` in its own telemetry, so it
+    # keeps the ``processed`` plan mode instead of claiming that route.
+    speculative_sampled_mode_supported = False
+
     @property
     def speculative_capability(self):
         # Method presence is the submit/poll capability probe. Do not advertise

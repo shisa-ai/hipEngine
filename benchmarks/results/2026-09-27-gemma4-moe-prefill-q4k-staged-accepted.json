@@ -1,0 +1,84 @@
+{
+  "kind": "gemma4_campaign_candidate",
+  "verdict": "accepted",
+  "recorded": "2026-09-27, gfx1151 Strix Halo (zbook), Q4_K grouped-prefill fetch strategy",
+  "candidate": "the Q4_K grouped expert prefill stages the expert's activation rows in shared memory (read from L2 once per eight output columns instead of once per column) and hoists each output column's d*scale and dmin*min pairs into shared memory per 32-element sub-block (one byte load and two flops in the inner loop instead of re-extracting the metadata per weight element)",
+  "reason": "fresh attribution on the post-weight-reuse tree showed the grouped kernels were still 68% of prefill kernel time while moving only ~4 GB/s of weight bytes, so the cost was fetch, not bandwidth: at the artifact's geometry 30 ms of the 49 ms went to the Q4_K dequant and 21 ms to the activation-side FMA. Both are exact rewrites of the same expressions - (d*scale)*q - (dmin*min) with the same two products, and the same per-thread k-partition - so the fix costs no numerical budget and needed no gate exemption.",
+  "mechanism": {
+    "attribution": {
+      "method": "rocprofv3 --kernel-trace over one 512-token prefill on the post-weight-reuse tree (scripts/gemma4_campaign_bench.py --prompt 512 --output 1 --samples 1 --warmup 0), kernel time summed by kernel name",
+      "kernel_time_s": 10.967,
+      "dispatches": 2581,
+      "shares": {
+        "gguf_q4_k_selected_grouped_prefill_out_kernel (expert gate/up, 58 launches)": "45.1%",
+        "q5_1_selected_grouped_prefill_bf16_bf16_kernel (expert down, 58 launches)": "23.0%",
+        "gguf_q8_0_exact_prefill_tiled_out_kernel (410 launches)": "12.5%",
+        "gemma4_attention_prefill_kernel (60 launches)": "12.2%",
+        "gguf_k_selected_prefill_out_kernel (layer 29 gate/up, 2 launches)": "4.5%"
+      },
+      "reading": "the two expert projections are still 68% of prefill kernel time after the weight reuse, which is what falsified the assumption that removing the weight re-read was the whole story"
+    },
+    "isolation": {
+      "method": "scratch probes at the artifact geometry (in 2816, out 1408, 128 experts, 4096 compact rows, 272 MiB of Q4_K weights), each dropping one component so the remainder could be timed; not committed",
+      "shipped_grouped_ms": 48.93,
+      "staging_only_ms": 3.60,
+      "no_dequant_ms": 18.67,
+      "no_activation_multiply_ms": 27.55,
+      "reading": "~30 ms dequant, ~21 ms activation-side, ~4 ms staging: two fetch problems, neither of them the weight read"
+    },
+    "rewrite": "activation rows staged in shared memory per (row batch, k-chunk), so the block's activation bytes are read from L2 once per OUT_TILE output columns; per-sub-block d*scale and dmin*min precomputed into shared by the first 64 threads; activations held in registers across the output tile; reduction untouched",
+    "bit_exactness": "the per-thread k-partition (k = threadIdx.x, threadIdx.x + 128, ... in ascending order), the 32-lane shfl tree and thread 0's wave-total sum are the shipped kernel's, and the metadata hoist is the same two products in the same order, so outputs are bit-identical rather than within tolerance"
+  },
+  "correctness": {
+    "gate": "scripts/gemma4_teacher_forced_gate.py gate --baseline /tmp/gemma4-gate-strict-gfx1151.npz --prompt 2048 --prefill 1024, 1023 teacher-forced rows at keys 1025-2047 with the decode split engaged (30690 split launches), chain_sha256 matching the baseline: kl_mean 0.0, kl_p95 0.0, kl_p99 0.0, kl_max 0.0, top-1 rate 1.0 with zero flips, passed true, failed []",
+    "bit_exactness_test": "tests/test_unit_gemma4_expert_route.py asserts bit-identical bf16 outputs against the selected GEMV for every grouped variant a quant registers - the staged one and the plain one for Q4_K, the plain one for Q5_1 - across 10 quant/geometry cases including the artifact's own (1408, 2816) gate/up",
+    "kernel_level": "the scratch micro-harness compared the staged kernel against the shipped grouped kernel on 5,767,168 bf16 outputs at the artifact geometry: 0 differ",
+    "preference_order": "two tests cover the route's new ordered variant list: the preferred variant is taken when both are registered, and a quant that registers only the later one still runs it",
+    "generation_parity": "both arms emit identical greedy ids at 512/128 and report public_path_parity true"
+  },
+  "performance": {
+    "platform": "zbook, Strix Halo, Radeon 8060S Graphics, gfx1151, 125 GiB unified memory, HIPENGINE_HIP_ARCH=gfx1151; artifact /models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf (17010980576 bytes)",
+    "protocol": "scripts/gemma4_campaign_bench.py --prompt 512 --output 128 --samples 3 --warmup 1 --context 8192, greedy, fixed length. Both arms ran back to back in one session on one device with the three changed files the only difference: the incumbent arm is the same tree with gguf_q4_k_gemv.{hip,py} and gemma4_experts.py restored from HEAD (sha256 verified before and after the swap, and the staged symbol absent from the incumbent kernel file).",
+    "primary": {
+      "row": "512 prompt / 128 output",
+      "prefill_s_incumbent": [5.534, 5.546, 5.566],
+      "prefill_s_candidate": [4.177, 4.201, 4.223],
+      "prefill_tok_s_incumbent": 92.28,
+      "prefill_tok_s_candidate": 121.90,
+      "prefill_delta": "+32.1% (1.321x)",
+      "public_wall_s": "11.629 -> 10.240",
+      "decode_tok_s": "21.10 -> 21.14 (unchanged within run-to-run spread)"
+    },
+    "kernel_level": {
+      "geometry": "in 2816, out 1408, 128 experts, 4096 compact rows",
+      "shipped_grouped_ms": 73.68,
+      "staged_ms": 35.57,
+      "delta": "2.07x",
+      "rejected_by_measurement": "rb8/out4 48.95, rb8/out16 41.50, rb16/out8 46.26, rb16/out4 67.70, rb32/out4 155.93 ms"
+    },
+    "cumulative": "this host's pre-loop 512/128 prefill was 11.617 s (44.07 tok/s); three units later it is 4.200 s (121.90 tok/s), 2.77x",
+    "limits": "the Q5_1 down projection (23.0% of prefill kernel time) has not had the same treatment: it needs the 256-thread shared-tree reduction its route uses rather than this file's reduce_block_sum, so it is a different kernel shape. After that, Q8_0 dense projections (12.5%) and attention prefill (12.2%) are the remainder.",
+    "not_measured": "no 2048- or 4096-token prompt row for this arm, no llama.cpp comparator on this host for this arm, and no multi-request or served-path row"
+  },
+  "scope": {
+    "gfx1151": "measured on gfx1151 only. The kernel is registered under the gfx1100 backend package and is reachable on both backends; only the gfx1151 numbers above are measured.",
+    "no_flag": "the route is unconditional on the default path; there is no environment variable, no default-off switch, and no model-name or artifact-path condition anywhere in the change"
+  },
+  "changes": [
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.hip: gguf_q4_k_selected_grouped_prefill_staged_kernel<8, 8, 256> and its launcher, with a guarded tail block so out_features need not be a multiple of the tile",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_gemv.py: wrapper and registration of the staged variant",
+    "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py: the grouped route walks an ordered variant preference list instead of one variant name",
+    "tests/test_unit_gemma4_expert_route.py: every registered grouped variant is bit-exactness-checked, plus the preference order and the fall-through"
+  ],
+  "provenance": {
+    "commit": "7de2131c7a5bd05b28be6e42f5cd5c0a0e6a2b1e (base; this unit is the next commit on the gemma4 branch)",
+    "worktree": "hipEngine-gemma4, branch gemma4",
+    "gates": {
+      "route_unit": "pytest tests/test_unit_gemma4_expert_route.py -q: 31 passed",
+      "bench_artifacts": "/tmp/bench-i5-inc.json, /tmp/bench-i5-cand.json (the paired rows above); raw logs not committed",
+      "gate_verdict": "/tmp/gemma4-gate-i5-staged-verdict.json",
+      "profile_trace": "/tmp/gemma4-prefill-profile-i4/trace.json_results.json",
+      "micro_harness": "/tmp/i5_micro3.py with /tmp/i5_variants3.hip (scratch probes, not committed)"
+    }
+  }
+}

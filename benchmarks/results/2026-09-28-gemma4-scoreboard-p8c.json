@@ -1,0 +1,324 @@
+{
+  "schema": 1,
+  "label": "gemma4-scoreboard-p8c",
+  "created_at": "2026-09-28T20:13:43.391535+00:00",
+  "elapsed_s": 112.1,
+  "provenance": {
+    "git_commit": "4c02decf07032e69326150ac0bc46ee7b5569c00",
+    "git_dirty_files": [
+      "M audit/findings/doc-path-drift.json",
+      " M audit/findings/stub.json",
+      " M audit/findings/ungoverned-flag-branch.json",
+      " M audit/inventory/candidates.json",
+      " M audit/inventory/flags.json",
+      " M audit/inventory/kernels.json",
+      " M audit/inventory/ledger.json",
+      " M audit/inventory/meta.json",
+      " M audit/inventory/worklog.json",
+      " M audit/triage/stub.jsonl",
+      " M docs/campaigns/GEMMA4-26B-A4B-PUNCHLIST.md",
+      " M hipengine/kernels/hip_gfx1100/gemma4/gemma4_router.py"
+    ],
+    "physical_gpu_index": 1,
+    "gpu_name": "AMD Radeon RX 7900 XTX",
+    "rocm_smi": [
+      "GPU[1]\t\t: Card Model: \t\t0x744c",
+      "GPU[1]\t\t: Card Vendor: \t\tAdvanced Micro Devices, Inc. [AMD/ATI]",
+      "GPU[1]\t\t: Card SKU: \t\tEXT89622",
+      "GPU[1]\t\t: Subsystem ID: \t0x2422",
+      "GPU[1]\t\t: Device Rev: \t\t0xc8",
+      "GPU[1]\t\t: Node ID: \t\t2",
+      "GPU[1]\t\t: GUID: \t\t33912",
+      "GPU[1]\t\t: GFX Version: \t\tgfx1100",
+      "==========================================================================================",
+      "================================== End of ROCm SMI Log ===================================",
+      "WARNING: AMD GPU device(s) is/are in a low-power state. Check power control/runtime_status",
+      ""
+    ],
+    "hipcc_version_first_line": "HIP version: 7.2.53211-3d9ef42",
+    "captured_at": "2026-09-28T20:11:51.492278+00:00"
+  },
+  "protocol": {
+    "topline": "scripts/gemma4_campaign_bench.py --prompt P --output 128 --samples 3 --warmup 1 --context 8192; unprofiled, median of 3 samples, fixed length (EOS ignored)",
+    "family": "rocprofv3 --kernel-trace around scripts/gemma4_family_census.py drive --prompt P --decode 64 --prefill-repeats 2, rolled up by scripts/gemma4_family_census.py rollup; device-busy sums, profiled",
+    "kv_dtype": "bf16",
+    "execution_profile": "production route, default selection",
+    "comparator": "llama.cpp rows are unchanged and come from the recorded a97cce8 comparison; this artifact refreshes hipEngine only"
+  },
+  "topline": {
+    "1024": {
+      "prefill_tps": 2040.923951112661,
+      "prefill_s": 0.5017335405573249,
+      "decode_tps": 43.80263282712778,
+      "decode_tps_min": 43.099921035877465,
+      "decode_tps_max": 43.803149543165695,
+      "decode_tps_stdev": 0.4058600871442694,
+      "first_token_s": 0.5017702616751194,
+      "wall_s": 3.4013647781684995,
+      "artifact": "benchmarks/results/2026-09-28-gemma4-topline-1024-p8c.json",
+      "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --prompt 1024 --output 128 --samples 3 --warmup 1 --context 8192 --out /home/lhl/hipEngine-gemma4/benchmarks/results/2026-09-28-gemma4-topline-1024-p8c.json --label scoreboard-p8c"
+    },
+    "4096": {
+      "prefill_tps": 1164.9590051735888,
+      "prefill_s": 3.5160035518929362,
+      "decode_tps": 40.1663737330542,
+      "decode_tps_min": 39.56690998534231,
+      "decode_tps_max": 40.19496677959904,
+      "decode_tps_stdev": 0.35464293872934965,
+      "first_token_s": 3.5160502921789885,
+      "wall_s": 6.675721957348287,
+      "artifact": "benchmarks/results/2026-09-28-gemma4-topline-4096-p8c.json",
+      "command": "/home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_campaign_bench.py --prompt 4096 --output 128 --samples 3 --warmup 1 --context 8192 --out /home/lhl/hipEngine-gemma4/benchmarks/results/2026-09-28-gemma4-topline-4096-p8c.json --label scoreboard-p8c"
+    }
+  },
+  "family": {
+    "1024": {
+      "engine": "hipengine",
+      "trace": "/tmp/g4_scoreboard_p8c/trace_1024/run_kernel_trace.csv",
+      "prefill": {
+        "busy_ms": 469.3941,
+        "span_ms": 500.6194,
+        "families": {
+          "dense.q8_0": {
+            "ms": 116.4343,
+            "launches": 412.0
+          },
+          "moe.gate_up": {
+            "ms": 113.4719,
+            "launches": 58.0
+          },
+          "moe.l29_experts": {
+            "ms": 67.3605,
+            "launches": 4.0
+          },
+          "moe.down": {
+            "ms": 47.3767,
+            "launches": 58.0
+          },
+          "attn.global": {
+            "ms": 39.5506,
+            "launches": 10.0
+          },
+          "attn.sliding": {
+            "ms": 29.6436,
+            "launches": 50.0
+          },
+          "moe.route_glue": {
+            "ms": 28.254,
+            "launches": 542.0
+          },
+          "norm": {
+            "ms": 9.0648,
+            "launches": 601.0
+          },
+          "moe.act_quant": {
+            "ms": 6.2873,
+            "launches": 58.0
+          },
+          "moe.router_gemm": {
+            "ms": 5.2221,
+            "launches": 120.0
+          },
+          "elementwise": {
+            "ms": 4.6222,
+            "launches": 242.0
+          },
+          "runtime_copy_fill": {
+            "ms": 1.1364,
+            "launches": 282.0
+          },
+          "lm_head": {
+            "ms": 0.9698,
+            "launches": 1.0
+          }
+        },
+        "other_top": {}
+      },
+      "decode_per_token": {
+        "busy_ms": 19.3725,
+        "span_ms": 25.5956,
+        "families": {
+          "moe.gate_up": {
+            "ms": 4.7537,
+            "launches": 29.0
+          },
+          "attn.sliding": {
+            "ms": 3.6155,
+            "launches": 50.0
+          },
+          "dense.q8_0": {
+            "ms": 2.9455,
+            "launches": 206.0
+          },
+          "moe.down": {
+            "ms": 2.6162,
+            "launches": 29.0
+          },
+          "norm": {
+            "ms": 1.4883,
+            "launches": 301.0
+          },
+          "moe.route_glue": {
+            "ms": 1.2522,
+            "launches": 240.0
+          },
+          "lm_head": {
+            "ms": 0.9631,
+            "launches": 1.0
+          },
+          "attn.global": {
+            "ms": 0.7401,
+            "launches": 10.0
+          },
+          "moe.router_gemm": {
+            "ms": 0.3129,
+            "launches": 60.0
+          },
+          "moe.l29_experts": {
+            "ms": 0.2362,
+            "launches": 2.0
+          },
+          "elementwise": {
+            "ms": 0.2297,
+            "launches": 121.0
+          },
+          "runtime_copy_fill": {
+            "ms": 0.2192,
+            "launches": 97.0
+          }
+        },
+        "other_top": {}
+      },
+      "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/g4_scoreboard_p8c/trace_1024 -o run -- /home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_family_census.py drive --prompt 1024 --decode 64 --prefill-repeats 2",
+      "trace_kernel_rows": 90212,
+      "prefill_prompt_tokens": 1024
+    },
+    "4096": {
+      "engine": "hipengine",
+      "trace": "/tmp/g4_scoreboard_p8c/trace_4096/run_kernel_trace.csv",
+      "prefill": {
+        "busy_ms": 3418.7577,
+        "span_ms": 3520.5728,
+        "families": {
+          "attn.sliding": {
+            "ms": 1213.749,
+            "launches": 200.0
+          },
+          "attn.global": {
+            "ms": 611.1216,
+            "launches": 40.0
+          },
+          "dense.q8_0": {
+            "ms": 459.746,
+            "launches": 1648.0
+          },
+          "moe.gate_up": {
+            "ms": 453.3319,
+            "launches": 232.0
+          },
+          "moe.l29_experts": {
+            "ms": 272.7668,
+            "launches": 16.0
+          },
+          "moe.down": {
+            "ms": 191.4532,
+            "launches": 232.0
+          },
+          "moe.route_glue": {
+            "ms": 112.8994,
+            "launches": 2168.0
+          },
+          "norm": {
+            "ms": 35.6071,
+            "launches": 2401.0
+          },
+          "moe.act_quant": {
+            "ms": 25.0997,
+            "launches": 232.0
+          },
+          "moe.router_gemm": {
+            "ms": 20.5464,
+            "launches": 480.0
+          },
+          "elementwise": {
+            "ms": 18.4932,
+            "launches": 968.0
+          },
+          "runtime_copy_fill": {
+            "ms": 2.9726,
+            "launches": 828.0
+          },
+          "lm_head": {
+            "ms": 0.9707,
+            "launches": 1.0
+          }
+        },
+        "other_top": {}
+      },
+      "decode_per_token": {
+        "busy_ms": 22.2788,
+        "span_ms": 28.4297,
+        "families": {
+          "moe.gate_up": {
+            "ms": 4.7607,
+            "launches": 29.0
+          },
+          "attn.global": {
+            "ms": 3.6575,
+            "launches": 10.0
+          },
+          "attn.sliding": {
+            "ms": 3.6188,
+            "launches": 50.0
+          },
+          "dense.q8_0": {
+            "ms": 2.9403,
+            "launches": 206.0
+          },
+          "moe.down": {
+            "ms": 2.6196,
+            "launches": 29.0
+          },
+          "norm": {
+            "ms": 1.4826,
+            "launches": 301.0
+          },
+          "moe.route_glue": {
+            "ms": 1.2501,
+            "launches": 240.0
+          },
+          "lm_head": {
+            "ms": 0.9624,
+            "launches": 1.0
+          },
+          "moe.router_gemm": {
+            "ms": 0.311,
+            "launches": 60.0
+          },
+          "moe.l29_experts": {
+            "ms": 0.2367,
+            "launches": 2.0
+          },
+          "elementwise": {
+            "ms": 0.2258,
+            "launches": 121.0
+          },
+          "runtime_copy_fill": {
+            "ms": 0.2133,
+            "launches": 97.0
+          }
+        },
+        "other_top": {}
+      },
+      "command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/g4_scoreboard_p8c/trace_4096 -o run -- /home/lhl/hipEngine-gemma4/.venv/bin/python scripts/gemma4_family_census.py drive --prompt 4096 --decode 64 --prefill-repeats 2",
+      "trace_kernel_rows": 111236,
+      "prefill_prompt_tokens": 4096
+    }
+  },
+  "artifacts": {
+    "topline_1024": "benchmarks/results/2026-09-28-gemma4-topline-1024-p8c.json",
+    "topline_4096": "benchmarks/results/2026-09-28-gemma4-topline-4096-p8c.json",
+    "family_1024": "benchmarks/results/2026-09-28-gemma4-family-1024-p8c.json",
+    "family_4096": "benchmarks/results/2026-09-28-gemma4-family-4096-p8c.json"
+  }
+}

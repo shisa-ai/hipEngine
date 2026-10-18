@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "kind": "w7900_prefix_completed_code_control",
+  "source_commit": "147a8f819184d0707ed3b35ebd127ebe48acbf8b",
+  "runtime_changes": false,
+  "performance_claim": false,
+  "production_gate_passed": false,
+  "script_passed": true,
+  "hardware": {
+    "host_name": "epyc",
+    "machine_id": "13fc037d426b4f70918af4fc4a17e399",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "gpu_unique_id": "0xe282895b62c2b295",
+    "target_arch": "gfx1100",
+    "hip_visible_devices": "0",
+    "rocm_hip_version": "HIP version: 7.15.0-0000000",
+    "compiler_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n"
+  },
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "workload": {
+    "prompt_source": "benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl",
+    "prompt_category": "code",
+    "prefix_token_id": 9707,
+    "prefix_tokens": 1024,
+    "suffix_token_id": 9708,
+    "suffix_tokens": 200,
+    "teacher_forced_steps": 128,
+    "max_sequence_length": 2048,
+    "sampling": "greedy_top1_then_reference_teacher_forced",
+    "kv_dtype": "bf16",
+    "source_lifecycle": "completed",
+    "processor_forced_token_ids": []
+  },
+  "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-tokens 1024 --suffix-tokens 200 --max-sequence-length 2048 --sampler-mode greedy_fast --prompt-file benchmarks/prompts/laguna-target-ar-code-general-ja-heldout.jsonl --prompt-category code --source-lifecycle completed --teacher-forced-steps 128 --json /tmp/w7900-parent-completed-code.json",
+  "environment": {
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-v060-gfx1100-refresh-results/hipcc-version-715.txt",
+    "HIPENGINE_GGUF_DECODE_REPACK": null,
+    "HIPENGINE_GGUF_WMMA_PREFILL": null,
+    "HIPENGINE_GGUF_GEMV_DECODE": null,
+    "HIPENGINE_GGUF_GDN_PREFILL_MODE": null,
+    "HIP_VISIBLE_DEVICES": "0"
+  },
+  "kv_storage": "bf16",
+  "metrics": {
+    "rows": 128,
+    "kl_mean": 0.006777639326199592,
+    "kl_p95": 0.0010082160937599839,
+    "kl_p99": 0.12954864624887774,
+    "kl_max": 0.6765699982643127,
+    "top1_agreement": 1.0
+  },
+  "clone_boundary_exact": true,
+  "semantic_boundary_exact": true,
+  "scheduler_chunk_diagnostic": {
+    "predicted_token_id": 709,
+    "output_exact": true,
+    "boundary_exact": true,
+    "final_state_exact": true,
+    "boundary_state_mismatch_summary": {
+      "count": 0,
+      "component_counts": {},
+      "first": null
+    },
+    "final_state_mismatch_summary": {
+      "count": 0,
+      "component_counts": {},
+      "first": null
+    },
+    "gating": true
+  },
+  "interpretation": "Completed lifecycle also exceeds production mean, p99 and max KL. The script exit code checks a broader envelope and cannot promote this default. State byte inequality alone does not establish an ownership defect. INT8 KV was not tested.",
+  "raw_artifact": "/tmp/w7900-parent-completed-code.json",
+  "driver": "/tmp/w7900-parent-prefix-control.py"
+}

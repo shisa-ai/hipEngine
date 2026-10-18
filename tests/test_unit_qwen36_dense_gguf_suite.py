@@ -12,6 +12,7 @@ from scripts.qwen36_dense_gguf_suite import (
     _TimedDraftProvider,
     _TimedVerifier,
     _borrowed_nextn_fallback_weights,
+    _run_ar,
     _resolved_target_identity,
     aggregate_scopes,
     build_parser,
@@ -186,6 +187,193 @@ def test_dense_suite_defaults_to_native_target_verify_with_serial_rollback() -> 
         ).target_verify_mode
         == "serial-exact"
     )
+
+
+def test_dense_suite_defaults_true_ar_to_recorded_graph_replay() -> None:
+    parser = build_parser()
+    assert parser.parse_args(["--output", "/tmp/out.json"]).ar_decode_mode == "graph"
+    assert (
+        parser.parse_args(
+            ["--ar-decode-mode", "eager", "--output", "/tmp/out.json"]
+        ).ar_decode_mode
+        == "eager"
+    )
+
+
+def test_run_ar_graph_records_every_transition_and_closes_graph() -> None:
+    calls: list[object] = []
+
+    class Graph:
+        def replay(self, steps: int) -> None:
+            calls.append(("replay", steps))
+
+        def read_generated_token_ids(self, count: int) -> list[int]:
+            calls.append(("read", count))
+            return [12, 13, 14]
+
+        def transport_provenance(self) -> dict[str, object]:
+            return {"transport": "hipgraph", "replayed_steps": 3}
+
+        def close(self) -> None:
+            calls.append(("close",))
+
+    class Target:
+        position = 3
+
+        def reset(self) -> None:
+            calls.append(("reset",))
+
+        def prefill(self, prompt_tokens, *, use_bulk, return_logits):
+            calls.append(("prefill", tuple(prompt_tokens), use_bulk, return_logits))
+            return SimpleNamespace(token_id=11)
+
+        def capture_decode_graph(self, **kwargs):
+            calls.append(("capture", kwargs))
+            return Graph()
+
+        def step(self, *args, **kwargs):
+            raise AssertionError("graph AR must not call scalar step")
+
+    result = _run_ar(
+        Target(),  # type: ignore[arg-type]
+        (1, 2, 3),
+        max_new_tokens=4,
+        ar_decode_mode="graph",
+    )
+
+    assert result["token_ids"] == [11, 12, 13, 14]
+    assert result["timed_transitions"] == 3
+    assert result["target_forward_rows"] == 3
+    assert result["ar_decode_mode"] == "graph"
+    assert result["decode_graph_transport"] == {
+        "transport": "hipgraph",
+        "replayed_steps": 3,
+    }
+    capture = next(call for call in calls if call[0] == "capture")
+    assert capture[1] == {
+        "position": 3,
+        "steps_per_replay": 1,
+        "max_replay_steps": 3,
+        "record_steps": 3,
+        "input_token_id": 11,
+    }
+    assert calls[-1] == ("close",)
+
+
+def test_run_ar_graph_and_eager_produce_the_same_token_sequence() -> None:
+    """Both AR modes must be driven to one token-sequence contract.
+
+    The two modes are separate code paths, and the graph path is the published
+    performance denominator, so an off-by-one in the readback, a dropped prefill
+    token, or a short replay would silently change what every AR rate is
+    measured against.
+
+    What this pins is the wiring: ``_run_ar`` must hand back the prefill token
+    followed by exactly ``timed_transition_count`` decoded tokens, with the graph
+    path recording one token per replayed transition, for a target whose two
+    paths are implemented independently of each other. It is not hardware
+    evidence that the real decode graph reproduces the eager token sequence --
+    that is a device property, checked by
+    ``scripts/gguf_ar_eager_graph_equivalence.py``.
+    """
+
+    class Graph:
+        def __init__(self, tokens: list[int]) -> None:
+            self._tokens = list(tokens)
+            self.replayed: int | None = None
+            self.closed = False
+
+        def replay(self, steps: int) -> None:
+            self.replayed = int(steps)
+
+        def read_generated_token_ids(self, count: int) -> list[int]:
+            assert self.replayed == int(count), (self.replayed, count)
+            return self._tokens[: int(count)]
+
+        def transport_provenance(self) -> dict[str, object]:
+            return {"transport": "hipgraph"}
+
+        def close(self) -> None:
+            self.closed = True
+
+    class Target:
+        """One recurrence, two independent realizations of it."""
+
+        def __init__(self) -> None:
+            self.position = 7
+            self.cursor = 0
+            self.graphs: list[Graph] = []
+
+        def reset(self) -> None:
+            self.cursor = 0
+
+        def prefill(self, prompt_tokens, *, use_bulk, return_logits):
+            self.cursor = 1000 + len(prompt_tokens)
+            return SimpleNamespace(token_id=self.cursor)
+
+        def step(self, token_id, *, return_logits):
+            # Eager: advance one token at a time from the previous id.
+            self.cursor = int(token_id) + 1
+            return SimpleNamespace(token_id=self.cursor)
+
+        def capture_decode_graph(
+            self,
+            *,
+            position,
+            steps_per_replay,
+            max_replay_steps,
+            record_steps,
+            input_token_id,
+        ):
+            # Graph: materialize the same recurrence up front.
+            start = int(input_token_id)
+            graph = Graph([start + 1 + index for index in range(int(record_steps))])
+            self.graphs.append(graph)
+            return graph
+
+    max_new_tokens = 9
+    transitions = timed_transition_count(max_new_tokens)
+
+    graph_target = Target()
+    graph_result = _run_ar(
+        graph_target,  # type: ignore[arg-type]
+        (1, 2, 3),
+        max_new_tokens=max_new_tokens,
+        ar_decode_mode="graph",
+    )
+    eager_target = Target()
+    eager_result = _run_ar(
+        eager_target,  # type: ignore[arg-type]
+        (1, 2, 3),
+        max_new_tokens=max_new_tokens,
+        ar_decode_mode="eager",
+    )
+
+    # The contract both modes must satisfy.
+    assert len(graph_result["token_ids"]) == max_new_tokens
+    assert len(eager_result["token_ids"]) == max_new_tokens
+    assert graph_result["timed_transitions"] == transitions
+    assert eager_result["timed_transitions"] == transitions
+    # ... and the same sequence, so the graph denominator measures the same work.
+    assert graph_result["token_ids"] == eager_result["token_ids"]
+    assert graph_result["token_sha256_i64"] == eager_result["token_sha256_i64"]
+    # The prefill token is the first visible output in both modes.
+    assert graph_result["token_ids"][0] == eager_result["token_ids"][0]
+    assert graph_result["visible_outputs"] == eager_result["visible_outputs"]
+
+    # Mode identity and the stage key that distinguishes them.
+    assert graph_result["ar_decode_mode"] == "graph"
+    assert eager_result["ar_decode_mode"] == "eager"
+    assert list(graph_result["stage_seconds"]) == ["autoregressive_graph_replay"]
+    assert list(eager_result["stage_seconds"]) == ["autoregressive_step"]
+    # Only the graph path records transport and capture/readback accounting.
+    assert graph_result["decode_graph_transport"] == {"transport": "hipgraph"}
+    assert eager_result["decode_graph_transport"] is None
+    assert graph_target.graphs and all(graph.closed for graph in graph_target.graphs)
+    assert not eager_target.graphs
+    assert graph_result["graph_readback_seconds"] >= 0.0
+    assert eager_result["graph_capture_seconds"] == 0.0
+    assert eager_result["graph_readback_seconds"] == 0.0
 
 
 def test_native_speed_claim_hardware_accepts_independently_qualified_gfx1151() -> None:

@@ -1,0 +1,24 @@
+{
+  "recorded": "2026-10-18",
+  "note": "Untriaged rows per kind. `audit.py check` fails when a count rises. Lower it by triaging rows; raise it only with a recorded reason. `select` narrows a kind's gate to matching rows; rows outside the gate stay visible in the state table.",
+  "open": {
+    "axis-branch": 0,
+    "candidate": 0,
+    "doc-path-drift": 0,
+    "flag": 0,
+    "kernel": 0,
+    "ledger": 0,
+    "stub": 0,
+    "ungoverned-flag-branch": 0,
+    "unguarded-hip-test": 0,
+    "worklog": 87
+  },
+  "select": {
+    "worklog": {
+      "evidence.status": [
+        "blocked",
+        "handoff"
+      ]
+    }
+  }
+}

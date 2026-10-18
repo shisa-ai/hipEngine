@@ -348,65 +348,74 @@ __global__ void dms_append_decode_kernel(
     }
     const int32_t chunk_n =
         (live - chunk0 < kDmsPackThreads) ? (live - chunk0) : kDmsPackThreads;
-    for (int32_t tile0 = 0; tile0 < chunk_n; tile0 += kDmsCompactTileSlots) {
-      const int32_t tile_n = (chunk_n - tile0 < kDmsCompactTileSlots)
-                                 ? (chunk_n - tile0)
-                                 : kDmsCompactTileSlots;
-      const int32_t stage_elems = tile_n * dim;
-      // Stage every source slot of this tile before any write. A plain
-      // parallel forward compaction lets a thread whose `dst` is another
-      // thread's unread `src` overwrite it, which duplicated and shifted
-      // slots at random positions once the extent spanned many chunks.
-      for (int32_t e = tid; e < stage_elems; e += kDmsPackThreads) {
-        const int32_t slot_i = e / dim;
-        const int32_t t_in_chunk = tile0 + slot_i;
-        const bool kept =
-            s_flag[t_in_chunk] > (t_in_chunk > 0 ? s_flag[t_in_chunk - 1] : 0);
-        if (kept) {
+    const int32_t chunk_total = s_flag[kDmsPackThreads - 1];
+    // A keeper shifts when a row before it was dropped -- in this chunk or any
+    // earlier one.  Only a chunk that neither dropped a row nor inherits an
+    // earlier drop leaves every keeper in place, and only that chunk can skip
+    // the staging.  A chunk that does shift stages whole tiles of source rows
+    // before any write, because a thread's destination can be another
+    // thread's unread source.
+    if (chunk_rank != chunk0 || chunk_total != chunk_n) {
+      for (int32_t tile0 = 0; tile0 < chunk_n; tile0 += kDmsCompactTileSlots) {
+        const int32_t tile_n = (chunk_n - tile0 < kDmsCompactTileSlots)
+                                   ? (chunk_n - tile0)
+                                   : kDmsCompactTileSlots;
+        const int32_t stage_elems = tile_n * dim;
+        // Stage every source slot of this tile before any write. A plain
+        // parallel forward compaction lets a thread whose `dst` is another
+        // thread's unread `src` overwrite it, which duplicated and shifted
+        // slots at random positions once the extent spanned many chunks.
+        for (int32_t e = tid; e < stage_elems; e += kDmsPackThreads) {
+          const int32_t slot_i = e / dim;
+          const int32_t t_in_chunk = tile0 + slot_i;
+          const bool kept =
+              s_flag[t_in_chunk] > (t_in_chunk > 0 ? s_flag[t_in_chunk - 1] : 0);
+          if (kept) {
+            const int32_t src = base + chunk0 + t_in_chunk;
+            const int32_t d = e - slot_i * dim;
+            s_stage[e] = k_slot[static_cast<int64_t>(src) * dim + d];
+            s_stage[stage_elems + e] =
+                v_slot[static_cast<int64_t>(src) * dim + d];
+          }
+        }
+        if (tid < tile_n) {
+          const int32_t src = base + chunk0 + tile0 + tid;
+          s_tile_positions[tid] = token_positions[src];
+          s_tile_evict[tid] = slot_evict[src];
+        }
+        __syncthreads();
+        for (int32_t e = tid; e < stage_elems; e += kDmsPackThreads) {
+          const int32_t slot_i = e / dim;
+          const int32_t t_in_chunk = tile0 + slot_i;
+          const bool kept =
+              s_flag[t_in_chunk] > (t_in_chunk > 0 ? s_flag[t_in_chunk - 1] : 0);
+          if (!kept) {
+            continue;
+          }
+          const int32_t dst = base + chunk_rank + s_flag[t_in_chunk] - 1;
           const int32_t src = base + chunk0 + t_in_chunk;
-          const int32_t d = e - slot_i * dim;
-          s_stage[e] = k_slot[static_cast<int64_t>(src) * dim + d];
-          s_stage[stage_elems + e] =
-              v_slot[static_cast<int64_t>(src) * dim + d];
+          if (dst != src) {
+            const int32_t d = e - slot_i * dim;
+            k_slot[static_cast<int64_t>(dst) * dim + d] = s_stage[e];
+            v_slot[static_cast<int64_t>(dst) * dim + d] =
+                s_stage[stage_elems + e];
+          }
         }
-      }
-      if (tid < tile_n) {
-        const int32_t src = base + chunk0 + tile0 + tid;
-        s_tile_positions[tid] = token_positions[src];
-        s_tile_evict[tid] = slot_evict[src];
-      }
-      __syncthreads();
-      for (int32_t e = tid; e < stage_elems; e += kDmsPackThreads) {
-        const int32_t slot_i = e / dim;
-        const int32_t t_in_chunk = tile0 + slot_i;
-        const bool kept =
-            s_flag[t_in_chunk] > (t_in_chunk > 0 ? s_flag[t_in_chunk - 1] : 0);
-        if (!kept) {
-          continue;
+        if (tid < tile_n) {
+          const int32_t t_in_chunk = tile0 + tid;
+          const bool kept =
+              s_flag[t_in_chunk] > (t_in_chunk > 0 ? s_flag[t_in_chunk - 1] : 0);
+          const int32_t dst = base + chunk_rank + s_flag[t_in_chunk] - 1;
+          const int32_t src = base + chunk0 + t_in_chunk;
+          if (kept && dst != src) {
+            token_positions[dst] = s_tile_positions[tid];
+            slot_evict[dst] = s_tile_evict[tid];
+          }
         }
-        const int32_t dst = base + chunk_rank + s_flag[t_in_chunk] - 1;
-        const int32_t src = base + chunk0 + t_in_chunk;
-        if (dst != src) {
-          const int32_t d = e - slot_i * dim;
-          k_slot[static_cast<int64_t>(dst) * dim + d] = s_stage[e];
-          v_slot[static_cast<int64_t>(dst) * dim + d] =
-              s_stage[stage_elems + e];
-        }
+        __syncthreads();
       }
-      if (tid < tile_n) {
-        const int32_t t_in_chunk = tile0 + tid;
-        const bool kept =
-            s_flag[t_in_chunk] > (t_in_chunk > 0 ? s_flag[t_in_chunk - 1] : 0);
-        const int32_t dst = base + chunk_rank + s_flag[t_in_chunk] - 1;
-        const int32_t src = base + chunk0 + t_in_chunk;
-        if (kept && dst != src) {
-          token_positions[dst] = s_tile_positions[tid];
-          slot_evict[dst] = s_tile_evict[tid];
-        }
-      }
-      __syncthreads();
     }
-    s_chunk_total = s_flag[kDmsPackThreads - 1];
+    s_chunk_total = chunk_total;
     __syncthreads();
     chunk_rank += s_chunk_total;
     __syncthreads();

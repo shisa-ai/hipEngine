@@ -1,0 +1,241 @@
+{
+  "diagnostic_only": true,
+  "promotion_qualified": false,
+  "actual_resident_manifests_equal": true,
+  "candidate_inputs": {
+    "/tmp/ud-f32-embedding-probe.py": "462cc4bb607076b7d3cdb737a7976ca0667792849541504d86eb9710ea8cbc8e",
+    "hipengine/runtime/qwen35_gguf_runner.py": "9f13155e912571ee43b988405935770d73f02e080188c463e86b20352c82462f"
+  },
+  "arms": {
+    "bf16_embedding": {
+      "mean_kl": 0.0013817845127991968,
+      "p95_kl": 0.003574629859577651,
+      "p99_kl": 0.021304369463270953,
+      "max_kl": 0.030485508998574388,
+      "top1_matches": 36,
+      "positions": 36,
+      "kl_by_position": [
+        7.188318903004837e-10,
+        2.9264738311042882e-09,
+        0.0033482792278200723,
+        3.2132201638547466e-07,
+        6.717870452189798e-09,
+        1.5378286649592254e-05,
+        1.6213318894056408e-08,
+        1.1322286888797608e-05,
+        0.0005316778449430454,
+        0.00012038815290813656,
+        0.0012659761837019068,
+        0.030485508998574388,
+        6.249364728727331e-05,
+        0.0007362410864092429,
+        5.392278303957294e-05,
+        0.0042536817548503875,
+        0.0008972052054483635,
+        0.00048084080670078593,
+        4.575286334097589e-05,
+        0.003338362244199807,
+        1.1824262003857507e-05,
+        0.000226691284416305,
+        0.0014479784124243045,
+        0.00012718076405670878,
+        8.451305982989902e-05,
+        0.000511927553241363,
+        0.0012102598557934263,
+        1.9119300015546102e-05,
+        7.110939410331904e-05,
+        2.745652347708078e-07,
+        0.00030060413894903034,
+        2.1175538406067044e-05,
+        9.0831871694284e-06,
+        3.5894674611604947e-06,
+        6.46062259211759e-06,
+        4.5071783799987515e-05
+      ],
+      "by_prompt": [
+        {
+          "prompt_index": 0,
+          "mean_kl": 0.00043411172720144,
+          "max_kl": 0.0033482792278200723
+        },
+        {
+          "prompt_index": 4,
+          "mean_kl": 0.00426180651321334,
+          "max_kl": 0.030485508998574388
+        },
+        {
+          "prompt_index": 10,
+          "mean_kl": 0.0007782766999229608,
+          "max_kl": 0.003338362244199807
+        },
+        {
+          "prompt_index": 17,
+          "mean_kl": 5.294311085904748e-05,
+          "max_kl": 0.00030060413894903034
+        }
+      ]
+    },
+    "f32_embedding": {
+      "mean_kl": 0.0015317737881335011,
+      "p95_kl": 0.008597973035362074,
+      "p99_kl": 0.015713824969100287,
+      "max_kl": 0.018016141943121546,
+      "top1_matches": 36,
+      "positions": 36,
+      "kl_by_position": [
+        1.0341148160676285e-09,
+        2.4982191832505505e-07,
+        0.0036301518619509705,
+        3.776575799327891e-07,
+        2.6216839638180574e-07,
+        6.826749925171336e-07,
+        2.5869101997873078e-08,
+        7.196767724041975e-06,
+        0.00036704709690527564,
+        9.094618003521865e-05,
+        0.0010584379062343768,
+        0.007651266231843441,
+        0.0041295540126487975,
+        0.0004605001315273168,
+        1.4044955807957625e-05,
+        0.011438093445917976,
+        0.00012471253192844053,
+        0.00035974809074305983,
+        0.0008037403862437606,
+        0.018016141943121546,
+        7.978656388235182e-05,
+        0.000281137710599509,
+        0.001517325386155742,
+        8.854663759976196e-05,
+        9.181786026614505e-05,
+        0.0005645197989824025,
+        0.00119217117834651,
+        1.7455348968339443e-05,
+        5.4981144649049745e-05,
+        1.9119734108594643e-07,
+        0.0030325942804995073,
+        1.2324548044106522e-05,
+        3.666670621496794e-05,
+        4.000442867572608e-06,
+        7.829389746695525e-06,
+        9.327409906146834e-06
+      ],
+      "by_prompt": [
+        {
+          "prompt_index": 0,
+          "mean_kl": 0.00044511055029825106,
+          "max_kl": 0.0036301518619509705
+        },
+        {
+          "prompt_index": 4,
+          "mean_kl": 0.0028141448318540646,
+          "max_kl": 0.011438093445917976
+        },
+        {
+          "prompt_index": 10,
+          "mean_kl": 0.0025150208294664137,
+          "max_kl": 0.018016141943121546
+        },
+        {
+          "prompt_index": 17,
+          "mean_kl": 0.00035281894091527464,
+          "max_kl": 0.0030325942804995073
+        }
+      ]
+    }
+  },
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S",
+  "backend": "hip_gfx1151",
+  "model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "model_sha256": "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482",
+  "llama_commit": "17252c769a63c1cb650ce98ae309cf4de0da7778",
+  "teacher_sha256": "04e48581977953704cd012ab347dcbab8ec970e58f3a4bf66f59568a83dc2951",
+  "thresholds": {
+    "mean_kl_max": 0.001,
+    "p95_kl_max": 0.005,
+    "p99_kl_max": 0.02,
+    "max_kl_max": 0.05,
+    "top1_min": 0.99,
+    "category_transition_top1_min": 0.97
+  },
+  "workload": {
+    "prompt_indices": [
+      0,
+      4,
+      10,
+      17
+    ],
+    "context_tokens": 512,
+    "forced_continuation_tokens": 8,
+    "logit_positions_per_prompt": 9,
+    "synthetic_repeated_chat_tokens": true,
+    "rows_per_call": 1,
+    "kv_storage_dtype": "BF16",
+    "token_embedding_precision": "paired BF16/F32",
+    "residual_precision": "F32 in both arms"
+  },
+  "schema_version": 1,
+  "status": "diagnostic_only",
+  "hipengine_commit": "5bee5656246e871de2122d518ddf933476d2c363",
+  "prior_evidence": "benchmarks/results/2026-09-07-zbook-ud-residual-precision.json",
+  "embedding_norm_diagnostic": {
+    "diagnostic_only": true,
+    "promotion_qualified": false,
+    "token_id": 248045,
+    "paths": {
+      "f32_embedding_f32_norm": {
+        "rms_error": 4.465270683441284e-08,
+        "max_abs_error": 2.384185791015625e-07
+      },
+      "bf16_embedding_f32_norm": {
+        "rms_error": 0.0016147700212958598,
+        "max_abs_error": 0.009857177734375
+      },
+      "bf16_embedding_bf16_norm": {
+        "rms_error": 0.002273864622684514,
+        "max_abs_error": 0.01477503776550293
+      }
+    }
+  },
+  "sources": {
+    "ud-f32-embedding-probe.py": {
+      "sha256": "462cc4bb607076b7d3cdb737a7976ca0667792849541504d86eb9710ea8cbc8e",
+      "source": "\"\"\"Controlled existing-path residual-precision diagnostic; never a promotion gate.\"\"\"\nimport argparse\nimport json\nimport os\nfrom pathlib import Path\nimport runpy\nimport numpy as np\n\nparser = argparse.ArgumentParser()\nparser.add_argument('precision', choices=('bf16','f32'))\nparser.add_argument('--smoke', action='store_true')\nargs = parser.parse_args()\nos.environ['HIPENGINE_GGUF_VERIFY_F32_RESIDUAL'] = '1' if args.precision == 'f32' else '0'\nassert args.precision == 'f32', 'Embedding diagnostic requires the existing F32 residual arm'\nos.environ['HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING'] = '1'\n# One-row verifier captures logits only through its row LM-head route.\nos.environ['HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD'] = '1'\nos.environ['HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A'] = '0'\nos.environ.pop('HIPENGINE_GGUF_VERIFY_F32_RESIDUAL_LAYER_LIMIT',None)\nbase = np.load('/tmp/ud-q56-context512-M-baseline.npz')\nindices = [0] if args.smoke else [0,4,10,17]\nprefix = Path('/tmp/ud-f32-embedding-'+args.precision+('-smoke' if args.smoke else ''))\nassert not prefix.with_suffix('.npz').exists() and not prefix.with_suffix('.json').exists()\nrunpy.run_path('/tmp/ud-q56-raw-preflight.py')\nfrom hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession, _gguf_verify_f32_residual_enabled\nassert _gguf_verify_f32_residual_enabled() == (args.precision == 'f32')\nrecords = []\nwith Qwen35GGUFResidentSession('/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf',\n        backend='hip_gfx1151', max_sequence_length=528,\n        compiler_version=Path('/tmp/ud-hipcc-version.txt').read_text()) as session:\n    weights = session.runner.weights.weights\n    manifest = [dict(slot=w.spec.slot_path, source=w.spec.source.name,\n                     quant=w.spec.quant_key, layout=w.spec.layout,\n                     shape=list(w.spec.source.shape), sidecars=list(w.spec.sidecar_layouts),\n                     allocations={name:a.buffer.nbytes for name,a in w.allocations.items()}) for w in weights]\n    assert not any(w.spec.layout == 'dense_bf16' for w in weights if w.spec.source.ggml_type_name in ('Q5_K','Q6_K'))\n    for i in indices:\n        session.reset()\n        inputs = base['inputs'][i].tolist()\n        sequence = inputs + base['tokens'][9*i:9*i+8].tolist()\n        if args.smoke:\n            sequence = sequence[:1]\n        for pos, token in enumerate(sequence):\n            capture = args.smoke or pos >= 511\n            result = session.verify_target_block([int(token)], bulk_attention_mode='native',\n                       use_wmma_prefill=False, advance_state_only=not capture,\n                       capture_lm_head_logits=capture)\n            assert result.start_position == pos and session.position == pos+1\n            assert result.input_token_ids == [int(token)]\n            if capture:\n                logits = result.lm_head_logits_f32\n                assert logits is not None and logits.shape == (1,248320) and np.isfinite(logits).all()\n                records.append(logits.copy())\n        print(args.precision,'completed prompt',i,flush=True)\n    metadata = dict(precision=args.precision, diagnostic_only=True, smoke=args.smoke,\n                    prompt_indices=indices, kv_storage_dtype=str(session.kv_storage_dtype),\n                    rows_per_call=1, actual_resident_manifest=manifest,\n                    token_embedding_precision='f32',\n                    scope='same one-row F32-residual verifier schedule; token embedding precision is the only requested difference from the saved F32-residual arm')\nnp.savez(prefix.with_suffix('.npz'),logits=np.asarray(records),indices=indices)\nprefix.with_suffix('.json').write_text(json.dumps(metadata,indent=2)+'\\n')\nprint('complete',args.precision,len(records),'positions',flush=True)\n"
+    },
+    "ud-f32-embedding-compare.py": {
+      "sha256": "1809855a558ffe0d88df6dd379b61853df5825a0c1a09b6670faebd4ffecc4aa",
+      "source": "\"\"\"Compare embedding precision with a saved, source-matched F32 residual control.\"\"\"\nimport hashlib\nimport json\nfrom pathlib import Path\nimport runpy\nimport numpy as np\ncandidate_inputs=json.loads(Path('/tmp/ud-f32-embedding-input-manifest.json').read_text())\nfor path,expected in candidate_inputs.items():\n assert hashlib.sha256(Path(path).read_bytes()).hexdigest()==expected,path\nold=json.loads(Path('benchmarks/results/2026-09-07-zbook-ud-residual-precision.json').read_text())\nfor path,expected in old['input_manifest'].items():\n assert hashlib.sha256(Path(path).read_bytes()).hexdigest()==expected,path\nfor path,v in old['capture_files'].items():\n assert hashlib.sha256(Path(path).read_bytes()).hexdigest()==v['sha256'],path\ncontrol=json.loads(Path('/tmp/ud-residual-precision-f32.json').read_text())\ncandidate=json.loads(Path('/tmp/ud-f32-embedding-f32.json').read_text())\nfor key in ('actual_resident_manifest','prompt_indices','rows_per_call','kv_storage_dtype','precision','smoke'):\n assert control[key]==candidate[key],key\nassert candidate['precision']=='f32' and not candidate['smoke']\nassert control['token_embedding_precision']=='unchanged_bf16' and candidate['token_embedding_precision']=='f32'\nindices=candidate['prompt_indices'];assert indices==[0,4,10,17]\nteacher_path=Path('/tmp/ud-llama-context512-M-bf16kv.f32')\nassert hashlib.sha256(teacher_path.read_bytes()).hexdigest()==old['teacher_sha256']\nteacher=np.fromfile(teacher_path,dtype='<f4').reshape(18,9,248320)[indices].reshape(36,248320)\ncompare=runpy.run_path('/tmp/ud-context512-teacher-compare.py')['compare']\nresult=dict(diagnostic_only=True,promotion_qualified=False,actual_resident_manifests_equal=True,candidate_inputs=candidate_inputs,arms={})\nfor name,path in [('bf16_embedding','/tmp/ud-residual-precision-f32.npz'),('f32_embedding','/tmp/ud-f32-embedding-f32.npz')]:\n z=np.load(path);np.testing.assert_array_equal(z['indices'],indices)\n assert z['logits'].shape==(36,1,248320)\n kl,top1=compare(teacher,z['logits'][:,0,:])\n result['arms'][name]=dict(mean_kl=float(kl.mean()),p95_kl=float(np.quantile(kl,.95)),p99_kl=float(np.quantile(kl,.99)),max_kl=float(kl.max()),top1_matches=int(top1.sum()),positions=36,kl_by_position=kl.tolist(),by_prompt=[dict(prompt_index=index,mean_kl=float(kl[j*9:(j+1)*9].mean()),max_kl=float(kl[j*9:(j+1)*9].max())) for j,index in enumerate(indices)])\nnp.testing.assert_array_equal(result['arms']['bf16_embedding']['kl_by_position'],old['arms']['f32']['kl_by_position'])\nPath('/tmp/ud-f32-embedding-comparison.json').write_text(json.dumps(result,indent=2,allow_nan=False)+'\\n')\nprint(json.dumps(result,indent=2))\n"
+    },
+    "ud-embedding-norm-check.py": {
+      "sha256": "9b97a3665b94ca76b15dd866914ba26f7313883e7be486fb06bc5d9dcc851aba",
+      "source": "\"\"\"Compare layer0 teacher normalization with explicit embedding precision.\"\"\"\nimport json\nimport struct\nfrom pathlib import Path\nimport numpy as np\nfrom hipengine.loading.gguf import GGUFReader, dequantize_gguf_data\nr=GGUFReader('/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf')\nwire=Path('/tmp/ud-teacher-dispatch-one-token.bin').read_bytes()\nassert len(wire)==28 and wire[:4]==b'Q36Q'\nversion,prompts,ninputs,noutputs,token,_=struct.unpack('<IIIIii',wire[4:])\nassert (version,prompts,ninputs,noutputs)==(1,1,1,1)\nt=r.tensor_info('token_embd.weight')\ne=dequantize_gguf_data(np.ascontiguousarray(r.tensor_data(t.name)[token:token+1]),t.ggml_type).reshape(-1).astype(np.float32)\nw=r.dequantize_tensor('blk.0.attn_norm.weight').astype(np.float32)\neps=r.info.metadata['qwen35.attention.layer_norm_rms_epsilon']\nteacher=np.load('/tmp/ud-teacher-projection-one-token.npz')['attn_norm-0']\ndef bf16(v):\n u=np.ascontiguousarray(v,dtype=np.float32).view(np.uint32)\n return ((u+np.uint32(0x7fff)+((u>>16)&1))&np.uint32(0xffff0000)).view(np.float32)\nresult=dict(diagnostic_only=True,promotion_qualified=False,token_id=token,paths={})\nfor name,emb,round_output in [('f32_embedding_f32_norm',e,False),('bf16_embedding_f32_norm',bf16(e),False),('bf16_embedding_bf16_norm',bf16(e),True)]:\n norm=(emb.astype(np.float64)/np.sqrt(np.mean(emb.astype(np.float64)**2)+eps)*w.astype(np.float64)).astype(np.float32)\n if round_output:norm=bf16(norm)\n d=norm.astype(np.float64)-teacher.astype(np.float64)\n result['paths'][name]=dict(rms_error=float(np.sqrt(np.mean(d*d))),max_abs_error=float(np.max(np.abs(d))))\nprint(json.dumps(result,indent=2))\nPath('/tmp/ud-embedding-norm-check.json').write_text(json.dumps(result,indent=2)+'\\n')\n"
+    }
+  },
+  "capture_files": {
+    "/tmp/ud-f32-embedding-f32.npz": {
+      "sha256": "1275142d88a14be1cf72654084f80575005c0d9f4071fc6b8051e569c5b1543b",
+      "bytes": 35758624
+    },
+    "/tmp/ud-f32-embedding-f32.json": {
+      "sha256": "71736fe1882775f1424574851753bb61c9911ade48c44ea449164b1fefb89fcd",
+      "bytes": 235216
+    },
+    "/tmp/ud-f32-embedding-f32-smoke.npz": {
+      "sha256": "fff5c33672badf38d59eaff38ecf18be06bf0cb1febbbcc6e0603a308049759c",
+      "bytes": 993800
+    },
+    "/tmp/ud-f32-embedding-f32-smoke.json": {
+      "sha256": "0fbc302861712c7a01ea8feed458ecdf03db0a752494667431eb659c81161f25",
+      "bytes": 235192
+    }
+  },
+  "limitations": [
+    "Four selected synthetic-context cases, not complete model/task/serving qualification.",
+    "F32 embedding arm fails unchanged mean and p95 limits; no default promotion.",
+    "One capture per arm, with saved F32-residual control reused; no new repeatability claim.",
+    "No performance claim; public scalar decoding is not changed by verifier precision flags."
+  ],
+  "actual_resident_manifest_reference": "benchmarks/results/2026-09-07-zbook-ud-residual-precision.json",
+  "resident_slots": 851
+}

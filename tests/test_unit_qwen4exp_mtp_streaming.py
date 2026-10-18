@@ -127,6 +127,17 @@ def test_interrupted_verification_publishes_no_candidates_and_recovers(monkeypat
 def test_mtp_slow_consumer_is_cancelled_and_next_request_recovers(monkeypatch):
     from hipengine.generation.deadline import GenerationCancelled
     api, target, draft = driver(monkeypatch)
+    # The shipped mailbox sizing scales the bound with the request's own output
+    # budget, so a 30-token response fits without backpressure. Pin the floor to
+    # keep exercising the overflow-and-recover path this test owns.
+    monkeypatch.setattr(
+        'hipengine.generation.engine_loop.stream_mailbox_bound',
+        lambda configured, max_tokens: int(configured),
+    )
+    monkeypatch.setattr(
+        'hipengine.generation.engine_service.stream_mailbox_bound',
+        lambda configured, max_tokens: int(configured),
+    )
     service = EngineService(api, idle_wait_seconds=0, stream_queue_max_chunks=1)
     try:
         # Intentionally never drain this child's bounded output queue.

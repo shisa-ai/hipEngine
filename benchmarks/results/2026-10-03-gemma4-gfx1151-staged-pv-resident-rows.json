@@ -1,0 +1,1411 @@
+{
+  "kind": "gemma4_staged_pv_resident_rows",
+  "date": "2026-10-03",
+  "status": "accepted",
+  "base_commit": "2c4dec9955d1feec7de56161af5673e004074ef2",
+  "arithmetic_class": "T0",
+  "execution_profile": "production",
+  "strict_oracle_variant": "gemma4_plain",
+  "comparison": "Same physical host zbook/Radeon8060S/gfx1151; frozen baseline library and candidate; no WMMA comparison.",
+  "claim_scope": "Synthetic BF16 staged-attention event latency only. Runner phase checks are diagnostic; no new model topline, decode, long-context scaling, or llama.cpp claim.",
+  "acceptance_policy": {
+    "blocks": 3,
+    "pairs_per_shape_per_block": 7,
+    "maximum_pooled_median_ratio": 1.02,
+    "at_least_one_improvement": true,
+    "improvement_reproduces_in_blocks": 2,
+    "bitwise_output_required": true
+  },
+  "commands": {
+    "micro": "for block in 1 2 3; do env -u HIP_VISIBLE_DEVICES HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python scripts/gemma4_staged_prefill_bench.py --baseline-library \"$HOME/.cache/hipengine/build/gemma4_attention_staged-513a6a8031b5fbbe/gemma4_attention_staged.so\" --out \"/tmp/priority-staged-pv-specialized-repaired-pair-${block}.json\"; done",
+    "primitive": "env -u HIP_VISIBLE_DEVICES HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python -m pytest -o addopts='' -q tests/test_unit_gemma4_attention_staged.py tests/test_gpu_gemma4_attention_staged.py",
+    "cpu": " .venv/bin/python -m pytest -o addopts='' -q tests/test_unit_gemma4_staged_prefill_bench.py tests/test_unit_gemma4_attention_staged.py tests/test_unit_gemma4_prefill_attention_selection.py tests/test_unit_gemma4_attention_context_ceiling.py tests/test_unit_gemma4_cpu_reference.py",
+    "runner": "env -u HIP_VISIBLE_DEVICES HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python /tmp/priority_staged_pv_runner_pair.py",
+    "public": "env -u HIP_VISIBLE_DEVICES HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python scripts/gemma4_public_route_probe.py --prompt 1537 --output 4 --out /tmp/priority-staged-pv-public-route.json",
+    "profiler": "env -u HIP_VISIBLE_DEVICES HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/priority-staged-final-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-directory /tmp/priority-staged-pv-public-profile -- .venv/bin/python scripts/gemma4_public_route_probe.py --prompt 513 --output 2 --out /tmp/priority-staged-pv-profiler-route.json"
+  },
+  "timing": "HIP events on default stream; shared device buffers and reusable workspace; alternating AB/BA pairs; per-arm median; no profiler",
+  "warmup": 2,
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 2,
+    "collected_at": "2026-10-03T05:45:26.102514+00:00",
+    "host_name": "zbook",
+    "repo_root": "/home/lhl/hipEngine-gemma4",
+    "hipengine_commit": "2c4dec9955d1feec7de56161af5673e004074ef2",
+    "git_branch": "gemma4",
+    "staged_dirty": false,
+    "unstaged_dirty": true,
+    "untracked_dirty": true,
+    "untracked_count": 3,
+    "dirty": true,
+    "configured_backend": "auto",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": null,
+    "model_revision": null,
+    "model_fingerprint": null,
+    "quant": "synthetic_bf16",
+    "kv_dtype": "bf16",
+    "command": [
+      "scripts/gemma4_staged_prefill_bench.py",
+      "--baseline-library",
+      "/home/lhl/.cache/hipengine/build/gemma4_attention_staged-513a6a8031b5fbbe/gemma4_attention_staged.so",
+      "--out",
+      "/tmp/priority-staged-pv-specialized-repaired-pair-1.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": "2",
+      "HIPENGINE_BUILD_CACHE_ROOT": null,
+      "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": null,
+    "timing_protocol": null,
+    "warmups": null,
+    "repetitions": null,
+    "profiler": null
+  },
+  "baseline_library_sha256": "bd2c0d12460d2f52fd4ff0205cd76049ccd3b9443f22b37e227ccd6f64158b6f",
+  "candidate_library_sha256": "3041b769cf05db3dbd016b834eb72352fa67d3d70c9f029edc82f58578b4c544",
+  "candidate_source_sha256": "fcb489078153c1dc31ae49679421b72d2634da8ebec591f7a81959b7032b3986",
+  "script_sha256": "a3dbb89670569800b01a1d229eac84d4dbf7e0ea5e7271f4bd40688f0d6bd0b2",
+  "measurements": [
+    {
+      "tokens": 512,
+      "keys": 513,
+      "heads": 16,
+      "kv_heads": 8,
+      "head_dim": 256,
+      "window": 1024,
+      "row_offset": 1,
+      "baseline_times_ms": [
+        4.367143154144287,
+        3.9306740760803223,
+        3.7392959594726562,
+        3.801811933517456,
+        3.603511095046997,
+        3.5478079319000244,
+        3.4012930393218994,
+        4.658763885498047,
+        3.415637969970703,
+        3.3219220638275146,
+        3.4788169860839844,
+        3.4074819087982178,
+        3.4525949954986572,
+        3.387953996658325,
+        3.4032340049743652,
+        3.873317003250122,
+        3.666609048843384,
+        3.787276029586792,
+        3.7501220703125,
+        3.6840779781341553,
+        3.7227110862731934
+      ],
+      "candidate_times_ms": [
+        3.2172861099243164,
+        2.908176898956299,
+        2.8268630504608154,
+        2.8712270259857178,
+        2.703907012939453,
+        2.7222208976745605,
+        2.557512044906616,
+        2.478346109390259,
+        2.5873820781707764,
+        2.541896104812622,
+        2.6206839084625244,
+        2.572352886199951,
+        2.608572006225586,
+        2.5969109535217285,
+        2.5683751106262207,
+        2.7749040126800537,
+        2.7688820362091064,
+        2.854001998901367,
+        2.7796599864959717,
+        2.8234620094299316,
+        2.894835948944092
+      ],
+      "baseline_median_ms": 3.666609048843384,
+      "candidate_median_ms": 2.7222208976745605,
+      "candidate_over_baseline": 0.7424355477803868,
+      "latency_reduction_percent": 25.75644522196132,
+      "block_ratios": [
+        0.755988047241781,
+        0.7575106322503403,
+        0.7466762588011335
+      ],
+      "outputs_bitwise_equal": true,
+      "output_sha256": "2105e45b04bdbd10caef204e4dffd56ac4e25bfbcb1a6cb671e0c9e88f44e5e8"
+    },
+    {
+      "tokens": 512,
+      "keys": 513,
+      "heads": 16,
+      "kv_heads": 2,
+      "head_dim": 512,
+      "window": 0,
+      "row_offset": 1,
+      "baseline_times_ms": [
+        6.082583904266357,
+        5.050356864929199,
+        4.780069828033447,
+        5.16413688659668,
+        4.843454837799072,
+        5.332132816314697,
+        4.770918846130371,
+        7.044424057006836,
+        5.569577217102051,
+        5.20789909362793,
+        5.288529872894287,
+        4.667483806610107,
+        4.9323410987854,
+        4.497404098510742,
+        6.476615905761719,
+        5.202733039855957,
+        4.768160820007324,
+        5.158295154571533,
+        4.706525802612305,
+        5.307535171508789,
+        4.7771477699279785
+      ],
+      "candidate_times_ms": [
+        4.2642822265625,
+        3.841127872467041,
+        3.7360260486602783,
+        4.026421070098877,
+        3.719744920730591,
+        3.970134973526001,
+        3.614387035369873,
+        5.1039018630981445,
+        4.103464126586914,
+        3.9790709018707275,
+        4.310813903808594,
+        3.5604848861694336,
+        3.7811789512634277,
+        3.5687410831451416,
+        4.227049827575684,
+        3.9474849700927734,
+        3.6642069816589355,
+        3.9698610305786133,
+        3.631103992462158,
+        3.964771032333374,
+        3.6121890544891357
+      ],
+      "baseline_median_ms": 5.158295154571533,
+      "candidate_median_ms": 3.9474849700927734,
+      "candidate_over_baseline": 0.7652693092977279,
+      "latency_reduction_percent": 23.473069070227215,
+      "block_ratios": [
+        0.7605656343100597,
+        0.7640453146911541,
+        0.7652693092977279
+      ],
+      "outputs_bitwise_equal": true,
+      "output_sha256": "4cd2600bf693504f71e3d2b4ea561921df80d363c1163bcb83aae657c3f4c9e9"
+    },
+    {
+      "tokens": 512,
+      "keys": 2053,
+      "heads": 16,
+      "kv_heads": 8,
+      "head_dim": 256,
+      "window": 1024,
+      "row_offset": 1541,
+      "baseline_times_ms": [
+        17.61423683166504,
+        15.053143501281738,
+        16.3670711517334,
+        16.82076644897461,
+        16.096996307373047,
+        16.24223518371582,
+        15.435510635375977,
+        18.209056854248047,
+        15.396010398864746,
+        15.936506271362305,
+        17.24917984008789,
+        16.312057495117188,
+        16.214733123779297,
+        15.57192611694336,
+        17.20561408996582,
+        15.291006088256836,
+        16.544010162353516,
+        17.16734504699707,
+        16.233802795410156,
+        16.245765686035156,
+        15.915184020996094
+      ],
+      "candidate_times_ms": [
+        13.15266227722168,
+        12.681967735290527,
+        13.358795166015625,
+        13.99708366394043,
+        12.89914321899414,
+        13.26583480834961,
+        12.714630126953125,
+        13.464841842651367,
+        12.891864776611328,
+        13.648184776306152,
+        14.28893756866455,
+        13.15054988861084,
+        13.384267807006836,
+        12.914815902709961,
+        13.592934608459473,
+        12.910673141479492,
+        13.855866432189941,
+        14.39920711517334,
+        13.171449661254883,
+        13.515345573425293,
+        13.063438415527344
+      ],
+      "baseline_median_ms": 16.24223518371582,
+      "candidate_median_ms": 13.26583480834961,
+      "candidate_over_baseline": 0.8167493364244413,
+      "latency_reduction_percent": 18.325066357555876,
+      "block_ratios": [
+        0.8097815435161478,
+        0.8254386738797744,
+        0.8319303524759729
+      ],
+      "outputs_bitwise_equal": true,
+      "output_sha256": "716ca001a275245181e3e7202d48ea02dd1ca0aac2049e21b423602912d80148"
+    },
+    {
+      "tokens": 512,
+      "keys": 2053,
+      "heads": 16,
+      "kv_heads": 2,
+      "head_dim": 512,
+      "window": 0,
+      "row_offset": 1541,
+      "baseline_times_ms": [
+        27.582595825195312,
+        27.3388671875,
+        25.176755905151367,
+        26.79604721069336,
+        24.863107681274414,
+        26.659988403320312,
+        24.64211654663086,
+        26.356319427490234,
+        27.220890045166016,
+        25.11525535583496,
+        26.925745010375977,
+        25.03009605407715,
+        26.64357566833496,
+        24.616880416870117,
+        26.40311622619629,
+        27.391942977905273,
+        25.33084487915039,
+        27.134410858154297,
+        24.923105239868164,
+        26.979598999023438,
+        24.783336639404297
+      ],
+      "candidate_times_ms": [
+        22.685855865478516,
+        24.045692443847656,
+        21.44253158569336,
+        22.8671875,
+        21.276084899902344,
+        22.808704376220703,
+        20.949060440063477,
+        22.602760314941406,
+        23.71808433532715,
+        21.61620330810547,
+        23.199647903442383,
+        21.137163162231445,
+        22.729555130004883,
+        20.84326171875,
+        22.76048469543457,
+        23.98454475402832,
+        21.49376678466797,
+        23.21200180053711,
+        21.257951736450195,
+        22.94705581665039,
+        20.87054443359375
+      ],
+      "baseline_median_ms": 26.40311622619629,
+      "candidate_median_ms": 22.685855865478516,
+      "candidate_over_baseline": 0.8592113018451348,
+      "latency_reduction_percent": 14.078869815486517,
+      "block_ratios": [
+        0.8509326981797619,
+        0.8575840939067622,
+        0.8620378178259269
+      ],
+      "outputs_bitwise_equal": true,
+      "output_sha256": "369a3adf487ae2305b99b9b546ddb8cc090c16955166d77220c23971946f363e"
+    },
+    {
+      "tokens": 512,
+      "keys": 8191,
+      "heads": 16,
+      "kv_heads": 8,
+      "head_dim": 256,
+      "window": 1024,
+      "row_offset": 7679,
+      "baseline_times_ms": [
+        17.87209129333496,
+        15.39139175415039,
+        15.543457984924316,
+        17.624073028564453,
+        16.713214874267578,
+        16.155136108398438,
+        15.819384574890137,
+        17.18242835998535,
+        15.35708999633789,
+        15.973467826843262,
+        17.642641067504883,
+        16.656248092651367,
+        16.389936447143555,
+        15.843731880187988,
+        16.073768615722656,
+        15.322456359863281,
+        15.737174987792969,
+        17.673860549926758,
+        16.677968978881836,
+        16.332460403442383,
+        15.925436019897461
+      ],
+      "candidate_times_ms": [
+        13.32884693145752,
+        12.871057510375977,
+        13.632516860961914,
+        14.067474365234375,
+        13.2454195022583,
+        13.465252876281738,
+        13.10517692565918,
+        13.715926170349121,
+        13.143290519714355,
+        13.408517837524414,
+        13.57365894317627,
+        13.512985229492188,
+        13.610756874084473,
+        13.257913589477539,
+        13.407938957214355,
+        13.178156852722168,
+        13.625225067138672,
+        14.029354095458984,
+        13.424186706542969,
+        13.569210052490234,
+        13.224202156066895
+      ],
+      "baseline_median_ms": 16.155136108398438,
+      "candidate_median_ms": 13.424186706542969,
+      "candidate_over_baseline": 0.8309547265011433,
+      "latency_reduction_percent": 16.90452734988567,
+      "block_ratios": [
+        0.8250532116859333,
+        0.8244684336068452,
+        0.8351611266453106
+      ],
+      "outputs_bitwise_equal": true,
+      "output_sha256": "661cdd69eea8fab52b9687b1aaee293386216fcdd6e92029e386427705271de4"
+    },
+    {
+      "tokens": 512,
+      "keys": 8191,
+      "heads": 16,
+      "kv_heads": 2,
+      "head_dim": 512,
+      "window": 0,
+      "row_offset": 7679,
+      "baseline_times_ms": [
+        116.45832824707031,
+        111.86681365966797,
+        112.38864135742188,
+        111.66388702392578,
+        112.7721176147461,
+        111.84317016601562,
+        112.50711822509766,
+        116.65206909179688,
+        113.96488952636719,
+        114.43670654296875,
+        112.16773223876953,
+        113.2345199584961,
+        112.4956283569336,
+        113.46760559082031,
+        117.24348449707031,
+        113.56812286376953,
+        113.64554595947266,
+        112.16732788085938,
+        112.56735229492188,
+        112.30526733398438,
+        113.06397247314453
+      ],
+      "candidate_times_ms": [
+        104.29650115966797,
+        100.45587158203125,
+        101.5230484008789,
+        99.5153579711914,
+        99.22116088867188,
+        99.76775360107422,
+        99.87374877929688,
+        105.90385437011719,
+        102.85881805419922,
+        101.5512924194336,
+        100.2051010131836,
+        100.31240844726562,
+        99.92765045166016,
+        100.63465881347656,
+        105.94766998291016,
+        101.6998291015625,
+        100.79993438720703,
+        99.65924072265625,
+        100.32579803466797,
+        100.80207824707031,
+        100.55660247802734
+      ],
+      "baseline_median_ms": 112.7721176147461,
+      "candidate_median_ms": 100.55660247802734,
+      "candidate_over_baseline": 0.891679651006913,
+      "latency_reduction_percent": 10.832034899308695,
+      "block_ratios": [
+        0.888646286430986,
+        0.8869021099852842,
+        0.891530097362796
+      ],
+      "outputs_bitwise_equal": true,
+      "output_sha256": "19277d8c7d098c5292d3885817e24b6a44f141d81f8d6b554b9413b5f76c1d1c"
+    },
+    {
+      "tokens": 127,
+      "keys": 17000,
+      "heads": 16,
+      "kv_heads": 8,
+      "head_dim": 256,
+      "window": 1024,
+      "row_offset": 16873,
+      "baseline_times_ms": [
+        3.9882519245147705,
+        4.066479206085205,
+        3.8425779342651367,
+        3.903212070465088,
+        3.795729875564575,
+        3.9338700771331787,
+        3.797452926635742,
+        3.8708720207214355,
+        4.001317024230957,
+        4.2616047859191895,
+        3.8866209983825684,
+        3.8066909313201904,
+        4.149435043334961,
+        3.930783987045288,
+        4.4525651931762695,
+        4.248691082000732,
+        4.019189834594727,
+        3.890108108520508,
+        4.022957801818848,
+        3.899125099182129,
+        3.7900390625
+      ],
+      "candidate_times_ms": [
+        3.2116329669952393,
+        3.14703106880188,
+        3.021195888519287,
+        3.0324959754943848,
+        2.991420030593872,
+        3.070528030395508,
+        2.9896159172058105,
+        3.0177788734436035,
+        3.143625020980835,
+        3.009423017501831,
+        3.0205140113830566,
+        3.0514121055603027,
+        3.2194480895996094,
+        2.9986329078674316,
+        3.707766056060791,
+        3.5170669555664062,
+        2.993412971496582,
+        3.0370450019836426,
+        3.0266759395599365,
+        3.0485169887542725,
+        2.9715418815612793
+      ],
+      "baseline_median_ms": 3.930783987045288,
+      "candidate_median_ms": 3.0324959754943848,
+      "candidate_over_baseline": 0.7714735751159572,
+      "latency_reduction_percent": 22.852642488404285,
+      "block_ratios": [
+        0.7769231906307994,
+        0.7684253373723373,
+        0.7556361174689032
+      ],
+      "outputs_bitwise_equal": true,
+      "output_sha256": "81ed701402c8ade40b8f4b5eeba2e7e81c661f468bb42c8353ceb784f944ca08"
+    },
+    {
+      "tokens": 127,
+      "keys": 17000,
+      "heads": 16,
+      "kv_heads": 2,
+      "head_dim": 512,
+      "window": 0,
+      "row_offset": 16873,
+      "baseline_times_ms": [
+        60.94044494628906,
+        61.3040885925293,
+        61.283790588378906,
+        61.990379333496094,
+        61.3055534362793,
+        61.08522033691406,
+        61.875465393066406,
+        61.55535888671875,
+        61.81885528564453,
+        62.26552963256836,
+        61.769317626953125,
+        63.10549545288086,
+        61.798728942871094,
+        63.121315002441406,
+        62.06108856201172,
+        62.02512741088867,
+        62.63188552856445,
+        61.65059280395508,
+        62.61172103881836,
+        61.70185470581055,
+        61.689537048339844
+      ],
+      "candidate_times_ms": [
+        54.44939041137695,
+        53.825111389160156,
+        54.55675506591797,
+        53.99462127685547,
+        55.35117721557617,
+        53.89728927612305,
+        54.64336013793945,
+        54.468143463134766,
+        54.68330383300781,
+        55.16624069213867,
+        54.41537094116211,
+        54.58217239379883,
+        54.347862243652344,
+        54.58261489868164,
+        55.67676544189453,
+        54.84476852416992,
+        54.11917495727539,
+        54.45512390136719,
+        54.95541763305664,
+        54.36456298828125,
+        54.33244323730469
+      ],
+      "baseline_median_ms": 61.798728942871094,
+      "candidate_median_ms": 54.468143463134766,
+      "candidate_over_baseline": 0.8813796722823705,
+      "latency_reduction_percent": 11.862032771762953,
+      "block_ratios": [
+        0.8881853015267291,
+        0.882937287363097,
+        0.8779526326584772
+      ],
+      "outputs_bitwise_equal": true,
+      "output_sha256": "19b5a451ef4e10c796051a2ee81b53204794571d100b8d7910585d6134783691"
+    }
+  ],
+  "correctness": {
+    "primitive": {
+      "passed": 100,
+      "skipped": 0,
+      "exit": 0
+    },
+    "affected_cpu": {
+      "passed": 113,
+      "exit": 0
+    },
+    "saved_teacher_replay": {
+      "kind": "gemma4_final_registered_saved_chain_replay",
+      "performance_claim": false,
+      "scope": "Unmodified production selection; two saved strict teacher chains.",
+      "sources": {
+        "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip": "d17d9ce22e7af26ff471c01b71652497a7201f8b211e519e5ffba1382f7f4b48",
+        "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma.py": "ea7170dda1756f8bef98cadd2e4f8ff46779e3dfa0dc89a301ace24fd5618e18",
+        "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma.hip": "f5a28a348a11b2748cb7df8f929f29d02e057556012a40396e6a594a3b10d305",
+        "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py": "56c1af7abe33f343d2f1cf28661b98abc8c71dff2a9a5ee33c6e86ecf3c69b78",
+        "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_decode_wmma_full.hip": "dcaabb26375e3455e9494046e23e324b39c234160ec57b0a5d985179ce3d18bb",
+        "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.hip": "39507883359b3df454878a407be11224a7a550853da00570a13123b60536325c",
+        "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.py": "0a9b9c75e9437e6f372ff45057997846ff3c745690d2d7b76fda97c3f28b7301",
+        "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_staged.hip": "fcb489078153c1dc31ae49679421b72d2634da8ebec591f7a81959b7032b3986",
+        "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_staged.py": "0fbe03119134af3be95ac0e6d73552b1058a6fb4f56172263f56e9504f44aaf1"
+      },
+      "loading": {
+        "resolve_s": 0.6026645519305021,
+        "load_s": 15.526516789919697,
+        "internal_load_s": 15.27557048201561,
+        "resolution": {
+          "_resolved_backend": "hip_gfx1151",
+          "_resolved_quant": "gguf_q4_k_m",
+          "_resolved_execution_profile": {
+            "profile": "production",
+            "manifest_sha256": "1af72d62088bfeadbcfe2c3fb0bb91ba10d633015d12bbf8c70b2d31d32b3871",
+            "fell_back_to_strict": false
+          },
+          "generator_type": "SubmitPollTextGenerator"
+        },
+        "context_length": 8255,
+        "runner_capacity": 8255,
+        "max_block": 512
+      },
+      "cases": [
+        {
+          "id": "code_merge_intervals",
+          "numerical": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.0,
+            "kl_p95": 0.0,
+            "kl_p99": 0.0,
+            "kl_max": 0.0,
+            "top1_rate": 1.0,
+            "top1_flips": 0,
+            "top1_flip_rows": [],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "margin_report": {
+              "band_definition": "margin is p1 - p2 within the frozen baseline row",
+              "bands": [
+                {
+                  "band": "margin_lt_0.01",
+                  "rows": 0,
+                  "share": 0.0,
+                  "flips": 0,
+                  "kl_mean": null,
+                  "kl_max": null
+                },
+                {
+                  "band": "margin_0.01_to_0.05",
+                  "rows": 0,
+                  "share": 0.0,
+                  "flips": 0,
+                  "kl_mean": null,
+                  "kl_max": null
+                },
+                {
+                  "band": "margin_0.05_to_0.20",
+                  "rows": 0,
+                  "share": 0.0,
+                  "flips": 0,
+                  "kl_mean": null,
+                  "kl_max": null
+                },
+                {
+                  "band": "margin_ge_0.20",
+                  "rows": 64,
+                  "share": 1.0,
+                  "flips": 0,
+                  "kl_mean": 0.0,
+                  "kl_max": 0.0
+                }
+              ],
+              "margin_median": 0.9999998026028263,
+              "margin_min": 0.298706411896073,
+              "logit_gap_median": 16.58040761947632,
+              "close_margin_definition": "margin < 0.05",
+              "close_margin_rows": 0,
+              "close_margin_flips": 0,
+              "close_margin_kl_max": null
+            },
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [],
+            "passed": true,
+            "requires_review": false
+          },
+          "logits_bitwise_equal": true,
+          "position": 576,
+          "launches": 1950,
+          "variants": [
+            "gemma4_staged"
+          ]
+        },
+        {
+          "id": "heldout_mixed_summary",
+          "numerical": {
+            "rows": 64,
+            "vocab": 262144,
+            "kl_mean": 0.0,
+            "kl_p95": 0.0,
+            "kl_p99": 0.0,
+            "kl_max": 0.0,
+            "top1_rate": 1.0,
+            "top1_flips": 0,
+            "top1_flip_rows": [],
+            "thresholds": {
+              "kl_mean": 0.001,
+              "kl_p95": 0.005,
+              "kl_p99": 0.02,
+              "kl_max": 0.05,
+              "top1_rate": 0.97
+            },
+            "direction": "kl(baseline || candidate)",
+            "percentile_method": "nearest-rank",
+            "margin_report": {
+              "band_definition": "margin is p1 - p2 within the frozen baseline row",
+              "bands": [
+                {
+                  "band": "margin_lt_0.01",
+                  "rows": 0,
+                  "share": 0.0,
+                  "flips": 0,
+                  "kl_mean": null,
+                  "kl_max": null
+                },
+                {
+                  "band": "margin_0.01_to_0.05",
+                  "rows": 1,
+                  "share": 0.015625,
+                  "flips": 0,
+                  "kl_mean": 0.0,
+                  "kl_max": 0.0
+                },
+                {
+                  "band": "margin_0.05_to_0.20",
+                  "rows": 6,
+                  "share": 0.09375,
+                  "flips": 0,
+                  "kl_mean": 0.0,
+                  "kl_max": 0.0
+                },
+                {
+                  "band": "margin_ge_0.20",
+                  "rows": 57,
+                  "share": 0.890625,
+                  "flips": 0,
+                  "kl_mean": 0.0,
+                  "kl_max": 0.0
+                }
+              ],
+              "margin_median": 0.99221689778964,
+              "margin_min": 0.01453667247029088,
+              "logit_gap_median": 6.013250827789307,
+              "close_margin_definition": "margin < 0.05",
+              "close_margin_rows": 1,
+              "close_margin_flips": 0,
+              "close_margin_kl_max": 0.0
+            },
+            "top1_flips_close_margin": 0,
+            "evidence_level": "screen",
+            "promotion_qualified": false,
+            "failed": [],
+            "passed": true,
+            "requires_review": false
+          },
+          "logits_bitwise_equal": true,
+          "position": 1094,
+          "launches": 1980,
+          "variants": [
+            "gemma4_staged"
+          ]
+        }
+      ]
+    },
+    "previous_full_profile_packet": "benchmarks/results/2026-10-03-gemma4-gfx1151-staged-attention-repair.json",
+    "previous_packet_scope": "Task #31 packet is prior evidence. This T0 change replays two saved chains and primitive raw-bit oracles; it does not claim a new full 18-case packet."
+  },
+  "worklog": "worklog/entries/20261003T051822.807539Z-lhl-gemma4-staged-prefill-work-33109b.md",
+  "micro_acceptance_passed": true,
+  "runner_prefill_diagnostic": {
+    "kind": "gemma4_paired_staged_pv_runner_prefill_diagnostic",
+    "protocol": "run_instrumented; fixed one output token; alternating AB/BA; no sampling/decode included; runner reset each request; 1 full-shape warmup per arm; 3 samples per arm",
+    "scope": "Synthetic exact campaign prompt; runner phase latency, not a category-suite or public wall improvement claim. Both library bindings bypass repeated build resolution identically. Public default route checked separately.",
+    "loading": {
+      "resolve_s": 0.4681519599398598,
+      "load_s": 15.102166752913035,
+      "internal_load_s": 14.865349442930892,
+      "resolution": {
+        "_resolved_backend": "hip_gfx1151",
+        "_resolved_quant": "gguf_q4_k_m",
+        "_resolved_execution_profile": {
+          "profile": "production",
+          "manifest_sha256": "1af72d62088bfeadbcfe2c3fb0bb91ba10d633015d12bbf8c70b2d31d32b3871",
+          "fell_back_to_strict": false
+        },
+        "generator_type": "SubmitPollTextGenerator"
+      },
+      "context_length": 8255,
+      "runner_capacity": 8255,
+      "max_block": 512
+    },
+    "provenance": {
+      "kind": "hipengine_artifact_provenance",
+      "schema_version": 2,
+      "collected_at": "2026-10-03T05:34:18.737615+00:00",
+      "host_name": "zbook",
+      "repo_root": "/home/lhl/hipEngine-gemma4",
+      "hipengine_commit": "2c4dec9955d1feec7de56161af5673e004074ef2",
+      "git_branch": "gemma4",
+      "staged_dirty": false,
+      "unstaged_dirty": true,
+      "untracked_dirty": true,
+      "untracked_count": 3,
+      "dirty": true,
+      "configured_backend": "auto",
+      "resolved_backend": "hip_gfx1151",
+      "target_arch": "gfx1151",
+      "device_name": "AMD Radeon 8060S Graphics",
+      "model_path": "/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+      "model_revision": null,
+      "model_fingerprint": {
+        "algorithm": "sha256-sampled-v1",
+        "value": "f28cfd664022342bce241e6236474be472a6133a1fbbf9c6c48f8db9153f0e99",
+        "size_bytes": 17010980576,
+        "sampled_bytes": 3145728,
+        "sample_offsets": [
+          0,
+          8504966000,
+          17009932000
+        ],
+        "exists": true,
+        "path_type": "file"
+      },
+      "quant": "UD-Q4_K_XL",
+      "kv_dtype": "bf16",
+      "command": [
+        "/tmp/priority_staged_pv_runner_pair.py"
+      ],
+      "environment": {
+        "HIPENGINE_BACKEND": null,
+        "HIPENGINE_HIP_ARCH": "gfx1151",
+        "GPU_MAX_HW_QUEUES": "2",
+        "HIPENGINE_BUILD_CACHE_ROOT": null,
+        "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+        "HIP_VISIBLE_DEVICES": null,
+        "ROCR_VISIBLE_DEVICES": null,
+        "CUDA_VISIBLE_DEVICES": null,
+        "GPU_DEVICE_ORDINAL": null
+      },
+      "rocm_version": "HIP version: 7.15.26333-0000000",
+      "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+      "build_profile": null,
+      "timing_protocol": null,
+      "warmups": null,
+      "repetitions": null,
+      "profiler": null
+    },
+    "libraries": {
+      "baseline": {
+        "path": "/home/lhl/.cache/hipengine/build/gemma4_attention_staged-513a6a8031b5fbbe/gemma4_attention_staged.so",
+        "sha256": "bd2c0d12460d2f52fd4ff0205cd76049ccd3b9443f22b37e227ccd6f64158b6f"
+      },
+      "candidate": {
+        "path": "/home/lhl/.cache/hipengine/build/gemma4_attention_staged-f5f727f51f3b4622/gemma4_attention_staged.so",
+        "sha256": "3041b769cf05db3dbd016b834eb72352fa67d3d70c9f029edc82f58578b4c544"
+      }
+    },
+    "cases": [
+      {
+        "prompt_tokens": 513,
+        "requested_output_tokens": 1,
+        "prompt_ids_sha256": "44e37c08d85566e0e54a8e06179b1660b1484a31dc968488bbacd9d3d582b427",
+        "samples": {
+          "baseline": [
+            {
+              "prompt_tokens": 513,
+              "generated_tokens": 1,
+              "decode_forwards": 0,
+              "prefill_s": 0.5495670459931716,
+              "first_sample_s": 5.2017043344676495e-05,
+              "first_token_s": 0.5496190630365163,
+              "decode_s": 0.0,
+              "wall_s": 0.5496230210410431,
+              "syncs": 2,
+              "finish_reason": "length",
+              "eos_ignored": true,
+              "generated_token_ids": [
+                8633
+              ]
+            },
+            {
+              "prompt_tokens": 513,
+              "generated_tokens": 1,
+              "decode_forwards": 0,
+              "prefill_s": 0.5415403299266472,
+              "first_sample_s": 5.6124990805983543e-05,
+              "first_token_s": 0.5415964549174532,
+              "decode_s": 0.0,
+              "wall_s": 0.5416011239867657,
+              "syncs": 2,
+              "finish_reason": "length",
+              "eos_ignored": true,
+              "generated_token_ids": [
+                8633
+              ]
+            },
+            {
+              "prompt_tokens": 513,
+              "generated_tokens": 1,
+              "decode_forwards": 0,
+              "prefill_s": 0.5420811049407348,
+              "first_sample_s": 5.5995071306824684e-05,
+              "first_token_s": 0.5421371000120416,
+              "decode_s": 0.0,
+              "wall_s": 0.5421407469548285,
+              "syncs": 2,
+              "finish_reason": "length",
+              "eos_ignored": true,
+              "generated_token_ids": [
+                8633
+              ]
+            }
+          ],
+          "candidate": [
+            {
+              "prompt_tokens": 513,
+              "generated_tokens": 1,
+              "decode_forwards": 0,
+              "prefill_s": 0.5243594120256603,
+              "first_sample_s": 5.483301356434822e-05,
+              "first_token_s": 0.5244142450392246,
+              "decode_s": 0.0,
+              "wall_s": 0.5244189529912546,
+              "syncs": 2,
+              "finish_reason": "length",
+              "eos_ignored": true,
+              "generated_token_ids": [
+                8633
+              ]
+            },
+            {
+              "prompt_tokens": 513,
+              "generated_tokens": 1,
+              "decode_forwards": 0,
+              "prefill_s": 0.5228598379762843,
+              "first_sample_s": 5.548400804400444e-05,
+              "first_token_s": 0.5229153219843283,
+              "decode_s": 0.0,
+              "wall_s": 0.5229195399442688,
+              "syncs": 2,
+              "finish_reason": "length",
+              "eos_ignored": true,
+              "generated_token_ids": [
+                8633
+              ]
+            },
+            {
+              "prompt_tokens": 513,
+              "generated_tokens": 1,
+              "decode_forwards": 0,
+              "prefill_s": 0.5283422579523176,
+              "first_sample_s": 5.2558956667780876e-05,
+              "first_token_s": 0.5283948169089854,
+              "decode_s": 0.0,
+              "wall_s": 0.5283990349853411,
+              "syncs": 2,
+              "finish_reason": "length",
+              "eos_ignored": true,
+              "generated_token_ids": [
+                8633
+              ]
+            }
+          ]
+        },
+        "launches": {
+          "baseline": {
+            "count": 60,
+            "variants": [
+              "gemma4_staged"
+            ]
+          },
+          "candidate": {
+            "count": 60,
+            "variants": [
+              "gemma4_staged"
+            ]
+          }
+        },
+        "baseline_prefill_s": 0.5420811049407348,
+        "candidate_prefill_s": 0.5243594120256603,
+        "candidate_over_baseline": 0.9673080416314972,
+        "all_generated_ids_equal": true
+      },
+      {
+        "prompt_tokens": 2053,
+        "requested_output_tokens": 1,
+        "prompt_ids_sha256": "5076a9111aaeef6a383a7951920b7d2d6b3f669be04188f6f0aef6a4e687e587",
+        "samples": {
+          "baseline": [
+            {
+              "prompt_tokens": 2053,
+              "generated_tokens": 1,
+              "decode_forwards": 0,
+              "prefill_s": 3.0528067250270396,
+              "first_sample_s": 5.749799311161041e-05,
+              "first_token_s": 3.0528642230201513,
+              "decode_s": 0.0,
+              "wall_s": 3.052868911996484,
+              "syncs": 2,
+              "finish_reason": "length",
+              "eos_ignored": true,
+              "generated_token_ids": [
+                506
+              ]
+            },
+            {
+              "prompt_tokens": 2053,
+              "generated_tokens": 1,
+              "decode_forwards": 0,
+              "prefill_s": 3.076496321009472,
+              "first_sample_s": 5.6094955652952194e-05,
+              "first_token_s": 3.076552415965125,
+              "decode_s": 0.0,
+              "wall_s": 3.0765571950469166,
+              "syncs": 2,
+              "finish_reason": "length",
+              "eos_ignored": true,
+              "generated_token_ids": [
+                506
+              ]
+            },
+            {
+              "prompt_tokens": 2053,
+              "generated_tokens": 1,
+              "decode_forwards": 0,
+              "prefill_s": 3.0715902760857716,
+              "first_sample_s": 4.7168927267193794e-05,
+              "first_token_s": 3.071637445013039,
+              "decode_s": 0.0,
+              "wall_s": 3.0716412820620462,
+              "syncs": 2,
+              "finish_reason": "length",
+              "eos_ignored": true,
+              "generated_token_ids": [
+                506
+              ]
+            }
+          ],
+          "candidate": [
+            {
+              "prompt_tokens": 2053,
+              "generated_tokens": 1,
+              "decode_forwards": 0,
+              "prefill_s": 2.8816826180554926,
+              "first_sample_s": 5.863001570105553e-05,
+              "first_token_s": 2.8817412480711937,
+              "decode_s": 0.0,
+              "wall_s": 2.881745966966264,
+              "syncs": 2,
+              "finish_reason": "length",
+              "eos_ignored": true,
+              "generated_token_ids": [
+                506
+              ]
+            },
+            {
+              "prompt_tokens": 2053,
+              "generated_tokens": 1,
+              "decode_forwards": 0,
+              "prefill_s": 2.841895171906799,
+              "first_sample_s": 5.648599471896887e-05,
+              "first_token_s": 2.841951657901518,
+              "decode_s": 0.0,
+              "wall_s": 2.8419567479286343,
+              "syncs": 2,
+              "finish_reason": "length",
+              "eos_ignored": true,
+              "generated_token_ids": [
+                506
+              ]
+            },
+            {
+              "prompt_tokens": 2053,
+              "generated_tokens": 1,
+              "decode_forwards": 0,
+              "prefill_s": 2.84378039103467,
+              "first_sample_s": 4.958396311849356e-05,
+              "first_token_s": 2.8438299749977887,
+              "decode_s": 0.0,
+              "wall_s": 2.8438340820139274,
+              "syncs": 2,
+              "finish_reason": "length",
+              "eos_ignored": true,
+              "generated_token_ids": [
+                506
+              ]
+            }
+          ]
+        },
+        "launches": {
+          "baseline": {
+            "count": 150,
+            "variants": [
+              "gemma4_staged"
+            ]
+          },
+          "candidate": {
+            "count": 150,
+            "variants": [
+              "gemma4_staged"
+            ]
+          }
+        },
+        "baseline_prefill_s": 3.0715902760857716,
+        "candidate_prefill_s": 2.84378039103467,
+        "candidate_over_baseline": 0.9258332444842198,
+        "all_generated_ids_equal": true
+      },
+      {
+        "prompt_tokens": 8191,
+        "requested_output_tokens": 1,
+        "prompt_ids_sha256": "c252368c9ab94a7aaf8517c8aa14e50ec22439a4cce288006fdc3a1c1a674310",
+        "samples": {
+          "baseline": [
+            {
+              "prompt_tokens": 8191,
+              "generated_tokens": 1,
+              "decode_forwards": 0,
+              "prefill_s": 16.493884283932857,
+              "first_sample_s": 5.622499156743288e-05,
+              "first_token_s": 16.493940508924425,
+              "decode_s": 0.0,
+              "wall_s": 16.493944676942192,
+              "syncs": 2,
+              "finish_reason": "length",
+              "eos_ignored": true,
+              "generated_token_ids": [
+                3469
+              ]
+            },
+            {
+              "prompt_tokens": 8191,
+              "generated_tokens": 1,
+              "decode_forwards": 0,
+              "prefill_s": 16.573110150988214,
+              "first_sample_s": 5.630601663142443e-05,
+              "first_token_s": 16.573166457004845,
+              "decode_s": 0.0,
+              "wall_s": 16.57317084504757,
+              "syncs": 2,
+              "finish_reason": "length",
+              "eos_ignored": true,
+              "generated_token_ids": [
+                3469
+              ]
+            },
+            {
+              "prompt_tokens": 8191,
+              "generated_tokens": 1,
+              "decode_forwards": 0,
+              "prefill_s": 16.593346862937324,
+              "first_sample_s": 5.495303776115179e-05,
+              "first_token_s": 16.593401815975085,
+              "decode_s": 0.0,
+              "wall_s": 16.593406294938177,
+              "syncs": 2,
+              "finish_reason": "length",
+              "eos_ignored": true,
+              "generated_token_ids": [
+                3469
+              ]
+            }
+          ],
+          "candidate": [
+            {
+              "prompt_tokens": 8191,
+              "generated_tokens": 1,
+              "decode_forwards": 0,
+              "prefill_s": 15.215203762985766,
+              "first_sample_s": 5.225802306085825e-05,
+              "first_token_s": 15.215256021008827,
+              "decode_s": 0.0,
+              "wall_s": 15.215260779950768,
+              "syncs": 2,
+              "finish_reason": "length",
+              "eos_ignored": true,
+              "generated_token_ids": [
+                3469
+              ]
+            },
+            {
+              "prompt_tokens": 8191,
+              "generated_tokens": 1,
+              "decode_forwards": 0,
+              "prefill_s": 15.258208298007958,
+              "first_sample_s": 5.406199488788843e-05,
+              "first_token_s": 15.258262360002846,
+              "decode_s": 0.0,
+              "wall_s": 15.258266758057289,
+              "syncs": 2,
+              "finish_reason": "length",
+              "eos_ignored": true,
+              "generated_token_ids": [
+                3469
+              ]
+            },
+            {
+              "prompt_tokens": 8191,
+              "generated_tokens": 1,
+              "decode_forwards": 0,
+              "prefill_s": 15.232240900048055,
+              "first_sample_s": 5.564396269619465e-05,
+              "first_token_s": 15.232296544010751,
+              "decode_s": 0.0,
+              "wall_s": 15.232301173033193,
+              "syncs": 2,
+              "finish_reason": "length",
+              "eos_ignored": true,
+              "generated_token_ids": [
+                3469
+              ]
+            }
+          ]
+        },
+        "launches": {
+          "baseline": {
+            "count": 480,
+            "variants": [
+              "gemma4_staged"
+            ]
+          },
+          "candidate": {
+            "count": 480,
+            "variants": [
+              "gemma4_staged"
+            ]
+          }
+        },
+        "baseline_prefill_s": 16.573110150988214,
+        "candidate_prefill_s": 15.232240900048055,
+        "candidate_over_baseline": 0.9190936861745165,
+        "all_generated_ids_equal": true
+      }
+    ]
+  },
+  "runner_diagnostic_driver_source": "\"\"\"Paired runner prefill diagnostic using frozen/candidate staged library bindings.\"\"\"\nimport sys, ctypes, json, hashlib, statistics\nfrom pathlib import Path\nROOT=Path.cwd(); sys.path.insert(0,str(ROOT))\nfrom scripts.gemma4_campaign_bench import DEFAULT_ARTIFACT, _resolve_generator, exact_prompt_ids, run_instrumented\nfrom hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention_staged as staged\nfrom hipengine.benchmark.provenance import collect_artifact_provenance\nfrom scripts.gemma4_public_route_probe import observe_attention_launches\nbaseline=ctypes.CDLL(str(Path.home()/'.cache/hipengine/build/gemma4_attention_staged-513a6a8031b5fbbe/gemma4_attention_staged.so'))\ncandidate=staged.build_gemma4_attention_staged(load=True)\noriginal=staged.build_gemma4_attention_staged\nllm,runner,loading=_resolve_generator(DEFAULT_ARTIFACT,8255)\ngenerator=llm._get_text_generator()\nreport={'kind':'gemma4_paired_staged_pv_runner_prefill_diagnostic',\n        'protocol':'run_instrumented; fixed one output token; alternating AB/BA; no sampling/decode included; runner reset each request; 1 full-shape warmup per arm; 3 samples per arm',\n        'scope':'Synthetic exact campaign prompt; runner phase latency, not a category-suite or public wall improvement claim. Both library bindings bypass repeated build resolution identically. Public default route checked separately.',\n        'loading':loading,'provenance':collect_artifact_provenance(repo_root=ROOT, model_path=DEFAULT_ARTIFACT, quant='UD-Q4_K_XL',kv_dtype='bf16'),\n        'libraries':{name:{'path':lib._name,'sha256':hashlib.sha256(Path(lib._name).read_bytes()).hexdigest()} for name,lib in (('baseline',baseline),('candidate',candidate))},'cases':[]}\ntry:\n for prompt in (513,2053,8191):\n  ids=exact_prompt_ids(generator.tokenize,prompt)\n  arms={'baseline':baseline,'candidate':candidate};samples={name:[] for name in arms};calls={}\n  for name,lib in arms.items():\n   staged.build_gemma4_attention_staged=lambda **kwargs:lib\n   run_instrumented(runner,ids,1)\n  for repeat in range(3):\n   names=list(arms) if repeat%2==0 else list(reversed(arms))\n   for name in names:\n    lib=arms[name];staged.build_gemma4_attention_staged=lambda **kwargs:lib\n    with observe_attention_launches() as seen: row=run_instrumented(runner,ids,1)\n    samples[name].append(row)\n    calls[name]={'count':len(seen),'variants':sorted({x['variant'] for x in seen})}\n    print(prompt,repeat,name,row['prefill_s'],row['generated_token_ids'],calls[name],flush=True)\n  b=statistics.median(x['prefill_s'] for x in samples['baseline']);n=statistics.median(x['prefill_s'] for x in samples['candidate'])\n  same=len({tuple(x['generated_token_ids']) for rows in samples.values() for x in rows})==1\n  assert same and all(x['variants']==['gemma4_staged'] for x in calls.values())\n  report['cases'].append({'prompt_tokens':prompt,'requested_output_tokens':1,'prompt_ids_sha256':hashlib.sha256(bytes(__import__('numpy').array(ids,dtype='int32'))).hexdigest(), 'samples':samples,'launches':calls,'baseline_prefill_s':b,'candidate_prefill_s':n,'candidate_over_baseline':n/b,'all_generated_ids_equal':same})\n  Path('/tmp/priority-staged-pv-runner-pair.json').write_text(json.dumps(report,indent=2)+'\\n')\nfinally:\n staged.build_gemma4_attention_staged=original\n llm.close()\n",
+  "public_route": {
+    "prompt_tokens": 1537,
+    "requested_output_tokens": 4,
+    "surface": "hipengine.LLM.generate",
+    "device_synchronize_passed": true,
+    "manifest_sha256": "1af72d62088bfeadbcfe2c3fb0bb91ba10d633015d12bbf8c70b2d31d32b3871",
+    "counts": [
+      {
+        "variant": "gemma4_staged",
+        "query_width": "multi_token",
+        "invocations": 90
+      },
+      {
+        "variant": "gemma4_staged",
+        "query_width": "singleton",
+        "invocations": 120
+      }
+    ],
+    "outputs": [
+      " water warmer than the"
+    ],
+    "source_sha256": {
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip": "d17d9ce22e7af26ff471c01b71652497a7201f8b211e519e5ffba1382f7f4b48",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py": "56c1af7abe33f343d2f1cf28661b98abc8c71dff2a9a5ee33c6e86ecf3c69b78",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_decode_wmma_full.hip": "dcaabb26375e3455e9494046e23e324b39c234160ec57b0a5d985179ce3d18bb",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma.hip": "f5a28a348a11b2748cb7df8f929f29d02e057556012a40396e6a594a3b10d305",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma.py": "ea7170dda1756f8bef98cadd2e4f8ff46779e3dfa0dc89a301ace24fd5618e18",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.hip": "39507883359b3df454878a407be11224a7a550853da00570a13123b60536325c",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_prefill_wmma_full.py": "0a9b9c75e9437e6f372ff45057997846ff3c745690d2d7b76fda97c3f28b7301",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_staged.hip": "fcb489078153c1dc31ae49679421b72d2634da8ebec591f7a81959b7032b3986",
+      "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_staged.py": "0fbe03119134af3be95ac0e6d73552b1058a6fb4f56172263f56e9504f44aaf1"
+    }
+  },
+  "execution_profile_manifest": {
+    "kind": "hipengine_execution_profile_manifest",
+    "schema_version": 1,
+    "execution_profile": "production",
+    "backend": "hip_gfx1151",
+    "model": "gemma4_gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_policy": "paged_bf16",
+    "graph_policy": "eager_blocks",
+    "selections": [
+      {
+        "layer": "prefill_attention",
+        "scope": "full_head_dim_512",
+        "selected_variant": "gemma4_staged",
+        "strict_fallback_variant": "gemma4_plain",
+        "evidence_artifact": null,
+        "registry_quant": "gguf_q4_k_m"
+      },
+      {
+        "layer": "prefill_attention",
+        "scope": "sliding_head_dim_256",
+        "selected_variant": "gemma4_staged",
+        "strict_fallback_variant": "gemma4_plain",
+        "evidence_artifact": null,
+        "registry_quant": "gguf_q4_k_m"
+      }
+    ]
+  },
+  "manifest_sha256": "1af72d62088bfeadbcfe2c3fb0bb91ba10d633015d12bbf8c70b2d31d32b3871",
+  "public_profiler_smoke": {
+    "scope": "name/launch/ownership smoke only; profiled durations are not standalone performance evidence",
+    "families": [
+      {
+        "name": "void (anonymous namespace)::gemma4_attention_staged_score_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned char const*, float*, float*, long, long, long, float, long, long, long, long)",
+        "launches": 90,
+        "median_us": 43.8825,
+        "lds_bytes": [
+          1056,
+          2080
+        ],
+        "vgprs": [
+          40
+        ]
+      },
+      {
+        "name": "(anonymous namespace)::gemma4_attention_staged_softmax_kernel(float*, float const*, float*, long, long, long, long, long)",
+        "launches": 90,
+        "median_us": 2.364,
+        "lds_bytes": [
+          1028
+        ],
+        "vgprs": [
+          16
+        ]
+      },
+      {
+        "name": "void (anonymous namespace)::gemma4_attention_staged_pv_kernel<unsigned short, 1, 2, true>(float const*, float const*, unsigned short const*, unsigned short*, long, long, long, long, long, long)",
+        "launches": 75,
+        "median_us": 163.908,
+        "lds_bytes": [
+          8192
+        ],
+        "vgprs": [
+          32
+        ]
+      },
+      {
+        "name": "void (anonymous namespace)::gemma4_attention_staged_pv_kernel<unsigned short, 2, 8, true>(float const*, float const*, unsigned short const*, unsigned short*, long, long, long, long, long, long)",
+        "launches": 15,
+        "median_us": 318.719,
+        "lds_bytes": [
+          8192
+        ],
+        "vgprs": [
+          56
+        ]
+      }
+    ]
+  },
+  "independent_review": {
+    "findings": [
+      "Shared output could conceal missing stores",
+      "Python assertions could disappear under -O"
+    ],
+    "repair": "Independent output and workspace NaN poison before each untimed capture; explicit finite/parity checks; truthful comparison verdict",
+    "red_exit": 1,
+    "green_workload_and_gate_tests": 8,
+    "repaired_gate_paired_blocks": 3,
+    "kernel_findings": 0,
+    "independent_repair_rereview_performed": false
+  }
+}

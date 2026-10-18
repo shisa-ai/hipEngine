@@ -6,7 +6,7 @@ import os
 import threading
 from copy import copy
 import time
-from contextlib import contextmanager, nullcontext
+from contextlib import closing, contextmanager, nullcontext
 from dataclasses import asdict, dataclass, field, replace
 from functools import partial
 from pathlib import Path
@@ -32,16 +32,29 @@ from hipengine.core.hip import (
 )
 from hipengine.core.memory import (
     DeviceBuffer,
+    DeviceMemoryArena,
     copy_device_to_host,
     copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
 )
 from hipengine.core.tensor import Tensor
+from hipengine.core.virtual_memory import (
+    HIP_ERROR_NOT_SUPPORTED,
+    VirtualMemoryBuffer,
+    rollback_all,
+    virtual_memory_supported,
+)
 from hipengine.core.rocblas import Rocblas
 from hipengine.dispatch.kv import resolve_paged_attn_decode
 from hipengine.runtime.gguf_packed_manifest import build_packed_decode_execution_manifest
+from hipengine.runtime.memory_admission import (
+    MemoryAdmissionRefused,
+    MemoryConsumer,
+    price_memory_admission,
+)
 from hipengine.runtime.moe_graph import MoeGraphCache
 from hipengine.kernels.hip_gfx1100.attention import (
     aotriton_attn_fwd_compact_varlen,
@@ -100,6 +113,7 @@ from hipengine.kernels.hip_gfx1100.fused import (
     gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight,
     gguf_rmsnorm_bf16_f32_weight,
     gguf_rmsnorm_bf16_f32_weight_out_f32,
+    gguf_rounded_add_rmsnorm_bf16_f32_weight,
     gguf_rmsnorm_f32_f32_weight,
     gguf_rmsnorm_f32_f32_weight_out_f32,
     register_paro_combine_kernels,
@@ -212,6 +226,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_prefill import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_pack8_gemv import (
     register_gguf_k_selected_pack8_gemv_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q5_1_selected_pack8_gemv import (
+    register_gguf_q5_1_selected_pack8_gemv_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     register_gguf_q4_k_selected_prefill_kernels,
 )
@@ -223,6 +240,11 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import 
     gguf_q8_1_mmq_ds4_pack_bf16,
     q6_dense_integer_mmq_session,
     register_gguf_q4_k_q8_1_selected_prefill_kernels,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_iq_source_mmq_prefill import (
+    build_gguf_iq_source_mmq_prefill,
+    iq_dense_mmq_nbytes,
+    iq_dense_mmq_session,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
     register_gguf_q4_k_t16_selected_prefill_kernels,
@@ -1279,6 +1301,7 @@ class _GGUFResumablePrefillState:
     # leased session, so the identity must be written where it is read and
     # re-written on every segment in case a slot view is rebuilt mid-prompt.
     executor_mode: str = "layer_outer_packed"
+    target_hidden_chunk_sinks: tuple[TargetHiddenChunkSink | None, ...] = ()
 
     @property
     def layer_count(self) -> int:
@@ -1496,6 +1519,13 @@ class _GGUFResumablePrefillScratch:
 # selected by HIPENGINE_GGUF_PACKED_LAYER_OUTER=0.
 _GGUF_PACKED_LAYER_OUTER_ENV = "HIPENGINE_GGUF_PACKED_LAYER_OUTER"
 _gguf_packed_layer_outer_enabled_cache: bool | None = None
+
+# Transient headroom the automatic GGUF KV-pool admission keeps free of the
+# initial arena. It covers demand-grown execution KV and the private-workspace
+# fallback while leaving enough VRAM for a requested long-context pool on a
+# 24 GiB card. The pool is otherwise priced through the shared admission budget,
+# so this is the only hard-coded reserve left on this path.
+_GGUF_KV_POOL_TRANSIENT_RESERVE_BYTES = 1 * 1024**3
 
 
 def _gguf_packed_layer_outer_enabled() -> bool:
@@ -1954,17 +1984,12 @@ def _packed_prefill_requires_slot_local_full_attention(
     )
 
 
-def _validate_packed_ar_prefill_context(
-    layout: _GGUFPackedVerifyLayout,
-    *,
-    slot_local_full_prefill: bool,
-) -> None:
-    """Keep long contexts on the per-session full-attention cache path."""
-
-    if int(layout.max_live_count) >= 1024 and not slot_local_full_prefill:
-        raise NotImplementedError(
-            "packed paged AR prefill currently requires context < 1024"
-        )
+# Context length at or above which the private-miss packed AR prefill route can
+# only reach the sequence through a slot-local contiguous KV view, so its pool
+# allocation must be one contiguous run. The paged packed prefill route itself
+# accepts any context length: it walks the block table, so shared-prefix
+# (non-contiguous) admissions use it at every length.
+PACKED_AR_PREFILL_CONTEXT_LIMIT = 1024
 
 
 @dataclass(frozen=True)
@@ -2049,9 +2074,10 @@ class _PackedWorkspaceState:
 
 
 # Union-geometry defaults for the packed verify workspace. Physical packed
-# decode/verify groups are bounded by the certified graph width (8) and the
-# packed AR paths reject context >= 1024, so the first allocation sizes to
-# these caps and steady-state prefill/decode interleaving never resizes.
+# decode/verify groups are bounded by the certified graph width (8), and short
+# contexts at or below the 1024-token floor size to these caps so steady-state
+# prefill/decode interleaving never resizes. Past that floor the slot axis
+# follows live demand, since the per-slot KV planes then dominate.
 _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY = 8
 _PACKED_VERIFY_MIN_MAX_SEQUENCE = 1024
 _PACKED_VERIFY_DEFAULT_PREFILL_ROWS = 128
@@ -2060,6 +2086,37 @@ _PACKED_VERIFY_DEFAULT_PREFILL_ROWS = 128
 # The generation layer takes this lease eagerly at pool creation so admission
 # accounting always sees the pinned pages (task #5 contract unification).
 _GGUF_PACKED_WORKSPACE_LEASE_KEY = "qwen35_gguf_packed_execution"
+
+
+def packed_verify_lease_slot_ceiling(max_batch_size: object | None) -> int:
+    """Serving-capacity floor used by the lease and packed workspace geometry.
+
+    Physical verifier layouts may request more slots. Those allocations use
+    budgeted private KV when the eager arena lease is insufficient. An absent
+    or invalid capacity retains the historical eight-slot fallback.
+    """
+
+    try:
+        return max(1, int(max_batch_size))
+    except (TypeError, ValueError):
+        return _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
+
+
+def packed_verify_workspace_lease_pages(
+    max_batch_size: object | None,
+    max_positions: object | None,
+) -> int:
+    """Eager KV pages for the serving capacity at the packed context floor.
+
+    Longer contexts and wider physical layouts use private KV charged against
+    the same pool budget. Do not pin each slot's entire admitted context before
+    any request needs it.
+    """
+
+    del max_positions
+    slots = packed_verify_lease_slot_ceiling(max_batch_size)
+    blocks_per_slot = (_PACKED_VERIFY_MIN_MAX_SEQUENCE + 255) // 256
+    return slots * blocks_per_slot
 
 
 @dataclass(frozen=True)
@@ -2089,6 +2146,13 @@ class _GGUFPackedTargetState:
     # "private" = owned chunk allocated by this state; "pool_lease" = planes
     # borrowed from the GlobalDeviceKVPool arena under the workspace lease.
     kv_backing_kind: str = "private"
+    private_workspace_pool: object | None = None
+    private_workspace_token: object | None = None
+    # Charge for the conv/recurrent state buffers themselves. They are device
+    # mallocs this state owns, so they are priced through the same pool budget
+    # as the KV payload and released with these buffers.
+    resident_charge_pool: object | None = None
+    resident_charge_token: object | None = None
 
     def __post_init__(self) -> None:
         if self.kv_backing_kind not in {"private", "pool_lease", "unleased"}:
@@ -2209,14 +2273,29 @@ class _GGUFPackedTargetState:
         layer_recurrent_states: list[object | None] = []
         state_buffers: list[object] = []
         kv_cache_fields: dict[str, tuple] | None = None
+        private_workspace_token = None
+        resident_charge_token = None
         try:
+            linear_layers = sum(
+                1 for layer_type in cfg.layer_types if layer_type == LINEAR_ATTENTION
+            )
+            state_scratch_nbytes = linear_layers * (
+                conv_state_nbytes + recurrent_state_nbytes
+            )
+            if kv_pool is not None and state_scratch_nbytes > 0:
+                # Charged before the buffers are allocated, so an overload is
+                # refused by name instead of surfacing as a HIP OOM mid-loop.
+                reserve = getattr(kv_pool, "reserve_resident_bytes", None)
+                if callable(reserve):
+                    resident_charge_token = reserve(
+                        "packed_verify_scratch", state_scratch_nbytes
+                    )
             for layer_type in cfg.layer_types:
                 if layer_type == LINEAR_ATTENTION:
                     conv_state = buf(conv_state_nbytes)
+                    state_buffers.append(conv_state)
                     recurrent_state = buf(recurrent_state_nbytes)
-                    # Track both buffers before any runtime call so a memset
-                    # failure cannot leak the pair.
-                    state_buffers.extend((conv_state, recurrent_state))
+                    state_buffers.append(recurrent_state)
                     memset = getattr(runtime, "memset", None)
                     if callable(memset):
                         memset(conv_state.ptr, 0, conv_state.nbytes)
@@ -2271,6 +2350,28 @@ class _GGUFPackedTargetState:
                     workspace_pages_fn = getattr(kv_pool, "workspace_pages", None)
                     if callable(workspace_pages_fn):
                         lease_pages = workspace_pages_fn(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
+                if lease_pages is not None and len(lease_pages) < total_pages:
+                    # Physical verifier width or context can exceed the eager
+                    # serving-capacity lease. Private KV uses the same geometry
+                    # and is charged in full in addition to the pinned arena.
+                    shortfalls = getattr(runner, "_packed_workspace_lease_shortfalls", None)
+                    if shortfalls is None:
+                        shortfalls = []
+                        try:
+                            runner._packed_workspace_lease_shortfalls = shortfalls
+                        except AttributeError:
+                            shortfalls = None
+                    if shortfalls is not None:
+                        shortfalls.append(
+                            {
+                                "leased_pages": int(len(lease_pages)),
+                                "needed_pages": int(total_pages),
+                                "slot_count": int(slot_count),
+                                "blocks_per_slot": int(blocks_per_slot),
+                                "max_sequence_length": int(max_sequence_length),
+                            }
+                        )
+                    lease_pages = None
                 if lease_pages is not None:
                     # Pool-leased backing: the arena planes back the
                     # workspace and page_ids select this state's pages
@@ -2280,10 +2381,6 @@ class _GGUFPackedTargetState:
                     if arena_backing is None or getattr(arena_backing, "layout", None) != kv_layout:
                         raise RuntimeError(
                             "packed workspace lease has no layout-compatible KV backing"
-                        )
-                    if len(lease_pages) < total_pages:
-                        raise RuntimeError(
-                            f"packed workspace lease holds {len(lease_pages)} pages but the workspace needs {total_pages}"
                         )
                     kv_cache_fields = {
                         "full_key_caches": arena_backing.full_key_caches,
@@ -2299,6 +2396,10 @@ class _GGUFPackedTargetState:
                     backing_kind = "pool_lease"
                     owned_buffers = tuple(state_buffers)
                 else:
+                    if kv_pool is not None:
+                        private_workspace_token = kv_pool.reserve_private_workspace(
+                            total_pages * _qwen35_gguf_kv_page_bytes(cfg, kv_layout)
+                        )
                     kv_backing = _allocate_qwen35_gguf_kv_chunk(
                         runner,
                         runtime=runtime,
@@ -2312,6 +2413,10 @@ class _GGUFPackedTargetState:
         except Exception:
             for buffer in reversed(state_buffers):
                 free(buffer, runtime=runtime)
+            if private_workspace_token is not None:
+                kv_pool.release_private_workspace(private_workspace_token)
+            if resident_charge_token is not None:
+                kv_pool.release_private_workspace(resident_charge_token)
             raise
         if kv_cache_fields is None:
             kv_cache_fields = {
@@ -2336,6 +2441,10 @@ class _GGUFPackedTargetState:
             buffers=owned_buffers,
             page_ids=page_ids,
             kv_backing_kind=backing_kind,
+            private_workspace_pool=kv_pool if private_workspace_token is not None else None,
+            private_workspace_token=private_workspace_token,
+            resident_charge_pool=kv_pool if resident_charge_token is not None else None,
+            resident_charge_token=resident_charge_token,
         )
 
     def linear_state_pair(self, layer_id: int) -> tuple[object, object]:
@@ -2624,22 +2733,12 @@ def _launch_qwen35_router_logits_bf16_hidden(
     preserving the BF16-weight path for fixtures and legacy materializations.
     """
 
-    fn = resolve(
-        backend=weight.backend,
-        layer="router_logits",
-        quant=weight.spec.quant_key,
-        variant="bf16_hidden",
-    )
-    fn(
-        hidden_ptr,
-        weight.allocation().tensor.ptr,
-        logits_ptr,
-        tokens,
-        hidden_size,
-        num_rows,
-        stream=stream,
-        runtime=runtime,
-    )
+    from hipengine.loading.qwen35_gguf_consumer_surface import resolve_router_consumer_contract
+    contract = resolve_router_consumer_contract(weight.spec.layout, weight.spec.quant_key, "bf16")
+    key = contract.key(weight.backend)
+    fn = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+    weight_ptr = weight.allocation().tensor.ptr
+    contract.call(fn, locals(), stream=stream, runtime=runtime)
 
 
 def _launch_qwen35_router_logits_f32_hidden(
@@ -2655,22 +2754,12 @@ def _launch_qwen35_router_logits_f32_hidden(
 ) -> None:
     """Launch F32-hidden router logits through the kernel registry."""
 
-    fn = resolve(
-        backend=weight.backend,
-        layer="router_logits",
-        quant=weight.spec.quant_key,
-        variant="f32_hidden",
-    )
-    fn(
-        hidden_ptr,
-        weight.allocation().tensor.ptr,
-        logits_ptr,
-        tokens,
-        hidden_size,
-        num_rows,
-        stream=stream,
-        runtime=runtime,
-    )
+    from hipengine.loading.qwen35_gguf_consumer_surface import resolve_router_consumer_contract
+    contract = resolve_router_consumer_contract(weight.spec.layout, weight.spec.quant_key, "f32")
+    key = contract.key(weight.backend)
+    fn = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+    weight_ptr = weight.allocation().tensor.ptr
+    contract.call(fn, locals(), stream=stream, runtime=runtime)
 
 
 def _try_launch_qwen35_router_topk_split_shared_bf16_f32w(
@@ -3005,6 +3094,7 @@ class Qwen35GGUFFullStackRunner:
     require_cached_build: bool = False
     backend: str = "auto"
     resident_weights: Qwen35GGUFResidentWeights | None = field(default=None, repr=False)
+    execution_routes: tuple[str, ...] = ("eager",)
     owns_resident_weights: bool = False
     token_embedding_placement: str = "device"
     use_selective_weight_arena: bool = False
@@ -3050,10 +3140,19 @@ class Qwen35GGUFFullStackRunner:
         self.token_embedding_placement = placement
         self.weights = self.resident_weights
         if self.weights is None:
+            from hipengine.loading.qwen35_gguf_execution import execution_operations
             materialize_kwargs = {
                 "runtime": self.runtime,
                 "backend": self.backend,
+                "requested_operations": execution_operations(self.execution_routes),
             }
+            if "ar_decode_native_rows" in materialize_kwargs["requested_operations"]:
+                info = GGUFReader(self.model_path).info
+                native_fp16 = _gguf_fp16_recurrent_state_enabled(
+                    backend=self.backend, file_type_name=info.file_type_name,
+                    artifact_preset_key=_gguf_model_info_artifact_preset_key(info),
+                )
+                materialize_kwargs["recurrent_state_dtype"] = "fp16" if native_fp16 else "f32"
             if placement == "host":
                 materialize_kwargs["deferred_device_slots"] = ("root.token_embedding",)
             if self.use_selective_weight_arena:
@@ -3074,10 +3173,15 @@ class Qwen35GGUFFullStackRunner:
         # Recurrent-state dtype is an allocation ABI, not a per-call toggle.
         # Freeze it after file-type discovery but before any session/scratch
         # allocation so later environment mutation cannot mismatch storage and
-        # writers. An explicit env value remains the rollback override.
+        # writers. An explicit env value remains the rollback override. The
+        # default binds the loader-resolved artifact qualification: only a
+        # qualified plain control (artifact_preset_key=None from admission)
+        # may inherit the stamp-certified backend default; preset-bound and
+        # unknown-manifest artifacts resolve the generic strict FP32 storage.
         self.fp16_recurrent_state = _gguf_fp16_recurrent_state_enabled(
             backend=self.backend,
             file_type_name=getattr(self.weights, "file_type_name", None),
+            artifact_preset_key=getattr(self.weights, "artifact_preset_key", None),
         )
         cfg = getattr(self.weights, "config", None)
         feed_forward_length = getattr(cfg, "feed_forward_length", None)
@@ -3232,6 +3336,8 @@ class Qwen35GGUFFullStackRunner:
                 allocation_arena=resident.allocation_arena,
                 allocation_mode=resident.allocation_mode,
                 allocation_arena_reason=resident.allocation_arena_reason,
+                artifact_preset_key=resident.artifact_preset_key,
+                admission_certificate=resident.admission_certificate,
             )
             self.token_embedding_placement = "device"
             return materialized
@@ -3270,11 +3376,23 @@ class Qwen35GGUFFullStackRunner:
             self._gguf_gdn_decode_output_cast_fn_cache = fn
         return fn
 
-    def _rounded_add_rmsnorm_fn(self):
-        """Resolve the exact rounded-add plus next-input RMSNorm composite."""
+    def _rounded_add_rmsnorm_fn(self, *, rows: int = 0):
+        """Resolve the exact rounded-add plus next-input RMSNorm composite.
+
+        ``rows`` selects the fixed-5120 register-cached sibling when the
+        backend declares one for the shape; ``rows=0`` returns the generic
+        owner unconditionally.
+        """
 
         missing = object()
-        fn = getattr(self, "_gguf_rounded_add_rmsnorm_fn_cache", missing)
+        cache = self.__dict__.setdefault(
+            "_gguf_rounded_add_rmsnorm_fn_cache", {}
+        )
+        if not isinstance(cache, dict):
+            cache = {}
+            self._gguf_rounded_add_rmsnorm_fn_cache = cache
+        key = int(rows) if rows and self.hidden_size == 5_120 else 0
+        fn = cache.get(key, missing)
         if fn is missing:
             load_backend_kernel_package(self.backend)
             fn = resolve(
@@ -3284,25 +3402,29 @@ class Qwen35GGUFFullStackRunner:
                 variant="rounded_bf16_out",
                 missing="none",
             )
-            self._gguf_rounded_add_rmsnorm_fn_cache = fn
+            if fn is not None and key:
+                # Keep the per-backend resolution as the fallback so a backend
+                # without the capability does not inherit another backend's
+                # wrapper.
+                fn = _gguf_norm_residual_decode_kernel(
+                    self,
+                    layer="add+rmsnorm",
+                    rows=key,
+                    hidden_size=self.hidden_size,
+                    fallback=fn,
+                )
+            cache[key] = fn
         return fn
 
     def _gdn_decode_output_cast_for_weight(self, weight, *, rows: int = 1):
         """Return the plugin cast or the unfused cast required by weight layout."""
 
+        from hipengine.loading.qwen35_gguf_consumer_surface import resolve_gdn_output_handoff
         output_cast = self._gdn_decode_output_cast_fn()
+        handoff = resolve_gdn_output_handoff(weight.spec.layout, force_bf16=output_cast is not None)
         if output_cast is not None:
             return output_cast
-        try:
-            resolve_gguf_linear_dispatch(
-                weight,
-                activation_dtype=GGUF_ACTIVATION_F32,
-                backend=self.backend,
-                rows=rows,
-            )
-        except ValueError:
-            return f32_to_bf16
-        return None
+        return f32_to_bf16 if handoff.adapters else None
 
     def _gdn_decode_output_fusion_for_weight(self, weight):
         """Resolve a weight-plugin scalar GDN FP32+BF16 boundary owner.
@@ -3691,7 +3813,7 @@ class Qwen35GGUFFullStackRunner:
         chains keep raw Q/K and normalization scales separate so their
         recurrent kernels preserve fused decode-order arithmetic. Whether the matching single-
         sequence or segment-aware recurrence runs is controlled by
-        ``HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`` (default 1025), not a
+        ``HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`` (default 256), not a
         per-quant/per-backend branch.
         """
 
@@ -3931,25 +4053,18 @@ class Qwen35GGUFFullStackRunner:
             "chain_wave32_tree",
         } or (plan.has_chain and not use_fused)
         if use_fused:
-            plan.fused_decode_order(
-                scratch.conv_out.ptr,
-                scratch.linear_z.ptr,
-                scratch.linear_alpha.ptr,
-                scratch.linear_beta.ptr,
-                layer.weight("ssm_dt_bias").allocation().tensor.ptr,
-                layer.weight("ssm_a").allocation().tensor.ptr,
-                layer.weight("ssm_norm").allocation().tensor.ptr,
-                recurrent_state.ptr,
-                scratch.recurrent_bf16.ptr,
-                cfg.rms_norm_eps,
-                rows,
-                cfg.ssm_group_count,
-                cfg.ssm_time_step_rank,
-                cfg.ssm_state_size,
-                self.ssm_value_dim,
-                stream=stream,
-                runtime=runtime,
-            )
+            from hipengine.loading.qwen35_gguf_consumer_surface import GDN_PREFILL
+            GDN_PREFILL.call(plan.fused_decode_order, {
+                "conv_out_ptr": scratch.conv_out.ptr, "gate_ptr": scratch.linear_z.ptr,
+                "a_ptr": scratch.linear_alpha.ptr, "b_ptr": scratch.linear_beta.ptr,
+                "dt_bias_ptr": layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+                "a_log_ptr": layer.weight("ssm_a").allocation().tensor.ptr,
+                "norm_weight_ptr": layer.weight("ssm_norm").allocation().tensor.ptr,
+                "recurrent_state_ptr": recurrent_state.ptr, "out_ptr": scratch.recurrent_bf16.ptr,
+                "eps": cfg.rms_norm_eps, "tokens": rows,
+                "num_k_heads": cfg.ssm_group_count, "num_v_heads": cfg.ssm_time_step_rank,
+                "head_k_dim": cfg.ssm_state_size, "head_v_dim": self.ssm_value_dim,
+            }, stream=stream, runtime=runtime)
             return
         if use_chain:
             if use_direct_lds32 and direct_route_available:
@@ -4297,7 +4412,9 @@ class Qwen35GGUFFullStackRunner:
     @property
     def ssm_value_dim(self) -> int:
         assert self.weights is not None
-        return self.weights.config.ssm_inner_size // self.weights.config.ssm_time_step_rank
+        from hipengine.loading.qwen35_gguf_consumer_surface import gdn_value_head_dim
+        return gdn_value_head_dim(self.weights.config.ssm_inner_size,
+                                  self.weights.config.ssm_time_step_rank)
 
     def run_prompt_hidden(
         self,
@@ -4840,7 +4957,10 @@ class Qwen35GGUFFullStackRunner:
             # staging, online softmax in registers); the sequential
             # online-softmax kernel stays selectable for A/B and as the
             # numerics reference.
-            kernel_choice = _gguf_int8_prefill_kernel()
+            kernel_choice = _gguf_int8_prefill_kernel(
+                geometry=(cfg.head_count, cfg.head_count_kv, cfg.key_length),
+                scale_dtype=append_metadata.scale_dtype,
+            )
             if kernel_choice == "sequential":
                 qwen35_paged_attn_prefill_int8_gqa_gate_bf16_out_spans(
                     scratch.full_query.ptr,
@@ -5120,6 +5240,8 @@ class Qwen35GGUFFullStackRunner:
             expert_sidecar=expert_sidecar,
             stage_prefix=f"{stage_prefix}_ffn",
             gpu_stage_recorder=gpu_stage_recorder,
+            # Prefill: a one-row chunk must not switch to the decode schedule.
+            force_bulk_rows=True,
         )
         return used_aotriton
 
@@ -6525,8 +6647,12 @@ class Qwen35GGUFFullStackRunner:
         if rows <= 1 or len(decode_row_scratches) != rows:
             return None
         first = decode_row_scratches[0]
-        first_decode = getattr(first, "decode_spans", None)
-        first_append = getattr(first, "append_spans", None)
+        def layer_spans(owner, name):
+            getter = getattr(owner, f"{name}_for_layer", None)
+            return getter(layer_id) if callable(getter) else getattr(owner, name, None)
+
+        first_decode = layer_spans(first, "decode_spans")
+        first_append = layer_spans(first, "append_spans")
         if not isinstance(first_decode, KVLiveSpans) or not isinstance(
             first_append,
             KVLiveSpans,
@@ -6537,8 +6663,11 @@ class Qwen35GGUFFullStackRunner:
         first_position = first_decode.row_positions
         if (
             first_decode.spans_mode != "uniform"
-            or first_decode.storage_dtype != DType.BF16
-            or first_decode.scale_metadata is not None
+            or first_decode.storage_dtype not in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}
+            or (
+                first_decode.scale_metadata is not None
+                and first_decode.scale_metadata.granularity != "per_token_head"
+            )
             or first_decode.span_role != "verify_chain"
             or first_append.span_role != "verify_chain"
             or first_position is None
@@ -6556,8 +6685,8 @@ class Qwen35GGUFFullStackRunner:
         except (AttributeError, ValueError):
             return None
         for row, row_scratch in enumerate(decode_row_scratches):
-            decode_spans = getattr(row_scratch, "decode_spans", None)
-            append_spans = getattr(row_scratch, "append_spans", None)
+            decode_spans = layer_spans(row_scratch, "decode_spans")
+            append_spans = layer_spans(row_scratch, "append_spans")
             if not isinstance(decode_spans, KVLiveSpans) or not isinstance(
                 append_spans,
                 KVLiveSpans,
@@ -6569,12 +6698,12 @@ class Qwen35GGUFFullStackRunner:
             except (AttributeError, ValueError):
                 return None
             if (
-                getattr(row_scratch, "kv_storage_dtype", None) != DType.BF16
-                or int(row_scratch.block_size) != int(first.block_size)
+                int(row_scratch.block_size) != int(first.block_size)
                 or decode_spans.spans_mode != "uniform"
-                or decode_spans.storage_dtype != DType.BF16
-                or decode_spans.scale_metadata is not None
-                or append_spans.scale_metadata is not None
+                or decode_spans.storage_dtype != first_decode.storage_dtype
+                or append_spans.storage_dtype != first_decode.storage_dtype
+                or decode_spans.scale_metadata != first_decode.scale_metadata
+                or append_spans.scale_metadata != first_decode.scale_metadata
                 or decode_spans.span_role != "verify_chain"
                 or append_spans.span_role != "verify_chain"
                 or decode_spans.base_offsets.ptr != table.ptr
@@ -6612,12 +6741,48 @@ class Qwen35GGUFFullStackRunner:
                 block_table=table,
                 live_counts=live_counts,
                 max_live_count=int(attention_context_limit),
-                storage_dtype=DType.BF16,
+                storage_dtype=first_decode.storage_dtype,
+                scale_metadata=first_decode.scale_metadata,
                 row_positions=row_positions,
                 span_role="verify_chain",
             ),
             key_cache,
             value_cache,
+        )
+
+    def _full_attn_int8_verify_fn(
+        self, layer_id, decode_row_scratches, *, rows, attention_context_limit,
+    ):
+        if (
+            not decode_row_scratches
+            or self.weights is None
+            or getattr(decode_row_scratches[0], "kv_storage_dtype", None) != DType.INT8_PER_TOKEN_HEAD
+        ):
+            return None
+        cfg = self.weights.config
+        if (
+            (cfg.head_count, cfg.head_count_kv) not in {(16, 2), (24, 4)}
+            or cfg.key_length != 256
+            or any(
+                getattr(row, "kv_storage_dtype", None) != DType.INT8_PER_TOKEN_HEAD
+                or int(row.block_size) != 256
+                or bool(getattr(row, "int8_kv_value_bf16", False))
+                or row.full_bf16_mirror_cache(layer_id) is not None
+                for row in decode_row_scratches
+            )
+        ):
+            return None
+        shared = self._full_attn_shared_batch_spans(
+            layer_id, decode_row_scratches, rows=rows,
+            attention_context_limit=attention_context_limit,
+        )
+        if shared is None or shared[0].storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+            return None
+        return resolve(
+            backend=self.backend, layer="paged_attn_decode",
+            quant=DType.INT8_PER_TOKEN_HEAD.value,
+            variant="per_token_head_gqa_splitk_gate_bf16_verify_chain_spans",
+            missing="none",
         )
 
     def _run_full_attention_attn_chain_rows_exact(
@@ -6633,6 +6798,7 @@ class Qwen35GGUFFullStackRunner:
         hidden_f32_ptr: int | None = None,
         input_norm_ptr: int | None = None,
         attention_context_limit: int,
+        row_views_have_scalar_caps: bool = False,
         stream: int = 0,
     ) -> None:
         """Stage independent full-attention work around exact cache reads.
@@ -6657,16 +6823,18 @@ class Qwen35GGUFFullStackRunner:
             raise ValueError("start_position must be non-negative")
         if attention_context_limit < start_position + rows:
             raise ValueError("full-attention context limit must cover every verifier row")
-        if _use_gguf_full_attention_split_decode(attention_context_limit):
-            raise ValueError("staged full-attention chain currently requires non-split decode")
+        int8_fn = self._full_attn_int8_verify_fn(
+            layer_id, decode_row_scratches, rows=rows,
+            attention_context_limit=attention_context_limit,
+        )
         for row, row_scratch in enumerate(decode_row_scratches):
-            if getattr(row_scratch, "kv_storage_dtype", None) != DType.BF16:
+            if int8_fn is None and getattr(row_scratch, "kv_storage_dtype", None) != DType.BF16:
                 raise ValueError("staged full-attention chain requires BF16 KV")
             if int(row_scratch.position_host[0]) != start_position + row:
                 raise ValueError("staged full-attention row view has unexpected position")
             if attention_context_limit > int(row_scratch.max_positions):
                 raise ValueError("full-attention context limit exceeds resident capacity")
-            if row_scratch.append_spans.scale_metadata is not None:
+            if int8_fn is None and row_scratch.append_spans.scale_metadata is not None:
                 raise ValueError("staged full-attention chain does not support scaled KV")
 
         layer = self.weights.layer(layer_id)
@@ -6675,6 +6843,38 @@ class Qwen35GGUFFullStackRunner:
         cast_library = self._cast_library()
         kv_write_library = self._paged_kv_write_library()
         paged_attn_library = self._paged_attn_decode_library()
+        row_split_leaves = []
+        for row_scratch in decode_row_scratches:
+            row_split_leaves.append(
+                None if int8_fn is not None else _staged_full_attention_row_leaf(
+                    cfg,
+                    backend=self.backend,
+                    scratch=scratch,
+                    row_scratch=row_scratch,
+                    position=int(row_scratch.position_host[0]),
+                )
+            )
+        split_rows = tuple(leaf is not None for leaf in row_split_leaves)
+        if int8_fn is not None:
+            _ensure_full_attn_split_rows(scratch, rows, runtime=runtime)
+        elif any(split_rows):
+            _ensure_full_attn_split_rows(scratch, rows, runtime=runtime)
+        for row_scratch, row_split_leaf in zip(
+            decode_row_scratches, row_split_leaves, strict=True
+        ):
+            position = int(row_scratch.position_host[0])
+            if int8_fn is not None or row_split_leaf is not None:
+                continue
+            if not _use_gguf_full_attention_split_decode(position + 1):
+                continue
+            # The caller selects this chain only when every row resolves, so
+            # reaching here means a split-K attention leaf disappeared between
+            # that decision and this launch. Refuse instead of silently
+            # attending the row with the slower non-split leaf.
+            raise ValueError(
+                "staged full-attention chain requires a registered split-K "
+                "attention leaf for every long-context row"
+            )
 
         if input_norm_ptr is None:
             self._run_attention_norm_rows(
@@ -6826,10 +7026,46 @@ class Qwen35GGUFFullStackRunner:
                 rows=rows,
                 attention_context_limit=attention_context_limit,
             )
-            if batch_attn_fn is not None
+            if batch_attn_fn is not None or int8_fn is not None
             else None
         )
-        if shared_batch is not None:
+        if int8_fn is not None:
+            assert shared_batch is not None
+            batch_spans, key_cache, value_cache = shared_batch
+            metadata = batch_spans.scale_metadata
+            assert metadata is not None
+            bf16_to_f32(
+                scratch.full_v.ptr, scratch.full_key_raw.ptr, rows * self.kv_width,
+                stream=stream, library=cast_library, runtime=runtime,
+            )
+            # Quantize each appended row before attention; causal live counts
+            # hide the suffix from all earlier verifier rows.
+            write_fn = _gguf_int8_kv_append_write_fn(metadata)
+            for row, row_scratch in enumerate(decode_row_scratches):
+                write_fn(
+                    scratch.full_key.ptr + row * key_row_nbytes,
+                    scratch.full_key_raw.ptr + row * key_row_nbytes,
+                    key_cache.ptr, value_cache.ptr,
+                    metadata.k_scale.ptr, metadata.v_scale.ptr,
+                    row_scratch.append_spans_for_layer(layer_id),
+                    row_scratch.block_size, cfg.head_count_kv, cfg.key_length,
+                    stream=stream, library=kv_write_library, runtime=runtime,
+                )
+            block_size = int(decode_row_scratches[0].block_size)
+            num_splits = (attention_context_limit + block_size - 1) // block_size
+            int8_fn(
+                scratch.full_query.ptr, key_cache.ptr, value_cache.ptr,
+                metadata.k_scale.ptr, metadata.v_scale.ptr,
+                scratch.full_gate.ptr, scratch.full_gated.ptr,
+                scratch.full_attn_split_partial.ptr, scratch.full_attn_split_m.ptr,
+                scratch.full_attn_split_l.ptr, batch_spans,
+                rows, block_size, num_splits, block_size,
+                cfg.head_count, cfg.head_count_kv, cfg.key_length,
+                self.q_width, self.q_width, cfg.key_length, 1,
+                self.q_width, cfg.key_length, 1, cfg.key_length ** -0.5,
+                stream=stream, library=paged_attn_library, runtime=runtime,
+            )
+        elif shared_batch is not None and not any(split_rows):
             for (
                 row_scratch,
                 _query_ptr,
@@ -6882,7 +7118,7 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
             )
         else:
-            for (
+            for row, (
                 row_scratch,
                 query_ptr,
                 key_ptr,
@@ -6892,7 +7128,7 @@ class Qwen35GGUFFullStackRunner:
                 gated_ptr,
                 key_cache,
                 value_cache,
-            ) in row_io:
+            ) in enumerate(row_io):
                 qwen35_write_paged_kv_mixed_value_bf16_spans(
                     key_ptr,
                     value_ptr,
@@ -6906,31 +7142,115 @@ class Qwen35GGUFFullStackRunner:
                     library=kv_write_library,
                     runtime=runtime,
                 )
-                qwen35_paged_full_attn_decode_context_bf16_spans(
-                    query_ptr,
-                    key_cache.ptr,
-                    value_cache.ptr,
-                    context_ptr,
-                    row_scratch.decode_spans,
-                    attention_context_limit,
-                    row_scratch.block_size,
-                    cfg.head_count,
-                    cfg.head_count_kv,
-                    cfg.key_length,
-                    cfg.key_length ** -0.5,
-                    stream=stream,
-                    library=paged_attn_library,
-                    runtime=runtime,
-                )
-                qwen35_full_attn_gate_mul_bf16(
-                    context_ptr,
-                    gate_ptr,
-                    gated_ptr,
-                    self.q_width,
-                    stream=stream,
-                    library=paged_attn_library,
-                    runtime=runtime,
-                )
+                row_split_leaf = row_split_leaves[row]
+                if row_split_leaf is not None:
+                    # The row runs the same split-K gate leaf, chunk size, and
+                    # split tiling the scalar owner runs at this position, so its
+                    # arithmetic is unchanged rather than merely close. The
+                    # batched projections, head norm/rotary, KV writes, and
+                    # output projection stay batched across rows.
+                    (
+                        row_chunk_size,
+                        row_num_splits,
+                        split_gate_fn,
+                    ) = row_split_leaf
+                    split_gate_fn(
+                        query_ptr,
+                        key_cache.ptr,
+                        value_cache.ptr,
+                        gate_ptr,
+                        gated_ptr,
+                        scratch.full_attn_split_partial.ptr,
+                        scratch.full_attn_split_m.ptr,
+                        scratch.full_attn_split_l.ptr,
+                        row_scratch.decode_spans,
+                        row_chunk_size,
+                        row_num_splits,
+                        row_scratch.block_size,
+                        cfg.head_count,
+                        cfg.head_count_kv,
+                        cfg.key_length,
+                        cfg.key_length,
+                        1,
+                        cfg.key_length ** -0.5,
+                        stream=stream,
+                        library=paged_attn_library,
+                        runtime=runtime,
+                    )
+                else:
+                    # Below the split threshold the scalar owner picks its
+                    # short-context batch leaf from this row's own ``position + 1``
+                    # cap. That leaf takes the cap as a scalar argument, so it is
+                    # only the scalar owner's arithmetic when the caller can
+                    # vouch for the row's position: the eager verifier stages the
+                    # metadata it reads back, while the captured target graph
+                    # updates positions on device and the host mirror is a
+                    # capture-time guess. Using a guessed cap launches the batch
+                    # leaf with the wrong live count and breaks AR identity on the
+                    # retained 3-prompt ladder (shared prefix 7/16). Without that
+                    # guarantee the plain span leaf is the correct choice: its
+                    # loop is bounded by the row's own live count, so the
+                    # span-wide limit stays inert.
+                    row_active_context = int(row_scratch.position_host[0]) + 1
+                    row_short_batch_max_context = max(
+                        0,
+                        int(
+                            backend_package_capability(
+                                self.backend,
+                                "GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT",
+                                0,
+                            )
+                        ),
+                    )
+                    if (
+                        row_views_have_scalar_caps
+                        and 0 < row_active_context <= row_short_batch_max_context
+                    ):
+                        self._full_attn_decode_short_batch_fn(
+                            row_scratch.decode_spans
+                        )(
+                            query_ptr,
+                            key_cache.ptr,
+                            value_cache.ptr,
+                            context_ptr,
+                            row_scratch.decode_spans,
+                            1,
+                            row_active_context,
+                            row_scratch.block_size,
+                            cfg.head_count,
+                            cfg.head_count_kv,
+                            cfg.key_length,
+                            cfg.key_length ** -0.5,
+                            stream=stream,
+                            library=paged_attn_library,
+                            runtime=runtime,
+                        )
+                    else:
+                        qwen35_paged_full_attn_decode_context_bf16_spans(
+                            query_ptr,
+                            key_cache.ptr,
+                            value_cache.ptr,
+                            context_ptr,
+                            row_scratch.decode_spans,
+                            attention_context_limit,
+                            row_scratch.block_size,
+                            cfg.head_count,
+                            cfg.head_count_kv,
+                            cfg.key_length,
+                            cfg.key_length ** -0.5,
+                            stream=stream,
+                            library=paged_attn_library,
+                            runtime=runtime,
+                        )
+                    qwen35_full_attn_gate_mul_bf16(
+                        context_ptr,
+                        gate_ptr,
+                        gated_ptr,
+                        self.q_width,
+                        stream=stream,
+                        library=paged_attn_library,
+                        runtime=runtime,
+                    )
 
         launch_gguf_linear(
             layer.weight("attn_output"),
@@ -7267,8 +7587,7 @@ class Qwen35GGUFFullStackRunner:
         state_indices_ptr: int,
         stream: int = 0,
     ) -> str:
-        """Run independent decode rows through the Q3 indexed-state contract."""
-
+        """Run session-owned rows through the Q3 indexed-state contract."""
         assert self.weights is not None
         if rows <= 1:
             raise ValueError("native linear-attention batch requires rows > 1")
@@ -7326,26 +7645,15 @@ class Qwen35GGUFFullStackRunner:
 
         # Keep the scalar dense reduction association on the two rank-16
         # projections; the indexed GDN ABI consumes separate row-major arrays.
-        dense_gemv_out_bf16(
-            scratch.norm.ptr,
-            layer.weight("ssm_alpha").allocation("raw").tensor.ptr,
-            scratch.linear_alpha.ptr,
-            rows,
-            self.hidden_size,
-            cfg.ssm_time_step_rank,
-            stream=stream,
-            runtime=runtime,
-        )
-        dense_gemv_out_bf16(
-            scratch.norm.ptr,
-            layer.weight("ssm_beta").allocation("raw").tensor.ptr,
-            scratch.linear_beta.ptr,
-            rows,
-            self.hidden_size,
-            cfg.ssm_time_step_rank,
-            stream=stream,
-            runtime=runtime,
-        )
+        from hipengine.loading.qwen35_gguf_consumer_surface import native_alpha_beta_consumer_contract
+        alpha_beta = native_alpha_beta_consumer_contract()
+        for weight_name, output in (("ssm_alpha", scratch.linear_alpha), ("ssm_beta", scratch.linear_beta)):
+            alpha_beta.call(dense_gemv_out_bf16, {
+                "x_ptr": scratch.norm.ptr,
+                "raw": layer.weight(weight_name).allocation("raw").tensor.ptr,
+                "out_ptr": output.ptr, "rows": rows,
+                "in_features": self.hidden_size, "out_features": cfg.ssm_time_step_rank,
+            }, stream=stream, runtime=runtime)
         qwen35_linear_attn_conv_decode_indexed_bf16(
             scratch.linear_qkv.ptr,
             conv_state.ptr,
@@ -7419,8 +7727,7 @@ class Qwen35GGUFFullStackRunner:
         rows: int,
         stream: int = 0,
     ) -> str:
-        """Run one compact row-batched full-attention decode layer."""
-
+        """Run one session-owned row-batched full-attention decode layer."""
         assert self.weights is not None
         if rows <= 1:
             raise ValueError("native full-attention batch requires rows > 1")
@@ -7657,6 +7964,7 @@ class Qwen35GGUFFullStackRunner:
         next_norm_out_ptr: int | None = None,
         decode_row_scratches: tuple[object, ...] | None = None,
         attention_context_limit: int | None = None,
+        row_views_keep_scalar_caps: bool = False,
         stream: int = 0,
     ) -> None:
         """Run exact serial attention cores with row-bulk independent work.
@@ -7682,10 +7990,27 @@ class Qwen35GGUFFullStackRunner:
             raise ValueError("prefused dense input norm requires a BF16 residual")
         if decode_row_scratches is not None and len(decode_row_scratches) != rows:
             raise ValueError("native decode row scratch count must match verifier rows")
+        # The staged linear-attention chain reassociates BF16 projections
+        # against scalar AR at the split-attention boundary (one BF16 ULP in the
+        # layer-46 output on the retained B3 fixture), so dense linear rows keep
+        # the row-wise c1 route at long context by default. Dense full-attention
+        # rows do not: their staged chain resolves the same split-K leaf and
+        # tiling the row-wise route uses, so they keep batched projections and a
+        # staged FFN across the boundary. ``HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG``
+        # admits the staged linear chain there for production-numerics
+        # evaluation; the row-wise route stays the registered strict fallback.
         strict_long_rows = (
             rows > 1
             and not bool(self.weights.config.is_moe)
+            and layer_type == LINEAR_ATTENTION
             and _use_gguf_full_attention_split_decode(start_position + rows)
+            and not _gguf_staged_linear_rows_long_enabled(
+                self.backend,
+                file_type_name=getattr(self.weights, "file_type_name", None),
+                artifact_preset_key=getattr(
+                    self.weights, "artifact_preset_key", None
+                ),
+            )
         )
         staged_dense_linear = (
             layer_type == LINEAR_ATTENTION
@@ -7700,10 +8025,23 @@ class Qwen35GGUFFullStackRunner:
             and decode_row_scratches is not None
             and attention_context_limit is not None
             and 0 < int(attention_context_limit)
-            and not _use_gguf_full_attention_split_decode(int(attention_context_limit))
-            and all(
-                getattr(row_scratch, "kv_storage_dtype", DType.BF16) == DType.BF16
-                for row_scratch in decode_row_scratches
+            and (
+                self._full_attn_int8_verify_fn(
+                    layer_id, decode_row_scratches, rows=rows,
+                    attention_context_limit=attention_context_limit,
+                ) is not None
+                or (
+                    all(
+                        getattr(row_scratch, "kv_storage_dtype", DType.BF16) == DType.BF16
+                        for row_scratch in decode_row_scratches
+                    )
+                    and _staged_full_attention_rows_ready(
+                        self.weights.config,
+                        backend=self.backend,
+                        scratch=scratch,
+                        decode_row_scratches=decode_row_scratches,
+                    )
+                )
             )
         )
         if staged_dense_linear:
@@ -7735,6 +8073,7 @@ class Qwen35GGUFFullStackRunner:
                 hidden_f32_ptr=hidden_f32_ptr,
                 input_norm_ptr=input_norm_ptr,
                 attention_context_limit=attention_context_limit,
+                row_views_have_scalar_caps=row_views_keep_scalar_caps,
                 stream=stream,
             )
         else:
@@ -7815,7 +8154,15 @@ class Qwen35GGUFFullStackRunner:
                             position=position,
                             hidden_f32_ptr=hidden_f32_row,
                             stream=stream,
-                            attention_max_context_len=attention_context_limit,
+                            # Eager row views keep the scalar owner's own
+                            # ``position + 1`` cap so each row resolves the leaf
+                            # it resolved before views existed; the span end is
+                            # only the staged chain's coverage bound.
+                            attention_max_context_len=(
+                                None
+                                if row_views_keep_scalar_caps
+                                else attention_context_limit
+                            ),
                         )
                     else:
                         raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
@@ -7879,19 +8226,30 @@ class Qwen35GGUFFullStackRunner:
         rows: int,
         decode_scratch,
         linear_state_rows: tuple[object, object],
+        state_capacity: int,
+        state_indices: Sequence[int],
         stream: int = 0,
     ) -> None:
-        """Run one MoE C2 linear layer row-exact over transaction-local state."""
+        """Run MoE C2 rows using the resident slot map for initial state."""
 
         rows = int(rows)
         segments = int(getattr(scratch, "gdn_active_segments", 1))
         if rows != 6 or segments != 2:
             raise ValueError("MoE C2 exact linear owner requires two R3 segments")
+        state_capacity = int(state_capacity)
+        state_indices = tuple(int(index) for index in state_indices)
+        if (
+            state_capacity < segments
+            or len(state_indices) != segments
+            or any(index < 0 or index >= state_capacity for index in state_indices)
+        ):
+            raise ValueError("MoE C2 exact linear state indices exceed state capacity")
         conv_state = decode_scratch.layer_conv_states[layer_id]
         recurrent_state = decode_scratch.layer_recurrent_states[layer_id]
         if conv_state is None or recurrent_state is None:
             raise RuntimeError("MoE C2 exact linear owner lost packed state")
-        state_capacity = int(getattr(scratch, "gdn_segment_capacity", segments))
+        # The state slab may have more resident slots than this packed group.
+        # Its stride and indices must not come from the verifier workspace.
         conv_nbytes, conv_remainder = divmod(int(conv_state.nbytes), state_capacity)
         recurrent_nbytes, recurrent_remainder = divmod(
             int(recurrent_state.nbytes), state_capacity
@@ -7949,7 +8307,7 @@ class Qwen35GGUFFullStackRunner:
             row_start = segment * segment_rows
             qwen35_linear_attn_chain_conv_decode_bf16_tloop(
                 scratch.linear_qkv.ptr + row_start * qkv_row_nbytes,
-                conv_state.ptr + segment * conv_nbytes,
+                conv_state.ptr + state_indices[segment] * conv_nbytes,
                 conv_rows.ptr + row_start * conv_nbytes,
                 layer.weight("ssm_conv1d").allocation().tensor.ptr,
                 scratch.conv_out.ptr + row_start * conv_out_row_nbytes,
@@ -8730,6 +9088,8 @@ class Qwen35GGUFFullStackRunner:
                 sync_stage_timings=sync_stage_timings,
                 stage_prefix=f"{stage_prefix}_ffn",
                 gpu_stage_recorder=gpu_stage_recorder,
+                # Prefill: a one-row chunk must not switch to the decode schedule.
+                force_bulk_rows=True,
             )
             if gpu_stage_recorder is not None:
                 gpu_stage_recorder.mark(f"{stage_prefix}_ffn_total")
@@ -8886,6 +9246,8 @@ class Qwen35GGUFFullStackRunner:
             sync_stage_timings=sync_stage_timings,
             stage_prefix=f"{stage_prefix}_ffn",
             gpu_stage_recorder=gpu_stage_recorder,
+            # Prefill: a one-row chunk must not switch to the decode schedule.
+            force_bulk_rows=True,
         )
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_ffn_total")
@@ -9492,7 +9854,19 @@ class Qwen35GGUFFullStackRunner:
         sync_stage_timings: bool = False,
         stage_prefix: str = "target_block_ffn",
         gpu_stage_recorder: _HipEventStageRecorder | None = None,
+        force_bulk_rows: bool = False,
     ) -> None:
+        """``force_bulk_rows`` keeps a one-row PREFILL on the bulk schedule.
+
+        The ``rows == 1`` specialisations below exist for decode, where a single
+        row is the natural shape. A prefill chunk that happens to contain one
+        row is a different thing: taking the decode schedule makes a chunk's
+        arithmetic depend on how the prompt was split, so prefilling N tokens as
+        one call and as ``N-1 + 1`` calls disagree. That breaks the contract a
+        prefix-cache hit owes a miss. Prefill callers therefore pass True;
+        decode callers keep the specialised route.
+        """
+
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
         runtime = self.runtime or get_hip_runtime()
@@ -9575,6 +9949,10 @@ class Qwen35GGUFFullStackRunner:
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_post_norm_residual")
         if self.weights.config.is_moe:
+            # MoE has no bulk rows==1 schedule (`_run_post_attention_moe_rows`
+            # refuses rows <= 1), so force_bulk_rows cannot redirect it. A
+            # one-row MoE prefill is avoided upstream instead: the prefix-cache
+            # admission never leaves a single-token suffix.
             if rows == 1:
                 self._run_post_attention_moe_c1(
                     layer_id,
@@ -9609,15 +9987,22 @@ class Qwen35GGUFFullStackRunner:
         if next_norm_weight_ptr is not None and f32_residual:
             raise ValueError("dense next RMSNorm fusion requires a BF16 residual")
         rounded_next_rms_fn = (
-            self._rounded_add_rmsnorm_fn()
+            self._rounded_add_rmsnorm_fn(rows=rows)
             if next_norm_weight_ptr is not None and rows <= 8
             else None
         )
-        dense_decode_variant = _gguf_dense_pair_silu_decode_variant(
-            self,
-            rows=rows,
-            in_features=self.hidden_size,
-            out_features=self.ffn_size,
+        dense_decode_variant = (
+            None
+            if force_bulk_rows
+            # A registered decode variant swaps the fused gate/up SiLU onto the
+            # GEMV decode schedule, which is a different arithmetic route than
+            # the GEMM the same tokens take inside a wider prefill chunk.
+            else _gguf_dense_pair_silu_decode_variant(
+                self,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=self.ffn_size,
+            )
         )
         dense_q8_1_workspace_ptr = _optional_q8_1_workspace_ptr(
             scratch,
@@ -9728,11 +10113,15 @@ class Qwen35GGUFFullStackRunner:
                 out_features=self.hidden_size,
             )
             self._dense_down_residual_decode_c1 = dense_down_decode_c1
-        dense_down_decode_fused = rows == 1 and bool(dense_down_decode_c1)
+        dense_down_decode_fused = (
+            rows == 1 and not force_bulk_rows and bool(dense_down_decode_c1)
+        )
         down_residual_fused = (
-            next_norm_weight_ptr is None
-            and not f32_residual
-            and (rows > 1 or dense_down_decode_fused)
+            not f32_residual
+            and (
+                (next_norm_weight_ptr is None and rows > 1)
+                or (rounded_next_rms_fn is None and rows == 1)
+            )
             and launch_gguf_linear_residual(
                 layer.weight("ffn_down"),
                 scratch.ffn_intermediate.ptr,
@@ -9746,6 +10135,20 @@ class Qwen35GGUFFullStackRunner:
                 registered_decode=dense_down_decode_fused,
             )
         )
+        if down_residual_fused and next_norm_weight_ptr is not None:
+            # E6c: the composite replaced residual = add(residual, down);
+            # the trailing next-input RMSNorm stays exactly the launch the
+            # unfused else-branch ran after that add.
+            gguf_rmsnorm_bf16_f32_weight(
+                out_ptr,
+                int(next_norm_weight_ptr),
+                int(next_norm_out_ptr),
+                rows=rows,
+                hidden_size=self.hidden_size,
+                eps=self.weights.config.rms_norm_eps,
+                stream=stream,
+                runtime=runtime,
+            )
         if not down_residual_fused:
             launch_gguf_linear(
                 layer.weight("ffn_down"),
@@ -10246,8 +10649,13 @@ class Qwen35GGUFFullStackRunner:
             scratch,
             bool(prefer_f32_selected_down),
         )
+        gate_call, down_call = selected_ffn_modes(
+            gate_weight.spec.quant_key, up_weight.spec.quant_key, down_weight.spec.quant_key,
+            allow_legacy_silu=True, f32_gate=post_norm_f32_ptr is not None,
+            f32_intermediate=f32_selected_intermediate, f32_down=prefer_f32_selected_down,
+        )
         expert_silu_ready = False
-        if post_norm_f32_ptr is None and not f32_selected_intermediate:
+        if gate_call == "dual_silu":
             expert_silu_ready = _launch_selected_raw_gguf_moe_pair_silu(
                 gate_weight,
                 up_weight,
@@ -10274,51 +10682,15 @@ class Qwen35GGUFFullStackRunner:
                     or _selected_pair_requires_q8_1_input(gate_weight, up_weight)
                 ),
             )
-            if not _launch_selected_raw_gguf_moe_pair(
-                gate_weight,
-                up_weight,
-                scratch.post_norm.ptr,
-                scratch.moe_selected_experts.ptr,
-                scratch.ffn_gate_up.ptr,
+            _launch_selected_raw_gguf_moe_dual(
+                gate_weight, up_weight, scratch.post_norm.ptr,
+                scratch.moe_selected_experts.ptr, scratch.ffn_gate_up.ptr,
                 scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                x_rows=1,
-                rows=selected_rows,
-                num_experts=cfg.expert_count,
-                in_features=self.hidden_size,
-                out_features=cfg.expert_feed_forward_length,
-                q8_1_workspace_ptr=q8_1_workspace_ptr,
-                x_f32_ptr=post_norm_f32_ptr,
-                stream=stream,
-                runtime=runtime,
-            ):
-                _launch_selected_raw_gguf_moe_linear(
-                    gate_weight,
-                    scratch.post_norm.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.ffn_gate_up.ptr,
-                    x_rows=1,
-                    rows=selected_rows,
-                    num_experts=cfg.expert_count,
-                    in_features=self.hidden_size,
-                    out_features=cfg.expert_feed_forward_length,
-                    x_f32_ptr=post_norm_f32_ptr,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                _launch_selected_raw_gguf_moe_linear(
-                    up_weight,
-                    scratch.post_norm.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                    x_rows=1,
-                    rows=selected_rows,
-                    num_experts=cfg.expert_count,
-                    in_features=self.hidden_size,
-                    out_features=cfg.expert_feed_forward_length,
-                    x_f32_ptr=post_norm_f32_ptr,
-                    stream=stream,
-                    runtime=runtime,
-                )
+                x_rows=1, rows=selected_rows, num_experts=cfg.expert_count,
+                in_features=self.hidden_size, out_features=cfg.expert_feed_forward_length,
+                q8_1_workspace_ptr=q8_1_workspace_ptr, x_f32_ptr=post_norm_f32_ptr,
+                stream=stream, runtime=runtime,
+            )
             if f32_selected_intermediate:
                 silu_mul_separate_out_f32(
                     scratch.ffn_gate_up.ptr,
@@ -10349,7 +10721,7 @@ class Qwen35GGUFFullStackRunner:
                 )
         f32_selected_down = bool(prefer_f32_selected_down)
         expert_down_weighted = False
-        if not f32_selected_down:
+        if down_call == "weighted_down":
             expert_down_weighted = _launch_weighted_selected_raw_gguf_moe_linear(
                 down_weight,
                 scratch.ffn_intermediate.ptr,
@@ -10361,6 +10733,7 @@ class Qwen35GGUFFullStackRunner:
                 num_experts=cfg.expert_count,
                 in_features=cfg.expert_feed_forward_length,
                 out_features=self.hidden_size,
+                backend=self.backend,
                 stream=stream,
                 runtime=runtime,
             )
@@ -10608,7 +10981,10 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
                 library=getattr(self, "_expert_pack8_library", None),
             )
-        elif _launch_selected_raw_gguf_moe_pair_silu(
+        elif selected_ffn_modes(
+            gate_weight.spec.quant_key, up_weight.spec.quant_key, down_weight.spec.quant_key,
+            allow_legacy_silu=False,
+        )[0] == "dual_silu" and _launch_selected_raw_gguf_moe_pair_silu(
             gate_weight,
             up_weight,
             scratch.post_norm.ptr,
@@ -10639,54 +11015,16 @@ class Qwen35GGUFFullStackRunner:
                     or _selected_pair_requires_q8_1_input(gate_weight, up_weight)
                 ),
             )
-            if not _launch_selected_raw_gguf_moe_pair(
-                gate_weight,
-                up_weight,
-                scratch.post_norm.ptr,
-                scratch.moe_selected_experts.ptr,
-                scratch.ffn_gate_up.ptr,
+            _launch_selected_raw_gguf_moe_dual(
+                gate_weight, up_weight, scratch.post_norm.ptr,
+                scratch.moe_selected_experts.ptr, scratch.ffn_gate_up.ptr,
                 scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                x_rows=rows,
-                rows=selected_rows,
-                num_experts=cfg.expert_count,
-                in_features=self.hidden_size,
-                out_features=cfg.expert_feed_forward_length,
-                q8_1_workspace_ptr=q8_1_workspace_ptr,
-                x_f32_ptr=selected_f32_ptr,
-                stream=stream,
-                runtime=runtime,
-                stage_timings=stage_timings,
-                sync_stage_timings=sync_stages,
-                stage_prefix=f"{stage_prefix}_expert_gate_up",
-            ):
-                _launch_selected_raw_gguf_moe_linear(
-                    gate_weight,
-                    scratch.post_norm.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.ffn_gate_up.ptr,
-                    x_rows=rows,
-                    rows=selected_rows,
-                    num_experts=cfg.expert_count,
-                    in_features=self.hidden_size,
-                    out_features=cfg.expert_feed_forward_length,
-                    x_f32_ptr=selected_f32_ptr,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                _launch_selected_raw_gguf_moe_linear(
-                    up_weight,
-                    scratch.post_norm.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                    x_rows=rows,
-                    rows=selected_rows,
-                    num_experts=cfg.expert_count,
-                    in_features=self.hidden_size,
-                    out_features=cfg.expert_feed_forward_length,
-                    x_f32_ptr=selected_f32_ptr,
-                    stream=stream,
-                    runtime=runtime,
-                )
+                x_rows=rows, rows=selected_rows, num_experts=cfg.expert_count,
+                in_features=self.hidden_size, out_features=cfg.expert_feed_forward_length,
+                q8_1_workspace_ptr=q8_1_workspace_ptr, x_f32_ptr=selected_f32_ptr,
+                stream=stream, runtime=runtime, stage_timings=stage_timings,
+                sync_stage_timings=sync_stages, stage_prefix=f"{stage_prefix}_expert_gate_up",
+            )
         t_stage = _mark_sync_stage(
             runtime,
             stage_timings,
@@ -10754,7 +11092,11 @@ class Qwen35GGUFFullStackRunner:
             )
         else:
             selected_down_is_f32 = prefer_f32_selected_down
-            if not selected_down_is_f32 and not f32_residual:
+            if selected_ffn_modes(
+                gate_weight.spec.quant_key, up_weight.spec.quant_key, down_weight.spec.quant_key,
+                allow_legacy_silu=False, f32_down=selected_down_is_f32,
+                weighted_down=not f32_residual,
+            )[1] == "weighted_down":
                 expert_down_weighted = _launch_weighted_selected_raw_gguf_moe_linear(
                     down_weight,
                     scratch.ffn_intermediate.ptr,
@@ -11126,6 +11468,7 @@ _QWEN35MOE_UNSAFE_FASTPATH_ENV = "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATH
 _GGUF_AOTRITON_PREFILL_ENV = "HIPENGINE_GGUF_AOTRITON_PREFILL"
 _GGUF_AOTRITON_PREFILL_ENABLE_ENV = "HIPENGINE_GGUF_AOTRITON_PREFILL_ENABLE"
 _GGUF_AOTRITON_HEAD_MAJOR_KV_ENV = "HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV"
+_GGUF_GAPPED_GATHER_ENV = "HIPENGINE_GGUF_GAPPED_GATHER"
 _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV = (
     "HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES"
 )
@@ -11136,6 +11479,10 @@ _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_DEFAULT = 512 * 1024 * 1024
 _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_DEFAULT = 65_792
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_ENV = "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT"
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_DEFAULT = 1024
+# Default-off admission for the staged dense linear-attention verifier chain
+# above the split threshold. The row-wise c1 route stays the strict fallback
+# until the production numerical and task gates qualify the staged arithmetic.
+_GGUF_STAGED_LINEAR_ROWS_LONG_ENV = "HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG"
 _GGUF_FULL_ATTN_PREFILL_SPLIT_BATCH_ROWS = 16
 _GGUF_COMPACT_MOE_C1_ENV = "HIPENGINE_GGUF_COMPACT_MOE_C1"
 # Keep explicit INT8-KV short gates on the exact BF16 decode path. Long-context
@@ -11477,7 +11824,17 @@ def _env_flag(name: str, default: bool, *aliases: str) -> bool:
 
 def _gguf_policy_identity(
     weights: object,
-) -> tuple[GGUFModelGeometry, str | None] | None:
+) -> tuple[GGUFModelGeometry, str | None] | tuple[GGUFModelGeometry, str | None, str] | None:
+    """Policy-table identity for one resident artifact.
+
+    Plain artifacts keep the historical ``(geometry, file_type)`` key so every
+    qualified plain control resolves unchanged. An artifact with a bound UD
+    admission preset extends the key with the preset key, so certified-plain
+    policy rows (tuned per stamp) can never silently apply to a UD artifact
+    that merely shares the stamp: the extended key misses the table and the
+    caller falls back to the generic path.
+    """
+
     geometry = getattr(weights, "geometry", None)
     if geometry is None:
         geometry = GGUFModelGeometry.try_from_config(getattr(weights, "config", None))
@@ -11486,7 +11843,14 @@ def _gguf_policy_identity(
     if not isinstance(geometry, GGUFModelGeometry):
         return None
     file_type_name = getattr(weights, "file_type_name", None)
-    return geometry, None if file_type_name is None else str(file_type_name)
+    artifact_preset_key = getattr(weights, "artifact_preset_key", None)
+    if artifact_preset_key is None:
+        return geometry, None if file_type_name is None else str(file_type_name)
+    return (
+        geometry,
+        None if file_type_name is None else str(file_type_name),
+        str(artifact_preset_key),
+    )
 
 
 def _resolve_gguf_packed_decode_graph_min_replay_steps(
@@ -11496,6 +11860,7 @@ def _resolve_gguf_packed_decode_graph_min_replay_steps(
     file_type_name: str | None,
     physical_rows: int,
     default_minimum: int,
+    artifact_preset_key: str | None = None,
 ) -> int:
     """Resolve a packed-graph floor from backend model/quant/width policy."""
 
@@ -11511,7 +11876,14 @@ def _resolve_gguf_packed_decode_graph_min_replay_steps(
     )
     if not isinstance(package_policies, Mapping):
         raise RuntimeError("backend packed decode graph floor policies must be a mapping")
-    policy = package_policies.get((geometry, file_type_name), {})
+    if artifact_preset_key is None:
+        policy = package_policies.get((geometry, file_type_name), {})
+    else:
+        # A preset-bound artifact never reads plain-stamp-keyed rows; only an
+        # exact preset-keyed row (if a backend ships one) applies.
+        policy = package_policies.get(
+            (geometry, file_type_name, artifact_preset_key), {}
+        )
     if not isinstance(policy, Mapping):
         raise RuntimeError("backend packed decode graph floor policy must be a mapping")
     raw = policy.get(rows)
@@ -11533,8 +11905,17 @@ def _resolve_gguf_decode_graph_submission_transport(
     steps_per_replay: int = 1,
     requested: str | None = None,
     env: Mapping[str, str] | None = None,
+    artifact_preset_key: str | None = None,
 ) -> str:
-    """Resolve explicit/env selection over measured model/quant/shape policy."""
+    """Resolve explicit/env selection over measured model/quant/shape policy.
+
+    The package policy rows are certified per artifact ``(geometry, stamp)``.
+    ``artifact_preset_key=None`` keeps the historical plain-identity row;
+    preset-bound and unknown-manifest artifacts resolve only an exact
+    preset-keyed row (if a backend ships one) and otherwise the generic
+    hipgraph fallback — they never inherit a plain-certified row from the
+    stamp alone.
+    """
 
     from hipengine.core.pm4.transport import select_submission_transport
 
@@ -11545,7 +11926,12 @@ def _resolve_gguf_decode_graph_submission_transport(
     )
     if not isinstance(package_policies, Mapping):
         raise RuntimeError("backend GGUF decode graph transport policies must be a mapping")
-    policy = package_policies.get((geometry, file_type_name), {})
+    if artifact_preset_key is None:
+        policy = package_policies.get((geometry, file_type_name), {})
+    else:
+        policy = package_policies.get(
+            (geometry, file_type_name, artifact_preset_key), {}
+        )
     if not isinstance(policy, Mapping):
         raise RuntimeError("backend GGUF decode graph transport policy must be a mapping")
     package_default = str(policy.get("transport", "hipgraph"))
@@ -11840,15 +12226,23 @@ def _gguf_norm_residual_decode_kernel(
     layer: str,
     rows: int,
     hidden_size: int,
+    fallback: object = None,
 ):
     """Resolve one exact model/backend/shape-qualified D5 norm leaf."""
 
-    fallback = {
-        "rmsnorm": gguf_rmsnorm_bf16_f32_weight,
-        "add_rmsnorm": gguf_add_rmsnorm_bf16_f32_weight,
-    }.get(layer)
     if fallback is None:
-        raise ValueError(f"unsupported norm/residual registry layer {layer!r}")
+        fallback = {
+            "rmsnorm": gguf_rmsnorm_bf16_f32_weight,
+            "add_rmsnorm": gguf_add_rmsnorm_bf16_f32_weight,
+            "add+rmsnorm": gguf_rounded_add_rmsnorm_bf16_f32_weight,
+        }.get(layer)
+        if fallback is None:
+            raise ValueError(f"unsupported norm/residual registry layer {layer!r}")
+    capability = {
+        "rmsnorm": "GGUF_NORM_RESIDUAL_DECODE_POLICIES",
+        "add_rmsnorm": "GGUF_NORM_RESIDUAL_DECODE_POLICIES",
+        "add+rmsnorm": "GGUF_ROUNDED_NORM_RESIDUAL_DECODE_POLICIES",
+    }[layer]
     weights = getattr(runner, "weights", None)
     cfg = getattr(weights, "config", None)
     backend = getattr(runner, "backend", None)
@@ -11862,7 +12256,9 @@ def _gguf_norm_residual_decode_kernel(
     if identity is None:
         return fallback
     shape = (int(rows), int(hidden_size))
-    policy_key = (backend, identity, shape)
+    # The layer is part of the memo key: the plain and the rounded layers share
+    # a shape table shape but select different kernels.
+    policy_key = (backend, layer, identity, shape)
     cached_policy = getattr(runner, "_norm_residual_decode_policy_cache", None)
     if (
         isinstance(cached_policy, tuple)
@@ -11872,11 +12268,20 @@ def _gguf_norm_residual_decode_kernel(
         variant = cached_policy[1]
     else:
         try:
-            policies = backend_package_capability(
-                backend, "GGUF_NORM_RESIDUAL_DECODE_POLICIES", {}
-            )
+            policies = backend_package_capability(backend, capability, {})
         except (ImportError, ValueError):
             return fallback
+        if isinstance(policies, Mapping):
+            enabled_env = policies.get("enabled_env")
+            if isinstance(enabled_env, str) and enabled_env:
+                raw = os.environ.get(enabled_env)
+                enabled = (
+                    bool(policies.get("enabled_default", False))
+                    if raw is None
+                    else raw.strip().lower() not in {"0", "false", "no", "off"}
+                )
+                if not enabled:
+                    return fallback
         shapes = policies.get(identity, {}) if isinstance(policies, Mapping) else {}
         variant = shapes.get(shape) if isinstance(shapes, Mapping) else None
         try:
@@ -12362,6 +12767,24 @@ def _gguf_mapped_host_token_embedding_storage(
     return source, "hip_registered_gguf_mmap"
 
 
+def _gguf_model_info_artifact_preset_key(model_info: object) -> str | None:
+    """Loader-equivalent artifact admission key from one GGUF model info.
+
+    Header-only (no payload read, no device): builds the production tensor
+    map plus the structural NextN map exactly like the materializer and
+    resolves the same admission qualification — ``None`` for a pinned
+    qualified plain control, a UD preset key, or the unqualified-manifest
+    sentinel. Session-level policy callers use this so their stamp-keyed
+    admissions bind the actual manifest, not the header stamp alone.
+    """
+
+    from hipengine.loading.qwen35_gguf_admission import (
+        qwen35_gguf_artifact_identity_from_info,
+    )
+
+    return qwen35_gguf_artifact_identity_from_info(model_info)[1]
+
+
 def _resolve_gguf_private_c1_small_weight_arena(
     *,
     backend: str,
@@ -12370,8 +12793,16 @@ def _resolve_gguf_private_c1_small_weight_arena(
     geometry: GGUFModelGeometry | None = None,
     file_type_name: str | None = None,
     requested: bool | None = None,
+    artifact_preset_key: str | None = None,
 ) -> tuple[bool, str]:
-    """Select the retained allocator-owned private-c1 path with explicit opt-out."""
+    """Select the retained allocator-owned private-c1 path with explicit opt-out.
+
+    The policy-table admission route is certified per artifact
+    ``(geometry, stamp)``: ``artifact_preset_key=None`` keeps the plain row,
+    preset-bound/unknown identities resolve only an exact preset-keyed row
+    (none ship today). ``requested`` (and its env) is an opt-OUT seam only —
+    ``True`` never bypasses the artifact-qualified admission.
+    """
 
     enabled = (
         _env_flag(_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_ENV, True)
@@ -12399,7 +12830,10 @@ def _resolve_gguf_private_c1_small_weight_arena(
         )
         if not isinstance(policies, Mapping):
             return False, "backend_capability_fallback"
-        policy = policies.get((geometry, file_type_name))
+        if artifact_preset_key is None:
+            policy = policies.get((geometry, file_type_name))
+        else:
+            policy = policies.get((geometry, file_type_name, artifact_preset_key))
         admitted = isinstance(policy, Mapping) and bool(
             policy.get("enabled", False)
         )
@@ -12416,8 +12850,14 @@ def _resolve_gguf_private_c1_decode_scratch_arena(
     geometry: GGUFModelGeometry | None = None,
     file_type_name: str | None = None,
     requested: bool | None = None,
+    artifact_preset_key: str | None = None,
 ) -> tuple[bool, str]:
-    """Select one physical owner for geometry-qualified private-c1 scratch."""
+    """Select one physical owner for geometry-qualified private-c1 scratch.
+
+    The admission row is certified per artifact ``(geometry, stamp)`` and now
+    identity-keyed: preset-bound/unknown artifacts resolve only an exact
+    preset-keyed row (none ship today) and otherwise keep dedicated owners.
+    """
 
     if requested is None:
         raw = _env_value(_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_ENV)
@@ -12440,7 +12880,10 @@ def _resolve_gguf_private_c1_decode_scratch_arena(
     )
     if not isinstance(policies, Mapping):
         return False, "backend_capability_fallback"
-    policy = policies.get((geometry, file_type_name))
+    if artifact_preset_key is None:
+        policy = policies.get((geometry, file_type_name))
+    else:
+        policy = policies.get((geometry, file_type_name, artifact_preset_key))
     if not isinstance(policy, Mapping) or not bool(policy.get("enabled", False)):
         return False, "backend_capability_fallback"
     return True, "private_c1_geometry_policy"
@@ -12451,8 +12894,14 @@ def _resolve_gguf_private_c1_weight_arena_max_allocation_bytes(
     backend: str,
     geometry: GGUFModelGeometry | None = None,
     file_type_name: str | None = None,
+    artifact_preset_key: str | None = None,
 ) -> int:
-    """Resolve the geometry-scoped arena cutoff without changing peer defaults."""
+    """Resolve the geometry-scoped arena cutoff without changing peer defaults.
+
+    The cutoff row is certified per artifact ``(geometry, stamp)`` and
+    identity-keyed like the arena admission: preset-bound/unknown artifacts
+    keep the default cutoff instead of a plain-certified row.
+    """
 
     default = GGUF_SELECTIVE_WEIGHT_ARENA_MAX_ALLOCATION_BYTES
     policies = backend_package_capability(
@@ -12462,7 +12911,10 @@ def _resolve_gguf_private_c1_weight_arena_max_allocation_bytes(
     )
     if not isinstance(policies, Mapping):
         return default
-    policy = policies.get((geometry, file_type_name))
+    if artifact_preset_key is None:
+        policy = policies.get((geometry, file_type_name))
+    else:
+        policy = policies.get((geometry, file_type_name, artifact_preset_key))
     if not isinstance(policy, Mapping):
         return default
     parsed = int(policy.get("max_allocation_bytes", default))
@@ -12569,6 +13021,50 @@ def _gguf_int8_bf16_full_attention_layer_indices(
         max_positions=max_positions,
     )
     return tuple(range(min(max(0, int(prefix)), int(full_attention_layers))))
+
+
+# The declared standard packed decode width: the widest shared-slot AR physical
+# width the backend advertises by default, and the width a resident session uses
+# when no INT8 layer constraint applies. A BF16 stack takes the standard batch
+# leaf on every full-attention layer, so one packed batch describes the whole
+# group at any advertised width.
+_GGUF_STANDARD_PACKED_DECODE_ROWS = 8
+
+
+def _gguf_packed_decode_max_rows(
+    *,
+    kv_storage_dtype: DType,
+    direct_rows: int,
+    retained_decode_kernel: object | None,
+    bf16_full_attention_layer_indices: tuple[int, ...],
+) -> int:
+    """Resolve the packed decode width one resident session may use.
+
+    Only a direct INT8 KV stack is capped, because only it can mix two
+    full-attention leaves in one packed batch. The direct INT8 batch leaf reads
+    retained INT8 planes on every full-attention layer it covers. A hybrid
+    layout keeps part of that stack in BF16, and a BF16 layer has no retained
+    planes, so it takes the standard batch leaf instead. One packed batch
+    cannot run both leaves, and the packed execution manifest names a single
+    full-attention route, so a hybrid layout is capped at one row. The session
+    then refuses the packed step, which ``step_batch_native`` already reports as
+    "no packed result" so the caller serializes the rows.
+
+    Without the cap the batch mixes the two leaves and the consistency check in
+    the packed decode raises instead of falling back.
+
+    A BF16 stack has no retained INT8 planes on any layer, so it never mixes
+    leaves and keeps the declared standard width. Capping it here would serialize
+    the packed AR decode of every BF16 server one row per step.
+    """
+
+    if kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD:
+        return max(1, int(_GGUF_STANDARD_PACKED_DECODE_ROWS))
+    if not callable(retained_decode_kernel):
+        return 1
+    if bf16_full_attention_layer_indices:
+        return 1
+    return max(1, int(direct_rows))
 
 
 def _gguf_int8_effective_scale_dtype(
@@ -12720,11 +13216,11 @@ def _q8_0_embedding_rows_to_bf16(
 
 
 def _gguf_q4k_selected_dual_dp4a_enabled() -> bool:
-    return _env_flag(_GGUF_Q4K_SELECTED_DUAL_DP4A_ENV, False)
+    return selected_adapter_enabled(_GGUF_Q4K_SELECTED_DUAL_DP4A_ENV)
 
 
 def _gguf_t16_selected_dp4a_enabled() -> bool:
-    return _env_flag(_GGUF_T16_SELECTED_DP4A_ENV, False)
+    return selected_adapter_enabled(_GGUF_T16_SELECTED_DP4A_ENV)
 
 
 def _gguf_q8_t16_decode_rowtile_all_for_rows(backend: str, *, rows: int) -> bool:
@@ -12819,6 +13315,42 @@ def _gguf_q5_t16_selected_qwen_tile8_enabled(backend: str | None) -> bool:
     )
 
 
+def _gguf_t16_selected_c1_variant(
+    backend: str | None,
+    quant_key: str,
+    *,
+    x_rows: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> str | None:
+    """Resolve a backend-qualified selected-expert single-token owner by shape.
+
+    In the selected-expert path ``x_rows == rows == selected_rows`` (top_k) for a
+    single token, and ``x_rows`` counts tokens only when a caller batches several
+    of them. The shape policy is the admission, not ``x_rows``: the row-to-x
+    mapping is the same one the direct selected owner uses, so this resolver only
+    requires the geometry the kernel supports.
+    """
+
+    if backend is None or int(rows) <= 0 or int(x_rows) <= 0:
+        return None
+    if int(rows) % int(x_rows) != 0:
+        return None
+    policies = backend_package_capability(
+        backend,
+        "GGUF_T16_SELECTED_C1_VARIANTS_BY_QUANT_SHAPE",
+        {},
+    )
+    if not isinstance(policies, Mapping):
+        return None
+    quant_policies = policies.get(str(quant_key), {})
+    if not isinstance(quant_policies, Mapping):
+        return None
+    variant = quant_policies.get((int(in_features), int(out_features)))
+    return variant if isinstance(variant, str) and variant else None
+
+
 @contextmanager
 def _gguf_t16_selected_q6_down_pairreuse_min_rows_scope(min_rows: int | None):
     """Apply a backend-certified Q6 selected-down reuse width floor."""
@@ -12847,7 +13379,7 @@ def _gguf_t16_ds4_prefill_enabled() -> bool:
 
 
 def _gguf_raw_selected_dp4a_enabled() -> bool:
-    return _env_flag(_GGUF_RAW_SELECTED_DP4A_ENV, False)
+    return selected_adapter_enabled(_GGUF_RAW_SELECTED_DP4A_ENV)
 
 
 def _gguf_dense_q8_dp4a_enabled() -> bool:
@@ -12981,18 +13513,27 @@ def _gguf_fp16_recurrent_state_enabled(
     *,
     backend: str | None = None,
     file_type_name: str | None = None,
+    artifact_preset_key: str | None = None,
 ) -> bool:
     """Resolve the frozen recurrent-state storage dtype.
 
-    An explicit environment value always wins and remains the rollback seam.
-    Otherwise the backend package admits only model file types with complete
-    correctness and same-scope performance evidence. Registered FP32 kernels
-    remain the strict-storage fallback; incompatible chain-journal/MTP paths
-    still fail closed (see docs/REFACTOR.md).
+    An explicit environment value always wins and remains the rollback seam
+    (a supported developer opt-out for every artifact identity). Otherwise the
+    backend package admits only model file types with complete correctness and
+    same-scope performance evidence, and only for artifacts the admission
+    pipeline bound as qualified plain controls: ``artifact_preset_key=None``
+    means the caller holds a loader-resolved plain identity, so the
+    stamp-membership default applies. A preset-bound (UD) or unknown-manifest
+    (sentinel) key never inherits the artifact-qualified default from the
+    stamp alone and resolves the generic strict FP32 fallback. Registered FP32
+    kernels remain the strict-storage fallback; incompatible chain-journal/MTP
+    paths still fail closed (see docs/REFACTOR.md).
     """
 
     if _env_value(_GGUF_FP16_RECURRENT_STATE_ENV) is not None:
         return _env_flag(_GGUF_FP16_RECURRENT_STATE_ENV, False)
+    if artifact_preset_key is not None:
+        return False
     if backend is None or file_type_name is None:
         return False
     defaults = backend_package_capability(
@@ -13017,20 +13558,17 @@ def _resolve_fp16_recurrent_state_flag(use_fp16_state: bool | None) -> bool:
 
 
 def _gdn_decode_gate_kernel(use_fp16_state: bool | None = None):
-    fn = (
-        qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16_fp16state
-        if _resolve_fp16_recurrent_state_flag(use_fp16_state)
-        else qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16
-    )
-    return fn
+    from hipengine.loading.qwen35_gguf_consumer_surface import resolve_gdn_operation_contract
+    contract = resolve_gdn_operation_contract(
+        "ar_decode_c1", "fp16" if _resolve_fp16_recurrent_state_flag(use_fp16_state) else "f32")
+    return globals()[contract.symbol.removeprefix("hipengine_")]
 
 
 def _gdn_decode_segments_kernel(use_fp16_state: bool | None = None):
-    return (
-        qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16_fp16state
-        if _resolve_fp16_recurrent_state_flag(use_fp16_state)
-        else qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16
-    )
+    from hipengine.loading.qwen35_gguf_consumer_surface import resolve_gdn_segments_contract
+    contract = resolve_gdn_segments_contract(
+        "fp16" if _resolve_fp16_recurrent_state_flag(use_fp16_state) else "f32")
+    return globals()[contract.symbol.removeprefix("hipengine_")]
 
 
 def _gdn_decode_order_state_rows_kernel(use_fp16_state: bool | None = None):
@@ -13502,24 +14040,10 @@ def _quantize_activation_q8_1(
     stream: int,
     runtime: HipRuntime,
 ) -> None:
-    if x_f32_ptr is None:
-        gguf_q4_k_quantize_bf16_q8_1(
-            x_ptr,
-            q8_1_workspace_ptr,
-            rows,
-            in_features,
-            stream=stream,
-            runtime=runtime,
-        )
-    else:
-        gguf_q4_k_quantize_f32_q8_1(
-            int(x_f32_ptr),
-            q8_1_workspace_ptr,
-            rows,
-            in_features,
-            stream=stream,
-            runtime=runtime,
-        )
+    input_dtype = "bf16" if x_f32_ptr is None else "f32"
+    fn = globals()[selected_input_adapter(input_dtype)]
+    fn(x_ptr if x_f32_ptr is None else int(x_f32_ptr), q8_1_workspace_ptr,
+       rows, in_features, stream=stream, runtime=runtime)
 
 
 def _try_launch_dense_q8_single_dp4a(
@@ -14110,6 +14634,13 @@ def _chunk_ranges(total: int, chunk_size: int, *, min_chunk_size: int = 1) -> tu
         return ((0, total),)
     ranges = [(start, min(start + size, total)) for start in range(0, total, size)]
     while len(ranges) >= 2 and ranges[-1][1] - ranges[-1][0] < min_rows:
+        # Borrow from the previous chunk instead of overflowing fixed-width
+        # token/hidden scratch by merging a short recurrent tail into it.
+        boundary = ranges[-1][1] - min_rows
+        if boundary - ranges[-2][0] >= min_rows and min_rows <= size:
+            ranges[-2] = (ranges[-2][0], boundary)
+            ranges[-1] = (boundary, ranges[-1][1])
+            break
         ranges[-2] = (ranges[-2][0], ranges[-1][1])
         ranges.pop()
     return tuple(ranges)
@@ -14142,44 +14673,119 @@ def _small_b_rowtile_chunks(rows: int, *, max_chunk: int = 6) -> tuple[int, ...]
     return tuple(chunks)
 
 
-def _qualified_no_mirror_int8_capability(
+def _direct_int8_execution_source(
+    capability: Mapping[str, object] | None,
+) -> Mapping[str, object] | None:
+    """Return the mapping that supplies a runnable direct-INT8 session's bounds.
+
+    ``admit`` runs the resolution itself, so its bounds come from the retained
+    measurement when one exists and from the declaration otherwise.  An explicit
+    ``diagnostic_override`` instead runs the *declared* contract, because the
+    rejected evidence row records that no width passed the quality gate -- not
+    that the kernels cannot execute one -- and it carries no decode variant at
+    all.  Under an override the declaration is therefore the only statement
+    about what the kernels implement.
+
+    Returns ``None`` when this resolution is not a deliberate direct-INT8
+    selection at all, including the engine's own ``fallback_bf16``.
+    """
+
+    if not isinstance(capability, Mapping):
+        return None
+    action = capability.get("runtime_action")
+    if action == "admit":
+        return capability
+    if action != "diagnostic_override":
+        return None
+    declaration = capability.get("declaration")
+    return declaration if isinstance(declaration, Mapping) else None
+
+
+def _mirror_free_direct_int8_capability(
     capability: Mapping[str, object] | None,
 ) -> bool:
-    """Return whether immutable model evidence admits persistent mirror-free INT8."""
+    """Return whether this resolution names a runnable mirror-free direct INT8 mode.
+
+    The storage, layout, and request fields come from the resolution; the bounds
+    come from whatever :func:`_direct_int8_execution_source` selects.
+    """
 
     if not isinstance(capability, Mapping):
         return False
-    evidence = capability.get("evidence")
+    source = _direct_int8_execution_source(capability)
+    if source is None:
+        return False
     requested = capability.get("requested")
     return bool(
-        isinstance(evidence, Mapping)
-        and isinstance(requested, Mapping)
-        and capability.get("status") == "qualified"
-        and capability.get("runtime_action") == "admit"
-        and capability.get("promotion_eligible") is True
+        isinstance(requested, Mapping)
         and capability.get("effective_kv_storage") == "int8_per_token_head"
         and requested.get("kv_storage") == "int8_per_token_head"
         and requested.get("storage_layout") == "uniform"
-        and evidence.get("persistent_bf16_mirror") is False
-        and int(evidence.get("max_direct_rows", 0)) >= 1
+        and source.get("persistent_bf16_mirror") is False
+        and int(source.get("max_direct_rows", 0) or 0) >= 1
     )
+
+
+def _admitted_no_mirror_int8_capability(
+    capability: Mapping[str, object] | None,
+) -> bool:
+    """Return whether kernel capability admits persistent mirror-free INT8.
+
+    Admission reads ``runtime_action``, which capability decides.  It does not
+    read ``promotion_eligible``: that flag means a retained measurement covers
+    this contract, which governs what may be claimed or promoted, not whether
+    the contract runs.  The operative bounds come from the measurement when one
+    exists and from the kernel declaration otherwise.
+
+    This is the strict predicate, and it governs allocation.  Route resolution
+    uses :func:`_runnable_no_mirror_int8_capability` instead.
+    """
+
+    if not isinstance(capability, Mapping):
+        return False
+    if capability.get("runtime_action") != "admit":
+        return False
+    return _mirror_free_direct_int8_capability(capability)
+
+
+def _runnable_no_mirror_int8_capability(
+    capability: Mapping[str, object] | None,
+) -> bool:
+    """Return whether this session may execute persistent mirror-free INT8.
+
+    Identical to :func:`_admitted_no_mirror_int8_capability` except that an
+    explicit ``diagnostic_override`` also counts.  A rejected artifact is a legal
+    reason for the engine to decline INT8 *selection*, and it does: the request
+    falls closed to BF16 unless the operator sets the documented override.  Once
+    the operator has forced INT8, the selection question is answered, and the
+    only remaining gate is whether the kernels execute the contract -- which the
+    declaration states and the registry lookup in
+    :func:`_qualified_kv_decode_batch_route` verifies.  Excluding the override
+    would leave a configuration no command could open.
+    """
+
+    return _mirror_free_direct_int8_capability(capability)
 
 
 def _qualified_kv_decode_batch_route(
     backend: str,
     capability: Mapping[str, object] | None,
 ) -> tuple[int, object | None]:
-    """Resolve an artifact-qualified exact decode variant and its physical width."""
+    """Resolve the runnable exact decode variant and its physical width.
 
-    if not _qualified_no_mirror_int8_capability(capability):
+    Reads the runnable predicate, not the admitted one: a session running under
+    an explicit diagnostic override is on direct INT8 and needs the same leaf.
+    """
+
+    if not _runnable_no_mirror_int8_capability(capability):
         return 1, None
     assert isinstance(capability, Mapping)
-    evidence = capability.get("evidence")
+    source = _direct_int8_execution_source(capability)
     requested = capability.get("requested")
-    if not isinstance(evidence, Mapping) or not isinstance(requested, Mapping):
+    if source is None or not isinstance(requested, Mapping):
         return 1, None
-    max_rows = max(1, int(evidence.get("max_direct_rows", 1)))
-    variant = evidence.get("decode_batch_variant")
+    max_rows = max(1, int(source.get("max_direct_rows", 1) or 1))
+    variant = source.get("decode_batch_variant")
     quant = requested.get("kv_storage")
     if not isinstance(variant, str) or not variant.strip() or not isinstance(quant, str):
         return 1, None
@@ -14286,6 +14892,112 @@ def _gguf_kv_attention_source(layout: Qwen35GGUFKVChunkLayout) -> str:
     return "bf16_mirror"
 
 
+def _validate_bound_blocks_against_capacity(
+    block_ids: tuple[int, ...],
+    *,
+    start_block_id: int,
+    page_capacity: int,
+) -> None:
+    """Validate request-local page ids against a whole pool's page range.
+
+    The per-chunk check in ``Qwen35GGUFKVChunkBacking.validate_bound_blocks``
+    is right for a pool that hands out one contiguous chunk. A pool that grows
+    by appending chunks keeps page ids stable and reaches every page through
+    its pointer tables, so its allocations must be validated against the pool
+    capacity instead.
+    """
+
+    blocks = tuple(int(block_id) for block_id in block_ids)
+    if not blocks:
+        raise ValueError("bound GGUF KV allocation must contain pages")
+    if len(set(blocks)) != len(blocks):
+        raise ValueError("bound GGUF KV allocation pages must be unique")
+    local_pages = tuple(block_id - int(start_block_id) for block_id in blocks)
+    if any(local_page < 0 or local_page >= int(page_capacity) for local_page in local_pages):
+        raise ValueError("GGUF KV allocation is outside its pool page range")
+
+
+class VmmPlaneBuffer:
+    """``DeviceBuffer``-compatible view over one plane of a stable VMM arena.
+
+    The view reports the logical payload (``pages * plane_page_bytes``) rather
+    than the granularity-aligned committed bytes, so the chunk invariant
+    ``nbytes % pages == 0`` holds and page strides stay exact while the arena's
+    physical commitment trails the reservation. ``close`` releases the owning
+    :class:`VirtualMemoryBuffer`, which unmaps every committed segment and frees
+    the address reservation exactly once. A caller that needs the physical
+    accounting reads :attr:`VirtualMemoryBuffer.committed_bytes` through
+    :attr:`owner`.
+    """
+
+    __slots__ = ("_owner", "_offset", "_nbytes")
+
+    def __init__(self, owner: VirtualMemoryBuffer, *, offset: int, nbytes: int) -> None:
+        self._owner = owner
+        self._offset = int(offset)
+        self._nbytes = int(nbytes)
+
+    @property
+    def ptr(self) -> int:
+        return int(self._owner.ptr) + self._offset
+
+    @property
+    def nbytes(self) -> int:
+        return self._nbytes
+
+    @property
+    def owner(self) -> VirtualMemoryBuffer:
+        return self._owner
+
+    def close(self) -> None:
+        self._owner.close()
+
+
+def _free_gguf_kv_plane_buffer(buffer: object, *, runtime: HipRuntime) -> None:
+    """Free one KV plane buffer, dispatching VMM views to their arena close."""
+
+    if isinstance(buffer, VmmPlaneBuffer):
+        buffer.close()
+        return
+    free(buffer, runtime=runtime)  # type: ignore[arg-type]
+
+
+def _gguf_kv_backing_arena_identity(backing: object) -> tuple[int, ...] | None:
+    """Stable device-arena identity for a GGUF KV chunk backing.
+
+    VMM growth rebuilds the backing object while reusing the same per-plane
+    :class:`VirtualMemoryBuffer` owners, so two backing objects over one arena
+    address the same physical pages. A plain ``hipMalloc`` chunk has no stable
+    identity beyond the object itself, so this returns ``None`` and the caller
+    keeps its strict object-identity check.
+    """
+
+    buffers = getattr(backing, "buffers", None)
+    if buffers is None:
+        return None
+    owners: list[int] = []
+    for buffer in buffers:
+        owner = getattr(buffer, "owner", None)
+        if owner is None:
+            return None
+        owners.append(int(owner.ptr))
+    return tuple(owners) if owners else None
+
+
+def _gguf_kv_backings_share_arena(first: object, second: object) -> bool:
+    """True when two chunk backings address the same stable device arena.
+
+    Object identity is still the fast path; the arena identity only widens the
+    check to a rebuilt VMM backing over the same owners. It does not relax any
+    other safety check.
+    """
+
+    if first is second:
+        return True
+    identity = _gguf_kv_backing_arena_identity(first)
+    return identity is not None and identity == _gguf_kv_backing_arena_identity(second)
+
+
 @dataclass(frozen=True)
 class Qwen35GGUFKVChunkBacking:
     """Payload and scale backing for one contiguous chunk of logical KV pages."""
@@ -14386,7 +15098,7 @@ class Qwen35GGUFKVChunkBacking:
         ]
         released = [buffer for buffer in released if buffer is not None]
         for buffer in released:
-            free(buffer, runtime=runtime)
+            _free_gguf_kv_plane_buffer(buffer, runtime=runtime)
         released_ids = {id(buffer) for buffer in released}
         object.__setattr__(
             self,
@@ -14524,6 +15236,257 @@ def _qwen35_gguf_kv_page_bytes(cfg: object, layout: Qwen35GGUFKVChunkLayout) -> 
     return int(page_bytes)
 
 
+def _qwen35_gguf_kv_plane_specs(
+    cfg: object,
+    layout: Qwen35GGUFKVChunkLayout,
+) -> tuple[tuple[str, int], ...]:
+    """Return ``(role, page_nbytes)`` for every device plane of the layout.
+
+    This is the single source of the plane role names and per-page byte sizes;
+    both the VMM allocator and the pointer-table builder derive their planes from
+    it, so a plane can never be reserved under one name and published under
+    another.
+    """
+
+    payload_elements = 256 * int(cfg.head_count_kv) * int(cfg.key_length)
+    scale_elements = int(
+        np.prod(
+            _qwen35_gguf_kv_scale_shape(
+                cfg, pages=1, granularity=layout.scale_granularity
+            )
+        )
+    )
+    mirror_layers = frozenset(layout.bf16_mirror_layer_indices)
+    specs: list[tuple[str, int]] = []
+    for layer_id, layer_storage in enumerate(layout.layer_storage_dtypes):
+        if layer_storage is None:
+            continue
+        key_dtype = DType.INT8 if layer_storage == DType.INT8_PER_TOKEN_HEAD else DType.BF16
+        value_dtype = (
+            DType.BF16
+            if layer_storage == DType.INT8_PER_TOKEN_HEAD and layout.int8_kv_value_bf16
+            else key_dtype
+        )
+        specs.append(
+            (f"layer{layer_id}.key_payload", payload_elements * key_dtype.itemsize)
+        )
+        specs.append(
+            (f"layer{layer_id}.value_payload", payload_elements * value_dtype.itemsize)
+        )
+        if layer_id in mirror_layers:
+            mirror_nbytes = payload_elements * DType.BF16.itemsize
+            specs.append((f"layer{layer_id}.bf16_mirror_key", mirror_nbytes))
+            specs.append((f"layer{layer_id}.bf16_mirror_value", mirror_nbytes))
+        if layer_storage == DType.INT8_PER_TOKEN_HEAD:
+            scale_nbytes = scale_elements * layout.scale_dtype.itemsize
+            specs.append((f"layer{layer_id}.key_scale", scale_nbytes))
+            specs.append((f"layer{layer_id}.value_scale", scale_nbytes))
+    return tuple(specs)
+
+
+def _qwen35_gguf_vmm_physical_bytes(
+    pages: int,
+    *,
+    plane_page_nbytes: Mapping[str, int],
+    granularity: int,
+) -> int:
+    """Granularity-aligned physical bytes a VMM arena commits for ``pages``.
+
+    Every plane rounds its own committed region up to the device allocation
+    granularity, so the physical commitment is the sum of the padded plane
+    payloads, not ``pages * page_bytes``. Used to price a prospective initial or
+    growth commitment before any physical memory is mapped.
+    """
+
+    count = max(0, int(pages))
+    gran = max(1, int(granularity))
+    return sum(
+        ((count * int(page_nbytes) + gran - 1) // gran) * gran
+        for page_nbytes in plane_page_nbytes.values()
+    )
+
+
+def _qwen35_gguf_kv_backing_planes(
+    backing: Qwen35GGUFKVChunkBacking,
+):
+    """Yield ``(role, buffer)`` for every non-empty plane of a chunk backing."""
+
+    for layer_id in range(len(backing.layout.layer_storage_dtypes)):
+        yield f"layer{layer_id}.key_payload", backing.full_key_caches[layer_id]
+        yield f"layer{layer_id}.value_payload", backing.full_value_caches[layer_id]
+        yield (
+            f"layer{layer_id}.bf16_mirror_key",
+            backing.full_bf16_mirror_key_caches[layer_id],
+        )
+        yield (
+            f"layer{layer_id}.bf16_mirror_value",
+            backing.full_bf16_mirror_value_caches[layer_id],
+        )
+        yield f"layer{layer_id}.key_scale", backing.full_k_scale_caches[layer_id]
+        yield f"layer{layer_id}.value_scale", backing.full_v_scale_caches[layer_id]
+
+
+def _build_qwen35_gguf_kv_backing_from_plane_views(
+    *,
+    cfg: object,
+    layout: Qwen35GGUFKVChunkLayout,
+    pages: int,
+    start_block_id: int,
+    plane_views: Mapping[str, object],
+) -> Qwen35GGUFKVChunkBacking:
+    """Assemble a chunk backing from caller-supplied per-plane buffers.
+
+    Scale metadata is rebuilt for ``pages`` so its tensor bounds are honest for
+    the committed capacity rather than for a larger reservation.
+    """
+
+    page_count = int(pages)
+    device = Device("hip", 0)
+    scale_shape = _qwen35_gguf_kv_scale_shape(
+        cfg, pages=page_count, granularity=layout.scale_granularity
+    )
+    mirror_layers = frozenset(layout.bf16_mirror_layer_indices)
+    key_caches: list[object | None] = []
+    value_caches: list[object | None] = []
+    mirror_key_caches: list[object | None] = []
+    mirror_value_caches: list[object | None] = []
+    k_scale_caches: list[object | None] = []
+    v_scale_caches: list[object | None] = []
+    scale_metadata: list[KVScaleMetadata | None] = []
+    buffers: list[object] = []
+    for layer_id, layer_storage in enumerate(layout.layer_storage_dtypes):
+        if layer_storage is None:
+            key_caches.append(None)
+            value_caches.append(None)
+            mirror_key_caches.append(None)
+            mirror_value_caches.append(None)
+            k_scale_caches.append(None)
+            v_scale_caches.append(None)
+            scale_metadata.append(None)
+            continue
+        key_view = plane_views[f"layer{layer_id}.key_payload"]
+        value_view = plane_views[f"layer{layer_id}.value_payload"]
+        key_caches.append(key_view)
+        value_caches.append(value_view)
+        buffers.append(key_view)
+        buffers.append(value_view)
+        if layer_id in mirror_layers:
+            mirror_key = plane_views[f"layer{layer_id}.bf16_mirror_key"]
+            mirror_value = plane_views[f"layer{layer_id}.bf16_mirror_value"]
+            mirror_key_caches.append(mirror_key)
+            mirror_value_caches.append(mirror_value)
+            buffers.append(mirror_key)
+            buffers.append(mirror_value)
+        else:
+            mirror_key_caches.append(None)
+            mirror_value_caches.append(None)
+        if layer_storage == DType.INT8_PER_TOKEN_HEAD:
+            k_scale = plane_views[f"layer{layer_id}.key_scale"]
+            v_scale = plane_views[f"layer{layer_id}.value_scale"]
+            k_scale_caches.append(k_scale)
+            v_scale_caches.append(v_scale)
+            buffers.append(k_scale)
+            buffers.append(v_scale)
+            scale_metadata.append(
+                KVScaleMetadata(
+                    k_scale=Tensor.from_handle(
+                        k_scale.ptr, scale_shape, layout.scale_dtype, device
+                    ),
+                    v_scale=Tensor.from_handle(
+                        v_scale.ptr, scale_shape, layout.scale_dtype, device
+                    ),
+                    scale_dtype=layout.scale_dtype,
+                    granularity=layout.scale_granularity,
+                )
+            )
+        else:
+            k_scale_caches.append(None)
+            v_scale_caches.append(None)
+            scale_metadata.append(None)
+    return Qwen35GGUFKVChunkBacking(
+        layout=layout,
+        start_block_id=int(start_block_id),
+        pages=page_count,
+        full_key_caches=tuple(key_caches),
+        full_value_caches=tuple(value_caches),
+        full_bf16_mirror_key_caches=tuple(mirror_key_caches),
+        full_bf16_mirror_value_caches=tuple(mirror_value_caches),
+        full_k_scale_caches=tuple(k_scale_caches),
+        full_v_scale_caches=tuple(v_scale_caches),
+        full_kv_scale_metadata=tuple(scale_metadata),
+        buffers=tuple(buffers),
+    )
+
+
+def _allocate_qwen35_gguf_kv_chunk_vmm(
+    runner: Qwen35GGUFFullStackRunner,
+    *,
+    runtime: HipRuntime,
+    layout: Qwen35GGUFKVChunkLayout,
+    initial_pages: int,
+    max_pages: int,
+    start_block_id: int = 0,
+) -> tuple[
+    Qwen35GGUFKVChunkBacking,
+    dict[str, VirtualMemoryBuffer],
+    dict[str, int],
+]:
+    """Reserve one stable VMM arena per plane and commit only ``initial_pages``.
+
+    Returns the initial backing, the per-role arena owner, and each plane's
+    per-page byte size. Every plane's virtual address range is reserved for
+    ``max_pages`` so later growth maps physical memory into the same base and no
+    existing page pointer moves. Only the initial committed granules are
+    physical device memory; the reservation is not.
+    """
+
+    if runner.weights is None:
+        raise RuntimeError("GGUF full-stack runner is closed")
+    cfg = runner.weights.config
+    if len(layout.layer_storage_dtypes) != len(cfg.layer_types):
+        raise ValueError("GGUF KV chunk layout does not match the model layer count")
+    initial = int(initial_pages)
+    maximum = int(max_pages)
+    if initial <= 0 or maximum < initial:
+        raise ValueError("VMM KV arena requires 0 < initial_pages <= max_pages")
+    specs = _qwen35_gguf_kv_plane_specs(cfg, layout)
+    plane_owners: dict[str, VirtualMemoryBuffer] = {}
+    plane_page_nbytes: dict[str, int] = {}
+    plane_views: dict[str, VmmPlaneBuffer] = {}
+    owners: list[VirtualMemoryBuffer] = []
+    try:
+        for role, page_nbytes in specs:
+            owner = VirtualMemoryBuffer.reserve(
+                int(page_nbytes) * maximum,
+                runtime=runtime,
+            )
+            owners.append(owner)
+            owner.commit_to(int(page_nbytes) * initial)
+            plane_owners[role] = owner
+            plane_page_nbytes[role] = int(page_nbytes)
+            plane_views[role] = VmmPlaneBuffer(
+                owner, offset=0, nbytes=int(page_nbytes) * initial
+            )
+        backing = _build_qwen35_gguf_kv_backing_from_plane_views(
+            cfg=cfg,
+            layout=layout,
+            pages=initial,
+            start_block_id=start_block_id,
+            plane_views=plane_views,
+        )
+        expected_page_bytes = _qwen35_gguf_kv_page_bytes(cfg, layout)
+        if backing.page_bytes != expected_page_bytes:
+            raise RuntimeError("GGUF VMM KV arena byte accounting drift")
+    except BaseException:
+        for owner in reversed(owners):
+            try:
+                owner.close()
+            except Exception:  # pragma: no cover - defensive
+                pass
+        raise
+    return backing, plane_owners, plane_page_nbytes
+
+
 def _allocate_qwen35_gguf_kv_chunk(
     runner: Qwen35GGUFFullStackRunner,
     *,
@@ -14578,15 +15541,17 @@ def _allocate_qwen35_gguf_kv_chunk(
                 else key_dtype
             )
             key_cache = malloc(payload_elements * key_dtype.itemsize, runtime=runtime)
+            buffers.append(key_cache)
             value_cache = malloc(payload_elements * value_dtype.itemsize, runtime=runtime)
-            buffers.extend((key_cache, value_cache))
+            buffers.append(value_cache)
             key_caches.append(key_cache)
             value_caches.append(value_cache)
             if layer_id in mirror_layers:
                 mirror_nbytes = payload_elements * DType.BF16.itemsize
                 mirror_key = malloc(mirror_nbytes, runtime=runtime)
+                buffers.append(mirror_key)
                 mirror_value = malloc(mirror_nbytes, runtime=runtime)
-                buffers.extend((mirror_key, mirror_value))
+                buffers.append(mirror_value)
                 mirror_key_caches.append(mirror_key)
                 mirror_value_caches.append(mirror_value)
             else:
@@ -14594,8 +15559,9 @@ def _allocate_qwen35_gguf_kv_chunk(
                 mirror_value_caches.append(None)
             if layer_storage == DType.INT8_PER_TOKEN_HEAD:
                 k_scale = malloc(scale_nbytes, runtime=runtime)
+                buffers.append(k_scale)
                 v_scale = malloc(scale_nbytes, runtime=runtime)
-                buffers.extend((k_scale, v_scale))
+                buffers.append(v_scale)
                 k_scale_caches.append(k_scale)
                 v_scale_caches.append(v_scale)
                 scale_metadata.append(
@@ -14644,7 +15610,7 @@ def _free_qwen35_gguf_kv_chunk(
     runtime: HipRuntime,
 ) -> None:
     for buffer in reversed(backing.buffers):
-        free(buffer, runtime=runtime)
+        _free_gguf_kv_plane_buffer(buffer, runtime=runtime)
 
 
 def _qwen35_gguf_kv_chunk_layout(
@@ -14797,6 +15763,15 @@ def _gguf_retained_prefill_block_table_host(
     return np.ascontiguousarray(np.tile(table_row, (row_count, 1)))
 
 
+def _check_retained_prefix_format(metadata: object, *, value_bf16: bool) -> None:
+    if value_bf16:
+        raise NotImplementedError("retained prefix prefill requires INT8 K and V")
+    if metadata.granularity not in {"per_token_head", "hadamard_group32"}:
+        raise NotImplementedError(
+            f"retained prefix prefill has no reader for {metadata.granularity}"
+        )
+
+
 def _gguf_slot_local_prefill_cache_views(
     session: object,
     layer_scratch: object,
@@ -14806,6 +15781,9 @@ def _gguf_slot_local_prefill_cache_views(
 ):
     """Bind slot-local oracle caches without double-applying paged INT8 offsets."""
 
+    if layer_scratch.prefill_spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD:
+        # Direct retained attention already carries the physical block table.
+        return layer_scratch
     if direct_int8:
         retained_spans = getattr(layer_scratch, "retained_append_spans", None)
         if (
@@ -14838,6 +15816,279 @@ def _gguf_slot_local_prefill_cache_views(
         layer_scratch,
         key_cache=key_cache,
         value_cache=value_cache,
+    )
+
+
+def _gguf_gapped_gather_prefill_enabled() -> bool:
+    """Whether gapped device-KV slots may gather onto the slot-local route.
+
+    A gapped placement historically dropped the whole packed slab onto the
+    native paged prefill kernel, which is a large per-token multiple of the
+    AOTriton slot-local route. With the gather enabled, a gapped BF16 slot
+    swaps its identity spans for spans carrying the session's real
+    chunk-local block table, so the paged KV write, the native fallback and
+    the head-major gather all address the pool pages and AOTriton reads the
+    same dense head-major buffers the contiguous route uses. The env is the
+    rollback path to the packed fallback (see docs/REFACTOR.md).
+    """
+
+    return _env_flag(_GGUF_GAPPED_GATHER_ENV, True)
+
+
+def _gguf_gapped_slot_local_fast_route_available(
+    *,
+    backend: str,
+    context_tokens: int,
+    kv_width: int,
+) -> bool:
+    """Whether a gapped prefill of this size gathers onto the fast route.
+
+    The gather needs the env flag, a registered head-major copy kernel, and
+    a head-major buffer within the validated token/byte allocation class
+    (buffers are demand-sized per session, so only the request's own context
+    has to fit the class). When any check fails, a gapped slot falls back to
+    the native paged prefill kernel and the admission cost guard keeps
+    protecting long suffixes (see ``hipengine/generation/qwen35_gguf.py``).
+    """
+
+    if not _gguf_gapped_gather_prefill_enabled():
+        return False
+    # A contiguous cache can opt out of head-major layout as an optimization.
+    # A gapped cache needs the gather to run the same attention route at all.
+    if (
+        _env_value(_GGUF_AOTRITON_HEAD_MAJOR_KV_ENV) is not None
+        and not _env_flag(_GGUF_AOTRITON_HEAD_MAJOR_KV_ENV, False)
+    ):
+        return False
+    if resolve(
+        backend=str(backend),
+        layer="paged_kv_copy",
+        quant="bf16",
+        variant="head_major_spans",
+        missing="none",
+    ) is None:
+        return False
+    context_tokens = int(context_tokens)
+    kv_width = int(kv_width)
+    if context_tokens <= 0 or kv_width <= 0:
+        return False
+    max_tokens = _env_int(
+        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV,
+        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_DEFAULT,
+    )
+    if max_tokens <= 0 or context_tokens > max_tokens:
+        return False
+    per_buffer_bytes = context_tokens * kv_width * DType.BF16.itemsize
+    max_bytes = _env_int(
+        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV,
+        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_DEFAULT,
+    )
+    return max_bytes > 0 and 2 * per_buffer_bytes <= max_bytes
+
+
+def _gguf_gapped_slot_head_major_scratch(
+    session: object,
+    layer_scratch,
+    *,
+    context_tokens: int,
+    kv_width: int,
+    runtime: HipRuntime,
+):
+    """Admit demand-sized head-major gather buffers for one gapped slot.
+
+    Resident sessions at a model's full context class (262,144 positions and
+    up) exceed the validated head-major allocation class, so their bulk
+    workspace carries no head-major buffers and the scratch's own admission is
+    False. The gather instead grows one per-session pair here, bucketed to the
+    context the session actually prefills and capped by the same validated
+    class limits; a context past the class keeps the native spans fallback.
+    """
+
+    if bool(getattr(layer_scratch, "head_major_kv_admitted", False)):
+        return layer_scratch
+    context_tokens = int(context_tokens)
+    kv_width = int(kv_width)
+    if not _gguf_gapped_slot_local_fast_route_available(
+        backend=str(getattr(getattr(session, "runner", None), "backend", "")),
+        context_tokens=context_tokens,
+        kv_width=kv_width,
+    ):
+        return layer_scratch
+    bucket = 4096
+    capacity = min(
+        ((context_tokens + bucket - 1) // bucket) * bucket,
+        _env_int(
+            _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV,
+            _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_DEFAULT,
+        ),
+        _env_int(
+            _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV,
+            _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_DEFAULT,
+        ) // (2 * kv_width * DType.BF16.itemsize),
+    )
+    cached = getattr(session, "_gapped_head_major_cache", None)
+    if cached is not None and int(cached[0]) >= capacity:
+        key_buffer, value_buffer = cached[1], cached[2]
+    else:
+        per_buffer_bytes = capacity * kv_width * DType.BF16.itemsize
+        key_buffer = None
+        try:
+            key_buffer = malloc(per_buffer_bytes, runtime=runtime)
+            value_buffer = malloc(per_buffer_bytes, runtime=runtime)
+        except (HipError, MemoryError):
+            if key_buffer is not None:
+                free(key_buffer, runtime=runtime)
+            return layer_scratch
+        if cached is not None:
+            free(cached[2], runtime=runtime)
+            free(cached[1], runtime=runtime)
+        session._gapped_head_major_cache = (capacity, key_buffer, value_buffer)  # type: ignore[attr-defined]
+    return replace(
+        layer_scratch,
+        head_major_key_cache=key_buffer,
+        head_major_value_cache=value_buffer,
+        head_major_kv_capacity=int(capacity),
+        head_major_kv_admitted=True,
+    )
+
+
+def _gguf_gapped_slot_local_prefill_admitted(
+    *,
+    direct_int8_prefill: bool,
+    sessions: Sequence[object],
+    contiguous_base_rows: Sequence[int | None],
+) -> bool:
+    """Whether a gapped slab may keep the slot-local executor via gather.
+
+    Only BF16-KV slabs without the direct-INT8 prefill route qualify: the
+    direct-INT8 oracle path keeps its own pointer/table contract, and an
+    INT8-retained session's mirror/retained double-write spans are not
+    swapped by the gather, so those populations keep the packed fallback.
+    """
+
+    if direct_int8_prefill:
+        return False
+    if not _gguf_gapped_gather_prefill_enabled():
+        return False
+    for session, base_row in zip(sessions, contiguous_base_rows, strict=True):
+        if base_row is not None:
+            continue
+        storage = getattr(session, "kv_storage_dtype", DType.BF16)
+        if storage != DType.BF16:
+            return False
+    return True
+
+
+def _gguf_gapped_slot_block_table_rows(session: object, *, rows: int) -> np.ndarray:
+    """Tile one session's chunk-local device-KV page ids per query row.
+
+    The slot-local bulk scratch carries an identity block table (its spans
+    plus the rebased cache view are what make contiguous sessions readable).
+    A gapped session instead needs one equal real block table per query row,
+    which is the shape contract every parent paged kernel validates. This is
+    the same scheduler page table the INT8 retained prefill write tiles.
+    """
+
+    rows = int(rows)
+    if rows <= 0:
+        raise ValueError("gapped slot block table rows must be positive")
+    allocation = getattr(session, "_device_kv_allocation", None)
+    if allocation is None:
+        raise RuntimeError("gapped slot-local prefill requires a bound device KV allocation")
+    block_ids = tuple(int(block_id) for block_id in allocation.block_ids)
+    if not block_ids:
+        raise RuntimeError("GGUF device KV allocation must contain pages")
+    return _gguf_retained_prefill_block_table_host(
+        allocation,
+        rows=rows,
+        blocks_per_row=len(block_ids),
+    )
+
+
+def _gguf_gapped_slot_block_table(
+    session: object,
+    *,
+    rows: int,
+    device: object,
+    runtime: HipRuntime,
+) -> Tensor:
+    """Return the session's tiled gapped block table as a device tensor.
+
+    The (rows, blocks) INT32 buffer is cached on the session keyed by the
+    bound allocation and row count, so a multi-chunk prefill uploads it once
+    per chunk geometry instead of once per layer. It is released with the
+    session's other preflight buffers (see ``_release_int8_prefill_oracle_buffers``).
+    """
+
+    allocation = getattr(session, "_device_kv_allocation", None)
+    if allocation is None:
+        raise RuntimeError("gapped slot-local prefill requires a bound device KV allocation")
+    signature = (
+        tuple(int(block_id) for block_id in allocation.block_ids),
+        int(allocation.chunk_start_block_id),
+        int(rows),
+    )
+    cached = getattr(session, "_gapped_slot_block_table_cache", None)
+    if cached is not None and cached[0] == signature:
+        buffer = cached[1]
+    else:
+        if cached is not None:
+            free(cached[1], runtime=runtime)
+        table_host = np.ascontiguousarray(
+            _gguf_gapped_slot_block_table_rows(session, rows=rows)
+        )
+        buffer = malloc(table_host.nbytes, runtime=runtime)
+        copy_host_to_device(
+            buffer,
+            host_array_ptr(table_host),
+            table_host.nbytes,
+            runtime=runtime,
+        )
+        session._gapped_slot_block_table_cache = (signature, buffer)  # type: ignore[attr-defined]
+    return Tensor.from_handle(
+        buffer.ptr,
+        (int(rows), int(signature[0].__len__())),
+        DType.INT32,
+        device,
+    )
+
+
+def _gguf_gapped_slot_local_prefill_scratch(layer_scratch, *, block_table: Tensor):
+    """Swap a gapped slot's identity spans for real block-table spans.
+
+    The cache pointers stay at the pool chunk base (no contiguous rebase
+    exists for a gapped allocation); the paged KV write, the native fallback
+    kernel and the head-major gather all walk the block table instead.
+    ``head_major_kv_dense_prefix`` must be False so the head-major copy takes
+    the block-table-walking variant rather than the identity-addressing one.
+    """
+
+    start = int(layer_scratch.start)
+    rows = int(layer_scratch.rows)
+    end = start + rows
+    positions = layer_scratch.positions_tensor
+    context_counts = layer_scratch.context_counts_tensor
+    append_spans = KVLiveSpans.paged_uniform(
+        block_table=block_table,
+        live_counts=positions,
+        max_live_count=end - 1,
+        storage_dtype=DType.BF16,
+        row_positions=positions,
+        span_role="prefill",
+    )
+    prefill_spans = KVLiveSpans.paged_uniform(
+        block_table=block_table,
+        live_counts=context_counts,
+        max_live_count=end,
+        storage_dtype=DType.BF16,
+        row_positions=positions,
+        span_role="prefill",
+    )
+    return replace(
+        layer_scratch,
+        append_spans=append_spans,
+        prefill_spans=prefill_spans,
+        head_major_kv_dense_prefix=False,
     )
 
 
@@ -14895,6 +16146,70 @@ def _gguf_device_kv_copy_segments(
     return tuple(segments)
 
 
+class _GGUFPrefixSnapshotArenaPool:
+    """Recycle whole snapshot arenas so a steady-state capture is memcpy-only.
+
+    A capture used to ``malloc`` one buffer per GDN conv and recurrent state -
+    ~54 allocations on a 27-GDN-layer model - plus a device sync, and paid that
+    on every eligible turn whether or not the snapshot was ever reused. The
+    state geometry is identical for every snapshot of a given model, so the
+    arena from an evicted snapshot fits the next capture exactly. Retaining a
+    few makes the common capture zero-allocation; the cost was never the
+    copying.
+    """
+
+    def __init__(self, runtime: HipRuntime, *, max_retained: int = 4) -> None:
+        self.runtime = runtime
+        self.max_retained = max(0, int(max_retained))
+        self._free: dict[int, list[DeviceMemoryArena]] = {}
+        self.acquires = 0
+        self.arena_allocations = 0
+        self.closed = False
+
+    def acquire(self, nbytes: int) -> DeviceMemoryArena:
+        if self.closed:
+            raise RuntimeError("prefix snapshot arena pool is closed")
+        capacity = max(1, int(nbytes))
+        self.acquires += 1
+        bucket = self._free.get(capacity)
+        if bucket:
+            arena = bucket.pop()
+            arena.rewind()
+            return arena
+        self.arena_allocations += 1
+        return DeviceMemoryArena.create(capacity, runtime=self.runtime)
+
+    def release(self, arena: DeviceMemoryArena) -> None:
+        """Take an arena back, or free it when the retention budget is full."""
+
+        if self.closed or arena.closed:
+            if not arena.closed:
+                arena.close()
+            return
+        bucket = self._free.setdefault(int(arena.capacity_bytes), [])
+        if len(bucket) >= self.max_retained:
+            arena.close()
+            return
+        arena.rewind()
+        bucket.append(arena)
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        for bucket in self._free.values():
+            for arena in bucket:
+                arena.close()
+        self._free.clear()
+
+    def stats(self) -> dict[str, int]:
+        return {
+            "acquires": int(self.acquires),
+            "arena_allocations": int(self.arena_allocations),
+            "retained_arenas": int(sum(len(b) for b in self._free.values())),
+        }
+
+
 @dataclass
 class Qwen35GGUFPrefixStateSnapshot:
     """Cache-owned device snapshot for one exact GGUF hybrid-state boundary."""
@@ -14909,6 +16224,10 @@ class Qwen35GGUFPrefixStateSnapshot:
     layer_conv_states: tuple[DeviceBuffer | None, ...]
     layer_recurrent_states: tuple[DeviceBuffer | None, ...]
     closed: bool = False
+    # When the state came from one pooled arena, the views are non-owning and
+    # the arena is returned to the pool on close instead of freed per buffer.
+    arena: DeviceMemoryArena | None = None
+    arena_pool: "_GGUFPrefixSnapshotArenaPool | None" = None
 
     @property
     def nbytes(self) -> int:
@@ -14921,9 +16240,19 @@ class Qwen35GGUFPrefixStateSnapshot:
     def close(self) -> None:
         if self.closed:
             return
-        for buffer in reversed((*self.layer_conv_states, *self.layer_recurrent_states)):
-            if buffer is not None:
-                free(buffer, runtime=self.runtime)
+        if self.arena is not None:
+            # Arena-backed: the per-layer buffers are views into one owning
+            # allocation, so freeing them individually would be a double free.
+            if self.arena_pool is not None:
+                self.arena_pool.release(self.arena)
+            else:
+                self.arena.close()
+        else:
+            for buffer in reversed(
+                (*self.layer_conv_states, *self.layer_recurrent_states)
+            ):
+                if buffer is not None:
+                    free(buffer, runtime=self.runtime)
         self.closed = True
 
 
@@ -14939,9 +16268,9 @@ def _normalize_external_dms_prefill_mode(value: str) -> str:
 
 def _normalize_external_dms_decision_mode(value: str) -> str:
     mode = str(value).strip().lower().replace("-", "_")
-    if mode not in {"sidecar", "no_evict"}:
+    if mode not in {"sidecar", "no_evict", "diagnostic"}:
         raise ValueError(
-            "dms_decision_mode must be one of sidecar, no_evict; "
+            "dms_decision_mode must be one of sidecar, no_evict, diagnostic; "
             f"got {value!r}"
         )
     return mode
@@ -14960,6 +16289,7 @@ class _ExternalDMSDevicePrefillCollector:
         backend: str,
         runtime,
         decision_mode: str = "sidecar",
+        diagnostic_injection=None,
     ) -> None:
         from hipengine.kvcache.dms_device import DMSExternalLinearDeviceProjector
 
@@ -14972,6 +16302,7 @@ class _ExternalDMSDevicePrefillCollector:
         self.input_stage = str(source.config.input_stage)
         self.token_count = int(token_count)
         self.decision_mode = _normalize_external_dms_decision_mode(decision_mode)
+        self._diagnostic_injection = diagnostic_injection
         self._runtime = runtime
         self._projector = (
             DMSExternalLinearDeviceProjector(source, backend=backend)
@@ -14995,6 +16326,13 @@ class _ExternalDMSDevicePrefillCollector:
         )
         if self.decision_mode == "no_evict":
             runtime.memset(self._decisions.ptr, 0, decision_bytes)
+        elif self.decision_mode == "diagnostic":
+            if self._diagnostic_injection is None:
+                raise ValueError("diagnostic DMS mode requires a sealed injection")
+            layer_major = np.ascontiguousarray(
+                self._diagnostic_injection.eviction_mask.transpose(1, 0, 2), dtype=np.uint8
+            )
+            copy_host_to_device(self._decisions, host_array_ptr(layer_major), layer_major.nbytes, runtime=runtime)
         self._next = np.zeros(source.config.num_layers, dtype=np.int32)
         self._closed = False
 
@@ -15047,6 +16385,8 @@ class _ExternalDMSDevicePrefillCollector:
             self.token_count,
             self.num_kv_heads,
         )
+        if self.decision_mode == "diagnostic":
+            return np.asarray(self._diagnostic_injection.eviction_mask, dtype=bool)
         if (
             self.decision_mode == "sidecar"
             and self.source.config.prefill_selection_mode == "exact_budget"
@@ -15121,6 +16461,8 @@ class Qwen35GGUFResidentSession:
     require_cached_build: bool = False
     backend: str = "auto"
     shared_runner: Qwen35GGUFFullStackRunner | None = None
+    execution_routes: tuple[str, ...] = ("eager",)
+    native_sampler_algorithm: str = "sorted"
     max_sequence_length: int | None = None
     max_batch_size: int = 1
     use_expert_sidecar: bool = False
@@ -15149,6 +16491,7 @@ class Qwen35GGUFResidentSession:
     dms_metadata_path: str | Path | None = None
     dms_max_new_tokens: int = 256
     dms_decision_mode: str = "sidecar"
+    dms_diagnostic_injection_path: str | Path | None = None
     # "dense_pool" (default): the pre-existing route — a full dense BF16 KV
     # pool backs prefill and a finalize-time layerwise pack moves it to the
     # compact store. "layer_outer": the 2026-09-07 review target-4 route —
@@ -15169,6 +16512,7 @@ class Qwen35GGUFResidentSession:
     _logits_buf: object | None = field(default=None, init=False)
     _native_cu_seqlens_buf: object | None = field(default=None, init=False)
     _native_state_indices_buf: object | None = field(default=None, init=False)
+    _native_rows_ready: bool = field(default=False, init=False, repr=False)
     _native_token_ids_host: np.ndarray | None = field(default=None, init=False)
     _lm_block_values: object | None = field(default=None, init=False)
     _lm_block_indices: object | None = field(default=None, init=False)
@@ -15314,7 +16658,10 @@ class Qwen35GGUFResidentSession:
     _prefill_hidden_b: object | None = field(default=None, init=False)
     _bulk_prefill_scratch: object | None = field(default=None, init=False)
     _prefill_f16_staging_buf: object | None = field(default=None, init=False)
+    _iq_dense_mmq_buf: object | None = field(default=None, init=False)
     _q6_integer_mmq_library: object | None = field(default=None, init=False)
+    _iq_dense_mmq_library: object | None = field(default=None, init=False)
+    _iq_dense_mmq_producer_library: object | None = field(default=None, init=False)
     _q6_f16_rocblas_prefill_library: object | None = field(default=None, init=False)
     _q6_f16_rocblas: Rocblas | None = field(default=None, init=False)
     _q8_mmq_prefill_library: object | None = field(default=None, init=False)
@@ -15328,6 +16675,18 @@ class Qwen35GGUFResidentSession:
     _prefill_aotriton_input_ready_event: int = field(default=0, init=False)
     _prefill_aotriton_output_ready_event: int = field(default=0, init=False)
     _int8_prefill_oracle_buffers: dict[int, tuple[DeviceBuffer, DeviceBuffer]] = field(default_factory=dict, init=False)
+    # Session-lifetime tiled block table for the gapped slot-local prefill
+    # gather: (block_ids, chunk_start_block_id, rows) signature plus one
+    # (rows, blocks) INT32 device buffer. Rebuilt only when the bound
+    # allocation or the bulk-scratch row capacity changes.
+    _gapped_slot_block_table_cache: tuple[tuple[tuple[int, ...], int, int], DeviceBuffer] | None = field(default=None, init=False)
+    # Demand-sized head-major K/V pair for the same gather path. Resident
+    # sessions built at a model's full context class (e.g. 262,144 positions)
+    # exceed the validated 64K head-major allocation class, so the bulk
+    # workspace has no head-major buffers; the gather instead grows one pair
+    # here, bucketed to the contexts the session actually prefills and capped
+    # by the same validated class limits.
+    _gapped_head_major_cache: tuple[int, DeviceBuffer, DeviceBuffer] | None = field(default=None, init=False)
     # Monotonic while-live peaks of the oracle owners, sampled in
     # prefill_batch_native's finally before the release (see the comment
     # there): scrape-based polling cannot observe these buffers mid-call.
@@ -15355,7 +16714,9 @@ class Qwen35GGUFResidentSession:
     _host_token_embedding_cache: dict[int, np.ndarray] = field(default_factory=dict, init=False)
     host_token_embedding_enabled: bool = field(default=False, init=False)
     host_token_embedding_reason: str | None = field(default=None, init=False)
-    packed_decode_max_rows: int = field(default=8, init=False)
+    packed_decode_max_rows: int = field(
+        default=_GGUF_STANDARD_PACKED_DECODE_ROWS, init=False
+    )
     _retained_decode_kernel: object | None = field(default=None, init=False, repr=False)
     small_weight_arena_enabled: bool = field(default=False, init=False)
     small_weight_arena_reason: str = field(default="disabled", init=False)
@@ -15441,12 +16802,28 @@ class Qwen35GGUFResidentSession:
     _dms_decode_seen: set[int] = field(default_factory=set, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        from hipengine.loading.qwen35_gguf_execution import execution_operations
+        if "ar_decode_native_rows" in execution_operations(self.execution_routes):
+            if not 2 <= int(self.max_batch_size) <= 8:
+                raise ValueError("ar_decode_native_rows capacity must be within [2, 8] before allocation")
+            if self.use_expert_sidecar or self.token_embedding_placement == "host":
+                raise ValueError("ar_decode_native_rows has no pre-certified host/sidecar adapter")
+            if self.kv_policy is not None and DType.parse(self.kv_policy.storage_dtype) != DType.BF16:
+                raise ValueError("ar_decode_native_rows requires BF16 KV before allocation")
         self.dms_decision_mode = _normalize_external_dms_decision_mode(
             self.dms_decision_mode
         )
         self.dms_prefill_mode = _normalize_external_dms_prefill_mode(
             getattr(self, "dms_prefill_mode", "dense_pool")
         )
+        if self.dms_diagnostic_injection_path is not None and self.dms_decision_mode != "diagnostic":
+            raise ValueError(
+                "dms_diagnostic_injection_path requires dms_decision_mode=diagnostic"
+            )
+        if self.dms_decision_mode == "diagnostic" and self.dms_diagnostic_injection_path is None:
+            raise ValueError(
+                "dms_decision_mode=diagnostic requires dms_diagnostic_injection_path"
+            )
         if self.dms_prefill_mode == "layer_outer" and self.dms_metadata_path is None:
             raise ValueError(
                 "dms_prefill_mode=layer_outer requires external DMS metadata"
@@ -15479,6 +16856,7 @@ class Qwen35GGUFResidentSession:
         )
         model_geometry = None
         model_file_type_name = None
+        model_artifact_preset_key = None
         token_embedding_type_name = None
         small_weight_policies = backend_package_capability(
             resolved_backend,
@@ -15490,14 +16868,13 @@ class Qwen35GGUFResidentSession:
             "GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES",
             {},
         )
+        arena_policies_present = (
+            isinstance(small_weight_policies, Mapping) and small_weight_policies
+        ) or (isinstance(decode_scratch_policies, Mapping) and decode_scratch_policies)
         if (
             host_embedding
             or mapped_host_embedding
-            or (isinstance(small_weight_policies, Mapping) and small_weight_policies)
-            or (
-                isinstance(decode_scratch_policies, Mapping)
-                and decode_scratch_policies
-            )
+            or arena_policies_present
         ):
             model_info = GGUFReader(self.model_path).info
             model_geometry = GGUFModelGeometry.from_config(
@@ -15508,6 +16885,13 @@ class Qwen35GGUFResidentSession:
                 if model_info.file_type_name is None
                 else str(model_info.file_type_name)
             )
+            if arena_policies_present:
+                # Stamp-keyed arena admissions bind the actual artifact
+                # qualification (pinned plain control / UD preset / unknown
+                # manifest sentinel), never the header stamp alone.
+                model_artifact_preset_key = _gguf_model_info_artifact_preset_key(
+                    model_info
+                )
             if host_embedding or mapped_host_embedding:
                 token_embedding_type_name = next(
                     (
@@ -15532,6 +16916,7 @@ class Qwen35GGUFResidentSession:
                 geometry=model_geometry,
                 file_type_name=model_file_type_name,
                 requested=self.use_small_weight_arena,
+                artifact_preset_key=model_artifact_preset_key,
             )
         )
         if self.small_weight_arena_enabled:
@@ -15540,6 +16925,7 @@ class Qwen35GGUFResidentSession:
                     backend=resolved_backend,
                     geometry=model_geometry,
                     file_type_name=model_file_type_name,
+                    artifact_preset_key=model_artifact_preset_key,
                 )
             )
         self.decode_scratch_arena_enabled, self.decode_scratch_arena_reason = (
@@ -15550,6 +16936,7 @@ class Qwen35GGUFResidentSession:
                 geometry=model_geometry,
                 file_type_name=model_file_type_name,
                 requested=self.use_decode_scratch_arena,
+                artifact_preset_key=model_artifact_preset_key,
             )
         )
         if self.shared_runner is None:
@@ -15560,6 +16947,7 @@ class Qwen35GGUFResidentSession:
                 require_cached_build=self.require_cached_build,
                 backend=resolved_backend,
                 token_embedding_placement=embedding_placement,
+                execution_routes=self.execution_routes,
                 use_selective_weight_arena=self.small_weight_arena_enabled,
                 selective_weight_max_allocation_bytes=(
                     self.small_weight_arena_max_allocation_bytes
@@ -15582,6 +16970,13 @@ class Qwen35GGUFResidentSession:
         )
         if self.runner.weights is None:
             raise RuntimeError("GGUF full-stack runner did not materialize weights")
+        from hipengine.loading.qwen35_gguf_execution import execution_operations, authorize_native_execution
+        if "ar_decode_native_rows" in execution_operations(self.execution_routes):
+            authorize_native_execution(
+                self.runner.weights, backend=self.backend, rows=int(self.max_batch_size),
+                recurrent_state_dtype="fp16" if self.runner.fp16_recurrent_state else "f32",
+            )
+            self._native_rows_ready = True
         if self.small_weight_arena_enabled:
             resident = self.runner.weights
             arena = resident.allocation_arena
@@ -15644,22 +17039,23 @@ class Qwen35GGUFResidentSession:
             raise ValueError("GGUF grouped INT8 KV scales are not supported with the key-only diagnostic")
         self.int8_kv_no_mirror_qualified = bool(
             self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
-            and _qualified_no_mirror_int8_capability(self.kv_capability)
+            and _admitted_no_mirror_int8_capability(self.kv_capability)
         )
-        self.packed_decode_max_rows = 8
+        self.packed_decode_max_rows = _GGUF_STANDARD_PACKED_DECODE_ROWS
         self._retained_decode_kernel = None
-        if self.int8_kv_no_mirror_qualified:
+        direct_rows = 1
+        # Allocation follows the admitted predicate; route resolution follows the
+        # runnable one, so an operator-forced INT8 session still binds the
+        # declared direct leaf and the width the declaration qualifies.
+        if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD and _runnable_no_mirror_int8_capability(
+            self.kv_capability
+        ):
             direct_rows, direct_kernel = _qualified_kv_decode_batch_route(
                 self.runner.backend,
                 self.kv_capability,
             )
             self._retained_decode_kernel = (
                 direct_kernel if callable(direct_kernel) and not self.int8_kv_value_bf16 else None
-            )
-            self.packed_decode_max_rows = (
-                max(1, int(direct_rows))
-                if self._retained_decode_kernel is not None
-                else 1
             )
         requested_positions = 256 if self.max_sequence_length is None else int(self.max_sequence_length)
         rounded_positions = min(
@@ -15704,6 +17100,22 @@ class Qwen35GGUFResidentSession:
                 ),
                 full_attention_layer_count,
             )
+        # The direct INT8 batch leaf reads retained INT8 planes on every
+        # full-attention layer it covers. A hybrid layout keeps part of that
+        # stack in BF16, and those layers have no retained planes, so they take
+        # the standard batch leaf instead. One packed batch cannot run both
+        # leaves and the execution manifest names a single full-attention route,
+        # so a hybrid layout is capped at one row. ``step_batch_native`` already
+        # treats its refusal as "no packed result" and the caller serializes.
+        # ``HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS=none`` clears the cap by
+        # making the layout uniform. A BF16 stack has no retained planes on any
+        # layer, so it keeps the declared standard width.
+        self.packed_decode_max_rows = _gguf_packed_decode_max_rows(
+            kv_storage_dtype=self.kv_storage_dtype,
+            direct_rows=direct_rows,
+            retained_decode_kernel=self._retained_decode_kernel,
+            bf16_full_attention_layer_indices=self.int8_bf16_full_attention_layer_indices,
+        )
         custom_bf16_layers = (
             self.kv_storage_layout == "uniform"
             and _env_value(_GGUF_INT8_BF16_FULL_ATTENTION_LAYERS_ENV) is not None
@@ -16023,6 +17435,11 @@ class Qwen35GGUFResidentSession:
                 self.runtime or get_hip_runtime()
             )
 
+    @property
+    def dms_store_request_id(self) -> int:
+        """The private compact store row, independent of engine request IDs."""
+        return 0
+
     def _initialize_external_dms_serving(self, runtime: HipRuntime) -> None:
         from hipengine.kvcache.dms import load_dms_retrofit_config
         from hipengine.kvcache.dms_device import DMSExternalLinearDeviceProjector
@@ -16084,6 +17501,37 @@ class Qwen35GGUFResidentSession:
         self.bind_device_kv_allocation(pool, allocation)
         self._dms_dense_prefill_pool = pool
 
+    def _retain_published_target_hidden(
+        self, *, runtime: HipRuntime, stream: int = 0
+    ) -> bool:
+        """Move the published trunk row off the bulk workspace before release.
+
+        ``last_target_hidden`` is a raw device pointer, so it cannot detect
+        that its backing buffer was freed. The bulk prefill publishes the final
+        trunk row from bulk scratch, and a target-attached consumer -- the MTP
+        transaction journal's initial-state snapshot above all -- reads it after
+        prefill returns. Retain the row in the session's persistent hidden
+        buffer before the workspace goes away, or that reader copies from freed
+        memory.
+        """
+
+        source_ptr = int(self._last_target_hidden_ptr)
+        if source_ptr == 0:
+            return False
+        hidden = self._hidden_a
+        if hidden is None or source_ptr == int(hidden.ptr):
+            return False
+        row_nbytes = int(self.runner.hidden_size) * DType.BF16.itemsize
+        runtime.memcpy_async(
+            int(hidden.ptr),
+            source_ptr,
+            row_nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            int(stream),
+        )
+        self._last_target_hidden_ptr = int(hidden.ptr)
+        return True
+
     def _finalize_external_dms_prefill(
         self,
         collector: _ExternalDMSDevicePrefillCollector,
@@ -16096,11 +17544,19 @@ class Qwen35GGUFResidentSession:
         source = self._dms_source
         if source is None or self.scratch is None:
             raise RuntimeError("external DMS prefill owner is unavailable")
+        if getattr(self, "_dms_cache_capture_tokens", None) is not None:
+            from hipengine.runtime.dms_prefill_cache import capture_cold_prefill
+            self._dms_cold_prefill = capture_cold_prefill(
+                self, collector, self._dms_cache_capture_tokens
+            )
         # The bulk prefill workspace (bulk scratch, prefill hidden/token
         # buffers) is dead once prefill compute has completed. Release it
         # before the compact pack so it does not coexist with the dense
         # BF16 pool and the compact destination (2026-09-07 memory review,
         # target 3). A later prefill re-acquires it lazily.
+        self._retain_published_target_hidden(
+            runtime=self.runtime or get_hip_runtime(), stream=int(stream)
+        )
         self._release_bulk_prefill_workspace()
         decisions = collector.finalize(stream=stream)
         positions = np.arange(int(tokens), dtype=np.int32)
@@ -16288,6 +17744,12 @@ class Qwen35GGUFResidentSession:
             tokens=int(tokens),
             stream=int(stream),
         )
+        if getattr(self, "_dms_cache_capture_tokens", None) is not None:
+            from hipengine.runtime.dms_prefill_cache import read_prefix
+            nbytes = int(tokens) * source.config.num_kv_heads * source.config.head_dim * 2
+            self._dms_cache_layers[int(physical_layer)] = tuple(
+                read_prefix(buffer, nbytes) for buffer in (key_cache, value_cache)
+            )
 
     def _prefill_layer_outer_dms(
         self,
@@ -16297,6 +17759,8 @@ class Qwen35GGUFResidentSession:
         bulk_attention_mode: str,
         return_logits: bool,
         record_gpu_stage_timings: bool,
+        target_hidden_chunk_sink=None,
+        target_hidden_request_id=None,
     ) -> Qwen35GGUFNextTokenProbeResult | None:
         """Two-pass layer-outer DMS prefill without a dense BF16 pool.
 
@@ -16366,12 +17830,15 @@ class Qwen35GGUFResidentSession:
             backend.reserve(claims)
             try:
                 self._dms_layer_outer_pack = (backend, dms_capture, tokens)
+                self._dms_cache_layers = {}
                 try:
                     result = self._run_bulk_prefill_and_sample(
                         token_ids,
                         bulk_attention_mode=bulk_attention_mode,
                         return_logits=return_logits,
                         dms_pack_sink=self,
+                        target_hidden_chunk_sink=target_hidden_chunk_sink,
+                        target_hidden_request_id=target_hidden_request_id,
                         record_gpu_stage_timings=record_gpu_stage_timings,
                     )
                 finally:
@@ -16379,6 +17846,10 @@ class Qwen35GGUFResidentSession:
                 backend.finalize_device_streaming_pack(
                     0, eviction=decisions, tokens=tokens
                 )
+                if getattr(self, "_dms_cache_capture_tokens", None) is not None:
+                    from hipengine.runtime.dms_prefill_cache import capture_cold_prefill
+                    self._dms_cold_prefill = capture_cold_prefill(self, dms_capture, token_ids)
+                self._dms_cache_layers = {}
             except BaseException:
                 # Partial compact-store construction must not leak the
                 # partially built backend; the dense route is not involved.
@@ -16613,6 +18084,8 @@ class Qwen35GGUFResidentSession:
         view._decode_graph_submission_contexts = {}
         view._device_kv_graph_handles = {}
         view._int8_prefill_oracle_buffers = {}
+        view._gapped_slot_block_table_cache = None
+        view._gapped_head_major_cache = None
         view._linear_state_snapshot_backups = ()
         # Packed prefill/verify may grow slot-local result buffers after this
         # view is created. Never inherit the owner's pointers: the owner closes
@@ -16887,7 +18360,19 @@ class Qwen35GGUFResidentSession:
             raise ValueError("GGUF device KV allocation exceeds the session block-table capacity")
         if int(allocation.chunk_start_block_id) != int(backing.start_block_id):
             raise ValueError("GGUF device KV allocation backing identity mismatch")
-        backing.validate_bound_blocks(allocation.block_ids)
+        pool_capacity = getattr(allocation, "pool_page_capacity", None)
+        if pool_capacity is None:
+            backing.validate_bound_blocks(allocation.block_ids)
+        else:
+            # Pointer-table pool: growth appends backing chunks while keeping
+            # page ids stable, so the first chunk's page count is not the bound.
+            # Validating against it rejected every allocation whose pages landed
+            # past the first chunk once the pool had grown.
+            _validate_bound_blocks_against_capacity(
+                allocation.block_ids,
+                start_block_id=int(backing.start_block_id),
+                page_capacity=int(pool_capacity),
+            )
         local_block_table = np.zeros(self.scratch.block_table_tensor.shape, dtype=np.int32)
         local_block_table[: len(allocation.block_ids)] = np.asarray(
             [
@@ -16946,6 +18431,22 @@ class Qwen35GGUFResidentSession:
         conv_backups: list[DeviceBuffer | None] = []
         recurrent_backups: list[DeviceBuffer | None] = []
         allocated: list[DeviceBuffer] = []
+        # One pooled arena backs every per-layer view: the old path issued two
+        # mallocs per GDN layer (~54 on a 27-layer model) on every eligible
+        # turn, reused or not. Views are carved with the arena's own alignment,
+        # so sizing must account for it rather than summing raw byte counts.
+        pool = self._prefix_snapshot_arena_pool()
+        arena_capacity = 0
+        for conv_state, recurrent_state in zip(
+            self.scratch.layer_conv_states,
+            self.scratch.layer_recurrent_states,
+            strict=True,
+        ):
+            if conv_state is None or recurrent_state is None:
+                continue
+            for nbytes in (int(conv_state.nbytes), int(recurrent_state.nbytes)):
+                arena_capacity += ((nbytes + 4095) // 4096) * 4096
+        arena = pool.acquire(max(4096, arena_capacity))
         try:
             for layer_id, (conv_state, recurrent_state) in enumerate(
                 zip(
@@ -16963,10 +18464,8 @@ class Qwen35GGUFResidentSession:
                     recurrent_backups.append(None)
                     continue
                 assert recurrent_state is not None
-                conv_backup = malloc(conv_state.nbytes, runtime=runtime)
-                allocated.append(conv_backup)
-                recurrent_backup = malloc(recurrent_state.nbytes, runtime=runtime)
-                allocated.append(recurrent_backup)
+                conv_backup = arena.allocate(int(conv_state.nbytes))
+                recurrent_backup = arena.allocate(int(recurrent_state.nbytes))
                 conv_backups.append(conv_backup)
                 recurrent_backups.append(recurrent_backup)
                 runtime.memcpy_async(
@@ -16990,6 +18489,7 @@ class Qwen35GGUFResidentSession:
         except Exception:
             for buffer in reversed(allocated):
                 free(buffer, runtime=runtime)
+            pool.release(arena)
             raise
         return Qwen35GGUFPrefixStateSnapshot(
             runtime=runtime,
@@ -17001,7 +18501,18 @@ class Qwen35GGUFResidentSession:
             backing=allocation.backing,
             layer_conv_states=tuple(conv_backups),
             layer_recurrent_states=tuple(recurrent_backups),
+            arena=arena,
+            arena_pool=pool,
         )
+
+    def _prefix_snapshot_arena_pool(self) -> "_GGUFPrefixSnapshotArenaPool":
+        """Per-session arena pool, created on the first capture."""
+
+        pool = getattr(self, "_gguf_prefix_snapshot_arena_pool", None)
+        if pool is None or pool.closed:
+            pool = _GGUFPrefixSnapshotArenaPool(self.runtime or get_hip_runtime())
+            self._gguf_prefix_snapshot_arena_pool = pool
+        return pool
 
     def clone_prefix_state_from_snapshot(
         self,
@@ -17052,7 +18563,7 @@ class Qwen35GGUFResidentSession:
             != snapshot.block_ids
         ):
             raise ValueError("GGUF prefix clone block table does not match the snapshot")
-        if allocation.backing is not snapshot.backing:
+        if not _gguf_kv_backings_share_arena(allocation.backing, snapshot.backing):
             raise ValueError("GGUF prefix snapshot and destination must share one backing")
 
         destination_conv = tuple(self.scratch.layer_conv_states)
@@ -17375,7 +18886,9 @@ class Qwen35GGUFResidentSession:
             raise ValueError("GGUF prefix clone allocation does not share the exact source boundary")
         if tuple(int(block_id) for block_id in destination_allocation.block_ids[:prefix_pages]) != source_prefix:
             raise ValueError("GGUF prefix clone block-table prefix does not match the source")
-        if destination_allocation.backing is not source_allocation.backing:
+        if not _gguf_kv_backings_share_arena(
+            destination_allocation.backing, source_allocation.backing
+        ):
             raise ValueError("GGUF prefix clone allocations must share one backing")
 
         source_conv = tuple(source.scratch.layer_conv_states)
@@ -17570,6 +19083,24 @@ class Qwen35GGUFResidentSession:
             page_pointer=lambda backing, local_page: backing.page_pointer(local_page),
         )
 
+    def _on_device_kv_pool_pressure(self, required_pages: int) -> int | None:
+        """Release reclaimable KV pages before the device pool grows.
+
+        Retained prefix snapshots are owned by the generation runner that created
+        this session, not by the session that owns the device KV pool, so the
+        handler is published on the factory session when that pool is created.
+        Resolving it through ``_resident_batch_owner`` cannot work: on a session
+        that attribute names the *session* holding shared session-level resources
+        (bulk prefill scratch, packed workspace, packed verify state), and a
+        session has no prefix cache.
+        """
+
+        owner = getattr(self, "_kv_pool_pressure_owner", None)
+        evict = getattr(owner, "evict_prefix_cache_for_pressure", None)
+        if not callable(evict):
+            return None
+        return int(evict(int(required_pages)))
+
     def create_global_device_kv_pool(
         self,
         *,
@@ -17595,36 +19126,170 @@ class Qwen35GGUFResidentSession:
             layout = _qwen35_gguf_session_kv_chunk_layout(self)
             self._device_kv_layout = layout
         page_bytes = _qwen35_gguf_kv_page_bytes(cfg, layout)
-        max_pages = capacity
-        mem_get_info = getattr(runtime, "mem_get_info", None)
-        if callable(mem_get_info):
+        configured_budget_mib = getattr(self, "kv_pool_memory_budget_mib", None)
+        # A stable-address VMM arena grows into one root binding, so its initial
+        # commit is a floor and the INT8 scale tensors are rebuilt as it grows.
+        # A plain hipMalloc provider still needs scale planes sized for the
+        # declared context at allocation time, because growth appends a separate
+        # chunk that a scale tensor cannot cover.
+        use_vmm = virtual_memory_supported(runtime)
+        admission_granularity: int | None = None
+        admission_plane_page_nbytes: dict[str, int] = {}
+        if use_vmm:
             try:
-                free_bytes, _total_bytes = mem_get_info()
-                configured_budget_mib = getattr(
-                    self,
-                    "kv_pool_memory_budget_mib",
-                    None,
+                admission_granularity = VirtualMemoryBuffer.query_granularity(
+                    runtime=runtime
                 )
-                if configured_budget_mib is not None:
-                    max_pages = max(
-                        capacity,
-                        int(configured_budget_mib) * 1024**2 // page_bytes,
-                    )
+            except HipError as exc:
+                if exc.code != HIP_ERROR_NOT_SUPPORTED:
+                    raise
+                # Symbols exist but the driver refuses VMM; price and allocate
+                # as a plain chunk provider instead.
+                use_vmm = False
+            else:
+                admission_plane_page_nbytes = {
+                    role: int(page_nbytes)
+                    for role, page_nbytes in _qwen35_gguf_kv_plane_specs(cfg, layout)
+                }
+
+        def _admission_bytes_for_pages(pages: int) -> int:
+            """Prospective physical bytes for a page count, padding included."""
+
+            if not use_vmm or admission_granularity is None:
+                return int(pages) * int(page_bytes)
+            return _qwen35_gguf_vmm_physical_bytes(
+                pages,
+                plane_page_nbytes=admission_plane_page_nbytes,
+                granularity=admission_granularity,
+            )
+
+        def _max_admission_pages(available: int, upper: int) -> int:
+            """Largest page count at or below ``upper`` that fits ``available``."""
+
+            ceiling = max(0, int(upper))
+            if not use_vmm or admission_granularity is None:
+                return max(0, min(ceiling, int(available) // int(page_bytes)))
+            if int(available) <= 0:
+                return 0
+            low, high = 0, ceiling
+            while low < high:
+                mid = (low + high + 1) // 2
+                if _admission_bytes_for_pages(mid) <= int(available):
+                    low = mid
                 else:
-                    max_pages = max(
-                        capacity,
-                        int(max(0, int(free_bytes) - 3 * 1024**3) // page_bytes),
-                    )
-            except Exception:
-                max_pages = capacity
-        growth_chunk_pages = max(1, min(128, max_pages - capacity))
-        backing = _allocate_qwen35_gguf_kv_chunk(
-            self.runner,
-            runtime=runtime,
-            start_block_id=0,
-            pages=capacity,
-            layout=layout,
+                    high = mid - 1
+            return low
+
+        requested_context = getattr(self, "max_sequence_length", None)
+        required_context_pages = (
+            max(1, (int(requested_context) + 255) // 256)
+            if requested_context is not None
+            else 1
         )
+        # Scale tensors are indexed by the request's paged block table from the
+        # first prefill. Even with a stable-address payload arena, the initial
+        # scale metadata must cover the declared context; payload growth remains
+        # elastic beyond this small metadata-safe floor.
+        if required_context_pages > capacity:
+            capacity = required_context_pages
+
+        pool_consumer = MemoryConsumer("kv_pool", _admission_bytes_for_pages(capacity))
+        if configured_budget_mib is not None:
+            # Explicit ceilings apply even when HIP memory telemetry is absent.
+            decision = price_memory_admission(
+                free_bytes=int(configured_budget_mib) * 1024**2,
+                consumers=(pool_consumer,),
+                reserve_bytes=0,
+            )
+            if not decision.admitted:
+                raise MemoryAdmissionRefused(decision)
+            max_pages = int(decision.available_bytes) // page_bytes
+        else:
+            max_pages = capacity
+            mem_get_info = getattr(runtime, "mem_get_info", None)
+            if callable(mem_get_info):
+                try:
+                    free_bytes, _total_bytes = mem_get_info()
+                except Exception:
+                    pass
+                else:
+                    # Keep a bounded safety margin for transient kernels while
+                    # leaving enough VRAM for the requested long-context pool.
+                    # The admission budget names the pool when the requested
+                    # floor does not fit; the initial floor then shrinks to the
+                    # automatic headroom so the arena can still start and grow
+                    # later instead of failing the whole request. A fixed 3 GiB
+                    # reserve made a 40k context impossible on 24 GiB cards
+                    # even when the model had ample post-load headroom.
+                    decision = price_memory_admission(
+                        free_bytes=int(free_bytes),
+                        consumers=(pool_consumer,),
+                        reserve_bytes=_GGUF_KV_POOL_TRANSIENT_RESERVE_BYTES,
+                    )
+                    available = int(max(0, decision.available_bytes))
+                    max_pages = available // page_bytes
+                    if _admission_bytes_for_pages(required_context_pages) > available:
+                        # Name the floor that does not fit, priced with the same
+                        # granularity padding as the allocation it refuses.
+                        raise MemoryAdmissionRefused(
+                            price_memory_admission(
+                                free_bytes=int(free_bytes),
+                                consumers=(
+                                    MemoryConsumer(
+                                        "kv_pool",
+                                        _admission_bytes_for_pages(required_context_pages),
+                                    ),
+                                ),
+                                reserve_bytes=_GGUF_KV_POOL_TRANSIENT_RESERVE_BYTES,
+                            )
+                        )
+                    # Leave automatic budget for demand-grown execution KV;
+                    # spending it all on idle arena pages prevents even the
+                    # first private-workspace fallback from allocating.
+                    if use_vmm:
+                        # The arena reaches the requested context by growth, so
+                        # the initial commit is only the idle floor. The VA
+                        # reservation is made for the full budget below, and the
+                        # floor is capped so the padded physical commit fits.
+                        capacity = min(capacity, max_pages)
+                        capacity = min(
+                            capacity, _max_admission_pages(available, capacity)
+                        )
+                    else:
+                        capacity = max(
+                            required_context_pages,
+                            min(capacity, max(1, max_pages // 2)),
+                        )
+        growth_chunk_pages = max(1, min(128, max_pages - capacity))
+        if use_vmm:
+            try:
+                backing, plane_owners, plane_page_nbytes = (
+                    _allocate_qwen35_gguf_kv_chunk_vmm(
+                        self.runner,
+                        runtime=runtime,
+                        layout=layout,
+                        initial_pages=capacity,
+                        max_pages=max_pages,
+                    )
+                )
+            except HipError as exc:
+                if exc.code != HIP_ERROR_NOT_SUPPORTED:
+                    raise
+                # The runtime exports every VMM symbol but the driver refuses
+                # the operation. The allocator already released whatever it had
+                # reserved, so fall back to chunk-local storage instead of
+                # failing the session.
+                use_vmm = False
+        if not use_vmm:
+            backing = _allocate_qwen35_gguf_kv_chunk(
+                self.runner,
+                runtime=runtime,
+                start_block_id=0,
+                pages=capacity,
+                layout=layout,
+            )
+            plane_owners = {}
+            plane_page_nbytes = {}
         backings = [backing]
         plane_page_pointers: dict[str, tuple[int, ...]] = {}
 
@@ -17641,19 +19306,8 @@ class Qwen35GGUFResidentSession:
                 for page_id in range(capacity)
             )
 
-        for layer_id in range(len(layout.layer_storage_dtypes)):
-            add_plane(f"layer{layer_id}.key_payload", backing.full_key_caches[layer_id])
-            add_plane(f"layer{layer_id}.value_payload", backing.full_value_caches[layer_id])
-            add_plane(
-                f"layer{layer_id}.bf16_mirror_key",
-                backing.full_bf16_mirror_key_caches[layer_id],
-            )
-            add_plane(
-                f"layer{layer_id}.bf16_mirror_value",
-                backing.full_bf16_mirror_value_caches[layer_id],
-            )
-            add_plane(f"layer{layer_id}.key_scale", backing.full_k_scale_caches[layer_id])
-            add_plane(f"layer{layer_id}.value_scale", backing.full_v_scale_caches[layer_id])
+        for role, buffer in _qwen35_gguf_kv_backing_planes(backing):
+            add_plane(role, buffer)
         if not plane_page_pointers:
             _free_qwen35_gguf_kv_chunk(backing, runtime=runtime)
             raise RuntimeError("GGUF global KV layout has no full-attention planes")
@@ -17664,13 +19318,16 @@ class Qwen35GGUFResidentSession:
             for role, pointers in plane_page_pointers.items():
                 host = np.ascontiguousarray(pointers, dtype=np.uint64)
                 table = malloc(host.nbytes, runtime=runtime)
+                # Publish the table before uploading so a failed upload is freed
+                # by the handler below instead of leaking the just-allocated
+                # buffer.
+                pointer_tables[role] = table
                 copy_host_to_device(
                     table,
                     host_array_ptr(host),
                     host.nbytes,
                     runtime=runtime,
                 )
-                pointer_tables[role] = table
             descriptor_host = np.zeros((256,), dtype=np.uint8)
             descriptor_host[:16] = np.asarray(
                 [pool_generation, capacity],
@@ -17694,13 +19351,53 @@ class Qwen35GGUFResidentSession:
         closed = False
         descriptor_generation = int(pool_generation)
 
-        def grow_storage(
+        def _upload_pointer_tables(
+            appended: Mapping[str, tuple[int, ...]],
+        ) -> dict[str, DeviceBuffer]:
+            """Build and upload one pointer table per plane for the appended pages."""
+
+            new_tables: dict[str, DeviceBuffer] = {}
+            try:
+                for role, extra in appended.items():
+                    pointers = plane_page_pointers[role] + extra
+                    host = np.ascontiguousarray(pointers, dtype=np.uint64)
+                    table = malloc(host.nbytes, runtime=runtime)
+                    # Publish before uploading so the handler frees this table
+                    # when the transfer fails.
+                    new_tables[role] = table
+                    copy_host_to_device(
+                        table, host_array_ptr(host), host.nbytes, runtime=runtime
+                    )
+            except BaseException:
+                for table in reversed(tuple(new_tables.values())):
+                    free(table, runtime=runtime)
+                raise
+            return new_tables
+
+        def _upload_descriptor(next_generation: int, page_capacity: int) -> None:
+            descriptor_host = np.zeros((256,), dtype=np.uint8)
+            descriptor_host[:16] = np.asarray(
+                [int(next_generation), int(page_capacity)],
+                dtype=np.uint64,
+            ).view(np.uint8)
+            assert descriptor is not None
+            copy_host_to_device(
+                descriptor,
+                host_array_ptr(descriptor_host),
+                descriptor_host.nbytes,
+                runtime=runtime,
+            )
+
+        def grow_storage_chunk(
             pages: int,
             start_block_id: int,
-        ) -> tuple[dict[str, tuple[int, ...]], dict[str, int]]:
-            """Append device pages and rebuild indirection tables atomically."""
+        ) -> tuple[dict[str, tuple[int, ...]], dict[str, int], object]:
+            """Append a fresh hipMalloc chunk and rebuild indirection tables."""
 
-            nonlocal descriptor_generation
+            # `pointer_tables` is rebound below, which without this declaration
+            # makes it a local and turns the `old_tables = pointer_tables` read
+            # into an UnboundLocalError the first time the pool actually grows.
+            nonlocal descriptor_generation, pointer_tables
             count = int(pages)
             start = int(start_block_id)
             if count <= 0 or start < 0:
@@ -17731,48 +19428,124 @@ class Qwen35GGUFResidentSession:
                 add_appended(f"layer{layer_id}.key_scale", chunk.full_k_scale_caches[layer_id])
                 add_appended(f"layer{layer_id}.value_scale", chunk.full_v_scale_caches[layer_id])
 
-            new_tables: dict[str, DeviceBuffer] = {}
             try:
-                for role, extra in appended.items():
-                    pointers = plane_page_pointers[role] + extra
-                    host = np.ascontiguousarray(pointers, dtype=np.uint64)
-                    table = malloc(host.nbytes, runtime=runtime)
-                    copy_host_to_device(table, host_array_ptr(host), host.nbytes, runtime=runtime)
-                    new_tables[role] = table
-            except Exception:
-                for table in reversed(tuple(new_tables.values())):
-                    free(table, runtime=runtime)
+                new_tables = _upload_pointer_tables(appended)
+            except BaseException:
                 _free_qwen35_gguf_kv_chunk(chunk, runtime=runtime)
                 raise
             next_generation = descriptor_generation + 1
-            descriptor_host = np.zeros((256,), dtype=np.uint8)
-            descriptor_host[:16] = np.asarray(
-                [next_generation, start + count],
-                dtype=np.uint64,
-            ).view(np.uint8)
             try:
-                copy_host_to_device(
-                    descriptor,
-                    host_array_ptr(descriptor_host),
-                    descriptor_host.nbytes,
-                    runtime=runtime,
-                )
-            except Exception:
+                _upload_descriptor(next_generation, start + count)
+            except BaseException:
                 for table in reversed(tuple(new_tables.values())):
                     free(table, runtime=runtime)
                 _free_qwen35_gguf_kv_chunk(chunk, runtime=runtime)
                 raise
             old_tables = pointer_tables
-            plane_page_pointers.update(appended)
+            for role, extra in appended.items():
+                plane_page_pointers[role] += extra
             pointer_tables = new_tables
             descriptor_generation = next_generation
             for table in reversed(tuple(old_tables.values())):
                 free(table, runtime=runtime)
             backings.append(chunk)
+            # The appended chunk carries its own device buffers, and every KV
+            # kernel addresses a chunk from its own base, so the pool needs the
+            # backing to keep each allocation inside one chunk.
             return (
                 appended,
                 {role: int(table.ptr) for role, table in new_tables.items()},
+                chunk,
             )
+
+        def grow_storage_vmm(
+            pages: int,
+            start_block_id: int,
+        ) -> tuple[dict[str, tuple[int, ...]], dict[str, int], object]:
+            """Map physical memory into the existing VMM arena and republish tables.
+
+            The arena base never moves, so every page pointer already published
+            stays valid. The failure path rolls back the physical commits it made
+            and any pointer tables it uploaded, so a failed growth leaves the
+            arena, tables, descriptor, and backing exactly as they were.
+            """
+
+            nonlocal backing, descriptor_generation, pointer_tables
+            count = int(pages)
+            start = int(start_block_id)
+            if count <= 0 or start < 0:
+                raise ValueError("global KV growth requires positive pages and a valid start")
+            if start != int(backing.pages):
+                raise ValueError(
+                    "global KV VMM growth must append at the current arena capacity"
+                )
+            new_pages = start + count
+            # Graphs that captured the old pointer tables must be invalidated and
+            # any in-flight reader drained before the tables are replaced.
+            synchronize = getattr(runtime, "device_synchronize", None)
+            if callable(synchronize):
+                synchronize()
+            previous_commits: list[tuple[VirtualMemoryBuffer, int]] = []
+            try:
+                for role, owner in plane_owners.items():
+                    page_nbytes = plane_page_nbytes[role]
+                    previous_commits.append((owner, owner.committed_bytes))
+                    owner.commit_to(new_pages * page_nbytes)
+            except BaseException:
+                # Undo every plane already committed, not just the one that
+                # failed, so a partial multi-plane growth maps no physical
+                # memory and the arena is left exactly as it was.
+                rollback_all(previous_commits)
+                raise
+            appended = {
+                role: tuple(
+                    owner.ptr + page * plane_page_nbytes[role]
+                    for page in range(start, new_pages)
+                )
+                for role, owner in plane_owners.items()
+            }
+            try:
+                new_tables: dict[str, DeviceBuffer] = {}
+                new_tables = _upload_pointer_tables(appended)
+                new_backing = _build_qwen35_gguf_kv_backing_from_plane_views(
+                    cfg=cfg,
+                    layout=layout,
+                    pages=new_pages,
+                    start_block_id=0,
+                    plane_views={
+                        role: VmmPlaneBuffer(
+                            owner,
+                            offset=0,
+                            nbytes=new_pages * plane_page_nbytes[role],
+                        )
+                        for role, owner in plane_owners.items()
+                    },
+                )
+                _upload_descriptor(descriptor_generation + 1, new_pages)
+            except BaseException:
+                for table in reversed(tuple(new_tables.values())):
+                    free(table, runtime=runtime)
+                # Roll every plane back through the shared helper: it visits
+                # every buffer even when one rollback fails, so as much physical
+                # memory as the runtime allows is released before the failure
+                # propagates.
+                rollback_all(previous_commits)
+                raise
+            old_tables = pointer_tables
+            for role, extra in appended.items():
+                plane_page_pointers[role] += extra
+            pointer_tables = new_tables
+            descriptor_generation += 1
+            backing = new_backing
+            for table in reversed(tuple(old_tables.values())):
+                free(table, runtime=runtime)
+            return (
+                appended,
+                {role: int(table.ptr) for role, table in new_tables.items()},
+                new_backing,
+            )
+
+        grow_storage = grow_storage_vmm if use_vmm else grow_storage_chunk
 
         def close_storage() -> None:
             nonlocal closed
@@ -17782,8 +19555,13 @@ class Qwen35GGUFResidentSession:
             free(descriptor, runtime=runtime)
             for table in reversed(tuple(pointer_tables.values())):
                 free(table, runtime=runtime)
-            for chunk in reversed(backings):
-                _free_qwen35_gguf_kv_chunk(chunk, runtime=runtime)
+            if use_vmm:
+                # Every plane arena is closed exactly once through the current
+                # backing's views; growth reused the same owners.
+                _free_qwen35_gguf_kv_chunk(backing, runtime=runtime)
+            else:
+                for chunk in reversed(backings):
+                    _free_qwen35_gguf_kv_chunk(chunk, runtime=runtime)
             closed = True
 
         page_bytes = _qwen35_gguf_kv_page_bytes(cfg, layout)
@@ -17793,6 +19571,17 @@ class Qwen35GGUFResidentSession:
             f"{layout.scale_dtype.value}:{layout.scale_granularity}"
         )
         assert descriptor is not None
+        if use_vmm:
+            # Prospective per-plane granularity padding, so the pool prices the
+            # physical commitment for a page count before it is committed.
+            def physical_bytes_for_pages(pages: int) -> int:
+                return _qwen35_gguf_vmm_physical_bytes(
+                    pages,
+                    plane_page_nbytes=plane_page_nbytes,
+                    granularity=admission_granularity,
+                )
+        else:
+            physical_bytes_for_pages = None
         return GlobalDeviceKVPool(
             page_bytes=page_bytes,
             backend_fingerprint=fingerprint,
@@ -17805,16 +19594,25 @@ class Qwen35GGUFResidentSession:
             metadata_descriptor_pointer=int(descriptor.ptr),
             close_storage=close_storage,
             grow_storage=grow_storage,
-            before_grow=lambda: self._resident_batch_owner._invalidate_live_packed_decode_graphs()
-            if self._resident_batch_owner is not None
-            else None,
-            max_pages=max_pages,
-            growth_chunk_pages=growth_chunk_pages,
-            on_pressure=(
-                lambda required: self._resident_batch_owner.evict_prefix_cache_for_pressure(required)
-                if self._resident_batch_owner is not None
+            # `_resident_batch_owner` is only ever assigned onto the per-slot
+            # views a resident batch owner creates, so a session that owns its
+            # own pool never has the attribute at all. Every other reader in
+            # this file already guards with getattr; this callback did not, and
+            # raised AttributeError the first time the pool hit a grow event on
+            # such a session.
+            before_grow=lambda: (
+                owner._invalidate_live_packed_decode_graphs()
+                if (owner := getattr(self, "_resident_batch_owner", None)) is not None
                 else None
             ),
+            max_pages=max_pages,
+            growth_chunk_pages=growth_chunk_pages,
+            on_pressure=self._on_device_kv_pool_pressure,
+            # Only a stable-address VMM arena may merge its growth into one root
+            # binding. A hipMalloc provider keeps chunk-local confinement so an
+            # allocation never straddles two incompatible bases.
+            contiguous_growth=use_vmm,
+            physical_bytes_for_pages=physical_bytes_for_pages,
         )
 
     def decode_graph_min_replay_steps(self) -> int | None:
@@ -17853,13 +19651,26 @@ class Qwen35GGUFResidentSession:
         if default is None or self.runner is None or self.runner.weights is None:
             return None
         identity = _gguf_policy_identity(self.runner.weights)
-        geometry, file_type_name = (None, None) if identity is None else identity
+        # Identity is a 2-tuple for plain artifacts and a 3-tuple when a UD
+        # admission preset is bound.  Never unpack destructively: threading
+        # the preset key through preserves the qualification boundary — a
+        # preset-bound resident must not resolve plain-stamp-keyed rows.
+        if identity is None:
+            geometry = None
+            file_type_name = None
+            artifact_preset_key = None
+        elif len(identity) == 2:
+            geometry, file_type_name = identity
+            artifact_preset_key = None
+        else:
+            geometry, file_type_name, artifact_preset_key = identity
         return _resolve_gguf_packed_decode_graph_min_replay_steps(
             str(self.runner.backend),
             geometry=geometry,
             file_type_name=file_type_name,
             physical_rows=int(physical_rows),
             default_minimum=int(default),
+            artifact_preset_key=artifact_preset_key,
         )
 
     def _resolve_decode_graph_min_replay_steps(self) -> int | None:
@@ -18961,7 +20772,9 @@ class Qwen35GGUFResidentSession:
             scale_metadata=metadata,
         )
 
-    def _full_attention_prefill_scratch_for_layer(self, bulk_scratch, layer_id: int):
+    def _full_attention_prefill_scratch_for_layer(
+        self, bulk_scratch, layer_id: int, *, use_retained_prefix: bool = False,
+    ):
         if self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
         if self.dms_prefill_mode == "layer_outer":
@@ -18998,6 +20811,10 @@ class Qwen35GGUFResidentSession:
         if full_bf16_mirror_cache is not None:
             bf16_mirror_cache = full_bf16_mirror_cache(layer_id)
         retained_key_cache, retained_value_cache = self.scratch.full_cache(layer_id)
+        if use_retained_prefix and bf16_mirror_cache is None:
+            _check_retained_prefix_format(
+                metadata, value_bf16=getattr(self, "int8_kv_value_bf16", False),
+            )
         retained_append_spans = self._int8_retained_prefill_spans(
             bulk_scratch.append_spans,
             metadata,
@@ -19005,7 +20822,10 @@ class Qwen35GGUFResidentSession:
         lifetime_plan = getattr(self, "_int8_prefill_lifetime_plan", None)
         if (
             bf16_mirror_cache is None
-            and getattr(lifetime_plan, "mode", None) == "chunk_outer_direct_int8"
+            and (
+                use_retained_prefix
+                or getattr(lifetime_plan, "mode", None) == "chunk_outer_direct_int8"
+            )
         ):
             # Direct (oracle-free) INT8 prefill: the attention K/V source is
             # the retained INT8 store itself, written through with INT8
@@ -19047,6 +20867,7 @@ class Qwen35GGUFResidentSession:
         layer_id: int,
         *,
         allow_direct_int8_prefill: bool = False,
+        use_retained_prefix: bool = False,
     ):
         key_cache, value_cache = packed_state.full_cache(layer_id)
         metadata = packed_state.full_scale_metadata(layer_id)
@@ -19062,6 +20883,25 @@ class Qwen35GGUFResidentSession:
                 int8_kv_value_bf16=False,
             )
         mirror = packed_state.full_bf16_mirror_cache(layer_id)
+        if mirror is None and use_retained_prefix:
+            _check_retained_prefix_format(
+                metadata, value_bf16=bool(packed_state.kv_layout.int8_kv_value_bf16),
+            )
+            return replace(
+                packed_scratch,
+                key_cache=key_cache,
+                value_cache=value_cache,
+                append_spans=replace(
+                    packed_scratch.append_spans,
+                    storage_dtype=DType.INT8_PER_TOKEN_HEAD, scale_metadata=metadata,
+                ),
+                prefill_spans=replace(
+                    packed_scratch.prefill_spans,
+                    storage_dtype=DType.INT8_PER_TOKEN_HEAD, scale_metadata=metadata,
+                ),
+                retained_key_cache=None, retained_value_cache=None,
+                retained_append_spans=None, retained_decode_spans=None,
+            )
         if mirror is None:
             if callable(getattr(packed_scratch, "retained_decode_kernel", None)):
                 mirror = (key_cache, value_cache)
@@ -19167,6 +21007,18 @@ class Qwen35GGUFResidentSession:
         if self._int8_prefill_retained_block_table is not None:
             free(self._int8_prefill_retained_block_table, runtime=runtime)
             self._int8_prefill_retained_block_table = None
+        self._release_gapped_prefill_buffers(runtime=runtime)
+
+    def _release_gapped_prefill_buffers(self, *, runtime: HipRuntime) -> None:
+        """Release BF16 gather owners independently of INT8 oracle lifetime."""
+        if self._gapped_slot_block_table_cache is not None:
+            free(self._gapped_slot_block_table_cache[1], runtime=runtime)
+            self._gapped_slot_block_table_cache = None
+        if self._gapped_head_major_cache is not None:
+            _capacity, gapped_key, gapped_value = self._gapped_head_major_cache
+            free(gapped_value, runtime=runtime)
+            free(gapped_key, runtime=runtime)
+            self._gapped_head_major_cache = None
 
     def _q6_f16_rocblas_prefill_context(self, *, request_rows: int | None = None):
         """Return the model-scoped, sole-resident Q4/Q5/Q6 prefill owner context."""
@@ -19362,6 +21214,227 @@ class Qwen35GGUFResidentSession:
             True,
             workspace_ptr=int(buffer.ptr),
             workspace_nbytes=int(buffer.nbytes),
+        )
+
+    def _ensure_iq_dense_mmq_buffer(self):
+        """Return this session's bounded dense raw-IQ integer-MMQ workspace.
+
+        Deliberately not the F16 staging allocation: the planar-Q6 integer route
+        already aliases that buffer and both contexts are entered together, so a
+        shared buffer would couple two independent owners for no saving worth
+        having (this one is ~10 MB against a 15 GB model).
+        """
+
+        if self.runner is None or self.runner.weights is None:
+            raise RuntimeError("GGUF resident session is closed")
+        config = self.runner.weights.config
+        max_in_features = max(
+            int(config.hidden_size),
+            int(config.feed_forward_length),
+            int(config.ssm_inner_size),
+        )
+        required_nbytes = iq_dense_mmq_nbytes(
+            int(PREFILL_F16_STAGING_MAX_ROWS), max_in_features
+        )
+        buffer = self._iq_dense_mmq_buf
+        if buffer is None:
+            runtime = self.runtime or get_hip_runtime()
+            buffer = malloc(required_nbytes, runtime=runtime)
+            self._iq_dense_mmq_buf = buffer
+            self._buffers = (*self._buffers, buffer)
+        if int(buffer.nbytes) < required_nbytes:
+            raise RuntimeError("resident dense IQ MMQ workspace is undersized")
+        return buffer
+
+    def _iq_dense_mmq_strict_slots(self) -> tuple[str, ...]:
+        """Per-stamp strict slots declared for this artifact, if any.
+
+        The backend table is keyed by ``(file_type, artifact preset key)`` -
+        the same policy identity the dense-pair tables use - so a pinned
+        qualified plain control (preset ``None``) never matches a UD row and
+        an unqualified manifest cannot borrow one either. Slots listed for
+        the stamp keep the strict per-row GEMV in prefill; every other slot
+        resolves the backend's dense-IQ policy unchanged.
+        """
+
+        weights = getattr(self, "weights", None)
+        if weights is None:
+            # The resident session carries its weights on the runner.
+            weights = getattr(getattr(self, "runner", None), "weights", None)
+        identity = _gguf_policy_identity(weights)
+        if identity is None:
+            return ()
+        file_type = identity[1]
+        preset = identity[2] if len(identity) > 2 else None
+        if file_type is None:
+            return ()
+        table = backend_package_capability(
+            self.backend, "GGUF_IQ_DENSE_PREFILL_STRICT_SLOTS", {}
+        )
+        if not isinstance(table, Mapping):
+            return ()
+        slots = table.get((str(file_type), preset))
+        if not isinstance(slots, (tuple, list)):
+            return ()
+        return tuple(str(s) for s in slots)
+
+    def _iq_dense_decode_strict_slots(self) -> tuple[str, ...]:
+        """Per-stamp decode strict slots declared for this artifact, if any.
+
+        Same identity keying as the prefill table; the two pin sets are
+        deliberately separate so a prefill admission never unroutes decode
+        and a decode admission never unroutes prefill.
+        """
+
+        weights = getattr(self, "weights", None)
+        if weights is None:
+            weights = getattr(getattr(self, "runner", None), "weights", None)
+        identity = _gguf_policy_identity(weights)
+        if identity is None:
+            return ()
+        file_type = identity[1]
+        preset = identity[2] if len(identity) > 2 else None
+        if file_type is None:
+            return ()
+        table = backend_package_capability(
+            self.backend, "GGUF_IQ_DENSE_DECODE_STRICT_SLOTS", {}
+        )
+        if not isinstance(table, Mapping):
+            return ()
+        slots = table.get((str(file_type), preset))
+        if not isinstance(slots, (tuple, list)):
+            return ()
+        return tuple(str(s) for s in slots)
+
+    def _iq_dense_policy_present(self) -> bool:
+        """True when this backend declares any dense raw-IQ owner policy.
+
+        Any one of the three row regimes is reason enough to bind the
+        execution-owner session: a backend that routes only decode, only
+        prefill, or only verifier rows must not be silently left unrouted.
+        """
+
+        return any(
+            bool(backend_package_capability(self.backend, name, {}))
+            for name in (
+                "GGUF_IQ_DENSE_PREFILL_POLICY",
+                "GGUF_IQ_DENSE_DECODE_POLICY",
+                "GGUF_IQ_DENSE_VERIFY_POLICY",
+            )
+        )
+
+    def _iq_dense_verify_binding_needed(self, rows: int) -> bool:
+        """True when a dense-IQ verifier policy declares this row count.
+
+        The binding is deliberately scoped to the row window the verifier
+        policies actually declare. Binding it unconditionally would also open
+        the dense-IQ *prefill* policy (min_rows 8) inside the verifier, which
+        is a different owner with a different arithmetic and was measured
+        slower than the strict GEMV at exactly 8 rows - a change outside this
+        unit. Rows outside every verifier window keep their previous owner.
+        """
+
+        policy = backend_package_capability(
+            self.backend, "GGUF_IQ_DENSE_VERIFY_POLICY", {}
+        )
+        if not isinstance(policy, Mapping):
+            return False
+        for entry in policy.values():
+            if not isinstance(entry, Mapping):
+                continue
+            try:
+                if int(entry["min_rows"]) <= int(rows) <= int(entry["max_rows"]):
+                    return True
+            except (KeyError, TypeError, ValueError):
+                continue
+        return False
+
+    def _iq_dense_mmq_verify_context(self, *, rows: int):
+        """Bind the dense raw-IQ execution-owner session around the verifier.
+
+        The block verifier runs the same raw-IQ projections the single-row AR
+        route runs, at rows 2-4 instead of row 1, so it needs the same
+        execution-owner binding for the backend's verifier-row policy to
+        admit a multi-row sibling. Without the binding every raw-IQ
+        projection in the verifier keeps the strict per-row GEMV owner even
+        when the AR route alongside it uses the local32 owner, which is what
+        leaves a verification-specific residual in the section-6.1 screen.
+
+        The session is deliberately workspace-less: the dense-IQ prefill
+        policy starts at 8 rows and cannot engage at verifier row counts, and
+        this path runs inside stream capture for the native target graph,
+        where allocating a workspace is not an option. Only the strict-slot
+        pins and the row-regime policies matter here, and the binding is
+        entered only for row counts a verifier policy actually declares.
+        """
+
+        if not bool(getattr(self, "use_iq_dense_mmq", True)):
+            return iq_dense_mmq_session(False)
+        if not self._iq_dense_verify_binding_needed(rows):
+            return iq_dense_mmq_session(False)
+        return iq_dense_mmq_session(
+            True,
+            strict_slots=self._iq_dense_mmq_strict_slots(),
+            decode_strict_slots=self._iq_dense_decode_strict_slots(),
+        )
+
+    def _iq_dense_mmq_context(self):
+        """Bind the dense raw-IQ execution-owner session (UD items 3 and C).
+
+        Binding is what admits the approximate dense-IQ routes; the backend
+        policies then decide which quants and row counts take them. Without
+        this context every raw-IQ projection keeps the strict per-row GEMV
+        owner. The prefill policy (W4A16 / integer MMQ) and the decode policy
+        (local32) are gated independently; either one is reason to open the
+        session, so a decode-only backend is not silently unrouted.
+        """
+
+        if not bool(getattr(self, "use_iq_dense_mmq", True)):
+            return iq_dense_mmq_session(False)
+        strict_slots = self._iq_dense_mmq_strict_slots()
+        decode_strict_slots = self._iq_dense_decode_strict_slots()
+        policy = backend_package_capability(
+            self.backend, "GGUF_IQ_DENSE_PREFILL_POLICY", {}
+        )
+        if not policy:
+            if not self._iq_dense_policy_present():
+                return iq_dense_mmq_session(False)
+            # Decode-only owners read the caller's buffer like W4A16; a
+            # workspace-less session is enough and allocates nothing.
+            return iq_dense_mmq_session(True, strict_slots=strict_slots,
+                              decode_strict_slots=decode_strict_slots)
+        # Only the integer-MMQ route consumes an activation plane. When the
+        # backend routes dense IQ prefill through W4A16, open the session
+        # without one: it still marks this prefill as the execution owner, but
+        # allocates nothing.
+        if not any(
+            str(entry.get("variant", "")).startswith("dense_mmq_")
+            for entry in policy.values()
+            if isinstance(entry, Mapping)
+        ):
+            return iq_dense_mmq_session(True, strict_slots=strict_slots,
+                              decode_strict_slots=decode_strict_slots)
+        buffer = self._ensure_iq_dense_mmq_buffer()
+        if self._iq_dense_mmq_library is None:
+            self._iq_dense_mmq_library = build_gguf_iq_source_mmq_prefill(
+                load=True,
+                compiler_version=getattr(self, "compiler_version", None),
+                require_cached=bool(getattr(self, "require_cached_build", False)),
+            )
+        if self._iq_dense_mmq_producer_library is None:
+            self._iq_dense_mmq_producer_library = build_gguf_k_mmq_prefill(
+                load=True,
+                compiler_version=getattr(self, "compiler_version", None),
+                require_cached=bool(getattr(self, "require_cached_build", False)),
+            )
+        return iq_dense_mmq_session(
+            True,
+            workspace_ptr=int(buffer.ptr),
+            workspace_nbytes=int(buffer.nbytes),
+            library=self._iq_dense_mmq_library,
+            producer_library=self._iq_dense_mmq_producer_library,
+            strict_slots=strict_slots,
+            decode_strict_slots=decode_strict_slots,
         )
 
     def _q6_integer_mmq_context(self, *, target_verifier: bool = False):
@@ -19564,8 +21637,10 @@ class Qwen35GGUFResidentSession:
                 raise ValueError("target hidden chunk sink request owner does not match")
             if int(target_hidden_chunk_sink.hidden_size) != int(self.runner.hidden_size):
                 raise ValueError("target hidden chunk sink hidden_size does not match the runner")
-            if int(target_hidden_chunk_sink.total_rows) != len(token_ids):
-                raise ValueError("target hidden chunk sink row count does not match the prompt")
+            reuse = getattr(self, "_dms_prefill_reuse", None)
+            sink_rows = len(token_ids) - (0 if reuse is None else len(reuse.tokens))
+            if int(target_hidden_chunk_sink.total_rows) not in {sink_rows, len(token_ids)}:
+                raise ValueError("target hidden chunk sink row count does not match the uncached prompt")
         min_bulk_tokens = int(self.runner.weights.config.ssm_conv_kernel)
         selected_bulk_attention_mode = (
             getattr(self, "default_bulk_attention_mode", "bulk")
@@ -19577,14 +21652,49 @@ class Qwen35GGUFResidentSession:
         if self._dms_source is not None:
             if dms_capture is not None:
                 raise ValueError("external DMS serving owns the prefill capture stage")
+            diagnostic = None
+            if self.dms_decision_mode == "diagnostic":
+                from hipengine.kvcache.dms_diagnostic import load_injection
+                if self.dms_diagnostic_injection_path is None:
+                    raise ValueError("diagnostic DMS mode requires dms_diagnostic_injection_path")
+                diagnostic = load_injection(self.dms_diagnostic_injection_path)
+                diagnostic.validate(
+                    prompt=token_ids,
+                    physical_layer_ids=self._dms_source.config.physical_layer_ids,
+                    num_kv_heads=self._dms_source.config.num_kv_heads,
+                    window_size=self._dms_source.config.window_size,
+                    target_compression_ratio=self._dms_source.config.target_compression_ratio,
+                    decode_steps=int(self.dms_max_new_tokens),
+                )
+                self._dms_diagnostic_observability = {
+                    "route": "diagnostic_injected_prefill_frozen_decode",
+                    "digest": diagnostic.digest,
+                    "prompt_tokens": diagnostic.prompt_tokens,
+                    "selector_kind": diagnostic.selector_kind,
+                    "seed": diagnostic.seed,
+                    "source_sha256": diagnostic.source_sha256,
+                    "injection_path": str(Path(self.dms_diagnostic_injection_path).resolve()),
+                    "evicted_rows": int(np.count_nonzero(diagnostic.eviction_mask)),
+                    "retained_rows": int(diagnostic.eviction_mask.size - np.count_nonzero(diagnostic.eviction_mask)),
+                    "decode_retention_steps": diagnostic.decode_retention_steps,
+                }
             dms_capture = _ExternalDMSDevicePrefillCollector(
                 self._dms_source,
                 token_count=len(token_ids),
                 backend=self.backend,
                 runtime=self.runtime or get_hip_runtime(),
                 decision_mode=self.dms_decision_mode,
+                diagnostic_injection=diagnostic,
             )
             internal_dms_capture = True
+            reuse = getattr(self, "_dms_prefill_reuse", None)
+            if reuse is not None:
+                from hipengine.runtime.dms_prefill_cache import seed_collector
+                try:
+                    seed_collector(dms_capture, reuse.cold)
+                except BaseException:
+                    dms_capture.close()
+                    raise
         if dms_capture is not None:
             if not return_logits and bool(
                 getattr(dms_capture, "requires_teacher_logits", True)
@@ -19598,6 +21708,7 @@ class Qwen35GGUFResidentSession:
                     f"GGUF bulk prefill requires at least {min_bulk_tokens} tokens; got {len(token_ids)}"
                 )
             with (
+                closing(dms_capture) if internal_dms_capture else nullcontext(),
                 q8_t16_two_wave_prefill_session(
                     _gguf_q8_t16_two_wave_prefill_applies(
                         getattr(self.runner, "backend", "hip_gfx1100"),
@@ -19624,6 +21735,7 @@ class Qwen35GGUFResidentSession:
                 self._prefill_f16_staging_context(),
                 self._wide_f16_activation_context(),
                 self._q6_integer_mmq_context(),
+                self._iq_dense_mmq_context(),
                 self._q8_mmq_prefill_context(),
                 self._q6_f16_rocblas_prefill_context(request_rows=len(token_ids)),
             ):
@@ -19656,6 +21768,8 @@ class Qwen35GGUFResidentSession:
                         bulk_attention_mode=selected_bulk_attention_mode,
                         return_logits=return_logits,
                         record_gpu_stage_timings=record_gpu_stage_timings,
+                        target_hidden_chunk_sink=target_hidden_chunk_sink,
+                        target_hidden_request_id=target_hidden_request_id,
                     )
                 result = self._run_bulk_prefill_and_sample(
                     token_ids,
@@ -19726,7 +21840,11 @@ class Qwen35GGUFResidentSession:
                 )
             self._position += 1
         assert hidden_ptr is not None
-        if target_hidden_chunk_sink is not None:
+        if (
+            target_hidden_chunk_sink is not None
+            # Partial timelines stay open for the next call or the adapter.
+            and int(len(token_ids)) == int(target_hidden_chunk_sink.total_rows)
+        ):
             target_hidden_chunk_sink.finish(
                 request_id=int(target_hidden_request_id),
                 total_rows=len(token_ids),
@@ -19812,8 +21930,10 @@ class Qwen35GGUFResidentSession:
                 raise ValueError("target hidden chunk sink request owner does not match")
             if int(target_hidden_chunk_sink.hidden_size) != int(self.runner.hidden_size):
                 raise ValueError("target hidden chunk sink hidden_size does not match the runner")
-            if int(target_hidden_chunk_sink.total_rows) != rows:
-                raise ValueError("target hidden chunk sink row count does not match the prompt")
+            reuse = getattr(self, "_dms_prefill_reuse", None)
+            sink_rows = rows - (0 if reuse is None else len(reuse.tokens))
+            if int(target_hidden_chunk_sink.total_rows) not in {sink_rows, rows}:
+                raise ValueError("target hidden chunk sink row count does not match the uncached prompt")
         if dflash2_capture is not None:
             if int(dflash2_capture.rows) < rows:
                 raise ValueError(
@@ -19866,6 +21986,17 @@ class Qwen35GGUFResidentSession:
                 stream=stream,
             )
         self.reset(stream=stream)
+        dms_reuse = getattr(self, "_dms_prefill_reuse", None)
+        prefix_start = 0 if dms_reuse is None else len(dms_reuse.tokens)
+        if dms_reuse is not None:
+            from hipengine.runtime.dms_prefix import restore_recurrent_prefix
+            from hipengine.runtime.dms_prefill_cache import write_prefix
+            restore_recurrent_prefix(self, dms_reuse)
+            if self.dms_prefill_mode != "layer_outer":
+                for layer, planes in zip(self._dms_source.config.physical_layer_ids,
+                                         dms_reuse.cold.layers, strict=True):
+                    for buffer, data in zip(self.scratch.full_cache(layer), planes, strict=True):
+                        write_prefix(buffer, data)
         gpu_stage_recorder.mark("prefill_reset")
         if recorder is not None:
             recorder.complete(reset_sequence, stream=stream)
@@ -19896,7 +22027,9 @@ class Qwen35GGUFResidentSession:
                     self._prefill_scratch_rows(rows),
                     int(self._bulk_prefill_scratch.rows),
                 )
-                ranges = _chunk_ranges(rows, chunk_size, min_chunk_size=linear_min_rows)
+                ranges = tuple((start + prefix_start, end + prefix_start)
+                               for start, end in _chunk_ranges(rows - prefix_start, chunk_size,
+                                                               min_chunk_size=linear_min_rows))
                 last_src_ptr = 0
                 last_bulk_scratch = None
                 for chunk_start, chunk_end in ranges:
@@ -20007,6 +22140,9 @@ class Qwen35GGUFResidentSession:
                             )
                         else:
                             raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                        if layer_type == LINEAR_ATTENTION and getattr(self, "_dms_cache_capture_tokens", None) is not None:
+                            from hipengine.runtime.dms_prefill_cache import capture_recurrent_boundary
+                            capture_recurrent_boundary(self, layer_id, chunk_end)
                         if recorder is not None and recorder.should_complete_layers:
                             recorder.complete(layer_sequence, stream=stream)
                         self._drain_prefill_queue(
@@ -20046,6 +22182,9 @@ class Qwen35GGUFResidentSession:
                         runtime=runtime,
                         stream=stream,
                     )
+                    if getattr(self, "_dms_cache_capture_tokens", None) is not None:
+                        from hipengine.runtime.dms_prefill_cache import capture_hidden_chunk
+                        capture_hidden_chunk(self, src.ptr, chunk_start, chunk_rows, rows)
                     if capture_target_hidden_rows is not None:
                         runtime.memcpy_async(
                             capture_target_hidden_rows.ptr
@@ -20058,7 +22197,8 @@ class Qwen35GGUFResidentSession:
                     elif target_hidden_chunk_sink is not None:
                         target_hidden_chunk_sink.consume(
                             request_id=int(target_hidden_request_id),
-                            chunk_start=chunk_start,
+                            chunk_start=(chunk_start if target_hidden_chunk_sink.total_rows == rows
+                                         else chunk_start - prefix_start),
                             hidden_ptr=src.ptr,
                             rows=chunk_rows,
                             stream=stream,
@@ -20115,10 +22255,19 @@ class Qwen35GGUFResidentSession:
                     try:
                         if layer_type == LINEAR_ATTENTION:
                             layer_chunk_size = self._linear_prefill_layer_chunk_size(rows)
-                            layer_ranges = _chunk_ranges(rows, layer_chunk_size, min_chunk_size=linear_min_rows)
+                            layer_ranges = tuple((a + prefix_start, b + prefix_start) for a, b in
+                                                 _chunk_ranges(rows - prefix_start, layer_chunk_size,
+                                                               min_chunk_size=linear_min_rows))
                         elif layer_type == FULL_ATTENTION:
+                            if dms_reuse is not None and self.dms_prefill_mode == "layer_outer":
+                                index = self._dms_source.compact_layer_index(layer_id)
+                                for buffer, data in zip(self._dms_layer_outer_oracle_pair(),
+                                                        dms_reuse.cold.layers[index], strict=True):
+                                    write_prefix(buffer, data)
                             layer_chunk_size = self._full_attention_prefill_layer_chunk_size(rows)
-                            layer_ranges = _chunk_ranges(rows, layer_chunk_size, min_chunk_size=2)
+                            layer_ranges = tuple((a + prefix_start, b + prefix_start) for a, b in
+                                                 _chunk_ranges(rows - prefix_start, layer_chunk_size,
+                                                               min_chunk_size=2))
                         else:
                             raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
                         for start, end in layer_ranges:
@@ -20198,6 +22347,9 @@ class Qwen35GGUFResidentSession:
                                 )
                             else:
                                 raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                            if layer_type == LINEAR_ATTENTION and getattr(self, "_dms_cache_capture_tokens", None) is not None:
+                                from hipengine.runtime.dms_prefill_cache import capture_recurrent_boundary
+                                capture_recurrent_boundary(self, layer_id, end)
                             if recorder is not None and recorder.should_complete_layers:
                                 recorder.complete(layer_sequence, stream=stream)
                         self._drain_prefill_queue(
@@ -20247,6 +22399,10 @@ class Qwen35GGUFResidentSession:
                     runtime=runtime,
                     stream=stream,
                 )
+                if getattr(self, "_dms_cache_capture_tokens", None) is not None:
+                    from hipengine.runtime.dms_prefill_cache import capture_hidden_chunk
+                    capture_hidden_chunk(self, src.ptr + prefix_start * target_hidden_row_nbytes,
+                                         prefix_start, rows - prefix_start, rows)
                 if capture_target_hidden_rows is not None:
                     runtime.memcpy_async(
                         capture_target_hidden_rows.ptr,
@@ -20258,9 +22414,9 @@ class Qwen35GGUFResidentSession:
                 elif target_hidden_chunk_sink is not None:
                     target_hidden_chunk_sink.consume(
                         request_id=int(target_hidden_request_id),
-                        chunk_start=0,
-                        hidden_ptr=src.ptr,
-                        rows=rows,
+                        chunk_start=prefix_start if target_hidden_chunk_sink.total_rows == rows else 0,
+                        hidden_ptr=src.ptr + prefix_start * target_hidden_row_nbytes,
+                        rows=rows - prefix_start,
                         stream=stream,
                     )
                 last_bulk_scratch = active_bulk_scratch
@@ -20276,7 +22432,12 @@ class Qwen35GGUFResidentSession:
                     )
                 last_src_ptr = src.ptr + (rows - 1) * self.runner.hidden_size * DType.BF16.itemsize
 
-            if target_hidden_chunk_sink is not None:
+            if (
+                target_hidden_chunk_sink is not None
+                # A call that covers only part of a sink's timeline leaves it
+                # open: the adapter closes it once the prompt is complete.
+                and int(rows) == int(target_hidden_chunk_sink.total_rows)
+            ):
                 target_hidden_chunk_sink.finish(
                     request_id=int(target_hidden_request_id),
                     total_rows=rows,
@@ -20422,9 +22583,12 @@ class Qwen35GGUFResidentSession:
         split back into each slot session for the later accept-row commit.
 
         The first production slice is intentionally bounded to the server MTP
-        shape: shared runner, BF16 KV, bulk verifier, no-copy prefill-GDN state
-        capture, and context < 1024 where the existing c1-equivalent
-        full-attention batch decoder is valid. Unsupported shapes raise
+        shape: shared runner, bulk verifier, no-copy prefill-GDN state capture,
+        and context < 1024 where the existing c1-equivalent full-attention batch
+        decoder is valid. KV may be BF16 or direct per-token-head INT8: BF16
+        attends through the context-batch decoder, and INT8 binds the retained
+        payload planes and their scale metadata so the same row-bulk pass runs
+        the retained-decode split-K leaf. Unsupported shapes raise
         ``NotImplementedError`` so the scheduler can fall back to per-slot
         verification.
         """
@@ -20448,8 +22612,10 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF resident packed verifier buffers are closed")
         if self._bulk_prefill_scratch is None:
             self._ensure_bulk_prefill_workspace()
-        if self.kv_storage_dtype != DType.BF16:
-            raise NotImplementedError("packed target verifier currently supports BF16 KV only")
+        if self.kv_storage_dtype not in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}:
+            raise NotImplementedError(
+                "packed target verifier supports BF16 or per-token-head INT8 KV only"
+            )
         if self.use_expert_sidecar:
             raise NotImplementedError("packed target verifier does not support expert sidecars yet")
         if _gguf_verify_f32_residual_enabled():
@@ -20478,8 +22644,10 @@ class Qwen35GGUFResidentSession:
                 raise NotImplementedError("packed target verifier requires shared runner sessions")
             if session.scratch is None:
                 raise RuntimeError("packed verifier job session is closed")
-            if session.kv_storage_dtype != DType.BF16:
-                raise NotImplementedError("packed target verifier currently supports BF16 KV only")
+            if session.kv_storage_dtype not in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}:
+                raise NotImplementedError(
+                    "packed target verifier supports BF16 or per-token-head INT8 KV only"
+                )
             if str(job.get("bulk_attention_mode", "bulk")) != "bulk":
                 raise NotImplementedError("packed target verifier supports bulk attention mode only")
             if bool(job.get("capture_linear_state_rows", False)) != capture_linear_state_rows:
@@ -20522,6 +22690,28 @@ class Qwen35GGUFResidentSession:
             int(block.start_position) + len(block.input_token_ids)
             for block in slot_blocks
         )
+        # Direct per-token-head INT8 KV runs the same row-bulk attention through
+        # the retained-decode leaf instead of the BF16 context-batch decoder.
+        # That leaf needs every session to expose the same registered kernel and
+        # to declare the group width, so resolve it once for the whole group and
+        # fail closed with a named capability miss when it is unavailable.
+        verifier_session_tuple = tuple(job["session"] for job in job_list)
+        verifier_retained_decode_kernel = (
+            self._packed_ar_direct_decode_kernel_for_sessions(
+                verifier_session_tuple,
+                physical_rows=len(verifier_session_tuple),
+            )
+            if self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+            else None
+        )
+        if (
+            self.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+            and verifier_retained_decode_kernel is None
+        ):
+            raise NotImplementedError(
+                "packed target verifier requires a shared direct INT8 decode leaf "
+                "at this group width"
+            )
         slot_capacity = max(1024, max_live_count)
         layout = _build_gguf_packed_verify_layout(slot_blocks, slot_capacity=slot_capacity)
         direct_linear_state = self._direct_resident_verify_linear_state(job_list)
@@ -20531,8 +22721,9 @@ class Qwen35GGUFResidentSession:
                 layout,
                 state_indices=np.asarray(direct_state_indices, dtype=np.int64),
             )
-        if int(layout.max_live_count) >= 1024:
-            raise NotImplementedError("packed target verifier currently requires context < 1024")
+        # The packed verifier allocates its split-K workspace below this point,
+        # so a live span past the split threshold is the workspace's own case,
+        # not a reason to refuse the group.
         rows = int(layout.rows)
         if rows > int(self._bulk_prefill_scratch.rows):
             raise NotImplementedError(
@@ -20574,7 +22765,25 @@ class Qwen35GGUFResidentSession:
         )
         add_stage("packed_verify_sync_initial_state", sync_state_start)
         token_upload_start = time.perf_counter()
-        packed_scratch = packed_scratch_base.for_packed_verify_layout(layout, runtime=runtime, stream=stream)
+        packed_scratch = replace(
+            packed_scratch_base.for_packed_verify_layout(
+                layout,
+                runtime=runtime,
+                stream=stream,
+            ),
+            retained_decode_kernel=verifier_retained_decode_kernel,
+        )
+        # The retained INT8 leaf splits the key span across a row-sized workspace;
+        # BF16 keeps the context-batch decoder and needs none.
+        packed_split_workspace = (
+            self._ensure_packed_ar_attention_workspace(
+                rows=rows,
+                max_context_len=int(layout.max_live_count),
+                runtime=runtime,
+            )
+            if verifier_retained_decode_kernel is not None
+            else None
+        )
         _stage_gguf_packed_verify_token_ids(
             layout,
             job_list,
@@ -20613,7 +22822,7 @@ class Qwen35GGUFResidentSession:
         src = self._prefill_hidden_a
         dst = self._prefill_hidden_b
         linear_state_owner = (
-            packed_state if direct_linear_state is None else direct_linear_state[1]
+            linear_state_owner if direct_linear_state is None else direct_linear_state[1]
         )
         linear_decode_scratch = replace(
             self.scratch,
@@ -20637,6 +22846,7 @@ class Qwen35GGUFResidentSession:
                 request_count=len(job_list),
             ),
             self._q6_integer_mmq_context(target_verifier=True),
+            self._iq_dense_mmq_context(),
         ):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 layer_start = time.perf_counter()
@@ -20659,6 +22869,8 @@ class Qwen35GGUFResidentSession:
                             rows=rows,
                             decode_scratch=linear_decode_scratch,
                             linear_state_rows=linear_state_rows,
+                            state_capacity=int(linear_state_owner.slot_count),
+                            state_indices=layout.state_indices,
                             stream=stream,
                         )
                     else:
@@ -20682,11 +22894,15 @@ class Qwen35GGUFResidentSession:
                         )
                     add_stage("packed_verify_linear_attn_layers", layer_start)
                 elif layer_type == FULL_ATTENTION:
-                    key_cache, value_cache = packed_state.full_cache(layer_id)
+                    # Bind the retained INT8 planes and their scale metadata when
+                    # this layer stores INT8 directly; a BF16 layer returns the
+                    # same cache-backed scratch this verifier used before.
                     layer_scratch = replace(
-                        packed_scratch,
-                        key_cache=key_cache,
-                        value_cache=value_cache,
+                        self._packed_full_attention_scratch_for_layer(
+                            packed_scratch,
+                            packed_state,
+                            layer_id,
+                        ),
                         cos_table=self.scratch.cos_table,
                         sin_table=self.scratch.sin_table,
                     )
@@ -20700,6 +22916,7 @@ class Qwen35GGUFResidentSession:
                         stage_timings=None,
                         sync_stage_timings=False,
                         stage_prefix="target_block_packed_full_attn",
+                        split_workspace=packed_split_workspace,
                     )
                     if gpu_stage_recorder is not None:
                         gpu_stage_recorder.mark("packed_verify_gpu_full_attn_layers")
@@ -20749,6 +22966,7 @@ class Qwen35GGUFResidentSession:
                     rows,
                     activation_dtype=GGUF_ACTIVATION_BF16,
                     stream=stream,
+                    require_logits=any(bool(job.get("require_logits", False)) for job in job_list),
                 )
                 token_host = None
             else:
@@ -20821,6 +23039,74 @@ class Qwen35GGUFResidentSession:
             gpu_stage_recorder.resolve_into(stage_timings)
         stage_timings["packed_verify_total"] = (time.perf_counter() - total_start) * 1000.0
         return results
+
+    def _eager_native_row_views(
+        self,
+        *,
+        rows: int,
+        start_position: int,
+        span_end: int,
+        runtime: HipRuntime,
+        stream: int,
+    ):
+        """Build per-row attention views for the eager native verifier.
+
+        The graph owner unpacks row metadata on device and hands its own views
+        in.  Eager verification stages the same metadata on the host through the
+        bulk scratch, so the views can be built directly: each row points at one
+        entry of the bulk scratch's per-row position/context arrays and at the
+        resident page table, which is what makes page indirection follow the
+        target slot instead of the bulk scratch's synthetic 0..N table.
+
+        Returns ``(views, context_limit)`` or ``(None, None)`` when the layout is
+        unavailable, in which case the caller keeps the scalar row-wise owner.
+        """
+
+        from hipengine.runtime.gguf_native_spec_cycle import (
+            _dynamic_native_decode_row_scratches,
+        )
+
+        rows = int(rows)
+        if rows <= 1:
+            return None, None
+        if self._bulk_prefill_scratch is None or self.scratch is None:
+            return None, None
+        context_limit = int(span_end)
+        if context_limit <= int(start_position):
+            return None, None
+        if (
+            self.kv_storage_dtype != DType.INT8_PER_TOKEN_HEAD
+            and not _use_gguf_full_attention_split_decode(context_limit)
+        ):
+            # Short context already batches rows through the shared-cache owner,
+            # which needs no per-row views.
+            return None, None
+        if int(self.scratch.max_positions) < context_limit:
+            return None, None
+        if int(self._bulk_prefill_scratch.rows) < rows:
+            return None, None
+        try:
+            # Stages this chunk's device metadata, exactly as the bulk owner
+            # would for the same bounds, and the views point at those buffers.
+            bulk = self._bulk_prefill_scratch.for_chunk(
+                int(start_position),
+                rows,
+                total_tokens=context_limit,
+                runtime=runtime,
+                stream=stream,
+            )
+            if int(getattr(bulk, "rows", 0)) < rows:
+                return None, None
+            views = _dynamic_native_decode_row_scratches(
+                self,
+                bulk,
+                rows=rows,
+                start_position=int(start_position),
+                context_limit=context_limit,
+            )
+        except (AttributeError, ValueError):
+            return None, None
+        return views, context_limit
 
     def verify_target_block(
         self,
@@ -20963,10 +23249,23 @@ class Qwen35GGUFResidentSession:
             or _graph_hidden_f32_a is not None
             or _graph_hidden_f32_b is not None
             or _graph_pre_output_norm_hidden_buf is not None
-            or _native_decode_row_scratches is not None
-            or _native_attention_context_limit is not None
         ):
             raise ValueError("private target graph controls require enqueue-only mode")
+        if _native_decode_row_scratches is not None and (
+            bulk_attention_mode != "native"
+            or len(_native_decode_row_scratches) != rows
+            or _native_attention_context_limit is None
+        ):
+            raise ValueError(
+                "dynamic native attention requires native mode and one row view per row"
+            )
+        if _native_attention_context_limit is not None and (
+            bulk_attention_mode != "native"
+            or int(_native_attention_context_limit) <= 0
+        ):
+            raise ValueError(
+                "dynamic native attention requires native mode and a positive context"
+            )
         if rows > int(self._bulk_prefill_scratch.rows):
             raise ValueError(
                 f"target block rows {rows} exceed resident bulk scratch rows {self._bulk_prefill_scratch.rows}"
@@ -21083,6 +23382,31 @@ class Qwen35GGUFResidentSession:
             f32_residual_layer_limit = _gguf_verify_f32_residual_layer_limit(
                 len(layer_types)
             )
+            row_views_keep_scalar_caps = False
+            if (
+                bulk_attention_mode == "native"
+                and _native_decode_row_scratches is None
+                and FULL_ATTENTION in layer_types
+                and rows > 1
+            ):
+                # Eager native verify: build the per-row attention views here so
+                # the staged chain can batch projections, head norm/rotary, and
+                # the FFN while attending each row with the registered c1 leaf.
+                # The graph owner passes its own device-driven views and is left
+                # untouched. ``end`` is the verified span end, so every row's
+                # split count covers its live count and the extra splits reduce
+                # to exact zeros.
+                eager_views, eager_context_limit = self._eager_native_row_views(
+                    rows=rows,
+                    start_position=start,
+                    span_end=end,
+                    runtime=runtime,
+                    stream=stream,
+                )
+                if eager_views is not None:
+                    _native_decode_row_scratches = eager_views
+                    _native_attention_context_limit = eager_context_limit
+                    row_views_keep_scalar_caps = True
             full_attention_prefused_ready = (
                 FULL_ATTENTION not in layer_types
                 or (
@@ -21107,13 +23431,14 @@ class Qwen35GGUFResidentSession:
                 and rows <= 8
                 and not capture_layer_boundary_ids
                 and full_attention_prefused_ready
-                and self.runner._rounded_add_rmsnorm_fn() is not None
+                and self.runner._rounded_add_rmsnorm_fn(rows=rows) is not None
             )
             input_norm_ptr: int | None = None
             with (
                 wmma_prefill_session(block_wmma_prefill),
                 gemv_decode_session(self.use_gemv_decode),
                 native_batch_decode_session(bulk_attention_mode == "native"),
+                self._iq_dense_mmq_verify_context(rows=rows),
             ):
                 for layer_id, layer_type in enumerate(layer_types):
                     if use_f32_residual and layer_id >= f32_residual_layer_limit:
@@ -21203,6 +23528,7 @@ class Qwen35GGUFResidentSession:
                                 next_norm_out_ptr=next_norm_out_ptr,
                                 decode_row_scratches=_native_decode_row_scratches,
                                 attention_context_limit=_native_attention_context_limit,
+                                row_views_keep_scalar_caps=row_views_keep_scalar_caps,
                             )
                         elif layer_type == LINEAR_ATTENTION:
                             self.runner._run_linear_attention_prefill_layer_rows(
@@ -21874,6 +24200,20 @@ class Qwen35GGUFResidentSession:
             decode_spans=decode_spans,
         )
 
+    def _require_native_rows(self, rows: int) -> None:
+        """Check the load-time route choice, not a fresh ownership inventory.
+
+        Resident weights and scratch are private session-owned allocations.
+        Replacing their views or geometry while this session is live is not a
+        supported API. Graphs share that lifetime contract.
+        """
+        if not self._native_rows_ready:
+            raise ValueError("ar_decode_native_rows must be requested at session construction")
+        if self.use_expert_sidecar or self.host_token_embedding_enabled:
+            raise ValueError("ar_decode_native_rows does not support host embedding or expert sidecars")
+        if not 2 <= int(rows) <= min(8, int(self.max_batch_size)):
+            raise ValueError("ar_decode_native_rows rows must be within [2, min(8, max_batch_size)]")
+
     def _enqueue_native_rows_model(
         self,
         scratch,
@@ -22025,6 +24365,7 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF resident native-row buffers are closed")
         tokens = tuple(int(token) for token in token_ids)
         rows = len(tokens)
+        self._require_native_rows(rows)
         if rows <= 1:
             raise ValueError("native GGUF target execution requires at least two rows")
         if rows > int(self.max_batch_size):
@@ -22122,8 +24463,7 @@ class Qwen35GGUFResidentSession:
 
         if self.runner is None or self.runner.weights is None or self._target_scratch_owner is None:
             raise RuntimeError("GGUF resident session is closed")
-        if self.host_token_embedding_enabled:
-            self._device_token_embedding_weight(reason="native_rows_graph")
+        self._require_native_rows(int(rows))
         rows = int(rows)
         if rows <= 1 or rows > int(self.max_batch_size):
             raise ValueError("native row graph rows must be within [2, max_batch_size]")
@@ -22253,7 +24593,7 @@ class Qwen35GGUFResidentSession:
         src = self._hidden_a
         dst = self._hidden_b
         captures: dict[int, np.ndarray] = {}
-        with gemv_decode_session(self.use_gemv_decode):
+        with gemv_decode_session(self.use_gemv_decode), self._iq_dense_mmq_context():
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 for slot in slots:
                     scratch = slot_scratch[slot]
@@ -22452,7 +24792,7 @@ class Qwen35GGUFResidentSession:
         gpu_stage_recorder.start()
         try:
             self._refresh_dms_decode_owner_marker()
-            with gemv_decode_session(self.use_gemv_decode):
+            with gemv_decode_session(self.use_gemv_decode), self._iq_dense_mmq_context():
                 hidden_ptr = self._run_token_to_final_hidden(
                     int(token_id),
                     position=self._position,
@@ -22482,7 +24822,7 @@ class Qwen35GGUFResidentSession:
         if position is not None and int(position) != self._position:
             raise ValueError(f"position {position} does not match session cursor {self._position}")
         self._refresh_dms_decode_owner_marker()
-        with gemv_decode_session(self.use_gemv_decode):
+        with gemv_decode_session(self.use_gemv_decode), self._iq_dense_mmq_context():
             hidden_ptr = self._run_token_to_final_hidden(
                 int(token_id),
                 position=self._position,
@@ -22561,21 +24901,26 @@ class Qwen35GGUFResidentSession:
         )
         if allow_direct_int8_prefill and allow_direct_int8_decode:
             raise ValueError("direct INT8 prefill and decode admission are distinct work classes")
-        if has_direct_int8 and allow_direct_int8_prefill and len(sessions) != 1:
-            raise NotImplementedError(
-                "packed AR direct INT8 is admitted only for single-row prefill until shared prefill ownership is qualified"
-            )
-        if has_direct_int8 and allow_direct_int8_decode:
+        if has_direct_int8 and (allow_direct_int8_prefill or allow_direct_int8_decode):
+            # Prefill and decode are distinct work classes, but they write the
+            # same packed physical cell, so both are bounded by the width the
+            # artifact and backend qualify for direct INT8. A single-row
+            # prefill was the only admitted shape while that ownership was
+            # unqualified; the rows>1 route is now measured at group width, so
+            # the prefill class carries the same limit as decode instead of
+            # collapsing to one row.
             width = len(sessions) if physical_rows is None else int(physical_rows)
             direct_limit = min(
                 max(1, int(getattr(session, "packed_decode_max_rows", 1)))
                 for session in sessions
             )
             if width <= 0 or width > direct_limit:
+                work_class = "prefill" if allow_direct_int8_prefill else "decode"
                 raise NotImplementedError(
-                    f"packed AR direct INT8 physical width {width} exceeds artifact-qualified limit {direct_limit}"
+                    f"packed AR direct INT8 {work_class} physical width {width} "
+                    f"exceeds artifact-qualified limit {direct_limit}"
                 )
-        elif has_direct_int8 and not allow_direct_int8_prefill:
+        elif has_direct_int8:
             raise NotImplementedError(
                 "packed AR direct INT8 attention is not admitted without a bounded BF16 mirror"
             )
@@ -22647,6 +24992,7 @@ class Qwen35GGUFResidentSession:
                 self._prefill_f16_staging_context(),
                 self._wide_f16_activation_context(),
                 self._q6_integer_mmq_context(),
+                self._iq_dense_mmq_context(),
             ):
                 return self._prefill_batch_native_impl(
                     prompt_token_ids,
@@ -22781,6 +25127,7 @@ class Qwen35GGUFResidentSession:
         state: _GGUFResumablePrefillState | None = None,
         layer_budget: int | None = None,
         stream: int = 0,
+        target_hidden_chunk_sinks: Sequence[TargetHiddenChunkSink | None] | None = None,
     ) -> list[Qwen35GGUFNextTokenProbeResult | None] | _GGUFResumablePrefillState:
         """Start or continue a resumable layer-outer INT8 prefill.
 
@@ -22844,6 +25191,7 @@ class Qwen35GGUFResidentSession:
                 layer_budget=layer_budget,
                 stream=stream,
                 executor_mode="layer_outer_resumable",
+                target_hidden_chunk_sinks=target_hidden_chunk_sinks,
             )
         except BaseException:
             # A failed segment cannot be resumed, so its suspended-state
@@ -23054,6 +25402,7 @@ class Qwen35GGUFResidentSession:
         # executor for every unsupported shape.
         if (
             _gguf_packed_layer_outer_enabled()
+            and not any(initial_positions)
             and not return_hidden_seeds
             and not capture_layer_output_hidden
             and all(sink is None for sink in sink_tuple)
@@ -23207,6 +25556,7 @@ class Qwen35GGUFResidentSession:
         resume_state: _GGUFResumablePrefillState | None = None,
         layer_budget: int | None = None,
         executor_mode: str = "layer_outer_packed",
+        target_hidden_chunk_sinks: Sequence[TargetHiddenChunkSink | None] | None = None,
     ) -> list[Qwen35GGUFNextTokenProbeResult | None] | _GGUFResumablePrefillState:
         """Execute a multi-chunk packed prompt layer-outer with one shared oracle.
 
@@ -23244,6 +25594,18 @@ class Qwen35GGUFResidentSession:
         session_tuple = tuple(sessions)
         if len(prompt_tuple) != len(session_tuple):
             raise ValueError("prompt_token_ids and sessions must have the same length")
+        sinks = (
+            (None,) * len(session_tuple)
+            if target_hidden_chunk_sinks is None else tuple(target_hidden_chunk_sinks)
+        )
+        if len(sinks) != len(session_tuple):
+            raise ValueError("target hidden sinks must align with sessions")
+        for prompt, sink in zip(prompt_tuple, sinks, strict=True):
+            if sink is not None and (
+                int(sink.total_rows) != len(prompt)
+                or int(sink.hidden_size) != int(self.runner.hidden_size)
+            ):
+                raise ValueError("target hidden sink must cover the complete prompt and hidden width")
         if len(chunks) <= 1:
             raise ValueError("layer-outer packed prefill requires multiple chunks")
         # Slot stability: every chunk must address the same sessions in the
@@ -23411,6 +25773,7 @@ class Qwen35GGUFResidentSession:
             require_logits=bool(require_logits),
             runtime=runtime,
             executor_mode=str(executor_mode),
+            target_hidden_chunk_sinks=sinks,
         )
         return self._prefill_batch_native_layer_outer_segment_guarded(
             state,
@@ -23639,6 +26002,34 @@ class Qwen35GGUFResidentSession:
                     state.scratch.nbytes
                 )
                 return state
+
+            # Publish final trunk rows before sampling reuses the hidden planes.
+            # Intermediate layer boundaries do not contain draft-provider inputs.
+            for entry in chunk_plans:
+                layout = entry["layout"]
+                for slot_index, sink in enumerate(state.target_hidden_chunk_sinks):
+                    if sink is None:
+                        continue
+                    row_start = int(layout.cu_seqlens[slot_index])
+                    row_end = int(layout.cu_seqlens[slot_index + 1])
+                    if row_end == row_start:
+                        continue
+                    start_position = int(layout.row_positions[row_start])
+                    sink.consume(
+                        request_id=int(sink.request_id),
+                        chunk_start=start_position,
+                        hidden_ptr=src.ptr + (int(entry["base"]) + row_start)
+                        * self.runner.hidden_size * DType.BF16.itemsize,
+                        rows=row_end - row_start,
+                        stream=stream,
+                    )
+            for sink in state.target_hidden_chunk_sinks:
+                if sink is not None:
+                    sink.finish(
+                        request_id=int(sink.request_id),
+                        total_rows=int(sink.total_rows),
+                        stream=stream,
+                    )
 
             # Sampling tail: only each slot's final row (last round).
             last_entry = chunk_plans[-1]
@@ -23881,6 +26272,18 @@ class Qwen35GGUFResidentSession:
             for block in slot_blocks
         )
         slot_capacity = max(1024, max_live_count)
+        retained_prefix_slots = tuple(
+            direct_int8_prefill
+            and int(block.start_position) > 0
+            and not bool(getattr(session, "_int8_prefill_oracle_buffers", {}))
+            for session, block in zip(session_tuple, slot_blocks, strict=True)
+        )
+        for session, retained in zip(session_tuple, retained_prefix_slots, strict=True):
+            if retained:
+                _check_retained_prefix_format(
+                    SimpleNamespace(granularity=session.kv_scale_granularity),
+                    value_bf16=session.int8_kv_value_bf16,
+                )
         layout = _build_gguf_packed_verify_layout(slot_blocks, slot_capacity=slot_capacity)
         slot_local_full_prefill = (
             _packed_prefill_requires_slot_local_full_attention(layout)
@@ -23897,12 +26300,37 @@ class Qwen35GGUFResidentSession:
         device_kv_nonidentity_scatter = any(
             base_row is None for base_row in device_kv_contiguous_base_rows
         )
-        if device_kv_nonidentity_scatter:
+        gapped_slot_local_gather = (
+            device_kv_nonidentity_scatter
+            and _gguf_gapped_slot_local_prefill_admitted(
+                direct_int8_prefill=direct_int8_prefill,
+                sessions=session_tuple,
+                contiguous_base_rows=device_kv_contiguous_base_rows,
+            )
+        )
+        if any(retained_prefix_slots):
+            # Restored prefixes own INT8 payload/scales, not an unwritten
+            # transient BF16 oracle. Slot-local retained spans handle both
+            # contiguous and gapped page tables without rebasing.
+            slot_local_full_prefill = True
+            force_aotriton_slots.clear()
+        elif device_kv_nonidentity_scatter and not gapped_slot_local_gather:
             # Slot-local prefill cannot represent a shared prefix plus a
             # non-contiguous COW suffix. Keep those sessions in packed scratch
             # and scatter through their scheduler-owned block table below.
             slot_local_full_prefill = False
             force_aotriton_slots.clear()
+        elif device_kv_nonidentity_scatter and gapped_slot_local_gather:
+            # A gapped BF16 slot keeps the slot-local executor: its identity
+            # spans are swapped for the session's real chunk-local block
+            # table, the KV write and the head-major gather walk it, and
+            # AOTriton reads the gathered dense head-major buffers exactly
+            # as the contiguous route does. The forced AOTriton slots must
+            # survive here: the engine loop slices long prompts into 256-row
+            # chunks, below the 512-token AOTriton threshold, and contiguous
+            # slots cross it via ``aotriton_min_tokens=1``; clearing the force
+            # would strand every gapped chunk on the native kernel.
+            slot_local_full_prefill = True
         elif direct_int8_prefill:
             # The c1 correctness route keeps one transient BF16 oracle but uses
             # the scheduler's physical page table. Shifted rows therefore stay
@@ -23921,12 +26349,19 @@ class Qwen35GGUFResidentSession:
             base_row not in {None, 0}
             for base_row in device_kv_contiguous_base_rows
         )
+        self.last_packed_prefill_plan["gapped_slot_local_gather"] = bool(
+            device_kv_nonidentity_scatter and gapped_slot_local_gather
+        )
+        self.last_packed_prefill_plan["gapped_gather_slots"] = [
+            slot_index
+            for slot_index, base_row in enumerate(device_kv_contiguous_base_rows)
+            if base_row is None and gapped_slot_local_gather
+        ]
+        self.last_packed_prefill_plan["retained_prefix_attention_slots"] = [
+            index for index, retained in enumerate(retained_prefix_slots) if retained
+        ]
         if force_aotriton_slots and not slot_local_full_prefill:
             raise ValueError("forced AOTriton slots require slot-local full attention")
-        _validate_packed_ar_prefill_context(
-            layout,
-            slot_local_full_prefill=slot_local_full_prefill,
-        )
         capture_layer_ids = self._normalize_layer_output_capture(
             capture_layer_output_hidden
         )
@@ -24049,6 +26484,7 @@ class Qwen35GGUFResidentSession:
                             layer_scratch = session._full_attention_prefill_scratch_for_layer(
                                 slot_scratch,
                                 layer_id,
+                                **({"use_retained_prefix": True} if retained_prefix_slots[slot_index] else {}),
                             )
                             transient_direct_oracle = bool(
                                 direct_int8_prefill
@@ -24056,12 +26492,41 @@ class Qwen35GGUFResidentSession:
                                 and session.scratch.full_bf16_mirror_cache(layer_id)
                                 is None
                             )
-                            layer_scratch = _gguf_slot_local_prefill_cache_views(
-                                session,
-                                layer_scratch,
-                                row_nbytes=full_kv_row_nbytes,
-                                direct_int8=transient_direct_oracle,
+                            gapped_gather_slot = bool(
+                                device_kv_contiguous_base_rows[slot_index] is None
+                                and not transient_direct_oracle
+                                and layer_scratch.prefill_spans.storage_dtype == DType.BF16
                             )
+                            if gapped_gather_slot:
+                                # No contiguous rebase exists for this slot:
+                                # keep the pool-chunk cache pointers and swap the
+                                # identity spans for the session's real block
+                                # table so the KV write, the native fallback
+                                # and the head-major gather all address the
+                                # scheduler-owned pages.
+                                layer_scratch = _gguf_gapped_slot_local_prefill_scratch(
+                                    layer_scratch,
+                                    block_table=_gguf_gapped_slot_block_table(
+                                        session,
+                                        rows=slot_rows,
+                                        device=slot_scratch.positions_tensor.device,
+                                        runtime=runtime,
+                                    ),
+                                )
+                                layer_scratch = _gguf_gapped_slot_head_major_scratch(
+                                    session,
+                                    layer_scratch,
+                                    context_tokens=end_position,
+                                    kv_width=int(self.runner.kv_width),
+                                    runtime=runtime,
+                                )
+                            else:
+                                layer_scratch = _gguf_slot_local_prefill_cache_views(
+                                    session,
+                                    layer_scratch,
+                                    row_nbytes=full_kv_row_nbytes,
+                                    direct_int8=transient_direct_oracle,
+                                )
                             row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
                             self.runner._run_full_attention_prefill_layer_aotriton(
                                 layer_id,
@@ -24078,6 +26543,16 @@ class Qwen35GGUFResidentSession:
                                         transient_direct_oracle=(
                                             transient_direct_oracle
                                         ),
+                                    )
+                                    and (
+                                        not gapped_gather_slot
+                                        or bool(
+                                            getattr(
+                                                layer_scratch,
+                                                "head_major_kv_admitted",
+                                                False,
+                                            )
+                                        )
                                     )
                                 ),
                                 aotriton_min_tokens=(
@@ -24733,6 +27208,20 @@ class Qwen35GGUFResidentSession:
             stream=stream,
         )
         layout = _rebind_packed_verify_layout_pages(layout, packed_state)
+        # The row-bulk decode splits its K/V walk once a slot's live span crosses
+        # the split threshold and refuses to guess at the workspace. This path
+        # passed none, so a draft step past that threshold failed before commit
+        # and the whole group was recovered by autoregressive decoding, which
+        # looked like speculation simply stopping.
+        split_workspace = (
+            self._ensure_packed_ar_attention_workspace(
+                rows=rows,
+                max_context_len=int(layout.max_live_count),
+                runtime=runtime,
+            )
+            if int(layout.max_live_count) >= 1024
+            else None
+        )
         self._sync_packed_decode_initial_state(
             session_tuple,
             layout,
@@ -24771,7 +27260,7 @@ class Qwen35GGUFResidentSession:
             stage_timings=None,
             sync_stage_timings=False,
             stage_prefix="nextn_batch_full_attn",
-            split_workspace=None,
+            split_workspace=split_workspace,
             kv_write_only=bool(kv_write_only),
         )
         if score_output:
@@ -26330,6 +28819,14 @@ class Qwen35GGUFResidentSession:
             for buffer in reversed(self._packed_verify_state.buffers):
                 if buffer is not None:
                     free(buffer, runtime=runtime)
+            pool = getattr(self._packed_verify_state, "private_workspace_pool", None)
+            token = getattr(self._packed_verify_state, "private_workspace_token", None)
+            if token is not None:
+                pool.release_private_workspace(token)
+            charge_pool = getattr(self._packed_verify_state, "resident_charge_pool", None)
+            charge_token = getattr(self._packed_verify_state, "resident_charge_token", None)
+            if charge_token is not None:
+                charge_pool.release_private_workspace(charge_token)
         self._packed_verify_state = None
         self._packed_verify_session_ids = ()
         self._packed_verify_max_written_positions = ()
@@ -26418,31 +28915,38 @@ class Qwen35GGUFResidentSession:
         rows: int,
         max_sequence_length: int,
     ) -> tuple[int, int, int, int]:
-        """Union the request with current holdings and serving caps.
+        """Union requested geometry with current holdings and capacity floors.
 
-        The workspace is sized once to the union of every geometry the serving
-        loop can request (prefill chunk width, physical packed width, the
-        1024-token context cap) so prefill/decode interleaving never frees or
-        reallocates buffers mid-tick.
+        The serving-slot and 1024-token context floors avoid reallocating for
+        smaller prefill/decode shapes. Wider physical layouts or longer
+        contexts can still require growth. Past the short-context floor the KV
+        slot axis follows live demand: a long-context request pays for its own
+        slots, not the idle scheduler capacity or a wider short-context shape
+        left behind by an earlier round.
         """
 
         state = self._packed_verify_state
         scratch = self._packed_verify_scratch
-        capacity = getattr(self, "max_batch_size", None)
-        try:
-            # Capacity-honest workspace ceiling: the serving loop can never
-            # open more resident slots than max_active_requests (MTP serving
-            # widths and packed group layouts are both bounded by it), so the
-            # workspace follows the real cap instead of the historical 8-slot
-            # floor. Absent or invalid caps keep the historical fallback.
-            capacity = max(1, int(capacity))
-        except (TypeError, ValueError):
-            capacity = _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
-        state_slots = capacity
+        # Serving capacity is a floor, not a physical verifier-width ceiling.
+        # Wider requested or retained geometry wins below; its KV may require
+        # budgeted private backing instead of the eager arena lease.
+        capacity = packed_verify_lease_slot_ceiling(
+            getattr(self, "max_batch_size", None)
+        )
         state_max_seq = _PACKED_VERIFY_MIN_MAX_SEQUENCE
         if state is not None:
-            state_slots = max(state_slots, int(state.slot_count))
             state_max_seq = max(state_max_seq, int(state.max_sequence_length))
+        if int(max_sequence_length) > _PACKED_VERIFY_MIN_MAX_SEQUENCE:
+            # Long context: the per-slot KV planes dominate the allocation, so
+            # size the slot axis to the live request instead of the resident
+            # capacity or a wider shape retained from a short-context round.
+            # The GDN scratch keeps the capacity floor below; it is cheap and
+            # must stay wide enough for any concurrent slot.
+            state_slots = int(slot_count)
+        else:
+            state_slots = capacity
+            if state is not None:
+                state_slots = max(state_slots, int(state.slot_count))
         scratch_rows = self._packed_verify_prefill_row_cap()
         scratch_segments = capacity
         if scratch is not None:
@@ -26998,9 +29502,9 @@ class Qwen35GGUFResidentSession:
             self._verify_linear_state_recurrent_row_nbytes = recurrent_row_nbytes
             self._verify_linear_state_layer_count = n_entries
             self._buffers = (*self._buffers, *new_buffers)
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self._verify_linear_state_commit_row_i32_buf,
-                host_array_ptr(np.asarray([0], dtype=np.int32)),
+                np.asarray([0], dtype=np.int32),
                 DType.INT32.itemsize,
                 runtime=runtime,
             )
@@ -29406,6 +31910,7 @@ class Qwen35GGUFResidentSession:
         )
         self._last_packed_sampler_decode_path = "native_gpu_sampler_rows"
         if self.last_packed_execution_manifest:
+            self.last_packed_execution_manifest["native_sampler_provenance"] = self.native_sampler_provenance
             self.last_packed_execution_manifest["sampler_decode_path"] = (
                 "native_gpu_sampler_rows"
             )
@@ -29454,6 +31959,7 @@ class Qwen35GGUFResidentSession:
         )
         self._last_packed_sampler_decode_path = "native_gpu_sampler_row"
         if self.last_packed_execution_manifest:
+            self.last_packed_execution_manifest["native_sampler_provenance"] = self.native_sampler_provenance
             self.last_packed_execution_manifest["sampler_decode_path"] = (
                 "native_gpu_sampler_row"
             )
@@ -29465,9 +31971,24 @@ class Qwen35GGUFResidentSession:
             self.last_packed_prefill_plan["native_sampler_rows"] = 1
         return sample
 
+    @property
+    def native_sampler_provenance(self) -> dict[str, object]:
+        from hipengine.runtime.native_sampler import native_sampler_provenance
+
+        workspace = self._native_sampler_workspace
+        if workspace is not None and not workspace.closed:
+            if workspace.full_vocab_algorithm != self.native_sampler_algorithm:
+                raise RuntimeError("live native sampler selection disagrees with declaration")
+            payload = workspace.provenance
+        else:
+            payload = native_sampler_provenance(self.native_sampler_algorithm)
+        return {**payload, "backend": self.backend}
+
     def _native_sampler(self) -> NativeSamplerWorkspace:
         workspace = self._native_sampler_workspace
         if workspace is not None and not workspace.closed:
+            if workspace.full_vocab_algorithm != self.native_sampler_algorithm:
+                raise RuntimeError("live native sampler selection disagrees with declaration")
             return workspace
         if self.runner is None or self._lm_head_library is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -29482,6 +32003,7 @@ class Qwen35GGUFResidentSession:
             runtime=self.runtime or get_hip_runtime(),
             vocab_size=self.runner.vocab_size,
             sampler_library=sampler_library,
+            full_vocab_algorithm=self.native_sampler_algorithm,
         )
         self._native_sampler_workspace = workspace
         return workspace
@@ -29556,6 +32078,7 @@ class Qwen35GGUFResidentSession:
         capture_pre_output_norm_hidden: bool = False,
         defer_linear_state_commit: bool = False,
         device_accept_commit: bool = False,
+        sampled_accept: bool = False,
     ):
         """Capture a reusable B1-B3 N1 or N2 native target graph."""
 
@@ -29576,6 +32099,7 @@ class Qwen35GGUFResidentSession:
             capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
             defer_linear_state_commit=bool(defer_linear_state_commit),
             device_accept_commit=bool(device_accept_commit),
+            sampled_accept=bool(sampled_accept),
         )
 
     def prepare_native_spec_target_graph(
@@ -29583,14 +32107,22 @@ class Qwen35GGUFResidentSession:
         input_token_ids: list[int] | tuple[int, ...],
         *,
         request_id: int,
+        sampled_accept: bool = False,
     ) -> bool:
-        """Capture/cache one strict N2 target graph before a hot cycle."""
+        """Capture/cache one strict N2 target graph before a hot cycle.
+
+        ``sampled_accept`` warms the sampled accept/commit variant, which a row
+        with a non-greedy sampler needs; the two variants are separate cache
+        slots because their captured accept kernels differ.
+        """
 
         tokens = tuple(int(token) for token in input_token_ids)
         budget = len(tokens) - 1
         if budget not in {1, 2, 3, 4, 5, 6, 7}:
             return False
         cache_name = f"_native_spec_b{budget}_target_graph_n2"
+        if sampled_accept:
+            cache_name = f"{cache_name}_sampled"
         existing = getattr(self, cache_name, None)
         if existing is not None and not bool(getattr(existing, "closed", False)):
             compatible = getattr(existing, "compatible_with", None)
@@ -29603,6 +32135,7 @@ class Qwen35GGUFResidentSession:
                 capture_pre_output_norm_hidden=True,
                 defer_linear_state_commit=True,
                 device_accept_commit=True,
+                sampled_accept=bool(sampled_accept),
             ):
                 return True
             existing.close()
@@ -29615,13 +32148,14 @@ class Qwen35GGUFResidentSession:
             capture_pre_output_norm_hidden=True,
             defer_linear_state_commit=True,
             device_accept_commit=True,
+            sampled_accept=bool(sampled_accept),
         )
         setattr(self, cache_name, graph)
         cache = getattr(self, "_native_spec_target_graphs", None)
         if not isinstance(cache, dict):
             cache = {}
             setattr(self, "_native_spec_target_graphs", cache)
-        cache[(budget, True, int(graph.context_limit))] = graph
+        cache[(budget, True, int(graph.context_limit), bool(sampled_accept))] = graph
         return True
 
     def verify_target_block_native_cycle(
@@ -29642,6 +32176,8 @@ class Qwen35GGUFResidentSession:
         defer_linear_state_commit: bool = False,
         device_accept_commit: bool = False,
         remaining_decode: int | None = None,
+        sampled_accept: bool = False,
+        sampled_accept_state: object | None = None,
     ):
         """Run reusable B1-B3 N1 or N2, else preserve eager fallback."""
 
@@ -29666,6 +32202,8 @@ class Qwen35GGUFResidentSession:
             defer_linear_state_commit=bool(defer_linear_state_commit),
             device_accept_commit=bool(device_accept_commit),
             remaining_decode=(None if remaining_decode is None else int(remaining_decode)),
+            sampled_accept=bool(sampled_accept),
+            sampled_accept_state=sampled_accept_state,
         )
 
     def verify_target_from_device_proposal(
@@ -29683,6 +32221,8 @@ class Qwen35GGUFResidentSession:
         capture_lm_head_logits: bool = False,
         defer_linear_state_commit: bool = True,
         compact_result: bool = False,
+        sampled_accept: bool = False,
+        sampled_accept_state: object | None = None,
     ):
         """Retire cached proposal/N2 graphs behind the target synchronization."""
 
@@ -29704,6 +32244,8 @@ class Qwen35GGUFResidentSession:
             capture_lm_head_logits=bool(capture_lm_head_logits),
             defer_linear_state_commit=bool(defer_linear_state_commit),
             compact_result=bool(compact_result),
+            sampled_accept=bool(sampled_accept),
+            sampled_accept_state=sampled_accept_state,
         )
 
     def run_native_spec_mtp_cycle(
@@ -29727,6 +32269,8 @@ class Qwen35GGUFResidentSession:
         native_proposal_graph: bool = False,
         target_bulk_attention_mode: str = "bulk",
         k1_disable_f32_verifier: bool = False,
+        sampled_accept: bool = False,
+        sampled_accept_state: object | None = None,
     ):
         """Run one complete strict GGUF MTP cycle through the N3 adapter."""
 
@@ -29761,6 +32305,8 @@ class Qwen35GGUFResidentSession:
             native_proposal_graph=bool(native_proposal_graph),
             target_bulk_attention_mode=str(target_bulk_attention_mode),
             k1_disable_f32_verifier=bool(k1_disable_f32_verifier),
+            sampled_accept=bool(sampled_accept),
+            sampled_accept_state=sampled_accept_state,
         )
 
     def capture_decode_graph(
@@ -29799,6 +32345,9 @@ class Qwen35GGUFResidentSession:
                 self.runner.backend,
                 geometry=getattr(resident_weights, "geometry", None),
                 file_type_name=getattr(resident_weights, "file_type_name", None),
+                artifact_preset_key=getattr(
+                    resident_weights, "artifact_preset_key", None
+                ),
                 physical_rows=1,
                 replay_steps=(
                     int(steps_per_replay)
@@ -29869,6 +32418,9 @@ class Qwen35GGUFResidentSession:
                 self.runner.backend,
                 geometry=getattr(resident_weights, "geometry", None),
                 file_type_name=getattr(resident_weights, "file_type_name", None),
+                artifact_preset_key=getattr(
+                    resident_weights, "artifact_preset_key", None
+                ),
                 physical_rows=(
                     len(token_ids) if physical_rows is None else int(physical_rows)
                 ),
@@ -29937,6 +32489,10 @@ class Qwen35GGUFResidentSession:
 
         if getattr(self, "_resident_batch_owner", None) is None:
             raise RuntimeError("resident slot-view cleanup requires a batch owner")
+        pool = self.__dict__.pop("_gguf_prefix_snapshot_arena_pool", None)
+        if pool is not None:
+            pool.close()
+        self._release_gapped_prefill_buffers(runtime=runtime)
         for buffer in (
             self._verify_lm_out_values,
             self._verify_lm_out_indices_i32,
@@ -29975,6 +32531,7 @@ class Qwen35GGUFResidentSession:
                 free(buffer, runtime=runtime)
         self._buffers = ()
         self._prefill_f16_staging_buf = None
+        self._iq_dense_mmq_buf = None
         self._q6_integer_mmq_library = None
         self._verify_linear_state_src_conv_table_buf = None
         self._verify_linear_state_src_recurrent_table_buf = None
@@ -29993,6 +32550,9 @@ class Qwen35GGUFResidentSession:
 
     def close(self) -> None:
         runtime = self.runtime or get_hip_runtime()
+        pool = self.__dict__.pop("_gguf_prefix_snapshot_arena_pool", None)
+        if pool is not None:
+            pool.close()
         for view in reversed(tuple(self.__dict__.pop("_resident_slot_views", ()))):
             view._close_resident_slot_view_buffers(runtime=runtime)
         recorder = self._prefill_flight_recorder
@@ -30011,6 +32571,7 @@ class Qwen35GGUFResidentSession:
             runtime.device_synchronize()
             self._release_prefill_aotriton_bridge()
         self._release_int8_prefill_oracle_buffers()
+        self._release_gapped_prefill_buffers(runtime=runtime)
         if self._q6_f16_rocblas is not None:
             runtime.device_synchronize()
             self._q6_f16_rocblas.close()
@@ -30107,6 +32668,7 @@ class Qwen35GGUFResidentSession:
                 free(buffer, runtime=runtime)
         self._buffers = ()
         self._prefill_f16_staging_buf = None
+        self._iq_dense_mmq_buf = None
         self._q6_integer_mmq_library = None
         self._native_spec_selected_hidden_bf16 = None
         for buffer in reversed(self._linear_state_snapshot_backups):
@@ -30128,6 +32690,7 @@ class Qwen35GGUFResidentSession:
         self._logits_buf = None
         self._native_cu_seqlens_buf = None
         self._native_state_indices_buf = None
+        self._native_rows_ready = False
         self._native_token_ids_host = None
         self._lm_block_values = None
         self._lm_block_indices = None
@@ -31079,15 +33642,24 @@ def _gguf_slot_local_prefill_allow_aotriton(*, transient_direct_oracle: bool) ->
     return _gguf_int8_prefill_slot_local_aotriton_enabled()
 
 
-def _gguf_int8_prefill_kernel() -> str:
+def _gguf_int8_prefill_kernel(
+    *, geometry: tuple[int, int, int] | None = None, scale_dtype: DType = DType.FP32,
+) -> str:
     """Select the direct INT8 prefill attention kernel implementation."""
 
-    raw = (_env_value("HIPENGINE_GGUF_INT8_PREFILL_KERNEL") or "flash").strip().lower()
+    configured = _env_value("HIPENGINE_GGUF_INT8_PREFILL_KERNEL")
+    default = (
+        "flash" if geometry in {None, (24, 4, 256)} and scale_dtype == DType.FP32
+        else "sequential"
+    )
+    raw = (configured or default).strip().lower()
     if raw not in ("flash", "wmma", "sequential"):
         raise ValueError(
             "HIPENGINE_GGUF_INT8_PREFILL_KERNEL must be flash, wmma, or sequential; "
             f"got {raw!r}"
         )
+    if raw != "sequential" and scale_dtype != DType.FP32:
+        raise ValueError(f"{raw} INT8 prefill requires fp32 scales; use sequential")
     return raw
 
 
@@ -32575,12 +35147,14 @@ class Qwen35GGUFResidentBreakdown:
     workspace_lease_bytes: int
     transient_fixed_bytes: int
     transient_context_bytes: int
+    private_workspace_bytes: int = 0
 
     @property
     def retained_bytes(self) -> int:
         """Retained bytes live for the whole session at this context."""
 
-        return self.scratch_bytes + self.kv_pool_bytes + self.workspace_lease_bytes
+        return (self.scratch_bytes + self.kv_pool_bytes + self.workspace_lease_bytes
+                + self.private_workspace_bytes)
 
     @property
     def transient_bytes(self) -> int:
@@ -32606,6 +35180,7 @@ class Qwen35GGUFResidentBreakdown:
             "scratch_context_bytes": self.scratch_context_bytes,
             "kv_pool_bytes": self.kv_pool_bytes,
             "workspace_lease_bytes": self.workspace_lease_bytes,
+            "private_workspace_bytes": self.private_workspace_bytes,
             "transient_fixed_bytes": self.transient_fixed_bytes,
             "transient_context_bytes": self.transient_context_bytes,
             "retained_bytes": self.retained_bytes,
@@ -32647,6 +35222,7 @@ class Qwen35GGUFKVCapacityEstimate:
     kv_scale_granularity: str
     int8_kv_no_mirror_qualified: bool
     workspace_lease_needed: bool
+    private_workspace_bytes: int = 0
 
     @property
     def fits_requested(self) -> bool:
@@ -32672,7 +35248,7 @@ class Qwen35GGUFKVCapacityEstimate:
 
     @property
     def requested_context_overhead_bytes(self) -> int:
-        return self.scratch_bytes + self.workspace_lease_bytes
+        return self.scratch_bytes + self.workspace_lease_bytes + self.private_workspace_bytes
 
     def to_json_dict(self) -> dict[str, object]:
         return {
@@ -32685,6 +35261,7 @@ class Qwen35GGUFKVCapacityEstimate:
             "usable_bytes": self.usable_bytes,
             "retained_bytes": self.retained_bytes,
             "transient_bytes": self.transient_bytes,
+            "private_workspace_bytes": self.private_workspace_bytes,
             "requested_total_bytes": self.requested_total_bytes,
             "marginal_bytes_per_token": self.marginal_bytes_per_token,
             "fixed_bytes": self.fixed_bytes,
@@ -32727,6 +35304,7 @@ def qwen35_gguf_resident_breakdown(
     int8_bf16_layer_indices_resolver: Callable[[int], Sequence[int]] | None = None,
     allocate_kv_cache: bool = False,
     workspace_lease_needed: bool = False,
+    workspace_lease_slots: int | None = None,
     transient_bytes_per_token: int = _GGUF_TRANSIENT_BYTES_PER_TOKEN_DEFAULT,
     transient_fixed_bytes: int = _GGUF_TRANSIENT_FIXED_BYTES_DEFAULT,
     block_size: int = 256,
@@ -32737,6 +35315,8 @@ def qwen35_gguf_resident_breakdown(
     this tracks KV policy, the INT8 mirror threshold, and per-layer BF16
     selection automatically. ``allocate_kv_cache`` must match the session: the
     server defers KV to the page pool and therefore plans scratch without it.
+    ``workspace_lease_slots`` prices the independently pinned serving workspace;
+    it defaults to ``max_batch_size`` for callers pricing a full batch.
 
     ``int8_bf16_layer_indices_resolver`` lets the caller resolve per-layer BF16
     selection from the *candidate* context, which is what the session does. It
@@ -32785,10 +35365,14 @@ def qwen35_gguf_resident_breakdown(
     slots = max(1, int(max_batch_size))
     pages_per_request = max(1, (plan.max_positions + block - 1) // block)
     kv_pool_pages = slots * pages_per_request
-    workspace_lease_pages = (
-        slots * max(pages_per_request, _PACKED_VERIFY_MIN_MAX_SEQUENCE // block)
-        if workspace_lease_needed
-        else 0
+    lease_slots = slots if workspace_lease_slots is None else max(1, int(workspace_lease_slots))
+    floor_pages = (_PACKED_VERIFY_MIN_MAX_SEQUENCE + block - 1) // block
+    workspace_lease_pages = lease_slots * floor_pages if workspace_lease_needed else 0
+    # Private growth cannot reuse the undersized pinned lease. Price both
+    # holdings, rather than making auto-context optimistic after bounding it.
+    private_workspace_bytes = (
+        lease_slots * pages_per_request * page_bytes
+        if workspace_lease_needed and pages_per_request > floor_pages else 0
     )
     context = int(context_tokens)
     return Qwen35GGUFResidentBreakdown(
@@ -32804,6 +35388,7 @@ def qwen35_gguf_resident_breakdown(
         scratch_context_bytes=plan.context_scaled_bytes,
         kv_pool_bytes=kv_pool_pages * page_bytes,
         workspace_lease_bytes=workspace_lease_pages * page_bytes,
+        private_workspace_bytes=private_workspace_bytes,
         transient_fixed_bytes=max(0, int(transient_fixed_bytes)),
         transient_context_bytes=max(0, int(transient_bytes_per_token)) * context,
     )
@@ -32857,6 +35442,7 @@ def estimate_qwen35_gguf_kv_capacity(
     int8_bf16_layer_indices_resolver: Callable[[int], Sequence[int]] | None = None,
     allocate_kv_cache: bool = False,
     workspace_lease_needed: bool = False,
+    workspace_lease_slots: int | None = None,
     reserve_bytes: int = _GGUF_CAPACITY_RESERVE_MIB_DEFAULT * 1024**2,
     transient_bytes_per_token: int = _GGUF_TRANSIENT_BYTES_PER_TOKEN_DEFAULT,
     transient_fixed_bytes: int = _GGUF_TRANSIENT_FIXED_BYTES_DEFAULT,
@@ -32907,6 +35493,7 @@ def estimate_qwen35_gguf_kv_capacity(
             int8_bf16_layer_indices_resolver=int8_bf16_layer_indices_resolver,
             allocate_kv_cache=allocate_kv_cache,
             workspace_lease_needed=workspace_lease_needed,
+            workspace_lease_slots=workspace_lease_slots,
             transient_bytes_per_token=transient_bytes_per_token,
             transient_fixed_bytes=transient_fixed_bytes,
             block_size=block,
@@ -32987,6 +35574,7 @@ def estimate_qwen35_gguf_kv_capacity(
         kv_scale_granularity=str(kv_scale_granularity),
         int8_kv_no_mirror_qualified=bool(int8_kv_no_mirror_qualified),
         workspace_lease_needed=bool(workspace_lease_needed),
+        private_workspace_bytes=requested_breakdown.private_workspace_bytes,
     )
 
 
@@ -33821,6 +36409,14 @@ _COMPACT_MOE_Q4_DUAL_GEMV_KEYS = {
     ),
 }
 _COMPACT_MOE_DOWN_GEMV_KEYS = {
+    # Gemma 4 26B-A4B MoE down experts are raw Q5_1 (24-byte/32-element
+    # blocks): pack8 GEMV over in_features % 32 == 0, including 704.
+    "gguf_q5_1": KernelKey(
+        "hip_gfx1100",
+        "moe_linear",
+        "gguf_q5_1",
+        "selected_pack8_gemv_decode_compact_bf16_bf16_out",
+    ),
     "gguf_q5_k": KernelKey(
         "hip_gfx1100",
         "moe_linear",
@@ -33863,6 +36459,17 @@ _COMPACT_MOE_DOWN_GEMV_KEYS = {
         "gguf_q6_k_x8_v1",
         "selected_x8_q8_1_dp4a_gemv_decode_compact_bf16_bf16_out",
     ),
+}
+
+# in_features alignment each compact down GEMV declares for the FFN width,
+# keyed by the same quant keys as _COMPACT_MOE_DOWN_GEMV_KEYS. Unlisted
+# quants default to 256 at the guard: Q4_K/Q5_K/Q6_K superblocks and the
+# x8/t16 tile packs all consume 256-element in-features. Raw Q5_1 blocks are
+# 32 elements, so Gemma 4's ffn=704 compact-routes there while a wide-block
+# down quant (e.g. a Q5_K straggler layer) keeps falling back to the legacy
+# per-row path. Registry data drives the guard -- no identity branches.
+_COMPACT_MOE_DOWN_GEMV_IN_ALIGNMENT = {
+    "gguf_q5_1": 32,
 }
 _COMPACT_MOE_GEMV_DECODE_SCRATCH = (
     "moe_group_counts",
@@ -34648,6 +37255,46 @@ def _use_gguf_full_attention_split_decode(active_context: int) -> bool:
     return threshold > 0 and int(active_context) >= threshold
 
 
+def _gguf_staged_linear_rows_long_enabled(
+    backend: str,
+    *,
+    file_type_name: str | None = None,
+    artifact_preset_key: str | None = None,
+) -> bool:
+    """Whether dense linear-attention verifier rows stage above the split gate.
+
+    An explicit environment value always wins and remains the rollback seam.
+    Otherwise the backend package admits only model file types with complete
+    correctness evidence, and only for artifacts the admission pipeline bound
+    as qualified plain controls: ``artifact_preset_key=None`` means the caller
+    holds a loader-resolved plain identity, so the stamp-membership default
+    applies. A preset-bound (UD) or unknown-manifest key never inherits the
+    artifact-qualified default from the stamp alone and keeps the row-wise c1
+    route, which is the strict fallback that keeps selected Conv/GDN state, K/V
+    rows and logits byte-exact against scalar AR. It never changes single-row
+    decode.
+    """
+
+    if _env_value(_GGUF_STAGED_LINEAR_ROWS_LONG_ENV) is not None:
+        return _env_flag(_GGUF_STAGED_LINEAR_ROWS_LONG_ENV, False)
+    if artifact_preset_key is not None or file_type_name is None:
+        return False
+    try:
+        admitted = backend_package_capability(
+            backend,
+            "GGUF_STAGED_LINEAR_ROWS_LONG_DEFAULT_FILE_TYPES",
+            (),
+        )
+    except ValueError:
+        # An unresolved backend (``auto`` on a partially built runner) declares
+        # no capability, and the row-wise route is the fail-closed choice.
+        return False
+    normalized = {
+        str(value).strip().lower() for value in admitted if str(value).strip()
+    }
+    return str(file_type_name).strip().lower() in normalized
+
+
 def _use_gguf_short_full_attention_split_decode(
     config,
     *,
@@ -34664,6 +37311,10 @@ def _use_gguf_short_full_attention_split_decode(
         "GGUF_SHORT_C1_SPLIT_ATTN_POLICIES",
         {},
     )
+    if not policies:
+        # No published policy can match, so do not read the model shape at all:
+        # callers may pass a partial config when the backend has no table.
+        return False
     shape = (
         int(config.hidden_size),
         int(config.block_count),
@@ -34783,6 +37434,100 @@ def _use_gguf_paged_attn_gqa_grouped(active_context: int, num_splits: int) -> bo
     return int(num_splits) >= _gguf_paged_attn_gqa_grouped_min_splits() or int(
         active_context
     ) >= _gguf_paged_attn_gqa_grouped_min_context()
+
+
+def _staged_full_attention_row_leaf(
+    config,
+    *,
+    backend: str,
+    scratch,
+    row_scratch,
+    position: int,
+):
+    """Resolve one staged verifier row's own c1 attention leaf and tiling.
+
+    The staged multi-row chain keeps its batched projections, head norm/rotary,
+    KV writes, and output projection, so the only question per row is which
+    attention leaf attends it.  The scalar owner answers that from the row's own
+    ``active_context = position + 1``: below the split threshold it runs the
+    non-split leaf, at or above it runs the registered split-K gate leaf with
+    ``ceil(active_context / chunk_size)`` splits.  This helper reproduces that
+    answer exactly, so a staged row's arithmetic is unchanged rather than merely
+    close, and the extra splits a longer sibling row needs reduce to exact zeros.
+
+    Returns ``(chunk_size, num_splits, split_gate_fn)`` for a split row and
+    ``None`` for a row the non-split leaf owns.
+    """
+
+    active_context = int(position) + 1
+    chunk_size = int(row_scratch.block_size)
+    if chunk_size <= 0:
+        return None
+    # The scalar owner reaches the split leaf from either the long-context
+    # threshold or a backend short-context split policy; both must resolve here
+    # or the row would silently attend on the non-split leaf instead.
+    if not _use_gguf_full_attention_split_decode(
+        active_context
+    ) and not _use_gguf_short_full_attention_split_decode(
+        config,
+        backend=backend,
+        block_size=chunk_size,
+        active_context=active_context,
+    ):
+        return None
+    num_splits = max(1, (active_context + chunk_size - 1) // chunk_size)
+    if int(getattr(scratch, "full_attn_split_count", 0)) < num_splits:
+        # Fewer partials than the row's live count needs would drop the tail of
+        # its context, so decline the staged route instead of attending less.
+        return None
+    split_gate_fn = _gguf_full_attention_split_gate_bf16_fn(
+        config,
+        backend=backend,
+        block_size=chunk_size,
+        num_splits=num_splits,
+        active_context=active_context,
+    )
+    if split_gate_fn is None:
+        return None
+    return chunk_size, num_splits, split_gate_fn
+
+
+def _staged_full_attention_rows_ready(
+    config,
+    *,
+    backend: str,
+    scratch,
+    decode_row_scratches,
+) -> bool:
+    """Return whether every staged verifier row has its attention leaf.
+
+    Rows below the split threshold are owned by the non-split leaf and always
+    resolve; a row at or above it must resolve its split-K gate leaf and enough
+    split partials.  When any row cannot, the caller keeps the row-wise strict
+    route.
+    """
+
+    for row_scratch in decode_row_scratches:
+        position_host = getattr(row_scratch, "position_host", None)
+        if position_host is None or len(position_host) != 1:
+            # A row view without a scalar position cannot be resolved to the
+            # scalar owner's leaf, so the staged route is not safe to take.
+            return False
+        position = int(position_host[0])
+        if not _use_gguf_full_attention_split_decode(position + 1):
+            continue
+        if (
+            _staged_full_attention_row_leaf(
+                config,
+                backend=backend,
+                scratch=scratch,
+                row_scratch=row_scratch,
+                position=position,
+            )
+            is None
+        ):
+            return False
+    return True
 
 
 def _gguf_full_attention_split_gate_bf16_fn(
@@ -35877,7 +38622,13 @@ def _try_run_post_attention_moe_c1_compact_gemv(
     expert_ffn = int(cfg.expert_feed_forward_length)
     if top_k <= 0 or top_k > int(getattr(scratch, "moe_selected_rows_capacity", top_k)):
         return False
-    if hidden_size % 256 != 0 or expert_ffn % 256 != 0 or expert_ffn % 8 != 0:
+    # FFN-width alignment follows the resolved down kernel's declared
+    # requirement (registry data, not an identity branch): wide-block quants
+    # need 256 and keep the legacy fallback at ffn=704, raw Q5_1 needs only
+    # 32. hidden_size % 256 is the Q4_K dual gate_up superblock on the in
+    # side; % 8 is the pack8 lane floor shared by gate_up out and silu.
+    down_in_alignment = _COMPACT_MOE_DOWN_GEMV_IN_ALIGNMENT.get(down_weight.spec.quant_key, 256)
+    if hidden_size % 256 != 0 or expert_ffn % down_in_alignment != 0 or expert_ffn % 8 != 0:
         return False
     _validate_raw_rank3_expert_weight(
         gate_weight,
@@ -36228,7 +38979,7 @@ def _selected_wmma_allocation_name(weight: Qwen35GGUFDeviceWeight) -> str:
     Raw-layout quant keys carry their bytes in the ``"raw"`` allocation
     (single contiguous rank-3 buffer). T16 decode-repack quant keys keep
     the byte-lossless tiles under ``"tiles"`` (see
-    ``docs/GGUF_DECODE_REPACK.md``). The compact WMMA prefill kernels
+    ``docs/reference/GGUF_DECODE_REPACK.md``). The compact WMMA prefill kernels
     accept whichever layout was materialized via the same compact ABI;
     dispatch picks the allocation name here so the runner stays
     quant-agnostic.
@@ -36275,6 +39026,7 @@ def _ensure_compact_moe_gemv_registered() -> None:
     register_paro_combine_kernels()
     register_gguf_q4_k_selected_pack8_gemv_kernels()
     register_gguf_k_selected_pack8_gemv_kernels()
+    register_gguf_q5_1_selected_pack8_gemv_kernels()
     register_gguf_t16_selected_gemv_kernels()
     register_gguf_x8_selected_gemv_kernels()
 
@@ -36333,8 +39085,7 @@ def _resolve_compact_moe_gemv_kernels(
 
 
 def _selected_gemv_allocation_name(weight: Qwen35GGUFDeviceWeight) -> str:
-    quant_key = weight.spec.quant_key
-    return "tiles" if quant_key.endswith("_t16_v1") or quant_key.endswith("_x8_v1") else "raw"
+    return selected_allocation(weight.spec.quant_key)
 
 
 def _selected_gemv_requires_q8_1_input(weight: Qwen35GGUFDeviceWeight) -> bool:
@@ -36449,9 +39200,14 @@ def _read_i64_device_scalar(buffer, host: np.ndarray, *, stream: int = 0, runtim
     return int(host[0])
 
 
-_SELECTED_MOE_SINGLE_VARIANT = "selected_gemv_decode_bf16_bf16_out"
-_SELECTED_MOE_DUAL_SILU_VARIANT = "selected_dual_silu_gemv_decode_bf16_bf16_out"
-_SELECTED_MOE_WEIGHTED_DOWN_VARIANT = "selected_weighted_down_gemv_decode_bf16_bf16_out"
+from hipengine.loading.gguf_selected_contract import (
+    SELECTED_VARIANTS, selected_abi, selected_allocation, selected_ffn_modes,
+    selected_input_adapter, selected_adapter_enabled, selected_f32_output_supported,
+)
+
+_SELECTED_MOE_SINGLE_VARIANT = SELECTED_VARIANTS["single"]
+_SELECTED_MOE_DUAL_SILU_VARIANT = SELECTED_VARIANTS["dual_silu"]
+_SELECTED_MOE_WEIGHTED_DOWN_VARIANT = SELECTED_VARIANTS["weighted_down"]
 
 
 def _resolve_exact_selected_moe_kernel(quant_key: str, variant: str):
@@ -36511,19 +39267,10 @@ def _launch_selected_raw_gguf_moe_pair_silu(
                 in_features=in_features,
                 out_features=out_features,
             )
-            fn(
-                x_ptr,
-                selected_ptr,
-                _selected_moe_weight_ptr(weight_a),
-                _selected_moe_weight_ptr(weight_b),
-                out_ptr,
-                x_rows=x_rows,
-                rows=rows,
-                num_experts=num_experts,
-                in_features=in_features,
-                out_features=out_features,
-                stream=stream,
-                runtime=runtime,
+            selected_abi("dual_silu").call(
+                fn, (x_ptr, selected_ptr, _selected_moe_weight_ptr(weight_a),
+                     _selected_moe_weight_ptr(weight_b), out_ptr), locals(),
+                stream=stream, runtime=runtime,
             )
             return True
     if not allow_legacy:
@@ -36548,22 +39295,40 @@ def _launch_selected_raw_gguf_moe_pair_silu(
             if _gguf_selected_q4_gate_up_tile8_enabled()
             else gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out
         )
-        selected_q4_gate_up_fn(
-            x_ptr,
-            selected_ptr,
-            weight_a.allocation("tiles").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            out_ptr,
-            x_rows,
-            rows,
-            num_experts,
-            in_features,
-            out_features,
-            stream=stream,
-            runtime=runtime,
+        selected_abi("dual_silu").call(
+            selected_q4_gate_up_fn,
+            (x_ptr, selected_ptr, weight_a.allocation("tiles").tensor.ptr,
+             weight_b.allocation("tiles").tensor.ptr, out_ptr), locals(),
+            positional_dimensions=True, stream=stream, runtime=runtime,
         )
         return True
     return False
+
+
+def _launch_selected_raw_gguf_moe_dual(
+    weight_a, weight_b, x_ptr, selected_ptr, out_a_ptr, out_b_ptr, *,
+    x_rows, rows, num_experts, in_features, out_features,
+    q8_1_workspace_ptr=None, x_f32_ptr=None, stream, runtime, **timing,
+) -> None:
+    """Complete ordered dual boundary, including the strict two-single chain.
+
+    This is the old caller sequence factored once; no input conversions are
+    invented in the fallback. In particular it does not pass a Q8_1 workspace
+    to a singleton when the dual probe refuses that format pair.
+    """
+    geometry = dict(x_rows=x_rows, rows=rows, num_experts=num_experts,
+                    in_features=in_features, out_features=out_features)
+    if _launch_selected_raw_gguf_moe_pair(
+        weight_a, weight_b, x_ptr, selected_ptr, out_a_ptr, out_b_ptr,
+        **geometry, q8_1_workspace_ptr=q8_1_workspace_ptr, x_f32_ptr=x_f32_ptr,
+        stream=stream, runtime=runtime, **timing,
+    ):
+        return
+    for weight, output in ((weight_a, out_a_ptr), (weight_b, out_b_ptr)):
+        _launch_selected_raw_gguf_moe_linear(
+            weight, x_ptr, selected_ptr, output, **geometry,
+            x_f32_ptr=x_f32_ptr, stream=stream, runtime=runtime,
+        )
 
 
 def _launch_selected_raw_gguf_moe_pair(
@@ -36632,20 +39397,11 @@ def _launch_selected_raw_gguf_moe_pair(
                 t_stage,
             )
         else:
-            gguf_q4_k_selected_dual_gemv_bf16_bf16_out(
-                x_ptr,
-                selected_ptr,
-                weight_a.allocation("raw").tensor.ptr,
-                weight_b.allocation("raw").tensor.ptr,
-                out_a_ptr,
-                out_b_ptr,
-                x_rows,
-                rows,
-                num_experts,
-                in_features,
-                out_features,
-                stream=stream,
-                runtime=runtime,
+            selected_abi("dual").call(
+                gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
+                (x_ptr, selected_ptr, weight_a.allocation("raw").tensor.ptr,
+                 weight_b.allocation("raw").tensor.ptr, out_a_ptr, out_b_ptr), locals(),
+                positional_dimensions=True, stream=stream, runtime=runtime,
             )
             _mark_sync_stage(
                 runtime,
@@ -36715,20 +39471,11 @@ def _launch_selected_raw_gguf_moe_pair(
                 )
                 else gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out
             )
-            selected_dual_fn(
-                x_ptr,
-                selected_ptr,
-                weight_a.allocation("tiles").tensor.ptr,
-                weight_b.allocation("tiles").tensor.ptr,
-                out_a_ptr,
-                out_b_ptr,
-                x_rows,
-                rows,
-                num_experts,
-                in_features,
-                out_features,
-                stream=stream,
-                runtime=runtime,
+            selected_abi("dual").call(
+                selected_dual_fn,
+                (x_ptr, selected_ptr, weight_a.allocation("tiles").tensor.ptr,
+                 weight_b.allocation("tiles").tensor.ptr, out_a_ptr, out_b_ptr), locals(),
+                positional_dimensions=True, stream=stream, runtime=runtime,
             )
             _mark_sync_stage(
                 runtime,
@@ -36757,20 +39504,11 @@ def _launch_selected_raw_gguf_moe_pair(
             f"{stage_prefix}_q8_quantize",
             t_stage,
         )
-        gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out(
-            q8_1_workspace_ptr,
-            selected_ptr,
-            weight_a.allocation("tiles").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            out_a_ptr,
-            out_b_ptr,
-            x_rows,
-            rows,
-            num_experts,
-            in_features,
-            out_features,
-            stream=stream,
-            runtime=runtime,
+        selected_abi("dual", input_dtype="q8_1").call(
+            gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
+            (q8_1_workspace_ptr, selected_ptr, weight_a.allocation("tiles").tensor.ptr,
+             weight_b.allocation("tiles").tensor.ptr, out_a_ptr, out_b_ptr), locals(),
+            positional_dimensions=True, stream=stream, runtime=runtime,
         )
         _mark_sync_stage(
             runtime,
@@ -36809,6 +39547,38 @@ def _launch_selected_raw_gguf_moe_linear(
     use_q8_1_input = False
     sync_stages = bool(sync_stage_timings and stage_timings is not None and stage_prefix)
     t_stage = time.perf_counter() if sync_stages else 0.0
+    selected_c1_variant = _gguf_t16_selected_c1_variant(
+        backend,
+        quant_key,
+        x_rows=x_rows,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+    )
+    if selected_c1_variant is not None:
+        fn = _resolve_exact_selected_moe_kernel(quant_key, selected_c1_variant)
+        if fn is not None:
+            _validate_raw_rank3_expert_weight(
+                weight,
+                num_experts=num_experts,
+                in_features=in_features,
+                out_features=out_features,
+            )
+            selected_abi("single").call(
+                fn,
+                (x_ptr, selected_ptr, _selected_moe_weight_ptr(weight), out_ptr),
+                locals(),
+                stream=stream,
+                runtime=runtime,
+            )
+            _mark_sync_stage(
+                runtime,
+                stage_timings,
+                sync_stages,
+                f"{stage_prefix}_gemv",
+                t_stage,
+            )
+            return
     fn = _resolve_exact_selected_moe_kernel(quant_key, _SELECTED_MOE_SINGLE_VARIANT)
     if fn is not None:
         _validate_raw_rank3_expert_weight(
@@ -36817,18 +39587,9 @@ def _launch_selected_raw_gguf_moe_linear(
             in_features=in_features,
             out_features=out_features,
         )
-        fn(
-            x_ptr,
-            selected_ptr,
-            _selected_moe_weight_ptr(weight),
-            out_ptr,
-            x_rows=x_rows,
-            rows=rows,
-            num_experts=num_experts,
-            in_features=in_features,
-            out_features=out_features,
-            stream=stream,
-            runtime=runtime,
+        selected_abi("single").call(
+            fn, (x_ptr, selected_ptr, _selected_moe_weight_ptr(weight), out_ptr),
+            locals(), stream=stream, runtime=runtime,
         )
         _mark_sync_stage(
             runtime,
@@ -36999,18 +39760,11 @@ def _launch_selected_raw_gguf_moe_linear(
         )
     else:
         raise ValueError(f"unsupported selected GGUF MoE quant {quant_key!r} for {weight.spec.source.name}")
-    fn(
-        q8_1_workspace_ptr if use_q8_1_input else x_ptr,
-        selected_ptr,
-        weight.allocation(allocation).tensor.ptr,
-        out_ptr,
-        x_rows,
-        rows,
-        num_experts,
-        in_features,
-        out_features,
-        stream=stream,
-        runtime=runtime,
+    selected_abi("single", input_dtype="q8_1" if use_q8_1_input else "bf16",
+                 output_dtype="f32" if prefer_f32_out and selected_f32_output_supported(quant_key) else "bf16").call(
+        fn, (q8_1_workspace_ptr if use_q8_1_input else x_ptr,
+             selected_ptr, weight.allocation(allocation).tensor.ptr, out_ptr),
+        locals(), positional_dimensions=True, stream=stream, runtime=runtime,
     )
     _mark_sync_stage(
         runtime,
@@ -37048,19 +39802,9 @@ def _launch_weighted_selected_raw_gguf_moe_linear(
         in_features=in_features,
         out_features=out_features,
     )
-    fn(
-        x_ptr,
-        selected_ptr,
-        routing_weights_ptr,
-        _selected_moe_weight_ptr(weight),
-        out_ptr,
-        tokens=tokens,
-        top_k=top_k,
-        num_experts=num_experts,
-        in_features=in_features,
-        out_features=out_features,
-        stream=stream,
-        runtime=runtime,
+    selected_abi("weighted_down").call(
+        fn, (x_ptr, selected_ptr, routing_weights_ptr, _selected_moe_weight_ptr(weight), out_ptr),
+        locals(), stream=stream, runtime=runtime,
     )
     return True
 
@@ -37106,6 +39850,7 @@ class Qwen35GGUFNativeRowsGraph:
             raise RuntimeError("GGUF native row graph is closed")
         if self.session._token_buf is None or self.session._native_token_ids_host is None:
             raise RuntimeError("GGUF resident native-row buffers are closed")
+        self.session._require_native_rows(self.rows)
         tokens = tuple(int(token) for token in token_ids)
         if len(tokens) != int(self.rows):
             raise ValueError("native row graph token count must match captured rows")

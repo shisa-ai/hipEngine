@@ -1,0 +1,99 @@
+{
+ "kind": "gemma4_campaign_kernel_profile",
+ "verdict": "diagnostic - no production change",
+ "recorded": "2026-09-28, gfx1151 Strix Halo (zbook), Gemma 4 26B-A4B UD-Q4_K_XL, 512-token prefill",
+ "performance_claim": false,
+ "why": "The two largest prefill routes had just been optimised and the previous unit's own next-step note said to find why the waves stall rather than guess at another structural change. This profile re-establishes where the prefill time goes now and prices the q5_1 route against the memory hierarchy, which the tile-space sweep had left open.",
+ "method": {
+  "kernel_trace": "rocprofv3 --kernel-trace over 3 forward passes (1 warm-up + 2 timed) through scripts/gemma4_campaign_bench.py's public path; kernel time summed by name and divided by 3",
+  "counters": "rocprofv3 --pmc GL2C_HIT_sum GL2C_MISS_sum GL2C_EA_RDREQ_DRAM_sum --kernel-include-regex q5_1_selected_grouped_prefill_staged over 2 forward passes; 58 dispatches summing to 1346.1 ms, matching the trace's 673 ms per prefill",
+  "pc_sampling": "attempted and unavailable: rocprofv3 reports 'Given PC sampling configuration is not supported on any of the agents' on gfx1151, so stall reasons are inferred from counter ratios rather than sampled",
+  "scratch_probes": "the dequant-free probe replaced the inner loop's dequantisation and its two packed-byte loads with per-o constants that keep the multiply-add structure and its accumulator dependency, then timed the public path"
+ },
+ "prefill_by_kernel": {
+  "unit": "ms per 512-token prefill, total 1887 ms of kernel time",
+  "q5_1_selected_grouped_prefill_staged": {
+   "ms": 673,
+   "share": 0.357,
+   "launches": 29
+  },
+  "gguf_q8_0_exact_prefill_tiled_out": {
+   "ms": 562,
+   "share": 0.298,
+   "launches": 205
+  },
+  "gemma4_attention_prefill": {
+   "ms": 245,
+   "share": 0.13,
+   "launches": 30
+  },
+  "gguf_q4_k_selected_dual_q8_1_ds4_mmq32_fused_prefill": {
+   "ms": 169,
+   "share": 0.09,
+   "launches": 29
+  },
+  "gguf_q5_k_selected_grouped_row4_bf16": {
+   "ms": 113,
+   "share": 0.06,
+   "launches": 1
+  },
+  "q8_0_selected_grouped_prefill_bf16_bf16": {
+   "ms": 45,
+   "share": 0.024,
+   "launches": 1
+  },
+  "everything_else": {
+   "ms": 80,
+   "share": 0.042
+  }
+ },
+ "q5_1_route_priced": {
+  "geometry": "in 704, out 2816, 128 experts, 4096 compact rows, 190.3 MB of weights per layer, ROW_BATCH 4, OUT_TILE 4, K_TILE 256; chunks = ceil(704/256) = 3, not the 11 of the Qwen4Exp geometry this kernel also serves",
+  "grid": "704 x 128 = 90112 blocks of 128 threads, 8 row batches per block",
+  "flops": "16.24 GFLOP per layer, 471 GFLOP per prefill",
+  "achieved": "700 GFLOP/s, 2.7% of the ~25.6 TFLOP/s fp32 peak",
+  "traffic": "4.4 GB of activation reads against 1.52 GB of weight reads per layer, 254 GB/s of L2 traffic",
+  "l2_hit_rate": 0.914,
+  "dram_read_estimate": "about 22 GB/s against a ~256 GB/s peak",
+  "reading": "the route is neither compute-bound nor bandwidth-bound at any level of the hierarchy. It issues on about a fifth of cycles with 23 of 32 waves resident, which is latency-bound."
+ },
+ "probe_result": {
+  "baseline_prefill_s": [
+   1.87,
+   1.88,
+   1.89
+  ],
+  "dequant_free_prefill_s": [
+   1.729,
+   1.749,
+   1.755
+  ],
+  "dequant_plus_packed_loads_ms": 136,
+  "packed_loads_ms": 66,
+  "dequant_ms": 70,
+  "share_of_kernel": 0.202,
+  "note": "the two components were priced separately by two probes with the same method; the packed-loads figure is the earlier unit's scratch probe"
+ },
+ "refutation_carried_forward": {
+  "planned_unit": "stage the inner loop's packed bytes in shared memory alongside the already-hoisted qweight/high arrays",
+  "refuted_by": "benchmarks/results/2026-09-27-gemma4-q5_1-staged-tile-space-rejected.json",
+  "measurement": "wstaged_out4_rowbatch4 measured 23.81 ms per layer against the incumbent's 21.05, 1.13x slower, with the mechanism recorded as 'staging the block's weight bytes in shared memory once, coalesced, so that global weight traffic drops 8.35x and the sector waste disappears, is 1.13x slower'",
+  "why_it_was_the_planned_unit": "the previous unit's next-step note named the inner loop's 9.9% of global byte loads as the next candidate without checking the tile sweep's variant list, which already contained it. The probe prices those loads correctly but the load cost is not what staging removes."
+ },
+ "what_this_leaves": [
+  "All three largest routes have had their bit-exact lever spaces swept and closed this campaign: q5_1 (tile space, staging), q8_0 dense (tile4x16 landed, 1.081x), attention (warp512 landed, 1.95x on the global layer). The next wins are not more launch shapes.",
+  "The q5_1 route's 20% of measured removable work is dequantisation and its byte loads, both on the inner loop's critical path. Removing them structurally means either recomputing them less often or breaking the dependency, and the two cheap versions of 'less often' are already refuted: rowbatch8 is 1.31x slower and shared staging is 1.13x slower.",
+  "The remaining large lever is arithmetic: the q8_0 route (562 + 45 = 607 ms, 32.2%) runs the strict tiled route with no MMQ prefill at all, while q4_k runs mmq32 for 169 ms. That is a production-numerics promotion, not a launch-shape change, so it needs the execution-profile gate rather than another sweep."
+ ],
+ "limits": [
+  "One box, one artifact, one prompt length, one session. Counters were collected over 2 forward passes and the trace over 3.",
+  "GL2C counter units on gfx1151 were not established, so the DRAM figure is an estimate from the ratio of DRAM requests to L2 requests rather than a byte count; the hit rate and the relative comparison against peak do not depend on the unit.",
+  "PC sampling is unavailable on this part, so no stall-reason breakdown was sampled. 'Latency-bound' is inferred from issue utilisation, residency and the absence of any saturated hierarchy, not sampled directly.",
+  "The dequant-free probe removes work rather than moving it, so its 136 ms is an upper bound on what restructuring could recover, not a prediction."
+ ],
+ "artifacts": {
+  "kernel_trace_db": "/tmp/kt/zbook/3396328_results.db (scratch, not committed)",
+  "counter_db": "/tmp/pB/zbook/3411809_results.db (scratch, not committed)",
+  "probe_runner": "/tmp/run3.py, /tmp/probe_dequant.py (scratch, not committed)"
+ }
+}

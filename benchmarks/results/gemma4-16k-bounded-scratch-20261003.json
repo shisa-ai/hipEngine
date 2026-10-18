@@ -1,0 +1,106 @@
+{
+  "kind": "functional_capacity_validation",
+  "performance_claim": false,
+  "date": "2026-10-03",
+  "host": "epyc",
+  "hardware": {
+    "generation": "RX 7900 XTX gfx1100, physical index1, PCI0000:10:00.0",
+    "gpu_numerical": "Radeon Pro W7900 gfx1100, physical index0"
+  },
+  "model": "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+  "backend": "hip_gfx1100",
+  "weight_quant": "mixed GGUF UD-Q4_K_XL (resolved gguf_q4_k_m)",
+  "kv_storage": "bf16",
+  "profile": "production",
+  "base_commit": "537fc10552ab8651c9293e4e2ebec83edc17131a",
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip": "0246de48899e923837b442ce9f144c21e98d34d8b42f1541929c391251673910",
+    "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py": "b022514add4c4f18c6200e6ba65038ffd17c391cd1141a05017bc6e702e521f3"
+  },
+  "tier1": {
+    "protocol_tier": 1,
+    "capacity": 16640,
+    "kv_storage": "bf16",
+    "performance_claim": false,
+    "status": "pass",
+    "loading": {
+      "resolve_s": 0.8262766012921929,
+      "load_s": 22.702319890260696,
+      "internal_load_s": 22.702316069975495,
+      "resolution": {
+        "_resolved_backend": "hip_gfx1100",
+        "_resolved_quant": "gguf_q4_k_m",
+        "_resolved_execution_profile": "production",
+        "generator_type": "SubmitPollTextGenerator"
+      },
+      "context_length": 16640,
+      "runner_capacity": 16640,
+      "max_block": 128
+    },
+    "prompt_tokens": 128,
+    "finite_logits": true,
+    "memory": {
+      "current_allocated_bytes": 24083421280,
+      "peak_allocated_bytes": 24083421280,
+      "total_allocated_bytes": 24083421280,
+      "total_freed_bytes": 0,
+      "active_allocations": 1832,
+      "peak_allocations": 1832
+    }
+  },
+  "tier2": {
+    "status": "pass",
+    "prompt_tokens": 16384,
+    "capacity": 16640,
+    "position": 16511,
+    "routes": {
+      "global_class": 128,
+      "finite": true
+    },
+    "outputs": [
+      "と秋の紅葉では観光客の数も変わる。The Treaty of Westphalia in 1648 is often cited as the moment that established the modern system of sovereign states in Europe.A cache hit ratio of ninety-nine percent still misses one request in a hundred, so the slow path has to stay correct and has to stay fast.Ocean currents distribute heat around the planet; the Gulf Stream alone carries water warmer than the air above much of northern Europe.Historians disagree about whether the industrial revolution began as a slow structural shift or as a genuinely sudden break with the past.The capital of France is Paris"
+    ],
+    "loading": {
+      "resolve_s": 0.6480142893269658,
+      "load_s": 22.778835442848504,
+      "internal_load_s": 22.778831562958658,
+      "resolution": {
+        "_resolved_backend": "hip_gfx1100",
+        "_resolved_quant": "gguf_q4_k_m",
+        "_resolved_execution_profile": "production",
+        "generator_type": "SubmitPollTextGenerator"
+      },
+      "context_length": 16640,
+      "runner_capacity": 16640,
+      "max_block": 128
+    },
+    "performance_claim": false
+  },
+  "tier2_command": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=1 PYTHONPATH=. .venv/bin/python /tmp/gemma4-16k-generate-fixed.py",
+  "tier2_script": "import json, time\nfrom pathlib import Path\nimport numpy as np\nfrom scripts.gemma4_campaign_bench import DEFAULT_ARTIFACT, _resolve_generator, exact_prompt_ids\nfrom hipengine.llm import SamplingParams\nfrom hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import gemma4_attention_decode_variant\nllm, runner, loading = _resolve_generator(DEFAULT_ARTIFACT, 16640)\ntry:\n    generator = llm._get_text_generator()\n    ids = exact_prompt_ids(generator.tokenize, 16384)\n    seen = {'global_class': 0, 'finite': True}\n    original = runner.forward_argmax\n    def forward(*args, **kwargs):\n        token = original(*args, **kwargs)\n        from hipengine.core.memory import copy_device_to_host, host_array_ptr\n        logits = np.empty(runner.weights.config.vocab_size, dtype=np.float32)\n        copy_device_to_host(host_array_ptr(logits), runner._logits, logits.nbytes)\n        seen['finite'] = seen['finite'] and bool(np.isfinite(logits).all())\n        variant = gemma4_attention_decode_variant()\n        seen[variant] = seen.get(variant, 0) + 1\n        return token\n    runner.forward_argmax = forward\n    start = time.monotonic()\n    output = llm.generate(ids, SamplingParams(max_tokens=128, temperature=0., ignore_eos=True))\n    result = {'status': 'pass', 'prompt_tokens': len(ids), 'capacity': runner.capacity,\n              'position': runner.position, 'routes': seen, 'outputs': output,\n              'loading': loading, 'elapsed_s': time.monotonic()-start, 'performance_claim': False}\n    assert runner.position >= 16384 + 127, result\n    assert seen['finite'] and seen['global_class'] > 0, result\n    Path('/tmp/gemma4-16k-generate-fixed.json').write_text(json.dumps(result, indent=2, default=str)+'\\n')\n    print(json.dumps(result, default=str), flush=True)\nfinally:\n    llm.close()\n",
+  "gpu_correctness": {
+    "command": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=0 .venv/bin/python -m pytest -q tests/test_gpu_gemma4_attention_decode_parity.py",
+    "passed": 167,
+    "coverage": "keys15857/16640/32771; F32/BF16; head_dim256/512; rows1/3/9/2; short/window/full-live; strict block bit parity and CPU allclose; maxKL<=0.05 and top1>=0.9 at declared output precision"
+  },
+  "unit_correctness": {
+    "command": ".venv/bin/python -m pytest -q tests/test_unit_gemma4_attention_scratch.py tests/test_unit_gemma4_attention_geometry.py tests/test_unit_gemma4_runner_lifecycle.py",
+    "passed": 59
+  },
+  "notes": [
+    "First full-query workspace implementation exhausted VRAM; final fallback batches at most four independent query rows.",
+    "Entirely masked rows preserve incumbent NaNs; finite-logit CPU/safety gates apply to live rows.",
+    "Seven pre-existing default-suite failures are recorded in the worklog, not declared repaired.",
+    "No new paired llama.cpp timing or improved throughput claim."
+  ],
+  "profiler_smoke": {
+    "command": "env -u HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES=0 PYTHONPATH=. HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/gemma4-16k-kernel-final-trace -- .venv/bin/python /tmp/gemma4-16k-profiler-smoke.py",
+    "kernel": "gemma4_attention_decode_class_kernel<float, 1, 2, true>",
+    "duration_ns": 165344,
+    "scratch_bytes": 0,
+    "workgroup": 512,
+    "vgpr_count": 64,
+    "purpose": "kernel identity and execution smoke, not performance comparison",
+    "script": "from pathlib import Path\nfrom hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention as a\nversion = Path('/tmp/gemma4-16k-hipcc-version.txt').read_text()\nlib = a.build_gemma4_attention(compiler_version=version, require_cached=True)\nimport pytest\nraise SystemExit(pytest.main(['-q','tests/test_gpu_gemma4_attention_decode_parity.py::test_global_logits_preserve_strict_output_and_cpu_oracle[1-15857-256-f32-short-span]']))\n"
+  }
+}
