@@ -6231,6 +6231,47 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             },
         }
 
+    @app.get("/v1/hipengine/decode")
+    async def decode_telemetry(_auth: None = Depends(require_auth)) -> dict[str, Any]:
+        """Report the live decode path and its physical batch state, read-only.
+
+        Qualification harnesses use this to separate physical batch rows from
+        the number of logical HTTP requests in flight. Engines without a
+        decode-telemetry hook report ``available: false`` rather than a
+        fabricated path.
+        """
+
+        engine = getattr(app.state, "hipengine_llm", None)
+        for target in (getattr(engine, "_text_generator", None), engine):
+            if target is None:
+                continue
+            probe = getattr(target, "decode_telemetry", None)
+            if not callable(probe):
+                continue
+            try:
+                payload = probe()
+            except Exception as exc:
+                # The hook runs on the decode thread and its message can carry
+                # device pointers or paths. Log the detail, return a fixed code.
+                _LOGGER.warning("decode telemetry hook failed: %s", exc, exc_info=True)
+                return {
+                    "object": "hipengine.decode_telemetry",
+                    "available": False,
+                    "reason": "decode_telemetry_unavailable",
+                }
+            if not isinstance(payload, Mapping):
+                payload = {"decode_path": "unknown", "ar_batch": None}
+            return {
+                "object": "hipengine.decode_telemetry",
+                "available": True,
+                "decode": dict(payload),
+            }
+        return {
+            "object": "hipengine.decode_telemetry",
+            "available": False,
+            "reason": "engine_has_no_decode_telemetry",
+        }
+
     @app.delete("/v1/hipengine/sessions/{session_id}")
     async def delete_session(session_id: str, _auth: None = Depends(require_auth)) -> dict[str, Any]:
         async with chat_session_lock:

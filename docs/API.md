@@ -1,6 +1,6 @@
 # OpenAI-Compatible Server API
 
-Last updated: 2026-10-17
+Last updated: 2026-10-18
 
 hipEngine ships a thin FastAPI layer that adapts OpenAI-style requests to the
 torch-free `hipengine.LLM.generate()` library API. Server dependencies are
@@ -228,6 +228,7 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `GET /v1/models` | Built in | Returns the single served model id plus `hipengine` status metadata: backend/quant, loaded state, compact capability summary, context defaults, KV policy/estimate and artifact-scoped capability decision, routing count, and capabilities URL. |
 | `GET /v1/hipengine/capabilities` | Built in | Authenticated hipEngine manifest for served model/config, immutable approximate-KV capability identity/decision, context defaults, tokenizer availability, streaming/logprobs/tool/reasoning support, sampling execution/native/MTP/generic speculative-provider status, request-timeout support, cache/session status, routing count, tensor-parallel topology/status, and unsupported fields. |
 | `POST /v1/hipengine/speculative_mtp/rollback` | Built in | Authenticated runtime rollback: routes every new MTP request to AR until server restart, while in-flight owned cycles retire through the RF3 lifecycle contract. Returns direct circuit-breaker state. |
+| `GET /v1/hipengine/decode` | Built in | Authenticated read-only decode-path telemetry: the active execution path and, when the engine batches decode, the physical batch state (state slots, max positions, live slots, steps, step-width histogram, imports, releases, failure). Reports `available: false` with a fixed `reason` when the engine has no hook or the hook fails. |
 | `GET /v1/hipengine/sessions` | Built in | Authenticated metadata-only listing for app-local chat transcript sessions plus continuation-handle counts. Does not include prompt, generated, or tool-result text. |
 | `DELETE /v1/hipengine/sessions/{session_id}` | Built in | Authenticated deletion of one app-local chat transcript session. Returns whether a session was removed. |
 | `POST /v1/hipengine/sessions/{session_id}/fork` | Built in | Authenticated app-local transcript fork into a new session id. Clones visible transcript messages only; no resident KV state is reused. |
@@ -241,6 +242,43 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `POST /v1/hipengine/fit_context` | Built in | Reports prompt tokens, effective max tokens, max allowed/recommended `max_tokens`, required/overflow context, and clear/truncation policy using the same admission arithmetic as generation, including optional app-local `session.id` transcript prefixes plus `session.context_overflow_policy` for chat. Chat diagnostics include the same thinking-budget close-token metadata as `count_tokens`. |
 | `POST /v1/completions` | Built in | Text prompt(s), one token-ID row, or token-ID rows to `LLM.generate()`. Exact-token prompts support live SSE for one row and buffered SSE for multiple rows; they do not support `echo`, continuations, or sessions. For a single prompt with `n=1` and `echo=false`, `stream=true` uses token/chunk SSE from `LLM.stream()` when available; multi-prompt, `n>1`, and echo streaming fall back to buffered SSE. |
 | `POST /v1/chat/completions` | Built in | Renders text messages with roles `system`, `developer`, `user`, `assistant`, or `tool` to a Qwen-style prompt and calls `LLM.generate()` / `LLM.stream()`. With Qwen4Exp `--vision-model`, one multipart user message may include bounded base64 `image/png` `image_url` parts and uses the model-owned multimodal path (`n=1`, non-streaming, no tools/session/continuation). Text supports token-level `stream=true` SSE for `n=1`; `n>1` streaming returns buffered per-choice chunks. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). Accepts OpenAI `tools` / `tool_choice` and returns `tool_calls` from Qwen-style `<tool_call>{...}</tool_call>` output. |
+
+### Decode telemetry
+
+`GET /v1/hipengine/decode` is authenticated like the other `/v1/hipengine/*`
+endpoints and is read-only. It exists to separate *logical* concurrency from
+*physical* batch width: HTTP requests in flight say nothing about how many rows
+the decode step actually advanced, while `decode.ar_batch.step_widths` is the
+owner's own histogram keyed by physical row count (`"1"`, `"2"`, ...).
+
+```json
+{
+  "object": "hipengine.decode_telemetry",
+  "available": true,
+  "decode": {
+    "decode_path": "qwen4exp_full_model_ar_batch",
+    "ar_batch": {
+      "state_slots": 2,
+      "max_positions": 2048,
+      "live_slots": 2,
+      "steps": 63,
+      "step_widths": {"2": 63},
+      "imports": 2,
+      "releases": 0,
+      "failure": null
+    }
+  }
+}
+```
+
+The payload is a snapshot, not a transaction against device state: a step that
+completes between the snapshot and the response makes `steps` and `live_slots`
+lag by one step. `live_slots` counts pinned physical slots, so it can differ
+from the number of requests that have finished generating while their slot is
+still being released. When no decode hook exists, the response is
+`available: false` with `reason: engine_has_no_decode_telemetry`; when the hook
+raises, it is `available: false` with `reason: decode_telemetry_unavailable`
+and the exception detail is logged server-side rather than returned.
 
 ## Examples
 

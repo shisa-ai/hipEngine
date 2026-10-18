@@ -526,6 +526,28 @@ class Qwen4ExpGGUFTextGenerator:
             "decode": resident.decode_telemetry(),
         }
 
+    def decode_telemetry(self) -> dict[str, Any]:
+        """Report the resident serving decode path and its physical batch state.
+
+        Read-only and safe to call while requests are in flight: the resident
+        runner snapshots its counters under its own lock. Returns
+        ``decode_path = uninitialized`` before the engine loop builds the
+        resident runner, and ``unknown`` for a resident runner that does not
+        report decode telemetry.
+        """
+
+        with self._lock:
+            resident = self._resident_model_runner
+        if resident is None:
+            return {"decode_path": "uninitialized", "ar_batch": None}
+        probe = getattr(resident, "decode_telemetry", None)
+        if not callable(probe):
+            return {"decode_path": "unknown", "ar_batch": None}
+        payload = probe()
+        if not isinstance(payload, dict):
+            return {"decode_path": "unknown", "ar_batch": None}
+        return dict(payload)
+
     def count_tokens(self, text: str) -> int:
         self._require_open()
         return len(self.tokenizer.encode(str(text)))

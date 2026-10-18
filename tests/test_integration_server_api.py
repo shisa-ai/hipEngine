@@ -1208,6 +1208,86 @@ def test_agentic_replay_failure_reasons_match_capability_contract() -> None:
     assert _AGENTIC_REPLAY_FAILURE_REASONS == advertised
 
 
+def test_decode_telemetry_endpoint_reports_physical_state_and_auth() -> None:
+    app = create_app(
+        ServerConfig(model="/models/fake", served_model_name="fake-model", api_key="secret", eager_load=False),
+        llm=FakeLLM(),
+    )
+    client = TestClient(app)
+    assert client.get("/v1/hipengine/decode").status_code == 401
+    unavailable = client.get(
+        "/v1/hipengine/decode", headers={"Authorization": "Bearer secret"}
+    )
+    assert unavailable.status_code == 200
+    assert unavailable.json() == {
+        "object": "hipengine.decode_telemetry",
+        "available": False,
+        "reason": "engine_has_no_decode_telemetry",
+    }
+
+    # The serving engine reaches the hook through its generator, so both the
+    # ``_text_generator`` hop and a direct engine hook must be probed.
+    class ServiceLLM(FakeLLM):
+        def __init__(self) -> None:
+            super().__init__()
+            self._text_generator = SimpleNamespace(
+                decode_telemetry=lambda: {
+                    "decode_path": "qwen4exp_full_model_ar_batch",
+                    "ar_batch": {"state_slots": 2, "steps": 3, "step_widths": {"2": 3}},
+                }
+            )
+
+    service_app = create_app(
+        ServerConfig(model="/models/fake", served_model_name="fake-model", api_key="secret", eager_load=False),
+        llm=ServiceLLM(),
+    )
+    body = TestClient(service_app).get(
+        "/v1/hipengine/decode", headers={"Authorization": "Bearer secret"}
+    ).json()
+    assert body["available"] is True
+    assert body["decode"]["ar_batch"]["step_widths"] == {"2": 3}
+
+
+def test_decode_telemetry_endpoint_sanitizes_hook_failures_and_bad_payloads() -> None:
+    class FailingLLM(FakeLLM):
+        def __init__(self) -> None:
+            super().__init__()
+            self._text_generator = SimpleNamespace(
+                decode_telemetry=lambda: (_ for _ in ()).throw(
+                    RuntimeError("slot 3 at 0x7fdeadbeef leaked")
+                )
+            )
+
+    failing_app = create_app(
+        ServerConfig(model="/models/fake", served_model_name="fake-model", api_key="secret", eager_load=False),
+        llm=FailingLLM(),
+    )
+    failed = TestClient(failing_app).get(
+        "/v1/hipengine/decode", headers={"Authorization": "Bearer secret"}
+    ).json()
+    assert failed == {
+        "object": "hipengine.decode_telemetry",
+        "available": False,
+        "reason": "decode_telemetry_unavailable",
+    }
+    assert "0x7fdeadbeef" not in str(failed)
+
+    class NonMappingLLM(FakeLLM):
+        def __init__(self) -> None:
+            super().__init__()
+            self._text_generator = SimpleNamespace(decode_telemetry=lambda: ["nope"])
+
+    bad_app = create_app(
+        ServerConfig(model="/models/fake", served_model_name="fake-model", api_key="secret", eager_load=False),
+        llm=NonMappingLLM(),
+    )
+    bad = TestClient(bad_app).get(
+        "/v1/hipengine/decode", headers={"Authorization": "Bearer secret"}
+    ).json()
+    assert bad["available"] is True
+    assert bad["decode"] == {"decode_path": "unknown", "ar_batch": None}
+
+
 def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
     monkeypatch.delenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", raising=False)
     fake = FakeLLM()

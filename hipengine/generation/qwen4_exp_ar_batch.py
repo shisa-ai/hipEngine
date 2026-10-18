@@ -27,6 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import operator
 import os
+import threading
 from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
@@ -152,6 +153,9 @@ class Qwen4ExpARBatchOwner:
         self._leases: dict[int, _Lease] = {}
         self._failed_requests: set[int] = set()
         self._failures: list[str] = []
+        # Guards the counters and the width histogram so a live telemetry read
+        # cannot iterate a dict another thread is mutating.
+        self._state_lock = threading.Lock()
         self._closing = False
         self._closed = False
         self._steps = 0
@@ -171,7 +175,8 @@ class Qwen4ExpARBatchOwner:
     def failure(self) -> str | None:
         """Why this owner refuses work, or ``None`` while it is healthy."""
 
-        return None if not self._failures else "; ".join(self._failures)
+        with self._state_lock:
+            return None if not self._failures else "; ".join(self._failures)
 
     @property
     def live_request_ids(self) -> tuple[int, ...]:
@@ -246,8 +251,17 @@ class Qwen4ExpARBatchOwner:
             )
         slot = int(free[0])
         owner = int(batch.admit(slot))
-        self._leases[rid] = _Lease(slot, owner, needed)
-        self._failed_requests.discard(rid)
+        lease = _Lease(slot, owner, needed)
+        with self._state_lock:
+            collision = rid in self._leases
+            if not collision:
+                self._leases[rid] = lease
+                self._failed_requests.discard(rid)
+        if collision:
+            # Only reachable if two admissions race for one request id. Hand
+            # the just-admitted slot back rather than leaking it.
+            batch.release(lease.slot, lease.owner)
+            raise ValueError(f"request {rid} already owns an AR batch slot")
         return slot
 
     def owns(self, request_id: int) -> bool:
@@ -298,7 +312,8 @@ class Qwen4ExpARBatchOwner:
             self.release(rid)
             raise
         lease.imported = True
-        self._imports += 1
+        with self._state_lock:
+            self._imports += 1
         return position
 
     # -- decode -----------------------------------------------------------
@@ -365,8 +380,9 @@ class Qwen4ExpARBatchOwner:
                 request_ids, f"step returned a malformed result: {error}"
             )
             raise Qwen4ExpARBatchStepError(request_ids, slots, error) from error
-        self._steps += 1
-        self._widths[len(request_ids)] = self._widths.get(len(request_ids), 0) + 1
+        with self._state_lock:
+            self._steps += 1
+            self._widths[len(request_ids)] = self._widths.get(len(request_ids), 0) + 1
         return decoded
 
     def _decode_rows(
@@ -434,7 +450,8 @@ class Qwen4ExpARBatchOwner:
         """Drop ``request_id``'s slot. Idempotent, and safe after a failure."""
 
         rid = int(request_id)
-        lease = self._leases.pop(rid, None)
+        with self._state_lock:
+            lease = self._leases.pop(rid, None)
         if lease is None:
             return False
         batch = self._batch
@@ -448,7 +465,8 @@ class Qwen4ExpARBatchOwner:
             # record the leak instead of raising through a teardown path.
             self._record_failure(f"release of slot {lease.slot} failed: {error}")
             return True
-        self._releases += 1
+        with self._state_lock:
+            self._releases += 1
         return True
 
     def close(self) -> None:
@@ -472,25 +490,42 @@ class Qwen4ExpARBatchOwner:
                 self._record_failure(f"close failed: {error}")
                 raise
         self._batch = None
-        self._leases.clear()
+        with self._state_lock:
+            self._leases.clear()
         self._closing = False
         self._closed = True
 
     # -- reporting --------------------------------------------------------
 
     def telemetry(self) -> dict[str, Any]:
-        """Physical-width evidence for the scratch probe and worklog."""
+        """Physical-width evidence for the scratch probe and worklog.
 
+        A live HTTP caller may read this while the decode thread is stepping.
+        The counters, width histogram, failure list, and lease count are read
+        under one lock, and lease insert/remove/clear take that lock, so
+        ``live_slots`` is the lease map's size at that instant rather than a
+        later re-count. The result is still a snapshot, not a transaction
+        against device state: a step can complete between the lock release and
+        the HTTP response, so ``steps`` and ``live_slots`` may lag by one step.
+        """
+
+        with self._state_lock:
+            widths = dict(self._widths)
+            failure = None if not self._failures else "; ".join(self._failures)
+            steps = self._steps
+            imports = self._imports
+            releases = self._releases
+            live_slots = len(self._leases)
         return {
             "execution_path": self.label,
             "state_slots": self.state_slots,
             "max_positions": self.max_positions,
-            "live_slots": len(self._leases),
-            "steps": self._steps,
-            "step_widths": {str(width): count for width, count in sorted(self._widths.items())},
-            "imports": self._imports,
-            "releases": self._releases,
-            "failure": self.failure,
+            "live_slots": live_slots,
+            "steps": steps,
+            "step_widths": {str(width): count for width, count in sorted(widths.items())},
+            "imports": imports,
+            "releases": releases,
+            "failure": failure,
         }
 
     def _require_lease(self, request_id: int) -> _Lease:
@@ -510,8 +545,9 @@ class Qwen4ExpARBatchOwner:
             self.release(request_id)
 
     def _record_failure(self, message: str) -> None:
-        if message not in self._failures:
-            self._failures.append(message)
+        with self._state_lock:
+            if message not in self._failures:
+                self._failures.append(message)
 
 
 def make_qwen4_exp_ar_batch_runner(generator: object, *, state_slots: int) -> Any:

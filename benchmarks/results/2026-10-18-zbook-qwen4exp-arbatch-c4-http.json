@@ -1,0 +1,967 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_ar_batch_http_check_c4",
+  "performance_claim": false,
+  "numerical_gate": "not_run",
+  "decode_length_forced": true,
+  "host": {
+    "hostname": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "cpu": "AMD Ryzen AI Max+ Pro 395",
+    "gpu": "AMD Radeon 8060S / gfx1151",
+    "unified_memory_gib": 128
+  },
+  "server_command": "HIPENGINE_PREFILL_DECODE_POLICY=protect_ttft HIPENGINE_QWEN4_EXP_AR_BATCH=1 HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS=4 python scripts/qwen4exp_arbatch_c4_server.py --model /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --backend hip_gfx1151 --quant gguf_ud_q4_k_xl --execution-profile production --served-model-name qwen38fn-arbatch-c4 --max-context-tokens 2048 --kv-storage bf16 --max-active-requests 4 --speculative-provider qwen4_exp_mtp --draft-model /models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf --speculative-candidate-budget 3 --speculative-mtp-serving opt_in --speculative-mtp-thinking hard --host 127.0.0.1 --port 18391",
+  "harness": "scripts/qwen4exp_ar_batch_http_check.py --phases c4",
+  "capacity_probe": {
+    "kind": "startup_scratch_probe",
+    "max_batch_size": 4,
+    "max_positions": 2048,
+    "status": "passed",
+    "state_slots": 4,
+    "final_free_gib": 27.59,
+    "final_used_gib": 96.41,
+    "source": "/tmp/he-arbatch-c4/server.log STARTUP_MEMORY"
+  },
+  "protocol": {
+    "url": "http://127.0.0.1:18391",
+    "model": "qwen38fn-arbatch-c4",
+    "output": "/tmp/he-arbatch-c4/report",
+    "server_command": "",
+    "c1_tokens": 24,
+    "c2_tokens": 64,
+    "c4_tokens": 64,
+    "cancel_victim_tokens": 512,
+    "cancel_peer_tokens": 48,
+    "cancel_after_events": 8,
+    "filler_lines": 40,
+    "phases": "c4",
+    "with_mtp": false
+  },
+  "model": "qwen38fn-arbatch-c4",
+  "capabilities_sha256": "99e0307780cec594d1dc0b087121f9c2391af72d2813af08bb472475e9c05905",
+  "startup_scratch_probe": {
+    "enabled": true,
+    "status": "passed",
+    "max_prompt_tokens": 2047,
+    "probe_prompt_tokens": 2047,
+    "context_unknown": false,
+    "result": {
+      "schema": 1,
+      "backend": "hip_gfx1151",
+      "execution_path": "qwen4exp_request_owned_runner_pool",
+      "max_batch_size": 4,
+      "max_sequence_length": 2047,
+      "released_after_probe": false,
+      "decode": {
+        "decode_path": "qwen4exp_full_model_ar_batch",
+        "ar_batch": {
+          "execution_path": "qwen4exp_full_model_ar_batch",
+          "state_slots": 4,
+          "max_positions": 2048,
+          "live_slots": 0,
+          "steps": 0,
+          "step_widths": {},
+          "imports": 1,
+          "releases": 1,
+          "failure": null
+        }
+      }
+    }
+  },
+  "ready_before": {
+    "object": "hipengine.readiness",
+    "status": "ready",
+    "ready": true,
+    "diagnostics": [],
+    "model": {
+      "id": "qwen38fn-arbatch-c4",
+      "backend": "hip_gfx1151",
+      "quant": "gguf_ud_q4_k_xl",
+      "loaded": true,
+      "loaded_model_count": 1,
+      "kv_capability": {
+        "schema_version": 1,
+        "status": "unavailable",
+        "runtime_action": "not_applicable",
+        "promotion_eligible": false,
+        "diagnostic_override": false,
+        "requested": null,
+        "effective_kv_storage": null,
+        "artifact": null,
+        "evidence": null,
+        "reason": "loaded engine does not expose artifact-scoped KV capability provenance"
+      }
+    },
+    "startup": {
+      "eager_load": true,
+      "warmup_complete": true,
+      "last_timings_s": {
+        "engine_create_s": 0.000837,
+        "resident_prepare_s": 19.534665,
+        "warmup_s": 0.178151,
+        "scratch_probe_s": 0.000452,
+        "chat_smoke_s": 0.180402,
+        "startup_total_s": 19.928189
+      },
+      "checks": {
+        "raw_warmup": {
+          "status": "passed",
+          "max_tokens": 1
+        },
+        "scratch_probe": {
+          "enabled": true,
+          "status": "passed",
+          "max_prompt_tokens": 2047,
+          "probe_prompt_tokens": 2047,
+          "context_unknown": false,
+          "result": {
+            "schema": 1,
+            "backend": "hip_gfx1151",
+            "execution_path": "qwen4exp_request_owned_runner_pool",
+            "max_batch_size": 4,
+            "max_sequence_length": 2047,
+            "released_after_probe": false,
+            "decode": {
+              "decode_path": "qwen4exp_full_model_ar_batch",
+              "ar_batch": {
+                "execution_path": "qwen4exp_full_model_ar_batch",
+                "state_slots": 4,
+                "max_positions": 2048,
+                "live_slots": 0,
+                "steps": 0,
+                "step_widths": {},
+                "imports": 1,
+                "releases": 1,
+                "failure": null
+              }
+            }
+          }
+        },
+        "chat_smoke": {
+          "enabled": true,
+          "status": "passed",
+          "prompt_tokens": 13,
+          "max_tokens": 1
+        }
+      },
+      "memory": {
+        "startup_begin": {
+          "free_bytes": 130570309632,
+          "total_bytes": 133143986176,
+          "used_bytes": 2573676544,
+          "free_gib": 121.603077,
+          "used_gib": 2.396923
+        },
+        "after_resident_prepare": {
+          "free_bytes": 29670871040,
+          "total_bytes": 133143986176,
+          "used_bytes": 103473115136,
+          "free_gib": 27.633152,
+          "used_gib": 96.366848
+        },
+        "after_raw_warmup": {
+          "free_bytes": 29620891648,
+          "total_bytes": 133143986176,
+          "used_bytes": 103523094528,
+          "free_gib": 27.586605,
+          "used_gib": 96.413395
+        },
+        "after_scratch_probe": {
+          "free_bytes": 29620891648,
+          "total_bytes": 133143986176,
+          "used_bytes": 103523094528,
+          "free_gib": 27.586605,
+          "used_gib": 96.413395
+        },
+        "after_chat_smoke": {
+          "free_bytes": 29620891648,
+          "total_bytes": 133143986176,
+          "used_bytes": 103523094528,
+          "free_gib": 27.586605,
+          "used_gib": 96.413395
+        },
+        "guard": {
+          "free_bytes": 29620891648,
+          "total_bytes": 133143986176,
+          "used_bytes": 103523094528,
+          "free_gib": 27.586605,
+          "used_gib": 96.413395
+        }
+      },
+      "error": null
+    },
+    "context": {
+      "configured_max_context_tokens": 2048,
+      "effective_max_context_tokens": 2048,
+      "chat_default_max_tokens": 4096
+    },
+    "kv_capacity": {
+      "storage": "bf16",
+      "scale_dtype": "fp32",
+      "scale_granularity": "per_token_head",
+      "estimate": null,
+      "pool": {
+        "current_bytes": 0.0,
+        "high_water_observed_bytes": 0.0,
+        "current_pages": 0.0,
+        "high_water_observed_pages": 0.0,
+        "grow_events": 0.0,
+        "grow_failures": 0.0,
+        "shrink_events": 0.0,
+        "free_pages": 0.0,
+        "refcounted_pages": 0.0,
+        "pinned_pages": 0.0,
+        "max_pages": 0.0,
+        "budget_bytes": 0.0,
+        "retired_pages": 0.0,
+        "retired_bytes": 0.0
+      }
+    },
+    "prefix_cache": {
+      "mode": "off",
+      "block_size_tokens": 256,
+      "snapshot_entries": 0,
+      "snapshot_limit": 0,
+      "retained_snapshot_entries": 0,
+      "snapshot_bytes": 0,
+      "retained_kv_pages": 0,
+      "retained_kv_bytes": 0,
+      "resident_bytes": 0,
+      "resident_limit_bytes": 0
+    },
+    "graph_cache": {
+      "entries": 0.0,
+      "hits": 0.0,
+      "misses": 0.0,
+      "replay_hit_rate": 0.0
+    },
+    "device": {
+      "backend": "hip_gfx1151",
+      "hip_visible_devices": null,
+      "rocr_visible_devices": null,
+      "visible_devices": [],
+      "selected_visible_device": null,
+      "selection_source": null
+    },
+    "queue": {
+      "depth": 0,
+      "max_depth": null,
+      "worker_active": false,
+      "active_requests": 0,
+      "max_active_requests": 4,
+      "scheduler_fairness": {
+        "policy": "fifo_compatible_sampling_key",
+        "compatible_sampling_coalescing": true,
+        "continuous_decode": true,
+        "preemptive_fairness": false
+      },
+      "batch_window_ms": 0.0
+    },
+    "sessions": {
+      "resident_context": true,
+      "active": 0,
+      "pending_creations": 0,
+      "max_active": null,
+      "storage": "app_local_transcript",
+      "resident_state_reuse": false,
+      "total_messages": 0,
+      "continuations": {
+        "active": 0,
+        "ttl_seconds": 900
+      }
+    },
+    "service": {
+      "accepting_requests": true,
+      "driver_alive": true,
+      "closing": false,
+      "closed": false,
+      "failure": null
+    }
+  },
+  "telemetry_before": {
+    "decode_path": "qwen4exp_full_model_ar_batch",
+    "ar_batch": {
+      "execution_path": "qwen4exp_full_model_ar_batch",
+      "state_slots": 4,
+      "max_positions": 2048,
+      "live_slots": 0,
+      "steps": 0,
+      "step_widths": {},
+      "imports": 2,
+      "releases": 2,
+      "failure": null
+    }
+  },
+  "phases": [
+    {
+      "name": "c4_block",
+      "width_delta": {
+        "4": 63
+      },
+      "imports": 6,
+      "releases": 6,
+      "max_observed_queue_depth": null
+    },
+    {
+      "name": "c4_stream",
+      "width_delta": {
+        "4": 63
+      },
+      "imports": 10,
+      "releases": 10,
+      "max_observed_queue_depth": null
+    },
+    {
+      "name": "c4_cancel",
+      "width_delta": {
+        "3": 39,
+        "4": 8
+      },
+      "imports": 14,
+      "releases": 14,
+      "max_observed_queue_depth": null
+    },
+    {
+      "name": "c4_recovery",
+      "width_delta": {
+        "1": 4,
+        "3": 0,
+        "4": 0
+      },
+      "imports": 16,
+      "releases": 16,
+      "max_observed_queue_depth": null
+    }
+  ],
+  "checks": [
+    {
+      "name": "preflight.ready",
+      "passed": true,
+      "status": "ready",
+      "diagnostics": []
+    },
+    {
+      "name": "preflight.decode_path",
+      "passed": true,
+      "decode_path": "qwen4exp_full_model_ar_batch"
+    },
+    {
+      "name": "preflight.state_slots",
+      "passed": true,
+      "state_slots": 4
+    },
+    {
+      "name": "preflight.no_failure",
+      "passed": true,
+      "failure": null
+    },
+    {
+      "name": "preflight.live_slots_zero",
+      "passed": true,
+      "live_slots": 0
+    },
+    {
+      "name": "preflight.scratch_probe_prepared",
+      "passed": true,
+      "scratch_probe": "passed"
+    },
+    {
+      "name": "preflight.scratch_probe_batch_path",
+      "passed": true,
+      "scratch_decode_path": "qwen4exp_full_model_ar_batch"
+    },
+    {
+      "name": "preflight.scratch_probe_state_slots",
+      "passed": true,
+      "scratch_state_slots": 4,
+      "live_state_slots": 4
+    },
+    {
+      "name": "c4_preflight.state_slots_4",
+      "passed": true,
+      "state_slots": 4
+    },
+    {
+      "name": "c4_preflight.live_slots_zero",
+      "passed": true,
+      "live_slots": 0
+    },
+    {
+      "name": "c4_block.all_200",
+      "passed": true,
+      "statuses": [
+        200,
+        200,
+        200,
+        200
+      ]
+    },
+    {
+      "name": "c4_block.distinct_markers",
+      "passed": true,
+      "texts": [
+        "ALPHA<|IM_END|>\n<|ENDOFTEXT|><|IM_START|",
+        "BRAVO<|IM_END|>\n<|ENDOFTEXT|><|IM_START|",
+        "CHARLIE<|IM_END|>\n<|ENDOFTEXT|><|IM_STAR",
+        "DELTA<|IM_END|>\n<|ENDOFTEXT|><|IM_START|"
+      ]
+    },
+    {
+      "name": "c4_block.physical_width_4",
+      "passed": true,
+      "width_delta": {
+        "4": 63
+      }
+    },
+    {
+      "name": "c4_block.no_width_above_capacity",
+      "passed": true,
+      "width_delta": {
+        "4": 63
+      },
+      "state_slots": 4
+    },
+    {
+      "name": "c4_block.imports",
+      "passed": true,
+      "imports_before": 2,
+      "imports_after": 6
+    },
+    {
+      "name": "c4_block.live_slots_zero",
+      "passed": true,
+      "live_slots": 0
+    },
+    {
+      "name": "c4_stream_0.http_200",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "name": "c4_stream_0.sse_done",
+      "passed": true,
+      "done_events": 1
+    },
+    {
+      "name": "c4_stream_0.usage_terminal",
+      "passed": true,
+      "usage": {
+        "prompt_tokens": 19,
+        "completion_tokens": 64,
+        "total_tokens": 83
+      }
+    },
+    {
+      "name": "c4_stream_0.finish_reason",
+      "passed": true,
+      "finish_reasons": [
+        "length"
+      ]
+    },
+    {
+      "name": "c4_stream_0.event_count",
+      "passed": true,
+      "events": 66
+    },
+    {
+      "name": "c4_stream_0.no_transport_error",
+      "passed": true,
+      "transport_error": null
+    },
+    {
+      "name": "c4_stream_1.http_200",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "name": "c4_stream_1.sse_done",
+      "passed": true,
+      "done_events": 1
+    },
+    {
+      "name": "c4_stream_1.usage_terminal",
+      "passed": true,
+      "usage": {
+        "prompt_tokens": 20,
+        "completion_tokens": 64,
+        "total_tokens": 84
+      }
+    },
+    {
+      "name": "c4_stream_1.finish_reason",
+      "passed": true,
+      "finish_reasons": [
+        "length"
+      ]
+    },
+    {
+      "name": "c4_stream_1.event_count",
+      "passed": true,
+      "events": 68
+    },
+    {
+      "name": "c4_stream_1.no_transport_error",
+      "passed": true,
+      "transport_error": null
+    },
+    {
+      "name": "c4_stream_2.http_200",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "name": "c4_stream_2.sse_done",
+      "passed": true,
+      "done_events": 1
+    },
+    {
+      "name": "c4_stream_2.usage_terminal",
+      "passed": true,
+      "usage": {
+        "prompt_tokens": 21,
+        "completion_tokens": 64,
+        "total_tokens": 85
+      }
+    },
+    {
+      "name": "c4_stream_2.finish_reason",
+      "passed": true,
+      "finish_reasons": [
+        "length"
+      ]
+    },
+    {
+      "name": "c4_stream_2.event_count",
+      "passed": true,
+      "events": 61
+    },
+    {
+      "name": "c4_stream_2.no_transport_error",
+      "passed": true,
+      "transport_error": null
+    },
+    {
+      "name": "c4_stream_3.http_200",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "name": "c4_stream_3.sse_done",
+      "passed": true,
+      "done_events": 1
+    },
+    {
+      "name": "c4_stream_3.usage_terminal",
+      "passed": true,
+      "usage": {
+        "prompt_tokens": 20,
+        "completion_tokens": 64,
+        "total_tokens": 84
+      }
+    },
+    {
+      "name": "c4_stream_3.finish_reason",
+      "passed": true,
+      "finish_reasons": [
+        "length"
+      ]
+    },
+    {
+      "name": "c4_stream_3.event_count",
+      "passed": true,
+      "events": 66
+    },
+    {
+      "name": "c4_stream_3.no_transport_error",
+      "passed": true,
+      "transport_error": null
+    },
+    {
+      "name": "c4_stream.distinct_markers",
+      "passed": true,
+      "texts": [
+        "ALPHA<|IM_END|>\n<|ENDOFTEXT|><|IM_START|",
+        "BRAVO<|IM_END|>\n<|ENDOFTEXT|><|IM_START|",
+        "CHARLIE<|IM_END|>\n<|ENDOFTEXT|><|IM_STAR",
+        "DELTA<|IM_END|>\n<|ENDOFTEXT|><|IM_START|"
+      ]
+    },
+    {
+      "name": "c4_stream.physical_width_4",
+      "passed": true,
+      "width_delta": {
+        "4": 63
+      }
+    },
+    {
+      "name": "c4_stream.no_batch_failure",
+      "passed": true,
+      "failure": null
+    },
+    {
+      "name": "c4_cancel.peer_0_http_200",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "name": "c4_cancel.peer_0_marker",
+      "passed": true,
+      "text": "ALPHA<|im_end|>\n<|endoftext|><|im_start|"
+    },
+    {
+      "name": "c4_cancel.peer_0_progress_after_cancel",
+      "passed": true,
+      "peer_last_event_unix": 1792295471.049,
+      "victim_cancel_unix": 1792295467.161
+    },
+    {
+      "name": "c4_cancel.peer_0_terminal",
+      "passed": true,
+      "event_count": 50
+    },
+    {
+      "name": "c4_cancel.peer_1_http_200",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "name": "c4_cancel.peer_1_marker",
+      "passed": true,
+      "text": "BRAVO<|im_end|>\n<|endoftext|><|im_start|"
+    },
+    {
+      "name": "c4_cancel.peer_1_progress_after_cancel",
+      "passed": true,
+      "peer_last_event_unix": 1792295471.051,
+      "victim_cancel_unix": 1792295467.161
+    },
+    {
+      "name": "c4_cancel.peer_1_terminal",
+      "passed": true,
+      "event_count": 52
+    },
+    {
+      "name": "c4_cancel.peer_2_http_200",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "name": "c4_cancel.peer_2_marker",
+      "passed": true,
+      "text": "CHARLIE<|im_end|>\n<|endoftext|><|im_star"
+    },
+    {
+      "name": "c4_cancel.peer_2_progress_after_cancel",
+      "passed": true,
+      "peer_last_event_unix": 1792295471.052,
+      "victim_cancel_unix": 1792295467.161
+    },
+    {
+      "name": "c4_cancel.peer_2_terminal",
+      "passed": true,
+      "event_count": 47
+    },
+    {
+      "name": "c4_cancel.victim_started",
+      "passed": true,
+      "events": 8,
+      "status": 200
+    },
+    {
+      "name": "c4_cancel.no_batch_failure",
+      "passed": true,
+      "failure": null
+    },
+    {
+      "name": "c4_cancel.live_slots_zero",
+      "passed": true,
+      "live_slots": 0
+    },
+    {
+      "name": "c4_recovery.http_200",
+      "passed": true,
+      "statuses": [
+        200,
+        200
+      ]
+    },
+    {
+      "name": "c4_recovery.markers",
+      "passed": true,
+      "texts": [
+        "ALPHA",
+        "BRAVO"
+      ]
+    },
+    {
+      "name": "c4_recovery.ready",
+      "passed": true,
+      "status": "ready"
+    },
+    {
+      "name": "c4_recovery.no_batch_failure",
+      "passed": true,
+      "failure": null
+    },
+    {
+      "name": "c4_recovery.live_slots_zero",
+      "passed": true,
+      "live_slots": 0
+    },
+    {
+      "name": "c4_recovery.release_accounting",
+      "passed": true,
+      "imports": 16,
+      "releases": 16
+    },
+    {
+      "name": "final.no_failure",
+      "passed": true,
+      "failure": null
+    },
+    {
+      "name": "final.live_slots_zero",
+      "passed": true,
+      "live_slots": 0
+    },
+    {
+      "name": "final.accepting",
+      "passed": true,
+      "status": "ready"
+    }
+  ],
+  "failed_checks": [],
+  "telemetry_after": {
+    "decode_path": "qwen4exp_full_model_ar_batch",
+    "ar_batch": {
+      "execution_path": "qwen4exp_full_model_ar_batch",
+      "state_slots": 4,
+      "max_positions": 2048,
+      "live_slots": 0,
+      "steps": 177,
+      "step_widths": {
+        "1": 4,
+        "3": 39,
+        "4": 134
+      },
+      "imports": 16,
+      "releases": 16,
+      "failure": null
+    }
+  },
+  "ready_after": {
+    "object": "hipengine.readiness",
+    "status": "ready",
+    "ready": true,
+    "diagnostics": [],
+    "model": {
+      "id": "qwen38fn-arbatch-c4",
+      "backend": "hip_gfx1151",
+      "quant": "gguf_ud_q4_k_xl",
+      "loaded": true,
+      "loaded_model_count": 1,
+      "kv_capability": {
+        "schema_version": 1,
+        "status": "unavailable",
+        "runtime_action": "not_applicable",
+        "promotion_eligible": false,
+        "diagnostic_override": false,
+        "requested": null,
+        "effective_kv_storage": null,
+        "artifact": null,
+        "evidence": null,
+        "reason": "loaded engine does not expose artifact-scoped KV capability provenance"
+      }
+    },
+    "startup": {
+      "eager_load": true,
+      "warmup_complete": true,
+      "last_timings_s": {
+        "engine_create_s": 0.000837,
+        "resident_prepare_s": 19.534665,
+        "warmup_s": 0.178151,
+        "scratch_probe_s": 0.000452,
+        "chat_smoke_s": 0.180402,
+        "startup_total_s": 19.928189
+      },
+      "checks": {
+        "raw_warmup": {
+          "status": "passed",
+          "max_tokens": 1
+        },
+        "scratch_probe": {
+          "enabled": true,
+          "status": "passed",
+          "max_prompt_tokens": 2047,
+          "probe_prompt_tokens": 2047,
+          "context_unknown": false,
+          "result": {
+            "schema": 1,
+            "backend": "hip_gfx1151",
+            "execution_path": "qwen4exp_request_owned_runner_pool",
+            "max_batch_size": 4,
+            "max_sequence_length": 2047,
+            "released_after_probe": false,
+            "decode": {
+              "decode_path": "qwen4exp_full_model_ar_batch",
+              "ar_batch": {
+                "execution_path": "qwen4exp_full_model_ar_batch",
+                "state_slots": 4,
+                "max_positions": 2048,
+                "live_slots": 0,
+                "steps": 0,
+                "step_widths": {},
+                "imports": 1,
+                "releases": 1,
+                "failure": null
+              }
+            }
+          }
+        },
+        "chat_smoke": {
+          "enabled": true,
+          "status": "passed",
+          "prompt_tokens": 13,
+          "max_tokens": 1
+        }
+      },
+      "memory": {
+        "startup_begin": {
+          "free_bytes": 130570309632,
+          "total_bytes": 133143986176,
+          "used_bytes": 2573676544,
+          "free_gib": 121.603077,
+          "used_gib": 2.396923
+        },
+        "after_resident_prepare": {
+          "free_bytes": 29670871040,
+          "total_bytes": 133143986176,
+          "used_bytes": 103473115136,
+          "free_gib": 27.633152,
+          "used_gib": 96.366848
+        },
+        "after_raw_warmup": {
+          "free_bytes": 29620891648,
+          "total_bytes": 133143986176,
+          "used_bytes": 103523094528,
+          "free_gib": 27.586605,
+          "used_gib": 96.413395
+        },
+        "after_scratch_probe": {
+          "free_bytes": 29620891648,
+          "total_bytes": 133143986176,
+          "used_bytes": 103523094528,
+          "free_gib": 27.586605,
+          "used_gib": 96.413395
+        },
+        "after_chat_smoke": {
+          "free_bytes": 29620891648,
+          "total_bytes": 133143986176,
+          "used_bytes": 103523094528,
+          "free_gib": 27.586605,
+          "used_gib": 96.413395
+        },
+        "guard": {
+          "free_bytes": 29620891648,
+          "total_bytes": 133143986176,
+          "used_bytes": 103523094528,
+          "free_gib": 27.586605,
+          "used_gib": 96.413395
+        }
+      },
+      "error": null
+    },
+    "context": {
+      "configured_max_context_tokens": 2048,
+      "effective_max_context_tokens": 2048,
+      "chat_default_max_tokens": 4096
+    },
+    "kv_capacity": {
+      "storage": "bf16",
+      "scale_dtype": "fp32",
+      "scale_granularity": "per_token_head",
+      "estimate": null,
+      "pool": {
+        "current_bytes": 0.0,
+        "high_water_observed_bytes": 0.0,
+        "current_pages": 0.0,
+        "high_water_observed_pages": 0.0,
+        "grow_events": 0.0,
+        "grow_failures": 0.0,
+        "shrink_events": 0.0,
+        "free_pages": 0.0,
+        "refcounted_pages": 0.0,
+        "pinned_pages": 0.0,
+        "max_pages": 0.0,
+        "budget_bytes": 0.0,
+        "retired_pages": 0.0,
+        "retired_bytes": 0.0
+      }
+    },
+    "prefix_cache": {
+      "mode": "off",
+      "block_size_tokens": 256,
+      "snapshot_entries": 0,
+      "snapshot_limit": 0,
+      "retained_snapshot_entries": 0,
+      "snapshot_bytes": 0,
+      "retained_kv_pages": 0,
+      "retained_kv_bytes": 0,
+      "resident_bytes": 0,
+      "resident_limit_bytes": 0
+    },
+    "graph_cache": {
+      "entries": 0.0,
+      "hits": 0.0,
+      "misses": 0.0,
+      "replay_hit_rate": 0.0
+    },
+    "device": {
+      "backend": "hip_gfx1151",
+      "hip_visible_devices": null,
+      "rocr_visible_devices": null,
+      "visible_devices": [],
+      "selected_visible_device": null,
+      "selection_source": null
+    },
+    "queue": {
+      "depth": 0,
+      "max_depth": null,
+      "worker_active": false,
+      "active_requests": 0,
+      "max_active_requests": 4,
+      "scheduler_fairness": {
+        "policy": "fifo_compatible_sampling_key",
+        "compatible_sampling_coalescing": true,
+        "continuous_decode": true,
+        "preemptive_fairness": false
+      },
+      "batch_window_ms": 0.0
+    },
+    "sessions": {
+      "resident_context": true,
+      "active": 0,
+      "pending_creations": 0,
+      "max_active": null,
+      "storage": "app_local_transcript",
+      "resident_state_reuse": false,
+      "total_messages": 0,
+      "continuations": {
+        "active": 0,
+        "ttl_seconds": 900
+      }
+    },
+    "service": {
+      "accepting_requests": true,
+      "driver_alive": true,
+      "closing": false,
+      "closed": false,
+      "failure": null
+    }
+  },
+  "status": "passed",
+  "check_count": 67,
+  "failure_count": 0,
+  "source": "worklog/entries/20261018T034525.696221Z-lhl-qwen4exp-arbatch-http-018db2.md"
+}

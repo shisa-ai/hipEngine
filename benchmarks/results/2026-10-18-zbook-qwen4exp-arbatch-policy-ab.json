@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_arbatch_policy_ab",
+  "performance_claim": false,
+  "note": "Same server build, same two synchronized 8-token forced requests, same 2048-token context and 2-slot AR batch. Only the prefill/decode policy differs. Widths are the owner's step histogram delta, not HTTP concurrency.",
+  "host": {
+    "hostname": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "gpu": "AMD Radeon 8060S / gfx1151"
+  },
+  "common": {
+    "model": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "quant": "gguf_ud_q4_k_xl",
+    "context_tokens": 2048,
+    "max_active_requests": 2,
+    "ar_batch_env": {
+      "HIPENGINE_QWEN4_EXP_AR_BATCH": "1",
+      "HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS": "2"
+    },
+    "requests": "2 x chat/completions, max_tokens=8, ignore_eos=true, temperature=0, synchronized start"
+  },
+  "rows": [
+    {
+      "policy": "protect_decode (server default; HIPENGINE_PREFILL_DECODE_POLICY unset)",
+      "statuses": [
+        200,
+        200
+      ],
+      "wall_s": [
+        1.476
+      ],
+      "width_delta": {
+        "1": 14
+      },
+      "imports_delta": 2
+    },
+    {
+      "policy": "protect_ttft (HIPENGINE_PREFILL_DECODE_POLICY=protect_ttft)",
+      "statuses": [
+        200,
+        200
+      ],
+      "wall_s": [
+        1.088
+      ],
+      "width_delta": {
+        "2": 7
+      },
+      "imports_delta": 2
+    }
+  ],
+  "finding": "Under the server default protect_decode policy the second admitted row's prefill is deferred until the first row's decode completes, so the shared batch never holds both rows and every step is width 1. protect_ttft prefills the new row first and the same arrivals step at width 2.",
+  "telemetry": {
+    "protect_decode": {
+      "execution_path": "qwen4exp_full_model_ar_batch",
+      "state_slots": 2,
+      "max_positions": 2048,
+      "live_slots": 0,
+      "steps": 14,
+      "step_widths": {
+        "1": 14
+      },
+      "imports": 4,
+      "releases": 4,
+      "failure": null
+    },
+    "protect_ttft": {
+      "execution_path": "qwen4exp_full_model_ar_batch",
+      "state_slots": 2,
+      "max_positions": 2048,
+      "live_slots": 0,
+      "steps": 7,
+      "step_widths": {
+        "2": 7
+      },
+      "imports": 4,
+      "releases": 4,
+      "failure": null
+    }
+  },
+  "source": "live probes /tmp/he-arbatch-{default-policy,protect-ttft}.json"
+}

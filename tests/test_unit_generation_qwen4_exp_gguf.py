@@ -106,6 +106,31 @@ def test_qwen4_exp_generator_runs_bounded_multimodal_override() -> None:
         generator.close()
 
 
+def test_decode_telemetry_reports_uninitialized_unknown_and_live_state() -> None:
+    generator = Qwen4ExpGGUFTextGenerator(
+        model_path="unused.gguf", weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(), tokenizer=_Tokenizer(), runner=_Runner(),
+    )
+    try:
+        assert generator.decode_telemetry() == {
+            "decode_path": "uninitialized", "ar_batch": None,
+        }
+        generator._resident_model_runner = SimpleNamespace()
+        assert generator.decode_telemetry() == {
+            "decode_path": "unknown", "ar_batch": None,
+        }
+        generator._resident_model_runner = SimpleNamespace(
+            decode_telemetry=lambda: {
+                "decode_path": "qwen4exp_full_model_ar_batch",
+                "ar_batch": {"state_slots": 2, "step_widths": {"2": 4}},
+            }
+        )
+        assert generator.decode_telemetry()["ar_batch"]["step_widths"] == {"2": 4}
+    finally:
+        generator._resident_model_runner = None
+        generator.close()
+
+
 def test_qwen4_exp_generator_exposes_tokenizer_control_surface() -> None:
     generator = Qwen4ExpGGUFTextGenerator(
         model_path="unused.gguf",
