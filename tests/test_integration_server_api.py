@@ -1284,8 +1284,11 @@ def test_decode_telemetry_endpoint_sanitizes_hook_failures_and_bad_payloads() ->
     bad = TestClient(bad_app).get(
         "/v1/hipengine/decode", headers={"Authorization": "Bearer secret"}
     ).json()
-    assert bad["available"] is True
-    assert bad["decode"] == {"decode_path": "unknown", "ar_batch": None}
+    assert bad == {
+        "object": "hipengine.decode_telemetry",
+        "available": False,
+        "reason": "decode_telemetry_malformed",
+    }
 
 
 def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:

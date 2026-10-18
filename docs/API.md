@@ -278,7 +278,28 @@ from the number of requests that have finished generating while their slot is
 still being released. When no decode hook exists, the response is
 `available: false` with `reason: engine_has_no_decode_telemetry`; when the hook
 raises, it is `available: false` with `reason: decode_telemetry_unavailable`
-and the exception detail is logged server-side rather than returned.
+and the exception detail is logged server-side rather than returned; when the
+hook returns a non-object payload, it is `available: false` with
+`reason: decode_telemetry_malformed`.
+
+#### Qualification configuration for physical widths above 2
+
+The Flash-Next AR batch path is opt-in and its plugin declares a plain-AR
+capacity of 2. With `HIPENGINE_QWEN4_EXP_AR_BATCH=1`, one server instance
+accepts `--max-active-requests 4` only at `--max-context-tokens` 2048 or less,
+the bound of the live width-4 qualification; `HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS`
+then bounds the batch width from 1 to 4 (default: the serving capacity). A
+server without the switch, an unknown context, or a longer context keeps the
+production bound, and an explicit slot count above 4 is rejected. The
+capability is published on that generator instance, not on the plugin class, so
+a second instance in the same process is unaffected.
+
+Independent HTTP arrivals overlap only when the operator selects
+`HIPENGINE_PREFILL_DECODE_POLICY=protect_ttft`. The default `protect_decode`
+policy serializes them, and the server does not override the configured or
+default policy. Mixed MTP rows never join the AR batch and keep their own
+registered bound, so this configuration is not a speculative or verifier-width
+claim.
 
 ## Examples
 

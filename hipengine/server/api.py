@@ -6260,7 +6260,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "reason": "decode_telemetry_unavailable",
                 }
             if not isinstance(payload, Mapping):
-                payload = {"decode_path": "unknown", "ar_batch": None}
+                # A hook that returns a list, string, or None is a bug in the
+                # engine, not evidence of a decode path. Fail closed instead of
+                # reporting available:true with a fabricated path.
+                _LOGGER.warning(
+                    "decode telemetry hook returned %s, expected a mapping",
+                    type(payload).__name__,
+                )
+                return {
+                    "object": "hipengine.decode_telemetry",
+                    "available": False,
+                    "reason": "decode_telemetry_malformed",
+                }
             return {
                 "object": "hipengine.decode_telemetry",
                 "available": True,

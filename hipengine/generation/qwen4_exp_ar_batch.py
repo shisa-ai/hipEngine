@@ -11,6 +11,15 @@ It is a qualification path, not the serving default. The switch is default-off
 run against the strict teacher, and the MTP route stays on c1 at width 1 - a
 speculative row never joins a batch step.
 
+Capacity is part of that qualification configuration, not a global default.
+The plugin's production bound is 2; the switch raises one generator instance's
+plain-AR ceiling to 4 only when the configured context is at most 2048
+positions, the bound the width-4 live qualification used. Switch-off servers and
+longer contexts keep the production bound, and an explicit slot count above 4
+is rejected. Independent HTTP arrivals overlap only when the operator selects
+``HIPENGINE_PREFILL_DECODE_POLICY=protect_ttft``; the engine never overrides the
+configured or default scheduling policy.
+
 Three properties are control, not arithmetic, and are asserted exactly:
 
 * one physical slot per request, pinned at admission, imported once, and
@@ -39,6 +48,13 @@ AR_BATCH_ENV = "HIPENGINE_QWEN4_EXP_AR_BATCH"
 #: Optional width bound; unset means one state slot per serving request.
 AR_BATCH_SLOTS_ENV = "HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS"
 
+#: Largest physical width with a completed live HTTP qualification (C4 run on
+#: 2026-10-18: 63 width-4 ticks in blocking and SSE phases, cancel one of four).
+AR_BATCH_QUALIFIED_MAX_SLOTS = 4
+#: Context bound of that qualification. A wider configured context keeps the
+#: production capacity bound instead of inheriting an unmeasured envelope.
+AR_BATCH_QUALIFIED_MAX_POSITIONS = 2048
+
 _DISABLED_VALUES = frozenset({"", "0", "false", "False"})
 
 
@@ -58,12 +74,39 @@ def ar_batch_state_slots(capacity: int) -> int:
     if not raw:
         return resolved
     slots = int(raw)
+    if slots > AR_BATCH_QUALIFIED_MAX_SLOTS:
+        raise ValueError(
+            f"{AR_BATCH_SLOTS_ENV}={slots} exceeds the qualified physical "
+            f"width {AR_BATCH_QUALIFIED_MAX_SLOTS}"
+        )
     if not 1 <= slots <= resolved:
         raise ValueError(
             f"{AR_BATCH_SLOTS_ENV}={slots} is outside the serving capacity "
             f"1..{resolved}"
         )
     return slots
+
+
+def ar_batch_capacity_ceiling(
+    *, max_positions: int | None, default: int
+) -> int:
+    """Per-instance plain-AR capacity ceiling for one serving configuration.
+
+    The plugin's class default is the production bound. The qualification
+    switch raises the ceiling to the qualified width only at the qualified
+    context bound, so a default-off or long-context server keeps the production
+    bound instead of inheriting a width-4 envelope it was never measured for.
+    An unknown context is not evidence of the short bound and keeps ``default``.
+    """
+
+    ceiling = int(default)
+    if ceiling < 1:
+        raise ValueError("plain-AR capacity default must be positive")
+    if not ar_batch_enabled():
+        return ceiling
+    if max_positions is None or int(max_positions) > AR_BATCH_QUALIFIED_MAX_POSITIONS:
+        return ceiling
+    return max(ceiling, AR_BATCH_QUALIFIED_MAX_SLOTS)
 
 
 def _require_integer(value: object, *, label: str) -> int:
@@ -573,9 +616,12 @@ def make_qwen4_exp_ar_batch_runner(generator: object, *, state_slots: int) -> An
 
 __all__ = [
     "AR_BATCH_ENV",
+    "AR_BATCH_QUALIFIED_MAX_POSITIONS",
+    "AR_BATCH_QUALIFIED_MAX_SLOTS",
     "AR_BATCH_SLOTS_ENV",
     "Qwen4ExpARBatchOwner",
     "Qwen4ExpARBatchStepError",
+    "ar_batch_capacity_ceiling",
     "ar_batch_enabled",
     "ar_batch_state_slots",
     "make_qwen4_exp_ar_batch_runner",

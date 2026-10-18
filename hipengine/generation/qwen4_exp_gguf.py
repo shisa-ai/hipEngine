@@ -18,7 +18,11 @@ from hipengine.generation.sampling import (
 )
 from hipengine.generation.qwen4_exp_serving_mtp import Qwen4ExpServingMTP, _RequestRetired
 from hipengine.generation.qwen4_exp_ar_batch import (
+    AR_BATCH_ENV,
+    AR_BATCH_QUALIFIED_MAX_POSITIONS,
+    AR_BATCH_QUALIFIED_MAX_SLOTS,
     Qwen4ExpARBatchOwner,
+    ar_batch_capacity_ceiling,
     ar_batch_enabled,
     ar_batch_state_slots,
     make_qwen4_exp_ar_batch_runner,
@@ -247,12 +251,24 @@ class Qwen4ExpGGUFTextGenerator:
         self.weight_index = weight_index
         self.model_plugin = model_plugin
         self.backend = str(backend)
+        production_capacity = type(self).server_plain_ar_max_active_requests
+        capacity_ceiling = ar_batch_capacity_ceiling(
+            max_positions=max_sequence_length,
+            default=production_capacity,
+        )
         self._configured_resident_capacity = (
-            self.server_plain_ar_max_active_requests if resident_capacity is None else int(resident_capacity))
-        if not 1 <= self._configured_resident_capacity <= self.server_plain_ar_max_active_requests:
+            production_capacity if resident_capacity is None else int(resident_capacity))
+        if not 1 <= self._configured_resident_capacity <= capacity_ceiling:
             raise ValueError(
                 "Qwen4Exp resident capacity must be within "
-                f"1..{self.server_plain_ar_max_active_requests}")
+                f"1..{capacity_ceiling} for max_sequence_length="
+                f"{max_sequence_length}; the production bound is "
+                f"{production_capacity}, and {AR_BATCH_ENV}=1 qualifies up to "
+                f"{AR_BATCH_QUALIFIED_MAX_SLOTS} slots at <= "
+                f"{AR_BATCH_QUALIFIED_MAX_POSITIONS} positions")
+        # Publish the resolved capability on this instance only. The class
+        # attribute stays the production bound, so a second generator in the
+        # same process cannot inherit the qualification width.
         self.server_plain_ar_max_active_requests = self._configured_resident_capacity
         self.server_plain_ar_max_active_requests_by_max_sequence_length = {1024:self._configured_resident_capacity}
         self.context_admission = None

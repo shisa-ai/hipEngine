@@ -11,14 +11,27 @@
   (mean/p95/p99/max KL, top-1 by category, determinism, isolation, task
   quality) on the full `mtpbench-code-general-ja` suite plus category
   holdouts - the only real-checkpoint runs so far are the short c1-drift and
-  sparse-threshold diagnostics; (2) a live serving qualification (HTTP,
-  streaming, cancellation/disconnect under load) at width 2; (3) a decision on
-  MTP: the batch path is AR-only, so a mixed AR/MTP workload pays two KV
-  layouts and cannot share a step; (4) the memory cost of `state_slots` full
-  contexts on top of the c1 pool, which is why the width is a separate
-  `HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS` bound. Remove the switch only when the
-  batch path is the default and the c1 per-request step survives as the strict
-  fallback; remove the duplicated glue when one implementation serves both.
+  sparse-threshold diagnostics; (2) live serving qualification at width 2 and
+  width 4 (HTTP, streaming, cancellation/disconnect) is recorded in
+  `worklog/entries/20261018T034525.696221Z-lhl-qwen4exp-arbatch-http-018db2.md`
+  for a 2048-token context, while long-context and poisoned-step recovery runs
+  remain; (3) a decision on MTP: the batch path is AR-only, so a mixed AR/MTP
+  workload pays two KV layouts and cannot share a step; (4) the memory cost of
+  `state_slots` full contexts on top of the c1 pool, which is why the width is
+  a separate `HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS` bound. Remove the switch only
+  when the batch path is the default and the c1 per-request step survives as
+  the strict fallback; remove the duplicated glue when one implementation
+  serves both.
+- The qualification capacity is per instance, not a class mutation:
+  `ar_batch_capacity_ceiling` raises one generator's plain-AR ceiling to 4 only
+  with `HIPENGINE_QWEN4_EXP_AR_BATCH=1` and `max_sequence_length <= 2048`;
+  switch-off and longer or unknown contexts keep the production bound 2, and
+  `HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS > 4` is rejected. The test-only
+  `scripts/qwen4exp_arbatch_c4_server.py` launcher was removed because the
+  normal server expresses the same configuration with `--max-active-requests
+  4`. Remove the ceiling together with the switch when width 4 becomes the
+  default or is dropped; do not extend the 2048 bound without a new memory
+  probe and a live run at that context.
 - `import_prefilled` copies a prefilled c1 request into a slot with a host loop
   of three `hipMemcpy` calls per paged block per QSA layer (key, value, index
   keys), plus one copy per GDN layer and one for the PLE conv history. Collapse
@@ -45,7 +58,10 @@
   admission, import preflight, per-block copy layout, owner reset),
   `tests/test_unit_qwen4exp_ar_batch_decode.py` (generator wiring: one N-row
   call per tick, physical-slot pinning, compaction no-op, cancel/reuse,
-  admission rollback, poisoned-step cleanup, MTP exclusion) and
+  admission rollback, poisoned-step cleanup, MTP exclusion),
+  `tests/test_unit_qwen4exp_ar_batch_capacity.py` (qualification capacity
+  ceiling on/off, long-context and width rejection, per-instance isolation,
+  unchanged MTP bound) and
   `tests/test_gpu_qwen4exp_ar_batch_decode.py` (synthetic-model serving run:
   two imports, two 2-row steps, per-row forced-token identity, c1 chain
   agreement).
