@@ -1564,7 +1564,12 @@ __global__ void qwen35_gdn_prefill_recurrent_k2_segments_kernel(
     int64_t num_v_heads,
     int64_t head_k_dim,
     int64_t head_v_dim) {
-  __shared__ float partial[64];
+  // Update and query reductions need separate slots: the same buffer reused for
+  // both lets a leading warp overwrite the query partial while a trailing warp
+  // still reads the update partial, which is only benign when every thread sits
+  // in one wavefront.  The non-segmented k2 kernel already splits them.
+  __shared__ float partial_update[64];
+  __shared__ float partial_query[64];
   const int64_t segment = blockIdx.x;
   const int64_t v_head = blockIdx.y;
   const int64_t value_idx = blockIdx.z;
@@ -1600,19 +1605,19 @@ __global__ void qwen35_gdn_prefill_recurrent_k2_segments_kernel(
       acc += __shfl_down(acc, offset);
     }
     if (lane_id == 0) {
-      partial[warp_id] = acc;
+      partial_update[warp_id] = acc;
     }
     __syncthreads();
     if (threadIdx.x == 0) {
       float total = 0.0f;
       for (int warp = 0; warp < num_warps; ++warp) {
-        total += partial[warp];
+        total += partial_update[warp];
       }
-      partial[0] = total;
+      partial_update[0] = total;
     }
     __syncthreads();
     const float delta =
-        (value[head_offset * head_v_dim + value_idx] - partial[0]) * beta[head_offset];
+        (value[head_offset * head_v_dim + value_idx] - partial_update[0]) * beta[head_offset];
     state_value0 += key_value0 * delta;
     state_value1 += key_value1 * delta;
 
@@ -1622,13 +1627,13 @@ __global__ void qwen35_gdn_prefill_recurrent_k2_segments_kernel(
       acc += __shfl_down(acc, offset);
     }
     if (lane_id == 0) {
-      partial[warp_id] = acc;
+      partial_query[warp_id] = acc;
     }
     __syncthreads();
     if (threadIdx.x == 0) {
       float total = 0.0f;
       for (int warp = 0; warp < num_warps; ++warp) {
-        total += partial[warp];
+        total += partial_query[warp];
       }
       out[head_offset * head_v_dim + value_idx] = total;
     }

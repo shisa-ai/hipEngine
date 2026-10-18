@@ -1718,6 +1718,39 @@ def test_gdn_segments_lowp_state_rows_match_scalar_c1(
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_gdn_segments_k2_repeat_is_bitwise_stable() -> None:
+    """The segments k2 kernel must be deterministic for identical inputs.
+
+    Regression guard: the update and query reductions once shared one LDS
+    buffer, so a leading warp could overwrite the query partial while a
+    trailing warp still read the update partial.  Two launches on identical
+    buffers then disagreed by ~1e-4 in a few thousand state elements, which
+    also made the qwen36 oracle comparison flaky.
+    """
+    inputs = _GDNInputs(
+        tokens=64,
+        num_k_heads=16,
+        num_v_heads=32,
+        head_k_dim=128,
+        head_v_dim=128,
+        seed=2,
+    )
+    first_out, first_state = _run_chain(inputs, _RMS_EPS, use_segments=True)
+    for repeat in range(3):
+        out, state = _run_chain(inputs, _RMS_EPS, use_segments=True)
+        np.testing.assert_array_equal(
+            out.view(np.uint32),
+            first_out.view(np.uint32),
+            err_msg=f"segments out drifted on repeat {repeat + 1}",
+        )
+        np.testing.assert_array_equal(
+            state.view(np.uint32),
+            first_state.view(np.uint32),
+            err_msg=f"segments state drifted on repeat {repeat + 1}",
+        )
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 def test_gdn_segments_lowp_fp16_c6_one_token_segments_match_independent_c1() -> None:
     inputs = _GDNInputs(
         tokens=6,
