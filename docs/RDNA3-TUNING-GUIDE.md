@@ -90,8 +90,16 @@ Use these rules until measurements prove an exception:
 
 RDNA groups two compute units (CUs) into one workgroup processor (WGP). Each CU
 contains two physical SIMD32 units. Tools do not always report the same unit:
-`rocminfo` reports CUs on the hosts used here, while some framework properties
-report WGP-like counts. State the unit whenever using a device count.
+`rocminfo` reports CUs on the hosts used here, while HIP's device properties
+report WGPs. On the 96-CU W7900, `hipDeviceProp_t.multiProcessorCount` and
+`hipDeviceGetAttribute(hipDeviceAttributeMultiprocessorCount, dev)` both return
+**48**, and the occupancy limits they report are per WGP as well:
+`maxThreadsPerMultiProcessor` 2048 (32 wave32 per CU, so four resident 256-thread
+blocks per CU), `regsPerMultiprocessor` 196608, `sharedMemPerMultiprocessor`
+65536. Sizing a grid from either number halves it, so state the unit and take CU
+counts from `rocminfo`. The count is also a SKU property, not an ISA one: gfx1100
+ships 80, 84 and 96 enabled CUs (RX 7900 GRE, RX 7900 XT, RX 7900 XTX and the
+W7900), so it cannot be derived from the arch string.
 
 A wave32 has 32 work-items and occupies one SIMD32. A wave64 is executed across
 two 32-lane halves. RDNA3 supports both ISA modes, but support does not make

@@ -64,11 +64,12 @@ CHUNK_TARGET = 32
 # At the target geometry that is 2 * 256 * 4 = 2 KiB, and it is what keeps a
 # mis-sized plan from overrunning shared memory.
 MAX_CHUNK = 256
-# Blocks wanted per compute unit. One block is a full 256-thread block of eight waves,
-# so a single block per CU already fills it; the second is the rebalancing margin for
-# blocks that retire unevenly. Measured on a 96-CU gfx1100 at 998 tokens of context,
-# 2 blocks per CU is where the curve flattens (0.025 ms per call at 24-32 splits versus
-# 0.031 ms at 48, a fourth wave with no work left to hide).
+# Blocks wanted per compute unit. An RDNA3 compute unit holds 32 wave32 slots, so a
+# 256-thread block is a quarter of one and four blocks per CU is full occupancy. The
+# measured floor is two: half occupancy, because the KV scan is limited by memory
+# latency and the extra waves contend for the same rows instead of hiding more of it.
+# Measured on a 96-CU gfx1100 at 998 tokens of context, 0.026 ms per call at 24-32
+# splits (2.0-2.67 blocks/CU) against 0.032 ms at 48 (full occupancy).
 BLOCKS_PER_UNIT = 2
 # Used only when the device probe cannot answer. 40 is the smallest gfx11 part we
 # target, so an unknown device is treated as one rather than as the largest.

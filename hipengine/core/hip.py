@@ -662,11 +662,20 @@ def device_compute_units(device: int = 0) -> int | None:
     its own documented fallback rather than inheriting a number that silently
     under-fills a device of a different size.
 
-    ``rocminfo`` is the source because HIP's scalar attribute is not usable here:
-    ``hipDeviceGetAttribute(hipDeviceAttributeMultiprocessorCount, dev)`` reports 48
-    on a 96-CU gfx1100 under ROCm 7.2 (it counts compute units per shader engine),
-    and no attribute ordinal reports the total. The value is cached per device; the
-    probe is a subprocess, so call it once at runtime construction, not per launch.
+    The unit is compute units, because that is what wave slots are counted in. HIP's
+    own device properties report something else: on these RDNA3 hosts
+    ``hipDeviceProp_t.multiProcessorCount`` and
+    ``hipDeviceGetAttribute(hipDeviceAttributeMultiprocessorCount, dev)`` both return
+    48 for a 96-CU gfx1100 under ROCm 7.2, because they count work-group processors
+    and a WGP packs two CUs that share an LDS. Halving the count here would halve the
+    planned grid, so the source is ``rocminfo``, whose per-agent ``Compute Unit`` is
+    the CU count.
+
+    The count is a SKU property rather than an ISA one: gfx1100 covers 80, 84 and 96
+    enabled CUs (RX 7900 GRE, RX 7900 XT, RX 7900 XTX and the W7900), and harvesting
+    is per card, so it is read from the device instead of derived from the arch
+    string. The value is cached per device; the probe is a subprocess, so call it once
+    at runtime construction, not per launch.
     """
 
     if device in _COMPUTE_UNITS:
