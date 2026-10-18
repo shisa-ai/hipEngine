@@ -1,14 +1,14 @@
 ## Flash-Next indexed decode admission duplication
 
-- The new GDN and F32 Conv primitives each validate bounded, unique state-slot
+- The new GDN, F32 Conv and PLE primitives each validate bounded, unique state-slot
   indices and repeat a device-side bitmap guard. They are not yet selected by
   serving; the registered single-row owners remain fallbacks.
 - Consolidate the host slot-vector admission helper when wiring the common
   batch owner, preserving diagnosable errors, bounds and no partial mutations.
   Consider a shared device helper only if it preserves each kernel's barrier
   placement and measured dispatch behavior. Do not remove ownership guards.
-- Regression gates: `tests/test_unit_qwen4exp_{gdn,conv}_indexed_decode.py`
-  and `tests/test_gpu_qwen4exp_{gdn,conv}_indexed_decode.py`.
+- Regression gates: `tests/test_unit_qwen4exp_{gdn,conv,ple}_indexed_decode.py`
+  and `tests/test_gpu_qwen4exp_{gdn,conv,ple}_indexed_decode.py`.
 
 ## Text-level stop safety in HTTP streaming
 

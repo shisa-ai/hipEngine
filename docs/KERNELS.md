@@ -746,6 +746,21 @@ Tests: `tests/test_unit_qwen4exp_conv_indexed_decode.py` and
 records zbook/gfx1151 primitive correctness and dispatch evidence, not gfx1100
 qualification or serving performance. Serving integration remains open.
 
+## Qwen4Exp indexed PLE decode primitive
+
+`fused/qwen4_exp_ple.{hip,py}` registers
+`ple_dilated_depthwise_conv / f32 / qwen4exp_ple_indexed_decode` in the gfx1100
+package and its gfx1151 mirror. Each packed row is one token for a distinct
+request, selecting a unique history slot in a
+`[state_slots, (kernel_size - 1) * dilation, channels]` FP32 slab. Duplicate or
+out-of-range slot vectors cause whole-batch no-write rejection. Callers must
+validate indices on the host before relying on output and own buffer sizes and
+lifetimes. The `strict` single-request variant remains the fallback.
+
+Tests: `tests/test_unit_qwen4exp_ple_indexed_decode.py` and
+`tests/test_gpu_qwen4exp_ple_indexed_decode.py`. This is a primitive, not a serving
+batch path; QSA/KV ownership and runner integration remain separate requirements.
+
 ## Workgroup size and CU mode on gfx1151
 
 Two measured facts that decide tile and build choices on this backend:
