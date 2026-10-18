@@ -43,7 +43,7 @@ hipEngine is a from-scratch project and does not inherit any unvetted code or le
 | --- | --- | :---: | :---: | :---: |
 | Qwen3.x Dense | **0.8B:** [GGUF](docs/GGUF.md) `Q4_K_M`, `Q8_0`, `Q4_1`, `UD-Q4_K_XL`<br>**27B:** [GGUF](docs/GGUF.md) [`Q4_K_M`](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/blob/65ca473/Qwen3.8-27B-Q4_K_M.gguf); Qwen3.8-27B `Q4_K_S` on `gfx1151` | Yes | Yes | — |
 | Qwen3.x MoE | **35B-A3B:** [GGUF](docs/GGUF.md) `Q4_K_M`, `Q4_K_S`, `UD-Q3_K_M`, `UD-Q4_K_M`<br>[ParoQuant W4](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed) | Yes | Yes | — |
-| Qwen3.8 Flash-Next | **125B-A6B + sparse PLE:** GGUF `UD-Q4_K_XL`; optional Q8 MTP and BF16 mmproj | — | Yes — text/QSA, opt-in MTP, ≤1K image/video, c2 serving | — |
+| Qwen3.8 Flash-Next | **125B-A6B + sparse PLE:** GGUF `UD-Q4_K_XL`; optional Q8 MTP and BF16 mmproj | — | Yes — text/QSA, opt-in MTP, ≤1K image/video, 32K served context, c4 serving | — |
 | Laguna S 2.1 | [GGUF `Q4_K_M`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF) | — | Yes | — |
 | EVIE 4.5B / 8B | [Safetensors](docs/MODEL-EVIE.md) `fp32`, `fp16`; multimodal retrieval encoding | — | Yes | — |
 | TimesFM 2.5 / 3.0 | [Safetensors](docs/MODEL-TIMESFM.md) `fp32`; [time-series forecasting](docs/MODEL-TIMESFM3.md) | — | Yes | — |
@@ -212,6 +212,9 @@ routes on its own, but only where they have been measured as safe:
 - Scheduling and memory defaults: the `fair` prefill/decode policy, a smaller
   per-process GPU memory reserve on Radeon RDNA 3, and FP16 recurrent state for
   Qwen3.8 `Q4_K_S` on Strix Halo.
+- Qwen3.8 Flash-Next serves text with a qualified 32K context, opt-in MTP
+  including committed-token streaming, hard thinking budgets, logprobs,
+  tools, structured output and up to four concurrent requests.
 - Still supported: Qwen3.5/3.6 GGUF and ParoQuant, Laguna S 2.1, Maple-Preview,
   several requests at once on one resident model, and OpenAI-compatible
   streaming, sampling, tools, structured-output validation, and cancellation.

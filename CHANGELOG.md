@@ -8,6 +8,27 @@ evidence under [`benchmarks/results/`](benchmarks/results/).
 
 ## Unreleased
 
+### Added
+
+- **Qwen3.8 Flash-Next serving surface.** The served model now covers the full
+  HTTP feature set on its certified `UD-Q4_K_XL` artifact: a qualified 32K
+  context, opt-in MTP with committed-token streaming, hard thinking budgets,
+  per-token logprobs, multi-token stops, alternate EOS, minimum-token and
+  ignore-EOS controls, JSON Schema and tool calling on both routes, up to four
+  concurrent requests with per-request isolation, and a bounded multimodal
+  route (one base64 PNG, blocking, BF16 mmproj sidecar). `features.multimodal`
+  publishes that scope, `/ready` and telemetry report the real route and
+  counters, and a refused resident configuration returns a structured `503`
+  instead of a bare failure.
+
+### Fixed
+
+- Chat-template control tokens no longer leak into served text, and reasoning
+  text is separated from the answer under every stop and streaming path.
+- Concurrent MTP requests no longer tear down the resident engine, and a
+  disconnected or timed-out request leaves the engine able to serve the next
+  one.
+
 ## v0.5.0 - 2026-09-12
 
 hipEngine now runs more than the Qwen 3.6 35B mixture-of-experts models: dense

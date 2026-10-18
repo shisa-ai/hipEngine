@@ -80,6 +80,16 @@ after the work since. On the served route MTP is 1.26x a single request and
 [MTP measurements](results/2026-10-18-qwen4exp-mtp-economics/README.md)
 · [2026-10-14 row](results/2026-10-14-qwen4exp-mtp-batched-verify/README.md).
 
+Served surface, 2026-10-18: at `max_context_tokens=32768` and two slots, all
+50 HTTP grid probes return 200 with 24 rows on the AR route and 24 on MTP
+verified from each response payload; the 29,912-token retrieval prompt returns
+its needle on both routes (33.19 s AR, 91.01 s MTP); and a three-round
+mixed-traffic soak passes 35 checks with per-round `/ready` and recovery,
+including the retryable `429` backpressure path.
+[Grid](results/2026-10-18-zbook-qwen4exp-http-grid/summary.json)
+· [soak](results/2026-10-18-zbook-qwen4exp-http-soak.json)
+· [qualification record](../docs/QWEN4EXP-PRODUCTION-SERVING.md).
+
 The opt-in `fast` profile is where a reduced-precision route lands before
 its production gate. It currently selects the same routes as `production`.
 

@@ -1142,21 +1142,22 @@ Phase-0 targets (driven by the current research focus):
 | **Qwen3.5 0.8B** dense | full_attention + dense_mlp | Phase 0 correctness |
 | **Qwen3.5 27B** dense | full_attention + dense_mlp | Phase 1 perf target |
 | **Qwen3.6 35B-A3B** MoE hybrid | full_attention + linear_attention + gdn + moe_top2 | Phase 2 perf target; the ZBook quant/runtime campaign and quality-only automatic-tool/task [`AGENTIC-QUALITY2`](AGENTIC-QUALITY2.md) follow-up are closed, with no quality runtime mechanism retained |
-| **Qwen3.8-Flash-Next 125B-A6B + 51B PLE** Qwen4 experimental MoE | QSA + GDN + gated residual + top-10 MoE + sparse host n-gram embedding | gfx1151 `UD-Q4_K_XL` text/QSA/PLE, explicit MTP, bounded multimodal, and a c2 request-owned runner pool exist. MTP is not automatic; target verification batches candidate rows, not concurrent requests. Context admission is no longer capped at 1K/2051, but the [October 17 HTTP audit](QWEN4EXP-HTTP-COVERAGE.md) finds approximately 30K MTP timeouts and failed recovery, ignored hard thinking budgets, unsupported logprobs, serialized C4 requests, and buffered MTP SSE. Short MTP and approximately 30K AR retrieval work in that audit. Combined production task review remains open; gfx1100 performance and 128K+/262K inference are not certified. See the [current status](QWEN4EXP-STATUS.md), [HTTP grid](QWEN4EXP-HTTP-COVERAGE.md), and source-pinned benchmark artifacts; historical zbook and Framework rates are independent physical-host lanes. |
+| **Qwen3.8-Flash-Next 125B-A6B + 51B PLE** Qwen4 experimental MoE | QSA + GDN + gated residual + top-10 MoE + sparse host n-gram embedding | gfx1151 `UD-Q4_K_XL` text/QSA/PLE, explicit MTP, bounded multimodal, and a c2 request-owned runner pool exist. MTP is not automatic; target verification batches candidate rows, not concurrent requests. Context admission is no longer capped at 1K/2051, and the [October 18 qualification](QWEN4EXP-PRODUCTION-SERVING.md) closes the October 17 HTTP gaps: a 50-probe grid at 32,768 context and two slots returns 200 on every probe with 24 AR and 24 MTP rows verified by payload, the 29,912-token prompt retrieves its needle on both routes, hard thinking budgets, logprobs, stops, JSON Schema and tools work on both routes, MTP streams committed tokens, two four-wide groups complete with isolated per-request answers, and a three-round mixed-traffic soak passes 35 checks including the retryable `429` path and recovery. The production numerical, isolation and task-quality gates pass on the same packet; MTP stays opt-in, and artifact/profile admission outside the certified `UD-Q4_K_XL` fingerprint, gfx1100 performance and 128K+/262K inference remain uncertified. See the [current status](QWEN4EXP-STATUS.md), [HTTP grid](QWEN4EXP-HTTP-COVERAGE.md), and source-pinned benchmark artifacts; historical zbook and Framework rates are independent physical-host lanes. |
 | **Moonshine ASR** encoder-decoder | conv encoder + self/cross attention + gated decoder MLP | HIP FP16 graph decoder and selected encoder hybrids promoted internally; `cuda_sm120a` C0-C8 includes a torch-free encoder, static/continuous batching, and device-owned decode but remains outside public model admission; gfx1151 transfer campaign: [`MOONSHINE.md`](MOONSHINE.md) |
 | **Maple-Preview 20B-A1B** ternary MoE | GQA sliding/global attention + top-8/256 MoE + packed ternary/affine4 | gfx11 public c1/c2/c4/c8 path promoted; `cuda_sm120a` c1 generation, native prefill through p512 performance / 770 state, exact wave32 direct decode, and exact split-K global decode through a full p512 suite are retained on GPU0, while CUDA resident batching/serving remain pending |
 | **Gemma 4** | sliding_attention + global_attention + dense_mlp | Phase 3 |
 | **Llama 3** | full_attention + dense_mlp | Phase 3 |
 | **sansho** (custom) | (your arch; see `/home/lhl/amd-gpu-tuning/reference/sansho/`) | Phase 3+ |
 
-Qwen3.8-Flash-Next serving priority (October 17): the approved
-[production-serving campaign](QWEN4EXP-PRODUCTION-SERVING.md) repairs the live
-[HTTP grid](QWEN4EXP-HTTP-COVERAGE.md) through the existing Generation-2
-lifecycle and scheduler. It covers cancellation/recovery, artifact/profile
-defaults, hard controls, sampling/logprobs, constrained MTP, incremental SSE,
-real request batching, long-context/multimodal admission, and final numerical,
-task, economics and serving gates. Failed or unmeasured cells stay open;
-this plan does not change arithmetic policy or promote automatic MTP.
+Qwen3.8-Flash-Next serving status (October 18): the
+[production-serving campaign](QWEN4EXP-PRODUCTION-SERVING.md) closed its
+capability, numerical, task-quality, isolation, economics and served-surface
+gates on the existing Generation-2 lifecycle and scheduler. Automatic MTP stays
+unpromoted by design (opt-in only, and a four-wide batch is faster on AR
+batching); the remaining open items are artifact/profile admission outside the
+certified quant fingerprint, a pre-existing device-state abort that keeps the
+local `--suite all` gate from completing, and gfx1100 certification. This plan
+does not change arithmetic policy.
 
 Qwen3.8-Flash-Next priority (September 13): follow the
 [Strix journey plan and punchlist](QWEN4EXP-STRIX-JOURNEY-CAMPAIGN.md) for the

@@ -1,6 +1,28 @@
 # Qwen3.8 Flash-Next HTTP coverage
 
-**Updated: 2026-10-17. The grid is not complete.** Short greedy AR and
+**Updated: 2026-10-18. The served surface is qualified; the grid below is history.**
+
+The complete post-campaign grid runs 50 probes against one live server at
+32,768 context and two slots: [every probe returns 200, 24 execute the AR route
+and 24 execute MTP with `used=true`](../benchmarks/results/2026-10-18-zbook-qwen4exp-http-grid/summary.json),
+so each row is checked against its recorded payload rather than its status. The
+gaps this document was written to track are closed on that grid: the
+29,912-token prompt completes on AR (33.19 s) and on MTP (91.01 s) with
+`VIOLET-7391` retrieved; hard thinking budgets stop at their own limit in every
+profile; logprobs return per-token entries on blocking and streaming paths;
+multi-token stops, alternate EOS, minimum tokens, ignore-EOS, JSON Schema and
+required tools work on both routes; MTP streaming publishes committed tokens
+incrementally; two four-wide groups complete with real concurrency and
+per-request isolation; and a mixed-traffic
+[soak](../benchmarks/results/2026-10-18-zbook-qwen4exp-http-soak.json) passes 35
+checks over three rounds including abandoned streams, the retryable `429`
+backpressure path and recovery after every round. The
+[production-serving checklist](QWEN4EXP-PRODUCTION-SERVING.md) carries the
+per-surface evidence; the remaining open scopes are listed there as PS2 (quant
+and profile admission for artifacts outside the certified one) and the
+full-suite milestone gate.
+
+**2026-10-17 grid, retained as history. The grid was not complete.** Short greedy AR and
 explicit MTP work. The focused lifetime follow-up also passes approximately
 30K AR/MTP, cancellation and recovery. Hard thinking controls pass on text AR
 and named MTP-to-AR fallback. Text AR sampling/logprobs pass focused live
