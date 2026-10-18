@@ -145,3 +145,150 @@ def test_qwen4_exp_chat_completions_accepts_bounded_png_multimodal_input() -> No
 def test_qwen4_exp_http_vision_rejects_unbounded_or_unsupported_urls(value) -> None:
     with pytest.raises(ValueError, match="image/png"):
         decode_bounded_png_data_url(value)
+
+
+def test_qwen4_exp_multimodal_response_reports_finish_and_splits_reasoning() -> None:
+    """A multimodal answer follows the same response contract as text.
+
+    The earlier route returned the raw generated text, so a ``think`` block
+    reached ``content``, ``reasoning_content`` was absent, ``stop`` was ignored,
+    and the choice carried no ``finish_details`` at all.
+    """
+
+    class VisionLLM:
+        max_sequence_length = 1024
+        supports_vision = True
+
+        def count_tokens(self, text):
+            return len(str(text).split())
+
+        def generate_multimodal_detailed(self, prompt, media, sampling):
+            return GenerationOutput(
+                # The resident tokenizer emits the space-prefixed markers the
+                # splitter looks for: ` think` ... ` response`.
+                text="\x3cthink\x3e\n\n\x3c/think\x3eRedSTOPHERE tail",
+                generated_token_ids=(7, 8, 9, 10),
+                finish_details=FinishDetails(reason="stop", sampler_mode="greedy"),
+            )
+
+        def close(self):
+            pass
+
+    image = np.zeros((16, 16, 3), dtype=np.uint8)
+    app = create_app(
+        ServerConfig(
+            model="fake-path", served_model_name="qwen4exp", eager_load=False,
+            startup_chat_smoke=False, startup_scratch_probe=False,
+        ),
+        llm=VisionLLM(),
+    )
+    response = TestClient(app).post(
+        "/v1/chat/completions",
+        json={
+            "model": "qwen4exp",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "What color? "},
+                        {"type": "image_url", "image_url": {"url": _png_data_url(image)}},
+                    ],
+                }
+            ],
+            "max_tokens": 8,
+            "temperature": 0,
+            "stop": ["STOPHERE"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    choice = response.json()["choices"][0]
+    message = choice["message"]
+    assert message["content"] == "Red", message
+    assert message.get("reasoning_content") == "\n\n", message
+    assert choice["finish_details"]["reason"] == "stop"
+    assert choice["finish_details"]["matched_stop"] == "STOPHERE"
+    assert choice["finish_reason"] == "stop"
+
+
+def test_qwen4_exp_multimodal_response_reports_the_backend_length_finish() -> None:
+    class VisionLLM:
+        max_sequence_length = 1024
+        supports_vision = True
+
+        def count_tokens(self, text):
+            return len(str(text).split())
+
+        def generate_multimodal_detailed(self, prompt, media, sampling):
+            return GenerationOutput(
+                text="a partial answer",
+                generated_token_ids=(7, 8),
+                finish_details=FinishDetails(
+                    reason="length", length_limit=2, sampler_mode="greedy"
+                ),
+            )
+
+        def close(self):
+            pass
+
+    image = np.zeros((16, 16, 3), dtype=np.uint8)
+    app = create_app(
+        ServerConfig(
+            model="fake-path", served_model_name="qwen4exp", eager_load=False,
+            startup_chat_smoke=False, startup_scratch_probe=False,
+        ),
+        llm=VisionLLM(),
+    )
+    response = TestClient(app).post(
+        "/v1/chat/completions",
+        json={
+            "model": "qwen4exp",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Describe "},
+                        {"type": "image_url", "image_url": {"url": _png_data_url(image)}},
+                    ],
+                }
+            ],
+            "max_tokens": 2,
+            "temperature": 0,
+        },
+    )
+    assert response.status_code == 200, response.text
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "length"
+    assert choice["finish_details"]["reason"] == "length"
+    assert choice["finish_details"]["length_limit"] == 2
+
+
+def test_qwen4_exp_capabilities_publish_the_multimodal_scope() -> None:
+    """The image scope is advertised, not discovered by trying."""
+
+    class VisionLLM:
+        max_sequence_length = 1024
+        supports_vision = True
+
+        def count_tokens(self, text):
+            return len(str(text).split())
+
+        def close(self):
+            pass
+
+    app = create_app(
+        ServerConfig(
+            model="fake-path", served_model_name="qwen4exp", eager_load=False,
+            startup_chat_smoke=False, startup_scratch_probe=False,
+        ),
+        llm=VisionLLM(),
+    )
+    payload = TestClient(app).get("/v1/hipengine/capabilities").json()
+    multimodal = payload["features"]["multimodal"]
+    assert multimodal["available"] is True
+    assert multimodal["transport"] == "png_data_url"
+    assert multimodal["image_formats"] == ["image/png"]
+    assert multimodal["bounds"]["max_bytes"] == 8 * 1024 * 1024
+    assert multimodal["bounds"]["max_side"] == 1024
+    assert "jpeg" in multimodal["unsupported"]
+    assert "stream" in multimodal["unsupported"]
+    assert multimodal["reports"]["finish_details"] is True

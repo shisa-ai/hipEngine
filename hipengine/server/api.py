@@ -1681,6 +1681,50 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
     return payload
 
 
+def _multimodal_capability(config: "ServerConfig", *, engine: Any | None = None) -> dict[str, Any]:
+    """Publish the image scope the route actually enforces.
+
+    The bounds here are the ones the request path applies, so a client can learn
+    the accepted transport and the refusals without discovering them by trying.
+    """
+
+    attached = bool(
+        config.vision_model is not None
+        or (engine is not None and getattr(engine, "supports_vision", False))
+    )
+    return {
+        "available": attached,
+        "transport": "png_data_url",
+        "endpoint": "chat_completions",
+        "content_parts": ["text", "image_url", "video_frames"],
+        "image_formats": ["image/png"],
+        "video_formats": ["image/png frame sequence"],
+        "bounds": {
+            "max_bytes": 8 * 1024 * 1024,
+            "max_side": 1024,
+            "require_base64_data_url": True,
+            "request_token_limit": 1024,
+            "single_user_message": True,
+        },
+        "unsupported": [
+            "stream",
+            "n_gt_1",
+            "tools",
+            "continuation",
+            "session",
+            "grammar",
+            "logprobs",
+            "remote_url",
+            "jpeg",
+        ],
+        "reports": {
+            "finish_details": True,
+            "reasoning_content": True,
+            "generated_token_ids": "hipengine.generated_token_ids",
+        },
+    }
+
+
 def _speculative_provider_capability(
     config: ServerConfig,
     *,
@@ -6941,6 +6985,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     ),
                     tool_parser=chat_tool_parser,
                 ),
+                "multimodal": _multimodal_capability(config, engine=engine),
                 "reasoning_controls": {
                     "enabled": True,
                     "fields": _reasoning_control_fields(),
@@ -7473,13 +7518,28 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     400, str(exc), code="invalid_request", param="messages"
                 ) from exc
             generated_ids = tuple(detail.generated_token_ids or ())
-            finish = getattr(detail, "finish_details", None)
-            finish_reason = (
-                "length"
-                if finish is not None and finish.reason == "length"
-                else "stop"
+            # A multimodal answer is a chat answer: it applies request stops,
+            # separates reasoning from visible content, and reports the same
+            # finish metadata as the text route.
+            text, finish_reason, matched_stop = _apply_stop(detail.text, request.stop)
+            server_stop = text != detail.text
+            finish_reason = _finish_reason_for_output(
+                detail, finish_reason, server_stop=server_stop
             )
-            prompt_tokens = int(engine.count_tokens(prompt))
+            parsed = _ParsedChatOutput(
+                text=text,
+                tool_calls=(),
+                # The multimodal renderer ends its prompt with a bare assistant
+                # turn and does not pre-fill the thinking marker, so the model
+                # emits `<think` itself. The splitter must therefore start in
+                # content state and open reasoning when it sees that marker.
+                reasoning_initially_open=False,
+            )
+            message, _parsed_reason = _chat_message_from_parsed(parsed)
+            telemetry_usage = getattr(getattr(detail, "telemetry", None), "usage", None) or {}
+            prompt_tokens = int(
+                telemetry_usage.get("prompt_tokens") or engine.count_tokens(prompt)
+            )
             completion_tokens = len(generated_ids)
             return {
                 "id": f"chatcmpl-{uuid.uuid4().hex}",
@@ -7489,8 +7549,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "choices": [
                     {
                         "index": 0,
-                        "message": {"role": "assistant", "content": detail.text},
+                        "message": message,
                         "finish_reason": finish_reason,
+                        "finish_details": _chat_finish_details_payload(
+                            detail,
+                            finish_reason,
+                            text,
+                            reason_override="stop" if server_stop else None,
+                            cache_action=_session_cache_action(request),
+                            token_counter=getattr(engine, "count_tokens", None),
+                            matched_stop=matched_stop,
+                        ),
                     }
                 ],
                 "usage": {
@@ -7498,7 +7567,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "completion_tokens": completion_tokens,
                     "total_tokens": prompt_tokens + completion_tokens,
                 },
-                "hipengine": {"multimodal": True, "transport": "png_data_url"},
+                "hipengine": {
+                    "multimodal": True,
+                    "transport": "png_data_url",
+                    # Token diagnostics travel with the answer so a vision
+                    # response can be inspected the way a text response can.
+                    "generated_token_ids": list(generated_ids),
+                },
             }
         admitted_session_id = await reserve_chat_session_if_needed(request)
         try:

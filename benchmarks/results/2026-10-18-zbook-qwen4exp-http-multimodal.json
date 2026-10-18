@@ -1,0 +1,148 @@
+{
+ "date": "2026-10-18",
+ "host": "zbook",
+ "backend": "hip_gfx1151",
+ "quant": "gguf_ud_q4_k_xl",
+ "model": "unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+ "execution_profile": "production",
+ "vision_model": "Qwen3.8-Flash-Next-mmproj/Qwen3.8-Flash-Next-BF16.gguf",
+ "schema": "hipengine.qwen4exp.http_multimodal_gate.v1",
+ "vision_server": {
+  "url": "http://127.0.0.1:18399",
+  "max_context_tokens": 2048,
+  "kv_storage": "bf16",
+  "max_active_requests": 4,
+  "ar_batch_slots": 4,
+  "speculative_mtp": "opt_in"
+ },
+ "vision_command": ".venv/bin/python scripts/qwen4exp_http_multimodal_gate.py --url http://127.0.0.1:18399 --expect-vision",
+ "vision_checks": [
+  {
+   "name": "text.still_serves",
+   "passed": true,
+   "status": 200,
+   "text": "TEXT-OK"
+  },
+  {
+   "name": "image.request_accepted",
+   "passed": true,
+   "status": 200,
+   "body": null
+  },
+  {
+   "name": "image.answer_names_the_color",
+   "passed": true,
+   "answer": "\n\nRed"
+  },
+  {
+   "name": "limit.jpeg_is_refused",
+   "passed": true,
+   "status": 400,
+   "code": "invalid_request",
+   "message": "Qwen4Exp HTTP vision requires a base64 image/png data URL"
+  },
+  {
+   "name": "limit.remote_url_is_refused",
+   "passed": true,
+   "status": 400,
+   "code": "invalid_request",
+   "message": "Qwen4Exp HTTP vision requires a base64 image/png data URL"
+  },
+  {
+   "name": "limit.stream_is_refused",
+   "passed": true,
+   "status": 400,
+   "code": "unsupported_parameter",
+   "message": "Qwen4Exp HTTP multimodal streaming is not yet supported"
+  },
+  {
+   "name": "limit.n_gt_1_is_refused",
+   "passed": true,
+   "status": 400,
+   "code": "unsupported_parameter",
+   "message": "Qwen4Exp HTTP multimodal generation requires n=1"
+  },
+  {
+   "name": "limit.tools_are_refused",
+   "passed": true,
+   "status": 400,
+   "code": "unsupported_parameter",
+   "message": "Qwen4Exp HTTP multimodal generation does not combine with tools, continuation, or sessions"
+  },
+  {
+   "name": "limit.oversized_is_refused",
+   "passed": true,
+   "status": 400,
+   "code": "invalid_request",
+   "message": "PNG payload is empty or exceeds the HTTP vision limit"
+  },
+  {
+   "name": "recovery.text_after_refusals",
+   "passed": true,
+   "status": 200,
+   "text": "AFTER-OK"
+  }
+ ],
+ "vision_check_count": 10,
+ "vision_failure_count": 0,
+ "vision_status": "passed",
+ "text_only_server": {
+  "url": "http://127.0.0.1:18400",
+  "vision_model": null
+ },
+ "text_only_command": ".venv/bin/python scripts/qwen4exp_http_multimodal_gate.py --url http://127.0.0.1:18400",
+ "text_only_checks": [
+  {
+   "name": "text.still_serves",
+   "passed": true,
+   "status": 200,
+   "text": "TEXT-OK"
+  },
+  {
+   "name": "image.refused_without_vision",
+   "passed": true,
+   "status": 400,
+   "code": "unsupported_content_type"
+  },
+  {
+   "name": "limit.jpeg_is_refused",
+   "passed": true,
+   "status": 400,
+   "code": "unsupported_content_type"
+  },
+  {
+   "name": "limit.remote_url_is_refused",
+   "passed": true,
+   "status": 400,
+   "code": "unsupported_content_type"
+  },
+  {
+   "name": "limit.stream_is_refused",
+   "passed": true,
+   "status": 400,
+   "code": "unsupported_content_type"
+  },
+  {
+   "name": "limit.n_gt_1_is_refused",
+   "passed": true,
+   "status": 400,
+   "code": "unsupported_content_type"
+  },
+  {
+   "name": "limit.tools_are_refused",
+   "passed": true,
+   "status": 400,
+   "code": "unsupported_content_type"
+  }
+ ],
+ "text_only_check_count": 7,
+ "text_only_failure_count": 0,
+ "text_only_status": "passed",
+ "observed_image_answer_hex": "0a0a526564",
+ "findings": [
+  "a 64x64 solid red PNG is read: content is the answer only, reasoning_content carries the empty think block",
+  "multimodal responses now carry finish_details, apply request stop strings, and report generated_token_ids",
+  "jpeg, remote URL, stream, n>1, tools, and an oversized payload are each refused with a named reason",
+  "a server started without --vision-model refuses an image part with unsupported_content_type"
+ ]
+}

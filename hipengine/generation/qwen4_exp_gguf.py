@@ -795,6 +795,16 @@ class Qwen4ExpGGUFTextGenerator:
                 length_limit=(request.max_tokens if reason == "length" else None),
                 sampler_mode="greedy_multimodal_mrope",
             ),
+            telemetry=GenerationTelemetry(
+                decode_state=DecodeState(
+                    prompt_tokens=len(token_ids),
+                    generated_tokens=len(generated),
+                ),
+                # The rendered prompt carries the chat template and one vision
+                # pad per encoded patch, so counting the caller's raw text would
+                # understate what the model actually read.
+                usage={"prompt_tokens": len(token_ids)},
+            ),
         )
 
     def populate_t16_resident_stages(self, slots: Sequence[str]) -> dict:

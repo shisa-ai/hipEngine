@@ -270,6 +270,29 @@ AR-batch slots are qualified only at `max_sequence_length <= 2048`, so
 long-context batching and long-context cancellation under batch stay open;
 capacity is a single physical machine and does not transfer.
 
+## PS11 multimodal scope
+
+The image route is one bounded transport: a base64 PNG data URL in a single
+user message, blocking, `n=1`, no tools, continuation, session, grammar, or
+logprobs, with an 8 MiB payload bound, a 1024-pixel side bound, and a 1K request
+token limit. `features.multimodal` in `/v1/hipengine/capabilities` publishes
+that scope, so a client can read the refusals instead of discovering them.
+
+[17 live checks](../benchmarks/results/2026-10-18-zbook-qwen4exp-http-multimodal.json)
+cover both halves: a 64x64 solid red PNG is read correctly with the BF16 mmproj
+sidecar, text keeps serving, and JPEG, remote URL, `stream`, `n>1`, tools, and an
+oversized payload are each refused with a named reason. A server without
+`--vision-model` refuses an image part with `unsupported_content_type`.
+
+Fixed while qualifying: a multimodal answer used to return the raw generated
+text, so a think block reached `content`, `reasoning_content` was absent,
+`stop` was ignored, `finish_details` was missing, and `prompt_tokens` counted
+the unrendered user text. Multimodal answers now follow the text response
+contract and report `generated_token_ids`.
+
+Video frames are parsed but not requalified in this pass; do not advertise video
+serving from this evidence.
+
 ## Baseline feature grid (before PS1/PS3/PS5 fixes)
 
 | Check | AR | Explicit MTP | Verdict |
