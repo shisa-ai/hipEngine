@@ -5,6 +5,7 @@ import ctypes
 import pytest
 
 from hipengine.core.hip import (
+    _HIP_ERROR_NOT_READY,
     HipError,
     HipMemcpyKind,
     HipRuntime,
@@ -68,10 +69,14 @@ class FakeHipLibrary:
         self.hipEventRecord = FakeFunction(lambda event, stream: 0)
         self.hipEventSynchronize = FakeFunction(lambda event: 0)
         # The runtime binds a signature for every event entry point it polls.
-        self.hipEventQuery = FakeFunction(lambda event: 0)
+        self.hipEventQuery = FakeFunction(self._event_query)
+        self.event_query_result = 0
         self.hipEventElapsedTime = FakeFunction(self._event_elapsed_time)
         self.hipDeviceSynchronize = FakeFunction(lambda: 0)
         self.hipGetErrorString = FakeFunction(lambda code: b"fake hip error")
+
+    def _event_query(self, event):
+        return self.event_query_result
 
     def _malloc(self, out_ptr, nbytes):
         out_ptr._obj.value = self.next_ptr
@@ -241,6 +246,22 @@ def test_fake_runtime_malloc_free_memcpy_stream_and_graph_helpers() -> None:
         0,
     )
     assert lib.freed == [0x1000]
+
+
+def test_event_query_reports_completion_and_not_ready() -> None:
+    lib = FakeHipLibrary()
+    runtime = HipRuntime(lib)  # type: ignore[arg-type]
+    runtime._configure()
+
+    lib.event_query_result = 0
+    assert runtime.event_query(0x8100) is True
+
+    lib.event_query_result = _HIP_ERROR_NOT_READY
+    assert runtime.event_query(0x8100) is False
+
+    lib.event_query_result = 7
+    with pytest.raises(HipError, match="fake hip error"):
+        runtime.event_query(0x8100)
 
 
 def test_runtime_error_uses_error_string() -> None:
