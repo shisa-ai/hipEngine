@@ -17,9 +17,10 @@ arrive (see ``Qwen4ExpResidentServingRunner``).
 
 ``HIPENGINE_QWEN4_EXP_AR_BATCH=0`` is the rollback lever: every request then
 owns a c1 runner for its whole life, as before the batch path shipped.
-Independent HTTP arrivals overlap because the generator declares the ``fair``
-prefill/decode policy (``engine_loop_config_defaults``); an explicit
-``HIPENGINE_PREFILL_DECODE_POLICY`` still overrides the declaration.
+Independent HTTP arrivals overlap because the generator declares the
+``token_budget`` prefill/decode policy (``engine_loop_config_defaults``): prefill
+chunks rotate across requests and every decoding row steps each round. An
+explicit ``HIPENGINE_PREFILL_DECODE_POLICY`` still overrides the declaration.
 
 Three properties are control, not arithmetic, and are asserted exactly:
 

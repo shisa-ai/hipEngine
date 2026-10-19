@@ -320,22 +320,75 @@ def test_qwen4_exp_narrow_scratch_probe_reuses_live_wider_runner(monkeypatch) ->
 
 def test_qwen4_exp_engine_loop_prefills_arrivals_while_decoding() -> None:
     # The engine-wide default ``protect_decode`` drains an active request
-    # before it prefills an arrival, so two HTTP requests ran back to back and
-    # never shared a decode tick. The generator declares ``fair`` instead,
-    # and an explicit HIPENGINE_PREFILL_DECODE_POLICY still wins.
+    # before it prefills an arrival, and ``fair`` still prefilled one request
+    # to completion before the next. The generator declares the token-budget
+    # round (prefill chunks rotate across requests, decode runs every round)
+    # with its own chunk as the prefill budget; explicit env knobs still win.
     from hipengine.generation.engine_loop import EngineLoopConfig
     from hipengine.llm import _engine_loop_config_with_generator_defaults
 
     generator = _generator()
     try:
-        assert generator.engine_loop_config_defaults == {"prefill_decode_policy": "fair"}
+        assert generator.engine_loop_config_defaults == {
+            "prefill_decode_policy": "token_budget",
+            "round_prefill_token_budget": _FakeRunner.prefill_chunk_size,
+            "round_decode_row_budget": 32,
+        }
         base = EngineLoopConfig()
         assert base.prefill_decode_policy == "protect_decode"
         resolved = _engine_loop_config_with_generator_defaults(base, generator, environ={})
-        assert resolved.prefill_decode_policy == "fair"
+        assert resolved.prefill_decode_policy == "token_budget"
+        assert resolved.round_prefill_token_budget == _FakeRunner.prefill_chunk_size
         pinned = _engine_loop_config_with_generator_defaults(
             base, generator, environ={"HIPENGINE_PREFILL_DECODE_POLICY": "protect_ttft"}
         )
         assert pinned.prefill_decode_policy == "protect_decode"
+        assert pinned.round_prefill_token_budget == _FakeRunner.prefill_chunk_size
     finally:
         generator.close()
+
+
+def test_a_short_request_is_not_held_behind_a_long_prefill(monkeypatch) -> None:
+    """Prefill chunks rotate, so a short arrival finishes first."""
+
+    from hipengine.llm import _engine_loop_config_with_generator_defaults
+
+    monkeypatch.setattr(
+        "hipengine.generation.qwen4_exp_gguf.Qwen4ExpGGUFResidentModelRunner",
+        lambda *args, **kwargs: _FakeRunner(bias=10),
+    )
+    generator = _generator()
+    config = _engine_loop_config_with_generator_defaults(
+        EngineLoopConfig(max_active_requests=2, max_prefill_chunk_tokens=8),
+        generator, environ={},
+    )
+    driver = SubmitPollTextGenerator(generator, config=config)
+    try:
+        long_prompt = tuple(range(1, 49))
+        long = driver.submit_detailed(GenerationRequest(
+            prompts=(long_prompt,), max_tokens=2, temperature=0.0, top_p=1.0,
+            ignore_eos=True,
+        ))
+        driver.poll(max_ticks=1)
+        short = driver.submit_detailed(GenerationRequest(
+            prompts=((5, 6, 7),), max_tokens=2, temperature=0.0, top_p=1.0,
+            ignore_eos=True,
+        ))
+        native = generator._resident_model_runner
+        long_prefill_when_short_done = None
+        for _ in range(200):
+            driver.poll(max_ticks=1)
+            if driver.generation_complete(short) and long_prefill_when_short_done is None:
+                rows = [row for row in native._rows.values() if row.prompt_ids == long_prompt]
+                long_prefill_when_short_done = rows[0].prefill_tokens_seen if rows else len(long_prompt)
+            if driver.generation_complete(long) and driver.generation_complete(short):
+                break
+        assert driver.generation_complete(short) and driver.generation_complete(long)
+        assert long_prefill_when_short_done is not None
+        assert long_prefill_when_short_done < len(long_prompt), (
+            "the short request waited for the whole long prefill"
+        )
+        driver.take_result(short)
+        driver.take_result(long)
+    finally:
+        driver.close()

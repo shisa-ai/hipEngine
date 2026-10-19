@@ -513,9 +513,14 @@ few blocks rather than a full-context window.
 - `HIPENGINE_QWEN4_EXP_AR_BATCH=0` restores one c1 runner per request (two
   requests by default).
 
-Arrivals are prefilled while other requests decode because the generator
-declares the `fair` prefill/decode policy; an explicit
-`HIPENGINE_PREFILL_DECODE_POLICY` overrides it.
+Flash-Next declares the `token_budget` prefill/decode policy: each scheduling
+round runs one prefill chunk, rotating across the requests still prefilling,
+and one decode step for every decoding request. A short request that arrives
+behind a long prompt is therefore prefilled after one of that prompt's chunks
+rather than after all of them, and decoding requests keep advancing while it
+runs. The round's prefill budget is the runner's prefill chunk.
+`HIPENGINE_PREFILL_DECODE_POLICY`, `HIPENGINE_ROUND_PREFILL_TOKEN_BUDGET`, and
+`HIPENGINE_ROUND_DECODE_ROW_BUDGET` override the declaration.
 
 ## Examples
 

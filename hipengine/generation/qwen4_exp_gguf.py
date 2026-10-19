@@ -480,8 +480,17 @@ class Qwen4ExpGGUFTextGenerator:
     def engine_loop_config_defaults(self):
         # Protect-decode drains an active request before prefilling arrivals,
         # so independent HTTP requests ran back to back and never shared a
-        # decode tick or the AR batch step.
-        return {"prefill_decode_policy": "fair"}
+        # decode tick or the AR batch step. Fair alternation still prefilled
+        # one request to completion before the next, so a short request that
+        # arrived behind a long prompt waited for its whole prefill. The
+        # token-budget round rotates prefill chunks across requests and steps
+        # every decoding row in the same round; its prefill budget is this
+        # runner's chunk, and its decode budget covers every request.
+        return {
+            "prefill_decode_policy": "token_budget",
+            "round_prefill_token_budget": int(self.runner.prefill_chunk_size),
+            "round_decode_row_budget": max(32, int(self._configured_resident_capacity)),
+        }
 
     def _grammar_session(self, request):
         if request.grammar is None:
@@ -965,6 +974,10 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
     """Request-owned c2 runner pool over one shared Qwen4Exp weight layout."""
 
     supports_stream_token_logprobs = True
+    # A prefill chunk and the batch decode step use different owners (a
+    # staging runner, the batch slots), so one token-budget round runs both.
+    supports_prefill_decode_same_round = True
+    supports_multiple_prefill_quanta_per_round = False
 
     def __init__(self, generator: Qwen4ExpGGUFTextGenerator, *, capacity: int) -> None:
         self.generator = generator

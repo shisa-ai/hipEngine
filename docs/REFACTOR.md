@@ -96,6 +96,13 @@ upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
   share one physical step to remove the demotion. Sampled requests are not
   selected automatically: their acceptance and economics have not been
   measured.
+- **Decoding requests slow down while another request prefills a long
+  prompt.** The token-budget round runs one full prefill chunk, then one decode
+  step, so each decode token waits behind a chunk: two short requests beside a
+  122,076-token prompt finished their 18-22 tokens in 31-38 s (they waited
+  about 170 s for the whole prefill under `fair`). Bound the prefill share of a
+  round by time instead of by one chunk, or split the chunk while rows are
+  decoding, then re-measure inter-token latency beside a long prefill.
 - **The Q8_0 expert-down layers read a tile count back to the host at two or
   more rows** (`HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN`), so that MoE
   segment is not graph-capturable and runs eagerly in every batch step. Derive
