@@ -31,6 +31,7 @@ from hipengine.generation.registry import GenerationRequest
 from hipengine.loading.maple import load_maple_checkpoint
 from hipengine.runtime.maple import MapleRunner
 from hipengine.tokenization.maple import MapleTokenizer
+from scripts import gpu_smi
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SUITE = ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
@@ -420,8 +421,9 @@ def main() -> int:
                     "rocminfo | grep -E 'Name:|Marketing Name:|gfx' | head -8",
                 ]
             ),
-            "rocm_smi": _capture(
-                ["rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"]
+            "rocm_smi": gpu_smi.capture_text(
+                rocm_args=["--showmeminfo", "vram", "--showuse", "--showtemp"],
+                amd_args=["metric", "--mem-usage", "--usage", "--temperature"],
             ),
             "hipcc": _capture(["hipcc", "--version"]),
         },

@@ -33,6 +33,7 @@ from hipengine.core.memory import memory_stats, reset_memory_stats
 from hipengine.kernels.backends import detect_hip_target_arches
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
+from scripts import gpu_smi
 from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, resolve_args_kv_policy
 
 DEFAULT_MODEL = (
@@ -94,7 +95,11 @@ def _hardware_context() -> dict[str, Any]:
         "default_hardware": gpu_name == "AMD Radeon Pro W7900" and arch == "gfx1100",
         "visible_device": visible_device,
         "rocminfo": _run_capture(["bash", "-lc", "rocminfo | grep -E 'Name:|gfx' | head -4"], timeout=10.0),
-        "rocm_smi": _run_capture(["rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"], timeout=10.0),
+        "rocm_smi": gpu_smi.capture_text(
+            rocm_args=["--showmeminfo", "vram", "--showuse", "--showtemp"],
+            amd_args=["metric", "--mem-usage", "--usage", "--temperature"],
+            timeout=10.0,
+        ),
     }
 
 

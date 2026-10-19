@@ -39,6 +39,7 @@ from hipengine.models.qwen35 import Qwen35GGUFModel  # noqa: E402
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession  # noqa: E402
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer  # noqa: E402
 from scripts.gguf_mtp_bench import build_chat_prompt  # noqa: E402
+from scripts import gpu_smi
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
 DEFAULT_PROMPTS = REPO_ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
@@ -66,37 +67,15 @@ def _device_product_name(visible_devices: str | None) -> str | None:
 
     The gate records the declared hardware identity, so a hardcoded model name
     would mislabel any other physical card (for example a W7900) that happens to
-    share the gfx1100 target arch. Returns None when rocm-smi is unavailable or
-    its output cannot be parsed.
+    share the gfx1100 target arch. Returns None when the selected device cannot
+    be identified from the active ROCm environment's telemetry tool.
     """
-    try:
-        completed = subprocess.run(
-            ["rocm-smi", "--showproductname", "--json"],
-            capture_output=True,
-            text=True,
-            timeout=10.0,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if completed.returncode != 0:
-        return None
-    try:
-        payload = json.loads(completed.stdout)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(payload, dict):
-        return None
     index = 0
     if visible_devices:
         first = visible_devices.split(",")[0].strip()
         if first.isdigit():
             index = int(first)
-    entry = payload.get(f"card{index}")
-    if not isinstance(entry, dict):
-        return None
-    name = entry.get("Card Series")
-    return str(name) if name else None
+    return gpu_smi.product_name(index)
 
 
 def _device_hash(session: Qwen35GGUFResidentSession, ptr: int, nbytes: int) -> str:

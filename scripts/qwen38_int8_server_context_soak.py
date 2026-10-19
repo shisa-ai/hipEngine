@@ -38,6 +38,7 @@ if str(REPO_ROOT) not in sys.path:
 from hipengine.benchmark.agentic_live import final_ownership_from_server  # noqa: E402
 from hipengine.tokenization.identity import token_ids_sha256  # noqa: E402
 from hipengine.util.amdgpu_vram import VramSampler, read_memory_used, select_card  # noqa: E402
+from scripts import gpu_smi
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
 DEFAULT_PROMPTS = REPO_ROOT / "benchmarks/prompts/qwen38-sharegpt-soak-v1.json"
@@ -722,7 +723,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "baseline_vram_bytes": baseline,
             "baseline_vram_gib": baseline / GIB,
             "rocminfo": _capture(["bash", "-lc", "rocminfo | grep -E 'Name:|gfx' | head -12"]),
-            "rocm_smi": _capture(["rocm-smi", "--showpids", "--showuse", "--showmemuse"]),
+            "rocm_smi": gpu_smi.capture_text(
+                rocm_args=["--showpids", "--showuse", "--showmemuse"],
+                amd_args=["process"],
+            ),
             "hipcc": _capture(["hipcc", "--version"]),
         },
         "server": {"log_path": str(log_path)},

@@ -463,25 +463,40 @@ therefore still succeed while reporting a library version that has nothing to do
 with the 10.1.0 stack. Treat any `rocm-smi` output as untrusted provenance and
 prefer `amd-smi` for device identity, clocks, and memory.
 
-Effect by call site on this host:
+hipEngine scripts do not call either CLI directly. `scripts/gpu_smi.py` resolves
+the tool from the **active ROCm root** (`ROCM_PATH`/`ROCM_HOME` when declared,
+otherwise `python -m rocm_sdk path --root`), preferring `amd-smi` and falling back
+to `rocm-smi`. It never consults `PATH`:
 
-| Call site | Behavior |
+| Situation | Behavior |
 | --- | --- |
-| `benchmarks/micro/collect_env.py` | Degrades safely. `run_command` checks `shutil.which` and records `available: false` with empty output when the binary is absent. With `/opt/rocm` on `PATH` it instead records the stale 7.2.3 tool, so `rocm_smi_lines` is populated but does not describe the active stack. `amd_smi_*` fields are the reliable ones. |
-| `scripts/gemma4_campaign_bench.py` | Degrades safely; its `_run` catches `OSError` and returns an empty string. |
-| `scripts/gemma4_scoreboard_snapshot.py` | Degrades safely. `_tool_capture` resolves each tool with `shutil.which` and records `rocm_smi_available`/`rocm_smi_path` and `amd_smi_available`/`amd_smi_path`, so a missing tool leaves an empty list instead of aborting, and a stale `/opt/rocm` binary is visible in the artifact. |
-| `scripts/gguf_c1_decode_attribution.py` | Degrades safely; guarded by `shutil.which`. |
-| `scripts/gguf_pack8_dual_wmma_row_microbench.py` | Calls `rocm-smi` for GPU identity; same stale-binary caveat. |
+| Environment ships `amd-smi` | Used, with the tool name and absolute path recorded |
+| Environment ships only `rocm-smi` | Used (the retained W7900 ROCm 7.13 lane) |
+| Environment ships neither | Raises `GpuToolUnavailable` naming the paths searched |
+| A tool exists only on `PATH` | **Refused**, because it describes a different stack |
 
-### The cn Diagnostic Artifact Schema Still Requires `rocm-smi`
+That last row is the point. A `rocm-smi` from `/opt/rocm` reports SMI-LIB `7.8.0`
+and has nothing to do with a ROCm 10.1.0 prefix, so recording it as provenance
+would silently misattribute a benchmark row. The refusal is clearable: activate or
+install an environment that provides `amd-smi` (ROCm 10.1.0 and newer) or
+`rocm-smi` (older stacks).
 
-`scripts/qwen35_batch_artifact_schema.py` requires a `rocm-smi --showmeminfo vram
---showuse --showtemp` record in `commands.environment` and validates that
-`hardware.rocm_smi.output` contains `GPU` and `VRAM` markers. A new c>N/A4
-diagnostic artifact therefore cannot be produced honestly from the ROCm 10.1.0
-prefix alone. Until that schema grows an `amd-smi` path, produce those artifacts
-on a stack that still ships ROCm SMI, or extend the schema deliberately rather
-than relaxing the marker check.
+Normalized accessors (`device_identity`, `memory_usage`, `metrics`,
+`product_name`) return one shape for either tool, so call sites do not branch on
+which is installed. `capture_text` keeps the raw output for artifact fields that
+record it and adds `tool`, `tool_path`, and `rocm_root`. Artifact fields keep their
+historical `rocm_smi` key; the record's `tool` field says which CLI actually
+produced it.
+
+### The cn Diagnostic Artifact Schema Accepts Either Tool
+
+`scripts/qwen35_batch_artifact_schema.py` requires a GPU telemetry record in
+`commands.environment`, and accepts either
+`rocm-smi --showmeminfo vram --showuse --showtemp` or
+`amd-smi metric --mem-usage --usage --temperature`. Both outputs carry the `GPU`
+and `VRAM` markers the schema validates. A capture record names its tool in a
+`tool` field; artifacts written before that field existed are read as `rocm-smi`,
+which is what produced them.
 
 ### Marker-PDF Conflicts Are Pre-Existing
 

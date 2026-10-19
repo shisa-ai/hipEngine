@@ -32,6 +32,7 @@ from hipengine.core.memory import memory_stats, reset_memory_stats  # noqa: E402
 from hipengine.loading.maple import load_maple_checkpoint  # noqa: E402
 from hipengine.runtime.maple import MapleBatchRunner, MapleRunner  # noqa: E402
 from hipengine.tokenization.maple import MapleTokenizer  # noqa: E402
+from scripts import gpu_smi
 
 DEFAULT_MODEL = "deepgrove/maple-preview-2bit-mlx"
 DEFAULT_SUITE = REPO_ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
@@ -346,7 +347,10 @@ def main() -> int:
     )
     width_gate = all(row["correctness_passed"] for row in rows)
     rocminfo = _capture(["bash", "-lc", "rocminfo | grep -E 'Name:|Marketing Name:|gfx' | head -8"])
-    rocm_smi = _capture(["rocm-smi", "--showmeminfo", "vram", "--showuse", "--showtemp"])
+    rocm_smi = gpu_smi.capture_text(
+        rocm_args=["--showmeminfo", "vram", "--showuse", "--showtemp"],
+        amd_args=["metric", "--mem-usage", "--usage", "--temperature"],
+    )
     hipcc = _capture(["hipcc", "--version"])
     status = "accepted" if natural_gate["passed"] and width_gate and git["tracked_clean"] else "rejected"
     artifact = {

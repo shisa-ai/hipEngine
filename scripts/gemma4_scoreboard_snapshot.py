@@ -48,6 +48,10 @@ from pathlib import Path
 from typing import Any
 
 REPO = Path(__file__).resolve().parents[1]
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+
+from scripts import gpu_smi  # noqa: E402
 DEFAULT_PROMPTS = (1024, 4096)
 DEFAULT_OUTPUT = 128
 DEFAULT_SAMPLES = 3
@@ -75,52 +79,21 @@ def _git(*args: str) -> str:
     return (done.stdout or "").strip()
 
 
-def _tool_capture(command: list[str], *, timeout: int = 60, tail: int = 12) -> dict[str, Any]:
-    """Best-effort capture of an optional GPU tool.
-
-    ROCm 10.1.0 no longer ships ``rocm-smi``, and a system ROCm install can
-    still leave an unrelated ``rocm-smi`` on ``PATH``. Neither condition may
-    abort a snapshot, and neither may be recorded as if it described the active
-    stack, so capture the resolved path and availability alongside the output.
-    """
-
-    resolved = shutil.which(command[0])
-    if resolved is None:
-        return {"available": False, "path": "", "lines": [], "error": "not found"}
-    try:
-        done = subprocess.run(
-            command, cwd=REPO, capture_output=True, text=True, timeout=timeout, check=False
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        return {"available": False, "path": resolved, "lines": [], "error": type(exc).__name__}
-    if done.returncode != 0:
-        return {
-            "available": False,
-            "path": resolved,
-            "lines": [],
-            "error": f"exit {done.returncode}",
-        }
-    text = (done.stdout or "") + (done.stderr or "")
-    return {"available": True, "path": resolved, "lines": text.splitlines()[-tail:]}
-
-
 def provenance(gpu: int) -> dict[str, Any]:
     """Commit, working-tree and toolchain state for this snapshot."""
 
     hipcc = _run(["hipcc", "--version"], timeout=60)
-    rocm_smi = _tool_capture(["rocm-smi", "--showid", "--showproductname"])
-    amd_smi = _tool_capture(["amd-smi", "static", "-a"])
+    telemetry = gpu_smi.capture_text(
+        rocm_args=["--showid", "--showproductname"],
+        amd_args=["static", "-a", "-b"],
+        device=gpu,
+    )
     return {
         "git_commit": _git("rev-parse", "HEAD"),
         "git_dirty_files": _git("status", "--porcelain").splitlines()[:40],
         "physical_gpu_index": gpu,
-        "gpu_name": _gpu_name(gpu),
-        "rocm_smi": rocm_smi["lines"],
-        "rocm_smi_available": rocm_smi["available"],
-        "rocm_smi_path": rocm_smi["path"],
-        "amd_smi": amd_smi["lines"],
-        "amd_smi_available": amd_smi["available"],
-        "amd_smi_path": amd_smi["path"],
+        "gpu_name": gpu_smi.product_name(gpu) or "",
+        "gpu_telemetry": telemetry,
         "hipcc_version_first_line": (hipcc.splitlines() or [""])[0],
         "captured_at": _now(),
     }
@@ -137,38 +110,6 @@ def _run(command: list[str], *, env: dict[str, str] | None = None, timeout: int 
             + "\n".join(tail)
         )
     return (completed.stdout or "") + (completed.stderr or "")
-
-
-def _gpu_name(gpu: int) -> str:
-    """Name of physical GPU ``gpu`` from rocm-smi.
-
-    rocm-smi puts the ``GPU[N]`` marker and the ``Device Name:`` label on the
-    *same* line (``GPU[0]\t\t: Device Name: \t\t<name>``), so parse line by
-    line rather than tracking a previous marker line.
-    """
-
-    try:
-        done = subprocess.run(
-            ["rocm-smi", "--showid", "--showproductname"],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return ""
-    for line in (done.stdout or "").splitlines():
-        stripped = line.strip()
-        if not stripped.startswith("GPU[") or "Device Name:" not in stripped:
-            continue
-        close = stripped.find("]")
-        open_b = stripped.find("[")
-        if close < 0 or open_b < 0:
-            continue
-        if stripped[open_b + 1 : close] != str(gpu):
-            continue
-        return stripped.split("Device Name:", 1)[1].strip()
-    return ""
 
 
 def base_env(gpu: int) -> dict[str, str]:

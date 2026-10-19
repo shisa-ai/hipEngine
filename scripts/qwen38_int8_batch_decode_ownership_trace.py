@@ -42,6 +42,7 @@ from hipengine.kernels.backends import hip_target_arch_for_backend  # noqa: E402
 from hipengine.loading.gguf import scan_gguf  # noqa: E402
 from hipengine.models.kv_capabilities import KVCapabilityKey, model_artifact_identity  # noqa: E402
 from hipengine.models.qwen35 import Qwen35GGUFModel  # noqa: E402
+from scripts import gpu_smi
 
 ARTIFACT_KIND = "qwen38_int8_row_batched_decode_ownership_trace"
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
@@ -284,23 +285,8 @@ def _rocprofv3_version() -> str:
 
 
 def _observed_device() -> str:
-    executable = shutil.which("rocm-smi")
-    if executable is None:
-        return "unavailable"
-    completed = subprocess.run(
-        [executable, "--showproductname", "--json"], capture_output=True, text=True, check=False
-    )
-    try:
-        payload = json.loads(completed.stdout or "{}")
-    except json.JSONDecodeError:
-        return "unavailable"
-    for card in payload.values():
-        if isinstance(card, Mapping):
-            for key in ("Card Series", "Card Model", "Card SKU"):
-                value = card.get(key)
-                if isinstance(value, str) and value.strip():
-                    return value.strip()
-    return "unavailable"
+    name = gpu_smi.product_name()
+    return name if name else "unavailable"
 
 
 def _run_gate(case: str, environment: Mapping[str, str]) -> None:
