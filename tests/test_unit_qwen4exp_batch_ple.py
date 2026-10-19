@@ -139,6 +139,36 @@ def fixture() -> Fixture:
         built.close()
 
 
+def test_split_stages_keep_history_updates_out_of_shared_projections(fixture, recorder):
+    fixture.state.prepare((3, 1))
+    expected_output = _run(fixture, recorder)
+    original = list(recorder.calls)
+    recorder.calls.clear()
+    plan = batch_ple.validate_qwen4_exp_batch_ple_stage(
+        fixture.weights, state=fixture.state, scratch=fixture.scratch,
+        residual_ptr=fixture.residual.ptr, embedding_ptr=fixture.embedding.ptr,
+        norm_key_ptr=0x910, norm_query_ptr=0x920, norm_conv_ptr=0x930,
+        conv_weight_ptr=0x940, rows=2, branches=BRANCHES, hidden=HIDDEN,
+        conv_kernel=KERNEL, dilation=DILATION, runtime=fixture.runtime,
+    )
+    assert recorder.calls == []
+    batch_ple.run_qwen4_exp_batch_ple_prepare(
+        plan, fixture.residual.ptr, fixture.embedding.ptr, fixture.weights,
+        scratch=fixture.scratch, norm_key_ptr=0x910, norm_query_ptr=0x920,
+        norm_conv_ptr=0x930,
+    )
+    assert 'conv' not in recorder.names()
+    batch_ple.run_qwen4_exp_batch_ple_convolution(
+        plan, state=fixture.state, scratch=fixture.scratch, conv_weight_ptr=0x940,
+    )
+    actual = batch_ple.run_qwen4_exp_batch_ple_finish(
+        plan, fixture.residual.ptr, scratch=fixture.scratch,
+    )
+    assert actual is expected_output
+    assert recorder.calls == original
+    assert recorder.names().count('conv') == 1
+
+
 def _run(fixture: Fixture, recorder: Recorder, **overrides) -> DeviceBuffer:
     kwargs = dict(
         state=fixture.state,

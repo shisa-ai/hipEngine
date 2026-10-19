@@ -389,6 +389,55 @@ def _resolve_indexed_conv(
     )
 
 
+@dataclass(frozen=True)
+class Qwen4ExpBatchPlePlan:
+    """Validated PLE geometry and indexed history update for one row set."""
+
+    runtime: HipRuntime
+    rows: int
+    channels: int
+    indices_ptr: int
+    conv_stage: Callable[..., None]
+    branches: int
+    hidden: int
+    eps: float
+
+
+def validate_qwen4_exp_batch_ple_stage(
+    weights: Mapping[str, GGUFDeviceWeight],
+    *,
+    state: Qwen4ExpBatchPleState,
+    scratch: Qwen4ExpPLEScratch,
+    residual_ptr: int,
+    embedding_ptr: int,
+    norm_key_ptr: int,
+    norm_query_ptr: int,
+    norm_conv_ptr: int,
+    conv_weight_ptr: int,
+    rows: int,
+    branches: int,
+    hidden: int,
+    conv_kernel: int,
+    dilation: int,
+    eps: float = 1e-6,
+    runtime: HipRuntime | None = None,
+) -> Qwen4ExpBatchPlePlan:
+    """Check the complete PLE call before dispatching any stage."""
+
+    active_runtime, count, channels, conv_stage = _validate(
+        weights, state=state, scratch=scratch, residual_ptr=residual_ptr,
+        embedding_ptr=embedding_ptr, norm_key_ptr=norm_key_ptr,
+        norm_query_ptr=norm_query_ptr, norm_conv_ptr=norm_conv_ptr,
+        conv_weight_ptr=conv_weight_ptr, rows=rows, branches=branches,
+        hidden=hidden, conv_kernel=conv_kernel, dilation=dilation, eps=eps,
+        runtime=runtime,
+    )
+    return Qwen4ExpBatchPlePlan(
+        active_runtime, count, channels, state.indices_ptr, conv_stage,
+        int(branches), int(hidden), float(eps),
+    )
+
+
 def run_qwen4_exp_batch_ple_stage(
     residual_ptr: int,
     embedding_ptr: int,
@@ -417,26 +466,44 @@ def run_qwen4_exp_batch_ple_stage(
     ``[rows, branches, hidden]`` BF16 output buffer owned by ``scratch``.
     """
 
-    active_runtime, count, channels, conv_stage = _validate(
-        weights,
-        state=state,
-        scratch=scratch,
-        residual_ptr=residual_ptr,
-        embedding_ptr=embedding_ptr,
-        norm_key_ptr=norm_key_ptr,
-        norm_query_ptr=norm_query_ptr,
-        norm_conv_ptr=norm_conv_ptr,
-        conv_weight_ptr=conv_weight_ptr,
-        rows=rows,
-        branches=branches,
-        hidden=hidden,
-        conv_kernel=conv_kernel,
-        dilation=dilation,
-        eps=eps,
+    plan = validate_qwen4_exp_batch_ple_stage(
+        weights, state=state, scratch=scratch, residual_ptr=residual_ptr,
+        embedding_ptr=embedding_ptr, norm_key_ptr=norm_key_ptr,
+        norm_query_ptr=norm_query_ptr, norm_conv_ptr=norm_conv_ptr,
+        conv_weight_ptr=conv_weight_ptr, rows=rows, branches=branches,
+        hidden=hidden, conv_kernel=conv_kernel, dilation=dilation, eps=eps,
         runtime=runtime,
     )
-    indices_ptr = state.indices_ptr
+    run_qwen4_exp_batch_ple_prepare(
+        plan, residual_ptr, embedding_ptr, weights, scratch=scratch,
+        norm_key_ptr=norm_key_ptr, norm_query_ptr=norm_query_ptr,
+        norm_conv_ptr=norm_conv_ptr, stream=stream,
+    )
+    run_qwen4_exp_batch_ple_convolution(
+        plan, state=state, scratch=scratch, conv_weight_ptr=conv_weight_ptr,
+        stream=stream,
+    )
+    return run_qwen4_exp_batch_ple_finish(
+        plan, residual_ptr, scratch=scratch, stream=stream,
+    )
 
+
+def run_qwen4_exp_batch_ple_prepare(
+    plan: Qwen4ExpBatchPlePlan,
+    residual_ptr: int,
+    embedding_ptr: int,
+    weights: Mapping[str, GGUFDeviceWeight],
+    *,
+    scratch: Qwen4ExpPLEScratch,
+    norm_key_ptr: int,
+    norm_query_ptr: int,
+    norm_conv_ptr: int,
+    stream: int = 0,
+) -> None:
+    """Project, normalize and gate every row without touching request history."""
+
+    active_runtime, count, channels = plan.runtime, plan.rows, plan.channels
+    branches, hidden, eps = plan.branches, plan.hidden, plan.eps
     launch_gguf_linear(
         weights["ple_key"],
         embedding_ptr,
@@ -514,20 +581,44 @@ def run_qwen4_exp_batch_ple_stage(
         stream=stream,
         runtime=active_runtime,
     )
-    conv_stage(
+
+
+def run_qwen4_exp_batch_ple_convolution(
+    plan: Qwen4ExpBatchPlePlan,
+    *,
+    state: Qwen4ExpBatchPleState,
+    scratch: Qwen4ExpPLEScratch,
+    conv_weight_ptr: int,
+    stream: int = 0,
+) -> None:
+    """Advance the validated row set's request-local convolution histories."""
+
+    plan.conv_stage(
         scratch.normalized.ptr,
         conv_weight_ptr,
         state.history.ptr,
         scratch.conv.ptr,
-        indices_ptr,
-        rows=count,
+        plan.indices_ptr,
+        rows=plan.rows,
         state_slots=state.state_slots,
-        channels=channels,
+        channels=plan.channels,
         kernel_size=state.conv_kernel,
         dilation=state.dilation,
         stream=stream,
-        runtime=active_runtime,
+        runtime=plan.runtime,
     )
+
+
+def run_qwen4_exp_batch_ple_finish(
+    plan: Qwen4ExpBatchPlePlan,
+    residual_ptr: int,
+    *,
+    scratch: Qwen4ExpPLEScratch,
+    stream: int = 0,
+) -> DeviceBuffer:
+    """Apply the convolution result and residual delta without changing history."""
+
+    active_runtime, count, channels = plan.runtime, plan.rows, plan.channels
     qwen4_exp_scaled_silu_f32(
         scratch.conv.ptr,
         scratch.conv.ptr,
@@ -805,6 +896,9 @@ def batch_ple_call_table() -> dict[str, Callable[..., Any]]:
 
     return {
         "ple_stage": run_qwen4_exp_batch_ple_stage,
+        "ple_prepare": run_qwen4_exp_batch_ple_prepare,
+        "ple_convolution": run_qwen4_exp_batch_ple_convolution,
+        "ple_finish": run_qwen4_exp_batch_ple_finish,
         "ple_grouped_rmsnorm": qwen4_exp_grouped_rmsnorm_f32,
         "ple_grouped_rmsnorm_bf16": qwen4_exp_grouped_rmsnorm_bf16_f32,
         "ple_signed_sqrt_gate": qwen4_exp_ple_signed_sqrt_gate_f32,
