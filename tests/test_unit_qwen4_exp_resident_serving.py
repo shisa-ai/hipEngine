@@ -268,3 +268,26 @@ def test_qwen4_exp_generator_advertises_bounded_native_capacity() -> None:
         assert runner.capacity == 2
     finally:
         generator.close()
+
+
+def test_qwen4_exp_narrow_scratch_probe_reuses_live_wider_runner(monkeypatch) -> None:
+    # A server started without --max-active-requests probes scratch at width 1
+    # after the engine loop has already built the runner at the plugin's
+    # default width 2. The probe must reuse that runner instead of trying to
+    # rebuild it at width 1, which failed startup.
+    generator = _generator()
+    monkeypatch.setattr(
+        "hipengine.generation.qwen4_exp_gguf.Qwen4ExpGGUFResidentModelRunner",
+        lambda *args, **kwargs: _FakeRunner(bias=10),
+    )
+    try:
+        live = generator.create_resident_model_runner(capacity=None)
+        assert live.capacity == 2
+        report = generator.prepare_request_scratch(max_prompt_tokens=32, max_batch_size=1)
+        assert generator._resident_model_runner is live
+        assert report["max_batch_size"] == 1
+        assert len(live._all_runners) == 2
+        report = generator.prepare_request_scratch(max_prompt_tokens=32, max_batch_size=2)
+        assert report["max_batch_size"] == 2
+    finally:
+        generator.close()

@@ -532,7 +532,15 @@ class Qwen4ExpGGUFTextGenerator:
             raise NotImplementedError("Qwen4Exp serving supports at most c2")
         if required <= 0 or required > self.runner.max_sequence_length:
             raise ValueError("Qwen4Exp serving scratch exceeds sequence capacity")
-        resident = self.create_resident_model_runner(capacity=batch)
+        # A probe narrower than the live runner is covered by it: prepare()
+        # allocates every slot at full context, so the wider pool proves the
+        # narrower width too. Only a missing runner is created at probe width.
+        with self._lock:
+            live = self._resident_model_runner
+        if live is not None and live.capacity >= batch:
+            resident = live
+        else:
+            resident = self.create_resident_model_runner(capacity=batch)
         resident.prepare(max_sequence_length=required)
         return {
             "schema": 1,
