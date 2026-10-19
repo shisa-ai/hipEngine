@@ -10243,6 +10243,17 @@ Two consequences worth knowing:
   grid size rather than on the quantization scheme because the reason is
   occupancy, so the other quants in the decode-shaped pack8 family inherit it;
   that inheritance is still reasoned rather than measured.
+- **Strict-exact opt-out scope.** The lever applies to one-row launches only, so
+  a caller whose contract is that an N-row block equals N one-row forwards bit
+  for bit cannot inherit it. Gemma 4's runner enters
+  `pack8_gemv_exact_threads_session(True)` around its block and packed-prefill
+  forwards (`hipengine/runtime/gemma4.py`); `_pack8_gemv_decode_threads`
+  returns the parent block size inside that scope. Without it,
+  `tests/test_gpu_gemma4_packed_batch_forward.py` and
+  `tests/test_gpu_gemma4_runner_verify_rows.py` fail. Removal condition: a
+  Gemma 4 profile gate that admits the wide block on both sides of the
+  comparison (or a registered wide variant the strict route can name), after
+  which the scope and `_pack8_gemv_exact_threads` go away.
 
 ## `HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET` (RT-4) — promoted to default
 

@@ -88,6 +88,7 @@ from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.gguf_linear import (
     _WMMA_PREFILL_ENV,
     launch_gguf_linear,
+    pack8_gemv_exact_threads_session,
     wmma_prefill_session,
 )
 from hipengine.runtime.gemma4_int8_kv import (
@@ -1954,9 +1955,15 @@ class Gemma4Runner:
                 # A full block opts into the dense WMMA prefill; a partial block or a
                 # verify block stays on the strict route. An explicitly set
                 # HIPENGINE_GGUF_WMMA_PREFILL wins outright inside the session.
+                # Gemma 4's contract is that a block equals repeated one-row
+                # forwards bit for bit, and the narrow-projection thread lever
+                # reassociates the one-row reduction only, so this family keeps
+                # the pack8 GEMV parent block size on every path. The lever was
+                # measured on Qwen3.8 decode shapes; it needs its own Gemma 4
+                # profile gate before this scope can be narrowed.
                 with _gemma4_block_wmma_session(
                     not verification and len(block) == self.max_block
-                ):
+                ), pack8_gemv_exact_threads_session(True):
                     logits = self._forward_block(
                         block,
                         apply_softcap=apply_softcap,
@@ -2214,7 +2221,7 @@ class Gemma4Runner:
 
         with self._q8_mmq_prefill_session(), _gemma4_block_wmma_session(
             packed_wmma_prefill
-        ):
+        ), pack8_gemv_exact_threads_session(True):
             self._launch_block(
                 packed_tokens,
                 tables={},

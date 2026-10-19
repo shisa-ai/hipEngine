@@ -94,18 +94,18 @@ def test_experts_forward_returns_when_no_expert_is_selected(
         np.linspace(-1.0, 1.0, TOKENS * FIXTURE_HIDDEN, dtype=np.float32)
     )
     runtime.memcpy(
-        host_array_ptr(hidden_host), hidden.ptr, hidden_host.nbytes,
+        hidden.ptr, host_array_ptr(hidden_host), hidden_host.nbytes,
         MemcpyKind.HOST_TO_DEVICE,
     )
     # Every lane rejected -- the state that leaves compaction with nothing to do.
     selected_host = np.full(TOKENS * TOP_K, -1, dtype=np.int64)
     runtime.memcpy(
-        host_array_ptr(selected_host), selected.ptr, selected_host.nbytes,
+        selected.ptr, host_array_ptr(selected_host), selected_host.nbytes,
         MemcpyKind.HOST_TO_DEVICE,
     )
     routing_host = np.zeros(TOKENS * TOP_K, dtype=np.float32)
     runtime.memcpy(
-        host_array_ptr(routing_host), routing.ptr, routing_host.nbytes,
+        routing.ptr, host_array_ptr(routing_host), routing_host.nbytes,
         MemcpyKind.HOST_TO_DEVICE,
     )
 
@@ -124,8 +124,8 @@ def test_experts_forward_returns_when_no_expert_is_selected(
     # kernels read, which is the state the guards exist for.
     garbage = np.full(TOKENS * TOP_K, 1 << 40, dtype=np.int64)
     runtime.memcpy(
-        host_array_ptr(garbage),
         scratch.buffer("sorted_lanes").ptr,
+        host_array_ptr(garbage),
         garbage.nbytes,
         MemcpyKind.HOST_TO_DEVICE,
     )

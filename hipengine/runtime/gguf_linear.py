@@ -166,6 +166,15 @@ _WMMA_PREFILL_ENV = "HIPENGINE_GGUF_WMMA_PREFILL"
 # ``None`` until set, so the env var still controls the default for plain
 # bench/diagnostic invocations.
 _wmma_prefill_session_enabled: bool | None = None
+
+# Strict-exact scopes for a caller whose contract is bit-equality with the
+# parent launcher. The narrow-projection thread lever below reassociates the
+# one-row reduction, so a strict caller (Gemma 4's ``verify_dense_exact``
+# contract) must not inherit it: a 4-row verify block runs the parent kernel
+# while the one-row forward it is compared against would have run the wide one.
+_pack8_gemv_exact_threads: ContextVar[bool] = ContextVar(
+    "gguf_pack8_gemv_exact_threads", default=False
+)
 # Engagement recorder for the f16 WMMA prefill route. ``None`` by default, so the
 # hot path pays one ``ContextVar.get`` and nothing else.
 #
@@ -2589,6 +2598,25 @@ def wmma_prefill_session(enabled: bool | None) -> Iterator[None]:
         yield
     finally:
         set_wmma_prefill_enabled(previous)
+
+
+@contextlib.contextmanager
+def pack8_gemv_exact_threads_session(enabled: bool = True) -> Iterator[None]:
+    """Keep the pack8 GEMV launcher's parent block size for this scope.
+
+    A caller that promises bit-equality with one-row forwards (Gemma 4's
+    ``verify_dense_exact``) enters this scope around its verify block so the
+    narrow-projection thread lever cannot reassociate one side of the
+    comparison. The lever is a launcher parameter rather than a registered
+    variant, so this scope is how a strict caller opts out of it; see
+    ``docs/REFACTOR.md``.
+    """
+
+    token = _pack8_gemv_exact_threads.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _pack8_gemv_exact_threads.reset(token)
 
 
 @contextlib.contextmanager
@@ -9786,6 +9814,8 @@ def _pack8_gemv_decode_threads(
     """
 
     if threads or rows != 1 or not _pack8_gemv_wide_threads_enabled():
+        return 0
+    if _pack8_gemv_exact_threads.get():
         return 0
     if not variant.startswith("pack8_gemv_") or variant.startswith("pack8_gemv_decode_"):
         return 0

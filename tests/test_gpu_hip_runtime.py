@@ -67,6 +67,8 @@ class FakeHipLibrary:
         self.hipEventDestroy = FakeFunction(lambda event: 0)
         self.hipEventRecord = FakeFunction(lambda event, stream: 0)
         self.hipEventSynchronize = FakeFunction(lambda event: 0)
+        # The runtime binds a signature for every event entry point it polls.
+        self.hipEventQuery = FakeFunction(lambda event: 0)
         self.hipEventElapsedTime = FakeFunction(self._event_elapsed_time)
         self.hipDeviceSynchronize = FakeFunction(lambda: 0)
         self.hipGetErrorString = FakeFunction(lambda code: b"fake hip error")
