@@ -85,8 +85,12 @@ def test_the_assistant_forward_artifact_resolves_from_a_known_root() -> None:
     # The sidecar is shipped either in ``MTP/`` beside the backbone or flat
     # beside it; both are the "beside the backbone" location this asserts. The
     # directory name is an artifact-packaging detail, not a resolver promise.
-    backbone_dir = module.BACKBONE.parent
-    assert module.HEAD.parent in (backbone_dir, backbone_dir / "MTP"), (
+    #
+    # Compare resolved paths: the module keeps whichever root spelling found the
+    # backbone (``/models`` is a symlink on some boxes), while sidecar discovery
+    # returns real paths, so two spellings of one directory must compare equal.
+    backbone_dir = module.BACKBONE.resolve().parent
+    assert module.HEAD.resolve().parent in (backbone_dir, backbone_dir / "MTP"), (
         f"the module resolved {module.HEAD}, which is neither beside the "
         f"backbone ({backbone_dir}) nor in its MTP/ directory"
     )

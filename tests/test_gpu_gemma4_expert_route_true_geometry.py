@@ -405,6 +405,7 @@ _ONE_WIDER_COUNTS = np.concatenate(
 )
 
 
+@_needs_hip
 def test_mmq_route_does_not_read_its_scratch_capacity(
     _weights: tuple[np.ndarray, np.ndarray, np.ndarray],
 ) -> None:
@@ -427,6 +428,7 @@ def test_mmq_route_does_not_read_its_scratch_capacity(
     )
 
 
+@_needs_hip
 def test_mmq_route_row_zero_is_invariant_under_an_appended_row(
     _weights: tuple[np.ndarray, np.ndarray, np.ndarray],
 ) -> None:

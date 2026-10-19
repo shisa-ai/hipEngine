@@ -516,6 +516,10 @@ def test_native_complete_cycle_owns_propose_accept_mtp_kv_and_reseed(
             "device_accept_commit": True,
             "remaining_decode": 7,
             "fallback": False,
+            # The greedy row must say so explicitly: the sampled accept route
+            # is a separate graph and this cycle resolved none for it.
+            "sampled_accept": False,
+            "sampled_accept_state": None,
         },
     )
     assert calls[2] == ("record_verify_seeds", (0xB000, 0xB010))
@@ -1196,9 +1200,12 @@ def test_rf2_target_graph_cache_separates_short_and_split_k_context_buckets(
     assert second.token_ids == [7, 8]
     assert captures == [1023, 1280]
     assert launches == [(1023, 1019), (1280, 1024), (1280, 1100)]
+    # The cache key carries the sampled-accept bit beside the row count, the
+    # device accept/commit bit and the context bucket, so a sampled graph can
+    # never be handed to a greedy row; these are the greedy entries.
     assert sorted(session._native_spec_target_graphs) == [
-        (3, False, 1023),
-        (3, False, 1280),
+        (3, False, 1023, False),
+        (3, False, 1280, False),
     ]
     assert session.last_native_spec_target_fallback_reason is None
     assert session.calls == [

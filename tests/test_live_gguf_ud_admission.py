@@ -429,6 +429,8 @@ def _real_map(path: Path, *, strict_nextn: bool = False):
 
 @pytest.mark.skipif(not UD_Q4_K_M.exists(), reason=f"pinned artifact missing: {UD_Q4_K_M}")
 def test_pinned_ud_q4_k_m_resolves_through_manifest_not_stamp():
+    if not PLAIN_Q4_K_M.exists():
+        pytest.skip(f"plain control missing: {PLAIN_Q4_K_M}")
     stamp = "MOSTLY_Q4_K_M"
     _reader, model_map, nextn_map = _real_map(UD_Q4_K_M)
     preset = resolve_qwen35_gguf_artifact_preset(

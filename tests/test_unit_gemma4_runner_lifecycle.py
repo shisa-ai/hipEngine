@@ -566,6 +566,55 @@ def test_close_after_constructor_failure_does_not_double_free(
     assert len({buffer.ptr for buffer in allocator.freed}) == len(allocator.freed)
 
 
+class _FakePrefillStageRuntime:
+    """Stand-in for the HIP runtime that the pipelined prefill staging asks for.
+
+    A prompt wider than ``max_block`` forwards as consecutive blocks, and each
+    block's uploads are enqueued on one of two alternating upload streams so a
+    block's host copies do not wait for the whole previous block. That leaves
+    only the slot's own readers to order: the block records an event when its
+    launches are queued, and the block that reuses the slot two blocks later
+    waits on it. Streams and events are therefore the only device handles
+    ``forward`` still requests once every launch is replaced, and these carry
+    no work -- the recorded events are what show the staging ran per block.
+    """
+
+    def __init__(self) -> None:
+        self.next_stream = 0x50000
+        self.next_event = 0x60000
+        self.created: list[int] = []
+        self.recorded: list[tuple[int, int]] = []
+        self.waited: list[int] = []
+        self.synced: list[int] = []
+        self.destroyed: list[int] = []
+
+    def stream_create(
+        self, *, nonblocking: bool = True, priority: int | None = None
+    ) -> int:
+        self.next_stream += 1
+        self.created.append(self.next_stream)
+        return self.next_stream
+
+    def stream_destroy(self, stream: int) -> None:
+        self.created.remove(stream)
+
+    def stream_synchronize(self, stream: int) -> None:
+        self.synced.append(stream)
+
+    def event_create(self, *, flags: int = 0) -> int:
+        self.next_event += 1
+        return self.next_event
+
+    def event_record(self, event: int, stream: int = 0) -> None:
+        self.recorded.append((event, stream))
+
+    def event_synchronize(self, event: int) -> None:
+        self.waited.append(event)
+
+    def event_destroy(self, event: int) -> None:
+        self.destroyed.append(event)
+
+
 def test_multi_block_forward_takes_the_head_only_on_the_final_block(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -576,16 +625,17 @@ def test_multi_block_forward_takes_the_head_only_on_the_final_block(
     projection and a device-to-host copy whose result the loop overwrites on the
     next iteration -- a head launch per block that nobody reads. On the real
     artifact that is 1 wasted launch at 1024 tokens and 7 at 4096.
+
+    A prompt of several blocks also stages each block's uploads on its own
+    stream, so ``forward`` asks the runtime for stream and event handles even
+    though every launch is replaced below. The fake runtime answers those
+    handle requests; nothing is enqueued on them, so no device is needed.
     """
 
-    import ctypes
-
-    try:
-        ctypes.CDLL("libamdhip64.so")
-    except OSError:
-        pytest.skip("HIP runtime unavailable; the multi-block forward loads it")
-
     from contextlib import contextmanager
+
+    staging = _FakePrefillStageRuntime()
+    monkeypatch.setattr("hipengine.core.hip.get_hip_runtime", lambda: staging)
 
     base = _config(num_layers=2, hidden_size=16)
     # A namespace rather than the dataclass: the forward path reads ``embed_scale``
@@ -643,6 +693,10 @@ def test_multi_block_forward_takes_the_head_only_on_the_final_block(
     logits = runner.forward(list(range(1, 17)))  # 16 tokens over two 8-token blocks
 
     assert logits.shape == (config.vocab_size,)
+    assert len(staging.recorded) == 2, (
+        f"the forward staged {len(staging.recorded)} of its two blocks; a single "
+        "block would make the launch counts below vacuous"
+    )
     assert len(norms) == 1, (
         f"the final norm ran {len(norms)} times across 2 blocks; only the block "
         "whose logits are returned can need it"
