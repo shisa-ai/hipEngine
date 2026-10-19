@@ -1,3 +1,7 @@
+---
+status: closed
+owns: Dated record of the Flash-Next journey experiments that were left open; live rows moved to the optimization ledger.
+---
 # Journey Remaining Experiments
 
 > Current state: [`QWEN4EXP-STATUS.md`](QWEN4EXP-STATUS.md). Live open work:

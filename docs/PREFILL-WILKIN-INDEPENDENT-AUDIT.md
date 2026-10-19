@@ -1,3 +1,7 @@
+---
+status: closed
+owns: The September 2026 independent source and evidence audit of the prefill and Wilkin work.
+---
 # Independent Prefill And Wilkin Audit
 
 Review date: September 14, 2026 JST (September 13 UTC).

@@ -20,6 +20,7 @@ session reads. Start there, then come here for the document your task touches.
 | --- | --- | --- |
 | [`API.md`](API.md) | current | OpenAI-compatible server usage, endpoint support, request/response semantics, and current limitations. |
 | [`BENCHMARK.md`](BENCHMARK.md) | **normative** | Benchmark protocols, baselines to beat, required evidence fields, correctness thresholds, and artifact/rollup format. |
+| [`CROSS-ENGINE-PROTOCOL.md`](CROSS-ENGINE-PROTOCOL.md) | **normative** | The protocol every cross-engine comparison on this host follows: fixtures, settings, and what a comparable row must record. |
 | [`ENVS.md`](ENVS.md) | current | Complete environment-variable reference and the recommended profiles for normal use, ROCm setup, and profiling. |
 | [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) | **normative** | Strict/production/batch-invariant contracts, numerical gates, exact ownership and failure-containment semantics, and kernel-variant selection policy. |
 | [`HOWTO-README.md`](HOWTO-README.md) | **normative** | Rules for editing the root README product page: who it is for, what belongs there, and the failure patterns that have repeatedly made it unreadable. |
@@ -29,10 +30,23 @@ session reads. Start there, then come here for the document your task touches.
 | [`MTP-SERVING.md`](MTP-SERVING.md) | current | The what-works-where MTP serving policy matrix across models, backends, sampling modes, concurrency widths, and automatic-versus-explicit admission, plus the per-request force semantics. |
 | [`OPTIMIZATION.md`](OPTIMIZATION.md) | **normative** | Rules for kernel work, performance claims, and benchmark rows: evidence fields, anti-gaming, correctness gates, promotion, lineage, profiling. |
 | [`PLAN.md`](PLAN.md) | **normative** | Architecture, plugin boundaries, phase roadmap, LoC budgets, and the invariants that define hipEngine. |
+| [`PREFILL-WILKIN-INDEPENDENT-AUDIT.md`](PREFILL-WILKIN-INDEPENDENT-AUDIT.md) | closed | The September 2026 independent source and evidence audit of the prefill and Wilkin work. |
+| [`PRODUCTION-ACCURACY-RECALIBRATION-PROPOSAL-2026-09-16.md`](PRODUCTION-ACCURACY-RECALIBRATION-PROPOSAL-2026-09-16.md) | closed | The predeclared 2026-09-16 accuracy recalibration proposal, frozen before its measurements. |
+| [`QWEN4EXP-CROSS-ENGINE-CAMPAIGN-REPORT.md`](QWEN4EXP-CROSS-ENGINE-CAMPAIGN-REPORT.md) | closed | Evidence and direction from the 2026-10-13 Qwen4Exp cross-engine gap campaign. |
+| [`QWEN4EXP-CROSS-ENGINE-GAP-MATRIX.md`](QWEN4EXP-CROSS-ENGINE-GAP-MATRIX.md) | closed | The 2026-10-13 Qwen4Exp cross-engine gap investigation plan for the UD-Q4_K_XL GGUF on gfx1151. |
+| [`QWEN4EXP-HTTP-COVERAGE.md`](QWEN4EXP-HTTP-COVERAGE.md) | current | The Qwen3.8 Flash-Next HTTP surface coverage and the evidence each served feature rests on. |
+| [`QWEN4EXP-JOURNEY-REMAINING.md`](QWEN4EXP-JOURNEY-REMAINING.md) | closed | Dated record of the Flash-Next journey experiments that were left open; live rows moved to the optimization ledger. |
+| [`QWEN4EXP-OPTIMIZATION-LEDGER.md`](QWEN4EXP-OPTIMIZATION-LEDGER.md) | current | The live Qwen3.8-Flash-Next optimization ledger: open rows, measured gains, and rejected candidates. |
+| [`QWEN4EXP-PRODUCTION-SERVING.md`](QWEN4EXP-PRODUCTION-SERVING.md) | current | The Flash-Next production-serving campaign checklist and the evidence for each requirement. |
+| [`QWEN4EXP-STATUS.md`](QWEN4EXP-STATUS.md) | current | Current Qwen3.8-Flash-Next optimization status and headline measurements. |
+| [`QWEN4EXP-STRIX-JOURNEY-CAMPAIGN.md`](QWEN4EXP-STRIX-JOURNEY-CAMPAIGN.md) | closed | Dated record of the September 13-15 2026 Flash-Next Strix journey campaign. |
+| [`QWEN4EXP-T16-RESIDENCY.md`](QWEN4EXP-T16-RESIDENCY.md) | current | The Qwen4Exp T16 tile-residency design: which tiles materialize at load and which raw weights they replace. |
+| [`QWEN4EXP-X7-DECISION-BRIEF.md`](QWEN4EXP-X7-DECISION-BRIEF.md) | closed | The resolved X-7 decision on the prefill_last scope and the compensated-T16 candidates. |
 | [`RDNA3-TUNING-GUIDE.md`](RDNA3-TUNING-GUIDE.md) | current | Externally-referenced RDNA3 tuning guide; the current respin of the kernel-level findings also recorded in LESSONS-LEARNED.md. |
 | [`REFACTOR.md`](REFACTOR.md) | current | Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code to remove after optimal paths are proven. |
 | [`ROOFLINE.md`](ROOFLINE.md) | current | RDNA3 / W7900 performance model: hardware limits, regimes, decision tree, and the what-not-to-chase catalog. |
 | [`TESTING.md`](TESTING.md) | **normative** | RED/GREEN workflow, correctness oracles, fixture policy, test naming/discovery, and the validation matrix. |
+| [`TOKEN-LOGPROBS.md`](TOKEN-LOGPROBS.md) | current | How Flash-Next token logprobs record tokenizer bytes and align them with text. |
 <!-- END GENERATED: top -->
 
 ## Sections

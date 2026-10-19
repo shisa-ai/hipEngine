@@ -798,6 +798,74 @@ registered parent/fallback route) or bisection of a single route. They fail
 closed when the named variant is not registered. Leave them unset in normal
 use.
 
+### Qwen3.8 Flash-Next serving, route, and rollback selectors
+
+| Variable | Default | Values / notes |
+| --- | --- | --- |
+| `HIPENGINE_QWEN4_EXP_AR_BATCH` | `1` | Shared Flash-Next decode batch for plain AR requests (paged block pool, two c1 staging runners). `0` is the rollback: every request owns a c1 runner, and the default active-request count drops to 2. |
+| `HIPENGINE_QWEN4_EXP_MTP_BATCHED_VERIFY` | `1` | MTP verifies a candidate chain in one prefill-shaped target pass; `0` steps the target serially per candidate (rollback/bisection). |
+| `HIPENGINE_QWEN4_EXP_MTP_COMPACT_PROPOSAL` | `1` | MTP draft proposals use device argmax and device-resident chaining, returning ids only; `0` reads back draft logits (same tokens). |
+| `HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET` | `1` | Runner reset clears only the K/V a request wrote; `0` restores the full-capacity clear. |
+| `HIPENGINE_QWEN4_EXP_FULLATTN_CONTEXT_LEGACY` | `0` | `1` measures the pre-promotion fixed-256 full-attention context route against the promoted one (A/B only). |
+| `HIPENGINE_QWEN4_EXP_PLE_OVERLAP` | `1` | Overlaps the pinned PLE staging upload with layer-0 work; `0` serializes it. |
+| `HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS` | `random` (production UD), else `normal` | `madvise` access hint for the host-mapped PLE table; `normal` restores sequential access. |
+| `HIPENGINE_QWEN4_EXP_QSA_DIRECT_SELECT` | `1` | QSA decode writes its selection directly; `0` is the rollback. |
+| `HIPENGINE_QWEN4_EXP_QSA_STRIDED_GATE` | `1` | QSA gate reads the strided projection in place; `0` is the rollback. |
+| `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2_FUSED` | `0` | `1` selects the fused ordered-v2 QSA decode kernel (candidate). |
+| `HIPENGINE_QWEN4_EXP_QSA_WMMA` | unset (fast/F16 route sets `1`) | QSA prefill attention on the WMMA kernel. |
+| `HIPENGINE_QWEN4_EXP_ROUTED_F16` | unset (production/F16 route sets `1`) | Routed-expert gate/up and down on the wide F16 WMMA GEMMs from two rows (Q4_K) or 64 rows (Q5_K); multi-row decode batches use it too. |
+| `HIPENGINE_QWEN4_EXP_ROUTED_F16_INDEXED` | `1` | The routed F16 gate/up reads token rows through the lane map; `0` builds the gathered activation copy. |
+| `HIPENGINE_QWEN4_EXP_ROUTER_SELECT_CAST` | `0` | `1` fuses router top-k selection with the BF16 cast (bit-identical candidate). |
+| `HIPENGINE_QWEN4_EXP_ROUTER_VARIANT` | profile-selected | Names the router-logit producer; the UD production profile selects ordered DPP, strict/Q4_K_M keep tile4. Rollback/bisection only. |
+| `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP` | unset (F16 route sets `1`) | Warp-per-expert routed gate/up decode owner (reduction order differs). |
+| `HIPENGINE_QWEN4_EXP_GDN_DECODE_ROWSPLIT` | unset (F16 route sets `1`) | Row-split GDN decode step. |
+| `HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT` | profile-selected | Names the GDN prefill norm/gate owner (wide or narrow wave-norm). |
+| `HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT` | profile-selected | Replaces the multi-column tile-16 GDN prefill body (for example with the row-split recurrence). |
+| `HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM` | unset (F16 route sets `1`) | Multi-row FP32 indexer projections on the small-matrix F16 WMMA GEMM. |
+| `HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR` | profile-selected | Pairs dense-wide F16 projections that share an activation. |
+| `HIPENGINE_QWEN4_EXP_DENSE_WIDE_TAIL_VARIANT` | profile-selected | Names the dense-wide tail owner for padded fragments. |
+| `HIPENGINE_QWEN4_EXP_GR_DECODE_FUSED` | `1` | Three-launch hyper-connection read at one row (bit-identical); `0` restores the six-launch chain. |
+| `HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION` | `1` on production UD | DPP wave reduction in the hyper-connection read owners; `0` keeps the wave-scale owner. |
+| `HIPENGINE_QWEN4_EXP_GR_F16_DIRECT` | unset (F16 route sets `1`) | Hyper-connection read projections launched directly on F16 activations (bit-identical). |
+| `HIPENGINE_QWEN4_EXP_GR_F16_MIRROR` | `1` | Scale-only GR read also publishes half(mixed); `0` keeps per-projection conversions. |
+| `HIPENGINE_QWEN4_EXP_GR_K320_FULL_ROWS` | profile-selected | K320 full-row GR-up owner for rows > 256 in complete groups of four; `0` is the bisection opt-out. |
+| `HIPENGINE_QWEN4_EXP_GR_NORM_F16_PUBLISH` | profile-selected | GR norm publishes an F16 copy for the following projections. |
+| `HIPENGINE_QWEN4_EXP_GR_NORM_INJECT` | `1` | The scale-only norm launch also computes the inject logits (bit-identical); `0` keeps them separate. |
+| `HIPENGINE_QWEN4_EXP_GR_SCALE_ONLY` | `1` | Scale-only GR read for Q8_0 up projections; `0` is the rollback. |
+| `HIPENGINE_QWEN4_EXP_GR_STAGED` | unset | Selects the staged-F32 GR read variant (changes summation order; not selected by default). |
+| `HIPENGINE_QWEN4_EXP_GR_WIDE` | unset (F16 route sets `1`) | Hyper-connection up projection on the F16 wide route. |
+| `HIPENGINE_QWEN4_EXP_GR_WRITE_NORM` | `1` | Fused GR write plus next norm for chunks of at least 1,024 rows (bit-identical); `0` rolls back. |
+| `HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE` | profile-selected | Q8_0 dense-wide prefill route master switch. |
+| `HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS` | profile-selected | Comma-separated layers whose Q8_0 dense projections take the dense-wide prefill route. |
+| `HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_SHORT_ROWS` | profile-selected | Admits rows 9-256 to the dense-wide owner under the short-prompt gate. |
+| `HIPENGINE_QWEN4_EXP_Q8_DENSE_SPLIT_LAYERS` | profile-selected | Comma-separated layers on the split-operand dense WMMA route. |
+| `HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT` | profile-selected | Names the Q8_0 expert-down prefill owner. |
+| `HIPENGINE_QWEN4_EXP_Q8_DPP_CHECKED_FULL_ROWS` | `1` | Checked full-row DPP Q8_0 coltile leaf for its qualified shapes; `0` is the rollback. |
+| `HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION` | `1` | VALU DPP wave reduction in the Q8_0 coltile leaf; `0` restores the shuffle tree. |
+| `HIPENGINE_QWEN4_EXP_Q8_DPU_REDUCTION` | unset | Recorded in host-speed probe provenance only. |
+| `HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS` | unset | Comma-separated layers on the staged-F32 Q8_0 route (candidate). |
+| `HIPENGINE_QWEN4_EXP_T16_DOWN` | unset | T16 tile route for the Q5_1 expert down projection; a tile-cache miss falls through to the default chain. |
+| `HIPENGINE_QWEN4_EXP_T16_GATE_UP` | unset | T16 tile route for the expert gate/up pair; a miss falls back to the production chain. |
+| `HIPENGINE_QWEN4_EXP_T16_GATE_UP_MAX_LAYERS` | unset | Layer cap for `scripts/qwen4exp_t16_populate_tiles.py`. |
+| `HIPENGINE_QWEN4_EXP_T16_RESIDENT` | unset | Materializes T16 expert tiles at load (`docs/QWEN4EXP-T16-RESIDENCY.md`). |
+| `HIPENGINE_QWEN4_EXP_T16_RESIDENT_MAX_LAYERS` | unset | Layer cap for T16 residency. |
+| `HIPENGINE_QWEN4_EXP_T16_RESIDENT_SLOTS` | all three roles | Comma-separated roles (`expert_gate`, `expert_up`, `expert_down`) made T16-resident. |
+| `HIPENGINE_QWEN4_EXP_RISK_DIAGNOSTICS` | unset | Records iu8 risk/repair counts; synchronizes the stream, diagnostics only. |
+| `HIPENGINE_QWEN4_EXP_PREBINDER_CONFLICT` | unset | Policy for a caller-set route variable that conflicts with the profile binder. |
+| `HIPENGINE_QWEN4_EXP_MOE_BACKEND_CACHE` | retired | No longer read; tests assert that setting it does not disable the backend registration cache. |
+
+### GGUF and build selectors used by the Flash-Next routes
+
+| Variable | Default | Values / notes |
+| --- | --- | --- |
+| `HIPENGINE_GGUF_PACK8_GEMV_WIDE` | unset | Wide-thread pack8 GEMV grid for eligible projections. |
+| `HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT` | `1` | Dense-wide Q8_0 launches read a staged F16 activation; `0` for bisection. |
+| `HIPENGINE_GGUF_Q8_DENSE_WIDE_LONG_K` | profile-selected | Long-K dense-wide 128x128 WGP variant in place of the 256 parent. |
+| `HIPENGINE_GGUF_Q8_DENSE_WIDE_WGP_MAX_ROWS` | `1024` | Upper row bound of the WGP-mode dense-wide build (`0` disables it). |
+| `HIPENGINE_GGUF_SELECTED_Q4_GATE_UP_TILE8` | `1` | Tile8 ownership for the selected Q4_K T16 gate+up pair (byte-identical); `0` uses the 16-column owner. |
+| `HIPENGINE_KERNEL_CENSUS` | unset | Records launch shapes and roles (never pointers or data) for kernel census reports. |
+| `HIPENGINE_NO_MCUMODE_FAMILIES` | unset | Comma-separated kernel families built without CU mode; part of the build cache key. |
+
 ### Qwen4Exp decode and state
 
 | Variable | Default | Values / notes |
@@ -1054,6 +1122,25 @@ exported value with one of these names is normally overwritten by the script's
 own assignment before use; they are listed here only so every `${...}` read in
 the tree has a documented home.
 
+
+### Harness-local shell and script variables
+
+Read only by the named harness, usually set inline when it is invoked:
+`ALLOW_PIN_MISMATCH`, `FORK`, `FORK_PIN`, `UPSTREAM`, `UPSTREAM_PIN`, `WORK`,
+`HIPENGINE_WORKTREE`
+(Qwen3.8-27B ablation), `BLOCKING_ARM`, `ROCM_ROOT` (Qwen3.8-27B comparison),
+`COOL_TARGET`, `SCRATCH`, `TEMP`, `DE11_COMPILER_VERSION_FILE`,
+`DE11_COOL_TARGET`, `DE11_OUT`, `DE11_SCRATCH`, `DE11_TEMP` (DE11 paired
+decode-wall harness), `ENV_PREFIX`, `ROCM_LIBS` (F16 integration GPU wrapper),
+`KVARGS`, `NO_FALLBACK`, `PORT_BASE`, `PROFILE`, `RUNGS`, `WARMUPS` (long-context
+ladder), `COMMON`, `PROBE` (DE1 layer bisect and gate probes), `ROCMLIB` (A/B
+shell wrappers), `HIPCC` (router micro-benchmarks), `COMPILER_VERSION_FILE`
+(Qwen3.5 0.8B rerank scripts), `MODEL_ROOT`, `FIXTURE_DIR`, `ROOT`, `REPS`,
+`CHUNK` (script and test fixture locations and repeat counts), `DF2_FWD_BS`
+(DFlash2 drafter test), `QWEN4EXP_DUMP_GEOM`, `QWEN4EXP_DUMP_PATH`
+(full-attention launch probe), and `SECONDS` (the shell's own elapsed-time
+counter).
+
 ## Third-party environment variables
 
 These are honored from the surrounding process environment; hipEngine or its
@@ -1081,7 +1168,8 @@ harnesses read them but do not own them.
 These names appear in the tree but must not be confused with env knobs:
 
 - `-D` preprocessor macros inside kernel and micro-benchmark builds
-  (`HIPENGINE_LOCAL_SIZE_X`, `HIPENGINE_ROW_TILE`,
+  (`HIPENGINE_DENSE_WIDE_EXPORT`, `HIPENGINE_DENSE_WIDE_EXPORT_BF16`,
+  `HIPENGINE_QWEN4_GDN_DPP`, `HIPENGINE_QWEN4_GDN_MULTI_COLUMN`, `HIPENGINE_LOCAL_SIZE_X`, `HIPENGINE_ROW_TILE`,
   `HIPENGINE_FIXED_WORKGROUP_SIZE`, `HIPENGINE_BLOCK_SIZE`,
   `HIPENGINE_VOPD_MODE`, `HIPENGINE_VOPD_ACCUMS`, `HIPENGINE_MEM_MODE`,
   `HIPENGINE_MEM_PARAM`, `HIPENGINE_MEM_FIXED_BLOCK`, `HIPENGINE_DOT_MODE`,
@@ -1093,7 +1181,8 @@ These names appear in the tree but must not be confused with env knobs:
   `HIPENGINE_NATIVE_SPEC_CYCLE_ABI_VERSION`) are compile definitions, not
   process env vars.
 - String-prefix fragments used to construct names dynamically:
-  `HIPENGINE_GGUF_`, `HIPENGINE_GGUF_VERIFY_`, `HIPENGINE_QWEN35_BATCH_`,
+  `HIPENGINE`, `HIPENGINE_QWEN4_EXP_`, `HIPENGINE_QWEN4_EXP_GDN_`,
+  `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_`, `HIPENGINE_GGUF_PACK8_`, `HIPENGINE_GGUF_`, `HIPENGINE_GGUF_VERIFY_`, `HIPENGINE_QWEN35_BATCH_`,
   `HIPENGINE_QWEN35_BATCH_DECODE_`, `HIPENGINE_QWEN35_BATCH_SAMPLE_`,
   `HIPENGINE_NATIVE_SPEC_CYCLE_ABI_HEADER_SHA256_`.
 - Module-level Python constant *identifiers* whose values are the real variable
@@ -1121,7 +1210,11 @@ These names appear in the tree but must not be confused with env knobs:
   (`HIPENGINE_FOO`, `HIPENGINE_ZZZ`, `HIPENGINE_AAA`, `HIPENGINE_EXAMPLE`,
   `HIPENGINE_SOMETHING_ELSE`, `HIPENGINE_STALE_FLAG`, `HIPENGINE_ONE`,
   `HIPENGINE_TWO`, `HIPENGINE_PREBUILD`, `HIPENGINE_DUP`, `HIPENGINE_KEY`,
-  `HIPENGINE_ROUTE`, `PROFILE_ISOLATION_TEST_UNRELATED`).
+  `HIPENGINE_ROUTE`, `PROFILE_ISOLATION_TEST_UNRELATED`, `HIPENGINE_UNRELATED`,
+  `HIPENGINE_TEST_RAW_ENV_MEMO`, `HIPENGINE_ACTIVE_TASK_CONTENT__` (a chat
+  template marker), `HIPENGINE_ENV` (a conftest identifier fragment), and the
+  diagnostic flag constants `HIPENGINE_DIAGNOSTIC_MMQ_SHAPE_OFF` /
+  `HIPENGINE_DIAGNOSTIC_Q8_DOWN_LAYER_OFF` that the Q8 localize harness sets).
 - Removed or never-shipped flags that tests assert are absent from the runtime
   source: `HIPENGINE_GGUF_AR_STREAM_PREFILL`,
   `HIPENGINE_GGUF_MTP_SERVER_ROLLING_SLOTS`,

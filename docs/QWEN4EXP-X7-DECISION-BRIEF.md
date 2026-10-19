@@ -1,3 +1,7 @@
+---
+status: closed
+owns: The resolved X-7 decision on the prefill_last scope and the compensated-T16 candidates.
+---
 # The X-7 Decision Brief: the `prefill_last` scope and the compensated-T16 candidates
 
 Status: **resolved 2026-10-13**. The owner admitted the reduced-precision Qwen4Exp composition to the opt-in `fast` profile; `production` keeps its calibrated envelope and remains the default. The compensated-T16 candidates below remain reference evidence and are not selected by either profile because their `prefill_last` mean-KL result exceeds the binding production floor.

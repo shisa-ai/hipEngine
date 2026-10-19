@@ -1,3 +1,7 @@
+---
+status: closed
+owns: The predeclared 2026-09-16 accuracy recalibration proposal, frozen before its measurements.
+---
 # Accuracy recalibration proposal — predeclared 2026-09-16
 
 Status: **proposal for user decision; not a threshold change and not an

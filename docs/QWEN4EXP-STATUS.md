@@ -1,3 +1,7 @@
+---
+status: current
+owns: Current Qwen3.8-Flash-Next optimization status and headline measurements.
+---
 # Qwen3.8-Flash-Next (Qwen4Exp) Optimization Status
 
 **2026-10-18 MTP economics re-measured:** on gfx1151/zbook the full category

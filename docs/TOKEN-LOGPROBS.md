@@ -1,3 +1,7 @@
+---
+status: current
+owns: How Flash-Next token logprobs record tokenizer bytes and align them with text.
+---
 # Token logprob bytes and text alignment
 
 Flash-Next text autoregressive generation records the original tokenizer bytes

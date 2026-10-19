@@ -1,3 +1,7 @@
+---
+status: normative
+owns: The protocol every cross-engine comparison on this host follows: fixtures, settings, and what a comparable row must record.
+---
 # Cross-Engine Comparison Protocol
 
 Status: 2026-10-12, active campaign. Normative for every cross-engine

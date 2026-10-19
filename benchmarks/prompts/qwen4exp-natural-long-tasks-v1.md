@@ -11,7 +11,7 @@ was committed. Passing these tasks alone does not qualify a candidate.
 
 Measured with `Qwen4ExpGGUFTokenizer.from_gguf_info(GGUFReader(file).info)` and
 `scripts.gguf_mtp_bench.build_chat_prompt`, using
-`/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf`:
+`~/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf`:
 
 | ID | Category | Chat-formatted tokens |
 |---|---|---:|

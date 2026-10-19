@@ -1,3 +1,7 @@
+---
+status: current
+owns: The live Qwen3.8-Flash-Next optimization ledger: open rows, measured gains, and rejected candidates.
+---
 # Qwen3.8-Flash-Next (Qwen4Exp) optimization ledger
 
 **Prefill checkpoint, 2026-10-06:** structural substitutions continue to produce
@@ -192,7 +196,7 @@ single family is the answer and no single port closes it.
 
 **Measure every hipEngine row here with `uv run`.** `python3 scripts/<harness>.py`
 resolves `import hipengine` through the conda editable `.pth`, which points at
-`/home/lhl/hipEngine-main` - a separate clone, 209 files different, with a
+`~/hipEngine-main` - a separate clone, 209 files different, with a
 different profile binding set. Same command, same case, one process per arm:
 **0.12% within-arm drift and -6.3% prefill / -8.5% decode between the trees.**
 `uv run` uses this tree's `.venv` and is correct. The `.pth` dates from

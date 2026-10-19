@@ -1,3 +1,7 @@
+---
+status: closed
+owns: The 2026-10-13 Qwen4Exp cross-engine gap investigation plan for the UD-Q4_K_XL GGUF on gfx1151.
+---
 # Qwen4Exp cross-engine gap matrix
 
 Status: 2026-10-13. Scope: the same `Qwen3.8-Flash-Next` `UD-Q4_K_XL`

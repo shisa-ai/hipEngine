@@ -1,3 +1,7 @@
+---
+status: current
+owns: The Flash-Next production-serving campaign checklist and the evidence for each requirement.
+---
 # Flash-Next production-serving campaign
 
 Status: **in progress; no production-serving completion claim**.

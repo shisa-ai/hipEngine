@@ -1,3 +1,7 @@
+---
+status: closed
+owns: Evidence and direction from the 2026-10-13 Qwen4Exp cross-engine gap campaign.
+---
 # Qwen4Exp cross-engine gap campaign report
 
 Status: 2026-10-13. This report records the cross-engine evidence and the

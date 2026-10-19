@@ -1,3 +1,7 @@
+---
+status: current
+owns: The Qwen3.8 Flash-Next HTTP surface coverage and the evidence each served feature rests on.
+---
 # Qwen3.8 Flash-Next HTTP coverage
 
 **Updated: 2026-10-18. The served surface is qualified; the grid below is history.**

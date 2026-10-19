@@ -1,3 +1,7 @@
+---
+status: closed
+owns: Dated record of the September 13-15 2026 Flash-Next Strix journey campaign.
+---
 # Flash-Next Strix Journey Campaign
 
 > Current state: [`QWEN4EXP-STATUS.md`](QWEN4EXP-STATUS.md). This file is a dated record of the September 13-15 journey and is not updated to reflect new state.

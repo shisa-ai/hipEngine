@@ -1,3 +1,7 @@
+---
+status: current
+owns: The Qwen4Exp T16 tile-residency design: which tiles materialize at load and which raw weights they replace.
+---
 # Qwen4Exp T16 Tile Residency — Design
 
 Status: design (2026-10-09); implementation not started. This document is the
