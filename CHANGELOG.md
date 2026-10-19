@@ -6,6 +6,80 @@ This changelog is for package/API releases. Performance rollup history remains i
 [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md), with detailed benchmark
 evidence under [`benchmarks/results/`](benchmarks/results/).
 
+## v0.8.0 - 2026-10-19
+
+Adds Gemma 4 text inference and speculative decoding, makes shared-batch
+Qwen3.8 Flash-Next serving the default, and repairs request isolation,
+streaming, and GPU kernel paths. APIs remain alpha; support depends on the
+model, backend, storage layout, and request shape.
+
+### Added
+
+- **Gemma 4 26B-A4B text inference.** GGUF models run through `LLM.generate()`
+  and `hipengine serve` on gfx1100 and gfx1151, with the embedded chat template,
+  separate reasoning content, greedy or sampled generation, and BF16 KV.
+  An external assistant head supplies multi-token prediction (MTP), including
+  sampled requests and resident batching of up to four requests. See
+  [Gemma 4 usage](docs/model-cards/MODEL-GEMMA4.md) and the
+  [assistant-head reference](docs/reference/GEMMA4-ASSISTANT-MTP.md).
+- **Decode-path visibility.** `GET /v1/hipengine/decode` reports the physical
+  decode batch and lifecycle counters. Capabilities expose the active route,
+  and completed Flash-Next responses report their own decode-width histogram
+  rather than treating HTTP queue width as device concurrency.
+
+### Changed
+
+- **Flash-Next uses shared-batch serving by default.** Concurrent requests share
+  a paged KV block pool and a decode batch, with eight active requests by
+  default. Prompt chunks rotate across prefilling requests while active
+  generation continues, so a short arrival does not wait for a long prompt's
+  entire prefill. See [Flash-Next concurrency](docs/API.md#flash-next-concurrency).
+- **Flash-Next discovers its MTP head beside the target.** The server searches
+  neighbouring model directories for a compatible head; `--draft-model` pins
+  one explicitly. Automatic MTP runs a lone compatible greedy or
+  processed-argmax request and returns it to the shared batch when another
+  request arrives. Explicit `speculative_mtp: true` keeps MTP selected;
+  sampled Flash-Next requests require that explicit selection.
+- **Model-specific execution updates.** Flash-Next prefill and decode use the
+  revised production kernel paths, and shared batch decode can replay graph
+  segments. Gemma 4 gains grouped expert prefill and revised attention and
+  verification paths. YuE2 executes both classifier-free guidance branches
+  together and splits decode attention across the KV range. Measurements and
+  comparison scope are in [the benchmark report](benchmarks/README.md),
+  including the refreshed Flash-Next gfx1151 topline.
+
+### Fixed
+
+- Concurrent MTP request failures no longer kill the resident engine. Request
+  state, cancellation, failed-step recovery, and speculative rollback retain
+  their own ownership across batching.
+- Flash-Next streaming preserves UTF-8 and generated whitespace, filters stop
+  strings before publication, reports committed MTP events and logprobs, and
+  keeps chat-template markers out of visible text. Multimodal answers follow
+  the text response contract. Buffered SSE flushing is no longer reported as
+  model decode throughput.
+- Resident preparation refusals return structured HTTP 503 errors with the
+  actual capacity or configuration remedy. Stop diagnostics identify one
+  cause and the matched stop string.
+- GPU fixes cover overlapping DMS append compaction, a shared-memory race in
+  segmented GDN prefill, and Q4/Q5 packed-layout collisions introduced during
+  integration. Gemma 4 strict execution no longer selects the production-only
+  wide-thread expert path.
+
+### Known Limitations
+
+- Gemma 4 support is text-only and uses BF16 KV; image/audio input and tool-call
+  parsing are not implemented. See the server API and assistant-head reference
+  for request-control support.
+- Flash-Next explicit MTP runs on a per-request staging runner, not in the
+  shared autoregressive decode batch. A request beyond the batch slot's
+  65,536-position bound also decodes on its staging runner. Neither default
+  slot count nor batch capacity establishes a new long-context quality claim.
+- Generic draft-model HTTP providers remain disabled until they implement
+  bounded service-owned submission. This does not disable the model-owned
+  Gemma, Qwen, or Flash-Next MTP routes.
+- APIs and supported combinations may change before 1.0.
+
 ## v0.7.1 - 2026-10-14
 
 Patch release fixing long-song YuE2 generation and the default song-generation
