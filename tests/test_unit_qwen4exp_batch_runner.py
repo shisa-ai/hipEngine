@@ -236,6 +236,7 @@ def _fake_runner(*, slots: int = 3) -> Qwen4ExpGGUFBatchRunner:
     runner._positions = np.zeros(slots, dtype=np.int64)
     runner._ple_hash_states = {}
     runner._ple_layers = frozenset(config.ple_layers)
+    runner._graphs = None
     runner.gdn_bindings = {
         layer: _fake_binding(layer, kind)
         for layer, kind in enumerate(config.layer_types)

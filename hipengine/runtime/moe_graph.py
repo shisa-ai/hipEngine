@@ -159,6 +159,12 @@ class MoeGraphCache:
             # recreate so one bad layer never poisons the others.
             self._recover_capture_stream()
             return self._reject(key, graph, None)
+        finally:
+            # A unit that is not capturable (for example a synchronous host
+            # readback) leaves HIP's last error set to the capture failure.
+            # Launch wrappers that read it back would then fail the next eager
+            # kernel, so clear it whether or not the capture raised.
+            self._clear_last_error()
 
         # 2) Replay once and validate bit-exact against the eager reference.
         # Some exact layer units reuse their input scratch for the next layer's
@@ -218,6 +224,12 @@ class MoeGraphCache:
         except Exception:
             self._capture_stream = 0
             self._enabled = False
+
+    def _clear_last_error(self) -> None:
+        library = getattr(self._runtime, "library", None)
+        clear = getattr(library, "hipGetLastError", None)
+        if callable(clear):
+            clear()
 
     def _snapshot(self, out_ptr: int, nbytes: int) -> np.ndarray:
         buf = np.empty(int(nbytes), dtype=np.uint8)

@@ -137,6 +137,13 @@ class Qwen4ExpBatchQsaSelectionScratch:
     closed: bool = False
     closing: bool = False
     _pending_free: list[DeviceBuffer] = field(default_factory=list)
+    # What the device buffers hold. Every row starts as ``arange(stride)``,
+    # which is a dense row's selection for any context (the kernel reads only
+    # ``positions[r, :counts[r]]``), so a dense row is never re-uploaded and a
+    # step whose counts match the last upload uploads nothing. A row a sparse
+    # selection overwrote is restored to the arange when it is dense again.
+    row_is_arange: np.ndarray | None = None
+    device_counts: np.ndarray | None = None
 
     @classmethod
     def allocate(
@@ -161,13 +168,25 @@ class Qwen4ExpBatchQsaSelectionScratch:
             index_heads=parsed_heads,
             index_dim=parsed_dim,
         )
-        positions_host = np.zeros((parsed_rows, parsed_stride), dtype=np.int64)
+        positions_host = np.ascontiguousarray(
+            np.broadcast_to(
+                np.arange(parsed_stride, dtype=np.int64), (parsed_rows, parsed_stride)
+            )
+        )
         counts_host = np.zeros(parsed_rows, dtype=np.int32)
         active_runtime = runtime or get_hip_runtime()
         buffers: list[DeviceBuffer] = []
         try:
             for name in ("positions", "counts", "queries"):
                 buffers.append(malloc(sizes[name], runtime=active_runtime))
+            copy_host_to_device(
+                buffers[0], host_array_ptr(positions_host), positions_host.nbytes,
+                runtime=active_runtime,
+            )
+            copy_host_to_device(
+                buffers[1], host_array_ptr(counts_host), counts_host.nbytes,
+                runtime=active_runtime,
+            )
         except BaseException:
             _free_pending(buffers, active_runtime)
             raise
@@ -183,6 +202,8 @@ class Qwen4ExpBatchQsaSelectionScratch:
             index_dim=parsed_dim,
             runtime=active_runtime,
             _pending_free=buffers,
+            row_is_arange=np.ones(parsed_rows, dtype=bool),
+            device_counts=counts_host.copy(),
         )
 
     def close(self) -> None:
@@ -439,6 +460,101 @@ def run_qwen4_exp_batch_qsa_mixed_token_mixer(
     ``append_active`` sees every row again.
     """
 
+    plan = validate_qwen4_exp_batch_qsa_mixed_mixer(
+        weights,
+        attention_state=attention_state,
+        index_state=index_state,
+        selection=selection,
+        scratch=scratch,
+        rows=rows,
+        hidden=hidden,
+        query_heads=query_heads,
+        kv_heads=kv_heads,
+        head_dim=head_dim,
+        rotary_dim=rotary_dim,
+        theta=theta,
+        index_heads=index_heads,
+        index_dim=index_dim,
+        index_rotary_dim=index_rotary_dim,
+        rope_positions_ptr=rope_positions_ptr,
+        attention_context_limit=attention_context_limit,
+        eps=eps,
+        runtime=runtime,
+    )
+    run_qwen4_exp_batch_qsa_input_projections(
+        plan, mixed_ptr, weights, scratch=scratch, hidden=hidden,
+        index_dim=index_dim, stream=stream,
+    )
+    run_qwen4_exp_batch_qsa_attention(
+        plan,
+        mixed_ptr,
+        weights,
+        attention_state=attention_state,
+        index_state=index_state,
+        selection=selection,
+        scratch=scratch,
+        hidden=hidden,
+        query_heads=query_heads,
+        kv_heads=kv_heads,
+        head_dim=head_dim,
+        rotary_dim=rotary_dim,
+        theta=theta,
+        index_heads=index_heads,
+        index_dim=index_dim,
+        index_rotary_dim=index_rotary_dim,
+        rope_positions_ptr=rope_positions_ptr,
+        eps=eps,
+        stream=stream,
+    )
+    return run_qwen4_exp_batch_qsa_output_projection(
+        plan, weights, scratch=scratch, hidden=hidden, stream=stream
+    )
+
+
+@dataclass(frozen=True)
+class Qwen4ExpBatchQsaMixerPlan:
+    """One admitted mixed QSA mixer call, split into its stages.
+
+    The input and output projections depend only on ``rows`` and fixed scratch
+    pointers, so the batch runner may graph-capture them. The attention stage
+    appends index keys, writes KV, stages host selections, and reads per-row
+    positions, so it always runs eagerly.
+    """
+
+    runtime: HipRuntime
+    rows: int
+    q_width: int
+    kv_width: int
+    dense_rows: tuple[int, ...]
+    sparse_rows: tuple[int, ...]
+    positions_ptr: int
+
+
+def validate_qwen4_exp_batch_qsa_mixed_mixer(
+    weights: Qwen4ExpQSAMixerDeviceWeights,
+    *,
+    attention_state: Qwen4ExpBatchAttentionState,
+    index_state: Qwen4ExpBatchQsaIndexState,
+    selection: Qwen4ExpBatchQsaSelectionScratch,
+    scratch: Qwen4ExpQSAScratch,
+    rows: int,
+    hidden: int,
+    query_heads: int,
+    kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    theta: float,
+    index_heads: int,
+    index_dim: int,
+    index_rotary_dim: int,
+    rope_positions_ptr: int | None = None,
+    attention_context_limit: int | None = None,
+    eps: float = 1e-6,
+    runtime: HipRuntime | None = None,
+) -> Qwen4ExpBatchQsaMixerPlan:
+    """Admit one mixed mixer call before any dispatch touches the state."""
+
+
     active_runtime, count, q_width, kv_width, context_limit = _validate(
         weights,
         attention_state=attention_state,
@@ -476,6 +592,26 @@ def run_qwen4_exp_batch_qsa_mixed_token_mixer(
         active.position.ptr if rope_positions_ptr is None else int(rope_positions_ptr)
     )
 
+    return Qwen4ExpBatchQsaMixerPlan(
+        active_runtime, count, q_width, kv_width, dense_rows, sparse_rows,
+        positions_ptr,
+    )
+
+
+def run_qwen4_exp_batch_qsa_input_projections(
+    plan: Qwen4ExpBatchQsaMixerPlan,
+    mixed_ptr: int,
+    weights: Qwen4ExpQSAMixerDeviceWeights,
+    *,
+    scratch: Qwen4ExpQSAScratch,
+    hidden: int,
+    index_dim: int,
+    stream: int = 0,
+) -> None:
+    """Project Q/K/V and the raw index key for every row (stateless)."""
+
+    active_runtime, count = plan.runtime, plan.rows
+    q_width, kv_width = plan.q_width, plan.kv_width
     for slot, output, out_features in (
         ("attn_q", scratch.q_projected, q_width * 2),
         ("attn_k", scratch.key_projected, kv_width),
@@ -505,6 +641,38 @@ def run_qwen4_exp_batch_qsa_mixed_token_mixer(
         stream=stream,
         runtime=active_runtime,
     )
+
+
+def run_qwen4_exp_batch_qsa_attention(
+    plan: Qwen4ExpBatchQsaMixerPlan,
+    mixed_ptr: int,
+    weights: Qwen4ExpQSAMixerDeviceWeights,
+    *,
+    attention_state: Qwen4ExpBatchAttentionState,
+    index_state: Qwen4ExpBatchQsaIndexState,
+    selection: Qwen4ExpBatchQsaSelectionScratch,
+    scratch: Qwen4ExpQSAScratch,
+    hidden: int,
+    query_heads: int,
+    kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    theta: float,
+    index_heads: int,
+    index_dim: int,
+    index_rotary_dim: int,
+    rope_positions_ptr: int | None = None,
+    eps: float = 1e-6,
+    stream: int = 0,
+) -> None:
+    """Append index keys, write KV, select, attend, and gate (stateful)."""
+
+    active_runtime, count = plan.runtime, plan.rows
+    q_width = plan.q_width
+    dense_rows, sparse_rows = plan.dense_rows, plan.sparse_rows
+    positions_ptr = plan.positions_ptr
+    active = attention_state.active
+    assert active is not None  # validate admitted only a prepared state
     # Every row, every step: a request that is dense now still needs the keys it
     # saw while it was dense once it crosses the bound.
     index_state.append_active(scratch.index_k_projected.ptr, stream=stream)
@@ -642,6 +810,19 @@ def run_qwen4_exp_batch_qsa_mixed_token_mixer(
         stream=stream,
         runtime=active_runtime,
     )
+
+
+def run_qwen4_exp_batch_qsa_output_projection(
+    plan: Qwen4ExpBatchQsaMixerPlan,
+    weights: Qwen4ExpQSAMixerDeviceWeights,
+    *,
+    scratch: Qwen4ExpQSAScratch,
+    hidden: int,
+    stream: int = 0,
+) -> DeviceBuffer:
+    """Project the gated attention context back to ``hidden`` (stateless)."""
+
+    active_runtime, count, q_width = plan.runtime, plan.rows, plan.q_width
     launch_gguf_linear(
         weights.projections["attn_output"],
         scratch.gated.ptr,
@@ -667,16 +848,22 @@ def _stage_selection(
     sparse_positions: np.ndarray | None,
     runtime: HipRuntime,
 ) -> None:
-    """Fill and upload one ``(positions, counts)`` row selection per row.
+    """Publish one ``(positions, counts)`` row selection per row.
 
     Dense rows get every visible position, so the same rows kernel attends them
-    as a variable-length selection with no separate code path. The host arrays
-    are the scratch's own mirrors, so a step allocates nothing.
+    as a variable-length selection with no separate code path. A dense row's
+    device positions are already ``arange(stride)``, so only its count changes;
+    the counts upload is skipped when the device already holds them, which is
+    every QSA layer after the first in one step. Sparse rows upload their own
+    positions, and a row they overwrote is restored to the arange when it next
+    runs dense.
     """
 
-    selection.positions_host.fill(0)
-    selection.counts_host.fill(0)
+    counts = selection.counts_host
+    counts.fill(0)
     sparse = set(sparse_rows)
+    row_bytes = selection.stride * np.dtype(np.int64).itemsize
+    dirty: list[int] = []
     for row in range(rows):
         if row in sparse:
             continue
@@ -688,8 +875,11 @@ def _stage_selection(
                 f"row {row} dense selection of {context} positions does not fit the "
                 f"selection stride {selection.stride}"
             )
-        selection.counts_host[row] = context
-        selection.positions_host[row, :context] = np.arange(context, dtype=np.int64)
+        counts[row] = context
+        if not selection.row_is_arange[row]:
+            selection.positions_host[row] = np.arange(selection.stride, dtype=np.int64)
+            selection.row_is_arange[row] = True
+            dirty.append(row)
     for subset_row, row in enumerate(sparse_rows):
         assert sparse_counts is not None
         count = int(sparse_counts[subset_row])
@@ -699,20 +889,25 @@ def _stage_selection(
                 f"{selection.stride} cannot hold"
             )
         assert sparse_positions is not None
-        selection.counts_host[row] = count
+        counts[row] = count
         selection.positions_host[row, :count] = sparse_positions[subset_row, :count]
-    copy_host_to_device(
-        selection.positions,
-        host_array_ptr(selection.positions_host),
-        selection.positions.nbytes,
-        runtime=runtime,
-    )
-    copy_host_to_device(
-        selection.counts,
-        host_array_ptr(selection.counts_host),
-        selection.counts.nbytes,
-        runtime=runtime,
-    )
+        selection.row_is_arange[row] = False
+        dirty.append(row)
+    for row in dirty:
+        runtime.memcpy(
+            selection.positions.ptr + row * row_bytes,
+            host_array_ptr(selection.positions_host[row]),
+            row_bytes,
+            MemcpyKind.HOST_TO_DEVICE,
+        )
+    if not np.array_equal(counts, selection.device_counts):
+        copy_host_to_device(
+            selection.counts,
+            host_array_ptr(counts),
+            selection.counts.nbytes,
+            runtime=runtime,
+        )
+        selection.device_counts[:] = counts
 
 
 def _validate_index(

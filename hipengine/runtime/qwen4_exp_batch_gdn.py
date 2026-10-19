@@ -291,16 +291,19 @@ class Qwen4ExpBatchGdnState:
         indices = qwen4_exp_gdn_indexed_state_indices(
             slots, rows=len(slots), state_slots=self.state_slots
         )
-        try:
-            copy_host_to_device(
-                self.indices,
-                host_array_ptr(indices),
-                indices.nbytes,
-                runtime=self.runtime,
-            )
-        except BaseException:
-            self.active = None
-            raise
+        # ``indices_host`` mirrors the device vector, so an unchanged row set
+        # (every decode step between admissions) needs no upload.
+        if not np.array_equal(self.indices_host[: indices.size], indices):
+            try:
+                copy_host_to_device(
+                    self.indices,
+                    host_array_ptr(indices),
+                    indices.nbytes,
+                    runtime=self.runtime,
+                )
+            except BaseException:
+                self.active = None
+                raise
         self.indices_host[: indices.size] = indices
         device = Device("hip", 0)
         active = Qwen4ExpBatchGdnActiveRows(
@@ -364,6 +367,168 @@ class Qwen4ExpBatchGdnState:
         return parsed
 
 
+@dataclass(frozen=True)
+class Qwen4ExpBatchGdnMixerPlan:
+    """One admitted batch GDN mixer call, split into its three stages.
+
+    ``validate_qwen4_exp_batch_gdn_mixer`` builds it once per layer step. The
+    input and output projections depend only on ``rows`` and fixed scratch
+    pointers, so the batch runner may graph-capture them; the indexed conv and
+    recurrence update request state in place and always run eagerly.
+    """
+
+    runtime: HipRuntime
+    rows: int
+    qkv_width: int
+    core_width: int
+    indices_ptr: int
+
+
+def validate_qwen4_exp_batch_gdn_mixer(
+    weights: Mapping[str, GGUFDeviceWeight],
+    *,
+    state: Qwen4ExpBatchGdnState,
+    scratch: Qwen4ExpGDNScratch,
+    rows: int,
+    hidden: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_dim: int,
+    conv_kernel: int,
+    conv_weight_ptr: int,
+    dt_bias_ptr: int,
+    a_ptr: int,
+    norm_weight_ptr: int,
+    runtime: HipRuntime | None = None,
+) -> Qwen4ExpBatchGdnMixerPlan:
+    """Admit one batch mixer call before any dispatch touches the state."""
+
+    active_runtime, count, qkv_width, core_width, indices_ptr = _validate(
+        weights,
+        state=state,
+        scratch=scratch,
+        rows=rows,
+        hidden=hidden,
+        num_k_heads=num_k_heads,
+        num_v_heads=num_v_heads,
+        head_dim=head_dim,
+        conv_kernel=conv_kernel,
+        conv_weight_ptr=conv_weight_ptr,
+        dt_bias_ptr=dt_bias_ptr,
+        a_ptr=a_ptr,
+        norm_weight_ptr=norm_weight_ptr,
+        runtime=runtime,
+    )
+    return Qwen4ExpBatchGdnMixerPlan(
+        active_runtime, count, qkv_width, core_width, indices_ptr
+    )
+
+
+def run_qwen4_exp_batch_gdn_input_projections(
+    plan: Qwen4ExpBatchGdnMixerPlan,
+    mixed_ptr: int,
+    weights: Mapping[str, GGUFDeviceWeight],
+    *,
+    state: Qwen4ExpBatchGdnState,
+    scratch: Qwen4ExpGDNScratch,
+    hidden: int,
+    stream: int = 0,
+) -> None:
+    """Project ``qkv``/``gate``/``alpha``/``beta`` for every row (stateless)."""
+
+    for slot, output, out_features in (
+        ("attn_qkv", scratch.qkv, plan.qkv_width),
+        ("attn_gate", scratch.gate, plan.core_width),
+        ("ssm_alpha", scratch.alpha, state.num_v_heads),
+        ("ssm_beta", scratch.beta, state.num_v_heads),
+    ):
+        launch_gguf_linear(
+            weights[slot],
+            mixed_ptr,
+            output.ptr,
+            plan.rows,
+            hidden,
+            out_features,
+            activation_dtype=GGUF_ACTIVATION_F32,
+            output_dtype=GGUF_OUTPUT_F32,
+            stream=stream,
+            runtime=plan.runtime,
+        )
+
+
+def run_qwen4_exp_batch_gdn_recurrence(
+    plan: Qwen4ExpBatchGdnMixerPlan,
+    *,
+    state: Qwen4ExpBatchGdnState,
+    scratch: Qwen4ExpGDNScratch,
+    conv_weight_ptr: int,
+    dt_bias_ptr: int,
+    a_ptr: int,
+    norm_weight_ptr: int,
+    stream: int = 0,
+) -> None:
+    """Advance each row's conv and recurrent state slot in place."""
+
+    qwen4_exp_linear_attn_conv_decode_indexed_f32(
+        scratch.qkv.ptr,
+        state.conv_state.ptr,
+        conv_weight_ptr,
+        scratch.conv.ptr,
+        plan.indices_ptr,
+        rows=plan.rows,
+        state_slots=state.state_slots,
+        channels=plan.qkv_width,
+        kernel_size=state.conv_kernel,
+        stream=stream,
+        runtime=plan.runtime,
+    )
+    qwen4_exp_gdn_decode_rowsplit_indexed_f32(
+        scratch.conv.ptr,
+        scratch.gate.ptr,
+        scratch.alpha.ptr,
+        scratch.beta.ptr,
+        dt_bias_ptr,
+        a_ptr,
+        norm_weight_ptr,
+        state.recurrent_state.ptr,
+        scratch.core.ptr,
+        plan.indices_ptr,
+        rows=plan.rows,
+        state_slots=state.state_slots,
+        num_k_heads=state.num_k_heads,
+        num_v_heads=state.num_v_heads,
+        head_k_dim=state.head_dim,
+        head_v_dim=state.head_dim,
+        stream=stream,
+        runtime=plan.runtime,
+    )
+
+
+def run_qwen4_exp_batch_gdn_output_projection(
+    plan: Qwen4ExpBatchGdnMixerPlan,
+    weights: Mapping[str, GGUFDeviceWeight],
+    *,
+    scratch: Qwen4ExpGDNScratch,
+    hidden: int,
+    stream: int = 0,
+) -> DeviceBuffer:
+    """Project the gated recurrence output back to ``hidden`` (stateless)."""
+
+    launch_gguf_linear(
+        weights["ssm_out"],
+        scratch.core.ptr,
+        scratch.output.ptr,
+        plan.rows,
+        plan.core_width,
+        hidden,
+        activation_dtype=GGUF_ACTIVATION_F32,
+        output_dtype=GGUF_OUTPUT_F32,
+        stream=stream,
+        runtime=plan.runtime,
+    )
+    return scratch.output
+
+
 def run_qwen4_exp_batch_gdn_token_mixer(
     mixed_ptr: int,
     weights: Mapping[str, GGUFDeviceWeight],
@@ -392,7 +557,7 @@ def run_qwen4_exp_batch_gdn_token_mixer(
     owned by ``scratch``.
     """
 
-    active_runtime, count, qkv_width, core_width, indices_ptr = _validate(
+    plan = validate_qwen4_exp_batch_gdn_mixer(
         weights,
         state=state,
         scratch=scratch,
@@ -408,71 +573,23 @@ def run_qwen4_exp_batch_gdn_token_mixer(
         norm_weight_ptr=norm_weight_ptr,
         runtime=runtime,
     )
-
-    for slot, output, out_features in (
-        ("attn_qkv", scratch.qkv, qkv_width),
-        ("attn_gate", scratch.gate, core_width),
-        ("ssm_alpha", scratch.alpha, state.num_v_heads),
-        ("ssm_beta", scratch.beta, state.num_v_heads),
-    ):
-        launch_gguf_linear(
-            weights[slot],
-            mixed_ptr,
-            output.ptr,
-            count,
-            hidden,
-            out_features,
-            activation_dtype=GGUF_ACTIVATION_F32,
-            output_dtype=GGUF_OUTPUT_F32,
-            stream=stream,
-            runtime=active_runtime,
-        )
-    qwen4_exp_linear_attn_conv_decode_indexed_f32(
-        scratch.qkv.ptr,
-        state.conv_state.ptr,
-        conv_weight_ptr,
-        scratch.conv.ptr,
-        indices_ptr,
-        rows=count,
-        state_slots=state.state_slots,
-        channels=qkv_width,
-        kernel_size=state.conv_kernel,
+    run_qwen4_exp_batch_gdn_input_projections(
+        plan, mixed_ptr, weights, state=state, scratch=scratch, hidden=hidden,
         stream=stream,
-        runtime=active_runtime,
     )
-    qwen4_exp_gdn_decode_rowsplit_indexed_f32(
-        scratch.conv.ptr,
-        scratch.gate.ptr,
-        scratch.alpha.ptr,
-        scratch.beta.ptr,
-        dt_bias_ptr,
-        a_ptr,
-        norm_weight_ptr,
-        state.recurrent_state.ptr,
-        scratch.core.ptr,
-        indices_ptr,
-        rows=count,
-        state_slots=state.state_slots,
-        num_k_heads=state.num_k_heads,
-        num_v_heads=state.num_v_heads,
-        head_k_dim=state.head_dim,
-        head_v_dim=state.head_dim,
+    run_qwen4_exp_batch_gdn_recurrence(
+        plan,
+        state=state,
+        scratch=scratch,
+        conv_weight_ptr=conv_weight_ptr,
+        dt_bias_ptr=dt_bias_ptr,
+        a_ptr=a_ptr,
+        norm_weight_ptr=norm_weight_ptr,
         stream=stream,
-        runtime=active_runtime,
     )
-    launch_gguf_linear(
-        weights["ssm_out"],
-        scratch.core.ptr,
-        scratch.output.ptr,
-        count,
-        core_width,
-        hidden,
-        activation_dtype=GGUF_ACTIVATION_F32,
-        output_dtype=GGUF_OUTPUT_F32,
-        stream=stream,
-        runtime=active_runtime,
+    return run_qwen4_exp_batch_gdn_output_projection(
+        plan, weights, scratch=scratch, hidden=hidden, stream=stream
     )
-    return scratch.output
 
 
 def _validate(

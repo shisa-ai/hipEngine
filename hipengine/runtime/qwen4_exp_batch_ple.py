@@ -370,7 +370,10 @@ def _resolve_indexed_conv(
 
     key = batch_ple_indexed_conv_key(str(weights["ple_key"].backend))
     backend = key.backend
-    load_backend_kernel_package(backend)
+    # Refreshing the backend package re-walks every registration (milliseconds
+    # per decode step), so do it only when the key is actually missing.
+    if not is_registered(key):
+        load_backend_kernel_package(backend)
     if not is_registered(key):
         raise RuntimeError(
             "the request-indexed PLE Conv decode "

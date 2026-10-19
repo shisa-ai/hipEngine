@@ -361,13 +361,20 @@ def _c1(model, *, max_positions: int = fixture.MAX_POSITIONS):
     )
 
 
-def _batch(model, *, slots: int = 3, max_positions: int = fixture.MAX_POSITIONS):
+def _batch(
+    model,
+    *,
+    slots: int = 3,
+    max_positions: int = fixture.MAX_POSITIONS,
+    graph_segments: bool = True,
+):
     return Qwen4ExpGGUFBatchRunner(
         model.resident,
         state_slots=slots,
         max_positions=max_positions,
         backend=model.backend,
         runtime=model.runtime,
+        graph_segments=graph_segments,
     )
 
 
@@ -1116,3 +1123,93 @@ def test_two_qsa_layers_keep_separate_caches_and_match_c1(two_qsa_model) -> None
         for reference in references:
             reference.close()
         batch.close()
+
+
+def test_graph_segments_replay_bit_exact_against_eager(model) -> None:
+    """Captured layer segments reproduce the eager step on every later step.
+
+    Capture validation compares one replay against one eager run at the capture
+    step. A launch argument that varied per step and was baked into a graph
+    would only diverge afterwards, so this drives both owners through a schedule
+    that changes width and row order and compares every step's logits and the
+    slots' KV bytes.
+    """
+
+    graphed = _batch(model)
+    eager = _batch(model, graph_segments=False)
+    schedule = (
+        ((0,), (5,)),
+        ((0, 1), (9, 3)),
+        ((2, 0, 1), (4, 17, 8)),
+        ((1,), (30,)),
+        ((1, 2), (6, 12)),
+        ((0, 1, 2), (2, 60, 44)),
+        ((2, 0, 1), (19, 7, 33)),
+        ((0,), (21,)),
+    )
+    try:
+        for slot in range(3):
+            graphed.admit(slot)
+            eager.admit(slot)
+        for slots, tokens in schedule + schedule:
+            left = graphed.step(
+                list(tokens), slots=list(slots),
+                owners=[graphed.owner_of(slot) for slot in slots],
+            )
+            right = eager.step(
+                list(tokens), slots=list(slots),
+                owners=[eager.owner_of(slot) for slot in slots],
+            )
+            assert left.logits.tobytes() == right.logits.tobytes(), slots
+            assert left.tokens.tolist() == right.tokens.tolist()
+        for slot in range(3):
+            graphed_keys, graphed_values = _slot_kv(graphed, slot)
+            eager_keys, eager_values = _slot_kv(eager, slot)
+            assert graphed_keys.tobytes() == eager_keys.tobytes()
+            assert graphed_values.tobytes() == eager_values.tobytes()
+        stats = graphed.graph_stats
+        assert stats["capture"] > 0 and stats["replay"] > 0, stats
+        assert eager.graph_stats["capture"] == 0
+    finally:
+        graphed.close()
+        eager.close()
+
+
+def test_argmax_scratch_covers_every_slot(model) -> None:
+    """The row-wise argmax writes one stage-1 partial per row and block.
+
+    The scratch was sized for one row, so a step wider than the allocation's
+    rounding slack wrote past it and corrupted the ids of the real vocabulary
+    at width 5 and above.
+    """
+
+    from hipengine.kernels.hip_gfx1100.linear.lm_head import (
+        lm_head_argmax_stage1_blocks,
+    )
+
+    slots = 6
+    batch = _batch(model, slots=slots)
+    reference = _batch(model, slots=slots)
+    try:
+        blocks = lm_head_argmax_stage1_blocks(fixture.VOCAB, threads=256)
+        assert batch.argmax_values.nbytes >= slots * blocks * 4
+        assert batch.argmax_blocks_i32.nbytes >= slots * blocks * 4
+        for slot in range(slots):
+            batch.admit(slot)
+            reference.admit(slot)
+        # The fixture's PLE staging ring holds four rows per step, so step the
+        # four highest slots: the rows that map past the old one-row scratch.
+        rows = list(range(slots - 4, slots))
+        for token in (3, 11, 29):
+            tokens = [(token + 7 * row) % fixture.VOCAB for row in rows]
+            greedy = batch.step(
+                tokens, slots=rows, owners=[batch.owner_of(s) for s in rows],
+                capture_logits=False,
+            )
+            full = reference.step(
+                tokens, slots=rows, owners=[reference.owner_of(s) for s in rows],
+            )
+            assert greedy.tokens.tolist() == np.argmax(full.logits, axis=1).tolist()
+    finally:
+        batch.close()
+        reference.close()

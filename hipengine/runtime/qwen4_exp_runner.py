@@ -5021,8 +5021,8 @@ def run_qwen4_exp_moe(
         )
     )
     if grouped_prefill:
-        active_runtime.memset(
-            scratch.group_counts.ptr, 0, scratch.group_counts.nbytes
+        active_runtime.memset_async(
+            scratch.group_counts.ptr, 0, scratch.group_counts.nbytes, stream
         )
         qwen35_moe_group_count(
             scratch.selected.ptr,
@@ -5056,10 +5056,11 @@ def run_qwen4_exp_moe(
                 stream=stream,
                 runtime=active_runtime,
             )
-        active_runtime.memset(
+        active_runtime.memset_async(
             scratch.group_scatter_offsets.ptr,
             0,
             scratch.group_scatter_offsets.nbytes,
+            stream,
         )
         # The routed gate/up kernel can read token rows through the lane map,
         # so its grouped copy of the activations (rows * top_k * hidden BF16)
@@ -5319,8 +5320,8 @@ def run_qwen4_exp_moe(
                     risk_count, risk_indices = scratch.ensure_group_risk_buffers(
                         compact_rows=compact, out_features_total=2 * ffn
                     )
-                    active_runtime.memset(
-                        risk_count.ptr, 0, DType.INT32.itemsize
+                    active_runtime.memset_async(
+                        risk_count.ptr, 0, DType.INT32.itemsize, stream
                     )
                     risk_capacity = compact * 2 * ffn
                     iu8_gate_up_variant = (
@@ -5557,8 +5558,8 @@ def run_qwen4_exp_moe(
             risk_count, risk_indices = scratch.ensure_group_risk_buffers(
                 compact_rows=compact, out_features_total=2 * ffn
             )
-            active_runtime.memset(
-                risk_count.ptr, 0, DType.INT32.itemsize
+            active_runtime.memset_async(
+                risk_count.ptr, 0, DType.INT32.itemsize, stream
             )
             risk_capacity = compact * 2 * ffn
             i8_risk_gate_up = resolve(
@@ -5784,8 +5785,8 @@ def run_qwen4_exp_moe(
                     risk_count, risk_indices = scratch.ensure_group_risk_buffers(
                         compact_rows=compact, out_features_total=hidden
                     )
-                    active_runtime.memset(
-                        risk_count.ptr, 0, DType.INT32.itemsize
+                    active_runtime.memset_async(
+                        risk_count.ptr, 0, DType.INT32.itemsize, stream
                     )
                     risk_capacity = compact * hidden
                     down_input_ptr = (
@@ -6269,7 +6270,8 @@ def run_qwen4_exp_moe(
             if row4:
                 # Map only: projections publish original token-major lanes,
                 # leaving SiLU/down/ordered combine ownership unchanged.
-                active_runtime.memset(scratch.group_counts.ptr, 0, scratch.group_counts.nbytes)
+                active_runtime.memset_async(
+                    scratch.group_counts.ptr, 0, scratch.group_counts.nbytes, stream)
                 qwen35_moe_group_count(
                     scratch.selected.ptr, scratch.group_counts.ptr, compact,
                     experts, stream=stream, runtime=active_runtime)
@@ -6277,8 +6279,9 @@ def run_qwen4_exp_moe(
                     scratch.group_counts.ptr, scratch.group_padded_counts.ptr,
                     scratch.group_expert_start.ptr, scratch.group_wmma_total.ptr,
                     experts, 1, stream=stream, runtime=active_runtime)
-                active_runtime.memset(
-                    scratch.group_scatter_offsets.ptr, 0, scratch.group_scatter_offsets.nbytes)
+                active_runtime.memset_async(
+                    scratch.group_scatter_offsets.ptr, 0,
+                    scratch.group_scatter_offsets.nbytes, stream)
                 qwen35_moe_group_scatter(
                     scratch.selected.ptr, scratch.routing.ptr,
                     scratch.group_expert_start.ptr, scratch.group_scatter_offsets.ptr,

@@ -314,12 +314,15 @@ class Qwen4ExpBatchAttentionState:
             )
 
         try:
-            copy_host_to_device(
-                self.block_table,
-                host_array_ptr(table),
-                table.nbytes,
-                runtime=self.runtime,
-            )
+            # ``block_table_host`` mirrors the device table, and a row's blocks
+            # change only with its slot, so steady decode skips this upload.
+            if not np.array_equal(self.block_table_host[:rows], table):
+                copy_host_to_device(
+                    self.block_table,
+                    host_array_ptr(table),
+                    table.nbytes,
+                    runtime=self.runtime,
+                )
             copy_host_to_device(
                 self.position,
                 host_array_ptr(positions_array),

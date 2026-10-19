@@ -54,7 +54,7 @@ from __future__ import annotations
 import operator
 from dataclasses import dataclass, fields
 from types import MappingProxyType
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Hashable, Mapping, Sequence
 
 import numpy as np
 
@@ -83,9 +83,13 @@ from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_F32,
     launch_gguf_linear,
 )
+from hipengine.runtime.moe_graph import MoeGraphCache
 from hipengine.runtime.qwen4_exp_batch_gdn import (
     Qwen4ExpBatchGdnState,
-    run_qwen4_exp_batch_gdn_token_mixer,
+    run_qwen4_exp_batch_gdn_input_projections,
+    run_qwen4_exp_batch_gdn_output_projection,
+    run_qwen4_exp_batch_gdn_recurrence,
+    validate_qwen4_exp_batch_gdn_mixer,
 )
 from hipengine.runtime.qwen4_exp_batch_ple import (
     Qwen4ExpBatchPleState,
@@ -93,7 +97,10 @@ from hipengine.runtime.qwen4_exp_batch_ple import (
 )
 from hipengine.runtime.qwen4_exp_batch_qsa import (
     Qwen4ExpBatchQsaSelectionScratch,
-    run_qwen4_exp_batch_qsa_mixed_token_mixer,
+    run_qwen4_exp_batch_qsa_attention,
+    run_qwen4_exp_batch_qsa_input_projections,
+    run_qwen4_exp_batch_qsa_output_projection,
+    validate_qwen4_exp_batch_qsa_mixed_mixer,
 )
 from hipengine.runtime.qwen4_exp_batch_qsa_index import Qwen4ExpBatchQsaIndexState
 from hipengine.runtime.qwen4_exp_batch_state import Qwen4ExpBatchAttentionState
@@ -182,6 +189,8 @@ def run_qwen4_exp_batch_gdn_layer(
     top_k: int,
     stream: int = 0,
     runtime: HipRuntime | None = None,
+    graph_cache: MoeGraphCache | None = None,
+    graph_key: Hashable | None = None,
 ) -> DeviceBuffer:
     """Execute one complete N-row GDN+MoE layer over request-owned state slots.
 
@@ -190,11 +199,15 @@ def run_qwen4_exp_batch_gdn_layer(
     single-request owner). ``state.prepare(slot_ids)`` must already have admitted
     the rows.
 
-    The c1 layer's graph-capture segments are deliberately absent: they require
-    ``rows == 1`` and a captured single-request decode, which is the c1 runner's
-    job. The explicit residual write below is the same arithmetic as the fused
-    prefill write (``tests/test_gpu_qwen4exp_gr_write_norm.py``), and the batch
-    runner's slot bound is far below the 1024-row threshold that selects it.
+    With ``graph_cache`` the layer runs as two captured segments around the
+    eager indexed conv/recurrence: the GR read plus the four input projections,
+    then the output projection, GR write, FFN read, MoE, and GR write. Both
+    segments read only fixed scratch and weight pointers and their launch
+    geometry depends only on ``rows``, which is part of ``graph_key``; the
+    stateful mixer core never enters a graph. The explicit residual write below
+    is the same arithmetic as the fused prefill write
+    (``tests/test_gpu_qwen4exp_gr_write_norm.py``), and the batch runner's slot
+    bound is far below the 1024-row threshold that selects it.
     """
 
     if scratch.closed:
@@ -202,18 +215,7 @@ def run_qwen4_exp_batch_gdn_layer(
     active_runtime = runtime or scratch.runtime
     if active_runtime is not scratch.runtime:
         raise ValueError("runtime must match GDN layer scratch owner")
-    attention_read = run_qwen4_exp_gr_read(
-        residual_ptr,
-        weights.attention_gr.norm_weight_ptr,
-        weights.attention_gr.down,
-        weights.attention_gr.up,
-        weights.attention_gr.inject,
-        scratch.attention_gr,
-        rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
-        stream=stream, runtime=active_runtime,
-    )
-    mixer_output = run_qwen4_exp_batch_gdn_token_mixer(
-        attention_read.mixed.ptr,
+    plan = validate_qwen4_exp_batch_gdn_mixer(
         weights.mixer.projections,
         state=state,
         scratch=scratch.gdn,
@@ -227,19 +229,154 @@ def run_qwen4_exp_batch_gdn_layer(
         dt_bias_ptr=weights.mixer.dt_bias_ptr,
         a_ptr=weights.mixer.a_ptr,
         norm_weight_ptr=weights.mixer.norm_weight_ptr,
-        stream=stream,
         runtime=active_runtime,
     )
+    graph = _layer_graph(graph_cache, graph_key, weights)
+
+    def pre_mixer(segment_stream: int) -> None:
+        run_qwen4_exp_gr_read(
+            residual_ptr,
+            weights.attention_gr.norm_weight_ptr,
+            weights.attention_gr.down,
+            weights.attention_gr.up,
+            weights.attention_gr.inject,
+            scratch.attention_gr,
+            rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
+            stream=segment_stream, runtime=active_runtime,
+        )
+        run_qwen4_exp_batch_gdn_input_projections(
+            plan,
+            scratch.attention_gr.mixed.ptr,
+            weights.mixer.projections,
+            state=state,
+            scratch=scratch.gdn,
+            hidden=hidden,
+            stream=segment_stream,
+        )
+
+    def post_mixer(segment_stream: int) -> None:
+        mixer_output = run_qwen4_exp_batch_gdn_output_projection(
+            plan,
+            weights.mixer.projections,
+            scratch=scratch.gdn,
+            hidden=hidden,
+            stream=segment_stream,
+        )
+        _run_layer_ffn(
+            residual_ptr,
+            mixer_output.ptr,
+            weights,
+            scratch,
+            rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
+            ffn=ffn, experts=experts, top_k=top_k,
+            stream=segment_stream, runtime=active_runtime,
+        )
+
+    _run_segment(
+        graph, graph_key, "pre_mixer", pre_mixer,
+        outputs=(
+            (scratch.gdn.qkv.ptr, rows * plan.qkv_width * 4),
+            (scratch.gdn.gate.ptr, rows * plan.core_width * 4),
+            (scratch.gdn.alpha.ptr, rows * state.num_v_heads * 4),
+            (scratch.gdn.beta.ptr, rows * state.num_v_heads * 4),
+            (scratch.attention_gr.inject_logits.ptr, rows * branches * 4),
+        ),
+        stream=stream,
+    )
+    run_qwen4_exp_batch_gdn_recurrence(
+        plan,
+        state=state,
+        scratch=scratch.gdn,
+        conv_weight_ptr=weights.mixer.conv_weight_ptr,
+        dt_bias_ptr=weights.mixer.dt_bias_ptr,
+        a_ptr=weights.mixer.a_ptr,
+        norm_weight_ptr=weights.mixer.norm_weight_ptr,
+        stream=stream,
+    )
+    _run_segment(
+        graph, graph_key, "post_mixer", post_mixer,
+        outputs=((scratch.output.ptr, rows * branches * hidden * DType.BF16.itemsize),),
+        mutable_inputs=((residual_ptr, rows * branches * hidden * DType.BF16.itemsize),),
+        stream=stream,
+    )
+    return scratch.output
+
+
+def _layer_graph(
+    graph_cache: MoeGraphCache | None,
+    graph_key: Hashable | None,
+    weights: object,
+) -> MoeGraphCache | None:
+    """The cache a layer may capture into, or ``None`` for the eager path.
+
+    An inject-free GR read memsets its inject logits on the null stream, which
+    a capture would not record, so that rare layout stays eager exactly as the
+    c1 layer graph keeps it.
+    """
+
+    if graph_cache is None or graph_key is None or not graph_cache.enabled:
+        return None
+    if weights.attention_gr.inject is None or weights.ffn_gr.inject is None:
+        return None
+    return graph_cache
+
+
+def _run_segment(
+    graph: MoeGraphCache | None,
+    graph_key: Hashable | None,
+    name: str,
+    launch: Callable[[int], None],
+    *,
+    outputs: Sequence[tuple[int, int]],
+    mutable_inputs: Sequence[tuple[int, int]] = (),
+    stream: int,
+) -> None:
+    """Replay a stateless layer segment, capturing and validating on first use."""
+
+    if graph is None:
+        launch(stream)
+        return
+    (first_ptr, first_bytes), *rest = outputs
+    graph.run(
+        (graph_key, name),
+        eager=launch,
+        out_ptr=first_ptr,
+        out_nbytes=first_bytes,
+        out_regions=tuple(rest),
+        mutable_inputs=tuple(mutable_inputs),
+        stream=stream,
+    )
+
+
+def _run_layer_ffn(
+    residual_ptr: int,
+    mixer_output_ptr: int,
+    weights: object,
+    scratch: object,
+    *,
+    rows: int,
+    branches: int,
+    hidden: int,
+    low_rank: int,
+    ffn: int,
+    experts: int,
+    top_k: int,
+    stream: int,
+    runtime: HipRuntime,
+) -> None:
+    """GR write after the mixer, FFN GR read, MoE, and the final GR write."""
+
+    attention_inject = scratch.attention_gr.inject_logits
     qwen4_exp_gr_write_bf16_f32(
         residual_ptr,
-        mixer_output.ptr,
-        attention_read.inject_logits.ptr,
+        mixer_output_ptr,
+        attention_inject.ptr,
         scratch.after_attention.ptr,
         rows,
         branches,
         hidden,
         stream=stream,
-        runtime=active_runtime,
+        runtime=runtime,
     )
     ffn_read = run_qwen4_exp_gr_read(
         scratch.after_attention.ptr,
@@ -249,14 +386,14 @@ def run_qwen4_exp_batch_gdn_layer(
         weights.ffn_gr.inject,
         scratch.ffn_gr,
         rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
-        stream=stream, runtime=active_runtime,
+        stream=stream, runtime=runtime,
     )
     moe_output = run_qwen4_exp_moe(
         ffn_read.mixed.ptr,
         weights.moe,
         scratch=scratch.moe,
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
-        stream=stream, runtime=active_runtime,
+        stream=stream, runtime=runtime,
     )
     qwen4_exp_gr_write_bf16_bf16(
         scratch.after_attention.ptr,
@@ -267,9 +404,8 @@ def run_qwen4_exp_batch_gdn_layer(
         branches,
         hidden,
         stream=stream,
-        runtime=active_runtime,
+        runtime=runtime,
     )
-    return scratch.output
 
 
 def run_qwen4_exp_batch_qsa_layer(
@@ -299,6 +435,8 @@ def run_qwen4_exp_batch_qsa_layer(
     attention_context_limit: int | None = None,
     stream: int = 0,
     runtime: HipRuntime | None = None,
+    graph_cache: MoeGraphCache | None = None,
+    graph_key: Hashable | None = None,
 ) -> DeviceBuffer:
     """Execute one complete N-row QSA+MoE layer over request-owned slots.
 
@@ -308,8 +446,10 @@ def run_qwen4_exp_batch_qsa_layer(
     ``index_state.prepare`` must already have admitted the same slots in the
     same row order.
 
-    The c1 layer's graph-capture path is absent for the same reason as the GDN
-    layer: capture is a ``rows == 1`` single-request optimization.
+    With ``graph_cache`` the GR read plus the Q/K/V/index-key projections, and
+    the output projection plus the FFN half, replay as captured segments. The
+    index append, KV write, selection, and attention read per-row positions and
+    host selections, so they stay eager on every step.
     """
 
     if scratch.closed:
@@ -317,18 +457,7 @@ def run_qwen4_exp_batch_qsa_layer(
     active_runtime = runtime or scratch.runtime
     if active_runtime is not scratch.runtime:
         raise ValueError("runtime must match QSA layer scratch owner")
-    attention_read = run_qwen4_exp_gr_read(
-        residual_ptr,
-        weights.attention_gr.norm_weight_ptr,
-        weights.attention_gr.down,
-        weights.attention_gr.up,
-        weights.attention_gr.inject,
-        scratch.attention_gr,
-        rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
-        stream=stream, runtime=active_runtime,
-    )
-    mixer = run_qwen4_exp_batch_qsa_mixed_token_mixer(
-        attention_read.mixed.ptr,
+    plan = validate_qwen4_exp_batch_qsa_mixed_mixer(
         weights.mixer,
         attention_state=attention_state,
         index_state=index_state,
@@ -346,47 +475,86 @@ def run_qwen4_exp_batch_qsa_layer(
         index_rotary_dim=index_rotary_dim,
         rope_positions_ptr=rope_positions_ptr,
         attention_context_limit=attention_context_limit,
-        stream=stream,
         runtime=active_runtime,
     )
-    qwen4_exp_gr_write_bf16_f32(
-        residual_ptr,
-        mixer.ptr,
-        attention_read.inject_logits.ptr,
-        scratch.after_attention.ptr,
-        rows,
-        branches,
-        hidden,
+    graph = _layer_graph(graph_cache, graph_key, weights)
+
+    def pre_mixer(segment_stream: int) -> None:
+        run_qwen4_exp_gr_read(
+            residual_ptr,
+            weights.attention_gr.norm_weight_ptr,
+            weights.attention_gr.down,
+            weights.attention_gr.up,
+            weights.attention_gr.inject,
+            scratch.attention_gr,
+            rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
+            stream=segment_stream, runtime=active_runtime,
+        )
+        run_qwen4_exp_batch_qsa_input_projections(
+            plan,
+            scratch.attention_gr.mixed.ptr,
+            weights.mixer,
+            scratch=scratch.qsa,
+            hidden=hidden,
+            index_dim=index_dim,
+            stream=segment_stream,
+        )
+
+    def post_mixer(segment_stream: int) -> None:
+        mixer_output = run_qwen4_exp_batch_qsa_output_projection(
+            plan,
+            weights.mixer,
+            scratch=scratch.qsa,
+            hidden=hidden,
+            stream=segment_stream,
+        )
+        _run_layer_ffn(
+            residual_ptr,
+            mixer_output.ptr,
+            weights,
+            scratch,
+            rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
+            ffn=ffn, experts=experts, top_k=top_k,
+            stream=segment_stream, runtime=active_runtime,
+        )
+
+    _run_segment(
+        graph, graph_key, "pre_mixer", pre_mixer,
+        outputs=(
+            (scratch.qsa.q_projected.ptr, rows * plan.q_width * 2 * 4),
+            (scratch.qsa.key_projected.ptr, rows * plan.kv_width * 4),
+            (scratch.qsa.value_projected.ptr, rows * plan.kv_width * 4),
+            (scratch.qsa.index_k_projected.ptr, rows * index_dim * 4),
+            (scratch.attention_gr.mixed.ptr, rows * hidden * 4),
+            (scratch.attention_gr.inject_logits.ptr, rows * branches * 4),
+        ),
         stream=stream,
-        runtime=active_runtime,
     )
-    ffn_read = run_qwen4_exp_gr_read(
-        scratch.after_attention.ptr,
-        weights.ffn_gr.norm_weight_ptr,
-        weights.ffn_gr.down,
-        weights.ffn_gr.up,
-        weights.ffn_gr.inject,
-        scratch.ffn_gr,
-        rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
-        stream=stream, runtime=active_runtime,
-    )
-    moe = run_qwen4_exp_moe(
-        ffn_read.mixed.ptr,
-        weights.moe,
-        scratch=scratch.moe,
-        rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
-        stream=stream, runtime=active_runtime,
-    )
-    qwen4_exp_gr_write_bf16_bf16(
-        scratch.after_attention.ptr,
-        moe.output.ptr,
-        ffn_read.inject_logits.ptr,
-        scratch.output.ptr,
-        rows,
-        branches,
-        hidden,
+    run_qwen4_exp_batch_qsa_attention(
+        plan,
+        scratch.attention_gr.mixed.ptr,
+        weights.mixer,
+        attention_state=attention_state,
+        index_state=index_state,
+        selection=selection,
+        scratch=scratch.qsa,
+        hidden=hidden,
+        query_heads=query_heads,
+        kv_heads=kv_heads,
+        head_dim=head_dim,
+        rotary_dim=rotary_dim,
+        theta=theta,
+        index_heads=index_heads,
+        index_dim=index_dim,
+        index_rotary_dim=index_rotary_dim,
+        rope_positions_ptr=rope_positions_ptr,
         stream=stream,
-        runtime=active_runtime,
+    )
+    _run_segment(
+        graph, graph_key, "post_mixer", post_mixer,
+        outputs=((scratch.output.ptr, rows * branches * hidden * DType.BF16.itemsize),),
+        mutable_inputs=((residual_ptr, rows * branches * hidden * DType.BF16.itemsize),),
+        stream=stream,
     )
     return scratch.output
 
@@ -415,6 +583,7 @@ class Qwen4ExpGGUFBatchRunner:
         backend: str = "hip_gfx1151",
         block_size: int = QWEN4_EXP_BATCH_BLOCK_SIZE,
         runtime: HipRuntime | None = None,
+        graph_segments: bool = True,
     ) -> None:
         plan = getattr(resident, "plan")
         config = plan.config
@@ -469,6 +638,10 @@ class Qwen4ExpGGUFBatchRunner:
         self.argmax_values: DeviceBuffer | None = None
         self.argmax_blocks_i32: DeviceBuffer | None = None
         self._ple_layers = frozenset(int(layer) for layer in config.ple_layers)
+        # Stateless per-layer segments replay from captured graphs keyed by
+        # ``(layer, rows)``; the cache validates every capture bit-exact against
+        # an eager run and keeps a rejected key eager.
+        self._graphs: MoeGraphCache | None = None
         try:
             load_backend_kernel_package(self.backend)
             self.gdn_bindings = MappingProxyType(
@@ -486,6 +659,7 @@ class Qwen4ExpGGUFBatchRunner:
                 }
             )
             self._allocate()
+            self._graphs = MoeGraphCache(self.runtime, enabled=bool(graph_segments))
         except BaseException:
             self.close()
             raise
@@ -639,12 +813,14 @@ class Qwen4ExpGGUFBatchRunner:
                     self.state_slots * DType.INT32.itemsize,
                     runtime=self.runtime,
                 ),
+                # The row-wise argmax writes one stage-1 partial per row and
+                # block, so the scratch scales with the slot count.
                 malloc(
-                    argmax_blocks * DType.FP32.itemsize,
+                    self.state_slots * argmax_blocks * DType.FP32.itemsize,
                     runtime=self.runtime,
                 ),
                 malloc(
-                    argmax_blocks * DType.INT32.itemsize,
+                    self.state_slots * argmax_blocks * DType.INT32.itemsize,
                     runtime=self.runtime,
                 ),
             ],
@@ -661,6 +837,12 @@ class Qwen4ExpGGUFBatchRunner:
             self.argmax_values,
             self.argmax_blocks_i32,
         ) = buffers.buffers
+
+    @property
+    def graph_stats(self) -> dict[str, int]:
+        """Capture/replay/eager/reject counts of the stateless layer segments."""
+
+        return {} if self._graphs is None else self._graphs.stats
 
     # -- slot ownership ---------------------------------------------------
 
@@ -1295,6 +1477,8 @@ class Qwen4ExpGGUFBatchRunner:
                     experts=cfg.expert_count,
                     top_k=cfg.expert_used_count,
                     runtime=self.runtime,
+                    graph_cache=self._graphs,
+                    graph_key=(layer, rows),
                 ).ptr
             else:
                 qsa_binding = self.qsa_bindings[layer]
@@ -1321,6 +1505,8 @@ class Qwen4ExpGGUFBatchRunner:
                     experts=cfg.expert_count,
                     top_k=cfg.expert_used_count,
                     runtime=self.runtime,
+                    graph_cache=self._graphs,
+                    graph_key=(layer, rows),
                 ).ptr
         head_read = run_qwen4_exp_gr_read(
             residual_ptr,
@@ -1556,6 +1742,10 @@ class Qwen4ExpGGUFBatchRunner:
         if self.closed:
             return
         self.closing = True
+        # Graphs reference the scratch below, so destroy them first.
+        if self._graphs is not None:
+            self._graphs.close()
+            self._graphs = None
         # Pop only after a successful free/close, so a raising owner stays
         # reachable and a retry closes the remainder exactly once.
         while self._owned:
