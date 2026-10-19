@@ -34,6 +34,10 @@ from hipengine.generation import (
     PreparedPromptInput,
     TokenLogprob,
 )
+from hipengine.generation.qwen4_exp_ar_batch import (
+    AR_BATCH_ENV,
+    QWEN4_EXP_MAX_BATCH_ROWS,
+)
 from hipengine.generation.sampling import (
     NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES,
     SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS,
@@ -1655,7 +1659,10 @@ def test_agentic_replay_failure_reasons_match_capability_contract() -> None:
     assert _AGENTIC_REPLAY_FAILURE_REASONS == advertised
 
 
-def test_decode_telemetry_endpoint_reports_physical_state_and_auth() -> None:
+def test_decode_telemetry_endpoint_reports_physical_state_and_auth(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(AR_BATCH_ENV, raising=False)
     app = create_app(
         ServerConfig(model="/models/fake", served_model_name="fake-model", api_key="secret", eager_load=False),
         llm=FakeLLM(),
@@ -1704,8 +1711,9 @@ def test_decode_telemetry_endpoint_reports_physical_state_and_auth() -> None:
     assert advertised["path"] == body["decode"]["decode_path"]
     assert advertised["ar_batch"]["active"] == body["decode"]["ar_batch"]
     assert advertised["ar_batch"]["mtp_rows_join_batch"] is False
-    assert advertised["ar_batch"]["qualified_max_slots"] == 4
-    assert advertised["ar_batch"]["qualified_max_positions"] == 2048
+    assert advertised["ar_batch"]["enabled"] is True
+    assert advertised["ar_batch"]["rollback_env"] == AR_BATCH_ENV
+    assert advertised["ar_batch"]["max_rows"] == QWEN4_EXP_MAX_BATCH_ROWS
 
     # An engine without the hook advertises no path and no envelope.
     advertised_unavailable = TestClient(app).get(

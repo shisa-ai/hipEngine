@@ -100,6 +100,14 @@ class _Draft(_DraftRunner):
 
 
 def _driver(*, capacity=1, monkeypatch=None):
+    """Build the request-owned c1 MTP driver around stand-in runners.
+
+    The caller pins ``HIPENGINE_QWEN4_EXP_AR_BATCH=0`` for the lifetime of the
+    driver (see ``_request_owned_c1_path``): the default shared Flash-Next
+    decode batch builds a real batch runner from the resident weights, which
+    these stand-ins do not carry.
+    """
+
     target, draft = _Target(), _Draft()
     generator = Qwen4ExpGGUFTextGenerator(
         model_path="unused.gguf", weight_index=SimpleNamespace(),

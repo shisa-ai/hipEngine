@@ -94,6 +94,14 @@ class ResidentDraft(Draft):
 
 
 def driver(monkeypatch, capacity=1):
+    """Build the request-owned c1 MTP driver around stand-in runners.
+
+    The caller pins ``HIPENGINE_QWEN4_EXP_AR_BATCH=0`` for the lifetime of the
+    driver (see ``_request_owned_c1_path``): the default shared Flash-Next
+    decode batch builds a real batch runner from the resident weights, which
+    these stand-ins do not carry.
+    """
+
     target, draft = ResidentTarget(), ResidentDraft()
     model = generator(target)
     model._resident = SimpleNamespace(close=lambda: None)
