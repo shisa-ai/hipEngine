@@ -1558,9 +1558,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     if protocol_check and not batch_candidate:
         raise GateError("--protocol-check is only valid with --candidate ar_batch")
     if batch_candidate:
-        if batch_width not in (1, 2, 4):
+        if batch_width not in (1, 2, 4, 8):
             raise GateError(
-                "--candidate ar_batch requires --batch-width 1, 2, or 4"
+                "--candidate ar_batch requires --batch-width 1, 2, 4, or 8"
             )
     elif batch_width is not None:
         raise GateError("--batch-width is only valid with --candidate ar_batch")
@@ -2061,7 +2061,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prompts", action="append", type=Path, default=None)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--limit-per-category", type=int)
-    parser.add_argument("--batch-width", type=int, choices=(1, 2, 4))
+    parser.add_argument("--batch-width", type=int, choices=(1, 2, 4, 8))
     parser.add_argument("--protocol-check", action="store_true")
     parser.add_argument("--decode-steps", type=int, default=24)
     parser.add_argument("--repeat-runs", type=int, default=3)

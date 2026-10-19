@@ -339,6 +339,18 @@ their next speculative cycle at different times. When a request needs another
 cycle, peers may compute ahead with at most two cycles of unpublished output;
 cancellation discards that private output.
 
+Qwen3.8 Flash-Next ships its MTP head as a separate GGUF. `hipengine serve
+--model <shard directory>` finds it beside the target (the shard directory and
+its `MTP/` subdirectory, the parent and its `MTP/`, then neighbouring
+directories whose names contain `mtp`), loads only a file that passes the MTP
+head's GGUF contract, and needs no `--speculative-provider` or `--draft-model`.
+`--draft-model <head.gguf>` alone pins a specific head. Under the default
+`--speculative-mtp-serving auto`, a greedy or processed-argmax request that is
+the only active request runs MTP; a sampled request runs it when it sends
+`speculative_mtp: true`. A Flash-Next MTP request verifies on its own c1 runner,
+so an automatic MTP request returns to the shared decode batch when another
+request arrives (see "Flash-Next concurrency"); an explicit one keeps MTP.
+
 Generic draft-model providers are a separate explicit-only route. The
 model-owned Laguna B4 DFlash provider has direct-library evidence, but its
 HTTP service route is disabled until it supports bounded child submission.
@@ -446,16 +458,13 @@ hook returns a non-object payload, it is `available: false` with
 `GET /v1/hipengine/capabilities` publishes the same probe under a top-level
 `decode` key, so a client can discover the route before sending a request. It
 reports `available`, `path`, and, for an engine whose telemetry carries the
-batch key, an `ar_batch` envelope: `enabled`, `env`, `slots_env`,
-`configured_slots`, `invalid_configuration`, `qualified_max_slots`,
-`qualified_max_positions`, `above_qualified_positions`,
-`mtp_rows_join_batch`, `active`, and `scope`. Both surfaces call one probe, so
-they cannot disagree about the active path. `active` is the live snapshot and
-is `null` before the runner selects a path; an unusable
-`HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS` value is reported in
-`invalid_configuration` rather than failing the manifest, while the startup
-refuses to become ready with it. A provider whose telemetry does not carry the
-batch key reports `ar_batch: null` instead of inheriting this envelope.
+batch key, an `ar_batch` envelope: `enabled`, `rollback_env`, `max_rows`,
+`request_capacity`, `staging_runners`, `mtp_rows_join_batch`, `active`, and
+`scope`. Both surfaces call one probe, so they cannot disagree about the active
+path. `active` is the live snapshot (including the block pool's `pool_blocks`
+and `free_blocks`) and is `null` before the runner selects a path. A provider
+whose telemetry does not carry the batch key reports `ar_batch: null` instead of
+inheriting this envelope.
 
 #### Per-request decode width
 
@@ -481,24 +490,32 @@ step with three peers reports `{"4": n}` while a request that ran alone reports
 for an MTP row, which reports its own provider telemetry instead. The server-wide
 histogram stays at `/v1/hipengine/decode`.
 
-#### Qualification configuration for physical widths above 2
+#### Flash-Next concurrency
 
-The Flash-Next AR batch path is opt-in and its plugin declares a plain-AR
-capacity of 2. With `HIPENGINE_QWEN4_EXP_AR_BATCH=1`, one server instance
-accepts `--max-active-requests 4` only at `--max-context-tokens` 2048 or less,
-the bound of the live width-4 qualification; `HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS`
-then bounds the batch width from 1 to 4 (default: the serving capacity). A
-server without the switch, an unknown context, or a longer context keeps the
-production bound, and an explicit slot count above 4 is rejected. The
-capability is published on that generator instance, not on the plugin class, so
-a second instance in the same process is unaffected.
+Flash-Next serves concurrent requests through one shared decode batch. Each
+request is prefilled on one of two c1 staging runners, its state moves into a
+batch slot, and the staging runner is free for the next arrival. Every decode
+tick then advances all batched requests in one step. The slots share one paged
+KV block pool sized from the device memory left after startup, and a request
+holds the blocks its prompt plus `max_tokens` need, so a short request costs a
+few blocks rather than a full-context window.
 
-Independent HTTP arrivals overlap only when the operator selects
-`HIPENGINE_PREFILL_DECODE_POLICY=protect_ttft`. The default `protect_decode`
-policy serializes them, and the server does not override the configured or
-default policy. Mixed MTP rows never join the AR batch and keep their own
-registered bound, so this configuration is not a speculative or verifier-width
-claim.
+- `--max-active-requests` sets the request count (default 8, at most 64, the
+  row bound of the batch decode kernels). A request waits in the queue while no
+  slot or not enough pool blocks are free.
+- A request longer than a batch slot (65,536 positions) or than the whole pool
+  decodes on its staging runner instead of in the batch.
+- Speculative MTP rows also decode on a staging runner. When the server selects
+  MTP automatically for a request that is running alone, that request returns
+  to the shared batch as soon as another request arrives, and a request that
+  arrives while others are running is not given MTP. A request that asks for
+  `speculative_mtp: true` keeps MTP for its whole life.
+- `HIPENGINE_QWEN4_EXP_AR_BATCH=0` restores one c1 runner per request (two
+  requests by default).
+
+Arrivals are prefilled while other requests decode because the generator
+declares the `fair` prefill/decode policy; an explicit
+`HIPENGINE_PREFILL_DECODE_POLICY` overrides it.
 
 ## Examples
 

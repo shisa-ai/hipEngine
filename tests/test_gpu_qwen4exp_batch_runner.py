@@ -367,6 +367,7 @@ def _batch(
     slots: int = 3,
     max_positions: int = fixture.MAX_POSITIONS,
     graph_segments: bool = True,
+    pool_blocks=None,
 ):
     return Qwen4ExpGGUFBatchRunner(
         model.resident,
@@ -375,6 +376,7 @@ def _batch(
         backend=model.backend,
         runtime=model.runtime,
         graph_segments=graph_segments,
+        pool_blocks=pool_blocks,
     )
 
 
@@ -1213,3 +1215,58 @@ def test_argmax_scratch_covers_every_slot(model) -> None:
     finally:
         batch.close()
         reference.close()
+
+
+def test_pooled_slots_match_the_static_layout_and_return_their_blocks(model) -> None:
+    """A shared block pool changes where K/V lives, not what a step computes.
+
+    Slots admitted with their own extents take only the blocks those extents
+    need, decode bit-identically to the static one-window-per-slot layout, and
+    hand the blocks back on release. Admission refuses an extent the free pool
+    cannot hold before it touches anything.
+    """
+
+    static = _batch(model)
+    pooled = _batch(model, pool_blocks=3)
+    block = pooled.block_size
+    try:
+        assert pooled.pooled and not static.pooled
+        assert pooled.pool_blocks == 3
+        extents = {0: 2 * block, 2: 20}
+        for slot, extent in extents.items():
+            static.admit(slot)
+            pooled.admit(slot, positions=extent)
+        assert pooled.free_block_count == 0
+        assert pooled.slot_capacity(0) == 2 * block
+        assert pooled.slot_capacity(2) == block
+        assert sorted(
+            int(b) for slot, n in ((0, 2), (2, 1))
+            for b in pooled._block_host[slot, :n]
+        ) == [0, 1, 2], "every pooled block is held by exactly one slot"
+        with pytest.raises(RuntimeError, match="free blocks"):
+            pooled.admit(1, positions=1)
+        assert pooled.owner_of(1) == 0
+        for token in (7, 19, 33, 2, 60, 44):
+            left = static.step(
+                [token, token], slots=[0, 2],
+                owners=[static.owner_of(0), static.owner_of(2)],
+            )
+            right = pooled.step(
+                [token, token], slots=[0, 2],
+                owners=[pooled.owner_of(0), pooled.owner_of(2)],
+            )
+            assert left.logits.tobytes() == right.logits.tobytes()
+        pooled.release(2, pooled.owner_of(2))
+        assert pooled.free_block_count == 1
+        owner = pooled.admit(1, positions=block)
+        assert pooled.slot_capacity(1) == block
+        # A step past the slot's own extent is refused before any mutation.
+        while pooled.position(1) < block - 1:
+            pooled.step([5], slots=[1], owners=[owner])
+        pooled.step([5], slots=[1], owners=[owner])
+        with pytest.raises(ValueError, match="paged blocks hold"):
+            pooled.step([5], slots=[1], owners=[owner])
+        assert pooled.poisoned_slots == ()
+    finally:
+        static.close()
+        pooled.close()

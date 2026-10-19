@@ -42,7 +42,7 @@ import numpy as np
 #: ``candidate_mode`` recorded by the normative evaluator for this adapter.
 BATCH_CANDIDATE_MODE = "qwen4_exp_ar_batch"
 #: Widths the live qualification measured; anything else is refused.
-BATCH_WIDTHS = (1, 2, 4)
+BATCH_WIDTHS = (1, 2, 4, 8)
 #: Label that states prefill is not part of the batch claim.
 BATCH_PREFILL_SOURCE = "c1_qwen4_exp_gguf_resident_model_runner"
 
@@ -414,20 +414,18 @@ class Qwen4ExpARBatchCandidate:
             owner = self._owner_factory(self.width)
         else:
             from hipengine.generation.qwen4_exp_ar_batch import (
-                AR_BATCH_QUALIFIED_MAX_POSITIONS,
                 Qwen4ExpARBatchOwner,
+                batch_slot_positions,
                 make_qwen4_exp_ar_batch_runner,
             )
 
-            max_positions = int(self.generator.runner.max_sequence_length)
-            if self.width > 2:
-                # The width-4 live qualification covers <= 2048 positions; a
-                # longer request fails at reserve instead of silently running
-                # outside the measured envelope.
-                max_positions = min(max_positions, AR_BATCH_QUALIFIED_MAX_POSITIONS)
+            # The serving slot cap: a longer request fails at reserve here,
+            # where serving would decode it on a c1 staging runner instead.
+            max_positions = batch_slot_positions(self.generator.runner.max_sequence_length)
             owner = Qwen4ExpARBatchOwner(
                 batch_factory=lambda: make_qwen4_exp_ar_batch_runner(
-                    self.generator, state_slots=self.width
+                    self.generator, state_slots=self.width,
+                    max_positions=max_positions,
                 ),
                 state_slots=self.width,
                 max_positions=max_positions,

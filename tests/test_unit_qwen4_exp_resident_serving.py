@@ -11,7 +11,23 @@ from hipengine.generation.qwen4_exp_gguf import (
     Qwen4ExpResidentServingRunner,
 )
 from hipengine.generation.deadline import GenerationCancellationToken
+from hipengine.generation.qwen4_exp_ar_batch import (
+    AR_BATCH_ENV,
+    QWEN4_EXP_DEFAULT_REQUEST_CAPACITY,
+    QWEN4_EXP_STAGING_RUNNERS,
+)
 from hipengine.generation.registry import GenerationRequest
+
+
+@pytest.fixture(autouse=True)
+def _request_owned_c1_path(monkeypatch):
+    """These tests cover the request-owned c1 path behind the rollback lever.
+
+    The shared batch path has its own suite in
+    ``tests/test_unit_qwen4exp_ar_batch_decode.py``.
+    """
+
+    monkeypatch.setenv(AR_BATCH_ENV, "0")
 
 
 class _Tokenizer:
@@ -260,14 +276,23 @@ def test_native_prefill_cancellation_stops_work_and_reuses_clean_owner():
         driver.close()
 
 
-def test_qwen4_exp_generator_advertises_bounded_native_capacity() -> None:
+def test_qwen4_exp_generator_advertises_bounded_native_capacity(monkeypatch) -> None:
     generator = _generator()
     try:
-        assert generator.server_plain_ar_max_active_requests == 2
+        assert generator.server_plain_ar_max_active_requests == QWEN4_EXP_STAGING_RUNNERS
         runner = generator.create_resident_model_runner(capacity=2)
         assert runner.capacity == 2
     finally:
         generator.close()
+    monkeypatch.delenv(AR_BATCH_ENV)
+    batched = _generator()
+    try:
+        assert batched.server_plain_ar_max_active_requests == QWEN4_EXP_DEFAULT_REQUEST_CAPACITY
+        runner = batched.create_resident_model_runner(capacity=None)
+        assert runner.capacity == QWEN4_EXP_DEFAULT_REQUEST_CAPACITY
+        assert runner.staging_capacity == QWEN4_EXP_STAGING_RUNNERS
+    finally:
+        batched.close()
 
 
 def test_qwen4_exp_narrow_scratch_probe_reuses_live_wider_runner(monkeypatch) -> None:

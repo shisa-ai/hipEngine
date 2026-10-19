@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Qualify the opt-in Flash-Next AR batch path over live HTTP, not performance.
 
-Run against an already running server started with ``HIPENGINE_QWEN4_EXP_AR_BATCH=1``.
+Run against an already running ``hipengine serve`` (the batch path is the default).
 Every phase asserts a lifecycle contract and records the server's own decode
 telemetry before and after, so a reported physical batch width is the owner's
 step histogram rather than the number of HTTP requests in flight.
@@ -325,8 +325,11 @@ async def run(args) -> int:
 
         # -- C1 blocking + controls -------------------------------------
         phase_start = await telemetry(client)
-        row = await request(client, args.output, "c1-block", chat_payload(
-            model, "Reply with exactly one word: ALPHA", max_tokens=args.c1_tokens))
+        # A lone implicit request takes automatic MTP; opt out so this phase
+        # exercises the batch at width 1.
+        row = await request(client, args.output, "c1-block", {**chat_payload(
+            model, "Reply with exactly one word: ALPHA", max_tokens=args.c1_tokens),
+            "speculative_mtp": False})
         await wait_idle(client)
         after = await telemetry(client)
         text = completion_text(row)
@@ -482,7 +485,12 @@ async def run(args) -> int:
         })
         save()
 
-        # -- C4 arrivals over a C2 capacity: queue and admission reuse ---
+        # -- C4 arrivals: queue when they exceed the request capacity, ---
+        # -- otherwise one width-4 step; admission reuse either way.    ---
+        capacity = int(
+            ((capabilities.get("decode") or {}).get("ar_batch") or {})
+            .get("request_capacity") or batch.get("state_slots") or 2
+        )
         phase_start = await telemetry(client)
         specs = [
             {"name": f"c4-queue-{index}", "payload": forced(chat_payload(
@@ -497,10 +505,14 @@ async def run(args) -> int:
         observed_depth = max((int(sample.get("depth") or 0) for sample in samples), default=0)
         check(checks, "c4_queue.all_200", all(row.get("status") == 200 for row in rows),
               statuses=[row.get("status") for row in rows])
-        check(checks, "c4_queue.observed_queueing", observed_depth > 0,
-              max_depth=observed_depth, samples=len(samples))
-        check(checks, "c4_queue.no_physical_width_4",
-              int(delta.get("4", 0)) == 0, width_delta=delta)
+        if capacity < 4:
+            check(checks, "c4_queue.observed_queueing", observed_depth > 0,
+                  max_depth=observed_depth, samples=len(samples), capacity=capacity)
+            check(checks, "c4_queue.no_physical_width_4",
+                  int(delta.get("4", 0)) == 0, width_delta=delta, capacity=capacity)
+        else:
+            check(checks, "c4_queue.physical_width_4",
+                  int(delta.get("4", 0)) > 0, width_delta=delta, capacity=capacity)
         check(checks, "c4_queue.admission_reuse",
               int((batch_state(after).get("imports") or 0))
               - int(batch.get("imports") or 0) >= 4,

@@ -38,7 +38,9 @@ class Qwen4ExpServingMTP:
         if not self._all_drafts:
             self._all_drafts.append(provider.draft)
             self._available_drafts.append(provider.draft)
-        while len(self._all_drafts) < self.capacity:
+        # A speculative row holds a staging runner for its life, so drafts
+        # never outnumber the staging runners.
+        while len(self._all_drafts) < getattr(self, "staging_capacity", self.capacity):
             draft = Qwen4ExpGGUFMTPDraftRunner(
                 provider._resident, target_config=self.generator.runner.config,
                 max_sequence_length=self.generator.runner.max_sequence_length,
@@ -79,16 +81,32 @@ class Qwen4ExpServingMTP:
         del static_eligibility
         row = self._row(request_id)
         request = row.request
+        automatic = bool(getattr(request, "speculative_mtp_automatic", False))
         provider = self.generator._speculative_provider
-        if provider is None:
-            raise NotImplementedError("Flash-Next MTP provider is not attached")
-        provider._validate_sampling(request)
-        if request.kv_storage not in ("auto", "bf16"):
-            raise NotImplementedError("Flash-Next MTP requires BF16 KV")
-        if len(row.prompt_ids) + request.max_tokens > min(
-            self.generator.runner.max_sequence_length, provider.draft.max_sequence_length
-        ):
-            raise ValueError("Flash-Next MTP request exceeds target/draft capacity")
+        try:
+            if provider is None:
+                raise NotImplementedError("Flash-Next MTP provider is not attached")
+            provider._validate_sampling(request)
+            if request.kv_storage not in ("auto", "bf16"):
+                raise NotImplementedError("Flash-Next MTP requires BF16 KV")
+            if len(row.prompt_ids) + request.max_tokens > min(
+                self.generator.runner.max_sequence_length, provider.draft.max_sequence_length
+            ):
+                raise ValueError("Flash-Next MTP request exceeds target/draft capacity")
+        except (NotImplementedError, ValueError):
+            if not automatic:
+                raise
+            # The server chose MTP on its own; a request the MTP route cannot
+            # serve (for example a resident session) decodes plainly instead,
+            # and the plain path applies its own validation.
+            row.mtp_budget = 0
+            return
+        if automatic and len(self._rows) > 1:
+            # The server chose MTP on its own and other requests are already
+            # registered: the shared batch serves them all faster than a
+            # speculative row beside it, so this request decodes plainly.
+            row.mtp_budget = 0
+            return
         row.mtp_budget = min(int(candidate_budget), provider.candidate_budget)
 
     def speculative_desired_candidate_count(self, request):
@@ -112,6 +130,8 @@ class Qwen4ExpServingMTP:
         row = self._row(semantics[0].request_id)
         if not row.mtp_budget or not row.generated_ids:
             return None  # The prompt's initial root is emitted by decode_batch.
+        if self._demotion_wanted(row):
+            return None  # decode_batch returns this automatic row to the batch.
         return SpeculativeCapability(
             capability_key="qwen4exp:request-owned-mtp:c1",
             target_key="qwen4_exp_gguf", provider_key="qwen4_exp_mtp",
@@ -132,6 +152,22 @@ class Qwen4ExpServingMTP:
 
     def speculative_eos_supported(self, request_id):
         return bool(self._row(request_id).mtp_budget)
+
+    def speculative_live_candidate_count(self, request_id, registered):
+        """The registered depth, or 0 once a row no longer speculates.
+
+        An automatic MTP request that arrived while others were running never
+        speculates, and one returned to the shared batch stops; reporting 0
+        lets the engine decode those rows with every other plain row in one
+        batch step.
+        """
+
+        row = self._rows.get(int(request_id))
+        if row is None:
+            return registered
+        if not row.mtp_budget or self._demotion_wanted(row):
+            return 0
+        return registered
 
     def speculative_partition_max_requests(self, work):
         return 1

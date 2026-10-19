@@ -18,13 +18,12 @@ from hipengine.generation.sampling import (
 )
 from hipengine.generation.qwen4_exp_serving_mtp import Qwen4ExpServingMTP, _RequestRetired
 from hipengine.generation.qwen4_exp_ar_batch import (
-    AR_BATCH_ENV,
-    AR_BATCH_QUALIFIED_MAX_POSITIONS,
-    AR_BATCH_QUALIFIED_MAX_SLOTS,
+    QWEN4_EXP_DEFAULT_REQUEST_CAPACITY,
+    QWEN4_EXP_MAX_BATCH_ROWS,
+    QWEN4_EXP_STAGING_RUNNERS,
     Qwen4ExpARBatchOwner,
-    ar_batch_capacity_ceiling,
     ar_batch_enabled,
-    ar_batch_state_slots,
+    batch_slot_positions,
     make_qwen4_exp_ar_batch_runner,
 )
 from hipengine.generation.qwen4_exp_multimodal import (
@@ -253,24 +252,29 @@ class Qwen4ExpGGUFTextGenerator:
         self.weight_index = weight_index
         self.model_plugin = model_plugin
         self.backend = str(backend)
-        production_capacity = type(self).server_plain_ar_max_active_requests
-        capacity_ceiling = ar_batch_capacity_ceiling(
-            max_positions=max_sequence_length,
-            default=production_capacity,
+        batching = ar_batch_enabled()
+        default_capacity = (
+            QWEN4_EXP_DEFAULT_REQUEST_CAPACITY if batching else QWEN4_EXP_STAGING_RUNNERS
         )
         self._configured_resident_capacity = (
-            production_capacity if resident_capacity is None else int(resident_capacity))
-        if not 1 <= self._configured_resident_capacity <= capacity_ceiling:
+            default_capacity if resident_capacity is None else int(resident_capacity))
+        # With the batch path, requests share one decode batch and only the c1
+        # staging runners (prefill, MTP rows, over-long requests) hold a full
+        # context each; without it every request owns a c1 runner.
+        maximum = QWEN4_EXP_MAX_BATCH_ROWS if batching else None
+        if self._configured_resident_capacity < 1 or (
+            maximum is not None and self._configured_resident_capacity > maximum
+        ):
             raise ValueError(
-                "Qwen4Exp resident capacity must be within "
-                f"1..{capacity_ceiling} for max_sequence_length="
-                f"{max_sequence_length}; the production bound is "
-                f"{production_capacity}, and {AR_BATCH_ENV}=1 qualifies up to "
-                f"{AR_BATCH_QUALIFIED_MAX_SLOTS} slots at <= "
-                f"{AR_BATCH_QUALIFIED_MAX_POSITIONS} positions")
-        # Publish the resolved capability on this instance only. The class
-        # attribute stays the production bound, so a second generator in the
-        # same process cannot inherit the qualification width.
+                "Qwen4Exp active request count must be within "
+                f"1..{maximum if maximum is not None else 'memory'}"
+                + (" (the indexed batch decode kernels take at most "
+                   f"{maximum} rows)" if maximum is not None else ""))
+        self._staging_capacity = (
+            min(self._configured_resident_capacity, QWEN4_EXP_STAGING_RUNNERS)
+            if batching else self._configured_resident_capacity
+        )
+        # Publish the resolved capability on this instance only.
         self.server_plain_ar_max_active_requests = self._configured_resident_capacity
         self.server_plain_ar_max_active_requests_by_max_sequence_length = {1024:self._configured_resident_capacity}
         self.context_admission = None
@@ -352,7 +356,7 @@ class Qwen4ExpGGUFTextGenerator:
                     available_device_bytes=free_bytes-vision_reserve,
                     requested_context=max_sequence_length,
                     native_context_length=native_context,
-                    resident_capacity=self._configured_resident_capacity,
+                    resident_capacity=self._staging_capacity,
                     plan_fn=plan_qwen4_exp_residency,
                     admit_fn=resolve_qwen4_exp_context)
             else:
@@ -360,7 +364,7 @@ class Qwen4ExpGGUFTextGenerator:
                     plan,available_device_bytes=free_bytes-vision_reserve,
                     requested_context=max_sequence_length,
                     native_context_length=native_context,
-                    resident_capacity=self._configured_resident_capacity,
+                    resident_capacity=self._staging_capacity,
                     prefill_chunk_size=prefill_chunk_size)
             self.admitted_prefill_chunk_size = int(prefill_chunk_size)
             self.context_admission = {
@@ -412,14 +416,65 @@ class Qwen4ExpGGUFTextGenerator:
                 self._vision_resident = None
                 raise
 
-    server_plain_ar_max_active_requests = 2
-    server_plain_ar_max_active_requests_by_max_sequence_length = {1024: 2}
+    server_plain_ar_max_active_requests = QWEN4_EXP_DEFAULT_REQUEST_CAPACITY
+    server_plain_ar_max_active_requests_by_max_sequence_length = {
+        1024: QWEN4_EXP_DEFAULT_REQUEST_CAPACITY
+    }
     supports_stream_many = True
     supports_controlled_streaming = True
     chat_template_family = "qwen4exp_embedded"
     supports_grammar = True
     model_owned_tool_grammar = True
     chat_template_reasoning_effort = True
+
+    def resolve_speculative_mtp_serving_plan(
+        self,
+        *,
+        realized_group_rows: int,
+        resident_capacity: int,
+        candidate_budget: int,
+        sampling_mode: str,
+        kv_storage: str,
+        memory_fit: bool,
+        request_mode: str = "automatic",
+    ):
+        """Resolve the MTP serving scope from the model plugin's declarations.
+
+        The key is mechanical request and runtime identity only. ``auto`` KV
+        storage resolves to the provider's BF16 contract; any other storage
+        keeps its value so the declaration refuses it by name.
+        """
+
+        from hipengine.kernels.backends import hip_target_arch_for_backend
+        from hipengine.speculative.serving import (
+            SpeculativeMTPServingKey,
+            resolve_speculative_mtp_serving_plan,
+        )
+
+        if self._speculative_provider is None:
+            return None
+        requested_kv = str(kv_storage or "auto")
+        key = SpeculativeMTPServingKey(
+            artifact_sha256=None,
+            artifact_size_bytes=None,
+            content_verified=False,
+            backend=self.backend,
+            target_arch=hip_target_arch_for_backend(self.backend),
+            weight_quant=str(getattr(self.model_plugin, "default_quant", "") or "gguf"),
+            kv_storage="bf16" if requested_kv == "auto" else requested_kv,
+            kv_layout="uniform",
+            realized_group_rows=int(realized_group_rows),
+            resident_capacity=int(resident_capacity),
+            candidate_budget=int(candidate_budget),
+            sampling_mode=str(sampling_mode),
+            memory_fit=bool(memory_fit),
+        )
+        resolver = getattr(self.model_plugin, "resolve_speculative_mtp_serving_plan", None)
+        if callable(resolver):
+            return resolver(key=key, request_mode=str(request_mode))
+        return resolve_speculative_mtp_serving_plan(
+            (), key=key, request_mode=str(request_mode)
+        )
 
     @property
     def engine_loop_config_defaults(self):
@@ -914,15 +969,21 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
     def __init__(self, generator: Qwen4ExpGGUFTextGenerator, *, capacity: int) -> None:
         self.generator = generator
         self.capacity = int(capacity)
+        # c1 runners that prefill every request and keep the rows the batch
+        # cannot hold (MTP rows, requests longer than a batch slot).
+        self.staging_capacity = min(
+            self.capacity, int(getattr(generator, "_staging_capacity", self.capacity))
+        )
         self._rows: dict[int, _Qwen4ExpServingRow] = {}
         self._outputs: dict[int, GenerationOutput] = {}
         self._all_runners = [generator.runner]
         self._available = [generator.runner]
-        # Opt-in full-model AR decode batch. ``_ar_batch_mode`` is pinned at the
-        # first prepare() so one serving runner never mixes the c1 step path and
-        # the shared N-row step path across requests.
+        # Full-model AR decode batch. ``_ar_batch_mode`` is pinned at the first
+        # prepare() so one serving runner never mixes the c1 step path and the
+        # shared N-row step path for plain AR requests.
         self._ar_batch: Qwen4ExpARBatchOwner | None = None
         self._ar_batch_mode: str | None = None
+        self._demotions = 0
         self._closed = False
         self._init_mtp()
 
@@ -940,9 +1001,9 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
         )
         if required <= 0 or required > self.generator.runner.max_sequence_length:
             raise ValueError("Qwen4Exp serving prepare exceeds sequence capacity")
-        if self.generator._resident is None and self.capacity > 1:
+        if self.generator._resident is None and self.staging_capacity > 1:
             raise RuntimeError("Qwen4Exp c2 requires model-owned resident weights")
-        while len(self._all_runners) < self.capacity:
+        while len(self._all_runners) < self.staging_capacity:
             runner = Qwen4ExpGGUFResidentModelRunner(
                 self.generator._resident,
                 max_sequence_length=self.generator.runner.max_sequence_length,
@@ -952,37 +1013,34 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
             )
             self._all_runners.append(runner)
             self._available.append(runner)
-        self._prepare_ar_batch()
+        # MTP owners first: the batch pool is sized from what they leave.
         self._prepare_mtp()
+        self._prepare_ar_batch()
         return required
 
     def _prepare_ar_batch(self) -> None:
-        """Select and build the opt-in AR decode path exactly once.
+        """Select and build the AR decode path exactly once.
 
         A build failure is not cached: the next prepare() retries and raises
         again, so a caller that ignored the first error cannot fall through to
-        the c1 path with the switch still on.
+        the c1 path with the batch still selected.
         """
 
         if self._ar_batch is not None or self._ar_batch_mode is not None:
             return
-        if not ar_batch_enabled():
+        if not ar_batch_enabled() or self.generator._resident is None:
+            # The rollback lever, or a generator built around an external
+            # runner (tests): every request keeps its own c1 runner.
             self._ar_batch_mode = "qwen4exp_c1_request_owned_step"
             return
-        if self.generator._resident is None:
-            # Fail closed instead of silently staying on c1: the operator asked
-            # for the batch path and this generator cannot own its weights.
-            raise RuntimeError(
-                "Qwen4Exp AR batch decode requires model-owned resident weights; "
-                "this generator was built with an external runner"
-            )
-        slots = ar_batch_state_slots(self.capacity)
+        slots = self.capacity
+        positions = batch_slot_positions(self.generator.runner.max_sequence_length)
         owner = Qwen4ExpARBatchOwner(
             batch_factory=lambda: make_qwen4_exp_ar_batch_runner(
-                self.generator, state_slots=slots
+                self.generator, state_slots=slots, max_positions=positions,
             ),
             state_slots=slots,
-            max_positions=self.generator.runner.max_sequence_length,
+            max_positions=positions,
         )
         owner.ensure()
         self._ar_batch = owner
@@ -1011,7 +1069,7 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
             "execution_path": "qwen4exp_request_owned_runner_pool",
             "max_batch_size": batch,
             "max_sequence_length": required,
-            "resident_runners": batch,
+            "resident_runners": self.staging_capacity,
             "released_after_probe": False,
             "decode": self.decode_telemetry(),
         }
@@ -1071,36 +1129,58 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
             self._release_runner(row)
             raise
 
-    def plan_admission(self, pending, *, max_items: int):
-        """Admit only as many AR rows as the shared batch can hold.
+    def _row_extent(self, row) -> int:
+        return len(row.prompt_ids) + max(0, int(row.request.max_tokens) - 1)
 
-        With the default width (one state slot per serving request) this is a
-        pure prefix. A narrower ``HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS`` leaves
-        the extra rows pending instead of failing admission inside the tick.
+    def _batch_row(self, row) -> bool:
+        """Whether ``row`` decodes in the shared batch once it is prefilled."""
+
+        owner = self._ar_batch
+        return bool(
+            owner is not None and not row.mtp_budget and owner.fits(self._row_extent(row))
+        )
+
+    def plan_admission(self, pending, *, max_items: int):
+        """Admit, in arrival order, the rows the free owners can hold now.
+
+        Every row needs a staging runner to prefill. A batch row also needs a
+        batch slot and the pool blocks its extent holds; it gives the staging
+        runner back after its import. Admission stops at the first row that
+        does not fit, so a large request is not starved by smaller arrivals.
         """
 
         owner = self._ar_batch
+        runners = len(self._available)
+        slots = 0 if owner is None else owner.free_slot_count
+        blocks = 0 if owner is None else owner.free_block_count
         selected: list[int] = []
-        free = 0 if owner is None else owner.free_slot_count
         for request in tuple(pending)[: int(max_items)]:
             request_id = int(request.request_id)
             row = self._rows.get(request_id)
-            needs_slot = owner is not None and row is not None and not row.mtp_budget
-            if needs_slot:
-                if free <= 0:
-                    continue
-                free -= 1
+            if row is None or int(row.request.max_tokens) == 0:
+                selected.append(request_id)
+                continue
+            if runners <= 0:
+                break
+            if row.mtp_budget and not self._available_drafts:
+                break
+            if self._batch_row(row) and owner.failure is None:
+                # A failed owner admits the row so its reservation refuses it
+                # by name.
+                need = owner.blocks_for_positions(self._row_extent(row))
+                if slots <= 0 or blocks < need:
+                    break
+                slots -= 1
+                blocks -= need
+            runners -= 1
             selected.append(request_id)
         return tuple(selected)
 
     def _reserve_ar_batch(self, row) -> None:
-        owner = self._ar_batch
-        if owner is None or row.mtp_budget:
-            # MTP rows keep their request-owned c1 runner at width 1; a
-            # speculative candidate is never a batch row.
+        if not self._batch_row(row):
+            # MTP rows and requests the batch cannot hold keep their c1 runner.
             return
-        required = len(row.prompt_ids) + max(0, int(row.request.max_tokens) - 1)
-        owner.reserve(row.request_id, positions=required)
+        self._ar_batch.reserve(row.request_id, positions=self._row_extent(row))
 
     def rollback_admission(self, request: RequestState) -> None:
         self._release_runner(self._row(request.request_id))
@@ -1145,12 +1225,75 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
             self._import_ar_batch(row)
 
     def _import_ar_batch(self, row) -> None:
-        """Move a completed c1 prefill into the row's batch slot, once."""
+        """Move a completed c1 prefill into the row's batch slot, once.
+
+        The staging runner returns to the pool as soon as the copy is made, so
+        it can prefill the next arrival while this row decodes in the batch.
+        """
 
         owner = self._ar_batch
         if owner is None or not owner.owns(row.request_id):
             return
         owner.import_prefilled(row.request_id, row.runner)
+        self._return_staging_runner(row)
+
+    def _return_staging_runner(self, row) -> None:
+        runner, row.runner = row.runner, None
+        if runner is not None and runner in self._all_runners and runner not in self._available:
+            self._available.append(runner)
+
+    def _demotion_wanted(self, row) -> bool:
+        """Whether an automatic MTP row should rejoin the shared batch now.
+
+        MTP is the faster route for a request that runs alone; once another
+        request is registered the shared batch serves both better than a
+        speculative row on its own c1 runner beside the batch. Only a row the
+        server selected for MTP itself is returned; an explicit request keeps
+        its route.
+        """
+
+        owner = self._ar_batch
+        if (
+            owner is None
+            or not row.mtp_budget
+            or not getattr(row.request, "speculative_mtp_automatic", False)
+            or not row.generated_ids
+            or row.mtp_output is not None
+            or len(self._rows) < 2
+        ):
+            return False
+        extent = self._row_extent(row)
+        return bool(
+            owner.fits(extent)
+            and owner.free_slot_count > 0
+            and owner.free_block_count >= owner.blocks_for_positions(extent)
+        )
+
+    def _demote_mtp_row(self, row) -> None:
+        """Continue an automatic MTP row as a plain batch row.
+
+        Between cycles the target runner has consumed every committed token
+        but the last one, which was already published. One c1 step feeds it,
+        which leaves exactly the state a plain AR row has after publishing a
+        token; that state is imported into a batch slot and the draft and the
+        staging runner are released.
+        """
+
+        last = int(row.generated_ids[-1])
+        if row.mtp_steps is not None:
+            row.mtp_steps.close()
+            row.mtp_steps = None
+        draft, row.draft = row.draft, None
+        if draft is not None and draft not in self._available_drafts:
+            self._available_drafts.append(draft)
+        step_kwargs = _qwen4_exp_compact_step_kwargs()
+        if row.controlled:
+            step_kwargs.update(capture_logits=True, token_id_resident=False)
+        row.next_result = row.runner.step(last, **step_kwargs)
+        row.mtp_budget = 0
+        self._ar_batch.reserve(row.request_id, positions=self._row_extent(row))
+        self._import_ar_batch(row)
+        self._demotions += 1
 
     def decode_batch(
         self, work: WorkItem, *, commit: bool
@@ -1185,8 +1328,12 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
                     )
                 )
                 continue
-            if row.next_result is None or row.runner is None:
+            if row.next_result is None or (
+                row.runner is None and not self._ar_batch_owns(row)
+            ):
                 raise RuntimeError("Qwen4Exp native row is not prefilled")
+            if self._demotion_wanted(row):
+                self._demote_mtp_row(row)
             if row.mtp_budget:
                 progress, _ = self._advance_mtp(row, 0)
                 if progress is None:
@@ -1435,6 +1582,10 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
         return {
             "decode_path": self._ar_batch_mode or "qwen4exp_c1_request_owned_step",
             "ar_batch": None if owner is None else owner.telemetry(),
+            "request_capacity": self.capacity,
+            "staging_runners": self.staging_capacity,
+            "free_staging_runners": len(self._available),
+            "mtp_demotions": self._demotions,
         }
 
     def _finish(self, row: _Qwen4ExpServingRow) -> FinishDetails | None:

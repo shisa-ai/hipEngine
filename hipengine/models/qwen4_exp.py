@@ -5,6 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from hipengine.models.registry import register_model
+from hipengine.speculative.serving import (
+    SpeculativeMTPServingDecision,
+    SpeculativeMTPServingImplementation,
+    SpeculativeMTPServingKey,
+    resolve_speculative_mtp_serving_plan,
+    unsupported_contract,
+)
+
+_MTP_BACKENDS = (("hip_gfx1151", "gfx1151"),)
 
 
 @dataclass(frozen=True)
@@ -26,6 +35,39 @@ class Qwen4ExpGGUFModel:
     vision_scope: str = "one_32x32_rgb_image_to_one_token"
     mtp_supported: bool = True
     speculative_mtp_provider: str = "qwen4_exp_mtp"
+    # The MTP sidecar drafts with its own NextN block and verifies the chain in
+    # one prefill-shaped target pass on a request-owned c1 runner, so a
+    # speculative request is always physically one row. These declarations are
+    # the whole admission scope: no artifact hash or model-name axis. Greedy and
+    # processed-argmax requests are automatic-eligible because MTP is faster
+    # than plain decoding for a request that runs alone (1.26x served, single
+    # request, gfx1151); the resident runner returns an automatic MTP request to
+    # the batched decode path when other requests arrive. Sampled requests run
+    # MTP when they ask for it, but are not selected automatically.
+    speculative_mtp_serving_implementations: tuple[
+        SpeculativeMTPServingImplementation, ...
+    ] = (
+        SpeculativeMTPServingImplementation(
+            name="gguf_qwen4exp_mtp_bf16_c1_chain",
+            kv_storage="bf16",
+            backends=_MTP_BACKENDS,
+            max_candidate_count=4,
+            max_group_rows=1,
+            group_rejection_reason="qwen4exp_mtp_group_above_one_row",
+            sampling_modes=("greedy_fast", "processed_argmax"),
+            automatic_eligible=True,
+        ),
+        SpeculativeMTPServingImplementation(
+            name="gguf_qwen4exp_mtp_bf16_c1_sampled_chain",
+            kv_storage="bf16",
+            backends=_MTP_BACKENDS,
+            max_candidate_count=4,
+            max_group_rows=1,
+            group_rejection_reason="qwen4exp_mtp_group_above_one_row",
+            sampling_modes=("sampled",),
+            automatic_eligible=False,
+        ),
+    )
     weight_name_templates: tuple[str, ...] = (
         "token_embd.weight",
         "output.weight",
@@ -105,6 +147,33 @@ class Qwen4ExpGGUFModel:
         raise ValueError(
             "Unrecognized qwen4exp GGUF storage layout " + digest
             + "; pass an explicit quant after checking the artifact and execution-profile qualification"
+        )
+
+    def resolve_speculative_mtp_serving_plan(
+        self,
+        *,
+        key: SpeculativeMTPServingKey,
+        request_mode: str = "automatic",
+    ) -> SpeculativeMTPServingDecision:
+        """Resolve the MTP serving scope from the implementation declarations.
+
+        The declaration covering the key's KV storage and sampling mode decides;
+        a storage match with another sampling mode still answers so the refusal
+        names the real axis. Missing measurements never withhold the route.
+        """
+
+        candidates = [
+            implementation
+            for implementation in self.speculative_mtp_serving_implementations
+            if implementation.kv_storage == key.kv_storage
+        ]
+        for implementation in candidates:
+            if key.sampling_mode in implementation.sampling_modes:
+                return implementation.resolve(key, request_mode=request_mode)
+        if candidates:
+            return candidates[0].resolve(key, request_mode=request_mode)
+        return unsupported_contract(
+            resolve_speculative_mtp_serving_plan((), key=key, request_mode=request_mode)
         )
 
     @staticmethod

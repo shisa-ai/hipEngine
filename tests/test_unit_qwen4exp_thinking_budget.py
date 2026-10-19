@@ -12,6 +12,17 @@ from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
 from hipengine.generation.registry import GenerationRequest
 
 
+@pytest.fixture(autouse=True)
+def _request_owned_c1_path(monkeypatch):
+    """These cases drive the request-owned c1 path with a stand-in resident.
+
+    The shared Flash-Next decode batch is the default; its own suite is
+    ``tests/test_unit_qwen4exp_ar_batch_decode.py``.
+    """
+
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_AR_BATCH", "0")
+
+
 class Tokenizer:
     eos_token_id = 9
 

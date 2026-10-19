@@ -14,9 +14,7 @@ import pytest
 
 from hipengine.generation.qwen4_exp_ar_batch import (
     AR_BATCH_ENV,
-    AR_BATCH_QUALIFIED_MAX_POSITIONS,
-    AR_BATCH_QUALIFIED_MAX_SLOTS,
-    AR_BATCH_SLOTS_ENV,
+    QWEN4_EXP_MAX_BATCH_ROWS,
 )
 from hipengine.server import api as api_module
 from hipengine.server.api import _decode_capability_summary, _probe_decode_telemetry
@@ -80,69 +78,36 @@ def test_probe_sanitizes_a_failing_hook() -> None:
 def test_summary_reports_the_envelope_before_the_first_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An uninitialized runner still advertises the build's qualification bound."""
+    """An uninitialized runner still advertises the batch path and its bounds."""
 
     monkeypatch.delenv(AR_BATCH_ENV, raising=False)
-    monkeypatch.delenv(AR_BATCH_SLOTS_ENV, raising=False)
     summary = _decode_capability_summary(
-        _Engine(_payload({"decode_path": "uninitialized", "ar_batch": None}))
+        _Engine(_payload({
+            "decode_path": "uninitialized", "ar_batch": None,
+            "request_capacity": 8, "staging_runners": 2,
+        }))
     )
 
     assert summary["available"] is True
     assert summary["telemetry_url"] == "/v1/hipengine/decode"
     assert summary["path"] == "uninitialized"
     envelope = summary["ar_batch"]
-    assert envelope["enabled"] is False
-    assert envelope["env"] == AR_BATCH_ENV
-    assert envelope["slots_env"] == AR_BATCH_SLOTS_ENV
-    assert envelope["configured_slots"] is None
-    assert envelope["invalid_configuration"] is None
-    assert envelope["qualified_max_slots"] == AR_BATCH_QUALIFIED_MAX_SLOTS
-    assert envelope["qualified_max_positions"] == AR_BATCH_QUALIFIED_MAX_POSITIONS
-    assert envelope["above_qualified_positions"] == "production_capacity_bound"
+    assert envelope["enabled"] is True
+    assert envelope["rollback_env"] == AR_BATCH_ENV
+    assert envelope["max_rows"] == QWEN4_EXP_MAX_BATCH_ROWS
+    assert envelope["request_capacity"] == 8
+    assert envelope["staging_runners"] == 2
     assert envelope["mtp_rows_join_batch"] is False
     assert envelope["active"] is None
 
 
-def test_summary_follows_the_switch_and_a_valid_width(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv(AR_BATCH_ENV, "1")
-    monkeypatch.setenv(AR_BATCH_SLOTS_ENV, str(AR_BATCH_QUALIFIED_MAX_SLOTS))
+def test_summary_follows_the_rollback_lever(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(AR_BATCH_ENV, "0")
     envelope = _decode_capability_summary(
-        _Engine(_payload({"decode_path": "uninitialized", "ar_batch": None}))
+        _Engine(_payload({"decode_path": "qwen4exp_c1_request_owned_step", "ar_batch": None}))
     )["ar_batch"]
 
-    assert envelope["enabled"] is True
-    assert envelope["configured_slots"] == AR_BATCH_QUALIFIED_MAX_SLOTS
-    assert envelope["invalid_configuration"] is None
-
-
-@pytest.mark.parametrize(
-    ("raw", "expected"),
-    [
-        ("0", f"{AR_BATCH_SLOTS_ENV}=0 is outside 1..{AR_BATCH_QUALIFIED_MAX_SLOTS}"),
-        ("9", f"{AR_BATCH_SLOTS_ENV}=9 is outside 1..{AR_BATCH_QUALIFIED_MAX_SLOTS}"),
-        ("two", f"{AR_BATCH_SLOTS_ENV} is not an integer"),
-    ],
-)
-def test_summary_reports_an_invalid_width_without_raising(
-    monkeypatch: pytest.MonkeyPatch, raw: str, expected: str
-) -> None:
-    """Capabilities must not turn a bad operator setting into a 500.
-
-    The request path still fails closed when it resolves the width; this surface
-    only reports what the setting is and why it cannot be used.
-    """
-
-    monkeypatch.setenv(AR_BATCH_ENV, "1")
-    monkeypatch.setenv(AR_BATCH_SLOTS_ENV, raw)
-    envelope = _decode_capability_summary(
-        _Engine(_payload({"decode_path": "uninitialized", "ar_batch": None}))
-    )["ar_batch"]
-
-    assert envelope["configured_slots"] is None
-    assert envelope["invalid_configuration"] == expected
+    assert envelope["enabled"] is False
 
 
 def test_summary_passes_the_live_batch_state_through() -> None:

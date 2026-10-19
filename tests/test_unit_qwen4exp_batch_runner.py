@@ -248,6 +248,12 @@ def _fake_runner(*, slots: int = 3) -> Qwen4ExpGGUFBatchRunner:
         if kind == "qsa"
     }
     runner.attention_states = (_FakeAttention(slots, 2),)
+    # Static layout: every slot owns its full window of the page table.
+    runner.pooled = False
+    runner._pool_request = None
+    runner._block_host = runner.attention_states[0].block_host
+    runner._free_blocks = []
+    runner._slot_blocks = [runner.attention_states[0].blocks_per_request] * slots
     runner.index_states = (_FakeIndex(slots),)
     runner.gdn_states = (_FakeGdn(slots), _FakeGdn(slots))
     runner.ple_state = _FakePle(slots)
@@ -996,6 +1002,15 @@ def test_each_qsa_layer_owns_its_own_paged_kv_cache(monkeypatch) -> None:
     attention = runner.attention_states[0]
     block_bytes = attention.block_size * attention.kv_heads * attention.head_dim * 2
     kv_bytes = 2 * len(runner.attention_states) * attention.blocks_per_request * block_bytes
-    assert sum(call[3] for call in memsets if call[3] == block_bytes) == (
-        kv_bytes // block_bytes
-    ) * block_bytes
+    # Contiguous blocks are zeroed by one memset each, so count bytes, not calls.
+    # The fakes share addresses, so each range is counted once per memset.
+    caches = {
+        (cache.ptr, cache.ptr + cache.nbytes)
+        for state in runner.attention_states
+        for cache in (state.key_cache, state.value_cache)
+    }
+    written = sum(
+        call[3] for call in memsets
+        for start, end in caches if start <= call[1] < end
+    )
+    assert written == kv_bytes

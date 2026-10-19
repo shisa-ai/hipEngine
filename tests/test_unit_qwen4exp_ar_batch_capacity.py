@@ -1,9 +1,9 @@
-"""CPU contracts for the Qwen4Exp AR batch qualification configuration.
+"""CPU contracts for Qwen4Exp request capacity with the shared decode batch.
 
-The AR batch switch is allowed to raise one generator instance's plain-AR
-capacity only inside the live-qualified envelope (4 slots at <= 2048
-positions). These tests pin the boundary on both sides, the width bound, the
-unchanged MTP capability, and the absence of a process-global class mutation.
+Plain AR requests share one decode batch and one paged K/V block pool, so the
+active-request count is no longer the number of full-context c1 runners. These
+tests pin the default, the kernel row bound, the separate staging-runner count,
+the rollback lever, and the absence of a process-global class mutation.
 """
 
 from __future__ import annotations
@@ -14,11 +14,12 @@ import pytest
 
 from hipengine.generation.qwen4_exp_ar_batch import (
     AR_BATCH_ENV,
-    AR_BATCH_QUALIFIED_MAX_POSITIONS,
-    AR_BATCH_QUALIFIED_MAX_SLOTS,
-    AR_BATCH_SLOTS_ENV,
-    ar_batch_capacity_ceiling,
-    ar_batch_state_slots,
+    QWEN4_EXP_BATCH_SLOT_POSITIONS,
+    QWEN4_EXP_DEFAULT_REQUEST_CAPACITY,
+    QWEN4_EXP_MAX_BATCH_ROWS,
+    QWEN4_EXP_STAGING_RUNNERS,
+    ar_batch_enabled,
+    batch_slot_positions,
 )
 from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
 from hipengine.server.api import ServerConfig, _gguf_mtp_batch_route_max_active_requests
@@ -53,101 +54,88 @@ def _generator(**kwargs) -> Qwen4ExpGGUFTextGenerator:
     )
 
 
-def test_capacity_ceiling_is_scoped_to_the_qualified_envelope(monkeypatch) -> None:
+def test_batch_is_on_by_default_and_the_env_is_a_rollback(monkeypatch) -> None:
     monkeypatch.delenv(AR_BATCH_ENV, raising=False)
-    assert ar_batch_capacity_ceiling(max_positions=2048, default=2) == 2
-
+    assert ar_batch_enabled()
+    for value in ("0", "false", "off"):
+        monkeypatch.setenv(AR_BATCH_ENV, value)
+        assert not ar_batch_enabled()
     monkeypatch.setenv(AR_BATCH_ENV, "1")
-    assert ar_batch_capacity_ceiling(max_positions=2048, default=2) == 4
-    assert ar_batch_capacity_ceiling(max_positions=1024, default=2) == 4
-    assert ar_batch_capacity_ceiling(
-        max_positions=AR_BATCH_QUALIFIED_MAX_POSITIONS + 1, default=2
-    ) == 2
-    assert ar_batch_capacity_ceiling(max_positions=None, default=2) == 2
-    # A plugin that already publishes a wider bound is not narrowed here.
-    assert ar_batch_capacity_ceiling(max_positions=2048, default=4) == 4
+    assert ar_batch_enabled()
 
 
-def test_switch_off_keeps_the_production_capacity_bound(monkeypatch) -> None:
+def test_default_capacity_is_concurrent_with_two_staging_runners(monkeypatch) -> None:
     monkeypatch.delenv(AR_BATCH_ENV, raising=False)
-    generator = _generator(max_sequence_length=2048, resident_capacity=2)
+    generator = _generator(max_sequence_length=262144)
     try:
-        assert generator.server_plain_ar_max_active_requests == 2
+        assert generator.server_plain_ar_max_active_requests == QWEN4_EXP_DEFAULT_REQUEST_CAPACITY
+        assert generator._staging_capacity == QWEN4_EXP_STAGING_RUNNERS
     finally:
         generator.close()
-    with pytest.raises(ValueError, match="production bound is 2"):
-        _generator(max_sequence_length=2048, resident_capacity=4)
-
-
-def test_switch_on_accepts_four_only_at_the_short_context(monkeypatch) -> None:
-    monkeypatch.setenv(AR_BATCH_ENV, "1")
-    generator = _generator(max_sequence_length=2048, resident_capacity=4)
-    try:
-        assert generator.server_plain_ar_max_active_requests == 4
-    finally:
-        generator.close()
-
-    with pytest.raises(ValueError, match="max_sequence_length=4096"):
-        _generator(max_sequence_length=4096, resident_capacity=4)
-    long_context = _generator(max_sequence_length=4096, resident_capacity=2)
-    try:
-        assert long_context.server_plain_ar_max_active_requests == 2
-    finally:
-        long_context.close()
-
-    with pytest.raises(ValueError, match="max_sequence_length=None"):
-        _generator(max_sequence_length=None, resident_capacity=4)
-
-
-def test_explicit_slot_bound_rejects_widths_above_the_qualification(
-    monkeypatch,
-) -> None:
-    monkeypatch.setenv(AR_BATCH_ENV, "1")
-    monkeypatch.setenv(AR_BATCH_SLOTS_ENV, "5")
-    with pytest.raises(ValueError, match="qualified physical width 4"):
-        ar_batch_state_slots(4)
-
-    monkeypatch.setenv(AR_BATCH_SLOTS_ENV, "4")
-    assert ar_batch_state_slots(4) == 4
-
-    # The width bound does not relax the serving-capacity bound.
-    with pytest.raises(ValueError, match="outside the serving capacity"):
-        ar_batch_state_slots(2)
-
-
-def test_capacity_policy_is_per_instance_and_leaves_the_class_bound(
-    monkeypatch,
-) -> None:
-    class_bound = Qwen4ExpGGUFTextGenerator.server_plain_ar_max_active_requests
-    assert class_bound == 2
-
-    monkeypatch.setenv(AR_BATCH_ENV, "1")
-    qualified = _generator(max_sequence_length=2048, resident_capacity=4)
-    try:
-        assert qualified.server_plain_ar_max_active_requests == 4
-
-        monkeypatch.delenv(AR_BATCH_ENV)
-        default = _generator(max_sequence_length=2048, resident_capacity=2)
+    # Context length no longer bounds the request count: the pool does.
+    for context in (2048, 32768, 262144, None):
+        wide = _generator(max_sequence_length=context, resident_capacity=16)
         try:
-            assert default.server_plain_ar_max_active_requests == 2
-            # The earlier instance keeps its own resolved capability.
-            assert qualified.server_plain_ar_max_active_requests == 4
+            assert wide.server_plain_ar_max_active_requests == 16
+            assert wide._staging_capacity == QWEN4_EXP_STAGING_RUNNERS
         finally:
-            default.close()
+            wide.close()
+    solo = _generator(resident_capacity=1)
+    try:
+        assert solo._staging_capacity == 1
     finally:
-        qualified.close()
-
-    assert (
-        Qwen4ExpGGUFTextGenerator.server_plain_ar_max_active_requests
-        == class_bound
-    )
-    assert (
-        Qwen4ExpGGUFTextGenerator.server_plain_ar_max_active_requests_by_max_sequence_length
-        == {1024: 2}
-    )
+        solo.close()
 
 
-def test_switch_does_not_raise_the_mixed_mtp_capability(monkeypatch) -> None:
+def test_capacity_is_bounded_by_the_indexed_decode_kernels(monkeypatch) -> None:
+    monkeypatch.delenv(AR_BATCH_ENV, raising=False)
+    top = _generator(resident_capacity=QWEN4_EXP_MAX_BATCH_ROWS)
+    top.close()
+    with pytest.raises(ValueError, match="indexed batch decode kernels"):
+        _generator(resident_capacity=QWEN4_EXP_MAX_BATCH_ROWS + 1)
+    with pytest.raises(ValueError, match="active request count"):
+        _generator(resident_capacity=0)
+
+
+def test_rollback_gives_every_request_its_own_runner(monkeypatch) -> None:
+    monkeypatch.setenv(AR_BATCH_ENV, "0")
+    generator = _generator(max_sequence_length=2048)
+    try:
+        assert generator.server_plain_ar_max_active_requests == QWEN4_EXP_STAGING_RUNNERS
+        assert generator._staging_capacity == QWEN4_EXP_STAGING_RUNNERS
+    finally:
+        generator.close()
+    explicit = _generator(max_sequence_length=2048, resident_capacity=3)
+    try:
+        assert explicit._staging_capacity == 3
+    finally:
+        explicit.close()
+
+
+def test_batch_slot_extent_is_capped(monkeypatch) -> None:
+    assert batch_slot_positions(2048) == 2048
+    assert batch_slot_positions(262144) == QWEN4_EXP_BATCH_SLOT_POSITIONS
+    assert batch_slot_positions(QWEN4_EXP_BATCH_SLOT_POSITIONS) == QWEN4_EXP_BATCH_SLOT_POSITIONS
+
+
+def test_capacity_policy_is_per_instance_and_leaves_the_class_bound(monkeypatch) -> None:
+    class_bound = Qwen4ExpGGUFTextGenerator.server_plain_ar_max_active_requests
+    assert class_bound == QWEN4_EXP_DEFAULT_REQUEST_CAPACITY
+    monkeypatch.delenv(AR_BATCH_ENV, raising=False)
+    wide = _generator(resident_capacity=12)
+    try:
+        narrow = _generator(resident_capacity=3)
+        try:
+            assert narrow.server_plain_ar_max_active_requests == 3
+            assert wide.server_plain_ar_max_active_requests == 12
+        finally:
+            narrow.close()
+    finally:
+        wide.close()
+    assert Qwen4ExpGGUFTextGenerator.server_plain_ar_max_active_requests == class_bound
+
+
+def test_batch_capacity_does_not_raise_the_mixed_mtp_capability(monkeypatch) -> None:
     config = ServerConfig(
         model="/models/gguf/x.gguf",
         served_model_name="x",
@@ -155,15 +143,13 @@ def test_switch_does_not_raise_the_mixed_mtp_capability(monkeypatch) -> None:
         max_active_requests=4,
         max_context_tokens=2048,
     )
-    monkeypatch.delenv(AR_BATCH_ENV, raising=False)
+    monkeypatch.setenv(AR_BATCH_ENV, "0")
     mtp_bound_off = _gguf_mtp_batch_route_max_active_requests(config)
-
-    monkeypatch.setenv(AR_BATCH_ENV, "1")
+    monkeypatch.delenv(AR_BATCH_ENV)
     generator = _generator(max_sequence_length=2048, resident_capacity=4)
     try:
-        assert generator.server_plain_ar_max_active_requests == 4
-        # MTP rows never join the AR batch (owner exclusion) and the plugin
-        # publishes no MTP width, so this switch cannot widen it.
+        # MTP rows never join the AR batch and the plugin publishes no MTP
+        # width, so the batch capacity cannot widen it.
         assert getattr(generator, "server_mtp_batch_max_active_requests", None) is None
         assert _gguf_mtp_batch_route_max_active_requests(config) == mtp_bound_off
     finally:

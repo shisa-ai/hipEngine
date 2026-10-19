@@ -36,7 +36,8 @@ def test_an_allocation_failure_keeps_the_capacity_hint(exc: BaseException) -> No
     "exc",
     [
         ValueError(
-            "HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS=9 exceeds the qualified physical width 4"
+            "Qwen4Exp active request count must be within 1..64 (the indexed batch "
+            "decode kernels take at most 64 rows)"
         ),
         ValueError("--batch-width 4 is unsupported by the long-context gate"),
         RuntimeError("Qwen4Exp AR batch decode requires model-owned resident weights"),

@@ -26,10 +26,8 @@ from hipengine.generation.deadline import GenerationCancellationToken
 from hipengine.generation.engine_loop import EngineLoopConfig, SubmitPollTextGenerator
 from hipengine.generation.qwen4_exp_ar_batch import (
     AR_BATCH_ENV,
-    AR_BATCH_SLOTS_ENV,
     Qwen4ExpARBatchOwner,
     Qwen4ExpARBatchStepError,
-    ar_batch_state_slots,
 )
 from hipengine.generation.qwen4_exp_gguf import Qwen4ExpResidentServingRunner
 from hipengine.generation.registry import GenerationRequest
@@ -84,8 +82,7 @@ def _decode(native, request_ids, *, slot_ids=()):
 
 @pytest.fixture
 def batch_env(monkeypatch):
-    monkeypatch.setenv(AR_BATCH_ENV, "1")
-    monkeypatch.delenv(AR_BATCH_SLOTS_ENV, raising=False)
+    monkeypatch.delenv(AR_BATCH_ENV, raising=False)
     monkeypatch.setattr(
         "hipengine.runtime.qwen4_exp_batch_runner.Qwen4ExpGGUFBatchRunner",
         FakeBatchRunner,
@@ -113,19 +110,19 @@ def _batch(native):
     return native.decode_telemetry()["ar_batch"]
 
 
-def test_default_off_keeps_the_request_owned_c1_step(monkeypatch) -> None:
-    """The committed path is unchanged: no batch owner, one c1 step per row."""
+def test_rollback_keeps_the_request_owned_c1_step(monkeypatch) -> None:
+    """The rollback lever restores one c1 runner and one c1 step per row."""
 
-    monkeypatch.delenv(AR_BATCH_ENV, raising=False)
+    monkeypatch.setenv(AR_BATCH_ENV, "0")
     generator, native = _native(monkeypatch)
     try:
         _prefill(native, 1, (1, 2))
         _prefill(native, 2, (3, 4))
         generated = _decode(native, (1, 2))
         assert [item.request_id for item in generated] == [1, 2]
-        assert native.decode_telemetry() == {
-            "decode_path": "qwen4exp_c1_request_owned_step", "ar_batch": None,
-        }
+        telemetry = native.decode_telemetry()
+        assert telemetry["decode_path"] == "qwen4exp_c1_request_owned_step"
+        assert telemetry["ar_batch"] is None
         for request_id in (1, 2):
             row = native._row(request_id)
             assert [name for name, _ in row.runner.calls] == ["prefill_append", "step"]
@@ -159,10 +156,15 @@ def test_one_shared_step_per_tick_replaces_n_c1_steps(batch_env, monkeypatch) ->
         assert second[1].token_id == tokens[1] + 2 * FakeBatchRunner.token_bias
         assert len(fake.step_calls) == 2
         assert _batch(native)["step_widths"] == {"2": 2}
+        # Both staging runners went back to the pool after their imports and
+        # were never stepped.
         for request_id in (1, 2):
-            row = native._row(request_id)
-            assert [name for name, _ in row.runner.calls] == ["prefill_append"]
-            assert row.runner.position == len(row.prompt_ids)
+            assert native._row(request_id).runner is None
+        assert len(native._available) == 2
+        # A returned runner is the next one handed out, so one runner may have
+        # prefilled both rows; none was ever stepped.
+        calls = [name for runner in native._available for name, _ in runner.calls]
+        assert calls == ["prefill_append", "prefill_append"]
     finally:
         native.close()
 
@@ -361,55 +363,89 @@ def test_admission_rollback_returns_the_pinned_slot(batch_env, monkeypatch) -> N
         native.close()
 
 
-def test_no_free_slot_fails_admission_instead_of_falling_back(batch_env, monkeypatch) -> None:
-    """A narrower width refuses admission; it never decodes that row on c1."""
+def test_staging_runner_returns_after_import(batch_env, monkeypatch) -> None:
+    """A batch row gives its c1 runner back, so a third request can prefill."""
 
-    monkeypatch.setenv(AR_BATCH_SLOTS_ENV, "1")
-    generator, native = _native(monkeypatch)
+    _patch_extra_runners(monkeypatch)
+    generator = make_generator()
+    native = generator.create_resident_model_runner(capacity=3)
     try:
+        assert native.staging_capacity == 2
         _prefill(native, 1, (1, 2))
-        _register(native, 2, (3, 4))
-        with pytest.raises(RuntimeError, match="no free state slot"):
-            native.reserve_admission(SimpleNamespace(request_id=2))
-        assert native._ar_batch.live_request_ids == (1,)
-        assert native._row(2).runner is None
-        assert native._available
-        _decode(native, (1,))
-        assert native._ar_batch.runner.step_calls[0][0] == (native._ar_batch.lease(1)[0],)
+        _prefill(native, 2, (3, 4))
+        assert native._row(1).runner is None and native._row(2).runner is None
+        assert len(native._available) == 2
+        _prefill(native, 3, (5, 6))
+        generated = _decode(native, (1, 2, 3))
+        assert [item.request_id for item in generated] == [1, 2, 3]
+        assert [len(call[0]) for call in native._ar_batch.runner.step_calls] == [3]
     finally:
         native.close()
 
 
-def test_narrow_width_keeps_the_extra_request_pending(batch_env, monkeypatch) -> None:
-    """``plan_admission`` holds the surplus row pending instead of failing a tick."""
+def test_full_pool_keeps_the_extra_request_pending(batch_env, monkeypatch) -> None:
+    """``plan_admission`` waits for blocks instead of failing a tick."""
 
-    monkeypatch.setenv(AR_BATCH_SLOTS_ENV, "1")
+    monkeypatch.setattr(FakeBatchRunner, "auto_pool_blocks", 1)
+    generator, native = _native(monkeypatch)
+    try:
+        native.prepare()
+        _register(native, 1, (1, 2))
+        _register(native, 2, (3, 4))
+        pending = (SimpleNamespace(request_id=1), SimpleNamespace(request_id=2))
+        assert native.plan_admission(pending, max_items=2) == (1,)
+        native.reserve_admission(SimpleNamespace(request_id=1))
+        assert native.plan_admission(pending[1:], max_items=1) == ()
+        native.prefill_batch(_prefill_work(1, (1, 2)), commit=True)
+        native.discard((1,))
+        assert native.plan_admission(pending[1:], max_items=1) == (2,)
+    finally:
+        native.close()
+
+
+def test_pool_bound_driver_steps_at_the_width_that_fits(batch_env, monkeypatch) -> None:
+    """With one request's blocks free, two requests run one after the other."""
+
+    monkeypatch.setattr(FakeBatchRunner, "auto_pool_blocks", 1)
     _patch_extra_runners(monkeypatch)
     generator = make_generator()
     driver = SubmitPollTextGenerator(
         generator,
         config=EngineLoopConfig(
             max_active_requests=2, max_prefill_chunk_tokens=8,
-            # Complete both prefills before decoding so the shared step's width
-            # is the batch's, not the TTFT policy's.
             prefill_decode_policy="protect_ttft",
         ),
     )
     try:
         outputs = driver.generate_detailed(
             GenerationRequest(
-                prompts=((1, 2, 3), (4, 5, 6)), max_tokens=2, temperature=0.0,
+                prompts=((1, 2), (4, 5)), max_tokens=2, temperature=0.0,
                 top_p=1.0, ignore_eos=True,
             )
         )
         assert [len(output.generated_token_ids) for output in outputs] == [2, 2]
         native = generator._resident_model_runner
-        fake = native._ar_batch.runner
-        assert fake.state_slots == 1
-        assert [len(call[0]) for call in fake.step_calls] == [1, 1]
-        assert _batch(native)["step_widths"] == {"1": 2}
+        assert [len(call[0]) for call in native._ar_batch.runner.step_calls] == [1, 1]
     finally:
         driver.close()
+
+
+def test_a_request_longer_than_the_pool_decodes_on_its_c1_runner(batch_env, monkeypatch) -> None:
+    """An extent no batch slot can hold runs on its staging runner, not never."""
+
+    monkeypatch.setattr(FakeBatchRunner, "auto_pool_blocks", 1)
+    generator, native = _native(monkeypatch)
+    try:
+        _prefill(native, 1, (1, 2, 3, 4, 5), max_tokens=4)
+        row = native._row(1)
+        assert not native._ar_batch.owns(1)
+        assert row.runner is not None
+        generated = _decode(native, (1,))
+        assert [item.request_id for item in generated] == [1]
+        assert [name for name, _ in row.runner.calls] == ["prefill_append", "step"]
+        assert native._ar_batch.runner.step_calls == []
+    finally:
+        native.close()
 
 
 def test_poisoned_step_releases_every_slot_and_disables_the_path(batch_env, monkeypatch) -> None:
@@ -490,6 +526,81 @@ def test_mtp_row_never_holds_a_batch_slot(batch_env, monkeypatch) -> None:
         native.close()
 
 
+def _mtp_native(monkeypatch, *, capacity=2):
+    _patch_extra_runners(monkeypatch)
+    monkeypatch.setattr(
+        "hipengine.generation.qwen4_exp_serving_mtp.Qwen4ExpGGUFMTPDraftRunner",
+        lambda *args, **kwargs: FakeDraft(),
+    )
+    generator = make_generator()
+    native = generator.create_resident_model_runner(capacity=capacity)
+    provider = FakeMTPProvider()
+    generator._speculative_provider = provider
+    native.prepare()
+    return generator, native, provider
+
+
+def test_automatic_mtp_row_rejoins_the_batch_when_a_peer_arrives(batch_env, monkeypatch) -> None:
+    """MTP for a lone request; plain batch decode once another one registers."""
+
+    generator, native, provider = _mtp_native(monkeypatch)
+    try:
+        _register(native, 1, (1, 2), max_tokens=6, speculative_mtp_automatic=True)
+        native.register_speculative_request(1, 2)
+        assert native._row(1).mtp_budget == 2
+        native.reserve_admission(SimpleNamespace(request_id=1))
+        native.prefill_batch(_prefill_work(1, (1, 2)), commit=True)
+        assert not native._ar_batch.owns(1)
+        assert [item.token_id for item in _decode(native, (1,))] == [provider.root_token]
+        row = native._row(1)
+        assert not native._demotion_wanted(row), "alone, the MTP row keeps its route"
+        runner = row.runner
+        _register(native, 2, (3, 4))
+        assert native._demotion_wanted(row)
+        assert native._mtp_capability((SimpleNamespace(request_id=1),)) is None
+        generated = _decode(native, (1,))
+        assert row.mtp_budget == 0 and row.draft is None and row.runner is None
+        assert native._ar_batch.owns(1) and native._ar_batch.imported(1)
+        # The demotion fed the already-published root token on c1 once, then the
+        # row stepped in the shared batch.
+        assert [name for name, _ in runner.calls][-1] == "step"
+        assert runner in native._available
+        assert [item.request_id for item in generated] == [1]
+        assert row.generated_ids[0] == provider.root_token
+        assert native.decode_telemetry()["mtp_demotions"] == 1
+    finally:
+        native.close()
+
+
+def test_explicit_mtp_row_keeps_its_route_under_load(batch_env, monkeypatch) -> None:
+    generator, native, provider = _mtp_native(monkeypatch)
+    try:
+        _register(native, 1, (1, 2), max_tokens=6)
+        native.register_speculative_request(1, 2)
+        native.reserve_admission(SimpleNamespace(request_id=1))
+        native.prefill_batch(_prefill_work(1, (1, 2)), commit=True)
+        _decode(native, (1,))
+        _register(native, 2, (3, 4))
+        assert not native._demotion_wanted(native._row(1))
+        assert native._row(1).mtp_budget == 2
+    finally:
+        native.close()
+
+
+def test_automatic_mtp_is_skipped_when_the_server_is_busy(batch_env, monkeypatch) -> None:
+    generator, native, provider = _mtp_native(monkeypatch)
+    try:
+        _register(native, 1, (1, 2))
+        _register(native, 2, (3, 4), speculative_mtp_automatic=True)
+        native.register_speculative_request(2, 2)
+        assert native._row(2).mtp_budget == 0
+        _register(native, 3, (5, 6))
+        native.register_speculative_request(3, 2)
+        assert native._row(3).mtp_budget == 2, "an explicit request still runs MTP"
+    finally:
+        native.close()
+
+
 def test_owner_reservation_checks_the_position_bound() -> None:
     """An oversized request is refused before it takes a slot."""
 
@@ -510,17 +621,6 @@ def test_owner_reservation_checks_the_position_bound() -> None:
             owner.reserve(1, positions=1)
     finally:
         owner.close()
-
-
-def test_state_slots_default_to_capacity_and_reject_a_bad_bound(monkeypatch) -> None:
-    monkeypatch.delenv(AR_BATCH_SLOTS_ENV, raising=False)
-    assert ar_batch_state_slots(2) == 2
-    monkeypatch.setenv(AR_BATCH_SLOTS_ENV, "1")
-    assert ar_batch_state_slots(2) == 1
-    for bad in ("0", "3", "-1"):
-        monkeypatch.setenv(AR_BATCH_SLOTS_ENV, bad)
-        with pytest.raises(ValueError, match="outside the serving capacity"):
-            ar_batch_state_slots(2)
 
 
 def test_controlled_row_requests_the_logits_readback(batch_env, monkeypatch) -> None:
@@ -672,3 +772,50 @@ def test_malformed_step_output_fails_the_rows_and_blocks_a_retry(mode) -> None:
         assert len(fake.step_calls) == 1
     finally:
         owner.close()
+
+
+def test_rows_that_stopped_speculating_report_no_live_depth(batch_env, monkeypatch) -> None:
+    """The engine partitions only rows that still speculate.
+
+    An automatic request that arrived while others ran never speculates, and
+    an MTP row about to rejoin the batch stops; both report a live depth of 0
+    so the engine decodes them in one batch step with the other plain rows.
+    """
+
+    generator, native, provider = _mtp_native(monkeypatch)
+    try:
+        _register(native, 1, (1, 2), max_tokens=6, speculative_mtp_automatic=True)
+        native.register_speculative_request(1, 2)
+        assert native.speculative_live_candidate_count(1, 2) == 2
+        native.reserve_admission(SimpleNamespace(request_id=1))
+        native.prefill_batch(_prefill_work(1, (1, 2)), commit=True)
+        _decode(native, (1,))
+        assert native.speculative_live_candidate_count(1, 2) == 2
+        _register(native, 2, (3, 4), speculative_mtp_automatic=True)
+        native.register_speculative_request(2, 2)
+        assert native.speculative_live_candidate_count(2, 2) == 0
+        assert native.speculative_live_candidate_count(1, 2) == 0, "about to rejoin"
+        assert native.speculative_live_candidate_count(99, 3) == 3
+    finally:
+        native.close()
+
+
+def test_automatic_mtp_falls_back_for_a_request_mtp_cannot_serve(batch_env, monkeypatch) -> None:
+    """A resident-session request never sees an MTP refusal it did not ask for."""
+
+    generator, native, provider = _mtp_native(monkeypatch)
+
+    def refuse_sessions(request):
+        if request.resident_session_key:
+            raise NotImplementedError("Qwen4Exp MTP does not yet support resident session reuse")
+
+    provider._validate_sampling = refuse_sessions
+    try:
+        _register(native, 1, (1, 2), speculative_mtp_automatic=True, resident_session_key="s")
+        native.register_speculative_request(1, 2)
+        assert native._row(1).mtp_budget == 0
+        _register(native, 2, (3, 4), resident_session_key="s")
+        with pytest.raises(NotImplementedError, match="resident session"):
+            native.register_speculative_request(2, 2)
+    finally:
+        native.close()

@@ -103,7 +103,7 @@ from typing import Any
 import numpy as np
 
 from hipengine.core.dtype import DType
-from hipengine.core.hip import HipRuntime
+from hipengine.core.hip import HipMemcpyKind, HipRuntime
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
@@ -241,7 +241,11 @@ class Qwen4ExpBatchQsaIndexState:
         block_size = int(attention_state.block_size)
         blocks_per_request = int(attention_state.blocks_per_request)
         slot_capacity_tokens = int(attention_state.slot_capacity_tokens)
-        total_positions = slots * slot_capacity_tokens
+        # Raw keys are addressed by physical position, so the slab follows the
+        # attention owner's physical extent: every slot's window in the static
+        # layout, the shared block pool in pooled mode.
+        total_positions = int(attention_state.total_capacity_tokens)
+        pooled = bool(getattr(attention_state, "pooled", False))
         complete_blocks = capacity // ratio
         if complete_blocks <= 0:
             raise ValueError(
@@ -276,16 +280,17 @@ class Qwen4ExpBatchQsaIndexState:
         logical_positions = np.arange(complete_blocks * ratio, dtype=np.int64)
         logical_blocks = logical_positions // block_size
         within_block = logical_positions % block_size
-        member_host = np.empty((slots, complete_blocks, ratio), dtype=np.int32)
-        for slot in range(slots):
-            physical = (
-                attention_state.block_host[slot][logical_blocks].astype(np.int64)
-                * block_size
-                + within_block
-            )
-            member_host[slot] = physical.reshape(complete_blocks, ratio)
-        if np.unique(member_host).size != member_host.size:
-            raise ValueError("QSA index member maps overlap between slots")
+        member_host = np.zeros((slots, complete_blocks, ratio), dtype=np.int32)
+        if not pooled:
+            for slot in range(slots):
+                physical = (
+                    attention_state.block_host[slot][logical_blocks].astype(np.int64)
+                    * block_size
+                    + within_block
+                )
+                member_host[slot] = physical.reshape(complete_blocks, ratio)
+            if np.unique(member_host).size != member_host.size:
+                raise ValueError("QSA index member maps overlap between slots")
         member_flat = np.ascontiguousarray(
             member_host.reshape(slots * complete_blocks, ratio)
         )
@@ -784,6 +789,43 @@ class Qwen4ExpBatchQsaIndexState:
         existed = self.pending_rollback is not None
         self.pending_rollback = None
         return existed
+
+    def map_slot(self, slot: int, blocks: int) -> None:
+        """Publish ``slot``'s member map for its first ``blocks`` paged blocks.
+
+        Pooled mode assigns physical blocks at admission, so the member map that
+        turns a slot's logical index-block members into physical raw-key rows is
+        rebuilt from the attention owner's page table and uploaded for the
+        covered prefix. Rows past it are never read: a slot's cursor cannot pass
+        the positions its blocks hold.
+        """
+
+        self._require_open()
+        parsed = self._require_slot(slot)
+        count = _index_int(blocks, "blocks")
+        if not 0 <= count <= self.blocks_per_request:
+            raise ValueError(
+                f"blocks {count} is outside [0, {self.blocks_per_request}]"
+            )
+        complete = min(self.complete_blocks, count * self.block_size // self.compression_ratio)
+        if complete <= 0:
+            return
+        logical = np.arange(complete * self.compression_ratio, dtype=np.int64)
+        table = self.attention.block_host[parsed]
+        physical = (
+            table[logical // self.block_size].astype(np.int64) * self.block_size
+            + logical % self.block_size
+        )
+        rows = physical.reshape(complete, self.compression_ratio).astype(np.int32)
+        self.member_host[parsed, :complete] = rows
+        row_bytes = self.compression_ratio * DType.INT32.itemsize
+        offset = parsed * self.complete_blocks * row_bytes
+        self.runtime.memcpy(
+            self.member_indices.ptr + offset,
+            host_array_ptr(np.ascontiguousarray(self.member_host[parsed, :complete])),
+            complete * row_bytes,
+            HipMemcpyKind.HOST_TO_DEVICE,
+        )
 
     def reset_slot(self, slot: int) -> None:
         """Release one slot for a new request (its keys become unreadable).

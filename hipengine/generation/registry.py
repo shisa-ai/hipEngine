@@ -139,6 +139,8 @@ class GenerationRequest:
         repr=False,
     )
     speculative_mtp_static_eligibility: SpeculativeMTPStaticEligibility | None = None
+    #: The server selected MTP automatically (see ``SamplingParams``).
+    speculative_mtp_automatic: bool = False
     logprobs: bool = False
     top_logprobs: int = 0
 

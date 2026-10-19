@@ -13,6 +13,17 @@ from tests.test_unit_qwen4exp_mtp_resident_sampling import driver
 from tests.test_unit_qwen4exp_mtp_submission import _finish
 
 
+@pytest.fixture(autouse=True)
+def _request_owned_c1_path(monkeypatch):
+    """These cases drive the request-owned c1 path with a stand-in resident.
+
+    The shared Flash-Next decode batch is the default; its own suite is
+    ``tests/test_unit_qwen4exp_ar_batch_decode.py``.
+    """
+
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_AR_BATCH", "0")
+
+
 @pytest.mark.parametrize('at_budget', [False, True])
 @pytest.mark.parametrize('batched', [False, True])
 @pytest.mark.parametrize('candidate', [0, 1])

@@ -1614,43 +1614,24 @@ def _decode_capability_summary(engine: Any | None) -> dict[str, Any]:
     # provider's batch implementation.
     from hipengine.generation.qwen4_exp_ar_batch import (
         AR_BATCH_ENV,
-        AR_BATCH_QUALIFIED_MAX_POSITIONS,
-        AR_BATCH_QUALIFIED_MAX_SLOTS,
-        AR_BATCH_SLOTS_ENV,
+        QWEN4_EXP_MAX_BATCH_ROWS,
         ar_batch_enabled,
     )
 
-    raw_slots = os.environ.get(AR_BATCH_SLOTS_ENV, "").strip()
-    configured: int | None = None
-    invalid: str | None = None
-    if raw_slots:
-        try:
-            parsed = int(raw_slots)
-        except ValueError:
-            invalid = f"{AR_BATCH_SLOTS_ENV} is not an integer"
-        else:
-            if not 1 <= parsed <= AR_BATCH_QUALIFIED_MAX_SLOTS:
-                invalid = (
-                    f"{AR_BATCH_SLOTS_ENV}={parsed} is outside "
-                    f"1..{AR_BATCH_QUALIFIED_MAX_SLOTS}"
-                )
-            else:
-                configured = parsed
+    active = decode.get("ar_batch")
     summary["ar_batch"] = {
         "enabled": ar_batch_enabled(),
-        "env": AR_BATCH_ENV,
-        "slots_env": AR_BATCH_SLOTS_ENV,
-        "configured_slots": configured,
-        "invalid_configuration": invalid,
-        "qualified_max_slots": AR_BATCH_QUALIFIED_MAX_SLOTS,
-        "qualified_max_positions": AR_BATCH_QUALIFIED_MAX_POSITIONS,
-        "above_qualified_positions": "production_capacity_bound",
+        "rollback_env": AR_BATCH_ENV,
+        "max_rows": QWEN4_EXP_MAX_BATCH_ROWS,
+        "request_capacity": decode.get("request_capacity"),
+        "staging_runners": decode.get("staging_runners"),
         "mtp_rows_join_batch": False,
-        "active": decode.get("ar_batch"),
+        "active": active,
         "scope": (
-            "opt-in plain-AR decode rows; MTP rows keep a request-owned c1 "
-            "runner; the raised capacity ceiling applies only at or below "
-            "qualified_max_positions"
+            "plain AR rows share one decode step and one paged KV block pool; "
+            "MTP rows and requests longer than a batch slot decode on a c1 "
+            "staging runner; an automatic MTP row rejoins the batch when other "
+            "requests arrive"
         ),
     }
     return summary
@@ -3162,11 +3143,20 @@ def _sampling_for_realized_generation_route(
     """Attach typed static provider intent without selecting future C_due/K."""
 
     eligibility = _static_eligibility_from_route_decision(route_decision)
-    if sampling.speculative_mtp_static_eligibility == eligibility:
+    automatic = bool(
+        eligibility is not None
+        and isinstance(route_decision, Mapping)
+        and route_decision.get("request_mode") == "automatic"
+    )
+    if (
+        sampling.speculative_mtp_static_eligibility == eligibility
+        and sampling.speculative_mtp_automatic == automatic
+    ):
         return sampling
     return replace(
         sampling,
         speculative_mtp_static_eligibility=eligibility,
+        speculative_mtp_automatic=automatic,
     )
 
 

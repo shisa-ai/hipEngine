@@ -7,6 +7,17 @@ from scripts import qwen4exp_chunk_c2_gate as gate
 from tests.test_unit_qwen4_exp_resident_serving import _Tokenizer
 
 
+@pytest.fixture(autouse=True)
+def _request_owned_c1_path(monkeypatch):
+    """These cases drive the request-owned c1 path with a stand-in resident.
+
+    The shared Flash-Next decode batch is the default; its own suite is
+    ``tests/test_unit_qwen4exp_ar_batch_decode.py``.
+    """
+
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_AR_BATCH", "0")
+
+
 class Runner:
     max_sequence_length = 4352
     prefill_chunk_size = 2048

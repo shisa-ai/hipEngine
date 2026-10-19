@@ -14,6 +14,17 @@ from hipengine.speculative.registry import SpeculativeProviderConfig
 from tests.test_unit_qwen4exp_mtp_steps import _BatchedTargetRunner, _DraftRunner, _Tokenizer
 
 
+@pytest.fixture(autouse=True)
+def _request_owned_c1_path(monkeypatch):
+    """These cases drive the request-owned c1 path with a stand-in resident.
+
+    The shared Flash-Next decode batch is the default; its own suite is
+    ``tests/test_unit_qwen4exp_ar_batch_decode.py``.
+    """
+
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_AR_BATCH", "0")
+
+
 class _Target(_BatchedTargetRunner):
     prefill_chunk_size = 2
     runtime = None

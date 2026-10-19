@@ -61,73 +61,48 @@ kernel defects but are pure environment drift. Either record the expected
 contents alongside the artifact and fail loudly on a mismatch, or have these
 tests build when the entry is missing instead of requiring a prebuild.
 
-## Qwen4Exp MTP auto-admission and the AR batch width-1 gap
+## Flash-Next shared decode batch: rollback lever and remaining gaps
 
-Measured 2026-10-18 on gfx1151/zbook
-([artifact](benchmarks/results/2026-10-18-qwen4exp-mtp-economics/README.md)):
+The full-model AR batch is the default serving path for Flash-Next
+(`Qwen4ExpARBatchOwner` in `hipengine/generation/qwen4_exp_ar_batch.py`). Plain
+AR requests are prefilled on one of two c1 staging runners and imported into a
+batch slot; the slots share one paged K/V and index-key block pool sized from
+free device memory. In-process step time on gfx1151 after the graph-segment and
+upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
+71.4 ms, width 8 88.5 ms
+(`worklog/entries/20261019T132824.038407Z-lhl-qwen4exp-batch-decode-host-overhead-bce862.md`).
 
-- **MTP has no evidence-gated `auto` scope for Qwen4Exp.** The mode is
-  `opt_in`, because `Qwen4ExpGGUFTextGenerator` has no
-  `resolve_speculative_mtp_serving_plan` and the Qwen4Exp model plugin declares
-  no `speculative_mtp_serving_evidence`. The Qwen35 plugin path builds the key
-  from `_kv_weight_quant_key()` and `_kv_model_artifact_identity()`; Qwen4Exp
-  has neither, and an artifact identity for a four-shard directory is not
-  something to approximate. Encode the measured scope when that layer exists:
-  `realized_group_rows` 1..2, greedy, budget 3, BF16 KV, context <= 2048,
-  production profile (1.257x solo, 1.330x at width 2, 0.865x at width 4).
-  Until then `opt_in` is the honest default, and `auto` resolving to AR is the
-  correct fail-closed behaviour rather than a missing feature to paper over.
-- **A speculative row cannot share a batch step.** MTP throughput is flat at
-  23.8-24.9 tok/s across widths 1/2/4 while AR scales 13.4 -> 18.4 -> 28.8, so
-  one MTP request in a four-wide batch costs the other rows 7% aggregate while
-  itself running 1.5-3.1x faster. Remove the penalty by letting MTP verify rows
-  and AR decode rows share one physical step (the MTP verifier already runs
-  prefill-shaped kernels over a row set), then re-measure before widening the
-  auto scope past `realized_group_rows <= 2`.
-- **The AR batch path is slower than serial c1 decode below four rows.** Width
-  1: 13.39 tok/s (batch) against 18.93 (serial c1, the shipped default). Width
-  2: 18.35. Width 4: 28.80. A single request on a server configured for
-  concurrency therefore pays about 29% against the serial default. Fix by
-  keeping a solo row on its c1 runner and importing it into a batch slot at the
-  first tick where the row set is >= 2 (the slot is already reserved at
-  admission, so capacity planning does not change), then re-run the width-4
-  numerical and lifecycle gates. Do not "fix" this by disabling the batch path:
-  it is the only route that reaches 28.8 tok/s at width 4.
+- **`HIPENGINE_QWEN4_EXP_AR_BATCH=0` is a rollback lever.** It restores one c1
+  runner per request. Remove it, and the c1 per-request decode branch of
+  `decode_batch` for plain rows, once a release has served the batch path
+  without a rollback; the c1 step stays for MTP rows and over-long requests.
+- **A lone request pays about 7% against the c1 runner** (48.9 vs 45.6 ms). The
+  remaining host work is the PLE n-gram hash and staging (about 2.4 ms before
+  the first layer) and roughly 38 small per-step uploads (positions, contexts,
+  index query positions for each QSA layer). Pack the per-step metadata into
+  one upload, or graph-capture the head and PLE stages, then re-time width 1.
+- **A batch slot holds at most 65,536 positions**
+  (`QWEN4_EXP_BATCH_SLOT_POSITIONS`). Each slot keeps per-position index slabs
+  (pooled keys, member map, scores) outside the shared pool, about 100 MiB per
+  slot at that cap and 400 MiB at 262K, so a longer request decodes on its c1
+  staging runner instead. Page the pooled index keys through the same block
+  table to remove the cap.
+- **A speculative row cannot share a batch step.** MTP rows verify a candidate
+  chain on a request-owned c1 runner. Automatic MTP therefore applies only to a
+  request running alone: the plugin declares greedy and processed-argmax MTP
+  automatic-eligible at one row, an automatic request that arrives while others
+  are registered decodes plainly, and an automatic MTP row is demoted to the
+  batch when another request registers. Let MTP verify rows and AR decode rows
+  share one physical step to remove the demotion. Sampled requests are not
+  selected automatically: their acceptance and economics have not been
+  measured.
+- **The Q8_0 expert-down layers read a tile count back to the host at two or
+  more rows** (`HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN`), so that MoE
+  segment is not graph-capturable and runs eagerly in every batch step. Derive
+  the count on device to make it capturable.
 
 ## Flash-Next batch decode runner: hand-off copies and owner reset duplication
 
-- `Qwen4ExpGGUFBatchRunner` (independent-request decode over physical state
-  slots) is reachable from serving only through the default-off
-  `HIPENGINE_QWEN4_EXP_AR_BATCH` switch, owned by
-  `Qwen4ExpARBatchOwner` (`hipengine/generation/qwen4_exp_ar_batch.py`). With the
-  switch off, the committed `decode_batch` path still loops c1 runners, so the
-  batch path and the c1 path duplicate the embedding/PLE-staging/head glue.
-- Promotion is blocked on evidence this tree does not have yet, not on the
-  wiring: (1) the full production numerical gate against the strict teacher
-  (mean/p95/p99/max KL, top-1 by category, determinism, isolation, task
-  quality) on the full `mtpbench-code-general-ja` suite plus category
-  holdouts - the only real-checkpoint runs so far are the short c1-drift and
-  sparse-threshold diagnostics; (2) live serving qualification at width 2 and
-  width 4 (HTTP, streaming, cancellation/disconnect) is recorded in
-  `worklog/entries/20261018T034525.696221Z-lhl-qwen4exp-arbatch-http-018db2.md`
-  for a 2048-token context, while long-context and poisoned-step recovery runs
-  remain; (3) a decision on MTP: the batch path is AR-only, so a mixed AR/MTP
-  workload pays two KV layouts and cannot share a step; (4) the memory cost of
-  `state_slots` full contexts on top of the c1 pool, which is why the width is
-  a separate `HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS` bound. Remove the switch only
-  when the batch path is the default and the c1 per-request step survives as
-  the strict fallback; remove the duplicated glue when one implementation
-  serves both.
-- The qualification capacity is per instance, not a class mutation:
-  `ar_batch_capacity_ceiling` raises one generator's plain-AR ceiling to 4 only
-  with `HIPENGINE_QWEN4_EXP_AR_BATCH=1` and `max_sequence_length <= 2048`;
-  switch-off and longer or unknown contexts keep the production bound 2, and
-  `HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS > 4` is rejected. The test-only
-  `scripts/qwen4exp_arbatch_c4_server.py` launcher was removed because the
-  normal server expresses the same configuration with `--max-active-requests
-  4`. Remove the ceiling together with the switch when width 4 becomes the
-  default or is dropped; do not extend the 2048 bound without a new memory
-  probe and a live run at that context.
 - `import_prefilled` copies a prefilled c1 request into a slot with a host loop
   of three `hipMemcpy` calls per paged block per QSA layer (key, value, index
   keys), plus one copy per GDN layer and one for the PLE conv history. Collapse
@@ -155,8 +130,8 @@ Measured 2026-10-18 on gfx1151/zbook
   `tests/test_unit_qwen4exp_ar_batch_decode.py` (generator wiring: one N-row
   call per tick, physical-slot pinning, compaction no-op, cancel/reuse,
   admission rollback, poisoned-step cleanup, MTP exclusion),
-  `tests/test_unit_qwen4exp_ar_batch_capacity.py` (qualification capacity
-  ceiling on/off, long-context and width rejection, per-instance isolation,
+  `tests/test_unit_qwen4exp_ar_batch_capacity.py` (default capacity, kernel
+  row bound, staging runners, rollback lever, per-instance isolation,
   unchanged MTP bound) and
   `tests/test_gpu_qwen4exp_ar_batch_decode.py` (synthetic-model serving run:
   two imports, two 2-row steps, per-row forced-token identity, c1 chain
@@ -2869,7 +2844,7 @@ integration; the preservation commit `0f3bd43dc` keeps their history.
   fallback. Public context admission reserves the optional owner per runner
   before profile binding; default/off paths allocate no additional buffer.
 - The 553.9 ms estimate is not measured engine recovery. Validation is blocked
-  by a concurrent DMS GPU job in `/home/lhl/hipEngine-main` observed on
+  by a concurrent DMS GPU job in `~/hipEngine-main` observed on
   2026-09-26; do not measure alongside it or stop another worker's process.
   Once the GPU is available, run the integrated gate and A/B, then enable the
   default only for a correct, non-regressive result.

@@ -98,6 +98,11 @@ class Qwen4ExpBatchAttentionState:
     head_dim: int
     runtime: HipRuntime
     active: Qwen4ExpBatchActiveRows | None = field(default=None)
+    #: Physical blocks in the K/V slabs. Equal to ``state_slots *
+    #: blocks_per_request`` for the static layout; smaller in pooled mode, where
+    #: the batch runner assigns blocks to a slot at admission.
+    pool_blocks: int = field(default=0)
+    pooled: bool = field(default=False)
     closed: bool = field(default=False)
     # Set before the first free of a close attempt. Uploads are rejected from that
     # point on, because a partial close can leave earlier buffers released while
@@ -120,13 +125,22 @@ class Qwen4ExpBatchAttentionState:
         kv_heads: int,
         head_dim: int,
         runtime: HipRuntime | None = None,
+        pool_blocks: int | None = None,
+        block_host: np.ndarray | None = None,
     ) -> "Qwen4ExpBatchAttentionState":
         """Allocate ``state_slots`` disjoint paged caches of ``max_positions``.
 
-        Total capacity is ``state_slots * ceil(max_positions / block_size)``
-        blocks, and slot ``s`` owns exactly blocks
-        ``[s * blocks_per_request, (s + 1) * blocks_per_request)``. Capacity is
-        therefore additive in requests rather than shared.
+        Static layout (``pool_blocks=None``): total capacity is
+        ``state_slots * ceil(max_positions / block_size)`` blocks, and slot
+        ``s`` owns exactly blocks ``[s * blocks_per_request, (s + 1) *
+        blocks_per_request)``, so capacity is additive in requests.
+
+        Pooled layout: the slabs hold ``pool_blocks`` physical blocks shared by
+        every slot, and ``block_host`` (``int32[state_slots,
+        blocks_per_request]``) is the page table the owner fills when it assigns
+        blocks to a slot. Passing the same array to every layer's state keeps
+        their page tables identical. A slot still addresses at most
+        ``max_positions`` logical positions.
 
         Geometry whose products the kernels cannot address (int32 physical block
         ids, int64 positions, int64 K/V element offsets and byte sizes) is
@@ -139,32 +153,47 @@ class Qwen4ExpBatchAttentionState:
         parsed_kv_heads = _positive_int(kv_heads, "kv_heads")
         parsed_head_dim = _positive_int(head_dim, "head_dim")
         blocks_per_request = (capacity + parsed_block - 1) // parsed_block
+        pooled = pool_blocks is not None
+        total_blocks = (
+            _positive_int(pool_blocks, "pool_blocks")
+            if pooled
+            else slots * blocks_per_request
+        )
         # Bound every product the kernels and the host index with before taking a
         # runtime or allocating anything, so an impossible shape fails clearly.
         _check_shape_products(
-            state_slots=slots,
-            blocks_per_request=blocks_per_request,
+            total_blocks=total_blocks,
             block_size=parsed_block,
             kv_heads=parsed_kv_heads,
             head_dim=parsed_head_dim,
             max_positions=capacity,
         )
+        if pooled:
+            if block_host is None:
+                block_host = np.zeros((slots, blocks_per_request), dtype=np.int32)
+            if block_host.shape != (slots, blocks_per_request) or block_host.dtype != np.int32:
+                raise ValueError(
+                    "a pooled page table must be int32[state_slots, blocks_per_request]"
+                )
+        elif block_host is not None:
+            raise ValueError("block_host is only meaningful with pool_blocks")
+        else:
+            block_host = np.arange(
+                slots * blocks_per_request, dtype=np.int32
+            ).reshape(slots, blocks_per_request)
         active_runtime = runtime or get_hip_runtime()
 
-        block_host = np.arange(
-            slots * blocks_per_request, dtype=np.int32
-        ).reshape(slots, blocks_per_request)
         block_table_host = np.zeros((slots, blocks_per_request), dtype=np.int32)
         position_host = np.zeros(slots, dtype=np.int64)
         context_host = np.zeros(slots, dtype=np.int64)
 
         token_bytes = parsed_kv_heads * parsed_head_dim * 2
-        slot_bytes = blocks_per_request * parsed_block * token_bytes
+        cache_bytes = total_blocks * parsed_block * token_bytes
         buffers: list[DeviceBuffer] = []
         try:
-            key_cache = malloc(slots * slot_bytes, runtime=active_runtime)
+            key_cache = malloc(cache_bytes, runtime=active_runtime)
             buffers.append(key_cache)
-            value_cache = malloc(slots * slot_bytes, runtime=active_runtime)
+            value_cache = malloc(cache_bytes, runtime=active_runtime)
             buffers.append(value_cache)
             block_table = malloc(block_table_host.nbytes, runtime=active_runtime)
             buffers.append(block_table)
@@ -209,6 +238,8 @@ class Qwen4ExpBatchAttentionState:
             kv_heads=parsed_kv_heads,
             head_dim=parsed_head_dim,
             runtime=active_runtime,
+            pool_blocks=total_blocks,
+            pooled=pooled,
             _pending_free=list(buffers),
         )
 
@@ -226,7 +257,10 @@ class Qwen4ExpBatchAttentionState:
 
     @property
     def total_capacity_tokens(self) -> int:
-        return self.state_slots * self.slot_capacity_tokens
+        """Physical positions in the slabs (the pool, in pooled mode)."""
+
+        blocks = self.pool_blocks or self.state_slots * self.blocks_per_request
+        return blocks * self.block_size
 
     @property
     def cache_bytes_per_slot(self) -> int:
@@ -444,8 +478,7 @@ def _free_pending(pending: list[DeviceBuffer], runtime: HipRuntime) -> None:
 
 def _check_shape_products(
     *,
-    state_slots: int,
-    blocks_per_request: int,
+    total_blocks: int,
     block_size: int,
     kv_heads: int,
     head_dim: int,
@@ -458,11 +491,9 @@ def _check_shape_products(
             f"max_positions {max_positions} exceeds the int64 position/context "
             f"range (max {_INT64_MAX})"
         )
-    total_blocks = state_slots * blocks_per_request
     if total_blocks - 1 > _INT32_MAX:
         raise ValueError(
-            f"{state_slots} slots x {blocks_per_request} blocks = {total_blocks} "
-            f"physical block ids exceed the int32 page-table range "
+            f"{total_blocks} physical block ids exceed the int32 page-table range "
             f"(max block id {_INT32_MAX})"
         )
     kv_elements = total_blocks * block_size * kv_heads * head_dim

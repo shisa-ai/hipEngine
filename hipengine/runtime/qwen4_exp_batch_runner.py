@@ -584,6 +584,8 @@ class Qwen4ExpGGUFBatchRunner:
         block_size: int = QWEN4_EXP_BATCH_BLOCK_SIZE,
         runtime: HipRuntime | None = None,
         graph_segments: bool = True,
+        pool_blocks: int | str | None = None,
+        pool_reserve_bytes: int = 3 * 1024**3,
     ) -> None:
         plan = getattr(resident, "plan")
         config = plan.config
@@ -609,6 +611,21 @@ class Qwen4ExpGGUFBatchRunner:
         self.state_slots = slots
         self.max_positions = positions
         self.block_size = int(block_size)
+        # ``None`` keeps the static layout (one full-context window per slot).
+        # An integer or ``"auto"`` shares one physical block pool between the
+        # slots; ``"auto"`` sizes it from the device memory left after every
+        # other allocation, keeping ``pool_reserve_bytes`` free.
+        if pool_blocks is not None and pool_blocks != "auto":
+            pool_blocks = int(pool_blocks)
+            if pool_blocks <= 0:
+                raise ValueError("pool_blocks must be positive")
+        self._pool_request = pool_blocks
+        self._pool_reserve_bytes = int(pool_reserve_bytes)
+        self.pooled = pool_blocks is not None
+        blocks_per_request = (positions + int(block_size) - 1) // int(block_size)
+        self._block_host = np.zeros((slots, blocks_per_request), dtype=np.int32)
+        self._free_blocks: list[int] = []
+        self._slot_blocks = [0] * slots
         self.closed = False
         self.closing = False
         self._owned: list[Any] = []
@@ -674,32 +691,6 @@ class Qwen4ExpGGUFBatchRunner:
         # would have every QSA layer append over the previous layer's keys at the
         # same physical block and position, which the one-QSA-layer synthetic
         # fixture cannot show and the real 12-QSA-layer model hits immediately.
-        attention_states = tuple(
-            Qwen4ExpBatchAttentionState.allocate(
-                state_slots=self.state_slots,
-                max_positions=self.max_positions,
-                block_size=self.block_size,
-                kv_heads=cfg.attention_kv_head_count,
-                head_dim=cfg.attention_key_length,
-                runtime=self.runtime,
-            )
-            for _ in range(cfg.qsa_layer_count)
-        )
-        self.attention_states = attention_states
-        self._owned.extend(attention_states)
-        index_states = tuple(
-            Qwen4ExpBatchQsaIndexState.allocate(
-                attention_state=attention,
-                index_heads=cfg.indexer_head_count,
-                index_dim=cfg.indexer_key_length,
-                compression_ratio=cfg.qsa_compression_ratio,
-                block_budget=cfg.qsa_block_budget,
-                runtime=self.runtime,
-            )
-            for attention in attention_states
-        )
-        self.index_states = index_states
-        self._owned.extend(index_states)
         gdn_states = tuple(
             Qwen4ExpBatchGdnState.allocate(
                 state_slots=self.state_slots,
@@ -726,7 +717,10 @@ class Qwen4ExpGGUFBatchRunner:
             self._owned.append(ple_state)
         selection = Qwen4ExpBatchQsaSelectionScratch.allocate(
             rows=self.state_slots,
-            stride=index_states[0].output_stride if index_states else 1,
+            stride=(
+                cfg.qsa_block_budget * cfg.qsa_compression_ratio
+                + cfg.qsa_compression_ratio - 1
+            ) if cfg.qsa_layer_count else 1,
             index_heads=cfg.indexer_head_count,
             index_dim=cfg.indexer_key_length,
             runtime=self.runtime,
@@ -837,6 +831,126 @@ class Qwen4ExpGGUFBatchRunner:
             self.argmax_values,
             self.argmax_blocks_i32,
         ) = buffers.buffers
+        # The K/V and raw index-key slabs come last so a pooled layout can be
+        # sized from the memory every other allocation left.
+        pool_blocks = self._resolve_pool_blocks()
+        attention_states = tuple(
+            Qwen4ExpBatchAttentionState.allocate(
+                state_slots=self.state_slots,
+                max_positions=self.max_positions,
+                block_size=self.block_size,
+                kv_heads=cfg.attention_kv_head_count,
+                head_dim=cfg.attention_key_length,
+                runtime=self.runtime,
+                pool_blocks=pool_blocks,
+                block_host=self._block_host if pool_blocks is not None else None,
+            )
+            for _ in range(cfg.qsa_layer_count)
+        )
+        self.attention_states = attention_states
+        self._owned.extend(attention_states)
+        index_states = tuple(
+            Qwen4ExpBatchQsaIndexState.allocate(
+                attention_state=attention,
+                index_heads=cfg.indexer_head_count,
+                index_dim=cfg.indexer_key_length,
+                compression_ratio=cfg.qsa_compression_ratio,
+                block_budget=cfg.qsa_block_budget,
+                runtime=self.runtime,
+            )
+            for attention in attention_states
+        )
+        self.index_states = index_states
+        self._owned.extend(index_states)
+        if self.pooled:
+            self._free_blocks = list(range(int(attention_states[0].pool_blocks)))
+        else:
+            self._block_host = attention_states[0].block_host if attention_states else self._block_host
+            self._slot_blocks = [self._blocks_per_request] * self.state_slots
+
+    @property
+    def _blocks_per_request(self) -> int:
+        return int(self._block_host.shape[1])
+
+    @staticmethod
+    def pool_block_bytes(config: object, block_size: int = QWEN4_EXP_BATCH_BLOCK_SIZE) -> int:
+        """Device bytes one pooled block costs across every QSA layer.
+
+        One block holds ``block_size`` positions of BF16 K and V per QSA layer
+        plus the matching FP32 raw index keys.
+        """
+
+        kv = 2 * int(config.attention_kv_head_count) * int(config.attention_key_length) * 2
+        index = int(config.indexer_key_length) * DType.FP32.itemsize
+        return int(block_size) * (kv + index) * int(config.qsa_layer_count)
+
+    def _index_fixed_bytes(self) -> int:
+        """Per-slot index slabs that do not live in the block pool."""
+
+        cfg = self.config
+        ratio = int(cfg.qsa_compression_ratio)
+        complete = self.max_positions // ratio
+        stride = int(cfg.qsa_block_budget) * ratio + ratio - 1
+        per_layer = self.state_slots * (
+            complete * ratio * 4
+            + complete * 8
+            + complete * int(cfg.indexer_key_length) * 4
+            + complete * 4
+            + 8
+            + stride * 8
+            + 4
+        )
+        return per_layer * int(cfg.qsa_layer_count)
+
+    def _resolve_pool_blocks(self) -> int | None:
+        request = self._pool_request
+        if request is None:
+            return None
+        maximum = self.state_slots * self._blocks_per_request
+        if request != "auto":
+            return min(int(request), maximum)
+        free_bytes, _total = self.runtime.mem_get_info()
+        budget = int(free_bytes) - self._index_fixed_bytes() - self._pool_reserve_bytes
+        blocks = budget // self.pool_block_bytes(self.config, self.block_size)
+        if blocks < 1:
+            raise MemoryError(
+                "Qwen4Exp batch KV pool does not fit: "
+                f"{int(free_bytes)} bytes free, {self._index_fixed_bytes()} needed "
+                f"for {self.state_slots} slots' index state and "
+                f"{self._pool_reserve_bytes} kept in reserve; lower the active "
+                "request count or the context"
+            )
+        return int(min(blocks, maximum))
+
+    @property
+    def pool_blocks(self) -> int:
+        """Physical blocks in the K/V slabs (shared in pooled mode)."""
+
+        states = self.attention_states
+        return int(states[0].pool_blocks) if states else 0
+
+    @property
+    def free_block_count(self) -> int:
+        """Blocks a new admission can still take (pooled mode)."""
+
+        if not self.pooled:
+            return sum(
+                self._blocks_per_request for owner in self._owners if not owner
+            )
+        return len(self._free_blocks)
+
+    def blocks_for_positions(self, positions: int) -> int:
+        """Paged blocks a request of ``positions`` positions holds."""
+
+        needed = int(positions)
+        if needed <= 0:
+            raise ValueError("positions must be positive")
+        return (needed + self.block_size - 1) // self.block_size
+
+    def slot_capacity(self, slot: int) -> int:
+        """Positions ``slot``'s assigned blocks hold (0 when not admitted)."""
+
+        return self._slot_blocks[self._require_slot(slot)] * self.block_size
 
     @property
     def graph_stats(self) -> dict[str, int]:
@@ -899,12 +1013,17 @@ class Qwen4ExpGGUFBatchRunner:
                 "slot and admit it again first."
             )
 
-    def admit(self, slot: int) -> int:
+    def admit(self, slot: int, *, positions: int | None = None) -> int:
         """Take ownership of ``slot`` and zero the request state it holds.
 
         Returns a fresh owner token. The token is the only handle that can
         release the slot again, and it is never reused, so a handle from a
         previous request cannot free the current one.
+
+        In pooled mode ``positions`` is the request's whole extent (prompt plus
+        decode budget); that many positions of blocks are taken from the pool
+        and held until release, so an admitted request can never run out of KV
+        space. The static layout ignores it and gives every slot its window.
         """
 
         self._require_open()
@@ -912,6 +1031,32 @@ class Qwen4ExpGGUFBatchRunner:
         if self._owners[parsed]:
             raise RuntimeError(
                 f"slot {parsed} is already owned by request {self._owners[parsed]}"
+            )
+        if self.pooled:
+            if positions is None:
+                raise ValueError("a pooled batch runner admits a slot with its positions")
+            needed = self.blocks_for_positions(positions)
+            if needed > self._blocks_per_request:
+                raise ValueError(
+                    f"{int(positions)} positions exceed the per-slot capacity "
+                    f"{self.max_positions}"
+                )
+            if needed > len(self._free_blocks):
+                raise RuntimeError(
+                    f"Qwen4Exp batch KV pool has {len(self._free_blocks)} free "
+                    f"blocks; {int(positions)} positions need {needed}"
+                )
+            taken = self._free_blocks[:needed]
+            del self._free_blocks[:needed]
+            self._block_host[parsed, :] = 0
+            self._block_host[parsed, :needed] = taken
+            self._slot_blocks[parsed] = needed
+            for index_state in self.index_states:
+                index_state.map_slot(parsed, needed)
+        elif positions is not None and int(positions) > self.max_positions:
+            raise ValueError(
+                f"{int(positions)} positions exceed the per-slot capacity "
+                f"{self.max_positions}"
             )
         self._zero_slot(parsed)
         self._poisoned.discard(parsed)
@@ -932,6 +1077,12 @@ class Qwen4ExpGGUFBatchRunner:
         self._owners[parsed] = 0
         self._positions[parsed] = 0
         self._ple_hash_states.pop(parsed, None)
+        if self.pooled:
+            held = self._slot_blocks[parsed]
+            self._free_blocks.extend(int(b) for b in self._block_host[parsed, :held])
+            self._free_blocks.sort()
+            self._block_host[parsed, :] = 0
+            self._slot_blocks[parsed] = 0
 
     def reset_slot(self, slot: int, owner: int) -> None:
         """Zero an owned slot in place, keeping the owner token and position 0.
@@ -953,30 +1104,28 @@ class Qwen4ExpGGUFBatchRunner:
 
     def _zero_slot(self, slot: int) -> None:
         attention_states = self._require_attention_states()
-        blocks = attention_states[0].block_host[slot]
+        held = self._slot_blocks[slot]
+        blocks = [int(block) for block in self._block_host[slot, :held]]
         row_bytes = (
             attention_states[0].kv_heads * attention_states[0].head_dim
             * DType.BF16.itemsize
         )
         block_bytes = attention_states[0].block_size * row_bytes
+        runs = _contiguous_runs(blocks)
         for attention in attention_states:
-            for physical in blocks.tolist():
-                offset = int(physical) * block_bytes
-                self.runtime.memset(
-                    attention.key_cache.ptr + offset, 0, block_bytes
-                )
-                self.runtime.memset(
-                    attention.value_cache.ptr + offset, 0, block_bytes
-                )
+            for first, count in runs:
+                for cache in (attention.key_cache, attention.value_cache):
+                    self.runtime.memset(
+                        cache.ptr + first * block_bytes, 0, count * block_bytes
+                    )
         for index_state in self.index_states:
             base = index_state.raw_keys.ptr
-            index_row_bytes = index_state.index_dim * DType.FP32.itemsize
-            index_block_bytes = index_state.block_size * index_row_bytes
-            for logical in range(attention_states[0].blocks_per_request):
+            index_block_bytes = (
+                index_state.block_size * index_state.index_dim * DType.FP32.itemsize
+            )
+            for first, count in runs:
                 self.runtime.memset(
-                    base + int(blocks[logical]) * index_block_bytes,
-                    0,
-                    index_block_bytes,
+                    base + first * index_block_bytes, 0, count * index_block_bytes
                 )
             # The owner's own reset advances its generation, which invalidates
             # any rollback token captured by the previous request.
@@ -1050,10 +1199,10 @@ class Qwen4ExpGGUFBatchRunner:
             )
         attention_states = self._require_attention_states()
         needed_blocks = (position + self.block_size - 1) // self.block_size
-        if needed_blocks > attention_states[0].blocks_per_request:
+        if needed_blocks > self._slot_blocks[parsed]:
             raise ValueError(
                 f"import position {position} needs {needed_blocks} paged blocks but "
-                f"each slot holds {attention_states[0].blocks_per_request}"
+                f"slot {parsed} holds {self._slot_blocks[parsed]}"
             )
         source_attention = tuple(getattr(source, "attention_states", ()))
         if len(source_attention) != len(attention_states):
@@ -1220,7 +1369,7 @@ class Qwen4ExpGGUFBatchRunner:
         attention = attention_states[0]
         row_bytes = attention.kv_heads * attention.head_dim * DType.BF16.itemsize
         block_bytes = attention.block_size * row_bytes
-        slot_blocks = attention.block_host[slot]
+        slot_blocks = self._block_host[slot]
         for layer, state in enumerate(source_attention):
             destination_attention = attention_states[layer]
             index_state = self.index_states[layer]
@@ -1586,7 +1735,7 @@ class Qwen4ExpGGUFBatchRunner:
         slot healthy.
         """
 
-        attention = self._require_attention_states()[0]
+        self._require_attention_states()
         cfg = self.config
         rows = int(tokens.size)
         if rows <= 0:
@@ -1649,12 +1798,12 @@ class Qwen4ExpGGUFBatchRunner:
                 "a step position reached the per-slot decode capacity "
                 f"{self.max_positions}"
             )
-        needed_blocks = (int(positions.max()) + 1 + self.block_size - 1) // self.block_size
-        if needed_blocks > attention.blocks_per_request:
-            raise ValueError(
-                f"context {int(positions.max()) + 1} needs {needed_blocks} paged "
-                f"blocks but each slot holds {attention.blocks_per_request}"
-            )
+        for slot, position in zip(chosen, positions.tolist()):
+            if int(position) + 1 > self.slot_capacity(slot):
+                raise ValueError(
+                    f"slot {slot} context {int(position) + 1} exceeds the "
+                    f"{self.slot_capacity(slot)} positions its paged blocks hold"
+                )
         for index_state in self.index_states:
             if int(positions.max()) + 1 > int(index_state.capacity):
                 raise ValueError(
@@ -1780,6 +1929,18 @@ class Qwen4ExpGGUFBatchRunner:
 
     def __exit__(self, *exc_info: object) -> None:
         self.close()
+
+
+def _contiguous_runs(blocks: Sequence[int]) -> list[tuple[int, int]]:
+    """``(first, count)`` runs of consecutive ids, in ascending order."""
+
+    runs: list[tuple[int, int]] = []
+    for block in sorted(blocks):
+        if runs and runs[-1][0] + runs[-1][1] == block:
+            runs[-1] = (runs[-1][0], runs[-1][1] + 1)
+        else:
+            runs.append((block, 1))
+    return runs
 
 
 def _token_ids(token_ids: object) -> np.ndarray:

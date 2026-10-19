@@ -17,7 +17,7 @@ from types import SimpleNamespace
 import pytest
 
 from hipengine.generation.engine_loop import EngineLoopConfig, SubmitPollTextGenerator
-from hipengine.generation.qwen4_exp_ar_batch import AR_BATCH_ENV, AR_BATCH_SLOTS_ENV
+from hipengine.generation.qwen4_exp_ar_batch import AR_BATCH_ENV
 from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
 from hipengine.generation.registry import GenerationRequest
 from tests._qwen4exp_ar_batch_fixtures import FakeTokenizer
@@ -95,11 +95,15 @@ def _run_to_completion(driver, native, submissions):
     while not all(driver.generation_complete(item) for item in submissions):
         driver.poll(max_ticks=1)
         rows = native._rows
-        if rows and all(row.next_result is not None for row in rows.values()):
+        if prefilled is None and rows and all(
+            row.next_result is not None for row in rows.values()
+        ):
+            # A batch row returned its staging runner at import, so the slot
+            # holds the prefilled position.
             prefilled = {
                 request_id: (
                     len(row.prompt_ids),
-                    int(row.runner.position),
+                    int(native._ar_batch.runner.position(native._ar_batch.lease(request_id)[0])),
                     native._ar_batch.lease(request_id),
                 )
                 for request_id, row in rows.items()
@@ -115,7 +119,6 @@ def test_serving_generator_decodes_two_rows_in_one_batch_step(model, monkeypatch
     """
 
     monkeypatch.setenv(AR_BATCH_ENV, "1")
-    monkeypatch.delenv(AR_BATCH_SLOTS_ENV, raising=False)
     prompts = ((9, 4, 27), (15, 22))
     forced = (5, 17)
     steps = 3
@@ -157,9 +160,8 @@ def test_serving_generator_decodes_two_rows_in_one_batch_step(model, monkeypatch
         owners = {lease[1] for *_, lease in prefilled.values()}
         assert slots == [0, 1]
         assert len(owners) == 2
-        assert sorted(int(runner.position) for runner in native._all_runners) == sorted(
-            len(prompt) for prompt in prompts
-        )
+        # Both staging runners went back to the pool after the imports.
+        assert len(native._available) == len(native._all_runners) == 2
         # Completion reclaimed both rows, so both pinned slots are free again.
         assert native._ar_batch.live_request_ids == ()
         assert native._ar_batch.runner.free_slots == (0, 1)
@@ -198,10 +200,10 @@ def test_serving_generator_greedy_batch_matches_the_c1_chain(model, monkeypatch)
         driver.close()
 
 
-def test_ar_batch_refuses_a_generator_without_resident_weights(model, monkeypatch):
-    """The opt-in switch fails closed instead of silently decoding on c1."""
+def test_a_generator_without_resident_weights_reports_the_c1_path(model, monkeypatch):
+    """No model-owned weights means no batch; telemetry names the c1 route."""
 
-    monkeypatch.setenv(AR_BATCH_ENV, "1")
+    monkeypatch.delenv(AR_BATCH_ENV, raising=False)
     generator = Qwen4ExpGGUFTextGenerator(
         model_path="synthetic.gguf",
         weight_index=SimpleNamespace(),
@@ -212,8 +214,7 @@ def test_ar_batch_refuses_a_generator_without_resident_weights(model, monkeypatc
     )
     try:
         native = generator.create_resident_model_runner(capacity=1)
-        with pytest.raises(RuntimeError, match="model-owned resident weights"):
-            native.prepare()
+        native.prepare()
         assert native.decode_telemetry()["decode_path"] == "qwen4exp_c1_request_owned_step"
         assert native._ar_batch is None
     finally:

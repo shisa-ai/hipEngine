@@ -35,6 +35,7 @@ class FakeC1Runner:
     max_sequence_length = 64
     prefill_chunk_size = 8
     runtime = None
+    config = None
 
     def __init__(self, bias=0):
         self.bias = bias
@@ -95,10 +96,25 @@ class FakeBatchRunner:
 
     token_bias = 100
 
-    def __init__(self, resident=None, *, state_slots, max_positions, backend=None, runtime=None):
+    #: Small blocks so a test can fill the pool with short prompts.
+    block_size = 4
+    #: Blocks an ``"auto"`` pool gets; tests override it to force exhaustion.
+    auto_pool_blocks = 256
+
+    def __init__(
+        self, resident=None, *, state_slots, max_positions, backend=None, runtime=None,
+        pool_blocks=None, graph_segments=True,
+    ):
+        del graph_segments
         self.resident = resident
         self.state_slots = int(state_slots)
         self.max_positions = int(max_positions)
+        self.pool_blocks = (
+            type(self).auto_pool_blocks if pool_blocks == "auto"
+            else self.state_slots * self.blocks_for_positions(self.max_positions)
+            if pool_blocks is None else int(pool_blocks)
+        )
+        self._held = [0] * self.state_slots
         self.backend = backend
         self.runtime = runtime
         self.free_slot_order = "ascending"
@@ -129,12 +145,27 @@ class FakeBatchRunner:
     def owners_of(self, slots):
         return tuple(self._owners[int(slot)] for slot in slots)
 
-    def admit(self, slot):
+    def blocks_for_positions(self, positions):
+        return (int(positions) + self.block_size - 1) // self.block_size
+
+    @property
+    def free_block_count(self):
+        return self.pool_blocks - sum(self._held)
+
+    def admit(self, slot, *, positions=None):
         parsed = int(slot)
         if self._owners[parsed]:
             raise RuntimeError(
                 f"slot {parsed} is already owned by request {self._owners[parsed]}"
             )
+        if positions is not None:
+            need = self.blocks_for_positions(positions)
+            if need > self.free_block_count:
+                raise RuntimeError(
+                    f"batch KV pool has {self.free_block_count} free blocks; "
+                    f"{positions} positions need {need}"
+                )
+            self._held[parsed] = need
         self._next_owner += 1
         self._owners[parsed] = self._next_owner
         self._positions[parsed] = 0
@@ -226,6 +257,7 @@ class FakeBatchRunner:
             )
         self._owners[parsed] = 0
         self._positions[parsed] = 0
+        self._held[parsed] = 0
         self.release_calls.append((parsed, int(owner)))
 
     def close(self):
@@ -238,6 +270,8 @@ class FakeBatchRunner:
 
 
 class FakeDraft:
+    max_sequence_length = 64
+
     def __init__(self):
         self.position = 0
         self.closed = False
@@ -276,6 +310,9 @@ class FakeMTPProvider:
 
     def close(self):
         self.draft.close()
+
+    def _validate_sampling(self, request):
+        del request
 
     def iter_generate(self, prompt_ids, request, **kwargs):
         self.iter_calls.append((tuple(prompt_ids), request, kwargs))

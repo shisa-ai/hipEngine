@@ -1,25 +1,24 @@
-"""Opt-in full-model AR decode batch for the Qwen4Exp resident runner.
+"""Full-model AR decode batch for the Qwen4Exp resident runner.
 
-The committed serving path owns one c1 runner per request and steps each of them
-once per decode tick. This module owns the alternative: every autoregressive row
-of a decode work item imports its c1-prefilled state into one physical slot of a
-:class:`Qwen4ExpGGUFBatchRunner` and then advances by a single N-row step per
-tick.
+Every plain autoregressive row is prefilled on a c1 staging runner, its state
+is imported into one physical slot of a :class:`Qwen4ExpGGUFBatchRunner`, and
+the staging runner goes back to the pool. From then on the row advances by one
+shared N-row step per decode tick. The slots share one paged K/V and index-key
+block pool sized from the device memory left after startup, and a request
+holds exactly the blocks its prompt plus decode budget needs, so the number of
+concurrent requests is bounded by live tokens rather than by one full-context
+window per request.
 
-It is a qualification path, not the serving default. The switch is default-off
-(``HIPENGINE_QWEN4_EXP_AR_BATCH=1``), the production numerical gate has not been
-run against the strict teacher, and the MTP route stays on c1 at width 1 - a
-speculative row never joins a batch step.
+A request whose extent exceeds a batch slot (``batch_slot_positions``) or the
+whole pool decodes on its own c1 staging runner, as do MTP rows: a speculative
+row verifies a candidate chain, which the one-token-per-slot batch step does
+not express. An automatic MTP row is returned to the batch when other requests
+arrive (see ``Qwen4ExpResidentServingRunner``).
 
-Capacity is part of that qualification configuration, not a global default.
-The plugin's production bound is 2; the switch raises one generator instance's
-plain-AR ceiling to 4 only when the configured context is at most 2048
-positions, the bound the width-4 live qualification used. Switch-off servers and
-longer contexts keep the production bound, and an explicit slot count above 4
-is rejected. Independent HTTP arrivals overlap because the generator declares
-the ``fair`` prefill/decode policy (``engine_loop_config_defaults``); under the
-engine-wide ``protect_decode`` default an arrival's prefill waited for the
-active row to finish, so the batch never reached width 2. An explicit
+``HIPENGINE_QWEN4_EXP_AR_BATCH=0`` is the rollback lever: every request then
+owns a c1 runner for its whole life, as before the batch path shipped.
+Independent HTTP arrivals overlap because the generator declares the ``fair``
+prefill/decode policy (``engine_loop_config_defaults``); an explicit
 ``HIPENGINE_PREFILL_DECODE_POLICY`` still overrides the declaration.
 
 Three properties are control, not arithmetic, and are asserted exactly:
@@ -45,70 +44,32 @@ import numpy as np
 
 from hipengine.runtime.qwen4_exp_runner import Qwen4ExpTokenResult
 
-#: Default-off opt-in: route plain AR decode rows through the N-row batch owner.
+#: Rollback lever (default on): ``0`` returns every request to a c1 runner.
 AR_BATCH_ENV = "HIPENGINE_QWEN4_EXP_AR_BATCH"
-#: Optional width bound; unset means one state slot per serving request.
-AR_BATCH_SLOTS_ENV = "HIPENGINE_QWEN4_EXP_AR_BATCH_SLOTS"
+#: Rows the indexed GDN, conv, and PLE decode kernels accept in one step.
+QWEN4_EXP_MAX_BATCH_ROWS = 64
+#: Default concurrent requests when the operator sets no active-request count.
+QWEN4_EXP_DEFAULT_REQUEST_CAPACITY = 8
+#: c1 runners kept for prefill staging, MTP rows, and over-long requests.
+QWEN4_EXP_STAGING_RUNNERS = 2
+#: Largest extent one batch slot holds. Each slot keeps per-position index
+#: slabs outside the shared pool, so a longer cap costs memory for every slot;
+#: a longer request decodes on its c1 staging runner instead.
+QWEN4_EXP_BATCH_SLOT_POSITIONS = 65536
 
-#: Largest physical width with a completed live HTTP qualification (C4 run on
-#: 2026-10-18: 63 width-4 ticks in blocking and SSE phases, cancel one of four).
-AR_BATCH_QUALIFIED_MAX_SLOTS = 4
-#: Context bound of that qualification. A wider configured context keeps the
-#: production capacity bound instead of inheriting an unmeasured envelope.
-AR_BATCH_QUALIFIED_MAX_POSITIONS = 2048
-
-_DISABLED_VALUES = frozenset({"", "0", "false", "False"})
+_DISABLED_VALUES = frozenset({"0", "false", "False", "off"})
 
 
 def ar_batch_enabled() -> bool:
-    """Whether the qualification switch selects the AR batch decode path."""
+    """Whether plain AR rows decode through the shared batch (default on)."""
 
-    return os.environ.get(AR_BATCH_ENV, "0") not in _DISABLED_VALUES
-
-
-def ar_batch_state_slots(capacity: int) -> int:
-    """Resolve the batch width from the env bound and the serving capacity."""
-
-    resolved = int(capacity)
-    if resolved <= 0:
-        raise ValueError("Qwen4Exp AR batch needs a positive serving capacity")
-    raw = os.environ.get(AR_BATCH_SLOTS_ENV, "").strip()
-    if not raw:
-        return resolved
-    slots = int(raw)
-    if slots > AR_BATCH_QUALIFIED_MAX_SLOTS:
-        raise ValueError(
-            f"{AR_BATCH_SLOTS_ENV}={slots} exceeds the qualified physical "
-            f"width {AR_BATCH_QUALIFIED_MAX_SLOTS}"
-        )
-    if not 1 <= slots <= resolved:
-        raise ValueError(
-            f"{AR_BATCH_SLOTS_ENV}={slots} is outside the serving capacity "
-            f"1..{resolved}"
-        )
-    return slots
+    return os.environ.get(AR_BATCH_ENV, "1").strip() not in _DISABLED_VALUES
 
 
-def ar_batch_capacity_ceiling(
-    *, max_positions: int | None, default: int
-) -> int:
-    """Per-instance plain-AR capacity ceiling for one serving configuration.
+def batch_slot_positions(max_sequence_length: int) -> int:
+    """Per-slot extent of the batch for one serving context."""
 
-    The plugin's class default is the production bound. The qualification
-    switch raises the ceiling to the qualified width only at the qualified
-    context bound, so a default-off or long-context server keeps the production
-    bound instead of inheriting a width-4 envelope it was never measured for.
-    An unknown context is not evidence of the short bound and keeps ``default``.
-    """
-
-    ceiling = int(default)
-    if ceiling < 1:
-        raise ValueError("plain-AR capacity default must be positive")
-    if not ar_batch_enabled():
-        return ceiling
-    if max_positions is None or int(max_positions) > AR_BATCH_QUALIFIED_MAX_POSITIONS:
-        return ceiling
-    return max(ceiling, AR_BATCH_QUALIFIED_MAX_SLOTS)
+    return max(1, min(int(max_sequence_length), QWEN4_EXP_BATCH_SLOT_POSITIONS))
 
 
 def _require_integer(value: object, *, label: str) -> int:
@@ -238,6 +199,39 @@ class Qwen4ExpARBatchOwner:
 
         return self.state_slots - len(self._leases)
 
+    @property
+    def free_block_count(self) -> int:
+        """Pool blocks a new reservation can still take."""
+
+        batch = self._batch
+        return 0 if batch is None else int(batch.free_block_count)
+
+    @property
+    def pool_blocks(self) -> int:
+        batch = self._batch
+        return 0 if batch is None else int(batch.pool_blocks)
+
+    def blocks_for_positions(self, positions: int) -> int:
+        batch = self.ensure()
+        return int(batch.blocks_for_positions(positions))
+
+    def fits(self, positions: int) -> bool:
+        """Whether a request of ``positions`` can ever hold a batch slot.
+
+        False for an extent past the slot cap or larger than the whole pool;
+        such a request decodes on its own c1 runner instead of waiting forever.
+        A failed owner still answers True, so the reservation refuses the
+        request by name instead of quietly moving it to another decode path.
+        """
+
+        needed = int(positions)
+        if needed <= 0 or needed > self.max_positions:
+            return False
+        if self._failures:
+            return True
+        batch = self.ensure()
+        return int(batch.blocks_for_positions(needed)) <= int(batch.pool_blocks)
+
     def ensure(self) -> Any:
         """Return the batch runner, building it on first use.
 
@@ -296,11 +290,10 @@ class Qwen4ExpARBatchOwner:
         if not free:
             raise RuntimeError(
                 "Qwen4Exp AR batch owner has no free state slot "
-                f"({self.state_slots} in use); raise "
-                f"{AR_BATCH_SLOTS_ENV} or lower the serving capacity"
+                f"({self.state_slots} in use)"
             )
         slot = int(free[0])
-        owner = int(batch.admit(slot))
+        owner = int(batch.admit(slot, positions=needed))
         lease = _Lease(slot, owner, needed)
         with self._state_lock:
             collision = rid in self._leases
@@ -595,6 +588,11 @@ class Qwen4ExpARBatchOwner:
             "execution_path": self.label,
             "state_slots": self.state_slots,
             "max_positions": self.max_positions,
+            "pool_blocks": self.pool_blocks,
+            "free_blocks": self.free_block_count,
+            "block_positions": (
+                0 if self._batch is None else int(self._batch.block_size)
+            ),
             "live_slots": live_slots,
             "steps": steps,
             "step_widths": {str(width): count for width, count in sorted(widths.items())},
@@ -625,8 +623,14 @@ class Qwen4ExpARBatchOwner:
                 self._failures.append(message)
 
 
-def make_qwen4_exp_ar_batch_runner(generator: object, *, state_slots: int) -> Any:
-    """Build the production batch runner over the generator's shared weights."""
+def make_qwen4_exp_ar_batch_runner(
+    generator: object, *, state_slots: int, max_positions: int | None = None
+) -> Any:
+    """Build the production batch runner over the generator's shared weights.
+
+    The slots share one block pool sized from the device memory that is free
+    when the runner is built, so it is built after every other serving owner.
+    """
 
     from hipengine.runtime.qwen4_exp_batch_runner import Qwen4ExpGGUFBatchRunner
 
@@ -640,21 +644,25 @@ def make_qwen4_exp_ar_batch_runner(generator: object, *, state_slots: int) -> An
     return Qwen4ExpGGUFBatchRunner(
         resident,
         state_slots=int(state_slots),
-        max_positions=int(runner.max_sequence_length),
+        max_positions=int(
+            batch_slot_positions(runner.max_sequence_length)
+            if max_positions is None else max_positions
+        ),
         backend=generator.backend,
         runtime=getattr(runner, "runtime", None),
+        pool_blocks="auto",
     )
 
 
 __all__ = [
     "AR_BATCH_ENV",
-    "AR_BATCH_QUALIFIED_MAX_POSITIONS",
-    "AR_BATCH_QUALIFIED_MAX_SLOTS",
-    "AR_BATCH_SLOTS_ENV",
+    "QWEN4_EXP_BATCH_SLOT_POSITIONS",
+    "QWEN4_EXP_DEFAULT_REQUEST_CAPACITY",
+    "QWEN4_EXP_MAX_BATCH_ROWS",
+    "QWEN4_EXP_STAGING_RUNNERS",
     "Qwen4ExpARBatchOwner",
     "Qwen4ExpARBatchStepError",
-    "ar_batch_capacity_ceiling",
     "ar_batch_enabled",
-    "ar_batch_state_slots",
+    "batch_slot_positions",
     "make_qwen4_exp_ar_batch_runner",
 ]

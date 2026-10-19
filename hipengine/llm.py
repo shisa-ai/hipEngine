@@ -198,6 +198,11 @@ class SamplingParams:
     # decoding, and an unsupported model fails rather than downgrading.
     speculative_mtp: bool = False
     speculative_mtp_static_eligibility: SpeculativeMTPStaticEligibility | None = None
+    # True when the server chose MTP for this request on its own (``auto``)
+    # rather than because the request asked for it. A runner may then return
+    # the request to plain decoding when that is faster, for example when
+    # other requests arrive; an explicit request keeps its route.
+    speculative_mtp_automatic: bool = False
     logprobs: bool = False
     top_logprobs: int = 0
 
@@ -1856,6 +1861,7 @@ def _generation_request(prompt_tuple: tuple[Any, ...], params: SamplingParams):
         resident_session_key=params.resident_session_key,
         resident_session_cache_action=params.resident_session_cache_action,
         speculative_mtp_static_eligibility=params.speculative_mtp_static_eligibility,
+        speculative_mtp_automatic=bool(params.speculative_mtp_automatic),
         logprobs=params.logprobs,
         top_logprobs=params.top_logprobs,
     )

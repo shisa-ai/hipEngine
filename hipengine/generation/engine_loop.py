@@ -2913,9 +2913,21 @@ class ResidentEngineLoop:
         )
 
     def _run_decode(self, work: WorkItem) -> tuple[EngineLoopEvent, ...]:
+        # A runner may stop speculating for a registered request (for example
+        # an automatic MTP row returned to plain batched decode). Its live
+        # count keeps such rows out of the speculative partition, so they
+        # decode together instead of one partition each.
+        live_count = getattr(self.runner, "speculative_live_candidate_count", None)
         desired = tuple(
-            self._speculative_candidate_counts.get(int(request_id), 0)
+            (
+                int(live_count(int(request_id), registered))
+                if callable(live_count) and registered
+                else registered
+            )
             for request_id in work.request_ids
+            for registered in (
+                self._speculative_candidate_counts.get(int(request_id), 0),
+            )
         )
         partitioned = self._maybe_run_partitioned_speculative_decode(
             work,
