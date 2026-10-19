@@ -12,7 +12,7 @@ import contextlib
 
 
 @contextlib.contextmanager
-def owned_llm(model: str):
+def owned_llm(model: str, **options):
     """Open a public ``LLM`` and release its device owner on every exit path.
 
     The graph session closes itself, but the model weights and KV cache belong
@@ -25,7 +25,7 @@ def owned_llm(model: str):
 
     import hipengine
 
-    llm = hipengine.LLM(model=model)
+    llm = hipengine.LLM(model=model, **options)
     try:
         yield llm
     finally:

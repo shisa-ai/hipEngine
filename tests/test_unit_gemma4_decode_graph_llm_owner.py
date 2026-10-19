@@ -27,8 +27,9 @@ _GPU_NODE = Path(__file__).parent / "test_gpu_gemma4_decode_graph_capture.py"
 
 
 class _FakeLLM:
-    def __init__(self, model: str) -> None:
+    def __init__(self, model: str, **options) -> None:
         self.model = model
+        self.options = options
         self.closed = 0
 
     def close(self) -> None:
@@ -40,8 +41,8 @@ def _install_fake_llm(monkeypatch):
 
     created: list[_FakeLLM] = []
 
-    def factory(*, model: str) -> _FakeLLM:
-        llm = _FakeLLM(model)
+    def factory(*, model: str, **options) -> _FakeLLM:
+        llm = _FakeLLM(model, **options)
         created.append(llm)
         return llm
 
@@ -55,6 +56,15 @@ def test_owner_closes_on_normal_exit(monkeypatch) -> None:
     with owned_llm("model") as llm:
         assert llm is created[-1]
         assert llm.closed == 0
+
+    assert created[-1].closed == 1
+
+
+def test_owner_forwards_sequence_capacity(monkeypatch) -> None:
+    created = _install_fake_llm(monkeypatch)
+
+    with owned_llm("model", max_sequence_length=16896) as llm:
+        assert llm.options == {"max_sequence_length": 16896}
 
     assert created[-1].closed == 1
 
@@ -98,6 +108,29 @@ def test_gpu_node_requests_the_owner_fixture() -> None:
     params = {arg.arg for arg in target.args.args}
     params |= {arg.arg for arg in target.args.kwonlyargs}
     assert "gemma4_llm" in params
+
+
+@pytest.mark.parametrize("name", [
+    "test_gemma4_decode_graph_class_global_replay_is_exact",
+    "test_gemma4_decode_graph_deep_positions_capture_and_stay_exact",
+])
+def test_deep_gpu_nodes_close_their_model_owner(name) -> None:
+    target = _gpu_node_functions()[name]
+    calls = [node for node in ast.walk(target) if isinstance(node, ast.Call)]
+    assert not any(
+        isinstance(call.func, ast.Attribute) and call.func.attr == "LLM"
+        for call in calls
+    ), "a bare LLM constructor leaves weights resident for later tests"
+    assert any(
+        isinstance(node, ast.With)
+        and any(
+            isinstance(item.context_expr, ast.Call)
+            and isinstance(item.context_expr.func, ast.Name)
+            and item.context_expr.func.id == "owned_llm"
+            for item in node.items
+        )
+        for node in ast.walk(target)
+    ), "the deep graph node must use the failure-safe model owner"
 
 
 def test_gpu_node_builds_the_owner_through_the_shared_helper() -> None:

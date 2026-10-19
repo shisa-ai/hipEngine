@@ -158,40 +158,38 @@ def test_gemma4_decode_graph_class_global_replay_is_exact(monkeypatch):
     bound is a measured perf choice, not a correctness restriction.
     """
 
-    import hipengine
-
     from hipengine.runtime import gemma4_decode_graph
     from hipengine.runtime.gemma4_decode_graph import Gemma4DecodeGraphSession
 
     monkeypatch.setattr(gemma4_decode_graph, "_capture_max_keys", lambda backend: 1 << 30)
-    llm = hipengine.LLM(model=str(_TARGET), max_sequence_length=16384 + 512)
-    runner = llm._get_text_generator()._ensure_runner()
-    vocab = int(runner.weights.config.vocab_size or 0)
+    with owned_llm(str(_TARGET), max_sequence_length=16384 + 512) as llm:
+        runner = llm._get_text_generator()._ensure_runner()
+        vocab = int(runner.weights.config.vocab_size or 0)
 
-    rng = np.random.default_rng(20261010)
-    prompt = [int(t) for t in rng.integers(0, vocab, size=16384)]
-    decode = [int(t) for t in rng.integers(0, vocab, size=8)]
+        rng = np.random.default_rng(20261010)
+        prompt = [int(t) for t in rng.integers(0, vocab, size=16384)]
+        decode = [int(t) for t in rng.integers(0, vocab, size=8)]
 
-    runner.reset()
-    runner.forward(prompt)
-    expected = [runner.forward([token]) for token in decode]
+        runner.reset()
+        runner.forward(prompt)
+        expected = [runner.forward([token]) for token in decode]
 
-    runner.reset()
-    runner.forward(prompt)
-    with Gemma4DecodeGraphSession(runner) as session:
-        replayed = [session.step(token) for token in decode]
-        assert session.captures > 0
-        assert session.launched_fallbacks == 0
+        runner.reset()
+        runner.forward(prompt)
+        with Gemma4DecodeGraphSession(runner) as session:
+            replayed = [session.step(token) for token in decode]
+            assert session.captures > 0
+            assert session.launched_fallbacks == 0
 
-    for step, (want, got) in enumerate(zip(expected, replayed, strict=True)):
-        np.testing.assert_array_equal(
-            got,
-            want,
-            err_msg=(
-                f"class-global decode step {step}: replayed logits differ "
-                "from launched"
-            ),
-        )
+        for step, (want, got) in enumerate(zip(expected, replayed, strict=True)):
+            np.testing.assert_array_equal(
+                got,
+                want,
+                err_msg=(
+                    f"class-global decode step {step}: replayed logits differ "
+                    "from launched"
+                ),
+            )
 
 
 def test_gemma4_decode_graph_deep_positions_capture_and_stay_exact():
@@ -208,48 +206,46 @@ def test_gemma4_decode_graph_deep_positions_capture_and_stay_exact():
     fallback and stay bit-identical to it.
     """
 
-    import hipengine
-
     from hipengine.runtime.gemma4_decode_graph import Gemma4DecodeGraphSession
 
     # One runner sized for the largest case: a second loaded model would not
     # fit next to the first on the device.
-    llm = hipengine.LLM(model=str(_TARGET), max_sequence_length=4096 + 512)
-    runner = llm._get_text_generator()._ensure_runner()
-    vocab = int(runner.weights.config.vocab_size or 0)
+    with owned_llm(str(_TARGET), max_sequence_length=4096 + 512) as llm:
+        runner = llm._get_text_generator()._ensure_runner()
+        vocab = int(runner.weights.config.vocab_size or 0)
 
-    rng = np.random.default_rng(20261009)
-    for prompt_len, expect_fallback in ((1024, False), (2048, False), (4096, True)):
-        prompt = [int(t) for t in rng.integers(0, vocab, size=prompt_len)]
-        decode = [int(t) for t in rng.integers(0, vocab, size=8)]
+        rng = np.random.default_rng(20261009)
+        for prompt_len, expect_fallback in ((1024, False), (2048, False), (4096, True)):
+            prompt = [int(t) for t in rng.integers(0, vocab, size=prompt_len)]
+            decode = [int(t) for t in rng.integers(0, vocab, size=8)]
 
-        runner.reset()
-        runner.forward(prompt)
-        expected = [runner.forward([token]) for token in decode]
+            runner.reset()
+            runner.forward(prompt)
+            expected = [runner.forward([token]) for token in decode]
 
-        runner.reset()
-        runner.forward(prompt)
-        with Gemma4DecodeGraphSession(runner) as session:
-            replayed = [session.step(token) for token in decode]
-            if expect_fallback:
-                assert session.launched_fallbacks == len(decode), (
-                    "every step past the capture window must take the launched "
-                    "fallback: replay there is exact but costs more than it saves"
+            runner.reset()
+            runner.forward(prompt)
+            with Gemma4DecodeGraphSession(runner) as session:
+                replayed = [session.step(token) for token in decode]
+                if expect_fallback:
+                    assert session.launched_fallbacks == len(decode), (
+                        "every step past the capture window must take the launched "
+                        "fallback: replay there is exact but costs more than it saves"
+                    )
+                    assert session.captures == 0
+                else:
+                    assert session.launched_fallbacks == 0, (
+                        "steps inside the capture window route to flash, split or "
+                        "class -- all replay-exact -- and must replay from a capture"
+                    )
+                    assert session.captures > 0
+
+            for step, (want, got) in enumerate(zip(expected, replayed, strict=True)):
+                np.testing.assert_array_equal(
+                    got,
+                    want,
+                    err_msg=(
+                        f"deep decode step {step} at prompt {prompt_len}: "
+                        "replayed logits differ from launched"
+                    ),
                 )
-                assert session.captures == 0
-            else:
-                assert session.launched_fallbacks == 0, (
-                    "steps inside the capture window route to flash, split or "
-                    "class -- all replay-exact -- and must replay from a capture"
-                )
-                assert session.captures > 0
-
-        for step, (want, got) in enumerate(zip(expected, replayed, strict=True)):
-            np.testing.assert_array_equal(
-                got,
-                want,
-                err_msg=(
-                    f"deep decode step {step} at prompt {prompt_len}: "
-                    "replayed logits differ from launched"
-                ),
-            )
