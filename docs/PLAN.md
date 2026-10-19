@@ -1244,12 +1244,14 @@ Phase-0 targets (driven by the current research focus):
 | **sansho** (custom) | (your arch; see `~/amd-gpu-tuning/reference/sansho/`) | Phase 3+ |
 
 Qwen3.8-Flash-Next follow-up (October 19): the
-[serving performance campaign](campaigns/QWEN38FN-SERVING-FOLLOWUP.md) records
-planned decode-aware prefill slicing, shared-batch host-overhead reductions,
-and shared physical MTP/AR target execution after the merge to `main`.
-Implementation has not started. The repository-wide audit/refactor backlog is
-outside that campaign; the existing serving routes and arithmetic contracts
-stay in place.
+[serving performance campaign](campaigns/QWEN38FN-SERVING-FOLLOWUP.md) is
+executing decode-aware prefill time sharing, shared-batch host-overhead
+reductions, and shared physical MTP/AR target execution after the merge to
+`main`. The provider-stage extraction and host mixed-row layout are committed;
+prefill and metadata candidates are under evaluation, and shared physical
+execution remains open. The repository-wide audit/refactor backlog is outside
+that campaign; the existing serving routes and arithmetic contracts stay in
+place.
 
 Qwen3.8-Flash-Next serving status (October 18): the
 [production-serving campaign](QWEN4EXP-PRODUCTION-SERVING.md) closed its

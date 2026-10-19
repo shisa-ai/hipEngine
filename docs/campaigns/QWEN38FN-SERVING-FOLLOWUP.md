@@ -4,11 +4,13 @@ owns: Planned Flash-Next serving follow-up for prefill interference, batch host 
 ---
 # Flash-Next serving performance follow-up
 
-State: **planned; implementation not started**. Recorded 2026-10-19 after the
-Qwen3.8 Flash-Next (`qwen38fn`, implemented as `qwen4_exp`) merge to `main`.
-Source reviewed: `3241dbb11645d49a0a442951bdd5203ef474adfd`.
-This document preserves the assessment for a later implementation session; it
-does not start an optimization run or change runtime defaults.
+State: **in progress**. Execution started 2026-10-19. The same-host baseline
+and comparison criteria are recorded in the
+[baseline checkpoint](../../worklog/entries/20261019T195056.259790Z-serving-followup-qwen38fn-serving-baseline-bf7ebc.md).
+The MTP provider-stage extraction and host mixed-row layout are committed;
+shared physical target execution is not implemented yet. Prefill time sharing
+and packed batch metadata are under evaluation. The original assessment below
+reviewed `3241dbb11645d49a0a442951bdd5203ef474adfd`.
 
 ## Objective and scope
 
@@ -70,11 +72,11 @@ They are planning ranges, not measured budgets or delivery commitments.
 
 | Packet | Scope | Difficulty | Initial estimate | State |
 | --- | --- | --- | --- | --- |
-| P1 | Decode-aware prefill slicing | Medium | 1–2 days for a simple policy | Open |
-| P2 | Adaptive prefill slicing/time share, if needed after P1 | Medium | 3–5 days total for the prefill track, including P1 | Conditional |
-| H1 | Pack per-step batch metadata | Low–medium | 1–3 days for the first host-overhead increment and validation | Open |
-| H2 | Capture additional device stages; profile remaining PLE host work | Medium | Re-estimate after H1 profiling | Conditional |
-| M1–M4 | Shared physical MTP/AR target execution | High | 2–4 weeks for the mixed-execution track; highest uncertainty | Open |
+| P1 | Decode-aware prefill slicing | Medium | 1–2 days for a simple policy | 64- and 512-token diagnostics miss the frozen latency/cost criteria; P2 is in progress |
+| P2 | Adaptive prefill slicing/time share, if needed after P1 | Medium | 3–5 days total for the prefill track, including P1 | Layer-boundary time sharing under paired HTTP evaluation |
+| H1 | Pack per-step batch metadata | Low–medium | 1–3 days for the first host-overhead increment and validation | CPU/GPU owner tests pass; direct comparison captured; served check open |
+| H2 | Capture additional device stages; profile remaining PLE host work | Medium | Re-estimate after H1 profiling | Open; H1 profile captured |
+| M1–M4 | Shared physical MTP/AR target execution | High | 2–4 weeks for the mixed-execution track; highest uncertainty | M1 prerequisites committed; M2 adapters in progress; M3/M4 open |
 
 P1 and H1 are independent, subject to coordinating edits to shared runner and
 scheduler files. Finish and measure them before ranking the larger MTP track.
@@ -205,6 +207,20 @@ shared physical implementation.
   scheduler and telemetry. Exercise explicit MTP with AR peers first, then
   measure automatic-selection choices without assuming mixed speculation is
   profitable at every occupancy or candidate depth.
+
+### Committed prerequisites
+
+- [Provider stages](../../worklog/entries/20261019T201925.053647Z-lhl-qwen4exp-mtp-staged-provider-stages-fc10d4.md)
+  separate proposal preparation and acceptance while preserving the existing
+  iterator. A real explicit-MTP `LLM.generate_detailed()` smoke passes.
+- [Host row layout](../../worklog/entries/20261019T210316.597743Z-lhl-qwen4exp-mixed-layout-af4053.md)
+  distinguishes request width from total rows and maps accepted depths to
+  request-owned destinations. Its 47 CPU tests pass; it does not execute a
+  target or mutate device state.
+
+These are M1 prerequisites, not evidence of mixed physical execution. The
+scheduler-owned proposal/target/acceptance route and its end-to-end lifecycle
+checks remain open.
 
 ### Acceptance
 
