@@ -1,0 +1,392 @@
+{
+  "schema": 1,
+  "kind": "hipengine_flashnext_readme_topline_refresh",
+  "status": "accepted",
+  "performance_claim": true,
+  "source_commit": "e29d34459c2570217576909552fa95ad1f7cc227",
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 3,
+    "collected_at": "2026-10-19T16:21:09.936274+00:00",
+    "host_name": "gfx1151",
+    "repo_root": "/tmp/hipengine-flashnext-release-20261019-161842/source",
+    "hipengine_commit": "e29d34459c2570217576909552fa95ad1f7cc227",
+    "git_branch": null,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "dirty_paths": [],
+    "dirty_path_count": 0,
+    "untracked_paths": [],
+    "execution_affecting_dirty": false,
+    "execution_affecting_paths": [],
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    },
+    "quant": "gguf_ud_q4_k_xl",
+    "kv_dtype": "bf16",
+    "command": [
+      "bash",
+      "/tmp/hipengine-flashnext-release-bench.sh"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": "2",
+      "HIPENGINE_BUILD_CACHE_ROOT": null,
+      "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "build_profile": "production",
+    "timing_protocol": "Canonical synchronized compact AR; in-process MTP request wall with true AR",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": {
+      "status": "not_run",
+      "reason": "Benchmark refresh only; no kernel or arithmetic changes."
+    }
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.2.9-2-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "execution_profile": "production",
+  "execution_profile_schema": 1,
+  "variant_manifest_sha256": "cb30620a20748d2e9756444eb804c29a943dc5bcffe3abe3f31fc6c66a456eab",
+  "strict_manifest_sha256": "1fcbf992271251220cc4707eb8d24d28506cd3714550756cf2e32f387d879670",
+  "readme": {
+    "model": "Qwen3.8 Flash-Next",
+    "quant": "GGUF UD-Q4_K_XL",
+    "prompt_processing_tok_s": 1036.2,
+    "text_generation_tok_s": 23.7,
+    "with_mtp_tok_s": 28.9
+  },
+  "correctness": {
+    "canonical_all_cases_deterministic": true,
+    "canonical_output_ids_identical_to_prior": true,
+    "numerical_passed": true,
+    "distribution": {
+      "rows": 450,
+      "kl_mean": 0.0006899337222693908,
+      "kl_p50": 3.177624762721047e-05,
+      "kl_p95": 0.004361266749851871,
+      "kl_p99": 0.008414244824461988,
+      "kl_max": 0.014627828499048427,
+      "top1_agreement": 0.9911111111111112,
+      "top1_matches": 446,
+      "topk_overlap_mean": 0.9795555555555556,
+      "strict_teacher_nll_mean": 0.1742765958376601,
+      "candidate_teacher_nll_mean": 0.1769994381150026,
+      "teacher_nll_delta": 0.002722842277342513,
+      "teacher_delta_p_mean": -0.0012758720261047745,
+      "strict_margin_min": 0.00177001953125,
+      "max_abs_logit_delta": 1.9283686876296997,
+      "flip_eligible_rows": 52,
+      "flip_eligible_share": 0.11555555555555555,
+      "top1_mismatches_flip_eligible": 4,
+      "top1_mismatches_outside_flip_eligible": 0,
+      "diagnostics": {
+        "gating": false,
+        "rows": 450,
+        "sequence_count": 18,
+        "uncertainty_note": "Wilson intervals assume independent identically distributed rows; token rows can be correlated. Sequence counts are coverage, not independent sample counts. Do not pool deterministic repeats.",
+        "top1_flips": {
+          "rows": 450,
+          "flips": 4,
+          "rate": 0.008888888888888889,
+          "wilson95_iid_rows": {
+            "low": 0.003461990402173728,
+            "high": 0.022629629458788568
+          }
+        },
+        "margin_buckets": [
+          {
+            "lower_inclusive": 0.0,
+            "upper_exclusive": 0.05,
+            "rows": 3,
+            "flips": 1,
+            "rate": 0.3333333333333333,
+            "wilson95_iid_rows": {
+              "low": 0.06149194472039615,
+              "high": 0.7923403991979523
+            }
+          },
+          {
+            "lower_inclusive": 0.05,
+            "upper_exclusive": 0.5,
+            "rows": 36,
+            "flips": 3,
+            "rate": 0.08333333333333333,
+            "wilson95_iid_rows": {
+              "low": 0.02874861133599338,
+              "high": 0.2182669124927263
+            }
+          },
+          {
+            "lower_inclusive": 0.5,
+            "upper_exclusive": 2.0,
+            "rows": 88,
+            "flips": 0,
+            "rate": 0.0,
+            "wilson95_iid_rows": {
+              "low": 0.0,
+              "high": 0.04182706666489221
+            }
+          },
+          {
+            "lower_inclusive": 2.0,
+            "upper_exclusive": null,
+            "rows": 323,
+            "flips": 0,
+            "rate": 0.0,
+            "wilson95_iid_rows": {
+              "low": 0.0,
+              "high": 0.011753278897220798
+            }
+          }
+        ],
+        "total_variation": {
+          "mean": 0.006925454319379865,
+          "min": 4.146475681594313e-08,
+          "max": 0.07626634145456895,
+          "p05": 1.9869218065786845e-06,
+          "p50": 0.0006294760321535883,
+          "p95": 0.03543389177534044,
+          "p99": 0.05374065394803185
+        },
+        "entropy_delta_nats": {
+          "mean": 0.0004045021965569105,
+          "min": -0.22800217856182292,
+          "max": 0.11001512531567981,
+          "p05": -0.030576269127422173,
+          "p50": -1.883712228776895e-05,
+          "p95": 0.03724446641144937,
+          "p99": 0.07629598261376705
+        },
+        "max_probability_delta": {
+          "mean": -0.001183002743045614,
+          "min": -0.063025278002391,
+          "max": 0.06122530617258848,
+          "p05": -0.023900216656262456,
+          "p50": 1.2262389896267045e-06,
+          "p95": 0.01204095137883973,
+          "p99": 0.022046196167061532
+        }
+      }
+    },
+    "state_passed": true,
+    "lifecycle_passed": true,
+    "raw_gate_status": "requires_task_review",
+    "raw_gate_exit": 2,
+    "task_review": {
+      "resolved": true,
+      "basis": "All 18 strict and all 18 production free-run output hashes exactly match the October 14 gate whose 13/18 strict-exact task review is resolved in QWEN4EXP-PRODUCTION-SERVING PS12. Production ID equality with strict is diagnostic.",
+      "comparison_gate": "benchmarks/results/2026-10-14-qwen4exp-decode-batch/gate-c.json",
+      "semantic_review": "docs/QWEN4EXP-PRODUCTION-SERVING.md#implementation-and-qualification-checklist",
+      "prior_semantic_artifact": "benchmarks/results/2026-10-18-zbook-qwen4exp-http-task-quality.json"
+    },
+    "public_api_plain_and_mtp_passed": true,
+    "public_api_mtp_execution_path": "qwen4exp_mtp_batched_state_rows_verify"
+  },
+  "baseline": {
+    "artifact": "benchmarks/results/2026-10-14-qwen4exp-prefill-select-fusion/hipengine-production.json",
+    "same_physical_host": true,
+    "delta_percent": {
+      "512": {
+        "prefill_tok_s_weighted": -0.02832738155176262,
+        "decode_tok_s_weighted": 0.08870180535467398
+      },
+      "1024": {
+        "prefill_tok_s_weighted": 0.0037121223941838366,
+        "decode_tok_s_weighted": 0.09407727588413017
+      },
+      "4096": {
+        "prefill_tok_s_weighted": 0.26540471673019983,
+        "decode_tok_s_weighted": 0.07923919691652515
+      }
+    }
+  },
+  "mtp": {
+    "suite_runs": [
+      {
+        "full": {
+          "prompts": 10,
+          "ar_tok_s": 22.669517233564516,
+          "mtp_tok_s": 28.929854919972726,
+          "mtp_over_ar": 1.2761566389750527,
+          "acceptance": 0.5606276747503567,
+          "identical_to_ar": 8
+        },
+        "category:code": {
+          "prompts": 4,
+          "ar_tok_s": 22.731649849400565,
+          "mtp_tok_s": 35.339310408960706,
+          "mtp_over_ar": 1.5546302465103563,
+          "acceptance": 0.7972972972972973,
+          "identical_to_ar": 4
+        },
+        "category:general_en": {
+          "prompts": 2,
+          "ar_tok_s": 22.96911684232439,
+          "mtp_tok_s": 28.52275114121719,
+          "mtp_over_ar": 1.2417870193711282,
+          "acceptance": 0.5379310344827586,
+          "identical_to_ar": 1
+        },
+        "category:general_ja": {
+          "prompts": 2,
+          "ar_tok_s": 22.917572190114054,
+          "mtp_tok_s": 26.85378387193443,
+          "mtp_over_ar": 1.171755177606393,
+          "acceptance": 0.45569620253164556,
+          "identical_to_ar": 1
+        },
+        "category:mixed_ja_en": {
+          "prompts": 2,
+          "ar_tok_s": 22.02348066914242,
+          "mtp_tok_s": 22.758717770966715,
+          "mtp_over_ar": 1.033384237163495,
+          "acceptance": 0.375,
+          "identical_to_ar": 2
+        }
+      },
+      {
+        "full": {
+          "prompts": 10,
+          "ar_tok_s": 22.670618966544104,
+          "mtp_tok_s": 28.927947797874012,
+          "mtp_over_ar": 1.276010498017901,
+          "acceptance": 0.5606276747503567,
+          "identical_to_ar": 8
+        },
+        "category:code": {
+          "prompts": 4,
+          "ar_tok_s": 22.730045871908054,
+          "mtp_tok_s": 35.354715493194284,
+          "mtp_over_ar": 1.555417692178483,
+          "acceptance": 0.7972972972972973,
+          "identical_to_ar": 4
+        },
+        "category:general_en": {
+          "prompts": 2,
+          "ar_tok_s": 22.968135494455918,
+          "mtp_tok_s": 28.49730861067397,
+          "mtp_over_ar": 1.240732344928594,
+          "acceptance": 0.5379310344827586,
+          "identical_to_ar": 1
+        },
+        "category:general_ja": {
+          "prompts": 2,
+          "ar_tok_s": 22.932461209019348,
+          "mtp_tok_s": 26.837358011235292,
+          "mtp_over_ar": 1.1702781383395582,
+          "acceptance": 0.45569620253164556,
+          "identical_to_ar": 1
+        },
+        "category:mixed_ja_en": {
+          "prompts": 2,
+          "ar_tok_s": 22.018853192434644,
+          "mtp_tok_s": 22.768065358316573,
+          "mtp_over_ar": 1.0340259394680622,
+          "acceptance": 0.375,
+          "identical_to_ar": 2
+        }
+      }
+    ],
+    "heldouts": {
+      "full": {
+        "prompts": 8,
+        "ar_tok_s": 22.569197857088284,
+        "mtp_tok_s": 28.164265604293927,
+        "mtp_over_ar": 1.2479072487482494,
+        "acceptance": 0.5346020761245674,
+        "identical_to_ar": 5
+      },
+      "category:code": {
+        "prompts": 2,
+        "ar_tok_s": 22.538158472611467,
+        "mtp_tok_s": 31.303364303099514,
+        "mtp_over_ar": 1.388905146848603,
+        "acceptance": 0.6535433070866141,
+        "identical_to_ar": 2
+      },
+      "category:general_en": {
+        "prompts": 2,
+        "ar_tok_s": 22.61442173547792,
+        "mtp_tok_s": 28.464381201273547,
+        "mtp_over_ar": 1.258682690816635,
+        "acceptance": 0.5454545454545454,
+        "identical_to_ar": 1
+      },
+      "category:general_ja": {
+        "prompts": 2,
+        "ar_tok_s": 22.69321827760832,
+        "mtp_tok_s": 27.385287446415962,
+        "mtp_over_ar": 1.20676085301825,
+        "acceptance": 0.4934210526315789,
+        "identical_to_ar": 1
+      },
+      "category:mixed_ja_en": {
+        "prompts": 2,
+        "ar_tok_s": 22.432635258874082,
+        "mtp_tok_s": 26.02072198105582,
+        "mtp_over_ar": 1.159949407672125,
+        "acceptance": 0.46794871794871795,
+        "identical_to_ar": 1
+      }
+    },
+    "equal_acceptance_and_cycle_counts_across_suite_repeats": true,
+    "generation_id_equality_to_ar": "diagnostic under production arithmetic"
+  },
+  "memory": {
+    "canonical_peak_owned_gib": 82.49189180135727,
+    "canonical_after_close": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 88574994368,
+      "total_allocated_bytes": 88578181056,
+      "total_freed_bytes": 88578181056,
+      "active_allocations": 0,
+      "peak_allocations": 1629
+    }
+  },
+  "scope": "Single-request direct-runner plain rates and in-process MTP request wall. Not HTTP throughput or concurrent scaling. No new arithmetic promotion or capacity claim.",
+  "launch_context": {
+    "clean_process_wrapper": "#!/usr/bin/env bash\nset -euo pipefail\nRUN=$(< /tmp/hipengine-flashnext-release-current-path)\nPY=\"$HOME/miniforge3/envs/therock/bin/python\"\nSDK=$(\"$PY\" -m rocm_sdk path --root)\nSITE=$(\"$PY\" -c 'import site; print(site.getsitepackages()[0])')\nexport RUN\nexec env -i HOME=\"$HOME\" USER=\"${USER:-lhl}\" LOGNAME=\"${LOGNAME:-lhl}\" SHELL=/bin/bash TERM=xterm \\\n  PATH=\"$(dirname \"$PY\"):$SDK/bin:$SDK/lib/llvm/bin:/usr/local/bin:/usr/bin:/bin\" \\\n  LD_LIBRARY_PATH=\"$SITE/_rocm_sdk_core/lib:$SITE/_rocm_sdk_devel/lib:$SITE/_rocm_sdk_libraries/lib\" \\\n  HIP_PATH=\"$SDK\" ROCM_PATH=\"$SDK\" HIP_LIB_PATH=\"$SDK/lib\" HIP_INCLUDE_PATH=\"$SDK/include\" \\\n  HIP_DEVICE_LIB_PATH=\"$SDK/lib/llvm/amdgcn/bitcode\" HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 \\\n  HIPENGINE_COMPILER_VERSION_FILE=\"$RUN/hipcc-version.txt\" PYTHONPATH=\"$RUN/source\" \\\n  RUN=\"$RUN\" \"$PY\" \"$@\"\n",
+    "benchmark_job": "#!/usr/bin/env bash\nset -euo pipefail\nRUN=$(< /tmp/hipengine-flashnext-release-current-path)\ncd \"$RUN/source\"\nexec 9>/tmp/hipengine-gfx1151-benchmark.lock\nflock -n 9 || { printf 'gfx1151 benchmark lock is held\\n' >&2; exit 2; }\nMODEL=\"$HOME/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL\"\nSIDECAR=\"$HOME/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf\"\npy() { bash /tmp/hipengine-flashnext-release-python.sh \"$@\"; }\nrun() {\n  local name=$1\n  shift\n  printf '[start] %s %s\\n' \"$(date -u +%FT%TZ)\" \"$name\"\n  printf '%q ' \"$@\" >> \"$RUN/commands.txt\"; printf '\\n' >> \"$RUN/commands.txt\"\n  \"$@\" > \"$RUN/$name.log\" 2>&1\n  printf '[done] %s %s\\n' \"$(date -u +%FT%TZ)\" \"$name\"\n}\nrun prebuild-all py scripts/qwen4exp_canonical_ar_bench.py hipengine --model-root \"$MODEL\" --output \"$RUN/prebuild-all.json\" --prefill-chunk-size 4096 --capture-mode compact --ple-cache-mode warm --execution-profile production --warmups 0 --repetitions 1 --compiler-version-file \"$RUN/hipcc-version.txt\"\nrun canonical py scripts/qwen4exp_canonical_ar_bench.py hipengine --model-root \"$MODEL\" --output \"$RUN/canonical-ar.json\" --prefill-chunk-size 4096 --capture-mode compact --ple-cache-mode warm --execution-profile production --warmups 1 --repetitions 3 --compiler-version-file \"$RUN/hipcc-version.txt\" --require-cached-build\nfor rep in 1 2; do\n  run \"mtp-suite-$rep\" py scripts/qwen4exp_mtp_inprocess_bench.py --model-root \"$MODEL\" --sidecar \"$SIDECAR\" --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 64 --budget 3 --execution-profile production --output \"$RUN/mtp-suite-$rep.json\"\ndone\nrun mtp-heldouts py scripts/qwen4exp_mtp_inprocess_bench.py --model-root \"$MODEL\" --sidecar \"$SIDECAR\" --prompts benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --max-tokens 64 --budget 3 --execution-profile production --output \"$RUN/mtp-heldouts.json\"\nprintf '[complete] Flash-Next canonical and MTP runs\\n'\n",
+    "public_api_probe": "\"\"\"Confirm Flash-Next plain and MTP generation through the public API.\"\"\"\nfrom dataclasses import asdict, is_dataclass\nimport json\nimport os\nfrom pathlib import Path\nfrom hipengine import LLM, SamplingParams\n\nrun = Path(os.environ[\"RUN\"])\nmodel = Path.home() / \"models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL\"\nsidecar = Path.home() / \"models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf\"\nfixture = json.loads(Path(\"benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json\").read_text())\ncase = next(c for c in fixture[\"cases\"] if c[\"id\"] == \"code-p512\")\nllm = LLM(str(model), max_sequence_length=4096, max_active_requests=1,\n          draft_model=str(sidecar), speculative_candidate_budget=3)\nrows = []\ntry:\n    prompt = case[\"prompt_token_ids\"]\n    for mtp in (False, True):\n        params = SamplingParams(max_tokens=64, temperature=0.0, ignore_eos=True,\n                                speculative_mtp=mtp)\n        text = llm.generate([prompt], params)[0]\n        output = llm.generate_detailed([prompt], params)[0]\n        assert text == output.text\n        assert len(output.generated_token_ids) == 64\n        assert output.text.strip()\n        telemetry = getattr(output, \"telemetry\", None)\n        if mtp:\n            assert telemetry is not None\n        rows.append({\"mtp_requested\": mtp, \"text\": text,\n                     \"generated_token_ids\": list(output.generated_token_ids),\n                     \"finish_details\": asdict(output.finish_details),\n                     \"telemetry\": asdict(telemetry) if is_dataclass(telemetry) else repr(telemetry)})\n    canonical = json.loads((run / \"canonical-ar.json\").read_text())\n    oracle = next(s for s in canonical[\"samples\"] if s[\"case_id\"] == \"code-p512\")\n    assert rows[0][\"generated_token_ids\"] == oracle[\"output_token_ids\"][:64]\n    resolved = llm._resolved_execution_profile\n    result = {\"schema\": 1, \"kind\": \"flashnext_public_api_confirmation\", \"passed\": True,\n              \"backend\": llm._resolved_backend, \"quant\": llm._resolved_quant,\n              \"manifest_sha256\": getattr(resolved, \"manifest_sha256\", None),\n              \"rows\": rows, \"canonical_plain_ids_match\": True}\nfinally:\n    llm.close()\n(run / \"public-api.json\").write_text(json.dumps(result, indent=2, default=str) + \"\\n\")\nprint(json.dumps({k: v for k, v in result.items() if k != \"rows\"}))\n"
+  },
+  "notes": [
+    "The first cached-only attempt failed before measurement because a short-context attention kernel was not prebuilt. All 12 cases were then warmed before the accepted cached-only run.",
+    "The first public API smoke at context 1024 failed admission because the shared batch index requires at least 2048 positions. The accepted public check used 4096 positions. No implementation was changed.",
+    "Profiler not rerun: this is a benchmark/publication refresh, not a kernel change."
+  ]
+}

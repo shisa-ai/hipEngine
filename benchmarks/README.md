@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-10-18 UTC**
+Last updated: **2026-10-19 UTC**
 
 ## Gemma 4 on Radeon Pro W7900 — October 16
 
@@ -157,16 +157,17 @@ replace the published performance rows.
 
 ## Qwen3.8 Flash Next current production rates
 
-On Radeon 8060S/gfx1151, Qwen3.8-Flash-Next UD-Q4_K_XL, `production` profile
-(the default), BF16 KV, chunk 4096, greedy decode (compact capture),
-canonical 12-case protocol with one warmup and three repetitions, measured
-2026-10-14 UTC on a tracked-clean tree.
+On Framework Desktop / Radeon 8060S/gfx1151, Qwen3.8-Flash-Next UD-Q4_K_XL,
+`production` profile (the default), BF16 KV, chunk 4096, greedy decode (compact
+capture), canonical 12-case protocol with one warmup and three repetitions.
+The 512/1024/4096 rows were refreshed on 2026-10-19 UTC at clean committed
+source; the 8192/16384 rows are the October 14 measurements.
 
 | Prompt length | Prefill tok/s | Decode (128) tok/s |
 | ---: | ---: | ---: |
-| 512 | **1036.5** | **23.66** |
-| 1024 | **1323.8** | **22.69** |
-| 4096 | **1646.3** | **23.23** |
+| 512 | **1036.2** | **23.68** |
+| 1024 | **1323.9** | **22.72** |
+| 4096 | **1650.7** | **23.24** |
 | 8192 | **1621.5** | **23.18** |
 | 16384 | **1576.1** | **23.04** |
 
@@ -187,16 +188,19 @@ and protocol measured 779.4 / 977.9 / 1190.3 prefill at 512 / 1024 / 4096
 tokens on 2026-10-13, before the hyper-connection, GDN and expert-glue
 kernel work, and 305.6 / 331.6 / 335.5 for the plan without the F16 routes.
 
-Against the `strict` teacher on the 18-prompt full-vocabulary gate (450
-teacher-forced rows): mean KL 6.4e-4, p95 3.6e-3, max 0.010, top-1 99.1%,
-bit-identical repeats, 13/18 strict-exact tasks. On the 18-prompt
-cross-engine battery: 13/18 strict-exact, top-1 agreement 1.00, top-20 mean
-KL 0.077 (the plan without the F16 routes: 15/18 and 0.0052). On four
-prompts of about 2,000 to 2,600 tokens the plan measures mean KL 2.1e-3
+Against the `strict` teacher on the refreshed 18-prompt full-vocabulary gate
+(450 teacher-forced rows): mean KL 6.9e-4, p95 4.4e-3, max 0.0146, top-1
+99.1%, bit-identical repeats. All 18 strict and all 18 production free-run
+hashes match the previously reviewed 13/18 strict-exact task packet. On the
+October 14 18-prompt cross-engine battery: 13/18 strict-exact, top-1 agreement
+1.00, top-20 mean KL 0.077 (the plan without the F16 routes: 15/18 and
+0.0052). On four prompts of about 2,000 to 2,600 tokens the plan measures mean KL 2.1e-3
 against `strict`; long prompts are gated against what a single rounding flip
 does on the same prompts (floor 5.0e-3), plus retrieval answers at 8K and
 16K tokens, and the plan passes (16/16 answers, the same as `strict`).
-[Current rates](results/2026-10-14-qwen4exp-prefill-select-fusion/README.md)
+[Current rates and fresh correctness gate](results/2026-10-19-gfx1151-flashnext-topline/summary.json)
+· [protocol and samples](results/2026-10-19-gfx1151-flashnext-topline/README.md)
+· [October 14 rates](results/2026-10-14-qwen4exp-prefill-select-fusion/README.md)
 · [long-prompt gate](results/2026-10-14-qwen4exp-long-context-gate/README.md)
 · [gates and decode changes](results/2026-10-14-qwen4exp-decode-batch/README.md)
 · [prefill changes and kernel attribution](results/2026-10-14-qwen4exp-prefill-hc-gdn-batch/README.md)
@@ -208,17 +212,21 @@ does on the same prompts (floor 5.0e-3), plus retrieval answers at 8K and
 · [routed-expert kernel](results/2026-10-13-qwen4exp-fast-routed-f16/README.md).
 
 With the Q8_0 MTP sidecar (explicit speculative provider, greedy, budget 3),
-generation over the full 10-prompt mtp-bench category suite runs at 23.8-24.5
-tok/s against 20.5-21.0 tok/s autoregressive in the same process (1.16x; code
-1.39-1.41x, general English 1.14-1.15x, general Japanese 1.07-1.09x, mixed
-Japanese/English 0.95-0.96x), 64 tokens per prompt, and 1.16x on the eight
-category heldouts. The 2026-10-14 row measured 1.27x on this host; re-running
-that row's own commit on today's machine measures 1.09x, so the difference is
-the session, not the code — the same-session pair is 1.09x before and 1.16x
-after the work since. On the served route MTP is 1.26x a single request and
-1.33x at two concurrent requests, and 0.87x at four, where AR batching wins.
-[MTP measurements](results/2026-10-18-qwen4exp-mtp-economics/README.md)
-· [2026-10-14 row](results/2026-10-14-qwen4exp-mtp-batched-verify/README.md).
+the October 19 Framework refresh measures 28.930 / 28.928 tok/s over two runs
+of the full ten-prompt mtp-bench category suite, against 22.670 / 22.671 tok/s
+true AR in the same process (1.276x), 64 tokens per prompt. Eight category
+heldouts measure 28.164 tok/s and 1.248x AR. These request-wall rates have a
+different timing window from the canonical decode-only column. Public
+`LLM.generate()` checks execute plain and MTP paths with the same production
+manifest; plain IDs match the canonical prefix.
+[Fresh MTP measurements](results/2026-10-19-gfx1151-flashnext-topline/README.md).
+
+The October 18 zbook MTP measurements are a separate physical-host lane:
+23.8–24.5 tok/s in-process, 1.16x matched AR. Its served MTP measured 1.26x
+one request, 1.33x at two concurrent requests and 0.87x at four. Those are
+historical measurements, not a comparison with this Framework refresh or
+with the changed serving defaults.
+[Zbook measurements](results/2026-10-18-qwen4exp-mtp-economics/README.md).
 
 Served surface, 2026-10-18: at `max_context_tokens=32768` and two slots, all
 50 HTTP grid probes return 200 with 24 rows on the AR route and 24 on MTP
@@ -594,6 +602,7 @@ context** is a capacity limit, not a full-length prefill.
 | Maple-Preview | 2-bit | **754.5** | **153.2** | — |
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1418.1** | **56.7** | 80.1 |
 | Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **1865.6** | **43.3** | **69.4** |
+| Qwen3.8 Flash-Next | GGUF `UD-Q4_K_XL` | **1036.2** | **23.7** | **28.9** |
 | Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.15** | **22.4** |

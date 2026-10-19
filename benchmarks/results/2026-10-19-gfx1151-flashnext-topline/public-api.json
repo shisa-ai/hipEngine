@@ -1,0 +1,591 @@
+{
+  "schema": 1,
+  "kind": "flashnext_public_api_confirmation",
+  "passed": true,
+  "backend": "hip_gfx1151",
+  "quant": "gguf_ud_q4_k_xl",
+  "manifest_sha256": "cb30620a20748d2e9756444eb804c29a943dc5bcffe3abe3f31fc6c66a456eab",
+  "rows": [
+    {
+      "mtp_requested": false,
+      "text": "<think>\nThe user wants me to write four Python code snippets, each with tests. They've repeated the requests multiple times but the final request is the same set of four functions. Let me write all four functions with their tests, returning only code.\n\n1. merge_intervals - merges overlapping closed integer intervals\n2.",
+      "generated_token_ids": [
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        728,
+        310,
+        3165,
+        2943,
+        12654,
+        1970,
+        66320,
+        11,
+        1754,
+        440,
+        6813,
+        13,
+        2302,
+        2908,
+        11173,
+        279,
+        7154,
+        5081,
+        2942,
+        694,
+        279,
+        1534,
+        1622,
+        369,
+        279,
+        1788,
+        716,
+        314,
+        2943,
+        5568,
+        13,
+        6558,
+        728,
+        3165,
+        660,
+        2943,
+        5568,
+        440,
+        836,
+        6813,
+        11,
+        13064,
+        1132,
+        1970,
+        13,
+        271,
+        16,
+        13,
+        10562,
+        87682,
+        471,
+        78161,
+        48142,
+        7629,
+        7308,
+        26126,
+        198,
+        17,
+        13
+      ],
+      "finish_details": {
+        "reason": "length",
+        "eos_token_id": null,
+        "stop_sequence": [],
+        "length_limit": 64,
+        "deadline_exceeded": false,
+        "cancelled": false,
+        "forced_close": false,
+        "synthetic_tokens": 0,
+        "reasoning_tokens": 0,
+        "answer_tokens": 0,
+        "tool_call_tokens": 0,
+        "structured_tokens": 0,
+        "budget_pressure": null,
+        "cache_action": null,
+        "sampler_mode": "greedy",
+        "phase": null,
+        "continuation_eligible": null
+      },
+      "telemetry": {
+        "decode_state": {
+          "request_id": "1",
+          "row_index": 0,
+          "step_index": 64,
+          "prompt_tokens": 512,
+          "generated_tokens": 64,
+          "phase": "done",
+          "reasoning_tokens": 0,
+          "answer_tokens": 0,
+          "tool_call_tokens": 0,
+          "structured_tokens": 0,
+          "stop_suffix_state": null,
+          "forced_tokens_pending": [],
+          "forced_token_id": null,
+          "forced_token_reason": null,
+          "forced_tokens_remaining": null,
+          "post_thinking_forced_tokens_pending": [],
+          "post_thinking_forced_token_reason": null,
+          "force_sequence_completion_token_sequences": [],
+          "force_sequence_completion_reason": null,
+          "active_processors": [],
+          "sampler_fast_path_blockers": [],
+          "sampler_fallback_reason": null,
+          "budget_pressure": null,
+          "sampler_mode": null,
+          "full_vocab_logits_d2h": null,
+          "logits_d2h_bytes": null,
+          "execution_path": "qwen4exp_full_model_ar_batch",
+          "native_compact_prefill": null,
+          "native_caware_decode": null,
+          "serial_decode_fallback": null,
+          "native_sampler_rows": null,
+          "continuation_eligible": false
+        },
+        "event": "generation_complete",
+        "timing": null,
+        "timing_scope": null,
+        "batch_id": null,
+        "group_rows": null,
+        "timing_owner": null,
+        "usage": null,
+        "diagnostics": {
+          "decode_batch": {
+            "execution_path": "qwen4exp_full_model_ar_batch",
+            "steps": 63,
+            "step_widths": {
+              "1": 63
+            },
+            "max_width": 1,
+            "state_slots": 1
+          }
+        }
+      }
+    },
+    {
+      "mtp_requested": true,
+      "text": "<think>\nThe user wants me to write four Python code snippets, each with tests. They've repeated the requests multiple times but the final request is the same set of four functions. Let me write all four functions with their tests, returning only code.\n\n1. merge_intervals - merges overlapping closed integer intervals\n2.",
+      "generated_token_ids": [
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        728,
+        310,
+        3165,
+        2943,
+        12654,
+        1970,
+        66320,
+        11,
+        1754,
+        440,
+        6813,
+        13,
+        2302,
+        2908,
+        11173,
+        279,
+        7154,
+        5081,
+        2942,
+        694,
+        279,
+        1534,
+        1622,
+        369,
+        279,
+        1788,
+        716,
+        314,
+        2943,
+        5568,
+        13,
+        6558,
+        728,
+        3165,
+        660,
+        2943,
+        5568,
+        440,
+        836,
+        6813,
+        11,
+        13064,
+        1132,
+        1970,
+        13,
+        271,
+        16,
+        13,
+        10562,
+        87682,
+        471,
+        78161,
+        48142,
+        7629,
+        7308,
+        26126,
+        198,
+        17,
+        13
+      ],
+      "finish_details": {
+        "reason": "length",
+        "eos_token_id": null,
+        "stop_sequence": [],
+        "length_limit": 64,
+        "deadline_exceeded": false,
+        "cancelled": false,
+        "forced_close": false,
+        "synthetic_tokens": 0,
+        "reasoning_tokens": 0,
+        "answer_tokens": 0,
+        "tool_call_tokens": 0,
+        "structured_tokens": 0,
+        "budget_pressure": null,
+        "cache_action": null,
+        "sampler_mode": "greedy_speculative_mtp",
+        "phase": null,
+        "continuation_eligible": null
+      },
+      "telemetry": {
+        "decode_state": {
+          "request_id": null,
+          "row_index": 0,
+          "step_index": 64,
+          "prompt_tokens": 512,
+          "generated_tokens": 64,
+          "phase": "done",
+          "reasoning_tokens": 0,
+          "answer_tokens": 0,
+          "tool_call_tokens": 0,
+          "structured_tokens": 0,
+          "stop_suffix_state": null,
+          "forced_tokens_pending": [],
+          "forced_token_id": null,
+          "forced_token_reason": null,
+          "forced_tokens_remaining": null,
+          "post_thinking_forced_tokens_pending": [],
+          "post_thinking_forced_token_reason": null,
+          "force_sequence_completion_token_sequences": [],
+          "force_sequence_completion_reason": null,
+          "active_processors": [],
+          "sampler_fast_path_blockers": [],
+          "sampler_fallback_reason": null,
+          "budget_pressure": null,
+          "sampler_mode": "greedy_speculative_mtp",
+          "full_vocab_logits_d2h": null,
+          "logits_d2h_bytes": null,
+          "execution_path": "qwen4exp_mtp_batched_state_rows_verify",
+          "native_compact_prefill": null,
+          "native_caware_decode": null,
+          "serial_decode_fallback": null,
+          "native_sampler_rows": null,
+          "continuation_eligible": false
+        },
+        "event": "generation_complete",
+        "timing": {
+          "mtp_generated_draft_tokens": 67.0,
+          "mtp_accepted_draft_tokens": 40.0,
+          "mtp_cycles_count": 23.0
+        },
+        "timing_scope": "choice",
+        "batch_id": null,
+        "group_rows": 1,
+        "timing_owner": true,
+        "usage": null,
+        "diagnostics": {
+          "speculative_provider": "qwen4_exp_mtp",
+          "candidate_budget": 3,
+          "proposed_draft_tokens": 67,
+          "accepted_draft_tokens": 40,
+          "draft_acceptance": 0.5970149253731343,
+          "cycles": [
+            {
+              "start_position": 512,
+              "candidates": [
+                198,
+                760,
+                1156
+              ],
+              "accepted": 3,
+              "mismatch_token": null,
+              "committed_position": 516
+            },
+            {
+              "start_position": 516,
+              "candidates": [
+                728,
+                310,
+                3165
+              ],
+              "accepted": 3,
+              "mismatch_token": null,
+              "committed_position": 520
+            },
+            {
+              "start_position": 520,
+              "candidates": [
+                12654,
+                5568,
+                25
+              ],
+              "accepted": 1,
+              "mismatch_token": 1970,
+              "committed_position": 522
+            },
+            {
+              "start_position": 522,
+              "candidates": [
+                66320,
+                11,
+                1754
+              ],
+              "accepted": 3,
+              "mismatch_token": null,
+              "committed_position": 526
+            },
+            {
+              "start_position": 526,
+              "candidates": [
+                836,
+                1765,
+                6813
+              ],
+              "accepted": 0,
+              "mismatch_token": 6813,
+              "committed_position": 527
+            },
+            {
+              "start_position": 527,
+              "candidates": [
+                13,
+                2302,
+                1318
+              ],
+              "accepted": 2,
+              "mismatch_token": 2908,
+              "committed_position": 530
+            },
+            {
+              "start_position": 530,
+              "candidates": [
+                978,
+                11173,
+                279
+              ],
+              "accepted": 0,
+              "mismatch_token": 11173,
+              "committed_position": 531
+            },
+            {
+              "start_position": 531,
+              "candidates": [
+                279,
+                1788,
+                1622
+              ],
+              "accepted": 1,
+              "mismatch_token": 7154,
+              "committed_position": 533
+            },
+            {
+              "start_position": 533,
+              "candidates": [
+                5081,
+                2942,
+                694
+              ],
+              "accepted": 3,
+              "mismatch_token": null,
+              "committed_position": 537
+            },
+            {
+              "start_position": 537,
+              "candidates": [
+                1534,
+                1622,
+                369
+              ],
+              "accepted": 3,
+              "mismatch_token": null,
+              "committed_position": 541
+            },
+            {
+              "start_position": 541,
+              "candidates": [
+                1788,
+                13,
+                6558
+              ],
+              "accepted": 1,
+              "mismatch_token": 716,
+              "committed_position": 543
+            },
+            {
+              "start_position": 543,
+              "candidates": [
+                314,
+                2943,
+                13
+              ],
+              "accepted": 2,
+              "mismatch_token": 5568,
+              "committed_position": 546
+            },
+            {
+              "start_position": 546,
+              "candidates": [
+                13,
+                353,
+                1144
+              ],
+              "accepted": 1,
+              "mismatch_token": 6558,
+              "committed_position": 548
+            },
+            {
+              "start_position": 548,
+              "candidates": [
+                728,
+                3300,
+                660
+              ],
+              "accepted": 1,
+              "mismatch_token": 3165,
+              "committed_position": 550
+            },
+            {
+              "start_position": 550,
+              "candidates": [
+                4101,
+                11,
+                4252
+              ],
+              "accepted": 0,
+              "mismatch_token": 660,
+              "committed_position": 551
+            },
+            {
+              "start_position": 551,
+              "candidates": [
+                2943,
+                303,
+                264
+              ],
+              "accepted": 1,
+              "mismatch_token": 5568,
+              "committed_position": 553
+            },
+            {
+              "start_position": 553,
+              "candidates": [
+                440,
+                836,
+                6813
+              ],
+              "accepted": 3,
+              "mismatch_token": null,
+              "committed_position": 557
+            },
+            {
+              "start_position": 557,
+              "candidates": [
+                13064,
+                1132,
+                1970
+              ],
+              "accepted": 3,
+              "mismatch_token": null,
+              "committed_position": 561
+            },
+            {
+              "start_position": 561,
+              "candidates": [
+                271,
+                9764,
+                728
+              ],
+              "accepted": 1,
+              "mismatch_token": 16,
+              "committed_position": 563
+            },
+            {
+              "start_position": 563,
+              "candidates": [
+                13,
+                2972,
+                18479
+              ],
+              "accepted": 1,
+              "mismatch_token": 10562,
+              "committed_position": 565
+            },
+            {
+              "start_position": 565,
+              "candidates": [
+                87682,
+                471,
+                78161
+              ],
+              "accepted": 3,
+              "mismatch_token": null,
+              "committed_position": 569
+            },
+            {
+              "start_position": 569,
+              "candidates": [
+                7629,
+                7308,
+                26126
+              ],
+              "accepted": 3,
+              "mismatch_token": null,
+              "committed_position": 573
+            },
+            {
+              "start_position": 573,
+              "candidates": [
+                17
+              ],
+              "accepted": 1,
+              "mismatch_token": null,
+              "committed_position": 575
+            }
+          ],
+          "target_verify": "batched_state_rows",
+          "sampling_algorithm": "raw_argmax_match",
+          "draft_rollback": "cursor_trim",
+          "target_hidden_handoff": "host",
+          "phase_census": {
+            "cycles": 23,
+            "target_verify_rows": 23,
+            "target_prefill_hidden_export": {
+              "calls": 0,
+              "ms": 0.0
+            },
+            "proposal": {
+              "calls": 23,
+              "ms": 332.1100652683526
+            },
+            "target_verify": {
+              "calls": 23,
+              "ms": 1488.6723047820851,
+              "includes_hidden_export": true
+            },
+            "target_k0": {
+              "calls": 0,
+              "ms": 0.0
+            },
+            "acceptance_control": {
+              "calls": 23,
+              "ms": 26.3085279148072
+            },
+            "draft_commit_or_rollback": {
+              "calls": 23,
+              "ms": 8.839300135150552
+            },
+            "draft_stages_ms": {
+              "draft_candidate_packet_d2h": 87.19271805603057,
+              "draft_device_argmax": 0.8343369700014591,
+              "draft_head_gr": 1.4489993918687105,
+              "draft_input_fusion": 32.0594779914245,
+              "draft_layer": 208.27903039753437,
+              "draft_lm_head": 1.3207622105255723
+            }
+          }
+        }
+      }
+    }
+  ],
+  "canonical_plain_ids_match": true
+}

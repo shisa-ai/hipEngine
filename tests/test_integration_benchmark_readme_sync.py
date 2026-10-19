@@ -231,6 +231,51 @@ def test_root_readme_is_compact_model_first_and_synced() -> None:
     assert "docs/HOWTO-README.md" in (repo_root / "AGENTS.md").read_text(encoding="utf-8")
 
 
+def test_flashnext_gfx1151_highlights_match_fresh_same_host_artifacts() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    results = repo_root / "benchmarks/results/2026-10-19-gfx1151-flashnext-topline"
+    summary = json.loads((results / "summary.json").read_text(encoding="utf-8"))
+    plain = json.loads((results / "canonical-ar.json").read_text(encoding="utf-8"))
+    mtp = [
+        json.loads((results / f"mtp-suite-{run}.json").read_text(encoding="utf-8"))
+        for run in (1, 2)
+    ]
+    headline = summary["readme"]
+    shape = plain["summary"]["shapes"]["512"]
+    assert headline["prompt_processing_tok_s"] == round(shape["prefill_tok_s_weighted"], 1)
+    assert headline["text_generation_tok_s"] == round(shape["decode_tok_s_weighted"], 1)
+    assert headline["with_mtp_tok_s"] == round(
+        sum(run["summary"]["full"]["mtp_tok_s"] for run in mtp) / 2, 1
+    )
+    for artifact in (plain, *mtp):
+        assert artifact["host"]["machine_id"] == summary["host"]["machine_id"]
+        assert artifact["provenance"]["hipengine_commit"] == summary["source_commit"]
+        assert artifact["provenance"]["dirty"] is False
+    assert plain["summary"]["all_cases_deterministic"] is True
+    assert summary["correctness"]["numerical_passed"] is True
+    assert summary["correctness"]["task_review"]["resolved"] is True
+    gate = json.loads((results / "production-gate.json").read_text(encoding="utf-8"))
+    reviewed_gate = json.loads(
+        (repo_root / summary["correctness"]["task_review"]["comparison_gate"])
+        .read_text(encoding="utf-8")
+    )
+    for key in ("candidate_ids_sha256", "strict_ids_sha256"):
+        assert {row["id"]: row[key] for row in gate["task_gate"]["rows"]} == {
+            row["id"]: row[key] for row in reviewed_gate["task_gate"]["rows"]
+        }
+    for key in ("numerical_passed", "state_passed", "lifecycle_passed"):
+        assert gate["decision"][key] is True
+    assert summary["correctness"]["public_api_plain_and_mtp_passed"] is True
+    expected = (
+        "| Qwen3.8 Flash-Next | GGUF `UD-Q4_K_XL` | "
+        f"**{headline['prompt_processing_tok_s']:.1f}** | "
+        f"**{headline['text_generation_tok_s']:.1f}** | "
+        f"**{headline['with_mtp_tok_s']:.1f}** |"
+    )
+    for path in (repo_root / "README.md", repo_root / "benchmarks/README.md"):
+        assert expected in path.read_text(encoding="utf-8")
+
+
 def test_benchmark_readme_is_a_compact_current_scoreboard() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     scoreboard_path = repo_root / "benchmarks/README.md"

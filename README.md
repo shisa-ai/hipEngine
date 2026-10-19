@@ -95,6 +95,7 @@ context** is a capacity limit, not a full-length prefill.
 | Maple-Preview | 2-bit | **754.5** | **153.2** | — |
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1418.1** | **56.7** | 80.1 |
 | Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **1865.6** | **43.3** | **69.4** |
+| Qwen3.8 Flash-Next | GGUF `UD-Q4_K_XL` | **1036.2** | **23.7** | **28.9** |
 | Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — |
 | Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.15** | **22.4** |
