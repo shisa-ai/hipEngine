@@ -379,8 +379,8 @@ class LLM:
             raise ValueError("speculative_provider must be non-empty when set")
         if drafter == "":
             raise ValueError("draft_model must be non-empty when set")
-        if provider is None and drafter is not None:
-            raise ValueError("draft_model requires speculative_provider")
+        # A draft model without a provider is resolved at load time from the
+        # model plugin's declared MTP provider (see ``_get_text_generator``).
         if provider is not None and drafter is None:
             raise ValueError("speculative_provider requires draft_model")
         if speculative_candidate_budget is None:
@@ -1513,18 +1513,13 @@ class LLM:
                 raise ValueError("this model generator has no compact DMS serving adapter")
             configure_dms(self.dms)
         self._publish_candidate_budget(generator)
-        effective_provider = self.speculative_provider
-        effective_draft_model = self.draft_model
-        if effective_provider is None and effective_draft_model is None:
-            discover_head = getattr(
-                model_plugin, "resolve_speculative_mtp_draft_model", None
-            )
-            declared_provider = getattr(model_plugin, "speculative_mtp_provider", None)
-            if callable(discover_head) and declared_provider:
-                discovered_head = discover_head(self.model)
-                if discovered_head is not None:
-                    effective_provider = str(declared_provider)
-                    effective_draft_model = str(discovered_head)
+        effective_provider, effective_draft_model = _resolve_speculative_owner(
+            provider=self.speculative_provider,
+            draft_model=self.draft_model,
+            model_plugin=model_plugin,
+            model=self.model,
+            speculative_mtp_serving=self.speculative_mtp_serving,
+        )
         if effective_provider is not None:
             provider_budget = self.speculative_candidate_budget
             if provider_budget is None:
@@ -1778,6 +1773,45 @@ class LLM:
         self._weight_index = index
         self._model_plugin = plugin
         return index, plugin
+
+
+
+def _resolve_speculative_owner(
+    *,
+    provider: str | None,
+    draft_model: str | None,
+    model_plugin: Any,
+    model: str,
+    speculative_mtp_serving: str | None,
+) -> tuple[str | None, str | None]:
+    """Resolve the speculative provider and draft artifact a load attaches.
+
+    An explicit pair is used as given. A draft model alone takes the model
+    plugin's declared MTP provider, and a plugin that declares none refuses it
+    by name. With neither, a plugin that declares a provider may discover the
+    head shipped beside the target artifact, unless MTP serving is ``off``.
+    """
+
+    declared_provider = getattr(model_plugin, "speculative_mtp_provider", None)
+    if provider is None and draft_model is not None:
+        if not declared_provider:
+            raise ValueError(
+                "draft_model requires speculative_provider: model plugin "
+                f"{getattr(model_plugin, 'name', model_plugin)!r} declares no "
+                "MTP provider"
+            )
+        return str(declared_provider), draft_model
+    if provider is not None or draft_model is not None:
+        return provider, draft_model
+    if speculative_mtp_serving == "off" or not declared_provider:
+        return None, None
+    discover_head = getattr(model_plugin, "resolve_speculative_mtp_draft_model", None)
+    if not callable(discover_head):
+        return None, None
+    discovered_head = discover_head(model)
+    if discovered_head is None:
+        return None, None
+    return str(declared_provider), str(discovered_head)
 
 
 def _generation_request(prompt_tuple: tuple[Any, ...], params: SamplingParams):

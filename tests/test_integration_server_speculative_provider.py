@@ -146,8 +146,11 @@ def _sse_payloads(text: str) -> list[dict[str, Any]]:
 
 
 def test_server_config_requires_complete_explicit_provider_owner() -> None:
-    with pytest.raises(ValueError, match="draft_model requires speculative_provider"):
-        ServerConfig(model="target", draft_model="drafter")
+    # A draft model alone is accepted here: the engine resolves its provider
+    # from the model plugin at load and refuses a plugin that declares none.
+    config = ServerConfig(model="target", draft_model="drafter")
+    assert config.speculative_provider is None
+    assert config.draft_model == "drafter"
     with pytest.raises(ValueError, match="speculative_provider requires draft_model"):
         ServerConfig(model="target", speculative_provider="dflash")
     with pytest.raises(ValueError, match="speculative_candidate_budget"):

@@ -316,8 +316,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--draft-model",
         default=os.environ.get("HIPENGINE_DRAFT_MODEL"),
         help=(
-            "Pinned draft-model path for --speculative-provider "
-            "(env HIPENGINE_DRAFT_MODEL)"
+            "Draft-model or MTP-head path. With --speculative-provider it pins "
+            "that provider's draft; alone, the model plugin's declared MTP "
+            "provider loads it. A model whose plugin finds its MTP head beside "
+            "the target needs neither flag (env HIPENGINE_DRAFT_MODEL)"
         ),
     )
     parser.add_argument(

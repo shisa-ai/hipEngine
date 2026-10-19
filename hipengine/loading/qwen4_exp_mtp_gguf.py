@@ -346,6 +346,64 @@ def build_qwen4_exp_mtp_gguf_map(
     )
 
 
+def discover_qwen4_exp_mtp_sidecar(model_path: str | Path) -> Path | None:
+    """Find the MTP head GGUF that ships beside a Qwen4Exp target artifact.
+
+    The target GGUF omits the NextN block, so the head is a separate file.
+    Candidates are searched nearest first: the target's own directory and its
+    ``MTP/`` subdirectory, the parent directory and its ``MTP/``, then sibling
+    directories of the target directory and of the parent whose names mention
+    ``mtp``. A candidate is admitted only when its header passes the MTP GGUF
+    contract (``validate_qwen4_exp_mtp_gguf``), so a file name never decides
+    what loads. Within one tier the first valid file in sorted order wins.
+    Returns ``None`` when no valid head is found.
+    """
+
+    from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
+
+    try:
+        targets = discover_gguf_files(model_path)
+    except (FileNotFoundError, OSError):
+        return None
+    target_set = {path.resolve() for path in targets}
+    artifact_dir = targets[0].resolve().parent
+    parent = artifact_dir.parent
+
+    def mtp_children(root: Path) -> list[Path]:
+        try:
+            return sorted(
+                child for child in root.iterdir()
+                if child.is_dir() and "mtp" in child.name.lower()
+            )
+        except OSError:
+            return []
+
+    tiers = (
+        [artifact_dir, artifact_dir / "MTP"],
+        [parent, parent / "MTP"],
+        mtp_children(artifact_dir) + mtp_children(parent) + mtp_children(parent.parent),
+    )
+    seen: set[Path] = set()
+    for directories in tiers:
+        for directory in directories:
+            try:
+                files = sorted(directory.glob("*.gguf")) if directory.is_dir() else []
+            except OSError:
+                continue
+            for candidate in files:
+                resolved = candidate.resolve()
+                if resolved in target_set or resolved in seen:
+                    continue
+                seen.add(resolved)
+                try:
+                    validation = validate_qwen4_exp_mtp_gguf((load_gguf_index(resolved),))
+                except Exception:
+                    continue
+                if validation.passed:
+                    return resolved
+    return None
+
+
 __all__ = [
     "MTP_BLOCK_ID",
     "Qwen4ExpMTPGGUFConfig",
@@ -353,6 +411,7 @@ __all__ = [
     "Qwen4ExpMTPGGUFMap",
     "Qwen4ExpMTPGGUFValidation",
     "build_qwen4_exp_mtp_gguf_map",
+    "discover_qwen4_exp_mtp_sidecar",
     "required_qwen4_exp_mtp_tensor_names",
     "validate_qwen4_exp_mtp_gguf",
 ]

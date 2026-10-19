@@ -509,8 +509,8 @@ class ServerConfig:
             raise ValueError("speculative_provider must be non-empty when set")
         if drafter == "":
             raise ValueError("draft_model must be non-empty when set")
-        if provider is None and drafter is not None:
-            raise ValueError("draft_model requires speculative_provider")
+        # A draft model alone resolves its provider from the model plugin when
+        # the engine loads; a plugin that declares none refuses it there.
         if provider is not None and drafter is None:
             raise ValueError("speculative_provider requires draft_model")
         candidate_budget = (

@@ -25,6 +25,7 @@ class Qwen4ExpGGUFModel:
     vision_supported: bool = True
     vision_scope: str = "one_32x32_rgb_image_to_one_token"
     mtp_supported: bool = True
+    speculative_mtp_provider: str = "qwen4_exp_mtp"
     weight_name_templates: tuple[str, ...] = (
         "token_embd.weight",
         "output.weight",
@@ -105,6 +106,18 @@ class Qwen4ExpGGUFModel:
             "Unrecognized qwen4exp GGUF storage layout " + digest
             + "; pass an explicit quant after checking the artifact and execution-profile qualification"
         )
+
+    @staticmethod
+    def resolve_speculative_mtp_draft_model(model_path: str):
+        """Find the MTP head GGUF shipped beside this target artifact.
+
+        The target GGUF carries no NextN block, so the head is a sidecar file;
+        it is found by location and admitted by its own GGUF contract.
+        """
+
+        from hipengine.loading.qwen4_exp_mtp_gguf import discover_qwen4_exp_mtp_sidecar
+
+        return discover_qwen4_exp_mtp_sidecar(model_path)
 
     def layer_sequence(self) -> tuple[str, ...]:
         """Return representative GDN/PLE and QSA paths for fusion planning."""
