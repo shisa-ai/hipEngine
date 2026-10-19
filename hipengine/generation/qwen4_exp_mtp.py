@@ -6,11 +6,15 @@ from dataclasses import dataclass, replace
 import os
 from pathlib import Path
 import time
-from types import SimpleNamespace
 from typing import Any, Generator
 
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.generation.finish import finish_details_with_sampling_state
+from hipengine.generation.qwen4_exp_mtp_stages import (
+    consume_proposal_rows,
+    prepare_proposal,
+    verify_proposal_rows,
+)
 from hipengine.generation.registry import (
     DecodeState,
     FinishDetails,
@@ -351,11 +355,11 @@ class Qwen4ExpMTPTextProvider:
                 7 if bonus_row else remaining,
             )
             start_position = int(target_runner.position)
-            if int(draft_runner.position) != start_position:
-                raise RuntimeError("Qwen4Exp target/draft cursors diverged before proposal")
             proposal_started = time.perf_counter()
-            proposal = draft_runner.propose_chain(
-                start_token=root_token,
+            proposal = prepare_proposal(
+                draft_runner,
+                start_position=start_position,
+                root_token=root_token,
                 target_hidden_seed=root_hidden,
                 draft_n_max=budget,
                 # Device argmax and device-resident chaining; only the ids
@@ -369,7 +373,7 @@ class Qwen4ExpMTPTextProvider:
                 draft_runner, "last_proposal_stage_timings_ms", {}
             ).items():
                 phase_ms[name] = phase_ms.get(name, 0.0) + float(elapsed_ms)
-            candidates = tuple(int(row.token_id) for row in proposal)
+            candidates = proposal.candidates
             accepted = 0
             mismatch: int | None = None
             serial_candidates = candidates
@@ -378,44 +382,40 @@ class Qwen4ExpMTPTextProvider:
                 # token checks candidate i, the first mismatch ends the cycle
                 # with the target's own token for that row, and when every
                 # candidate matches the last row is one more (bonus) token.
+                # Verification and acceptance are separate stages so a shared
+                # target executor can supply the row results later.
                 serial_candidates = ()
-                inputs = (root_token, *candidates)
                 verify_started = time.perf_counter()
-                block = target_runner.verify_target_block_state_rows(inputs, **capture_kwargs)
+                rows = verify_proposal_rows(
+                    target_runner, proposal, capture_kwargs=capture_kwargs
+                )
                 record_phase("target_verify", verify_started)
                 acceptance_started = time.perf_counter()
-                consumed = 0
-                for index, (raw_truth, candidate) in enumerate(zip(
-                        block.token_ids, (*candidates, None), strict=True)):
-                    # Sample only the consumed prefix. Later rows were scored
-                    # with speculative history, so they cannot advance RNG or
-                    # processors once an earlier candidate was rejected.
-                    truth = select(SimpleNamespace(
-                        token_id=raw_truth,
-                        logits=block.logits[index] if controlled else None,
-                    ))
-                    consumed += 1
-                    generated.append(truth)
-                    if candidate is not None and int(truth) != candidate:
-                        mismatch = int(truth)
-                    elif candidate is not None:
-                        accepted += 1
-                    finish = _token_finish(request, generated, grammar, default_eos)
-                    if mismatch is not None or finish is not None:
-                        break
-                target_runner.commit_target_block_rows(consumed)
-                assert block.hidden_seeds is not None
-                if consumed == len(inputs):
+                acceptance = consume_proposal_rows(
+                    proposal,
+                    rows,
+                    prior_tokens=tuple(generated),
+                    select=select,
+                    finish_for=lambda ids: _token_finish(
+                        request, ids, grammar, default_eos
+                    ),
+                )
+                target_runner.commit_target_block_rows(acceptance.consumed_rows)
+                if acceptance.consumed_rows == rows.rows:
                     # Every draft matched and the bonus row was committed: the
                     # draft has consumed root .. c(n-1), so it also takes cn,
                     # with the target's hidden row that produced it.
                     draft_runner.forward(
-                        candidates[-1], block.hidden_seeds[len(candidates) - 1],
+                        candidates[-1], rows.hidden_seeds[len(candidates) - 1],
                         capture_logits=False, capture_hidden_seed=False,
                         capture_token_id=False, run_head=False,
                     )
-                root_token = generated[-1]
-                root_hidden = block.hidden_seeds[consumed - 1]
+                generated.extend(acceptance.tokens)
+                accepted = acceptance.accepted
+                mismatch = acceptance.mismatch_token
+                finish = acceptance.finish
+                root_token = acceptance.root_token
+                root_hidden = acceptance.root_hidden
                 record_phase("acceptance_control", acceptance_started)
             for candidate in serial_candidates:
                 raise_if_generation_deadline_expired(request)
