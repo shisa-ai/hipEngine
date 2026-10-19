@@ -1243,6 +1243,14 @@ Phase-0 targets (driven by the current research focus):
 | **Llama 3** | full_attention + dense_mlp | Phase 3 |
 | **sansho** (custom) | (your arch; see `~/amd-gpu-tuning/reference/sansho/`) | Phase 3+ |
 
+Qwen3.8-Flash-Next follow-up (October 19): the
+[serving performance campaign](campaigns/QWEN38FN-SERVING-FOLLOWUP.md) records
+planned decode-aware prefill slicing, shared-batch host-overhead reductions,
+and shared physical MTP/AR target execution after the merge to `main`.
+Implementation has not started. The repository-wide audit/refactor backlog is
+outside that campaign; the existing serving routes and arithmetic contracts
+stay in place.
+
 Qwen3.8-Flash-Next serving status (October 18): the
 [production-serving campaign](QWEN4EXP-PRODUCTION-SERVING.md) closed its
 capability, numerical, task-quality, isolation, economics and served-surface
