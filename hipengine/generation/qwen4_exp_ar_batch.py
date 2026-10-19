@@ -16,9 +16,11 @@ The plugin's production bound is 2; the switch raises one generator instance's
 plain-AR ceiling to 4 only when the configured context is at most 2048
 positions, the bound the width-4 live qualification used. Switch-off servers and
 longer contexts keep the production bound, and an explicit slot count above 4
-is rejected. Independent HTTP arrivals overlap only when the operator selects
-``HIPENGINE_PREFILL_DECODE_POLICY=protect_ttft``; the engine never overrides the
-configured or default scheduling policy.
+is rejected. Independent HTTP arrivals overlap because the generator declares
+the ``fair`` prefill/decode policy (``engine_loop_config_defaults``); under the
+engine-wide ``protect_decode`` default an arrival's prefill waited for the
+active row to finish, so the batch never reached width 2. An explicit
+``HIPENGINE_PREFILL_DECODE_POLICY`` still overrides the declaration.
 
 Three properties are control, not arithmetic, and are asserted exactly:
 

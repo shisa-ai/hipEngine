@@ -291,3 +291,26 @@ def test_qwen4_exp_narrow_scratch_probe_reuses_live_wider_runner(monkeypatch) ->
         assert report["max_batch_size"] == 2
     finally:
         generator.close()
+
+
+def test_qwen4_exp_engine_loop_prefills_arrivals_while_decoding() -> None:
+    # The engine-wide default ``protect_decode`` drains an active request
+    # before it prefills an arrival, so two HTTP requests ran back to back and
+    # never shared a decode tick. The generator declares ``fair`` instead,
+    # and an explicit HIPENGINE_PREFILL_DECODE_POLICY still wins.
+    from hipengine.generation.engine_loop import EngineLoopConfig
+    from hipengine.llm import _engine_loop_config_with_generator_defaults
+
+    generator = _generator()
+    try:
+        assert generator.engine_loop_config_defaults == {"prefill_decode_policy": "fair"}
+        base = EngineLoopConfig()
+        assert base.prefill_decode_policy == "protect_decode"
+        resolved = _engine_loop_config_with_generator_defaults(base, generator, environ={})
+        assert resolved.prefill_decode_policy == "fair"
+        pinned = _engine_loop_config_with_generator_defaults(
+            base, generator, environ={"HIPENGINE_PREFILL_DECODE_POLICY": "protect_ttft"}
+        )
+        assert pinned.prefill_decode_policy == "protect_decode"
+    finally:
+        generator.close()

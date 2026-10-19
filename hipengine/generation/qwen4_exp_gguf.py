@@ -421,6 +421,13 @@ class Qwen4ExpGGUFTextGenerator:
     model_owned_tool_grammar = True
     chat_template_reasoning_effort = True
 
+    @property
+    def engine_loop_config_defaults(self):
+        # Protect-decode drains an active request before prefilling arrivals,
+        # so independent HTTP requests ran back to back and never shared a
+        # decode tick or the AR batch step.
+        return {"prefill_decode_policy": "fair"}
+
     def _grammar_session(self, request):
         if request.grammar is None:
             return None
