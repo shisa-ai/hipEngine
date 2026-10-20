@@ -1499,6 +1499,12 @@ class Qwen4ExpResidentServingRunner(
                 generated_token_ids=(
                     tuple(row.generated_ids) if finish is not None else None
                 ),
+                # A stream that already published text never receives the
+                # reclaimed output, so the terminal chunk carries the telemetry.
+                telemetry=(
+                    self._with_prefix_telemetry(row, self._ar_batch_telemetry(row))
+                    if finish is not None else None
+                ),
             ),
         )
 

@@ -378,3 +378,19 @@ def test_reserve_admission_moves_the_prompt_cursor_past_reused_tokens(monkeypatc
         native.discard((901,))
     finally:
         driver.close()
+
+
+def test_streamed_follow_up_reports_prefix_reuse_on_the_terminal_chunk(monkeypatch) -> None:
+    driver, _ = _serving(monkeypatch, prefix_cache="radix")
+    try:
+        first, second = _turns()
+        driver.generate_detailed(GenerationRequest(
+            prompts=(first,), max_tokens=2, temperature=0.0, top_p=1.0, ignore_eos=True))
+        chunks = list(driver.stream_detailed(GenerationRequest(
+            prompts=(second,), max_tokens=3, temperature=0.0, top_p=1.0, ignore_eos=True)))
+    finally:
+        driver.close()
+    assert any(chunk.text for chunk in chunks)
+    block = chunks[-1].telemetry.diagnostics["prefix_cache"]
+    assert block["hit"] is True
+    assert block["reused_tokens"] == len(_Tokenizer().encode(first))

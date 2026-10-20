@@ -528,6 +528,32 @@ rounds unless the active-decode bound is also explicitly set.
 `HIPENGINE_PREFILL_DECODE_POLICY`, `HIPENGINE_ROUND_PREFILL_TOKEN_BUDGET`, and
 `HIPENGINE_ROUND_DECODE_ROW_BUDGET` override the declaration.
 
+#### Flash-Next prefix reuse
+
+With the default `--prefix-cache radix`, Flash-Next keeps device checkpoints of
+prompt state and prefills only the part of a new prompt that no checkpoint
+covers. A checkpoint holds the attention K/V and index rows, the recurrent
+GDN, convolution and PLE state, and, for MTP requests, the draft's state. Each
+request checkpoints its prompt end, the last prefill chunk before it, three
+evenly spaced points on prompts of 8,192 tokens or more, and the point where it
+branches from cached history. Checkpoints taken from the same conversation
+share their K/V rows rather than copying them.
+
+A request reuses the deepest checkpoint that is a strict prefix of its prompt,
+so at least one prompt token is always prefilled. An MTP request needs a
+checkpoint taken by an MTP request, because it must also restore draft state.
+Prompts of 256 tokens or fewer are not cached. A miss is reported, never
+refused. On gfx1151 with a 24,827-token prompt, a follow-up turn took 0.61 s to
+first token instead of 21.1 s without the cache, with identical greedy output.
+
+Checkpoints use device memory up to
+`HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES` (default: half of free device
+memory when the first checkpoint is taken, at most 32 GiB) and are evicted
+least recently used first. `usage.prompt_tokens_details.cached_tokens` and the
+`prefix_cache` diagnostics report each request's reuse; `/v1/hipengine/decode`
+reports cache residency under `prefix_cache`. Set `--prefix-cache off` to
+disable it.
+
 ## Examples
 
 ### Text completion
