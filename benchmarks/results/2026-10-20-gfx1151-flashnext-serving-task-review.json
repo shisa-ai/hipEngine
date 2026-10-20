@@ -1,0 +1,856 @@
+{
+  "status": "review_complete_quality_requirement_failed",
+  "source": "complete-task-cases.json",
+  "reviewed_cases": 54,
+  "remaining_cases": 0,
+  "results": [
+    {
+      "id": "heldout_mixed_review",
+      "arms": [
+        "production/ar",
+        "production/mixed",
+        "strict/ar"
+      ],
+      "verdict": "pass_with_style_caveat",
+      "reason": "Japanese bullets preserve p99 latency, error rate and retry policy. The instruction to worry about stability is awkward but does not change the alert's meaning."
+    },
+    {
+      "id": "heldout_mixed_summary",
+      "arms": [
+        "production/ar",
+        "production/mixed"
+      ],
+      "verdict": "pass_with_qualification",
+      "reason": "Accurate Japanese summary and short English mitigation. Prewarming regional caches is relevant; consistent hashing alone does not necessarily repair namespace fragmentation."
+    },
+    {
+      "id": "heldout_mixed_summary",
+      "arms": [
+        "strict/ar"
+      ],
+      "verdict": "qualified",
+      "reason": "Accurate summary; shared global cache may improve reuse but can conflict with regional isolation. Consistent hashing is not a demonstrated remedy. This weakness is not candidate-specific."
+    },
+    {
+      "id": "mixed_ja_en_review",
+      "arms": [
+        "production/ar",
+        "production/mixed",
+        "strict/ar"
+      ],
+      "verdict": "instruction_following_failure",
+      "reason": "All answers translate the entire note and retain no Japanese terms, despite the instruction to keep Japanese product terms unchanged. They preserve meaning but do not satisfy that formatting constraint. Shared control failure, not evidence of candidate-specific degradation."
+    },
+    {
+      "id": "mixed_ja_en_translate",
+      "arms": [
+        "production/ar",
+        "production/mixed",
+        "strict/ar"
+      ],
+      "verdict": "pass",
+      "reason": "All three requested release checks are correctly summarized in English, followed by a short appropriate Japanese acknowledgement."
+    },
+    {
+      "id": "code_lru_cache",
+      "arms": [
+        "production/ar",
+        "production/mixed",
+        "strict/ar"
+      ],
+      "verdict": "pass_with_qualification",
+      "reason": "OrderedDict provides the requested constant-time get/put and three focused scenarios. Capacity zero raises on popitem; capacity validity was unspecified. All answers use code fences despite return-only-code wording."
+    },
+    {
+      "id": "code_markdown_table",
+      "arms": [
+        "production/ar",
+        "production/mixed",
+        "strict/ar"
+      ],
+      "verdict": "edge_case_failure",
+      "reason": "Stable first-appearance ordering and ordinary cells work. All arms escape pipes in values but not headers and leave newlines unescaped: a header key a|b or multiline cell breaks the generated table."
+    },
+    {
+      "id": "code_merge_intervals",
+      "arms": [
+        "production/ar",
+        "production/mixed",
+        "strict/ar"
+      ],
+      "verdict": "pass",
+      "reason": "Correct closed-interval overlap test, sorted sweep, compact pytest tests. List input can produce mixed tuple/list output, but no output element type was specified."
+    },
+    {
+      "id": "code_topological_sort",
+      "arms": [
+        "production/ar",
+        "production/mixed",
+        "strict/ar"
+      ],
+      "verdict": "pass",
+      "reason": "Kahn algorithm correctly handles DAGs and cycles with requested tests, assuming nodes contains all edge endpoints."
+    },
+    {
+      "id": "heldout_code_interval_schedule",
+      "arms": [
+        "production/ar",
+        "production/mixed",
+        "strict/ar"
+      ],
+      "verdict": "pass_with_qualification",
+      "reason": "Correct earliest-finish greedy solution and explicit stable tie-break for nonempty half-open intervals. Empty intervals inside a selected nonempty interval are not counted, so unrestricted empty-interval inputs are an uncovered edge case."
+    },
+    {
+      "id": "heldout_code_rate_limiter",
+      "arms": [
+        "production/ar",
+        "production/mixed",
+        "strict/ar"
+      ],
+      "verdict": "instruction_following_failure",
+      "reason": "All three answers omit the explicitly requested pytest-style expiry and independent-key tests. Core deque implementation is correct for monotonically nondecreasing per-key timestamps; that assumption is not enforced."
+    },
+    {
+      "id": "heldout_general_ja_migration",
+      "arms": [
+        "production/ar"
+      ],
+      "verdict": "qualified",
+      "reason": "Covers compatibility, monitoring and rollback triggers. Immediate synchronous rollback lacks explicit in-flight reconciliation, but does not explicitly instruct replay. Job ID alone does not guarantee idempotency."
+    },
+    {
+      "id": "heldout_general_ja_migration",
+      "arms": [
+        "production/mixed"
+      ],
+      "verdict": "task_quality_regression",
+      "reason": "Explicitly directs synchronous replay of unfinished jobs and forced client redirection without worker draining/cancellation or idempotency checks. Risks duplicate side effects and breaks async client expectations. This dangerous replay instruction is absent from both controls."
+    },
+    {
+      "id": "heldout_general_ja_migration",
+      "arms": [
+        "strict/ar"
+      ],
+      "verdict": "pass_with_qualification",
+      "reason": "Stops new job submissions and monitors existing jobs to completion; separately recommends idempotency keys. Covers compatibility, monitoring and rollback. Calls p95/p99 averages imprecisely and is longer than requested."
+    },
+    {
+      "id": "heldout_general_ja_speculative",
+      "arms": [
+        "production/ar",
+        "production/mixed",
+        "strict/ar"
+      ],
+      "verdict": "qualified",
+      "reason": "All cover acceptance, verification cost and memory pressure. Strict and mixed conflate greedy matching with general sampled acceptance, omit guaranteed correction-token progress and suggest an unsupported universal acceptance threshold. Production AR better describes the correction token. No clear mixed-only regression relative to strict."
+    },
+    {
+      "id": "general_en_explain",
+      "arms": [
+        "production/ar"
+      ],
+      "verdict": "technical_failure",
+      "reason": "Bandwidth example omits model-weight reads when estimating whole-model throughput. Promises exact 2x/4x speedups from quantization and misattributes batching benefits to KV reuse; KV caches are request-specific."
+    },
+    {
+      "id": "general_en_explain",
+      "arms": [
+        "production/mixed"
+      ],
+      "verdict": "technical_failure",
+      "reason": "Correctly includes weight reads and batching weight reuse, but asserts three accepted tokens triples throughput without draft/verification cost and supplies unsupported near-linear scaling. Main weight-bandwidth explanation improves on production AR; mixed-only inaccuracies preclude unqualified pass."
+    },
+    {
+      "id": "general_en_explain",
+      "arms": [
+        "strict/ar"
+      ],
+      "verdict": "technical_failure",
+      "reason": "Identifies weight reuse but incorrectly says KV reads dominate its 14GB-weight/1GB-KV example; KV-only timing is not whole-model time. Oversimplifies speedups and hardware compute precision."
+    },
+    {
+      "id": "general_en_plan",
+      "arms": [
+        "production/ar",
+        "production/mixed",
+        "strict/ar"
+      ],
+      "verdict": "unsafe_rollback",
+      "reason": "All advise returning to stale SQLite after PostgreSQL has accepted writes without reconciling new writes. Dump conversion is oversimplified; direct file copy can omit uncheckpointed WAL state in production arms. Dual writes lack transactional divergence handling. Requested sequencing and validation are present but plan is not safe to execute verbatim."
+    },
+    {
+      "id": "general_ja_explain",
+      "arms": [
+        "production/ar"
+      ],
+      "verdict": "technical_failure",
+      "reason": "Correct central weight-bandwidth explanation, but says batch1 maximizes bandwidth efficiency, overestimates Llama3-8B 4K KV size as several GB, and calls CPU-RAM traffic PCIe."
+    },
+    {
+      "id": "general_ja_explain",
+      "arms": [
+        "production/mixed"
+      ],
+      "verdict": "qualified",
+      "reason": "Correct weight-bandwidth arithmetic and batching explanation. Incorrectly calls quantization mandatory and overgeneralizes bandwidth ratios; core explanation is coherent."
+    },
+    {
+      "id": "general_ja_explain",
+      "arms": [
+        "strict/ar"
+      ],
+      "verdict": "qualified",
+      "reason": "Correct central arithmetic and batching account. The one-second versus 16-second analogy is not derived from example, and mmap is incorrectly presented as layer offload control."
+    },
+    {
+      "id": "general_ja_plan",
+      "arms": [
+        "production/ar"
+      ],
+      "verdict": "execution_failure",
+      "reason": "Covers risks, steps and validation but example deployment overwrites live code/venv, assumes config destination and service account exist, and rollback removes current directory before validating backup exists. Not safe as executable runbook."
+    },
+    {
+      "id": "general_ja_plan",
+      "arms": [
+        "production/mixed"
+      ],
+      "verdict": "execution_failure",
+      "reason": "Installs requirements before repository clone; rollback runs git checkout in parent rather than cloned src directory; unprivileged service user writes /etc/systemd/system; manual launches never load env file; oneshot inactive state treated as failure. Requested topics present, concrete instructions do not work."
+    },
+    {
+      "id": "general_ja_plan",
+      "arms": [
+        "strict/ar"
+      ],
+      "verdict": "execution_failure",
+      "reason": "Covers requested topics. Docker build tag differs from pushed registry tag; hosted runner is assumed to access cluster-local DNS without network setup. Rollback annotation is nonexistent but unused; rollback command itself is valid. Not runnable as written."
+    },
+    {
+      "id": "heldout_general_en_incident",
+      "arms": [
+        "production/ar",
+        "production/mixed",
+        "strict/ar"
+      ],
+      "verdict": "pass_with_qualification",
+      "reason": "All cover containment, evidence, rollback criteria and follow-up. Thresholds are illustrative rather than supplied; none checks schema/data compatibility before rollback. Mixed omits traces and stakeholder updates present in controls but still covers all explicit requested topics."
+    },
+    {
+      "id": "heldout_general_en_quant",
+      "arms": [
+        "production/ar"
+      ],
+      "verdict": "technical_failure",
+      "reason": "BF16 is 4x, not 2x, raw INT4 bytes, contradicting its own other text. Blanket consumer-GPU INT4 support denial confuses weight-only software implementation with ISA capability. W8A8 accuracy ranking contradicts itself; fixed throughput claims lack conditions."
+    },
+    {
+      "id": "heldout_general_en_quant",
+      "arms": [
+        "production/mixed"
+      ],
+      "verdict": "task_quality_regression",
+      "reason": "Says 7B–70B models fit 8–24 GB GPUs under INT4 in summary: 70B weights alone require 35 GB before metadata/KV, unlike production AR which gives 40–50 GB. Blanket native INT4 denial and W8A8 accuracy/speed ranking are also unsupported. Capacity error is candidate-specific in these captures."
+    },
+    {
+      "id": "heldout_general_en_quant",
+      "arms": [
+        "strict/ar"
+      ],
+      "verdict": "technical_failure",
+      "reason": "Distinguishes storage from activation precision but overgeneralizes absence of native INT4, driver limitations and fixed speedups. Says 13B BF16 is tight on 24 GB despite 26 GB weights; calls BF16 bandwidth bound at large batches, conflicting with later explanation."
+    }
+  ],
+  "noninferiority_passed": false,
+  "method": "Direct review of complete captured answers against each original prompt and both controls. Qualitative findings, not a statistical score or causal attribution. Generated snippets were inspected, not executed.",
+  "source_sha256": "55162ba7ff173fa2f1e4c6393c506ece6edbb3fd75965c771de35f92d89f7a39",
+  "candidate_specific_regressions": [
+    "heldout_general_ja_migration: unsafe replay of unfinished jobs",
+    "heldout_general_en_quant: 70B INT4 capacity claim below raw weight floor"
+  ],
+  "case_bindings": [
+    {
+      "id": "code_lru_cache",
+      "arm": "production/ar",
+      "response_sha256": "b8ee12a8275ff797d612b6f451c5c99f49581acac56cd8ccc0db72e0e1a97e4b",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "code_lru_cache",
+      "arm": "production/mixed",
+      "response_sha256": "5400ac7e6706b7d94068dc4dbe1401443096e509abfd5b215da16ea2dfe59bc3",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "code_lru_cache",
+      "arm": "strict/ar",
+      "response_sha256": "c459234d3c087c2945b71f126244c8011764dcab900238c66becab11db27b50c",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "code_markdown_table",
+      "arm": "production/ar",
+      "response_sha256": "1884487496016fdda6794194b12dac0ac172e9c9ad5b4238c028fac0d088540b",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "code_markdown_table",
+      "arm": "production/mixed",
+      "response_sha256": "41139d0e89cfa60e1983604c5f760e29c2816cc5a619ea1b222ac30c841e9f55",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "code_markdown_table",
+      "arm": "strict/ar",
+      "response_sha256": "3360049d39e49ab88eb4cb43a580cb0ad59164ddbfc14e7769f9fb95e911c7c2",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "code_merge_intervals",
+      "arm": "production/ar",
+      "response_sha256": "5a75ac9a912b30ff6c571444963c01790eb81e334bd7f0089d640f78908018fb",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "code_merge_intervals",
+      "arm": "production/mixed",
+      "response_sha256": "5a75ac9a912b30ff6c571444963c01790eb81e334bd7f0089d640f78908018fb",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "code_merge_intervals",
+      "arm": "strict/ar",
+      "response_sha256": "5a75ac9a912b30ff6c571444963c01790eb81e334bd7f0089d640f78908018fb",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "code_topological_sort",
+      "arm": "production/ar",
+      "response_sha256": "9dbeeafb4b8ce27cb3980d46fa0ec111c83098c6244cba4ceb01bd8817409cc0",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "code_topological_sort",
+      "arm": "production/mixed",
+      "response_sha256": "9659b5f38a023f21d5e6b0f0f1e4c2204db74397535cabecce178fca6091afdc",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "code_topological_sort",
+      "arm": "strict/ar",
+      "response_sha256": "a2f92ce0490f494f37edb1d6e033c0daab532842deb56a21e2ac23d0ccfa2b51",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "general_en_explain",
+      "arm": "production/ar",
+      "response_sha256": "409485e555b3b027d20aa1f0aa6ef78b7fd2f4d365b0697e50d504edb2edb8e6",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "general_en_explain",
+      "arm": "production/mixed",
+      "response_sha256": "2592965a6a0059bf08c54ef88ebb10558dc8e182d68b7edc58e8cc35149f89d1",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "general_en_explain",
+      "arm": "strict/ar",
+      "response_sha256": "6a624d00cce1201d56ab8a2dd20dc194e77cba2278621f7faae10ee8c4e1aa25",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "general_en_plan",
+      "arm": "production/ar",
+      "response_sha256": "bd40138ac02c9c3073a3910dc26c31a4dd6f8622c883f3c07e5af3d078d2dbd3",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "general_en_plan",
+      "arm": "production/mixed",
+      "response_sha256": "07e70973bed15fe52c0e23942391444549c77d943fee007c8a7c79e567a87302",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "general_en_plan",
+      "arm": "strict/ar",
+      "response_sha256": "a8de5bfadc353715138936f0fa656876ac4b0494503003d25969dc2c3eb7a678",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "general_ja_explain",
+      "arm": "production/ar",
+      "response_sha256": "39fe543ea29bad604246caf2b8103b00a3a6c1e6b8943b80de9ea029f2767e1b",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "general_ja_explain",
+      "arm": "production/mixed",
+      "response_sha256": "7c2b58e722dbecb47c212254dc73c942279581b8db49abd13bf709db1e56a2d3",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "general_ja_explain",
+      "arm": "strict/ar",
+      "response_sha256": "b963662b8dd15e32a9932fa7d59d8038934c84da1731d78a0869b316df247790",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "general_ja_plan",
+      "arm": "production/ar",
+      "response_sha256": "228ea7622566f38288fd1f728f7f5f8e079b90f65873e4b69bb0538c959b02f5",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "general_ja_plan",
+      "arm": "production/mixed",
+      "response_sha256": "b3cc23ccaa1f45bef807a4254b8d263300da5cdc62218358e59de0e766ff82a6",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "general_ja_plan",
+      "arm": "strict/ar",
+      "response_sha256": "80d6cf0fb9ee694d433a78e691bb20696eae2588016883a288d84acde3f30168",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_code_interval_schedule",
+      "arm": "production/ar",
+      "response_sha256": "f267fbad5cd7593989e4513f94e509471522684a94398ebb6f9d3c60b0b75158",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_code_interval_schedule",
+      "arm": "production/mixed",
+      "response_sha256": "f267fbad5cd7593989e4513f94e509471522684a94398ebb6f9d3c60b0b75158",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_code_interval_schedule",
+      "arm": "strict/ar",
+      "response_sha256": "befc4662c582e47883fd98278ddc01c5b562f957663de9bcf8247c5661aa0a91",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_code_rate_limiter",
+      "arm": "production/ar",
+      "response_sha256": "8e2126d06b89588a2aff20f2ba971287d052dd1e7d68d7d14b47c873b389b445",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_code_rate_limiter",
+      "arm": "production/mixed",
+      "response_sha256": "8e2126d06b89588a2aff20f2ba971287d052dd1e7d68d7d14b47c873b389b445",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_code_rate_limiter",
+      "arm": "strict/ar",
+      "response_sha256": "20b673628ec1d27bde2ca684a917350d3f5bbbac0752635939dace8836feb19b",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_general_en_incident",
+      "arm": "production/ar",
+      "response_sha256": "d0cebe03d0d2e36836b70c458f47f5ceb1c3a60904157338e3ab6b95f69fb973",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_general_en_incident",
+      "arm": "production/mixed",
+      "response_sha256": "97db0f18ab5c42fd28c264d9f179ea6b9c9b6e902ddd2fd579d48b0c9a2e853c",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_general_en_incident",
+      "arm": "strict/ar",
+      "response_sha256": "41a681d47a5b2aaaf6043db0ec447ef578bc792654ed61f7b214364854dc568b",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_general_en_quant",
+      "arm": "production/ar",
+      "response_sha256": "d4299ebc3c1d52a9e0b8e5629750aba32fea7fee695b8ecbe3e78a17ea871c89",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_general_en_quant",
+      "arm": "production/mixed",
+      "response_sha256": "a658492935106762d81b22a7027c9db830715868d71106ad11b40b53518699ab",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_general_en_quant",
+      "arm": "strict/ar",
+      "response_sha256": "2ec0278001940cc86d35aca0e18a4372f8e6bba5f34ee2589307fb03b396b60c",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_general_ja_migration",
+      "arm": "production/ar",
+      "response_sha256": "02059e1143ba0bfd8ddbdbc50e1a3315c495773960d96717e5c56af828e381b4",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_general_ja_migration",
+      "arm": "production/mixed",
+      "response_sha256": "3e43ebc0f3f9912788bdbc80c05e94430bd760db407364c6c3b08754a0e1c29c",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_general_ja_migration",
+      "arm": "strict/ar",
+      "response_sha256": "505058be87c640c541c91569188fda9ebceb2430e1d5f78d4a678078af2d4b62",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_general_ja_speculative",
+      "arm": "production/ar",
+      "response_sha256": "36e84a78123361a47a7a41a81a54bdd85eb917ad5d3ee50604df95fb9a00c67e",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_general_ja_speculative",
+      "arm": "production/mixed",
+      "response_sha256": "84ac57beebb307da8567af706119bb70dd7333fa9d367f37c45d5c98ce286853",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_general_ja_speculative",
+      "arm": "strict/ar",
+      "response_sha256": "ecfd491f108dc708f8fb68a954ba13b691ea985ba34a4a916f6aeae38e6cf97a",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_mixed_review",
+      "arm": "production/ar",
+      "response_sha256": "ad5a310997a255e9355f16ebc7cf25e3304d311cd81a562f48d9cbfce9f57b8d",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_mixed_review",
+      "arm": "production/mixed",
+      "response_sha256": "ad5a310997a255e9355f16ebc7cf25e3304d311cd81a562f48d9cbfce9f57b8d",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_mixed_review",
+      "arm": "strict/ar",
+      "response_sha256": "ad5a310997a255e9355f16ebc7cf25e3304d311cd81a562f48d9cbfce9f57b8d",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_mixed_summary",
+      "arm": "production/ar",
+      "response_sha256": "d486652ad415483264951f9cab57577226bc4c3e5a00161dceb6eebec6daf3fd",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_mixed_summary",
+      "arm": "production/mixed",
+      "response_sha256": "d486652ad415483264951f9cab57577226bc4c3e5a00161dceb6eebec6daf3fd",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "heldout_mixed_summary",
+      "arm": "strict/ar",
+      "response_sha256": "a9265b71a7b44acee0ec5fc5ce05b73f2d9318fb99778d2a963ba27293fcf04c",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "mixed_ja_en_review",
+      "arm": "production/ar",
+      "response_sha256": "c609774f3ca30ffb59a281aeba397ff69d2bc317903a02c43c8f289ba8c0da6c",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "mixed_ja_en_review",
+      "arm": "production/mixed",
+      "response_sha256": "c609774f3ca30ffb59a281aeba397ff69d2bc317903a02c43c8f289ba8c0da6c",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "mixed_ja_en_review",
+      "arm": "strict/ar",
+      "response_sha256": "02c05b8eac1e537dbf96f4502e25f40604583d3f288c8b5c6ccdcb683e20599d",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "mixed_ja_en_translate",
+      "arm": "production/ar",
+      "response_sha256": "df0979d724df240a960c1ed5883005aee40ff47063f73487c8a4ac4162611945",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "mixed_ja_en_translate",
+      "arm": "production/mixed",
+      "response_sha256": "df0979d724df240a960c1ed5883005aee40ff47063f73487c8a4ac4162611945",
+      "finish_reason": "stop"
+    },
+    {
+      "id": "mixed_ja_en_translate",
+      "arm": "strict/ar",
+      "response_sha256": "df0979d724df240a960c1ed5883005aee40ff47063f73487c8a4ac4162611945",
+      "finish_reason": "stop"
+    }
+  ],
+  "schema": 1,
+  "model": "unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL",
+  "quant": "UD-Q4_K_XL with Q8_0 sidecar",
+  "kv_storage": "bf16",
+  "host": {
+    "gpu": "Radeon 8060S",
+    "backend": "hip_gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668"
+  },
+  "protocol": {
+    "max_tokens": 1024,
+    "peer_tokens": 192,
+    "temperature": 0,
+    "enable_thinking": false,
+    "arms": [
+      "ar",
+      "mixed"
+    ],
+    "prompts": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "code_markdown_table",
+      "general_en_plan",
+      "general_en_explain",
+      "general_ja_plan",
+      "general_ja_explain",
+      "mixed_ja_en_translate",
+      "mixed_ja_en_review",
+      "heldout_code_rate_limiter",
+      "heldout_code_interval_schedule",
+      "heldout_general_en_incident",
+      "heldout_general_en_quant",
+      "heldout_general_ja_migration",
+      "heldout_general_ja_speculative",
+      "heldout_mixed_summary",
+      "heldout_mixed_review"
+    ],
+    "extension": "Only answers ending with length were rerun with max_tokens 8192: 14 production and 7 strict. All final answers ended with stop."
+  },
+  "evidence": [
+    {
+      "path": "/tmp/qwen38fn-serving-followup/final-http-task-quality.json",
+      "sha256": "b0ed5254a549788c14108aad91a3d8e4ebb84b88cdc4e1a8ae8002af9e1d3ab7"
+    },
+    {
+      "path": "/tmp/qwen38fn-serving-followup/strict-http-task-quality.json",
+      "sha256": "53644e53be6ba6e643b9f4965c996cc97793243a1321a7caca76940c1b7f62bd"
+    },
+    {
+      "path": "/tmp/qwen38fn-serving-followup/extended-production-task-quality.json",
+      "sha256": "a8f71d47e5cf25aa50ede4ad786e6da3e7c5e7165e3315d098a94f5c028e30a4"
+    },
+    {
+      "path": "/tmp/qwen38fn-serving-followup/extended-strict-task-quality.json",
+      "sha256": "41b387b6f39bc2887c96830a0dcf4c6c9b6a35148bead411538eefc5598d224e"
+    },
+    {
+      "path": "/tmp/qwen38fn-serving-followup/extend-task-commands.json",
+      "sha256": "ff96a1114473bfee56f0c51f344ace88d740ff268bff347f83208723162cbe0e"
+    },
+    {
+      "path": "/tmp/qwen38fn-serving-followup/final-validation-commands.json",
+      "sha256": "d32c46d412e371b93c9aa21ed7b44870bc6edf72eb2af8196444a4623c48ace7"
+    },
+    {
+      "path": "/tmp/qwen38fn-serving-followup/complete-task-cases.json",
+      "sha256": "55162ba7ff173fa2f1e4c6393c506ece6edbb3fd75965c771de35f92d89f7a39"
+    }
+  ],
+  "source_bindings": [
+    {
+      "path": "/tmp/qwen38fn-serving-followup/final-candidate-source-preflight.json",
+      "sha256": "fa37ed637df7a3f1302dfec0de41471a0e16812e3f7aa650b0f0b72b06b0b5b0",
+      "source_commit": "b6a828f0899aef11848852e18957bcea2575a501",
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python",
+        "-m",
+        "hipengine",
+        "serve",
+        "--model",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--served-model-name",
+        "qwen38fn-followup",
+        "--backend",
+        "hip_gfx1151",
+        "--execution-profile",
+        "production",
+        "--kv-storage",
+        "bf16",
+        "--max-context-tokens",
+        "16384",
+        "--max-active-requests",
+        "8",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "18388",
+        "--metrics",
+        "prometheus"
+      ],
+      "files_sha256": "bb808f3219e50b9058f2d81d4dd62b4d6b027f1be2d552e854786b6e1f5d44ab"
+    },
+    {
+      "path": "/tmp/qwen38fn-serving-followup/final-strict-tasks-source-preflight.json",
+      "sha256": "a1f83eb0a897111f5b9c05fb2c7d9d1dc0ecf142b6bc4866cffc0fc8e28ffe86",
+      "source_commit": "b6a828f0899aef11848852e18957bcea2575a501",
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python",
+        "-m",
+        "hipengine",
+        "serve",
+        "--model",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--served-model-name",
+        "qwen38fn-followup",
+        "--backend",
+        "hip_gfx1151",
+        "--execution-profile",
+        "strict",
+        "--kv-storage",
+        "bf16",
+        "--max-context-tokens",
+        "16384",
+        "--max-active-requests",
+        "8",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "18388",
+        "--metrics",
+        "prometheus"
+      ],
+      "files_sha256": "bb808f3219e50b9058f2d81d4dd62b4d6b027f1be2d552e854786b6e1f5d44ab"
+    },
+    {
+      "path": "/tmp/qwen38fn-serving-followup/extended-production-tasks-source-preflight.json",
+      "sha256": "fa37ed637df7a3f1302dfec0de41471a0e16812e3f7aa650b0f0b72b06b0b5b0",
+      "source_commit": "b6a828f0899aef11848852e18957bcea2575a501",
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python",
+        "-m",
+        "hipengine",
+        "serve",
+        "--model",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--served-model-name",
+        "qwen38fn-followup",
+        "--backend",
+        "hip_gfx1151",
+        "--execution-profile",
+        "production",
+        "--kv-storage",
+        "bf16",
+        "--max-context-tokens",
+        "16384",
+        "--max-active-requests",
+        "8",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "18388",
+        "--metrics",
+        "prometheus"
+      ],
+      "files_sha256": "bb808f3219e50b9058f2d81d4dd62b4d6b027f1be2d552e854786b6e1f5d44ab"
+    },
+    {
+      "path": "/tmp/qwen38fn-serving-followup/extended-strict-tasks-source-preflight.json",
+      "sha256": "a1f83eb0a897111f5b9c05fb2c7d9d1dc0ecf142b6bc4866cffc0fc8e28ffe86",
+      "source_commit": "b6a828f0899aef11848852e18957bcea2575a501",
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python",
+        "-m",
+        "hipengine",
+        "serve",
+        "--model",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--served-model-name",
+        "qwen38fn-followup",
+        "--backend",
+        "hip_gfx1151",
+        "--execution-profile",
+        "strict",
+        "--kv-storage",
+        "bf16",
+        "--max-context-tokens",
+        "16384",
+        "--max-active-requests",
+        "8",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "18388",
+        "--metrics",
+        "prometheus"
+      ],
+      "files_sha256": "bb808f3219e50b9058f2d81d4dd62b4d6b027f1be2d552e854786b6e1f5d44ab"
+    }
+  ],
+  "regression_excerpts": [
+    {
+      "id": "heldout_general_en_quant",
+      "arm": "production/ar",
+      "prompt": "Explain the practical accuracy and throughput tradeoffs among weight-only INT4, W8A8 INT8, and BF16 inference on a consumer GPU. Distinguish memory capacity, bandwidth, and native arithmetic support.",
+      "excerpts": [
+        "  - A 13B model requires ~26 GB VRAM (often too large for 24 GB cards without offloading).",
+        "  - A 13B model requires ~8–10 GB VRAM.  ",
+        "  - A 70B model can fit in ~40–50 GB VRAM (feasible on 48 GB cards or multi-GPU setups).",
+        "- **Use Weight-only INT4** if: You want to run large models (13B–70B) on consumer GPUs, prioritize speed for single-user chat, and can tolerate minor accuracy loss."
+      ]
+    },
+    {
+      "id": "heldout_general_en_quant",
+      "arm": "production/mixed",
+      "prompt": "Explain the practical accuracy and throughput tradeoffs among weight-only INT4, W8A8 INT8, and BF16 inference on a consumer GPU. Distinguish memory capacity, bandwidth, and native arithmetic support.",
+      "excerpts": [
+        "  - A 13B model requires ~26 GB VRAM.  ",
+        "  - A 13B model requires ~7–8 GB VRAM.  ",
+        "  - **Advantage:** Enables running large models (e.g., 30B, 70B) on consumer hardware by fitting weights in VRAM.",
+        "| **Typical Consumer Use** | 7B models on 16GB+ GPUs | **7B–70B models on 8–24GB GPUs** | Rarely used on consumer GPUs |"
+      ]
+    },
+    {
+      "id": "heldout_general_en_quant",
+      "arm": "strict/ar",
+      "prompt": "Explain the practical accuracy and throughput tradeoffs among weight-only INT4, W8A8 INT8, and BF16 inference on a consumer GPU. Distinguish memory capacity, bandwidth, and native arithmetic support.",
+      "excerpts": [
+        "  - A 13B model requires ~26 GB VRAM (often too large for 24 GB cards without offloading).",
+        "  - A 13B model requires ~6.5 GB VRAM.  "
+      ]
+    },
+    {
+      "id": "heldout_general_ja_migration",
+      "arm": "production/ar",
+      "prompt": "社内向けREST APIを同期処理から非同期ジョブ方式へ移行する計画を、日本語で簡潔に作成してください。互換性、監視、ロールバック条件を含めてください。",
+      "excerpts": [
+        "- **冪等性**: ジョブIDで重複実行防止"
+      ]
+    },
+    {
+      "id": "heldout_general_ja_migration",
+      "arm": "production/mixed",
+      "prompt": "社内向けREST APIを同期処理から非同期ジョブ方式へ移行する計画を、日本語で簡潔に作成してください。互換性、監視、ロールバック条件を含めてください。",
+      "excerpts": [
+        "- **ログ**: ジョブIDで追跡可能な分散トレーシング（OpenTelemetry）",
+        "3. 未完了ジョブは同期処理で再実行"
+      ]
+    },
+    {
+      "id": "heldout_general_ja_migration",
+      "arm": "strict/ar",
+      "prompt": "社内向けREST APIを同期処理から非同期ジョブ方式へ移行する計画を、日本語で簡潔に作成してください。互換性、監視、ロールバック条件を含めてください。",
+      "excerpts": [
+        "2. **キュー処理停止**: 新規ジョブの投入を停止し、既存ジョブは完了まで監視。"
+      ]
+    }
+  ]
+}
