@@ -10,10 +10,10 @@ runner, and mutates nothing.
 Layout, not execution
 ---------------------
 
-The batch runtime still admits one row per unique slot, so nothing here can run
-as a shared pass yet. This module is the prerequisite that lets an executor be
-written against a fixed, validated row contract; it does not widen any runtime
-owner, capability, plan or default.
+The ordinary batch step admits one row per unique slot. The mixed target
+executor consumes this layout to extend each request in depth order while
+sharing stateless work across all rows. This module only validates metadata;
+it does not allocate state or select a serving route.
 
 Request groups and rows
 -----------------------
