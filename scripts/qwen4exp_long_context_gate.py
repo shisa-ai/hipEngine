@@ -106,8 +106,12 @@ def _embedding_bits(runner: Any, token_id: int) -> np.ndarray:
     weight = runner.resident.weight("root.token_embedding")
     lookup = resolve(backend=runner.backend, layer="embedding",
                      quant=weight.spec.quant_key, variant="lookup_bf16_out")
-    host = np.asarray([int(token_id)], dtype=np.int32)
-    copy_host_to_device(runner.token_id_buffer, host_array_ptr(host), runtime=runner.runtime)
+    # The registered lookup consumes int64 token IDs, just like runner.step.
+    # Copying its 8-byte buffer from an int32 array reads past the host source
+    # and can select an arbitrary embedding or leave stale output untouched.
+    host = np.asarray([int(token_id)], dtype=np.int64)
+    copy_host_to_device(runner.token_id_buffer, host_array_ptr(host), host.nbytes,
+                        runtime=runner.runtime)
     lookup(runner.token_id_buffer.ptr, weight.allocation("raw").tensor.ptr,
            runner.embedding_buffer.ptr, 1, cfg.hidden_size, cfg.vocab_size,
            runtime=runner.runtime)

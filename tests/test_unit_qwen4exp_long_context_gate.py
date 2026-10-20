@@ -1,6 +1,8 @@
 import numpy as np
+from types import SimpleNamespace
 
 from scripts.qwen4exp_long_context_gate import (
+    _embedding_bits,
     CONTROL_MEAN_KL_CAP,
     _summary,
     decide,
@@ -16,6 +18,39 @@ def _stats(mean, p95, top1, kl_max=None):
 
 CONTROLS = [_stats(1.5e-3, 8e-3, 98), _stats(2.5e-3, 1.2e-2, 99, 4e-2),
             _stats(3.5e-3, 1.6e-2, 99)]
+
+
+def test_control_embedding_upload_uses_the_i64_kernel_abi(monkeypatch):
+    import ctypes
+    import hipengine.core.memory as memory
+    import hipengine.kernels.registry as registry
+
+    copied = []
+    output = np.array([0x3F80, 0x4000], dtype=np.uint16)
+    runner = SimpleNamespace(
+        config=SimpleNamespace(hidden_size=2, vocab_size=248320),
+        backend="hip_gfx1151", runtime=object(),
+        token_id_buffer=SimpleNamespace(nbytes=8, ptr=123),
+        embedding_buffer=SimpleNamespace(nbytes=4, ptr=456),
+        resident=SimpleNamespace(weight=lambda key: SimpleNamespace(
+            spec=SimpleNamespace(quant_key="gguf_q8_0"),
+            allocation=lambda key: SimpleNamespace(tensor=SimpleNamespace(ptr=789)),
+        )),
+    )
+
+    def copy_token(buffer, pointer, nbytes=None, **kwargs):
+        copied.append((np.ctypeslib.as_array((ctypes.c_int64 * 1).from_address(pointer)).copy(), nbytes))
+
+    def copy_result(pointer, buffer, nbytes, **kwargs):
+        ctypes.memmove(pointer, output.ctypes.data, nbytes)
+
+    monkeypatch.setattr(memory, "copy_host_to_device", copy_token)
+    monkeypatch.setattr(memory, "copy_device_to_host", copy_result)
+    monkeypatch.setattr(registry, "resolve", lambda **kwargs: lambda *args, **kw: None)
+    observed = _embedding_bits(runner, 14834)
+    np.testing.assert_array_equal(observed, output)
+    assert copied[0][0].tolist() == [14834]
+    assert copied[0][1] == 8  # Never default to a padded device allocation size.
 
 
 def test_candidate_inside_round_off_floor_passes():
