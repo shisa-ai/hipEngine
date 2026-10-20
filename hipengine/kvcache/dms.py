@@ -9,6 +9,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from math import ceil, prod
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -415,15 +416,17 @@ class DMSRetrofitConfig:
 
 
 def _resolve_sidecar_path(source: Path, declared_path: str) -> Path:
-    base = source.parent.resolve()
-    resolved = (base / declared_path).resolve()
+    # Containment is checked lexically in the metadata's own directory, so a
+    # snapshot whose files are symlinks into a shared blob store still works.
+    base = Path(os.path.abspath(source.parent))
+    candidate = Path(os.path.normpath(base / declared_path))
     try:
-        resolved.relative_to(base)
+        candidate.relative_to(base)
     except ValueError as exc:
         raise ValueError("DMS sidecar path escapes its metadata directory") from exc
-    if not resolved.is_file():
-        raise FileNotFoundError(f"DMS sidecar file is missing: {resolved}")
-    return resolved
+    if not candidate.is_file():
+        raise FileNotFoundError(f"DMS sidecar file is missing: {candidate}")
+    return candidate.resolve()
 
 
 def _validate_safetensors_sidecar(spec: DMSLinearSidecarSpec) -> None:
@@ -533,7 +536,10 @@ def load_dms_retrofit_config(
 
     model = Path(model_path).expanduser().resolve()
     if metadata_path is not None:
-        source = Path(metadata_path).expanduser().resolve()
+        # Keep the directory the caller named: a Hugging Face snapshot links
+        # each file into ``blobs/``, and resolving the metadata symlink would
+        # look for the sidecar beside the blob instead of beside the metadata.
+        source = Path(os.path.abspath(Path(metadata_path).expanduser()))
         source_kind = "explicit_metadata"
     else:
         root = model if model.is_dir() else model.parent
