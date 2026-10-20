@@ -400,3 +400,39 @@ def test_dms_dense_prefill_kv_is_not_priced_twice() -> None:
     pooled = _breakdown(context_tokens=32_768, allocate_kv_cache=True, kv_request_slots=1)
     assert dms.kv_pool_bytes == 0
     assert pooled.total_bytes - dms.total_bytes == pooled.kv_pool_bytes
+
+
+@pytest.mark.parametrize("dms", [True, False])
+def test_dms_sizing_loads_mtp_draft_before_reading_free_memory(monkeypatch, dms) -> None:
+    # DMS serves singleton NextN MTP; an unpriced draft OOMed its MTP warmup.
+    generator = _route_generator(monkeypatch)
+    generator.dms_metadata_path = "/tmp/dms_metadata.json" if dms else None
+    calls = []
+    monkeypatch.setattr(
+        generator, "_mtp_serving_enabled_for_sizing", lambda: True, raising=False
+    )
+    monkeypatch.setattr(
+        generator,
+        "_shared_dense_mtp_nextn_weights",
+        lambda *args, **kwargs: calls.append("draft"),
+        raising=False,
+    )
+
+    def mem_get_info():
+        calls.append("free")
+        raise RuntimeError("stop after the free-memory reading")
+
+    runner = SimpleNamespace(
+        weights=SimpleNamespace(config=object()),
+        runtime=SimpleNamespace(mem_get_info=mem_get_info),
+    )
+    assert (
+        generator._resident_capacity_estimate(
+            runner,
+            max_batch_size=1,
+            defer_kv_allocation=False,
+            requested_context_tokens=None,
+        )
+        is None
+    )
+    assert calls == (["draft", "free"] if dms else ["free"])

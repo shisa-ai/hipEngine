@@ -2215,9 +2215,9 @@ class Qwen35GGUFBringupGenerator:
         if cfg is None or not callable(mem_get_info):
             return None
         dms_requested = getattr(self, "dms_metadata_path", None) is not None
+        # DMS serving runs singleton NextN MTP too, so it pays for the draft.
         mtp_sized = (
-            bool(defer_kv_allocation)
-            and not dms_requested
+            (bool(defer_kv_allocation) or dms_requested)
             and self._mtp_serving_enabled_for_sizing()
         )
         if mtp_sized:
