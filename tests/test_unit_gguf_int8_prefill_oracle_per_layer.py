@@ -21,9 +21,9 @@ Contracts under test (CPU, fake device):
 - ``prefill_batch_native``'s finally clears the flag on every session even
   when a slab raises, and releases the oracle buffers, so a later
   single-chunk call cannot inherit per-layer keying;
-- ``_int8_prefill_oracle_capacity_positions`` stays sized by the whole
-  physical backing pool, not by ``max_positions`` or the prompt length,
-  because the oracle rows are addressed through physical page addresses.
+- ``_int8_prefill_oracle_capacity_positions`` is the session's logical
+  ``max_positions``; only the packed route widens it to the page range it
+  addresses, and a wider request grows the pair with its rows preserved.
 """
 
 from __future__ import annotations
@@ -287,15 +287,15 @@ def test_prefill_batch_native_clears_the_flag_and_releases_when_a_slab_raises(
 # ---------------------------------------------------------------------------
 
 
-def test_oracle_capacity_covers_the_whole_backing_pool(
+def test_oracle_capacity_is_logical_not_the_backing_pool(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The oracle is addressed through physical page rows, not logical ones.
+    """Slot-local and bulk consumers address the oracle by logical position.
 
-    A session's block table can point at any physical page the backing pool
-    owns (shared prefixes, shifted COW suffixes), so the oracle must span
-    ``backing_pages * block_size`` even when that exceeds ``max_positions``.
-    Shrinking it to the prompt length would strand those addresses.
+    ``int8_direct`` slots never rebase the transient oracle onto the request's
+    physical pages, so pricing it by the whole backing pool made every session
+    hold about twice the pool's INT8 payload during prefill (2.3 GiB on a
+    4,096-token 24 GB server).
     """
 
     session = _oracle_session(monkeypatch)
@@ -303,12 +303,33 @@ def test_oracle_capacity_covers_the_whole_backing_pool(
     session._device_kv_allocation = SimpleNamespace(
         backing=SimpleNamespace(pages=16)
     )
-    assert session._int8_prefill_oracle_capacity_positions() == 16 * 256
-    # A pool smaller than the declared context must not shrink the oracle.
-    session._device_kv_allocation = SimpleNamespace(
-        backing=SimpleNamespace(pages=2)
-    )
     assert session._int8_prefill_oracle_capacity_positions() == 1_024
+    # The packed route passes the page range it addresses.
+    assert session._int8_prefill_oracle_capacity_positions(min_positions=16 * 256) == 16 * 256
+
+
+def test_oracle_grows_in_place_for_a_wider_packed_page_range(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _oracle_session(monkeypatch, mode=None)
+    copies = []
+    freed = []
+    session.runtime = SimpleNamespace(
+        device_synchronize=lambda: None,
+        free=freed.append,
+        memcpy=lambda dst, src, nbytes, kind: copies.append((dst, src, nbytes)),
+    )
+    small = session._int8_prefill_oracle_cache_for_layer(3)
+    assert session._int8_prefill_oracle_cache_for_layer(3, min_positions=512) is small
+    grown = session._int8_prefill_oracle_cache_for_layer(3, min_positions=4_096)
+    assert grown is not small
+    assert int(grown[0].nbytes) == 4 * int(small[0].nbytes)
+    assert copies == [
+        (grown[0].ptr, small[0].ptr, int(small[0].nbytes)),
+        (grown[1].ptr, small[1].ptr, int(small[1].nbytes)),
+    ]
+    assert session._int8_prefill_oracle_buffers[3] is grown
+    assert freed == [small[1].ptr, small[0].ptr]
 
 
 @pytest.mark.parametrize(

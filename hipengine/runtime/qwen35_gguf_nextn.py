@@ -273,13 +273,23 @@ def borrow_qwen35_gguf_nextn_fallback_weights(
 ) -> dict[str, Qwen35GGUFDeviceWeight]:
     """Borrow effective target roots without rehydrating a mapped token table."""
 
-    if target.runner is None or target.runner.weights is None:
+    return borrow_qwen35_gguf_nextn_fallback_weights_from_runner(
+        target.runner, runtime=target.runtime
+    )
+
+
+def borrow_qwen35_gguf_nextn_fallback_weights_from_runner(
+    runner: Qwen35GGUFFullStackRunner | None,
+    *,
+    runtime: HipRuntime | None,
+) -> dict[str, Qwen35GGUFDeviceWeight]:
+    """Borrow the target runner's roots before any request session exists."""
+
+    if runner is None or runner.weights is None:
         raise RuntimeError("target GGUF weights are unavailable")
     return {
-        "token_embedding": target.runner.ensure_device_token_embedding(
-            runtime=target.runtime,
-        ),
-        "lm_head": target.runner.weights.root("lm_head"),
+        "token_embedding": runner.ensure_device_token_embedding(runtime=runtime),
+        "lm_head": runner.weights.root("lm_head"),
     }
 
 
@@ -414,14 +424,17 @@ class Qwen35GGUFNextNExecutor:
         borrowed_fallback_weights: Mapping[str, Qwen35GGUFDeviceWeight] | None = None,
         hot_vocab_path: str | Path | None = None,
         backend: str | None = None,
+        resident_weights: Qwen35GGUFNextNResidentWeights | None = None,
     ) -> None:
         if max_positions <= 0:
             raise ValueError("max_positions must be positive")
         if max_requests <= 0:
             raise ValueError("max_requests must be positive")
         self.model = Path(model)
-        self.backend = _resolve_nextn_executor_backend(
-            backend, borrowed_fallback_weights
+        self.backend = (
+            str(resident_weights.backend)
+            if resident_weights is not None
+            else _resolve_nextn_executor_backend(backend, borrowed_fallback_weights)
         )
         self.runtime = runtime or get_hip_runtime()
         self.compiler_version = compiler_version
@@ -429,12 +442,20 @@ class Qwen35GGUFNextNExecutor:
         self.max_requests = int(max_requests)
         self.closed = False
         register_gguf_q3_k_gemv_kernels()
-        self.weights: Qwen35GGUFNextNResidentWeights | None = materialize_qwen35_gguf_nextn_weights(
-            self.model,
-            borrowed_fallback_weights=borrowed_fallback_weights,
-            hot_vocab_path=hot_vocab_path,
-            runtime=self.runtime,
-            backend=self.backend,
+        # Borrowed weights stay owned by the caller (the generator shares one
+        # draft block across every provider shape); only self-materialized
+        # weights are freed in ``close``.
+        self._owns_weights = resident_weights is None
+        self.weights: Qwen35GGUFNextNResidentWeights | None = (
+            resident_weights
+            if resident_weights is not None
+            else materialize_qwen35_gguf_nextn_weights(
+                self.model,
+                borrowed_fallback_weights=borrowed_fallback_weights,
+                hot_vocab_path=hot_vocab_path,
+                runtime=self.runtime,
+                backend=self.backend,
+            )
         )
         adapted = self.weights.as_full_stack_weights()
         self.runner = Qwen35GGUFFullStackRunner(
@@ -3143,9 +3164,9 @@ class Qwen35GGUFNextNExecutor:
             free(buffer, runtime=self.runtime)
         self._batch_session.close()
         self.runner.close()
-        if self.weights is not None:
+        if self.weights is not None and self._owns_weights:
             self.weights.free(runtime=self.runtime)
-            self.weights = None
+        self.weights = None
 
     def __enter__(self) -> "Qwen35GGUFNextNExecutor":
         return self

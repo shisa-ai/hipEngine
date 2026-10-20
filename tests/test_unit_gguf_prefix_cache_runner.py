@@ -1839,12 +1839,13 @@ def test_configure_engine_loop_leases_packed_workspace_pages() -> None:
 
     pool = runner.kv_pool
     batch_owner = owner.sessions[0]
-    # Eight request pages plus two serving slots * four workspace pages.
+    # The idle floor is capped at one 768-token request (3 pages) instead of
+    # the configured 8, plus two serving slots * four workspace pages.
     # Wider physical verifier layouts use separately budgeted private KV.
-    assert pool.current_pages == 16
+    assert pool.current_pages == 3 + 8
     lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
     assert lease is not None and len(lease) == 8
-    assert pool.stats.free_pages == 8
+    assert pool.stats.free_pages == 3
     assert pool.stats.pinned_pages == 8
     assert batch_owner.bound_workspace_pools == [pool]
     snapshot = runner.observability_snapshot()
@@ -1930,11 +1931,12 @@ def test_configure_engine_loop_leases_the_capacity_workspace_at_c1() -> None:
         _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,
     )
     assert expected_lease_pages == 4
-    assert pool.current_pages == 8 + expected_lease_pages
+    # The idle floor is one 768-token request (3 pages), not the configured 8.
+    assert pool.current_pages == 3 + expected_lease_pages
     lease = pool.workspace_pages(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
     assert lease is not None and len(lease) == expected_lease_pages
     assert pool.stats.pinned_pages == expected_lease_pages
-    assert pool.stats.free_pages == 8
+    assert pool.stats.free_pages == 3
 
     runner.close()
 
@@ -2154,7 +2156,8 @@ def test_workspace_telemetry_separates_private_kv_and_request_pins():
     token = pool.reserve_private_workspace(4 * pool.page_bytes)
     snapshot = runner.kv_pool_memory_snapshot()
     assert snapshot["private_workspace_kv_bytes"] == 4 * pool.page_bytes
-    assert snapshot["accounted_kv_bytes"] == 16 * pool.page_bytes
+    # 3 floor pages (one 768-token request) + 4 lease pages + 4 private.
+    assert snapshot["accounted_kv_bytes"] == 11 * pool.page_bytes
     model = runner.observability_snapshot()["model_runner"]
     assert model["packed_workspace_leased_pool_bytes"] == 4 * pool.page_bytes
     pool.release_private_workspace(token)
@@ -2338,3 +2341,29 @@ def test_global_pool_refuses_to_share_free_or_credit_owned_pages() -> None:
                       shared_page_ids=(freed_page,))
 
     pool.assert_conserved()
+
+
+def test_pressure_reclaims_an_idle_transient_capture_after_retained_entries() -> None:
+    """A finished prompt's transient capture must not pin pages under pressure.
+
+    On a 24 GB card a long prompt's transient boundary kept ~180 BF16 pages
+    after its request ended, so packed decode for the next requests could not
+    lease pool pages and was refused. Retained entries are still tried first.
+    """
+
+    import dataclasses
+
+    pool, _grown = _guard_pressure_pool()
+    runner = _pressure_guard_runner(pool)
+    tokens = tuple(range(512))
+    allocation = pool.allocate(1, 2)
+    _retain_pressure_prefix(
+        runner, pool, request_id=1, tokens=tokens, block_ids=allocation.block_ids
+    )
+    runner._prefix_state_snapshots[tokens] = dataclasses.replace(
+        runner._prefix_state_snapshots[tokens], retained=False
+    )
+    pool.release(1)
+
+    assert runner.evict_prefix_cache_for_pressure(2) == 2
+    assert tokens not in runner._prefix_state_snapshots

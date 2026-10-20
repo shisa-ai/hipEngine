@@ -113,7 +113,7 @@ def _fixture(monkeypatch, *, selector: str, blocks: tuple[int, ...], start: int,
         _device_kv_allocation=SimpleNamespace(block_ids=blocks, chunk_start_block_id=0),
         _int8_prefill_retained_block_table=None,
         _int8_prefill_lifetime_plan=SimpleNamespace(mode="layer_outer_shared_oracle"),
-        _int8_prefill_oracle_cache_for_layer=lambda layer: oracle_pair,
+        _int8_prefill_oracle_cache_for_layer=lambda layer, **_kwargs: oracle_pair,
     )
     return SimpleNamespace(
         session=session, state=state, scratch=scratch, metadata=metadata,

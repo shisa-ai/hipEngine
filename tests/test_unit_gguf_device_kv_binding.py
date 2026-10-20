@@ -308,7 +308,7 @@ def test_shifted_direct_int8_prefill_repeats_physical_page_table_per_row() -> No
     assert table.tolist() == [[3, 4, 5, 0]] * 3
 
 
-def test_shifted_direct_int8_prefill_oracle_covers_backing_physical_pages() -> None:
+def test_shifted_direct_int8_prefill_oracle_stays_logical() -> None:
     session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
     session.scratch = SimpleNamespace(max_positions=768, block_size=256)
     session._device_kv_allocation = DeviceKVPoolAllocation(
@@ -319,7 +319,9 @@ def test_shifted_direct_int8_prefill_oracle_covers_backing_physical_pages() -> N
         backing=SimpleNamespace(pages=6),
     )
 
-    assert session._int8_prefill_oracle_capacity_positions() == 1536
+    # Shifted direct-INT8 slots address the transient oracle logically; the
+    # retained INT8 payload carries the physical table.
+    assert session._int8_prefill_oracle_capacity_positions() == 768
 
 
 def test_shifted_direct_int8_prefill_keeps_paged_payload_at_backing_base() -> None:
