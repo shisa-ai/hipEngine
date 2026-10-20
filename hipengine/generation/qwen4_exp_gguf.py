@@ -19,6 +19,7 @@ from hipengine.generation.sampling import (
 )
 from hipengine.generation.qwen4_exp_serving_mixed import Qwen4ExpServingMixed
 from hipengine.generation.qwen4_exp_serving_mtp import Qwen4ExpServingMTP, _RequestRetired
+from hipengine.generation.qwen4_exp_serving_prefix import Qwen4ExpServingPrefix
 from hipengine.generation.qwen4_exp_ar_batch import (
     QWEN4_EXP_DEFAULT_REQUEST_CAPACITY,
     QWEN4_EXP_MAX_BATCH_ROWS,
@@ -991,13 +992,26 @@ class _Qwen4ExpServingRow:
     mixed_cycles: int = 0
     mixed_widths: dict[int, int] = field(default_factory=dict)
     mixed_target_rows: int = 0
+    prefix_chain: Any | None = None
+    prefix_eligible: bool = False
+    prefix_lookup: bool = False
+    prefix_matched_tokens: int = 0
+    prefix_reused_tokens: int = 0
+    prefix_restore_bytes: int = 0
+    prefix_restore_ms: float = 0.0
+    prefix_reason: str | None = None
+    prefix_targets: list = field(default_factory=list)
+    prefix_last_capture: int = 0
+    prefix_captures: int = 0
 
     @property
     def controlled(self):
         return self.sampling_state is not None or self.grammar is not None or bool(self.request.suppress_token_ids or self.request.logit_bias)
 
 
-class Qwen4ExpResidentServingRunner(Qwen4ExpServingMixed, Qwen4ExpServingMTP):
+class Qwen4ExpResidentServingRunner(
+    Qwen4ExpServingMixed, Qwen4ExpServingMTP, Qwen4ExpServingPrefix
+):
     """Request-owned c2 runner pool over one shared Qwen4Exp weight layout."""
 
     supports_stream_token_logprobs = True
@@ -1028,6 +1042,7 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMixed, Qwen4ExpServingMTP):
         self._mixed_pass_samples = deque(maxlen=64)
         self._closed = False
         self._init_mtp()
+        self._init_prefix()
 
     @property
     def active_request_ids(self) -> tuple[int, ...]:
@@ -1167,6 +1182,7 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMixed, Qwen4ExpServingMTP):
             row.runner.reset()
             self._reserve_mtp(row)
             self._reserve_ar_batch(row)
+            return self._restore_prefix(row, request)
         except BaseException:
             self._release_runner(row)
             raise
@@ -1301,6 +1317,8 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMixed, Qwen4ExpServingMTP):
         if row.mtp_budget:
             self._prefill_mtp(row, chunk, result)
         row.prefill_tokens_seen += len(chunk)
+        # Before the AR batch import returns the staging runner to the pool.
+        self._capture_prefix(row)
         if rest:
             return self._prefill_row(row, rest)
         if row.prefill_tokens_seen == len(row.prompt_ids):
@@ -1574,6 +1592,7 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMixed, Qwen4ExpServingMTP):
             telemetry = self._mixed_telemetry(row)
         if telemetry is None:
             telemetry = self._ar_batch_telemetry(row)
+        telemetry = self._with_prefix_telemetry(row, telemetry)
         self._outputs[row.request_id] = GenerationOutput(
             text=self.generator.tokenizer.decode(visible, skip_special=True),
             generated_token_ids=tuple(row.generated_ids),
@@ -1616,6 +1635,7 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMixed, Qwen4ExpServingMTP):
             self._release_runner(row)
         self._rows.clear()
         self._outputs.clear()
+        self._close_prefix()
         if self._ar_batch is not None:
             self._ar_batch.close()
             self._ar_batch = None
@@ -1661,7 +1681,27 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMixed, Qwen4ExpServingMTP):
             diagnostics={"decode_batch": batch},
         )
 
+    def _with_prefix_telemetry(self, row, telemetry):
+        block = self._prefix_request_telemetry(row)
+        if telemetry is None:
+            return GenerationTelemetry(
+                decode_state=DecodeState(
+                    request_id=str(row.request_id),
+                    prompt_tokens=len(row.prompt_ids),
+                    generated_tokens=len(row.generated_ids),
+                    step_index=len(row.generated_ids),
+                    execution_path="qwen4exp_request_owned_runner_pool",
+                ),
+                event="generation_complete",
+                diagnostics={"prefix_cache": block},
+            )
+        return replace(
+            telemetry,
+            diagnostics={**dict(telemetry.diagnostics or {}), "prefix_cache": block},
+        )
+
     def _release_runner(self, row: _Qwen4ExpServingRow) -> None:
+        self._release_prefix(row)
         self._release_mtp(row)
         owner = self._ar_batch
         if owner is not None:
@@ -1694,6 +1734,7 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMixed, Qwen4ExpServingMTP):
             "last_mixed_target_pass": getattr(self, '_last_mixed_pass', None),
             "recent_mixed_target_passes": list(self._mixed_pass_samples),
             "recent_prefill_slices": prefill_slices,
+            "prefix_cache": self.prefix_cache_observability(),
         }
 
     def _finish(self, row: _Qwen4ExpServingRow) -> FinishDetails | None:

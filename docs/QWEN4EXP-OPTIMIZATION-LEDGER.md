@@ -4,6 +4,17 @@ owns: The live Qwen3.8-Flash-Next optimization ledger: open rows, measured gains
 ---
 # Qwen3.8-Flash-Next (Qwen4Exp) optimization ledger
 
+**October 20 execution order:** the
+[Gufo optimization campaign](campaigns/QWEN38FN-GUFO-OPTIMIZATION.md) compares
+the October 18 Gufo publication with the October 19 topline and October 20
+serving evidence. It owns the next packet order and completion matrix; this
+ledger keeps the experiment/rejection history. Its source review identifies
+bulk predictor K/V catch-up, few-row verification and transaction cost,
+draft-head reduction, prompt lookup and concurrent speculation as the next
+structural work. The F16/WMMA prefill and row-split GDN ports are already
+shipped. The dated tables and open-state descriptions below are not a substitute
+for that current review or its numerical/task blockers.
+
 **Prefill checkpoint, 2026-10-06:** structural substitutions continue to produce
 measured gains under the production contract. GR-up ordered DPP improves
 canonical prefill +6.57%/+7.15%/+6.98% at p512/p1024/p4096; router ordered
@@ -24,8 +35,10 @@ Artifacts: `benchmarks/results/2026-10-05-qwen4exp-gr-dpp-reduction/` and
 - **Model / quant:** unsloth `Qwen3.8-Flash-Next` `UD-Q4_K_XL`, BF16 KV, warm
   PLE, chunk1024, shipped `production` profile
 
-**This is the single open-work list for closing the prefill, decode and MTP gap
-on this model, and the single registry of what has already been tried.** Every
+**This is the experiment registry for closing the prefill, decode and MTP gap
+on this model.** The linked October 20 campaign owns the current execution
+order; dated open rows below retain their original evidence and must be
+reconciled with later implementations before reuse. Every
 open row names a measured cost where available, or explicitly calls for
 measurement, the evidence that bounds the opportunity, the first bounded
 experiment, and the gate that decides it. Rows leave the open

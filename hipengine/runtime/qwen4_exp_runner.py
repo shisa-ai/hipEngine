@@ -8595,14 +8595,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         transaction.require_active()
         assert self.state is not None
         self.state.restore_device_snapshot(transaction.decode_state)
-        position = int(transaction.position)
-        cursor = max(position - 1, 0)
-        for attention in self.attention_states:
-            attention.set_position(cursor)
-        for index in self.index_states:
-            index.restore_count(position)
-        self._ple_hash_states = dict(transaction.ple_hash_states)
-        self.position = position
+        self.adopt_prefix_cursor(transaction.position, transaction.ple_hash_states)
         transaction.rolled_back = True
         transaction.close()
         if transaction.reusable_snapshot:
@@ -8640,12 +8633,26 @@ class Qwen4ExpGGUFResidentModelRunner:
         if position < 0 or position > self.max_sequence_length:
             raise ValueError("Qwen4Exp runner snapshot position exceeds capacity")
         self.state.restore(snapshot.decode_state)
+        self.adopt_prefix_cursor(position, snapshot.ple_hash_states)
+
+    def adopt_prefix_cursor(
+        self, position: int, ple_hash_states: Mapping[int, PLEHashState]
+    ) -> None:
+        """Point the KV/index cursors and PLE history at ``position``.
+
+        The caller has already written the K/V rows, index keys, pooled index
+        blocks and recurrent state that describe that position. The attention
+        and index states bound-check the cursor.
+        """
+
+        self._require_open()
+        position = int(position)
         cursor = max(position - 1, 0)
         for attention in self.attention_states:
             attention.set_position(cursor)
         for index in self.index_states:
             index.restore_count(position)
-        self._ple_hash_states = dict(snapshot.ple_hash_states)
+        self._ple_hash_states = dict(ple_hash_states)
         self.position = position
 
     def reset(self) -> None:

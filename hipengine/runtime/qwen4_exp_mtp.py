@@ -331,6 +331,17 @@ class Qwen4ExpGGUFMTPDraftRunner:
         self.index.restore_count(count)
         self.position = count
 
+    def adopt_prefix_position(self, position: int) -> None:
+        """Point the cursors at ``position`` after its rows were written back."""
+
+        self._require_open()
+        count = int(position)
+        if count < 0 or count > self.max_sequence_length:
+            raise ValueError("Qwen4Exp MTP prefix position exceeds capacity")
+        self.attention.set_position(max(count - 1, 0))
+        self.index.restore_count(count)
+        self.position = count
+
     def _upload_hidden_seed(self, hidden_seed: np.ndarray) -> None:
         values = np.ascontiguousarray(hidden_seed, dtype=np.float32).reshape(-1)
         if values.shape != (self.config.residual_width,):

@@ -1243,15 +1243,23 @@ Phase-0 targets (driven by the current research focus):
 | **Llama 3** | full_attention + dense_mlp | Phase 3 |
 | **sansho** (custom) | (your arch; see `~/amd-gpu-tuning/reference/sansho/`) | Phase 3+ |
 
-Qwen3.8-Flash-Next follow-up (October 19): the
-[serving performance campaign](campaigns/QWEN38FN-SERVING-FOLLOWUP.md) is
-executing decode-aware prefill time sharing, shared-batch host-overhead
-reductions, and shared physical MTP/AR target execution after the merge to
-`main`. The provider-stage extraction and host mixed-row layout are committed;
-prefill and metadata candidates are under evaluation, and shared physical
-execution remains open. The repository-wide audit/refactor backlog is outside
-that campaign; the existing serving routes and arithmetic contracts stay in
-place.
+Qwen3.8-Flash-Next Gufo comparison (October 20): the
+[optimization campaign](campaigns/QWEN38FN-GUFO-OPTIMIZATION.md) plans a
+same-host benchmark refresh, bulk MTP prompt catch-up, cheaper transactional
+verification, draft-head reduction, prompt lookup and concurrent speculation.
+It reuses the completed F16 prefill ports and serving work, carries forward the
+latest numerical/task failures, and separates Gufo's prepared decode rates
+from complete-request throughput. This is a plan, not a new performance result
+or a change to arithmetic policy.
+
+Qwen3.8-Flash-Next follow-up (October 19–20): the
+[serving performance campaign](campaigns/QWEN38FN-SERVING-FOLLOWUP.md) shipped
+completed-layer prefill time sharing and packed batch metadata/output-head
+capture. Shared physical MTP/AR execution is implemented but opt-in because it
+loses to separate execution on the measured workloads; persistent provisional
+state, batched state movement and graph replay remain optimization work. The
+repository-wide audit/refactor backlog is outside that campaign; existing
+serving routes and arithmetic contracts stay in place.
 
 Qwen3.8-Flash-Next serving status (October 18): the
 [production-serving campaign](QWEN4EXP-PRODUCTION-SERVING.md) closed its
