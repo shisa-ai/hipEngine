@@ -4526,6 +4526,90 @@ def _run_qwen4_exp_q51_wmma_down(
     return wmma_total_rows
 
 
+def _qwen4_exp_q8_static_tile_count(compact_rows: int, num_experts: int) -> int:
+    """Upper bound on 16-row WMMA tiles for the compact expert layout.
+
+    Each active expert contributes at least one tile; the remaining compact
+    rows contribute at most one additional tile per 16 rows. The tile-map
+    kernel fills every capacity slot with ``-1`` before writing the actual
+    experts, and the grouped WMMA kernels skip negative tile ids, so launching
+    the upper bound is safe. This is the same bound the exact iu8 routes use.
+    """
+
+    active = min(int(compact_rows), int(num_experts))
+    return active + (int(compact_rows) - active) // 16
+
+
+def _run_qwen4_exp_q8_wmma_down(
+    *,
+    input_ptr: int,
+    expert_start_ptr: int,
+    wmma_expert_start_ptr: int,
+    tile_expert_ptr: int,
+    weights_ptr: int,
+    output_ptr: int,
+    wmma_total_buffer: DeviceBuffer,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    tile_capacity: int,
+    stream: int,
+    runtime: HipRuntime,
+    owner: Any,
+    risk_kwargs: Mapping[str, Any],
+) -> int:
+    """Run the Q8_0 grouped WMMA down owner on a current 16-row tile map.
+
+    ``scratch.group_wmma_total`` is shared by the grouped prefill path. The
+    group-prefix kernel writes the compact padded row total there before the
+    gate/up leg; the exact Q4/Q5 gate/up owners overwrite it with a 16-row tile
+    map, but the strict Q4 owner does not. A Q8_0 down owner that reads the
+    shared buffer after strict Q4 therefore sees the group-prefix total (for a
+    1023-row chunk with top-k 10, 10230) rather than a tile row count, and the
+    guarded wrapper rejects it because 10230 is not a multiple of 16.
+
+    Rebuild the map here from this invocation's compact expert starts. Pass the
+    static tile upper bound to the owner instead of reading the map's actual
+    count back: the map kernel initializes the capacity window to ``-1`` and
+    the grouped WMMA kernels skip negative tiles. This avoids a D2H readback
+    and matches the existing exact iu8 tile-map launches. The map and launch
+    bound are current by construction, independent of which gate/up route ran.
+    """
+
+    static_tiles = _qwen4_exp_q8_static_tile_count(compact_rows, num_experts)
+    if static_tiles <= 0 or static_tiles > tile_capacity:
+        raise RuntimeError("Qwen4Exp Q8_0 WMMA down tile count is invalid")
+    qwen35_moe_wmma_tile_map(
+        expert_start_ptr,
+        wmma_expert_start_ptr,
+        tile_expert_ptr,
+        wmma_total_buffer.ptr,
+        num_experts,
+        tile_capacity=static_tiles,
+        stream=stream,
+        runtime=runtime,
+    )
+    wmma_total_rows = static_tiles * 16
+    owner(
+        input_ptr,
+        expert_start_ptr,
+        wmma_expert_start_ptr,
+        tile_expert_ptr,
+        weights_ptr,
+        output_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        wmma_total_rows,
+        **dict(risk_kwargs),
+        stream=stream,
+        runtime=runtime,
+    )
+    return wmma_total_rows
+
+
 def _qwen4_exp_q51_iu8_risk_multiplier() -> float:
     """Kahan-bound multiplier for the exact Q5_1 iu8 risk criterion.
 
@@ -5943,7 +6027,6 @@ def run_qwen4_exp_moe(
             # Production selects the grouped owner after the exact
             # one-process/one-residency canonical gate; strict keeps the
             # per-expert selected gemv.
-            q8_wmma_total = 0
             if os.environ.get(
                 "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN", "0"
             ) not in {"", "0", "false", "False"}:
@@ -5953,32 +6036,18 @@ def run_qwen4_exp_moe(
                 # (NOT bit-exact vs the row4 grouped parent); qualified by
                 # the production numerical envelope. Resolved through the
                 # registry so counted wrappers (state gate) can intercept
-                # the route. The tile row total comes from the shared tile
-                # map on the production-grouped layers, or is read here
-                # after the fact on the exact-grouped-Q4 layers (e.g.
-                # layer 4) whose own qwen35_moe_wmma_tile_map (same 16-row
-                # contract) ran inside the gate/up. Combinations that
-                # produce no tile map fall back to the parent below.
-                q8_wmma_total = wmma_total_rows
-                if q8_wmma_total <= 0:
-                    q8_wmma_host = np.empty(1, dtype=np.int64)
-                    if stream:
-                        active_runtime.stream_synchronize(stream)
-                    copy_device_to_host(
-                        host_array_ptr(q8_wmma_host),
-                        scratch.group_wmma_total,
-                        DType.INT64.itemsize,
-                        runtime=active_runtime,
-                    )
-                    q8_wmma_total = int(q8_wmma_host[0])
-                    tile_capacity = (
-                        scratch.group_tile_expert.nbytes // DType.INT64.itemsize
-                    )
-                    if q8_wmma_total < 0 or q8_wmma_total > tile_capacity * 16:
-                        raise RuntimeError(
-                            "Qwen4Exp Q8_0 WMMA down tile row count is invalid"
-                        )
-            if q8_wmma_total > 0:
+                # the route. The shared ``group_wmma_total`` buffer is also
+                # written by ``qwen35_moe_group_prefix`` (the compact padded
+                # row total) and only overwritten with a 16-row tile map by
+                # the exact Q4/Q5 gate/up owners. A strict Q4 gate/up leaves
+                # the prefix total there, so the Q8_0 owner must rebuild the
+                # current map rather than read the shared buffer. The helper
+                # rebuilds and validates the map for this invocation; a
+                # missing/invalid map raises instead of silently falling back
+                # to a different registered owner.
+                tile_capacity = (
+                    scratch.group_tile_expert.nbytes // DType.INT64.itemsize
+                )
                 q8_variant = os.environ.get(
                     "HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT",
                     "selected_grouped_wmma_prefill_bf16_bf16_out")
@@ -5994,21 +6063,23 @@ def run_qwen4_exp_moe(
                         compact_rows=compact, out_features_total=hidden)
                     q8_kwargs = dict(risk_count_ptr=count.ptr, risk_indices_ptr=indices.ptr,
                                      risk_capacity=compact * hidden)
-                q8_wmma_down(
-                    scratch.expert_intermediate.ptr,
-                    scratch.group_expert_start.ptr,
-                    scratch.group_wmma_expert_start.ptr,
-                    scratch.group_tile_expert.ptr,
-                    weights["expert_down"].allocation("raw").tensor.ptr,
-                    scratch.expert_down.ptr,
-                    compact,
-                    experts,
-                    ffn,
-                    hidden,
-                    q8_wmma_total,
-                    **q8_kwargs,
+                _run_qwen4_exp_q8_wmma_down(
+                    input_ptr=scratch.expert_intermediate.ptr,
+                    expert_start_ptr=scratch.group_expert_start.ptr,
+                    wmma_expert_start_ptr=scratch.group_wmma_expert_start.ptr,
+                    tile_expert_ptr=scratch.group_tile_expert.ptr,
+                    weights_ptr=weights["expert_down"].allocation("raw").tensor.ptr,
+                    output_ptr=scratch.expert_down.ptr,
+                    wmma_total_buffer=scratch.group_wmma_total,
+                    compact_rows=compact,
+                    num_experts=experts,
+                    in_features=ffn,
+                    out_features=hidden,
+                    tile_capacity=tile_capacity,
                     stream=stream,
                     runtime=active_runtime,
+                    owner=q8_wmma_down,
+                    risk_kwargs=q8_kwargs,
                 )
             elif os.environ.get("HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN", "0") not in {
                 "", "0", "false", "False",
