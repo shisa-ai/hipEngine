@@ -211,6 +211,69 @@ def test_int8_transient_follows_the_executor_mtp_selects(monkeypatch) -> None:
     assert streamed["private_workspace_slots"] == 0
 
 
+@pytest.mark.parametrize("positions", [4096, 32768, 55808])
+@pytest.mark.parametrize("mtp", [False, True])
+def test_int8_capacity_prices_the_allocated_hidden_plane_count(monkeypatch, positions, mtp):
+    """The rollback adds one physical plane, not a different execution plan."""
+    monkeypatch.setenv("HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS", "0")
+    two = _route_terms(monkeypatch, storage="int8_per_token_head", mtp=mtp)
+    two_bytes = two["prefill_workspace_bytes_resolver"](positions)
+    two_transient = two["transient_bytes_resolver"](positions)
+    monkeypatch.setenv("HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS", "1")
+    one = _route_terms(monkeypatch, storage="int8_per_token_head", mtp=mtp)
+    assert two_bytes - one["prefill_workspace_bytes_resolver"](positions) == positions * 5120 * 2
+    assert one["transient_bytes_resolver"](positions) == two_transient
+
+
+@pytest.mark.parametrize("positions", [4096, 32768, 65792])
+@pytest.mark.parametrize("capacity", [1, 4])
+def test_capacity_prices_resumable_checkpoint_allocator(monkeypatch, positions, capacity):
+    runner = _dense_27b_runner()
+    state_bytes = gguf_runner._gguf_packed_state_linear_bytes(runner, slot_count=1)
+    allocated = []
+
+    def fake_malloc(nbytes, *, runtime):
+        allocated.append(nbytes)
+        return DeviceBuffer(ptr=len(allocated) * 4096, nbytes=nbytes)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(gguf_runner, "malloc", fake_malloc)
+        gguf_runner._GGUFResumablePrefillScratch.allocate(
+            runtime=object(),
+            packed_state=SimpleNamespace(
+                layer_conv_states=(DeviceBuffer(ptr=1, nbytes=state_bytes),),
+                layer_recurrent_states=(),
+            ),
+            hidden_bytes=positions * runner.hidden_size * 2,
+        )
+    plain = _route_terms(monkeypatch, storage="int8_per_token_head", capacity=capacity, mtp=False)
+    streamed = _route_terms(monkeypatch, storage="int8_per_token_head", capacity=capacity, mtp=True)
+    assert (
+        plain["prefill_workspace_bytes_resolver"](positions)
+        - streamed["prefill_workspace_bytes_resolver"](positions)
+    ) == capacity * sum(allocated)
+    assert (
+        plain["_packed_scratch_bytes_resolver"](positions)
+        - streamed["_packed_scratch_bytes_resolver"](positions)
+    ) == capacity * sum(allocated)
+    generator = _route_generator(monkeypatch, mtp_policy="off")
+    generator._prepared_kv_signature = ("int8_per_token_head",)
+    monkeypatch.setattr(qwen35_gguf, "_admitted_no_mirror_int8_capability", lambda _: True)
+    reserve = generator.kv_pool_execution_reserve_bytes(
+        runner, max_positions=positions, serving_capacity=capacity
+    )
+    safety = max(0, qwen35_gguf._gguf_auto_context_reserve_bytes()
+                 - qwen35_gguf._GGUF_PRE_POOL_UNTRACKED_BYTES)
+    assert reserve == (
+        safety + plain["_packed_scratch_bytes_resolver"](positions)
+        + plain["transient_bytes_resolver"](positions)
+    )
+    assert plain["_packed_scratch_bytes_resolver"](positions) >= (
+        capacity * sum(allocated)
+        + gguf_runner._gguf_packed_state_linear_bytes(runner, slot_count=capacity)
+    )
+
+
 def test_bf16_mtp_prices_verify_rows_and_scales_with_width(monkeypatch) -> None:
     c1 = _route_terms(monkeypatch, storage="bf16", capacity=1)
     c4 = _route_terms(monkeypatch, storage="bf16", capacity=4)

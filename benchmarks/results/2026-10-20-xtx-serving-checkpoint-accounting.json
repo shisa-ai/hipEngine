@@ -1,0 +1,3135 @@
+{
+  "schema_version": 1,
+  "purpose": "Production automatic-capacity and pool-reserve accounting validation, not throughput or quality measurement",
+  "hardware": "GPU1 RX 7900 XTX 24GB, PCI 0000:10:00.0, host epyc",
+  "source_base": "432cf147a151f8d2c8d359201ed083c17827cf34",
+  "source_diff": "diff --git a/hipengine/generation/qwen35_gguf.py b/hipengine/generation/qwen35_gguf.py\nindex dfd410c28..5c217d540 100644\n--- a/hipengine/generation/qwen35_gguf.py\n+++ b/hipengine/generation/qwen35_gguf.py\n@@ -2517,6 +2517,7 @@ class Qwen35GGUFBringupGenerator:\n             _gguf_packed_state_linear_bytes,\n             _gguf_prefill_hidden_buffer_count,\n             _gguf_prefill_scratch_nbytes,\n+            _int8_layer_outer_hidden_alias_enabled,\n             _plan_gguf_int8_prefill_lifetime,\n         )\n \n@@ -2576,19 +2577,44 @@ class Qwen35GGUFBringupGenerator:\n             )\n             snapshot_bytes = (capacity + 1) * per_snapshot + retained\n \n+        def checkpoint_bytes(max_positions: int) -> int:\n+            plan = lifetime_plan(max_positions)\n+            if (\n+                not server_pool or mtp_sized or plan is None\n+                or plan.mode != \"layer_outer_shared_oracle\"\n+            ):\n+                return 0\n+            # Long prompts resume one session at a time. Each suspended\n+            # request saves two physical hidden planes and one slot's state.\n+            slots = 1 if int(max_positions) > 1024 else capacity\n+            return capacity * (\n+                2 * int(max_positions) * int(shared_runner.hidden_size) * 2\n+                + _gguf_packed_state_linear_bytes(shared_runner, slot_count=slots)\n+            )\n+\n+        def post_pool_workspace(max_positions: int) -> int:\n+            return (\n+                packed_scratch(max_positions) + snapshot_bytes\n+                + checkpoint_bytes(max_positions)\n+                + (_gguf_packed_state_linear_bytes(shared_runner, slot_count=capacity)\n+                   if server_pool else 0)\n+            )\n+\n         def prefill_workspace(max_positions: int) -> int:\n-            total = snapshot_bytes + _gguf_prefill_scratch_nbytes(\n+            total = _gguf_prefill_scratch_nbytes(\n                 shared_runner, rows=bulk_rows(max_positions), capacity=max_positions\n             )\n             plan = lifetime_plan(max_positions)\n             if plan is not None and plan.mode == \"layer_outer_shared_oracle\":\n                 # The bulk workspace allocates the layer-outer hidden owner at\n                 # session construction, at full capacity.\n-                total += int(plan.layer_outer_hidden_bytes + plan.layer_outer_token_bytes)\n-            if server_pool:\n-                # Per-slot linear state, charged to the KV pool's budget.\n-                total += _gguf_packed_state_linear_bytes(shared_runner, slot_count=capacity)\n-            return total + packed_scratch(max_positions)\n+                # Preserve the planner's execution choice, but price physical\n+                # storage: the allocator can alias its two logical planes.\n+                hidden_bytes = int(plan.layer_outer_hidden_bytes)\n+                if _int8_layer_outer_hidden_alias_enabled():\n+                    hidden_bytes = int(max_positions) * int(shared_runner.hidden_size) * 2\n+                total += hidden_bytes + int(plan.layer_outer_token_bytes)\n+            return total + post_pool_workspace(max_positions)\n \n         def prefill_transient(max_positions: int) -> int:\n             # BF16 prefill writes request KV directly; its hidden planes are\n@@ -2688,9 +2714,7 @@ class Qwen35GGUFBringupGenerator:\n             \"speculative_bytes_resolver\": speculative,\n             # Internal: the plain (non-pool) allocations that follow pool\n             # creation, for the pool's execution reserve.\n-            \"_packed_scratch_bytes_resolver\": (\n-                lambda max_positions: packed_scratch(max_positions) + snapshot_bytes\n-            ),\n+            \"_packed_scratch_bytes_resolver\": post_pool_workspace,\n             # ``configure_engine_loop`` caps the pool's idle floor at one\n             # full-context request, which the KV term already prices.\n             \"kv_pool_floor_pages\": 0,\ndiff --git a/tests/test_unit_qwen35_gguf_capacity_route_terms.py b/tests/test_unit_qwen35_gguf_capacity_route_terms.py\nindex 82a988c5f..a0c6d4769 100644\n--- a/tests/test_unit_qwen35_gguf_capacity_route_terms.py\n+++ b/tests/test_unit_qwen35_gguf_capacity_route_terms.py\n@@ -211,6 +211,69 @@ def test_int8_transient_follows_the_executor_mtp_selects(monkeypatch) -> None:\n     assert streamed[\"private_workspace_slots\"] == 0\n \n \n+@pytest.mark.parametrize(\"positions\", [4096, 32768, 55808])\n+@pytest.mark.parametrize(\"mtp\", [False, True])\n+def test_int8_capacity_prices_the_allocated_hidden_plane_count(monkeypatch, positions, mtp):\n+    \"\"\"The rollback adds one physical plane, not a different execution plan.\"\"\"\n+    monkeypatch.setenv(\"HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS\", \"0\")\n+    two = _route_terms(monkeypatch, storage=\"int8_per_token_head\", mtp=mtp)\n+    two_bytes = two[\"prefill_workspace_bytes_resolver\"](positions)\n+    two_transient = two[\"transient_bytes_resolver\"](positions)\n+    monkeypatch.setenv(\"HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS\", \"1\")\n+    one = _route_terms(monkeypatch, storage=\"int8_per_token_head\", mtp=mtp)\n+    assert two_bytes - one[\"prefill_workspace_bytes_resolver\"](positions) == positions * 5120 * 2\n+    assert one[\"transient_bytes_resolver\"](positions) == two_transient\n+\n+\n+@pytest.mark.parametrize(\"positions\", [4096, 32768, 65792])\n+@pytest.mark.parametrize(\"capacity\", [1, 4])\n+def test_capacity_prices_resumable_checkpoint_allocator(monkeypatch, positions, capacity):\n+    runner = _dense_27b_runner()\n+    state_bytes = gguf_runner._gguf_packed_state_linear_bytes(runner, slot_count=1)\n+    allocated = []\n+\n+    def fake_malloc(nbytes, *, runtime):\n+        allocated.append(nbytes)\n+        return DeviceBuffer(ptr=len(allocated) * 4096, nbytes=nbytes)\n+\n+    with monkeypatch.context() as patch:\n+        patch.setattr(gguf_runner, \"malloc\", fake_malloc)\n+        gguf_runner._GGUFResumablePrefillScratch.allocate(\n+            runtime=object(),\n+            packed_state=SimpleNamespace(\n+                layer_conv_states=(DeviceBuffer(ptr=1, nbytes=state_bytes),),\n+                layer_recurrent_states=(),\n+            ),\n+            hidden_bytes=positions * runner.hidden_size * 2,\n+        )\n+    plain = _route_terms(monkeypatch, storage=\"int8_per_token_head\", capacity=capacity, mtp=False)\n+    streamed = _route_terms(monkeypatch, storage=\"int8_per_token_head\", capacity=capacity, mtp=True)\n+    assert (\n+        plain[\"prefill_workspace_bytes_resolver\"](positions)\n+        - streamed[\"prefill_workspace_bytes_resolver\"](positions)\n+    ) == capacity * sum(allocated)\n+    assert (\n+        plain[\"_packed_scratch_bytes_resolver\"](positions)\n+        - streamed[\"_packed_scratch_bytes_resolver\"](positions)\n+    ) == capacity * sum(allocated)\n+    generator = _route_generator(monkeypatch, mtp_policy=\"off\")\n+    generator._prepared_kv_signature = (\"int8_per_token_head\",)\n+    monkeypatch.setattr(qwen35_gguf, \"_admitted_no_mirror_int8_capability\", lambda _: True)\n+    reserve = generator.kv_pool_execution_reserve_bytes(\n+        runner, max_positions=positions, serving_capacity=capacity\n+    )\n+    safety = max(0, qwen35_gguf._gguf_auto_context_reserve_bytes()\n+                 - qwen35_gguf._GGUF_PRE_POOL_UNTRACKED_BYTES)\n+    assert reserve == (\n+        safety + plain[\"_packed_scratch_bytes_resolver\"](positions)\n+        + plain[\"transient_bytes_resolver\"](positions)\n+    )\n+    assert plain[\"_packed_scratch_bytes_resolver\"](positions) >= (\n+        capacity * sum(allocated)\n+        + gguf_runner._gguf_packed_state_linear_bytes(runner, slot_count=capacity)\n+    )\n+\n+\n def test_bf16_mtp_prices_verify_rows_and_scales_with_width(monkeypatch) -> None:\n     c1 = _route_terms(monkeypatch, storage=\"bf16\", capacity=1)\n     c4 = _route_terms(monkeypatch, storage=\"bf16\", capacity=4)\n",
+  "source_sha256": {
+    "hipengine/generation/qwen35_gguf.py": "edbdebd7ac25060b05ac709e0cfd6b6e886d74c99cb5e2db569357b56fd6d2b9",
+    "hipengine/runtime/qwen35_gguf_runner.py": "0ba83b246bb952a4749c5da0650df80c23688c38c51b722d6de49c5e7bcf4854",
+    "scripts/gguf_server_allocation_probe.py": "dd890795e1ef6a28ee13843ab8c5f1fb12fc9945b833295057aa31ad5a55ae49"
+  },
+  "wrapper": "#!/usr/bin/env bash\nset -euo pipefail\nPY=\"$HOME/mambaforge/envs/therock/bin/python3.12\"\nROOT=\"$(\"$PY\" -m rocm_sdk path --root)\"\nOUT=/tmp/hipengine-xtx-capacity-recovery\nmkdir -p \"$OUT\"\n\"$ROOT/bin/hipcc\" --version > \"$OUT/hipcc-version.txt\"\nexec env -i HOME=\"$HOME\" USER=\"$USER\" LOGNAME=\"${LOGNAME:-$USER}\" SHELL=/bin/bash TERM=\"${TERM:-xterm}\" \\\n PATH=\"$ROOT/bin:$HOME/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin\" \\\n LD_LIBRARY_PATH=\"$ROOT/lib:$HOME/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:$HOME/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib\" \\\n HIP_PATH=\"$ROOT\" ROCM_PATH=\"$ROOT\" HIP_LIB_PATH=\"$ROOT/lib\" HIP_INCLUDE_PATH=\"$ROOT/include\" \\\n HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 \\\n HIPENGINE_COMPILER_VERSION_FILE=\"$OUT/hipcc-version.txt\" PYTHONPATH=\"$PWD\" \"$@\"\n",
+  "driver": "import json,pathlib,subprocess,threading\nout=pathlib.Path('/tmp/hipengine-xtx-capacity-recovery')\nvram=pathlib.Path('/sys/bus/pci/devices/0000:10:00.0/mem_info_vram_used')\nfor storage,mode in [('int8_per_token_head','off'),('int8_per_token_head','auto'),('bf16','off'),('bf16','auto')]:\n context=None\n for full in [False,True]:\n  name=f'final-accounting-{storage}-{mode}-'+('full' if full else 'allocation')\n  path=out/(name+'.json');samples=[];stop=threading.Event()\n  def sample():\n   while not stop.is_set():\n    samples.append(int(vram.read_text()));stop.wait(.02)\n  thread=threading.Thread(target=sample);thread.start()\n  cmd=['bash','/tmp/hipengine-xtx-recovery-env.sh','python3','-u','scripts/gguf_server_allocation_probe.py','--kv-storage',storage,'--speculative-mtp-serving',mode,'--prefix-cache','default','--max-context-tokens','auto','--max-active-requests','1','--prompt-rows',str(context-256 if full else 2048),'--decode-tokens','32','--json',str(path)]\n  print('START',name,flush=True)\n  try:\n   with (out/(name+'.log')).open('w') as log:r=subprocess.run(cmd,stdout=log,stderr=subprocess.STDOUT,timeout=3600)\n  finally:stop.set();thread.join()\n  d=json.loads(path.read_text());context=d.get('readiness_before',{}).get('payload',{}).get('context',{}).get('effective_max_context_tokens')\n  card={'command':cmd,'exit_code':r.returncode,'peak_bytes':max(samples),'sampling_seconds':.02,'samples':len(samples),'end_bytes':int(vram.read_text())}\n  (out/(name+'-card.json')).write_text(json.dumps(card,indent=2)+'\\n')\n  print('END',name,d['status'],'context',context,'peak',card['peak_bytes'],flush=True)\n  if r.returncode:break\n",
+  "rows": [
+    {
+      "identity": {
+        "hostname": "epyc",
+        "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+        "head": "432cf147a",
+        "dirty": "M hipengine/generation/qwen35_gguf.py\n M tests/test_unit_qwen35_gguf_capacity_route_terms.py",
+        "probe_script_sha256": "dd890795e1ef6a28ee13843ab8c5f1fb12fc9945b833295057aa31ad5a55ae49"
+      },
+      "policy": {
+        "kv_storage": "bf16",
+        "kv_scale_dtype": "fp32",
+        "kv_scale_granularity": "per_token_head",
+        "speculative_mtp_serving": "auto",
+        "prefix_cache": "default",
+        "max_context_tokens": null,
+        "automatic_context": true,
+        "max_active_requests": 1,
+        "automatic_serving_capacity": false,
+        "dms_metadata": null,
+        "dms_metadata_path": null
+      },
+      "prompt_rows": 2048,
+      "decode_tokens": 32,
+      "prompt_token_ids_sha256": "f039271637d8b14213b49c6380efed7d45131d064ae66d876fcd0d510e5419c9",
+      "command": [
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "-m",
+        "hipengine.server",
+        "--model",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1100",
+        "--quant",
+        "gguf_q4_k_m",
+        "--kv-storage",
+        "bf16",
+        "--max-active-requests",
+        "1",
+        "--speculative-mtp-serving",
+        "auto",
+        "--metrics",
+        "prometheus",
+        "--port",
+        "18430"
+      ],
+      "environment": {
+        "inherited": {
+          "HIP_VISIBLE_DEVICES": "1",
+          "HIPENGINE_HIP_ARCH": "gfx1100"
+        },
+        "overrides": {}
+      },
+      "status": "pass",
+      "response": {
+        "http_status": 200,
+        "outcome": {
+          "ok": true,
+          "reason": null,
+          "http_status": 200
+        },
+        "parse_error": null,
+        "hipengine": {
+          "routing": {
+            "requested_model": "Qwen3.8-27B-Q4_K_M.gguf",
+            "served_model": "Qwen3.8-27B-Q4_K_M.gguf",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          },
+          "token_accounting": {
+            "choice_generated_token_ids": [
+              [
+                286,
+                11,
+                197,
+                197,
+                11,
+                197,
+                197,
+                11,
+                197,
+                197,
+                11,
+                197,
+                197,
+                11,
+                197,
+                197,
+                11,
+                197,
+                197,
+                11,
+                197,
+                197,
+                11,
+                197,
+                197,
+                11,
+                197,
+                197,
+                11,
+                197,
+                197,
+                11
+              ]
+            ],
+            "choice_generated_tokens": [
+              32
+            ],
+            "total_generated_tokens": 32,
+            "retokenized_visible_tokens": 32
+          },
+          "prompt_token_accounting": {
+            "schema_version": 1,
+            "input_type": "token_ids",
+            "prompt_token_ids_sha256": [
+              "9119e8f3c3000c9dc8d1c17df10632428d96be2c84ba787155f97c23840a1549"
+            ],
+            "prompt_tokens": [
+              2048
+            ],
+            "total_prompt_tokens": 2048
+          },
+          "generation_shape": {
+            "schema_version": 1,
+            "route": "speculative_mtp",
+            "route_cap": {
+              "scope": "queue_requests",
+              "value": 1,
+              "applied": true
+            },
+            "queue_group": {
+              "id": "queue-633602474a5e45f8b2566ae8d84e79af",
+              "request_count": 1,
+              "prompt_rows": 1,
+              "item_index": 0,
+              "item_prompt_offset": 0,
+              "item_prompt_rows": 1
+            },
+            "backend_groups": [
+              {
+                "id": "backend-38d55f30d4bb467a8ea5f017c3917576",
+                "call_index": 0,
+                "prompt_offset": 0,
+                "input_rows": 1,
+                "actual_group_rows": [
+                  1
+                ],
+                "max_actual_group_rows": 1,
+                "verifier_rows": 0
+              }
+            ],
+            "verifier_rows": 0,
+            "route_decision": {
+              "requested_route": "speculative_mtp_auto",
+              "request_mode": "automatic",
+              "selected_route": "speculative_mtp",
+              "reason": "implemented_gguf_dense_bf16_gfx1100_c1_native_chain",
+              "k0_class": "not_k0",
+              "static_eligibility": {
+                "state": "speculative_capable",
+                "eligible": true,
+                "reason": "implemented_gguf_dense_bf16_gfx1100_c1_native_chain",
+                "packed_c1_target": false,
+                "max_candidate_count": 3,
+                "max_realized_group_rows": 8,
+                "automatic_eligible": true,
+                "strict_fallback_key": "gguf_target_ar",
+                "evidence_key": null,
+                "evidence_fingerprint": null,
+                "evidence_artifacts": [],
+                "implementation_key": "gguf_dense_bf16_gfx1100_c1_native_chain"
+              },
+              "static_eligibility_fingerprint": "sha256:59698c2d82bf6703c3759fa9bb53b307e5f30588e339ca262d4bb7bc5126daab",
+              "static_intent_allowed": true,
+              "policy_cell": "gguf_dense_bf16_gfx1100_c1_native_chain",
+              "admission_basis": "implementation",
+              "implementation_key": "gguf_dense_bf16_gfx1100_c1_native_chain",
+              "effective_kv_storage": "bf16",
+              "kv_layout": "uniform",
+              "kv_scale_dtype": "fp32",
+              "kv_scale_granularity": "per_token_head",
+              "selected_candidate_count": 3,
+              "policy_reason": "implemented_gguf_dense_bf16_gfx1100_c1_native_chain",
+              "policy_fingerprint": "sha256:07d2238e9fb42afe08f2b6ba55cede6e0f7e61027df7c14fdf7205854f599876",
+              "realized_group_rows": 1,
+              "output_horizon_tokens": 32,
+              "exact_default_required": true,
+              "automatic_eligible": true,
+              "evidence": "model_plugin_speculative_mtp_serving_plan"
+            }
+          },
+          "speculative_mtp": {
+            "effective_route": "speculative_mtp",
+            "used": true,
+            "draft_tokens": 50,
+            "accepted_draft_tokens": 14,
+            "rejected_draft_tokens": 36,
+            "acceptance_rate": 0.28,
+            "draft_cycles": 17,
+            "mtp_output_tokens": 31,
+            "ar_output_tokens": 1,
+            "output_accounting": {
+              "completion_tokens": 32,
+              "mtp_output_tokens": 31,
+              "ar_output_tokens": 1,
+              "ar_output_tokens_in_cycles": 1,
+              "mtp_coverage": 0.96875,
+              "mtp_output_tokens_explained_by_cycles": 31,
+              "unexplained_mtp_output_tokens": 0,
+              "speculative_cycles": 17,
+              "reconciled": true,
+              "reconciled_reasons": []
+            },
+            "selected_depth_histogram": {
+              "2": 1,
+              "3": 16
+            },
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "fallback_event_total": 1,
+            "execution": {
+              "activation_reason": null,
+              "provider_readiness": "ready",
+              "provider_state_present": true,
+              "provider_decline_reason": null,
+              "plan_group_rows": 1,
+              "plan_ar_only": false,
+              "plan_reason": "speculative_qualified"
+            },
+            "cycle_timing_ms": {
+              "proposal": 150.89364163577557,
+              "target": 1531.232265,
+              "provider_update": 11.173602193593979,
+              "accept": 0.0,
+              "candidate_readback": 0.0,
+              "target_readback": 0.0,
+              "accept_upload": 0.0,
+              "accept_tail": 0.0,
+              "accept_enqueue": 0.0,
+              "selected_commit": 0.0
+            },
+            "first_fallback_position": null,
+            "requested_route": "speculative_mtp_auto",
+            "decision_reason": "implemented_gguf_dense_bf16_gfx1100_c1_native_chain",
+            "thinking_policy": "hint",
+            "thinking_controls": "prompt_hint_only"
+          }
+        },
+        "usage": {
+          "prompt_tokens": 2048,
+          "completion_tokens": 32,
+          "total_tokens": 2080,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 14,
+            "rejected_prediction_tokens": 36
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "finish_reason": "length",
+        "generated_chars": 34,
+        "generated_text_head": "ing,\t\t,\t\t,\t\t,\t\t,\t\t,\t\t,\t\t,\t\t,\t\t,\t\t,",
+        "body_head": null
+      },
+      "during_request_peaks": {
+        "hipengine_kv_pool_current_bytes": 1912602624.0,
+        "hipengine_kv_pool_high_water_observed_bytes": 218103808.0,
+        "hipengine_kv_pool_pinned_pages": 13.0,
+        "hipengine_resident_kv_total_bytes": 150994944.0,
+        "hipengine_resident_packed_workspace_current_bytes": 1018557804.0,
+        "hipengine_resident_packed_workspace_leased_pool_bytes": 67108864.0,
+        "hipengine_resident_prefill_hidden_owner_bytes": 882152684.0,
+        "hipengine_resident_prefill_oracle_observed_peak_bytes": 0.0,
+        "hipengine_resident_prefill_oracle_observed_peak_owners": 0.0,
+        "hipengine_resident_prefill_oracle_owner_bytes": 0.0,
+        "hipengine_resident_prefill_oracle_owners": 0.0
+      },
+      "domains_gib": {
+        "pool_high_water": 0.2031,
+        "pool_pinned_pages": 13.0,
+        "workspace_owner_deduped": 0.9486,
+        "workspace_leased_pool": 0.0625,
+        "prefill_oracle_live": 0.0,
+        "prefill_oracle_observed_peak": 0.0,
+        "prefill_oracle_observed_peak_owners": 0.0,
+        "prefill_oracle_owners": 0.0,
+        "hidden_bulk_owners": 0.8216,
+        "request_owned_kv_after": 0.0
+      },
+      "server_teardown": "clean",
+      "name": "final-accounting-bf16-auto-allocation",
+      "protocol_tier": 1,
+      "context": {
+        "configured_max_context_tokens": null,
+        "effective_max_context_tokens": 28160,
+        "chat_default_max_tokens": 4096
+      },
+      "model": {
+        "id": "Qwen3.8-27B-Q4_K_M.gguf",
+        "backend": "hip_gfx1100",
+        "quant": "gguf_q4_k_m",
+        "loaded": true,
+        "loaded_model_count": 1,
+        "kv_capability": {
+          "schema_version": 1,
+          "status": "not_applicable",
+          "runtime_action": "not_applicable",
+          "promotion_eligible": false,
+          "diagnostic_override": false,
+          "requested": null,
+          "effective_kv_storage": "bf16",
+          "max_packed_rows": 8,
+          "artifact": {
+            "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+            "size_bytes": null,
+            "sha256": null,
+            "content_verified": false,
+            "error": null
+          },
+          "evidence": null,
+          "reason": "BF16/default KV does not require approximate-KV capability evidence"
+        }
+      },
+      "startup_memory": {
+        "startup_begin": {
+          "free_bytes": 25715277824,
+          "total_bytes": 25753026560,
+          "used_bytes": 37748736,
+          "free_gib": 23.949219,
+          "used_gib": 0.035156
+        },
+        "after_resident_prepare": {
+          "free_bytes": 3181379584,
+          "total_bytes": 25753026560,
+          "used_bytes": 22571646976,
+          "free_gib": 2.962891,
+          "used_gib": 21.021484
+        },
+        "after_raw_warmup": {
+          "free_bytes": 2040528896,
+          "total_bytes": 25753026560,
+          "used_bytes": 23712497664,
+          "free_gib": 1.900391,
+          "used_gib": 22.083984
+        },
+        "after_scratch_probe": {
+          "free_bytes": 2040528896,
+          "total_bytes": 25753026560,
+          "used_bytes": 23712497664,
+          "free_gib": 1.900391,
+          "used_gib": 22.083984
+        },
+        "after_chat_smoke": {
+          "free_bytes": 2040528896,
+          "total_bytes": 25753026560,
+          "used_bytes": 23712497664,
+          "free_gib": 1.900391,
+          "used_gib": 22.083984
+        },
+        "after_mtp_smoke": {
+          "free_bytes": 882900992,
+          "total_bytes": 25753026560,
+          "used_bytes": 24870125568,
+          "free_gib": 0.822266,
+          "used_gib": 23.162109
+        },
+        "guard": {
+          "free_bytes": 882900992,
+          "total_bytes": 25753026560,
+          "used_bytes": 24870125568,
+          "free_gib": 0.822266,
+          "used_gib": 23.162109
+        }
+      },
+      "readiness_after_http": 200,
+      "card": {
+        "command": [
+          "bash",
+          "/tmp/hipengine-xtx-recovery-env.sh",
+          "python3",
+          "-u",
+          "scripts/gguf_server_allocation_probe.py",
+          "--kv-storage",
+          "bf16",
+          "--speculative-mtp-serving",
+          "auto",
+          "--prefix-cache",
+          "default",
+          "--max-context-tokens",
+          "auto",
+          "--max-active-requests",
+          "1",
+          "--prompt-rows",
+          "2048",
+          "--decode-tokens",
+          "32",
+          "--json",
+          "/tmp/hipengine-xtx-capacity-recovery/final-accounting-bf16-auto-allocation.json"
+        ],
+        "exit_code": 0,
+        "peak_bytes": 25248198656,
+        "sampling_seconds": 0.02,
+        "samples": 4988,
+        "end_bytes": 260067328
+      },
+      "raw_sha256": "bc343db03c068531fa4cf429e9092a88bb278884ecded9cec157342255394936"
+    },
+    {
+      "identity": {
+        "hostname": "epyc",
+        "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+        "head": "432cf147a",
+        "dirty": "M hipengine/generation/qwen35_gguf.py\n M tests/test_unit_qwen35_gguf_capacity_route_terms.py",
+        "probe_script_sha256": "dd890795e1ef6a28ee13843ab8c5f1fb12fc9945b833295057aa31ad5a55ae49"
+      },
+      "policy": {
+        "kv_storage": "bf16",
+        "kv_scale_dtype": "fp32",
+        "kv_scale_granularity": "per_token_head",
+        "speculative_mtp_serving": "auto",
+        "prefix_cache": "default",
+        "max_context_tokens": null,
+        "automatic_context": true,
+        "max_active_requests": 1,
+        "automatic_serving_capacity": false,
+        "dms_metadata": null,
+        "dms_metadata_path": null
+      },
+      "prompt_rows": 27904,
+      "decode_tokens": 32,
+      "prompt_token_ids_sha256": "57d85763a7e01d5b0f9a7f88bda68bfd18691a33b5b98b8531482b7349938678",
+      "command": [
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "-m",
+        "hipengine.server",
+        "--model",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1100",
+        "--quant",
+        "gguf_q4_k_m",
+        "--kv-storage",
+        "bf16",
+        "--max-active-requests",
+        "1",
+        "--speculative-mtp-serving",
+        "auto",
+        "--metrics",
+        "prometheus",
+        "--port",
+        "18430"
+      ],
+      "environment": {
+        "inherited": {
+          "HIP_VISIBLE_DEVICES": "1",
+          "HIPENGINE_HIP_ARCH": "gfx1100"
+        },
+        "overrides": {}
+      },
+      "status": "pass",
+      "response": {
+        "http_status": 200,
+        "outcome": {
+          "ok": true,
+          "reason": null,
+          "http_status": 200
+        },
+        "parse_error": null,
+        "hipengine": {
+          "routing": {
+            "requested_model": "Qwen3.8-27B-Q4_K_M.gguf",
+            "served_model": "Qwen3.8-27B-Q4_K_M.gguf",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          },
+          "token_accounting": {
+            "choice_generated_token_ids": [
+              [
+                382,
+                2082,
+                198,
+                197,
+                197,
+                1,
+                198,
+                197,
+                197,
+                1,
+                198,
+                197,
+                197,
+                1,
+                198,
+                197,
+                197,
+                1,
+                198,
+                197,
+                197,
+                1,
+                198,
+                197,
+                197,
+                1,
+                198,
+                197,
+                197,
+                1,
+                198,
+                197
+              ]
+            ],
+            "choice_generated_tokens": [
+              32
+            ],
+            "total_generated_tokens": 32,
+            "retokenized_visible_tokens": 32
+          },
+          "prompt_token_accounting": {
+            "schema_version": 1,
+            "input_type": "token_ids",
+            "prompt_token_ids_sha256": [
+              "695b2bd5a66ab27a1fa572ada86be44e3ae5d5398c3d37b6adb21ce299738dae"
+            ],
+            "prompt_tokens": [
+              27904
+            ],
+            "total_prompt_tokens": 27904
+          },
+          "generation_shape": {
+            "schema_version": 1,
+            "route": "speculative_mtp",
+            "route_cap": {
+              "scope": "queue_requests",
+              "value": 1,
+              "applied": true
+            },
+            "queue_group": {
+              "id": "queue-27edf4581ddd47a0937089ac0d014bae",
+              "request_count": 1,
+              "prompt_rows": 1,
+              "item_index": 0,
+              "item_prompt_offset": 0,
+              "item_prompt_rows": 1
+            },
+            "backend_groups": [
+              {
+                "id": "backend-3fb076d8f5434d0289b46448d853ea1f",
+                "call_index": 0,
+                "prompt_offset": 0,
+                "input_rows": 1,
+                "actual_group_rows": [
+                  1
+                ],
+                "max_actual_group_rows": 1,
+                "verifier_rows": 0
+              }
+            ],
+            "verifier_rows": 0,
+            "route_decision": {
+              "requested_route": "speculative_mtp_auto",
+              "request_mode": "automatic",
+              "selected_route": "speculative_mtp",
+              "reason": "implemented_gguf_dense_bf16_gfx1100_c1_native_chain",
+              "k0_class": "not_k0",
+              "static_eligibility": {
+                "state": "speculative_capable",
+                "eligible": true,
+                "reason": "implemented_gguf_dense_bf16_gfx1100_c1_native_chain",
+                "packed_c1_target": false,
+                "max_candidate_count": 3,
+                "max_realized_group_rows": 8,
+                "automatic_eligible": true,
+                "strict_fallback_key": "gguf_target_ar",
+                "evidence_key": null,
+                "evidence_fingerprint": null,
+                "evidence_artifacts": [],
+                "implementation_key": "gguf_dense_bf16_gfx1100_c1_native_chain"
+              },
+              "static_eligibility_fingerprint": "sha256:59698c2d82bf6703c3759fa9bb53b307e5f30588e339ca262d4bb7bc5126daab",
+              "static_intent_allowed": true,
+              "policy_cell": "gguf_dense_bf16_gfx1100_c1_native_chain",
+              "admission_basis": "implementation",
+              "implementation_key": "gguf_dense_bf16_gfx1100_c1_native_chain",
+              "effective_kv_storage": "bf16",
+              "kv_layout": "uniform",
+              "kv_scale_dtype": "fp32",
+              "kv_scale_granularity": "per_token_head",
+              "selected_candidate_count": 3,
+              "policy_reason": "implemented_gguf_dense_bf16_gfx1100_c1_native_chain",
+              "policy_fingerprint": "sha256:07d2238e9fb42afe08f2b6ba55cede6e0f7e61027df7c14fdf7205854f599876",
+              "realized_group_rows": 1,
+              "output_horizon_tokens": 32,
+              "exact_default_required": true,
+              "automatic_eligible": true,
+              "evidence": "model_plugin_speculative_mtp_serving_plan"
+            }
+          },
+          "speculative_mtp": {
+            "effective_route": "speculative_mtp",
+            "used": true,
+            "draft_tokens": 31,
+            "accepted_draft_tokens": 20,
+            "rejected_draft_tokens": 11,
+            "acceptance_rate": 0.6451612903225806,
+            "draft_cycles": 11,
+            "mtp_output_tokens": 31,
+            "ar_output_tokens": 1,
+            "output_accounting": {
+              "completion_tokens": 32,
+              "mtp_output_tokens": 31,
+              "ar_output_tokens": 1,
+              "ar_output_tokens_in_cycles": 1,
+              "mtp_coverage": 0.96875,
+              "mtp_output_tokens_explained_by_cycles": 31,
+              "unexplained_mtp_output_tokens": 0,
+              "speculative_cycles": 11,
+              "reconciled": true,
+              "reconciled_reasons": []
+            },
+            "selected_depth_histogram": {
+              "1": 1,
+              "3": 10
+            },
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "fallback_event_total": 1,
+            "execution": {
+              "activation_reason": null,
+              "provider_readiness": "ready",
+              "provider_state_present": true,
+              "provider_decline_reason": null,
+              "plan_group_rows": 1,
+              "plan_ar_only": false,
+              "plan_reason": "speculative_qualified"
+            },
+            "cycle_timing_ms": {
+              "proposal": 194.29020956158638,
+              "target": 1557.6502149999997,
+              "provider_update": 6.555149331688881,
+              "accept": 0.0,
+              "candidate_readback": 0.0,
+              "target_readback": 0.0,
+              "accept_upload": 0.0,
+              "accept_tail": 0.0,
+              "accept_enqueue": 0.0,
+              "selected_commit": 0.0
+            },
+            "first_fallback_position": null,
+            "requested_route": "speculative_mtp_auto",
+            "decision_reason": "implemented_gguf_dense_bf16_gfx1100_c1_native_chain",
+            "thinking_policy": "hint",
+            "thinking_controls": "prompt_hint_only"
+          }
+        },
+        "usage": {
+          "prompt_tokens": 27904,
+          "completion_tokens": 32,
+          "total_tokens": 27936,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 20,
+            "rejected_prediction_tokens": 11
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "finish_reason": "length",
+        "generated_chars": 36,
+        "generated_text_head": "ership\n\t\t\"\n\t\t\"\n\t\t\"\n\t\t\"\n\t\t\"\n\t\t\"\n\t\t\"\n\t",
+        "body_head": null
+      },
+      "during_request_peaks": {
+        "hipengine_kv_pool_current_bytes": 1912602624.0,
+        "hipengine_kv_pool_high_water_observed_bytes": 1912602624.0,
+        "hipengine_kv_pool_pinned_pages": 114.0,
+        "hipengine_resident_kv_total_bytes": 1845493760.0,
+        "hipengine_resident_packed_workspace_current_bytes": 1020003372.0,
+        "hipengine_resident_packed_workspace_leased_pool_bytes": 67108864.0,
+        "hipengine_resident_prefill_hidden_owner_bytes": 882152684.0,
+        "hipengine_resident_prefill_oracle_observed_peak_bytes": 0.0,
+        "hipengine_resident_prefill_oracle_observed_peak_owners": 0.0,
+        "hipengine_resident_prefill_oracle_owner_bytes": 0.0,
+        "hipengine_resident_prefill_oracle_owners": 0.0
+      },
+      "domains_gib": {
+        "pool_high_water": 1.7812,
+        "pool_pinned_pages": 114.0,
+        "workspace_owner_deduped": 0.95,
+        "workspace_leased_pool": 0.0625,
+        "prefill_oracle_live": 0.0,
+        "prefill_oracle_observed_peak": 0.0,
+        "prefill_oracle_observed_peak_owners": 0.0,
+        "prefill_oracle_owners": 0.0,
+        "hidden_bulk_owners": 0.8216,
+        "request_owned_kv_after": 0.0
+      },
+      "server_teardown": "clean",
+      "name": "final-accounting-bf16-auto-full",
+      "protocol_tier": 2,
+      "context": {
+        "configured_max_context_tokens": null,
+        "effective_max_context_tokens": 28160,
+        "chat_default_max_tokens": 4096
+      },
+      "model": {
+        "id": "Qwen3.8-27B-Q4_K_M.gguf",
+        "backend": "hip_gfx1100",
+        "quant": "gguf_q4_k_m",
+        "loaded": true,
+        "loaded_model_count": 1,
+        "kv_capability": {
+          "schema_version": 1,
+          "status": "not_applicable",
+          "runtime_action": "not_applicable",
+          "promotion_eligible": false,
+          "diagnostic_override": false,
+          "requested": null,
+          "effective_kv_storage": "bf16",
+          "max_packed_rows": 8,
+          "artifact": {
+            "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+            "size_bytes": null,
+            "sha256": null,
+            "content_verified": false,
+            "error": null
+          },
+          "evidence": null,
+          "reason": "BF16/default KV does not require approximate-KV capability evidence"
+        }
+      },
+      "startup_memory": {
+        "startup_begin": {
+          "free_bytes": 25715277824,
+          "total_bytes": 25753026560,
+          "used_bytes": 37748736,
+          "free_gib": 23.949219,
+          "used_gib": 0.035156
+        },
+        "after_resident_prepare": {
+          "free_bytes": 3181379584,
+          "total_bytes": 25753026560,
+          "used_bytes": 22571646976,
+          "free_gib": 2.962891,
+          "used_gib": 21.021484
+        },
+        "after_raw_warmup": {
+          "free_bytes": 2040528896,
+          "total_bytes": 25753026560,
+          "used_bytes": 23712497664,
+          "free_gib": 1.900391,
+          "used_gib": 22.083984
+        },
+        "after_scratch_probe": {
+          "free_bytes": 2040528896,
+          "total_bytes": 25753026560,
+          "used_bytes": 23712497664,
+          "free_gib": 1.900391,
+          "used_gib": 22.083984
+        },
+        "after_chat_smoke": {
+          "free_bytes": 2040528896,
+          "total_bytes": 25753026560,
+          "used_bytes": 23712497664,
+          "free_gib": 1.900391,
+          "used_gib": 22.083984
+        },
+        "after_mtp_smoke": {
+          "free_bytes": 882900992,
+          "total_bytes": 25753026560,
+          "used_bytes": 24870125568,
+          "free_gib": 0.822266,
+          "used_gib": 23.162109
+        },
+        "guard": {
+          "free_bytes": 882900992,
+          "total_bytes": 25753026560,
+          "used_bytes": 24870125568,
+          "free_gib": 0.822266,
+          "used_gib": 23.162109
+        }
+      },
+      "readiness_after_http": 200,
+      "card": {
+        "command": [
+          "bash",
+          "/tmp/hipengine-xtx-recovery-env.sh",
+          "python3",
+          "-u",
+          "scripts/gguf_server_allocation_probe.py",
+          "--kv-storage",
+          "bf16",
+          "--speculative-mtp-serving",
+          "auto",
+          "--prefix-cache",
+          "default",
+          "--max-context-tokens",
+          "auto",
+          "--max-active-requests",
+          "1",
+          "--prompt-rows",
+          "27904",
+          "--decode-tokens",
+          "32",
+          "--json",
+          "/tmp/hipengine-xtx-capacity-recovery/final-accounting-bf16-auto-full.json"
+        ],
+        "exit_code": 0,
+        "peak_bytes": 25739079680,
+        "sampling_seconds": 0.02,
+        "samples": 7464,
+        "end_bytes": 260214784
+      },
+      "raw_sha256": "0e19419ed328e9d6e42b60de623d064a4737dec3e8b66b382689836998798a49"
+    },
+    {
+      "identity": {
+        "hostname": "epyc",
+        "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+        "head": "432cf147a",
+        "dirty": "M hipengine/generation/qwen35_gguf.py\n M tests/test_unit_qwen35_gguf_capacity_route_terms.py",
+        "probe_script_sha256": "dd890795e1ef6a28ee13843ab8c5f1fb12fc9945b833295057aa31ad5a55ae49"
+      },
+      "policy": {
+        "kv_storage": "bf16",
+        "kv_scale_dtype": "fp32",
+        "kv_scale_granularity": "per_token_head",
+        "speculative_mtp_serving": "off",
+        "prefix_cache": "default",
+        "max_context_tokens": null,
+        "automatic_context": true,
+        "max_active_requests": 1,
+        "automatic_serving_capacity": false,
+        "dms_metadata": null,
+        "dms_metadata_path": null
+      },
+      "prompt_rows": 2048,
+      "decode_tokens": 32,
+      "prompt_token_ids_sha256": "f039271637d8b14213b49c6380efed7d45131d064ae66d876fcd0d510e5419c9",
+      "command": [
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "-m",
+        "hipengine.server",
+        "--model",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1100",
+        "--quant",
+        "gguf_q4_k_m",
+        "--kv-storage",
+        "bf16",
+        "--max-active-requests",
+        "1",
+        "--speculative-mtp-serving",
+        "off",
+        "--metrics",
+        "prometheus",
+        "--port",
+        "18430"
+      ],
+      "environment": {
+        "inherited": {
+          "HIP_VISIBLE_DEVICES": "1",
+          "HIPENGINE_HIP_ARCH": "gfx1100"
+        },
+        "overrides": {}
+      },
+      "status": "pass",
+      "response": {
+        "http_status": 200,
+        "outcome": {
+          "ok": true,
+          "reason": null,
+          "http_status": 200
+        },
+        "parse_error": null,
+        "hipengine": {
+          "routing": {
+            "requested_model": "Qwen3.8-27B-Q4_K_M.gguf",
+            "served_model": "Qwen3.8-27B-Q4_K_M.gguf",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          },
+          "token_accounting": {
+            "choice_generated_token_ids": [
+              [
+                286,
+                11,
+                197,
+                197,
+                11,
+                197,
+                197,
+                11,
+                197,
+                197,
+                11,
+                197,
+                197,
+                11,
+                197,
+                197,
+                11,
+                197,
+                197,
+                11,
+                197,
+                197,
+                11,
+                197,
+                197,
+                11,
+                197,
+                197,
+                11,
+                197,
+                197,
+                11
+              ]
+            ],
+            "choice_generated_tokens": [
+              32
+            ],
+            "total_generated_tokens": 32,
+            "retokenized_visible_tokens": 32
+          },
+          "prompt_token_accounting": {
+            "schema_version": 1,
+            "input_type": "token_ids",
+            "prompt_token_ids_sha256": [
+              "9119e8f3c3000c9dc8d1c17df10632428d96be2c84ba787155f97c23840a1549"
+            ],
+            "prompt_tokens": [
+              2048
+            ],
+            "total_prompt_tokens": 2048
+          },
+          "generation_shape": {
+            "schema_version": 1,
+            "route": "default",
+            "route_cap": {
+              "scope": "queue_requests",
+              "value": 1,
+              "applied": true
+            },
+            "queue_group": {
+              "id": "queue-f8367a3b5c86465aad1ec681698396b4",
+              "request_count": 1,
+              "prompt_rows": 1,
+              "item_index": 0,
+              "item_prompt_offset": 0,
+              "item_prompt_rows": 1
+            },
+            "backend_groups": [
+              {
+                "id": "backend-ab50f2edeb20424b91e5b0839b2924e8",
+                "call_index": 0,
+                "prompt_offset": 0,
+                "input_rows": 1,
+                "actual_group_rows": [
+                  1
+                ],
+                "max_actual_group_rows": 1,
+                "verifier_rows": 0
+              }
+            ],
+            "verifier_rows": 0
+          },
+          "speculative_mtp": {
+            "effective_route": "default",
+            "used": false,
+            "draft_tokens": 0,
+            "accepted_draft_tokens": 0,
+            "rejected_draft_tokens": 0,
+            "acceptance_rate": null,
+            "draft_cycles": 0
+          }
+        },
+        "usage": {
+          "prompt_tokens": 2048,
+          "completion_tokens": 32,
+          "total_tokens": 2080,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "finish_reason": "length",
+        "generated_chars": 34,
+        "generated_text_head": "ing,\t\t,\t\t,\t\t,\t\t,\t\t,\t\t,\t\t,\t\t,\t\t,\t\t,",
+        "body_head": null
+      },
+      "during_request_peaks": {
+        "hipengine_kv_pool_current_bytes": 3657433088.0,
+        "hipengine_kv_pool_high_water_observed_bytes": 218103808.0,
+        "hipengine_kv_pool_pinned_pages": 13.0,
+        "hipengine_resident_kv_total_bytes": 150994944.0,
+        "hipengine_resident_packed_workspace_current_bytes": 1018557804.0,
+        "hipengine_resident_packed_workspace_leased_pool_bytes": 67108864.0,
+        "hipengine_resident_prefill_hidden_owner_bytes": 885269996.0,
+        "hipengine_resident_prefill_oracle_observed_peak_bytes": 0.0,
+        "hipengine_resident_prefill_oracle_observed_peak_owners": 0.0,
+        "hipengine_resident_prefill_oracle_owner_bytes": 0.0,
+        "hipengine_resident_prefill_oracle_owners": 0.0
+      },
+      "domains_gib": {
+        "pool_high_water": 0.2031,
+        "pool_pinned_pages": 13.0,
+        "workspace_owner_deduped": 0.9486,
+        "workspace_leased_pool": 0.0625,
+        "prefill_oracle_live": 0.0,
+        "prefill_oracle_observed_peak": 0.0,
+        "prefill_oracle_observed_peak_owners": 0.0,
+        "prefill_oracle_owners": 0.0,
+        "hidden_bulk_owners": 0.8245,
+        "request_owned_kv_after": 0.0
+      },
+      "server_teardown": "clean",
+      "name": "final-accounting-bf16-off-allocation",
+      "protocol_tier": 1,
+      "context": {
+        "configured_max_context_tokens": null,
+        "effective_max_context_tokens": 55808,
+        "chat_default_max_tokens": 4096
+      },
+      "model": {
+        "id": "Qwen3.8-27B-Q4_K_M.gguf",
+        "backend": "hip_gfx1100",
+        "quant": "gguf_q4_k_m",
+        "loaded": true,
+        "loaded_model_count": 1,
+        "kv_capability": {
+          "schema_version": 1,
+          "status": "not_applicable",
+          "runtime_action": "not_applicable",
+          "promotion_eligible": false,
+          "diagnostic_override": false,
+          "requested": null,
+          "effective_kv_storage": "bf16",
+          "max_packed_rows": 8,
+          "artifact": {
+            "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+            "size_bytes": null,
+            "sha256": null,
+            "content_verified": false,
+            "error": null
+          },
+          "evidence": null,
+          "reason": "BF16/default KV does not require approximate-KV capability evidence"
+        }
+      },
+      "startup_memory": {
+        "startup_begin": {
+          "free_bytes": 25715277824,
+          "total_bytes": 25753026560,
+          "used_bytes": 37748736,
+          "free_gib": 23.949219,
+          "used_gib": 0.035156
+        },
+        "after_resident_prepare": {
+          "free_bytes": 2273312768,
+          "total_bytes": 25753026560,
+          "used_bytes": 23479713792,
+          "free_gib": 2.117188,
+          "used_gib": 21.867188
+        },
+        "after_raw_warmup": {
+          "free_bytes": 1132462080,
+          "total_bytes": 25753026560,
+          "used_bytes": 24620564480,
+          "free_gib": 1.054688,
+          "used_gib": 22.929688
+        },
+        "after_scratch_probe": {
+          "free_bytes": 1132462080,
+          "total_bytes": 25753026560,
+          "used_bytes": 24620564480,
+          "free_gib": 1.054688,
+          "used_gib": 22.929688
+        },
+        "after_chat_smoke": {
+          "free_bytes": 1132462080,
+          "total_bytes": 25753026560,
+          "used_bytes": 24620564480,
+          "free_gib": 1.054688,
+          "used_gib": 22.929688
+        },
+        "guard": {
+          "free_bytes": 1132462080,
+          "total_bytes": 25753026560,
+          "used_bytes": 24620564480,
+          "free_gib": 1.054688,
+          "used_gib": 22.929688
+        }
+      },
+      "readiness_after_http": 200,
+      "card": {
+        "command": [
+          "bash",
+          "/tmp/hipengine-xtx-recovery-env.sh",
+          "python3",
+          "-u",
+          "scripts/gguf_server_allocation_probe.py",
+          "--kv-storage",
+          "bf16",
+          "--speculative-mtp-serving",
+          "off",
+          "--prefix-cache",
+          "default",
+          "--max-context-tokens",
+          "auto",
+          "--max-active-requests",
+          "1",
+          "--prompt-rows",
+          "2048",
+          "--decode-tokens",
+          "32",
+          "--json",
+          "/tmp/hipengine-xtx-capacity-recovery/final-accounting-bf16-off-allocation.json"
+        ],
+        "exit_code": 0,
+        "peak_bytes": 24900046848,
+        "sampling_seconds": 0.02,
+        "samples": 4632,
+        "end_bytes": 167710720
+      },
+      "raw_sha256": "3232eac42633dbb501b7d3d2e0f578e94a508e120fe99637c8f0a4f7d5e7e166"
+    },
+    {
+      "identity": {
+        "hostname": "epyc",
+        "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+        "head": "432cf147a",
+        "dirty": "M hipengine/generation/qwen35_gguf.py\n M tests/test_unit_qwen35_gguf_capacity_route_terms.py",
+        "probe_script_sha256": "dd890795e1ef6a28ee13843ab8c5f1fb12fc9945b833295057aa31ad5a55ae49"
+      },
+      "policy": {
+        "kv_storage": "bf16",
+        "kv_scale_dtype": "fp32",
+        "kv_scale_granularity": "per_token_head",
+        "speculative_mtp_serving": "off",
+        "prefix_cache": "default",
+        "max_context_tokens": null,
+        "automatic_context": true,
+        "max_active_requests": 1,
+        "automatic_serving_capacity": false,
+        "dms_metadata": null,
+        "dms_metadata_path": null
+      },
+      "prompt_rows": 55552,
+      "decode_tokens": 32,
+      "prompt_token_ids_sha256": "a2154148c42198105d18b08b95b4c85c066edf55a9b32175451810a6ce45db1f",
+      "command": [
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "-m",
+        "hipengine.server",
+        "--model",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1100",
+        "--quant",
+        "gguf_q4_k_m",
+        "--kv-storage",
+        "bf16",
+        "--max-active-requests",
+        "1",
+        "--speculative-mtp-serving",
+        "off",
+        "--metrics",
+        "prometheus",
+        "--port",
+        "18430"
+      ],
+      "environment": {
+        "inherited": {
+          "HIP_VISIBLE_DEVICES": "1",
+          "HIPENGINE_HIP_ARCH": "gfx1100"
+        },
+        "overrides": {}
+      },
+      "status": "pass",
+      "response": {
+        "http_status": 200,
+        "outcome": {
+          "ok": true,
+          "reason": null,
+          "http_status": 200
+        },
+        "parse_error": null,
+        "hipengine": {
+          "routing": {
+            "requested_model": "Qwen3.8-27B-Q4_K_M.gguf",
+            "served_model": "Qwen3.8-27B-Q4_K_M.gguf",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          },
+          "token_accounting": {
+            "choice_generated_token_ids": [
+              [
+                579,
+                197,
+                197,
+                1,
+                197,
+                197,
+                1,
+                197,
+                197,
+                1,
+                197,
+                197,
+                1,
+                197,
+                197,
+                1,
+                197,
+                197,
+                1,
+                197,
+                197,
+                1,
+                197,
+                197,
+                1,
+                197,
+                197,
+                1,
+                197,
+                197,
+                1,
+                197
+              ]
+            ],
+            "choice_generated_tokens": [
+              32
+            ],
+            "total_generated_tokens": 32,
+            "retokenized_visible_tokens": 32
+          },
+          "prompt_token_accounting": {
+            "schema_version": 1,
+            "input_type": "token_ids",
+            "prompt_token_ids_sha256": [
+              "133795d1de1e340e0719b115150919ff24579c23c1ff1bb73e09ab35e8b8a08f"
+            ],
+            "prompt_tokens": [
+              55552
+            ],
+            "total_prompt_tokens": 55552
+          },
+          "generation_shape": {
+            "schema_version": 1,
+            "route": "default",
+            "route_cap": {
+              "scope": "queue_requests",
+              "value": 1,
+              "applied": true
+            },
+            "queue_group": {
+              "id": "queue-bd41ba4b129c4f8497b4bf542cc5a364",
+              "request_count": 1,
+              "prompt_rows": 1,
+              "item_index": 0,
+              "item_prompt_offset": 0,
+              "item_prompt_rows": 1
+            },
+            "backend_groups": [
+              {
+                "id": "backend-1fd6a52ebea14055ba63f14c0cdacc17",
+                "call_index": 0,
+                "prompt_offset": 0,
+                "input_rows": 1,
+                "actual_group_rows": [
+                  1
+                ],
+                "max_actual_group_rows": 1,
+                "verifier_rows": 0
+              }
+            ],
+            "verifier_rows": 0
+          },
+          "speculative_mtp": {
+            "effective_route": "default",
+            "used": false,
+            "draft_tokens": 0,
+            "accepted_draft_tokens": 0,
+            "rejected_draft_tokens": 0,
+            "acceptance_rate": null,
+            "draft_cycles": 0
+          }
+        },
+        "usage": {
+          "prompt_tokens": 55552,
+          "completion_tokens": 32,
+          "total_tokens": 55584,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "finish_reason": "length",
+        "generated_chars": 33,
+        "generated_text_head": "'s\t\t\"\t\t\"\t\t\"\t\t\"\t\t\"\t\t\"\t\t\"\t\t\"\t\t\"\t\t\"\t",
+        "body_head": null
+      },
+      "during_request_peaks": {
+        "hipengine_kv_pool_current_bytes": 3758096384.0,
+        "hipengine_kv_pool_high_water_observed_bytes": 3724541952.0,
+        "hipengine_kv_pool_pinned_pages": 222.0,
+        "hipengine_resident_kv_total_bytes": 3657433088.0,
+        "hipengine_resident_packed_workspace_current_bytes": 1023120684.0,
+        "hipengine_resident_packed_workspace_leased_pool_bytes": 67108864.0,
+        "hipengine_resident_prefill_hidden_owner_bytes": 885269996.0,
+        "hipengine_resident_prefill_oracle_observed_peak_bytes": 0.0,
+        "hipengine_resident_prefill_oracle_observed_peak_owners": 0.0,
+        "hipengine_resident_prefill_oracle_owner_bytes": 0.0,
+        "hipengine_resident_prefill_oracle_owners": 0.0
+      },
+      "domains_gib": {
+        "pool_high_water": 3.4688,
+        "pool_pinned_pages": 222.0,
+        "workspace_owner_deduped": 0.9529,
+        "workspace_leased_pool": 0.0625,
+        "prefill_oracle_live": 0.0,
+        "prefill_oracle_observed_peak": 0.0,
+        "prefill_oracle_observed_peak_owners": 0.0,
+        "prefill_oracle_owners": 0.0,
+        "hidden_bulk_owners": 0.8245,
+        "request_owned_kv_after": 0.0
+      },
+      "server_teardown": "clean",
+      "name": "final-accounting-bf16-off-full",
+      "protocol_tier": 2,
+      "context": {
+        "configured_max_context_tokens": null,
+        "effective_max_context_tokens": 55808,
+        "chat_default_max_tokens": 4096
+      },
+      "model": {
+        "id": "Qwen3.8-27B-Q4_K_M.gguf",
+        "backend": "hip_gfx1100",
+        "quant": "gguf_q4_k_m",
+        "loaded": true,
+        "loaded_model_count": 1,
+        "kv_capability": {
+          "schema_version": 1,
+          "status": "not_applicable",
+          "runtime_action": "not_applicable",
+          "promotion_eligible": false,
+          "diagnostic_override": false,
+          "requested": null,
+          "effective_kv_storage": "bf16",
+          "max_packed_rows": 8,
+          "artifact": {
+            "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+            "size_bytes": null,
+            "sha256": null,
+            "content_verified": false,
+            "error": null
+          },
+          "evidence": null,
+          "reason": "BF16/default KV does not require approximate-KV capability evidence"
+        }
+      },
+      "startup_memory": {
+        "startup_begin": {
+          "free_bytes": 25715277824,
+          "total_bytes": 25753026560,
+          "used_bytes": 37748736,
+          "free_gib": 23.949219,
+          "used_gib": 0.035156
+        },
+        "after_resident_prepare": {
+          "free_bytes": 2273312768,
+          "total_bytes": 25753026560,
+          "used_bytes": 23479713792,
+          "free_gib": 2.117188,
+          "used_gib": 21.867188
+        },
+        "after_raw_warmup": {
+          "free_bytes": 1132462080,
+          "total_bytes": 25753026560,
+          "used_bytes": 24620564480,
+          "free_gib": 1.054688,
+          "used_gib": 22.929688
+        },
+        "after_scratch_probe": {
+          "free_bytes": 1132462080,
+          "total_bytes": 25753026560,
+          "used_bytes": 24620564480,
+          "free_gib": 1.054688,
+          "used_gib": 22.929688
+        },
+        "after_chat_smoke": {
+          "free_bytes": 1132462080,
+          "total_bytes": 25753026560,
+          "used_bytes": 24620564480,
+          "free_gib": 1.054688,
+          "used_gib": 22.929688
+        },
+        "guard": {
+          "free_bytes": 1132462080,
+          "total_bytes": 25753026560,
+          "used_bytes": 24620564480,
+          "free_gib": 1.054688,
+          "used_gib": 22.929688
+        }
+      },
+      "readiness_after_http": 200,
+      "card": {
+        "command": [
+          "bash",
+          "/tmp/hipengine-xtx-recovery-env.sh",
+          "python3",
+          "-u",
+          "scripts/gguf_server_allocation_probe.py",
+          "--kv-storage",
+          "bf16",
+          "--speculative-mtp-serving",
+          "off",
+          "--prefix-cache",
+          "default",
+          "--max-context-tokens",
+          "auto",
+          "--max-active-requests",
+          "1",
+          "--prompt-rows",
+          "55552",
+          "--decode-tokens",
+          "32",
+          "--json",
+          "/tmp/hipengine-xtx-capacity-recovery/final-accounting-bf16-off-full.json"
+        ],
+        "exit_code": 0,
+        "peak_bytes": 25237934080,
+        "sampling_seconds": 0.02,
+        "samples": 10712,
+        "end_bytes": 167825408
+      },
+      "raw_sha256": "68dbee53ce5410da5d62490fabb245a3109a31af3557f0dabe40c3dff6d854a7"
+    },
+    {
+      "identity": {
+        "hostname": "epyc",
+        "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+        "head": "432cf147a",
+        "dirty": "M hipengine/generation/qwen35_gguf.py\n M tests/test_unit_qwen35_gguf_capacity_route_terms.py",
+        "probe_script_sha256": "dd890795e1ef6a28ee13843ab8c5f1fb12fc9945b833295057aa31ad5a55ae49"
+      },
+      "policy": {
+        "kv_storage": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "kv_scale_granularity": "per_token_head",
+        "speculative_mtp_serving": "auto",
+        "prefix_cache": "default",
+        "max_context_tokens": null,
+        "automatic_context": true,
+        "max_active_requests": 1,
+        "automatic_serving_capacity": false,
+        "dms_metadata": null,
+        "dms_metadata_path": null
+      },
+      "prompt_rows": 2048,
+      "decode_tokens": 32,
+      "prompt_token_ids_sha256": "f039271637d8b14213b49c6380efed7d45131d064ae66d876fcd0d510e5419c9",
+      "command": [
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "-m",
+        "hipengine.server",
+        "--model",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1100",
+        "--quant",
+        "gguf_q4_k_m",
+        "--kv-storage",
+        "int8_per_token_head",
+        "--kv-scale-dtype",
+        "fp32",
+        "--kv-scale-granularity",
+        "per_token_head",
+        "--max-active-requests",
+        "1",
+        "--speculative-mtp-serving",
+        "auto",
+        "--metrics",
+        "prometheus",
+        "--port",
+        "18430"
+      ],
+      "environment": {
+        "inherited": {
+          "HIP_VISIBLE_DEVICES": "1",
+          "HIPENGINE_HIP_ARCH": "gfx1100"
+        },
+        "overrides": {}
+      },
+      "status": "pass",
+      "response": {
+        "http_status": 200,
+        "outcome": {
+          "ok": true,
+          "reason": null,
+          "http_status": 200
+        },
+        "parse_error": null,
+        "hipengine": {
+          "routing": {
+            "requested_model": "Qwen3.8-27B-Q4_K_M.gguf",
+            "served_model": "Qwen3.8-27B-Q4_K_M.gguf",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          },
+          "token_accounting": {
+            "choice_generated_token_ids": [
+              [
+                286,
+                11,
+                197,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197
+              ]
+            ],
+            "choice_generated_tokens": [
+              32
+            ],
+            "total_generated_tokens": 32,
+            "retokenized_visible_tokens": 32
+          },
+          "prompt_token_accounting": {
+            "schema_version": 1,
+            "input_type": "token_ids",
+            "prompt_token_ids_sha256": [
+              "9119e8f3c3000c9dc8d1c17df10632428d96be2c84ba787155f97c23840a1549"
+            ],
+            "prompt_tokens": [
+              2048
+            ],
+            "total_prompt_tokens": 2048
+          },
+          "generation_shape": {
+            "schema_version": 1,
+            "route": "speculative_mtp",
+            "route_cap": {
+              "scope": "queue_requests",
+              "value": 1,
+              "applied": true
+            },
+            "queue_group": {
+              "id": "queue-88587225ef354271a3edfb0832420dbd",
+              "request_count": 1,
+              "prompt_rows": 1,
+              "item_index": 0,
+              "item_prompt_offset": 0,
+              "item_prompt_rows": 1
+            },
+            "backend_groups": [
+              {
+                "id": "backend-a270aad467c74886949420d3b7391129",
+                "call_index": 0,
+                "prompt_offset": 0,
+                "input_rows": 1,
+                "actual_group_rows": [
+                  1
+                ],
+                "max_actual_group_rows": 1,
+                "verifier_rows": 0
+              }
+            ],
+            "verifier_rows": 0,
+            "route_decision": {
+              "requested_route": "speculative_mtp_auto",
+              "request_mode": "automatic",
+              "selected_route": "speculative_mtp",
+              "reason": "implemented_gguf_dense_int8_native_chain",
+              "k0_class": "not_k0",
+              "static_eligibility": {
+                "state": "speculative_capable",
+                "eligible": true,
+                "reason": "implemented_gguf_dense_int8_native_chain",
+                "packed_c1_target": false,
+                "max_candidate_count": 3,
+                "max_realized_group_rows": 4,
+                "automatic_eligible": true,
+                "strict_fallback_key": "gguf_target_ar",
+                "evidence_key": null,
+                "evidence_fingerprint": null,
+                "evidence_artifacts": [],
+                "implementation_key": "gguf_dense_int8_native_chain"
+              },
+              "static_eligibility_fingerprint": "sha256:9960297bcacfe36f6ffe35d8a2e4d57fc2fb684aef22802d1bc4266859bb72e4",
+              "static_intent_allowed": true,
+              "policy_cell": "gguf_dense_int8_native_chain",
+              "admission_basis": "implementation",
+              "implementation_key": "gguf_dense_int8_native_chain",
+              "effective_kv_storage": "int8_per_token_head",
+              "kv_layout": "uniform",
+              "kv_scale_dtype": "fp32",
+              "kv_scale_granularity": "per_token_head",
+              "selected_candidate_count": 3,
+              "policy_reason": "implemented_gguf_dense_int8_native_chain",
+              "policy_fingerprint": "sha256:1a1d8270eea4a3329a33ea510e2f2330d521f0c464c252ae9004ffb2f915928c",
+              "realized_group_rows": 1,
+              "output_horizon_tokens": 32,
+              "exact_default_required": true,
+              "automatic_eligible": true,
+              "evidence": "model_plugin_speculative_mtp_serving_plan"
+            }
+          },
+          "speculative_mtp": {
+            "effective_route": "speculative_mtp",
+            "used": true,
+            "draft_tokens": 42,
+            "accepted_draft_tokens": 17,
+            "rejected_draft_tokens": 25,
+            "acceptance_rate": 0.40476190476190477,
+            "draft_cycles": 14,
+            "mtp_output_tokens": 31,
+            "ar_output_tokens": 1,
+            "output_accounting": {
+              "completion_tokens": 32,
+              "mtp_output_tokens": 31,
+              "ar_output_tokens": 1,
+              "ar_output_tokens_in_cycles": 1,
+              "mtp_coverage": 0.96875,
+              "mtp_output_tokens_explained_by_cycles": 31,
+              "unexplained_mtp_output_tokens": 0,
+              "speculative_cycles": 14,
+              "reconciled": true,
+              "reconciled_reasons": []
+            },
+            "selected_depth_histogram": {
+              "3": 14
+            },
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "fallback_event_total": 1,
+            "execution": {
+              "activation_reason": null,
+              "provider_readiness": "ready",
+              "provider_state_present": true,
+              "provider_decline_reason": null,
+              "plan_group_rows": 1,
+              "plan_ar_only": false,
+              "plan_reason": "speculative_qualified"
+            },
+            "cycle_timing_ms": {
+              "proposal": 124.9632965773344,
+              "target": 1162.050632,
+              "provider_update": 7.4300505220890045,
+              "accept": 0.0,
+              "candidate_readback": 0.0,
+              "target_readback": 0.0,
+              "accept_upload": 0.0,
+              "accept_tail": 0.0,
+              "accept_enqueue": 0.0,
+              "selected_commit": 0.0
+            },
+            "first_fallback_position": null,
+            "requested_route": "speculative_mtp_auto",
+            "decision_reason": "implemented_gguf_dense_int8_native_chain",
+            "thinking_policy": "hint",
+            "thinking_controls": "prompt_hint_only"
+          }
+        },
+        "usage": {
+          "prompt_tokens": 2048,
+          "completion_tokens": 32,
+          "total_tokens": 2080,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 17,
+            "rejected_prediction_tokens": 25
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "finish_reason": "length",
+        "generated_chars": 34,
+        "generated_text_head": "ing,\t\t,\t,\t,\t,\t,\t,\t,\t,\t,\t,\t,\t,\t,\t,\t",
+        "body_head": null
+      },
+      "during_request_peaks": {
+        "hipengine_kv_pool_current_bytes": 621936640.0,
+        "hipengine_kv_pool_high_water_observed_bytes": 110755840.0,
+        "hipengine_kv_pool_pinned_pages": 13.0,
+        "hipengine_resident_kv_total_bytes": 76677120.0,
+        "hipengine_resident_packed_workspace_current_bytes": 1017088108.0,
+        "hipengine_resident_packed_workspace_leased_pool_bytes": 34078720.0,
+        "hipengine_resident_prefill_hidden_owner_bytes": 1241812524.0,
+        "hipengine_resident_prefill_oracle_observed_peak_bytes": 72351744.0,
+        "hipengine_resident_prefill_oracle_observed_peak_owners": 1.0,
+        "hipengine_resident_prefill_oracle_owner_bytes": 0.0,
+        "hipengine_resident_prefill_oracle_owners": 0.0
+      },
+      "domains_gib": {
+        "pool_high_water": 0.1031,
+        "pool_pinned_pages": 13.0,
+        "workspace_owner_deduped": 0.9472,
+        "workspace_leased_pool": 0.0317,
+        "prefill_oracle_live": 0.0,
+        "prefill_oracle_observed_peak": 0.0674,
+        "prefill_oracle_observed_peak_owners": 1.0,
+        "prefill_oracle_owners": 0.0,
+        "hidden_bulk_owners": 1.1565,
+        "request_owned_kv_after": 0.0
+      },
+      "server_teardown": "clean",
+      "name": "final-accounting-int8_per_token_head-auto-allocation",
+      "protocol_tier": 1,
+      "context": {
+        "configured_max_context_tokens": null,
+        "effective_max_context_tokens": 17664,
+        "chat_default_max_tokens": 4096
+      },
+      "model": {
+        "id": "Qwen3.8-27B-Q4_K_M.gguf",
+        "backend": "hip_gfx1100",
+        "quant": "gguf_q4_k_m",
+        "loaded": true,
+        "loaded_model_count": 1,
+        "kv_capability": {
+          "schema_version": 1,
+          "capability_id": "aea991f631ef5c1661a43b705660793592cfc5b3e70f1df90d503ed0d7b0e234",
+          "status": "qualified",
+          "runtime_action": "admit",
+          "promotion_eligible": true,
+          "max_direct_rows": 4,
+          "max_serial_resident_rows": 4,
+          "persistent_bf16_mirror": false,
+          "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans",
+          "declaration": {
+            "backend": "hip_gfx1100",
+            "target_arch": "gfx1100",
+            "weight_quant": null,
+            "kv_storage": "int8_per_token_head",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head",
+            "max_direct_rows": 4,
+            "max_serial_resident_rows": 4,
+            "persistent_bf16_mirror": false,
+            "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans",
+            "reason": "registered int8 per-token-head paged decode chain; the row-batched producer and its strided reducer are implemented to physical c4"
+          },
+          "diagnostic_override": false,
+          "requested": {
+            "artifact_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+            "artifact_size_bytes": 17106773984,
+            "artifact_execution_fingerprint": "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa",
+            "backend": "hip_gfx1100",
+            "target_arch": "gfx1100",
+            "weight_quant": "gguf_q4_k_m",
+            "kv_storage": "int8_per_token_head",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head"
+          },
+          "effective_kv_storage": "int8_per_token_head",
+          "artifact": {
+            "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+            "size_bytes": 17106773984,
+            "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+            "content_verified": true,
+            "error": null
+          },
+          "evidence": {
+            "decision": "qualified",
+            "scope": "explicit_no_mirror_direct_c4",
+            "quality_artifact": "benchmarks/results/2026-08-16-qwen38-27b-actual-context-quality-w7900.json",
+            "reason": "complete 512/8 and 4K/16 plus bounded 129024/16 quality pass on gfx1100; direct compact row-batched decode is qualified to physical c4 because the row-batched 24Q/4KV/D256 producer and its strided reducer are bit-identical to the already-qualified c1 leaf at fixed width and across retire/admit transitions, so the retained quality artifact stays the applicable quality basis",
+            "max_direct_rows": 4,
+            "max_serial_resident_rows": 4,
+            "persistent_bf16_mirror": false,
+            "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans"
+          },
+          "reason": "complete 512/8 and 4K/16 plus bounded 129024/16 quality pass on gfx1100; direct compact row-batched decode is qualified to physical c4 because the row-batched 24Q/4KV/D256 producer and its strided reducer are bit-identical to the already-qualified c1 leaf at fixed width and across retire/admit transitions, so the retained quality artifact stays the applicable quality basis",
+          "max_packed_rows": 4
+        }
+      },
+      "startup_memory": {
+        "startup_begin": {
+          "free_bytes": 25715277824,
+          "total_bytes": 25753026560,
+          "used_bytes": 37748736,
+          "free_gib": 23.949219,
+          "used_gib": 0.035156
+        },
+        "after_resident_prepare": {
+          "free_bytes": 4236247040,
+          "total_bytes": 25753026560,
+          "used_bytes": 21516779520,
+          "free_gib": 3.945312,
+          "used_gib": 20.039062
+        },
+        "after_raw_warmup": {
+          "free_bytes": 3072327680,
+          "total_bytes": 25753026560,
+          "used_bytes": 22680698880,
+          "free_gib": 2.861328,
+          "used_gib": 21.123047
+        },
+        "after_scratch_probe": {
+          "free_bytes": 3072327680,
+          "total_bytes": 25753026560,
+          "used_bytes": 22680698880,
+          "free_gib": 2.861328,
+          "used_gib": 21.123047
+        },
+        "after_chat_smoke": {
+          "free_bytes": 3072327680,
+          "total_bytes": 25753026560,
+          "used_bytes": 22680698880,
+          "free_gib": 2.861328,
+          "used_gib": 21.123047
+        },
+        "after_mtp_smoke": {
+          "free_bytes": 1965031424,
+          "total_bytes": 25753026560,
+          "used_bytes": 23787995136,
+          "free_gib": 1.830078,
+          "used_gib": 22.154297
+        },
+        "guard": {
+          "free_bytes": 1965031424,
+          "total_bytes": 25753026560,
+          "used_bytes": 23787995136,
+          "free_gib": 1.830078,
+          "used_gib": 22.154297
+        }
+      },
+      "readiness_after_http": 200,
+      "card": {
+        "command": [
+          "bash",
+          "/tmp/hipengine-xtx-recovery-env.sh",
+          "python3",
+          "-u",
+          "scripts/gguf_server_allocation_probe.py",
+          "--kv-storage",
+          "int8_per_token_head",
+          "--speculative-mtp-serving",
+          "auto",
+          "--prefix-cache",
+          "default",
+          "--max-context-tokens",
+          "auto",
+          "--max-active-requests",
+          "1",
+          "--prompt-rows",
+          "2048",
+          "--decode-tokens",
+          "32",
+          "--json",
+          "/tmp/hipengine-xtx-capacity-recovery/final-accounting-int8_per_token_head-auto-allocation.json"
+        ],
+        "exit_code": 0,
+        "peak_bytes": 24299249664,
+        "sampling_seconds": 0.02,
+        "samples": 5352,
+        "end_bytes": 260280320
+      },
+      "raw_sha256": "676985c96db4911454ca5890dabdc04a821dac9c6e78c6106e2361c0f43fc546"
+    },
+    {
+      "identity": {
+        "hostname": "epyc",
+        "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+        "head": "432cf147a",
+        "dirty": "M hipengine/generation/qwen35_gguf.py\n M tests/test_unit_qwen35_gguf_capacity_route_terms.py",
+        "probe_script_sha256": "dd890795e1ef6a28ee13843ab8c5f1fb12fc9945b833295057aa31ad5a55ae49"
+      },
+      "policy": {
+        "kv_storage": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "kv_scale_granularity": "per_token_head",
+        "speculative_mtp_serving": "auto",
+        "prefix_cache": "default",
+        "max_context_tokens": null,
+        "automatic_context": true,
+        "max_active_requests": 1,
+        "automatic_serving_capacity": false,
+        "dms_metadata": null,
+        "dms_metadata_path": null
+      },
+      "prompt_rows": 17408,
+      "decode_tokens": 32,
+      "prompt_token_ids_sha256": "e71ee724146c0dd73311066594a078efcb00b7daac4792ea7334615fafd113bb",
+      "command": [
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "-m",
+        "hipengine.server",
+        "--model",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1100",
+        "--quant",
+        "gguf_q4_k_m",
+        "--kv-storage",
+        "int8_per_token_head",
+        "--kv-scale-dtype",
+        "fp32",
+        "--kv-scale-granularity",
+        "per_token_head",
+        "--max-active-requests",
+        "1",
+        "--speculative-mtp-serving",
+        "auto",
+        "--metrics",
+        "prometheus",
+        "--port",
+        "18430"
+      ],
+      "environment": {
+        "inherited": {
+          "HIP_VISIBLE_DEVICES": "1",
+          "HIPENGINE_HIP_ARCH": "gfx1100"
+        },
+        "overrides": {}
+      },
+      "status": "pass",
+      "response": {
+        "http_status": 200,
+        "outcome": {
+          "ok": true,
+          "reason": null,
+          "http_status": 200
+        },
+        "parse_error": null,
+        "hipengine": {
+          "routing": {
+            "requested_model": "Qwen3.8-27B-Q4_K_M.gguf",
+            "served_model": "Qwen3.8-27B-Q4_K_M.gguf",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          },
+          "token_accounting": {
+            "choice_generated_token_ids": [
+              [
+                579,
+                197,
+                197,
+                1,
+                197,
+                197,
+                1,
+                197,
+                197,
+                1,
+                197,
+                197,
+                1,
+                197,
+                197,
+                1,
+                197,
+                197,
+                1,
+                197,
+                197,
+                1,
+                197,
+                197,
+                1,
+                197,
+                197,
+                1,
+                197,
+                197,
+                1,
+                197
+              ]
+            ],
+            "choice_generated_tokens": [
+              32
+            ],
+            "total_generated_tokens": 32,
+            "retokenized_visible_tokens": 32
+          },
+          "prompt_token_accounting": {
+            "schema_version": 1,
+            "input_type": "token_ids",
+            "prompt_token_ids_sha256": [
+              "3d7a562bfda50d9297959530ecdfd174db394c270ffffe954b1e050dce37d21e"
+            ],
+            "prompt_tokens": [
+              17408
+            ],
+            "total_prompt_tokens": 17408
+          },
+          "generation_shape": {
+            "schema_version": 1,
+            "route": "speculative_mtp",
+            "route_cap": {
+              "scope": "queue_requests",
+              "value": 1,
+              "applied": true
+            },
+            "queue_group": {
+              "id": "queue-ede641d5d3cd4d11849b2400bc4909e5",
+              "request_count": 1,
+              "prompt_rows": 1,
+              "item_index": 0,
+              "item_prompt_offset": 0,
+              "item_prompt_rows": 1
+            },
+            "backend_groups": [
+              {
+                "id": "backend-027a8b78d960464586ad1131e632e035",
+                "call_index": 0,
+                "prompt_offset": 0,
+                "input_rows": 1,
+                "actual_group_rows": [
+                  1
+                ],
+                "max_actual_group_rows": 1,
+                "verifier_rows": 0
+              }
+            ],
+            "verifier_rows": 0,
+            "route_decision": {
+              "requested_route": "speculative_mtp_auto",
+              "request_mode": "automatic",
+              "selected_route": "speculative_mtp",
+              "reason": "implemented_gguf_dense_int8_native_chain",
+              "k0_class": "not_k0",
+              "static_eligibility": {
+                "state": "speculative_capable",
+                "eligible": true,
+                "reason": "implemented_gguf_dense_int8_native_chain",
+                "packed_c1_target": false,
+                "max_candidate_count": 3,
+                "max_realized_group_rows": 4,
+                "automatic_eligible": true,
+                "strict_fallback_key": "gguf_target_ar",
+                "evidence_key": null,
+                "evidence_fingerprint": null,
+                "evidence_artifacts": [],
+                "implementation_key": "gguf_dense_int8_native_chain"
+              },
+              "static_eligibility_fingerprint": "sha256:9960297bcacfe36f6ffe35d8a2e4d57fc2fb684aef22802d1bc4266859bb72e4",
+              "static_intent_allowed": true,
+              "policy_cell": "gguf_dense_int8_native_chain",
+              "admission_basis": "implementation",
+              "implementation_key": "gguf_dense_int8_native_chain",
+              "effective_kv_storage": "int8_per_token_head",
+              "kv_layout": "uniform",
+              "kv_scale_dtype": "fp32",
+              "kv_scale_granularity": "per_token_head",
+              "selected_candidate_count": 3,
+              "policy_reason": "implemented_gguf_dense_int8_native_chain",
+              "policy_fingerprint": "sha256:1a1d8270eea4a3329a33ea510e2f2330d521f0c464c252ae9004ffb2f915928c",
+              "realized_group_rows": 1,
+              "output_horizon_tokens": 32,
+              "exact_default_required": true,
+              "automatic_eligible": true,
+              "evidence": "model_plugin_speculative_mtp_serving_plan"
+            }
+          },
+          "speculative_mtp": {
+            "effective_route": "speculative_mtp",
+            "used": true,
+            "draft_tokens": 42,
+            "accepted_draft_tokens": 17,
+            "rejected_draft_tokens": 25,
+            "acceptance_rate": 0.40476190476190477,
+            "draft_cycles": 14,
+            "mtp_output_tokens": 31,
+            "ar_output_tokens": 1,
+            "output_accounting": {
+              "completion_tokens": 32,
+              "mtp_output_tokens": 31,
+              "ar_output_tokens": 1,
+              "ar_output_tokens_in_cycles": 1,
+              "mtp_coverage": 0.96875,
+              "mtp_output_tokens_explained_by_cycles": 31,
+              "unexplained_mtp_output_tokens": 0,
+              "speculative_cycles": 14,
+              "reconciled": true,
+              "reconciled_reasons": []
+            },
+            "selected_depth_histogram": {
+              "3": 14
+            },
+            "fallback_event_counts": {
+              "no_provider": 1
+            },
+            "fallback_event_total": 1,
+            "execution": {
+              "activation_reason": null,
+              "provider_readiness": "ready",
+              "provider_state_present": true,
+              "provider_decline_reason": null,
+              "plan_group_rows": 1,
+              "plan_ar_only": false,
+              "plan_reason": "speculative_qualified"
+            },
+            "cycle_timing_ms": {
+              "proposal": 215.4426146298647,
+              "target": 1245.786735,
+              "provider_update": 8.501838892698288,
+              "accept": 0.0,
+              "candidate_readback": 0.0,
+              "target_readback": 0.0,
+              "accept_upload": 0.0,
+              "accept_tail": 0.0,
+              "accept_enqueue": 0.0,
+              "selected_commit": 0.0
+            },
+            "first_fallback_position": null,
+            "requested_route": "speculative_mtp_auto",
+            "decision_reason": "implemented_gguf_dense_int8_native_chain",
+            "thinking_policy": "hint",
+            "thinking_controls": "prompt_hint_only"
+          }
+        },
+        "usage": {
+          "prompt_tokens": 17408,
+          "completion_tokens": 32,
+          "total_tokens": 17440,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 17,
+            "rejected_prediction_tokens": 25
+          },
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "finish_reason": "length",
+        "generated_chars": 33,
+        "generated_text_head": "'s\t\t\"\t\t\"\t\t\"\t\t\"\t\t\"\t\t\"\t\t\"\t\t\"\t\t\"\t\t\"\t",
+        "body_head": null
+      },
+      "during_request_peaks": {
+        "hipengine_kv_pool_current_bytes": 621936640.0,
+        "hipengine_kv_pool_high_water_observed_bytes": 621936640.0,
+        "hipengine_kv_pool_pinned_pages": 73.0,
+        "hipengine_resident_kv_total_bytes": 587857920.0,
+        "hipengine_resident_packed_workspace_current_bytes": 1018819948.0,
+        "hipengine_resident_packed_workspace_leased_pool_bytes": 34078720.0,
+        "hipengine_resident_prefill_hidden_owner_bytes": 1556385324.0,
+        "hipengine_resident_prefill_oracle_observed_peak_bytes": 72351744.0,
+        "hipengine_resident_prefill_oracle_observed_peak_owners": 1.0,
+        "hipengine_resident_prefill_oracle_owner_bytes": 0.0,
+        "hipengine_resident_prefill_oracle_owners": 0.0
+      },
+      "domains_gib": {
+        "pool_high_water": 0.5792,
+        "pool_pinned_pages": 73.0,
+        "workspace_owner_deduped": 0.9489,
+        "workspace_leased_pool": 0.0317,
+        "prefill_oracle_live": 0.0,
+        "prefill_oracle_observed_peak": 0.0674,
+        "prefill_oracle_observed_peak_owners": 1.0,
+        "prefill_oracle_owners": 0.0,
+        "hidden_bulk_owners": 1.4495,
+        "request_owned_kv_after": 0.0
+      },
+      "server_teardown": "clean",
+      "name": "final-accounting-int8_per_token_head-auto-full",
+      "protocol_tier": 2,
+      "context": {
+        "configured_max_context_tokens": null,
+        "effective_max_context_tokens": 17664,
+        "chat_default_max_tokens": 4096
+      },
+      "model": {
+        "id": "Qwen3.8-27B-Q4_K_M.gguf",
+        "backend": "hip_gfx1100",
+        "quant": "gguf_q4_k_m",
+        "loaded": true,
+        "loaded_model_count": 1,
+        "kv_capability": {
+          "schema_version": 1,
+          "capability_id": "aea991f631ef5c1661a43b705660793592cfc5b3e70f1df90d503ed0d7b0e234",
+          "status": "qualified",
+          "runtime_action": "admit",
+          "promotion_eligible": true,
+          "max_direct_rows": 4,
+          "max_serial_resident_rows": 4,
+          "persistent_bf16_mirror": false,
+          "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans",
+          "declaration": {
+            "backend": "hip_gfx1100",
+            "target_arch": "gfx1100",
+            "weight_quant": null,
+            "kv_storage": "int8_per_token_head",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head",
+            "max_direct_rows": 4,
+            "max_serial_resident_rows": 4,
+            "persistent_bf16_mirror": false,
+            "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans",
+            "reason": "registered int8 per-token-head paged decode chain; the row-batched producer and its strided reducer are implemented to physical c4"
+          },
+          "diagnostic_override": false,
+          "requested": {
+            "artifact_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+            "artifact_size_bytes": 17106773984,
+            "artifact_execution_fingerprint": "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa",
+            "backend": "hip_gfx1100",
+            "target_arch": "gfx1100",
+            "weight_quant": "gguf_q4_k_m",
+            "kv_storage": "int8_per_token_head",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head"
+          },
+          "effective_kv_storage": "int8_per_token_head",
+          "artifact": {
+            "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+            "size_bytes": 17106773984,
+            "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+            "content_verified": true,
+            "error": null
+          },
+          "evidence": {
+            "decision": "qualified",
+            "scope": "explicit_no_mirror_direct_c4",
+            "quality_artifact": "benchmarks/results/2026-08-16-qwen38-27b-actual-context-quality-w7900.json",
+            "reason": "complete 512/8 and 4K/16 plus bounded 129024/16 quality pass on gfx1100; direct compact row-batched decode is qualified to physical c4 because the row-batched 24Q/4KV/D256 producer and its strided reducer are bit-identical to the already-qualified c1 leaf at fixed width and across retire/admit transitions, so the retained quality artifact stays the applicable quality basis",
+            "max_direct_rows": 4,
+            "max_serial_resident_rows": 4,
+            "persistent_bf16_mirror": false,
+            "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans"
+          },
+          "reason": "complete 512/8 and 4K/16 plus bounded 129024/16 quality pass on gfx1100; direct compact row-batched decode is qualified to physical c4 because the row-batched 24Q/4KV/D256 producer and its strided reducer are bit-identical to the already-qualified c1 leaf at fixed width and across retire/admit transitions, so the retained quality artifact stays the applicable quality basis",
+          "max_packed_rows": 4
+        }
+      },
+      "startup_memory": {
+        "startup_begin": {
+          "free_bytes": 25715277824,
+          "total_bytes": 25753026560,
+          "used_bytes": 37748736,
+          "free_gib": 23.949219,
+          "used_gib": 0.035156
+        },
+        "after_resident_prepare": {
+          "free_bytes": 4236247040,
+          "total_bytes": 25753026560,
+          "used_bytes": 21516779520,
+          "free_gib": 3.945312,
+          "used_gib": 20.039062
+        },
+        "after_raw_warmup": {
+          "free_bytes": 3072327680,
+          "total_bytes": 25753026560,
+          "used_bytes": 22680698880,
+          "free_gib": 2.861328,
+          "used_gib": 21.123047
+        },
+        "after_scratch_probe": {
+          "free_bytes": 3072327680,
+          "total_bytes": 25753026560,
+          "used_bytes": 22680698880,
+          "free_gib": 2.861328,
+          "used_gib": 21.123047
+        },
+        "after_chat_smoke": {
+          "free_bytes": 3072327680,
+          "total_bytes": 25753026560,
+          "used_bytes": 22680698880,
+          "free_gib": 2.861328,
+          "used_gib": 21.123047
+        },
+        "after_mtp_smoke": {
+          "free_bytes": 1965031424,
+          "total_bytes": 25753026560,
+          "used_bytes": 23787995136,
+          "free_gib": 1.830078,
+          "used_gib": 22.154297
+        },
+        "guard": {
+          "free_bytes": 1965031424,
+          "total_bytes": 25753026560,
+          "used_bytes": 23787995136,
+          "free_gib": 1.830078,
+          "used_gib": 22.154297
+        }
+      },
+      "readiness_after_http": 200,
+      "card": {
+        "command": [
+          "bash",
+          "/tmp/hipengine-xtx-recovery-env.sh",
+          "python3",
+          "-u",
+          "scripts/gguf_server_allocation_probe.py",
+          "--kv-storage",
+          "int8_per_token_head",
+          "--speculative-mtp-serving",
+          "auto",
+          "--prefix-cache",
+          "default",
+          "--max-context-tokens",
+          "auto",
+          "--max-active-requests",
+          "1",
+          "--prompt-rows",
+          "17408",
+          "--decode-tokens",
+          "32",
+          "--json",
+          "/tmp/hipengine-xtx-capacity-recovery/final-accounting-int8_per_token_head-auto-full.json"
+        ],
+        "exit_code": 0,
+        "peak_bytes": 24773054464,
+        "sampling_seconds": 0.02,
+        "samples": 6594,
+        "end_bytes": 260079616
+      },
+      "raw_sha256": "9bd723352196f87d3e9973edc9c7b170dbb93e40913311af3750e720e32e1a9f"
+    },
+    {
+      "identity": {
+        "hostname": "epyc",
+        "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+        "head": "432cf147a",
+        "dirty": "M hipengine/generation/qwen35_gguf.py\n M tests/test_unit_qwen35_gguf_capacity_route_terms.py",
+        "probe_script_sha256": "dd890795e1ef6a28ee13843ab8c5f1fb12fc9945b833295057aa31ad5a55ae49"
+      },
+      "policy": {
+        "kv_storage": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "kv_scale_granularity": "per_token_head",
+        "speculative_mtp_serving": "off",
+        "prefix_cache": "default",
+        "max_context_tokens": null,
+        "automatic_context": true,
+        "max_active_requests": 1,
+        "automatic_serving_capacity": false,
+        "dms_metadata": null,
+        "dms_metadata_path": null
+      },
+      "prompt_rows": 2048,
+      "decode_tokens": 32,
+      "prompt_token_ids_sha256": "f039271637d8b14213b49c6380efed7d45131d064ae66d876fcd0d510e5419c9",
+      "command": [
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "-m",
+        "hipengine.server",
+        "--model",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1100",
+        "--quant",
+        "gguf_q4_k_m",
+        "--kv-storage",
+        "int8_per_token_head",
+        "--kv-scale-dtype",
+        "fp32",
+        "--kv-scale-granularity",
+        "per_token_head",
+        "--max-active-requests",
+        "1",
+        "--speculative-mtp-serving",
+        "off",
+        "--metrics",
+        "prometheus",
+        "--port",
+        "18430"
+      ],
+      "environment": {
+        "inherited": {
+          "HIP_VISIBLE_DEVICES": "1",
+          "HIPENGINE_HIP_ARCH": "gfx1100"
+        },
+        "overrides": {}
+      },
+      "status": "pass",
+      "response": {
+        "http_status": 200,
+        "outcome": {
+          "ok": true,
+          "reason": null,
+          "http_status": 200
+        },
+        "parse_error": null,
+        "hipengine": {
+          "routing": {
+            "requested_model": "Qwen3.8-27B-Q4_K_M.gguf",
+            "served_model": "Qwen3.8-27B-Q4_K_M.gguf",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          },
+          "token_accounting": {
+            "choice_generated_token_ids": [
+              [
+                286,
+                11,
+                197,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197,
+                11,
+                197
+              ]
+            ],
+            "choice_generated_tokens": [
+              32
+            ],
+            "total_generated_tokens": 32,
+            "retokenized_visible_tokens": 32
+          },
+          "prompt_token_accounting": {
+            "schema_version": 1,
+            "input_type": "token_ids",
+            "prompt_token_ids_sha256": [
+              "9119e8f3c3000c9dc8d1c17df10632428d96be2c84ba787155f97c23840a1549"
+            ],
+            "prompt_tokens": [
+              2048
+            ],
+            "total_prompt_tokens": 2048
+          },
+          "generation_shape": {
+            "schema_version": 1,
+            "route": "default",
+            "route_cap": {
+              "scope": "queue_requests",
+              "value": 1,
+              "applied": true
+            },
+            "queue_group": {
+              "id": "queue-8fe4d8614733426cb9c6dce2ff1a001d",
+              "request_count": 1,
+              "prompt_rows": 1,
+              "item_index": 0,
+              "item_prompt_offset": 0,
+              "item_prompt_rows": 1
+            },
+            "backend_groups": [
+              {
+                "id": "backend-8749eef1b0334a6ab2e2fef93fd09297",
+                "call_index": 0,
+                "prompt_offset": 0,
+                "input_rows": 1,
+                "actual_group_rows": [
+                  1
+                ],
+                "max_actual_group_rows": 1,
+                "verifier_rows": 0
+              }
+            ],
+            "verifier_rows": 0
+          },
+          "speculative_mtp": {
+            "effective_route": "default",
+            "used": false,
+            "draft_tokens": 0,
+            "accepted_draft_tokens": 0,
+            "rejected_draft_tokens": 0,
+            "acceptance_rate": null,
+            "draft_cycles": 0
+          }
+        },
+        "usage": {
+          "prompt_tokens": 2048,
+          "completion_tokens": 32,
+          "total_tokens": 2080,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "finish_reason": "length",
+        "generated_chars": 34,
+        "generated_text_head": "ing,\t\t,\t,\t,\t,\t,\t,\t,\t,\t,\t,\t,\t,\t,\t,\t",
+        "body_head": null
+      },
+      "during_request_peaks": {
+        "hipengine_kv_pool_current_bytes": 1542062080.0,
+        "hipengine_kv_pool_high_water_observed_bytes": 110755840.0,
+        "hipengine_kv_pool_pinned_pages": 4.0,
+        "hipengine_resident_kv_total_bytes": 76677120.0,
+        "hipengine_resident_packed_workspace_current_bytes": 1017088108.0,
+        "hipengine_resident_packed_workspace_leased_pool_bytes": 34078720.0,
+        "hipengine_resident_prefill_hidden_owner_bytes": 1538875948.0,
+        "hipengine_resident_prefill_oracle_observed_peak_bytes": 189792256.0,
+        "hipengine_resident_prefill_oracle_observed_peak_owners": 1.0,
+        "hipengine_resident_prefill_oracle_owner_bytes": 0.0,
+        "hipengine_resident_prefill_oracle_owners": 0.0
+      },
+      "domains_gib": {
+        "pool_high_water": 0.1031,
+        "pool_pinned_pages": 4.0,
+        "workspace_owner_deduped": 0.9472,
+        "workspace_leased_pool": 0.0317,
+        "prefill_oracle_live": 0.0,
+        "prefill_oracle_observed_peak": 0.1768,
+        "prefill_oracle_observed_peak_owners": 1.0,
+        "prefill_oracle_owners": 0.0,
+        "hidden_bulk_owners": 1.4332,
+        "request_owned_kv_after": 0.0
+      },
+      "server_teardown": "clean",
+      "name": "final-accounting-int8_per_token_head-off-allocation",
+      "protocol_tier": 1,
+      "context": {
+        "configured_max_context_tokens": null,
+        "effective_max_context_tokens": 46336,
+        "chat_default_max_tokens": 4096
+      },
+      "model": {
+        "id": "Qwen3.8-27B-Q4_K_M.gguf",
+        "backend": "hip_gfx1100",
+        "quant": "gguf_q4_k_m",
+        "loaded": true,
+        "loaded_model_count": 1,
+        "kv_capability": {
+          "schema_version": 1,
+          "capability_id": "aea991f631ef5c1661a43b705660793592cfc5b3e70f1df90d503ed0d7b0e234",
+          "status": "qualified",
+          "runtime_action": "admit",
+          "promotion_eligible": true,
+          "max_direct_rows": 4,
+          "max_serial_resident_rows": 4,
+          "persistent_bf16_mirror": false,
+          "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans",
+          "declaration": {
+            "backend": "hip_gfx1100",
+            "target_arch": "gfx1100",
+            "weight_quant": null,
+            "kv_storage": "int8_per_token_head",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head",
+            "max_direct_rows": 4,
+            "max_serial_resident_rows": 4,
+            "persistent_bf16_mirror": false,
+            "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans",
+            "reason": "registered int8 per-token-head paged decode chain; the row-batched producer and its strided reducer are implemented to physical c4"
+          },
+          "diagnostic_override": false,
+          "requested": {
+            "artifact_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+            "artifact_size_bytes": 17106773984,
+            "artifact_execution_fingerprint": "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa",
+            "backend": "hip_gfx1100",
+            "target_arch": "gfx1100",
+            "weight_quant": "gguf_q4_k_m",
+            "kv_storage": "int8_per_token_head",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head"
+          },
+          "effective_kv_storage": "int8_per_token_head",
+          "artifact": {
+            "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+            "size_bytes": 17106773984,
+            "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+            "content_verified": true,
+            "error": null
+          },
+          "evidence": {
+            "decision": "qualified",
+            "scope": "explicit_no_mirror_direct_c4",
+            "quality_artifact": "benchmarks/results/2026-08-16-qwen38-27b-actual-context-quality-w7900.json",
+            "reason": "complete 512/8 and 4K/16 plus bounded 129024/16 quality pass on gfx1100; direct compact row-batched decode is qualified to physical c4 because the row-batched 24Q/4KV/D256 producer and its strided reducer are bit-identical to the already-qualified c1 leaf at fixed width and across retire/admit transitions, so the retained quality artifact stays the applicable quality basis",
+            "max_direct_rows": 4,
+            "max_serial_resident_rows": 4,
+            "persistent_bf16_mirror": false,
+            "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans"
+          },
+          "reason": "complete 512/8 and 4K/16 plus bounded 129024/16 quality pass on gfx1100; direct compact row-batched decode is qualified to physical c4 because the row-batched 24Q/4KV/D256 producer and its strided reducer are bit-identical to the already-qualified c1 leaf at fixed width and across retire/admit transitions, so the retained quality artifact stays the applicable quality basis",
+          "max_packed_rows": 4
+        }
+      },
+      "startup_memory": {
+        "startup_begin": {
+          "free_bytes": 25715277824,
+          "total_bytes": 25753026560,
+          "used_bytes": 37748736,
+          "free_gib": 23.949219,
+          "used_gib": 0.035156
+        },
+        "after_resident_prepare": {
+          "free_bytes": 3902799872,
+          "total_bytes": 25753026560,
+          "used_bytes": 21850226688,
+          "free_gib": 3.634766,
+          "used_gib": 20.349609
+        },
+        "after_raw_warmup": {
+          "free_bytes": 2692743168,
+          "total_bytes": 25753026560,
+          "used_bytes": 23060283392,
+          "free_gib": 2.507812,
+          "used_gib": 21.476562
+        },
+        "after_scratch_probe": {
+          "free_bytes": 2692743168,
+          "total_bytes": 25753026560,
+          "used_bytes": 23060283392,
+          "free_gib": 2.507812,
+          "used_gib": 21.476562
+        },
+        "after_chat_smoke": {
+          "free_bytes": 2692743168,
+          "total_bytes": 25753026560,
+          "used_bytes": 23060283392,
+          "free_gib": 2.507812,
+          "used_gib": 21.476562
+        },
+        "guard": {
+          "free_bytes": 2692743168,
+          "total_bytes": 25753026560,
+          "used_bytes": 23060283392,
+          "free_gib": 2.507812,
+          "used_gib": 21.476562
+        }
+      },
+      "readiness_after_http": 200,
+      "card": {
+        "command": [
+          "bash",
+          "/tmp/hipengine-xtx-recovery-env.sh",
+          "python3",
+          "-u",
+          "scripts/gguf_server_allocation_probe.py",
+          "--kv-storage",
+          "int8_per_token_head",
+          "--speculative-mtp-serving",
+          "off",
+          "--prefix-cache",
+          "default",
+          "--max-context-tokens",
+          "auto",
+          "--max-active-requests",
+          "1",
+          "--prompt-rows",
+          "2048",
+          "--decode-tokens",
+          "32",
+          "--json",
+          "/tmp/hipengine-xtx-capacity-recovery/final-accounting-int8_per_token_head-off-allocation.json"
+        ],
+        "exit_code": 0,
+        "peak_bytes": 23638638592,
+        "sampling_seconds": 0.02,
+        "samples": 5061,
+        "end_bytes": 121597952
+      },
+      "raw_sha256": "d2e343c5a3803a6fa50ef502a69efa13086fdeb6cfeeed5ef5f81569d5c36354"
+    },
+    {
+      "identity": {
+        "hostname": "epyc",
+        "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+        "head": "432cf147a",
+        "dirty": "M hipengine/generation/qwen35_gguf.py\n M tests/test_unit_qwen35_gguf_capacity_route_terms.py",
+        "probe_script_sha256": "dd890795e1ef6a28ee13843ab8c5f1fb12fc9945b833295057aa31ad5a55ae49"
+      },
+      "policy": {
+        "kv_storage": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "kv_scale_granularity": "per_token_head",
+        "speculative_mtp_serving": "off",
+        "prefix_cache": "default",
+        "max_context_tokens": null,
+        "automatic_context": true,
+        "max_active_requests": 1,
+        "automatic_serving_capacity": false,
+        "dms_metadata": null,
+        "dms_metadata_path": null
+      },
+      "prompt_rows": 46080,
+      "decode_tokens": 32,
+      "prompt_token_ids_sha256": "9ef6cc932b4e1341afe1fd978786e14a9b7eadb80364be523cc080e775b0526b",
+      "command": [
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "-m",
+        "hipengine.server",
+        "--model",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1100",
+        "--quant",
+        "gguf_q4_k_m",
+        "--kv-storage",
+        "int8_per_token_head",
+        "--kv-scale-dtype",
+        "fp32",
+        "--kv-scale-granularity",
+        "per_token_head",
+        "--max-active-requests",
+        "1",
+        "--speculative-mtp-serving",
+        "off",
+        "--metrics",
+        "prometheus",
+        "--port",
+        "18430"
+      ],
+      "environment": {
+        "inherited": {
+          "HIP_VISIBLE_DEVICES": "1",
+          "HIPENGINE_HIP_ARCH": "gfx1100"
+        },
+        "overrides": {}
+      },
+      "status": "pass",
+      "response": {
+        "http_status": 200,
+        "outcome": {
+          "ok": true,
+          "reason": null,
+          "http_status": 200
+        },
+        "parse_error": null,
+        "hipengine": {
+          "routing": {
+            "requested_model": "Qwen3.8-27B-Q4_K_M.gguf",
+            "served_model": "Qwen3.8-27B-Q4_K_M.gguf",
+            "fallback_used": false,
+            "policy": "single_model_exact",
+            "loaded_model_count": 1,
+            "multiple_models": false
+          },
+          "token_accounting": {
+            "choice_generated_token_ids": [
+              [
+                198,
+                197,
+                197,
+                1,
+                198,
+                197,
+                197,
+                1,
+                198,
+                197,
+                1,
+                198,
+                197,
+                1,
+                198,
+                197,
+                1,
+                198,
+                197,
+                1,
+                198,
+                197,
+                1,
+                198,
+                197,
+                1,
+                198,
+                197,
+                1,
+                198,
+                197,
+                1
+              ]
+            ],
+            "choice_generated_tokens": [
+              32
+            ],
+            "total_generated_tokens": 32,
+            "retokenized_visible_tokens": 32
+          },
+          "prompt_token_accounting": {
+            "schema_version": 1,
+            "input_type": "token_ids",
+            "prompt_token_ids_sha256": [
+              "ebc22b43aa9d1c29e1fed1e80515d5d6a7c32f1a0c67b2aef259d373ebab1ad0"
+            ],
+            "prompt_tokens": [
+              46080
+            ],
+            "total_prompt_tokens": 46080
+          },
+          "generation_shape": {
+            "schema_version": 1,
+            "route": "default",
+            "route_cap": {
+              "scope": "queue_requests",
+              "value": 1,
+              "applied": true
+            },
+            "queue_group": {
+              "id": "queue-2ed6f7bb04ec4fc98b680bcedc3b3712",
+              "request_count": 1,
+              "prompt_rows": 1,
+              "item_index": 0,
+              "item_prompt_offset": 0,
+              "item_prompt_rows": 1
+            },
+            "backend_groups": [
+              {
+                "id": "backend-4c442890099b4109ab599e004c9357ce",
+                "call_index": 0,
+                "prompt_offset": 0,
+                "input_rows": 1,
+                "actual_group_rows": [
+                  1
+                ],
+                "max_actual_group_rows": 1,
+                "verifier_rows": 0
+              }
+            ],
+            "verifier_rows": 0
+          },
+          "speculative_mtp": {
+            "effective_route": "default",
+            "used": false,
+            "draft_tokens": 0,
+            "accepted_draft_tokens": 0,
+            "rejected_draft_tokens": 0,
+            "acceptance_rate": null,
+            "draft_cycles": 0
+          }
+        },
+        "usage": {
+          "prompt_tokens": 46080,
+          "completion_tokens": 32,
+          "total_tokens": 46112,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "finish_reason": "length",
+        "generated_chars": 32,
+        "generated_text_head": "\n\t\t\"\n\t\t\"\n\t\"\n\t\"\n\t\"\n\t\"\n\t\"\n\t\"\n\t\"\n\t\"",
+        "body_head": null
+      },
+      "during_request_peaks": {
+        "hipengine_kv_pool_current_bytes": 1635778560.0,
+        "hipengine_kv_pool_high_water_observed_bytes": 1576140800.0,
+        "hipengine_kv_pool_pinned_pages": 4.0,
+        "hipengine_resident_kv_total_bytes": 1542062080.0,
+        "hipengine_resident_packed_workspace_current_bytes": 1022052716.0,
+        "hipengine_resident_packed_workspace_leased_pool_bytes": 34078720.0,
+        "hipengine_resident_prefill_hidden_owner_bytes": 2440651308.0,
+        "hipengine_resident_prefill_oracle_observed_peak_bytes": 189792256.0,
+        "hipengine_resident_prefill_oracle_observed_peak_owners": 1.0,
+        "hipengine_resident_prefill_oracle_owner_bytes": 0.0,
+        "hipengine_resident_prefill_oracle_owners": 0.0
+      },
+      "domains_gib": {
+        "pool_high_water": 1.4679,
+        "pool_pinned_pages": 4.0,
+        "workspace_owner_deduped": 0.9519,
+        "workspace_leased_pool": 0.0317,
+        "prefill_oracle_live": 0.0,
+        "prefill_oracle_observed_peak": 0.1768,
+        "prefill_oracle_observed_peak_owners": 1.0,
+        "prefill_oracle_owners": 0.0,
+        "hidden_bulk_owners": 2.273,
+        "request_owned_kv_after": 0.0
+      },
+      "server_teardown": "clean",
+      "name": "final-accounting-int8_per_token_head-off-full",
+      "protocol_tier": 2,
+      "context": {
+        "configured_max_context_tokens": null,
+        "effective_max_context_tokens": 46336,
+        "chat_default_max_tokens": 4096
+      },
+      "model": {
+        "id": "Qwen3.8-27B-Q4_K_M.gguf",
+        "backend": "hip_gfx1100",
+        "quant": "gguf_q4_k_m",
+        "loaded": true,
+        "loaded_model_count": 1,
+        "kv_capability": {
+          "schema_version": 1,
+          "capability_id": "aea991f631ef5c1661a43b705660793592cfc5b3e70f1df90d503ed0d7b0e234",
+          "status": "qualified",
+          "runtime_action": "admit",
+          "promotion_eligible": true,
+          "max_direct_rows": 4,
+          "max_serial_resident_rows": 4,
+          "persistent_bf16_mirror": false,
+          "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans",
+          "declaration": {
+            "backend": "hip_gfx1100",
+            "target_arch": "gfx1100",
+            "weight_quant": null,
+            "kv_storage": "int8_per_token_head",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head",
+            "max_direct_rows": 4,
+            "max_serial_resident_rows": 4,
+            "persistent_bf16_mirror": false,
+            "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans",
+            "reason": "registered int8 per-token-head paged decode chain; the row-batched producer and its strided reducer are implemented to physical c4"
+          },
+          "diagnostic_override": false,
+          "requested": {
+            "artifact_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+            "artifact_size_bytes": 17106773984,
+            "artifact_execution_fingerprint": "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa",
+            "backend": "hip_gfx1100",
+            "target_arch": "gfx1100",
+            "weight_quant": "gguf_q4_k_m",
+            "kv_storage": "int8_per_token_head",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp32",
+            "scale_granularity": "per_token_head"
+          },
+          "effective_kv_storage": "int8_per_token_head",
+          "artifact": {
+            "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+            "size_bytes": 17106773984,
+            "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+            "content_verified": true,
+            "error": null
+          },
+          "evidence": {
+            "decision": "qualified",
+            "scope": "explicit_no_mirror_direct_c4",
+            "quality_artifact": "benchmarks/results/2026-08-16-qwen38-27b-actual-context-quality-w7900.json",
+            "reason": "complete 512/8 and 4K/16 plus bounded 129024/16 quality pass on gfx1100; direct compact row-batched decode is qualified to physical c4 because the row-batched 24Q/4KV/D256 producer and its strided reducer are bit-identical to the already-qualified c1 leaf at fixed width and across retire/admit transitions, so the retained quality artifact stays the applicable quality basis",
+            "max_direct_rows": 4,
+            "max_serial_resident_rows": 4,
+            "persistent_bf16_mirror": false,
+            "decode_batch_variant": "per_token_head_gqa_splitk_gate_bf16_batch_strided_spans"
+          },
+          "reason": "complete 512/8 and 4K/16 plus bounded 129024/16 quality pass on gfx1100; direct compact row-batched decode is qualified to physical c4 because the row-batched 24Q/4KV/D256 producer and its strided reducer are bit-identical to the already-qualified c1 leaf at fixed width and across retire/admit transitions, so the retained quality artifact stays the applicable quality basis",
+          "max_packed_rows": 4
+        }
+      },
+      "startup_memory": {
+        "startup_begin": {
+          "free_bytes": 25715277824,
+          "total_bytes": 25753026560,
+          "used_bytes": 37748736,
+          "free_gib": 23.949219,
+          "used_gib": 0.035156
+        },
+        "after_resident_prepare": {
+          "free_bytes": 3902799872,
+          "total_bytes": 25753026560,
+          "used_bytes": 21850226688,
+          "free_gib": 3.634766,
+          "used_gib": 20.349609
+        },
+        "after_raw_warmup": {
+          "free_bytes": 2692743168,
+          "total_bytes": 25753026560,
+          "used_bytes": 23060283392,
+          "free_gib": 2.507812,
+          "used_gib": 21.476562
+        },
+        "after_scratch_probe": {
+          "free_bytes": 2692743168,
+          "total_bytes": 25753026560,
+          "used_bytes": 23060283392,
+          "free_gib": 2.507812,
+          "used_gib": 21.476562
+        },
+        "after_chat_smoke": {
+          "free_bytes": 2692743168,
+          "total_bytes": 25753026560,
+          "used_bytes": 23060283392,
+          "free_gib": 2.507812,
+          "used_gib": 21.476562
+        },
+        "guard": {
+          "free_bytes": 2692743168,
+          "total_bytes": 25753026560,
+          "used_bytes": 23060283392,
+          "free_gib": 2.507812,
+          "used_gib": 21.476562
+        }
+      },
+      "readiness_after_http": 200,
+      "card": {
+        "command": [
+          "bash",
+          "/tmp/hipengine-xtx-recovery-env.sh",
+          "python3",
+          "-u",
+          "scripts/gguf_server_allocation_probe.py",
+          "--kv-storage",
+          "int8_per_token_head",
+          "--speculative-mtp-serving",
+          "off",
+          "--prefix-cache",
+          "default",
+          "--max-context-tokens",
+          "auto",
+          "--max-active-requests",
+          "1",
+          "--prompt-rows",
+          "46080",
+          "--decode-tokens",
+          "32",
+          "--json",
+          "/tmp/hipengine-xtx-capacity-recovery/final-accounting-int8_per_token_head-off-full.json"
+        ],
+        "exit_code": 0,
+        "peak_bytes": 24640757760,
+        "sampling_seconds": 0.02,
+        "samples": 9258,
+        "end_bytes": 121761792
+      },
+      "raw_sha256": "9e5db09e4ad9d8f1e4c34c4ce1fdc0deb683d10f6237926f457fb87db31bf3b4"
+    }
+  ],
+  "rejected_alias_only_candidate": {
+    "context": 66048,
+    "prompt_tokens": 65792,
+    "status": "request_failed",
+    "identity": {
+      "hostname": "epyc",
+      "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44",
+      "head": "432cf147a",
+      "dirty": "M hipengine/generation/qwen35_gguf.py\n M tests/test_unit_qwen35_gguf_capacity_route_terms.py",
+      "probe_script_sha256": "dd890795e1ef6a28ee13843ab8c5f1fb12fc9945b833295057aa31ad5a55ae49"
+    },
+    "policy": {
+      "kv_storage": "int8_per_token_head",
+      "kv_scale_dtype": "fp32",
+      "kv_scale_granularity": "per_token_head",
+      "speculative_mtp_serving": "off",
+      "prefix_cache": "default",
+      "max_context_tokens": null,
+      "automatic_context": true,
+      "max_active_requests": 1,
+      "automatic_serving_capacity": false,
+      "dms_metadata": null,
+      "dms_metadata_path": null
+    },
+    "failed_allocation_bytes": 135266304,
+    "failure_path": "_prefill_resumable_int8_chunk -> prefill_batch_native_layer_outer_resumable -> _int8_prefill_oracle_cache_for_layer -> malloc",
+    "checkpoint_bytes": 1506279424,
+    "pool_growth_slack_bytes": 204472320,
+    "during_request_peaks": {
+      "hipengine_kv_pool_current_bytes": 2436628480.0,
+      "hipengine_kv_pool_high_water_observed_bytes": 2232156160.0,
+      "hipengine_kv_pool_pinned_pages": 4.0,
+      "hipengine_resident_kv_total_bytes": 2198077440.0,
+      "hipengine_resident_packed_workspace_current_bytes": 1024275244.0,
+      "hipengine_resident_packed_workspace_leased_pool_bytes": 34078720.0,
+      "hipengine_resident_prefill_hidden_owner_bytes": 3048584172.0,
+      "hipengine_resident_prefill_oracle_observed_peak_bytes": 270532608.0,
+      "hipengine_resident_prefill_oracle_observed_peak_owners": 1.0,
+      "hipengine_resident_prefill_oracle_owner_bytes": 0.0,
+      "hipengine_resident_prefill_oracle_owners": 0.0
+    }
+  },
+  "limitations": [
+    "Whole-card peaks sampled every20ms, not exact maxima.",
+    "Prompts are synthetic allocation workloads, not task-quality evaluations.",
+    "No speed or arithmetic-change claim. Kernel and runtime allocation code unchanged.",
+    "Validated automatic settings are not maximal capacity boundaries.",
+    "DMS rows from earlier investigation are not rerun by this final matrix."
+  ]
+}

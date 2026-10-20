@@ -2517,6 +2517,7 @@ class Qwen35GGUFBringupGenerator:
             _gguf_packed_state_linear_bytes,
             _gguf_prefill_hidden_buffer_count,
             _gguf_prefill_scratch_nbytes,
+            _int8_layer_outer_hidden_alias_enabled,
             _plan_gguf_int8_prefill_lifetime,
         )
 
@@ -2576,19 +2577,44 @@ class Qwen35GGUFBringupGenerator:
             )
             snapshot_bytes = (capacity + 1) * per_snapshot + retained
 
+        def checkpoint_bytes(max_positions: int) -> int:
+            plan = lifetime_plan(max_positions)
+            if (
+                not server_pool or mtp_sized or plan is None
+                or plan.mode != "layer_outer_shared_oracle"
+            ):
+                return 0
+            # Long prompts resume one session at a time. Each suspended
+            # request saves two physical hidden planes and one slot's state.
+            slots = 1 if int(max_positions) > 1024 else capacity
+            return capacity * (
+                2 * int(max_positions) * int(shared_runner.hidden_size) * 2
+                + _gguf_packed_state_linear_bytes(shared_runner, slot_count=slots)
+            )
+
+        def post_pool_workspace(max_positions: int) -> int:
+            return (
+                packed_scratch(max_positions) + snapshot_bytes
+                + checkpoint_bytes(max_positions)
+                + (_gguf_packed_state_linear_bytes(shared_runner, slot_count=capacity)
+                   if server_pool else 0)
+            )
+
         def prefill_workspace(max_positions: int) -> int:
-            total = snapshot_bytes + _gguf_prefill_scratch_nbytes(
+            total = _gguf_prefill_scratch_nbytes(
                 shared_runner, rows=bulk_rows(max_positions), capacity=max_positions
             )
             plan = lifetime_plan(max_positions)
             if plan is not None and plan.mode == "layer_outer_shared_oracle":
                 # The bulk workspace allocates the layer-outer hidden owner at
                 # session construction, at full capacity.
-                total += int(plan.layer_outer_hidden_bytes + plan.layer_outer_token_bytes)
-            if server_pool:
-                # Per-slot linear state, charged to the KV pool's budget.
-                total += _gguf_packed_state_linear_bytes(shared_runner, slot_count=capacity)
-            return total + packed_scratch(max_positions)
+                # Preserve the planner's execution choice, but price physical
+                # storage: the allocator can alias its two logical planes.
+                hidden_bytes = int(plan.layer_outer_hidden_bytes)
+                if _int8_layer_outer_hidden_alias_enabled():
+                    hidden_bytes = int(max_positions) * int(shared_runner.hidden_size) * 2
+                total += hidden_bytes + int(plan.layer_outer_token_bytes)
+            return total + post_pool_workspace(max_positions)
 
         def prefill_transient(max_positions: int) -> int:
             # BF16 prefill writes request KV directly; its hidden planes are
@@ -2688,9 +2714,7 @@ class Qwen35GGUFBringupGenerator:
             "speculative_bytes_resolver": speculative,
             # Internal: the plain (non-pool) allocations that follow pool
             # creation, for the pool's execution reserve.
-            "_packed_scratch_bytes_resolver": (
-                lambda max_positions: packed_scratch(max_positions) + snapshot_bytes
-            ),
+            "_packed_scratch_bytes_resolver": post_pool_workspace,
             # ``configure_engine_loop`` caps the pool's idle floor at one
             # full-context request, which the KV term already prices.
             "kv_pool_floor_pages": 0,
