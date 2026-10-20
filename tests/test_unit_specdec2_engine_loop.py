@@ -242,17 +242,19 @@ class _C1OnlyRunner(_CycleRunner):
 
 
 def test_refused_group_decodes_the_whole_batch_autoregressively() -> None:
-    """A group the provider refuses must not take its capable rows down alone.
+    """A group refusal that is not peer-induced keeps the batch AR route.
 
-    With width-1 serving evidence the provider admits a one-row group and refuses
-    a wider one, so a due group that contains one refused row plans K0 as a whole
-    and every row decodes autoregressively. Decomposing the group into one
-    provider cycle per capable row is the adapter's closed route; the serving
-    ladder measured it slower per token even at perfect depth-3 acceptance, so
-    the default keeps the batch autoregressive.
+    Every row here is individually capable, so the refusal is a group resource
+    miss: the provider serves width one and refuses the wider verify shape.
+    Decomposing that group into one provider cycle per capable row is the
+    adapter's closed route; the serving ladder measured it slower per token even
+    at perfect depth-3 acceptance, so the default keeps the batch
+    autoregressive. A group that mixes an individually incapable peer with a
+    capable row is partitioned by capability instead -- see
+    ``tests/test_unit_speculative_peer_capability.py``.
     """
 
-    runner = _RowRefusingRunner()
+    runner = _DisjointMixedRunner()
     loop = ResidentEngineLoop(
         runner,
         capacity=2,
@@ -267,8 +269,6 @@ def test_refused_group_decodes_the_whole_batch_autoregressively() -> None:
         )
         for index in range(2)
     )
-    refused_id = request_ids[1]
-    runner.refused = {int(refused_id)}
 
     events = loop.poll(max_ticks=6)
 
@@ -277,7 +277,7 @@ def test_refused_group_decodes_the_whole_batch_autoregressively() -> None:
     assert [event.request_id for event in events if event.kind == "completed"] == list(
         request_ids
     )
-    assert loop.completed[refused_id].generated_tokens
+    assert loop.completed[request_ids[1]].generated_tokens
 
 
 def test_split_flag_serves_every_capable_row_of_a_refused_group(monkeypatch) -> None:

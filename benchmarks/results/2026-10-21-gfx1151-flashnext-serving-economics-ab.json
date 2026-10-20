@@ -1,0 +1,225 @@
+{
+ "schema": 1,
+ "kind": "qwen38fn_serving_economics_ab",
+ "status": "measured",
+ "performance_claim": false,
+ "date_utc": "2026-10-21",
+ "model": "unsloth Qwen3.8-Flash-Next UD-Q4_K_XL",
+ "execution_profile": "production",
+ "kv_storage": "bf16",
+ "physical_host": {
+  "hostname": "gfx1151",
+  "gpu": "Radeon 8060S (gfx1151)",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668"
+ },
+ "protocol": {
+  "harness": "scripts/qwen38fn_mixed_economics.py",
+  "widths": [
+   1,
+   8
+  ],
+  "arms": [
+   "ar",
+   "mixed"
+  ],
+  "steps": 64,
+  "repeats": 1,
+  "waves_per_cell": 18,
+  "warmups_discarded": 1,
+  "prompts": [
+   "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+   "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+  ],
+  "server": "hipengine serve --execution-profile production --kv-storage bf16 --max-context-tokens 16384 --max-active-requests 8",
+  "order": "baseline, current and final servers run sequentially in one session; one process per source tree",
+  "arm_meaning": "ar pins speculative_mtp=false on every request; mixed asks exactly one request per wave for MTP"
+ },
+ "arms_meaning": {
+  "baseline": "c8bbf0484, pre-campaign: separate MTP execution, no prefill time sharing",
+  "current": "f433514ed + uncommitted integration: shared MTP/AR target pass on, prefill time sharing on",
+  "final": "committed integration: prefill time sharing on, shared MTP/AR target pass opt-in (off)"
+ },
+ "arms": {
+  "baseline": {
+   "server_commit": "c8bbf0484ffef8ea4452202760e3933bbfeb3226",
+   "server_repo": "/tmp/hipengine-qwen38fn-baseline-20261019",
+   "server_diff_sha256": "3535c60e91eb20902808b64435017fa78f5353d8820b93bd3b0eec9964976143",
+   "capture_sha256": "f558e9e6981ad587fa25d4dffaed3b86124866bd3297bf64e644d8c9859fddb7",
+   "created_at": "2026-10-20T19:07:54Z",
+   "cells": {
+    "w1_ar": {
+     "waves": 18,
+     "generated_tokens": 1152,
+     "wall_s": 55.32,
+     "tok_s": 20.82,
+     "ar_peer_itl_ms": {
+      "intervals": 1133,
+      "p50": 43.4,
+      "p95": 47.2,
+      "p99": 49.1,
+      "max": 86.5
+     },
+     "mean_mtp_acceptance": null
+    },
+    "w1_mixed": {
+     "waves": 18,
+     "generated_tokens": 1152,
+     "wall_s": 38.01,
+     "tok_s": 30.31,
+     "ar_peer_itl_ms": null,
+     "mean_mtp_acceptance": 0.6034
+    },
+    "w8_ar": {
+     "waves": 18,
+     "generated_tokens": 9216,
+     "wall_s": 165.76,
+     "tok_s": 55.6,
+     "ar_peer_itl_ms": {
+      "intervals": 9064,
+      "p50": 107.0,
+      "p95": 267.1,
+      "p99": 347.3,
+      "max": 419.2
+     },
+     "mean_mtp_acceptance": null
+    },
+    "w8_mixed": {
+     "waves": 18,
+     "generated_tokens": 9216,
+     "wall_s": 188.58,
+     "tok_s": 48.87,
+     "ar_peer_itl_ms": {
+      "intervals": 7931,
+      "p50": 99.9,
+      "p95": 210.8,
+      "p99": 431.6,
+      "max": 502.3
+     },
+     "mean_mtp_acceptance": 0.6034
+    }
+   }
+  },
+  "current": {
+   "server_commit": "f433514ed7a6973685713d854eb24fdb6ae7df22",
+   "server_repo": "/home/lhl/hipEngine",
+   "server_diff_sha256": "5131580b20e413abda6f5cf81e2ca9f1f08a14cf6213844c731aa7703f8a2dc8",
+   "capture_sha256": "247aa421ae97ed5e903ed1f2cfbd90a60f1eaf1f1ddf457daa446228e3cea602",
+   "created_at": "2026-10-20T18:57:56Z",
+   "cells": {
+    "w1_ar": {
+     "waves": 18,
+     "generated_tokens": 1152,
+     "wall_s": 54.99,
+     "tok_s": 20.95,
+     "ar_peer_itl_ms": {
+      "intervals": 1133,
+      "p50": 43.2,
+      "p95": 46.7,
+      "p99": 48.8,
+      "max": 86.1
+     },
+     "mean_mtp_acceptance": null
+    },
+    "w1_mixed": {
+     "waves": 18,
+     "generated_tokens": 1152,
+     "wall_s": 54.79,
+     "tok_s": 21.02,
+     "ar_peer_itl_ms": null,
+     "mean_mtp_acceptance": 0.5891
+    },
+    "w8_ar": {
+     "waves": 18,
+     "generated_tokens": 9216,
+     "wall_s": 174.64,
+     "tok_s": 52.77,
+     "ar_peer_itl_ms": {
+      "intervals": 9064,
+      "p50": 105.0,
+      "p95": 162.7,
+      "p99": 177.3,
+      "max": 254.4
+     },
+     "mean_mtp_acceptance": null
+    },
+    "w8_mixed": {
+     "waves": 18,
+     "generated_tokens": 9216,
+     "wall_s": 209.29,
+     "tok_s": 44.04,
+     "ar_peer_itl_ms": {
+      "intervals": 7931,
+      "p50": 97.8,
+      "p95": 205.1,
+      "p99": 454.9,
+      "max": 526.3
+     },
+     "mean_mtp_acceptance": 0.5891
+    }
+   }
+  },
+  "final": {
+   "server_commit": "f433514ed7a6973685713d854eb24fdb6ae7df22",
+   "server_repo": "/home/lhl/hipEngine",
+   "server_diff_sha256": "0d2d7144f8677d4e0f427a63d48d1aca670f570c7d00761ea18dba7af4596451",
+   "capture_sha256": "3855e7622630f464a707544ec90e4ebd3e9fa92556b62e24cf3ff3e6ccfaba26",
+   "created_at": "2026-10-20T19:18:22Z",
+   "cells": {
+    "w1_ar": {
+     "waves": 18,
+     "generated_tokens": 1152,
+     "wall_s": 54.99,
+     "tok_s": 20.95,
+     "ar_peer_itl_ms": {
+      "intervals": 1133,
+      "p50": 43.1,
+      "p95": 46.7,
+      "p99": 48.7,
+      "max": 86.6
+     },
+     "mean_mtp_acceptance": null
+    },
+    "w1_mixed": {
+     "waves": 18,
+     "generated_tokens": 1152,
+     "wall_s": 38.08,
+     "tok_s": 30.25,
+     "ar_peer_itl_ms": null,
+     "mean_mtp_acceptance": 0.6034
+    },
+    "w8_ar": {
+     "waves": 18,
+     "generated_tokens": 9216,
+     "wall_s": 175.03,
+     "tok_s": 52.65,
+     "ar_peer_itl_ms": {
+      "intervals": 9064,
+      "p50": 105.0,
+      "p95": 162.9,
+      "p99": 176.6,
+      "max": 253.9
+     },
+     "mean_mtp_acceptance": null
+    },
+    "w8_mixed": {
+     "waves": 18,
+     "generated_tokens": 9216,
+     "wall_s": 194.61,
+     "tok_s": 47.36,
+     "ar_peer_itl_ms": {
+      "intervals": 7931,
+      "p50": 98.1,
+      "p95": 206.7,
+      "p99": 242.4,
+      "max": 255.4
+     },
+     "mean_mtp_acceptance": 0.6034
+    }
+   }
+  }
+ },
+ "limitations": [
+  "one repeat of 18 waves per cell; no run-to-run variance estimate; cross-process spread on this host is about 1%",
+  "wave tok/s is aggregate generated tokens over summed wave wall time, client-observed"
+ ]
+}

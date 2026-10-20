@@ -514,11 +514,17 @@ few blocks rather than a full-context window.
   requests by default).
 
 Flash-Next declares the `token_budget` prefill/decode policy: each scheduling
-round runs one prefill chunk, rotating across the requests still prefilling,
-and one decode step for every decoding request. A short request that arrives
-behind a long prompt is therefore prefilled after one of that prompt's chunks
-rather than after all of them, and decoding requests keep advancing while it
-runs. The round's prefill budget is the runner's prefill chunk.
+round runs one prefill segment, rotating across the requests still prefilling,
+and one decode step for every decoding request. Idle prefill keeps the runner's
+large-chunk budget. While decode is due, Flash-Next uses up to 1,024 prompt tokens
+per chunk in the same prepared workspace and returns at a completed-layer
+boundary after about 150 ms of prefill work (80 ms for chunks below 257 tokens).
+Unfinished chunks keep their state
+and resume on a later round. A layer cannot be interrupted, so this is time
+sharing, not a hard inter-token latency guarantee.
+`HIPENGINE_DECODE_PREFILL_TOKEN_BUDGET` changes the active-decode token bound.
+An explicit `HIPENGINE_ROUND_PREFILL_TOKEN_BUDGET` controls both active and idle
+rounds unless the active-decode bound is also explicitly set.
 `HIPENGINE_PREFILL_DECODE_POLICY`, `HIPENGINE_ROUND_PREFILL_TOKEN_BUDGET`, and
 `HIPENGINE_ROUND_DECODE_ROW_BUDGET` override the declaration.
 

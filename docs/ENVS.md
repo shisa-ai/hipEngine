@@ -280,6 +280,7 @@ when an adapter/parser calls `add_engine_loop_config_args(...)`.
 | `HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS` | `30.0` | `--kv-pool-idle-grace-seconds` | Seconds before fully-free, graph-unpinned tail chunks are eligible to shrink; must be >= 0. |
 | `HIPENGINE_MAX_PENDING_REQUESTS` | unset | `--max-pending-requests` | Optional pending request queue cap for the resident scheduler; must be > 0 when set. |
 | `HIPENGINE_ROUND_PREFILL_TOKEN_BUDGET` | `1024` | `--round-prefill-token-budget` | Token-budget prefill work per engine-loop round; must be positive. |
+| `HIPENGINE_DECODE_PREFILL_TOKEN_BUDGET` | model-selected (`1024` for Flash-Next, capped by its chunk size); otherwise unset | `--decode-prefill-token-budget` | Optional bound on the whole prefill share of a token-budget round while decode is due. Idle rounds keep the ordinary prefill budget. Flash-Next can suspend that work at completed-layer boundaries; a layer is indivisible, so this does not guarantee inter-token latency. An explicit `HIPENGINE_ROUND_PREFILL_TOKEN_BUDGET` suppresses the model-selected active bound unless this variable is also set; must be positive. |
 | `HIPENGINE_ROUND_DECODE_ROW_BUDGET` | `32` | `--round-decode-row-budget` | Token-budget due decode rows per engine-loop round; must be positive. |
 | `HIPENGINE_SUBMISSION_TRANSPORT` | `hipgraph` | none | Kernel-submission transport for graph replay: `hipgraph` (default), `aql`, or `pm4`. |
 | `HIPENGINE_SESSION_MIN_TOKENS` | `4096` | none | PARO resident-session context floor when the caller does not require more. |
@@ -844,6 +845,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION` | `1` | VALU DPP wave reduction in the Q8_0 coltile leaf; `0` restores the shuffle tree. |
 | `HIPENGINE_QWEN4_EXP_Q8_DPU_REDUCTION` | unset | Recorded in host-speed probe provenance only. |
 | `HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS` | unset | Comma-separated layers on the staged-F32 Q8_0 route (candidate). |
+| `HIPENGINE_QWEN4_EXP_SHARED_MTP_TARGET` | `0` | `1` runs explicit MTP verification and AR peers in one shared batch target pass. Off by default because it measures slower than separate execution (`docs/REFACTOR.md`). |
 | `HIPENGINE_QWEN4_EXP_T16_DOWN` | unset | T16 tile route for the Q5_1 expert down projection; a tile-cache miss falls through to the default chain. |
 | `HIPENGINE_QWEN4_EXP_T16_GATE_UP` | unset | T16 tile route for the expert gate/up pair; a miss falls back to the production chain. |
 | `HIPENGINE_QWEN4_EXP_T16_GATE_UP_MAX_LAYERS` | unset | Layer cap for `scripts/qwen4exp_t16_populate_tiles.py`. |

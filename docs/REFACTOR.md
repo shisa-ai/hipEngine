@@ -103,6 +103,17 @@ upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
   about 170 s for the whole prefill under `fair`). Bound the prefill share of a
   round by time instead of by one chunk, or split the chunk while rows are
   decoding, then re-measure inter-token latency beside a long prefill.
+- **Decode-active prefill budget override.**
+  `HIPENGINE_DECODE_PREFILL_TOKEN_BUDGET` lets operators change the model's
+  active-decode token bound independently of its idle prefill budget. It defaults
+  to the production policy rather than disabling time sharing. Remove the extra
+  control once the model's measured layer-time policy chooses a token bound
+  without operator tuning; preserve `HIPENGINE_ROUND_PREFILL_TOKEN_BUDGET` as
+  the ordinary explicit override. Clearing check: run
+  `scripts/qwen38fn_prefill_interference.py` through `hipengine serve` over
+  short, medium and long prompts with zero, one and multiple decoding peers,
+  and meet the campaign's frozen latency and prompt-cost criteria without this
+  override.
 - **The Q8_0 expert-down layers read a tile count back to the host at two or
   more rows** (`HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN`), so that MoE
   segment is not graph-capturable and runs eagerly in every batch step. Derive
@@ -193,6 +204,17 @@ upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
   Live qualification remains PS6; incremental streaming remains PS7.
 - Evidence: `tests/test_unit_qwen4exp_mtp_submission.py` and
   `worklog/entries/20261017T192055.400855Z-lhl-qwen4exp-staged-mtp-serving-0ed770.md`.
+- **Shared MTP/AR target pass is opt-in**
+  (`HIPENGINE_QWEN4_EXP_SHARED_MTP_TARGET`, default `0`). Cause: on gfx1151
+  the eager shared pass is slower than separate execution. Measured
+  same-session HTTP economics, 64 tokens per request: one explicit MTP request
+  30.3 -> 21.0 tok/s; one MTP request beside seven AR peers 48.9 -> 44.0 tok/s.
+  The shared pass dispatches every layer from Python, copies GDN state per row
+  per depth wave, and moves AR peers off the graph-replayed batch step.
+  Clearing command: `scripts/qwen38fn_mixed_economics.py --widths 1,2,4,8
+  --arms ar,mixed` against `hipengine serve` with the variable set and unset;
+  flip the default (and delete the variable) once the shared arm meets or beats
+  the separate arm at every width.
 
 ## Generic speculative service lifecycle
 

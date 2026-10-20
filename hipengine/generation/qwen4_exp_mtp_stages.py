@@ -18,10 +18,9 @@ The caller keeps every side effect that is not a stage decision: the device
 commit of the consumed rows, the draft catch-up on a full match, the draft trim
 to the target cursor, and the sampler and grammar owners.
 
-This is the provider-stage prerequisite for shared physical MTP/AR execution.
-It does not admit more than one speculative request per cycle, does not merge
-candidate rows with autoregressive peers, and does not change what any stage
-computes.
+These stages are used by both the request-owned iterator and scheduler-owned
+shared MTP/AR execution. They do not admit requests or own a target transaction;
+the caller supplies those policies and preserves the stage arithmetic.
 """
 
 from __future__ import annotations

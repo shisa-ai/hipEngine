@@ -157,6 +157,9 @@ class EngineLoopConfig:
     max_prefill_chunk_tokens: int = DEFAULT_MAX_PREFILL_CHUNK_TOKENS
     fair_prefill_burst_chunks: int = 1
     round_prefill_token_budget: int = DEFAULT_ROUND_PREFILL_TOKEN_BUDGET
+    # Optional model-selected bound on the whole prefill share while decode is
+    # due. None preserves the ordinary round budget for existing generators.
+    decode_prefill_token_budget: int | None = None
     round_decode_row_budget: int = DEFAULT_ROUND_DECODE_ROW_BUDGET
     kv_pool_initial_pages: int = DEFAULT_KV_POOL_INITIAL_PAGES
     kv_pool_low_water_pages: int = DEFAULT_KV_POOL_LOW_WATER_PAGES
@@ -183,6 +186,8 @@ class EngineLoopConfig:
             raise ValueError("fair_prefill_burst_chunks must be positive")
         if self.round_prefill_token_budget <= 0:
             raise ValueError("round_prefill_token_budget must be positive")
+        if self.decode_prefill_token_budget is not None and self.decode_prefill_token_budget <= 0:
+            raise ValueError("decode_prefill_token_budget must be positive when set")
         if self.round_decode_row_budget <= 0:
             raise ValueError("round_decode_row_budget must be positive")
         if self.kv_pool_initial_pages <= 0:
@@ -1952,6 +1957,12 @@ def add_engine_loop_config_args(
         help="Token-budget prefill work per round (env HIPENGINE_ROUND_PREFILL_TOKEN_BUDGET; default: 1024)",
     )
     parser.add_argument(
+        "--decode-prefill-token-budget",
+        type=_positive_int_arg,
+        default=_env_optional_positive_int(env, "HIPENGINE_DECODE_PREFILL_TOKEN_BUDGET"),
+        help="Optional token-budget prefill share while decode is due (env HIPENGINE_DECODE_PREFILL_TOKEN_BUDGET)",
+    )
+    parser.add_argument(
         "--round-decode-row-budget",
         type=_positive_int_arg,
         default=_env_positive_int(
@@ -2034,6 +2045,7 @@ def engine_loop_config_from_args(args: object) -> EngineLoopConfig:
                 DEFAULT_ROUND_PREFILL_TOKEN_BUDGET,
             )
         ),
+        decode_prefill_token_budget=getattr(args, "decode_prefill_token_budget", None),
         round_decode_row_budget=int(
             getattr(
                 args,
@@ -2206,6 +2218,7 @@ class ResidentEngineLoop:
         self._rounds = 0
         self._round_prefill_tokens = 0
         self._round_decode_rows = 0
+        self._recent_prefill_slices: deque[dict[str, Any]] = deque(maxlen=64)
         self.scheduler = ResidentBatchScheduler(
             capacity=resolved_capacity,
             context_bucket_size=context_bucket_size,
@@ -2264,6 +2277,7 @@ class ResidentEngineLoop:
         self._cold_prefill_cohort_request_ids = frozenset()
         self._round_prefill_tokens = 0
         self._round_decode_rows = 0
+        self._recent_prefill_slices.clear()
         self._last_speculative_plan = None
         self._recent_speculative_plans.clear()
         self._pending_ar_reasons.clear()
@@ -2325,6 +2339,8 @@ class ResidentEngineLoop:
             "prefill_chunk_tokens": int(self.prefill_chunk_size),
             "fair_prefill_burst_chunks": int(self.fair_prefill_burst_chunks),
             "round_prefill_token_budget": int(self.round_prefill_token_budget),
+            "decode_prefill_token_budget": self.config.decode_prefill_token_budget,
+            "recent_prefill_slices": list(self._recent_prefill_slices),
             "round_decode_row_budget": int(self.round_decode_row_budget),
             "rounds": int(self._rounds),
             "round_prefill_tokens": int(self._round_prefill_tokens),
@@ -2777,6 +2793,13 @@ class ResidentEngineLoop:
 
         events: list[EngineLoopEvent] = []
         prefill_budget = self.round_prefill_token_budget
+        decode_rows = sum(
+            request.remaining_prefill == 0 and request.remaining_decode > 0 and not request.finished
+            for request in self.scheduler.active_batch.requests.values()
+        )
+        if decode_rows and self.config.decode_prefill_token_budget is not None:
+            prefill_budget = min(prefill_budget, self.config.decode_prefill_token_budget)
+        selected_budget = prefill_budget
         prefill_ran = False
         multiple_prefills = bool(
             getattr(self.runner, "supports_multiple_prefill_quanta_per_round", False)
@@ -2792,10 +2815,33 @@ class ResidentEngineLoop:
             tokens = sum(len(row) for row in work.token_rows)
             if tokens <= 0 or tokens > prefill_budget:
                 raise AssertionError("token-budget prefill planner exceeded its budget")
-            events.extend(self._run_prefill(work))
+            contexts = [
+                self.scheduler.active_batch.requests[request_id].next_prompt_index - len(token_row)
+                for request_id, token_row in zip(work.request_ids, work.token_rows, strict=True)
+            ]
+            started = time.perf_counter()
+            events.extend(self._run_prefill(work, resumable=bool(decode_rows)))
+            committed_tokens = sum(
+                max(0, self.scheduler.active_batch.requests[request_id].next_prompt_index - context)
+                for request_id, context in zip(work.request_ids, contexts, strict=True)
+                if request_id in self.scheduler.active_batch.requests
+            )
+            sample = {
+                "request_ids": list(work.request_ids),
+                "token_budget": selected_budget,
+                "tokens": tokens,
+                "committed_tokens": committed_tokens,
+                "context_lengths": contexts,
+                "decode_rows": decode_rows,
+                "duration_ms": (time.perf_counter() - started) * 1000.0,
+            }
+            self._recent_prefill_slices.append(sample)
+            record_slice = getattr(self.runner, "record_prefill_slice", None)
+            if callable(record_slice):
+                record_slice(sample)
             prefill_ran = True
             prefill_budget -= tokens
-            self._round_prefill_tokens += tokens
+            self._round_prefill_tokens += committed_tokens
             if not multiple_prefills:
                 break
 
@@ -2881,15 +2927,26 @@ class ResidentEngineLoop:
         self._consecutive_prefill_chunks = 0
         self._cold_prefill_cohort_request_ids = frozenset()
 
-    def _run_prefill(self, work: WorkItem) -> tuple[EngineLoopEvent, ...]:
+    def _run_prefill(
+        self, work: WorkItem, *, resumable: bool = False,
+    ) -> tuple[EngineLoopEvent, ...]:
         start = time.perf_counter()
         prefill_batch = getattr(self.runner, "prefill_batch", None)
+        resume = getattr(self.runner, "prefill_batch_resumable", None)
         try:
-            if callable(prefill_batch):
+            if resumable and callable(resume):
+                incomplete = tuple(resume(work, commit=True))
+                self.scheduler.defer_prefill_work(work, incomplete)
+            elif callable(prefill_batch):
                 prefill_batch(work, commit=True)
             else:
                 self.runner.prefill(work)
         except BaseException as exc:
+            if resumable and callable(resume):
+                # A failed segment never publishes prompt completion. Device
+                # state may still be partial; containment below, not this cursor
+                # rewind, decides whether the engine can continue.
+                self.scheduler.defer_prefill_work(work, work.request_ids)
             contained = self._contain_execution_failure(exc, phase="prefill", work=work)
             if contained is None:
                 raise self._fatal_execution_failure(
@@ -3220,17 +3277,101 @@ class ResidentEngineLoop:
         self._record_refused_reasons(plan, remainder)
         return (*events, *self._run_ar_decode(self._decode_work_subset(work, remainder)))
 
+    def _run_peer_capability_split(
+        self,
+        work: WorkItem,
+        semantics: tuple[SpeculativeRequestSemantics, ...],
+    ) -> tuple[EngineLoopEvent, ...] | None:
+        """Serve a due group whose rows disagree about individual capability.
+
+        A composed capability is one provider/target shape, so an adapter that
+        requires every row of the group to be ready --
+        ``Qwen4ExpServingMixed._mixed_rows_ready`` requires every row imported
+        into the shared batch -- answers ``None`` for a group that mixes a ready
+        explicit-MTP row with an ordinary AR peer. Planning that group K0 as a
+        whole takes the ready row's speculation down with the peer for as long as
+        the peer stays resident, and the desired-count subset retry in
+        ``_run_decode`` cannot recover it because an automatic peer's candidate
+        count is still non-zero.
+
+        The group is partitioned by individual capability instead. Each partition
+        resolves and publishes its own plan, so a refused row reports its own
+        group width and its own reason rather than the capable peer's, and every
+        due row still runs exactly once in this tick. Neither partition may
+        partition again: the split runs at most once per due item, which bounds
+        the extra capability resolves to one per row plus one per partition.
+
+        A group whose rows are *all* individually capable keeps the shipped route
+        (one batched autoregressive decode). That refusal is a group resource
+        miss -- the provider cannot serve this width or verify shape -- and
+        decomposing it into narrower cycles is the arm the serving ladder
+        measured slower per token, which stays behind
+        ``HIPENGINE_SPEC_MTP_SPLIT_REFUSED_GROUPS`` (docs/REFACTOR.md).
+        """
+
+        group = tuple(int(request_id) for request_id in work.request_ids)
+        if len(group) < 2:
+            return None
+        by_id = {int(item.request_id): item for item in semantics}
+        capable = tuple(
+            request_id
+            for request_id in group
+            if request_id in by_id
+            and self._resolve_speculative_capability((by_id[request_id],)) is not None
+        )
+        if not capable or len(capable) == len(group):
+            return None
+        capable_ids = frozenset(capable)
+        refused = tuple(
+            request_id for request_id in group if request_id not in capable_ids
+        )
+        capable_work = self._decode_work_subset(work, capable)
+        refused_work = self._decode_work_subset(work, refused)
+        capable_events = self._maybe_run_speculative_cycle(
+            capable_work,
+            allow_refused_split=False,
+            allow_peer_split=False,
+        )
+        refused_events = self._maybe_run_speculative_cycle(
+            refused_work,
+            allow_refused_split=False,
+            allow_peer_split=False,
+            publish_ar_plan=True,
+        )
+        if capable_events is None and refused_events is None:
+            # Individually capable rows that are still refused as a partition
+            # belong in the batch the whole-group route would have run: the
+            # partitions published their plans but opened no physical work, and
+            # each row's reason is already carried by its own plan.
+            return self._run_ar_decode(work)
+        if capable_events is None:
+            # Individually capable, but refused as a partition: its own plan
+            # already prepared K0, so it decodes autoregressively here.
+            capable_events = self._run_ar_decode(capable_work)
+        if refused_events is None:
+            refused_events = self._run_ar_decode(refused_work)
+        return (*capable_events, *refused_events)
+
     def _maybe_run_speculative_cycle(
         self,
         work: WorkItem,
         *,
         allow_refused_split: bool = True,
+        allow_peer_split: bool = True,
+        publish_ar_plan: bool = False,
     ) -> tuple[EngineLoopEvent, ...] | None:
+        """Plan one due item and run its speculative cycle, or return None.
+
+        ``publish_ar_plan`` builds and publishes the K0 plan even when no row of
+        this item carries speculative intent, so a partition of a mixed due
+        group still reports its own group width and reason on each of its rows.
+        """
+
         desired = tuple(
             self._speculative_candidate_counts.get(int(request_id), 0)
             for request_id in work.request_ids
         )
-        if not any(desired):
+        if not any(desired) and not publish_ar_plan:
             return None
         suppression: tuple[bool, ...] = ()
         cooldown_probe = getattr(
@@ -3264,6 +3405,19 @@ class ResidentEngineLoop:
             if callable(resolve_capability)
             else None
         )
+        if (
+            capability is None
+            and allow_peer_split
+            and not self.speculative_split_refused_groups
+        ):
+            # ``HIPENGINE_SPEC_MTP_SPLIT_REFUSED_GROUPS`` is the rejected
+            # measurement arm (one singleton provider cycle per capable row).
+            # Leaving it in charge of a refused group keeps the flag able to
+            # reproduce that arm exactly instead of silently re-pointing it at
+            # the partition route below.
+            peer_split = self._run_peer_capability_split(work, tuple(semantics))
+            if peer_split is not None:
+                return peer_split
         self._speculative_cycle_sequence += 1
         operation_id = f"specdec2-cycle:{self._speculative_cycle_sequence}"
         graph_available = self._speculative_runner_flag(

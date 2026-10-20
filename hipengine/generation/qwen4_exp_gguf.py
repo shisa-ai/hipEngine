@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 import threading
@@ -16,6 +17,7 @@ from hipengine.generation.sampling import (
     RowSamplingState, SamplingMode, plan_sampler, row_seed_for_index,
     select_token, thinking_budget_state_from_params,
 )
+from hipengine.generation.qwen4_exp_serving_mixed import Qwen4ExpServingMixed
 from hipengine.generation.qwen4_exp_serving_mtp import Qwen4ExpServingMTP, _RequestRetired
 from hipengine.generation.qwen4_exp_ar_batch import (
     QWEN4_EXP_DEFAULT_REQUEST_CAPACITY,
@@ -54,6 +56,7 @@ _T16_RESIDENT_ENV = "HIPENGINE_QWEN4_EXP_T16_RESIDENT"
 _T16_RESIDENT_MAX_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_T16_RESIDENT_MAX_LAYERS"
 _T16_RESIDENT_SLOTS_ENV = "HIPENGINE_QWEN4_EXP_T16_RESIDENT_SLOTS"
 _T16_RESIDENT_SLOTS = ("expert_gate", "expert_up", "expert_down")
+_SHARED_MTP_TARGET_ENV = "HIPENGINE_QWEN4_EXP_SHARED_MTP_TARGET"
 
 
 def _t16_resident_enabled() -> bool:
@@ -63,6 +66,22 @@ def _t16_resident_enabled() -> bool:
     import os
 
     return os.environ.get(_T16_RESIDENT_ENV, "0") not in {
+        "", "0", "false", "False",
+    }
+
+
+def _shared_mtp_target_enabled() -> bool:
+    """Opt-in shared MTP/AR target passes for explicit MTP rows.
+
+    Default off for a measured cause: on gfx1151 the eager shared pass loses
+    to separate execution (one explicit MTP request 30.3 -> 21.0 tok/s; one
+    MTP request beside seven AR peers 48.9 -> 44.0 tok/s). docs/REFACTOR.md
+    names the clearing measurement.
+    """
+
+    import os
+
+    return os.environ.get(_SHARED_MTP_TARGET_ENV, "0") not in {
         "", "0", "false", "False",
     }
 
@@ -489,6 +508,7 @@ class Qwen4ExpGGUFTextGenerator:
         return {
             "prefill_decode_policy": "token_budget",
             "round_prefill_token_budget": int(self.runner.prefill_chunk_size),
+            "decode_prefill_token_budget": min(1024, int(self.runner.prefill_chunk_size)),
             "round_decode_row_budget": max(32, int(self._configured_resident_capacity)),
         }
 
@@ -964,13 +984,20 @@ class _Qwen4ExpServingRow:
     previous_hidden: Any | None = None
     sampling_state: RowSamplingState | None = None
     token_logprobs: list[TokenLogprob] = field(default_factory=list)
+    mixed_mtp: bool = False
+    mixed_root_hidden: Any | None = None
+    mixed_proposed: int = 0
+    mixed_accepted: int = 0
+    mixed_cycles: int = 0
+    mixed_widths: dict[int, int] = field(default_factory=dict)
+    mixed_target_rows: int = 0
 
     @property
     def controlled(self):
         return self.sampling_state is not None or self.grammar is not None or bool(self.request.suppress_token_ids or self.request.logit_bias)
 
 
-class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
+class Qwen4ExpResidentServingRunner(Qwen4ExpServingMixed, Qwen4ExpServingMTP):
     """Request-owned c2 runner pool over one shared Qwen4Exp weight layout."""
 
     supports_stream_token_logprobs = True
@@ -997,6 +1024,8 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
         self._ar_batch: Qwen4ExpARBatchOwner | None = None
         self._ar_batch_mode: str | None = None
         self._demotions = 0
+        self._prefill_slices = deque(maxlen=64)
+        self._mixed_pass_samples = deque(maxlen=64)
         self._closed = False
         self._init_mtp()
 
@@ -1150,7 +1179,13 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
 
         owner = self._ar_batch
         return bool(
-            owner is not None and not row.mtp_budget and owner.fits(self._row_extent(row))
+            owner is not None and owner.fits(self._row_extent(row)) and (
+                not row.mtp_budget or (
+                    not getattr(row.request, 'speculative_mtp_automatic', False)
+                    and getattr(owner.runner, 'supports_mixed_target', False)
+                    and _shared_mtp_target_enabled()
+                )
+            )
         )
 
     def plan_admission(self, pending, *, max_items: int):
@@ -1164,6 +1199,7 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
 
         owner = self._ar_batch
         runners = len(self._available)
+        drafts = len(self._available_drafts)
         slots = 0 if owner is None else owner.free_slot_count
         blocks = 0 if owner is None else owner.free_block_count
         selected: list[int] = []
@@ -1175,8 +1211,10 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
                 continue
             if runners <= 0:
                 break
-            if row.mtp_budget and not self._available_drafts:
-                break
+            if row.mtp_budget:
+                if drafts <= 0:
+                    break
+                drafts -= 1
             if self._batch_row(row) and owner.failure is None:
                 # A failed owner admits the row so its reservation refuses it
                 # by name.
@@ -1194,6 +1232,7 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
             # MTP rows and requests the batch cannot hold keep their c1 runner.
             return
         self._ar_batch.reserve(row.request_id, positions=self._row_extent(row))
+        row.mixed_mtp = bool(row.mtp_budget)
 
     def rollback_admission(self, request: RequestState) -> None:
         self._release_runner(self._row(request.request_id))
@@ -1212,7 +1251,21 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
                 # after the bounded work item; a peer remains runnable.
                 continue
 
-    def _prefill_row(self, row, token_row):
+    def prefill_batch_resumable(self, work, *, commit):
+        """Return unfinished request ids after bounded layer work, before decode."""
+        if not commit:
+            raise ValueError("Qwen4Exp native prefill requires commit=True")
+        incomplete = []
+        for request_id, token_row in zip(work.request_ids, work.token_rows, strict=True):
+            row = self._row(request_id)
+            try:
+                if not self._prefill_row(row, token_row, resumable=True):
+                    incomplete.append(request_id)
+            except _RequestRetired:
+                continue
+        return tuple(incomplete)
+
+    def _prefill_row(self, row, token_row, *, resumable=False):
         self._check_request_live(row)
         chunk = tuple(int(token) for token in token_row)
         start = row.prefill_tokens_seen
@@ -1220,7 +1273,7 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
             raise RuntimeError("Qwen4Exp native prefill chunk drift")
         if int(row.request.max_tokens) == 0:
             row.prefill_tokens_seen += len(chunk)
-            return
+            return True
         if row.runner is None:
             raise RuntimeError("Qwen4Exp admitted row has no runner")
         prefill_kwargs = _qwen4_exp_compact_prefill_kwargs()
@@ -1228,14 +1281,32 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
             prefill_kwargs["capture_logits"] = True
         if row.mtp_budget:
             prefill_kwargs["capture_hidden_seeds"] = True
-        result = row.runner.prefill_append(chunk, **prefill_kwargs)
+        pending = getattr(row.runner, "_pending_prefill_append", None)
+        resume = getattr(row.runner, "prefill_append_resumable", None)
+        rest = ()
+        if callable(resume) and (resumable or pending is not None):
+            pending_tokens = pending[2] if pending is not None else chunk
+            if chunk[:len(pending_tokens)] != pending_tokens:
+                raise RuntimeError("Qwen4Exp resumed prefill chunk drift")
+            result = resume(pending_tokens, **prefill_kwargs)
+            while result is None and not resumable:
+                result = resume(pending_tokens, **prefill_kwargs)
+            if result is None:
+                return False
+            rest = chunk[len(pending_tokens):]
+            chunk = pending_tokens
+        else:
+            result = row.runner.prefill_append(chunk, **prefill_kwargs)
         self._check_request_live(row)
         if row.mtp_budget:
             self._prefill_mtp(row, chunk, result)
         row.prefill_tokens_seen += len(chunk)
+        if rest:
+            return self._prefill_row(row, rest)
         if row.prefill_tokens_seen == len(row.prompt_ids):
             row.next_result = result
             self._import_ar_batch(row)
+        return True
 
     def _import_ar_batch(self, row) -> None:
         """Move a completed c1 prefill into the row's batch slot, once.
@@ -1313,6 +1384,9 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
     ) -> tuple[GeneratedToken, ...]:
         if not commit:
             raise ValueError("Qwen4Exp native decode requires commit=True")
+        mixed = self._mixed_k0_decode(work)
+        if mixed is not None:
+            return mixed
         generated: list[GeneratedToken | None] = []
         # Rows whose state lives in the shared AR batch. Their next token is
         # sampled first and then stepped once for the whole row set, so
@@ -1347,6 +1421,13 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
                 raise RuntimeError("Qwen4Exp native row is not prefilled")
             if self._demotion_wanted(row):
                 self._demote_mtp_row(row)
+            if row.mixed_mtp:
+                token = self.generator._controlled_token(
+                    row.next_result, row.request, row.grammar, row.sampling_state, row.token_logprobs,
+                )
+                row.generated_ids.append(token)
+                generated.append(self._published_token(row, token, self._finish(row)))
+                continue
             if row.mtp_budget:
                 progress, _ = self._advance_mtp(row, 0)
                 if progress is None:
@@ -1469,9 +1550,8 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
         # follow the scheduler's slot indices, so compaction moves no state.
         for move in moves:
             row = self._row(move.request_id)
-            if row.mtp_budget and self._ar_batch is not None and self._ar_batch.owns(
-                move.request_id
-            ):
+            if (row.mtp_budget and not row.mixed_mtp
+                    and self._ar_batch is not None and self._ar_batch.owns(move.request_id)):
                 raise RuntimeError(
                     "a Flash-Next MTP row must not hold an AR batch slot"
                 )
@@ -1490,6 +1570,8 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
             finish = self._finish(row) or completed.finish_details
         visible = self._visible_ids(row, finish)
         telemetry = None if row.mtp_output is None else row.mtp_output.telemetry
+        if row.mixed_mtp or row.mixed_widths:
+            telemetry = self._mixed_telemetry(row)
         if telemetry is None:
             telemetry = self._ar_batch_telemetry(row)
         self._outputs[row.request_id] = GenerationOutput(
@@ -1586,12 +1668,21 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
             owner.release(row.request_id)
         runner, row.runner = row.runner, None
         if runner is not None and runner in self._all_runners and runner not in self._available:
+            if getattr(runner, "_pending_prefill_append", None) is not None:
+                runner.reset()
             self._available.append(runner)
+
+    def record_prefill_slice(self, sample: dict[str, Any]) -> None:
+        """Publish completed scheduler work without retaining request state."""
+        with self.generator._lock:
+            self._prefill_slices.append(dict(sample))
 
     def decode_telemetry(self) -> dict[str, Any]:
         """Report which decode path this runner selected, and its width."""
 
         owner = self._ar_batch
+        with self.generator._lock:
+            prefill_slices = list(self._prefill_slices)
         return {
             "decode_path": self._ar_batch_mode or "qwen4exp_c1_request_owned_step",
             "ar_batch": None if owner is None else owner.telemetry(),
@@ -1599,6 +1690,10 @@ class Qwen4ExpResidentServingRunner(Qwen4ExpServingMTP):
             "staging_runners": self.staging_capacity,
             "free_staging_runners": len(self._available),
             "mtp_demotions": self._demotions,
+            "mixed_target_passes": getattr(self, '_mixed_passes', 0),
+            "last_mixed_target_pass": getattr(self, '_last_mixed_pass', None),
+            "recent_mixed_target_passes": list(self._mixed_pass_samples),
+            "recent_prefill_slices": prefill_slices,
         }
 
     def _finish(self, row: _Qwen4ExpServingRow) -> FinishDetails | None:

@@ -7,10 +7,38 @@ owns: Planned Flash-Next serving follow-up for prefill interference, batch host 
 State: **in progress**. Execution started 2026-10-19. The same-host baseline
 and comparison criteria are recorded in the
 [baseline checkpoint](../../worklog/entries/20261019T195056.259790Z-serving-followup-qwen38fn-serving-baseline-bf7ebc.md).
-The MTP provider-stage extraction and host mixed-row layout are committed;
-shared physical target execution is not implemented yet. Prefill time sharing
-and packed batch metadata are under evaluation. The original assessment below
-reviewed `3241dbb11645d49a0a442951bdd5203ef474adfd`.
+The original assessment below reviewed `3241dbb11645d49a0a442951bdd5203ef474adfd`.
+
+Current outcome per track, from the same-session HTTP comparison in
+[`2026-10-21-gfx1151-flashnext-serving-economics-ab.json`](../../benchmarks/results/2026-10-21-gfx1151-flashnext-serving-economics-ab.json)
+(baseline `c8bbf0484`, 64 tokens per request, widths 1 and 8):
+
+- **Prefill (P2): shipped on.** Completed-layer time sharing is the default
+  `hipengine serve` policy. With eight concurrent requests, AR inter-token
+  p95/p99 falls from 267/347 ms to 163/177 ms; aggregate width-8 AR throughput
+  costs about 5% (55.6 to 52.7 tok/s). Long-context numerics of the 1024-token
+  active chunk are within round-off of unchanged production (candidate versus
+  incumbent mean KL 0.0030, below the 0.0047 control floor).
+- **Host overhead (H1/H2): shipped, no measurable speedup.** Per-step
+  host-to-device copies fall from 40 to 5; direct step time moves less than 0.5%.
+  The lone-request batch penalty remains about 5% (batch1 42.5 ms versus c1
+  40.4 ms per step).
+- **Shared MTP/AR target (M1-M4): implemented, opt-in, slower.** The shared pass
+  works through `hipengine serve` (HTTP cancellation/refill and sampled
+  lifecycle checks pass), but it loses to separate execution: one explicit MTP
+  request 30.3 to 21.0 tok/s, one MTP request beside seven AR peers 48.9 to
+  44.0 tok/s. Explicit MTP therefore keeps separate execution by default;
+  `HIPENGINE_QWEN4_EXP_SHARED_MTP_TARGET=1` selects the shared pass. The cost is
+  eager per-layer dispatch with per-row depth-wave state copies, and AR peers
+  leaving the graph-replayed batch step (`docs/REFACTOR.md`).
+
+The production profile's own numerical drift is outside this campaign. Plain c1
+production already misses the short-prompt top-1 floor (0.9865 against 0.99)
+and the long-context mean/p95 round-off floor; batch and shared-target outputs
+are bit-identical to each other and add no drift of their own. The qualitative
+54-answer task review recorded in
+`benchmarks/results/2026-10-20-gfx1151-flashnext-serving-task-review.json` found
+defects in every arm, including strict and production AR controls.
 
 ## Objective and scope
 
@@ -73,10 +101,10 @@ They are planning ranges, not measured budgets or delivery commitments.
 | Packet | Scope | Difficulty | Initial estimate | State |
 | --- | --- | --- | --- | --- |
 | P1 | Decode-aware prefill slicing | Medium | 1–2 days for a simple policy | 64- and 512-token diagnostics miss the frozen latency/cost criteria; P2 is in progress |
-| P2 | Adaptive prefill slicing/time share, if needed after P1 | Medium | 3–5 days total for the prefill track, including P1 | Layer-boundary time sharing under paired HTTP evaluation |
-| H1 | Pack per-step batch metadata | Low–medium | 1–3 days for the first host-overhead increment and validation | CPU/GPU owner tests pass; direct comparison captured; served check open |
-| H2 | Capture additional device stages; profile remaining PLE host work | Medium | Re-estimate after H1 profiling | Open; H1 profile captured |
-| M1–M4 | Shared physical MTP/AR target execution | High | 2–4 weeks for the mixed-execution track; highest uncertainty | M1 prerequisites committed; M2 adapters in progress; M3/M4 open |
+| P2 | Adaptive prefill slicing/time share, if needed after P1 | Medium | 3–5 days total for the prefill track, including P1 | Shipped on; width-8 AR inter-token p95/p99 267/347 → 163/177 ms at about 5% throughput |
+| H1 | Pack per-step batch metadata | Low–medium | 1–3 days for the first host-overhead increment and validation | Shipped in `f54555875`; copies 40 → 5 per step, step time flat |
+| H2 | Capture additional device stages; profile remaining PLE host work | Medium | Re-estimate after H1 profiling | Output-head capture shipped; PLE profile (under 1 ms hashing at width 1) does not justify a rewrite |
+| M1–M4 | Shared physical MTP/AR target execution | High | 2–4 weeks for the mixed-execution track; highest uncertainty | Serving integration committed opt-in; slower than separate execution at widths 1 and 8; graph-replayed shared pass open |
 
 P1 and H1 are independent, subject to coordinating edits to shared runner and
 scheduler files. Finish and measure them before ranking the larger MTP track.
@@ -218,9 +246,12 @@ shared physical implementation.
   request-owned destinations. Its 47 CPU tests pass; it does not execute a
   target or mutate device state.
 
-These are M1 prerequisites, not evidence of mixed physical execution. The
-scheduler-owned proposal/target/acceptance route and its end-to-end lifecycle
-checks remain open.
+The [mixed runtime executor](../../worklog/entries/20261019T220625.608622Z-serving-followup-qwen4exp-mixed-target-executor-684a43.md)
+now composes GDN, QSA and PLE depth-wave state with shared stateless work.
+Its synthetic GPU checks cover rejection, partial/full acceptance,
+permutations, sparse continuation and abort. These runtime checks do not close
+the scheduler/HTTP lifecycle, production numerical or economics requirements.
+The serving integration is committed behind `HIPENGINE_QWEN4_EXP_SHARED_MTP_TARGET`; see the outcome summary above.
 
 ### Acceptance
 

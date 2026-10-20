@@ -13,7 +13,10 @@ import asyncio
 import hashlib
 import json
 from pathlib import Path
+import platform
+import socket
 import subprocess
+import sys
 import time
 from typing import Any
 
@@ -153,6 +156,13 @@ async def run(args) -> None:
         "schema": 1, "kind": "qwen38fn_prefill_interference", "label": args.label,
         "performance_claim": False, "status": "running", "protocol": vars(args).copy(),
         "suite_sha256": hashlib.sha256(args.prompts.read_bytes()).hexdigest(), "waves": [],
+        "server_source_diff_sha256": hashlib.sha256(subprocess.check_output(
+            ["git", "-C", str(args.server_repo), "diff", "HEAD"])).hexdigest(),
+        "client_command": sys.argv,
+        "physical_host": {
+            "hostname": socket.gethostname(), "platform": platform.platform(),
+            "machine_id": Path("/etc/machine-id").read_text().strip(),
+        },
         "server_commit": subprocess.check_output(
             ["git", "-C", str(args.server_repo), "rev-parse", "HEAD"], text=True).strip(),
         "server_git_status": subprocess.check_output(
@@ -187,20 +197,27 @@ async def run(args) -> None:
         for repeat in range(args.repetitions):
             for length in args.prompt_lengths:
                 for width in args.peers:
-                    category = prompts[repeat % len(prompts)]
-                    head = peer_prompts[repeat % len(prompts)]
+                    prompt_index = repeat + args.repeat_offset
+                    category = prompts[prompt_index % len(prompts)]
+                    head = peer_prompts[prompt_index % len(prompts)]
                     arrival = (head + filler * (1 + length // len(filler)))[:length]
-                    peers = [peer_prompts[(repeat + index) % len(prompts)] for index in range(width)]
+                    peers = [peer_prompts[(prompt_index + index) % len(prompts)] for index in range(width)]
                     wave = await run_wave(client, args, peers, arrival)
-                    wave.update(repeat=repeat, prompt_tokens=length, peer_count=width,
+                    wave.update(repeat=prompt_index, prompt_tokens=length, peer_count=width,
                                 category=category["category"], prompt_id=category["id"])
+                    wave["decode_telemetry_after"] = (
+                        await client.get("/v1/hipengine/decode")
+                    ).json()
                     report["waves"].append(wave)
                     save()
                     print(json.dumps({key: wave[key] for key in (
                         "repeat", "prompt_tokens", "peer_count", "summary")}), flush=True)
         report["decode_after"] = (await client.get("/v1/hipengine/decode")).json()
         report["ready_after"] = (await client.get("/ready")).json()
-    report["status"] = "complete"
+        report["source_unchanged"] = report["server_source_diff_sha256"] == hashlib.sha256(
+            subprocess.check_output(["git", "-C", str(args.server_repo), "diff", "HEAD"])
+        ).hexdigest()
+    report["status"] = "complete" if report["source_unchanged"] else "invalid_source_changed"
     save()
 
 
@@ -214,6 +231,8 @@ def main():
     parser.add_argument("--prompt-lengths", type=lambda text: [int(item) for item in text.split(",")], default=[37, 4093, 12287])
     parser.add_argument("--peers", type=lambda text: [int(item) for item in text.split(",")], default=[0, 1, 3])
     parser.add_argument("--repetitions", type=int, default=3)
+    parser.add_argument("--repeat-offset", type=int, default=0,
+                        help="Starting suite index when repetitions use separate server processes")
     parser.add_argument("--warmups", type=int, default=1)
     parser.add_argument("--decode-tokens", type=int, default=192)
     parser.add_argument("--arrival-tokens", type=int, default=8)
@@ -221,8 +240,8 @@ def main():
     args = parser.parse_args()
     if any(value < 1 for value in args.prompt_lengths) or any(value < 0 for value in args.peers):
         parser.error("prompt lengths must be positive and peer counts nonnegative")
-    if args.repetitions < 1 or args.warmups < 0 or args.decode_tokens < 9 or args.arrival_tokens < 1:
-        parser.error("require positive repetitions/arrival tokens, nonnegative warmups, and at least nine peer tokens")
+    if args.repetitions < 1 or args.repeat_offset < 0 or args.warmups < 0 or args.decode_tokens < 9 or args.arrival_tokens < 1:
+        parser.error("require positive repetitions/arrival tokens, nonnegative repeat offset/warmups, and at least nine peer tokens")
     asyncio.run(run(args))
 
 

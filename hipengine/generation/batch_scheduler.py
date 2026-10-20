@@ -1265,6 +1265,28 @@ class ResidentBatchScheduler:
             )
         return None
 
+    def defer_prefill_work(self, work: WorkItem, request_ids: Sequence[int]) -> None:
+        """Keep an unfinished bounded segment out of decode readiness.
+
+        The model retains partial layer state, but no prompt token is committed
+        to the scheduler until that chunk finishes. Validate every rewind first.
+        """
+        ids = tuple(request_ids)
+        if len(set(ids)) != len(ids) or not set(ids) <= set(work.request_ids):
+            raise ValueError("incomplete prefill ids must be unique work-item members")
+        rows = dict(zip(work.request_ids, work.token_rows, strict=True))
+        updates = []
+        for request_id in ids:
+            request = self.active_batch.requests.get(request_id)
+            if request is None:
+                continue  # The runner may have retired a cancelled work row.
+            cursor = request.next_prompt_index - len(rows[request_id])
+            if cursor < 0:
+                raise ValueError("incomplete prefill cursor would move before the prompt")
+            updates.append(replace(request, next_prompt_index=cursor))
+        for request in updates:
+            self.active_batch.update_request(request)
+
     def next_prefill_batch_work(
         self,
         *,

@@ -60,6 +60,7 @@ _ENGINE_LOOP_GENERATOR_DEFAULT_ENVS = {
     "max_prefill_chunk_tokens": "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS",
     "fair_prefill_burst_chunks": "HIPENGINE_FAIR_PREFILL_BURST_CHUNKS",
     "round_prefill_token_budget": "HIPENGINE_ROUND_PREFILL_TOKEN_BUDGET",
+    "decode_prefill_token_budget": "HIPENGINE_DECODE_PREFILL_TOKEN_BUDGET",
     "round_decode_row_budget": "HIPENGINE_ROUND_DECODE_ROW_BUDGET",
 }
 
@@ -148,6 +149,11 @@ def _engine_loop_config_with_generator_defaults(
         for name, value in defaults.items()
         if not str(env.get(_ENGINE_LOOP_GENERATOR_DEFAULT_ENVS[name], "")).strip()
     }
+    # An explicit round budget controls active and idle prefill unless the
+    # operator separately selects a decode-active bound. Do not silently layer
+    # a model default over that existing control.
+    if str(env.get("HIPENGINE_ROUND_PREFILL_TOKEN_BUDGET", "")).strip():
+        overrides.pop("decode_prefill_token_budget", None)
     return config if not overrides else replace(config, **overrides)
 
 

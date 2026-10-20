@@ -1,8 +1,7 @@
-"""Request-owned Flash-Next MTP steps for the resident scheduler.
+"""Flash-Next MTP provider support for the resident scheduler.
 
-Physical execution is C1. Concurrent logical requests use independent pooled
-runners and the scheduler's existing serial partition hook, not candidate rows
-masquerading as multi-request execution.
+Mixed-capable batch owners use the scheduler-owned shared target executor.
+Other owners keep the request-owned c1 iterator and serial partition hook.
 """
 from __future__ import annotations
 
@@ -38,8 +37,8 @@ class Qwen4ExpServingMTP:
         if not self._all_drafts:
             self._all_drafts.append(provider.draft)
             self._available_drafts.append(provider.draft)
-        # A speculative row holds a staging runner for its life, so drafts
-        # never outnumber the staging runners.
+        # The draft pool bounds speculative admissions. Mixed rows return their
+        # staging runner after import, but retain a draft until retirement.
         while len(self._all_drafts) < getattr(self, "staging_capacity", self.capacity):
             draft = Qwen4ExpGGUFMTPDraftRunner(
                 provider._resident, target_config=self.generator.runner.config,
@@ -125,9 +124,14 @@ class Qwen4ExpServingMTP:
         return self._mtp_capability if self.generator._speculative_provider is not None else None
 
     def _mtp_capability(self, semantics):
+        mixed = self._mixed_capability(semantics)
+        if mixed is not None:
+            return mixed
         if len(semantics) != 1:
             return None
         row = self._row(semantics[0].request_id)
+        if row.mixed_mtp:
+            return None  # Initial roots are emitted before any shared target step.
         if not row.mtp_budget or not row.generated_ids:
             return None  # The prompt's initial root is emitted by decode_batch.
         if self._demotion_wanted(row):
@@ -170,9 +174,13 @@ class Qwen4ExpServingMTP:
         return registered
 
     def speculative_partition_max_requests(self, work):
+        if work is not None and self._mixed_rows_ready(work.request_ids):
+            return min(self.capacity, 64)
         return 1
 
     def speculative_claims_fit(self, plan):
+        if plan.capability_key == 'qwen4exp:shared-mtp-ar':
+            return self._mixed_rows_ready(plan.request_ids)
         if len(plan.request_ids) != 1:
             return False
         row = self._row(plan.request_ids[0])
@@ -193,6 +201,9 @@ class Qwen4ExpServingMTP:
         self._check_request_live(row)
         row.previous_hidden = result.hidden_seed
         if row.prefill_tokens_seen + len(chunk) == len(row.prompt_ids):
+            if row.mixed_mtp:
+                row.mixed_root_hidden = result.hidden_seed
+                return
             # Lifetime is checked here and around each bounded step. Never let
             # a row's cancellation exception escape through a shared poll.
             request = replace(row.request, deadline_at=None, cancellation_token=None)
@@ -271,6 +282,8 @@ class Qwen4ExpServingMTP:
         return progress, transaction
 
     def execute_speculative_cycle(self, plan, *, commit):
+        if commit and plan.capability_key == 'qwen4exp:shared-mtp-ar':
+            return self._execute_mixed_cycle(plan)
         if not commit or len(plan.request_ids) != 1 or not self.speculative_claims_fit(plan):
             raise ValueError("Flash-Next MTP requires one reserved request and commit=True")
         row = self._row(plan.request_ids[0])
