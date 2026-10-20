@@ -190,7 +190,9 @@ def wave_plan(
 
     Prompt selection is keyed on the (repeat, width, cell) triple rather than on
     the arm, so the AR and mixed arms of one cell run the same prompts in the
-    same order and their rates are comparable.
+    same order and their rates are comparable. Cells advance one prompt at a
+    time so a full-suite cell count puts every prompt in the MTP role, even when
+    batch width and suite size have a common divisor.
     """
 
     if repeats < 1:
@@ -206,7 +208,7 @@ def wave_plan(
     for repeat in range(repeats):
         for width in widths:
             for cell in range(waves_per_cell):
-                offset = (cell_index * int(width)) % int(row_count)
+                offset = cell_index % int(row_count)
                 for arm in arm_order(arms, repeat):
                     plan.append(
                         {

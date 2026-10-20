@@ -432,10 +432,23 @@ def test_plan_keeps_prompt_selection_stable_across_arms_of_one_cell():
     # The arm is not part of the key, so both arms of a cell see one offset.
     assert {key: next(iter(values)) for key, values in offsets.items()} == {
         (0, 2, 0): 0,
-        (0, 8, 0): 8,
-        (1, 2, 0): 4,
-        (1, 8, 0): 6,
+        (0, 8, 0): 1,
+        (1, 2, 0): 2,
+        (1, 8, 0): 3,
     }
+
+
+def test_full_suite_cells_cover_every_prompt_in_the_mtp_role_at_each_width():
+    rows = [{'id': str(index), 'prompt': 'x'} for index in range(18)]
+    plan = _module.wave_plan(arms=('ar', 'mixed'), widths=(1, 2, 4, 8),
+                            repeats=3, row_count=18, waves_per_cell=18)
+    for repeat in range(3):
+        for width in (1, 2, 4, 8):
+            selected = [entry for entry in plan if entry['repeat'] == repeat
+                        and entry['width'] == width and entry['arm'] == 'mixed']
+            mtp_ids = {_module.wave_prompts(rows, width=width,
+                       offset=entry['prompt_offset'])[0]['id'] for entry in selected}
+            assert mtp_ids == {row['id'] for row in rows}
 
 
 def test_plan_rejects_empty_or_negative_shape():
