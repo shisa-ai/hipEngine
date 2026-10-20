@@ -257,6 +257,12 @@ class _Qwen35GGUFNextNProposalGraph:
 # maxima remain gated separately by the adapter's width-depth policy.
 _NEXTN_EXACT_CHAIN_GRAPH_BUDGETS = (1, 2, 3, 4, 5, 6, 7)
 _NEXTN_EXACT_CHAIN_GRAPH_MAX_CONTEXT = 1023
+# The draft batch session never runs chunked prefill: it steps 2-8 hidden rows
+# and (MoE) primes prompt K/V through a packed workspace that grows to the
+# prompt itself. Its bulk prefill scratch rows still floor that packed
+# workspace, so the natural 4,096-row chunk would pin two multi-GiB scratches
+# for a one-layer draft (OOM on a 24 GB dense-27B server).
+_NEXTN_BATCH_PREFILL_SCRATCH_ROWS = 128
 _NEXTN_TOP1_RESULT_DTYPE = np.dtype([("token", np.int32), ("value", np.float32)])
 _NEXTN_TOP1_RESULT_NBYTES = int(_NEXTN_TOP1_RESULT_DTYPE.itemsize)
 _NEXTN_TOP1_RESULT_CAPACITY = max(_NEXTN_EXACT_CHAIN_GRAPH_BUDGETS)
@@ -453,6 +459,7 @@ class Qwen35GGUFNextNExecutor:
             max_batch_size=self.max_requests,
             use_wmma_prefill=True,
             use_gemv_decode=True,
+            prefill_chunk_size=_NEXTN_BATCH_PREFILL_SCRATCH_ROWS,
         )
         self.scratch = self._batch_session._target_scratch_owner
         if self.scratch is None:
