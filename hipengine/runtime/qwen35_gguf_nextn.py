@@ -104,20 +104,26 @@ class Qwen35GGUFNextNPrefixCheckpoint:
     with ``boundary_hidden`` -- the hidden row the priming walk would have left
     in the root buffer at that boundary -- so the restored provider is
     positioned exactly where the walk would have left it.
+
+    Prefix KV lives in owned host byte arrays. Capture copies device-to-host;
+    restore copies host-to-device into the destination request's slot.
+    Boundary hidden and recurrent-state backups remain on device.
     """
 
     prefix_len: int
     hidden_size: int
     # Per layer: this slot's slice of the private full-attention KV, truncated
-    # to ``prefix_len`` rows. The provider's KV is not the target's paged KV, so
-    # a portable checkpoint is a second copy of the prefix's KV and must be
-    # released with the prefix it describes.
-    key_buffers: tuple[DeviceBuffer, ...]
-    value_buffers: tuple[DeviceBuffer, ...]
+    # to ``prefix_len`` rows and held as an owned host byte array. The provider's
+    # KV is not the target's paged KV, so each checkpoint owns a separate copy.
+    key_buffers: tuple[np.ndarray | None, ...]
+    value_buffers: tuple[np.ndarray | None, ...]
     # Per layer: the Conv/GDN recurrent state as of ``prefix_len``. Captured
     # through the request-local checkpoint machinery, which already knows how to
-    # back those buffers up at a given position.
+    # back those buffers up at a given position. These stay device-resident:
+    # they are small, and a restore writes them back into live provider state.
     state_backups: tuple[DeviceBuffer, ...]
+    # The boundary hidden row also stays device-resident, because the adapter
+    # that consumes a restored checkpoint hands this pointer to a kernel launch.
     boundary_hidden: DeviceBuffer | None
     position: int
     context_length: int
@@ -125,11 +131,33 @@ class Qwen35GGUFNextNPrefixCheckpoint:
 
     @property
     def nbytes(self) -> int:
+        """Device bytes this checkpoint retains.
+
+        The prefix KV is host memory and is reported by ``host_nbytes`` instead.
+        Serving telemetry publishes this value as
+        ``cache_provider_device_bytes``, so folding host bytes in here would
+        overstate device residency.
+        """
+
         if self.released:
             return 0
-        return sum(buffer.nbytes for buffer in (*self.key_buffers, *self.value_buffers,
-                                                *self.state_backups, self.boundary_hidden)
-                   if buffer is not None)
+        return sum(
+            int(buffer.nbytes)
+            for buffer in (*self.state_backups, self.boundary_hidden)
+            if buffer is not None
+        )
+
+    @property
+    def host_nbytes(self) -> int:
+        """Host bytes held by the prefix KV copies."""
+
+        if self.released:
+            return 0
+        return sum(
+            int(array.nbytes)
+            for array in (*self.key_buffers, *self.value_buffers)
+            if array is not None
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -400,6 +428,25 @@ def _private_slot_buffer(
     if remainder or row_nbytes <= 0:
         raise ValueError("NextN private slot buffer is not slot-major")
     return DeviceBuffer(int(buffer.ptr) + int(slot) * row_nbytes, row_nbytes)
+
+
+def _prefix_kv_host_bytes(source: object) -> np.ndarray:
+    """Return a checkpoint's host KV array, refusing any other payload.
+
+    A device buffer here would be read as if it were a host address, so the
+    representation is checked rather than trusted.
+    """
+
+    if (
+        not isinstance(source, np.ndarray)
+        or source.dtype != np.uint8
+        or source.ndim != 1
+        or not source.flags.c_contiguous
+    ):
+        raise ValueError(
+            "GGUF NextN prefix checkpoint KV must be a contiguous host byte array"
+        )
+    return source
 
 
 class Qwen35GGUFNextNExecutor:
@@ -2766,6 +2813,10 @@ class Qwen35GGUFNextNExecutor:
         token at ``prefix_len`` (the row for position ``prefix_len - 1``); it is
         what a restore hands the first draft step. It is optional so the
         KV/recurrent half can be captured and tested on its own.
+
+        The prefix KV is copied into owned host byte arrays rather than into
+        device buffers, so a checkpoint costs host memory instead of the device
+        memory the request needs to finish.
         """
 
         rid = int(request_id)
@@ -2800,8 +2851,8 @@ class Qwen35GGUFNextNExecutor:
             )
         physical_slots = int(getattr(self.scratch, "slot_count", 1))
         hidden_size = int(getattr(slot_scratch, "hidden_size", 0))
-        keys: list[DeviceBuffer | None] = []
-        values: list[DeviceBuffer | None] = []
+        keys: list[np.ndarray | None] = []
+        values: list[np.ndarray | None] = []
         backups: list[DeviceBuffer] = []
         boundary: DeviceBuffer | None = None
         try:
@@ -2836,18 +2887,19 @@ class Qwen35GGUFNextNExecutor:
                         physical_slots=physical_slots,
                         max_positions=max_positions,
                     )
-                    copied = malloc(length * row_nbytes, runtime=self.runtime)
-                    destination.append(copied)
-                    self.runtime.memcpy(
-                        int(copied.ptr),
-                        int(source.ptr) + slot * slot_nbytes,
-                        length * row_nbytes,
-                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                    # Preserve the slot's prefix bytes without another device KV.
+                    nbytes = length * row_nbytes
+                    host = np.empty((nbytes,), dtype=np.uint8)
+                    copy_device_to_host(
+                        host_array_ptr(host),
+                        DeviceBuffer(int(source.ptr) + slot * slot_nbytes, nbytes),
+                        nbytes,
+                        runtime=self.runtime,
                     )
+                    destination.append(host)
         except BaseException:
-            for buffer in (*keys, *values):
-                if buffer is not None:
-                    free(buffer, runtime=self.runtime)
+            # Only the device allocations need unwinding; host byte arrays are
+            # owned by this call and go away with it.
             for backup in reversed(backups):
                 free(backup, runtime=self.runtime)
             if boundary is not None:
@@ -2876,6 +2928,10 @@ class Qwen35GGUFNextNExecutor:
         window covers the prefix. The caller owns the target-side half -- the
         boundary hidden row it must publish as the row that produced the last
         prefix token -- because that is target state, not provider state.
+
+        The destination layout is validated before anything is written, so a
+        layout or size mismatch leaves the destination slot untouched. The host
+        KV bytes are uploaded into this request's slot slice.
         """
 
         if checkpoint.released:
@@ -2896,12 +2952,7 @@ class Qwen35GGUFNextNExecutor:
         for state, backup in zip(live_states, checkpoint.state_backups, strict=True):
             if int(state.nbytes) != int(backup.nbytes):
                 raise ValueError("GGUF NextN prefix checkpoint state size mismatch")
-            self.runtime.memcpy(
-                int(state.ptr),
-                int(backup.ptr),
-                int(state.nbytes),
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-            )
+        uploads: list[tuple[DeviceBuffer, np.ndarray, int]] = []
         for sources, caches in (
             (checkpoint.key_buffers, slot_scratch.full_key_caches),
             (checkpoint.value_buffers, slot_scratch.full_value_caches),
@@ -2911,17 +2962,39 @@ class Qwen35GGUFNextNExecutor:
                     raise ValueError("GGUF NextN prefix checkpoint KV layout mismatch")
                 if source is None or cache is None:
                     continue
+                host = _prefix_kv_host_bytes(source)
                 slot_nbytes, row_nbytes = self._cache_row_strides(
                     cache,
                     physical_slots=physical_slots,
                     max_positions=max_positions,
                 )
-                self.runtime.memcpy(
-                    int(cache.ptr) + slot * slot_nbytes,
-                    int(source.ptr),
-                    checkpoint.prefix_len * row_nbytes,
-                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                nbytes = checkpoint.prefix_len * row_nbytes
+                if int(host.nbytes) != nbytes:
+                    raise ValueError(
+                        "GGUF NextN prefix checkpoint KV row size mismatch: "
+                        f"host={int(host.nbytes)} destination={nbytes}"
+                    )
+                uploads.append(
+                    (
+                        DeviceBuffer(int(cache.ptr) + slot * slot_nbytes, nbytes),
+                        host,
+                        nbytes,
+                    )
                 )
+        for state, backup in zip(live_states, checkpoint.state_backups, strict=True):
+            self.runtime.memcpy(
+                int(state.ptr),
+                int(backup.ptr),
+                int(state.nbytes),
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+            )
+        for destination, host, nbytes in uploads:
+            copy_host_to_device(
+                destination,
+                host_array_ptr(host),
+                nbytes,
+                runtime=self.runtime,
+            )
         slot_scratch.position_host[0] = int(checkpoint.position)
         slot_scratch.context_host[0] = int(checkpoint.context_length)
         self._set_batch_session_position(slot, int(checkpoint.position))
@@ -2942,17 +3015,22 @@ class Qwen35GGUFNextNExecutor:
         self,
         checkpoint: Qwen35GGUFNextNPrefixCheckpoint,
     ) -> None:
-        """Free a portable checkpoint. Idempotent, like the request-local one."""
+        """Release a portable checkpoint. Idempotent, like the request-local one.
+
+        Only the state backups and the boundary row hold device memory. The host
+        KV arrays are dropped from the checkpoint here rather than left for the
+        garbage collector, so a long-context blob stops holding host RAM as soon
+        as the store evicts it.
+        """
 
         if checkpoint.released:
             return
-        for buffer in (*checkpoint.key_buffers, *checkpoint.value_buffers):
-            if buffer is not None:
-                free(buffer, runtime=self.runtime)
         for backup in reversed(checkpoint.state_backups):
             free(backup, runtime=self.runtime)
         if checkpoint.boundary_hidden is not None:
             free(checkpoint.boundary_hidden, runtime=self.runtime)
+        checkpoint.key_buffers = ()
+        checkpoint.value_buffers = ()
         checkpoint.released = True
 
     def clone_request_state(

@@ -1749,11 +1749,21 @@ class Qwen35GGUFMTP2Adapter:
                 hidden_size = int(group.provider.executor.hidden_size)
                 hidden_nbytes = hidden_size * DType.BF16.itemsize
                 target_hidden = getattr(target, "_prefill_hidden_a", None)
-                if target_hidden is None or target.runner is None:
-                    raise RuntimeError("GGUF target prefill hidden storage is closed")
+                if target.runner is None:
+                    raise RuntimeError("GGUF target prefill runner is closed")
+                # A completed DMS request releases bulk storage. Its next
+                # prefill reacquires that storage lazily; the normalization
+                # sink needs only a bounded row buffer, not its backing plane.
+                hidden_rows = (
+                    4096 if target_hidden is None
+                    else int(target_hidden.nbytes) // hidden_nbytes
+                )
                 capacity = min(
                     len(row.prompt_ids),
-                    int(target_hidden.nbytes) // hidden_nbytes,
+                    hidden_rows,
+                    # Normalization is row-local. Reuse a bounded buffer even
+                    # when layer-outer DMS hands off a full-context slab.
+                    4096,
                 )
                 if capacity <= 0:
                     raise RuntimeError(
@@ -1854,6 +1864,7 @@ class Qwen35GGUFMTP2Adapter:
                     start_position=int(sink_start_position),
                     initial_hidden=sink_initial_hidden,
                     transform_hidden_rows=transform_hidden_rows,
+                    max_chunk_rows=capacity,
                     prefix_capture=(
                         capture_streamed_prefix
                         if self.prefix_checkpoint_capacity > 0

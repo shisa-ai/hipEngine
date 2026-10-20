@@ -465,6 +465,61 @@ def test_dms_dense_prefill_kv_is_not_priced_twice() -> None:
     assert pooled.total_bytes - dms.total_bytes == pooled.kv_pool_bytes
 
 
+@pytest.mark.parametrize("positions,bulk_bytes,active_layers", [
+    (256, 1 << 40, 1), (8192, 1 << 40, 1), (32768, 1 << 40, 1),
+    (131072, 0, 16),
+])
+def test_dms_compact_sizing_prices_codec_and_bounded_normalization(
+    monkeypatch, positions, bulk_bytes, active_layers
+):
+    # Force either the prefill phase (one device layer) or the restored-store
+    # phase (all layers) to dominate. These phases must not be summed.
+    monkeypatch.setattr(gguf_runner, "_gguf_prefill_scratch_nbytes", lambda *a, **kw: bulk_bytes)
+    monkeypatch.setattr(gguf_runner, "_try_allocate_gguf_aotriton_head_major_kv_scratch", lambda **kw: None)
+    generator = _route_generator(monkeypatch)
+    runner = _dense_27b_runner()
+    speculative = lambda n: 123
+    seed = {"speculative_bytes_resolver": speculative}
+    costs = {}
+    for storage in ("bf16", "int8_per_token_head"):
+        generator._prepared_kv_signature = (storage, "uniform", "fp32", "per_token_head")
+        terms = generator._dms_layer_outer_capacity_terms(runner, seed, mtp_sized=True)
+        assert terms["speculative_bytes_resolver"] is speculative
+        assert terms["transient_bytes_resolver"](positions) == 0
+        costs[storage] = terms["prefill_workspace_bytes_resolver"](positions)
+    cfg = runner.weights.config
+    assert costs["bf16"] - costs["int8_per_token_head"] == (
+        active_layers * cfg.head_count_kv * (positions + 4) * (2 * cfg.key_length - 8)
+    )
+    without_mtp = generator._dms_layer_outer_capacity_terms(runner, seed, mtp_sized=False)
+    assert costs["int8_per_token_head"] - without_mtp["prefill_workspace_bytes_resolver"](positions) == (
+        2 * min(positions, 4096) * runner.hidden_size
+        + 2 * active_layers * cfg.head_count_kv * (2 * cfg.key_length + 13)
+    )
+
+
+def test_dms_compact_estimate_has_no_dense_kv_allocation(monkeypatch):
+    generator = _route_generator(monkeypatch)
+    generator.dms_metadata_path = "/tmp/dms_metadata.json"
+    generator._prepared_kv_signature = ("int8_per_token_head", "uniform", "fp32", "per_token_head")
+    runner = _dense_27b_runner()
+    runner.runtime = SimpleNamespace(mem_get_info=lambda: (12 * 1024**3, 24 * 1024**3))
+    monkeypatch.setattr(generator, "_shared_dense_mtp_nextn_weights", lambda *a, **kw: None)
+    captured = {}
+    monkeypatch.setattr(qwen35_gguf, "estimate_qwen35_gguf_kv_capacity",
+                        lambda cfg, **kw: captured.update(kw) or object())
+    assert generator._resident_capacity_estimate(
+        runner, max_batch_size=1, defer_kv_allocation=True,
+        requested_context_tokens=32768,
+    ) is not None
+    assert captured["allocate_kv_cache"] is False
+    assert captured["kv_request_slots"] == 0
+    assert captured["workspace_lease_needed"] is False
+    assert captured["kv_storage_dtype"] == "int8_per_token_head"
+    assert captured["transient_bytes_resolver"](32768) == 0
+    assert captured["prefill_workspace_bytes_resolver"](32768) > 0
+
+
 @pytest.mark.parametrize("dms", [True, False])
 def test_dms_sizing_loads_mtp_draft_before_reading_free_memory(monkeypatch, dms) -> None:
     # DMS serves singleton NextN MTP; an unpriced draft OOMed its MTP warmup.

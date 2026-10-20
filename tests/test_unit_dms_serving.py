@@ -53,7 +53,8 @@ def test_dms_policy_is_not_routed_through_dense_int8_evidence(monkeypatch):
     kwargs = gen._prepared_session_kv_kwargs()
     assert kwargs["dms_metadata_path"] == "sidecar.json"
     assert kwargs["dms_backend_factory"].__name__ == "create_dms_int8_backend"
-    # DMS prefill owns a transient BF16 source, not the dense INT8 retained pool.
+    assert kwargs["dms_prefill_mode"] == "layer_outer"
+    # Compact prefill reuses a layer's BF16 pair, not a dense retained pool.
     assert "kv_policy" not in kwargs
     assert gen._prepared_kv_signature[0] == "int8_per_token_head"
 

@@ -80,6 +80,51 @@ class DMSDevicePayloadSnapshot:
     live_counts: np.ndarray
 
 
+@dataclass(frozen=True)
+class DMSDeviceStagedLayer:
+    """Host copy of one fully packed compact layer's device planes.
+
+    Every field holds the raw bytes of the corresponding device buffer, so a
+    restore is byte-exact for both codecs. ``k_slot`` is ``None`` when the
+    layer had never been allocated; the other planes are then ``None`` too.
+    """
+
+    layer: int
+    k_slot: np.ndarray | None = None
+    v_slot: np.ndarray | None = None
+    positions: np.ndarray | None = None
+    evict: np.ndarray | None = None
+    base: np.ndarray | None = None
+    capacity: np.ndarray | None = None
+    live: np.ndarray | None = None
+    k_scales: np.ndarray | None = None
+    v_scales: np.ndarray | None = None
+
+    @property
+    def allocated(self) -> bool:
+        """True when the staged layer carried device payload to restore."""
+
+        return self.k_slot is not None
+
+    @property
+    def nbytes(self) -> int:
+        return sum(
+            int(plane.nbytes)
+            for plane in (
+                self.k_slot,
+                self.v_slot,
+                self.positions,
+                self.evict,
+                self.base,
+                self.capacity,
+                self.live,
+                self.k_scales,
+                self.v_scales,
+            )
+            if plane is not None
+        )
+
+
 def _float32_to_bf16_bits(values: np.ndarray) -> np.ndarray:
     bits = np.ascontiguousarray(values, dtype=np.float32).view(np.uint32)
     rounded = (
@@ -358,6 +403,12 @@ class DMSDevicePayloadStore:
         self._rows_q: DeviceBuffer | None = None
         self._rows_out: DeviceBuffer | None = None
         self._rows_stage_capacity = 0
+        # Prefill staging (2026-10-20 full-window trace): a layer that has
+        # finished packing may hand its device planes back as host bytes, so a
+        # layer-outer prefill holds one compact payload instead of every layer
+        # at once. The entry is the recoverable host copy; _ensure_layer
+        # restores it and clears the slot.
+        self._staged: list[DMSDeviceStagedLayer | None] = [None] * self._layers
         self._closed = False
 
     def _alloc(self, nbytes: int) -> DeviceBuffer:
@@ -370,13 +421,18 @@ class DMSDevicePayloadStore:
 
         Layerwise pack support: the destination planes for a layer come into
         existence only when that layer is first packed, appended to or read.
-        On allocation failure the layer is left fully unallocated.
+        On allocation failure the layer is left fully unallocated. A layer
+        whose payload was staged to host (:meth:`stage_layer`) is restored
+        here byte for byte before the caller touches it.
         """
 
         self._check_closed()
         layer = int(layer)
         if layer < 0 or layer >= self._layers:
             raise ValueError("DMS device layer index is out of range")
+        staged = self._staged[layer]
+        if staged is not None:
+            self._restore_staged_layer(staged)
         if self._k_slot[layer] is not None:
             return
         payload_bytes = self._slots * self._dim * self._payload_dtype.itemsize
@@ -418,6 +474,175 @@ class DMSDevicePayloadStore:
         self._base_meta[layer] = base_meta
         self._capacity_meta[layer] = capacity_meta
         self._live_meta[layer] = live_meta
+
+    def _layer_plane_sizes(self) -> dict[str, int]:
+        """Byte size of every per-layer plane this store owns."""
+
+        payload_bytes = self._slots * self._dim * self._payload_dtype.itemsize
+        sizes = {
+            "k_slot": payload_bytes,
+            "v_slot": payload_bytes,
+            "positions": self._slots * 4,
+            "evict": self._slots,
+            "base": self._heads * 4,
+            "capacity": self._heads * 4,
+            "live": self._heads * 4,
+        }
+        if self._k_scales:
+            sizes["k_scales"] = self._slots * 4
+            sizes["v_scales"] = self._slots * 4
+        return sizes
+
+    def stage_layer(self, layer: int) -> DMSDeviceStagedLayer:
+        """Move one fully packed layer's device planes to host, byte for byte.
+
+        Temporary prefill staging, not an eviction policy: the caller has just
+        finished packing this layer and will not read it again until the bulk
+        prefill workspace is gone. Every plane the layer owns -- K/V payload,
+        INT8 scales, token positions, evict flags, and the base/capacity/live
+        metadata -- is copied to host arrays, then its device buffers are
+        freed and dropped from this store's allocation ledger, so a
+        layer-outer prefill never holds all compact payloads at once. The next
+        :meth:`_ensure_layer` re-allocates the layer and restores the host copy
+        byte for byte.
+
+        Every read completes before any free, so a failed stage leaves the
+        layer's live device buffers untouched and a retry is safe. Staging an
+        already staged layer returns the existing host copy. Device pointers
+        obtained before the stage are invalid afterwards, and a restored layer
+        reports new pointers.
+        """
+
+        self._check_closed()
+        layer = int(layer)
+        if layer < 0 or layer >= self._layers:
+            raise ValueError("DMS device layer index is out of range")
+        existing = self._staged[layer]
+        if existing is not None:
+            return existing
+        if self._k_slot[layer] is None:
+            empty = DMSDeviceStagedLayer(layer=layer)
+            self._staged[layer] = empty
+            return empty
+        planes: list[tuple[str, DeviceBuffer]] = [
+            ("k_slot", self._k_slot[layer]),
+            ("v_slot", self._v_slot[layer]),
+            ("positions", self._positions[layer]),
+            ("evict", self._slot_evict[layer]),
+            ("base", self._base_meta[layer]),
+            ("capacity", self._capacity_meta[layer]),
+            ("live", self._live_meta[layer]),
+        ]
+        if self._k_scales:
+            planes.append(("k_scales", self._k_scales[layer]))
+            planes.append(("v_scales", self._v_scales[layer]))
+        copies: dict[str, np.ndarray] = {}
+        for name, buffer in planes:
+            values = np.empty((int(buffer.nbytes),), dtype=np.uint8)
+            copy_device_to_host(host_array_ptr(values), buffer, int(buffer.nbytes))
+            copies[name] = values
+        # Reads are complete: release the device planes and their ledger rows.
+        self._runtime.device_synchronize()
+        for _name, buffer in planes:
+            self._buffers.remove(buffer)
+            free(buffer, runtime=self._runtime)
+        staged = DMSDeviceStagedLayer(layer=layer, **copies)
+        self._k_slot[layer] = None
+        self._v_slot[layer] = None
+        self._positions[layer] = None
+        self._slot_evict[layer] = None
+        self._base_meta[layer] = None
+        self._capacity_meta[layer] = None
+        self._live_meta[layer] = None
+        if self._k_scales:
+            self._k_scales[layer] = None
+            self._v_scales[layer] = None
+        self._staged[layer] = staged
+        return staged
+
+    def _validate_staged_layer(self, staged: DMSDeviceStagedLayer) -> None:
+        sizes = self._layer_plane_sizes()
+        for name, expected in sizes.items():
+            values = getattr(staged, name)
+            if values is None:
+                raise ValueError(
+                    f"staged DMS layer {staged.layer} is missing its {name} plane"
+                )
+            if values.dtype != np.uint8 or values.ndim != 1:
+                raise ValueError(
+                    f"staged DMS layer {staged.layer} {name} plane must be uint8 bytes"
+                )
+            if int(values.nbytes) != int(expected):
+                raise ValueError(
+                    f"staged DMS layer {staged.layer} {name} plane size mismatch"
+                )
+
+    def _restore_staged_layer(self, staged: DMSDeviceStagedLayer) -> None:
+        """Re-allocate a staged layer and copy its host bytes back.
+
+        On allocation or copy failure the newly allocated buffers are freed and
+        the host copy stays in place, so the layer is left unallocated but
+        recoverable and the next touch retries the restore.
+        """
+
+        layer = int(staged.layer)
+        if not 0 <= layer < self._layers:
+            raise ValueError("staged DMS device layer index is out of range")
+        if not staged.allocated:
+            self._staged[layer] = None
+            return
+        if self._k_slot[layer] is not None:
+            raise RuntimeError("staged DMS layer already has live device buffers")
+        self._validate_staged_layer(staged)
+        allocated: list[DeviceBuffer] = []
+
+        def tracked_alloc(nbytes: int) -> DeviceBuffer:
+            buffer = self._alloc(nbytes)
+            allocated.append(buffer)
+            return buffer
+
+        try:
+            restored = {
+                name: tracked_alloc(int(getattr(staged, name).nbytes))
+                for name in self._layer_plane_sizes()
+            }
+            for name, buffer in restored.items():
+                values = np.ascontiguousarray(getattr(staged, name))
+                copy_host_to_device(
+                    buffer, host_array_ptr(values), int(values.nbytes)
+                )
+        except BaseException:
+            self._buffers = [
+                buffer
+                for buffer in self._buffers
+                if not any(buffer is value for value in allocated)
+            ]
+            for value in allocated:
+                free(value, runtime=self._runtime)
+            raise
+        self._k_slot[layer] = restored["k_slot"]
+        self._v_slot[layer] = restored["v_slot"]
+        self._positions[layer] = restored["positions"]
+        self._slot_evict[layer] = restored["evict"]
+        self._base_meta[layer] = restored["base"]
+        self._capacity_meta[layer] = restored["capacity"]
+        self._live_meta[layer] = restored["live"]
+        if self._k_scales:
+            self._k_scales[layer] = restored["k_scales"]
+            self._v_scales[layer] = restored["v_scales"]
+        self._staged[layer] = None
+
+    @property
+    def staged_layers(self) -> tuple[int, ...]:
+        """Compact layers currently held as host copies, not device payload."""
+
+        return tuple(
+            layer for layer, staged in enumerate(self._staged) if staged is not None
+        )
+
+    @property
+    def staged_host_bytes(self) -> int:
+        return sum(staged.nbytes for staged in self._staged if staged is not None)
 
     def layer_scale_ptrs(self, layer: int) -> dict[str, int]:
         if not 0 <= int(layer) < self._layers:
@@ -1264,6 +1489,7 @@ class DMSDevicePayloadStore:
         for buf in self._buffers:
             free(buf)
         self._buffers.clear()
+        self._staged = [None] * self._layers
         self._closed = True
 
     def _check_closed(self) -> None:

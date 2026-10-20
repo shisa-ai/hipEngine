@@ -164,6 +164,7 @@ class _StreamingNextNPromptSink:
         transform_hidden_rows: Callable[[int, int, int], int] | None = None,
         prefix_capture: Callable[[int, int], None] | None = None,
         capture_boundary: int = 0,
+        max_chunk_rows: int = 0,
     ) -> None:
         tokens = tuple(int(token) for token in prompt_tokens)
         if not tokens and not (int(start_position) > 0 and initial_hidden is not None):
@@ -193,6 +194,9 @@ class _StreamingNextNPromptSink:
         self.runtime = runtime
         self.checkpoint = checkpoint
         self.transform_hidden_rows = transform_hidden_rows
+        if int(max_chunk_rows) < 0:
+            raise ValueError("streaming NextN chunk row limit must be non-negative")
+        self.max_chunk_rows = int(max_chunk_rows)
         # Called once, when a consumed chunk brings the provider cursor to the
         # request's block-aligned prefix boundary, with (prefix_len,
         # boundary_hidden_ptr): the row this chunk ends on is the row the first
@@ -295,6 +299,17 @@ class _StreamingNextNPromptSink:
             self._stream = stream
         elif stream != self._stream:
             raise RuntimeError("streaming NextN prompt chunks must use one stream")
+        if self.max_chunk_rows and count > self.max_chunk_rows:
+            # Keep transforms bounded even when layer-outer prefill hands off
+            # the whole prompt. The carried row preserves the shifted-hidden
+            # seam, and all work stays ordered on the same stream.
+            for offset in range(0, count, self.max_chunk_rows):
+                self.consume(
+                    request_id=request_id, chunk_start=start + offset,
+                    hidden_ptr=int(hidden_ptr) + offset * self.hidden_nbytes,
+                    rows=min(self.max_chunk_rows, count - offset), stream=stream,
+                )
+            return
         if self.capture_boundaries:
             absolute_start = self.start_position + start
             absolute_end = absolute_start + count

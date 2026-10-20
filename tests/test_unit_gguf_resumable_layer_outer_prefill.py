@@ -287,9 +287,13 @@ def _resumable_owner(
         _device_kv_allocation=None,
         _int8_prefill_oracle_buffers={},
         _int8_prefill_oracle_per_layer=True,
-        _prefill_token_buf=SimpleNamespace(ptr=0x1000, nbytes=4096),
-        _prefill_hidden_a=SimpleNamespace(ptr=0x2000, nbytes=8192),
-        _prefill_hidden_b=SimpleNamespace(ptr=0x3000, nbytes=8192),
+        # A live workspace at the plan's declared capacity: hidden planes cover
+        # the 1,024-row cache the plan asks for, so a full-prompt prefill finds
+        # its storage already in place and this fixture exercises checkpoint
+        # control flow rather than bulk-workspace growth.
+        _prefill_token_buf=SimpleNamespace(ptr=0x1000, nbytes=1024 * 8),
+        _prefill_hidden_a=SimpleNamespace(ptr=0x2000, nbytes=1024 * 5_120 * 2),
+        _prefill_hidden_b=SimpleNamespace(ptr=0x3000, nbytes=1024 * 5_120 * 2),
         _int8_prefill_lifetime_plan=SimpleNamespace(
             mode="layer_outer_shared_oracle",
             required_hidden_capacity=1024,
@@ -949,6 +953,8 @@ def test_suspended_owner_appears_in_prefill_transient_inventory(
     assert isinstance(state, _GGUFResumablePrefillState)
     suspended = owner._resumable_prefill_scratch
     assert suspended is state.scratch
+    suspended_bytes = int(suspended.nbytes)
+    assert suspended_bytes > 0
     during = prefill_transient_owner_inventory((owner,))
     assert (
         during["hidden_and_bulk_owner_bytes"]
@@ -965,7 +971,16 @@ def test_suspended_owner_appears_in_prefill_transient_inventory(
     )
     assert owner._resumable_prefill_scratch is None
     after = prefill_transient_owner_inventory((owner,))
-    assert after["hidden_and_bulk_owner_bytes"] == before["hidden_and_bulk_owner_bytes"]
+    # The suspended owner's own buffers are what disappears. The bulk workspace
+    # itself keeps the rows this prefill grew it to (growth is monotonic, so a
+    # full-prompt request does not pay an allocation every call), which is why
+    # the comparison is the suspended owner's byte count, not the pre-prefill
+    # baseline.
+    assert (
+        during["hidden_and_bulk_owner_bytes"] - after["hidden_and_bulk_owner_bytes"]
+        == suspended_bytes
+    )
+    assert after["hidden_and_bulk_owner_bytes"] >= before["hidden_and_bulk_owner_bytes"]
 
 
 # ---------------------------------------------------------------------------

@@ -3718,8 +3718,9 @@ def test_packed_prompt_hidden_sinks_consume_post_output_norm_rows(monkeypatch) -
     ) == 0x4000
 
 
+@pytest.mark.parametrize("released_bulk", [False, True])
 def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
-    monkeypatch,
+    monkeypatch, released_bulk,
 ) -> None:
     class Runtime:
         pass
@@ -3757,6 +3758,9 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
         )
         for rid in (7, 8)
     }
+    if released_bulk:
+        for target in targets.values():
+            target._prefill_hidden_a = None
     finish_calls: list[tuple[int, bool]] = []
 
     class Executor:

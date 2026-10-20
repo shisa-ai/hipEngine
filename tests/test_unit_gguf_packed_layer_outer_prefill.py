@@ -81,9 +81,15 @@ def _fake_runner_session(
         _device_kv_allocation=None,
         _int8_prefill_oracle_buffers={},
         _int8_prefill_oracle_per_layer=bool(per_layer),
-        _prefill_token_buf=SimpleNamespace(ptr=0),
-        _prefill_hidden_a=SimpleNamespace(ptr=0),
-        _prefill_hidden_b=SimpleNamespace(ptr=0),
+        # Live workspace storage: the row capacity these planes report is what
+        # the full-prompt growth check reads (no growth at 8-16 rows).
+        _prefill_token_buf=SimpleNamespace(ptr=0, nbytes=int(hidden_capacity) * 8),
+        _prefill_hidden_a=SimpleNamespace(
+            ptr=0, nbytes=int(hidden_capacity) * 5_120 * 2
+        ),
+        _prefill_hidden_b=SimpleNamespace(
+            ptr=0, nbytes=int(hidden_capacity) * 5_120 * 2
+        ),
         _int8_prefill_lifetime_plan=(
             None
             if plan_mode is None

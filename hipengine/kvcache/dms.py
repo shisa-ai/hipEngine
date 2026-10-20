@@ -34,6 +34,7 @@ from hipengine.kvcache.backend import (
 from hipengine.kvcache.dms_device import (
     DMSDevicePayloadSnapshot,
     DMSDevicePayloadStore,
+    DMSDeviceStagedLayer,
     DMSDeviceUnavailable,
     device_payloads_requested,
 )
@@ -1558,6 +1559,27 @@ class DMSCompactBackend:
             )
         state.logical_tokens = int(tokens)
         self.pack_calls += 1
+
+    def stage_device_prefill_layer(
+        self,
+        compact_layer_index: int,
+    ) -> DMSDeviceStagedLayer:
+        """Hand one fully packed compact layer's device payload back as host bytes.
+
+        Prefill staging for the layer-outer route: after the layer is packed,
+        its compact planes move to host and its device buffers are released, so
+        the remaining prefill workspace is not competing with every compact
+        payload at once. The next device call on that layer restores it byte for
+        byte. Call only once the layer's packing is complete; the store has no
+        way to tell a partial pack from a finished one.
+        """
+
+        if self._device_store is None:
+            raise ValueError("device payloads are not enabled on this backend")
+        layer = int(compact_layer_index)
+        if layer < 0 or layer >= self.retrofit.num_layers:
+            raise ValueError("compact DMS layer index is out of range")
+        return self._device_store.stage_layer(layer)
 
     def _shrink_after_streaming_pack(self, state: DMSSequenceState) -> None:
         metadata = state.lease.claims.metadata_dict()

@@ -1752,8 +1752,12 @@ class Qwen35GGUFBringupGenerator:
             storage = "bf16" if signature is None else signature[0]
             if storage not in factories:
                 raise NotImplementedError(f"DMS has no compact codec for {storage}")
+            # Reuse one layer's BF16 prefill pair instead of allocating the
+            # full dense source. The second pass also streams NextN hidden
+            # rows, so this preserves the MTP-capable serving adapter.
             return {"dms_metadata_path": self.dms_metadata_path,
-                    "dms_backend_factory": factories[storage]}
+                    "dms_backend_factory": factories[storage],
+                    "dms_prefill_mode": "layer_outer"}
         if signature in {None, ("bf16", "uniform", "fp16", "per_token_head")}:
             return {}
         return {
@@ -2250,10 +2254,6 @@ class Qwen35GGUFBringupGenerator:
             or getattr(self, "_pending_sizing_kv_signature", None)
             or ("bf16", "uniform", "fp16", "per_token_head")
         )
-        if dms_requested:
-            # The prefill peak includes a transient dense BF16 source even
-            # when the retained compact payload is INT8.
-            signature = ("bf16", "uniform", "fp16", "per_token_head")
         storage, storage_layout, scale_dtype, granularity = (str(part) for part in signature)
         configured_budget_mib = getattr(self, "_kv_pool_memory_budget_mib", None)
         if configured_budget_mib is not None:
@@ -2289,6 +2289,10 @@ class Qwen35GGUFBringupGenerator:
                 server_pool=bool(defer_kv_allocation) and not dms_requested,
                 mtp_sized=mtp_sized,
             )
+            if dms_requested:
+                route_terms = self._dms_layer_outer_capacity_terms(
+                    shared_runner, route_terms, mtp_sized=mtp_sized,
+                )
             # Probe once so a runner the dry run cannot size degrades here.
             for key in ("prefill_workspace_bytes_resolver", "speculative_bytes_resolver"):
                 resolver = route_terms.get(key)
@@ -2318,7 +2322,8 @@ class Qwen35GGUFBringupGenerator:
                 # and the resident scratch's per-slot recurrent state are held
                 # for the entire serving capacity.
                 max_batch_size=int(max_batch_size) if defer_kv_allocation else 1,
-                # DMS prices its dense prefill KV inside the session scratch.
+                # Compact DMS owns its store outside target scratch; neither
+                # a dense source nor a global request pool is allocated.
                 kv_request_slots=0 if dms_requested else 1,
                 workspace_lease_slots=int(max_batch_size),
                 kv_storage_dtype=storage,
@@ -2327,7 +2332,7 @@ class Qwen35GGUFBringupGenerator:
                 kv_scale_granularity=granularity,
                 int8_kv_no_mirror_qualified=qualified,
                 int8_bf16_layer_indices_resolver=_layer_indices,
-                allocate_kv_cache=dms_requested or not bool(defer_kv_allocation),
+                allocate_kv_cache=not dms_requested and not bool(defer_kv_allocation),
                 workspace_lease_needed=not dms_requested and self._packed_workspace_lease_needed(
                     max_batch_size=int(max_batch_size)
                 ),
@@ -2337,6 +2342,74 @@ class Qwen35GGUFBringupGenerator:
         except Exception as exc:  # noqa: BLE001 - best-effort sizing probe
             _LOGGER.debug("GGUF automatic context sizing unavailable: %s", exc)
             return None
+
+    def _dms_layer_outer_capacity_terms(self, runner, terms, *, mtp_sized):
+        """Price compact serving, including the uncompressed decode allowance.
+
+        Use a full-retention slot bound: a short prompt may request almost the
+        whole context as output, even when prompt compression is exact-budget.
+        Do not assume a typical output length or threshold-mode compression.
+        """
+        from hipengine.runtime.qwen35_gguf_runner import (
+            _GGUFSizingRuntime,
+            _gguf_bulk_prefill_hidden_plane_count,
+            _gguf_prefill_hidden_buffer_count,
+            _gguf_prefill_scratch_nbytes,
+            _try_allocate_gguf_aotriton_head_major_kv_scratch,
+        )
+
+        cfg = runner.weights.config
+        layers = sum(kind == FULL_ATTENTION for kind in cfg.layer_types)
+        heads, queries = int(cfg.head_count_kv), int(cfg.head_count)
+        dim, hidden = int(cfg.key_length), int(runner.hidden_size)
+        signature = (getattr(self, "_prepared_kv_signature", None)
+                     or getattr(self, "_pending_sizing_kv_signature", None) or ("bf16",))
+        slot_bytes = 2 * dim + 13 if signature[0] == "int8_per_token_head" else 4 * dim + 5
+        budget = int(getattr(self, "speculative_candidate_budget", None)
+                     or self.speculative_candidate_budget_default()) if mtp_sized else 0
+        probe = object.__new__(Qwen35GGUFResidentSession)
+        probe.__dict__.update(runner=runner, prefill_config=None, prefill_chunk_size=0)
+
+        def workspace(positions):
+            n = int(positions)
+            rows = int(probe._prefill_scratch_rows(n))
+            planes = _gguf_bulk_prefill_hidden_plane_count(
+                plan_mode=None, dms_prefill_mode="layer_outer",
+                geometry_plane_count=_gguf_prefill_hidden_buffer_count(runner, rows=rows),
+            )
+            # Compact slots include all possible output rows plus the serving
+            # verifier's extra allowance. Positions/eviction/scales are payload.
+            per_head = n + max(1, budget) + 1
+            compact = layers * (heads * per_head * slot_bytes + 12 * heads)
+            pack_rows = min(n, 4096)
+            staging = (pack_rows + 1) * heads * (4 * dim + 1) + 12 + 16 * heads + 8 * queries * dim
+            projectors = 4 * layers * heads * (hidden + 1)
+            decisions = 5 * layers * n * heads + layers * heads + 4 * heads
+            oracle = 4 * n * heads * dim
+            # DMS verification uses the serial exact route: one split row,
+            # shared across layers, not candidate-width scratch per layer.
+            split = 4 * queries * ((per_head + 255) // 256) * (dim + 2)
+            norm = 2 * min(n, 4096) * hidden if mtp_sized else 0
+            sizing = _GGUFSizingRuntime()
+            _try_allocate_gguf_aotriton_head_major_kv_scratch(
+                backend=runner.backend, capacity_tokens=n,
+                kv_width=int(runner.kv_width), runtime=sizing,
+            )
+            bulk = (int(_gguf_prefill_scratch_nbytes(runner, rows=rows, capacity=n))
+                    + n * (planes * hidden * 2 + 8) + oracle + sizing.allocated_bytes)
+            # Each completed compact layer is host-staged during pass two.
+            # The complete device store is restored only after bulk/oracle
+            # release, so these are separate peaks, not additive lifetimes.
+            pack_peak = bulk + compact // max(1, layers)
+            restored_peak = compact + split
+            return (max(pack_peak, restored_peak) + staging
+                    + projectors + decisions + norm)
+
+        return {**terms, "prefill_workspace_bytes_resolver": workspace,
+                "transient_bytes_resolver": (
+                    None if os.environ.get(_GGUF_AUTO_CONTEXT_TRANSIENT_KIB_ENV)
+                    else lambda positions: 0
+                )}
 
     def kv_pool_execution_reserve_bytes(
         self,
