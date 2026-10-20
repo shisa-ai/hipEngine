@@ -50,8 +50,9 @@ This is not the identity of our Framework machine. Weights are Unsloth
 starting configuration uses BF16 KV. Do not change KV format merely to make
 the comparison look identical.
 
-All rates below are **author-reported**, not rerun for this review. HTTP,
-greedy, thinking off, penalties disabled; approximately 2,048 new prompt
+All rates below are **author-reported**, not rerun for this review. AR means
+autoregressive decoding without speculative proposals. HTTP, greedy, thinking
+off, penalties disabled; approximately 2,048 new prompt
 tokens and 128 output tokens. Depth means an already-cached prefix, not a
 fresh prompt of that size.
 
@@ -186,9 +187,14 @@ defects cannot be silently waived in the final quality claim.
 
 Extend existing canonical and HTTP harnesses rather than building an unrelated
 benchmark. Reproduce both the canonical protocol and Gufo's published HTTP
-protocol on **one physical host**, one engine resident at a time. Pin Gufo's
-published binary first; current main is a separate arm. Record the compiler,
-ROCr patch, library hashes, memory policy, power state and temperature.
+protocol on **one physical host**, one engine resident at a time. First try the
+published binary with its matching Nix/ROCr closure in an isolated process,
+without replacing the host runtime. If that closure is unavailable or cannot
+run on the host, build the published source tree with the local toolchain and
+record the deviation as a same-source comparator, not an exact reproduction
+of the published binary. Current main is a separate arm. Record compiler,
+ROCr patch, library hashes, memory policy, power state and temperature for each
+arm; never load both ROCm stacks into one process.
 
 Required harness repairs/extensions:
 
@@ -212,10 +218,17 @@ Required harness repairs/extensions:
   host API durations are not additive GPU cost.
 
 **Exit:** reproducible baseline artifacts for the matrix in section 4, with
-source/route witnesses and output checks. Rank subsequent kernel work by the
-current measured owner cost, not September's family totals. Implement harness
-contract tests for denominators, cache hits, tokenizer exclusions and route
-fallbacks before using new rows for decisions.
+source/route witnesses and the cross-engine protocol's G0–G4 columns for every
+reported speed row: identity/tokenization conformance, greedy output comparison,
+distribution comparison where available, repeated-run determinism and the task
+battery. Gufo G2 is explicitly not applicable when no logits/logprob surface
+exists; do not substitute output hashes for it. Rerun applicable characterization
+for each new pin, including the published-HTTP depth and concurrency rows;
+identify the exact workload scope of the linked quality packet. Rank subsequent
+kernel work by the current measured owner cost, not September's family totals.
+Implement harness contract tests for denominators, cache hits, tokenizer
+exclusions, quality-column bindings and route fallbacks before using new rows
+for decisions.
 
 ### QUALITY — repair the failures exposed by the serving follow-up
 
@@ -365,11 +378,17 @@ prefill time sharing and explicit-request behavior. Automatic route policy may
 choose among working implementations based on measured costs; it must not
 silently disable an explicit request.
 
-**Exit:** shared execution beats the existing separate route and true AR in
-its claimed workload, without hiding peer latency or prefill regressions.
-Then remove the concrete blocker for the shared-target rollback flag and ship
-the winning route by default under the repository's rules. Keep separate
-execution where it demonstrably wins; do not force a single executor everywhere.
+**Exit:** shared execution beats true AR in its claimed workload without hiding
+peer latency or prefill regressions. Removing the existing selection flag
+`HIPENGINE_QWEN4_EXP_SHARED_MTP_TARGET` also requires its full
+[REFACTOR clearing condition](../REFACTOR.md#flash-next-staged-mtp-physical-width-and-controls):
+run `scripts/qwen38fn_mixed_economics.py --widths 1,2,4,8 --arms ar,mixed`
+against `hipengine serve` with the flag set and unset, and require the shared
+arm to meet or beat separate execution **at every width** before flipping the
+default and deleting the variable. Add width 6 for this campaign's comparison.
+A win at one width does not clear that condition. A cost-based dispatcher may
+keep separate execution where it demonstrably wins; changing that design needs
+its own explicit recorded decision, not a silent narrowing of the clearing gate.
 
 ### DECODE — close the remaining per-step kernel gap
 
@@ -438,47 +457,80 @@ replacement. Freeze prompts, metrics and controller policy before timing.
 | Matrix | Required rows | What it resolves |
 | --- | --- | --- |
 | Canonical AR | Four categories × p512/p1024/p4096; 128 decode transitions; one warmup, at least three repeats | Continuity with prior same-host work; preserve the common-case set and report exclusions |
-| Published HTTP depth | Exact ordered depths 0/4096/8192/12288/16384/32768/65536/131072; approximately pp2048/tg128; AR, mixed MTP, repetitive MTP | Current Gufo target, actual cached/new counts, MTP catch-up inclusion |
-| Prepared concurrency | C1/C2/C4/C6/C8; pp2048 prepared before tg128; all-AR, all-MTP mixed, all-MTP repetition | Decode-only scaling, sum of request rates versus cohort tokens/wall |
+| Published HTTP depth | Exact ordered depths 0/4096/8192/12288/16384/32768/65536/131072; capacity 133760; approximately pp2048/tg128; AR, mixed MTP, repetitive MTP | Current Gufo target, actual cached/new counts, MTP catch-up inclusion; G0–G4 bindings |
+| Prepared concurrency | C1/C2/C4/C6/C8; context capacity 4096 per session; pp2048 prepared before tg128; all-AR, all-MTP mixed, all-MTP repetition | Decode-only scaling, sum of request rates versus cohort tokens/wall; G0–G4 bindings |
 | Real serving | Full ten-prompt suite plus eight heldouts; fresh and cached; all-AR/all-MTP/one-MTP-plus-peers; blocking and streaming | Queue, time to first token, inter-token median/p95/p99/max, complete request wall and route selection |
 | State/shape boundaries | 997/1023/1025/2051/2052/4093/12287 tokens; tail chunks; widths 1–8 and dynamic admit/cancel/refill; each rejection depth | Behavior on both sides of dispatch/chunk/sparse thresholds and unrelated lengths |
 | Long context and lifecycle | Numerical controls plus retrieval; 32K/64K/128K serving; cold/warm PLE, cancellation, reuse and memory pressure | Quality, capacity and state stability rather than throughput alone |
+
+Retain an exact publication replay separately from the repeated comparison:
+Gufo's prepared-concurrency configuration specifies one warmup and one measured
+repetition. The campaign's decision run uses at least three measured repetitions
+per arm; do not relabel that extension as the original single-sample protocol.
+The ordered depth replay retains its own warmup and prefix-preparation history.
 
 Do not run full-prompt ladders to find allocation bounds. Use the Tier-1 probe
 in [HARNESSES](../../benchmarks/HARNESSES.md) first, then complete the named
 long workloads. Missing measurements do not prohibit running supported inputs.
 
-Existing entry points, inspected for this review:
+Existing entry points, inspected for this review. Set `MODEL` to the target
+GGUF directory and `SIDECAR` to the MTP GGUF file; verify their identities before
+measurement. The function below applies the
+[THEROCK clean-process setup](../reference/THEROCK.md#clean-process-wrapper)
+using the validated gfx1151 interpreter, not the CPU-only project environment.
+It also binds imports to the current checkout. The first canonical command
+prebuilds every shape before the cached-only measurement.
 
 ```bash
-# In a correctly configured in-tree environment; set MODEL, SIDECAR and OUT.
-# Set HIPENGINE_COMPILER_VERSION_FILE after recording this SDK's hipcc version.
-uv run python -c 'import hipengine; print(hipengine.__file__)'
-uv run python scripts/qwen4exp_canonical_ar_bench.py hipengine \
+ENV_PREFIX=~/miniforge3/envs/therock
+PY="$ENV_PREFIX/bin/python"
+ROCM_ROOT=$("$PY" -m rocm_sdk path --root)
+SITE=$("$PY" -c 'import site; print(site.getsitepackages()[0])')
+OUT=/tmp/qwen38fn-gufo-baseline
+mkdir -p "$OUT"
+"$ROCM_ROOT/bin/hipcc" --version > "$OUT/hipcc-version.txt"
+
+run_hip() {
+  env -i HOME="$HOME" USER="$USER" \
+    PATH="$ENV_PREFIX/bin:$ROCM_ROOT/bin:$ROCM_ROOT/lib/llvm/bin:/usr/local/bin:/usr/bin:/bin" \
+    LD_LIBRARY_PATH="$SITE/_rocm_sdk_core/lib:$SITE/_rocm_sdk_devel/lib:$SITE/_rocm_sdk_libraries/lib" \
+    HIP_PATH="$ROCM_ROOT" ROCM_PATH="$ROCM_ROOT" HIP_LIB_PATH="$ROCM_ROOT/lib" \
+    HIP_INCLUDE_PATH="$ROCM_ROOT/include" \
+    HIP_DEVICE_LIB_PATH="$ROCM_ROOT/lib/llvm/amdgcn/bitcode" \
+    HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 \
+    HIPENGINE_COMPILER_VERSION_FILE="$OUT/hipcc-version.txt" \
+    PYTHONPATH="$PWD" "$PY" "$@"
+}
+run_hip -c 'import ctypes, hipengine; ctypes.CDLL("libamdhip64.so"); print(hipengine.__file__)'
+run_hip scripts/qwen4exp_canonical_ar_bench.py hipengine \
+  --model-root "$MODEL" --execution-profile production \
+  --prefill-chunk-size 4096 --capture-mode compact --ple-cache-mode warm \
+  --warmups 0 --repetitions 1 \
+  --compiler-version-file "$OUT/hipcc-version.txt" --output "$OUT/prebuild.json"
+run_hip scripts/qwen4exp_canonical_ar_bench.py hipengine \
   --model-root "$MODEL" --execution-profile production \
   --prefill-chunk-size 4096 --capture-mode compact --ple-cache-mode warm \
   --warmups 1 --repetitions 3 \
-  --compiler-version-file "$HIPENGINE_COMPILER_VERSION_FILE" \
+  --compiler-version-file "$OUT/hipcc-version.txt" \
   --require-cached-build --output "$OUT/canonical-ar.json"
 
-uv run python scripts/qwen4exp_mtp_inprocess_bench.py \
+run_hip scripts/qwen4exp_mtp_inprocess_bench.py \
   --model-root "$MODEL" --sidecar "$SIDECAR" \
   --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
   --max-tokens 64 --budget 3 --execution-profile production \
   --output "$OUT/mtp-suite.json"
 
-uv run python scripts/qwen4exp_canonical_ar_bench.py openai --help
-uv run python scripts/qwen4exp_llamacpp_prefill_comparator.py --help
-uv run python scripts/qwen38fn_mixed_economics.py --help
-uv run python scripts/qwen4exp_layer2_profile_gate.py --help
-uv run python scripts/qwen4exp_long_context_gate.py --help
+run_hip scripts/qwen4exp_canonical_ar_bench.py openai --help
+run_hip scripts/qwen4exp_llamacpp_prefill_comparator.py --help
+run_hip scripts/qwen38fn_mixed_economics.py --help
+run_hip scripts/qwen4exp_layer2_profile_gate.py --help
+run_hip scripts/qwen4exp_long_context_gate.py --help
 ```
 
-The canonical cached-only command requires a prior warmup run without
-`--require-cached-build` covering every measured shape. Check
-[THEROCK](../reference/THEROCK.md) before choosing the interpreter and libraries;
-do not mix ROCm stacks or run a Python whose editable install names another
-checkout. These are existing entry points, **not an already-implemented Gufo
+Check [THEROCK](../reference/THEROCK.md) if the installed SDK differs. These
+commands isolate hipEngine's ROCm libraries; launch the Gufo comparator with
+its own recorded environment, not through `run_hip` with inherited TheRock
+libraries. These are existing entry points, **not an already-implemented Gufo
 HTTP replay command**. `BASE` must add and document the missing prepared/depth
 adapter, compact AR arm and repeated/counterbalanced MTP protocol. Existing
 `qwen38fn_mixed_economics.py` measures all-AR and one-MTP-plus-peers, not the
@@ -510,7 +562,13 @@ For each implementation unit:
 - Cover the full category suite and heldouts, task review and dynamic request
   transitions. Fix test defects without weakening the requested contract.
 - Keep registered strict fallbacks, torch-free runtime and four-axis dispatch.
-  Record any external port's file, license and exact source commit.
+  Before a kernel port run
+  `python3 scripts/check_lineage.py --kind kernel --diff stat` and inspect the
+  relevant parent differences. Register new source files and exact baselines in
+  `docs/source_lineage.json`, preserving existing port provenance, and update
+  the `docs/KERNELS.md` path map as needed. Its existing Gufo entry names
+  `88090afb`, not either reviewed October pin. Record the port's file, license
+  and exact source commit in the implementation unit.
 - Confirm actual selection through `LLM.generate()` or `hipengine serve`, then
   publish compact results and the required benchmark rollup. Update the ledger
   with the decision and a specific reopening condition for rejected work.
@@ -553,8 +611,10 @@ because they fall short of final parity.
   remaining gap. Completed experiments alone do not mean the parity goal met.
 
 A direct source review used the committed hipEngine snapshot named above.
-Concurrent prefix-cache edits appeared during the review and were left untouched;
-refresh source and ownership before execution so those changes are not duplicated.
+Prefix reuse landed concurrently in `22fa2661b`; it also included the initial
+staged version of this campaign. Its runtime changes were not authored or
+validated by this review. Refresh source and ownership before execution, and
+reuse that prefix-cache implementation when building the prepared/depth harness.
 
 No GPU experiment was run for this planning review. It adds no benchmark row,
 changes no product README, and makes no new measured speedup claim.
