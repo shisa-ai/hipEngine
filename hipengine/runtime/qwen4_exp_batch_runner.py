@@ -47,6 +47,17 @@ therefore cannot silently continue corrupted state.
 A row set that names slots explicitly must also name each slot's owner token,
 so a scheduler holding a stale handle cannot advance a request that was
 released and re-admitted into the same physical slot.
+
+Per-step metadata
+-----------------
+
+Every QSA layer needs its own position, context, and index query position per
+active row. Those are packed into one buffer (:class:`Qwen4ExpBatchStepMetadata`)
+that each owner publishes through stable, non-owning views, so a step performs
+one host-to-device copy for all of them instead of three per layer. The views
+have a fixed address for the buffer's lifetime, which is what a captured graph
+replays against. The owners' own block tables and slot-index vectors keep their
+unchanged-content upload suppression.
 """
 
 from __future__ import annotations
@@ -102,8 +113,15 @@ from hipengine.runtime.qwen4_exp_batch_qsa import (
     run_qwen4_exp_batch_qsa_output_projection,
     validate_qwen4_exp_batch_qsa_mixed_mixer,
 )
-from hipengine.runtime.qwen4_exp_batch_qsa_index import Qwen4ExpBatchQsaIndexState
-from hipengine.runtime.qwen4_exp_batch_state import Qwen4ExpBatchAttentionState
+from hipengine.runtime.qwen4_exp_batch_qsa_index import (
+    Qwen4ExpBatchQsaIndexRowPlan,
+    Qwen4ExpBatchQsaIndexState,
+)
+from hipengine.runtime.qwen4_exp_batch_state import (
+    Qwen4ExpBatchAttentionRowPlan,
+    Qwen4ExpBatchAttentionState,
+    Qwen4ExpBatchStepMetadata,
+)
 from hipengine.runtime.qwen4_exp_runner import (
     Qwen4ExpGDNLayerDeviceWeights,
     Qwen4ExpGDNLayerScratch,
@@ -149,6 +167,18 @@ class _StepPlan:
     rows: int
     slots: tuple[int, ...]
     positions: np.ndarray
+
+
+@dataclass(frozen=True)
+class _StepOwners:
+    """Every QSA owner's validated row set for one step, in layer order.
+
+    Built before the step's first device write, so a rejected row set cannot
+    leave a packed metadata buffer uploaded or an owner's active rows published.
+    """
+
+    attention: tuple[Qwen4ExpBatchAttentionRowPlan, ...]
+    index: tuple[Qwen4ExpBatchQsaIndexRowPlan, ...]
 
 
 class _BufferGroup:
@@ -330,15 +360,20 @@ def _run_segment(
     outputs: Sequence[tuple[int, int]],
     mutable_inputs: Sequence[tuple[int, int]] = (),
     stream: int,
+    key: Hashable | None = None,
 ) -> None:
-    """Replay a stateless layer segment, capturing and validating on first use."""
+    """Replay a stateless segment, capturing and validating on first use.
+
+    ``key`` names a unit that is not a layer (the output head); it defaults to
+    ``(graph_key, name)``, the layer-segment convention.
+    """
 
     if graph is None:
         launch(stream)
         return
     (first_ptr, first_bytes), *rest = outputs
     graph.run(
-        (graph_key, name),
+        (graph_key, name) if key is None else key,
         eager=launch,
         out_ptr=first_ptr,
         out_nbytes=first_bytes,
@@ -574,6 +609,11 @@ class Qwen4ExpGGUFBatchRunner:
     the index compression ratio (one complete index block).
     """
 
+    # This owner can execute one shared target pass holding autoregressive rows
+    # and prepared speculative chains, so serving may route a speculative batch
+    # row here. Owners that do not declare it keep the c1 MTP path.
+    supports_mixed_target = True
+
     def __init__(
         self,
         resident: object,
@@ -639,6 +679,9 @@ class Qwen4ExpGGUFBatchRunner:
         self.qsa_bindings: Mapping[int, Qwen4ExpQSALayerDeviceWeights] = {}
         self.attention_states: tuple[Qwen4ExpBatchAttentionState, ...] = ()
         self.index_states: tuple[Qwen4ExpBatchQsaIndexState, ...] = ()
+        # One packed buffer carries every QSA owner's dynamic per-step metadata,
+        # so a step publishes it with one upload instead of three per layer.
+        self.step_metadata: Qwen4ExpBatchStepMetadata | None = None
         self.gdn_states: tuple[Qwen4ExpBatchGdnState, ...] = ()
         self.ple_state: Qwen4ExpBatchPleState | None = None
         self.selection: Qwen4ExpBatchQsaSelectionScratch | None = None
@@ -655,9 +698,10 @@ class Qwen4ExpGGUFBatchRunner:
         self.argmax_values: DeviceBuffer | None = None
         self.argmax_blocks_i32: DeviceBuffer | None = None
         self._ple_layers = frozenset(int(layer) for layer in config.ple_layers)
-        # Stateless per-layer segments replay from captured graphs keyed by
-        # ``(layer, rows)``; the cache validates every capture bit-exact against
-        # an eager run and keeps a rejected key eager.
+        # Stateless segments replay from captured graphs: per-layer segments are
+        # keyed by ``(layer, rows)`` and the output head by
+        # ``("head", rows, residual_ptr)``. The cache validates every capture
+        # bit-exact against an eager run and keeps a rejected key eager.
         self._graphs: MoeGraphCache | None = None
         try:
             load_backend_kernel_package(self.backend)
@@ -777,6 +821,16 @@ class Qwen4ExpGGUFBatchRunner:
         )
         self.head_scratch = head_scratch
         self._owned.append(head_scratch)
+        # Allocated before the pooled K/V slabs so the pool is sized from the
+        # memory every other fixed allocation left, and before the QSA owners so
+        # its single buffer outlives every view they publish through.
+        step_metadata = Qwen4ExpBatchStepMetadata.allocate(
+            layers=cfg.qsa_layer_count,
+            state_slots=self.state_slots,
+            runtime=self.runtime,
+        )
+        self.step_metadata = step_metadata
+        self._owned.append(step_metadata)
         argmax_blocks = lm_head_argmax_stage1_blocks(cfg.vocab_size, threads=256)
         buffers = _BufferGroup(
             [
@@ -844,8 +898,10 @@ class Qwen4ExpGGUFBatchRunner:
                 runtime=self.runtime,
                 pool_blocks=pool_blocks,
                 block_host=self._block_host if pool_blocks is not None else None,
+                position_view=step_metadata.views(layer).position,
+                context_view=step_metadata.views(layer).context,
             )
-            for _ in range(cfg.qsa_layer_count)
+            for layer in range(cfg.qsa_layer_count)
         )
         self.attention_states = attention_states
         self._owned.extend(attention_states)
@@ -857,8 +913,9 @@ class Qwen4ExpGGUFBatchRunner:
                 compression_ratio=cfg.qsa_compression_ratio,
                 block_budget=cfg.qsa_block_budget,
                 runtime=self.runtime,
+                position_view=step_metadata.views(layer).index_position,
             )
-            for attention in attention_states
+            for layer, attention in enumerate(attention_states)
         )
         self.index_states = index_states
         self._owned.extend(index_states)
@@ -954,7 +1011,7 @@ class Qwen4ExpGGUFBatchRunner:
 
     @property
     def graph_stats(self) -> dict[str, int]:
-        """Capture/replay/eager/reject counts of the stateless layer segments."""
+        """Capture/replay/eager/reject counts of the stateless graph segments."""
 
         return {} if self._graphs is None else self._graphs.stats
 
@@ -1460,9 +1517,10 @@ class Qwen4ExpGGUFBatchRunner:
 
         Token ids and slot indices must be integers (``operator.index``), so a
         float or a bool is rejected instead of being truncated. The whole row
-        set is validated before the first device write; a rejected call leaves
-        every slot healthy. A call that fails *after* it started mutating
-        poisons its rows (see :attr:`poisoned_slots`).
+        set, including every QSA owner's row plan, is validated before the first
+        device write; a rejected call leaves every slot healthy. A call that
+        fails *after* it started mutating poisons its rows (see
+        :attr:`poisoned_slots`).
 
         ``capture_logits=False`` skips the ``[rows, vocab]`` readback and
         returns only greedy ids from the committed row-wise argmax kernel.
@@ -1486,6 +1544,7 @@ class Qwen4ExpGGUFBatchRunner:
             quant=token_weight.spec.quant_key,
             variant="lookup_bf16_out",
         )
+        owner_plans = self._plan_owners(plan)
         # Everything above is host-side validation and lookup. From here on the
         # slots' device state changes, so a failure poisons the rows: a retry
         # would append and advance on top of a half-applied step.
@@ -1493,6 +1552,7 @@ class Qwen4ExpGGUFBatchRunner:
             return self._execute_step(
                 plan,
                 tokens,
+                owner_plans=owner_plans,
                 embedding_kernel=embedding_kernel,
                 token_weight=token_weight,
                 capture_logits=capture_logits,
@@ -1501,19 +1561,69 @@ class Qwen4ExpGGUFBatchRunner:
             self._poisoned.update(plan.slots)
             raise
 
+    def _plan_owners(self, plan: _StepPlan) -> _StepOwners:
+        """Validate every QSA owner's row set without touching a device buffer.
+
+        The attention and index owners read the packed per-step metadata, so
+        their rows are validated before that buffer's single upload: a rejected
+        row set cannot leave uploaded metadata behind for a step that never ran.
+        """
+
+        attention_states = self._require_attention_states()
+        self._require_step_metadata()
+        index_states = self.index_states
+        if len(index_states) != len(attention_states):
+            raise RuntimeError(
+                f"{len(attention_states)} attention owners do not match "
+                f"{len(index_states)} index owners"
+            )
+        return _StepOwners(
+            attention=tuple(
+                state.validate_rows(plan.slots, plan.positions)
+                for state in attention_states
+            ),
+            index=tuple(state.validate_rows(plan.slots) for state in index_states),
+        )
+
+    def _require_step_metadata(self) -> Qwen4ExpBatchStepMetadata:
+        metadata = self.step_metadata
+        if metadata is None:
+            raise RuntimeError(
+                "Qwen4Exp batch runner has no packed step metadata buffer"
+            )
+        if metadata.layers != len(self.attention_states):
+            raise RuntimeError(
+                f"the packed step metadata holds {metadata.layers} layers for "
+                f"{len(self.attention_states)} attention owners"
+            )
+        if metadata.state_slots != self.state_slots:
+            raise RuntimeError(
+                f"the packed step metadata holds {metadata.state_slots} slots for "
+                f"a {self.state_slots}-slot runner"
+            )
+        return metadata
+
     def _execute_step(
         self,
         plan: _StepPlan,
         tokens: np.ndarray,
         *,
+        owner_plans: _StepOwners,
         embedding_kernel: object,
         token_weight: object,
         capture_logits: bool,
     ) -> Qwen4ExpBatchDecodeResult:
-        """Run one validated step. Callers must poison ``plan.slots`` on failure."""
+        """Run one validated step. Callers must poison ``plan.slots`` on failure.
+
+        Every owner's row set arrives already validated in ``owner_plans``. This
+        method stages all of them into the packed metadata buffer, publishes it
+        with one copy, and only then admits the rows on the owners, so no owner
+        publishes a row set whose siblings were rejected.
+        """
 
         cfg = self.config
         attention_states = self._require_attention_states()
+        step_metadata = self._require_step_metadata()
         selection = self.selection
         gdn_scratch = self.gdn_scratch
         qsa_scratch = self.qsa_scratch
@@ -1567,10 +1677,25 @@ class Qwen4ExpGGUFBatchRunner:
                 runtime=self.runtime,
             )
             self._ple_hash_states = ple_states
-        for attention in attention_states:
-            attention.prepare(plan.slots, position_host)
-        for index_state in self.index_states:
-            index_state.prepare(plan.slots)
+        for layer, attention_plan in enumerate(owner_plans.attention):
+            index_plan = owner_plans.index[layer]
+            step_metadata.stage(
+                layer,
+                positions=attention_plan.positions,
+                contexts=attention_plan.contexts,
+                index_positions=index_plan.positions,
+            )
+        # One upload for every QSA owner's dynamic per-step metadata. Staging is
+        # host-only, so a step that cannot stage its rows publishes nothing.
+        step_metadata.upload()
+        for layer, attention_plan in enumerate(owner_plans.attention):
+            attention_states[layer].publish(
+                attention_plan, packed=step_metadata.views(layer)
+            )
+        for layer, index_plan in enumerate(owner_plans.index):
+            self.index_states[layer].publish(
+                index_plan, packed=step_metadata.views(layer)
+            )
         for gdn_state in self.gdn_states:
             gdn_state.prepare(plan.slots)
         if self.ple_state is not None:
@@ -1657,29 +1782,66 @@ class Qwen4ExpGGUFBatchRunner:
                     graph_cache=self._graphs,
                     graph_key=(layer, rows),
                 ).ptr
-        head_read = run_qwen4_exp_gr_read(
-            residual_ptr,
-            self.resident.weight("root.head_hc_norm").allocation("raw").tensor.ptr,
-            self.resident.weight("root.head_hc_down"),
-            self.resident.weight("root.head_hc_up"),
+        head_norm_ptr = self.resident.weight(
+            "root.head_hc_norm"
+        ).allocation("raw").tensor.ptr
+        head_down = self.resident.weight("root.head_hc_down")
+        head_up = self.resident.weight("root.head_hc_up")
+        lm_head = self.resident.weight("root.lm_head")
+
+        def head_unit(segment_stream: int) -> None:
+            """Final GR read plus the tied lm_head projection, as one unit."""
+
+            head_read = run_qwen4_exp_gr_read(
+                residual_ptr,
+                head_norm_ptr,
+                head_down,
+                head_up,
+                None,
+                head_scratch,
+                rows=rows,
+                branches=cfg.residual_branch_count,
+                hidden=cfg.hidden_size,
+                low_rank=cfg.residual_low_rank,
+                stream=segment_stream,
+                runtime=self.runtime,
+            )
+            launch_gguf_linear(
+                lm_head,
+                head_read.mixed.ptr,
+                self.logits.ptr,
+                rows,
+                cfg.hidden_size,
+                cfg.vocab_size,
+                activation_dtype=GGUF_ACTIVATION_F32,
+                output_dtype=GGUF_OUTPUT_F32,
+                stream=segment_stream,
+                runtime=self.runtime,
+            )
+
+        # The head is stateless: it reads the final residual, writes its own
+        # session-resident scratch and ``logits``, and keeps no state across
+        # steps, so it is graph-safe exactly like a layer segment. Its launch
+        # geometry is fixed by ``rows`` and a captured graph bakes in the
+        # residual pointer, so the key carries both: a width or residual-pointer
+        # change captures a new graph instead of replaying one that would read a
+        # stale row set. The logits/argmax readback stays outside this unit, so
+        # no host copy enters the capture.
+        #
+        # Unlike a layer segment this head needs no inject-free guard: the GR
+        # read zero-fills its inject buffer on the stream it is handed
+        # (``memset_async``), so the capture records that fill instead of
+        # leaving it on the null stream.
+        _run_segment(
+            self._graphs,
             None,
-            head_scratch,
-            rows=rows,
-            branches=cfg.residual_branch_count,
-            hidden=cfg.hidden_size,
-            low_rank=cfg.residual_low_rank,
-            runtime=self.runtime,
-        )
-        launch_gguf_linear(
-            self.resident.weight("root.lm_head"),
-            head_read.mixed.ptr,
-            self.logits.ptr,
-            rows,
-            cfg.hidden_size,
-            cfg.vocab_size,
-            activation_dtype=GGUF_ACTIVATION_F32,
-            output_dtype=GGUF_OUTPUT_F32,
-            runtime=self.runtime,
+            "head",
+            head_unit,
+            outputs=(
+                (self.logits.ptr, rows * cfg.vocab_size * DType.FP32.itemsize),
+            ),
+            stream=0,
+            key=("head", rows, residual_ptr),
         )
         if capture_logits:
             self.runtime.device_synchronize()
@@ -1907,6 +2069,7 @@ class Qwen4ExpGGUFBatchRunner:
         self.index_states = ()
         self.gdn_states = ()
         self.ple_state = None
+        self.step_metadata = None
         self.selection = None
         self.gdn_scratch = None
         self.qsa_scratch = None

@@ -9,8 +9,14 @@ import pytest
 
 import hipengine.runtime.qwen4_exp_batch_state as batch_state_module
 from hipengine.runtime.qwen4_exp_batch_state import (
+    STEP_CONTEXT_COLUMN,
+    STEP_INDEX_POSITION_COLUMN,
+    STEP_METADATA_COLUMNS,
+    STEP_POSITION_COLUMN,
     Qwen4ExpBatchActiveRows,
+    Qwen4ExpBatchAttentionRowPlan,
     Qwen4ExpBatchAttentionState,
+    Qwen4ExpBatchStepMetadata,
 )
 
 SLOTS = 4
@@ -569,3 +575,355 @@ def test_partial_close_rejects_uploads_and_entry_before_any_runtime_operation() 
     assert runtime.allocations == {}
     assert sorted(runtime.freed) == sorted(pointers)
     assert len(runtime.freed) == len(set(runtime.freed))
+
+
+# -- packed per-step metadata ------------------------------------------------
+#
+# The batch runner publishes every QSA owner's dynamic per-step metadata through
+# one buffer and one upload. These tests pin the parts a device test cannot
+# isolate cheaply: the layout, the stability of the view addresses a captured
+# graph depends on, the single copy per step, and the fact that a rejected row
+# set publishes nothing.
+
+LAYERS = 2
+
+
+def _allocate_packed(**overrides) -> tuple[Qwen4ExpBatchStepMetadata, FakeRuntime]:
+    runtime = overrides.pop("runtime", None) or FakeRuntime()
+    metadata = Qwen4ExpBatchStepMetadata.allocate(
+        layers=overrides.pop("layers", LAYERS),
+        state_slots=overrides.pop("state_slots", SLOTS),
+        runtime=runtime,
+        **overrides,
+    )
+    return metadata, runtime
+
+
+def test_packed_metadata_layout_is_layer_major_with_a_slot_row_stride() -> None:
+    metadata, runtime = _allocate_packed()
+    try:
+        stride = SLOTS * 8
+        assert metadata.bytes_per_column == stride
+        assert metadata.buffer.nbytes == LAYERS * STEP_METADATA_COLUMNS * stride
+        for layer in range(LAYERS):
+            views = metadata.views(layer)
+            assert views.layer == layer
+            assert views.position.ptr == (
+                metadata.buffer.ptr
+                + (layer * STEP_METADATA_COLUMNS + STEP_POSITION_COLUMN) * stride
+            )
+            assert views.context.ptr == views.position.ptr + stride
+            assert views.index_position.ptr == views.context.ptr + stride
+            assert views.position.nbytes == views.context.nbytes == stride
+        # Two layers never alias one another's metadata.
+        assert metadata.views(0).position.ptr != metadata.views(1).position.ptr
+        assert runtime.copies == []
+    finally:
+        metadata.close()
+
+
+def test_packed_metadata_views_keep_their_addresses_across_widths() -> None:
+    metadata, runtime = _allocate_packed()
+    try:
+        before = {
+            (layer, column): ptr
+            for layer in range(LAYERS)
+            for column, ptr in (
+                ("position", metadata.views(layer).position.ptr),
+                ("context", metadata.views(layer).context.ptr),
+                ("index", metadata.views(layer).index_position.ptr),
+            )
+        }
+        for width in (1, SLOTS, 2, SLOTS):
+            for layer in range(LAYERS):
+                metadata.stage(
+                    layer,
+                    positions=[width] * width,
+                    contexts=[width + 1] * width,
+                    index_positions=[width - 1] * width,
+                )
+            metadata.upload()
+            assert metadata.views(layer) is metadata.views(layer)
+            after = {
+                (layer, column): ptr
+                for layer in range(LAYERS)
+                for column, ptr in (
+                    ("position", metadata.views(layer).position.ptr),
+                    ("context", metadata.views(layer).context.ptr),
+                    ("index", metadata.views(layer).index_position.ptr),
+                )
+            }
+            assert after == before, "a width change moved a published address"
+        # Every upload is the whole buffer, so the copy size never depends on the
+        # active width either.
+        assert {nbytes for _, _, nbytes in runtime.copies} == {metadata.buffer.nbytes}
+        assert len(runtime.copies) == 4
+    finally:
+        metadata.close()
+
+
+def test_packed_metadata_upload_publishes_every_staged_layer_in_one_copy() -> None:
+    metadata, runtime = _allocate_packed()
+    try:
+        metadata.stage(
+            0,
+            positions=[4, 9],
+            contexts=[5, 10],
+            index_positions=[3, 8],
+        )
+        metadata.stage(
+            1,
+            positions=[11, 12],
+            contexts=[12, 13],
+            index_positions=[10, 11],
+        )
+        metadata.upload()
+        payloads = runtime.copies_to(metadata.buffer)
+        assert len(payloads) == 1, "one packed upload per step"
+        uploaded = np.frombuffer(payloads[-1], dtype=np.int64).reshape(
+            LAYERS, STEP_METADATA_COLUMNS, SLOTS
+        )
+        # Row r carries row r's own value; slots past the active width keep the
+        # zero the allocation published and no kernel reads.
+        assert uploaded[0, STEP_POSITION_COLUMN].tolist() == [4, 9, 0, 0]
+        assert uploaded[0, STEP_CONTEXT_COLUMN].tolist() == [5, 10, 0, 0]
+        assert uploaded[0, STEP_INDEX_POSITION_COLUMN].tolist() == [3, 8, 0, 0]
+        assert uploaded[1, STEP_POSITION_COLUMN].tolist() == [11, 12, 0, 0]
+        assert uploaded[1, STEP_CONTEXT_COLUMN].tolist() == [12, 13, 0, 0]
+        assert uploaded[1, STEP_INDEX_POSITION_COLUMN].tolist() == [10, 11, 0, 0]
+        assert metadata.host.shape == (LAYERS, STEP_METADATA_COLUMNS, SLOTS)
+    finally:
+        metadata.close()
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "error", "match"),
+    [
+        (dict(positions=[1, 2], contexts=[1], index_positions=[0, 0]), ValueError, "must hold"),
+        (
+            dict(positions=[], contexts=[], index_positions=[]),
+            ValueError,
+            "at least one",
+        ),
+        (
+            dict(
+                positions=[1] * (SLOTS + 1),
+                contexts=[1] * (SLOTS + 1),
+                index_positions=[0] * (SLOTS + 1),
+            ),
+            ValueError,
+            "at most",
+        ),
+        (dict(positions=[1.5], contexts=[2], index_positions=[0]), TypeError, "integer"),
+        (dict(positions=[True], contexts=[2], index_positions=[0]), TypeError, "integer"),
+    ],
+)
+def test_packed_metadata_stage_rejects_bad_rows_before_writing_host(
+    kwargs: dict, error: type, match: str
+) -> None:
+    metadata, runtime = _allocate_packed()
+    try:
+        metadata.stage(0, positions=[7], contexts=[8], index_positions=[6])
+        staged = metadata.host.copy()
+        with pytest.raises(error, match=match):
+            metadata.stage(0, **kwargs)
+        assert np.array_equal(metadata.host, staged), "a rejected stage wrote the mirror"
+        assert runtime.copies == []
+        assert metadata.stage(0, positions=[7], contexts=[8], index_positions=[6]) == 1
+        with pytest.raises(ValueError, match="outside"):
+            metadata.stage(LAYERS, positions=[1], contexts=[2], index_positions=[0])
+        with pytest.raises(ValueError, match="outside"):
+            metadata.views(LAYERS)
+    finally:
+        metadata.close()
+
+
+def test_packed_metadata_close_frees_once_and_retries_a_partial_failure() -> None:
+    runtime = FakeRuntime(fail_free_call=1)
+    metadata, _ = _allocate_packed(runtime=runtime)
+    with pytest.raises(RuntimeError, match="simulated free failure"):
+        metadata.close()
+    assert metadata.closed is False
+    assert metadata.closing is True
+    copies_before = len(runtime.copies)
+    with pytest.raises(RuntimeError, match="closing"):
+        metadata.upload()
+    with pytest.raises(RuntimeError, match="closing"):
+        metadata.views(0)
+    with pytest.raises(RuntimeError, match="closing"):
+        metadata.stage(0, positions=[1], contexts=[2], index_positions=[0])
+    assert len(runtime.copies) == copies_before
+    metadata.close()
+    assert metadata.closed is True
+    assert runtime.allocations == {}
+    metadata.close()
+    assert runtime.freed == [metadata.buffer.ptr]
+    with pytest.raises(RuntimeError, match="closed"):
+        metadata.upload()
+
+
+def test_packed_metadata_with_no_layers_allocates_but_rejects_every_layer() -> None:
+    metadata, _ = _allocate_packed(layers=0)
+    try:
+        assert metadata.layers == 0
+        assert metadata.host.size == 0
+        assert metadata.buffer.nbytes >= 8
+        # Nothing is staged, so the upload is a no-op rather than a zero-byte copy.
+        metadata.upload()
+        with pytest.raises(ValueError, match="outside"):
+            metadata.views(0)
+    finally:
+        metadata.close()
+
+
+def test_attention_owner_publishes_through_packed_views_without_its_own_upload() -> None:
+    runtime = FakeRuntime()
+    metadata = Qwen4ExpBatchStepMetadata.allocate(
+        layers=1, state_slots=SLOTS, runtime=runtime
+    )
+    state = Qwen4ExpBatchAttentionState.allocate(
+        state_slots=SLOTS,
+        max_positions=MAX_POSITIONS,
+        block_size=BLOCK_SIZE,
+        kv_heads=KV_HEADS,
+        head_dim=HEAD_DIM,
+        runtime=runtime,
+        position_view=metadata.views(0).position,
+        context_view=metadata.views(0).context,
+    )
+    try:
+        views = metadata.views(0)
+        metadata.stage(
+            0,
+            positions=[255, 3],
+            contexts=[256, 4],
+            index_positions=[254, 2],
+        )
+        metadata.upload()
+        copies_before = len(runtime.copies)
+        active = state.prepare([2, 0], [255, 3], packed=views)
+        # The first admission changes the page table away from the zero table the
+        # allocation published, so exactly that one table upload happens here.
+        assert len(runtime.copies) == copies_before + 1
+        assert active.slot_ids == (2, 0)
+        assert active.position.ptr == views.position.ptr
+        assert active.context.ptr == views.context.ptr
+        assert active.append_spans.live_counts.ptr == views.position.ptr
+        assert active.decode_spans.live_counts.ptr == views.context.ptr
+        assert active.position.numel == 2
+        assert state.position_host[:2].tolist() == [255, 3]
+        assert state.context_host[:2].tolist() == [256, 4]
+        # Re-publishing the same row set copies nothing at all: no metadata upload
+        # (the packed copy carried it) and no table upload (unchanged).
+        copies_before = len(runtime.copies)
+        state.prepare([2, 0], [255, 3], packed=views)
+        assert len(runtime.copies) == copies_before, "packed publish uploaded metadata"
+        # The owner's own buffers stay untouched: the packed copy is the only one.
+        assert runtime.copies_to(state.position) == [bytes(SLOTS * 8)]
+        assert runtime.copies_to(state.context) == [bytes(SLOTS * 8)]
+        # A changed page table still uploads, packed views or not: the allocation
+        # published one zero table, the first admission published the real one,
+        # and this reassignment publishes a third.
+        state.block_host[0] = np.asarray([99, 1, 2, 3, 4], dtype=np.int32)
+        state.prepare([2, 0], [255, 3], packed=views)
+        assert len(runtime.copies_to(state.block_table)) == 3
+    finally:
+        state.close()
+        metadata.close()
+
+
+def test_attention_publish_rejects_a_malformed_plan_before_any_device_write() -> None:
+    runtime = FakeRuntime()
+    state, _ = _allocate(runtime=runtime)
+    try:
+        plan = state.validate_rows([0, 1], [4, 5])
+        state.prepare([0], [0])
+        copies_before = len(runtime.copies)
+        bad_plans = [
+            Qwen4ExpBatchAttentionRowPlan(
+                slot_ids=(0, 1),
+                positions=plan.positions,
+                contexts=plan.contexts[:1],
+                block_table=plan.block_table,
+                max_context_len=plan.max_context_len,
+            ),
+            Qwen4ExpBatchAttentionRowPlan(
+                slot_ids=(0, 1),
+                positions=plan.positions,
+                contexts=plan.contexts,
+                block_table=plan.block_table[:1],
+                max_context_len=plan.max_context_len,
+            ),
+            Qwen4ExpBatchAttentionRowPlan(
+                slot_ids=(0, 0),
+                positions=plan.positions,
+                contexts=plan.contexts,
+                block_table=plan.block_table,
+                max_context_len=plan.max_context_len,
+            ),
+            Qwen4ExpBatchAttentionRowPlan(
+                slot_ids=(0, SLOTS),
+                positions=plan.positions,
+                contexts=plan.contexts,
+                block_table=plan.block_table,
+                max_context_len=plan.max_context_len,
+            ),
+            Qwen4ExpBatchAttentionRowPlan(
+                slot_ids=(0, 1),
+                positions=np.asarray([4, MAX_POSITIONS], dtype=np.int64),
+                contexts=np.asarray([5, MAX_POSITIONS + 1], dtype=np.int64),
+                block_table=plan.block_table,
+                max_context_len=plan.max_context_len,
+            ),
+        ]
+        for bad in bad_plans:
+            with pytest.raises(ValueError):
+                state.publish(bad)
+            assert len(runtime.copies) == copies_before
+            assert state.active_rows == 1
+        with pytest.raises(TypeError, match="validate_rows"):
+            state.publish({"slot_ids": (0,)})  # type: ignore[arg-type]
+        # An empty row set is refused too.
+        with pytest.raises(ValueError, match="at least one"):
+            state.publish(
+                Qwen4ExpBatchAttentionRowPlan(
+                    slot_ids=(),
+                    positions=np.zeros(0, dtype=np.int64),
+                    contexts=np.zeros(0, dtype=np.int64),
+                    block_table=np.zeros((0, state.blocks_per_request), dtype=np.int32),
+                    max_context_len=0,
+                )
+            )
+    finally:
+        state.close()
+
+
+def test_attention_allocate_rejects_a_packed_view_of_the_wrong_width() -> None:
+    runtime = FakeRuntime()
+    metadata = Qwen4ExpBatchStepMetadata.allocate(
+        layers=1, state_slots=SLOTS + 1, runtime=runtime
+    )
+    try:
+        views = metadata.views(0)
+        with pytest.raises(ValueError, match="one int64 per state slot"):
+            Qwen4ExpBatchAttentionState.allocate(
+                state_slots=SLOTS,
+                max_positions=MAX_POSITIONS,
+                block_size=BLOCK_SIZE,
+                kv_heads=KV_HEADS,
+                head_dim=HEAD_DIM,
+                runtime=runtime,
+                position_view=views.position,
+            )
+        with pytest.raises(TypeError, match="DeviceBuffer"):
+            Qwen4ExpBatchAttentionState.allocate(
+                state_slots=SLOTS,
+                max_positions=MAX_POSITIONS,
+                block_size=BLOCK_SIZE,
+                kv_heads=KV_HEADS,
+                head_dim=HEAD_DIM,
+                runtime=runtime,
+                context_view=object(),
+            )
+    finally:
+        metadata.close()

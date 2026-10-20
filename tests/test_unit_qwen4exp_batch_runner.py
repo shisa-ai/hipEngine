@@ -19,14 +19,23 @@ tests pin the parts a device test cannot isolate cheaply.
 
 from __future__ import annotations
 
+import ctypes
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
+from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import DeviceBuffer
 from hipengine.runtime import qwen4_exp_batch_runner as runner_module
+from hipengine.runtime.moe_graph import MoeGraphCache
 from hipengine.runtime.qwen4_exp_batch_runner import Qwen4ExpGGUFBatchRunner
+from hipengine.runtime.qwen4_exp_batch_state import (
+    STEP_CONTEXT_COLUMN,
+    STEP_INDEX_POSITION_COLUMN,
+    STEP_POSITION_COLUMN,
+    Qwen4ExpBatchStepMetadata,
+)
 from tests import _qwen4_exp_batch_fixtures as fixture
 
 
@@ -38,6 +47,31 @@ class _FakeRuntime:
         self.fail_memset_at: int | None = None
         self.memcpy_count = 0
         self.memset_count = 0
+        self.next_ptr = 0xF00000
+        self.allocations: dict[int, int] = {}
+        self.freed: list[int] = []
+        # Device memory, so a captured op can be proven to read what the
+        # pointer holds at launch time rather than at capture time.
+        self.memory: dict[int, bytearray] = {}
+        # HIP stream/graph surface, enough for the real ``MoeGraphCache``.
+        self.capturing = False
+        self.recorded: list = []
+        self.captured: dict[int, tuple] = {}
+        self.execs: dict[int, int] = {}
+        self.graphs = 0
+        self.next_exec = 0
+        self.streams = 0
+        self.fail_capture = False
+
+    def malloc(self, nbytes: int) -> int:
+        ptr = self.next_ptr
+        self.next_ptr += max(int(nbytes), 1) + 0x100
+        self.allocations[ptr] = int(nbytes)
+        return ptr
+
+    def free(self, ptr: int) -> None:
+        self.allocations.pop(ptr, None)
+        self.freed.append(int(ptr))
 
     def memset(self, ptr, value, nbytes) -> None:
         self.memset_count += 1
@@ -50,9 +84,76 @@ class _FakeRuntime:
         if self.fail_memcpy_at == self.memcpy_count:
             raise RuntimeError("injected device copy failure")
         self.calls.append(("memcpy", int(destination), int(source), int(nbytes)))
+        if kind == HipMemcpyKind.HOST_TO_DEVICE:
+            self.device_write(destination, ctypes.string_at(int(source), int(nbytes)))
+        elif kind == HipMemcpyKind.DEVICE_TO_HOST:
+            data = self.device_read(source, nbytes)
+            ctypes.memmove(int(destination), data, int(nbytes))
 
     def device_synchronize(self) -> None:
         self.calls.append(("sync",))
+
+    # -- device memory ----------------------------------------------------
+
+    def device_write(self, ptr: int, data: bytes) -> None:
+        self.memory[int(ptr)] = bytearray(data)
+
+    def device_read(self, ptr: int, nbytes: int) -> bytes:
+        stored = self.memory.get(int(ptr))
+        if stored is None:
+            return bytes(int(nbytes))
+        return bytes(stored[: int(nbytes)]).ljust(int(nbytes), b"\0")
+
+    def device_op(self, op) -> None:
+        """Issue one device operation, recording it while a capture is open."""
+
+        if self.capturing:
+            self.recorded.append(op)
+        op()
+
+    # -- streams and graphs ----------------------------------------------
+
+    def stream_create(self, *, nonblocking: bool = True) -> int:
+        self.streams += 1
+        self.calls.append(("stream_create", bool(nonblocking)))
+        return 0x5000 + self.streams
+
+    def stream_destroy(self, stream: int) -> None:
+        self.calls.append(("stream_destroy", int(stream)))
+
+    def stream_synchronize(self, stream: int) -> None:
+        self.calls.append(("stream_sync", int(stream)))
+
+    def stream_begin_capture(self, stream: int, mode: int) -> None:
+        self.capturing = True
+        self.recorded = []
+        self.calls.append(("begin_capture", int(stream), int(mode)))
+
+    def stream_end_capture(self, stream: int) -> int:
+        self.capturing = False
+        self.calls.append(("end_capture", int(stream)))
+        if self.fail_capture:
+            return 0
+        self.graphs += 1
+        self.captured[self.graphs] = tuple(self.recorded)
+        return self.graphs
+
+    def graph_instantiate(self, graph: int) -> int:
+        self.next_exec += 1
+        self.execs[self.next_exec] = int(graph)
+        self.calls.append(("graph_instantiate", int(graph)))
+        return self.next_exec
+
+    def graph_launch(self, graph_exec: int, stream: int) -> None:
+        self.calls.append(("graph_launch", int(graph_exec), int(stream)))
+        for op in self.captured[self.execs[int(graph_exec)]]:
+            op()
+
+    def graph_exec_destroy(self, graph_exec: int) -> None:
+        self.calls.append(("graph_exec_destroy", int(graph_exec)))
+
+    def graph_destroy(self, graph: int) -> None:
+        self.calls.append(("graph_destroy", int(graph)))
 
 
 class _FakeAttention:
@@ -77,24 +178,47 @@ class _FakeAttention:
         self.position_host = np.zeros(slots, dtype=np.int64)
         self.context_host = np.ones(slots, dtype=np.int64)
         self.prepared: list[tuple[tuple[int, ...], tuple[int, ...]]] = []
+        self.published: list[tuple[tuple[int, ...], object]] = []
         self.active = None
         self.block_table = DeviceBuffer(0x300000, slots * blocks * 4)
 
-    def prepare(self, slot_ids, positions):
+    def validate_rows(self, slot_ids, positions):
         slots = tuple(int(slot) for slot in slot_ids)
         values = tuple(int(position) for position in positions)
         self.prepared.append((slots, values))
-        self.position_host[: len(slots)] = values
-        self.context_host[: len(slots)] = [value + 1 for value in values]
-        self.active = SimpleNamespace(
+        return SimpleNamespace(
             slot_ids=slots,
             rows=len(slots),
+            positions=np.asarray(values, dtype=np.int64),
+            contexts=np.asarray([value + 1 for value in values], dtype=np.int64),
+            block_table=np.asarray(
+                [self.block_host[slot].tolist() for slot in slots], dtype=np.int32
+            ),
+            max_context_len=max(values) + 1,
+        )
+
+    def publish(self, plan, *, packed=None):
+        self.published.append((plan.slot_ids, packed))
+        rows = plan.rows
+        self.position_host[:rows] = plan.positions
+        self.context_host[:rows] = plan.contexts
+        position = (
+            DeviceBuffer(0x400000, rows * 8)
+            if packed is None
+            else packed.position
+        )
+        context = (
+            DeviceBuffer(0x500000, rows * 8) if packed is None else packed.context
+        )
+        self.active = SimpleNamespace(
+            slot_ids=plan.slot_ids,
+            rows=rows,
             block_table=self.block_table,
-            position=DeviceBuffer(0x400000, len(slots) * 8),
-            context=DeviceBuffer(0x500000, len(slots) * 8),
+            position=position,
+            context=context,
             append_spans=object(),
             decode_spans=object(),
-            max_context_len=max(values) + 1,
+            max_context_len=plan.max_context_len,
         )
         return self.active
 
@@ -116,6 +240,7 @@ class _FakeIndex:
         self.pending_rollback = None
         self.count = 0
         self.prepared: list[tuple[int, ...]] = []
+        self.published: list[tuple[tuple[int, ...], object]] = []
         self.resets: list[int] = []
         self.active = None
 
@@ -126,10 +251,30 @@ class _FakeIndex:
         self.reset_generation[slot] += 1
         self.active = None
 
-    def prepare(self, slot_ids):
+    def validate_rows(self, slot_ids):
         slots = tuple(int(slot) for slot in slot_ids)
         self.prepared.append(slots)
-        self.active = SimpleNamespace(slot_ids=slots, rows=len(slots))
+        parsed = np.asarray(slots, dtype=np.int64)
+        cursors = self.cursor_host[parsed]
+        return SimpleNamespace(
+            slot_ids=slots,
+            rows=len(slots),
+            slots=parsed,
+            positions=cursors - 1,
+            blocks=cursors // fixture.RATIO,
+        )
+
+    def publish(self, plan, *, packed=None):
+        self.published.append((plan.slot_ids, packed))
+        self.active = SimpleNamespace(
+            slot_ids=plan.slot_ids,
+            rows=plan.rows,
+            positions_device=(
+                DeviceBuffer(0x680000, plan.rows * 8)
+                if packed is None
+                else packed.index_position
+            ),
+        )
         return self.active
 
 
@@ -255,6 +400,11 @@ def _fake_runner(*, slots: int = 3) -> Qwen4ExpGGUFBatchRunner:
     runner._free_blocks = []
     runner._slot_blocks = [runner.attention_states[0].blocks_per_request] * slots
     runner.index_states = (_FakeIndex(slots),)
+    runner.step_metadata = Qwen4ExpBatchStepMetadata.allocate(
+        layers=len(runner.attention_states),
+        state_slots=slots,
+        runtime=runner.runtime,
+    )
     runner.gdn_states = (_FakeGdn(slots), _FakeGdn(slots))
     runner.ple_state = _FakePle(slots)
     runner.selection = SimpleNamespace(rows=slots, stride=fixture.OUTPUT_STRIDE)
@@ -385,6 +535,57 @@ def _install_step_fakes(monkeypatch) -> list[tuple]:
         ),
     )
     return events
+
+
+def _use_two_qsa_layers(runner: Qwen4ExpGGUFBatchRunner) -> None:
+    """Give ``runner`` two QSA layers, each with its own owners and views."""
+
+    two_qsa = fixture.two_qsa_config()
+    runner.config = two_qsa
+    runner._ple_layers = frozenset(two_qsa.ple_layers)
+    runner.gdn_bindings = {
+        layer: _fake_binding(layer, kind)
+        for layer, kind in enumerate(two_qsa.layer_types)
+        if kind == "gdn"
+    }
+    runner.qsa_bindings = {
+        layer: _fake_binding(layer, kind)
+        for layer, kind in enumerate(two_qsa.layer_types)
+        if kind == "qsa"
+    }
+    runner.attention_states = (
+        _FakeAttention(runner.state_slots, 2),
+        _FakeAttention(runner.state_slots, 2),
+    )
+    runner.index_states = (_FakeIndex(runner.state_slots), _FakeIndex(runner.state_slots))
+    runner.step_metadata = Qwen4ExpBatchStepMetadata.allocate(
+        layers=2, state_slots=runner.state_slots, runtime=runner.runtime
+    )
+
+
+def _packed_uploads(
+    runner: Qwen4ExpGGUFBatchRunner, metadata: Qwen4ExpBatchStepMetadata
+) -> list[int]:
+    """Byte counts of every device copy that targeted the packed buffer.
+
+    Read from the runtime rather than the runner module's ``copy_host_to_device``
+    name, because the packed owner lives in its own module and reaches the device
+    through the same ``runtime.memcpy`` the real path uses.
+    """
+
+    return [
+        call[3]
+        for call in runner.runtime.calls
+        if call[0] == "memcpy" and call[1] == metadata.buffer.ptr
+    ]
+
+
+def _packed_payload(runner: Qwen4ExpGGUFBatchRunner) -> np.ndarray:
+    """The packed buffer's host staging as ``[layer, column, slot]`` int64."""
+
+    metadata = runner.step_metadata
+    assert metadata is not None
+    return metadata.host
 
 
 def test_step_dispatches_every_stage_at_physical_width(monkeypatch) -> None:
@@ -949,24 +1150,7 @@ def test_each_qsa_layer_owns_its_own_paged_kv_cache(monkeypatch) -> None:
 
     _install_step_fakes(monkeypatch)
     runner = _fake_runner(slots=2)
-    two_qsa = fixture.two_qsa_config()
-    runner.config = two_qsa
-    runner._ple_layers = frozenset(two_qsa.ple_layers)
-    runner.gdn_bindings = {
-        layer: _fake_binding(layer, kind)
-        for layer, kind in enumerate(two_qsa.layer_types)
-        if kind == "gdn"
-    }
-    runner.qsa_bindings = {
-        layer: _fake_binding(layer, kind)
-        for layer, kind in enumerate(two_qsa.layer_types)
-        if kind == "qsa"
-    }
-    runner.attention_states = (
-        _FakeAttention(2, 2),
-        _FakeAttention(2, 2),
-    )
-    runner.index_states = (_FakeIndex(2), _FakeIndex(2))
+    _use_two_qsa_layers(runner)
 
     seen: list[tuple[int, int]] = []
 
@@ -1014,3 +1198,539 @@ def test_each_qsa_layer_owns_its_own_paged_kv_cache(monkeypatch) -> None:
         for start, end in caches if start <= call[1] < end
     )
     assert written == kv_bytes
+
+
+def test_step_uploads_packed_metadata_once_for_every_qsa_layer(monkeypatch) -> None:
+    """One step publishes every layer's dynamic metadata with one upload.
+
+    Before packing, each QSA layer uploaded its own position, context, and index
+    query positions, so a step cost three copies per layer. The count below is
+    the whole point of the unit: it must not grow with the layer count.
+    """
+
+    _install_step_fakes(monkeypatch)
+    runner = _fake_runner(slots=2)
+    _use_two_qsa_layers(runner)
+    metadata = runner.step_metadata
+    assert metadata is not None
+    owner_two = runner.admit(0)
+    owner_zero = runner.admit(1)
+    runner._positions[0] = 5
+    runner._positions[1] = 9
+    for index_state in runner.index_states:
+        index_state.cursor_host[0] = 6
+        index_state.cursor_host[1] = 10
+    published_at_dispatch: list[bool] = []
+    inner_qsa = runner_module.run_qwen4_exp_batch_qsa_layer
+
+    def wrapped_qsa(*args, **kwargs):
+        published_at_dispatch.append(
+            all(state.active is not None for state in runner.attention_states)
+            and all(state.active is not None for state in runner.index_states)
+        )
+        return inner_qsa(*args, **kwargs)
+
+    monkeypatch.setattr(runner_module, "run_qwen4_exp_batch_qsa_layer", wrapped_qsa)
+    runner.runtime.calls.clear()
+    runner.step([7, 3], slots=[0, 1], owners=[owner_two, owner_zero], capture_logits=False)
+    uploads = _packed_uploads(runner, metadata)
+    assert uploads == [metadata.buffer.nbytes], (
+        "a 2-layer step must publish its packed metadata exactly once"
+    )
+    # Every owner is published before the first QSA layer reads its metadata.
+    assert published_at_dispatch == [True, True]
+    # Row r carries row r's slot metadata, for every layer.
+    packed = _packed_payload(runner)
+    for layer in range(2):
+        assert packed[layer, STEP_POSITION_COLUMN, :2].tolist() == [5, 9]
+        assert packed[layer, STEP_CONTEXT_COLUMN, :2].tolist() == [6, 10]
+        assert packed[layer, STEP_INDEX_POSITION_COLUMN, :2].tolist() == [5, 9]
+    # Both owners published through the same buffer's per-layer views.
+    for layer, attention in enumerate(runner.attention_states):
+        slot_ids, packed_views = attention.published[-1]
+        assert slot_ids == (0, 1)
+        assert packed_views is metadata.views(layer)
+        assert attention.active.position.ptr == metadata.views(layer).position.ptr
+        assert attention.active.context.ptr == metadata.views(layer).context.ptr
+    for layer, index_state in enumerate(runner.index_states):
+        slot_ids, packed_views = index_state.published[-1]
+        assert slot_ids == (0, 1)
+        assert packed_views is metadata.views(layer)
+        assert index_state.active.positions_device.ptr == (
+            metadata.views(layer).index_position.ptr
+        )
+
+
+def test_step_packs_permuted_rows_in_the_callers_row_order(monkeypatch) -> None:
+    _install_step_fakes(monkeypatch)
+    runner = _fake_runner(slots=3)
+    metadata = runner.step_metadata
+    assert metadata is not None
+    owner_two = runner.admit(2)
+    owner_zero = runner.admit(0)
+    runner._positions[2] = 11
+    runner._positions[0] = 2
+    runner.index_states[0].cursor_host[2] = 12
+    runner.index_states[0].cursor_host[0] = 3
+    result = runner.step(
+        [7, 9], slots=[2, 0], owners=[owner_two, owner_zero], capture_logits=False
+    )
+    assert result.slot_ids == (2, 0)
+    packed = _packed_payload(runner)
+    # Row 0 is slot 2 and row 1 is slot 0, in the caller's order.
+    assert packed[0, STEP_POSITION_COLUMN, :2].tolist() == [11, 2]
+    assert packed[0, STEP_CONTEXT_COLUMN, :2].tolist() == [12, 3]
+    assert packed[0, STEP_INDEX_POSITION_COLUMN, :2].tolist() == [11, 2]
+    # The permuted row set keeps the owners' row-to-slot mapping too.
+    assert runner.attention_states[0].prepared[-1] == ((2, 0), (11, 2))
+    assert runner.index_states[0].prepared[-1] == (2, 0)
+    assert runner.position(2) == 12 and runner.position(0) == 3
+
+
+def test_step_restages_the_packed_metadata_after_slot_reuse(monkeypatch) -> None:
+    """A released and re-admitted slot must not leave a previous row published."""
+
+    _install_step_fakes(monkeypatch)
+    runner = _fake_runner(slots=2)
+    metadata = runner.step_metadata
+    assert metadata is not None
+    first = runner.admit(1)
+    runner._positions[1] = 4
+    runner.step([7], slots=[1], owners=[first], capture_logits=False)
+    assert _packed_payload(runner)[0, STEP_POSITION_COLUMN, 0] == 4
+    buffer_ptr = metadata.buffer.ptr
+    runner.release(1, first)
+    second = runner.admit(1)
+    assert second != first
+    runner.runtime.calls.clear()
+    runner.step([7], slots=[1], owners=[second], capture_logits=False)
+    # Same buffer, no reallocation, and the new request's position replaced the
+    # retired request's row instead of leaving it in the packed copy.
+    assert metadata.buffer.ptr == buffer_ptr
+    assert _packed_payload(runner)[0, STEP_POSITION_COLUMN, 0] == 0
+    assert _packed_uploads(runner, metadata) == [metadata.buffer.nbytes]
+    assert runner.position(1) == 1
+
+
+def test_step_validates_every_owner_before_the_packed_upload(monkeypatch) -> None:
+    """A rejected owner row set must not upload or publish any metadata."""
+
+    events = _install_step_fakes(monkeypatch)
+    runner = _fake_runner(slots=2)
+    metadata = runner.step_metadata
+    assert metadata is not None
+    owner = runner.admit(0)
+    attention = runner.attention_states[0]
+
+    def rejecting_validate_rows(slot_ids, positions):
+        raise ValueError("injected row-set rejection")
+
+    monkeypatch.setattr(attention, "validate_rows", rejecting_validate_rows)
+    events.clear()
+    runner.runtime.calls.clear()
+    with pytest.raises(ValueError, match="injected row-set rejection"):
+        runner.step([7], slots=[0], owners=[owner], capture_logits=False)
+    assert _packed_uploads(runner, metadata) == []
+    assert events == [], "a rejected row set must dispatch nothing"
+    assert runner.poisoned_slots == ()
+    assert attention.published == []
+    assert runner.index_states[0].published == []
+    assert runner.position(0) == 0
+
+
+def test_step_rejects_a_packed_buffer_that_does_not_match_the_owners(monkeypatch) -> None:
+    _install_step_fakes(monkeypatch)
+    runner = _fake_runner(slots=2)
+    owner = runner.admit(0)
+    runner.step_metadata = Qwen4ExpBatchStepMetadata.allocate(
+        layers=2, state_slots=2, runtime=runner.runtime
+    )
+    with pytest.raises(RuntimeError, match="packed step metadata holds 2 layers"):
+        runner.step([7], slots=[0], owners=[owner], capture_logits=False)
+    runner.step_metadata = Qwen4ExpBatchStepMetadata.allocate(
+        layers=1, state_slots=3, runtime=runner.runtime
+    )
+    with pytest.raises(RuntimeError, match="packed step metadata holds 3 slots"):
+        runner.step([7], slots=[0], owners=[owner], capture_logits=False)
+    runner.step_metadata = None
+    with pytest.raises(RuntimeError, match="no packed step metadata buffer"):
+        runner.step([7], slots=[0], owners=[owner], capture_logits=False)
+    assert runner.poisoned_slots == ()
+    assert runner.position(0) == 0
+
+
+def test_step_survives_a_failed_packed_upload_by_poisoning_its_rows(monkeypatch) -> None:
+    """A device copy that dies mid-step is still a poisoned row, not a retry."""
+
+    _install_step_fakes(monkeypatch)
+    runner = _fake_runner(slots=2)
+    metadata = runner.step_metadata
+    assert metadata is not None
+    owner_zero = runner.admit(0)
+    owner_one = runner.admit(1)
+    real_memcpy = runner.runtime.memcpy
+    calls = {"n": 0}
+
+    def failing_memcpy(destination, source, nbytes, kind) -> None:
+        calls["n"] += 1
+        if destination == metadata.buffer.ptr:
+            raise RuntimeError("injected packed upload failure")
+        real_memcpy(destination, source, nbytes, kind)
+
+    runner.runtime.memcpy = failing_memcpy
+    with pytest.raises(RuntimeError, match="injected packed upload failure"):
+        runner.step([7], slots=[0], owners=[owner_zero], capture_logits=False)
+    assert runner.poisoned_slots == (0,)
+    # The untouched row keeps working, and its own packed upload succeeds.
+    runner.runtime.memcpy = real_memcpy
+    runner.step([7], slots=[1], owners=[owner_one], capture_logits=False)
+    assert runner.position(1) == 1
+    assert runner.position(0) == 0
+
+
+# -- output-head graph capture --------------------------------------------
+
+
+_HEAD_KEYS = ("head_gr_read", "lm_head")
+_READBACK = ("d2h", "argmax")
+
+
+def _install_head_graph_fakes(monkeypatch, runner: Qwen4ExpGGUFBatchRunner) -> None:
+    """Head and readback fakes that read and write the fake device memory.
+
+    The head writes ``mixed`` as a copy of the residual bytes and ``logits``
+    derived from ``mixed``, so a replay that read a different pointer produces
+    different tokens. Every device operation goes through ``runtime.device_op``,
+    which records it while a capture is open, exactly as HIP captures a launch.
+    """
+
+    runtime = runner.runtime
+    cfg = runner.config
+    head_ptr = int(runner.head_scratch.ptr)
+    mixed_ptr = head_ptr + 0x20
+
+    def gr_read(
+        residual_ptr, norm_ptr, down, up, inject, scratch, *, rows, stream=0, **kwargs
+    ):
+        assert int(scratch.ptr) == head_ptr
+        runtime.calls.append(
+            ("head_gr_read", int(residual_ptr), int(stream), int(rows))
+        )
+
+        def op() -> None:
+            runtime.device_write(mixed_ptr, runtime.device_read(residual_ptr, 64))
+
+        runtime.device_op(op)
+        return SimpleNamespace(mixed=DeviceBuffer(mixed_ptr, int(rows) * 64))
+
+    def lm_head(
+        weight, x_ptr, out_ptr, rows, in_features, out_features, *, stream=0, **kwargs
+    ):
+        assert int(in_features) == cfg.hidden_size
+        runtime.calls.append(("lm_head", int(x_ptr), int(out_ptr), int(stream)))
+
+        def op() -> None:
+            base = int.from_bytes(runtime.device_read(x_ptr, 2), "little") % int(
+                out_features
+            )
+            values = np.zeros((int(rows), int(out_features)), dtype=np.float32)
+            for row in range(int(rows)):
+                values[row, (base + row) % int(out_features)] = 1.0
+            runtime.device_write(out_ptr, values.tobytes())
+
+        runtime.device_op(op)
+
+    def argmax(
+        logits_ptr, values_ptr, blocks_ptr, ids_ptr, out_values, rows, vocab, **kwargs
+    ):
+        runtime.calls.append(("argmax", int(logits_ptr), int(rows), int(vocab)))
+
+        def op() -> None:
+            values = np.frombuffer(
+                runtime.device_read(logits_ptr, int(rows) * int(vocab) * 4),
+                dtype=np.float32,
+            ).reshape(int(rows), int(vocab))
+            ids = np.ascontiguousarray(np.argmax(values, axis=1), dtype=np.int32)
+            runtime.device_write(ids_ptr, ids.tobytes())
+
+        runtime.device_op(op)
+
+    def d2h(host_ptr, buffer, nbytes=None, runtime=None):
+        runtime.calls.append(("d2h", int(buffer.ptr)))
+
+    def h2d(buffer, host_ptr, nbytes=None, runtime=None):
+        runtime.calls.append(("h2d", int(buffer.ptr)))
+
+    monkeypatch.setattr(runner_module, "run_qwen4_exp_gr_read", gr_read)
+    monkeypatch.setattr(runner_module, "launch_gguf_linear", lm_head)
+    monkeypatch.setattr(runner_module, "argmax_f32_rows_i32", argmax)
+    monkeypatch.setattr(runner_module, "copy_device_to_host", d2h)
+    monkeypatch.setattr(runner_module, "copy_host_to_device", h2d)
+
+
+def _graph_runner(
+    monkeypatch, *, slots: int = 3, enabled: bool = True
+) -> Qwen4ExpGGUFBatchRunner:
+    """A fixture runner with the real graph cache and memory-modelling fakes."""
+
+    _install_step_fakes(monkeypatch)
+    runner = _fake_runner(slots=slots)
+    _install_head_graph_fakes(monkeypatch, runner)
+    runner._graphs = MoeGraphCache(runner.runtime, enabled=enabled)
+    return runner
+
+
+def _head_keys(runner: Qwen4ExpGGUFBatchRunner) -> list[tuple]:
+    """Every captured key that names the output head, in capture order."""
+
+    return [key for key in runner._graphs._execs if key[0] == "head"]
+
+
+def _head_launches(calls: list[tuple]) -> list[tuple]:
+    return [call for call in calls if call[0] in _HEAD_KEYS]
+
+
+def _capture_brackets(calls: list[tuple]) -> list[tuple[int, int]]:
+    """Index pairs of every ``begin_capture``/``end_capture`` in ``calls``."""
+
+    brackets: list[tuple[int, int]] = []
+    open_at: int | None = None
+    for index, call in enumerate(calls):
+        if call[0] == "begin_capture":
+            assert open_at is None
+            open_at = index
+        elif call[0] == "end_capture":
+            assert open_at is not None
+            brackets.append((open_at, index))
+            open_at = None
+    assert open_at is None
+    return brackets
+
+
+def _head_residual_ptr(runner: Qwen4ExpGGUFBatchRunner) -> int:
+    """The final residual pointer the last layer hands the head."""
+
+    keys = _head_keys(runner)
+    assert keys, "the head was never captured"
+    return int(keys[0][2])
+
+
+def test_step_captures_the_output_head_and_replays_it(monkeypatch) -> None:
+    runner = _graph_runner(monkeypatch)
+    owner_two = runner.admit(2)
+    owner_zero = runner.admit(0)
+    slots = [2, 0]
+    owners = [owner_two, owner_zero]
+
+    first = runner.step([7, 9], slots=slots, owners=owners, capture_logits=False)
+    keys = _head_keys(runner)
+    assert len(keys) == 1
+    assert keys[0][0] == "head"
+    assert keys[0][1] == 2
+    assert keys[0][2] > 0
+    # Capture runs the unit twice (eager reference, then the captured launch),
+    # then replays it once for the bit-exact parity check.
+    assert len(_head_launches(runner.runtime.calls)) == 4
+    assert runner.graph_stats["capture"] >= 1
+
+    launches_before = len(_head_launches(runner.runtime.calls))
+    replays_before = runner.graph_stats["replay"]
+    second = runner.step([7, 9], slots=slots, owners=owners, capture_logits=False)
+
+    # A second step at the same width and residual pointer replays the graph.
+    assert len(_head_launches(runner.runtime.calls)) == launches_before
+    assert runner.graph_stats["replay"] == replays_before + 1
+    assert _head_keys(runner) == keys
+    assert np.array_equal(first.tokens, second.tokens)
+    assert first.tokens.tolist() == [0, 1]
+
+
+def test_head_graph_key_carries_the_row_width(monkeypatch) -> None:
+    runner = _graph_runner(monkeypatch)
+    owners = {slot: runner.admit(slot) for slot in (0, 1, 2)}
+
+    runner.step([7, 9], slots=[2, 0], owners=[owners[2], owners[0]], capture_logits=False)
+    wide = runner.step(
+        [7, 9, 11], slots=[0, 1, 2], owners=[owners[0], owners[1], owners[2]],
+        capture_logits=False,
+    )
+    assert wide.tokens.tolist() == [0, 1, 2]
+    keys = _head_keys(runner)
+    assert sorted(key[1] for key in keys) == [2, 3]
+    launches_after_captures = len(_head_launches(runner.runtime.calls))
+
+    # Returning to width 2 must replay its own graph, not the width-3 one.
+    again = runner.step(
+        [7, 9], slots=[2, 0], owners=[owners[2], owners[0]], capture_logits=False
+    )
+    assert again.tokens.tolist() == [0, 1]
+    assert _head_keys(runner) == keys
+    assert len(_head_launches(runner.runtime.calls)) == launches_after_captures
+
+
+def test_head_graph_key_carries_the_residual_pointer(monkeypatch) -> None:
+    runner = _graph_runner(monkeypatch)
+    owners = {slot: runner.admit(slot) for slot in (0, 1)}
+    shift = {"value": 0x10}
+    last_layer = len(runner.config.layer_types) - 1
+    base_gdn = runner_module.run_qwen4_exp_batch_gdn_layer
+
+    def shifted_gdn(residual_ptr, weights, **kwargs):
+        step = shift["value"] if weights.layer_id == last_layer else 0x10
+        return SimpleNamespace(ptr=residual_ptr + step)
+
+    monkeypatch.setattr(runner_module, "run_qwen4_exp_batch_gdn_layer", shifted_gdn)
+    try:
+        first = runner.step(
+            [7, 9], slots=[1, 0], owners=[owners[1], owners[0]], capture_logits=False
+        )
+        assert first.tokens.tolist() == [0, 1]
+        first_key = _head_keys(runner)[0]
+
+        # Same width, different final residual pointer holding different bytes.
+        shift["value"] = 0x1000
+        stale_ptr = runner.residual.ptr + 0x1000 + 0x30
+        runner.runtime.device_write(stale_ptr, b"\x05\x00" + bytes(62))
+        second = runner.step(
+            [7, 9], slots=[1, 0], owners=[owners[1], owners[0]], capture_logits=False
+        )
+        keys = _head_keys(runner)
+        assert len(keys) == 2
+        assert keys[1][1] == 2
+        assert keys[1][2] == stale_ptr
+        assert keys[1] != first_key
+        # The head read the new pointer: the tokens follow its contents, which a
+        # replay of the first graph could not produce.
+        assert second.tokens.tolist() == [5, 6]
+        launches_after_captures = len(_head_launches(runner.runtime.calls))
+
+        # Back to the original pointer: its own graph replays.
+        shift["value"] = 0x10
+        third = runner.step(
+            [7, 9], slots=[1, 0], owners=[owners[1], owners[0]], capture_logits=False
+        )
+        assert third.tokens.tolist() == [0, 1]
+        assert _head_keys(runner) == keys
+        assert len(_head_launches(runner.runtime.calls)) == launches_after_captures
+    finally:
+        monkeypatch.setattr(
+            runner_module, "run_qwen4_exp_batch_gdn_layer", base_gdn
+        )
+
+
+def test_head_capture_reads_the_live_residual_at_the_baked_pointer(monkeypatch) -> None:
+    runner = _graph_runner(monkeypatch)
+    owner = runner.admit(0)
+    runner.step([7], slots=[0], owners=[owner], capture_logits=False)
+    residual_ptr = _head_residual_ptr(runner)
+    launches = len(_head_launches(runner.runtime.calls))
+
+    # Same pointer, new contents: the graph must read them, not a snapshot.
+    runner.runtime.device_write(residual_ptr, b"\x07\x00" + bytes(62))
+    result = runner.step([7], slots=[0], owners=[owner], capture_logits=False)
+
+    assert result.tokens.tolist() == [7]
+    assert len(_head_launches(runner.runtime.calls)) == launches
+
+
+def test_head_readback_stays_outside_every_capture(monkeypatch) -> None:
+    runner = _graph_runner(monkeypatch)
+    owners = {slot: runner.admit(slot) for slot in (0, 1)}
+
+    runner.step(
+        [7, 9], slots=[1, 0], owners=[owners[1], owners[0]], capture_logits=False
+    )
+    logits_result = runner.step(
+        [7, 9], slots=[1, 0], owners=[owners[1], owners[0]], capture_logits=True
+    )
+
+    brackets = _capture_brackets(runner.runtime.calls)
+    assert brackets
+    for start, end in brackets:
+        inside = [call[0] for call in runner.runtime.calls[start : end + 1]]
+        assert set(inside) == {"begin_capture", "head_gr_read", "lm_head", "end_capture"}
+        assert not [name for name in inside if name in _READBACK]
+    # The logits copy follows the head unit, and the argmax path likewise.
+    d2h = [
+        index
+        for index, call in enumerate(runner.runtime.calls)
+        if call[0] == "d2h" and call[1] == runner.logits.ptr
+    ]
+    assert d2h and d2h[0] > brackets[0][1]
+    argmax = [
+        index
+        for index, call in enumerate(runner.runtime.calls)
+        if call[0] == "argmax"
+    ]
+    assert argmax and min(argmax) > brackets[0][1]
+    assert logits_result.logits is not None
+    assert np.argmax(logits_result.logits, axis=1).tolist() == [0, 1]
+
+
+def test_head_falls_back_to_eager_when_the_capture_is_refused(monkeypatch) -> None:
+    runner = _graph_runner(monkeypatch)
+    runner.runtime.fail_capture = True
+    owners = {slot: runner.admit(slot) for slot in (0, 1)}
+
+    first = runner.step(
+        [7, 9], slots=[1, 0], owners=[owners[1], owners[0]], capture_logits=False
+    )
+    head_eager = [key for key in runner._graphs._eager_only if key[0] == "head"]
+    assert len(head_eager) == 1
+    assert head_eager[0][1] == 2
+    assert runner.graph_stats["replay"] == 0
+    launches_after_first = len(_head_launches(runner.runtime.calls))
+
+    second = runner.step(
+        [7, 9], slots=[1, 0], owners=[owners[1], owners[0]], capture_logits=False
+    )
+    assert len(_head_launches(runner.runtime.calls)) == launches_after_first + 2
+    assert runner.graph_stats["replay"] == 0
+    assert first.tokens.tolist() == second.tokens.tolist() == [0, 1]
+
+
+def test_step_without_a_graph_cache_runs_the_head_eager(monkeypatch) -> None:
+    runner = _graph_runner(monkeypatch)
+    runner._graphs.close()
+    runner._graphs = None
+    owner = runner.admit(0)
+
+    result = runner.step([7], slots=[0], owners=[owner], capture_logits=False)
+
+    assert runner.graph_stats == {}
+    assert result.tokens.tolist() == [0]
+    assert len(_head_launches(runner.runtime.calls)) == 2
+    assert not [call for call in runner.runtime.calls if call[0] == "begin_capture"]
+
+
+def test_close_destroys_the_head_graph_before_its_buffers(monkeypatch) -> None:
+    runner = _graph_runner(monkeypatch)
+    owner = runner.admit(0)
+    runner.step([7], slots=[0], owners=[owner], capture_logits=False)
+    assert _head_keys(runner)
+
+    class _Owner:
+        def close(self) -> None:
+            runner.runtime.calls.append(("close_owner",))
+
+    runner._owned.append(_Owner())
+    runner.close()
+
+    calls = runner.runtime.calls
+    destroyed = [
+        index for index, call in enumerate(calls) if call[0] == "graph_exec_destroy"
+    ]
+    closed = [index for index, call in enumerate(calls) if call[0] == "close_owner"]
+    assert destroyed and closed
+    assert max(destroyed) < closed[0]
+
+
+def test_batch_owner_declares_mixed_target_support() -> None:
+    """Serving reads this off the owner to route a speculative row to the pass."""
+
+    assert Qwen4ExpGGUFBatchRunner.supports_mixed_target is True
+    # A class attribute, so the fixture's ``object.__new__`` instance has it too.
+    runner = _fake_runner(slots=1)
+    assert getattr(runner, "supports_mixed_target", False) is True
+    # An owner that does not declare it keeps the c1 MTP path.
+    assert getattr(SimpleNamespace(), "supports_mixed_target", False) is False

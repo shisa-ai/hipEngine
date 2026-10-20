@@ -23,9 +23,13 @@ import pytest
 import hipengine.runtime.qwen4_exp_batch_qsa_index as batch_index
 from hipengine.runtime.qwen4_exp_batch_qsa_index import (
     Qwen4ExpBatchQsaIndexRollback,
+    Qwen4ExpBatchQsaIndexRowPlan,
     Qwen4ExpBatchQsaIndexState,
 )
-from hipengine.runtime.qwen4_exp_batch_state import Qwen4ExpBatchAttentionState
+from hipengine.runtime.qwen4_exp_batch_state import (
+    Qwen4ExpBatchAttentionState,
+    Qwen4ExpBatchStepMetadata,
+)
 
 SLOTS = 4
 MAX_POSITIONS = 16
@@ -897,3 +901,186 @@ def test_close_frees_every_buffer_once_and_retries_a_partial_failure() -> None:
     attention.close()
     with pytest.raises(RuntimeError, match="closed"):
         state.begin_rollback()
+
+
+# -- packed per-step metadata ------------------------------------------------
+
+
+def _packed_fixture() -> tuple[
+    Qwen4ExpBatchStepMetadata, Qwen4ExpBatchAttentionState, Qwen4ExpBatchQsaIndexState
+]:
+    """An attention/index pair publishing through one packed metadata buffer."""
+
+    runtime = FakeRuntime()
+    metadata = Qwen4ExpBatchStepMetadata.allocate(
+        layers=1, state_slots=SLOTS, runtime=runtime
+    )
+    views = metadata.views(0)
+    attention = Qwen4ExpBatchAttentionState.allocate(
+        state_slots=SLOTS,
+        max_positions=MAX_POSITIONS,
+        block_size=BLOCK_SIZE,
+        kv_heads=1,
+        head_dim=4,
+        runtime=runtime,
+        position_view=views.position,
+        context_view=views.context,
+    )
+    state = Qwen4ExpBatchQsaIndexState.allocate(
+        attention_state=attention,
+        index_heads=INDEX_HEADS,
+        index_dim=INDEX_DIM,
+        compression_ratio=RATIO,
+        block_budget=BUDGET,
+        runtime=runtime,
+        position_view=views.index_position,
+    )
+    return metadata, attention, state
+
+
+def test_publish_through_packed_views_reads_the_packed_query_positions() -> None:
+    metadata, attention, state = _packed_fixture()
+    try:
+        views = metadata.views(0)
+        _fill(state, 3, 5)
+        _fill(state, 0, 4)
+        metadata.stage(
+            0,
+            positions=[4, 4],
+            contexts=[5, 5],
+            index_positions=[4, 3],
+        )
+        metadata.upload()
+        attention.prepare([3, 0], [4, 4], packed=views)
+        copies_before = len(state.runtime.copies)
+        active = state.prepare([3, 0], packed=views)
+        assert active.rows == 2
+        assert active.slot_ids == (3, 0)
+        assert active.positions.tolist() == [4, 3]
+        assert active.blocks.tolist() == [2, 2]
+        # The published query positions are the packed view, and publishing them
+        # cost no upload of its own.
+        assert active.positions_device.ptr == views.index_position.ptr
+        assert len(state.runtime.copies) == copies_before
+        # Selection reads that same device vector, not the owner's own buffer.
+        assert state.positions.ptr != views.index_position.ptr
+    finally:
+        state.close()
+        attention.close()
+        metadata.close()
+
+
+def test_select_active_dispatches_the_packed_query_positions(
+    recorder: Recorder, monkeypatch
+) -> None:
+    metadata, attention, state = _packed_fixture()
+    try:
+        views = metadata.views(0)
+        _fill(state, 2, 8)
+        metadata.stage(0, positions=[7], contexts=[8], index_positions=[7])
+        metadata.upload()
+        attention.prepare([2], [7], packed=views)
+        state.prepare([2], packed=views)
+        _readback(monkeypatch, counts=1, positions=np.zeros((1, OUTPUT_STRIDE), dtype=np.int64))
+        state.select_active(
+            0x9000, key_norm_weight_ptr=0xA000, rotary_dim=INDEX_DIM, theta=100.0
+        )
+        (args, _) = recorder.one("qwen4_exp_qsa_topk_expand_rows_f32_i64")
+        assert args[1] == views.index_position.ptr
+        assert args[1] != state.positions.ptr
+    finally:
+        state.close()
+        attention.close()
+        metadata.close()
+
+
+def test_publish_rejects_a_malformed_index_plan_before_uploading() -> None:
+    metadata, attention, state = _packed_fixture()
+    try:
+        plan = state.validate_rows([1, 0])
+        copies_before = len(state.runtime.copies)
+        bad_plans = [
+            Qwen4ExpBatchQsaIndexRowPlan(
+                slot_ids=(1, 0),
+                slots=plan.slots,
+                positions=plan.positions[:1],
+                blocks=plan.blocks,
+            ),
+            Qwen4ExpBatchQsaIndexRowPlan(
+                slot_ids=(1, 1),
+                slots=plan.slots,
+                positions=plan.positions,
+                blocks=plan.blocks,
+            ),
+            Qwen4ExpBatchQsaIndexRowPlan(
+                slot_ids=(1, SLOTS),
+                slots=np.asarray([1, SLOTS], dtype=np.int64),
+                positions=plan.positions,
+                blocks=plan.blocks,
+            ),
+            Qwen4ExpBatchQsaIndexRowPlan(
+                slot_ids=(1, 0),
+                slots=np.asarray([0, 1], dtype=np.int64),
+                positions=plan.positions,
+                blocks=plan.blocks,
+            ),
+            Qwen4ExpBatchQsaIndexRowPlan(
+                slot_ids=(),
+                slots=np.zeros(0, dtype=np.int64),
+                positions=np.zeros(0, dtype=np.int64),
+                blocks=np.zeros(0, dtype=np.int64),
+            ),
+        ]
+        for bad in bad_plans:
+            with pytest.raises(ValueError):
+                state.publish(bad)
+            assert len(state.runtime.copies) == copies_before
+            assert state.active is None
+        with pytest.raises(TypeError, match="validate_rows"):
+            state.publish({"slot_ids": (1,)})  # type: ignore[arg-type]
+        # A packed view of the wrong width is refused before the publish too.
+        other = Qwen4ExpBatchStepMetadata.allocate(
+            layers=1, state_slots=SLOTS + 1, runtime=state.runtime
+        )
+        try:
+            with pytest.raises(ValueError, match="one int64 per state slot"):
+                state.publish(plan, packed=other.views(0))
+            assert state.active is None
+            assert len(state.runtime.copies) == copies_before
+        finally:
+            other.close()
+        # The same plan publishes once it is well formed.
+        assert state.publish(plan).slot_ids == (1, 0)
+    finally:
+        state.close()
+        attention.close()
+        metadata.close()
+
+
+def test_index_allocate_rejects_a_packed_view_of_the_wrong_width() -> None:
+    runtime = FakeRuntime()
+    metadata = Qwen4ExpBatchStepMetadata.allocate(
+        layers=1, state_slots=SLOTS + 1, runtime=runtime
+    )
+    attention = Qwen4ExpBatchAttentionState.allocate(
+        state_slots=SLOTS,
+        max_positions=MAX_POSITIONS,
+        block_size=BLOCK_SIZE,
+        kv_heads=1,
+        head_dim=4,
+        runtime=runtime,
+    )
+    try:
+        with pytest.raises(ValueError, match="one int64 per state slot"):
+            Qwen4ExpBatchQsaIndexState.allocate(
+                attention_state=attention,
+                index_heads=INDEX_HEADS,
+                index_dim=INDEX_DIM,
+                compression_ratio=RATIO,
+                block_budget=BUDGET,
+                runtime=runtime,
+                position_view=metadata.views(0).index_position,
+            )
+    finally:
+        attention.close()
+        metadata.close()

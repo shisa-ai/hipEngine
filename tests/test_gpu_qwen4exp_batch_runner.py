@@ -1127,6 +1127,59 @@ def test_two_qsa_layers_keep_separate_caches_and_match_c1(two_qsa_model) -> None
         batch.close()
 
 
+def test_packed_step_metadata_uses_one_upload_and_stable_views(two_qsa_model, monkeypatch):
+    """Read the packed bytes after permutations, shrinking and slot reuse."""
+    import hipengine.runtime.qwen4_exp_batch_state as metadata_module
+
+    batch = _batch(two_qsa_model, slots=3)
+    uploads = []
+    original_copy = metadata_module.copy_host_to_device
+
+    def record_copy(destination, *args, **kwargs):
+        if destination.ptr == batch.step_metadata.buffer.ptr:
+            uploads.append(destination.ptr)
+        return original_copy(destination, *args, **kwargs)
+
+    monkeypatch.setattr(metadata_module, "copy_host_to_device", record_copy)
+    try:
+        owners = {slot: batch.admit(slot) for slot in (0, 1, 2)}
+        pointers = [
+            (state.position.ptr, state.context.ptr, index.positions.ptr)
+            for state, index in zip(batch.attention_states, batch.index_states, strict=True)
+        ]
+        schedule = (((2, 0), (3, 11)), ((0,), (7,)), ((1, 2, 0), (9, 5, 13)))
+        for slots, tokens in schedule:
+            before = len(uploads)
+            batch.step(tokens, slots=slots, owners=[owners[slot] for slot in slots])
+            assert len(uploads) == before + 1
+            host = batch.step_metadata.host
+            actual = np.empty_like(host)
+            copy_device_to_host(host_array_ptr(actual), batch.step_metadata.buffer, runtime=batch.runtime)
+            np.testing.assert_array_equal(actual, host)
+            for layer, (attention, index) in enumerate(zip(
+                batch.attention_states, batch.index_states, strict=True,
+            )):
+                rows = len(slots)
+                np.testing.assert_array_equal(actual[layer, 0, :rows], attention.position_host[:rows])
+                np.testing.assert_array_equal(actual[layer, 1, :rows], attention.context_host[:rows])
+                np.testing.assert_array_equal(actual[layer, 2, :rows], attention.position_host[:rows] - 1)
+                assert pointers[layer] == (attention.position.ptr, attention.context.ptr, index.positions.ptr)
+        batch.release(2, owners[2])
+        owners[2] = batch.admit(2)
+        before = len(uploads)
+        batch.step([17], slots=[2], owners=[owners[2]])
+        assert len(uploads) == before + 1
+        np.testing.assert_array_equal(batch.step_metadata.host[:, 0, 0], 0)
+        np.testing.assert_array_equal(batch.step_metadata.host[:, 1, 0], 1)
+        before_bytes = batch.step_metadata.host.copy()
+        with pytest.raises(ValueError):
+            batch.step([17, 19], slots=[2, 2], owners=[owners[2], owners[2]])
+        assert len(uploads) == before + 1
+        np.testing.assert_array_equal(batch.step_metadata.host, before_bytes)
+    finally:
+        batch.close()
+
+
 def test_graph_segments_replay_bit_exact_against_eager(model) -> None:
     """Captured layer segments reproduce the eager step on every later step.
 

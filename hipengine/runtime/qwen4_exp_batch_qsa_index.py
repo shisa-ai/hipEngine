@@ -102,6 +102,7 @@ from typing import Any
 
 import numpy as np
 
+from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind, HipRuntime
 from hipengine.core.memory import (
@@ -112,13 +113,17 @@ from hipengine.core.memory import (
     host_array_ptr,
     malloc,
 )
+from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_pool_norm_rope_f32,
     qwen4_exp_qsa_scatter_index_key_device_position_f32,
     qwen4_exp_qsa_score_f32,
     qwen4_exp_qsa_topk_expand_rows_f32_i64,
 )
-from hipengine.runtime.qwen4_exp_batch_state import Qwen4ExpBatchAttentionState
+from hipengine.runtime.qwen4_exp_batch_state import (
+    Qwen4ExpBatchAttentionState,
+    Qwen4ExpBatchPackedMetadataViews,
+)
 
 # ``member_indices`` is int32, so a global physical position must fit it.
 _QSA_INDEX_MAX_PHYSICAL_POSITION = 2**31 - 1
@@ -161,12 +166,34 @@ class Qwen4ExpBatchQsaIndexActiveRows:
     slots: np.ndarray
     positions: np.ndarray
     blocks: np.ndarray
+    #: Device vector the selection kernel reads this row set's query positions
+    #: from: either the owner's own buffer or the packed step-metadata view.
+    positions_device: Tensor
 
     def row_of(self, slot: int) -> int:
         matches = np.nonzero(self.slots == int(slot))[0]
         if matches.size != 1:
             raise ValueError(f"slot {slot} is not an active row")
         return int(matches[0])
+
+
+@dataclass(frozen=True)
+class Qwen4ExpBatchQsaIndexRowPlan:
+    """One index owner's validated active row set, before anything is published.
+
+    ``validate_rows`` builds it from the owner's host cursors without touching a
+    device buffer, so the batch runner can validate every QSA owner's rows and
+    only then perform its single packed metadata upload. ``publish`` consumes it.
+    """
+
+    slot_ids: tuple[int, ...]
+    slots: np.ndarray
+    positions: np.ndarray
+    blocks: np.ndarray
+
+    @property
+    def rows(self) -> int:
+        return len(self.slot_ids)
 
 
 @dataclass
@@ -203,6 +230,10 @@ class Qwen4ExpBatchQsaIndexState:
     identity: int
     active: Qwen4ExpBatchQsaIndexActiveRows | None = None
     pending_rollback: Qwen4ExpBatchQsaIndexRollback | None = None
+    #: Non-owning device view the published query positions are read from when
+    #: the batch runner supplies a packed step-metadata slice. ``positions``
+    #: stays this owner's own buffer and is left unused in that case.
+    position_view: DeviceBuffer | None = None
     closed: bool = False
     closing: bool = False
     _pending_free: list[DeviceBuffer] = field(default_factory=list)
@@ -217,6 +248,7 @@ class Qwen4ExpBatchQsaIndexState:
         compression_ratio: int,
         block_budget: int,
         runtime: HipRuntime | None = None,
+        position_view: DeviceBuffer | None = None,
     ) -> "Qwen4ExpBatchQsaIndexState":
         """Allocate per-slot index slabs matching the batch attention owner.
 
@@ -225,6 +257,12 @@ class Qwen4ExpBatchQsaIndexState:
         covers the attention owner's *total* physical position range so the
         scatter kernel's global physical index is used unchanged and slot
         windows cannot overlap.
+
+        ``position_view`` is the non-owning device vector the published query
+        positions are read from instead of this owner's own ``positions``
+        buffer. The batch runner passes a slice of one
+        ``Qwen4ExpBatchStepMetadata`` buffer so a single packed upload serves
+        every layer; it must hold exactly one int64 per state slot.
         """
 
         if attention_state.closed or attention_state.closing:
@@ -271,6 +309,15 @@ class Qwen4ExpBatchQsaIndexState:
             total_positions=total_positions,
             output_stride=budget * ratio + ratio - 1,
         )
+        if position_view is not None:
+            if not isinstance(position_view, DeviceBuffer):
+                raise TypeError("position_view must be a DeviceBuffer")
+            if int(position_view.nbytes) != slots * DType.INT64.itemsize:
+                raise ValueError(
+                    "position_view must hold exactly one int64 per state slot "
+                    f"({slots * DType.INT64.itemsize} bytes), got "
+                    f"{int(position_view.nbytes)}"
+                )
 
         # Slot s owns blocks [s*bpr, (s+1)*bpr), so its logical positions map to
         # global physical positions inside a disjoint window. Both the member map
@@ -365,6 +412,7 @@ class Qwen4ExpBatchQsaIndexState:
             block_budget=budget,
             runtime=active_runtime,
             identity=next(_IDENTITY),
+            position_view=position_view,
             _pending_free=list(buffers),
         )
 
@@ -419,25 +467,30 @@ class Qwen4ExpBatchQsaIndexState:
 
     # -- active rows ------------------------------------------------------
 
-    def prepare(self, slot_ids: Sequence[int]) -> Qwen4ExpBatchQsaIndexActiveRows:
-        """Admit active rows and upload their query positions.
+    def validate_rows(
+        self, slot_ids: Sequence[int]
+    ) -> Qwen4ExpBatchQsaIndexRowPlan:
+        """Validate one row set and return its plan without publishing it.
 
         ``slot_ids[r]`` is the physical slot serving row ``r``, so the row order
         is the caller's and every slot appears at most once. A row's query
         position is the last index key appended to its slot; a slot with no
-        appended key is admitted here so its first append has a row, and
-        ``select_active`` refuses it until a key exists. Validation completes
-        before the upload; a failed upload clears the active set instead of
-        publishing half a row table.
+        appended key is admitted so its first append has a row, and
+        ``select_active`` refuses it until a key exists.
+
+        Nothing here writes a device buffer, so a caller that must publish
+        several owners atomically can validate all of them before its first
+        device write.
         """
 
         self._require_open()
         slots = _index_sequence(slot_ids, "slot_ids")
         if not slots:
-            raise ValueError("prepare requires at least one active row")
+            raise ValueError("a row set requires at least one active row")
         if len(slots) > self.state_slots:
             raise ValueError(
-                f"prepare admits at most {self.state_slots} active rows, got {len(slots)}"
+                f"a row set admits at most {self.state_slots} active rows, got "
+                f"{len(slots)}"
             )
         seen: set[int] = set()
         for slot in slots:
@@ -446,29 +499,74 @@ class Qwen4ExpBatchQsaIndexState:
             if slot in seen:
                 raise ValueError(f"slot {slot} appears twice in one active row set")
             seen.add(slot)
-        rows = len(slots)
         parsed_slots = np.asarray(slots, dtype=np.int64)
-        positions = self.cursor_host[parsed_slots] - 1
-        blocks = self.cursor_host[parsed_slots] // self.compression_ratio
-        try:
-            copy_host_to_device(
-                self.positions,
-                host_array_ptr(np.ascontiguousarray(positions)),
-                positions.nbytes,
-                runtime=self.runtime,
-            )
-        except BaseException:
-            self.active = None
-            raise
-        active = Qwen4ExpBatchQsaIndexActiveRows(
-            rows=rows,
+        cursors = self.cursor_host[parsed_slots]
+        return Qwen4ExpBatchQsaIndexRowPlan(
             slot_ids=tuple(slots),
             slots=parsed_slots,
-            positions=positions,
-            blocks=blocks,
+            positions=cursors - 1,
+            blocks=cursors // self.compression_ratio,
+        )
+
+    def publish(
+        self,
+        plan: Qwen4ExpBatchQsaIndexRowPlan,
+        *,
+        packed: Qwen4ExpBatchPackedMetadataViews | None = None,
+    ) -> Qwen4ExpBatchQsaIndexActiveRows:
+        """Publish one validated row set as this owner's active rows.
+
+        ``packed`` names the stable views that already hold this row set's query
+        positions, uploaded by the batch runner as part of one packed copy. With
+        it, this owner performs no upload at all; ``select_active`` reads the
+        packed vector. A failed upload clears the active set instead of
+        publishing half a row table.
+        """
+
+        self._require_open()
+        rows = _require_row_plan(plan, state_slots=self.state_slots)
+        positions_buffer = self.positions
+        if packed is None:
+            try:
+                copy_host_to_device(
+                    self.positions,
+                    host_array_ptr(np.ascontiguousarray(plan.positions)),
+                    plan.positions.nbytes,
+                    runtime=self.runtime,
+                )
+            except BaseException:
+                self.active = None
+                raise
+        else:
+            self._require_packed_views(packed)
+            positions_buffer = packed.index_position
+        active = Qwen4ExpBatchQsaIndexActiveRows(
+            rows=rows,
+            slot_ids=plan.slot_ids,
+            slots=plan.slots,
+            positions=plan.positions,
+            blocks=plan.blocks,
+            positions_device=Tensor.from_handle(
+                positions_buffer.ptr, (rows,), DType.INT64, Device("hip", 0)
+            ),
         )
         self.active = active
         return active
+
+    def prepare(
+        self,
+        slot_ids: Sequence[int],
+        *,
+        packed: Qwen4ExpBatchPackedMetadataViews | None = None,
+    ) -> Qwen4ExpBatchQsaIndexActiveRows:
+        """Validate and publish one row set in a single call.
+
+        This is the standalone form of ``validate_rows`` followed by
+        ``publish``: it uploads its own query positions unless ``packed`` names
+        views that already hold them.
+        """
+
+        return self.publish(self.validate_rows(slot_ids), packed=packed)
 
     def partition_rows(self) -> tuple[tuple[int, ...], tuple[int, ...]]:
         """Split active rows into ``(dense, sparse)`` row-index groups.
@@ -658,7 +756,7 @@ class Qwen4ExpBatchQsaIndexState:
         # One batched selection over every row.
         qwen4_exp_qsa_topk_expand_rows_f32_i64(
             self.scores.ptr,
-            self.positions.ptr,
+            active.positions_device.ptr,
             self.selected_positions.ptr,
             self.selected_counts.ptr,
             active.rows,
@@ -911,6 +1009,63 @@ class Qwen4ExpBatchQsaIndexState:
         if not 0 <= parsed < active.rows:
             raise ValueError(f"row {parsed} is outside [0, {active.rows})")
         return parsed
+
+    def _require_packed_views(self, packed: Qwen4ExpBatchPackedMetadataViews) -> None:
+        """Refuse packed views that cannot carry one int64 per state slot."""
+
+        if not isinstance(packed, Qwen4ExpBatchPackedMetadataViews):
+            raise TypeError("packed must be Qwen4ExpBatchPackedMetadataViews")
+        view = packed.index_position
+        expected = self.state_slots * DType.INT64.itemsize
+        if not isinstance(view, DeviceBuffer):
+            raise TypeError("packed.index_position must be a DeviceBuffer")
+        if int(view.nbytes) != expected:
+            raise ValueError(
+                "packed.index_position must hold exactly one int64 per state slot "
+                f"({expected} bytes), got {int(view.nbytes)}"
+            )
+
+
+def _require_row_plan(
+    plan: object,
+    *,
+    state_slots: int,
+) -> int:
+    """Check a plan's shape and return its row count, before any device write.
+
+    ``publish`` accepts only a plan ``validate_rows`` produced, so this re-checks
+    the cheap scalar invariants instead of re-reading the host cursors the plan
+    already snapshotted.
+    """
+
+    if not isinstance(plan, Qwen4ExpBatchQsaIndexRowPlan):
+        raise TypeError("publish requires a plan returned by validate_rows")
+    rows = plan.rows
+    if rows <= 0:
+        raise ValueError("a row plan requires at least one active row")
+    if rows > state_slots:
+        raise ValueError(
+            f"a row plan admits at most {state_slots} active rows, got {rows}"
+        )
+    if (
+        plan.slots.shape != (rows,)
+        or plan.positions.shape != (rows,)
+        or plan.blocks.shape != (rows,)
+    ):
+        raise ValueError(
+            "a row plan must hold exactly one slot, query position, and block "
+            "count per row"
+        )
+    seen: set[int] = set()
+    for slot in plan.slot_ids:
+        if not 0 <= slot < state_slots:
+            raise ValueError(f"slot {slot} is outside [0, {state_slots})")
+        if slot in seen:
+            raise ValueError(f"slot {slot} appears twice in one active row set")
+        seen.add(slot)
+    if not np.array_equal(plan.slots, np.asarray(plan.slot_ids, dtype=np.int64)):
+        raise ValueError("a row plan's slot vector must match its slot ids")
+    return rows
 
 
 def _free_pending(pending: list[DeviceBuffer], runtime: HipRuntime) -> None:
