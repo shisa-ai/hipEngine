@@ -1,0 +1,341 @@
+{
+  "schema": 1,
+  "kind": "qwen38fn_serving_numerical_checkpoint",
+  "status": "failed",
+  "performance_claim": false,
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "1d37719dff97a68aa8c31fff01f5ead36a0f78ac",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.2.9-2-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "model": {
+    "root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "sidecar": "/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+    "sidecar_sha256": "9db03a687670608286e99b563fcc86d0ee76c8dd863f64b2afc0b54eb0eb975d",
+    "mtp_candidate_budget": 4,
+    "execution_profile": "production"
+  },
+  "manifests": {
+    "strict": "1fcbf992271251220cc4707eb8d24d28506cd3714550756cf2e32f387d879670",
+    "production": "cb30620a20748d2e9756444eb804c29a943dc5bcffe3abe3f31fc6c66a456eab",
+    "production_applied": "cb30620a20748d2e9756444eb804c29a943dc5bcffe3abe3f31fc6c66a456eab",
+    "production_strict_parent": "1fcbf992271251220cc4707eb8d24d28506cd3714550756cf2e32f387d879670"
+  },
+  "protocol": {
+    "teacher_decode_steps": 160,
+    "primary_decode_rows": 154,
+    "primary_max_tokens": 155,
+    "peer_max_tokens": 35,
+    "dynamic_decode_rows": 30,
+    "dynamic_max_tokens": 31,
+    "repeats": 3,
+    "mtp_candidate_budget": 4,
+    "capacity": 2,
+    "prefill_decode_policy": "protect_ttft",
+    "max_prefill_chunk_tokens": 1024,
+    "max_sequence_length": 16384,
+    "prompt_suites": [
+      "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    ],
+    "primary_independent_rows": 2790,
+    "peer_independent_rows": 630,
+    "dynamic_independent_rows": 558,
+    "repeats_not_counted_as_independent_rows": true,
+    "replaces_diagnostic": "served-teacher-numerics.json (undersized peer/dynamic scopes; unauthorized overlapping GPU execution)",
+    "scope": "real SubmitPollTextGenerator scheduler over the production Flash-Next mixed MTP/AR target route; no HTTP and no server process",
+    "planned_depths": [
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      3
+    ],
+    "planned_consumed_rows": [
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      4
+    ]
+  },
+  "command": {
+    "command": [
+      "/home/lhl/miniforge3/envs/therock/bin/python",
+      "/tmp/qwen38fn-serving-followup/served-teacher-final.py"
+    ],
+    "cwd": "/home/lhl/hipEngine",
+    "environment": {
+      "HOME": "/home/lhl",
+      "USER": "lhl",
+      "LOGNAME": "lhl",
+      "SHELL": "/bin/fish",
+      "TERM": "screen",
+      "PATH": "/home/lhl/miniforge3/envs/therock/bin:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin:/usr/local/bin:/usr/bin:/bin",
+      "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries/lib",
+      "HIP_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+      "ROCM_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+      "HIP_LIB_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib",
+      "HIP_INCLUDE_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/include",
+      "HIP_DEVICE_LIB_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/amdgcn/bitcode",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "PYTHONPATH": ".",
+      "HIPENGINE_ROOT": "/home/lhl/hipEngine"
+    },
+    "script_sha256": "e052fc14ecf2c28bf59109f2947db15df752924d0cc3306498e89c8b85fa356f"
+  },
+  "artifact_sha256": "80ef1e2d4a217fba99e75e95ae2efaa6874c0d757e3a352cb8d706fe7b20260f",
+  "checks": {
+    "verified_pass_rows": 11664,
+    "mtp_w2.hard_gates_passed": false,
+    "mtp_w2.repeat_determinism_passed": true,
+    "ar_peer_w2.hard_gates_passed": false,
+    "ar_peer_w2.repeat_determinism_passed": true,
+    "ar_control_w2.hard_gates_passed": false,
+    "ar_control_w2.repeat_determinism_passed": true,
+    "mtp_dynamic.hard_gates_passed": false,
+    "mtp_dynamic.repeat_determinism_passed": true,
+    "primary_pass_count_matches_planner": true,
+    "capture_consistency_clean": true,
+    "teacher_top1_clean": false,
+    "teacher_top1_mismatch_count": 102,
+    "source_unchanged": true,
+    "production_manifest_bound": true
+  },
+  "failures": [
+    "mtp_w2.hard_gates_passed",
+    "ar_peer_w2.hard_gates_passed",
+    "ar_control_w2.hard_gates_passed",
+    "mtp_dynamic.hard_gates_passed"
+  ],
+  "modes": {
+    "mtp_w2": {
+      "summary": {
+        "rows": 2790,
+        "kl_mean": 0.0026593808830887226,
+        "kl_p50": 6.246510209354016e-05,
+        "kl_p95": 0.010136836375741802,
+        "kl_p99": 0.05913973656380843,
+        "kl_max": 0.35455982456092017,
+        "top1_agreement": 0.9906810035842294,
+        "top1_matches": 2764,
+        "topk_overlap_mean": 0.9787813620071685,
+        "strict_teacher_nll_mean": 0.19022949751672097,
+        "candidate_teacher_nll_mean": 0.19285365871087362,
+        "teacher_nll_delta": 0.002624161194152652,
+        "teacher_delta_p_mean": -0.001490226592429187,
+        "strict_margin_min": 1.9073486328125e-06,
+        "max_abs_logit_delta": 6.239807605743408,
+        "flip_eligible_rows": 478,
+        "flip_eligible_share": 0.17132616487455196,
+        "top1_mismatches_flip_eligible": 26,
+        "top1_mismatches_outside_flip_eligible": 0
+      },
+      "thresholds": {
+        "mean_kl_max": 0.001,
+        "p95_kl_max": 0.005,
+        "p99_kl_max": 0.02,
+        "max_kl_max": 0.05,
+        "top1_min": 0.99,
+        "per_scope_top1_min": 0.97,
+        "review_kl": 0.02
+      },
+      "hard_gates_passed": false,
+      "repeat_determinism_passed": true,
+      "failed_scopes": {
+        "category": [],
+        "shape": [],
+        "transition": []
+      }
+    },
+    "ar_peer_w2": {
+      "summary": {
+        "rows": 630,
+        "kl_mean": 0.0006171910681252943,
+        "kl_p50": 4.058598059391829e-05,
+        "kl_p95": 0.0035464757363542912,
+        "kl_p99": 0.0066019870508566125,
+        "kl_max": 0.01595546737572174,
+        "top1_agreement": 0.9873015873015873,
+        "top1_matches": 622,
+        "topk_overlap_mean": 0.9758730158730158,
+        "strict_teacher_nll_mean": 0.1834144472284804,
+        "candidate_teacher_nll_mean": 0.1853454707757426,
+        "teacher_nll_delta": 0.001931023547262184,
+        "teacher_delta_p_mean": -0.0007953493071849858,
+        "strict_margin_min": 0.0001354217529296875,
+        "max_abs_logit_delta": 2.672757387161255,
+        "flip_eligible_rows": 84,
+        "flip_eligible_share": 0.13333333333333333,
+        "top1_mismatches_flip_eligible": 8,
+        "top1_mismatches_outside_flip_eligible": 0
+      },
+      "thresholds": {
+        "mean_kl_max": 0.001,
+        "p95_kl_max": 0.005,
+        "p99_kl_max": 0.02,
+        "max_kl_max": 0.05,
+        "top1_min": 0.99,
+        "per_scope_top1_min": 0.97,
+        "review_kl": 0.02
+      },
+      "hard_gates_passed": false,
+      "repeat_determinism_passed": true,
+      "failed_scopes": {
+        "category": [],
+        "shape": [],
+        "transition": []
+      }
+    },
+    "ar_control_w2": {
+      "summary": {
+        "rows": 630,
+        "kl_mean": 0.0009026414970622623,
+        "kl_p50": 4.082421267868846e-05,
+        "kl_p95": 0.003552267387121259,
+        "kl_p99": 0.009778840655155338,
+        "kl_max": 0.07925192734648545,
+        "top1_agreement": 0.9888888888888889,
+        "top1_matches": 623,
+        "topk_overlap_mean": 0.9787301587301589,
+        "strict_teacher_nll_mean": 0.1834144472284804,
+        "candidate_teacher_nll_mean": 0.18572865346343728,
+        "teacher_nll_delta": 0.0023142062349568726,
+        "teacher_delta_p_mean": -0.0008567748262302696,
+        "strict_margin_min": 0.0001354217529296875,
+        "max_abs_logit_delta": 3.0783047676086426,
+        "flip_eligible_rows": 82,
+        "flip_eligible_share": 0.13015873015873017,
+        "top1_mismatches_flip_eligible": 7,
+        "top1_mismatches_outside_flip_eligible": 0
+      },
+      "thresholds": {
+        "mean_kl_max": 0.001,
+        "p95_kl_max": 0.005,
+        "p99_kl_max": 0.02,
+        "max_kl_max": 0.05,
+        "top1_min": 0.99,
+        "per_scope_top1_min": 0.97,
+        "review_kl": 0.02
+      },
+      "hard_gates_passed": false,
+      "repeat_determinism_passed": true,
+      "failed_scopes": {
+        "category": [],
+        "shape": [],
+        "transition": []
+      }
+    },
+    "mtp_dynamic": {
+      "summary": {
+        "rows": 558,
+        "kl_mean": 0.0009081979990428722,
+        "kl_p50": 3.807601416030495e-05,
+        "kl_p95": 0.003490518388762748,
+        "kl_p99": 0.0112166186443879,
+        "kl_max": 0.07925192734648545,
+        "top1_agreement": 0.992831541218638,
+        "top1_matches": 554,
+        "topk_overlap_mean": 0.9781362007168458,
+        "strict_teacher_nll_mean": 0.17330478163910673,
+        "candidate_teacher_nll_mean": 0.17495641509936952,
+        "teacher_nll_delta": 0.0016516334602627858,
+        "teacher_delta_p_mean": -0.0004170493474093479,
+        "strict_margin_min": 0.00177001953125,
+        "max_abs_logit_delta": 3.0783047676086426,
+        "flip_eligible_rows": 68,
+        "flip_eligible_share": 0.12186379928315412,
+        "top1_mismatches_flip_eligible": 4,
+        "top1_mismatches_outside_flip_eligible": 0
+      },
+      "thresholds": {
+        "mean_kl_max": 0.001,
+        "p95_kl_max": 0.005,
+        "p99_kl_max": 0.02,
+        "max_kl_max": 0.05,
+        "top1_min": 0.99,
+        "per_scope_top1_min": 0.97,
+        "review_kl": 0.02
+      },
+      "hard_gates_passed": false,
+      "repeat_determinism_passed": true,
+      "failed_scopes": {
+        "category": [],
+        "shape": [],
+        "transition": []
+      }
+    }
+  },
+  "source_content_binding": {
+    "file_count": 762,
+    "sorted_mapping_sha256": "52fde47b7926b44f1a7c0f3728878164df88d5777774e6aa37a44e6387c47fb2",
+    "full_mapping_artifact": "/tmp/qwen38fn-serving-followup/served-teacher-final.json",
+    "artifact_sha256": "80ef1e2d4a217fba99e75e95ae2efaa6874c0d757e3a352cb8d706fe7b20260f"
+  }
+}
