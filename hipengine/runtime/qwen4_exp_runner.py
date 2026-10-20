@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 from dataclasses import dataclass, field, replace
 import contextvars
+import math
 import os
 import time
 from types import MappingProxyType
@@ -8578,6 +8579,11 @@ class Qwen4ExpGGUFResidentModelRunner:
 
     def reset(self) -> None:
         self._require_open()
+        pending = getattr(self, "_pending_prefill_append", None)
+        if pending is not None:
+            context, steps, _ = pending
+            context.run(steps.close)
+            self._pending_prefill_append = None
         assert self.state is not None
         self.state.zero()
         bounded = _qwen4_exp_bounded_kv_reset_enabled()
@@ -8958,14 +8964,23 @@ class Qwen4ExpGGUFResidentModelRunner:
             (bits.astype(np.uint32) << 16).view(np.float32)
         )
 
-    def _prefill_chunk(
+    def _prefill_chunk(self, token_ids, **kwargs):
+        steps = self._prefill_chunk_steps(token_ids, **kwargs)
+        while True:
+            try:
+                next(steps)
+            except StopIteration as done:
+                return done.value
+
+    def _prefill_chunk_steps(
         self,
         token_ids: tuple[int, ...],
         *,
         capture_hidden_seeds: bool = False,
         embedding_overrides: Mapping[int, np.ndarray] | None = None,
         mrope_positions: np.ndarray | None = None,
-    ) -> tuple[int, np.ndarray | None]:
+        yield_layers: bool = False,
+    ):
         count = len(token_ids)
         invalidate_f16_mirror()
         if count <= 0 or count > min(self.prefill_chunk_size, self.max_sequence_length):
@@ -9107,6 +9122,12 @@ class Qwen4ExpGGUFResidentModelRunner:
                 pending_write = None
 
         for layer, kind in enumerate(cfg.layer_types):
+            if yield_layers and layer:
+                # Complete the residual before returning to the scheduler.
+                flush_pending(residual_ptr)
+                self.runtime.device_synchronize()
+                yield None
+                invalidate_f16_mirror()
             deferred: list = []
             if layer in cfg.ple_layers:
                 flush_pending(residual_ptr)
@@ -9200,6 +9221,13 @@ class Qwen4ExpGGUFResidentModelRunner:
                 ).ptr
             pending_write = deferred[0] if deferred else None
         flush_pending(residual_ptr)
+        if yield_layers:
+            # Keep final hidden readback, head projection and batch import out
+            # of the last layer's decode-stall window, even when that tail used
+            # less than the target time share.
+            self.runtime.device_synchronize()
+            yield "prefill_layers_complete"
+            invalidate_f16_mirror()
         hidden_seeds = (
             self._read_hidden_seed_rows(residual_ptr, count)
             if capture_hidden_seeds
@@ -9278,7 +9306,15 @@ class Qwen4ExpGGUFResidentModelRunner:
             for name, value in saved.items():
                 setattr(self, name, value)
 
-    def _prefill_chunked_impl(
+    def _prefill_chunked_impl(self, token_ids, **kwargs):
+        steps = self._prefill_chunked_steps(token_ids, **kwargs)
+        while True:
+            try:
+                next(steps)
+            except StopIteration as done:
+                return done.value
+
+    def _prefill_chunked_steps(
         self,
         token_ids: list[int] | tuple[int, ...],
         *,
@@ -9288,7 +9324,8 @@ class Qwen4ExpGGUFResidentModelRunner:
         embedding_overrides: Mapping[int, np.ndarray] | None = None,
         mrope_positions: np.ndarray | None = None,
         reset: bool = True,
-    ) -> Qwen4ExpTokenResult:
+        yield_layers: bool = False,
+    ):
         if not token_ids:
             raise ValueError("Qwen4Exp prefill requires at least one token")
         start_position = 0 if reset else self.position
@@ -9348,8 +9385,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             self._wide_f16_activation_context(),
         ):
             for start in range(0, len(values), self.prefill_chunk_size):
-                last_residual_ptr, hidden_rows = self._prefill_chunk(
-                    values[start : start + self.prefill_chunk_size],
+                chunk_kwargs = dict(
                     capture_hidden_seeds=capture_hidden_seeds,
                     embedding_overrides=embedding_overrides,
                     mrope_positions=(
@@ -9360,6 +9396,13 @@ class Qwen4ExpGGUFResidentModelRunner:
                         )
                     ),
                 )
+                chunk = values[start : start + self.prefill_chunk_size]
+                if yield_layers:
+                    last_residual_ptr, hidden_rows = yield from self._prefill_chunk_steps(
+                        chunk, yield_layers=True, **chunk_kwargs,
+                    )
+                else:
+                    last_residual_ptr, hidden_rows = self._prefill_chunk(chunk, **chunk_kwargs)
                 if hidden_rows is not None:
                     captured.append(hidden_rows)
         cfg = self.config
@@ -9403,6 +9446,46 @@ class Qwen4ExpGGUFResidentModelRunner:
                 else None
             ),
         )
+
+    def prefill_append_resumable(self, token_ids, *, time_budget_seconds=None, **kwargs):
+        """Advance prepared prompt work to a quiescent layer boundary.
+
+        The saved Python context isolates dispatch sessions while suspended.
+        Device state and scratch remain owned by this request's staging runner.
+        A layer cannot be interrupted; the time budget is a target, not a bound.
+        """
+        tokens = tuple(int(token) for token in token_ids)
+        if time_budget_seconds is None:
+            # Narrow prompt tails use the non-wide dispatch family. Spend less
+            # time before peer decode there; preserve longer shares for dense
+            # chunks to avoid making prompt completion switch-bound.
+            time_budget_seconds = 0.08 if len(tokens) < 257 else 0.15
+        if not math.isfinite(time_budget_seconds) or time_budget_seconds <= 0:
+            raise ValueError("prefill time budget must be finite and positive")
+        self._require_open()
+        pending = getattr(self, "_pending_prefill_append", None)
+        if pending is None:
+            context = contextvars.copy_context()
+            steps = self._prefill_chunked_steps(tokens, reset=False, yield_layers=True, **kwargs)
+            pending = (context, steps, tokens)
+            self._pending_prefill_append = pending
+        context, steps, expected = pending
+        if tokens != expected:
+            raise ValueError("resumed prefill must name the same prompt chunk")
+        started = time.perf_counter()
+        try:
+            while True:
+                boundary = context.run(next, steps)
+                if (boundary == "prefill_layers_complete"
+                        or time.perf_counter() - started >= time_budget_seconds):
+                    return None
+        except StopIteration as done:
+            self._pending_prefill_append = None
+            return done.value
+        except BaseException:
+            context.run(steps.close)
+            self._pending_prefill_append = None
+            raise
 
     def prefill_append(
         self,
@@ -9474,6 +9557,11 @@ class Qwen4ExpGGUFResidentModelRunner:
     def close(self) -> None:
         if self.closed:
             return
+        pending = getattr(self, "_pending_prefill_append", None)
+        if pending is not None:
+            context, steps, _ = pending
+            context.run(steps.close)
+            self._pending_prefill_append = None
         if self.moe_graph_cache is not None:
             self.moe_graph_cache.close()
             self.moe_graph_cache = None
