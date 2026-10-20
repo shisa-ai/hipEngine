@@ -293,6 +293,7 @@ class StreamCapture:
         self.route: str | None = None
         self.route_decision: dict[str, Any] | None = None
         self.speculative_mtp: dict[str, Any] | None = None
+        self.diagnostics: dict[str, Any] | None = None
         self.usage: dict[str, int | None] | None = None
 
     def observe(self, event: Mapping[str, Any], *, now: float) -> None:
@@ -378,6 +379,10 @@ class StreamCapture:
             )
         summary = metadata.get("speculative_mtp")
         self.speculative_mtp = dict(summary) if isinstance(summary, Mapping) else None
+        diagnostics = metadata.get("diagnostics")
+        self.diagnostics = (
+            dict(diagnostics) if isinstance(diagnostics, Mapping) else None
+        )
 
     @property
     def event_streamed_tokens(self) -> int | None:
@@ -499,6 +504,7 @@ def request_record(
         "route": capture.route,
         "route_published": capture.route is not None,
         "route_decision": capture.route_decision,
+        "diagnostics": capture.diagnostics,
         "speculative_mtp_present": capture.speculative_mtp is not None,
         "speculative_mtp": _mtp_diagnostics(capture.speculative_mtp),
     }

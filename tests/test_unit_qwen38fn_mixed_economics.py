@@ -64,6 +64,28 @@ def capture_with(events: list[dict], *, started_at: float = 100.0) -> "_module.S
     return capture
 
 
+def test_ar_peer_keeps_shared_target_diagnostics_without_inventing_mtp():
+    event = done_event(count=8)
+    diagnostics = {"mixed_target": {"physical_request_width_histogram": {"2": 3},
+                                    "target_rows": 12, "committed_tokens": 3}}
+    event["choices"][0]["hipengine"]["diagnostics"] = diagnostics
+    capture = capture_with([event])
+    record = _module.request_record(
+        capture, row={"id": "peer", "category": "code", "prompt": "x"},
+        arm="mixed", requested_speculative_mtp=False, steps=8, wall_s=1.0)
+    assert record["diagnostics"] == diagnostics
+    assert record["speculative_mtp"] is None
+    assert record["speculative_mtp_present"] is False
+
+
+def test_missing_peer_diagnostics_stay_absent():
+    capture = capture_with([done_event(count=8)])
+    record = _module.request_record(
+        capture, row={"id": "peer", "prompt": "x"}, arm="ar",
+        requested_speculative_mtp=False, steps=8, wall_s=1.0)
+    assert record["diagnostics"] is None
+
+
 # --- arm flags ------------------------------------------------------------
 
 
