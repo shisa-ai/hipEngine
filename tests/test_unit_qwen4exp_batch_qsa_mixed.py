@@ -119,6 +119,26 @@ class Recorder:
         return matches[0]
 
 
+@pytest.mark.parametrize('rows', [1, 2, 4])
+def test_selection_staging_is_writable_for_every_width(rows):
+    scratch = Qwen4ExpBatchQsaSelectionScratch.allocate(
+        rows=rows, stride=OUTPUT_STRIDE, index_heads=INDEX_HEADS,
+        index_dim=INDEX_DIM, runtime=FakeRuntime(),
+    )
+    try:
+        assert scratch.positions_host.flags.c_contiguous
+        assert scratch.positions_host.flags.writeable
+        batch_qsa._stage_selection(
+            scratch, rows=rows, contexts=np.full(rows, 3), sparse_rows=(0,),
+            sparse_counts=np.array([2], dtype=np.int32),
+            sparse_positions=np.array([[1, 2]], dtype=np.int64),
+            runtime=scratch.runtime,
+        )
+        np.testing.assert_array_equal(scratch.positions_host[0, :2], [1, 2])
+    finally:
+        scratch.close()
+
+
 @pytest.fixture
 def recorder(monkeypatch) -> Recorder:
     record = Recorder()

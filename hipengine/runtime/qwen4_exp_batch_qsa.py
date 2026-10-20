@@ -168,10 +168,11 @@ class Qwen4ExpBatchQsaSelectionScratch:
             index_heads=parsed_heads,
             index_dim=parsed_dim,
         )
-        positions_host = np.ascontiguousarray(
+        positions_host = np.array(
             np.broadcast_to(
                 np.arange(parsed_stride, dtype=np.int64), (parsed_rows, parsed_stride)
-            )
+            ),
+            copy=True, order='C',
         )
         counts_host = np.zeros(parsed_rows, dtype=np.int32)
         active_runtime = runtime or get_hip_runtime()
