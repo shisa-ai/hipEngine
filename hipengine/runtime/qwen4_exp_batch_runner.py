@@ -181,6 +181,197 @@ class _StepOwners:
     index: tuple[Qwen4ExpBatchQsaIndexRowPlan, ...]
 
 
+def _release_owners(owners: list[object], runtime: HipRuntime) -> None:
+    """Free buffers and close owners from the end, leaving a failure pending."""
+
+    while owners:
+        owner = owners[-1]
+        if isinstance(owner, DeviceBuffer):
+            free(owner, runtime=runtime)
+        else:
+            owner.close()
+        owners.pop()
+
+
+class Qwen4ExpMixedTargetScratch:
+    """Reusable stateless scratch for one mixed target pass.
+
+    A mixed target pass is built and closed once per serving cycle. Its stateless
+    half -- the token/embedding/residual/logits slabs and the per-layer GDN, QSA
+    and head stage scratch -- depends only on the physical row count and the
+    model geometry, never on which requests a layout holds, and every byte of it
+    is rewritten before it is read. Allocating that set per pass charged every
+    cycle a device allocation and free for buffers whose contents were already
+    dead.
+
+    The batch runner keeps one such set alive and every pass borrows it. A pass
+    wider than ``capacity_rows`` replaces the set with a larger one, so retained
+    memory is a single capacity-bounded set rather than a per-layout cache. The
+    pass's provisional state -- depth-wave adapters, their per-row state slabs,
+    and the QSA runs -- stays with the pass and is never cached here.
+
+    ``borrow``/``release`` make that reuse a single-owner lease: the row slabs
+    hold one pass's rows, so a second live pass would overwrite the first's
+    token, residual, logit and stage bytes mid-verification. A second borrow is
+    therefore refused whatever its row count, and growth is refused while the
+    lease is held, because replacing the set would free buffers that pass still
+    names. A borrow is dropped even by a close that leaves the pass retryable,
+    because a pass that refuses work can never read those buffers again. A pass
+    is expected to close before the runner: the runner's close releases the set
+    regardless, and a pass over a closed runner refuses work.
+    """
+
+    def __init__(
+        self,
+        *,
+        capacity_rows: int,
+        token_ids: DeviceBuffer,
+        embedding: DeviceBuffer,
+        ple_embedding: DeviceBuffer,
+        residual: DeviceBuffer,
+        logits: DeviceBuffer,
+        gdn: Qwen4ExpGDNLayerScratch,
+        qsa: Qwen4ExpQSALayerScratch,
+        head: Qwen4ExpGRScratch,
+        runtime: HipRuntime,
+    ) -> None:
+        self.capacity_rows = int(capacity_rows)
+        self.token_ids = token_ids
+        self.embedding = embedding
+        self.ple_embedding = ple_embedding
+        self.residual = residual
+        self.logits = logits
+        self.gdn = gdn
+        self.qsa = qsa
+        self.head = head
+        self.runtime = runtime
+        self.borrowers = 0
+        self.closed = False
+        self.closing = False
+        self._owned: list[object] = [
+            token_ids, embedding, ple_embedding, residual, logits, gdn, qsa, head,
+        ]
+
+    @classmethod
+    def allocate(
+        cls, *, rows: int, config: object, runtime: HipRuntime
+    ) -> "Qwen4ExpMixedTargetScratch":
+        """Allocate one capacity-``rows`` set, releasing partials on failure."""
+
+        capacity = int(rows)
+        if capacity <= 0:
+            raise ValueError("mixed target scratch rows must be positive")
+        owners: list[object] = []
+        try:
+            token_ids = malloc(capacity * 8, runtime=runtime)
+            owners.append(token_ids)
+            embedding = malloc(capacity * config.hidden_size * 2, runtime=runtime)
+            owners.append(embedding)
+            ple_embedding = malloc(capacity * config.hidden_size * 4, runtime=runtime)
+            owners.append(ple_embedding)
+            residual = malloc(capacity * config.residual_width * 2, runtime=runtime)
+            owners.append(residual)
+            logits = malloc(capacity * config.vocab_size * 4, runtime=runtime)
+            owners.append(logits)
+            gdn = Qwen4ExpGDNLayerScratch.allocate(
+                rows=capacity,
+                branches=config.residual_branch_count,
+                hidden=config.hidden_size,
+                low_rank=config.residual_low_rank,
+                qkv_width=(
+                    2 * config.gdn_group_count * config.gdn_state_size
+                    + config.gdn_inner_size
+                ),
+                core_width=config.gdn_inner_size,
+                scalar_width=config.gdn_time_step_rank,
+                ffn=config.expert_feed_forward_length,
+                experts=config.expert_count,
+                top_k=config.expert_used_count,
+                runtime=runtime,
+            )
+            owners.append(gdn)
+            qsa = Qwen4ExpQSALayerScratch.allocate(
+                rows=capacity,
+                branches=config.residual_branch_count,
+                hidden=config.hidden_size,
+                low_rank=config.residual_low_rank,
+                query_heads=config.attention_head_count,
+                kv_heads=config.attention_kv_head_count,
+                head_dim=config.attention_key_length,
+                index_heads=config.indexer_head_count,
+                index_dim=config.indexer_key_length,
+                ffn=config.expert_feed_forward_length,
+                experts=config.expert_count,
+                top_k=config.expert_used_count,
+                runtime=runtime,
+            )
+            owners.append(qsa)
+            head = Qwen4ExpGRScratch.allocate(
+                rows=capacity,
+                branches=config.residual_branch_count,
+                hidden=config.hidden_size,
+                low_rank=config.residual_low_rank,
+                runtime=runtime,
+            )
+            owners.append(head)
+        except BaseException as error:
+            try:
+                _release_owners(owners, runtime)
+            except Exception as cleanup:
+                error.add_note(
+                    f"mixed target scratch allocation cleanup failed: {cleanup!r}"
+                )
+            raise
+        return cls(
+            capacity_rows=capacity,
+            token_ids=token_ids,
+            embedding=embedding,
+            ple_embedding=ple_embedding,
+            residual=residual,
+            logits=logits,
+            gdn=gdn,
+            qsa=qsa,
+            head=head,
+            runtime=runtime,
+        )
+
+    def borrow(self) -> "Qwen4ExpMixedTargetScratch":
+        """Take the single-owner lease on the row slabs, or refuse.
+
+        The set holds one pass's rows at a time, so a second live pass is
+        rejected before it allocates or writes anything: sharing the slabs would
+        have both passes reading and overwriting the same token, residual, logit
+        and stage bytes. The refusal does not depend on the requested row count,
+        because a narrower pass aliases the same buffers.
+        """
+
+        if self.closed or self.closing:
+            raise RuntimeError("mixed target scratch is closed")
+        if self.borrowers:
+            raise RuntimeError(
+                "mixed target scratch is already leased by a live mixed target "
+                "pass; a second pass would overwrite the row slabs it is using"
+            )
+        self.borrowers = 1
+        return self
+
+    def release(self) -> None:
+        """Drop the lease; the batch runner keeps the buffers for the next pass."""
+
+        if self.borrowers <= 0:
+            raise RuntimeError("mixed target scratch released without a borrow")
+        self.borrowers = 0
+
+    def close(self) -> None:
+        """Release every buffer, retryable: a failed free stays pending."""
+
+        if self.closed:
+            return
+        self.closing = True
+        _release_owners(self._owned, self.runtime)
+        self.closed = True
+
+
 class _BufferGroup:
     """Own plain device buffers with a retry-safe reverse free."""
 
@@ -670,6 +861,9 @@ class Qwen4ExpGGUFBatchRunner:
         self.closing = False
         self._owned: list[Any] = []
         self._buffers: _BufferGroup | None = None
+        # The stateless half of a mixed target pass, kept at the widest capacity
+        # admitted so far. Created on the first pass and released by ``close``.
+        self._mixed_target_scratch: Qwen4ExpMixedTargetScratch | None = None
         self._owners = [0] * slots
         self._poisoned: set[int] = set()
         self._next_owner = 0
@@ -2047,6 +2241,46 @@ class Qwen4ExpGGUFBatchRunner:
             raise RuntimeError("Qwen4Exp batch runner has no attention state")
         return states
 
+    # -- mixed target scratch ---------------------------------------------
+
+    def mixed_target_scratch(self, rows: int) -> Qwen4ExpMixedTargetScratch:
+        """The batch-owned stateless scratch for a ``rows``-row mixed pass.
+
+        A pass at or below the installed capacity reuses it unchanged. A wider
+        pass allocates the larger set first and releases the smaller one after,
+        so a failed allocation leaves the previous capacity installed and the
+        retry starts from it. Growth is refused while the set is leased by a live
+        pass, because replacing it would free buffers that pass names.
+        """
+
+        self._require_open()
+        count = int(rows)
+        if count <= 0:
+            raise ValueError("mixed target scratch rows must be positive")
+        installed = self._mixed_target_scratch
+        if (
+            installed is not None
+            and not installed.closing
+            and installed.capacity_rows >= count
+        ):
+            return installed
+        if installed is not None and installed.borrowers:
+            raise RuntimeError(
+                f"mixed target scratch is still leased by a live mixed target pass, "
+                f"so it cannot grow from {installed.capacity_rows} to {count} rows"
+            )
+        grown = Qwen4ExpMixedTargetScratch.allocate(
+            rows=count, config=self.config, runtime=self.runtime
+        )
+        self._mixed_target_scratch = grown
+        self._owned.append(grown)
+        if installed is not None:
+            # Pop the replaced set only after its free returns, so a failed
+            # release stays reachable for the runner's own retry.
+            installed.close()
+            self._owned.remove(installed)
+        return grown
+
     # -- lifecycle --------------------------------------------------------
 
     def close(self) -> None:
@@ -2075,6 +2309,7 @@ class Qwen4ExpGGUFBatchRunner:
         self.qsa_scratch = None
         self.ple_scratch = None
         self.head_scratch = None
+        self._mixed_target_scratch = None
         self.token_ids = None
         self.embedding = None
         self.ple_embedding = None
@@ -2192,6 +2427,7 @@ __all__ = [
     "QWEN4_EXP_BATCH_BLOCK_SIZE",
     "Qwen4ExpBatchDecodeResult",
     "Qwen4ExpGGUFBatchRunner",
+    "Qwen4ExpMixedTargetScratch",
     "batch_runner_call_table",
     "run_qwen4_exp_batch_gdn_layer",
     "run_qwen4_exp_batch_qsa_layer",

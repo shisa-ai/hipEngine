@@ -7,8 +7,11 @@ appends remain hidden after abort by restoring their index cursors. A commit
 publishes one selected prefix per request; every commit precondition is checked on
 the host before the first live write, so a rejected commit leaves the pass
 abortable, while a device failure during commit poisons all participating slots
-rather than permitting a partially applied retry. Closing releases the pass's own
-buffers even when the live runner it borrowed has already gone away.
+rather than permitting a partially applied retry. The stateless row slabs and
+per-layer stage scratch belong to the batch runner and are borrowed here, so
+closing a pass releases its provisional state and the borrow while those buffers
+survive for the next pass; the pass still releases its own state even when the
+live runner it borrowed has already gone away.
 """
 from __future__ import annotations
 
@@ -19,7 +22,7 @@ from typing import Sequence
 import numpy as np
 
 from hipengine.core.memory import (
-    DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc,
+    DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr,
 )
 from hipengine.kernels.cpu_reference.qwen4_exp import ple_hash_rows
 from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple import (
@@ -52,7 +55,6 @@ from hipengine.runtime.qwen4_exp_mixed_qsa import (
     run_qwen4_exp_mixed_qsa_attention,
 )
 from hipengine.runtime.qwen4_exp_runner import (
-    Qwen4ExpGDNLayerScratch, Qwen4ExpQSALayerScratch, Qwen4ExpGRScratch,
     qwen4_exp_repeat_bf16_branches, run_qwen4_exp_gr_read, stage_qwen4_exp_ple_rows,
 )
 
@@ -81,6 +83,8 @@ class Qwen4ExpMixedTargetPass:
     def __init__(self, batch, layout: Qwen4ExpMixedLayout):
         self.batch, self.layout, self.runtime = batch, layout, batch.runtime
         self._owned = []
+        self.scratch = None
+        self._scratch_released = False
         self.gdn = {}
         self.qsa = {}
         self.qsa_runs = []
@@ -88,33 +92,13 @@ class Qwen4ExpMixedTargetPass:
         self.hash_snapshots = {}
         self.verified = self.resolved = self.closed = self.closing = False
         self._validate()
-        cfg, rows = batch.config, layout.total_rows
+        rows = layout.total_rows
         try:
-            self.token_ids = self._buffer(rows * 8)
-            self.embedding = self._buffer(rows * cfg.hidden_size * 2)
-            self.ple_embedding = self._buffer(rows * cfg.hidden_size * 4)
-            self.residual = self._buffer(rows * cfg.residual_width * 2)
-            self.logits = self._buffer(rows * cfg.vocab_size * 4)
-            self.gdn_scratch = self._own(Qwen4ExpGDNLayerScratch.allocate(
-                rows=rows, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
-                low_rank=cfg.residual_low_rank,
-                qkv_width=2 * cfg.gdn_group_count * cfg.gdn_state_size + cfg.gdn_inner_size,
-                core_width=cfg.gdn_inner_size, scalar_width=cfg.gdn_time_step_rank,
-                ffn=cfg.expert_feed_forward_length, experts=cfg.expert_count,
-                top_k=cfg.expert_used_count, runtime=self.runtime,
-            ))
-            self.qsa_scratch = self._own(Qwen4ExpQSALayerScratch.allocate(
-                rows=rows, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
-                low_rank=cfg.residual_low_rank, query_heads=cfg.attention_head_count,
-                kv_heads=cfg.attention_kv_head_count, head_dim=cfg.attention_key_length,
-                index_heads=cfg.indexer_head_count, index_dim=cfg.indexer_key_length,
-                ffn=cfg.expert_feed_forward_length, experts=cfg.expert_count,
-                top_k=cfg.expert_used_count, runtime=self.runtime,
-            ))
-            self.head = self._own(Qwen4ExpGRScratch.allocate(
-                rows=rows, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
-                low_rank=cfg.residual_low_rank, runtime=self.runtime,
-            ))
+            # Stateless row slabs and stage scratch are the batch runner's and
+            # outlive this pass; only the provisional state below is allocated
+            # here and released by ``close``.
+            self._borrow_scratch(rows)
+            cfg = batch.config
             for layer, binding in batch.gdn_bindings.items():
                 self.gdn[layer] = self._own(Qwen4ExpMixedGdnAdapter.allocate(
                     layout=layout, live_state=batch.gdn_states[binding.gdn_state_index],
@@ -243,12 +227,29 @@ class Qwen4ExpMixedTargetPass:
                 f'{request.start_position}; the history does not describe this chain'
             )
 
+    def _borrow_scratch(self, rows: int) -> None:
+        """Name the batch-owned stateless scratch this pass runs on.
+
+        The set depends only on the row count and the model geometry, so the
+        batch runner keeps one at the widest capacity admitted so far and every
+        pass borrows it instead of allocating its own. The pass never frees it:
+        ``close`` drops the borrow and the batch runner releases the bytes.
+        """
+
+        scratch = self.batch.mixed_target_scratch(rows).borrow()
+        self.scratch = scratch
+        self.token_ids = scratch.token_ids
+        self.embedding = scratch.embedding
+        self.ple_embedding = scratch.ple_embedding
+        self.residual = scratch.residual
+        self.logits = scratch.logits
+        self.gdn_scratch = scratch.gdn
+        self.qsa_scratch = scratch.qsa
+        self.head = scratch.head
+
     def _own(self, owner):
         self._owned.append(owner)
         return owner
-
-    def _buffer(self, nbytes):
-        return self._own(malloc(nbytes, runtime=self.runtime))
 
     def _stage_hashes(self):
         cfg = self.batch.config
@@ -269,7 +270,10 @@ class Qwen4ExpMixedTargetPass:
             embeddings[[row.physical_row for row in wave]] = staged
             for row in wave:
                 self.hash_snapshots[row.physical_row] = states[row.slot]
-        copy_host_to_device(self.ple_embedding, host_array_ptr(embeddings), runtime=self.runtime)
+        copy_host_to_device(
+            self.ple_embedding, host_array_ptr(embeddings), embeddings.nbytes,
+            runtime=self.runtime,
+        )
 
     def verify(self) -> Qwen4ExpMixedTargetResult:
         """Execute shared row projections and provisional depth-wave state work."""
@@ -282,7 +286,9 @@ class Qwen4ExpMixedTargetPass:
         embedding = resolve(backend=batch.backend, layer='embedding',
                             quant=token_weight.spec.quant_key, variant='lookup_bf16_out')
         try:
-            copy_host_to_device(self.token_ids, host_array_ptr(tokens), runtime=self.runtime)
+            copy_host_to_device(
+                self.token_ids, host_array_ptr(tokens), tokens.nbytes, runtime=self.runtime,
+            )
             embedding(self.token_ids.ptr, token_weight.allocation('raw').tensor.ptr,
                       self.embedding.ptr, rows, cfg.hidden_size, cfg.vocab_size, runtime=self.runtime)
             qwen4_exp_repeat_bf16_branches(
@@ -371,7 +377,9 @@ class Qwen4ExpMixedTargetPass:
             )
             logits = np.empty((rows, cfg.vocab_size), dtype=np.float32)
             bits = np.empty((rows, cfg.residual_width), dtype=np.uint16)
-            copy_device_to_host(host_array_ptr(logits), self.logits, runtime=self.runtime)
+            copy_device_to_host(
+                host_array_ptr(logits), self.logits, logits.nbytes, runtime=self.runtime,
+            )
             copy_device_to_host(host_array_ptr(bits), residual, bits.nbytes, runtime=self.runtime)
             hidden = np.ascontiguousarray((bits.astype(np.uint32) << 16).view(np.float32))
             self.verified = True
@@ -475,41 +483,61 @@ class Qwen4ExpMixedTargetPass:
             self._abort_indexes()
             self.resolved = True
 
+    def _release_borrowed_scratch(self):
+        """Drop the borrow even when a failed free keeps the pass retryable.
+
+        A pass that refuses work can never read those buffers again, so the batch
+        runner may replace them; keeping the borrow would let one failed close
+        block every wider pass for the life of the runner. The reference stays
+        for diagnostics, so the release is guarded rather than cleared.
+        """
+
+        scratch = getattr(self, 'scratch', None)
+        if scratch is not None and not self._scratch_released:
+            scratch.release()
+            self._scratch_released = True
+
     def close(self):
-        """Release every buffer this pass owns, even if discarding it fails.
+        """Release this pass's provisional state and its borrowed scratch.
 
         ``closing`` is set before the first free, so a partially closed pass
         refuses verification and commit instead of handing out a released
         address. A failure to discard unpublished state does not stop the frees:
-        the buffers are this pass's own, and leaking them would outlive the
-        cause. A failed free leaves its owner pending and raises, exactly as the
-        state owners in this tree do; the discard failure is then reported as a
-        note on that error, or raised once cleanup completed.
+        the state is this pass's own, and leaking it would outlive the cause. A
+        failed free leaves its owner pending and raises, exactly as the state
+        owners in this tree do; the discard failure is then reported as a note on
+        that error, or raised once cleanup completed.
+
+        The stateless scratch is not freed here. It belongs to the batch runner
+        and outlives the pass, so only the borrow is dropped.
         """
 
         if self.closed:
             return
         self.closing = True
-        abort_error = None
         try:
-            self.abort()
-        except BaseException as error:
-            abort_error = error
-        while self._owned:
-            owner = self._owned[-1]
+            abort_error = None
             try:
-                if isinstance(owner, DeviceBuffer):
-                    free(owner, runtime=self.runtime)
-                else:
-                    owner.close()
+                self.abort()
             except BaseException as error:
-                if abort_error is not None:
-                    error.add_note(
-                        'releasing the pass also failed to discard its unpublished '
-                        f'state: {abort_error!r}'
-                    )
-                raise
-            self._owned.pop()
-        self.closed = True
-        if abort_error is not None:
-            raise abort_error
+                abort_error = error
+            while self._owned:
+                owner = self._owned[-1]
+                try:
+                    if isinstance(owner, DeviceBuffer):
+                        free(owner, runtime=self.runtime)
+                    else:
+                        owner.close()
+                except BaseException as error:
+                    if abort_error is not None:
+                        error.add_note(
+                            'releasing the pass also failed to discard its unpublished '
+                            f'state: {abort_error!r}'
+                        )
+                    raise
+                self._owned.pop()
+            self.closed = True
+            if abort_error is not None:
+                raise abort_error
+        finally:
+            self._release_borrowed_scratch()
