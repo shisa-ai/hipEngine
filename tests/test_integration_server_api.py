@@ -4581,6 +4581,46 @@ def test_startup_mtp_warmup_failure_keeps_the_server_ready() -> None:
     assert isinstance(check["exception_type"], str) and check["exception_type"]
 
 
+def test_startup_mtp_warmup_failure_that_closes_the_engine_ends_startup() -> None:
+    """A warmup that closed the engine must not announce ready over 503s.
+
+    On a 24 GB card the MTP warmup could OOM, close the engine service, and the
+    server still printed ``hipEngine ready`` while every request returned 503.
+    """
+
+    class EngineClosingMTPFakeLLM(SpeculativeMTPFakeLLM):
+        closed = False
+
+        def generate_speculative_mtp_detailed(self, prompts, sampling_params):
+            self.closed = True
+            raise RuntimeError("HIP error 2: out of memory")
+
+        def service_health(self):
+            return {
+                "accepting_requests": not self.closed,
+                "driver_alive": not self.closed,
+                "closing": False,
+                "closed": False,
+                "failure": "GenerationExecutionFailed" if self.closed else None,
+            }
+
+    fake = EngineClosingMTPFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        speculative_mtp_serving="opt_in",
+        max_active_requests=4,
+    )
+    app = create_app(config, llm=fake)
+
+    with pytest.raises(StartupFailure) as raised:
+        with TestClient(app):
+            pass
+
+    assert raised.value.stage == "mtp_smoke"
+    assert "--speculative-mtp-serving off" in raised.value.guidance
+
+
 def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, Any] = {}
     fake = FakeLLM(outputs=["ok"])
