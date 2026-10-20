@@ -211,6 +211,31 @@ def decide(candidate: Mapping[str, Any], controls: Sequence[Mapping[str, Any]],
            batch_manifest_bound: bool | None = None) -> dict[str, Any]:
     """The binding rules, separated from measurement so they can be unit-tested."""
 
+    def finite_summary(summary):
+        keys = ("kl_mean", "kl_p95", "kl_max", "top1_matches")
+        try:
+            return summary.get("finite", True) is not False and all(
+                np.isfinite(float(summary[key])) for key in keys
+            )
+        except (KeyError, TypeError, ValueError, OverflowError):
+            return False
+
+    controls_finite = bool(controls) and all(finite_summary(c) for c in controls)
+    candidate_finite = finite_summary(candidate)
+    if not controls_finite or not candidate_finite:
+        # A non-finite logit comparison has no KL metrics. Do not drop that
+        # control, substitute a zero floor, or crash before recording invalidity.
+        checks = {"controls_finite": controls_finite,
+                  "candidate_finite": candidate_finite,
+                  "retrieval_not_below_strict": int(candidate_retrieval) >= int(strict_retrieval),
+                  "candidate_repeats_identical": bool(deterministic)}
+        if batch_state_passed is not None:
+            checks["batch_state_gate"] = bool(batch_state_passed)
+        if batch_manifest_bound is not None:
+            checks["batch_manifest_bound"] = bool(batch_manifest_bound)
+        return {"floor": None, "checks": checks, "measurement_valid": False,
+                "status": "invalid", "reason": "non-finite or incomplete numerical summary"}
+
     floor = {
         "kl_mean": float(np.median([float(c["kl_mean"]) for c in controls])),
         "kl_p95": float(np.median([float(c["kl_p95"]) for c in controls])),

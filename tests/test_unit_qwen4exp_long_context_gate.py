@@ -2,6 +2,7 @@ import numpy as np
 
 from scripts.qwen4exp_long_context_gate import (
     CONTROL_MEAN_KL_CAP,
+    _summary,
     decide,
     gold_answer_tokens,
     score_retrieval,
@@ -48,6 +49,28 @@ def test_ineffective_or_oversized_controls_invalidate_the_measurement():
     loud = [_stats(CONTROL_MEAN_KL_CAP * 2, 0.1, 90, 0.2), CONTROLS[0]]
     assert decide(_stats(1e-3, 1e-2, 99, 2e-2), loud, 16, 16,
                   deterministic=True)["status"] == "invalid"
+
+
+def test_non_finite_control_invalidates_without_missing_metric_crash():
+    teacher = {"prompt": ({"token_id": 0, "logits": np.array([1.0, 0.0])},)}
+    broken = {"prompt": ({"token_id": 0, "logits": np.array([np.nan, np.nan])},)}
+    summary = _summary(teacher, broken, {"prompt": "code"}, "control")
+    result = decide(_stats(0, 0, 100, 0), [*CONTROLS, summary], 16, 16,
+                    deterministic=True)
+    assert result["status"] == "invalid"
+    assert not result["measurement_valid"]
+    assert not result["checks"]["controls_finite"]
+    assert result["checks"]["candidate_finite"]
+    assert result["floor"] is None
+
+
+def test_non_finite_candidate_cannot_pass_the_floor():
+    for value in (np.nan, np.inf):
+        result = decide(_stats(value, 0, 100, 0), CONTROLS, 16, 16,
+                        deterministic=True)
+        assert result["status"] == "invalid"
+        assert not result["checks"]["candidate_finite"]
+        assert result["checks"]["controls_finite"]
 
 
 class _DigitTokenizer:
