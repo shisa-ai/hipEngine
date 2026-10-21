@@ -1597,3 +1597,22 @@ def test_pretty_startup_summary_reads_the_resolved_speculation_route(monkeypatch
     rendered = messages[-1]
     assert "MTP unavailable (mtp_backend_unsupported)" in rendered
     assert "MTP enabled" not in rendered
+
+
+@pytest.mark.parametrize("resolved, expected", [(156_672, "156,672 tokens"), (None, "unknown tokens")])
+def test_startup_banner_names_the_resolved_context_without_a_bound_session(
+    monkeypatch, resolved, expected,
+) -> None:
+    """DMS compact serving binds its session per request, so the banner falls
+    back to the context the server resolved at preparation."""
+
+    messages: list[str] = []
+    monkeypatch.setattr(
+        "hipengine.server.api._LOGGER.info",
+        lambda message, *args: messages.append(message % args),
+    )
+    engine = SimpleNamespace(live_loop_snapshot=lambda: {})
+    _log_pretty_startup_summary(
+        _banner_config(), engine=engine, memory=None, effective_context_tokens=resolved,
+    )
+    assert f"Context      {expected}" in messages[-1]

@@ -6627,6 +6627,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             config,
             engine=engine,
             memory=_startup_memory_summary(startup_memory, startup_checks),
+            effective_context_tokens=effective_max_context_tokens(engine),
         )
         # Normally silent: the resolved line was already emitted when the model
         # became resident. Kept so eager startup reports the effective state on
@@ -13493,14 +13494,24 @@ def _log_pretty_startup_summary(
     *,
     engine: Any,
     memory: Mapping[str, Any] | None,
+    effective_context_tokens: int | None = None,
 ) -> None:
-    """Emit a compact human-facing startup summary after eager preparation."""
+    """Emit a compact human-facing startup summary after eager preparation.
+
+    ``effective_context_tokens`` is the context the server resolved at
+    preparation; it names the context when no resident session is bound at
+    summary time (DMS compact serving owns its session per request).
+    """
 
     estimate = _kv_capacity_estimate_payload(engine) or {}
     snapshot = _live_loop_snapshot(engine) or {}
     runner = _nested_mapping(snapshot, "runner")
     pool = _nested_mapping(runner, "kv_pool")
-    context = estimate.get("requested_context_tokens") or config.max_context_tokens
+    context = (
+        estimate.get("requested_context_tokens")
+        or config.max_context_tokens
+        or effective_context_tokens
+    )
     model_max = estimate.get("model_max_context_tokens")
     storage = estimate.get("kv_storage_dtype") or config.kv_storage
     scale = estimate.get("kv_scale_dtype") or config.kv_scale_dtype
