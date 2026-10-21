@@ -559,9 +559,31 @@ run_hip scripts/qwen4exp_http_mtp_economics.py \
   --repetitions 3 --output "$OUT/prepared-http.json"
 ```
 
-`BASE` still needs the ordered Gufo HTTP replay, cross-engine adapters and
-quality-column bindings. Existing `qwen38fn_mixed_economics.py` measures
-all-AR and one-MTP-plus-peers, not the all-MTP prepared table.
+`scripts/qwen4exp_gufo_http_replay.py` calls the pinned Gufo checkout's prompt,
+calibration, prefix-reply and adaptive retry implementation without editing that
+checkout. It journals every request and prefix reply. It first checks allocation
+with a short request, then starts a fresh server to preserve the ordered replay's
+history. Set `GUFO_SOURCE`, `GUFO_BIN` and `GUFO_SIDECAR` to the reviewed source,
+its built executable and the verified shared sidecar. Run in that binary's
+isolated library environment, not through `run_hip`:
+
+```bash
+python3 scripts/qwen4exp_gufo_http_replay.py \
+  --source-root "$GUFO_SOURCE" --binary "$GUFO_BIN" \
+  --model "$MODEL_FIRST_SHARD" --sidecar "$GUFO_SIDECAR" \
+  --output-dir "$OUT/gufo-published-depth" --repetitions 1
+```
+
+`MODEL_FIRST_SHARD` names the target's first GGUF shard. The default replay
+retains all eight ordered depths, capacity 133760, all three workloads and
+native count/timing checks. `--probe-only` stops after the allocation checks;
+`--depths` subsets and repeat extensions are labelled separately. The output is
+diagnostic until its per-workload G0–G4 characterization is complete; unavailable
+native output IDs are not replaced by text hashes.
+
+`BASE` still needs the hipEngine ordered-depth adapter, prepared cross-engine
+replay and quality-column bindings. Existing `qwen38fn_mixed_economics.py`
+measures all-AR and one-MTP-plus-peers, not the all-MTP prepared table.
 
 Use counterbalanced same-session arms and unchanged-code controls to distinguish
 small gains from thermal/run-order variation. Profile only a warmed serving

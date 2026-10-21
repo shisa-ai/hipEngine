@@ -1,0 +1,647 @@
+{
+  "schema": 1,
+  "status": "measured_diagnostic",
+  "performance_claim": false,
+  "identity": {
+    "source": {
+      "path": "/tmp/qwen38fn-gufo-20261021/gufo-fec4759d",
+      "head": "fec4759d064585d72f87c6e11af5cfa0e1fa95c7",
+      "tracked_clean": true
+    },
+    "binary_sha256": "3b31b886ca20a321317f22fe454cf598f7a357f92719a0064bba9428289cb9de",
+    "benchmark_sources": {
+      "docs/models/qwen3.8-flash-next/artifacts/bench.json": "a8c70e48be58ff68e54651014030deb6298589e42fee0530e6463bd467cd9ff3",
+      "tools/gufo/model_bench/llm.py": "3e3a038c98c4656f1366fc183fb207bd6ea3dbbebbd2ff28b083a330ef716c0d",
+      "tools/gufo/serving_bench.py": "cc1e4c39a960a4fb72e67c5a00bcc1b3258b2f4c6334ea1adc66d73c5bffc9ce"
+    },
+    "harness_sha256": "4949560b6714220053c68df60cd7957979f0bd075b0489995d4f7da5ffed99de",
+    "command": [
+      "scripts/qwen4exp_gufo_http_replay.py",
+      "--source-root",
+      "/tmp/qwen38fn-gufo-20261021/gufo-fec4759d",
+      "--binary",
+      "/tmp/qwen38fn-gufo-20261021/gufo-fec4759d-build/gufo",
+      "--model",
+      "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+      "--sidecar",
+      "/tmp/qwen38fn-gufo-20261021/mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf",
+      "--output-dir",
+      "/tmp/qwen38fn-gufo-20261021/gufo-depth-contract",
+      "--depths",
+      "0,4096",
+      "--context",
+      "8192"
+    ]
+  },
+  "protocol": "declared_depth_extension",
+  "quality": {
+    "G0": {
+      "status": "pending",
+      "reason": "bind full identities, tokenization and host-state checks"
+    },
+    "G1": {
+      "status": "unavailable",
+      "reason": "HTTP observations expose text hashes, not native output IDs"
+    },
+    "G2": {
+      "status": "not_applicable",
+      "reason": "Gufo HTTP exposes no logits/logprob surface"
+    },
+    "G3": {
+      "status": "pending",
+      "reason": "requires identical-input repeats and cross-launch checks"
+    },
+    "G4": {
+      "status": "pending",
+      "reason": "bind the same-pin task battery and workload scope"
+    }
+  },
+  "arms": {
+    "ar": {
+      "host_before": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "gpu_temperature_millidegrees_c": {
+          "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 43000
+        }
+      },
+      "rows": [
+        {
+          "phase": "depth",
+          "depth": 0,
+          "repetition": 0,
+          "task": "prose",
+          "observation": {
+            "concurrency": 1,
+            "repetition": 1,
+            "request_index": 0,
+            "prompt_tokens": 2040,
+            "cached_prompt_tokens": 0,
+            "completion_tokens": 128,
+            "prefill_tokens": 2040,
+            "wall_ms": 5841.165818972513,
+            "client_ttft_ms": 1325.2838419284672,
+            "client_event_inter_token_ms": 35.55488948871594,
+            "queue_ms": 3.053711,
+            "prefill_ms": 1321.629775,
+            "decode_ms": 4512.263029,
+            "server_ttft_ms": 1324.735233,
+            "server_inter_token_ms": 35.55590492913388,
+            "server_max_inter_token_ms": 38.806266,
+            "requested_logical_concurrency": 1,
+            "physical_execution_width": 1,
+            "execution_plan": "serial-c1",
+            "metrics_source": "gufo",
+            "cache_hit": false,
+            "draft_tokens": 0,
+            "draft_accepted_tokens": 0,
+            "draft_acceptance": null,
+            "case_id": null,
+            "category": null,
+            "completion_sha256": "a1156fd4cdb7ce8d07a67b8292ead9f5cb345de867b3ab55eb799f77312b9818",
+            "prefill_tokens_per_second": 1543.5487597122271,
+            "decode_tokens_per_second": 28.367140651454253,
+            "whole_request_tokens_per_second": 371.15878356991425
+          },
+          "rates": {
+            "prefill_new_tok_s": 1543.5487597122271,
+            "decode_output_tok_s": 28.367140651454253,
+            "decode_transition_tok_s": 28.14552236511477
+          },
+          "output_identity": "visible_text_sha256_not_native_ids"
+        },
+        {
+          "phase": "depth",
+          "depth": 4096,
+          "repetition": 0,
+          "task": "prose",
+          "observation": {
+            "concurrency": 1,
+            "repetition": 1,
+            "request_index": 0,
+            "prompt_tokens": 6138,
+            "cached_prompt_tokens": 4095,
+            "completion_tokens": 128,
+            "prefill_tokens": 2043,
+            "wall_ms": 5866.806858917698,
+            "client_ttft_ms": 1346.0681369761005,
+            "client_event_inter_token_ms": 35.59281003082127,
+            "queue_ms": 1.210421,
+            "prefill_ms": 1344.152563,
+            "decode_ms": 4516.999305999997,
+            "server_ttft_ms": 1345.413368,
+            "server_inter_token_ms": 35.59339988188978,
+            "server_max_inter_token_ms": 41.864116,
+            "requested_logical_concurrency": 1,
+            "physical_execution_width": 1,
+            "execution_plan": "serial-c1",
+            "metrics_source": "gufo",
+            "cache_hit": true,
+            "draft_tokens": 0,
+            "draft_accepted_tokens": 0,
+            "draft_acceptance": null,
+            "case_id": null,
+            "category": null,
+            "completion_sha256": "8b82684db5192cb2f62692daf047ec25459ec8c0324a9b2cee94fa5c1c7dbe8f",
+            "prefill_tokens_per_second": 1519.916753675825,
+            "decode_tokens_per_second": 28.3373964281942,
+            "whole_request_tokens_per_second": 370.0479753650018
+          },
+          "rates": {
+            "prefill_new_tok_s": 1519.916753675825,
+            "decode_output_tok_s": 28.3373964281942,
+            "decode_transition_tok_s": 28.116010518598934
+          },
+          "output_identity": "visible_text_sha256_not_native_ids"
+        }
+      ],
+      "probe": {
+        "concurrency": 1,
+        "repetition": 1,
+        "request_index": 0,
+        "prompt_tokens": 601,
+        "cached_prompt_tokens": 0,
+        "completion_tokens": 4,
+        "prefill_tokens": 601,
+        "wall_ms": 707.5493350857869,
+        "client_ttft_ms": 594.946357072331,
+        "client_event_inter_token_ms": 37.40492664898435,
+        "queue_ms": 3.443442,
+        "prefill_ms": 590.968582,
+        "decode_ms": 109.15539000000001,
+        "server_ttft_ms": 594.45786,
+        "server_inter_token_ms": 37.44806766666667,
+        "server_max_inter_token_ms": 42.459703,
+        "requested_logical_concurrency": 1,
+        "physical_execution_width": 1,
+        "execution_plan": "serial-c1",
+        "metrics_source": "gufo",
+        "cache_hit": false,
+        "draft_tokens": 0,
+        "draft_accepted_tokens": 0,
+        "draft_acceptance": null,
+        "case_id": null,
+        "category": null,
+        "completion_sha256": "add9b7734209d22ec02649df8a24b9fb50cad5dc3dd98025a2e626cc5c5b6801",
+        "prefill_tokens_per_second": 1016.9745368967856,
+        "decode_tokens_per_second": 36.645006719320044,
+        "whole_request_tokens_per_second": 855.0640499529926
+      },
+      "idle_device_gib": 0.003940582275390625,
+      "server_command": [
+        "/tmp/qwen38fn-gufo-20261021/gufo-fec4759d-build/gufo",
+        "serve",
+        "--port",
+        "47167",
+        "--sessions",
+        "1",
+        "llm",
+        "--model",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+        "--context",
+        "8192",
+        "--served-model-name",
+        "bench",
+        "--think",
+        "off",
+        "--max-pending-per-client",
+        "8"
+      ],
+      "calibration": {
+        "overhead": 12,
+        "initial_ratio": 1.167,
+        "final_ratio": 1.167
+      },
+      "host_after": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "gpu_temperature_millidegrees_c": {
+          "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 50000
+        }
+      }
+    },
+    "mtp-prose": {
+      "host_before": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "gpu_temperature_millidegrees_c": {
+          "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 50000
+        }
+      },
+      "rows": [
+        {
+          "phase": "depth",
+          "depth": 0,
+          "repetition": 0,
+          "task": "prose",
+          "observation": {
+            "concurrency": 1,
+            "repetition": 1,
+            "request_index": 0,
+            "prompt_tokens": 2040,
+            "cached_prompt_tokens": 0,
+            "completion_tokens": 128,
+            "prefill_tokens": 2040,
+            "wall_ms": 4887.702316045761,
+            "client_ttft_ms": 1388.3781940676272,
+            "client_event_inter_token_ms": 27.55057889744493,
+            "queue_ms": 3.286307,
+            "prefill_ms": 1384.49725,
+            "decode_ms": 3495.8090859999998,
+            "server_ttft_ms": 1387.829704,
+            "server_inter_token_ms": 27.551550488188976,
+            "server_max_inter_token_ms": 114.79862,
+            "requested_logical_concurrency": 1,
+            "physical_execution_width": 1,
+            "execution_plan": "serial-c1",
+            "metrics_source": "gufo",
+            "cache_hit": false,
+            "draft_tokens": 117,
+            "draft_accepted_tokens": 56,
+            "draft_acceptance": 0.47863247863247865,
+            "case_id": null,
+            "category": null,
+            "completion_sha256": "a1156fd4cdb7ce8d07a67b8292ead9f5cb345de867b3ab55eb799f77312b9818",
+            "prefill_tokens_per_second": 1473.459048040724,
+            "decode_tokens_per_second": 36.61527184439614,
+            "whole_request_tokens_per_second": 443.56220158553987
+          },
+          "rates": {
+            "prefill_new_tok_s": 1473.459048040724,
+            "decode_output_tok_s": 36.61527184439614,
+            "decode_transition_tok_s": 36.329215033111794
+          },
+          "output_identity": "visible_text_sha256_not_native_ids"
+        },
+        {
+          "phase": "depth",
+          "depth": 4096,
+          "repetition": 0,
+          "task": "prose",
+          "observation": {
+            "concurrency": 1,
+            "repetition": 1,
+            "request_index": 0,
+            "prompt_tokens": 6138,
+            "cached_prompt_tokens": 4096,
+            "completion_tokens": 128,
+            "prefill_tokens": 2042,
+            "wall_ms": 4855.927576078102,
+            "client_ttft_ms": 1393.4217389905825,
+            "client_event_inter_token_ms": 27.260233622454987,
+            "queue_ms": 1.531133,
+            "prefill_ms": 1391.253009,
+            "decode_ms": 3458.8646810000014,
+            "server_ttft_ms": 1392.834246,
+            "server_inter_token_ms": 27.260685425196858,
+            "server_max_inter_token_ms": 113.592657,
+            "requested_logical_concurrency": 1,
+            "physical_execution_width": 1,
+            "execution_plan": "serial-c1",
+            "metrics_source": "gufo",
+            "cache_hit": true,
+            "draft_tokens": 92,
+            "draft_accepted_tokens": 52,
+            "draft_acceptance": 0.5652173913043478,
+            "case_id": null,
+            "category": null,
+            "completion_sha256": "7f0af2a469830e5402776d409bd44ca6ed5f275011e158079320a37e72bc6c33",
+            "prefill_tokens_per_second": 1467.7416593461614,
+            "decode_tokens_per_second": 37.00636243537391,
+            "whole_request_tokens_per_second": 446.87651658771324
+          },
+          "rates": {
+            "prefill_new_tok_s": 1467.7416593461614,
+            "decode_output_tok_s": 37.00636243537391,
+            "decode_transition_tok_s": 36.71725022884755
+          },
+          "output_identity": "visible_text_sha256_not_native_ids"
+        }
+      ],
+      "probe": {
+        "concurrency": 1,
+        "repetition": 1,
+        "request_index": 0,
+        "prompt_tokens": 601,
+        "cached_prompt_tokens": 0,
+        "completion_tokens": 4,
+        "prefill_tokens": 601,
+        "wall_ms": 675.361362984404,
+        "client_ttft_ms": 605.9982610167935,
+        "client_event_inter_token_ms": 23.05068533557157,
+        "queue_ms": 3.50608,
+        "prefill_ms": 601.831551,
+        "decode_ms": 65.988398,
+        "server_ttft_ms": 605.385862,
+        "server_inter_token_ms": 23.050531666666668,
+        "server_max_inter_token_ms": 69.148749,
+        "requested_logical_concurrency": 1,
+        "physical_execution_width": 1,
+        "execution_plan": "serial-c1",
+        "metrics_source": "gufo",
+        "cache_hit": false,
+        "draft_tokens": 3,
+        "draft_accepted_tokens": 3,
+        "draft_acceptance": 1.0,
+        "case_id": null,
+        "category": null,
+        "completion_sha256": "add9b7734209d22ec02649df8a24b9fb50cad5dc3dd98025a2e626cc5c5b6801",
+        "prefill_tokens_per_second": 998.6182994251161,
+        "decode_tokens_per_second": 60.616716290036315,
+        "whole_request_tokens_per_second": 895.8167185142499
+      },
+      "idle_device_gib": 0.003940582275390625,
+      "server_command": [
+        "/tmp/qwen38fn-gufo-20261021/gufo-fec4759d-build/gufo",
+        "serve",
+        "--port",
+        "42041",
+        "--sessions",
+        "1",
+        "llm",
+        "--model",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+        "--context",
+        "8192",
+        "--served-model-name",
+        "bench",
+        "--think",
+        "off",
+        "--max-pending-per-client",
+        "8",
+        "--speculative",
+        "mtp",
+        "--mtp-model",
+        "/tmp/qwen38fn-gufo-20261021/mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf"
+      ],
+      "calibration": {
+        "overhead": 12,
+        "initial_ratio": 1.167,
+        "final_ratio": 1.167
+      },
+      "host_after": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "gpu_temperature_millidegrees_c": {
+          "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 50000
+        }
+      }
+    },
+    "mtp-repetition": {
+      "host_before": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "gpu_temperature_millidegrees_c": {
+          "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 50000
+        }
+      },
+      "rows": [
+        {
+          "phase": "depth",
+          "depth": 0,
+          "repetition": 0,
+          "task": "repetition",
+          "observation": {
+            "concurrency": 1,
+            "repetition": 1,
+            "request_index": 0,
+            "prompt_tokens": 2034,
+            "cached_prompt_tokens": 0,
+            "completion_tokens": 128,
+            "prefill_tokens": 2034,
+            "wall_ms": 2461.7270880844444,
+            "client_ttft_ms": 1378.3395170466974,
+            "client_event_inter_token_ms": 8.528107905569742,
+            "queue_ms": 2.901372,
+            "prefill_ms": 1374.679801,
+            "decode_ms": 1081.0310229999998,
+            "server_ttft_ms": 1377.635014,
+            "server_inter_token_ms": 8.528975590551193,
+            "server_max_inter_token_ms": 71.994288,
+            "requested_logical_concurrency": 1,
+            "physical_execution_width": 1,
+            "execution_plan": "serial-c1",
+            "metrics_source": "gufo",
+            "cache_hit": false,
+            "draft_tokens": 111,
+            "draft_accepted_tokens": 111,
+            "draft_acceptance": 1.0,
+            "case_id": null,
+            "category": null,
+            "completion_sha256": "82fd84fded8d257a194ac1eca43b70a866a79bac1e97e45d19f0292d6a7118bd",
+            "prefill_tokens_per_second": 1479.6172887099838,
+            "decode_tokens_per_second": 118.40548261490552,
+            "whole_request_tokens_per_second": 878.2452004792812
+          },
+          "rates": {
+            "prefill_new_tok_s": 1479.6172887099838,
+            "decode_output_tok_s": 118.40548261490552,
+            "decode_transition_tok_s": 117.48043978197657
+          },
+          "output_identity": "visible_text_sha256_not_native_ids"
+        },
+        {
+          "phase": "depth",
+          "depth": 4096,
+          "repetition": 0,
+          "task": "repetition",
+          "observation": {
+            "concurrency": 1,
+            "repetition": 1,
+            "request_index": 0,
+            "prompt_tokens": 6134,
+            "cached_prompt_tokens": 4096,
+            "completion_tokens": 128,
+            "prefill_tokens": 2038,
+            "wall_ms": 2573.4835260082036,
+            "client_ttft_ms": 1404.7381019918248,
+            "client_event_inter_token_ms": 9.199625008563533,
+            "queue_ms": 1.046036,
+            "prefill_ms": 1403.03413,
+            "decode_ms": 1165.2493149999998,
+            "server_ttft_ms": 1404.13014,
+            "server_inter_token_ms": 9.200258007874023,
+            "server_max_inter_token_ms": 69.708301,
+            "requested_logical_concurrency": 1,
+            "physical_execution_width": 1,
+            "execution_plan": "serial-c1",
+            "metrics_source": "gufo",
+            "cache_hit": true,
+            "draft_tokens": 115,
+            "draft_accepted_tokens": 110,
+            "draft_acceptance": 0.9565217391304348,
+            "case_id": null,
+            "category": null,
+            "completion_sha256": "8ddd067c8205a20751b56c3ac48d2daad70e29da600a6ec2ce3cf4ee007c77f3",
+            "prefill_tokens_per_second": 1452.5662322982835,
+            "decode_tokens_per_second": 109.84773674807956,
+            "whole_request_tokens_per_second": 841.6607210071161
+          },
+          "rates": {
+            "prefill_new_tok_s": 1452.5662322982835,
+            "decode_output_tok_s": 109.84773674807956,
+            "decode_transition_tok_s": 108.98955130473517
+          },
+          "output_identity": "visible_text_sha256_not_native_ids"
+        }
+      ],
+      "probe": {
+        "concurrency": 1,
+        "repetition": 1,
+        "request_index": 0,
+        "prompt_tokens": 601,
+        "cached_prompt_tokens": 0,
+        "completion_tokens": 4,
+        "prefill_tokens": 601,
+        "wall_ms": 673.9221210591495,
+        "client_ttft_ms": 606.3979270402342,
+        "client_event_inter_token_ms": 22.39630134621014,
+        "queue_ms": 3.548088,
+        "prefill_ms": 602.269038,
+        "decode_ms": 64.114767,
+        "server_ttft_ms": 605.869615,
+        "server_inter_token_ms": 22.42703566666667,
+        "server_max_inter_token_ms": 67.277831,
+        "requested_logical_concurrency": 1,
+        "physical_execution_width": 1,
+        "execution_plan": "serial-c1",
+        "metrics_source": "gufo",
+        "cache_hit": false,
+        "draft_tokens": 3,
+        "draft_accepted_tokens": 3,
+        "draft_acceptance": 1.0,
+        "case_id": null,
+        "category": null,
+        "completion_sha256": "add9b7734209d22ec02649df8a24b9fb50cad5dc3dd98025a2e626cc5c5b6801",
+        "prefill_tokens_per_second": 997.8929051305473,
+        "decode_tokens_per_second": 62.38812347239755,
+        "whole_request_tokens_per_second": 897.7298430999266
+      },
+      "idle_device_gib": 0.003940582275390625,
+      "server_command": [
+        "/tmp/qwen38fn-gufo-20261021/gufo-fec4759d-build/gufo",
+        "serve",
+        "--port",
+        "42237",
+        "--sessions",
+        "1",
+        "llm",
+        "--model",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+        "--context",
+        "8192",
+        "--served-model-name",
+        "bench",
+        "--think",
+        "off",
+        "--max-pending-per-client",
+        "8",
+        "--speculative",
+        "mtp",
+        "--mtp-model",
+        "/tmp/qwen38fn-gufo-20261021/mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf"
+      ],
+      "calibration": {
+        "overhead": 12,
+        "initial_ratio": 1.167,
+        "final_ratio": 1.167
+      },
+      "host_after": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "gpu_temperature_millidegrees_c": {
+          "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 50000
+        }
+      }
+    }
+  },
+  "source_after": {
+    "path": "/tmp/qwen38fn-gufo-20261021/gufo-fec4759d",
+    "head": "fec4759d064585d72f87c6e11af5cfa0e1fa95c7",
+    "tracked_clean": true
+  },
+  "request_journal_sha256": "6bdd3c58bb147b24e984b47867d183892c13b024e12f6e39c28c435691e05f91",
+  "kind": "qwen4exp_gufo_ordered_depth_contract_validation",
+  "purpose": "Two-depth native count, route, calibration and prefix history validation; not a performance claim or publication replay.",
+  "validation": {
+    "unit_tests": 14,
+    "depths": [
+      0,
+      4096
+    ],
+    "arms": [
+      "ar",
+      "mtp-prose",
+      "mtp-repetition"
+    ],
+    "journal_records": 17,
+    "prefix_replies": 3,
+    "checks": [
+      "128 native output tokens each measured request",
+      "native cached/new counts within declared tolerance",
+      "positive native phase durations",
+      "AR has no draft work; MTP reports draft work",
+      "reference source unchanged"
+    ]
+  }
+}
