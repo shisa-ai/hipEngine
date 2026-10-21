@@ -13558,10 +13558,12 @@ def _log_pretty_startup_summary(
         budget=budget_resolution,
         engine=engine,
     )
+    output_text = _dms_output_limit_text(engine, context)
     _LOGGER.info(
         "\n%s%s%s\n"
         "  Model        %s\n"
         "  Context      %s tokens\n"
+        "%s"
         "  KV cache     %s (%s scales)\n"
         "  Prefix cache %s\n"
         "  Speculation  %s\n"
@@ -13574,6 +13576,7 @@ def _log_pretty_startup_summary(
         reset,
         config.model,
         context_text,
+        output_text,
         f"{storage}",
         scale,
         prefix_text,
@@ -13584,6 +13587,25 @@ def _log_pretty_startup_summary(
         green,
         "  Ready for requests",
         reset,
+    )
+
+
+def _dms_output_limit_text(engine: Any, context: Any) -> str:
+    """Banner line for a server that clamps outputs to its compact DMS store."""
+
+    cap = getattr(engine, "dms_output_token_cap", None)
+    if not callable(cap) or not context:
+        return ""
+    try:
+        empty = cap(0)
+        half = cap(int(context) // 2)
+    except Exception:  # noqa: BLE001 - the banner never fails startup
+        return ""
+    if empty is None or half is None:
+        return ""
+    return (
+        f"  Output limit {int(empty):,} tokens after a short prompt, "
+        f"{int(half):,} after {int(context) // 2:,} (DMS store; max_tokens is clamped)\n"
     )
 
 

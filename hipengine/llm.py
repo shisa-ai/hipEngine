@@ -1427,6 +1427,16 @@ class LLM:
             requested_context_tokens=requested_context_tokens,
         )
 
+    def dms_output_token_cap(self, prompt_tokens: int) -> int | None:
+        """Output tokens a compact DMS request with this prompt can keep.
+
+        ``None`` when the generator does not clamp outputs.
+        """
+
+        generator = self._get_text_generator()
+        cap = getattr(generator, "dms_output_token_cap", None)
+        return cap(int(prompt_tokens)) if callable(cap) else None
+
     def count_tokens(self, text: str) -> int:
         """Return tokenizer token count when the resolved generator exposes one."""
         generator = self._get_text_generator()
