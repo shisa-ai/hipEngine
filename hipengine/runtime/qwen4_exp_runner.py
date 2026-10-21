@@ -1567,7 +1567,10 @@ class Qwen4ExpQSAIndexDeviceState:
         if restored < 0 or restored > self.capacity:
             raise ValueError("QSA index restore count exceeds capacity")
         self.count = restored
-        self.pooled_count = restored // self.compression_ratio
+        # Dense rows append raw keys without preparing pooled blocks. Restoring
+        # a cursor cannot make those uncomputed blocks valid; sparse selection
+        # prepares the missing suffix when it is first needed.
+        self.pooled_count = min(self.pooled_count, restored // self.compression_ratio)
 
     def reset(self) -> None:
         self.restore_count(0)
@@ -2445,11 +2448,12 @@ def run_qwen4_exp_dense_qsa_token_mixer(
     position_prepared: bool = False,
     device_position_owned: bool = False,
     attention_context_limit: int | None = None,
+    cache_only: bool = False,
     eps: float = 1e-6,
     stream: int = 0,
     runtime: HipRuntime | None = None,
-) -> DeviceBuffer:
-    """Execute dense-equivalent QSA decode below the sparse-selection budget."""
+) -> DeviceBuffer | None:
+    """Append exact scalar cache state; optionally omit the unused attention output."""
 
     if rows != 1:
         raise ValueError("strict dense QSA decode currently requires rows == 1")
@@ -2516,7 +2520,7 @@ def run_qwen4_exp_dense_qsa_token_mixer(
             index_state.append(
                 scratch.index_k_projected.ptr, position=position, stream=stream
             )
-        if not device_position_owned and index_state.count > index_state.dense_equivalent_limit:
+        if not cache_only and not device_position_owned and index_state.count > index_state.dense_equivalent_limit:
             launch_gguf_linear(
                 weights.projections["index_q"], mixed_ptr, scratch.index_q_projected.ptr,
                 rows, hidden, index_heads * index_dim,
@@ -2590,6 +2594,8 @@ def run_qwen4_exp_dense_qsa_token_mixer(
         stream=stream,
         runtime=active_runtime,
     )
+    if cache_only:
+        return None
     if selected_positions is None:
         qwen35_paged_full_attn_decode_context_bf16_spans(
             scratch.query.ptr,
@@ -6577,8 +6583,9 @@ def run_qwen4_exp_dense_qsa_layer(
     runtime: HipRuntime | None = None,
     moe_graph_cache: MoeGraphCache | None = None,
     moe_graph_key: object | None = None,
-) -> DeviceBuffer:
-    """Execute one complete dense-equivalent Qwen4Exp QSA+MoE layer."""
+    cache_only: bool = False,
+) -> DeviceBuffer | None:
+    """Execute a QSA+MoE layer, or only its independent cache-state writes."""
 
     if scratch.closed:
         raise RuntimeError("Qwen4Exp QSA layer scratch is closed")
@@ -6609,8 +6616,11 @@ def run_qwen4_exp_dense_qsa_layer(
         position_prepared=position_prepared,
         device_position_owned=device_position_owned,
         attention_context_limit=attention_context_limit,
+        cache_only=cache_only,
         stream=stream, runtime=active_runtime,
     )
+    if cache_only:
+        return None
     pending_write = _qwen4_exp_gr_pending_write(
         rows, residual_ptr, mixer.ptr, attention_read.inject_logits.ptr)
     if pending_write is None:

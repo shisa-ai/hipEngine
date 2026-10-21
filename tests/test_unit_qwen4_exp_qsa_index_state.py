@@ -66,3 +66,20 @@ def test_qwen4_exp_host_index_state_rejects_noncontiguous_or_overflow_append() -
     state.append([1.0, 2.0], position=0)
     with pytest.raises(ValueError, match="capacity"):
         state.append([3.0, 4.0], position=1)
+
+
+@pytest.mark.parametrize("count,pooled,restored,expected", [
+    (17, 0, 16, 0), (258, 0, 257, 0), (2054, 513, 2051, 512),
+    (2054, 513, 997, 249), (16, 4, 0, 0), (0, 0, 4096, 0),
+])
+def test_device_index_restore_does_not_invent_initialized_pool_blocks(
+    count, pooled, restored, expected,
+):
+    from hipengine.runtime.qwen4_exp_runner import Qwen4ExpQSAIndexDeviceState
+
+    state = object.__new__(Qwen4ExpQSAIndexDeviceState)
+    state.closed, state.capacity, state.compression_ratio = False, 8192, 4
+    state.count, state.pooled_count = count, pooled
+    state.restore_count(restored)
+    assert state.count == restored
+    assert state.pooled_count == expected

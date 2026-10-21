@@ -452,11 +452,18 @@ class Qwen4ExpGGUFMTPDraftRunner:
         token_id_resident: bool = False,
         hidden_seed_resident: bool = False,
         run_head: bool = True,
+        cache_only: bool = False,
     ) -> Qwen4ExpMTPDraftResult:
-        """One draft position. ``run_head=False`` only advances the draft's
-        KV and hidden state (prompt priming, accepted-token catch-up) and
-        skips the vocabulary head, whose output that caller discards."""
+        """Advance one draft position, optionally omitting unused output work.
+
+        ``run_head=False`` skips vocabulary scoring but preserves hidden carry.
+        ``cache_only=True`` also skips attention and MoE output; its caller must
+        supply an authoritative hidden seed for the next row. Prompt priming
+        uses this for all but each chunk's final row.
+        """
         self._require_open()
+        if cache_only and run_head:
+            raise ValueError("cache-only draft work cannot run the vocabulary head")
         if self.position >= self.max_sequence_length:
             raise ValueError("Qwen4Exp MTP draft capacity exceeded")
         stages: dict[str, float] = {}
@@ -496,8 +503,13 @@ class Qwen4ExpGGUFMTPDraftRunner:
             experts=self.config.expert_count,
             top_k=self.config.expert_used_count,
             runtime=self.runtime,
+            cache_only=cache_only,
         )
-        finish_stage("draft_layer", started)
+        finish_stage("draft_cache_only" if cache_only else "draft_layer", started)
+        if cache_only:
+            self.last_forward_stage_timings_ms = stages
+            self.position += 1
+            return Qwen4ExpMTPDraftResult(token_id=-1, logits=None, hidden_seed=None)
         self.runtime.memcpy(
             self.last_hidden.ptr,
             output.ptr,
@@ -643,7 +655,10 @@ class Qwen4ExpGGUFMTPDraftRunner:
         for row, token in enumerate(tokens):
             if check_cancelled is not None:
                 check_cancelled()
-            self.forward(token, previous if row == 0 else hidden[row - 1], run_head=False)
+            self.forward(
+                token, previous if row == 0 else hidden[row - 1],
+                run_head=False, cache_only=row + 1 < len(tokens),
+            )
 
     def propose_chain(
         self,

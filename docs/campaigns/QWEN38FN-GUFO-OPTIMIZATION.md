@@ -7,10 +7,11 @@ owns: The October 20 Flash-Next Gufo gap analysis and implementation campaign fo
 State: **in progress; execution started 2026-10-21**.
 Review date: 2026-10-20. hipEngine review source: `a4c7ca473`.
 Execution baseline starts at `926c1728c`, including the subsequent prefix-cache
-work. `BASE` is active: canonical measurements and native served phase
-accounting are available; prepared-session, ordered-depth and quality bindings
-are still being completed. The task queue follows the packets below; no packet
-is closed until its implementation and validation evidence are recorded.
+work. `MTP-PREFILL` implementation is active. Canonical measurements, native
+served phase accounting and the ordered-depth runs are available. At the
+lead's direction, expanded baseline matrices are deferred while implementation
+progresses; their final validation and quality bindings remain on the checklist.
+No packet is closed until its implementation and validation evidence are recorded.
 
 The next work is not another wholesale port of Gufo's prefill kernels. Those
 ports already removed most of the earlier prefill deficit. Prioritize bulk
@@ -268,12 +269,19 @@ of this packet. Do not turn a historical task answer into a prompt-specific fix.
 
 ### MTP-PREFILL — bulk predictor K/V construction and final-row catch-up
 
-**Verified gap:** `hipengine/runtime/qwen4_exp_mtp.py::prime_prompt_chunk`
-loops over prompt tokens and calls the whole predictor layer with
-`run_head=False`. This skips the vocabulary head, but not the predictor's
-attention, feed-forward or repeated host dispatch. Target hidden rows also
-cross the host boundary. Gufo implements K/V-only prompt projection and
-final-tile catch-up instead of computing outputs it will discard.
+**Starting gap at the execution baseline:**
+`hipengine/runtime/qwen4_exp_mtp.py::prime_prompt_chunk` loops over prompt tokens
+and calls the whole predictor layer with `run_head=False`. This skips the
+vocabulary head, but not attention, feed-forward or repeated host dispatch.
+Target hidden rows also cross the host boundary. Gufo implements K/V-only prompt
+projection and final-tile catch-up instead of computing outputs it will discard.
+
+**First increment complete:** scalar prompt priming now omits unused attention
+and feed-forward outputs except on each chunk's final carry row. The existing
+QSA restore cursor also no longer marks uncomputed pooled blocks valid. Five
+real-sidecar cache/carry/full-logit cases and twenty matched public response
+pairs pass; see the [scoped diagnostic artifact](../../benchmarks/results/20261021-qwen38fn-mtp-cache-only.json).
+Batched projections and device hidden handoff below remain unfinished.
 
 Implement a batched prompt path that consumes the shifted target-hidden
 sequence, writes every required predictor KV/index row, and computes only the
@@ -468,8 +476,9 @@ replacement. Freeze prompts, metrics and controller policy before timing.
 | State/shape boundaries | 997/1023/1025/2051/2052/4093/12287 tokens; tail chunks; widths 1–8 and dynamic admit/cancel/refill; each rejection depth | Behavior on both sides of dispatch/chunk/sparse thresholds and unrelated lengths |
 | Long context and lifecycle | Numerical controls plus retrieval; 32K/64K/128K serving; cold/warm PLE, cancellation, reuse and memory pressure | Quality, capacity and state stability rather than throughput alone |
 
-Retain an exact publication replay separately from the repeated comparison:
-Gufo's prepared-concurrency configuration specifies one warmup and one measured
+Retain an exact publication replay separately from the repeated comparison.
+Gufo's prepared-concurrency path prepares the cohort before every round; this
+replaces its configured decode warmup. The publication uses one measured
 repetition. The campaign's decision run uses at least three measured repetitions
 per arm; do not relabel that extension as the original single-sample protocol.
 The ordered depth replay retains its own warmup and prefix-preparation history.
@@ -602,9 +611,10 @@ run_hip scripts/qwen4exp_hip_http_replay.py \
   --arm ar --output-dir "$OUT/hipengine-ar-depth"
 ```
 
-`BASE` still needs the complete hipEngine depth matrix, prepared cross-engine
-replay and quality-column bindings. Existing `qwen38fn_mixed_economics.py`
-measures all-AR and one-MTP-plus-peers, not the all-MTP prepared table.
+The hipEngine ordered-depth runs are complete. `BASE` still needs prepared
+cross-engine replay and quality-column bindings. Existing
+`qwen38fn_mixed_economics.py` measures all-AR and one-MTP-plus-peers, not the
+all-MTP prepared table.
 
 Use counterbalanced same-session arms and unchanged-code controls to distinguish
 small gains from thermal/run-order variation. Profile only a warmed serving
