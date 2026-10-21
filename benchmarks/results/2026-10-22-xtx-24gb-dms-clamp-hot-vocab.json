@@ -77,6 +77,15 @@
    "floor": 250000,
    "previous_automatic_context": 156672,
    "startup_output_limit": "135,169 tokens after a short prompt, 65,536 after 131,072"
+  },
+  {
+   "name": "dms_int8_mtp_off",
+   "serve_arguments": "--kv-storage int8_per_token_head --dms-metadata-path <W8192 DMS sidecar> --speculative-mtp-serving off",
+   "slots": 1,
+   "automatic_context": 262144,
+   "prompt_tokens_served": 254123,
+   "lowest_device_free_gib": 3.369,
+   "note": "measured after the floors were set; not a test case"
   }
  ],
  "dms_clamp_check": {
