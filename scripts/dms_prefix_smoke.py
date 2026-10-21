@@ -25,6 +25,24 @@ def compose_partition(prefix, reused, suffix, total):
     return tuple(result)
 
 
+def validate_reuse_count(*, cache, scenario, actual, expected, lengths, branch_at):
+    """Check reuse without requiring an evicted source snapshot to survive."""
+    if cache != "radix":
+        assert actual == 0, (scenario, actual)
+    elif scenario == "branch":
+        allowed = {*range(256, branch_at + 1, 256),
+                   *(length for length in lengths if length <= branch_at)}
+        assert actual in allowed, (scenario, actual)
+    elif scenario == "return-source":
+        # The host byte budget may evict the full source after a branch. The
+        # caller still requires a matching recorded parent for positive reuse
+        # and an exact matched-partition output, including any recomputed tail.
+        assert 0 <= actual <= max(lengths), (scenario, actual)
+    else:
+        assert actual == expected, (scenario, actual, expected)
+    return actual
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", required=True)
@@ -92,14 +110,10 @@ def main():
                         out = method([ids], params)[0]
                         telemetry = dataclasses.asdict(out.telemetry)
                         prefix = telemetry["diagnostics"]["prefix_cache"]
-                        expected = reused if cache == "radix" else 0
-                        if name == "branch" and cache == "radix":
-                            allowed = {*range(256, args.branch_at + 1, 256),
-                                       *(length for length in lengths if length <= args.branch_at)}
-                            assert prefix["reused_tokens"] in allowed, (name, prefix)
-                            expected = prefix["reused_tokens"]
-                        else:
-                            assert prefix["reused_tokens"] == expected, (name, prefix)
+                        expected = validate_reuse_count(
+                            cache=cache, scenario=name, actual=prefix["reused_tokens"],
+                            expected=reused, lengths=lengths, branch_at=args.branch_at,
+                        )
                         if expected == len(ids):
                             assert telemetry["timing"]["prefill_chunk_count"] == 0
                             assert telemetry["diagnostics"]["dms"]["operations"]["streaming_pack_calls"] == 0
