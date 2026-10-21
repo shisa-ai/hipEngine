@@ -2132,6 +2132,7 @@ class Qwen35GGUFBringupGenerator:
                     dense_flag_overrides=_gguf_serving_width_dense_flag_overrides(
                         getattr(self, "_serving_capacity_bound", None)
                     ),
+                    token_embedding_placement="auto",
                 )
                 self._shared_runner = runner
             return runner

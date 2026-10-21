@@ -81,3 +81,71 @@ def test_llm_declares_its_pinned_capacity(pinned) -> None:
     # Generators without the hook are unaffected.
     llm_module._declare_serving_capacity(SimpleNamespace(), pinned)
 
+
+# ---------------------------------------------------------------------------
+# Shared-runner token table placement
+# ---------------------------------------------------------------------------
+
+
+def _fake_reader(type_name):
+    from hipengine.runtime import qwen35_gguf_runner as gguf_runner
+
+    class Reader:
+        def __init__(self, path):
+            self.info = SimpleNamespace(tensors=(
+                SimpleNamespace(name="output.weight", ggml_type_name="Q6_K"),
+                SimpleNamespace(name="token_embd.weight", ggml_type_name=type_name),
+            ))
+
+    return gguf_runner, Reader
+
+
+@pytest.mark.parametrize(
+    "type_name, env, owned, expected",
+    [
+        ("Q4_K", None, False, "host"),
+        ("Q4_K", "0", False, "device"),
+        ("Q4_K", "device", False, "device"),
+        ("Q4_K", None, True, "device"),
+        ("Q6_K", None, False, "device"),
+    ],
+)
+def test_shared_token_table_maps_from_host_when_the_backend_declares_it(
+    monkeypatch, type_name, env, owned, expected
+) -> None:
+    gguf_runner, reader = _fake_reader(type_name)
+    monkeypatch.setattr(gguf_runner, "GGUFReader", reader)
+    if env is None:
+        monkeypatch.delenv("HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING", env)
+    placement = gguf_runner._gguf_shared_token_embedding_placement(
+        backend="hip_gfx1100", model_path="/tmp/fake.gguf", externally_owned=owned,
+    )
+    assert placement == expected
+
+
+def test_backend_without_the_mapped_capability_keeps_the_table_on_device(monkeypatch) -> None:
+    gguf_runner, reader = _fake_reader("Q4_K")
+    monkeypatch.setattr(gguf_runner, "GGUFReader", reader)
+    monkeypatch.delenv("HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING", raising=False)
+    monkeypatch.setattr(
+        gguf_runner, "_gguf_mapped_host_token_embedding_enabled", lambda **kwargs: False
+    )
+    assert gguf_runner._gguf_shared_token_embedding_placement(
+        backend="hip_gfx1100", model_path="/tmp/fake.gguf", externally_owned=False,
+    ) == "device"
+
+
+def test_shared_runner_requests_automatic_token_table_placement(monkeypatch) -> None:
+    captured = {}
+    monkeypatch.setattr(
+        qwen35_gguf, "Qwen35GGUFFullStackRunner",
+        lambda model_path, **kwargs: captured.update(kwargs) or SimpleNamespace(),
+    )
+    generator = _generator()
+    generator.model_path = "/tmp/fake.gguf"
+    generator.backend = "hip_gfx1100"
+    generator.native_batch_decode = False
+    generator._get_shared_runner()
+    assert captured["token_embedding_placement"] == "auto"

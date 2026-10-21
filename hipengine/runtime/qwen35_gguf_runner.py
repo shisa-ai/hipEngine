@@ -3196,8 +3196,14 @@ class Qwen35GGUFFullStackRunner:
         self.runtime = self.runtime or get_hip_runtime()
         self.require_cached_build = bool(self.require_cached_build)
         placement = str(self.token_embedding_placement).strip().lower()
-        if placement not in {"device", "host"}:
-            raise ValueError("token_embedding_placement must be 'device' or 'host'")
+        if placement not in {"device", "host", "auto"}:
+            raise ValueError("token_embedding_placement must be 'device', 'host' or 'auto'")
+        if placement == "auto":
+            placement = _gguf_shared_token_embedding_placement(
+                backend=self.backend,
+                model_path=self.model_path,
+                externally_owned=self.resident_weights is not None,
+            )
         self.token_embedding_placement = placement
         self.weights = self.resident_weights
         if self.weights is None:
@@ -12894,6 +12900,44 @@ def _resolve_gguf_token_embedding_placement(
     if mapped_host_type_rejected:
         return "device", "mapped_host_type_device_fallback"
     return "device", "backend_device_fallback"
+
+
+def _gguf_shared_token_embedding_placement(
+    *,
+    backend: str,
+    model_path: str | Path,
+    externally_owned: bool,
+) -> str:
+    """Placement of a full-stack runner's token table under ``auto``.
+
+    The table is read one row per token, so a backend that can map the raw
+    table from host memory serves it without VRAM. Externally owned resident
+    weights are never re-placed. ``HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0``
+    keeps the table on the device.
+    """
+
+    if externally_owned:
+        return "device"
+    env_value = _env_value(_GGUF_HOST_TOKEN_EMBEDDING_ENV)
+    if env_value is not None and env_value.strip().lower() in {
+        "0", "false", "no", "off", "device",
+    }:
+        return "device"
+    type_name = next(
+        (
+            str(tensor.ggml_type_name)
+            for tensor in GGUFReader(model_path).info.tensors
+            if tensor.name == "token_embd.weight"
+        ),
+        None,
+    )
+    if type_name is None:
+        return "device"
+    mapped = _gguf_mapped_host_token_embedding_enabled(
+        backend=backend,
+        quant_key=f"gguf_{type_name.lower()}",
+    )
+    return "host" if mapped else "device"
 
 
 def _gguf_mapped_host_token_embedding_enabled(
