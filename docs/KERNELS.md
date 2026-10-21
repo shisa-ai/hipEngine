@@ -19,7 +19,7 @@ backend packages, not this catalog.
 
 The gfx1151 Flash-Next UD-Q4_K_XL production profile selects guarded Q8
 block-scale WMMA, exact QSA-prefill grouping and verified ordered QSA decode
-through `generation/qwen4_exp_profiles.py`. Exact grouped/risk-repair owners,
+through `hipengine/generation/qwen4_exp_profiles.py`. Exact grouped/risk-repair owners,
 register-state GDN and mapping-only PLE advice remain active. Legacy FP16 Q8
 selected-WMMA, dense MMQ/iu8, GR iu8, tiled GDN and DP4A remain registered
 but are not defaults for this profile.
@@ -130,6 +130,12 @@ Source: `hipengine/kernels/cpu_reference/`. These are NumPy reference operations
 | `vibevoice_tts_diffusion.py` | VibeVoice diffusion-head operations. |
 | `yue2.py` | YuE2 normalization, rotary, attention, solver, and audio-decoder reference operations. |
 
+## HIP gfx11
+
+Device sources: `hipengine/kernels/hip_gfx1100/`.
+`hipengine/kernels/hip_gfx1151/` registers supported shared sources for native
+gfx1151 compilation; it does not enable every gfx1100 variant.
+
 | Functional family | Source / wrapper | Principal registry layers and quants | Stable notes |
 | --- | --- | --- | --- |
 | Cast and gather | `convert/cast.{hip,py}`, `convert/gather.{hip,py}` | `cast_*` (`bf16`, `fp16`, `fp32`, scaled rows); `gather_f32_rows_by_i32id` | Explicit low-precision boundaries and row gathers; no framework tensors in device ABI. |
@@ -155,11 +161,6 @@ Source: `hipengine/kernels/cpu_reference/`. These are NumPy reference operations
 | Linear-attention GDN | `linear_attn/gdn.{hip,py}` | `linear_attn_prefill_prepare`, `gdn_*recurrent*`, RMSNorm/gate/rotate/cast/snapshot composites | Exact schedules retain FP32 recurrent state; segmented, chain/tree, snapshot, and decode-order writers cover prefill, verifier, and multi-request selected commit, with optional FP32 state-row journals, direct BF16 handoffs, and an exact FP32 output tap. FP16-state (FP32 accumulation) and gfx1151 cluster/chunked compact-peer variants are explicit opt-ins or capability selections that always retain an FP32 fallback. |
 | Runtime state | `runtime/state.{hip,py}` | token embedding, positions/metadata, graph record/commit, scalar state, profiling wall-clock marker | Device-side graph/verify bookkeeping, indexed row state, token publication, and profiling-only steady-clock boundaries. |
 | Sampling | `sampling/sampler.{hip,py}` | `sampler`, `mtp_draft_topk` | Greedy/temperature/top-k helpers and bounded draft top-k. Full-vocabulary `sorted_rows_i32` uses 256-key tile sorting, parallel merging and FP64 scans of FP32 weights; the original temperature/top-p variants remain registered strict fallbacks. Caller-owned scratch is `rows * (24*vocab + 8*ceil(vocab/256))` bytes. gfx1151 correctness and trace evidence are in `tests/test_gpu_sampler_full_vocab.py` and the fast-sampling worklog; gfx1100 hardware transfer is unverified. |
-## HIP gfx11
-
-Device sources: `hipengine/kernels/hip_gfx1100/`.
-`hipengine/kernels/hip_gfx1151/` registers supported shared sources for native
-gfx1151 compilation; it does not enable every gfx1100 variant.
 
 ### Conversion, normalization, and rotary
 
@@ -668,7 +669,7 @@ plane or the gate logits:
   grouped RMS norm, storing the F16 plane the down projection reads and
   `inv_rms[rows, branches]`. Same summation tree as
   `grouped_rmsnorm_bf16_f32_kernel`, so both are the bits that kernel stores.
-- `quant/gguf_q8_0_dense_wide.hip` `q8_0_gr_up_mean_kernel`: the K320/N10240
+- `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_dense_wide.hip` `q8_0_gr_up_mean_kernel`: the K320/N10240
   up projection with the sigmoid gated mean in its epilogue. A block's 128
   weight rows are 32 hidden columns of each of the four branches, so a wave
   holds all four logits of every output it owns. The normalized value is
@@ -688,18 +689,18 @@ ported. Strict fallback: the unfused chain (`grouped_rmsnorm_bf16_f32`,
 
 ## F16 activation image registry
 
-`linear/f16_mirror.py` holds one context-local declaration: "this F16 buffer
+`hipengine/kernels/hip_gfx1100/linear/f16_mirror.py` holds one context-local declaration: "this F16 buffer
 is `half()` of that FP32 buffer, for exactly this extent". The fused
 hyper-connection up kernel and the row-split GDN norm/gate epilogue write
-such an image; the F16 wide dispatch (`runtime/gguf_linear.py`) and the
-small-matrix F16 GEMM (`linear/dense_f16_gemm.py`) look it up by pointer and
+such an image; the F16 wide dispatch (`hipengine/runtime/gguf_linear.py`) and the
+small-matrix F16 GEMM (`hipengine/kernels/hip_gfx1100/linear/dense_f16_gemm.py`) look it up by pointer and
 extent and read it instead of converting. Producers' owners invalidate the
 declaration before either buffer can be rewritten. Tests:
 `tests/test_unit_f16_mirror.py`, `tests/test_gpu_dense_f16_gemm.py`.
 
 ## Small-matrix F16 GEMM staged kernel
 
-`linear/dense_f16_gemm.hip` `dense_f16_gemm_staged_kernel` is the launch
+`hipengine/kernels/hip_gfx1100/linear/dense_f16_gemm.hip` `dense_f16_gemm_staged_kernel` is the launch
 default for uncompressed FP32/BF16 weight matrices of at least 16 columns at
 64 rows or more (router logits, indexer projections, the 48-column GDN gate
 projections): four-element vector staging converted in registers, the next K
