@@ -134,6 +134,26 @@ def test_http_refuses_short_completion_even_with_consistent_usage():
         http._one(client, "http://localhost", "m", {"id": "a", "messages": []}, False, 6)
 
 
+def test_prefix_reply_can_use_natural_eos_without_weakening_measurement_counts():
+    body = _body()
+    payloads = []
+    def post(*args, **kwargs):
+        payloads.append(kwargs["json"])
+        return SimpleNamespace(status_code=200, json=lambda: body)
+    client = SimpleNamespace(post=post)
+    result = http._one(client, "http://localhost", "m", {"id": "prefix", "messages": []}, False, 8,
+                       ignore_eos=False, require_max_tokens=False)
+    assert payloads[0]["ignore_eos"] is False
+    assert result["completion_tokens"] == 5
+    assert result["diagnostics"] == body["choices"][0]["hipengine"]["diagnostics"]
+    with pytest.raises(ValueError, match="requested 8"):
+        http._one(client, "http://localhost", "m", {"id": "measured", "messages": []}, False, 8,
+                  ignore_eos=False)
+    with pytest.raises(ValueError, match="requested 4"):
+        http._one(client, "http://localhost", "m", {"id": "overflow", "messages": []}, False, 4,
+                  require_max_tokens=False)
+
+
 def test_prepared_wave_finishes_all_preparation_before_any_measurement(monkeypatch):
     import httpx
 

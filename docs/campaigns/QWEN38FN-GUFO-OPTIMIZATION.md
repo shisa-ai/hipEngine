@@ -581,7 +581,28 @@ native count/timing checks. `--probe-only` stops after the allocation checks;
 diagnostic until its per-workload G0–G4 characterization is complete; unavailable
 native output IDs are not replaced by text hashes.
 
-`BASE` still needs the hipEngine ordered-depth adapter, prepared cross-engine
+`scripts/qwen4exp_hip_http_replay.py` uses the same pinned prompt, calibration,
+prefix-reply and retry recipe through hipEngine's public endpoints. It adds an
+untimed checkpoint of the common token prefix between the rendered history and
+continuation. The measured response must report exactly that cached count.
+This is a prompt-checkpoint adaptation, not Gufo's live reply-state reuse.
+Natural EOS is retained; prefix replies may be short, but measured responses
+must contain all 128 native tokens.
+
+Start a fresh hipEngine server for each `--arm` (`ar`, `mtp-prose`, or
+`mtp-repetition`), with context capacity 133760 and one active request slot.
+The MTP arms need the shared sidecar/provider configuration. Set `MODEL_ALIAS`
+to its served name and capture its command and identities in `SERVER_MANIFEST`.
+Run the Tier-1 allocation probe before the full depth workload.
+
+```bash
+run_hip scripts/qwen4exp_hip_http_replay.py \
+  --source-root "$GUFO_SOURCE" --url http://127.0.0.1:18400 \
+  --model "$MODEL_ALIAS" --server-manifest "$SERVER_MANIFEST" \
+  --arm ar --output-dir "$OUT/hipengine-ar-depth"
+```
+
+`BASE` still needs the complete hipEngine depth matrix, prepared cross-engine
 replay and quality-column bindings. Existing `qwen38fn_mixed_economics.py`
 measures all-AR and one-MTP-plus-peers, not the all-MTP prepared table.
 

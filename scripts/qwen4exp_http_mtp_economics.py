@@ -145,10 +145,11 @@ def require_prepared_hit(case, *, expected_prompt_tokens):
         raise ValueError("prepared request did not reuse its declared prefix-minus-one checkpoint")
 
 
-def _one(client: Any, url: str, model: str, row: dict[str, Any], mtp: bool, max_tokens: int) -> dict[str, Any]:
+def _one(client: Any, url: str, model: str, row: dict[str, Any], mtp: bool, max_tokens: int,
+         *, ignore_eos: bool = True, require_max_tokens: bool = True) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "model": model, "temperature": 0.0, "top_p": 1.0,
-        "max_tokens": max_tokens, "ignore_eos": True, "speculative_mtp": mtp,
+        "max_tokens": max_tokens, "ignore_eos": ignore_eos, "speculative_mtp": mtp,
     }
     if "prompt_token_ids" in row:
         payload["prompt"] = _token_ids(row["prompt_token_ids"])
@@ -163,7 +164,7 @@ def _one(client: Any, url: str, model: str, row: dict[str, Any], mtp: bool, max_
     if response.status_code != 200:
         return {"id": row["id"], "status": response.status_code, "wall_s": wall, "error": json.dumps(body)[:400]}
     count = exact_completion_count(body)
-    if count != max_tokens:
+    if count > max_tokens or (require_max_tokens and count != max_tokens):
         raise ValueError(f"requested {max_tokens} output tokens, received {count}")
     choice = (body.get("choices") or [{}])[0]
     usage = body.get("usage") or {}
@@ -176,6 +177,8 @@ def _one(client: Any, url: str, model: str, row: dict[str, Any], mtp: bool, max_
         "request_payload_sha256": hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest(),
         "prompt_token_ids": payload.get("prompt"),
         "phase_metrics": native_phase_metrics(body),
+        "diagnostics": (choice.get("hipengine") or {}).get("diagnostics") or {},
+        "decode_state": (choice.get("hipengine") or {}).get("decode_state"),
         "token_accounting": (body.get("hipengine") or {}).get("token_accounting"),
         "prompt_token_accounting": (body.get("hipengine") or {}).get("prompt_token_accounting"),
         "generation_shape": (body.get("hipengine") or {}).get("generation_shape"),
