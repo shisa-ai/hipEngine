@@ -9,6 +9,29 @@ the promotion rules in [`docs/BENCHMARK.md`](../docs/BENCHMARK.md).
 The operational scoreboard, platform freshness index, reproduction commands,
 and root README export blocks are in [`benchmarks/README.md`](README.md).
 
+## 24 GB context table before the October 21 serving refresh
+
+The earlier product summary combined different Qwen3.8-27B `Q4_K_M`
+execution routes on a 24 GB `gfx1100` GPU. These are historical capacity and
+quality observations, not the current HTTP serving matrix:
+
+| KV configuration | Max context | Top-1 agreement vs BF16 | Mean row-KL |
+| --- | ---: | ---: | ---: |
+| BF16 KV | 40,960 | — | — |
+| DMS BF16 | 73,728 | — | — |
+| Direct-INT8 KV | 131,072 | 91.4% | 0.188 |
+| DMS INT8 | 232,448 | 100% | 0.001 |
+
+The historical summary reported that direct INT8 failed 9 of 11 quality prompts
+and recommended DMS INT8 for long context. The DMS capacity row used a private,
+MTP-off layer-outer route, not the resumable server. See the
+[DMS analysis](../docs/reference/DMS-ANALYSIS.md),
+[direct-route capacity](results/2026-09-09-rx7900xtx-gguf-int8-direct-prefill-capacity.json),
+[DMS alias ladder](results/2026-09-08-rx7900xtx-dms-int8-hidden-alias-ladder.json),
+and [serving-accounting comparison](results/2026-10-20-xtx-serving-checkpoint-accounting.json).
+
+## Earlier benchmark notebook
+
 Last updated: 2026-08-22 (corrects the Qwen3.8-27B DFlash2 diagnostic row's loss attribution: MTP B3 acceptance is 2.85 tokens/cycle, not 3.85 verify rows).
 
 The clean `ca241dae` rerun on Radeon 8060S, ROCm `7.13.0a20260411`, and
