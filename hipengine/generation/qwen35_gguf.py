@@ -2849,9 +2849,15 @@ class Qwen35GGUFBringupGenerator:
             return (
                 packed_scratch(max_positions) + snapshot_bytes
                 + checkpoint_bytes(max_positions)
-                + (_gguf_packed_state_linear_bytes(shared_runner, slot_count=capacity)
-                   if server_pool else 0)
             )
+
+        # The packed verify linear state is charged against the KV pool's own
+        # budget (``reserve_resident_bytes``), so it is priced here but kept
+        # out of the pool's execution reserve, which would charge it twice.
+        packed_linear_state = (
+            _gguf_packed_state_linear_bytes(shared_runner, slot_count=capacity)
+            if server_pool else 0
+        )
 
         def prefill_workspace(max_positions: int) -> int:
             total = _gguf_prefill_scratch_nbytes(
@@ -2867,7 +2873,7 @@ class Qwen35GGUFBringupGenerator:
                 if _int8_layer_outer_hidden_alias_enabled():
                     hidden_bytes = int(max_positions) * int(shared_runner.hidden_size) * 2
                 total += hidden_bytes + int(plan.layer_outer_token_bytes)
-            return total + post_pool_workspace(max_positions)
+            return total + post_pool_workspace(max_positions) + packed_linear_state
 
         def prefill_transient(max_positions: int) -> int:
             # BF16 prefill writes request KV directly; its hidden planes are

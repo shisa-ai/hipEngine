@@ -581,3 +581,25 @@ def test_dms_exact_budget_store_is_priced_by_retained_rows(monkeypatch, position
     split_rows = lambda per_head: (per_head + 255) // 256
     split = 4 * cfg.head_count * (split_rows(positions + 4) - split_rows(retained + 4)) * (cfg.key_length + 2)
     assert saved == layers * cfg.head_count_kv * (positions - retained) * (2 * cfg.key_length + 13) + split
+
+
+@pytest.mark.parametrize("capacity", [2, 4])
+def test_packed_linear_state_is_not_reserved_twice(monkeypatch, capacity):
+    """The pool charges the packed verify linear state to its own budget.
+
+    It belongs in the context sizing, but the pool's execution reserve (the
+    memory kept outside the pool) must not hold it a second time: on a 24 GB
+    card the double charge left a two-slot pool unable to admit one request
+    at its advertised context.
+    """
+    sentinel = 10**12
+    real = gguf_runner._gguf_packed_state_linear_bytes
+
+    def priced(runner, *, slot_count):
+        return sentinel if int(slot_count) == capacity else real(runner, slot_count=slot_count)
+
+    # Capacity 1 shares ``slot_count=1`` with the prefix-snapshot price.
+    monkeypatch.setattr(gguf_runner, "_gguf_packed_state_linear_bytes", priced)
+    terms = _route_terms(monkeypatch, storage="bf16", capacity=capacity, mtp=True)
+    assert terms["prefill_workspace_bytes_resolver"](32_768) >= sentinel
+    assert terms["_packed_scratch_bytes_resolver"](32_768) < sentinel
