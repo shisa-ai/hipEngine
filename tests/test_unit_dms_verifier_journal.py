@@ -276,6 +276,7 @@ def test_final_row_uses_current_store_without_losing_rollback(selected, monkeypa
         expected = initial
     else:
         journal.restore_row(selected)
+        journal.finish_transaction()
         expected = states[selected]
     _assert_store_state_equal(_store_state(backend, 0), expected)
     journal.close()
@@ -500,6 +501,7 @@ def test_the_adapter_owns_no_hip_allocations(monkeypatch) -> None:
     after_each = _run_cycle(backend, journal, request_id=0, rows=2, start_position=9, rng=rng)
     journal.restore_row(1, stream=0)
     _assert_store_state_equal(_store_state(backend, 0), after_each[1])
+    journal.finish_transaction()
     journal.close()
     assert journal._initial is None
     assert journal._rows == {}
