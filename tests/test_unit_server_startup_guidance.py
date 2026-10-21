@@ -8,8 +8,12 @@ allocation hint is reserved for allocation errors.
 
 from __future__ import annotations
 
+import logging
+from types import SimpleNamespace
+
 import pytest
 
+from hipengine.server import api as _api
 from hipengine.server.api import _resident_prepare_guidance
 
 _ALLOCATION_HINT = "Try a lower --max-context-tokens or --kv-storage int8_per_token_head."
@@ -64,3 +68,21 @@ def test_a_resident_slot_refusal_names_both_fixes() -> None:
     assert guidance != _ALLOCATION_HINT
     assert "--max-active-requests" in guidance
     assert "--max-context-tokens" in guidance
+
+
+@pytest.mark.parametrize("storage, suggests_int8", [("bf16", True), ("int8_per_token_head", False)])
+@pytest.mark.parametrize("fits_requested", [True, False])
+def test_capacity_warning_suggests_int8_only_when_it_would_help(
+    caplog, storage, suggests_int8, fits_requested
+) -> None:
+    estimate = SimpleNamespace(
+        kv_storage_dtype=storage, fits_requested=fits_requested, fits_model_max=False,
+        model_max_context_tokens=262_144, requested_context_tokens=196_608,
+        allocatable_context_tokens=0, max_batch_size=1,
+    )
+    engine = SimpleNamespace(kv_capacity_estimate=estimate)
+    with caplog.at_level(logging.WARNING, logger=_api._LOGGER.name):
+        _api._log_kv_capacity_summary(engine)
+    warnings = [record.getMessage() for record in caplog.records if record.levelno == logging.WARNING]
+    assert warnings
+    assert any("int8_per_token_head" in message for message in warnings) is suggests_int8

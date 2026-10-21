@@ -12992,27 +12992,30 @@ def _log_kv_capacity_summary(engine: Any) -> None:
             _format_bytes(int(getattr(estimate, "usable_bytes", 0) or 0)),
             _format_bytes(int(getattr(estimate, "reserve_bytes", 0) or 0)),
         )
+        # INT8 storage is only a remedy when the session is not already using it.
+        int8_remedy = not str(getattr(estimate, "kv_storage_dtype", "")).startswith("int8")
         if not bool(getattr(estimate, "fits_requested", True)):
             _LOGGER.warning(
                 "KVCache: the requested context (%d tokens) is priced at %s but only %s is "
                 "usable; the capacity model fits %d tokens. Long prompts near the "
-                "requested context may fail. Lower --max-context-tokens or use "
-                "--kv-storage int8_per_token_head.",
+                "requested context may fail. Lower --max-context-tokens%s.",
                 int(getattr(estimate, "requested_context_tokens", 0) or 0),
                 _format_bytes(int(getattr(estimate, "requested_total_bytes", 0) or 0)),
                 _format_bytes(int(getattr(estimate, "usable_bytes", 0) or 0)),
                 int(getattr(estimate, "allocatable_context_tokens", 0) or 0),
+                " or use --kv-storage int8_per_token_head" if int8_remedy else "",
             )
         elif model_max > 0 and not bool(getattr(estimate, "fits_model_max", True)):
             _LOGGER.warning(
                 "KVCache: the selected context (%d tokens) is the largest that fits in "
                 "%s free for %d resident slot(s); model_max_context_tokens=%d needs more "
-                "memory. Lower --max-active-requests, use --kv-storage "
-                "int8_per_token_head, or pass an explicit --max-context-tokens.",
+                "memory. Lower --max-active-requests, %sor pass an explicit "
+                "--max-context-tokens.",
                 int(getattr(estimate, "requested_context_tokens", 0) or 0),
                 _format_bytes(int(getattr(estimate, "usable_bytes", 0) or 0)),
                 int(getattr(estimate, "max_batch_size", 0) or 0),
                 model_max,
+                "use --kv-storage int8_per_token_head, " if int8_remedy else "",
             )
     int8_estimate = getattr(session, "kv_capacity_int8_estimate", None)
     if int8_estimate is None:
