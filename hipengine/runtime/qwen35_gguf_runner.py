@@ -16498,6 +16498,7 @@ class _ExternalDMSDevicePrefillCollector:
             )
             copy_host_to_device(self._decisions, host_array_ptr(layer_major), layer_major.nbytes, runtime=runtime)
         self._next = np.zeros(source.config.num_layers, dtype=np.int32)
+        self._finalized_layers: dict[int, np.ndarray] = {}
         self._closed = False
 
     def capture_device_chunk(
@@ -16510,7 +16511,13 @@ class _ExternalDMSDevicePrefillCollector:
         hidden_ptr: int,
         stream: int,
     ) -> None:
+        if self._closed:
+            raise RuntimeError("external DMS device collector is closed")
         layer = int(compact_layer_index)
+        if not 0 <= layer < int(self.source.config.num_layers):
+            raise ValueError("external DMS device capture layer is out of range")
+        if layer in getattr(self, "_finalized_layers", {}):
+            raise RuntimeError("external DMS device layer is already finalized")
         if self.source.compact_layer_index(int(physical_layer_id)) != layer:
             raise ValueError("external DMS device capture layer map mismatch")
         if int(start) != int(self._next[layer]):
@@ -16537,61 +16544,69 @@ class _ExternalDMSDevicePrefillCollector:
         layer = int(compact_layer_index)
         return self._decisions.ptr + layer * self.token_count * self.num_kv_heads
 
-    def finalize(self, *, stream: int = 0) -> np.ndarray:
-        if np.any(self._next != self.token_count):
-            raise ValueError("external DMS device capture lacks full prompt coverage")
+    def finalize_layer(self, compact_layer_index: int, *, stream: int = 0) -> np.ndarray:
+        """Finalize one complete score timeline before its KV oracle is reused."""
+        if self._closed:
+            raise RuntimeError("external DMS device collector is closed")
+        layer = int(compact_layer_index)
+        if not 0 <= layer < int(self.source.config.num_layers):
+            raise ValueError("external DMS device finalize layer is out of range")
+        if int(self._next[layer]) != self.token_count:
+            raise ValueError("external DMS device capture lacks full prompt coverage for layer")
+        finalized = self.__dict__.setdefault("_finalized_layers", {})
+        if layer in finalized:
+            return finalized[layer]
         if stream:
             self._runtime.stream_synchronize(int(stream))
         else:
             self._runtime.device_synchronize()
-        shape = (
-            self.source.config.num_layers,
-            self.token_count,
-            self.num_kv_heads,
-        )
+        shape = (self.token_count, self.num_kv_heads)
+        offset = layer * self.token_count * self.num_kv_heads
         if self.decision_mode == "diagnostic":
-            return np.asarray(self._diagnostic_injection.eviction_mask, dtype=bool)
-        if (
-            self.decision_mode == "sidecar"
-            and self.source.config.prefill_selection_mode == "exact_budget"
-        ):
+            decisions = np.array(
+                self._diagnostic_injection.eviction_mask[:, layer, :], dtype=bool, copy=True
+            )
+        elif (self.decision_mode == "sidecar"
+              and self.source.config.prefill_selection_mode == "exact_budget"):
             from hipengine.kvcache.dms import build_dms_exact_budget_eviction
 
             if self._logits is None:
                 raise RuntimeError("exact-budget DMS prefill lacks device logits")
-            layer_logits = np.empty(shape, dtype=np.float32)
+            logits = np.empty(shape, dtype=np.float32)
             copy_device_to_host(
-                host_array_ptr(layer_logits),
-                self._logits,
-                layer_logits.nbytes,
-                runtime=self._runtime,
+                host_array_ptr(logits),
+                DeviceBuffer(self._logits.ptr + offset * 4, logits.nbytes),
+                logits.nbytes, runtime=self._runtime,
             )
-            token_logits = np.ascontiguousarray(layer_logits.transpose(1, 0, 2))
-            decisions = build_dms_exact_budget_eviction(
-                token_logits,
-                current_position=self.token_count - 1,
+            decisions = np.ascontiguousarray(build_dms_exact_budget_eviction(
+                logits[:, None, :], current_position=self.token_count - 1,
                 window_size=self.source.config.window_size,
                 target_compression_ratio=self.source.config.target_compression_ratio,
-            )
-            layer_decisions = np.ascontiguousarray(
-                decisions.transpose(1, 0, 2),
-                dtype=np.uint8,
-            )
+            )[:, 0, :])
+            raw = np.ascontiguousarray(decisions, dtype=np.uint8)
             copy_host_to_device(
-                self._decisions,
-                host_array_ptr(layer_decisions),
-                layer_decisions.nbytes,
-                runtime=self._runtime,
+                DeviceBuffer(self._decisions.ptr + offset, raw.nbytes),
+                host_array_ptr(raw), raw.nbytes, runtime=self._runtime,
             )
-            return decisions
-        layer_major = np.empty(shape, dtype=np.uint8)
-        copy_device_to_host(
-            host_array_ptr(layer_major),
-            self._decisions,
-            layer_major.nbytes,
-            runtime=self._runtime,
-        )
-        return np.ascontiguousarray(layer_major.transpose(1, 0, 2), dtype=np.bool_)
+        else:
+            raw = np.empty(shape, dtype=np.uint8)
+            copy_device_to_host(
+                host_array_ptr(raw),
+                DeviceBuffer(self._decisions.ptr + offset, raw.nbytes),
+                raw.nbytes, runtime=self._runtime,
+            )
+            decisions = np.ascontiguousarray(raw, dtype=np.bool_)
+        decisions.flags.writeable = False
+        finalized[layer] = decisions
+        return decisions
+
+    def finalize(self, *, stream: int = 0) -> np.ndarray:
+        if np.any(self._next != self.token_count):
+            raise ValueError("external DMS device capture lacks full prompt coverage")
+        return np.stack([
+            self.finalize_layer(layer, stream=stream)
+            for layer in range(int(self.source.config.num_layers))
+        ], axis=1)
 
     def release_decision_inputs(self) -> None:
         """Free the decision-score inputs, keeping the captured decisions.
@@ -16678,10 +16693,9 @@ class Qwen35GGUFResidentSession:
     # "dense_pool" (default): the pre-existing route — a full dense BF16 KV
     # pool backs prefill and a finalize-time layerwise pack moves it to the
     # compact store. "layer_outer": the 2026-09-07 review target-4 route —
-    # no dense pool; a single shared BF16 oracle pair carries one layer's K/V
-    # at a time over a full-capacity hidden plane, decisions are captured in
-    # a first pass, the compact store is sized exactly from them, and a
-    # second pass packs each completed layer before its oracle is reused.
+    # no dense pool; one shared BF16 oracle carries a layer's K/V at a time.
+    # Exact-budget scores finalize and pack in one trunk pass; other policies
+    # use a decision sweep followed by layerwise packing.
     dms_prefill_mode: str = "dense_pool"
     dms_backend_factory: Callable | None = None
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
@@ -17882,9 +17896,8 @@ class Qwen35GGUFResidentSession:
         )
         if self.dms_prefill_mode == "layer_outer":
             # Review target 4: no dense BF16 pool. A single shared oracle pair
-            # carries one full-attention layer's K/V at a time; the compact
-            # store is sized from the first pass's decisions and packed per
-            # completed layer during the second pass.
+            # carries one full-attention layer's K/V at a time. Exact-budget
+            # counts are reserved up front; other policies use a decision sweep.
             return
         pages = (int(self.scratch.max_positions) + 255) // 256
         pool = self.create_device_kv_pool(
@@ -18115,7 +18128,7 @@ class Qwen35GGUFResidentSession:
 
         Invoked by the bulk prefill layer loop after a full-attention layer's
         ranges retire. The shared oracle pair holds that layer's complete K/V;
-        pack it into the compact store with the first pass's decisions.
+        pack it with finalized layer-local decisions before oracle reuse.
         """
 
         pack_state = self._dms_layer_outer_pack
@@ -18132,6 +18145,9 @@ class Qwen35GGUFResidentSession:
             runtime.stream_synchronize(int(stream))
         else:
             runtime.device_synchronize()
+        if (self.dms_decision_mode == "sidecar"
+                and source.config.prefill_selection_mode == "exact_budget"):
+            collector.finalize_layer(compact_layer, stream=int(stream))
         backend.device_streaming_pack_layer(
             0,
             compact_layer,
@@ -18167,16 +18183,11 @@ class Qwen35GGUFResidentSession:
         target_hidden_chunk_sink=None,
         target_hidden_request_id=None,
     ) -> Qwen35GGUFNextTokenProbeResult | None:
-        """Two-pass layer-outer DMS prefill without a dense BF16 pool.
+        """Pack exact-budget layers in one trunk pass; keep host staging.
 
-        Pass 1 runs the deterministic layer-outer prefill with the shared BF16
-        oracle pair as each full-attention layer's transient K/V source and
-        captures the eviction decisions. The compact store is then sized
-        exactly from those decisions (the same rule as the dense-pool
-        finalize). Pass 2 re-runs the identical prefill and packs each
-        completed layer into the compact store before its oracle is reused.
-        The dense pool is never allocated; the trade is a second prefill
-        pass. Review target 4 (2026-09-07).
+        The exact retained count is score-independent, so reserve it before
+        compute and finalize each layer's scores while its oracle is live.
+        Other policies retain the decision sweep before layerwise packing.
         """
 
         from hipengine.kvcache.dms import build_dms_live_mask, create_dms_bf16_backend
@@ -18186,26 +18197,33 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("external DMS prefill owner is unavailable")
         tokens = int(len(token_ids))
         runtime = self.runtime or get_hip_runtime()
+        one_pass = (self.dms_decision_mode == "sidecar"
+                    and source.config.prefill_selection_mode == "exact_budget")
         try:
-            result = self._run_bulk_prefill_and_sample(
-                token_ids,
-                bulk_attention_mode=bulk_attention_mode,
-                return_logits=return_logits,
-                dms_capture=dms_capture,
-                record_gpu_stage_timings=record_gpu_stage_timings,
-            )
-            decisions = dms_capture.finalize(stream=0)
-            positions = np.arange(tokens, dtype=np.int32)
-            max_live = 1
-            for layer in range(source.config.num_layers):
-                for head in range(source.config.num_kv_heads):
-                    keep = build_dms_live_mask(
-                        decisions[:, layer, head][None, :],
-                        current_position=tokens - 1,
-                        window_size=source.config.window_size,
-                        positions=positions,
-                    )[0]
-                    max_live = max(max_live, int(np.count_nonzero(keep)))
+            if one_pass:
+                eligible = max(0, tokens - int(source.config.window_size) - 1)
+                ratio = int(source.config.target_compression_ratio)
+                max_live = max(1, tokens - eligible + (eligible + ratio - 1) // ratio)
+            else:
+                self._run_bulk_prefill_and_sample(
+                    token_ids,
+                    bulk_attention_mode=bulk_attention_mode,
+                    return_logits=return_logits,
+                    dms_capture=dms_capture,
+                    record_gpu_stage_timings=record_gpu_stage_timings,
+                )
+                decisions = dms_capture.finalize(stream=0)
+                positions = np.arange(tokens, dtype=np.int32)
+                max_live = 1
+                for layer in range(source.config.num_layers):
+                    for head in range(source.config.num_kv_heads):
+                        keep = build_dms_live_mask(
+                            decisions[:, layer, head][None, :],
+                            current_position=tokens - 1,
+                            window_size=source.config.window_size,
+                            positions=positions,
+                        )[0]
+                        max_live = max(max_live, int(np.count_nonzero(keep)))
             per_head = max_live + int(self.dms_max_new_tokens)
             backend_factory = self.dms_backend_factory or create_dms_bf16_backend
             backend = backend_factory(
@@ -18216,24 +18234,24 @@ class Qwen35GGUFResidentSession:
                 device_payloads=True,
                 device_backend=self.backend,
             )
-            request = SimpleNamespace(
-                request_id=0,
-                prompt_tokens=(),
-                max_new_tokens=int(self.dms_max_new_tokens),
-            )
-            claims = backend.estimate(
-                request,
-                None,
-                {
-                    "kind": "admission",
-                    "tokens": 0,
-                    "max_new_tokens": int(self.dms_max_new_tokens),
-                    "per_head_slots": per_head,
-                    "logical_prompt_tokens": tokens,
-                },
-            )
-            backend.reserve(claims)
             try:
+                request = SimpleNamespace(
+                    request_id=0,
+                    prompt_tokens=(),
+                    max_new_tokens=int(self.dms_max_new_tokens),
+                )
+                claims = backend.estimate(
+                    request,
+                    None,
+                    {
+                        "kind": "admission",
+                        "tokens": 0,
+                        "max_new_tokens": int(self.dms_max_new_tokens),
+                        "per_head_slots": per_head,
+                        "logical_prompt_tokens": tokens,
+                    },
+                )
+                backend.reserve(claims)
                 self._dms_layer_outer_pack = (backend, dms_capture, tokens)
                 self._dms_cache_layers = {}
                 try:
@@ -18242,30 +18260,34 @@ class Qwen35GGUFResidentSession:
                         bulk_attention_mode=bulk_attention_mode,
                         return_logits=return_logits,
                         dms_pack_sink=self,
+                        dms_capture=dms_capture if one_pass else None,
                         target_hidden_chunk_sink=target_hidden_chunk_sink,
                         target_hidden_request_id=target_hidden_request_id,
                         record_gpu_stage_timings=record_gpu_stage_timings,
                     )
                 finally:
                     self._dms_layer_outer_pack = None
+                if one_pass:
+                    decisions = dms_capture.finalize(stream=0)
                 if getattr(self, "_dms_cache_capture_tokens", None) is not None:
                     from hipengine.runtime.dms_prefill_cache import capture_cold_prefill
                     self._dms_cold_prefill = capture_cold_prefill(self, dms_capture, token_ids)
                 self._dms_cache_layers = {}
-                # Both passes, compact packing, and cold-prefix capture are
-                # done. Preserve the published row before freeing its bulk
-                # backing, as the dense-pool route does. If no persistent
-                # hidden buffer can hold the row, keep its bulk backing alive.
+                # Trunk execution, compact packing and cold-prefix capture
+                # are done. Move the published row off bulk storage before
+                # compact restoration. Normal sessions already own this row;
+                # a partially initialized owner needs only one BF16 row.
                 dms_capture.release_decision_inputs()
-                retained = self._retain_published_target_hidden(
-                    runtime=runtime, stream=0
-                )
                 published = int(self._last_target_hidden_ptr)
-                if retained or not (
+                if self._hidden_a is None and (
                     _ptr_in_buffer(published, self._prefill_hidden_a)
                     or _ptr_in_buffer(published, self._prefill_hidden_b)
                 ):
-                    self._release_bulk_prefill_workspace(runtime=runtime)
+                    hidden = malloc(int(self.runner.hidden_size) * 2, runtime=runtime)
+                    self._hidden_a = hidden
+                    self._buffers = (*self._buffers, hidden)
+                self._retain_published_target_hidden(runtime=runtime, stream=0)
+                self._release_bulk_prefill_workspace(runtime=runtime)
                 self._release_dms_prefill_oracle()
                 # Finalization reads every layer and restores staged payloads.
                 # It must follow the last use of bulk storage and the oracle.
@@ -18279,6 +18301,7 @@ class Qwen35GGUFResidentSession:
                 except Exception:  # noqa: BLE001 - cleanup best effort
                     pass
                 raise
+            backend.prefill_trunk_passes = 1 if one_pass else 2
             self._dms_backend = backend
             self.runner.__dict__["_dms_decode_owner"] = self
             return result
@@ -22211,8 +22234,8 @@ class Qwen35GGUFResidentSession:
                     and self.dms_prefill_mode == "layer_outer"
                 ):
                     assert isinstance(dms_capture, _ExternalDMSDevicePrefillCollector)
-                    # The layer-outer route owns its own two-pass orchestration
-                    # (decision sweep + per-layer pack); no dense pool exists.
+                    # This route owns layer-local collection and packing;
+                    # no dense pool exists.
                     return self._prefill_layer_outer_dms(
                         dms_capture,
                         token_ids,
@@ -22322,8 +22345,6 @@ class Qwen35GGUFResidentSession:
     ) -> Qwen35GGUFNextTokenProbeResult | None:
         if self.runner is None or self.runner.weights is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
-        if dms_pack_sink is not None and dms_capture is not None:
-            raise ValueError("DMS layer-outer pack pass cannot also capture decisions")
         if self._prefill_token_buf is None or self._prefill_hidden_a is None or self._prefill_hidden_b is None:
             raise RuntimeError("GGUF resident bulk prefill buffers are closed")
         if self._bulk_prefill_scratch is None:

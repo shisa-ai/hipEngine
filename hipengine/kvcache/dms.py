@@ -1239,6 +1239,7 @@ class DMSCompactBackend:
         self._leases: dict[str, KVLease] = {}
         self._storage_view = self._build_storage_view()
         self.pack_calls = 0
+        self.prefill_trunk_passes = 0
         self.decode_appends = 0
         self.evicted_tokens = 0
         self.released_provisional_slots = 0
@@ -2290,6 +2291,7 @@ class DMSCompactBackend:
             },
             "operations": {
                 "streaming_pack_calls": self.pack_calls,
+                "prefill_trunk_passes": self.prefill_trunk_passes,
                 "decode_appends": self.decode_appends,
                 "evicted_tokens": self.evicted_tokens,
                 "released_provisional_slots": self.released_provisional_slots,

@@ -13,7 +13,7 @@ CPU-testable ownership contract (fake device):
   collector input release, retain published row, release bulk workspace;
 - the published trunk row is moved to the persistent hidden buffer before the
   workspace that backed it is freed;
-- a published row that cannot be retained keeps the workspace alive;
+- a missing persistent row buffer is allocated before workspace release;
 - the collector input release is idempotent, keeps ``_decisions`` for pass-2
   packing, and ``close`` stays safe afterwards;
 - pass 2 can never project new decisions from a released collector;
@@ -97,8 +97,10 @@ def _dms_source(*, layers: int = 1, tokens: int = 4, kv_heads: int = 1):
             window_size=tokens,
             head_dim=256,
             physical_layer_ids=tuple(range(layers)),
-            prefill_selection_mode="exact_budget",
-            target_compression_ratio=0.5,
+            # These fixtures cover the threshold policy's two-pass lifetime.
+            # Exact-budget one-pass ordering is tested separately.
+            prefill_selection_mode="threshold",
+            target_compression_ratio=2,
         ),
         compact_layer_index=lambda physical_layer: int(physical_layer),
     )
@@ -233,13 +235,21 @@ def test_success_path_releases_bulk_workspace_after_retaining_last_row(monkeypat
     assert collector._closed is True
 
 
-def test_retain_noop_keeps_workspace_that_backs_the_published_row(monkeypatch) -> None:
-    session, collector, _backend, events, freed = _layer_outer_dms_session(monkeypatch)
+def test_missing_persistent_hidden_gets_a_row_before_compact_restore(monkeypatch) -> None:
+    session, collector, backend, events, freed = _layer_outer_dms_session(monkeypatch)
     _record_ownership_calls(monkeypatch, session, events)
-    # No persistent hidden buffer: the published row cannot be moved.
     session._hidden_a = None
     workspace = session._prefill_hidden_a
+    finalize = backend.finalize_device_streaming_pack
 
+    def restore(*args, **kwargs):
+        assert session._hidden_a is not None
+        assert session._last_target_hidden_ptr == session._hidden_a.ptr
+        assert session._bulk_prefill_scratch is None
+        assert session._prefill_hidden_a is None
+        return finalize(*args, **kwargs)
+
+    backend.finalize_device_streaming_pack = restore
     session._prefill_layer_outer_dms(
         collector,
         [1, 2, 3, 4],
@@ -248,15 +258,12 @@ def test_retain_noop_keeps_workspace_that_backs_the_published_row(monkeypatch) -
         record_gpu_stage_timings=False,
     )
 
-    assert "retain" in events
-    assert "release_workspace" not in events
-    assert session._bulk_prefill_scratch is not None
-    assert session._prefill_hidden_a is workspace
-    assert freed.count(workspace) == 0
-    # The unretained pointer still names a live bulk plane.
-    assert gguf_runner._ptr_in_buffer(
-        int(session._last_target_hidden_ptr), session._prefill_hidden_a
-    )
+    assert "retain_copy" in events
+    assert "release_workspace" in events
+    assert freed.count(workspace) == 1
+    assert session._hidden_a.nbytes == session.runner.hidden_size * 2
+    assert session._hidden_a in session._buffers
+    assert session._hidden_a not in freed
 
 
 @pytest.mark.parametrize(
