@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "purpose": "Synthetic server capacity and memory-lifetime validation; not a throughput or task-quality benchmark",
+  "hardware": {
+    "host": "epyc",
+    "gpu": "Radeon RX 7900 XTX",
+    "physical_gpu_index": 1,
+    "pci": "0000:10:00.0",
+    "backend": "hip_gfx1100",
+    "total_device_bytes": 25753026560,
+    "hip_version": "7.15.0-0000000",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "execution_profile": "production",
+  "source_base": "765453c0860f5351250121605d4eae90c3406148",
+  "source_sha256": {
+    "hipengine/generation/qwen35_gguf.py": "ecf54457a43d6ac7994e4d113e42296563545035dec28a435f617e95c13948ae",
+    "hipengine/generation/qwen35_gguf_mtp2.py": "60457eca8f40078003e17c4bea73bc481a9828df238c9e7ef41b774f3c55d54f",
+    "hipengine/runtime/qwen35_gguf_runner.py": "602ae99d4f7ef0c1ba430f8dae78e307ea9a7211b24038e79dcdbede96f442c1",
+    "hipengine/runtime/qwen35_gguf_mtp.py": "6d56be962948e399388ae4c887006af3e3c34a5fd288c82a30c021998230e1cf",
+    "hipengine/runtime/qwen35_gguf_nextn.py": "a25c085d8f0aafd80c38a3d4969911f83db2485a37e8a908360dbb210b80528e",
+    "hipengine/kvcache/dms.py": "85ae18fc96e2f8dd3382dbb468ef93b09715eb2a0f6fa0001d37739d61bc9ff3",
+    "hipengine/kvcache/dms_device.py": "2c4f541b84ab97471c730f701a6f67916c1f134641c6f4e00fe2142c70df34f4"
+  },
+  "probe_script": "scripts/gguf_server_allocation_probe.py",
+  "probe_script_sha256": "dd890795e1ef6a28ee13843ab8c5f1fb12fc9945b833295057aa31ad5a55ae49",
+  "common_policy": {
+    "kv_storage": "int8_per_token_head",
+    "kv_scale_dtype": "fp32",
+    "kv_scale_granularity": "per_token_head",
+    "speculative_mtp_serving": "auto",
+    "prefix_cache": "default",
+    "max_active_requests": 1,
+    "environment_overrides": {},
+    "inherited_environment": {"HIP_VISIBLE_DEVICES": "1", "HIPENGINE_HIP_ARCH": "gfx1100"}
+  },
+  "probe_command_prefix": "bash /tmp/hipengine-xtx-recovery-env.sh env PYTHONPATH=/tmp/hipengine-allocation-trace:/home/lhl/hipEngine python3 -u scripts/gguf_server_allocation_probe.py",
+  "runtime_wrapper_evidence": "benchmarks/results/2026-10-20-xtx-serving-checkpoint-accounting.json",
+  "instrumentation": "A temporary sitecustomize hook records live malloc/free ownership, dumps owners on allocation failure, and saves completed DMS pass-one decisions. It does not replay or skip either prefill pass. Request-wall values include this diagnostic instrumentation.",
+  "rows": [
+    {
+      "name": "full_window",
+      "probe_arguments": "--kv-storage int8_per_token_head --speculative-mtp-serving auto --prefix-cache default --max-context-tokens 131072 --max-active-requests 1 --dms-metadata-path /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --prompt-rows 131039 --decode-tokens 32 --json /tmp/hipengine-xtx-capacity-recovery/dms-compact-hoststage-131k-full.json",
+      "automatic_context": false,
+      "effective_context_tokens": 131072,
+      "prompt_tokens": 131039,
+      "completion_tokens": 32,
+      "prompt_token_ids_sha256": "c8efba3c48b114d8e78671cf94e45c776b87344776e91d38df4334fd439c7066",
+      "http_status": 200,
+      "ready_after": true,
+      "realized_route": "speculative_mtp",
+      "mtp_used": true,
+      "mtp_output_tokens": 31,
+      "ar_output_tokens": 1,
+      "request_wall_seconds": 1793.952,
+      "primary_artifact": "/tmp/hipengine-xtx-capacity-recovery/dms-compact-hoststage-131k-full.json"
+    },
+    {
+      "name": "automatic_context",
+      "probe_arguments": "--kv-storage int8_per_token_head --speculative-mtp-serving auto --prefix-cache default --max-context-tokens auto --max-active-requests 1 --dms-metadata-path /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --prompt-rows 2048 --decode-tokens 32 --json /tmp/hipengine-xtx-capacity-recovery/dms-compact-hoststage-auto-context.json",
+      "automatic_context": true,
+      "effective_context_tokens": 110592,
+      "prompt_tokens": 2048,
+      "completion_tokens": 32,
+      "http_status": 200,
+      "ready_after": true,
+      "realized_route": "speculative_mtp",
+      "mtp_used": true,
+      "request_wall_seconds": 8.195,
+      "limitation": "This verifies automatic selection and a real request, not a full 110592-token prompt in that separately configured server.",
+      "primary_artifact": "/tmp/hipengine-xtx-capacity-recovery/dms-compact-hoststage-auto-context.json"
+    },
+    {
+      "name": "matched_non_dms_control",
+      "probe_arguments": "--kv-storage int8_per_token_head --speculative-mtp-serving auto --prefix-cache default --max-context-tokens 16384 --max-active-requests 1 --prompt-rows 12288 --decode-tokens 64 --json /tmp/hipengine-xtx-capacity-recovery/chunk-hidden-after-int8-mtp-16k.json",
+      "dms": false,
+      "effective_context_tokens": 16384,
+      "prompt_tokens": 12288,
+      "completion_tokens": 64,
+      "http_status": 200,
+      "ready_after": true,
+      "realized_route": "speculative_mtp",
+      "mtp_used": true,
+      "prompt_token_ids_sha256": "eee3865cc7d98f4d491eee0b5fe2d1f062226ea0c9739e05c11af06a489d0d47",
+      "same_prompt_before_after": true,
+      "all_64_output_token_ids_equal": true,
+      "before_request_wall_seconds": 23.822,
+      "after_request_wall_seconds": 23.764,
+      "before_artifact": "/tmp/hipengine-xtx-capacity-recovery/chunk-hidden-before-int8-mtp-16k.json",
+      "primary_artifact": "/tmp/hipengine-xtx-capacity-recovery/chunk-hidden-after-int8-mtp-16k.json",
+      "limitation": "A single control pair is not a speed or general quality claim. Baseline did not use the allocation-tracing hook."
+    }
+  ],
+  "correctness_evidence": {
+    "focused_bundle_passed": 87,
+    "store_round_trip_tests": "tests/test_unit_dms_device_layer_staging.py",
+    "runner_lifetime_tests": "tests/test_unit_dms_layer_outer_lifetime.py",
+    "capacity_tests": "tests/test_unit_qwen35_gguf_capacity_route_terms.py",
+    "fixture_and_cpu_smokes": "passed",
+    "arithmetic_change": false,
+    "kernel_change": false,
+    "source_hashes_match_after_final_probes": true
+  },
+  "limitations": [
+    "One active request and a synthetic capacity prompt; not an established maximum across workloads or output lengths.",
+    "The full-window result used an explicit 131072-token context, not automatic sizing.",
+    "The 110592-token automatic selection allows conservative full-retention output headroom; it is not a measured upper limit.",
+    "No new W7900 result, release result, task-quality score, or throughput improvement is asserted."
+  ]
+}

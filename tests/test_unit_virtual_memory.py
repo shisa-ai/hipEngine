@@ -292,6 +292,42 @@ def test_set_access_failure_unmaps_and_releases() -> None:
     assert library.released == [0x9000]
 
 
+def test_appended_set_access_falls_back_to_the_whole_mapped_prefix() -> None:
+    """ROCm 7 rejected access on an appended KV-pool segment (invalid argument)
+    while accepting the whole prefix; growth must not close the engine."""
+
+    library = FakeVmmLibrary()
+    buffer = VirtualMemoryBuffer.reserve(3 * 4096, runtime=_runtime(library))
+    buffer.commit_to(4096)
+    base = buffer.ptr
+    original = library._set_access
+
+    def reject_sub_ranges(ptr, size, desc, count):
+        if ptr.value != base:
+            return 1
+        return original(ptr, size, desc, count)
+
+    library.hipMemSetAccess.func = reject_sub_ranges
+    cleared: list[int] = []
+    library.hipGetLastError = FakeFunction(lambda: cleared.append(1) or 0)
+    assert buffer.commit_to(8192) == 8192
+    assert library.accesses[-1][:2] == (base, 8192)
+    # The rejected first attempt must not linger as HIP's last error, which
+    # compiled launchers report on the next kernel.
+    assert cleared == [1]
+
+
+def test_failed_commit_clears_the_sticky_hip_error() -> None:
+    library = FakeVmmLibrary()
+    buffer = VirtualMemoryBuffer.reserve(8192, runtime=_runtime(library))
+    cleared: list[int] = []
+    library.hipGetLastError = FakeFunction(lambda: cleared.append(1) or 0)
+    library.fail["hipMemCreate"] = 2
+    with pytest.raises(HipError):
+        buffer.commit_to(4096)
+    assert cleared == [1]
+
+
 def test_prior_committed_state_survives_later_failure() -> None:
     library = FakeVmmLibrary()
     buffer = VirtualMemoryBuffer.reserve(3 * 4096, runtime=_runtime(library))

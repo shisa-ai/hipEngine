@@ -5,6 +5,7 @@ from __future__ import annotations
 import concurrent.futures
 import copy
 import logging
+import dataclasses
 import os
 import socket
 import sys
@@ -103,6 +104,7 @@ from hipengine.speculative.accounting import (
     speculative_output_accounting,
 )
 from hipengine.runtime.prefill import PrefillConfig
+from hipengine.runtime.memory_admission import MemoryAdmissionRefused
 from hipengine.runtime.qwen35_gguf_runner import (
     PACKED_AR_PREFILL_CONTEXT_LIMIT,
     Qwen35GGUFFullStackRunner,
@@ -596,21 +598,28 @@ _GGUF_AUTO_CONTEXT_MAX_ATTEMPTS = 4
 _GGUF_AUTO_CONTEXT_FALLBACK_NUMERATOR = 3
 _GGUF_AUTO_CONTEXT_FALLBACK_DENOMINATOR = 4
 
-# The reserve covers device memory the capacity model does not price at all:
-# HIP context, JIT-compiled kernel modules, AOTriton, and the KV pool's pointer
-# tables. Those are allocated lazily *after* the free-memory reading the model
-# prices against, so they cannot be inferred from it.
+# The reserve covers device memory the capacity model does not price: HIP
+# context growth, JIT-compiled kernel modules, graph captures and allocator
+# granularity that materialize after the free-memory reading.
 #
-# Measured on the W7900 (48 GiB), 27B Q4_K_M, auto-selected 45,568 tokens at 4
-# BF16 slots, after a 43,011-token prefill: whole-card use 42.91 GiB against
-# 40.25 GiB of hipEngine-tracked allocations, i.e. **2.66 GiB untracked**, of
-# which about 2.35 GiB materializes after the selection is made. The previous
-# 512 MiB default did not cover that; the auto-selection only survived a
-# full-depth prompt because the transient term is priced at its worst case
-# (4.22 GiB) against a measured 0.30 GiB, and that 3.9 GiB of slack absorbed
-# the shortfall. On a 24 GiB card the same arithmetic selected a context whose
-# true peak was 26.2 GiB against 23.98 GiB of VRAM.
-_GGUF_AUTO_CONTEXT_RESERVE_MIB_DEFAULT = 3072
+# The earlier 3 GiB default was calibrated against "tracked allocations" on the
+# W7900, which leave out the VMM-committed KV pool, and it compensated for a
+# model that priced neither the prefill scratch nor the MTP draft. With those
+# terms priced from their allocators, a 97%-of-context prompt on the 24 GB RX
+# 7900 XTX (27B Q4_K_M, BF16/INT8 KV, MTP on/off, 2026-10-20) bottomed out
+# 0.2-1.0 GiB above a 256 MiB reserve, so 768 MiB keeps margin for decode-time
+# captures and concurrency without giving away a quarter of a 24 GB card.
+_GGUF_AUTO_CONTEXT_RESERVE_MIB_DEFAULT = 768
+
+
+# Untracked session-construction memory (small buffers, allocator padding)
+# measured at 30-80 MiB on the 24 GB RX 7900 XTX between the capacity estimate
+# and KV pool creation; this share of the reserve is already spent when the
+# pool sizes its budget.
+_GGUF_PRE_POOL_UNTRACKED_BYTES = 256 * 1024**2
+# Smallest context automatic serving capacity keeps before trading
+# concurrency for it (see ``automatic_serving_capacity``).
+_GGUF_AUTO_CAPACITY_MIN_CONTEXT_TOKENS = 32_768
 
 
 def _gguf_auto_context_enabled() -> bool:
@@ -1474,6 +1483,9 @@ class Qwen35GGUFBringupGenerator:
     _shared_session_pool_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
     _shared_mtp_draft_pool: dict[Any, list[Any]] = field(default_factory=dict, init=False, repr=False)
     _shared_mtp_draft_pool_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
+    # One NextN draft block per (runtime, hot-vocabulary) shared by every
+    # provider shape (singleton and batch), instead of a copy per provider.
+    _shared_mtp_nextn_weights: dict[Any, Any] = field(default_factory=dict, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
     supports_stream_logprobs: ClassVar[bool] = True
 
@@ -1740,8 +1752,12 @@ class Qwen35GGUFBringupGenerator:
             storage = "bf16" if signature is None else signature[0]
             if storage not in factories:
                 raise NotImplementedError(f"DMS has no compact codec for {storage}")
+            # Reuse one layer's BF16 prefill pair instead of allocating the
+            # full dense source. The second pass also streams NextN hidden
+            # rows, so this preserves the MTP-capable serving adapter.
             return {"dms_metadata_path": self.dms_metadata_path,
-                    "dms_backend_factory": factories[storage]}
+                    "dms_backend_factory": factories[storage],
+                    "dms_prefill_mode": "layer_outer"}
         if signature in {None, ("bf16", "uniform", "fp16", "per_token_head")}:
             return {}
         return {
@@ -2116,6 +2132,8 @@ class Qwen35GGUFBringupGenerator:
             self._shared_mtp_draft_pool = {}
         if not hasattr(self, "_shared_mtp_draft_pool_lock"):
             self._shared_mtp_draft_pool_lock = threading.Lock()
+        if not hasattr(self, "_shared_mtp_nextn_weights"):
+            self._shared_mtp_nextn_weights = {}
 
     def _packed_workspace_lease_needed(self, *, max_batch_size: int) -> bool:
         """Mirror ``configure_engine_loop``'s packed-KV lease decision.
@@ -2138,11 +2156,10 @@ class Qwen35GGUFBringupGenerator:
             "on",
         }:
             return True
-        owner = getattr(self, "_resident_model_runner", None)
-        config = getattr(owner, "_engine_loop_config", None)
+        config = self._sizing_loop_config()
         if config is None:
             return True
-        if getattr(owner, "_prefix_cache_mode", "off") != "off":
+        if self._sizing_prefix_cache_mode() != "off":
             return True
         policy = (
             str(getattr(config, "speculative_mtp_serving", "auto") or "auto")
@@ -2201,6 +2218,27 @@ class Qwen35GGUFBringupGenerator:
         mem_get_info = getattr(runtime, "mem_get_info", None)
         if cfg is None or not callable(mem_get_info):
             return None
+        dms_requested = getattr(self, "dms_metadata_path", None) is not None
+        # DMS serving runs singleton NextN MTP too, so it pays for the draft.
+        mtp_sized = (
+            (bool(defer_kv_allocation) or dms_requested)
+            and self._mtp_serving_enabled_for_sizing()
+        )
+        if mtp_sized:
+            # The draft block is context-independent: load it before reading
+            # free memory so it is measured, not modelled, and every provider
+            # shape borrows this one copy.
+            try:
+                self._shared_dense_mtp_nextn_weights(
+                    shared_runner,
+                    runtime=runtime,
+                    hot_vocab_path=_gguf_mtp_hot_vocab_setting(
+                        str(getattr(self, "execution_profile", "strict"))
+                    ),
+                )
+            except Exception as exc:  # noqa: BLE001 - MTP reports its own failure later
+                _LOGGER.warning("GGUF MTP draft weights unavailable for sizing: %s", exc)
+                mtp_sized = False
         try:
             free_bytes, _total_bytes = mem_get_info()
             hidden_size = int(shared_runner.hidden_size)
@@ -2211,17 +2249,11 @@ class Qwen35GGUFBringupGenerator:
         except Exception as exc:  # noqa: BLE001 - best-effort sizing probe
             _LOGGER.debug("GGUF automatic context sizing unavailable: %s", exc)
             return None
-        signature = getattr(self, "_prepared_kv_signature", None) or (
-            "bf16",
-            "uniform",
-            "fp16",
-            "per_token_head",
+        signature = (
+            getattr(self, "_prepared_kv_signature", None)
+            or getattr(self, "_pending_sizing_kv_signature", None)
+            or ("bf16", "uniform", "fp16", "per_token_head")
         )
-        dms_requested = getattr(self, "dms_metadata_path", None) is not None
-        if dms_requested:
-            # The prefill peak includes a transient dense BF16 source even
-            # when the retained compact payload is INT8.
-            signature = ("bf16", "uniform", "fp16", "per_token_head")
         storage, storage_layout, scale_dtype, granularity = (str(part) for part in signature)
         configured_budget_mib = getattr(self, "_kv_pool_memory_budget_mib", None)
         if configured_budget_mib is not None:
@@ -2249,6 +2281,33 @@ class Qwen35GGUFBringupGenerator:
             )
 
         try:
+            route_terms = self._capacity_route_terms(
+                shared_runner,
+                storage=storage,
+                qualified=qualified,
+                serving_capacity=int(max_batch_size),
+                server_pool=bool(defer_kv_allocation) and not dms_requested,
+                mtp_sized=mtp_sized,
+            )
+            if dms_requested:
+                route_terms = self._dms_layer_outer_capacity_terms(
+                    shared_runner, route_terms, mtp_sized=mtp_sized,
+                )
+            # Probe once so a runner the dry run cannot size degrades here.
+            for key in ("prefill_workspace_bytes_resolver", "speculative_bytes_resolver"):
+                resolver = route_terms.get(key)
+                if resolver is not None:
+                    resolver(_GGUF_AUTO_CONTEXT_BLOCK_SIZE * 4)
+        except Exception as exc:  # noqa: BLE001 - keep the flat model as the floor
+            _LOGGER.warning(
+                "GGUF capacity route terms unavailable (%s); using flat transient pricing",
+                exc,
+            )
+            route_terms = {
+                "transient_bytes_per_token": _gguf_auto_context_transient_bytes_per_token(),
+                "transient_fixed_bytes": _gguf_auto_context_transient_fixed_bytes(),
+            }
+        try:
             return estimate_qwen35_gguf_kv_capacity(
                 cfg,
                 available_bytes=int(free_bytes),
@@ -2260,8 +2319,12 @@ class Qwen35GGUFBringupGenerator:
                 linear_qkv_width=linear_qkv_width,
                 fp16_recurrent_state=bool(getattr(shared_runner, "fp16_recurrent_state", False)),
                 # Elastic request KV is priced per request; the eager workspace
-                # is pinned for the entire serving capacity independently.
-                max_batch_size=1,
+                # and the resident scratch's per-slot recurrent state are held
+                # for the entire serving capacity.
+                max_batch_size=int(max_batch_size) if defer_kv_allocation else 1,
+                # Compact DMS owns its store outside target scratch; neither
+                # a dense source nor a global request pool is allocated.
+                kv_request_slots=0 if dms_requested else 1,
                 workspace_lease_slots=int(max_batch_size),
                 kv_storage_dtype=storage,
                 kv_storage_layout=storage_layout,
@@ -2269,17 +2332,472 @@ class Qwen35GGUFBringupGenerator:
                 kv_scale_granularity=granularity,
                 int8_kv_no_mirror_qualified=qualified,
                 int8_bf16_layer_indices_resolver=_layer_indices,
-                allocate_kv_cache=dms_requested or not bool(defer_kv_allocation),
+                allocate_kv_cache=not dms_requested and not bool(defer_kv_allocation),
                 workspace_lease_needed=not dms_requested and self._packed_workspace_lease_needed(
                     max_batch_size=int(max_batch_size)
                 ),
                 reserve_bytes=_gguf_auto_context_reserve_bytes(),
-                transient_bytes_per_token=_gguf_auto_context_transient_bytes_per_token(),
-                transient_fixed_bytes=_gguf_auto_context_transient_fixed_bytes(),
+                **{key: value for key, value in route_terms.items() if not key.startswith("_")},
             )
         except Exception as exc:  # noqa: BLE001 - best-effort sizing probe
             _LOGGER.debug("GGUF automatic context sizing unavailable: %s", exc)
             return None
+
+    def _dms_layer_outer_capacity_terms(self, runner, terms, *, mtp_sized):
+        """Price compact serving, including the uncompressed decode allowance.
+
+        Use a full-retention slot bound: a short prompt may request almost the
+        whole context as output, even when prompt compression is exact-budget.
+        Do not assume a typical output length or threshold-mode compression.
+        """
+        from hipengine.runtime.qwen35_gguf_runner import (
+            _GGUFSizingRuntime,
+            _gguf_bulk_prefill_hidden_plane_count,
+            _gguf_prefill_hidden_buffer_count,
+            _gguf_prefill_scratch_nbytes,
+            _try_allocate_gguf_aotriton_head_major_kv_scratch,
+        )
+
+        cfg = runner.weights.config
+        layers = sum(kind == FULL_ATTENTION for kind in cfg.layer_types)
+        heads, queries = int(cfg.head_count_kv), int(cfg.head_count)
+        dim, hidden = int(cfg.key_length), int(runner.hidden_size)
+        signature = (getattr(self, "_prepared_kv_signature", None)
+                     or getattr(self, "_pending_sizing_kv_signature", None) or ("bf16",))
+        slot_bytes = 2 * dim + 13 if signature[0] == "int8_per_token_head" else 4 * dim + 5
+        budget = int(getattr(self, "speculative_candidate_budget", None)
+                     or self.speculative_candidate_budget_default()) if mtp_sized else 0
+        probe = object.__new__(Qwen35GGUFResidentSession)
+        probe.__dict__.update(runner=runner, prefill_config=None, prefill_chunk_size=0)
+
+        def workspace(positions):
+            n = int(positions)
+            rows = int(probe._prefill_scratch_rows(n))
+            planes = _gguf_bulk_prefill_hidden_plane_count(
+                plan_mode=None, dms_prefill_mode="layer_outer",
+                geometry_plane_count=_gguf_prefill_hidden_buffer_count(runner, rows=rows),
+            )
+            # Compact slots include all possible output rows plus the serving
+            # verifier's extra allowance. Positions/eviction/scales are payload.
+            per_head = n + max(1, budget) + 1
+            compact = layers * (heads * per_head * slot_bytes + 12 * heads)
+            pack_rows = min(n, 4096)
+            staging = (pack_rows + 1) * heads * (4 * dim + 1) + 12 + 16 * heads + 8 * queries * dim
+            projectors = 4 * layers * heads * (hidden + 1)
+            decisions = 5 * layers * n * heads + layers * heads + 4 * heads
+            oracle = 4 * n * heads * dim
+            # DMS verification uses the serial exact route: one split row,
+            # shared across layers, not candidate-width scratch per layer.
+            split = 4 * queries * ((per_head + 255) // 256) * (dim + 2)
+            norm = 2 * min(n, 4096) * hidden if mtp_sized else 0
+            sizing = _GGUFSizingRuntime()
+            _try_allocate_gguf_aotriton_head_major_kv_scratch(
+                backend=runner.backend, capacity_tokens=n,
+                kv_width=int(runner.kv_width), runtime=sizing,
+            )
+            bulk = (int(_gguf_prefill_scratch_nbytes(runner, rows=rows, capacity=n))
+                    + n * (planes * hidden * 2 + 8) + oracle + sizing.allocated_bytes)
+            # Each completed compact layer is host-staged during pass two.
+            # The complete device store is restored only after bulk/oracle
+            # release, so these are separate peaks, not additive lifetimes.
+            pack_peak = bulk + compact // max(1, layers)
+            restored_peak = compact + split
+            return (max(pack_peak, restored_peak) + staging
+                    + projectors + decisions + norm)
+
+        return {**terms, "prefill_workspace_bytes_resolver": workspace,
+                "transient_bytes_resolver": (
+                    None if os.environ.get(_GGUF_AUTO_CONTEXT_TRANSIENT_KIB_ENV)
+                    else lambda positions: 0
+                )}
+
+    def kv_pool_execution_reserve_bytes(
+        self,
+        shared_runner: Qwen35GGUFFullStackRunner,
+        *,
+        max_positions: int,
+        serving_capacity: int,
+    ) -> int | None:
+        """Plain allocations the server makes after its KV pool exists.
+
+        The pool fixes its admission budget from free memory when it is
+        created, so it must leave room for what the capacity model priced
+        outside the pool: packed execution scratch, the prefill transient, the
+        speculative draft footprint, and the untracked-memory reserve. ``None``
+        when the route cannot be priced (the pool keeps its fixed reserve).
+        """
+
+        signature = getattr(self, "_prepared_kv_signature", None) or ("bf16",)
+        try:
+            terms = self._capacity_route_terms(
+                shared_runner,
+                storage=str(signature[0]),
+                qualified=_admitted_no_mirror_int8_capability(
+                    getattr(self, "kv_capability_provenance", None)
+                ),
+                serving_capacity=int(serving_capacity),
+                server_pool=True,
+                mtp_sized=self._mtp_serving_enabled_for_sizing(),
+            )
+            positions = int(max_positions)
+            # Part of the untracked reserve materializes while the session is
+            # built (sub-4 MiB buffers, allocator padding), before the pool
+            # reads free memory; leave only the rest for after it.
+            reserve = max(
+                0,
+                _gguf_auto_context_reserve_bytes() - _GGUF_PRE_POOL_UNTRACKED_BYTES,
+            )
+            for key in (
+                "_packed_scratch_bytes_resolver",
+                "transient_bytes_resolver",
+                "speculative_bytes_resolver",
+            ):
+                resolver = terms.get(key)
+                if resolver is not None:
+                    reserve += int(resolver(positions))
+            if terms.get("transient_bytes_resolver") is None:
+                reserve += int(terms["transient_bytes_per_token"]) * positions
+            return reserve + int(terms.get("transient_fixed_bytes", 0) or 0)
+        except Exception as exc:  # noqa: BLE001 - the pool keeps its fixed reserve
+            _LOGGER.warning("GGUF KV pool execution reserve unavailable: %s", exc)
+            return None
+
+    def _sizing_loop_config(self) -> Any | None:
+        """The engine-loop policy sizing should assume: pending, then bound."""
+
+        pending = getattr(self, "_pending_sizing_loop_config", None)
+        if pending is not None:
+            return pending
+        owner = getattr(self, "_resident_model_runner", None)
+        return getattr(owner, "_engine_loop_config", None)
+
+    def _sizing_prefix_cache_mode(self) -> str:
+        if getattr(self, "_pending_sizing_loop_config", None) is None:
+            owner = getattr(self, "_resident_model_runner", None)
+            bound = getattr(owner, "_prefix_cache_mode", None)
+            if bound is not None:
+                return str(bound)
+        config = self._sizing_loop_config()
+        return resolve_prefix_cache_mode(getattr(config, "prefix_cache", "radix"))
+
+    def automatic_serving_capacity(
+        self,
+        engine_loop_config: Any,
+        *,
+        max_sequence_length: int | None = None,
+    ) -> int | None:
+        """Serving capacity for an unpinned ``max_active_requests``.
+
+        Each resident slot pins its own recurrent state, packed execution
+        state, prefix snapshots and, with MTP, verify rows, so on a small card
+        capacity competes directly with context. Pick the largest capacity in
+        (default, 2, 1) whose priced footprint still serves a usable context:
+        the pinned context when there is one, otherwise
+        ``_GGUF_AUTO_CAPACITY_MIN_CONTEXT_TOKENS`` (or the model maximum when
+        that is shorter). ``None`` when the route cannot be priced.
+        """
+
+        try:
+            shared_runner = self._get_shared_runner()
+        except Exception as exc:  # noqa: BLE001 - sizing is best-effort
+            _LOGGER.debug("GGUF automatic serving capacity unavailable: %s", exc)
+            return None
+        hint = getattr(self, "request_kv_policy_hint", None)
+        pending_signature = None
+        if getattr(self, "_prepared_kv_signature", None) is None and hint:
+            # Size against the KV policy the server published without locking it.
+            storage, scale_dtype, granularity = (str(part) for part in tuple(hint)[:3])
+            pending_signature = (
+                str(DType.parse(storage).value) if storage != "auto" else "bf16",
+                "uniform",
+                scale_dtype,
+                granularity,
+            )
+        cfg = shared_runner.weights.config
+        model_max = int(getattr(cfg, "context_length", 0) or 0) or None
+        floor = (
+            int(max_sequence_length)
+            if max_sequence_length is not None
+            else min(_GGUF_AUTO_CAPACITY_MIN_CONTEXT_TOKENS, model_max or _GGUF_AUTO_CAPACITY_MIN_CONTEXT_TOKENS)
+        )
+        default = int(_GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY)
+        candidates = [default] + [value for value in (2, 1) if value < default]
+        self._pending_sizing_loop_config = engine_loop_config
+        self._pending_sizing_kv_signature = pending_signature
+        try:
+            for capacity in candidates:
+                estimate = self._resident_capacity_estimate(
+                    shared_runner,
+                    max_batch_size=capacity,
+                    defer_kv_allocation=True,
+                    requested_context_tokens=None,
+                )
+                if estimate is None:
+                    return None
+                if int(estimate.allocatable_context_tokens) >= floor:
+                    break
+        finally:
+            self._pending_sizing_loop_config = None
+            self._pending_sizing_kv_signature = None
+        if capacity != default:
+            _LOGGER.info(
+                "GGUF serving capacity: %d request(s) in flight keeps a %d-token "
+                "context on this GPU (capacity %d would not); pass "
+                "--max-active-requests to choose explicitly",
+                capacity,
+                int(estimate.allocatable_context_tokens),
+                default,
+            )
+        return capacity
+
+    def _mtp_serving_enabled_for_sizing(self) -> bool:
+        """Whether the server will build MTP draft providers for this model."""
+
+        if not bool(getattr(self, "supports_speculative_mtp", False)):
+            return False
+        config = self._sizing_loop_config()
+        policy = (
+            str(getattr(config, "speculative_mtp_serving", "auto") or "auto")
+            .strip()
+            .lower()
+            .replace("-", "_")
+        )
+        return policy != "off"
+
+    def _capacity_route_terms(
+        self,
+        shared_runner: Qwen35GGUFFullStackRunner,
+        *,
+        storage: str,
+        qualified: bool,
+        serving_capacity: int,
+        server_pool: bool,
+        mtp_sized: bool,
+    ) -> dict[str, Any]:
+        """Price what the serving route allocates after the free-memory reading.
+
+        Every term is computed from the allocators' own arithmetic: the bulk
+        and packed prefill scratch by a dry run of their allocator, the packed
+        linear state and verify state rows from geometry, the INT8 prefill
+        transient from the lifetime planner, and the draft sessions from the
+        resident scratch plan. Explicit transient env overrides keep their
+        flat per-token meaning.
+        """
+
+        from hipengine.runtime.qwen35_gguf_runner import (
+            _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS,
+            _full_stack_scratch_plan,
+            _gguf_packed_state_linear_bytes,
+            _gguf_prefill_hidden_buffer_count,
+            _gguf_prefill_scratch_nbytes,
+            _int8_layer_outer_hidden_alias_enabled,
+            _plan_gguf_int8_prefill_lifetime,
+        )
+
+        cfg = shared_runner.weights.config
+        kv_storage = DType.parse(storage)
+        capacity = max(1, int(serving_capacity))
+        probe = object.__new__(Qwen35GGUFResidentSession)
+        probe.__dict__.update(runner=shared_runner, prefill_config=None, prefill_chunk_size=0)
+
+        def bulk_rows(max_positions: int) -> int:
+            return int(probe._prefill_scratch_rows(int(max_positions)))
+
+        def packed_scratch(max_positions: int) -> int:
+            # Packed execution scratch; its position capacity follows the
+            # longest live request.
+            if not server_pool:
+                return 0
+            return _gguf_prefill_scratch_nbytes(
+                shared_runner,
+                rows=max(bulk_rows(max_positions), 128),
+                capacity=max_positions,
+                segments=capacity,
+            )
+
+        full_layers = sum(1 for kind in cfg.layer_types if kind == FULL_ATTENTION)
+
+        def lifetime_plan(max_positions: int):
+            if kv_storage != DType.INT8_PER_TOKEN_HEAD:
+                return None
+            rows = bulk_rows(max_positions)
+            return _plan_gguf_int8_prefill_lifetime(
+                kv_storage_dtype=kv_storage,
+                max_positions=int(max_positions),
+                scratch_rows=rows,
+                hidden_size=int(shared_runner.hidden_size),
+                head_count_kv=int(cfg.head_count_kv),
+                key_length=int(cfg.key_length),
+                full_attention_layers=full_layers,
+                bf16_full_attention_layers=0,
+                has_bf16_mirror=(
+                    not qualified
+                    and int(max_positions) <= _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS
+                ),
+                hidden_buffer_count=_gguf_prefill_hidden_buffer_count(shared_runner, rows=rows),
+            )
+
+        prefix_mode = self._sizing_prefix_cache_mode()
+        snapshot_bytes = 0
+        if server_pool and prefix_mode != "off":
+            # Prefix snapshots clone one slot's hybrid state: up to ``capacity``
+            # transient captures plus the retained set within its byte budget,
+            # and one more while a new capture exists before the trim runs.
+            per_snapshot = _gguf_packed_state_linear_bytes(shared_runner, slot_count=1)
+            retained = min(
+                _gguf_prefix_retained_snapshot_limit(capacity) * per_snapshot,
+                _gguf_prefix_retained_state_bytes_limit(),
+            )
+            snapshot_bytes = (capacity + 1) * per_snapshot + retained
+
+        def checkpoint_bytes(max_positions: int) -> int:
+            plan = lifetime_plan(max_positions)
+            if (
+                not server_pool or mtp_sized or plan is None
+                or plan.mode != "layer_outer_shared_oracle"
+            ):
+                return 0
+            # Long prompts resume one session at a time. Each suspended
+            # request saves two physical hidden planes and one slot's state.
+            slots = 1 if int(max_positions) > 1024 else capacity
+            return capacity * (
+                2 * int(max_positions) * int(shared_runner.hidden_size) * 2
+                + _gguf_packed_state_linear_bytes(shared_runner, slot_count=slots)
+            )
+
+        def post_pool_workspace(max_positions: int) -> int:
+            return (
+                packed_scratch(max_positions) + snapshot_bytes
+                + checkpoint_bytes(max_positions)
+                + (_gguf_packed_state_linear_bytes(shared_runner, slot_count=capacity)
+                   if server_pool else 0)
+            )
+
+        def prefill_workspace(max_positions: int) -> int:
+            total = _gguf_prefill_scratch_nbytes(
+                shared_runner, rows=bulk_rows(max_positions), capacity=max_positions
+            )
+            plan = lifetime_plan(max_positions)
+            if plan is not None and plan.mode == "layer_outer_shared_oracle":
+                # The bulk workspace allocates the layer-outer hidden owner at
+                # session construction, at full capacity.
+                # Preserve the planner's execution choice, but price physical
+                # storage: the allocator can alias its two logical planes.
+                hidden_bytes = int(plan.layer_outer_hidden_bytes)
+                if _int8_layer_outer_hidden_alias_enabled():
+                    hidden_bytes = int(max_positions) * int(shared_runner.hidden_size) * 2
+                total += hidden_bytes + int(plan.layer_outer_token_bytes)
+            return total + post_pool_workspace(max_positions)
+
+        def prefill_transient(max_positions: int) -> int:
+            # BF16 prefill writes request KV directly; its hidden planes are
+            # chunk-sized and already in the bulk workspace.
+            plan = lifetime_plan(max_positions)
+            if plan is None or plan.mode == "bf16_mirror":
+                return 0
+            if mtp_sized or plan.mode == "chunk_outer_layer_local_oracles":
+                # Streamed MTP prompts run the chunk-outer executor, which keeps
+                # one full-length oracle pair per INT8 layer.
+                return int(plan.layer_local_oracle_bytes)
+            # Layer-outer: the shared pair plus the packed slab's pairs.
+            return int(3 * plan.oracle_pair_bytes)
+
+        speculative = None
+        if mtp_sized:
+            per_verify_row = _gguf_packed_state_linear_bytes(shared_runner, slot_count=1)
+            budget = int(
+                getattr(self, "speculative_candidate_budget", None)
+                or self.speculative_candidate_budget_default()
+            )
+            width = 1
+            for physical in (2, 8):
+                if physical <= capacity:
+                    width = physical
+            draft_fields = {
+                "block_count": 1,
+                "declared_block_count": 1,
+                "ignored_block_ids": (),
+                "layer_types": (FULL_ATTENTION,),
+            }
+            draft_cfg = (
+                replace(cfg, **draft_fields)
+                if dataclasses.is_dataclass(cfg)
+                else SimpleNamespace(**{**vars(cfg), **draft_fields})
+            )
+            from hipengine.runtime.qwen35_gguf_nextn import _NEXTN_BATCH_PREFILL_SCRATCH_ROWS
+
+            # One cached view per target runner keeps the sizing cache keyed by
+            # a live object rather than a recycled id.
+            views = self.__dict__.setdefault("_sizing_draft_runner_views", {})
+            draft_runner = views.get(id(shared_runner))
+            if draft_runner is None or draft_runner.target is not shared_runner:
+                draft_runner = views[id(shared_runner)] = SimpleNamespace(
+                    target=shared_runner,
+                    weights=SimpleNamespace(
+                        config=draft_cfg,
+                        geometry=None,
+                        file_type_name=None,
+                    ),
+                    backend=shared_runner.backend,
+                    hidden_size=shared_runner.hidden_size,
+                    ffn_size=shared_runner.ffn_size,
+                    q_width=shared_runner.q_width,
+                    kv_width=shared_runner.kv_width,
+                    linear_qkv_width=shared_runner.linear_qkv_width,
+                    ssm_value_dim=shared_runner.ssm_value_dim,
+                    fp16_recurrent_state=bool(
+                        getattr(shared_runner, "fp16_recurrent_state", False)
+                    ),
+                )
+            provider_shapes = sorted({1, width})
+
+            def speculative(max_positions: int) -> int:
+                total = width * (budget + 1) * per_verify_row
+                for requests in provider_shapes:
+                    draft_plan = _full_stack_scratch_plan(
+                        draft_cfg,
+                        hidden_size=int(shared_runner.hidden_size),
+                        ffn_size=int(shared_runner.ffn_size),
+                        q_width=int(shared_runner.q_width),
+                        kv_width=int(shared_runner.kv_width),
+                        linear_qkv_width=int(shared_runner.linear_qkv_width),
+                        max_sequence_length=int(max_positions),
+                        max_batch_size=int(requests),
+                        allocate_kv_cache=True,
+                        materialize=False,
+                    )
+                    total += int(draft_plan.dedicated_bytes)
+                    # Bulk and packed-verify scratch at the draft row ceiling.
+                    total += 2 * _gguf_prefill_scratch_nbytes(
+                        draft_runner,
+                        rows=_NEXTN_BATCH_PREFILL_SCRATCH_ROWS,
+                        capacity=max_positions,
+                    )
+                return total
+
+        transient_env = os.environ.get(_GGUF_AUTO_CONTEXT_TRANSIENT_KIB_ENV)
+        fixed_env = os.environ.get(_GGUF_AUTO_CONTEXT_TRANSIENT_FIXED_MIB_ENV)
+        return {
+            "transient_bytes_per_token": _gguf_auto_context_transient_bytes_per_token(),
+            "transient_bytes_resolver": None if transient_env else prefill_transient,
+            "transient_fixed_bytes": (
+                _gguf_auto_context_transient_fixed_bytes() if fixed_env else 0
+            ),
+            "prefill_workspace_bytes_resolver": prefill_workspace,
+            "speculative_bytes_resolver": speculative,
+            # Internal: the plain (non-pool) allocations that follow pool
+            # creation, for the pool's execution reserve.
+            "_packed_scratch_bytes_resolver": post_pool_workspace,
+            # ``configure_engine_loop`` caps the pool's idle floor at one
+            # full-context request, which the KV term already prices.
+            "kv_pool_floor_pages": 0,
+            # No served single-request route grows full-context packed planes:
+            # long prompts prefill slot-local, c1 MTP verifies through the
+            # native target cycle, and a short continuation on a cached prefix
+            # stays within the eager lease (measured on BF16 and INT8, MTP on
+            # and off). Wider packed geometry leases idle pool pages first.
+            "private_workspace_slots": 0,
+        }
 
     def _auto_context_cache_key(
         self, *, max_batch_size: int, defer_kv_allocation: bool
@@ -2753,10 +3271,51 @@ class Qwen35GGUFBringupGenerator:
             max_requests=int(max_requests),
             runtime=target.runtime,
             require_cached_build=bool(target.require_cached_build),
-            borrowed_fallback_weights=borrow_qwen35_gguf_nextn_fallback_weights(target),
+            resident_weights=self._shared_dense_mtp_nextn_weights(
+                target.runner,
+                runtime=target.runtime,
+                hot_vocab_path=hot_vocab_path,
+            ),
             hot_vocab_path=hot_vocab_path,
         )
         return provider, key if pool_enabled else None, False
+
+    def _shared_dense_mtp_nextn_weights(
+        self,
+        runner: Any,
+        *,
+        runtime: Any,
+        hot_vocab_path: str | None,
+    ) -> Any:
+        """Materialize the NextN draft block once and lend it to every provider."""
+
+        from hipengine.loading.qwen35_gguf_nextn_materialize import (
+            materialize_qwen35_gguf_nextn_weights,
+        )
+        from hipengine.runtime.qwen35_gguf_nextn import (
+            borrow_qwen35_gguf_nextn_fallback_weights_from_runner,
+        )
+
+        self._ensure_shared_pools()
+        key = (int(id(runtime)), hot_vocab_path)
+        with self._shared_mtp_draft_pool_lock:
+            cached = self._shared_mtp_nextn_weights.get(key)
+        if cached is not None:
+            return cached
+        borrowed = borrow_qwen35_gguf_nextn_fallback_weights_from_runner(
+            runner, runtime=runtime
+        )
+        backend = next(iter({str(weight.backend) for weight in borrowed.values()}))
+        weights = materialize_qwen35_gguf_nextn_weights(
+            self.model_path,
+            borrowed_fallback_weights=borrowed,
+            hot_vocab_path=hot_vocab_path,
+            runtime=runtime,
+            backend=backend,
+        )
+        with self._shared_mtp_draft_pool_lock:
+            self._shared_mtp_nextn_weights[key] = weights
+        return weights
 
     @_target_arch_scoped
     def close(self) -> None:
@@ -2780,6 +3339,8 @@ class Qwen35GGUFBringupGenerator:
                 for draft in pool
             ]
             self._shared_mtp_draft_pool.clear()
+            nextn_weights = list(self._shared_mtp_nextn_weights.items())
+            self._shared_mtp_nextn_weights.clear()
         lock = getattr(self, "_shared_runner_lock", None)
         if lock is None:
             self._shared_runner_lock = threading.Lock()
@@ -2788,12 +3349,19 @@ class Qwen35GGUFBringupGenerator:
             shared_runner = getattr(self, "_shared_runner", None)
             self._shared_runner = None
         self._mtp_serving_assets = None
+        # Draft providers borrow the shared NextN block, so it is freed after
+        # them and before the target runner whose roots it borrows.
+        runtime = getattr(shared_runner, "runtime", None)
+        weight_closers = [
+            (lambda weights=weights: weights.free(runtime=runtime))
+            for _key, weights in nextn_weights
+        ]
 
         error: BaseException | None = None
-        for resource in (*reversed(sessions), *reversed(drafts), shared_runner):
+        for resource in (*reversed(sessions), *reversed(drafts), *weight_closers, shared_runner):
             if resource is None:
                 continue
-            closer = getattr(resource, "close", None)
+            closer = resource if callable(resource) and not hasattr(resource, "close") else getattr(resource, "close", None)
             if not callable(closer):
                 continue
             try:
@@ -7041,6 +7609,15 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         # `_resident_batch_owner` names the session that owns shared session-level
         # resources and has no prefix cache to reclaim from.
         setattr(factory_session, "_kv_pool_pressure_owner", self)
+        execution_reserve = None
+        reserve_fn = getattr(self.generator, "kv_pool_execution_reserve_bytes", None)
+        if callable(reserve_fn) and getattr(factory_session, "runner", None) is not None:
+            execution_reserve = reserve_fn(
+                factory_session.runner,
+                max_positions=int(scratch.max_positions),
+                serving_capacity=int(self.capacity),
+            )
+        setattr(factory_session, "kv_pool_execution_reserve_bytes", execution_reserve)
         initial_pages = int(config.kv_pool_initial_pages)
         self._kv_pool_memory_budget_mib = getattr(
             config, "kv_pool_memory_budget_mib", None
@@ -7054,6 +7631,11 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             # max_active_requests * max_context reservation.  The pool grows
             # on demand up to the runtime-derived memory budget.
             global_capacity = initial_pages
+            # The idle floor never needs to exceed one full-context request: the
+            # pool grows on demand, and a 128-page floor under a short context
+            # pinned 2 GiB of BF16 pages a 24 GB card needed for execution.
+            session_pages = max(1, (int(scratch.max_positions) + 255) // 256)
+            global_capacity = min(global_capacity, session_pages)
             if high_water_pages is not None:
                 global_capacity = min(global_capacity, high_water_pages)
             if global_capacity <= 0:
@@ -8258,18 +8840,23 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         released = 0
         pool = self._kv_pool
         actively_leased = getattr(pool, "actively_leased", None)
-        for tokens, entry in tuple(self._prefix_state_snapshots.items()):
-            if not entry.retained:
-                continue
-            if callable(actively_leased) and any(
-                actively_leased(int(block_id)) for block_id in entry.block_ids
-            ):
-                continue
-            pages = len(tuple(entry.block_ids))
-            if self._evict_prefix_snapshot(tokens, reason="pool_pressure"):
-                released += pages
-            if released >= needed:
-                break
+        # Retained boundaries first, then transient captures of finished
+        # prompts: a long prompt's transient capture otherwise pins its pages
+        # after the request ends, and packed decode for the next requests
+        # could not grow (24 GB card, BF16, radix on).
+        for retained_pass in (True, False):
+            for tokens, entry in tuple(self._prefix_state_snapshots.items()):
+                if bool(entry.retained) != retained_pass:
+                    continue
+                if callable(actively_leased) and any(
+                    actively_leased(int(block_id)) for block_id in entry.block_ids
+                ):
+                    continue
+                pages = len(tuple(entry.block_ids))
+                if self._evict_prefix_snapshot(tokens, reason="pool_pressure"):
+                    released += pages
+                if released >= needed:
+                    return released
         return released
 
     def rollback_admission(self, request: RequestState) -> None:
@@ -11560,6 +12147,13 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                     **batch_kwargs,
                 )
         except NotImplementedError:
+            return False
+        except MemoryAdmissionRefused:
+            # The packed workspace is ensured before any row state moves; when
+            # the pool cannot back it this step (pages freed by prefix eviction
+            # retire at the next loop barrier), the rows decode individually
+            # instead of failing their requests.
+            self._fallback_reasons["packed_decode_workspace_refused"] += 1
             return False
         if results is None:
             return False

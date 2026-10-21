@@ -434,14 +434,15 @@ class VirtualMemoryBuffer:
         address = self._ptr + offset
 
         handle = ctypes.c_void_p()
-        self._runtime.check(
-            self._library.hipMemCreate(
-                ctypes.byref(handle),
-                ctypes.c_size_t(size),
-                ctypes.byref(self._prop),
-                ctypes.c_ulonglong(0),
-            )
+        create_code = self._library.hipMemCreate(
+            ctypes.byref(handle),
+            ctypes.c_size_t(size),
+            ctypes.byref(self._prop),
+            ctypes.c_ulonglong(0),
         )
+        if create_code != 0:
+            self._clear_last_error()
+        self._runtime.check(create_code)
         handle_value = 0 if handle.value is None else int(handle.value)
         segment = _MappedSegment(offset=offset, size=size, handle=handle_value, mapped=False)
         try:
@@ -455,15 +456,30 @@ class VirtualMemoryBuffer:
                 )
             )
             segment.mapped = True
-            self._runtime.check(
-                self._library.hipMemSetAccess(
-                    ctypes.c_void_p(address),
-                    ctypes.c_size_t(size),
+            code = self._library.hipMemSetAccess(
+                ctypes.c_void_p(address),
+                ctypes.c_size_t(size),
+                ctypes.byref(self._access),
+                ctypes.c_size_t(1),
+            )
+            if code != 0 and offset > 0:
+                # ROCm 7 can reject access on an appended sub-range of a
+                # reservation (invalid argument) while accepting the whole
+                # mapped prefix; re-granting the same access to already
+                # mapped pages is idempotent.
+                code = self._library.hipMemSetAccess(
+                    ctypes.c_void_p(self._ptr),
+                    ctypes.c_size_t(target),
                     ctypes.byref(self._access),
                     ctypes.c_size_t(1),
                 )
-            )
+                if code == 0:
+                    self._clear_last_error()
+            self._runtime.check(code)
         except BaseException as commit_error:
+            # The failure is reported by this raise; leaving HIP's last error
+            # set would make the next kernel launch report it as its own.
+            self._clear_last_error()
             cleanup_error = self._cleanup_failed_commit(segment)
             if cleanup_error is not None:
                 raise cleanup_error from commit_error
@@ -473,6 +489,17 @@ class VirtualMemoryBuffer:
         self._committed_bytes = target
         self._publish_commit_accounting()
         return self._committed_bytes
+
+    def _clear_last_error(self) -> None:
+        """Reset HIP's sticky last error after a VMM failure this buffer handled.
+
+        Compiled launchers return ``hipGetLastError()`` after each launch, so a
+        handled mapping failure would otherwise surface on an unrelated kernel.
+        """
+
+        clear = getattr(self._library, "hipGetLastError", None)
+        if callable(clear):
+            clear()
 
     @property
     def _resident_device_bytes(self) -> int:

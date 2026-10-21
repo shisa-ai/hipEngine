@@ -1,0 +1,217 @@
+{
+  "backend": "hip_gfx1100",
+  "cancel_after_steps": null,
+  "codec": "int8_evaluation",
+  "cycle_errors": [],
+  "cycles": [
+    {
+      "cancellation": null,
+      "close_errors": [],
+      "cycle": 0,
+      "decode": [
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "607ed64ffda6b12ad3650eebf572f07193cf36b8b033c657183a65dfb123b976",
+          "output_token": 155959,
+          "seconds": 0.0693,
+          "session": 0,
+          "step": 0
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "89b526b46f8b6b464eb7e216071fb52c5d2cb03b7b3276251a0126101e530219",
+          "output_token": 149029,
+          "seconds": 0.0416,
+          "session": 0,
+          "step": 1
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "6e79b8536e16663dc59de9f55394ee43637008fd31977be875c1d63c07a48ccd",
+          "output_token": 172505,
+          "seconds": 0.0419,
+          "session": 0,
+          "step": 2
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "41e3356a15df76222606006893a5e4d1bbe686604aadfcddef326e9e0f31cd7c",
+          "output_token": 27279,
+          "seconds": 0.0419,
+          "session": 0,
+          "step": 3
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "21acb3c0e52d628c4f05d4faa1ff66977eac9031904fb948a7764aed89f49c6b",
+          "output_token": 109096,
+          "seconds": 0.0417,
+          "session": 0,
+          "step": 4
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "66fba874314c346ffc874fe1216aa15fcff670a8ab2261e5074b7ff6aad67611",
+          "output_token": 14259,
+          "seconds": 0.0421,
+          "session": 0,
+          "step": 5
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "e406787db6b2f7f1a1f971557de68da2cc335e5b9e5b4220ccd3b472d13f5605",
+          "output_token": 48061,
+          "seconds": 0.0427,
+          "session": 0,
+          "step": 6
+        },
+        {
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "d692c63ac6af9670bfdd0948eb4ef45b826afde2726cb0cff31bb76fe6fcf70d",
+          "output_token": 175617,
+          "seconds": 0.0426,
+          "session": 0,
+          "step": 7
+        }
+      ],
+      "dms_snapshots": [
+        {
+          "capacity": {
+            "actual_compression_ratio": 1.882224551629069,
+            "device_resident_bytes": 2363580560,
+            "live_token_rows": 4457024,
+            "logical_token_rows": 8389120,
+            "max_live_count": 69641,
+            "payload_bytes": 2281996288,
+            "scale_bytes": 35656192,
+            "target_compression_ratio": 2
+          },
+          "extent_pool": {
+            "allocation_failures": 0,
+            "capacity_slots": 4457088,
+            "free_slots": 0
+          },
+          "ledger_active_reservations": 1
+        }
+      ],
+      "memory": {
+        "after_close": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 22085400600,
+          "peak_allocations": 355,
+          "total_allocated_bytes": 22092162264,
+          "total_freed_bytes": 22092162264
+        },
+        "after_close_MiB": 0.0,
+        "before": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 0,
+          "peak_allocations": 0,
+          "total_allocated_bytes": 0,
+          "total_freed_bytes": 0
+        },
+        "post_decode": {
+          "active_allocations": 352,
+          "current_allocated_bytes": 21511644248,
+          "peak_allocated_bytes": 22085400600,
+          "peak_allocations": 355,
+          "total_allocated_bytes": 22092162264,
+          "total_freed_bytes": 580518016
+        },
+        "post_prefill_all_sessions": {
+          "active_allocations": 349,
+          "current_allocated_bytes": 21504882584,
+          "peak_allocated_bytes": 22085400600,
+          "peak_allocations": 355,
+          "total_allocated_bytes": 22085400600,
+          "total_freed_bytes": 580518016
+        }
+      },
+      "prefill": [
+        {
+          "active_sessions_at_pack": 1,
+          "capacity": {
+            "actual_compression_ratio": 1.8823259086927175,
+            "device_resident_bytes": 2356818896,
+            "live_token_rows": 4456512,
+            "logical_token_rows": 8388608,
+            "max_live_count": 69633,
+            "payload_bytes": 2281734144,
+            "scale_bytes": 35652096,
+            "target_compression_ratio": 2
+          },
+          "prefill_seconds": 878.774,
+          "prompt_tokens": 131072,
+          "session": 0
+        }
+      ],
+      "runner_wiring": {
+        "dms_prefill_mode": "layer_outer",
+        "host_token_embedding_reason": "mapped_host_private_c1_auto",
+        "session_owns_runner": true,
+        "sessions": 1,
+        "shared_runner": false,
+        "small_weight_arena_enabled": true,
+        "small_weight_arena_reason": "packed_small_weights:897:16401463296:16402108416",
+        "token_embedding_placement": "host"
+      },
+      "timing": {
+        "close_seconds": 0.05,
+        "decode_all_seconds": 0.36,
+        "load_seconds": 0.0,
+        "prefill_all_seconds": 971.4
+      }
+    }
+  ],
+  "data_manifest": {
+    "path": "/models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json",
+    "sha256": "9b8dacd9111ddf5b44dc55a0cd199ca7c3cafed763a21bb13eae0a98cdfc72cc"
+  },
+  "decode_steps_each": 8,
+  "dms_prefill_mode": "layer_outer",
+  "heterogeneous_widths": [
+    131072
+  ],
+  "host": "epyc",
+  "kind": "hipengine_rx7900xtx_dms_concurrency_probe",
+  "metadata": {
+    "path": "/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json",
+    "sha256": "4c16f9e94d8c870194d37cc46f9e2ec5f6c05b8e97721f799b78d9d2b240ba0b"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+  },
+  "performance_claim": false,
+  "prompt_tokens_each": 131072,
+  "prompts": {
+    "disjoint_validation_slices": true,
+    "sha256": "34b0963e59353b40bb1d168caaddc6987efb5dbfc71496516a9e2df6f3800a28"
+  },
+  "provenance": {
+    "commit": "432cf147a151f8d2c8d359201ed083c17827cf34",
+    "working_tree_clean": true
+  },
+  "refill_cycles": 1,
+  "schema_version": 1,
+  "sessions": 1,
+  "status": "passed",
+  "verify_c1": false,
+  "reproduction": {
+    "command": "bash /tmp/hipengine-xtx-recovery-env.sh env GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1 python3 -u scripts/qwen38_dms_concurrency_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --data-manifest /models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json --sessions 1 --prompt-tokens 131072 --decode-steps 8 --dms-prefill-mode layer_outer --refill-cycles 1 --codec int8_evaluation --backend hip_gfx1100 --output /tmp/hipengine-xtx-capacity-recovery/current-layerouter-131072.json",
+    "wrapper": "#!/usr/bin/env bash\nset -euo pipefail\nPY=\"$HOME/mambaforge/envs/therock/bin/python3.12\"\nROOT=\"$(\"$PY\" -m rocm_sdk path --root)\"\nOUT=/tmp/hipengine-xtx-capacity-recovery\nmkdir -p \"$OUT\"\n\"$ROOT/bin/hipcc\" --version > \"$OUT/hipcc-version.txt\"\nexec env -i HOME=\"$HOME\" USER=\"$USER\" LOGNAME=\"${LOGNAME:-$USER}\" SHELL=/bin/bash TERM=\"${TERM:-xterm}\" \\\n PATH=\"$ROOT/bin:$HOME/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin\" \\\n LD_LIBRARY_PATH=\"$ROOT/lib:$HOME/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:$HOME/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib\" \\\n HIP_PATH=\"$ROOT\" ROCM_PATH=\"$ROOT\" HIP_LIB_PATH=\"$ROOT/lib\" HIP_INCLUDE_PATH=\"$ROOT/include\" \\\n HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 \\\n HIPENGINE_COMPILER_VERSION_FILE=\"$OUT/hipcc-version.txt\" PYTHONPATH=\"$PWD\" \"$@\"\n",
+    "hardware": "RX 7900 XTX 24 GB, GPU1, PCI 0000:10:00.0",
+    "protocol_tier": 2,
+    "limitations": "Current-code historical-route check, not an exact replay of the missing 232K fixture. No quality, throughput or whole-card-peak claim. Source identity is collected at end of run; only documentation/probe and DMS estimator commits occurred during the run; runtime runner code was unchanged."
+  }
+}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import os
 import threading
 from copy import copy
@@ -2119,6 +2120,25 @@ def packed_verify_workspace_lease_pages(
     return slots * blocks_per_slot
 
 
+_PACKED_WORKSPACE_GROWTH_LEASES = itertools.count()
+
+
+def _lease_packed_workspace_growth(
+    kv_pool: object, *, needed_pages: int
+) -> tuple[str, tuple[int, ...]] | None:
+    """Lease extra arena pages for a packed workspace, or ``None`` if refused."""
+
+    lease = getattr(kv_pool, "lease_workspace", None)
+    if not callable(lease) or int(needed_pages) <= 0:
+        return None
+    key = f"{_GGUF_PACKED_WORKSPACE_LEASE_KEY}.growth.{next(_PACKED_WORKSPACE_GROWTH_LEASES)}"
+    try:
+        pages = lease(key, int(needed_pages))
+    except (MemoryError, MemoryAdmissionRefused):
+        return None
+    return key, tuple(int(page) for page in pages)
+
+
 @dataclass(frozen=True)
 class _GGUFPackedTargetState:
     """Per-slot recurrent state plus policy-shaped packed KV backing."""
@@ -2153,6 +2173,10 @@ class _GGUFPackedTargetState:
     # as the KV payload and released with these buffers.
     resident_charge_pool: object | None = None
     resident_charge_token: object | None = None
+    # Pool workspace lease that extends the eager lease when the geometry
+    # outgrows it; released with this state.
+    growth_lease_pool: object | None = None
+    growth_lease_key: str | None = None
 
     def __post_init__(self) -> None:
         if self.kv_backing_kind not in {"private", "pool_lease", "unleased"}:
@@ -2275,6 +2299,7 @@ class _GGUFPackedTargetState:
         kv_cache_fields: dict[str, tuple] | None = None
         private_workspace_token = None
         resident_charge_token = None
+        growth_lease_key: str | None = None
         try:
             linear_layers = sum(
                 1 for layer_type in cfg.layer_types if layer_type == LINEAR_ATTENTION
@@ -2312,13 +2337,13 @@ class _GGUFPackedTargetState:
                 kv_pool is not None
                 and not lease_kv_planes
                 and kv_layout.layer_storage_dtypes
-                and all(
-                    storage is None or storage == DType.INT8_PER_TOKEN_HEAD
-                    for storage in kv_layout.layer_storage_dtypes
-                )
             ):
                 # Slot-local packed execution never reads the packed KV
-                # planes: attention goes through each session's request-
+                # planes, whatever the KV storage (the slab passes
+                # ``copy_kv=False`` to both state sync and scatter); BF16
+                # sessions used to pay a full-context private plane copy here,
+                # doubling a long prompt's KV on 24 GB cards.
+                # Attention goes through each session's request-
                 # owned KV and the linear layers use the conv/recurrent
                 # state slots. Skip the pool lease entirely (the P4 duplicate
                 # reservation removal); any later non-slot-local call
@@ -2371,7 +2396,18 @@ class _GGUFPackedTargetState:
                                 "max_sequence_length": int(max_sequence_length),
                             }
                         )
-                    lease_pages = None
+                    # Extend the eager lease with idle arena pages before
+                    # falling back to a private chunk: the pool already holds
+                    # committed pages for the declared context, and a private
+                    # copy doubled KV for concurrent decode on 24 GB cards.
+                    grown = _lease_packed_workspace_growth(
+                        kv_pool, needed_pages=total_pages - len(lease_pages)
+                    )
+                    if grown is None:
+                        lease_pages = None
+                    else:
+                        growth_lease_key, growth_pages = grown
+                        lease_pages = (*tuple(lease_pages), *growth_pages)
                 if lease_pages is not None:
                     # Pool-leased backing: the arena planes back the
                     # workspace and page_ids select this state's pages
@@ -2413,6 +2449,8 @@ class _GGUFPackedTargetState:
         except Exception:
             for buffer in reversed(state_buffers):
                 free(buffer, runtime=runtime)
+            if growth_lease_key is not None:
+                kv_pool.release_workspace(growth_lease_key)
             if private_workspace_token is not None:
                 kv_pool.release_private_workspace(private_workspace_token)
             if resident_charge_token is not None:
@@ -2445,6 +2483,8 @@ class _GGUFPackedTargetState:
             private_workspace_token=private_workspace_token,
             resident_charge_pool=kv_pool if resident_charge_token is not None else None,
             resident_charge_token=resident_charge_token,
+            growth_lease_pool=kv_pool if growth_lease_key is not None else None,
+            growth_lease_key=growth_lease_key,
         )
 
     def linear_state_pair(self, layer_id: int) -> tuple[object, object]:
@@ -11711,6 +11751,121 @@ def _plan_gguf_int8_prefill_lifetime_for_session(
             not has_bf16_mirror and _gguf_int8_prefill_direct_enabled()
         ),
     )
+
+
+def _gguf_bulk_prefill_hidden_plane_count(
+    *,
+    plan_mode: str | None,
+    dms_prefill_mode: str | None,
+    geometry_plane_count: int = 2,
+) -> int:
+    """Physical BF16 hidden planes the bulk prefill workspace allocates.
+
+    The single owner of the plane decision. ``_allocate_bulk_prefill_workspace``
+    passes the result as ``single_plane`` and the growth path keeps it stable,
+    so a grown workspace never changes the route-scoped alias policy; the
+    generation sizing dry run reads the same number instead of re-deriving the
+    gates from route names.
+
+    ``geometry_plane_count`` is the geometry-wide liveness answer
+    (``_gguf_prefill_hidden_buffer_count``); the route-scoped alias gates can
+    only reduce the count, never restore a plane the geometry policy removed.
+    """
+
+    if int(geometry_plane_count) <= 1:
+        return 1
+    if dms_prefill_mode == "layer_outer":
+        return 1 if _layer_outer_hidden_alias_enabled() else 2
+    if (
+        plan_mode == "layer_outer_shared_oracle"
+        and _int8_layer_outer_hidden_alias_enabled()
+    ):
+        return 1
+    return 2
+
+
+def _gguf_bulk_prefill_full_prompt_capacity(
+    *,
+    plan_required_hidden_capacity: int,
+    prefill_capacity: int,
+    use_expert_sidecar: bool = False,
+    dms_prefill_mode: str | None = None,
+) -> int:
+    """Rows the plan's full-prompt executor needs, i.e. the growth ceiling.
+
+    This is exactly the capacity the workspace allocated unconditionally before
+    storage became a separate decision, so it is also the row count that
+    reproduces the pre-change executor choice: ``allocated < rows`` is still the
+    chunk-outer test at every call site. A plan whose ceiling is one chunk can
+    therefore never grow, and a plan whose ceiling is the full context grows to
+    the prompt.
+    """
+
+    if bool(use_expert_sidecar) or dms_prefill_mode == "layer_outer":
+        return int(prefill_capacity)
+    return int(plan_required_hidden_capacity)
+
+
+def _gguf_bulk_prefill_initial_hidden_capacity(
+    *,
+    plan_mode: str | None,
+    plan_required_hidden_capacity: int,
+    prefill_capacity: int,
+    chunk_rows: int,
+    use_expert_sidecar: bool = False,
+    dms_prefill_mode: str | None = None,
+    dms_serving: bool = False,
+    defer_kv_allocation: bool = False,
+) -> int:
+    """Rows of hidden/token storage the bulk workspace allocates up front.
+
+    The INT8 prefill lifetime plan answers which *executor* a request runs
+    (chunk-outer versus layer-outer with one shared oracle pair). It is not a
+    storage decision: a plan that needs full-prompt hidden planes only needs
+    them when a full-prompt consumer actually runs. This helper is the storage
+    decision, and it is the only place that decides it.
+
+    A session whose KV allocation is deferred (the serving owner), that is not
+    an external-DMS session, has no expert sidecar, and whose plan requires
+    more than one chunk's worth of hidden rows, starts chunk-sized. Everything
+    else keeps the full-prompt capacity it always had, so CLI/standalone
+    sessions, DMS ``dense_pool``/``layer_outer`` prefill, and expert-sidecar
+    prefill are untouched.
+
+    The returned capacity is a floor, not a cap: every full-prompt consumer
+    calls ``_ensure_bulk_prefill_hidden_capacity`` first, which grows the
+    owner's storage monotonically up to the plan's full-prompt capacity
+    (``_gguf_bulk_prefill_full_prompt_capacity``) and rebinds every borrowed
+    slot view. A chunk plan's ceiling *is* one chunk, so it never grows and
+    keeps its chunk-outer executor. Generation sizing prices this floor plus the
+    plane count from ``_gguf_bulk_prefill_hidden_plane_count``.
+    """
+
+    chunk_rows = int(chunk_rows)
+    prefill_capacity = int(prefill_capacity)
+    required = int(plan_required_hidden_capacity)
+    if chunk_rows <= 0 or prefill_capacity <= 0 or required <= 0:
+        raise ValueError("bulk prefill capacity fields must be positive")
+    if chunk_rows > prefill_capacity:
+        raise ValueError(
+            "bulk prefill chunk rows cannot exceed the session capacity"
+        )
+    full_prompt_capacity = _gguf_bulk_prefill_full_prompt_capacity(
+        plan_required_hidden_capacity=required,
+        prefill_capacity=prefill_capacity,
+        use_expert_sidecar=use_expert_sidecar,
+        dms_prefill_mode=dms_prefill_mode,
+    )
+    deferred = (
+        bool(defer_kv_allocation)
+        and not bool(dms_serving)
+        and not bool(use_expert_sidecar)
+        and dms_prefill_mode != "layer_outer"
+        and full_prompt_capacity > chunk_rows
+    )
+    return chunk_rows if deferred else full_prompt_capacity
+
+
 # B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
 _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
 _GGUF_HOST_TOKEN_EMBEDDING_ENV = "HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING"
@@ -16276,6 +16431,15 @@ def _normalize_external_dms_decision_mode(value: str) -> str:
     return mode
 
 
+def _ptr_in_buffer(ptr: int, buffer) -> bool:
+    """Whether a raw device pointer lies inside an allocated buffer."""
+
+    if buffer is None or int(ptr) == 0:
+        return False
+    start = int(buffer.ptr)
+    return start <= int(ptr) < start + int(buffer.nbytes)
+
+
 class _ExternalDMSDevicePrefillCollector:
     """GPU-only sidecar/control decisions captured at the exact GGUF input stage."""
 
@@ -16334,6 +16498,7 @@ class _ExternalDMSDevicePrefillCollector:
             )
             copy_host_to_device(self._decisions, host_array_ptr(layer_major), layer_major.nbytes, runtime=runtime)
         self._next = np.zeros(source.config.num_layers, dtype=np.int32)
+        self._finalized_layers: dict[int, np.ndarray] = {}
         self._closed = False
 
     def capture_device_chunk(
@@ -16346,7 +16511,13 @@ class _ExternalDMSDevicePrefillCollector:
         hidden_ptr: int,
         stream: int,
     ) -> None:
+        if self._closed:
+            raise RuntimeError("external DMS device collector is closed")
         layer = int(compact_layer_index)
+        if not 0 <= layer < int(self.source.config.num_layers):
+            raise ValueError("external DMS device capture layer is out of range")
+        if layer in getattr(self, "_finalized_layers", {}):
+            raise RuntimeError("external DMS device layer is already finalized")
         if self.source.compact_layer_index(int(physical_layer_id)) != layer:
             raise ValueError("external DMS device capture layer map mismatch")
         if int(start) != int(self._next[layer]):
@@ -16373,61 +16544,88 @@ class _ExternalDMSDevicePrefillCollector:
         layer = int(compact_layer_index)
         return self._decisions.ptr + layer * self.token_count * self.num_kv_heads
 
-    def finalize(self, *, stream: int = 0) -> np.ndarray:
-        if np.any(self._next != self.token_count):
-            raise ValueError("external DMS device capture lacks full prompt coverage")
+    def finalize_layer(self, compact_layer_index: int, *, stream: int = 0) -> np.ndarray:
+        """Finalize one complete score timeline before its KV oracle is reused."""
+        if self._closed:
+            raise RuntimeError("external DMS device collector is closed")
+        layer = int(compact_layer_index)
+        if not 0 <= layer < int(self.source.config.num_layers):
+            raise ValueError("external DMS device finalize layer is out of range")
+        if int(self._next[layer]) != self.token_count:
+            raise ValueError("external DMS device capture lacks full prompt coverage for layer")
+        finalized = self.__dict__.setdefault("_finalized_layers", {})
+        if layer in finalized:
+            return finalized[layer]
         if stream:
             self._runtime.stream_synchronize(int(stream))
         else:
             self._runtime.device_synchronize()
-        shape = (
-            self.source.config.num_layers,
-            self.token_count,
-            self.num_kv_heads,
-        )
+        shape = (self.token_count, self.num_kv_heads)
+        offset = layer * self.token_count * self.num_kv_heads
         if self.decision_mode == "diagnostic":
-            return np.asarray(self._diagnostic_injection.eviction_mask, dtype=bool)
-        if (
-            self.decision_mode == "sidecar"
-            and self.source.config.prefill_selection_mode == "exact_budget"
-        ):
+            decisions = np.array(
+                self._diagnostic_injection.eviction_mask[:, layer, :], dtype=bool, copy=True
+            )
+        elif (self.decision_mode == "sidecar"
+              and self.source.config.prefill_selection_mode == "exact_budget"):
             from hipengine.kvcache.dms import build_dms_exact_budget_eviction
 
             if self._logits is None:
                 raise RuntimeError("exact-budget DMS prefill lacks device logits")
-            layer_logits = np.empty(shape, dtype=np.float32)
+            logits = np.empty(shape, dtype=np.float32)
             copy_device_to_host(
-                host_array_ptr(layer_logits),
-                self._logits,
-                layer_logits.nbytes,
-                runtime=self._runtime,
+                host_array_ptr(logits),
+                DeviceBuffer(self._logits.ptr + offset * 4, logits.nbytes),
+                logits.nbytes, runtime=self._runtime,
             )
-            token_logits = np.ascontiguousarray(layer_logits.transpose(1, 0, 2))
-            decisions = build_dms_exact_budget_eviction(
-                token_logits,
-                current_position=self.token_count - 1,
+            decisions = np.ascontiguousarray(build_dms_exact_budget_eviction(
+                logits[:, None, :], current_position=self.token_count - 1,
                 window_size=self.source.config.window_size,
                 target_compression_ratio=self.source.config.target_compression_ratio,
-            )
-            layer_decisions = np.ascontiguousarray(
-                decisions.transpose(1, 0, 2),
-                dtype=np.uint8,
-            )
+            )[:, 0, :])
+            raw = np.ascontiguousarray(decisions, dtype=np.uint8)
             copy_host_to_device(
-                self._decisions,
-                host_array_ptr(layer_decisions),
-                layer_decisions.nbytes,
-                runtime=self._runtime,
+                DeviceBuffer(self._decisions.ptr + offset, raw.nbytes),
+                host_array_ptr(raw), raw.nbytes, runtime=self._runtime,
             )
-            return decisions
-        layer_major = np.empty(shape, dtype=np.uint8)
-        copy_device_to_host(
-            host_array_ptr(layer_major),
-            self._decisions,
-            layer_major.nbytes,
-            runtime=self._runtime,
-        )
-        return np.ascontiguousarray(layer_major.transpose(1, 0, 2), dtype=np.bool_)
+        else:
+            raw = np.empty(shape, dtype=np.uint8)
+            copy_device_to_host(
+                host_array_ptr(raw),
+                DeviceBuffer(self._decisions.ptr + offset, raw.nbytes),
+                raw.nbytes, runtime=self._runtime,
+            )
+            decisions = np.ascontiguousarray(raw, dtype=np.bool_)
+        decisions.flags.writeable = False
+        finalized[layer] = decisions
+        return decisions
+
+    def finalize(self, *, stream: int = 0) -> np.ndarray:
+        if np.any(self._next != self.token_count):
+            raise ValueError("external DMS device capture lacks full prompt coverage")
+        return np.stack([
+            self.finalize_layer(layer, stream=stream)
+            for layer in range(int(self.source.config.num_layers))
+        ], axis=1)
+
+    def release_decision_inputs(self) -> None:
+        """Free the decision-score inputs, keeping the captured decisions.
+
+        ``_logits`` and ``_projector`` exist only to produce the eviction
+        decisions. Once ``finalize`` has returned them, the only remaining
+        readers are the cold-prefix snapshot (which copies ``_logits`` and
+        ``_decisions`` to the host) and pass-2 packing (which reads
+        ``_decisions`` through ``decision_ptr``). Callers invoke this after
+        both, before verifier setup. Idempotent, and ``close`` stays safe
+        after it.
+        """
+
+        if self._logits is not None:
+            free(self._logits, runtime=self._runtime)
+            self._logits = None
+        if self._projector is not None:
+            self._projector.close()
+            self._projector = None
 
     def capture_teacher_logits(self, logits: np.ndarray) -> None:
         del logits
@@ -16495,10 +16693,9 @@ class Qwen35GGUFResidentSession:
     # "dense_pool" (default): the pre-existing route — a full dense BF16 KV
     # pool backs prefill and a finalize-time layerwise pack moves it to the
     # compact store. "layer_outer": the 2026-09-07 review target-4 route —
-    # no dense pool; a single shared BF16 oracle pair carries one layer's K/V
-    # at a time over a full-capacity hidden plane, decisions are captured in
-    # a first pass, the compact store is sized exactly from them, and a
-    # second pass packs each completed layer before its oracle is reused.
+    # no dense pool; one shared BF16 oracle carries a layer's K/V at a time.
+    # Exact-budget scores finalize and pack in one trunk pass; other policies
+    # use a decision sweep followed by layerwise packing.
     dms_prefill_mode: str = "dense_pool"
     dms_backend_factory: Callable | None = None
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
@@ -16657,6 +16854,15 @@ class Qwen35GGUFResidentSession:
     _prefill_hidden_a: object | None = field(default=None, init=False)
     _prefill_hidden_b: object | None = field(default=None, init=False)
     _bulk_prefill_scratch: object | None = field(default=None, init=False)
+    # Bulk prefill hidden/token storage policy. ``_bulk_prefill_full_prompt_capacity_rows``
+    # is the row ceiling the session's lifetime plan can ever ask the workspace
+    # to hold (one chunk for a chunk-outer plan, the full context for a
+    # layer-outer plan) and therefore the growth ceiling;
+    # ``_bulk_prefill_hidden_planes`` is the route-scoped plane count that the
+    # initial allocation and every growth step share. Both describe the session,
+    # not one allocation, so they survive a release/re-acquire cycle.
+    _bulk_prefill_full_prompt_capacity_rows: int = field(default=0, init=False)
+    _bulk_prefill_hidden_planes: int = field(default=0, init=False)
     _prefill_f16_staging_buf: object | None = field(default=None, init=False)
     _iq_dense_mmq_buf: object | None = field(default=None, init=False)
     _q6_integer_mmq_library: object | None = field(default=None, init=False)
@@ -17283,6 +17489,12 @@ class Qwen35GGUFResidentSession:
         re-acquired lazily by a later prefill. No-op when already allocated;
         raises on closed sessions. The INT8 prefill lifetime plan is computed
         once and reused across release/re-acquire cycles.
+
+        The initial hidden/token capacity is a *storage* decision, taken by
+        ``_gguf_bulk_prefill_initial_hidden_capacity``: a non-DMS deferred-KV
+        serving owner starts chunk-sized and grows through
+        ``_ensure_bulk_prefill_hidden_capacity`` when a full-prompt consumer
+        actually needs more rows. The lifetime plan still decides the executor.
         """
 
         if self.runner is None or self.scratch is None:
@@ -17301,13 +17513,36 @@ class Qwen35GGUFResidentSession:
             self.prefill_chunk_tuning["int8_prefill_lifetime"] = asdict(
                 self._int8_prefill_lifetime_plan
             )
-        alloc_capacity = (
-            prefill_capacity
-            if (
-                self.use_expert_sidecar
-                or self.dms_prefill_mode == "layer_outer"
-            )
-            else int(self._int8_prefill_lifetime_plan.required_hidden_capacity)
+        lifetime_plan = self._int8_prefill_lifetime_plan
+        plan_mode = getattr(lifetime_plan, "mode", None)
+        dms_prefill_mode = getattr(self, "dms_prefill_mode", None)
+        full_prompt_capacity = _gguf_bulk_prefill_full_prompt_capacity(
+            plan_required_hidden_capacity=int(
+                lifetime_plan.required_hidden_capacity
+            ),
+            prefill_capacity=prefill_capacity,
+            use_expert_sidecar=bool(self.use_expert_sidecar),
+            dms_prefill_mode=dms_prefill_mode,
+        )
+        alloc_capacity = _gguf_bulk_prefill_initial_hidden_capacity(
+            plan_mode=plan_mode,
+            plan_required_hidden_capacity=int(
+                lifetime_plan.required_hidden_capacity
+            ),
+            prefill_capacity=prefill_capacity,
+            chunk_rows=prefill_rows,
+            use_expert_sidecar=bool(self.use_expert_sidecar),
+            dms_prefill_mode=dms_prefill_mode,
+            dms_serving=getattr(self, "dms_metadata_path", None) is not None,
+            defer_kv_allocation=bool(getattr(self, "defer_kv_allocation", False)),
+        )
+        hidden_planes = _gguf_bulk_prefill_hidden_plane_count(
+            plan_mode=plan_mode,
+            dms_prefill_mode=dms_prefill_mode,
+            geometry_plane_count=_gguf_prefill_hidden_buffer_count(
+                self.runner,
+                rows=prefill_rows,
+            ),
         )
         hidden_bytes = self.runner.hidden_size * 2
         prefill_token_buf = malloc(alloc_capacity * DType.INT64.itemsize, runtime=runtime)
@@ -17319,16 +17554,7 @@ class Qwen35GGUFResidentSession:
                 rows=prefill_rows,
                 nbytes=alloc_capacity * hidden_bytes,
                 runtime=runtime,
-                single_plane=(
-                    (
-                        self.dms_prefill_mode == "layer_outer"
-                        and _layer_outer_hidden_alias_enabled()
-                    )
-                    or (
-                        _int8_layer_outer_shared_oracle_route(self)
-                        and _int8_layer_outer_hidden_alias_enabled()
-                    )
-                ),
+                single_plane=hidden_planes == 1,
             )
             bulk_prefill_scratch = _GGUFFullAttentionPrefillScratch.allocate(
                 self.runner,
@@ -17365,6 +17591,8 @@ class Qwen35GGUFResidentSession:
         self._prefill_hidden_a = prefill_hidden_a
         self._prefill_hidden_b = prefill_hidden_b
         self._bulk_prefill_scratch = bulk_prefill_scratch
+        self._bulk_prefill_full_prompt_capacity_rows = full_prompt_capacity
+        self._bulk_prefill_hidden_planes = hidden_planes
         prefill_hidden_buffers = (
             (prefill_hidden_a,)
             if prefill_hidden_a.ptr == prefill_hidden_b.ptr
@@ -17376,6 +17604,192 @@ class Qwen35GGUFResidentSession:
             *prefill_hidden_buffers,
             *bulk_prefill_scratch.buffers,
         )
+
+    def _bulk_prefill_workspace_owner(self) -> "Qwen35GGUFResidentSession":
+        """The session that owns the bulk prefill hidden/token allocations."""
+
+        owner = getattr(self, "_resident_batch_owner", None)
+        return self if owner is None else owner
+
+    def _bulk_prefill_hidden_capacity_rows(self) -> int:
+        """Rows of BF16 hidden storage the bulk workspace currently owns."""
+
+        owner = self._bulk_prefill_workspace_owner()
+        hidden = getattr(owner, "_prefill_hidden_a", None)
+        runner = getattr(owner, "runner", None)
+        if hidden is None or runner is None:
+            return 0
+        row_nbytes = int(runner.hidden_size) * DType.BF16.itemsize
+        if row_nbytes <= 0:
+            return 0
+        return int(getattr(hidden, "nbytes", 0)) // row_nbytes
+
+    def _rebind_bulk_prefill_workspace_from_owner(
+        self, owner: "Qwen35GGUFResidentSession"
+    ) -> None:
+        """Point a borrowed slot view at the owner's current workspace."""
+
+        self._bulk_prefill_scratch = owner._bulk_prefill_scratch
+        self._prefill_token_buf = owner._prefill_token_buf
+        self._prefill_hidden_a = owner._prefill_hidden_a
+        self._prefill_hidden_b = owner._prefill_hidden_b
+        self._bulk_prefill_full_prompt_capacity_rows = int(
+            getattr(owner, "_bulk_prefill_full_prompt_capacity_rows", 0)
+        )
+        self._bulk_prefill_hidden_planes = int(
+            getattr(owner, "_bulk_prefill_hidden_planes", 0)
+        )
+
+    def _publish_bulk_prefill_workspace_to_slot_views(self) -> None:
+        """Rebind every borrowed slot view after the owner replaced storage."""
+
+        for view in tuple(self.__dict__.get("_resident_slot_views", ()) or ()):
+            if getattr(view, "_resident_batch_owner", None) is not self:
+                continue
+            view._rebind_bulk_prefill_workspace_from_owner(self)
+
+    def _ensure_bulk_prefill_hidden_capacity(
+        self,
+        rows: int,
+        *,
+        runtime: HipRuntime | None = None,
+        consumer: str = "full-prompt prefill",
+        target_hidden_chunk_sink: object | None = None,
+    ) -> int:
+        """Grow the bulk prefill hidden/token storage to at least ``rows``.
+
+        The bulk workspace is owner-wide: hidden planes and the token buffer are
+        allocated once per batch owner and borrowed by every resident slot view.
+        Growth therefore resolves to the owner, replaces storage only after every
+        replacement allocation succeeded, keeps the route-scoped plane count, and
+        rebinds every registered view before the old buffers are freed.
+
+        Growth is monotonic: a grown owner keeps the capacity for its lifetime,
+        so a long first request pays one allocation instead of every request
+        paying an allocation/free cycle. It never shrinks and never exceeds the
+        plan's full-prompt capacity (``_bulk_prefill_full_prompt_capacity_rows``),
+        which is what keeps the executor choice identical to the pre-change
+        unconditional allocation: a chunk-outer plan's ceiling is one chunk, so
+        it never grows and its chunk-outer route (and any streamed target-hidden
+        sink sized from it) is untouched.
+
+        A streamed target-hidden sink is refused only when growth is actually
+        required, rather than fed: the sink sizes its own transform buffer from
+        ``_prefill_hidden_a.nbytes`` when it is created, so growth after that
+        point would feed it more rows than it owns. Callers that stream target
+        hidden rows into a *full-prompt* prefill must grow the workspace before
+        creating the sink.
+        """
+
+        owner = self._bulk_prefill_workspace_owner()
+        capacity = owner._grow_bulk_prefill_hidden_capacity(
+            rows,
+            runtime=runtime,
+            consumer=consumer,
+            target_hidden_chunk_sink=target_hidden_chunk_sink,
+        )
+        if owner is not self:
+            self._rebind_bulk_prefill_workspace_from_owner(owner)
+        return capacity
+
+    def _grow_bulk_prefill_hidden_capacity(
+        self,
+        rows: int,
+        *,
+        runtime: HipRuntime | None,
+        consumer: str,
+        target_hidden_chunk_sink: object | None,
+    ) -> int:
+        """Owner-side growth step for ``_ensure_bulk_prefill_hidden_capacity``."""
+
+        rows = int(rows)
+        if rows <= 0:
+            raise ValueError("bulk prefill hidden capacity must be positive")
+        # The plan's full-prompt capacity is the growth ceiling, and it is also
+        # the capacity the pre-change allocator always took. Clamping to it
+        # reproduces the pre-change ``allocated < rows`` executor choice exactly:
+        # a chunk plan clamps to its chunk (no growth, chunk-outer preserved) and
+        # a layer-outer plan grows to the prompt.
+        ceiling = int(
+            getattr(self, "_bulk_prefill_full_prompt_capacity_rows", 0) or 0
+        )
+        target = rows if ceiling <= 0 else min(rows, ceiling)
+        # A request the current storage already covers never needs the workspace
+        # object, so this check is the whole no-op path.
+        capacity = self._bulk_prefill_hidden_capacity_rows()
+        if target <= capacity:
+            return capacity
+        runner = self.runner
+        if runner is None or self._bulk_prefill_scratch is None:
+            raise RuntimeError("GGUF resident bulk prefill workspace is closed")
+        if target_hidden_chunk_sink is not None:
+            raise RuntimeError(
+                f"{consumer} needs {target} hidden rows but the streamed target"
+                f" hidden sink was sized from the current {capacity}-row bulk"
+                " workspace; grow the workspace before creating the sink"
+            )
+        runtime = runtime or self.runtime or get_hip_runtime()
+        row_nbytes = int(runner.hidden_size) * DType.BF16.itemsize
+        planes = int(getattr(self, "_bulk_prefill_hidden_planes", 0) or 0)
+        if planes <= 0:
+            planes = self._bulk_prefill_hidden_plane_count_from_buffers()
+        allocated: list[object] = []
+        try:
+            new_token = malloc(target * DType.INT64.itemsize, runtime=runtime)
+            allocated.append(new_token)
+            new_hidden_a = malloc(target * row_nbytes, runtime=runtime)
+            allocated.append(new_hidden_a)
+            if planes > 1:
+                new_hidden_b = malloc(target * row_nbytes, runtime=runtime)
+                allocated.append(new_hidden_b)
+            else:
+                new_hidden_b = new_hidden_a
+            # Replay graphs bind these pointers. Invalidate them and retire
+            # queued work before the replacement replaces the old storage,
+            # mirroring ``_ensure_packed_ar_attention_workspace``.
+            self._invalidate_live_packed_decode_graphs()
+            synchronize = getattr(runtime, "device_synchronize", None)
+            if callable(synchronize):
+                synchronize()
+        except BaseException:
+            for buffer in reversed(allocated):
+                free(buffer, runtime=runtime)
+            raise
+        old_token = self._prefill_token_buf
+        old_hidden_a = self._prefill_hidden_a
+        old_hidden_b = self._prefill_hidden_b
+        # Resolve the stale ids before freeing: a freed allocation's id can be
+        # reused, which would prune an unrelated buffer from the ledger.
+        stale_ids = {id(old_token), id(old_hidden_a), id(old_hidden_b)}
+        kept = tuple(
+            buffer for buffer in self._buffers if id(buffer) not in stale_ids
+        )
+        self._prefill_token_buf = new_token
+        self._prefill_hidden_a = new_hidden_a
+        self._prefill_hidden_b = new_hidden_b
+        replacement = (
+            (new_token, new_hidden_a)
+            if new_hidden_a is new_hidden_b
+            else (new_token, new_hidden_a, new_hidden_b)
+        )
+        self._buffers = (*kept, *replacement)
+        self._publish_bulk_prefill_workspace_to_slot_views()
+        freed_ids: set[int] = set()
+        for buffer in (old_token, old_hidden_a, old_hidden_b):
+            if buffer is None or id(buffer) in freed_ids:
+                continue
+            freed_ids.add(id(buffer))
+            free(buffer, runtime=runtime)
+        return target
+
+    def _bulk_prefill_hidden_plane_count_from_buffers(self) -> int:
+        """Plane count implied by the current workspace (2 when unknown)."""
+
+        hidden_a = self._prefill_hidden_a
+        hidden_b = self._prefill_hidden_b
+        if hidden_a is None or hidden_b is None:
+            return 2
+        return 1 if int(hidden_a.ptr) == int(hidden_b.ptr) else 2
 
     def _release_bulk_prefill_workspace(self, *, runtime: HipRuntime | None = None) -> None:
         """Release the bulk prefill workspace ahead of decode/pack residency.
@@ -17426,10 +17840,7 @@ class Qwen35GGUFResidentSession:
             if getattr(self, "_resident_batch_owner", None) is not None:
                 owner = self._resident_batch_owner
                 owner._ensure_bulk_prefill_workspace()
-                self._bulk_prefill_scratch = owner._bulk_prefill_scratch
-                self._prefill_token_buf = owner._prefill_token_buf
-                self._prefill_hidden_a = owner._prefill_hidden_a
-                self._prefill_hidden_b = owner._prefill_hidden_b
+                self._rebind_bulk_prefill_workspace_from_owner(owner)
                 return
             self._allocate_bulk_prefill_workspace(
                 self.runtime or get_hip_runtime()
@@ -17485,9 +17896,8 @@ class Qwen35GGUFResidentSession:
         )
         if self.dms_prefill_mode == "layer_outer":
             # Review target 4: no dense BF16 pool. A single shared oracle pair
-            # carries one full-attention layer's K/V at a time; the compact
-            # store is sized from the first pass's decisions and packed per
-            # completed layer during the second pass.
+            # carries one full-attention layer's K/V at a time. Exact-budget
+            # counts are reserved up front; other policies use a decision sweep.
             return
         pages = (int(self.scratch.max_positions) + 255) // 256
         pool = self.create_device_kv_pool(
@@ -17718,7 +18128,7 @@ class Qwen35GGUFResidentSession:
 
         Invoked by the bulk prefill layer loop after a full-attention layer's
         ranges retire. The shared oracle pair holds that layer's complete K/V;
-        pack it into the compact store with the first pass's decisions.
+        pack it with finalized layer-local decisions before oracle reuse.
         """
 
         pack_state = self._dms_layer_outer_pack
@@ -17735,6 +18145,9 @@ class Qwen35GGUFResidentSession:
             runtime.stream_synchronize(int(stream))
         else:
             runtime.device_synchronize()
+        if (self.dms_decision_mode == "sidecar"
+                and source.config.prefill_selection_mode == "exact_budget"):
+            collector.finalize_layer(compact_layer, stream=int(stream))
         backend.device_streaming_pack_layer(
             0,
             compact_layer,
@@ -17744,6 +18157,14 @@ class Qwen35GGUFResidentSession:
             tokens=int(tokens),
             stream=int(stream),
         )
+        # Packed layers are not read again until all trunk layers finish.
+        # Keep their exact codec bytes on host instead of accumulating compact
+        # payloads alongside the full-prompt workspace and shared oracle.
+        if stream:
+            runtime.stream_synchronize(int(stream))
+        else:
+            runtime.device_synchronize()
+        backend.stage_device_prefill_layer(compact_layer)
         if getattr(self, "_dms_cache_capture_tokens", None) is not None:
             from hipengine.runtime.dms_prefill_cache import read_prefix
             nbytes = int(tokens) * source.config.num_kv_heads * source.config.head_dim * 2
@@ -17762,16 +18183,11 @@ class Qwen35GGUFResidentSession:
         target_hidden_chunk_sink=None,
         target_hidden_request_id=None,
     ) -> Qwen35GGUFNextTokenProbeResult | None:
-        """Two-pass layer-outer DMS prefill without a dense BF16 pool.
+        """Pack exact-budget layers in one trunk pass; keep host staging.
 
-        Pass 1 runs the deterministic layer-outer prefill with the shared BF16
-        oracle pair as each full-attention layer's transient K/V source and
-        captures the eviction decisions. The compact store is then sized
-        exactly from those decisions (the same rule as the dense-pool
-        finalize). Pass 2 re-runs the identical prefill and packs each
-        completed layer into the compact store before its oracle is reused.
-        The dense pool is never allocated; the trade is a second prefill
-        pass. Review target 4 (2026-09-07).
+        The exact retained count is score-independent, so reserve it before
+        compute and finalize each layer's scores while its oracle is live.
+        Other policies retain the decision sweep before layerwise packing.
         """
 
         from hipengine.kvcache.dms import build_dms_live_mask, create_dms_bf16_backend
@@ -17781,26 +18197,33 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("external DMS prefill owner is unavailable")
         tokens = int(len(token_ids))
         runtime = self.runtime or get_hip_runtime()
+        one_pass = (self.dms_decision_mode == "sidecar"
+                    and source.config.prefill_selection_mode == "exact_budget")
         try:
-            result = self._run_bulk_prefill_and_sample(
-                token_ids,
-                bulk_attention_mode=bulk_attention_mode,
-                return_logits=return_logits,
-                dms_capture=dms_capture,
-                record_gpu_stage_timings=record_gpu_stage_timings,
-            )
-            decisions = dms_capture.finalize(stream=0)
-            positions = np.arange(tokens, dtype=np.int32)
-            max_live = 1
-            for layer in range(source.config.num_layers):
-                for head in range(source.config.num_kv_heads):
-                    keep = build_dms_live_mask(
-                        decisions[:, layer, head][None, :],
-                        current_position=tokens - 1,
-                        window_size=source.config.window_size,
-                        positions=positions,
-                    )[0]
-                    max_live = max(max_live, int(np.count_nonzero(keep)))
+            if one_pass:
+                eligible = max(0, tokens - int(source.config.window_size) - 1)
+                ratio = int(source.config.target_compression_ratio)
+                max_live = max(1, tokens - eligible + (eligible + ratio - 1) // ratio)
+            else:
+                self._run_bulk_prefill_and_sample(
+                    token_ids,
+                    bulk_attention_mode=bulk_attention_mode,
+                    return_logits=return_logits,
+                    dms_capture=dms_capture,
+                    record_gpu_stage_timings=record_gpu_stage_timings,
+                )
+                decisions = dms_capture.finalize(stream=0)
+                positions = np.arange(tokens, dtype=np.int32)
+                max_live = 1
+                for layer in range(source.config.num_layers):
+                    for head in range(source.config.num_kv_heads):
+                        keep = build_dms_live_mask(
+                            decisions[:, layer, head][None, :],
+                            current_position=tokens - 1,
+                            window_size=source.config.window_size,
+                            positions=positions,
+                        )[0]
+                        max_live = max(max_live, int(np.count_nonzero(keep)))
             per_head = max_live + int(self.dms_max_new_tokens)
             backend_factory = self.dms_backend_factory or create_dms_bf16_backend
             backend = backend_factory(
@@ -17811,24 +18234,24 @@ class Qwen35GGUFResidentSession:
                 device_payloads=True,
                 device_backend=self.backend,
             )
-            request = SimpleNamespace(
-                request_id=0,
-                prompt_tokens=(),
-                max_new_tokens=int(self.dms_max_new_tokens),
-            )
-            claims = backend.estimate(
-                request,
-                None,
-                {
-                    "kind": "admission",
-                    "tokens": 0,
-                    "max_new_tokens": int(self.dms_max_new_tokens),
-                    "per_head_slots": per_head,
-                    "logical_prompt_tokens": tokens,
-                },
-            )
-            backend.reserve(claims)
             try:
+                request = SimpleNamespace(
+                    request_id=0,
+                    prompt_tokens=(),
+                    max_new_tokens=int(self.dms_max_new_tokens),
+                )
+                claims = backend.estimate(
+                    request,
+                    None,
+                    {
+                        "kind": "admission",
+                        "tokens": 0,
+                        "max_new_tokens": int(self.dms_max_new_tokens),
+                        "per_head_slots": per_head,
+                        "logical_prompt_tokens": tokens,
+                    },
+                )
+                backend.reserve(claims)
                 self._dms_layer_outer_pack = (backend, dms_capture, tokens)
                 self._dms_cache_layers = {}
                 try:
@@ -17837,27 +18260,48 @@ class Qwen35GGUFResidentSession:
                         bulk_attention_mode=bulk_attention_mode,
                         return_logits=return_logits,
                         dms_pack_sink=self,
+                        dms_capture=dms_capture if one_pass else None,
                         target_hidden_chunk_sink=target_hidden_chunk_sink,
                         target_hidden_request_id=target_hidden_request_id,
                         record_gpu_stage_timings=record_gpu_stage_timings,
                     )
                 finally:
                     self._dms_layer_outer_pack = None
-                backend.finalize_device_streaming_pack(
-                    0, eviction=decisions, tokens=tokens
-                )
+                if one_pass:
+                    decisions = dms_capture.finalize(stream=0)
                 if getattr(self, "_dms_cache_capture_tokens", None) is not None:
                     from hipengine.runtime.dms_prefill_cache import capture_cold_prefill
                     self._dms_cold_prefill = capture_cold_prefill(self, dms_capture, token_ids)
                 self._dms_cache_layers = {}
+                # Trunk execution, compact packing and cold-prefix capture
+                # are done. Move the published row off bulk storage before
+                # compact restoration. Normal sessions already own this row;
+                # a partially initialized owner needs only one BF16 row.
+                dms_capture.release_decision_inputs()
+                published = int(self._last_target_hidden_ptr)
+                if self._hidden_a is None and (
+                    _ptr_in_buffer(published, self._prefill_hidden_a)
+                    or _ptr_in_buffer(published, self._prefill_hidden_b)
+                ):
+                    hidden = malloc(int(self.runner.hidden_size) * 2, runtime=runtime)
+                    self._hidden_a = hidden
+                    self._buffers = (*self._buffers, hidden)
+                self._retain_published_target_hidden(runtime=runtime, stream=0)
+                self._release_bulk_prefill_workspace(runtime=runtime)
+                self._release_dms_prefill_oracle()
+                # Finalization reads every layer and restores staged payloads.
+                # It must follow the last use of bulk storage and the oracle.
+                backend.finalize_device_streaming_pack(
+                    0, eviction=decisions, tokens=tokens
+                )
             except BaseException:
-                # Partial compact-store construction must not leak the
-                # partially built backend; the dense route is not involved.
+                # The backend stays locally owned until all cleanup succeeds.
                 try:
                     backend.close()
                 except Exception:  # noqa: BLE001 - cleanup best effort
                     pass
                 raise
+            backend.prefill_trunk_passes = 1 if one_pass else 2
             self._dms_backend = backend
             self.runner.__dict__["_dms_decode_owner"] = self
             return result
@@ -19221,10 +19665,18 @@ class Qwen35GGUFResidentSession:
                     # later instead of failing the whole request. A fixed 3 GiB
                     # reserve made a 40k context impossible on 24 GiB cards
                     # even when the model had ample post-load headroom.
+                    # The generator prices the plain allocations that follow
+                    # pool creation; the fixed reserve is the fallback.
+                    execution_reserve = getattr(self, "kv_pool_execution_reserve_bytes", None)
+                    pool_reserve = (
+                        _GGUF_KV_POOL_TRANSIENT_RESERVE_BYTES
+                        if execution_reserve is None
+                        else max(0, int(execution_reserve))
+                    )
                     decision = price_memory_admission(
                         free_bytes=int(free_bytes),
                         consumers=(pool_consumer,),
-                        reserve_bytes=_GGUF_KV_POOL_TRANSIENT_RESERVE_BYTES,
+                        reserve_bytes=pool_reserve,
                     )
                     available = int(max(0, decision.available_bytes))
                     max_pages = available // page_bytes
@@ -19240,7 +19692,7 @@ class Qwen35GGUFResidentSession:
                                         _admission_bytes_for_pages(required_context_pages),
                                     ),
                                 ),
-                                reserve_bytes=_GGUF_KV_POOL_TRANSIENT_RESERVE_BYTES,
+                                reserve_bytes=pool_reserve,
                             )
                         )
                     # Leave automatic budget for demand-grown execution KV;
@@ -20906,7 +21358,14 @@ class Qwen35GGUFResidentSession:
             if callable(getattr(packed_scratch, "retained_decode_kernel", None)):
                 mirror = (key_cache, value_cache)
             elif allow_direct_int8_prefill:
-                mirror = self._int8_prefill_oracle_cache_for_layer(layer_id)
+                # Packed rows address the oracle through the state's pages.
+                page_ids = tuple(getattr(packed_state, "page_ids", ()) or ())
+                mirror = self._int8_prefill_oracle_cache_for_layer(
+                    layer_id,
+                    min_positions=(
+                        (max(page_ids) + 1) * int(packed_state.block_size) if page_ids else 0
+                    ),
+                )
             else:
                 raise NotImplementedError(
                     "packed AR direct INT8 attention is not admitted without a bounded BF16 mirror"
@@ -20932,23 +21391,27 @@ class Qwen35GGUFResidentSession:
             int8_kv_value_bf16=bool(packed_state.kv_layout.int8_kv_value_bf16),
         )
 
-    def _int8_prefill_oracle_capacity_positions(self) -> int:
-        """Cover every physical page address visible through this session's table."""
+    def _int8_prefill_oracle_capacity_positions(self, *, min_positions: int = 0) -> int:
+        """Rows one oracle pair must cover: the session's logical positions.
+
+        Every slot-local and bulk consumer addresses the transient oracle by
+        logical position (``int8_direct`` slots never rebase it onto the
+        request's physical pages). Only the packed non-slot-local route reads
+        it through ``packed_state.page_ids``; that caller passes the page range
+        it addresses as ``min_positions`` instead of every session paying for
+        the whole backing pool.
+        """
 
         if self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
-        positions = int(self.scratch.max_positions)
-        allocation = self._device_kv_allocation
-        backing = None if allocation is None else allocation.backing
-        backing_pages = int(getattr(backing, "pages", 0) or 0)
-        if backing_pages > 0:
-            positions = max(
-                positions,
-                backing_pages * int(self.scratch.block_size),
-            )
-        return positions
+        return max(int(self.scratch.max_positions), int(min_positions))
 
-    def _int8_prefill_oracle_cache_for_layer(self, layer_id: int) -> tuple[DeviceBuffer, DeviceBuffer]:
+    def _int8_prefill_oracle_cache_for_layer(
+        self,
+        layer_id: int,
+        *,
+        min_positions: int = 0,
+    ) -> tuple[DeviceBuffer, DeviceBuffer]:
         """Return the planned BF16 oracle owner for INT8-retained prefill.
 
         Chunk-outer bulk prefill revisits each layer once per prompt chunk, so
@@ -20976,19 +21439,30 @@ class Qwen35GGUFResidentSession:
             and not bool(getattr(self, "_int8_prefill_oracle_per_layer", False))
             else layer
         )
-        cached = self._int8_prefill_oracle_buffers.get(cache_key)
-        if cached is not None:
-            return cached
         cfg = self.runner.weights.config
         nbytes = (
-            self._int8_prefill_oracle_capacity_positions()
+            self._int8_prefill_oracle_capacity_positions(min_positions=min_positions)
             * int(cfg.head_count_kv)
             * int(cfg.key_length)
             * DType.BF16.itemsize
         )
+        cached = self._int8_prefill_oracle_buffers.get(cache_key)
+        if cached is not None and int(cached[0].nbytes) >= nbytes:
+            return cached
         runtime = self.runtime or get_hip_runtime()
         key_cache = malloc(nbytes, runtime=runtime)
-        value_cache = malloc(nbytes, runtime=runtime)
+        try:
+            value_cache = malloc(nbytes, runtime=runtime)
+        except BaseException:
+            free(key_cache, runtime=runtime)
+            raise
+        if cached is not None:
+            # Growth keeps earlier chunks' rows at the same addresses.
+            runtime.device_synchronize()
+            for new, old in zip((key_cache, value_cache), cached, strict=True):
+                runtime.memcpy(new.ptr, old.ptr, int(old.nbytes), HipMemcpyKind.DEVICE_TO_DEVICE)
+            for old in reversed(cached):
+                free(old, runtime=runtime)
         cached = (key_cache, value_cache)
         self._int8_prefill_oracle_buffers[cache_key] = cached
         return cached
@@ -21760,8 +22234,8 @@ class Qwen35GGUFResidentSession:
                     and self.dms_prefill_mode == "layer_outer"
                 ):
                     assert isinstance(dms_capture, _ExternalDMSDevicePrefillCollector)
-                    # The layer-outer route owns its own two-pass orchestration
-                    # (decision sweep + per-layer pack); no dense pool exists.
+                    # This route owns layer-local collection and packing;
+                    # no dense pool exists.
                     return self._prefill_layer_outer_dms(
                         dms_capture,
                         token_ids,
@@ -21871,8 +22345,6 @@ class Qwen35GGUFResidentSession:
     ) -> Qwen35GGUFNextTokenProbeResult | None:
         if self.runner is None or self.runner.weights is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
-        if dms_pack_sink is not None and dms_capture is not None:
-            raise ValueError("DMS layer-outer pack pass cannot also capture decisions")
         if self._prefill_token_buf is None or self._prefill_hidden_a is None or self._prefill_hidden_b is None:
             raise RuntimeError("GGUF resident bulk prefill buffers are closed")
         if self._bulk_prefill_scratch is None:
@@ -22000,7 +22472,19 @@ class Qwen35GGUFResidentSession:
         gpu_stage_recorder.mark("prefill_reset")
         if recorder is not None:
             recorder.complete(reset_sequence, stream=stream)
-        alloc_capacity = self._prefill_hidden_a.nbytes // (self.runner.hidden_size * 2)
+        # Storage, then route. The executor choice below stays a lifetime-plan
+        # decision, so a plan that needs full-prompt hidden ownership grows the
+        # owner's workspace to this prompt before the decision is read; a plan
+        # whose chunk-sized storage already covers this prompt keeps its
+        # chunk-outer route exactly as before. Growing here (rather than at
+        # construction) is what lets a deferred-KV serving owner hold chunk-sized
+        # hidden planes until a full-prompt request actually arrives.
+        alloc_capacity = self._ensure_bulk_prefill_hidden_capacity(
+            rows,
+            runtime=runtime,
+            consumer="scalar bulk prefill",
+            target_hidden_chunk_sink=target_hidden_chunk_sink,
+        )
         chunk_outer = alloc_capacity < rows
         lifetime_plan = getattr(self, "_int8_prefill_lifetime_plan", None)
         if (
@@ -25630,6 +26114,19 @@ class Qwen35GGUFResidentSession:
             )
         if self._prefill_token_buf is None or self._prefill_hidden_a is None or self._prefill_hidden_b is None:
             raise RuntimeError("GGUF resident packed prefill buffers are closed")
+        # The plan above is the executor decision; this is the storage check.
+        # Every round writes its rows at a full-prompt offset in the owner's
+        # hidden/token planes, so the workspace must hold the combined prompt
+        # before the first embedding launch. Growth is monotonic and owner-wide.
+        hidden_capacity_rows = self._ensure_bulk_prefill_hidden_capacity(
+            total_rows,
+            runtime=self.runtime or get_hip_runtime(),
+            consumer="layer-outer packed prefill",
+        )
+        if hidden_capacity_rows < total_rows:
+            raise NotImplementedError(
+                "layer-outer packed prefill hidden capacity is too small for the prompt"
+            )
         kv_layout = self._packed_ar_kv_layout_for_sessions(
             session_tuple,
             allow_direct_int8_prefill=True,
@@ -25852,8 +26349,17 @@ class Qwen35GGUFResidentSession:
         state.next_layer = layer_end
         # P6b: the shared workspace may have been reused by interleaved decode
         # (or another prefill) since the last segment, so the suspended state
-        # is copied back before the layer loop reads it.
+        # is copied back before the layer loop reads it. The checkpoint owns
+        # ``state.total_rows`` hidden rows: restore truncates to the live
+        # buffer, so the owner's storage must hold them first, or a segment
+        # resumed after a release/re-acquire would silently restore a partial
+        # plane set.
         if state.scratch is not None:
+            self._ensure_bulk_prefill_hidden_capacity(
+                int(state.total_rows),
+                runtime=runtime,
+                consumer="resumable layer-outer prefill",
+            )
             state.scratch.restore(
                 session=self,
                 packed_state=packed_state,
@@ -28827,6 +29333,10 @@ class Qwen35GGUFResidentSession:
             charge_token = getattr(self._packed_verify_state, "resident_charge_token", None)
             if charge_token is not None:
                 charge_pool.release_private_workspace(charge_token)
+            growth_pool = getattr(self._packed_verify_state, "growth_lease_pool", None)
+            growth_key = getattr(self._packed_verify_state, "growth_lease_key", None)
+            if growth_key is not None:
+                growth_pool.release_workspace(growth_key)
         self._packed_verify_state = None
         self._packed_verify_session_ids = ()
         self._packed_verify_max_written_positions = ()
@@ -35114,6 +35624,104 @@ def _full_stack_scratch_plan(
     )
 
 
+class _GGUFSizingRuntime:
+    """Device stand-in that hands out disjoint fake addresses and counts bytes.
+
+    Lets the capacity model run a real allocator's sizing code without a GPU:
+    every ``malloc`` is recorded, and data movement is a no-op.
+    """
+
+    def __init__(self) -> None:
+        self._next_ptr = 0x1000_0000
+        self.allocated_bytes = 0
+
+    def malloc(self, nbytes: int) -> int:
+        ptr = self._next_ptr
+        self._next_ptr += ((int(nbytes) + 255) // 256) * 256 + 256
+        self.allocated_bytes += int(nbytes)
+        return ptr
+
+    def free(self, ptr: int) -> None:
+        return None
+
+    def __getattr__(self, name: str):
+        # memcpy/memset and their async forms: sizing never moves data.
+        if name.startswith(("memcpy", "memset", "stream_", "device_synchronize")):
+            return lambda *args, **kwargs: None
+        raise AttributeError(name)
+
+
+_GGUF_PREFILL_SCRATCH_SIZE_CACHE: dict[tuple, int] = {}
+
+
+def _gguf_prefill_scratch_nbytes(
+    runner: object,
+    *,
+    rows: int,
+    capacity: int,
+    segments: int = 1,
+) -> int:
+    """Device bytes ``_GGUFFullAttentionPrefillScratch.allocate`` would take.
+
+    Measured by running the allocator against ``_GGUFSizingRuntime``. The
+    footprint is affine in ``capacity`` (block tables, rope tables and split
+    partials scale with it, everything else with ``rows``), so two sizing runs
+    give the exact line and capacity bisection never builds a rope table per
+    candidate.
+    """
+
+    rows = int(rows)
+    segments = max(1, int(segments))
+    capacity = max(rows, int(capacity))
+    low = max(rows, 1024)
+    high = low + 4096
+
+    def measure(at_capacity: int) -> int:
+        key = (id(runner), rows, int(at_capacity), segments)
+        cached = _GGUF_PREFILL_SCRATCH_SIZE_CACHE.get(key)
+        if cached is not None:
+            return cached
+        sizing = _GGUFSizingRuntime()
+        scratch = _GGUFFullAttentionPrefillScratch.allocate(
+            runner,
+            rows=rows,
+            capacity=int(at_capacity),
+            allocate_kv_cache=False,
+            segments=segments,
+            runtime=sizing,
+        )
+        # Balance the process-wide allocation accounting the fake buffers touched.
+        for buffer in reversed(tuple(scratch.buffers)):
+            free(buffer, runtime=sizing)
+        _GGUF_PREFILL_SCRATCH_SIZE_CACHE[key] = int(sizing.allocated_bytes)
+        return int(sizing.allocated_bytes)
+
+    base = measure(low)
+    if capacity <= low:
+        return base
+    slope_bytes = measure(high) - base
+    return base + (slope_bytes * (capacity - low) + (high - low) - 1) // (high - low)
+
+
+def _gguf_packed_state_linear_bytes(runner: object, *, slot_count: int) -> int:
+    """Conv/recurrent state bytes ``_GGUFPackedTargetState.allocate`` pins."""
+
+    cfg = runner.weights.config
+    conv = int(runner.linear_qkv_width) * int(cfg.ssm_conv_kernel) * DType.FP32.itemsize
+    recurrent = (
+        int(cfg.ssm_time_step_rank)
+        * int(cfg.ssm_state_size)
+        * int(runner.ssm_value_dim)
+        * (
+            DType.FP16.itemsize
+            if bool(getattr(runner, "fp16_recurrent_state", False))
+            else DType.FP32.itemsize
+        )
+    )
+    linear_layers = sum(1 for layer_type in cfg.layer_types if layer_type == LINEAR_ATTENTION)
+    return int(slot_count) * linear_layers * (conv + recurrent)
+
+
 # Default transient coefficients for the packed slot-local server prefill route.
 #
 # The packed route materialises a BF16 full-prompt K/V image (the "oracle") for
@@ -35148,13 +35756,19 @@ class Qwen35GGUFResidentBreakdown:
     transient_fixed_bytes: int
     transient_context_bytes: int
     private_workspace_bytes: int = 0
+    # Prefill/packed execution scratch allocated after the free-memory reading
+    # (bulk prefill scratch, packed verify state and scratch).
+    prefill_workspace_bytes: int = 0
+    # Speculative draft providers and the target's verify state rows.
+    speculative_bytes: int = 0
 
     @property
     def retained_bytes(self) -> int:
         """Retained bytes live for the whole session at this context."""
 
         return (self.scratch_bytes + self.kv_pool_bytes + self.workspace_lease_bytes
-                + self.private_workspace_bytes)
+                + self.private_workspace_bytes + self.prefill_workspace_bytes
+                + self.speculative_bytes)
 
     @property
     def transient_bytes(self) -> int:
@@ -35181,6 +35795,8 @@ class Qwen35GGUFResidentBreakdown:
             "kv_pool_bytes": self.kv_pool_bytes,
             "workspace_lease_bytes": self.workspace_lease_bytes,
             "private_workspace_bytes": self.private_workspace_bytes,
+            "prefill_workspace_bytes": self.prefill_workspace_bytes,
+            "speculative_bytes": self.speculative_bytes,
             "transient_fixed_bytes": self.transient_fixed_bytes,
             "transient_context_bytes": self.transient_context_bytes,
             "retained_bytes": self.retained_bytes,
@@ -35223,6 +35839,8 @@ class Qwen35GGUFKVCapacityEstimate:
     int8_kv_no_mirror_qualified: bool
     workspace_lease_needed: bool
     private_workspace_bytes: int = 0
+    prefill_workspace_bytes: int = 0
+    speculative_bytes: int = 0
 
     @property
     def fits_requested(self) -> bool:
@@ -35248,7 +35866,13 @@ class Qwen35GGUFKVCapacityEstimate:
 
     @property
     def requested_context_overhead_bytes(self) -> int:
-        return self.scratch_bytes + self.workspace_lease_bytes + self.private_workspace_bytes
+        return (
+            self.scratch_bytes
+            + self.workspace_lease_bytes
+            + self.private_workspace_bytes
+            + self.prefill_workspace_bytes
+            + self.speculative_bytes
+        )
 
     def to_json_dict(self) -> dict[str, object]:
         return {
@@ -35262,6 +35886,8 @@ class Qwen35GGUFKVCapacityEstimate:
             "retained_bytes": self.retained_bytes,
             "transient_bytes": self.transient_bytes,
             "private_workspace_bytes": self.private_workspace_bytes,
+            "prefill_workspace_bytes": self.prefill_workspace_bytes,
+            "speculative_bytes": self.speculative_bytes,
             "requested_total_bytes": self.requested_total_bytes,
             "marginal_bytes_per_token": self.marginal_bytes_per_token,
             "fixed_bytes": self.fixed_bytes,
@@ -35308,6 +35934,12 @@ def qwen35_gguf_resident_breakdown(
     transient_bytes_per_token: int = _GGUF_TRANSIENT_BYTES_PER_TOKEN_DEFAULT,
     transient_fixed_bytes: int = _GGUF_TRANSIENT_FIXED_BYTES_DEFAULT,
     block_size: int = 256,
+    kv_pool_floor_pages: int = 0,
+    private_workspace_slots: int | None = None,
+    transient_bytes_resolver: Callable[[int], int] | None = None,
+    prefill_workspace_bytes_resolver: Callable[[int], int] | None = None,
+    speculative_bytes_resolver: Callable[[int], int] | None = None,
+    kv_request_slots: int | None = None,
 ) -> Qwen35GGUFResidentBreakdown:
     """Price one resident GGUF server configuration at a declared context.
 
@@ -35321,6 +35953,18 @@ def qwen35_gguf_resident_breakdown(
     ``int8_bf16_layer_indices_resolver`` lets the caller resolve per-layer BF16
     selection from the *candidate* context, which is what the session does. It
     is called with the block-rounded ``max_positions`` of the priced context.
+
+    The server route adds terms the session allocates after the free-memory
+    reading: ``kv_pool_floor_pages`` is the pool's idle commit, which a short
+    context still pays; ``private_workspace_slots`` prices full-context packed
+    planes for that many long requests (default: every lease slot);
+    the resolvers, each called with ``max_positions``, return the route's
+    prefill transient (overriding the flat ``transient_bytes_per_token``),
+    the prefill/packed execution scratch, and the speculative draft footprint.
+    ``kv_request_slots`` prices request KV for fewer requests than
+    ``max_batch_size`` sizes the resident scratch for: a deferred-KV server
+    keeps per-slot recurrent state for its whole serving capacity while its
+    elastic pool is priced for one full-context request.
     """
 
     block = int(block_size)
@@ -35363,18 +36007,32 @@ def qwen35_gguf_resident_breakdown(
     )
     page_bytes = _qwen35_gguf_kv_page_bytes(cfg, layout)
     slots = max(1, int(max_batch_size))
+    # ``kv_request_slots=0``: the scratch plan already owns the request KV
+    # (DMS sessions allocate their own dense prefill pool; there is no global
+    # pool to price on top of it).
+    kv_slots = slots if kv_request_slots is None else max(0, int(kv_request_slots))
     pages_per_request = max(1, (plan.max_positions + block - 1) // block)
-    kv_pool_pages = slots * pages_per_request
-    lease_slots = slots if workspace_lease_slots is None else max(1, int(workspace_lease_slots))
+    kv_pool_pages = max(kv_slots * pages_per_request, max(0, int(kv_pool_floor_pages)))
+    lease_slots = (
+        max(1, kv_slots) if workspace_lease_slots is None else max(1, int(workspace_lease_slots))
+    )
     floor_pages = (_PACKED_VERIFY_MIN_MAX_SEQUENCE + block - 1) // block
     workspace_lease_pages = lease_slots * floor_pages if workspace_lease_needed else 0
     # Private growth cannot reuse the undersized pinned lease. Price both
     # holdings, rather than making auto-context optimistic after bounding it.
+    private_slots = (
+        lease_slots if private_workspace_slots is None else max(0, int(private_workspace_slots))
+    )
     private_workspace_bytes = (
-        lease_slots * pages_per_request * page_bytes
+        private_slots * pages_per_request * page_bytes
         if workspace_lease_needed and pages_per_request > floor_pages else 0
     )
     context = int(context_tokens)
+    transient_context_bytes = (
+        max(0, int(transient_bytes_resolver(int(plan.max_positions))))
+        if transient_bytes_resolver is not None
+        else max(0, int(transient_bytes_per_token)) * context
+    )
     return Qwen35GGUFResidentBreakdown(
         context_tokens=context,
         max_positions=plan.max_positions,
@@ -35390,7 +36048,17 @@ def qwen35_gguf_resident_breakdown(
         workspace_lease_bytes=workspace_lease_pages * page_bytes,
         private_workspace_bytes=private_workspace_bytes,
         transient_fixed_bytes=max(0, int(transient_fixed_bytes)),
-        transient_context_bytes=max(0, int(transient_bytes_per_token)) * context,
+        transient_context_bytes=transient_context_bytes,
+        prefill_workspace_bytes=(
+            0
+            if prefill_workspace_bytes_resolver is None
+            else max(0, int(prefill_workspace_bytes_resolver(int(plan.max_positions))))
+        ),
+        speculative_bytes=(
+            0
+            if speculative_bytes_resolver is None
+            else max(0, int(speculative_bytes_resolver(int(plan.max_positions))))
+        ),
     )
 
 
@@ -35447,6 +36115,12 @@ def estimate_qwen35_gguf_kv_capacity(
     transient_bytes_per_token: int = _GGUF_TRANSIENT_BYTES_PER_TOKEN_DEFAULT,
     transient_fixed_bytes: int = _GGUF_TRANSIENT_FIXED_BYTES_DEFAULT,
     block_size: int = 256,
+    kv_pool_floor_pages: int = 0,
+    private_workspace_slots: int | None = None,
+    transient_bytes_resolver: Callable[[int], int] | None = None,
+    prefill_workspace_bytes_resolver: Callable[[int], int] | None = None,
+    speculative_bytes_resolver: Callable[[int], int] | None = None,
+    kv_request_slots: int | None = None,
 ) -> Qwen35GGUFKVCapacityEstimate:
     """Estimate the largest resident context that fits in ``available_bytes``.
 
@@ -35497,6 +36171,12 @@ def estimate_qwen35_gguf_kv_capacity(
             transient_bytes_per_token=transient_bytes_per_token,
             transient_fixed_bytes=transient_fixed_bytes,
             block_size=block,
+            kv_pool_floor_pages=kv_pool_floor_pages,
+            private_workspace_slots=private_workspace_slots,
+            transient_bytes_resolver=transient_bytes_resolver,
+            prefill_workspace_bytes_resolver=prefill_workspace_bytes_resolver,
+            speculative_bytes_resolver=speculative_bytes_resolver,
+            kv_request_slots=kv_request_slots,
         )
 
     def fits(context: int) -> bool:
@@ -35575,6 +36255,8 @@ def estimate_qwen35_gguf_kv_capacity(
         int8_kv_no_mirror_qualified=bool(int8_kv_no_mirror_qualified),
         workspace_lease_needed=bool(workspace_lease_needed),
         private_workspace_bytes=requested_breakdown.private_workspace_bytes,
+        prefill_workspace_bytes=requested_breakdown.prefill_workspace_bytes,
+        speculative_bytes=requested_breakdown.speculative_bytes,
     )
 
 

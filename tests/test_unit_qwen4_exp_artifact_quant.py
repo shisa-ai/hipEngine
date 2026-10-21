@@ -60,7 +60,10 @@ def test_explicit_quant_does_not_infer_or_override(monkeypatch):
 
 def _assert_auto_and_explicit_ud_select_identical_profile_manifest(monkeypatch):
     from hipengine.generation.qwen4_exp_profiles import register_qwen4_exp_gfx1151_profiles
+    from hipengine.kernels import backends
 
+    # This fixture compares profile selection without executing device work.
+    monkeypatch.setattr(backends, 'selected_device_arches', lambda **kwargs: ('gfx1151',))
     register_qwen4_exp_gfx1151_profiles()
     first, _ = _shards(monkeypatch)
     engines = [LLM('/renamed/model.gguf', backend='hip_gfx1151', quant=q)

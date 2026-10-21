@@ -252,3 +252,38 @@ def test_schema_v2_rejects_safetensors_dtype_mismatch(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="tensor dtype"):
         load_dms_retrofit_config(model, metadata_path=metadata)
+
+
+def test_sidecar_resolves_beside_a_symlinked_hugging_face_snapshot(tmp_path: Path) -> None:
+    """A hub snapshot links every file into ``blobs/``; the sidecar is beside the link."""
+
+    model, sidecar, metadata, payload = _fixture(tmp_path)
+    blobs = tmp_path / "blobs"
+    snapshot = tmp_path / "snapshots" / "rev"
+    blobs.mkdir()
+    snapshot.mkdir(parents=True)
+    (blobs / "aaaa").write_bytes(metadata.read_bytes())
+    (blobs / "bbbb").write_bytes(sidecar.read_bytes())
+    (snapshot / "dms_metadata.json").symlink_to(blobs / "aaaa")
+    (snapshot / sidecar.name).symlink_to(blobs / "bbbb")
+
+    config = load_dms_retrofit_config(
+        model,
+        metadata_path=snapshot / "dms_metadata.json",
+        expected_artifact_fingerprint=str(payload["artifact_fingerprint"]),
+        expected_physical_layer_ids=_PHYSICAL_LAYERS,
+    )
+
+    assert config.sidecar.resolved_path == str((blobs / "bbbb").resolve())
+
+
+def test_sidecar_path_may_not_escape_the_metadata_directory(tmp_path: Path) -> None:
+    model, _sidecar, metadata, payload = _fixture(tmp_path)
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    escaped = copy.deepcopy(payload)
+    escaped["sidecar"]["path"] = "../sidecar.safetensors"
+    _write_metadata(nested / "dms_metadata.json", escaped)
+
+    with pytest.raises(ValueError, match="escapes its metadata directory"):
+        load_dms_retrofit_config(model, metadata_path=nested / "dms_metadata.json")

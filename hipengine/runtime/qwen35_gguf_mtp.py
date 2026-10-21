@@ -164,6 +164,7 @@ class _StreamingNextNPromptSink:
         transform_hidden_rows: Callable[[int, int, int], int] | None = None,
         prefix_capture: Callable[[int, int], None] | None = None,
         capture_boundary: int = 0,
+        max_chunk_rows: int = 0,
     ) -> None:
         tokens = tuple(int(token) for token in prompt_tokens)
         if not tokens and not (int(start_position) > 0 and initial_hidden is not None):
@@ -193,6 +194,9 @@ class _StreamingNextNPromptSink:
         self.runtime = runtime
         self.checkpoint = checkpoint
         self.transform_hidden_rows = transform_hidden_rows
+        if int(max_chunk_rows) < 0:
+            raise ValueError("streaming NextN chunk row limit must be non-negative")
+        self.max_chunk_rows = int(max_chunk_rows)
         # Called once, when a consumed chunk brings the provider cursor to the
         # request's block-aligned prefix boundary, with (prefix_len,
         # boundary_hidden_ptr): the row this chunk ends on is the row the first
@@ -295,6 +299,17 @@ class _StreamingNextNPromptSink:
             self._stream = stream
         elif stream != self._stream:
             raise RuntimeError("streaming NextN prompt chunks must use one stream")
+        if self.max_chunk_rows and count > self.max_chunk_rows:
+            # Keep transforms bounded even when layer-outer prefill hands off
+            # the whole prompt. The carried row preserves the shifted-hidden
+            # seam, and all work stays ordered on the same stream.
+            for offset in range(0, count, self.max_chunk_rows):
+                self.consume(
+                    request_id=request_id, chunk_start=start + offset,
+                    hidden_ptr=int(hidden_ptr) + offset * self.hidden_nbytes,
+                    rows=min(self.max_chunk_rows, count - offset), stream=stream,
+                )
+            return
         if self.capture_boundaries:
             absolute_start = self.start_position + start
             absolute_end = absolute_start + count
@@ -1110,6 +1125,7 @@ class _DMSStoreJournal:
         self.initial_state_only = False
         self._request_id: int | None = None
         self._initial: Any | None = None
+        self._append_initial: Any | None = None
         self._rows: dict[int, Any] = {}
         self._final_row: int | None = None
         self.closed = False
@@ -1151,9 +1167,17 @@ class _DMSStoreJournal:
         if self._initial is None:
             return
         self.backend.commit(self._initial, None)
+        self._clear_transaction()
+
+    def _clear_transaction(self) -> None:
         self._initial = None
+        self._append_initial = None
         self._rows.clear()
         self._final_row = None
+
+    def finish_transaction(self) -> None:
+        """Discard undo only after the enclosing verifier/scheduler commit."""
+        self._retire_transaction()
 
     # -- journal interface -------------------------------------------------
 
@@ -1172,7 +1196,18 @@ class _DMSStoreJournal:
         stream: int = 0,
         force_consumer_state: bool = False,
     ) -> None:
-        self._initial = self._snapshot()
+        if self._initial is not None:
+            raise RuntimeError("compact DMS journal already has an open cycle")
+        lease = self._lease_row().lease
+        state = self.backend.state_for_request(lease.request_id)
+        self._append_initial = self.backend.begin_append_transaction(
+            lease.request_id,
+            start_position=int(getattr(self.target, "position", state.logical_tokens)),
+            max_rows=self.max_rows,
+        )
+        self._initial = (
+            self._append_initial if self._append_initial is not None else self._snapshot()
+        )
         self._rows.clear()
         self._final_row = None
         self.resident.capture_initial(
@@ -1190,22 +1225,26 @@ class _DMSStoreJournal:
         if self._final_row is not None:
             raise RuntimeError("cannot capture another row after the final DMS row")
         self.resident.capture_row(row, stream=stream)
-        self._rows[int(row)] = self._snapshot()
+        self._rows[int(row)] = (
+            self.backend.checkpoint_append_transaction(self._append_initial)
+            if self._append_initial is not None else self._snapshot()
+        )
 
     def capture_final_row(self, row: int, *, stream: int = 0) -> None:
         """Keep final KV in place; accept-summary evaluation does not mutate it."""
         if self._initial is None or self._final_row is not None:
             raise RuntimeError("final DMS row requires an open unfinished cycle")
         self.resident.capture_row(row, stream=stream)
+        if self._append_initial is not None:
+            self.backend.checkpoint_append_transaction(self._append_initial)
         self._final_row = int(row)
 
     def restore_initial(self, *, stream: int = 0) -> None:
         if self._initial is not None:
             self.backend.rollback(self._initial)
-            self._initial = None
-        self._rows.clear()
-        self._final_row = None
+        # Keep the image retryable if restoring consumer state fails.
         self.resident.restore_initial(stream=stream)
+        self._clear_transaction()
 
     def restore_row(self, row: int, *, stream: int = 0) -> None:
         self._restore_store_row(int(row))
@@ -1217,7 +1256,6 @@ class _DMSStoreJournal:
 
     def _restore_store_row(self, row: int) -> None:
         if row == self._final_row:
-            self._retire_transaction()
             return
         snapshot = self._rows.get(row)
         if snapshot is None:
@@ -1226,7 +1264,9 @@ class _DMSStoreJournal:
                 f"captured rows={sorted(self._rows)}"
             )
         self.backend.rollback(snapshot)
-        self._retire_transaction()
+        # The initial image remains live until finish_transaction(), so an
+        # exception in resident restore, position publication or scheduler
+        # commit can still roll back the entire cycle.
 
     def close(self) -> None:
         """Release the journal; an open cycle is rolled back, never dropped.
@@ -1240,12 +1280,10 @@ class _DMSStoreJournal:
 
         if self.closed:
             return
-        self.closed = True
         if self._initial is not None:
-            self.backend.rollback(self._initial)
-            self._initial = None
-            self._rows.clear()
+            self.restore_initial()
         self.resident.close()
+        self.closed = True
 
 
 class Qwen35GGUFTransactionalVerifier:
@@ -1930,6 +1968,9 @@ class Qwen35GGUFTransactionalVerifier:
 
     def finish(self, prepared: Qwen35GGUFPreparedVerify) -> None:
         self._require_open(prepared)
+        finish_transaction = getattr(self.journal, "finish_transaction", None)
+        if finish_transaction is not None:
+            finish_transaction()
         self._prepared = None
 
     def close(self) -> None:

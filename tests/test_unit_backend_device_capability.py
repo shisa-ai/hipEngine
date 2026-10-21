@@ -475,6 +475,8 @@ def test_process_env_is_configured_before_hip_is_loaded(
     from hipengine.kernels import backends
 
     monkeypatch.delenv("GPU_MAX_HW_QUEUES", raising=False)
+    # The mocked inventory, not a launcher cross-compile hint, owns this case.
+    monkeypatch.delenv("HIPENGINE_HIP_ARCH", raising=False)
     monkeypatch.setattr(backends, "detect_hip_target_arches", lambda: ("gfx1151", "gfx1102"))
     events: list[object] = []
     real_configure = backends.configure_hip_process_environment

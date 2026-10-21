@@ -1567,10 +1567,18 @@ def test_gguf_packed_single_row_prefill_uses_transient_oracle_without_persistent
         full_cache=lambda layer_id: (retained_key, retained_value),
         full_scale_metadata=lambda layer_id: metadata,
         full_bf16_mirror_cache=lambda layer_id: None,
+        page_ids=(3, 7),
+        block_size=256,
     )
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
     owner.use_iq_dense_mmq = False
-    owner._int8_prefill_oracle_cache_for_layer = lambda layer_id: (oracle_key, oracle_value)
+    requested_positions: list[int] = []
+
+    def oracle(layer_id, *, min_positions=0):
+        requested_positions.append(int(min_positions))
+        return (oracle_key, oracle_value)
+
+    owner._int8_prefill_oracle_cache_for_layer = oracle
     scratch = _DirectInt8PrefillScratch(
         append_spans=_DirectInt8PrefillSpans(kind="append_position"),
         prefill_spans=_DirectInt8PrefillSpans(kind="decode_context"),
@@ -1587,6 +1595,9 @@ def test_gguf_packed_single_row_prefill_uses_transient_oracle_without_persistent
     )
 
     assert (direct.key_cache, direct.value_cache) == (oracle_key, oracle_value)
+    # Packed rows address the oracle through the state's pages: cover up to
+    # the highest page id, not the whole backing pool.
+    assert requested_positions == [(7 + 1) * 256]
     assert (direct.retained_key_cache, direct.retained_value_cache) == (
         retained_key,
         retained_value,
@@ -1598,7 +1609,7 @@ def test_gguf_packed_single_row_prefill_uses_transient_oracle_without_persistent
     assert direct.retained_decode_spans.storage_dtype == DType.INT8_PER_TOKEN_HEAD
     assert direct.retained_decode_spans.scale_metadata is metadata
 
-    owner._int8_prefill_oracle_cache_for_layer = lambda layer_id: pytest.fail(
+    owner._int8_prefill_oracle_cache_for_layer = lambda layer_id, **kwargs: pytest.fail(
         "direct decode must not allocate the transient BF16 prefill oracle"
     )
     decode = owner._packed_full_attention_scratch_for_layer(

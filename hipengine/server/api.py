@@ -6548,6 +6548,30 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "status": "failed",
                     "exception_type": type(exc).__name__,
                 }
+                # A declined speculative route is recoverable; an execution
+                # failure that closed the engine is not. Announcing "ready"
+                # over a closed engine turns every request into a 503.
+                mtp_smoke_health = _engine_service_health(engine)
+                if mtp_smoke_health is not None and not bool(
+                    mtp_smoke_health.get("accepting_requests", True)
+                ):
+                    _LOGGER.error(
+                        "WARMUP_SPECULATIVE_MTP: failed and closed the engine: %s", exc
+                    )
+                    fail_startup(
+                        "mtp_smoke",
+                        exc,
+                        guidance=(
+                            "Lower --max-context-tokens or --max-active-requests, "
+                            "or pass --speculative-mtp-serving off."
+                        ),
+                        timings={
+                            "engine_create_s": round(engine_create_s, 6),
+                            "resident_prepare_s": round(resident_prepare_s, 6),
+                            "warmup_s": round(warmup_s, 6),
+                            "mtp_smoke_s": round(mtp_smoke_s, 6),
+                        },
+                    )
                 _LOGGER.warning("WARMUP_SPECULATIVE_MTP: failed; serving continues", exc_info=True)
             else:
                 mtp_smoke_s = time.perf_counter() - mtp_smoke_started
@@ -12968,7 +12992,18 @@ def _log_kv_capacity_summary(engine: Any) -> None:
             _format_bytes(int(getattr(estimate, "usable_bytes", 0) or 0)),
             _format_bytes(int(getattr(estimate, "reserve_bytes", 0) or 0)),
         )
-        if model_max > 0 and not bool(getattr(estimate, "fits_model_max", True)):
+        if not bool(getattr(estimate, "fits_requested", True)):
+            _LOGGER.warning(
+                "KVCache: the requested context (%d tokens) is priced at %s but only %s is "
+                "usable; the capacity model fits %d tokens. Long prompts near the "
+                "requested context may fail. Lower --max-context-tokens or use "
+                "--kv-storage int8_per_token_head.",
+                int(getattr(estimate, "requested_context_tokens", 0) or 0),
+                _format_bytes(int(getattr(estimate, "requested_total_bytes", 0) or 0)),
+                _format_bytes(int(getattr(estimate, "usable_bytes", 0) or 0)),
+                int(getattr(estimate, "allocatable_context_tokens", 0) or 0),
+            )
+        elif model_max > 0 and not bool(getattr(estimate, "fits_model_max", True)):
             _LOGGER.warning(
                 "KVCache: the selected context (%d tokens) is the largest that fits in "
                 "%s free for %d resident slot(s); model_max_context_tokens=%d needs more "

@@ -4,9 +4,9 @@ hipEngine is a ROCm-native local inference engine built primarily for AMD
 Radeon GPUs. It pairs a small Python host with custom HIP kernels for torch-free
 model loading, generation, and OpenAI-compatible serving on supported hardware.
 
-**Current release: v0.8.0.** Adds Gemma 4 text inference and speculative decoding,
-and shared-batch Flash-Next serving with automatic MTP. See the [release
-notes](CHANGELOG.md#v080---2026-10-19) for scope and limitations.
+**Current release: v0.8.1.** Fixes GGUF serving startup and memory sizing on
+24 GB GPUs, and reduces compact-DMS prefill and speculative rollback overhead.
+See the [release notes](CHANGELOG.md#v081---2026-10-21) for scope and limitations.
 
 ## Why use hipEngine?
 
@@ -109,18 +109,17 @@ context** is a capacity limit, not a full-length prefill.
 
 ### Long context on a 24 GB GPU
 
-Qwen3.8-27B `Q4_K_M` can hold up to 232K tokens on a 24 GB `gfx1100` GPU
-using [DMS](https://arxiv.org/abs/2506.05345), a trained KV eviction policy. DMS
-INT8 agreed with BF16 more closely than the direct-INT8 route:
+Using a source checkout: [Qwen3.8-27B `Q4_K_M`](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/blob/65ca473/Qwen3.8-27B-Q4_K_M.gguf)
+on RX 7900 XTX, with `--max-active-requests 1`. Add the
+[DMS checkpoint](https://huggingface.co/shisa-ai/Qwen3.8-27B-Q4_K_M-DMS-W8192)
+for long context. Omit `--max-context-tokens` to let the server calculate the
+context from available GPU memory.
 
-| KV configuration | Max context | Top-1 agreement vs BF16 | Mean row-KL |
+| KV configuration | Auto context, MTP on | Auto context, MTP off | Manual context, MTP on |
 | --- | ---: | ---: | ---: |
-| BF16 KV | 40,960 | — | — |
-| DMS BF16 | 73,728 | — | — |
-| Direct-INT8 KV | 131,072 | 91.4% | 0.188 |
-| DMS INT8 | 232,448 | 100% | 0.001 |
-
-Direct-INT8 failed 9 of 11 quality prompts; use DMS INT8 for long context.
+| BF16 KV | 28,160 | 55,808 | — |
+| INT8 KV | 17,664 | 46,336 | — |
+| DMS INT8 | 110,592 | — | 131,072 |
 
 ### Prefix caching
 

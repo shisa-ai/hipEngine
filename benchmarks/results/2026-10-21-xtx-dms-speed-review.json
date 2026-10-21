@@ -1,0 +1,758 @@
+{
+  "schema_version": 1,
+  "kind": "dms_speed_recovery_attribution",
+  "status": "completed_diagnostic",
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 3,
+    "collected_at": "2026-10-21T04:07:22.044197+00:00",
+    "host_name": "epyc",
+    "repo_root": "/home/lhl/hipEngine",
+    "hipengine_commit": "8a6f4662927e0c98b8e1b5ec06c000a06d00f283",
+    "git_branch": "main",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": true,
+    "untracked_count": 1,
+    "dirty": true,
+    "dirty_paths": [],
+    "dirty_path_count": 0,
+    "untracked_paths": [
+      "worklog/entries/20261021T040416.583835Z-lhl-dms-speed-recovery-review-ed4770.md"
+    ],
+    "execution_affecting_dirty": false,
+    "execution_affecting_paths": [],
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "Radeon RX 7900 XTX",
+    "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+      "size_bytes": 17106773984,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [0, 8552862704, 17105725408],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "int8_per_token_head",
+    "command": [
+      "/home/lhl/mambaforge/envs/therock/bin/python3",
+      "/tmp/hipengine-dms-speed-review/run-profile.py"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "GPU_MAX_HW_QUEUES": null,
+      "HIPENGINE_BUILD_CACHE_ROOT": null,
+      "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+      "HIP_VISIBLE_DEVICES": "1",
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": null,
+    "timing_protocol": "instrumented nested host-wall method attribution, single request; explicit pre-shutdown counter dump",
+    "warmups": 0,
+    "repetitions": 1,
+    "profiler": null
+  },
+  "hardware": {
+    "host": "epyc",
+    "physical_gpu_index": 1,
+    "gpu": "Radeon RX 7900 XTX",
+    "total_device_bytes": 25753026560
+  },
+  "protocol": {
+    "surface": "public HTTP /v1/completions through instrumented server bootstrap",
+    "prompt_id": "code_merge_intervals",
+    "prompt_tokens": 16384,
+    "output_tokens": 64,
+    "output_cap": 64,
+    "context_tokens": 17408,
+    "concurrency": 1,
+    "profile": "production",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "int8_per_token_head",
+    "kv_scale_dtype": "fp32",
+    "dms_window": 8192,
+    "dms_prefill_selection": "exact_budget",
+    "mtp_candidate_budget": 3,
+    "prefix_cache": "off",
+    "driver_warmups": 0,
+    "requests": 1,
+    "server_startup_warmups": "outside retained counters; reset at final request prefill",
+    "instrumentation": "nested host-wall method timers and dms_device module copy counters, explicit SIGUSR1 dump after post-request readiness",
+    "methodology": "No altered outputs, arithmetic, retention, scheduling, or allocations. Wrappers add timing/counting overhead only. No GPU kernel profiling or in-request metrics polling."
+  },
+  "baseline": {
+    "artifact": "benchmarks/results/2026-10-21-xtx-16k-int8-mtp-dms-comparison.json",
+    "sha256": "ba95767aa0f1bc044fcabb4d6ea548a85b45f06261aca3a69390fda57fe4001c",
+    "execution_commit": "5633c93e0037153ff579257c8ac3512ac7156a7c",
+    "review_head": "8a6f4662927e0c98b8e1b5ec06c000a06d00f283",
+    "runtime_equivalence": "git diff --name-only 5633c93e0037153ff579257c8ac3512ac7156a7c..8a6f4662927e0c98b8e1b5ec06c000a06d00f283 contains only benchmark and worklog files"
+  },
+  "request": {
+    "label": "attribution",
+    "http_status": 200,
+    "usage": {
+      "prompt_tokens": 16384,
+      "completion_tokens": 64,
+      "total_tokens": 16448,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 42,
+        "rejected_prediction_tokens": 16
+      },
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reasons": [
+      "length"
+    ],
+    "ttft_seconds": 49.735313560813665,
+    "decode_seconds": 5.841406079009175,
+    "wall_seconds": 55.57826552353799,
+    "prefill_tokens_per_second": 329.4238806791984,
+    "decode_tokens_per_second": 10.785074543334286,
+    "text_sha256": "e39020c8a98ba4ad8beb462afaedc37d374cef9d52e343053590ffa9313e83c5",
+    "route": {
+      "effective_route": "speculative_mtp",
+      "decision_reason": "implemented_gguf_dense_int8_native_chain",
+      "mtp_used": true,
+      "speculative_cycles": 20,
+      "accepted_draft_tokens": 42,
+      "rejected_draft_tokens": 16,
+      "mtp_output_tokens": 62,
+      "ar_output_tokens": 2,
+      "mtp_coverage": 0.96875,
+      "fallback_event_counts": {
+        "no_provider": 1
+      },
+      "generated_ids": null
+    }
+  },
+  "generated_token_ids": [71093, 12305, 198, 727, 10562, 87682, 1494, 40798, 1590, 198, 262, 413, 524, 26126, 25, 198, 285, 460, 2958, 198, 1031, 262, 653, 15495, 26126, 539, 1151, 1406, 198, 262, 10300, 87682, 283, 10300, 1494, 40798, 11, 1328, 26612, 830, 25, 830, 58, 15, 2387, 198, 1031, 262, 25170, 283, 498, 27379, 87682, 58, 15, 4891, 198, 1031, 262, 364, 1428, 303, 10300, 87682],
+  "timing": {
+    "elapsed_ms": 55565.785,
+    "ttft_ms": 49722.917,
+    "backend_tokenize_ms": 0.0,
+    "backend_prompt_encode_ms": 0.0,
+    "backend_render_ms": 0.0,
+    "backend_admission_prepare_ms": 0.0,
+    "backend_prefill_ms": 48940.696,
+    "backend_prefill_chunk_count": 1.0,
+    "backend_request_total_ms": 54770.516,
+    "tokenize_ms": 0.0,
+    "prompt_encode_ms": 0.0,
+    "render_ms": 0.0,
+    "admission_prepare_ms": 0.0,
+    "prefill_ms": 48940.696,
+    "prefill_chunk_count": 1.0,
+    "request_total_ms": 54770.516,
+    "backend_mtp_cycles_count": 20.0,
+    "backend_mtp_generated_draft_tokens": 58.0,
+    "backend_mtp_accepted_draft_tokens": 42.0,
+    "backend_mtp_visible_output_tokens": 62.0,
+    "backend_mtp_ar_output_tokens": 1.0,
+    "backend_mtp_accept_per_draft": 0.7241379310344828,
+    "mtp_cycles_count": 20.0,
+    "mtp_generated_draft_tokens": 58.0,
+    "mtp_accepted_draft_tokens": 42.0,
+    "mtp_visible_output_tokens": 62.0,
+    "mtp_ar_output_tokens": 1.0,
+    "mtp_accept_per_draft": 0.7241379310344828,
+    "decode_elapsed_ms": 5841.468,
+    "decode_tokens_per_second": 10.785,
+    "backend_specdec2_mtp2_prompt_streaming": 1.0,
+    "backend_specdec2_mtp2_prompt_prime_rows": 16384.0,
+    "backend_specdec2_mtp2_prompt_reused_rows": 0.0,
+    "backend_specdec2_mtp2_prompt_carried_bytes": 10240.0,
+    "backend_specdec2_mtp2_cycles": 20.0,
+    "backend_specdec2_mtp2_proposal_ms": 145.72103694081306,
+    "backend_specdec2_mtp2_target_ms": 5265.800151,
+    "backend_specdec2_mtp2_provider_update_ms": 10.746428743004799,
+    "backend_specdec2_mtp2_accept_ms": 0.0,
+    "backend_specdec2_mtp2_target_readback_ms": 0.0,
+    "backend_specdec2_mtp2_accept_upload_ms": 0.0,
+    "backend_specdec2_mtp2_accept_tail_ms": 0.0,
+    "backend_specdec2_mtp2_accept_enqueue_ms": 0.0,
+    "backend_specdec2_mtp2_selected_commit_ms": 0.0,
+    "backend_specdec2_mtp2_candidate_readback_ms": 0.0,
+    "backend_specdec2_mtp2_k0_catchups": 1.0,
+    "backend_specdec2_mtp2_ngram_lookup_calls": 0.0,
+    "backend_specdec2_mtp2_ngram_lookup_hits": 0.0,
+    "backend_specdec2_mtp2_ngram_cycles": 0.0,
+    "backend_specdec2_mtp2_ngram_probed_tokens": 0.0,
+    "backend_specdec2_mtp2_ngram_accepted_tokens": 0.0,
+    "backend_specdec2_mtp2_recoverable_failures": 0.0,
+    "specdec2_mtp2_prompt_streaming": 1.0,
+    "specdec2_mtp2_prompt_prime_rows": 16384.0,
+    "specdec2_mtp2_prompt_reused_rows": 0.0,
+    "specdec2_mtp2_prompt_carried_bytes": 10240.0,
+    "specdec2_mtp2_cycles": 20.0,
+    "specdec2_mtp2_proposal_ms": 145.72103694081306,
+    "specdec2_mtp2_target_ms": 5265.800151,
+    "specdec2_mtp2_provider_update_ms": 10.746428743004799,
+    "specdec2_mtp2_accept_ms": 0.0,
+    "specdec2_mtp2_target_readback_ms": 0.0,
+    "specdec2_mtp2_accept_upload_ms": 0.0,
+    "specdec2_mtp2_accept_tail_ms": 0.0,
+    "specdec2_mtp2_accept_enqueue_ms": 0.0,
+    "specdec2_mtp2_selected_commit_ms": 0.0,
+    "specdec2_mtp2_candidate_readback_ms": 0.0,
+    "specdec2_mtp2_k0_catchups": 1.0,
+    "specdec2_mtp2_ngram_lookup_calls": 0.0,
+    "specdec2_mtp2_ngram_lookup_hits": 0.0,
+    "specdec2_mtp2_ngram_cycles": 0.0,
+    "specdec2_mtp2_ngram_probed_tokens": 0.0,
+    "specdec2_mtp2_ngram_accepted_tokens": 0.0,
+    "specdec2_mtp2_recoverable_failures": 0.0
+  },
+  "timing_scope": "choice",
+  "timing_owner": true,
+  "group_rows": 1,
+  "generation_shape": {
+    "route": "speculative_mtp",
+    "route_decision": {
+      "requested_route": "speculative_mtp",
+      "request_mode": "explicit",
+      "selected_route": "speculative_mtp",
+      "reason": "implemented_gguf_dense_int8_native_chain",
+      "k0_class": "not_k0",
+      "static_eligibility": {
+        "state": "speculative_capable",
+        "eligible": true,
+        "reason": "implemented_gguf_dense_int8_native_chain",
+        "packed_c1_target": false,
+        "max_candidate_count": 3,
+        "max_realized_group_rows": 4,
+        "automatic_eligible": true,
+        "strict_fallback_key": "gguf_target_ar",
+        "evidence_key": null,
+        "evidence_fingerprint": null,
+        "evidence_artifacts": [],
+        "implementation_key": "gguf_dense_int8_native_chain"
+      },
+      "static_eligibility_fingerprint": "sha256:9960297bcacfe36f6ffe35d8a2e4d57fc2fb684aef22802d1bc4266859bb72e4",
+      "static_intent_allowed": true,
+      "policy_cell": "gguf_dense_int8_native_chain",
+      "admission_basis": "implementation",
+      "implementation_key": "gguf_dense_int8_native_chain",
+      "effective_kv_storage": "int8_per_token_head",
+      "kv_layout": "uniform",
+      "kv_scale_dtype": "fp32",
+      "kv_scale_granularity": "per_token_head",
+      "selected_candidate_count": 3,
+      "policy_reason": "implemented_gguf_dense_int8_native_chain",
+      "policy_fingerprint": "sha256:1a1d8270eea4a3329a33ea510e2f2330d521f0c464c252ae9004ffb2f915928c",
+      "realized_group_rows": 1,
+      "output_horizon_tokens": 64,
+      "exact_default_required": true,
+      "automatic_eligible": true,
+      "evidence": "model_plugin_speculative_mtp_serving_plan"
+    }
+  },
+  "diagnostics": {
+    "prefix_cache": {
+      "mode": "off",
+      "block_size_tokens": 1,
+      "reuse_scope": "prompt_prefix",
+      "cache_host_bytes": 0,
+      "cache_provider_device_bytes": 0,
+      "eligible": false,
+      "lookup": false,
+      "hit": false,
+      "source": null,
+      "matched_tokens": 0,
+      "reused_tokens": 0,
+      "avoided_prefill_tokens": 0,
+      "executed_prefill_tokens": 16384,
+      "reused_pages": 0,
+      "reused_page_bytes": 0,
+      "state_clone_bytes": 0,
+      "snapshot_hit": false,
+      "admission_fallback": false,
+      "fallback_reason": "cache_off",
+      "cache_resident_entries": 0,
+      "cache_resident_pages": 0,
+      "cache_resident_bytes": 0
+    },
+    "specdec2_mtp2": {
+      "requested_budget": 3,
+      "candidate_budget": 3,
+      "prompt_streaming": true,
+      "prompt_fallback_reason": null,
+      "activation_reason": null,
+      "provider_readiness": "ready",
+      "provider_decline_reason": null,
+      "provider_state_present": true,
+      "plan_group_rows": 1,
+      "plan_ar_only": true,
+      "plan_reason": "target_graph_output_room_miss",
+      "cycles": 20,
+      "generated_draft_tokens": 58,
+      "accepted_draft_tokens": 42,
+      "selected_depth_histogram": {
+        "1": 1,
+        "3": 19
+      },
+      "mtp_output_tokens": 62,
+      "ar_output_tokens_in_cycles": 1,
+      "first_fallback_position": null,
+      "ar_step_reason_counts": {
+        "no_provider": 1
+      },
+      "recoverable_failures": 0,
+      "failure_reason_counts": {},
+      "failure_reasons": [],
+      "k0_catchups": 1,
+      "cycle_timing_ms": {
+        "proposal": 145.72103694081306,
+        "target": 5265.800151,
+        "provider_update": 10.746428743004799,
+        "accept": 0.0,
+        "candidate_readback": 0.0,
+        "target_readback": 0.0,
+        "accept_upload": 0.0,
+        "accept_tail": 0.0,
+        "accept_enqueue": 0.0,
+        "selected_commit": 0.0
+      },
+      "physical_execution": {
+        "proposal_batch_calls": 0,
+        "proposal_rows_histogram": {},
+        "target_pass_count": 20,
+        "target_batch_calls": 0,
+        "target_rows_histogram": {}
+      }
+    },
+    "dms": {
+      "backend": {
+        "topology": "dms_compact",
+        "codec": "int8_per_token_head",
+        "codec_evaluation_only": false,
+        "artifact_fingerprint": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+        "retrofit_fingerprint": "9b50b58678191da3fc3f3c819d3118ac0fc82026f6cc5d4def05688c538a86f3",
+        "decision_source": "external_linear_sidecar_v1",
+        "window_size": 8192,
+        "prefill_selection_mode": "exact_budget",
+        "physical_layer_ids": [3, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43, 47, 51, 55, 59, 63],
+        "prefix_mode": "off",
+        "no_dense_shadow": true,
+        "device_payloads": true,
+        "device_backend": "hip_gfx1100",
+        "physical_widths": [1, 2, 4, 8]
+      },
+      "capacity": {
+        "logical_token_rows": 1052608,
+        "live_token_rows": 790528,
+        "actual_compression_ratio": 1.3315252590673574,
+        "target_compression_ratio": 2,
+        "max_live_count": 12352,
+        "payload_bytes": 404750336,
+        "scale_bytes": 6324224,
+        "device_resident_bytes": 433256528
+      },
+      "operations": {
+        "streaming_pack_calls": 1,
+        "decode_appends": 63,
+        "evicted_tokens": 0,
+        "released_provisional_slots": 0
+      },
+      "extent_pool": {
+        "num_layers": 16,
+        "slots_per_layer": 49428,
+        "capacity_slots": 790848,
+        "free_slots": 0,
+        "largest_free_extent": 0,
+        "owner_count": 1,
+        "allocation_failures": 0,
+        "high_water_slots": 790848,
+        "free_ranges_by_layer": [
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          [],
+          []
+        ]
+      },
+      "ledger": {
+        "backend_fingerprint": "4d11224f82e28554aed34a997516e11621ed8031761ce4de9757cfb9a7baab8f",
+        "generation": 1,
+        "pools": {
+          "dms.evict_slots": {
+            "capacity": 790848,
+            "used": 790848,
+            "free": 0,
+            "high_water": 790848,
+            "unit": "token_slots",
+            "plane_role": "evict_slots",
+            "used_by_lifetime": {
+              "lease": 790848
+            }
+          },
+          "dms.extent_descriptors": {
+            "capacity": 64,
+            "used": 64,
+            "free": 0,
+            "high_water": 64,
+            "unit": "descriptors",
+            "plane_role": "extent_metadata",
+            "used_by_lifetime": {
+              "lease": 64
+            }
+          },
+          "dms.k_scale_slots": {
+            "capacity": 790848,
+            "used": 790848,
+            "free": 0,
+            "high_water": 790848,
+            "unit": "token_slots",
+            "plane_role": "k_scale_slots",
+            "used_by_lifetime": {
+              "lease": 790848
+            }
+          },
+          "dms.k_slots": {
+            "capacity": 790848,
+            "used": 790848,
+            "free": 0,
+            "high_water": 790848,
+            "unit": "token_slots",
+            "plane_role": "k_slots",
+            "used_by_lifetime": {
+              "lease": 790848
+            }
+          },
+          "dms.pack_workspace_rows": {
+            "capacity": 4096,
+            "used": 0,
+            "free": 4096,
+            "high_water": 0,
+            "unit": "rows",
+            "plane_role": "streaming_workspace",
+            "used_by_lifetime": {}
+          },
+          "dms.position_slots": {
+            "capacity": 790848,
+            "used": 790848,
+            "free": 0,
+            "high_water": 790848,
+            "unit": "token_slots",
+            "plane_role": "position_slots",
+            "used_by_lifetime": {
+              "lease": 790848
+            }
+          },
+          "dms.request_rows": {
+            "capacity": 1,
+            "used": 1,
+            "free": 0,
+            "high_water": 1,
+            "unit": "rows",
+            "plane_role": "row_metadata",
+            "used_by_lifetime": {
+              "lease": 1
+            }
+          },
+          "dms.v_scale_slots": {
+            "capacity": 790848,
+            "used": 790848,
+            "free": 0,
+            "high_water": 790848,
+            "unit": "token_slots",
+            "plane_role": "v_scale_slots",
+            "used_by_lifetime": {
+              "lease": 790848
+            }
+          },
+          "dms.v_slots": {
+            "capacity": 790848,
+            "used": 790848,
+            "free": 0,
+            "high_water": 790848,
+            "unit": "token_slots",
+            "plane_role": "v_slots",
+            "used_by_lifetime": {
+              "lease": 790848
+            }
+          }
+        },
+        "owners": {
+          "dms-lease:0": {
+            "dms.k_slots": 790848,
+            "dms.v_slots": 790848,
+            "dms.position_slots": 790848,
+            "dms.evict_slots": 790848,
+            "dms.k_scale_slots": 790848,
+            "dms.v_scale_slots": 790848,
+            "dms.extent_descriptors": 64,
+            "dms.request_rows": 1
+          }
+        },
+        "provisional_reservations": 0,
+        "active_reservations": 1,
+        "stats": {
+          "commits": 1,
+          "provisional_reserves": 1
+        },
+        "blocking_counts": {}
+      }
+    },
+    "kv_layout": {
+      "topology": "dms_compact",
+      "storage_dtype": "int8_per_token_head",
+      "storage_layout": "per_head_compact",
+      "scale_dtype": "fp32",
+      "kv_attention_source": "dms_compact",
+      "persistent_total_bytes": 433256528,
+      "persistent_bf16_mirror_bytes": 0
+    }
+  },
+  "profile": {
+    "enabled": true,
+    "methods": {
+      "bulk_pass": {
+        "calls": 2,
+        "seconds": 48.833466744050384
+      },
+      "prefill_stage": {
+        "calls": 16,
+        "seconds": 0.09377201087772846
+      },
+      "pack_layer": {
+        "calls": 16,
+        "seconds": 1.0848304238170385
+      },
+      "prefill_restore": {
+        "calls": 16,
+        "seconds": 0.03788594342768192
+      },
+      "dms_prefill": {
+        "calls": 1,
+        "seconds": 48.93367567099631
+      },
+      "device_snapshot": {
+        "calls": 78,
+        "seconds": 2.8473995570093393
+      },
+      "backend_begin": {
+        "calls": 78,
+        "seconds": 2.8742709662765265
+      },
+      "journal_snapshot": {
+        "calls": 78,
+        "seconds": 2.874624190852046
+      },
+      "append_submit": {
+        "calls": 1264,
+        "seconds": 0.0401819683611393
+      },
+      "attention_submit": {
+        "calls": 1264,
+        "seconds": 0.019695965573191643
+      },
+      "full_attention_host": {
+        "calls": 1264,
+        "seconds": 1.0241725333034992
+      },
+      "target_verify": {
+        "calls": 20,
+        "seconds": 5.265660246834159
+      },
+      "device_restore": {
+        "calls": 8,
+        "seconds": 0.2958222907036543
+      },
+      "backend_rollback": {
+        "calls": 8,
+        "seconds": 0.29785013757646084
+      }
+    },
+    "copies": {
+      "H2D:pack_layer": {
+        "calls": 80,
+        "bytes": 896,
+        "seconds": 0.002219492569565773
+      },
+      "D2H:prefill_stage": {
+        "calls": 144,
+        "bytes": 415195968,
+        "seconds": 0.08209578320384026
+      },
+      "H2D:prefill_restore": {
+        "calls": 144,
+        "bytes": 415195968,
+        "seconds": 0.03179055452346802
+      },
+      "D2H:dms_prefill": {
+        "calls": 16,
+        "bytes": 256,
+        "seconds": 0.0004986543208360672
+      },
+      "H2D:dms_prefill": {
+        "calls": 48,
+        "bytes": 768,
+        "seconds": 0.0011239033192396164
+      },
+      "D2H:device_snapshot": {
+        "calls": 8736,
+        "bytes": 32385245568,
+        "seconds": 2.7690936252474785
+      },
+      "H2D:append_submit": {
+        "calls": 76,
+        "bytes": 304,
+        "seconds": 0.02100415900349617
+      },
+      "D2H:full_attention_host": {
+        "calls": 1264,
+        "bytes": 20224,
+        "seconds": 0.026990775018930435
+      },
+      "H2D:device_restore": {
+        "calls": 3200,
+        "bytes": 3321563648,
+        "seconds": 0.28643645718693733
+      }
+    },
+    "prompt_resets": 4
+  },
+  "derived": {
+    "snapshot_bytes_per_call": 415195456,
+    "snapshot_plus_restore_seconds": 3.1432218477129936,
+    "snapshot_plus_restore_fraction_of_client_decode": 0.5380933640289137,
+    "snapshot_d2h_gib": 30.161110281944275,
+    "restore_h2d_gib": 3.093447208404541,
+    "prefill_stage_plus_restore_seconds": 0.13165795430541039,
+    "prefill_stage_plus_restore_fraction": 0.0026905388262800367
+  },
+  "checks": {
+    "http_200": true,
+    "ready_after": true,
+    "counts_exact": true,
+    "mtp_used": true,
+    "timing_ownership_valid": true,
+    "prefix_reuse_zero": true,
+    "generated_ids_match_baseline_prefix": true,
+    "generated_ids_match_both_prior_requests": true,
+    "same_text_as_both_prior_requests": true,
+    "source_or_kernel_changes": false,
+    "gpu1_idle_after_shutdown": true,
+    "gpu0_not_touched": true
+  },
+  "exact_budget_count_premise": {
+    "lengths": [17, 127, 8192, 8193, 8194, 10003, 16383, 16384],
+    "ratios": [1, 2, 3],
+    "scores": [
+      "all_ties",
+      "deterministic_normal"
+    ],
+    "window": 8192,
+    "cases": 48,
+    "passed": true,
+    "formula": "E=max(0,N-W-1); retained=N-E+ceil(E/ratio), for actual prefill N with positions 0..N-1",
+    "tested_functions": [
+      "build_dms_exact_budget_eviction",
+      "build_dms_live_mask"
+    ],
+    "scope": "Count premise only, not a new one-pass implementation."
+  },
+  "reproduction": {
+    "measured_launch": "bash /tmp/hipengine-xtx-recovery-env.sh python3 -u /tmp/hipengine-dms-speed-review/run-profile.py",
+    "server_command": [
+      "/home/lhl/mambaforge/envs/therock/bin/python3",
+      "/tmp/hipengine-dms-speed-review/server-profile.py",
+      "--model",
+      "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--quant",
+      "gguf_q4_k_m",
+      "--kv-storage",
+      "int8_per_token_head",
+      "--kv-scale-dtype",
+      "fp32",
+      "--kv-scale-granularity",
+      "per_token_head",
+      "--max-context-tokens",
+      "17408",
+      "--max-active-requests",
+      "1",
+      "--speculative-mtp-serving",
+      "auto",
+      "--prefix-cache",
+      "off",
+      "--port",
+      "18432",
+      "--dms-metadata-path",
+      "/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json"
+    ],
+    "driver_source": "\"\"\"Attribute existing DMS costs through the public HTTP server, without changing arithmetic.\"\"\"\nfrom __future__ import annotations\nimport hashlib\nimport importlib.util\nimport json\nfrom pathlib import Path\nimport queue\nimport signal\nimport subprocess\nimport sys\nimport threading\nimport time\n\nROOT = Path.cwd()\nOUT = Path('/tmp/hipengine-dms-speed-review')\nSPEC = importlib.util.spec_from_file_location('existing_driver', ROOT / 'benchmarks/results/2026-10-21-xtx-16k-int8-mtp-dms-comparison.driver.py')\nbench = importlib.util.module_from_spec(SPEC)\nSPEC.loader.exec_module(bench)\nbench.PORT = 18432\nbench.BASE = f'http://127.0.0.1:{bench.PORT}'\nbench.DECODE = 64\nprompt = json.loads(Path('/tmp/hipengine-xtx-16k-dms-mtp-bench/prompts.json').read_text())['prompts'][0]\nassert len(prompt['ids']) == 16384\nassert bench.sha(prompt['ids']) == prompt['prompt_ids_sha256']\ncommand = [sys.executable, str(OUT / 'server-profile.py'), '--model', bench.MODEL,\n    '--backend', 'hip_gfx1100', '--quant', 'gguf_q4_k_m', '--kv-storage', 'int8_per_token_head',\n    '--kv-scale-dtype', 'fp32', '--kv-scale-granularity', 'per_token_head',\n    '--max-context-tokens', '17408', '--max-active-requests', '1',\n    '--speculative-mtp-serving', 'auto', '--prefix-cache', 'off', '--port', str(bench.PORT),\n    '--dms-metadata-path', str(bench.METADATA)]\nfrom hipengine.benchmark.provenance import collect_artifact_provenance\nresult = {'kind': 'dms_host_transfer_attribution', 'instrumented': True,\n    'limitations': ['One prompt, not a throughput or task-quality benchmark.',\n        'Host-wall method timers are inclusive and nested; do not sum overlapping timers.',\n        'Asynchronous kernel submission timers are not GPU durations.',\n        'Only the single attribution request is retained in the method/copy counters; no warmup is repeated.'],\n    'command': command, 'prompt_id': prompt['id'], 'prompt_ids_sha256': prompt['prompt_ids_sha256'],\n    'prompt_tokens': 16384, 'output_cap': 64, 'rows': [],\n    'driver_source': Path(__file__).read_text(),\n    'instrumentation_source': (OUT / 'server-profile.py').read_text(),\n    'metadata_sha256': hashlib.sha256(bench.METADATA.read_bytes()).hexdigest()}\nresult['provenance'] = collect_artifact_provenance(repo_root=ROOT, configured_backend='hip_gfx1100',\n    model_path=bench.MODEL, quant='gguf_q4_k_m', kv_dtype='int8_per_token_head',\n    command=[sys.executable, *sys.argv], timing_protocol='instrumented nested host-wall method attribution, single request; explicit pre-shutdown counter dump',\n    warmups=0, repetitions=1, device_name='Radeon RX 7900 XTX')\nassert not result['provenance']['execution_affecting_paths'], result['provenance']\nlog = (OUT / 'server.log').open('w')\nserver = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)\nevents = queue.Queue()\ndef read_log():\n    for line in server.stdout:\n        log.write(line)\n        log.flush()\n        if 'Uvicorn running on' in line:\n            events.put('ready')\n        if 'DMS PROFILE SAVED' in line:\n            events.put('profile_saved')\n    events.put('exit')\nreader = threading.Thread(target=read_log, daemon=True)\nreader.start()\ntry:\n    event = events.get(timeout=900)\n    assert event == 'ready', event\n    assert bench.get('/ready')['ready'] is True\n    for label in ('attribution',):\n        row = bench.stream(prompt['ids'])\n        result['rows'].append({'label': label, **row})\n        print(json.dumps({'label': label, 'usage': row['usage'], 'route': row['route'],\n            'ttft_seconds': row['ttft_seconds'], 'decode_seconds': row['decode_seconds']}), flush=True)\n    previous = json.loads((OUT / 'failed-shutdown-result.json').read_text())\n    assert all(row['text_sha256'] == result['rows'][0]['text_sha256'] for row in previous['rows'])\n    result['exact_text_matches_prior_two_requests'] = True\n    result['ready_after'] = bench.get('/ready')\n    assert result['ready_after']['ready'] is True\n    server.send_signal(signal.SIGUSR1)\n    assert events.get(timeout=30) == 'profile_saved'\n    result['profile'] = json.loads((OUT / 'profile.json').read_text())\nfinally:\n    server.send_signal(signal.SIGTERM)\n    try:\n        server.wait(timeout=60)\n    except subprocess.TimeoutExpired:\n        server.kill()\n        server.wait(timeout=30)\n    reader.join(timeout=10)\n    log.close()\n    result['server_exit'] = server.returncode\n    if (OUT / 'profile.json').exists():\n        result['profile'] = json.loads((OUT / 'profile.json').read_text())\n    (OUT / 'result.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\\n')\nassert server.returncode in (0, -signal.SIGTERM), server.returncode\nassert result.get('profile', {}).get('enabled') is True\nprint(json.dumps(result['profile'], indent=2), flush=True)\nprint('DMS ATTRIBUTION COMPLETE', flush=True)\n",
+    "driver_sha256": "6fc83aafa0ef906c40d09b7e086fd29d30acbe6eaf84ffe2d340dee3729a80ab",
+    "instrumentation_source": "\"\"\"Diagnostic wrappers only; execute the unchanged public server.\"\"\"\nfrom __future__ import annotations\nimport atexit\nimport functools\nimport json\nfrom pathlib import Path\nimport runpy\nimport signal\nimport threading\nimport time\n\nOUT = Path('/tmp/hipengine-dms-speed-review/profile.json')\nSTATE = {'enabled': False, 'methods': {}, 'copies': {}, 'prompt_resets': 0}\nLOCAL = threading.local()\n\n\ndef wrap(cls, name, label, *, reset=False):\n    original = getattr(cls, name)\n    @functools.wraps(original)\n    def traced(*args, **kwargs):\n        if reset:\n            STATE['methods'] = {}\n            STATE['copies'] = {}\n            STATE['prompt_resets'] += 1\n            STATE['enabled'] = True\n        if not STATE['enabled']:\n            return original(*args, **kwargs)\n        stack = getattr(LOCAL, 'stack', [])\n        LOCAL.stack = stack\n        stack.append(label)\n        start = time.perf_counter()\n        try:\n            return original(*args, **kwargs)\n        finally:\n            elapsed = time.perf_counter() - start\n            stack.pop()\n            slot = STATE['methods'].setdefault(label, {'calls': 0, 'seconds': 0.0})\n            slot['calls'] += 1\n            slot['seconds'] += elapsed\n    setattr(cls, name, traced)\n\n\ndef wrap_copy(module, name, direction):\n    original = getattr(module, name)\n    @functools.wraps(original)\n    def traced(*args, **kwargs):\n        if not STATE['enabled']:\n            return original(*args, **kwargs)\n        phase = (getattr(LOCAL, 'stack', []) or ['other'])[-1]\n        label = direction + ':' + phase\n        nbytes = int(args[2] if len(args) > 2 else kwargs['nbytes'])\n        start = time.perf_counter()\n        try:\n            return original(*args, **kwargs)\n        finally:\n            slot = STATE['copies'].setdefault(label, {'calls': 0, 'bytes': 0, 'seconds': 0.0})\n            slot['calls'] += 1\n            slot['bytes'] += nbytes\n            slot['seconds'] += time.perf_counter() - start\n    setattr(module, name, traced)\n\n\nfrom hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession\nfrom hipengine.runtime.qwen35_gguf_mtp import Qwen35GGUFTransactionalVerifier, _DMSStoreJournal\nfrom hipengine.kvcache.dms import DMSCompactBackend\nimport hipengine.kvcache.dms_device as device\n\nwrap(Qwen35GGUFResidentSession, '_prefill_layer_outer_dms', 'dms_prefill', reset=True)\nwrap(Qwen35GGUFResidentSession, '_run_bulk_prefill_and_sample', 'bulk_pass')\nwrap(Qwen35GGUFResidentSession, 'pack_dms_prefill_layer', 'pack_layer')\nwrap(Qwen35GGUFResidentSession, '_run_external_dms_full_attention', 'full_attention_host')\nwrap(Qwen35GGUFTransactionalVerifier, 'prepare', 'target_verify')\nwrap(_DMSStoreJournal, '_snapshot', 'journal_snapshot')\nwrap(DMSCompactBackend, 'begin_transaction', 'backend_begin')\nwrap(DMSCompactBackend, 'rollback', 'backend_rollback')\nfor name, label in (\n    ('snapshot', 'device_snapshot'), ('restore', 'device_restore'),\n    ('stage_layer', 'prefill_stage'), ('_restore_staged_layer', 'prefill_restore'),\n    ('attention_layer_device', 'attention_submit'), ('append_layer_device', 'append_submit'),\n):\n    wrap(device.DMSDevicePayloadStore, name, label)\nwrap_copy(device, 'copy_device_to_host', 'D2H')\nwrap_copy(device, 'copy_host_to_device', 'H2D')\n\n\ndef finish():\n    OUT.write_text(json.dumps(STATE, indent=2) + '\\n')\n\ndef dump_before_shutdown(signum, frame):\n    finish()\n    print('DMS PROFILE SAVED', flush=True)\n\nsignal.signal(signal.SIGUSR1, dump_before_shutdown)\natexit.register(finish)\nrunpy.run_module('hipengine.server', run_name='__main__')\n",
+    "instrumentation_sha256": "f1c097ca7876152c2b204d490dce047c299c48448ef92b6fe3c278ed80de4cdd",
+    "wrapper_source": "#!/usr/bin/env bash\nset -euo pipefail\nPY=\"$HOME/mambaforge/envs/therock/bin/python3.12\"\nROOT=\"$(\"$PY\" -m rocm_sdk path --root)\"\nOUT=/tmp/hipengine-xtx-capacity-recovery\nmkdir -p \"$OUT\"\n\"$ROOT/bin/hipcc\" --version > \"$OUT/hipcc-version.txt\"\nexec env -i HOME=\"$HOME\" USER=\"$USER\" LOGNAME=\"${LOGNAME:-$USER}\" SHELL=/bin/bash TERM=\"${TERM:-xterm}\" \\\n PATH=\"$ROOT/bin:$HOME/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin\" \\\n LD_LIBRARY_PATH=\"$ROOT/lib:$HOME/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:$HOME/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib\" \\\n HIP_PATH=\"$ROOT\" ROCM_PATH=\"$ROOT\" HIP_LIB_PATH=\"$ROOT/lib\" HIP_INCLUDE_PATH=\"$ROOT/include\" \\\n HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 \\\n HIPENGINE_COMPILER_VERSION_FILE=\"$OUT/hipcc-version.txt\" PYTHONPATH=\"$PWD\" \"$@\"\n",
+    "metadata_sha256": "4c16f9e94d8c870194d37cc46f9e2ec5f6c05b8e97721f799b78d9d2b240ba0b",
+    "prompt_ids_sha256": "3ab9009ac2775cf36d7ef28e5234d4a3c4233aab7ecb3775f396abd9a079f024",
+    "minimal_reproduction_inputs": {
+      "/tmp/hipengine-xtx-16k-dms-mtp-bench/prompts.json": {
+        "prompts": [
+          {
+            "id": "code_merge_intervals",
+            "category": "code",
+            "split": "train",
+            "prompt_ids_sha256": "3ab9009ac2775cf36d7ef28e5234d4a3c4233aab7ecb3775f396abd9a079f024",
+            "ids": [248045, 846, 198, 8441, 8129, 25, 198, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 11, 321, 16097, 7262, 13, 220, 1919, 369, 3870, 1414, 883, 3061, 9417, 11, 20554, 198, 12139, 279, 3870, 8129, 321, 4087, 411, 1622, 25, 198, 7734, 264, 12654, 709, 10562, 87682, 1494, 40798, 8, 421, 78161, 48142, 7629, 7308, 26126, 13, 28763, 264, 16338, 26864, 10970, 1228, 2424, 13, 3301, 1132, 1970, 13, 248046, 198, 248045, 74455, 198, 248068, 271, 248069, 271]
+          }
+        ]
+      },
+      "/tmp/hipengine-dms-speed-review/failed-shutdown-result.json": {
+        "rows": [
+          {
+            "text_sha256": "e39020c8a98ba4ad8beb462afaedc37d374cef9d52e343053590ffa9313e83c5"
+          },
+          {
+            "text_sha256": "e39020c8a98ba4ad8beb462afaedc37d374cef9d52e343053590ffa9313e83c5"
+          }
+        ]
+      }
+    },
+    "instructions": "Restore driver_source and instrumentation_source under /tmp/hipengine-dms-speed-review using their measured basenames, restore wrapper_source, and write each minimal_reproduction_inputs value as JSON at its key path. Run measured_launch from the repository root with the named model and sidecar available. The immutable comparison driver and pair helpers are imported from this repository.",
+    "raw_artifact": "/tmp/hipengine-dms-speed-review/result.json",
+    "raw_artifact_sha256": "4d7b5c1f4b9f4580d847bba1c3f45c3762c75765f56e29a7886aa82bff662af8"
+  },
+  "driver_repair": {
+    "first_attempt": "bg-27, execution 761ce1f4-c19e-44d1-aec2-20eb1360374a",
+    "outcome": "Both requests passed; intentional SIGTERM produced -15 and bypassed atexit, losing profiling counters. Driver shutdown assertion failed.",
+    "repair": "Dump counters explicitly on SIGUSR1 after readiness; accept the intentional SIGTERM status; rerun one request only.",
+    "completed_attempt": "bg-28, execution 4b5e5b08-bf52-4ea3-b8d4-243f0c2ff0c3, exit 0",
+    "server_exit": -15
+  },
+  "limitations": [
+    "Single-prompt attribution, not a full-suite throughput, acceptance, or task-quality result.",
+    "Host-wall timers are nested; do not add overlapping entries. Snapshot and restore entries do not overlap each other.",
+    "Copy wall includes synchronization, allocation and wrapper overhead; it is not pure PCIe transfer time.",
+    "Asynchronous attention/append submission times are not GPU kernel durations.",
+    "The server target_verify timer does not include all commit/restore time; journal fraction uses the client decode window instead.",
+    "No recovered throughput or candidate capacity was measured. Existing capacity evidence remains unchanged.",
+    "The current DMS target is serial, so multi-row attention producer inefficiency is not attributed to this run."
+  ]
+}

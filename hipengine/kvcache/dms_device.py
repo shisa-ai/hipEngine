@@ -11,6 +11,7 @@ backend constructs without a store and runs entirely host-side.
 
 from __future__ import annotations
 
+import operator
 import os
 from dataclasses import dataclass
 
@@ -78,6 +79,51 @@ class DMSDevicePayloadSnapshot:
 
     extents: tuple[DMSDeviceExtentSnapshot, ...]
     live_counts: np.ndarray
+
+
+@dataclass(frozen=True)
+class DMSDeviceStagedLayer:
+    """Host copy of one fully packed compact layer's device planes.
+
+    Every field holds the raw bytes of the corresponding device buffer, so a
+    restore is byte-exact for both codecs. ``k_slot`` is ``None`` when the
+    layer had never been allocated; the other planes are then ``None`` too.
+    """
+
+    layer: int
+    k_slot: np.ndarray | None = None
+    v_slot: np.ndarray | None = None
+    positions: np.ndarray | None = None
+    evict: np.ndarray | None = None
+    base: np.ndarray | None = None
+    capacity: np.ndarray | None = None
+    live: np.ndarray | None = None
+    k_scales: np.ndarray | None = None
+    v_scales: np.ndarray | None = None
+
+    @property
+    def allocated(self) -> bool:
+        """True when the staged layer carried device payload to restore."""
+
+        return self.k_slot is not None
+
+    @property
+    def nbytes(self) -> int:
+        return sum(
+            int(plane.nbytes)
+            for plane in (
+                self.k_slot,
+                self.v_slot,
+                self.positions,
+                self.evict,
+                self.base,
+                self.capacity,
+                self.live,
+                self.k_scales,
+                self.v_scales,
+            )
+            if plane is not None
+        )
 
 
 def _float32_to_bf16_bits(values: np.ndarray) -> np.ndarray:
@@ -358,6 +404,12 @@ class DMSDevicePayloadStore:
         self._rows_q: DeviceBuffer | None = None
         self._rows_out: DeviceBuffer | None = None
         self._rows_stage_capacity = 0
+        # Prefill staging (2026-10-20 full-window trace): a layer that has
+        # finished packing may hand its device planes back as host bytes, so a
+        # layer-outer prefill holds one compact payload instead of every layer
+        # at once. The entry is the recoverable host copy; _ensure_layer
+        # restores it and clears the slot.
+        self._staged: list[DMSDeviceStagedLayer | None] = [None] * self._layers
         self._closed = False
 
     def _alloc(self, nbytes: int) -> DeviceBuffer:
@@ -370,13 +422,18 @@ class DMSDevicePayloadStore:
 
         Layerwise pack support: the destination planes for a layer come into
         existence only when that layer is first packed, appended to or read.
-        On allocation failure the layer is left fully unallocated.
+        On allocation failure the layer is left fully unallocated. A layer
+        whose payload was staged to host (:meth:`stage_layer`) is restored
+        here byte for byte before the caller touches it.
         """
 
         self._check_closed()
         layer = int(layer)
         if layer < 0 or layer >= self._layers:
             raise ValueError("DMS device layer index is out of range")
+        staged = self._staged[layer]
+        if staged is not None:
+            self._restore_staged_layer(staged)
         if self._k_slot[layer] is not None:
             return
         payload_bytes = self._slots * self._dim * self._payload_dtype.itemsize
@@ -418,6 +475,175 @@ class DMSDevicePayloadStore:
         self._base_meta[layer] = base_meta
         self._capacity_meta[layer] = capacity_meta
         self._live_meta[layer] = live_meta
+
+    def _layer_plane_sizes(self) -> dict[str, int]:
+        """Byte size of every per-layer plane this store owns."""
+
+        payload_bytes = self._slots * self._dim * self._payload_dtype.itemsize
+        sizes = {
+            "k_slot": payload_bytes,
+            "v_slot": payload_bytes,
+            "positions": self._slots * 4,
+            "evict": self._slots,
+            "base": self._heads * 4,
+            "capacity": self._heads * 4,
+            "live": self._heads * 4,
+        }
+        if self._k_scales:
+            sizes["k_scales"] = self._slots * 4
+            sizes["v_scales"] = self._slots * 4
+        return sizes
+
+    def stage_layer(self, layer: int) -> DMSDeviceStagedLayer:
+        """Move one fully packed layer's device planes to host, byte for byte.
+
+        Temporary prefill staging, not an eviction policy: the caller has just
+        finished packing this layer and will not read it again until the bulk
+        prefill workspace is gone. Every plane the layer owns -- K/V payload,
+        INT8 scales, token positions, evict flags, and the base/capacity/live
+        metadata -- is copied to host arrays, then its device buffers are
+        freed and dropped from this store's allocation ledger, so a
+        layer-outer prefill never holds all compact payloads at once. The next
+        :meth:`_ensure_layer` re-allocates the layer and restores the host copy
+        byte for byte.
+
+        Every read completes before any free, so a failed stage leaves the
+        layer's live device buffers untouched and a retry is safe. Staging an
+        already staged layer returns the existing host copy. Device pointers
+        obtained before the stage are invalid afterwards, and a restored layer
+        reports new pointers.
+        """
+
+        self._check_closed()
+        layer = int(layer)
+        if layer < 0 or layer >= self._layers:
+            raise ValueError("DMS device layer index is out of range")
+        existing = self._staged[layer]
+        if existing is not None:
+            return existing
+        if self._k_slot[layer] is None:
+            empty = DMSDeviceStagedLayer(layer=layer)
+            self._staged[layer] = empty
+            return empty
+        planes: list[tuple[str, DeviceBuffer]] = [
+            ("k_slot", self._k_slot[layer]),
+            ("v_slot", self._v_slot[layer]),
+            ("positions", self._positions[layer]),
+            ("evict", self._slot_evict[layer]),
+            ("base", self._base_meta[layer]),
+            ("capacity", self._capacity_meta[layer]),
+            ("live", self._live_meta[layer]),
+        ]
+        if self._k_scales:
+            planes.append(("k_scales", self._k_scales[layer]))
+            planes.append(("v_scales", self._v_scales[layer]))
+        copies: dict[str, np.ndarray] = {}
+        for name, buffer in planes:
+            values = np.empty((int(buffer.nbytes),), dtype=np.uint8)
+            copy_device_to_host(host_array_ptr(values), buffer, int(buffer.nbytes))
+            copies[name] = values
+        # Reads are complete: release the device planes and their ledger rows.
+        self._runtime.device_synchronize()
+        for _name, buffer in planes:
+            self._buffers.remove(buffer)
+            free(buffer, runtime=self._runtime)
+        staged = DMSDeviceStagedLayer(layer=layer, **copies)
+        self._k_slot[layer] = None
+        self._v_slot[layer] = None
+        self._positions[layer] = None
+        self._slot_evict[layer] = None
+        self._base_meta[layer] = None
+        self._capacity_meta[layer] = None
+        self._live_meta[layer] = None
+        if self._k_scales:
+            self._k_scales[layer] = None
+            self._v_scales[layer] = None
+        self._staged[layer] = staged
+        return staged
+
+    def _validate_staged_layer(self, staged: DMSDeviceStagedLayer) -> None:
+        sizes = self._layer_plane_sizes()
+        for name, expected in sizes.items():
+            values = getattr(staged, name)
+            if values is None:
+                raise ValueError(
+                    f"staged DMS layer {staged.layer} is missing its {name} plane"
+                )
+            if values.dtype != np.uint8 or values.ndim != 1:
+                raise ValueError(
+                    f"staged DMS layer {staged.layer} {name} plane must be uint8 bytes"
+                )
+            if int(values.nbytes) != int(expected):
+                raise ValueError(
+                    f"staged DMS layer {staged.layer} {name} plane size mismatch"
+                )
+
+    def _restore_staged_layer(self, staged: DMSDeviceStagedLayer) -> None:
+        """Re-allocate a staged layer and copy its host bytes back.
+
+        On allocation or copy failure the newly allocated buffers are freed and
+        the host copy stays in place, so the layer is left unallocated but
+        recoverable and the next touch retries the restore.
+        """
+
+        layer = int(staged.layer)
+        if not 0 <= layer < self._layers:
+            raise ValueError("staged DMS device layer index is out of range")
+        if not staged.allocated:
+            self._staged[layer] = None
+            return
+        if self._k_slot[layer] is not None:
+            raise RuntimeError("staged DMS layer already has live device buffers")
+        self._validate_staged_layer(staged)
+        allocated: list[DeviceBuffer] = []
+
+        def tracked_alloc(nbytes: int) -> DeviceBuffer:
+            buffer = self._alloc(nbytes)
+            allocated.append(buffer)
+            return buffer
+
+        try:
+            restored = {
+                name: tracked_alloc(int(getattr(staged, name).nbytes))
+                for name in self._layer_plane_sizes()
+            }
+            for name, buffer in restored.items():
+                values = np.ascontiguousarray(getattr(staged, name))
+                copy_host_to_device(
+                    buffer, host_array_ptr(values), int(values.nbytes)
+                )
+        except BaseException:
+            self._buffers = [
+                buffer
+                for buffer in self._buffers
+                if not any(buffer is value for value in allocated)
+            ]
+            for value in allocated:
+                free(value, runtime=self._runtime)
+            raise
+        self._k_slot[layer] = restored["k_slot"]
+        self._v_slot[layer] = restored["v_slot"]
+        self._positions[layer] = restored["positions"]
+        self._slot_evict[layer] = restored["evict"]
+        self._base_meta[layer] = restored["base"]
+        self._capacity_meta[layer] = restored["capacity"]
+        self._live_meta[layer] = restored["live"]
+        if self._k_scales:
+            self._k_scales[layer] = restored["k_scales"]
+            self._v_scales[layer] = restored["v_scales"]
+        self._staged[layer] = None
+
+    @property
+    def staged_layers(self) -> tuple[int, ...]:
+        """Compact layers currently held as host copies, not device payload."""
+
+        return tuple(
+            layer for layer, staged in enumerate(self._staged) if staged is not None
+        )
+
+    @property
+    def staged_host_bytes(self) -> int:
+        return sum(staged.nbytes for staged in self._staged if staged is not None)
 
     def layer_scale_ptrs(self, layer: int) -> dict[str, int]:
         if not 0 <= int(layer) < self._layers:
@@ -1258,12 +1484,255 @@ class DMSDevicePayloadStore:
                 contiguous.nbytes,
             )
 
+    def _require_live_layer(self, layer: int) -> None:
+        """Reject a bounded append-tail call on a layer with no device payload.
+
+        The bounded helpers never allocate: they read and rewrite planes a
+        packed request already owns. A layer that has never been touched, or
+        whose payload the prefill route staged to host, has no live planes to
+        bound the window against, so the call fails loudly instead of
+        materialising a whole payload behind a bounded operation.
+        """
+
+        layer = int(layer)
+        if not 0 <= layer < self._layers:
+            raise ValueError("DMS device layer index is out of range")
+        if self._k_slot[layer] is None:
+            raise RuntimeError(
+                "DMS device append-tail helper requires live device planes on "
+                f"layer {layer}; the layer was never allocated or is staged to host"
+            )
+
+    def snapshot_append_tail(
+        self,
+        base_offsets: np.ndarray,
+        live_counts: np.ndarray,
+        rows: int,
+    ) -> DMSDevicePayloadSnapshot:
+        """Snapshot only the append window the next ``rows`` tokens will write.
+
+        ``base_offsets``/``live_counts`` are ``[layers, kv_heads]`` int32 host
+        extents: a head's owned region starts at ``base`` and currently holds
+        ``live`` tokens, so the next ``rows`` appends land in
+        ``[base + live, base + live + rows)``. Only those slots are read, on
+        every payload, scale, position and evict plane -- which is all a bounded
+        undo has to recover when no existing token can expire over the candidate
+        horizon. The returned snapshot carries one extent per ``(layer, head)``
+        whose ``start`` is ``base + live`` and whose ``length`` is ``rows``, plus
+        an owned copy of ``live_counts``.
+
+        Every extent is validated before the first device read, and the helper
+        allocates no device memory: each layer's planes must already be live
+        (see :meth:`_require_live_layer`).
+        """
+
+        self._check_closed()
+        bases = np.asarray(base_offsets)
+        lives = np.asarray(live_counts)
+        expected = (self._layers, self._heads)
+        if bases.shape != expected or lives.shape != expected:
+            raise ValueError("DMS device append-tail extent metadata shape mismatch")
+        if bases.dtype != np.int32 or lives.dtype != np.int32:
+            raise ValueError("DMS device append-tail extent metadata must be int32")
+        try:
+            horizon = operator.index(rows)
+        except TypeError as exc:
+            raise TypeError("DMS device append-tail rows must be an integer") from exc
+        if horizon <= 0:
+            raise ValueError("DMS device append-tail snapshot requires positive rows")
+        if np.any(bases < 0) or np.any(lives < 0):
+            raise ValueError("DMS device append-tail extents must be non-negative")
+        starts = bases.astype(np.int64) + lives.astype(np.int64)
+        if np.any(starts + horizon > self._slots):
+            raise ValueError("DMS device append-tail window is out of range")
+        for layer in range(self._layers):
+            self._require_live_layer(layer)
+        itemsize = self._payload_dtype.itemsize
+        dim = self._dim
+        extents: list[DMSDeviceExtentSnapshot] = []
+        for layer in range(self._layers):
+            for head in range(self._heads):
+                start = int(starts[layer, head])
+                k_bits = np.empty((horizon, dim), dtype=self._payload_dtype)
+                v_bits = np.empty_like(k_bits)
+                positions = np.empty((horizon,), dtype=np.int32)
+                evict = np.empty((horizon,), dtype=np.uint8)
+                for array, source, byte_offset in (
+                    (k_bits, self._k_slot[layer], start * dim * itemsize),
+                    (v_bits, self._v_slot[layer], start * dim * itemsize),
+                    (positions, self._positions[layer], start * 4),
+                    (evict, self._slot_evict[layer], start),
+                ):
+                    copy_device_to_host(
+                        host_array_ptr(array),
+                        DeviceBuffer(source.ptr + byte_offset, array.nbytes),
+                        array.nbytes,
+                    )
+                k_scales, v_scales = self._read_scales(layer, start, horizon)
+                extents.append(
+                    DMSDeviceExtentSnapshot(
+                        layer=layer,
+                        head=head,
+                        start=start,
+                        length=horizon,
+                        k_bits=k_bits,
+                        v_bits=v_bits,
+                        positions=positions,
+                        evict=evict,
+                        k_scales=k_scales,
+                        v_scales=v_scales,
+                    )
+                )
+        return DMSDevicePayloadSnapshot(
+            extents=tuple(extents),
+            live_counts=np.array(lives, dtype=np.int32, copy=True),
+        )
+
+    def restore_append_tail(
+        self,
+        snapshot: DMSDevicePayloadSnapshot,
+        accepted_rows: int = 0,
+    ) -> None:
+        """Undo the unaccepted suffix of a bounded append window.
+
+        ``accepted_rows`` candidate rows survive, so only the suffix
+        ``[start + accepted_rows, start + rows)`` of every extent is rewritten:
+        the accepted prefix keeps the bytes the append produced. The device live
+        counts become ``snapshot.live_counts + accepted_rows``, which is what the
+        next append cross-checks against the host model.
+
+        One snapshot serves every row checkpoint of a verify cycle, so nothing
+        here writes to the snapshot's host arrays; the suffix planes are views
+        of them and the published counts are a fresh array. ``accepted_rows ==
+        rows`` publishes the counts and copies no payload, so no zero-length
+        extent ever reaches :meth:`restore`.
+
+        Metadata, codec, shape, dtype, bound and accepted-count checks all run
+        before the first device write, and the helper allocates nothing. A
+        device copy failure propagates after any earlier suffix copy has landed
+        (the same all-or-partial property as :meth:`restore`), but the live-count
+        plane is published last, so a payload failure leaves the device counts
+        unchanged.
+        """
+
+        self._check_closed()
+        if not isinstance(snapshot, DMSDevicePayloadSnapshot):
+            raise TypeError(
+                "DMS device append-tail restore requires DMSDevicePayloadSnapshot"
+            )
+        try:
+            accepted = operator.index(accepted_rows)
+        except TypeError as exc:
+            raise TypeError(
+                "DMS device append-tail accepted rows must be an integer"
+            ) from exc
+        live_counts = np.asarray(snapshot.live_counts)
+        if live_counts.shape != (self._layers, self._heads) or live_counts.dtype != np.int32:
+            raise ValueError("DMS device append-tail live-count shape/dtype mismatch")
+        extents = snapshot.extents
+        if len(extents) != self._layers * self._heads:
+            raise ValueError("DMS device append-tail extent count mismatch")
+        horizons = {int(extent.length) for extent in extents}
+        if len(horizons) != 1:
+            raise ValueError("DMS device append-tail extents must share one length")
+        horizon = horizons.pop()
+        if horizon <= 0:
+            raise ValueError("DMS device append-tail snapshot has no rows")
+        if accepted < 0 or accepted > horizon:
+            raise ValueError("DMS device append-tail accepted rows are out of range")
+        if np.any(live_counts < 0) or np.any(
+            live_counts.astype(np.int64) + accepted > self._slots
+        ):
+            raise ValueError("DMS device append-tail live counts are out of range")
+        # Validate every extent before mutating any device bytes.
+        seen: set[tuple[int, int]] = set()
+        for extent in extents:
+            layer, head = int(extent.layer), int(extent.head)
+            key = (layer, head)
+            if key in seen:
+                raise ValueError(
+                    "DMS device append-tail snapshot has a duplicate layer/head extent"
+                )
+            seen.add(key)
+            if not (0 <= layer < self._layers and 0 <= head < self._heads):
+                raise ValueError(
+                    "DMS device append-tail snapshot layer/head is out of range"
+                )
+            start = int(extent.start)
+            if start < 0 or start + horizon > self._slots:
+                raise ValueError("DMS device append-tail window is out of range")
+            expected_payload = (horizon, self._dim)
+            if (
+                extent.k_bits.shape != expected_payload
+                or extent.k_bits.dtype != self._payload_dtype
+            ):
+                raise ValueError("DMS device append-tail snapshot K shape/dtype mismatch")
+            if (
+                extent.v_bits.shape != expected_payload
+                or extent.v_bits.dtype != self._payload_dtype
+            ):
+                raise ValueError("DMS device append-tail snapshot V shape/dtype mismatch")
+            if extent.positions.shape != (horizon,) or extent.positions.dtype != np.int32:
+                raise ValueError(
+                    "DMS device append-tail snapshot position shape/dtype mismatch"
+                )
+            if extent.evict.shape != (horizon,) or extent.evict.dtype != np.uint8:
+                raise ValueError(
+                    "DMS device append-tail snapshot eviction shape/dtype mismatch"
+                )
+            for values, buffers in (
+                (extent.k_scales, self._k_scales),
+                (extent.v_scales, self._v_scales),
+            ):
+                if buffers:
+                    if values is None or values.shape != (horizon,) or values.dtype != np.float32:
+                        raise ValueError(
+                            "DMS device append-tail snapshot scale shape/dtype mismatch"
+                        )
+                elif values is not None:
+                    raise ValueError(
+                        "BF16 DMS append-tail snapshot must not contain INT8 scales"
+                    )
+        for layer in range(self._layers):
+            self._require_live_layer(layer)
+        published = np.add(live_counts, np.int32(accepted), dtype=np.int32)
+        if accepted == horizon:
+            # The accepted prefix is the whole window: publish the counts and
+            # leave every payload byte as the append left it.
+            for layer in range(self._layers):
+                values = np.ascontiguousarray(published[layer])
+                copy_host_to_device(
+                    self._live_meta[layer], host_array_ptr(values), values.nbytes
+                )
+            return
+        suffix_rows = horizon - accepted
+        tail = slice(accepted, horizon)
+        suffix = tuple(
+            DMSDeviceExtentSnapshot(
+                layer=int(extent.layer),
+                head=int(extent.head),
+                start=int(extent.start) + accepted,
+                length=suffix_rows,
+                k_bits=extent.k_bits[tail],
+                v_bits=extent.v_bits[tail],
+                positions=extent.positions[tail],
+                evict=extent.evict[tail],
+                k_scales=None if extent.k_scales is None else extent.k_scales[tail],
+                v_scales=None if extent.v_scales is None else extent.v_scales[tail],
+            )
+            for extent in extents
+        )
+        self.restore(
+            DMSDevicePayloadSnapshot(extents=suffix, live_counts=published)
+        )
+
     def close(self) -> None:
         if self._closed:
             return
         for buf in self._buffers:
             free(buf)
         self._buffers.clear()
+        self._staged = [None] * self._layers
         self._closed = True
 
     def _check_closed(self) -> None:

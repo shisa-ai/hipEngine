@@ -1215,6 +1215,83 @@ def test_short_lease_degrades_to_private_instead_of_failing_closed(
     assert shortfalls[0]["needed_pages"] == 4
 
 
+def test_short_lease_grows_from_idle_arena_pages_before_going_private(
+    monkeypatch,
+) -> None:
+    """Outgrowing the eager lease leases idle arena pages, not a private copy.
+
+    On a 24 GB card the pool already holds committed pages for the declared
+    context; four concurrent short requests used to allocate a second private
+    KV chunk for batched decode and were refused by the admission budget.
+    """
+
+    from hipengine.runtime.qwen35_gguf_runner import _GGUFPackedTargetState
+
+    _install_fake_device(monkeypatch)
+    monkeypatch.setattr(
+        gguf_runner,
+        "_allocate_qwen35_gguf_kv_chunk",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("growth from the arena must not fall back to private")
+        ),
+    )
+    runtime = SimpleNamespace(memset=lambda ptr, value, nbytes: None)
+    layout = _int8_kv_layout()
+    pool = _fake_kv_pool(layout, pages=(0, 1))
+    leased: dict[str, int] = {}
+    released: list[str] = []
+
+    def lease_workspace(key, pages):
+        leased[key] = int(pages)
+        return tuple(range(10, 10 + int(pages)))
+
+    pool.lease_workspace = lease_workspace
+    pool.release_workspace = lambda key: released.append(key) or ()
+    runner = _allocator_fake_runner()
+
+    state = _GGUFPackedTargetState.allocate(
+        runner,
+        slot_count=1,
+        max_sequence_length=1024,
+        runtime=runtime,
+        kv_layout=layout,
+        kv_pool=pool,
+        lease_kv_planes=True,
+    )
+
+    assert state.kv_backing_kind == "pool_lease"
+    assert state.page_ids == (0, 1, 10, 11)
+    assert list(leased.values()) == [2]
+    assert state.growth_lease_key in leased
+    assert state.growth_lease_pool is pool
+    assert released == []
+
+
+def test_refused_growth_lease_still_degrades_to_private(monkeypatch) -> None:
+    from hipengine.runtime.qwen35_gguf_runner import _GGUFPackedTargetState
+
+    _install_fake_device(monkeypatch)
+    runtime = SimpleNamespace(memset=lambda ptr, value, nbytes: None)
+    layout = _int8_kv_layout()
+    pool = _fake_kv_pool(layout, pages=(0, 1))
+
+    def refuse(key, pages):
+        raise MemoryError("pool is full")
+
+    pool.lease_workspace = refuse
+    state = _GGUFPackedTargetState.allocate(
+        _allocator_fake_runner(),
+        slot_count=1,
+        max_sequence_length=1024,
+        runtime=runtime,
+        kv_layout=layout,
+        kv_pool=pool,
+        lease_kv_planes=True,
+    )
+    assert state.kv_backing_kind == "private"
+    assert state.growth_lease_key is None
+
+
 def test_sufficient_lease_still_prefers_the_arena(monkeypatch) -> None:
     """The degradation path must not cost the arena win in the normal case."""
 

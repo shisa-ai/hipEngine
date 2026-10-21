@@ -9,6 +9,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from math import ceil, prod
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -33,6 +34,7 @@ from hipengine.kvcache.backend import (
 from hipengine.kvcache.dms_device import (
     DMSDevicePayloadSnapshot,
     DMSDevicePayloadStore,
+    DMSDeviceStagedLayer,
     DMSDeviceUnavailable,
     device_payloads_requested,
 )
@@ -415,15 +417,17 @@ class DMSRetrofitConfig:
 
 
 def _resolve_sidecar_path(source: Path, declared_path: str) -> Path:
-    base = source.parent.resolve()
-    resolved = (base / declared_path).resolve()
+    # Containment is checked lexically in the metadata's own directory, so a
+    # snapshot whose files are symlinks into a shared blob store still works.
+    base = Path(os.path.abspath(source.parent))
+    candidate = Path(os.path.normpath(base / declared_path))
     try:
-        resolved.relative_to(base)
+        candidate.relative_to(base)
     except ValueError as exc:
         raise ValueError("DMS sidecar path escapes its metadata directory") from exc
-    if not resolved.is_file():
-        raise FileNotFoundError(f"DMS sidecar file is missing: {resolved}")
-    return resolved
+    if not candidate.is_file():
+        raise FileNotFoundError(f"DMS sidecar file is missing: {candidate}")
+    return candidate.resolve()
 
 
 def _validate_safetensors_sidecar(spec: DMSLinearSidecarSpec) -> None:
@@ -533,7 +537,10 @@ def load_dms_retrofit_config(
 
     model = Path(model_path).expanduser().resolve()
     if metadata_path is not None:
-        source = Path(metadata_path).expanduser().resolve()
+        # Keep the directory the caller named: a Hugging Face snapshot links
+        # each file into ``blobs/``, and resolving the metadata symlink would
+        # look for the sidecar beside the blob instead of beside the metadata.
+        source = Path(os.path.abspath(Path(metadata_path).expanduser()))
         source_kind = "explicit_metadata"
     else:
         root = model if model.is_dir() else model.parent
@@ -1137,6 +1144,23 @@ class DMSOperation:
     allocator_snapshot: DMSAllocatorSnapshot | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class DMSAppendOperation:
+    """One bounded undo image shared by the no-expiry cycle's checkpoints."""
+
+    lease: KVLease
+    base_offsets: np.ndarray
+    range_capacity: np.ndarray
+    live_counts: np.ndarray
+    token_positions: np.ndarray
+    evict_mask: np.ndarray
+    logical_tokens: int
+    max_rows: int
+    device_snapshot: DMSDevicePayloadSnapshot
+    counter_snapshot: tuple[int, int, int, int]
+    accepted_rows: int = 0
+
+
 _CODEC_EVALUATION_ACCESS = object()
 
 
@@ -1215,9 +1239,12 @@ class DMSCompactBackend:
         self._leases: dict[str, KVLease] = {}
         self._storage_view = self._build_storage_view()
         self.pack_calls = 0
+        self.prefill_trunk_passes = 0
         self.decode_appends = 0
         self.evicted_tokens = 0
         self.released_provisional_slots = 0
+        self.append_journal_transactions = 0
+        self.full_journal_transactions = 0
         self._device_store: DMSDevicePayloadStore | None = None
         if device_payloads_requested(device_payloads):
             try:
@@ -1552,6 +1579,27 @@ class DMSCompactBackend:
             )
         state.logical_tokens = int(tokens)
         self.pack_calls += 1
+
+    def stage_device_prefill_layer(
+        self,
+        compact_layer_index: int,
+    ) -> DMSDeviceStagedLayer:
+        """Hand one fully packed compact layer's device payload back as host bytes.
+
+        Prefill staging for the layer-outer route: after the layer is packed,
+        its compact planes move to host and its device buffers are released, so
+        the remaining prefill workspace is not competing with every compact
+        payload at once. The next device call on that layer restores it byte for
+        byte. Call only once the layer's packing is complete; the store has no
+        way to tell a partial pack from a finished one.
+        """
+
+        if self._device_store is None:
+            raise ValueError("device payloads are not enabled on this backend")
+        layer = int(compact_layer_index)
+        if layer < 0 or layer >= self.retrofit.num_layers:
+            raise ValueError("compact DMS layer index is out of range")
+        return self._device_store.stage_layer(layer)
 
     def _shrink_after_streaming_pack(self, state: DMSSequenceState) -> None:
         metadata = state.lease.claims.metadata_dict()
@@ -1961,6 +2009,97 @@ class DMSCompactBackend:
             execution_compatibility_key=(*self.spec.compatibility_key, spans.span_role),
         )
 
+    def begin_append_transaction(
+        self, request_id: int, *, start_position: int, max_rows: int,
+    ) -> DMSAppendOperation | None:
+        """Use bounded host undo only when all possible writes are append-only.
+
+        Existing live eviction candidates must stay inside the protected window
+        through the final possible row. New candidates must also stay protected,
+        and the existing extents must have room for the entire horizon. Other
+        cases retain the full transaction, including host-reference execution.
+        """
+        state = self.state_for_request(request_id)
+        rows, start = int(max_rows), int(start_position)
+        window = int(self.retrofit.window_size)
+        if (self._device_store is None or rows <= 0 or rows - 1 > window
+                or start != int(state.logical_tokens)
+                or any((state.k_payload, state.v_payload, state.k_scales, state.v_scales))
+                or np.any(state.live_counts + rows > state.range_capacity)):
+            return None
+        positions = np.empty((*state.live_counts.shape, rows), dtype=np.int32)
+        eviction = np.empty((*state.live_counts.shape, rows), dtype=np.bool_)
+        end = start + rows - 1
+        for layer, counts in enumerate(state.live_counts):
+            for head, count in enumerate(counts):
+                n, capacity = int(count), int(state.range_capacity[layer, head])
+                prior_positions = state.token_positions[layer, head, :n]
+                prior_evict = state.evict_mask[layer, head, :n]
+                if (np.any(prior_evict & (end - prior_positions > window))
+                        or np.any(state.token_positions[layer, head, n:capacity] != -1)
+                        or np.any(state.evict_mask[layer, head, n:capacity])):
+                    return None
+                positions[layer, head] = state.token_positions[layer, head, n:n + rows]
+                eviction[layer, head] = state.evict_mask[layer, head, n:n + rows]
+        snapshot = self._device_store.snapshot_append_tail(
+            state.base_offsets, state.live_counts, rows,
+        )
+        self.append_journal_transactions += 1
+        return DMSAppendOperation(
+            lease=state.lease, base_offsets=state.base_offsets.copy(),
+            range_capacity=state.range_capacity.copy(), live_counts=state.live_counts.copy(),
+            token_positions=positions, evict_mask=eviction,
+            logical_tokens=start, max_rows=rows, device_snapshot=snapshot,
+            counter_snapshot=self._transaction_counters(),
+        )
+
+    def _transaction_counters(self) -> tuple[int, int, int, int]:
+        return (int(self.pack_calls), int(self.decode_appends),
+                int(self.evicted_tokens), int(self.released_provisional_slots))
+
+    def _validate_append_layout(self, operation: DMSAppendOperation) -> DMSSequenceState:
+        state = self.state_for_request(operation.lease.request_id)
+        if (state.lease != operation.lease
+                or not np.array_equal(state.base_offsets, operation.base_offsets)
+                or not np.array_equal(state.range_capacity, operation.range_capacity)):
+            raise RuntimeError("DMS append transaction layout changed")
+        return state
+
+    def checkpoint_append_transaction(self, operation: DMSAppendOperation) -> DMSAppendOperation:
+        """Record a row boundary without copying the unchanged compact history."""
+        state = self._validate_append_layout(operation)
+        consumed = int(state.logical_tokens) - operation.logical_tokens
+        counters = self._transaction_counters()
+        if (not 0 <= consumed <= operation.max_rows
+                or not np.array_equal(state.live_counts, operation.live_counts + consumed)
+                or counters != (operation.counter_snapshot[0],
+                                operation.counter_snapshot[1] + consumed,
+                                operation.counter_snapshot[2], operation.counter_snapshot[3])):
+            raise RuntimeError("DMS append transaction changed non-append state")
+        return replace(operation, accepted_rows=consumed, counter_snapshot=counters)
+
+    def _rollback_append(self, operation: DMSAppendOperation) -> ResourceDelta:
+        state = self._validate_append_layout(operation)
+        accepted = int(operation.accepted_rows)
+        if self._device_store is None:
+            raise RuntimeError("DMS device store disappeared before append rollback")
+        self._device_store.restore_append_tail(operation.device_snapshot, accepted_rows=accepted)
+        for layer, counts in enumerate(operation.live_counts):
+            for head, count in enumerate(counts):
+                n = int(count)
+                state.token_positions[layer, head, n + accepted:n + operation.max_rows] = (
+                    operation.token_positions[layer, head, accepted:])
+                state.evict_mask[layer, head, n + accepted:n + operation.max_rows] = (
+                    operation.evict_mask[layer, head, accepted:])
+        state.live_counts[...] = operation.live_counts + accepted
+        state.logical_tokens = operation.logical_tokens + accepted
+        (self.pack_calls, self.decode_appends, self.evicted_tokens,
+         self.released_provisional_slots) = operation.counter_snapshot
+        return ResourceDelta(
+            operation_id=f"rollback:dms-append:{operation.lease.request_id}",
+            lease_id=operation.lease.lease_id, request_id=operation.lease.request_id,
+        )
+
     def begin_transaction(self, rows: Sequence[Any], draft: Any) -> DMSOperation:
         del draft
         if len(rows) != 1:
@@ -1969,6 +2108,7 @@ class DMSCompactBackend:
         if not isinstance(lease, KVLease):
             raise TypeError("compact DMS transaction row must contain KVLease")
         state = self.state_for_request(lease.request_id)
+        self.full_journal_transactions += 1
         return DMSOperation(
             operation_id=f"dms-transaction:{lease.request_id}",
             lease=lease,
@@ -2009,6 +2149,12 @@ class DMSCompactBackend:
 
     def commit(self, operation: Any, result: Any) -> ResourceDelta:
         del result
+        if isinstance(operation, DMSAppendOperation):
+            self._validate_append_layout(operation)
+            return ResourceDelta(
+                operation_id=f"commit:dms-append:{operation.lease.request_id}",
+                lease_id=operation.lease.lease_id, request_id=operation.lease.request_id,
+            )
         if not isinstance(operation, DMSOperation):
             raise TypeError("compact DMS commit requires DMSOperation")
         return ResourceDelta(
@@ -2018,6 +2164,8 @@ class DMSCompactBackend:
         )
 
     def rollback(self, operation: Any) -> ResourceDelta:
+        if isinstance(operation, DMSAppendOperation):
+            return self._rollback_append(operation)
         if not isinstance(operation, DMSOperation):
             raise TypeError("compact DMS rollback requires DMSOperation")
         state = self.state_for_request(operation.lease.request_id)
@@ -2143,9 +2291,12 @@ class DMSCompactBackend:
             },
             "operations": {
                 "streaming_pack_calls": self.pack_calls,
+                "prefill_trunk_passes": self.prefill_trunk_passes,
                 "decode_appends": self.decode_appends,
                 "evicted_tokens": self.evicted_tokens,
                 "released_provisional_slots": self.released_provisional_slots,
+                "append_journal_transactions": self.append_journal_transactions,
+                "full_journal_transactions": self.full_journal_transactions,
             },
             "extent_pool": self.extents.snapshot(),
             "ledger": self.ledger.snapshot(),

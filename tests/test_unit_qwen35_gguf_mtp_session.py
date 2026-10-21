@@ -964,8 +964,9 @@ def test_post_output_norm_decoder_close_frees_owned_policy_row(
     assert verifier_closes == []
 
 
+@pytest.mark.parametrize("chunk_limit", [0, 1, 2, 3])
 def test_streaming_prompt_sink_applies_one_consistent_target_hidden_transform(
-    monkeypatch,
+    monkeypatch, chunk_limit,
 ) -> None:
     pending = DeviceBuffer(0x1000, 8)
     monkeypatch.setattr(mtp_module, "malloc", lambda _nbytes, *, runtime: pending)
@@ -1007,6 +1008,7 @@ def test_streaming_prompt_sink_applies_one_consistent_target_hidden_transform(
         runtime=Runtime(),
         checkpoint=None,
         transform_hidden_rows=transform,
+        max_chunk_rows=chunk_limit,
     )
     sink.consume(
         request_id=7,
@@ -1017,10 +1019,94 @@ def test_streaming_prompt_sink_applies_one_consistent_target_hidden_transform(
     )
     sink.finish(request_id=7, total_rows=3, stream=5)
 
-    assert transforms == [(0x5000, 3, 5)]
-    assert rows == [(11, 0, 0x1000), (22, 1, 0x7000), (33, 2, 0x7008)]
-    assert copies == [(0x1000, 0x7010, 8)]
+    limit = chunk_limit or 3
+    chunks = [(start, min(limit, 3 - start)) for start in range(0, 3, limit)]
+    assert transforms == [(0x5000 + start * 8, count, 5) for start, count in chunks]
+    expected_rows = []
+    for start, count in chunks:
+        expected_rows.append(((11, 22, 33)[start], start, 0x1000))
+        expected_rows.extend(
+            ((11, 22, 33)[start + i], start + i, 0x7000 + (i - 1) * 8)
+            for i in range(1, count)
+        )
+    assert rows == expected_rows
+    assert copies == [(0x1000, 0x7000 + (count - 1) * 8, 8) for _, count in chunks]
     sink.close()
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+def test_bounded_streaming_transform_reuses_buffer_in_stream_order(monkeypatch, cancel):
+    # Device reads execute later, not at enqueue time: overwriting the shared
+    # normalization buffer early would corrupt the values this test observes.
+    memory = {0x5000 + i * 8: i for i in range(7)}
+    memory[0x2000] = 999
+    queue, consumed, captures, transformed, freed = [], [], [], [], []
+    monkeypatch.setattr(mtp_module, "malloc", lambda nbytes, **kw: DeviceBuffer(0x1000, nbytes))
+    monkeypatch.setattr(mtp_module, "free", lambda buffer, **kw: freed.append(buffer.ptr))
+
+    class Runtime:
+        def memcpy(self, dst, src, nbytes, kind):
+            memory[dst] = memory[src]
+
+        def memcpy_async(self, dst, src, nbytes, kind, stream):
+            assert stream == 3
+            queue.append(lambda: memory.__setitem__(dst, memory[src]))
+
+    class Executor:
+        def enqueue_prompt_rows(self, request_id, token_ids, **kwargs):
+            assert kwargs["stream"] == 3
+            ptr = kwargs["target_hidden_base_ptr"]
+            position = kwargs["position_start"]
+            tokens = tuple(token_ids)
+            queue.append(lambda: consumed.extend(
+                (position + i, token, memory[ptr + i * 8]) for i, token in enumerate(tokens)
+            ))
+
+    def transform(src, count, stream):
+        assert count <= 4 and stream == 3
+        transformed.append(count)
+        def normalize():
+            for i in range(count):
+                memory[0x7000 + i * 8] = memory[src + i * 8] + 1000
+        queue.append(normalize)
+        return 0x7000
+
+    def capture(boundary, ptr):
+        queue.append(lambda: captures.append((boundary, memory[ptr])))
+
+    checkpoints = 0
+    def checkpoint():
+        nonlocal checkpoints
+        checkpoints += 1
+        if cancel and checkpoints == 2:
+            raise RuntimeError("cancelled between chunks")
+
+    sink = mtp_module._StreamingNextNPromptSink(
+        request_id=7, prompt_tokens=tuple(range(11, 18)), hidden_size=4,
+        executor=Executor(), runtime=Runtime(), checkpoint=checkpoint,
+        start_position=10,
+        initial_hidden=Tensor.from_handle(0x2000, (1, 4), DType.BF16, Device("hip", 0)),
+        transform_hidden_rows=transform, prefix_capture=capture, max_chunk_rows=4,
+    )
+    sink.capture_boundaries = (12, 14, 17)
+    if cancel:
+        with pytest.raises(RuntimeError, match="cancelled between chunks"):
+            sink.consume(request_id=7, chunk_start=0, hidden_ptr=0x5000, rows=7, stream=3)
+    else:
+        sink.consume(request_id=7, chunk_start=0, hidden_ptr=0x5000, rows=7, stream=3)
+        sink.finish(request_id=7, total_rows=7, stream=3)
+    for operation in queue:
+        operation()
+    expected_rows = 2 if cancel else 7
+    assert consumed == [
+        (10 + i, 11 + i, 999 if i == 0 else 999 + i)
+        for i in range(expected_rows)
+    ]
+    assert captures == ([(12, 1001)] if cancel else [(12, 1001), (14, 1003), (17, 1006)])
+    assert transformed == ([2] if cancel else [2, 2, 3])
+    sink.close()
+    sink.close()
+    assert freed == [0x1000]
 
 
 def test_streaming_prompt_sink_cancellation_between_chunks_releases_owned_row(

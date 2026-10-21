@@ -635,15 +635,15 @@ def _auto_context_runner(*, free_gib: float = 8.0, with_geometry: bool = True):
 def test_auto_context_reserve_default_covers_measured_untracked_overhead(monkeypatch) -> None:
     """The reserve has to cover device memory the model never prices.
 
-    Measured on the W7900 at the auto-selected 27B context: 42.91 GiB of
-    whole-card use against 40.25 GiB of hipEngine-tracked allocations. The
-    default is pinned here so lowering it back toward the old 512 MiB is a
-    deliberate act with a failing test attached.
+    With the prefill scratch, packed workspace and MTP draft priced from their
+    allocators, a 97%-of-context prompt on the 24 GB RX 7900 XTX bottomed out
+    0.2-1.0 GiB above a 256 MiB reserve. The default is pinned so changing it
+    is a deliberate act with a failing test attached.
     """
 
     monkeypatch.delenv("HIPENGINE_GGUF_KV_CAPACITY_RESERVE_MIB", raising=False)
     reserve_mib = qwen35_gguf._gguf_auto_context_reserve_bytes() // 1024**2
-    assert reserve_mib >= 2560  # measured 2.66 GiB of untracked device memory
+    assert reserve_mib == 768
 
     monkeypatch.setenv("HIPENGINE_GGUF_KV_CAPACITY_RESERVE_MIB", "256")
     assert qwen35_gguf._gguf_auto_context_reserve_bytes() == 256 * 1024**2

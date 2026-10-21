@@ -1598,17 +1598,26 @@ class LLM:
                 if resident_capacity is None
                 else min(resident_capacity, registered_plain_ar_capacity)
             )
-        if resident_capacity is not None:
-            loop_config = replace(
-                loop_config,
-                max_active_requests=resident_capacity,
-            )
         if self.prefix_cache is not None:
             loop_config = replace(loop_config, prefix_cache=self.prefix_cache)
         if self.speculative_mtp_serving is not None:
             loop_config = replace(
                 loop_config,
                 speculative_mtp_serving=self.speculative_mtp_serving,
+            )
+        if resident_capacity is None and has_resident_runner:
+            # Unpinned capacity is sized against this GPU's memory: every slot
+            # pins state that competes with context on a small card.
+            automatic = getattr(generator, "automatic_serving_capacity", None)
+            if callable(automatic):
+                resident_capacity = automatic(
+                    loop_config,
+                    max_sequence_length=self.max_sequence_length,
+                )
+        if resident_capacity is not None:
+            loop_config = replace(
+                loop_config,
+                max_active_requests=resident_capacity,
             )
         resident_driver = SubmitPollTextGenerator(
             generator,

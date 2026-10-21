@@ -60,11 +60,28 @@ int main() {
   create.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
   create.pApplicationInfo = &app;
   VkInstance instance = VK_NULL_HANDLE;
-  if (vkCreateInstance(&create, nullptr, &instance) != VK_SUCCESS) return 2;
+  const VkResult instance_result = vkCreateInstance(&create, nullptr, &instance);
+  if (instance_result == VK_ERROR_INCOMPATIBLE_DRIVER) {
+    std::cout << "Vulkan device/driver is unavailable" << std::endl;
+    return 77;
+  }
+  if (instance_result != VK_SUCCESS) return 2;
   uint32_t count = 0;
-  if (vkEnumeratePhysicalDevices(instance, &count, nullptr) != VK_SUCCESS || count == 0) {
+  const VkResult enumerate_result = vkEnumeratePhysicalDevices(instance, &count, nullptr);
+  if (enumerate_result == VK_ERROR_INITIALIZATION_FAILED) {
+    std::cout << "Vulkan physical-device initialization is unavailable" << std::endl;
+    vkDestroyInstance(instance, nullptr);
+    return 77;
+  }
+  if (enumerate_result != VK_SUCCESS) {
+    std::cerr << "vkEnumeratePhysicalDevices failed: " << enumerate_result << std::endl;
     vkDestroyInstance(instance, nullptr);
     return 3;
+  }
+  if (count == 0) {
+    std::cout << "Vulkan physical device is unavailable" << std::endl;
+    vkDestroyInstance(instance, nullptr);
+    return 77;
   }
   std::vector<VkPhysicalDevice> devices(count);
   if (vkEnumeratePhysicalDevices(instance, &count, devices.data()) != VK_SUCCESS) return 4;
@@ -172,6 +189,8 @@ int main() {
     run_result = subprocess.run(
         [str(executable)], check=False, capture_output=True, text=True
     )
+    if run_result.returncode == 77:
+        pytest.skip(run_result.stdout.strip())
     assert run_result.returncode == 0, run_result.stderr
     fields = run_result.stdout.strip().split()
     if fields[0] == "unsupported":
