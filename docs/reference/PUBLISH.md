@@ -59,6 +59,10 @@ Use semver-style bumps while the public API is still alpha:
 - [ ] Run CLI smokes on Python 3.12:
       `uv run --python 3.12 --extra dev hipengine --help` and
       `uv run --python 3.12 --extra dev hipengine serve --help`.
+- [ ] Run the 24 GB serving-capacity gate on an RX 7900 XTX (about one hour):
+      `HIP_VISIBLE_DEVICES=<24 GB GPU> uv run pytest tests/test_slow_qwen38_24gb_serving_capacity.py -v`.
+      It skips on larger cards, so the `--suite all` run does not cover it; a
+      48 GB card cannot show an allocation the sizing model does not price.
 - [ ] Run the relevant ROCm smoke/correctness gate for the release scope. For
       kernel/runtime releases, follow `docs/TESTING.md` and `docs/KERNELS.md`
       including cached-build profiler guidance.

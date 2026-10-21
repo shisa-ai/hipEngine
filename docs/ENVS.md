@@ -1011,6 +1011,7 @@ artifacts or explicitly opt into GPU-gated suites. They are not product knobs.
 | `VIBEVOICE_STANDALONE_GGUF` / `VIBEVOICE_STANDALONE_REPORT` | local defaults | VibeVoice standalone-encoder GGUF and report fixture paths for the VibeVoice tests. |
 | `HIPENGINE_TORCH_ABSENCE_CHILD` | unset | Internal re-execution flag set by `tests/_torch_absence.py` to the pytest node id running in a fresh interpreter; the clean child detects it and runs the real test body instead of recursing. |
 | `VIBEVOICE_REFERENCE_HF` / `VIBEVOICE_REFERENCE_AUDIO` | local defaults | VibeVoice HuggingFace reference snapshot and reference audio fixture paths for the encoder comparison tests. |
+| `HIPENGINE_CAPACITY_MODEL` / `HIPENGINE_CAPACITY_DMS_METADATA` | `/models/gguf/Qwen3.8-27B-Q4_K_M.gguf` / `/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json` | Model and DMS sidecar for the 24 GB serving-capacity gate (`tests/test_slow_qwen38_24gb_serving_capacity.py`); a missing file skips its cases. |
 
 ## Benchmark and development harness variables
 
