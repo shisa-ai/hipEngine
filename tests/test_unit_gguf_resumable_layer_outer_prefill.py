@@ -684,6 +684,35 @@ def test_budget_spreads_layers_over_remaining_polls(
     assert row.resumable_prefill is gen._RESUMABLE_PREFILL_DONE
 
 
+@pytest.mark.parametrize("capacity, in_place", [(1, True), (2, False), (4, False)])
+def test_wiring_suspends_in_place_only_for_a_single_slot_server(
+    monkeypatch: pytest.MonkeyPatch, capacity: int, in_place: bool
+) -> None:
+    from hipengine.generation import qwen35_gguf as gen
+
+    monkeypatch.setattr(gen, "_gguf_packed_layer_outer_enabled", lambda: True)
+    recorder = _Recorder()
+    owner = _resumable_owner(monkeypatch, recorder)
+    host = _wiring_host(owner)
+    host.capacity = capacity
+    seen: list[dict] = []
+
+    def fake_resume(prompt_token_ids=None, *, sessions=None, state=None, layer_budget=None, **kwargs):
+        seen.append(kwargs)
+        return _GGUFResumablePrefillState(
+            prompts=((1,),), sessions=(owner,), chunk_plans=[], packed_state=None,
+            packed_scratch_base=None, layer_types=tuple(_LAYER_TYPES), next_layer=1,
+            total_rows=1,
+        )
+
+    owner.prefill_batch_native_layer_outer_resumable = fake_resume
+    row = _WiringRow(tuple(range(32)))
+    row.prefill_tokens_seen = 8
+    helper = gen.Qwen35GGUFResidentModelRunner._prefill_resumable_int8_chunk
+    assert helper(host, row, tuple(range(8)), final_chunk=False) is True
+    assert seen[0].get("suspend_in_place", False) is in_place
+
+
 def test_wiring_declines_when_flag_off(monkeypatch: pytest.MonkeyPatch) -> None:
     from hipengine.generation import qwen35_gguf as gen
 
@@ -777,13 +806,16 @@ def test_yield_saves_suspended_state_into_dedicated_buffers(
     assert isinstance(state, _GGUFResumablePrefillState)
     assert state.scratch is not None
     assert state.scratch.nbytes > 0
-    # Two hidden planes plus one conv + one recurrent buffer per linear layer.
+    # The live hidden plane plus one conv + one recurrent buffer per linear layer.
     linear_layers = sum(1 for layer in _LAYER_TYPES if layer == LINEAR_ATTENTION)
-    assert len(state.scratch._allocated) == 2 + 2 * linear_layers
-    # The save copied both hidden planes and the linear state.
-    assert len(recorder.copies) >= 2 + 2 * linear_layers
+    assert len(state.scratch._allocated) == 1 + 2 * linear_layers
+    # The save copied the live plane and the linear state.
+    assert len(recorder.copies) >= 1 + 2 * linear_layers
     hidden_bytes = len(prompt) * owner.runner.hidden_size * 2
-    assert all(nbytes == hidden_bytes for _, _, nbytes in recorder.copies[:2])
+    # Three completed layers leave the activations in plane B.
+    assert recorder.copies[0] == (
+        int(state.scratch.hidden.ptr), owner._prefill_hidden_b.ptr, hidden_bytes
+    )
     # The shared buffers are not reused before the copies retire.
     assert recorder.sync_calls >= 1
 
@@ -815,12 +847,95 @@ def test_resume_restores_suspended_state_before_layers(
         layer_budget=2,
     )
     assert isinstance(resumed, _GGUFResumablePrefillState)
-    # The restore copied the suspended state back before any layer ran.
-    assert len(recorder.copies) >= 2
+    # The restore copied the suspended plane back before any layer ran, into
+    # the plane layer 3 reads.
     hidden_bytes = len(prompt) * owner.runner.hidden_size * 2
-    assert all(nbytes == hidden_bytes for _, _, nbytes in recorder.copies[:2])
+    assert recorder.copies[0] == (
+        owner._prefill_hidden_b.ptr, int(state.scratch.hidden.ptr), hidden_bytes
+    )
     assert saved > 0
     assert _layers_run(recorder) == [3, 4]
+
+
+@pytest.mark.parametrize("budget, plane", [(2, "_prefill_hidden_a"), (3, "_prefill_hidden_b")])
+def test_yield_saves_the_plane_at_the_boundary_phase(
+    monkeypatch: pytest.MonkeyPatch, budget: int, plane: str
+) -> None:
+    """Only the plane the next layer reads holds activations; it alone is saved."""
+
+    recorder = _Recorder()
+    owner = _resumable_owner(monkeypatch, recorder)
+    prompt = tuple(range(32))
+    state = owner._prefill_batch_native_layer_outer(
+        (prompt,), sessions=(owner,), chunks=_prompt_rounds(prompt, rows=8),
+        layer_budget=budget,
+    )
+    assert isinstance(state, _GGUFResumablePrefillState)
+    hidden_sources = [
+        src for dst, src, _ in recorder.copies if dst == int(state.scratch.hidden.ptr)
+    ]
+    assert hidden_sources == [getattr(owner, plane).ptr]
+
+
+def test_aliased_planes_checkpoint_one_plane(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The route-scoped alias makes both plane names one buffer: save it once."""
+
+    recorder = _Recorder()
+    owner = _resumable_owner(monkeypatch, recorder)
+    owner._prefill_hidden_b = owner._prefill_hidden_a
+    prompt = tuple(range(32))
+    state = owner._prefill_batch_native_layer_outer(
+        (prompt,), sessions=(owner,), chunks=_prompt_rounds(prompt, rows=8),
+        layer_budget=3,
+    )
+    assert isinstance(state, _GGUFResumablePrefillState)
+    hidden_bytes = len(prompt) * owner.runner.hidden_size * 2
+    assert sum(1 for buffer in state.scratch._allocated if buffer.nbytes == hidden_bytes) == 1
+
+
+def test_in_place_suspension_copies_nothing_and_resumes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A single-request server keeps the suspended state in the shared workspace."""
+
+    recorder = _Recorder()
+    owner = _resumable_owner(monkeypatch, recorder)
+    prompt = tuple(range(32))
+    state = owner._prefill_batch_native_layer_outer(
+        (prompt,), sessions=(owner,), chunks=_prompt_rounds(prompt, rows=8),
+        layer_budget=3, suspend_in_place=True,
+    )
+    assert isinstance(state, _GGUFResumablePrefillState)
+    assert state.scratch is None
+    assert getattr(owner, "_resumable_prefill_scratch", None) is None
+    assert owner.last_packed_prefill_plan["layer_outer_suspended_bytes"] == 0
+    hidden_ptrs = {owner._prefill_hidden_a.ptr, owner._prefill_hidden_b.ptr}
+    assert not any(src in hidden_ptrs for _, src, _ in recorder.copies)
+    recorder.copies.clear()
+    recorder.layers.clear()
+    resumed = owner._prefill_batch_native_layer_outer(
+        None, sessions=None, chunks=None, resume_state=state, layer_budget=2,
+    )
+    assert resumed is state
+    assert not any(dst in hidden_ptrs for dst, _, _ in recorder.copies)
+    assert _layers_run(recorder) == [3, 4]
+
+
+def test_in_place_resume_refuses_replaced_planes(monkeypatch: pytest.MonkeyPatch) -> None:
+    recorder = _Recorder()
+    owner = _resumable_owner(monkeypatch, recorder)
+    prompt = tuple(range(32))
+    state = owner._prefill_batch_native_layer_outer(
+        (prompt,), sessions=(owner,), chunks=_prompt_rounds(prompt, rows=8),
+        layer_budget=3, suspend_in_place=True,
+    )
+    owner._prefill_hidden_b = SimpleNamespace(ptr=0x9000, nbytes=owner._prefill_hidden_b.nbytes)
+    recorder.layers.clear()
+    with pytest.raises(RuntimeError, match="replaced before resume"):
+        owner._prefill_batch_native_layer_outer(
+            None, sessions=None, chunks=None, resume_state=state, layer_budget=2,
+        )
+    assert recorder.layers == []
 
 
 def test_completion_releases_suspended_buffers(

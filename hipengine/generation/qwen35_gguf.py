@@ -2653,15 +2653,19 @@ class Qwen35GGUFBringupGenerator:
         def checkpoint_bytes(max_positions: int) -> int:
             plan = lifetime_plan(max_positions)
             if (
-                not server_pool or mtp_sized or plan is None
+                not server_pool or plan is None
                 or plan.mode != "layer_outer_shared_oracle"
             ):
                 return 0
+            # A single-slot server suspends in place: nothing else can run on
+            # the batch owner, so no checkpoint is allocated.
+            if int(capacity) <= 1:
+                return 0
             # Long prompts resume one session at a time. Each suspended
-            # request saves two physical hidden planes and one slot's state.
+            # request saves its live hidden plane and one slot's state.
             slots = 1 if int(max_positions) > 1024 else capacity
             return capacity * (
-                2 * int(max_positions) * int(shared_runner.hidden_size) * 2
+                int(max_positions) * int(shared_runner.hidden_size) * 2
                 + _gguf_packed_state_linear_bytes(shared_runner, slot_count=slots)
             )
 
@@ -2695,10 +2699,10 @@ class Qwen35GGUFBringupGenerator:
             plan = lifetime_plan(max_positions)
             if plan is None or plan.mode == "bf16_mirror":
                 return 0
-            if mtp_sized or plan.mode == "chunk_outer_layer_local_oracles":
-                # Streamed MTP prompts run the chunk-outer executor, which keeps
-                # one full-length oracle pair per INT8 layer.
+            if plan.mode == "chunk_outer_layer_local_oracles":
                 return int(plan.layer_local_oracle_bytes)
+            # Streamed MTP prompts run layer-outer too: the executor publishes
+            # each round's final rows to the draft provider's sink.
             # Layer-outer: the shared pair plus the packed slab's pairs.
             return int(3 * plan.oracle_pair_bytes)
 
@@ -11578,12 +11582,17 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         )
         try:
             if state is None:
-                streaming_kwargs = (
+                resume_kwargs = (
                     {"target_hidden_chunk_sinks": streaming_sinks}
                     if any(sink is not None for sink in streaming_sinks) else {}
                 )
+                # One resident slot means no other row can run on the batch
+                # owner while this prompt is suspended, so its live state can
+                # stay in the shared workspace instead of a checkpoint copy.
+                if int(getattr(self, "capacity", 0) or 0) == 1:
+                    resume_kwargs["suspend_in_place"] = True
                 result = resume(
-                    prompts, sessions=sessions, layer_budget=budget, **streaming_kwargs,
+                    prompts, sessions=sessions, layer_budget=budget, **resume_kwargs,
                 )
             else:
                 result = resume(state=state, layer_budget=budget)

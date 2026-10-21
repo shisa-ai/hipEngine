@@ -190,11 +190,12 @@ def test_bf16_prefill_has_no_per_token_transient(monkeypatch) -> None:
     assert terms["private_workspace_slots"] == 0
 
 
-def test_int8_transient_follows_the_executor_mtp_selects(monkeypatch) -> None:
+def test_int8_transient_follows_the_layer_outer_executor(monkeypatch) -> None:
     pair = 2 * 32_768 * 4 * 256 * 2
     streamed = _route_terms(monkeypatch, storage="int8_per_token_head", mtp=True)
-    # Streamed MTP prompts keep one full-length oracle pair per INT8 layer.
-    assert streamed["transient_bytes_resolver"](32_768) == 16 * pair
+    # Streamed MTP prompts run layer-outer as well, publishing final rows to
+    # the draft sink, so they keep the shared pair rather than one per layer.
+    assert streamed["transient_bytes_resolver"](32_768) == 3 * pair
     plain = _route_terms(monkeypatch, storage="int8_per_token_head", mtp=False)
     # Layer-outer keeps the shared pair (plus the packed slab's) transiently;
     # its full-capacity hidden owner is allocated with the bulk workspace.
@@ -248,14 +249,16 @@ def test_capacity_prices_resumable_checkpoint_allocator(monkeypatch, positions, 
         )
     plain = _route_terms(monkeypatch, storage="int8_per_token_head", capacity=capacity, mtp=False)
     streamed = _route_terms(monkeypatch, storage="int8_per_token_head", capacity=capacity, mtp=True)
-    assert (
-        plain["prefill_workspace_bytes_resolver"](positions)
-        - streamed["prefill_workspace_bytes_resolver"](positions)
-    ) == capacity * sum(allocated)
-    assert (
-        plain["_packed_scratch_bytes_resolver"](positions)
-        - streamed["_packed_scratch_bytes_resolver"](positions)
-    ) == capacity * sum(allocated)
+    bf16 = _route_terms(monkeypatch, storage="bf16", capacity=capacity, mtp=False)
+    # A single-slot server suspends in place and allocates no checkpoint.
+    checkpoints = 0 if capacity == 1 else capacity * sum(allocated)
+    for terms in (plain, streamed):
+        # BF16 never suspends a layer-outer prefill; the rest of the post-pool
+        # workspace is storage-independent.
+        assert (
+            terms["_packed_scratch_bytes_resolver"](positions)
+            - bf16["_packed_scratch_bytes_resolver"](positions)
+        ) == checkpoints
     generator = _route_generator(monkeypatch, mtp_policy="off")
     generator._prepared_kv_signature = ("int8_per_token_head",)
     monkeypatch.setattr(qwen35_gguf, "_admitted_no_mirror_int8_capability", lambda _: True)
@@ -269,7 +272,7 @@ def test_capacity_prices_resumable_checkpoint_allocator(monkeypatch, positions, 
         + plain["transient_bytes_resolver"](positions)
     )
     assert plain["_packed_scratch_bytes_resolver"](positions) >= (
-        capacity * sum(allocated)
+        checkpoints
         + gguf_runner._gguf_packed_state_linear_bytes(runner, slot_count=capacity)
     )
 

@@ -1303,6 +1303,16 @@ class _GGUFResumablePrefillState:
     # re-written on every segment in case a slot view is rebuilt mid-prompt.
     executor_mode: str = "layer_outer_packed"
     target_hidden_chunk_sinks: tuple[TargetHiddenChunkSink | None, ...] = ()
+    # The caller guarantees nothing else runs on the batch owner while this
+    # prefill is suspended (a single-request server), so the live state stays
+    # in the shared workspace instead of being copied out. ``in_place_planes``
+    # records the plane identity at the yield so a resume can refuse storage
+    # that was replaced in between.
+    suspend_in_place: bool = False
+    in_place_planes: tuple[int, int] | None = None
+    # False when the prompt is a prefix of the sinks' stream (the caller
+    # continues the same sinks with a tail call that finishes them).
+    finish_target_hidden_sinks: bool = True
 
     @property
     def layer_count(self) -> int:
@@ -1326,16 +1336,18 @@ class _GGUFResumablePrefillScratch:
     activations overwritten by interleaved packed decode on the same batch
     owner - the exact ownership hazard roadmap F5 names.
 
-    At each segment boundary the live hidden planes and linear state are copied
-    here; at resume they are copied back. That keeps packed decode free to use
-    the shared workspace while the prefill is suspended, at the cost of one
-    extra hidden-plane and linear-state copy per suspended prefill (the
-    "suspended-prefill owner" the allocation model must account for).
+    At each segment boundary the live hidden plane and linear state are copied
+    here; at resume they are copied back. Only the plane at the boundary's
+    ping-pong phase holds activations (the next layer fully rewrites the other
+    one, and the route-scoped alias makes both names one buffer), so one plane
+    is saved. That keeps packed decode free to use the shared workspace while
+    the prefill is suspended, at the cost of one hidden-plane and linear-state
+    copy per suspended prefill (the "suspended-prefill owner" the allocation
+    model must account for).
     """
 
     runtime: object
-    hidden_a: object | None = None
-    hidden_b: object | None = None
+    hidden: object | None = None
     conv: tuple[object | None, ...] = ()
     recurrent: tuple[object | None, ...] = ()
     owner: object | None = None
@@ -1354,10 +1366,8 @@ class _GGUFResumablePrefillScratch:
 
         allocated: list[object] = []
         try:
-            hidden_a = malloc(max(1, int(hidden_bytes)), runtime=runtime)
-            allocated.append(hidden_a)
-            hidden_b = malloc(max(1, int(hidden_bytes)), runtime=runtime)
-            allocated.append(hidden_b)
+            hidden = malloc(max(1, int(hidden_bytes)), runtime=runtime)
+            allocated.append(hidden)
             conv: list[object | None] = []
             for source in getattr(packed_state, "layer_conv_states", ()):
                 if source is None:
@@ -1380,8 +1390,7 @@ class _GGUFResumablePrefillScratch:
             raise
         return cls(
             runtime=runtime,
-            hidden_a=hidden_a,
-            hidden_b=hidden_b,
+            hidden=hidden,
             conv=tuple(conv),
             recurrent=tuple(recurrent),
             owner=owner,
@@ -1412,22 +1421,18 @@ class _GGUFResumablePrefillScratch:
         session: object,
         packed_state: object,
         hidden_bytes: int,
+        phase: int,
         stream: int = 0,
     ) -> None:
         """Copy the live prefill state out of the shared workspace."""
 
         runtime = self.runtime
-        for destination, attribute in (
-            (self.hidden_a, "_prefill_hidden_a"),
-            (self.hidden_b, "_prefill_hidden_b"),
-        ):
-            source = getattr(session, attribute, None)
-            if destination is None or source is None:
-                continue
+        source = getattr(session, _resumable_live_plane_attribute(phase), None)
+        if self.hidden is not None and source is not None:
             runtime.memcpy_async(
-                destination.ptr,
+                self.hidden.ptr,
                 source.ptr,
-                min(int(hidden_bytes), int(destination.nbytes)),
+                min(int(hidden_bytes), int(self.hidden.nbytes)),
                 HipMemcpyKind.DEVICE_TO_DEVICE,
                 int(stream),
             )
@@ -1452,22 +1457,18 @@ class _GGUFResumablePrefillScratch:
         session: object,
         packed_state: object,
         hidden_bytes: int,
+        phase: int,
         stream: int = 0,
     ) -> None:
         """Copy the suspended state back into the shared workspace."""
 
         runtime = self.runtime
-        for source, attribute in (
-            (self.hidden_a, "_prefill_hidden_a"),
-            (self.hidden_b, "_prefill_hidden_b"),
-        ):
-            destination = getattr(session, attribute, None)
-            if source is None or destination is None:
-                continue
+        destination = getattr(session, _resumable_live_plane_attribute(phase), None)
+        if self.hidden is not None and destination is not None:
             runtime.memcpy_async(
                 destination.ptr,
-                source.ptr,
-                min(int(hidden_bytes), int(source.nbytes)),
+                self.hidden.ptr,
+                min(int(hidden_bytes), int(self.hidden.nbytes)),
                 HipMemcpyKind.DEVICE_TO_DEVICE,
                 int(stream),
             )
@@ -1487,8 +1488,7 @@ class _GGUFResumablePrefillScratch:
         for buffer in reversed(self._allocated):
             free(buffer, runtime=runtime)
         self._allocated = []
-        self.hidden_a = None
-        self.hidden_b = None
+        self.hidden = None
         self.conv = ()
         self.recurrent = ()
         # Keep the owning session's telemetry pointer honest: the suspended
@@ -1509,6 +1509,23 @@ class _GGUFResumablePrefillScratch:
     @property
     def nbytes(self) -> int:
         return sum(int(buffer.nbytes) for buffer in self._allocated)
+
+
+def _resumable_live_plane_attribute(phase: int) -> str:
+    """The session hidden plane holding activations at a layer boundary."""
+
+    return "_prefill_hidden_b" if int(phase) % 2 else "_prefill_hidden_a"
+
+
+def _resumable_plane_identity(session: object) -> tuple[int, int]:
+    planes = (
+        getattr(session, "_prefill_hidden_a", None),
+        getattr(session, "_prefill_hidden_b", None),
+    )
+    return tuple(
+        int(getattr(plane, "ptr", 0) or 0) if plane is not None else 0
+        for plane in planes
+    )
 
 
 # P3: layer-outer packed AR prefill executor. When enabled, multi-chunk
@@ -25612,6 +25629,7 @@ class Qwen35GGUFResidentSession:
         layer_budget: int | None = None,
         stream: int = 0,
         target_hidden_chunk_sinks: Sequence[TargetHiddenChunkSink | None] | None = None,
+        suspend_in_place: bool = False,
     ) -> list[Qwen35GGUFNextTokenProbeResult | None] | _GGUFResumablePrefillState:
         """Start or continue a resumable layer-outer INT8 prefill.
 
@@ -25629,6 +25647,11 @@ class Qwen35GGUFResidentSession:
         already in the direct INT8 store - releasing the oracle per segment is
         sound and the suspended request owns only its hidden planes, its
         direct INT8 K/V, and this checkpoint.
+
+        ``suspend_in_place`` is the caller's promise that no other work runs
+        on this batch owner until the prompt completes (a single-request
+        server). The yield then keeps the live state in the shared workspace
+        instead of copying it into a dedicated checkpoint.
         """
 
         if state is not None:
@@ -25676,6 +25699,7 @@ class Qwen35GGUFResidentSession:
                 stream=stream,
                 executor_mode="layer_outer_resumable",
                 target_hidden_chunk_sinks=target_hidden_chunk_sinks,
+                suspend_in_place=suspend_in_place,
             )
         except BaseException:
             # A failed segment cannot be resumed, so its suspended-state
@@ -25884,12 +25908,19 @@ class Qwen35GGUFResidentSession:
         # P3 layer-outer route: multi-chunk slot-local prefills with one shared
         # oracle pair per session. Falls back to the corrected chunk-outer
         # executor for every unsupported shape.
+        # A streamed MTP prompt keeps its sinks: the layer-outer executor
+        # publishes each round's final-layer rows at their absolute positions,
+        # which is what a sink starting at row 0 consumes.
         if (
             _gguf_packed_layer_outer_enabled()
             and not any(initial_positions)
             and not return_hidden_seeds
             and not capture_layer_output_hidden
-            and all(sink is None for sink in sink_tuple)
+            and not any(starts)
+            and all(
+                sink is None or int(getattr(sink, "request_id", -1)) == int(request_id)
+                for sink, request_id in zip(sink_tuple, request_ids, strict=True)
+            )
         ):
             try:
                 layer_outer_results = self._prefill_batch_native_layer_outer(
@@ -25900,6 +25931,8 @@ class Qwen35GGUFResidentSession:
                     return_logits=return_logits,
                     require_logits=require_logits,
                     stream=stream,
+                    target_hidden_chunk_sinks=sink_tuple,
+                    finish_target_hidden_sinks=bool(finish_target_hidden_sinks),
                 )
                 return [
                     result if sample_output else None
@@ -26041,6 +26074,8 @@ class Qwen35GGUFResidentSession:
         layer_budget: int | None = None,
         executor_mode: str = "layer_outer_packed",
         target_hidden_chunk_sinks: Sequence[TargetHiddenChunkSink | None] | None = None,
+        suspend_in_place: bool = False,
+        finish_target_hidden_sinks: bool = True,
     ) -> list[Qwen35GGUFNextTokenProbeResult | None] | _GGUFResumablePrefillState:
         """Execute a multi-chunk packed prompt layer-outer with one shared oracle.
 
@@ -26085,10 +26120,16 @@ class Qwen35GGUFResidentSession:
         if len(sinks) != len(session_tuple):
             raise ValueError("target hidden sinks must align with sessions")
         for prompt, sink in zip(prompt_tuple, sinks, strict=True):
-            if sink is not None and (
-                int(sink.total_rows) != len(prompt)
-                or int(sink.hidden_size) != int(self.runner.hidden_size)
-            ):
+            if sink is None:
+                continue
+            # A finishing call owns the sink's whole stream; a prefix call
+            # feeds its leading rows and leaves the rest to the caller.
+            covered = (
+                int(sink.total_rows) == len(prompt)
+                if finish_target_hidden_sinks
+                else len(prompt) <= int(sink.total_rows)
+            )
+            if not covered or int(sink.hidden_size) != int(self.runner.hidden_size):
                 raise ValueError("target hidden sink must cover the complete prompt and hidden width")
         if len(chunks) <= 1:
             raise ValueError("layer-outer packed prefill requires multiple chunks")
@@ -26271,6 +26312,8 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
             executor_mode=str(executor_mode),
             target_hidden_chunk_sinks=sinks,
+            suspend_in_place=bool(suspend_in_place),
+            finish_target_hidden_sinks=bool(finish_target_hidden_sinks),
         )
         return self._prefill_batch_native_layer_outer_segment_guarded(
             state,
@@ -26354,7 +26397,16 @@ class Qwen35GGUFResidentSession:
         # buffer, so the owner's storage must hold them first, or a segment
         # resumed after a release/re-acquire would silently restore a partial
         # plane set.
-        if state.scratch is not None:
+        if state.in_place_planes is not None:
+            # Suspended in place: the shared workspace still holds the state,
+            # provided nothing replaced its storage in between.
+            if _resumable_plane_identity(self) != state.in_place_planes:
+                raise RuntimeError(
+                    "resumable layer-outer prefill was suspended in place but"
+                    " its hidden planes were replaced before resume"
+                )
+            state.in_place_planes = None
+        elif state.scratch is not None:
             self._ensure_bulk_prefill_hidden_capacity(
                 int(state.total_rows),
                 runtime=runtime,
@@ -26368,6 +26420,7 @@ class Qwen35GGUFResidentSession:
                     * int(self.runner.hidden_size)
                     * DType.BF16.itemsize
                 ),
+                phase=start_phase,
                 stream=stream,
             )
         src = self._prefill_hidden_a
@@ -26479,6 +26532,16 @@ class Qwen35GGUFResidentSession:
                 # transient oracle is released by the caller's finally. Copy the
                 # live state out of the shared workspace first, so interleaved
                 # packed decode on the same batch owner cannot overwrite it.
+                if state.suspend_in_place:
+                    state.in_place_planes = _resumable_plane_identity(self)
+                    self.last_packed_prefill_plan["layer_outer_layers_done"] = int(
+                        layer_end
+                    )
+                    self.last_packed_prefill_plan["layer_outer_layers_total"] = int(
+                        layer_count
+                    )
+                    self.last_packed_prefill_plan["layer_outer_suspended_bytes"] = 0
+                    return state
                 hidden_bytes = (
                     int(state.total_rows)
                     * int(self.runner.hidden_size)
@@ -26496,6 +26559,7 @@ class Qwen35GGUFResidentSession:
                     session=self,
                     packed_state=packed_state,
                     hidden_bytes=hidden_bytes,
+                    phase=state.phase,
                     stream=stream,
                 )
                 self.last_packed_prefill_plan["layer_outer_layers_done"] = int(
@@ -26530,7 +26594,7 @@ class Qwen35GGUFResidentSession:
                         stream=stream,
                     )
             for sink in state.target_hidden_chunk_sinks:
-                if sink is not None:
+                if sink is not None and state.finish_target_hidden_sinks:
                     sink.finish(
                         request_id=int(sink.request_id),
                         total_rows=int(sink.total_rows),
