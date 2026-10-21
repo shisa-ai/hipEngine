@@ -4,8 +4,12 @@ owns: The October 20 Flash-Next Gufo gap analysis and implementation campaign fo
 ---
 # Qwen3.8-Flash-Next: close the Gufo performance gap
 
-State: **planned; source review complete, execution not started**.
-Review date: 2026-10-20. hipEngine source: `a4c7ca473`.
+State: **in progress; execution started 2026-10-21**.
+Review date: 2026-10-20. hipEngine review source: `a4c7ca473`.
+Execution baseline starts at `926c1728c`, including the subsequent prefix-cache
+work. `BASE` is active: benchmark controls are being corrected before matched
+GPU measurements. The task queue follows the packets below; no packet is closed
+until its implementation and validation evidence are recorded.
 
 The next work is not another wholesale port of Gufo's prefill kernels. Those
 ports already removed most of the earlier prefill deficit. Prioritize bulk
@@ -616,8 +620,9 @@ staged version of this campaign. Its runtime changes were not authored or
 validated by this review. Refresh source and ownership before execution, and
 reuse that prefix-cache implementation when building the prepared/depth harness.
 
-No GPU experiment was run for this planning review. It adds no benchmark row,
-changes no product README, and makes no new measured speedup claim.
+The October 20 planning review ran no GPU experiment and added no benchmark row.
+Execution began October 21; its measurements and implementation outcomes will be
+linked from the checklist. The review itself makes no new measured speedup claim.
 
 [gufo-tree]: https://github.com/gufo-org/gufo/tree/f020bd3a037d58aa42138ca11fa895524e43cdd6
 [gufo-executor]: https://github.com/gufo-org/gufo/blob/f020bd3a037d58aa42138ca11fa895524e43cdd6/src/models/qwen38_flash_next/kernels/rocm/executor.cpp

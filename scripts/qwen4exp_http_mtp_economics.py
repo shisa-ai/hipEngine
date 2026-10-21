@@ -36,15 +36,32 @@ def _load(path: Path) -> list[dict[str, Any]]:
     ]
 
 
+def exact_completion_count(body: dict[str, Any]) -> int:
+    """Accept only the response-owned generated IDs, never retokenized text."""
+    accounting = (body.get("hipengine") or {}).get("token_accounting") or {}
+    rows = accounting.get("choice_generated_token_ids")
+    if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], list):
+        raise ValueError("response lacks exact single-choice token accounting")
+    if any(type(token) is not int or token < 0 for token in rows[0]):
+        raise ValueError("generated token IDs must be non-negative integers")
+    count = len(rows[0])
+    total = accounting.get("total_generated_tokens")
+    if (type(total) is not int or total != count
+            or accounting.get("choice_generated_tokens") != [count]
+            or (body.get("usage") or {}).get("completion_tokens") != count):
+        raise ValueError("generated IDs, counts and usage disagree")
+    return count
+
+
 def _one(client: Any, url: str, model: str, row: dict[str, Any], mtp: bool, max_tokens: int) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "model": model,
         "messages": row["messages"],
         "temperature": 0.0,
         "max_tokens": max_tokens,
+        "speculative_mtp": mtp,
+        "include_hipengine": True,
     }
-    if mtp:
-        payload["speculative_mtp"] = True
     started = time.perf_counter()
     response = client.post(f"{url}/v1/chat/completions", json=payload)
     wall = time.perf_counter() - started
@@ -59,8 +76,13 @@ def _one(client: Any, url: str, model: str, row: dict[str, Any], mtp: bool, max_
         "category": row["category"],
         "status": 200,
         "wall_s": wall,
-        "completion_tokens": usage.get("completion_tokens"),
+        "completion_tokens": exact_completion_count(body),
+        "token_accounting": (body.get("hipengine") or {}).get("token_accounting"),
+        "prompt_token_accounting": (body.get("hipengine") or {}).get("prompt_token_accounting"),
+        "generation_shape": (body.get("hipengine") or {}).get("generation_shape"),
+        "message": choice.get("message"),
         "prompt_tokens": usage.get("prompt_tokens"),
+        "speculative_requested": mtp,
         "speculative_used": spec.get("used"),
         "speculative_reason": spec.get("decision_reason"),
         "accepted_per_cycle": spec.get("accepted_per_cycle"),
@@ -68,6 +90,13 @@ def _one(client: Any, url: str, model: str, row: dict[str, Any], mtp: bool, max_
         "route": ((body.get("hipengine") or {}).get("generation_shape") or {}).get("route"),
         "finish_reason": choice.get("finish_reason"),
     }
+
+
+def route_matches_request(case: dict[str, Any]) -> bool:
+    """Require a per-request witness for both true AR and actual MTP."""
+    requested = case.get("speculative_requested")
+    return (case.get("status") == 200 and isinstance(requested, bool)
+            and case.get("speculative_used") is requested)
 
 
 def _wave(
@@ -142,12 +171,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     rows = _load(args.prompts)
+    if not rows or args.width <= 0 or args.max_tokens <= 0:
+        parser.error("prompts must be nonempty and width/max-tokens must be positive")
+    selected = [item.strip() for item in args.arms.split(",") if item.strip()]
+    if not selected or len(set(selected)) != len(selected) or set(selected) - {"ar", "mtp", "mixed"}:
+        parser.error("arms must be unique names from ar,mtp,mixed")
     if args.warmup:
         _wave(rows[:1], args.url, args.model, False, 8, args.timeout)
         _wave(rows[:1], args.url, args.model, True, 8, args.timeout)
 
     waves = [rows[start : start + args.width] for start in range(0, len(rows), args.width)]
-    selected = [item.strip() for item in args.arms.split(",") if item.strip()]
     arms: dict[str, list[dict[str, Any]]] = {label: [] for label in selected}
     for label in selected:
         for wave in waves:
@@ -184,8 +217,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
 
     measured = {label: totals(label) for label in selected}
+    valid_routes = all(
+        route_matches_request(case)
+        for label in selected for wave in arms[label] for case in wave["cases"]
+    )
     artifact = {
-        "schema": "hipengine.qwen4exp.http_mtp_economics.v1",
+        "schema": "hipengine.qwen4exp.http_mtp_economics.v2",
+        "performance_claim": False,
+        "status": "measured_diagnostic" if valid_routes else "invalid",
+        "checks": {"every_request_used_requested_route": valid_routes},
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "url": args.url,
         "model": args.model,
@@ -198,10 +238,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 measured[label]["aggregate_tok_s"] / measured["ar"]["aggregate_tok_s"], 4
             )
             for label in selected
-            if label != "ar" and measured.get("ar", {}).get("aggregate_tok_s")
+            if valid_routes and label != "ar" and measured.get("ar", {}).get("aggregate_tok_s")
         },
         "waves": arms,
     }
+    args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(artifact, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
     print(
         json.dumps(
@@ -219,22 +260,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             }
         )
     )
-    # An MTP request must execute MTP; a silent autoregressive fallback would
-    # turn this measurement into an AR-versus-AR comparison.
-    requested = {
-        label: sum(
-            1
-            for wave in arms[label]
-            for case in wave["cases"]
-            if case.get("status") == 200
-        )
-        for label in selected
-    }
-    ok = all(measured[label]["errors"] == 0 for label in selected)
-    for label in selected:
-        if label in ("mtp", "mixed") and measured[label]["speculative_used"] == 0:
-            ok = False
-    return 0 if ok else 1
+    # Every request must execute its named route, including the AR peers in a
+    # mixed wave. One successful MTP request cannot mask another's fallback.
+    return 0 if valid_routes else 1
 
 
 if __name__ == "__main__":
