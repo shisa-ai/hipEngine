@@ -1,0 +1,501 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_public_capacity_probe_validation",
+  "status": "passed",
+  "performance_claim": false,
+  "source_before": {
+    "path": "/home/lhl/hipEngine",
+    "head": "1c2fd9c3789cc99a05b3c448e42d7ae1b21634cc",
+    "tracked_clean": false,
+    "tracked_diff_sha256": "7153026193fe715e9d521390fca384c19ec0c537975006469b84c86c9a48aff4"
+  },
+  "source_after": {
+    "path": "/home/lhl/hipEngine",
+    "head": "1c2fd9c3789cc99a05b3c448e42d7ae1b21634cc",
+    "tracked_clean": false,
+    "tracked_diff_sha256": "7153026193fe715e9d521390fca384c19ec0c537975006469b84c86c9a48aff4"
+  },
+  "host_before": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.2.9-2-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "gpu_temperature_millidegrees_c": {
+      "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 49000
+    }
+  },
+  "host_after": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.2.9-2-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "gpu_temperature_millidegrees_c": {
+      "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 50000
+    }
+  },
+  "harness_sha256": "76a3ddb5397bb73bf7063a2187cd4ef64e19711f47e200180fa217fec380f573",
+  "models": {
+    "created_at": "2026-10-21T18:33:17.166428+00:00",
+    "files": [
+      {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+        "size_bytes": 10946624,
+        "sha256": "4448186216b3af4cc558bbce2c3213f01608f8f8b2e5267a9767971dd3ec8082"
+      },
+      {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+        "size_bytes": 49859583136,
+        "sha256": "3f342f1c1580473f1ee94ddd5b28206e8c07a70fa1a366f59d1d6c922919a6c9"
+      },
+      {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00003-of-00004.gguf",
+        "size_bytes": 49376141504,
+        "sha256": "56758f40269cad5cd9b0d3d6fbae0f40f6d5be6de49e4ab392dbe83157d9cbd3"
+      },
+      {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00004-of-00004.gguf",
+        "size_bytes": 12087983520,
+        "sha256": "753bda48b98ba4f1636134a90a967de1b2d3908a236c026e464777342e53510a"
+      },
+      {
+        "path": "/home/lhl/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+        "size_bytes": 4137429088,
+        "sha256": "9db03a687670608286e99b563fcc86d0ee76c8dd863f64b2afc0b54eb0eb975d"
+      }
+    ]
+  },
+  "raw_artifact": {
+    "path": "/tmp/qwen38fn-gufo-20261021/hipengine-capacity-contracts.json",
+    "sha256": "acadf2776105e2e0563ca44e38b24724060810bd1932e83e7296c3fcfabb96a5"
+  },
+  "launch": {
+    "path": "/tmp/qwen38fn-gufo-20261021/run-hip.sh",
+    "sha256": "7dea3503ca9f59f374eb538f37a8e61941b0049b88d515bde90306d8a9633aae",
+    "content": "#!/usr/bin/env bash\nset -euo pipefail\nBASE=/tmp/qwen38fn-gufo-20261021\nENV_PREFIX=\"$HOME/miniforge3/envs/therock\"\nPY=\"$ENV_PREFIX/bin/python\"\nROOT=$(\"$PY\" -m rocm_sdk path --root)\nSITE=$(\"$PY\" -c 'import site; print(site.getsitepackages()[0])')\nif [[ ! -f \"$BASE/hipcc-version.txt\" ]]; then\n  \"$ROOT/bin/hipcc\" --version > \"$BASE/hipcc-version.txt\"\nfi\nexec env -i HOME=\"$HOME\" USER=\"$USER\" \\\n  PATH=\"$ENV_PREFIX/bin:$ROOT/bin:$ROOT/lib/llvm/bin:/usr/local/bin:/usr/bin:/bin\" \\\n  LD_LIBRARY_PATH=\"$SITE/_rocm_sdk_core/lib:$SITE/_rocm_sdk_devel/lib:$SITE/_rocm_sdk_libraries/lib\" \\\n  HIP_PATH=\"$ROOT\" ROCM_PATH=\"$ROOT\" HIP_LIB_PATH=\"$ROOT/lib\" \\\n  HIP_INCLUDE_PATH=\"$ROOT/include\" HIP_DEVICE_LIB_PATH=\"$ROOT/lib/llvm/amdgcn/bitcode\" \\\n  HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 \\\n  HIPENGINE_COMPILER_VERSION_FILE=\"$BASE/hipcc-version.txt\" \\\n  PYTHONPATH=\"$PWD\" \"$PY\" \"$@\"\n"
+  },
+  "validator": {
+    "path": "/tmp/qwen38fn-gufo-20261021/validate-capacity-probe.py",
+    "sha256": "9d5d2850900c67f618390ec783f860dfbf69586e8f86ae81cdaeb305c3ed1a5f"
+  },
+  "scope": "Fixed resident pools and exercised short-request transients; not full-depth execution, maximum cache growth, or simultaneous multi-row GPU decoding.",
+  "validation": {
+    "focused_tests": 22,
+    "cpu_bundle": "passed before isolated harness repairs; bg16",
+    "documentation_gates": "all four passed after repairs",
+    "real_execution": "c93e4ae9-9712-4249-9619-5f5a587d7a04"
+  },
+  "cases": [
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python",
+        "scripts/gguf_capacity_probe.py",
+        "--model",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--max-sequence-length",
+        "4096",
+        "--max-batch-size",
+        "2",
+        "--prompt-length",
+        "997",
+        "--decode-tokens",
+        "4",
+        "--kv-storage",
+        "bf16",
+        "--execution-profile",
+        "production",
+        "--prefix-cache",
+        "radix",
+        "--json",
+        "/tmp/qwen38fn-gufo-20261021/capacity-4096-c2-mtpFalse.json"
+      ],
+      "status": "pass",
+      "max_sequence_length": 4096,
+      "runner_capacity": 4096,
+      "max_batch_size": 2,
+      "prompt_length": 997,
+      "decode_tokens": 4,
+      "kv_storage": "bf16",
+      "prefill_chunk_size": 4096,
+      "execution_profile": "production",
+      "execution_profile_manifest_sha256": "cb30620a20748d2e9756444eb804c29a943dc5bcffe3abe3f31fc6c66a456eab",
+      "request_protocol": "concurrent independent one-prompt LLM.generate_detailed calls",
+      "finite_logits": true,
+      "finite_logits_scope": "separate c1 prefill and decode; public cohort checked by exact counts",
+      "capacity_scope": "fixed resident pool and exercised short-request transients; not maximum prefix-cache growth",
+      "tracked_peak_gib": 92.80560740828514,
+      "resident_gib": 92.50422123074532,
+      "resident_plus_transient_peak_gib": 92.80560740828514,
+      "transient_peak_gib": 0.30138617753982544,
+      "memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 99649262176,
+        "total_allocated_bytes": 323610944,
+        "total_freed_bytes": 99649262176,
+        "active_allocations": 0,
+        "peak_allocations": 2647
+      },
+      "ar_batch": {
+        "execution_path": "qwen4exp_full_model_ar_batch",
+        "state_slots": 2,
+        "max_positions": 4096,
+        "pool_blocks": 32,
+        "free_blocks": 32,
+        "block_positions": 256,
+        "live_slots": 0,
+        "steps": 6,
+        "step_widths": {
+          "1": 6
+        },
+        "imports": 2,
+        "releases": 2,
+        "failure": null
+      },
+      "responses": [
+        {
+          "generated_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "prompt_tokens": 997,
+          "speculative_used": false,
+          "provider": null,
+          "candidate_budget": null,
+          "proposed_draft_tokens": null,
+          "native_counts": {
+            "prompt_tokens": 997,
+            "cached_prompt_tokens": 0,
+            "new_prompt_tokens": 997,
+            "generated_tokens": 4,
+            "decode_transitions": 3
+          }
+        },
+        {
+          "generated_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "prompt_tokens": 997,
+          "speculative_used": false,
+          "provider": null,
+          "candidate_budget": null,
+          "proposed_draft_tokens": null,
+          "native_counts": {
+            "prompt_tokens": 997,
+            "cached_prompt_tokens": 0,
+            "new_prompt_tokens": 997,
+            "generated_tokens": 4,
+            "decode_transitions": 3
+          }
+        }
+      ]
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python",
+        "scripts/gguf_capacity_probe.py",
+        "--model",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--max-sequence-length",
+        "4096",
+        "--max-batch-size",
+        "2",
+        "--prompt-length",
+        "997",
+        "--decode-tokens",
+        "4",
+        "--kv-storage",
+        "bf16",
+        "--execution-profile",
+        "production",
+        "--prefix-cache",
+        "radix",
+        "--json",
+        "/tmp/qwen38fn-gufo-20261021/capacity-4096-c2-mtpTrue.json",
+        "--sidecar",
+        "/home/lhl/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+        "--candidate-budget",
+        "3"
+      ],
+      "status": "pass",
+      "max_sequence_length": 4096,
+      "runner_capacity": 4096,
+      "max_batch_size": 2,
+      "prompt_length": 997,
+      "decode_tokens": 4,
+      "kv_storage": "bf16",
+      "prefill_chunk_size": 4096,
+      "execution_profile": "production",
+      "execution_profile_manifest_sha256": "cb30620a20748d2e9756444eb804c29a943dc5bcffe3abe3f31fc6c66a456eab",
+      "request_protocol": "concurrent independent one-prompt LLM.generate_detailed calls",
+      "finite_logits": true,
+      "finite_logits_scope": "separate c1 prefill and decode; public cohort checked by exact counts",
+      "capacity_scope": "fixed resident pool and exercised short-request transients; not maximum prefix-cache growth",
+      "tracked_peak_gib": 93.49187280982733,
+      "resident_gib": 92.50422123074532,
+      "resident_plus_transient_peak_gib": 93.49187280982733,
+      "transient_peak_gib": 0.9876515790820122,
+      "memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 100386134040,
+        "total_allocated_bytes": 1064873728,
+        "total_freed_bytes": 100390524960,
+        "active_allocations": 0,
+        "peak_allocations": 2677
+      },
+      "ar_batch": {
+        "execution_path": "qwen4exp_full_model_ar_batch",
+        "state_slots": 2,
+        "max_positions": 4096,
+        "pool_blocks": 32,
+        "free_blocks": 32,
+        "block_positions": 256,
+        "live_slots": 0,
+        "steps": 0,
+        "step_widths": {},
+        "imports": 0,
+        "releases": 0,
+        "failure": null
+      },
+      "responses": [
+        {
+          "generated_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "prompt_tokens": 997,
+          "speculative_used": true,
+          "provider": "qwen4_exp_mtp",
+          "candidate_budget": 3,
+          "proposed_draft_tokens": 2,
+          "native_counts": {
+            "prompt_tokens": 997,
+            "cached_prompt_tokens": 0,
+            "new_prompt_tokens": 997,
+            "generated_tokens": 4,
+            "decode_transitions": 3
+          }
+        },
+        {
+          "generated_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "prompt_tokens": 997,
+          "speculative_used": true,
+          "provider": "qwen4_exp_mtp",
+          "candidate_budget": 3,
+          "proposed_draft_tokens": 2,
+          "native_counts": {
+            "prompt_tokens": 997,
+            "cached_prompt_tokens": 0,
+            "new_prompt_tokens": 997,
+            "generated_tokens": 4,
+            "decode_transitions": 3
+          }
+        }
+      ]
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python",
+        "scripts/gguf_capacity_probe.py",
+        "--model",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--max-sequence-length",
+        "133760",
+        "--max-batch-size",
+        "1",
+        "--prompt-length",
+        "2052",
+        "--decode-tokens",
+        "4",
+        "--kv-storage",
+        "bf16",
+        "--execution-profile",
+        "production",
+        "--prefix-cache",
+        "radix",
+        "--json",
+        "/tmp/qwen38fn-gufo-20261021/capacity-133760-c1-mtpFalse.json"
+      ],
+      "status": "pass",
+      "max_sequence_length": 133760,
+      "runner_capacity": 133760,
+      "max_batch_size": 1,
+      "prompt_length": 2052,
+      "decode_tokens": 4,
+      "kv_storage": "bf16",
+      "prefill_chunk_size": 4096,
+      "execution_profile": "production",
+      "execution_profile_manifest_sha256": "cb30620a20748d2e9756444eb804c29a943dc5bcffe3abe3f31fc6c66a456eab",
+      "request_protocol": "concurrent independent one-prompt LLM.generate_detailed calls",
+      "finite_logits": true,
+      "finite_logits_scope": "separate c1 prefill and decode; public cohort checked by exact counts",
+      "capacity_scope": "fixed resident pool and exercised short-request transients; not maximum prefix-cache growth",
+      "tracked_peak_gib": 93.44406396150589,
+      "resident_gib": 93.18854574486613,
+      "resident_plus_transient_peak_gib": 93.44406396150589,
+      "transient_peak_gib": 0.25551821663975716,
+      "memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 100334799680,
+        "total_allocated_bytes": 280955160,
+        "total_freed_bytes": 100341394244,
+        "active_allocations": 0,
+        "peak_allocations": 2153
+      },
+      "ar_batch": {
+        "execution_path": "qwen4exp_full_model_ar_batch",
+        "state_slots": 1,
+        "max_positions": 65536,
+        "pool_blocks": 256,
+        "free_blocks": 256,
+        "block_positions": 256,
+        "live_slots": 0,
+        "steps": 3,
+        "step_widths": {
+          "1": 3
+        },
+        "imports": 1,
+        "releases": 1,
+        "failure": null
+      },
+      "responses": [
+        {
+          "generated_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "prompt_tokens": 2052,
+          "speculative_used": false,
+          "provider": null,
+          "candidate_budget": null,
+          "proposed_draft_tokens": null,
+          "native_counts": {
+            "prompt_tokens": 2052,
+            "cached_prompt_tokens": 0,
+            "new_prompt_tokens": 2052,
+            "generated_tokens": 4,
+            "decode_transitions": 3
+          }
+        }
+      ]
+    },
+    {
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python",
+        "scripts/gguf_capacity_probe.py",
+        "--model",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--max-sequence-length",
+        "133760",
+        "--max-batch-size",
+        "1",
+        "--prompt-length",
+        "2052",
+        "--decode-tokens",
+        "4",
+        "--kv-storage",
+        "bf16",
+        "--execution-profile",
+        "production",
+        "--prefix-cache",
+        "radix",
+        "--json",
+        "/tmp/qwen38fn-gufo-20261021/capacity-133760-c1-mtpTrue.json",
+        "--sidecar",
+        "/home/lhl/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+        "--candidate-budget",
+        "3"
+      ],
+      "status": "pass",
+      "max_sequence_length": 133760,
+      "runner_capacity": 133760,
+      "max_batch_size": 1,
+      "prompt_length": 2052,
+      "decode_tokens": 4,
+      "kv_storage": "bf16",
+      "prefill_chunk_size": 4096,
+      "execution_profile": "production",
+      "execution_profile_manifest_sha256": "cb30620a20748d2e9756444eb804c29a943dc5bcffe3abe3f31fc6c66a456eab",
+      "request_protocol": "concurrent independent one-prompt LLM.generate_detailed calls",
+      "finite_logits": true,
+      "finite_logits_scope": "separate c1 prefill and decode; public cohort checked by exact counts",
+      "capacity_scope": "fixed resident pool and exercised short-request transients; not maximum prefix-cache growth",
+      "tracked_peak_gib": 93.79134976118803,
+      "resident_gib": 93.18854574486613,
+      "resident_plus_transient_peak_gib": 93.79134976118803,
+      "transient_peak_gib": 0.6028040163218975,
+      "memory_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 100707694968,
+        "total_allocated_bytes": 659823280,
+        "total_freed_bytes": 100720262364,
+        "active_allocations": 0,
+        "peak_allocations": 2168
+      },
+      "ar_batch": {
+        "execution_path": "qwen4exp_full_model_ar_batch",
+        "state_slots": 1,
+        "max_positions": 65536,
+        "pool_blocks": 256,
+        "free_blocks": 256,
+        "block_positions": 256,
+        "live_slots": 0,
+        "steps": 0,
+        "step_widths": {},
+        "imports": 0,
+        "releases": 0,
+        "failure": null
+      },
+      "responses": [
+        {
+          "generated_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "prompt_tokens": 2052,
+          "speculative_used": true,
+          "provider": "qwen4_exp_mtp",
+          "candidate_budget": 3,
+          "proposed_draft_tokens": 2,
+          "native_counts": {
+            "prompt_tokens": 2052,
+            "cached_prompt_tokens": 0,
+            "new_prompt_tokens": 2052,
+            "generated_tokens": 4,
+            "decode_transitions": 3
+          }
+        }
+      ]
+    }
+  ]
+}
