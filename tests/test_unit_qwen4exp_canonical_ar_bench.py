@@ -481,7 +481,10 @@ def _gufo_style_response() -> dict[str, Any]:
 def test_openai_completions_payload_per_adapter() -> None:
     module = _load_script()
     gufo = module.openai_completions_payload("gufo", "text", 128)
-    assert gufo == {"prompt": "text", "max_tokens": 129, "temperature": 0.0, "ignore_eos": True}
+    assert gufo == {
+        "prompt": "text", "max_tokens": 129, "temperature": 0.0,
+        "ignore_eos": True, "cache_prompt": False,
+    }
     kyojin = module.openai_completions_payload("kyojin", "text", 128)
     assert kyojin["cache_prompt"] is False
     assert kyojin["return_token_ids"] is True
@@ -491,17 +494,27 @@ def test_openai_completions_payload_per_adapter() -> None:
         module.openai_completions_payload("unknown", "text", 128)
 
 
-def test_openai_optional_fields_are_stripped_by_the_400_fallback() -> None:
+def test_openai_rejected_controls_are_not_silently_removed(monkeypatch) -> None:
+    import io
+    import urllib.error
+
     module = _load_script()
-    payload = module.openai_completions_payload("kyojin", "text", 128)
-    kept = {
-        key: value
-        for key, value in payload.items()
-        if key not in module.OPENAI_OPTIONAL_FIELDS
-    }
-    assert kept == {"prompt": "text", "max_tokens": 129, "cache_prompt": False, "return_token_ids": True}
-    assert not (set(kept) & set(module.OPENAI_OPTIONAL_FIELDS)), "kept keys must never be optional"
-    assert set(payload) - set(kept) <= set(module.OPENAI_OPTIONAL_FIELDS), "stripped keys must all be optional"
+    calls = []
+
+    def post(*args):
+        calls.append(args)
+        raise urllib.error.HTTPError(
+            "http://localhost", 400, "Bad Request", {},
+            io.BytesIO(b"unsupported temperature"),
+        )
+
+    monkeypatch.setattr(module, "_post_json", post)
+    with pytest.raises(urllib.error.HTTPError):
+        module._post_openai_completion(
+            "localhost", 8080,
+            module.openai_completions_payload("gufo", "text", 128), 10,
+        )
+    assert len(calls) == 1
 
 
 def test_openai_response_sample_retokenizes_text_output() -> None:
@@ -529,6 +542,8 @@ def test_openai_response_sample_prefers_returned_token_ids() -> None:
     module = _load_script()
     response = _gufo_style_response()
     response["token_ids"] = [10, 11, 12, 13]
+    response["timings"]["predicted_n"] = 4
+    response["usage"]["completion_tokens"] = 4
     row = module.openai_response_sample(
         adapter="kyojin",
         tokenizer=_StubTokenizer(),
@@ -542,6 +557,54 @@ def test_openai_response_sample_prefers_returned_token_ids() -> None:
     assert row["output_token_ids"] == [10, 11, 12, 13]
     assert row["decode_transitions"] == 3
     assert row["decode_truncated"] is False
+
+
+def test_openai_retokenized_count_does_not_change_timing_denominator() -> None:
+    module = _load_script()
+    response = _gufo_style_response()
+    response["choices"][0]["text"] = "abcdef"
+    row = module.openai_response_sample(
+        adapter="gufo", tokenizer=_StubTokenizer(), case=_openai_case(),
+        response=response, client_wall_s=0.5, repetition=0, expected_transitions=2,
+    )
+    assert row["output_token_count"] == 3
+    assert row["output_id_count"] == 6
+    assert row["output_ids_exact"] is False
+    assert row["decode_transitions"] == 2
+    assert row["decode_tok_s"] == pytest.approx(1000.0 * 2 / 60.0)
+
+
+@pytest.mark.parametrize("change,match", [
+    ({"predicted_n": 0}, "predicted_n"),
+    ({"predicted_ms": 0}, "predicted_ms"),
+    ({"predicted_ms": float("nan")}, "predicted_ms"),
+    ({"prompt_ms": float("inf")}, "prompt_ms"),
+    ({"cache_n": 1}, "cached"),
+])
+def test_openai_response_rejects_invalid_canonical_timing(change, match) -> None:
+    module = _load_script()
+    response = _gufo_style_response()
+    response["timings"].update(change)
+    with pytest.raises(ValueError, match=match):
+        module.openai_response_sample(
+            adapter="gufo", tokenizer=_StubTokenizer(), case=_openai_case(),
+            response=response, client_wall_s=0.5, repetition=0, expected_transitions=2,
+        )
+
+
+@pytest.mark.parametrize("field", ["usage", "token_ids"])
+def test_openai_response_rejects_inconsistent_output_counts(field) -> None:
+    module = _load_script()
+    response = _gufo_style_response()
+    if field == "usage":
+        response["usage"]["completion_tokens"] = 4
+    else:
+        response["token_ids"] = [10, 11, 12, 13]
+    with pytest.raises(ValueError, match="count"):
+        module.openai_response_sample(
+            adapter="gufo", tokenizer=_StubTokenizer(), case=_openai_case(),
+            response=response, client_wall_s=0.5, repetition=0, expected_transitions=2,
+        )
 
 
 def test_openai_response_sample_rejects_prompt_token_mismatch() -> None:
@@ -619,6 +682,21 @@ def _comparison_sample(case_id: str, digest: str = "a" * 64) -> dict[str, Any]:
         "client_wall_s": 1.0,
         "output_token_ids_sha256": digest,
     }
+
+
+def test_compare_retokenized_hashes_do_not_establish_exact_output(tmp_path: Path) -> None:
+    module = _load_script()
+    exact = _comparison_sample("code-p512")
+    retokenized = {**exact, "output_ids_source": "text_retokenized"}
+    result = module.compare_engine_artifacts([
+        _comparison_artifact(tmp_path, "one", [exact]),
+        _comparison_artifact(tmp_path, "two", [retokenized]),
+    ])
+    case = result["cross_engine_outputs"]["cases"]["code-p512"]
+    assert case["output_hashes_equal"] is True
+    assert case["all_engines_exact"] is None
+    assert result["cross_engine_outputs"]["all_cases_exact"] is None
+    assert result["cross_engine_outputs"]["exact_case_count"] == 0
 
 
 def test_compare_intersection_requires_declared_disqualification(tmp_path: Path) -> None:
