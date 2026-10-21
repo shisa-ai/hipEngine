@@ -72,6 +72,12 @@ class Reconciliation(unittest.TestCase):
                          "a decision made against different facts must come back for review")
         self.assertEqual(state["triaged"], [])
 
+    def test_resolved_decision_is_stale_when_its_facts_change(self):
+        before, after = row(default="off"), row(default="on")
+        state = core.reconcile([after], {before.id: decide(before, resolved=True)})
+        self.assertEqual(state["stale"], [after])
+        self.assertEqual(state["resolved"], [])
+
     def test_decision_whose_row_vanished_is_reported(self):
         gone = row("GONE")
         lost = core.orphaned([row("STILL_HERE")], {gone.id: decide(gone)})
@@ -226,7 +232,8 @@ class Rebinding(unittest.TestCase):
                    "tokens": ["names", detail]},
         )
 
-    def test_moved_reference_with_detail_keeps_decision_and_stale_evidence(self):
+    def test_moved_reference_with_detail_keeps_a_current_decision(self):
+        """Only the line moved, so the facts the decision rests on did not."""
         before, after = self._detailed_finding(100), self._detailed_finding(170)
         decision = decide(before, hints=before.hints, note="verified existing path")
         decisions = {before.id: decision}
@@ -234,7 +241,8 @@ class Rebinding(unittest.TestCase):
         self.assertEqual([(m[0], m[1]) for m in moved], [(before.id, after.id)])
         self.assertEqual(decisions[after.id].note, "verified existing path")
         self.assertEqual(decisions[after.id].evidence_hash, before.evidence_hash)
-        self.assertEqual(core.reconcile([after], decisions)["stale"], [after])
+        state = core.reconcile([after], decisions)
+        self.assertEqual((state["stale"], state["triaged"]), ([], [after]))
 
     def test_detailed_reference_preserves_numeric_suffix_and_other_path(self):
         self.assertEqual(core._ref_identity({"a.py:100:phase:2"}), {"a.py:phase:2"})
@@ -265,12 +273,31 @@ class Rebinding(unittest.TestCase):
             self.assertIn(old_a.id, decisions)
             self.assertNotIn(y.id, decisions)
 
-    def test_two_old_decisions_cannot_compete_for_one_moved_site(self):
+    def test_agreeing_old_decisions_choose_latest_review(self):
         a, b = self._detailed_finding(100), self._detailed_finding(120)
         after = self._detailed_finding(170)
-        decisions = {old.id: decide(old, hints=old.hints) for old in (a, b)}
-        self.assertEqual(core.rebind([after], decisions), [])
-        self.assertEqual(set(decisions), {a.id, b.id})
+        for old in ((a, b), (b, a)):
+            decisions = {r.id: decide(r, hints=r.hints,
+                         last_reviewed="2026-10-02" if r is a else "2026-10-01") for r in old}
+            self.assertEqual(core.rebind([after], decisions), [(a.id, after.id, 0.75)])
+            self.assertEqual(decisions[after.id].last_reviewed, "2026-10-02")
+
+    def test_conflicting_old_decisions_stay_unmatched(self):
+        a, b = self._detailed_finding(100), self._detailed_finding(120)
+        after = self._detailed_finding(170)
+        for field, value in (("tag", "NOT-DEBT"), ("disposition", "keep"),
+                             ("severity", "high"), ("expires", "2020-01-01")):
+            decisions = {r.id: decide(r, hints=r.hints) for r in (a, b)}
+            setattr(decisions[b.id], field, value)
+            self.assertEqual(core.rebind([after], decisions), [], field)
+
+    def test_rebind_does_not_refresh_changed_evidence(self):
+        a, b = self._detailed_finding(100), self._detailed_finding(170)
+        b.evidence["changed"] = True
+        decisions = {a.id: decide(a, hints=a.hints)}
+        core.rebind([b], decisions)
+        self.assertEqual(core.reconcile([b], decisions)["stale"], [b])
+
 
 
 class Expiry(unittest.TestCase):
@@ -308,6 +335,24 @@ class TriageValidation(unittest.TestCase):
     def test_a_complete_decision_validates(self):
         self.assertEqual(decide(row()).problems(), [])
 
+    def test_invalid_review_date_is_rejected(self):
+        self.assertTrue(decide(row(), expires="tomorrow").problems())
+
+    def test_presentation_changes_do_not_age_evidence(self):
+        a = row(line=1, age_days=10, runtime_sites=[{"path": "a.py", "line": 5}])
+        b = row(line=2, age_days=11, runtime_sites=[{"path": "a.py", "line": 7}])
+        self.assertEqual(a.evidence_hash, b.evidence_hash)
+
+    def test_reader_and_continuation_changes_age_evidence(self):
+        for name, a, b in (("runtime_referrers", ["a.py"], ["b.py"]),
+                           ("continuation_entries", 0, 1),
+                           ("runtime_sites", [], [{"path": "a.py", "line": 5}])):
+            self.assertNotEqual(row(**{name: a}).evidence_hash, row(**{name: b}).evidence_hash)
+        a, b = row(), row()
+        a.signals, b.signals = ["phase 2 unsupported"], ["phase 3 unsupported"]
+        self.assertNotEqual(a.evidence_hash, b.evidence_hash)
+
+
 
 class Store(unittest.TestCase):
     def test_round_trip_preserves_every_field(self):
@@ -316,6 +361,43 @@ class Store(unittest.TestCase):
             core.save_triage({original.id: original})
             loaded = core.load_triage()[original.id]
         self.assertEqual(loaded, original)
+
+    def test_duplicate_row_ids_are_rejected_before_writing(self):
+        with self.assertRaisesRegex(ValueError, "duplicate row IDs"):
+            core.save_rows(pathlib.Path(self.tmp), "flag", [row(), row()], {})
+        self.assertEqual(list(pathlib.Path(self.tmp).iterdir()), [])
+
+    def test_empty_kind_does_not_reload_archived_decisions(self):
+        with mock.patch.object(core, "TRIAGE_DIR", pathlib.Path(self.tmp)):
+            decision = decide(row())
+            core.save_triage({decision.id: decision})
+            core.save_triage({})
+            self.assertEqual(core.load_triage(), {})
+
+    def test_archive_preserves_history_and_is_idempotent(self):
+        with mock.patch.object(core, "ARCHIVE_DIR", pathlib.Path(self.tmp) / "archive"):
+            gone = decide(row("GONE"), expires="2020-01-01", note="still unresolved")
+            live = row()
+            decisions = {gone.id: gone, live.id: decide(live)}
+            self.assertEqual(core.archive_orphans([live], decisions, "2026-10-22"), [gone])
+            self.assertEqual(core.load_archive(), [gone])
+            self.assertFalse(core.load_archive()[0].resolved)
+            self.assertEqual(core.archive_orphans([live], decisions), [])
+            self.assertEqual(len(core.load_archive()), 1)
+            # A crash after writing the archive but before saving the live store
+            # must not duplicate history when the command is retried tomorrow.
+            import dataclasses
+            retry = dataclasses.replace(gone, archived="")
+            core.archive_orphans([live], {retry.id: retry}, "2026-10-23")
+            self.assertEqual(len(core.load_archive()), 1)
+
+    def test_archive_keeps_ambiguous_candidates_for_open_rows(self):
+        with mock.patch.object(core, "ARCHIVE_DIR", pathlib.Path(self.tmp) / "archive"):
+            before = Rebinding._detailed_finding(100)
+            after = Rebinding._detailed_finding(170)
+            decisions = {before.id: decide(before, hints=before.hints)}
+            self.assertEqual(core.archive_orphans([after], decisions), [])
+            self.assertIn(before.id, decisions)
 
     def setUp(self):
         import tempfile

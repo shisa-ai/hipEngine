@@ -10,7 +10,7 @@ import re
 
 from ..core import REPO_ROOT, Row
 from ..inventory import corpus
-from . import finding, register
+from . import SourceIndex, finding, register, site_keys
 
 #  A module-level `import torch`, not one inside a function or a TYPE_CHECKING block.
 TORCH_IMPORT = re.compile(r"^(?:import torch|from torch\b)", re.M)
@@ -49,9 +49,13 @@ def torch_hot_path() -> tuple[list[Row], dict]:
         #  The dlpack bridge at the user boundary is the sanctioned exception.
         if "/torch" in path or path.endswith("torch_bridge.py"):
             continue
-        for line in _module_level(text, TORCH_IMPORT):
+        lines = text.splitlines()
+        sites = [(line, lines[line - 1].strip()) for line in _module_level(text, TORCH_IMPORT)]
+        if not sites:
+            continue
+        for (line, _statement), key in zip(sites, site_keys(path, SourceIndex(text), sites)):
             rows.append(finding(
-                "torch-hot-path", f"{path}:{line}",
+                "torch-hot-path", key,
                 f"module-level torch import in {path}", f"{path}:{line}",
                 fix="Move the import behind the optional `hipengine[torch]` extra, or into the "
                     "function that needs it. A torch import on the hot path is an architectural "
@@ -71,16 +75,19 @@ def axis_branch() -> tuple[list[Row], dict]:
         #  The registry and its resolution code legitimately compare axis values.
         if "/registry" in path or path.endswith(("backends.py", "policy.py")):
             continue
-        for number, line in enumerate(text.splitlines(), 1):
-            if AXIS_BRANCH.search(line):
-                rows.append(finding(
-                    "axis-branch", f"{path}:{number}",
-                    f"branches on a registry axis: {line.strip()[:90]}", f"{path}:{number}",
-                    fix="Register the behaviour against a `(backend, layer, quant, variant)` key "
-                        "and resolve it, instead of branching on the axis value here.",
-                    why="AGENTS.md 'Four-axis plugin registry' forbids axis branches in "
-                        "dispatch/engine/model code",
-                ))
+        sites = [(number, line.strip())
+                 for number, line in enumerate(text.splitlines(), 1) if AXIS_BRANCH.search(line)]
+        if not sites:
+            continue
+        for (number, line), key in zip(sites, site_keys(path, SourceIndex(text), sites)):
+            rows.append(finding(
+                "axis-branch", key,
+                f"branches on a registry axis: {line.strip()[:90]}", f"{path}:{number}",
+                fix="Register the behaviour against a `(backend, layer, quant, variant)` key "
+                    "and resolve it, instead of branching on the axis value here.",
+                why="AGENTS.md 'Four-axis plugin registry' forbids axis branches in "
+                    "dispatch/engine/model code",
+            ))
     return rows, {"scanned": "hipengine/**/*.py"}
 
 

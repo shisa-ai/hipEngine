@@ -27,26 +27,19 @@ def table(header: list[str], body: list[list[Any]]) -> str:
 
 def state_table(rows: list[Row], decisions: dict[str, Triage]) -> str:
     by_kind: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
-    for row in rows:
-        decision = decisions.get(row.id)
-        if decision is None:
-            by_kind[row.kind]["open"] += 1
-        elif decision.resolved:
-            by_kind[row.kind]["resolved"] += 1
-        elif decision.evidence_hash and decision.evidence_hash != row.evidence_hash:
-            by_kind[row.kind]["stale"] += 1
-        else:
-            by_kind[row.kind]["triaged"] += 1
+    for state, items in reconcile(rows, decisions).items():
+        for row in items:
+            by_kind[row.kind][state] += 1
     body = []
     total = collections.Counter()
     for kind in sorted(by_kind):
         counts = by_kind[kind]
         total.update(counts)
         body.append([kind, sum(counts.values()), counts["open"], counts["triaged"],
-                     counts["stale"], counts["resolved"]])
+                     counts["stale"], counts["expired"], counts["resolved"]])
     body.append(["**total**", sum(total.values()), total["open"], total["triaged"],
-                 total["stale"], total["resolved"]])
-    return table(["Kind", "Rows", "Open", "Triaged", "Stale", "Resolved"], body)
+                 total["stale"], total["expired"], total["resolved"]])
+    return table(["Kind", "Rows", "Open", "Triaged", "Stale", "Expired", "Resolved"], body)
 
 
 def tag_table(decisions: dict[str, Triage]) -> str:

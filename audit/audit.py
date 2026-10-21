@@ -194,7 +194,24 @@ def cmd_orphans(args) -> int:
     for decision in lost:
         print(f"{decision.id}\n  {decision.tag}/{decision.disposition} — {decision.note[:110]}")
         print(f"  decided {decision.decided} by {decision.by or 'unknown'}")
-        print("  either the debt is gone (mark --resolved) or the item moved beyond matching")
+        print("  compare open rows before deciding; refresh archives absent decisions without resolving them")
+    return 0
+
+
+def cmd_archive(args) -> int:
+    """List history, or archive absent decisions after a complete rescan."""
+    if args.apply:
+        run_inventory(None)
+        run_scan(None)
+        rows, decisions = core.load_all(), core.load_triage()
+        archived = core.archive_orphans(rows, decisions)
+        core.save_triage(decisions)
+        print(f"archived {len(archived)} absent decision(s); no work marked resolved")
+    history = core.load_archive()
+    print(f"{len(history)} archived decision(s)")
+    for decision in history[:args.number]:
+        print(f"{decision.id}  archived {decision.archived}  "
+              f"{decision.tag}/{decision.disposition}  resolved={decision.resolved}")
     return 0
 
 
@@ -289,7 +306,7 @@ def cmd_check(args) -> int:
         if gated.get(kind, 0) > allowed:
             errors.append(
                 f"{kind}: {gated[kind]} gated untriaged rows exceeds the budget of {allowed}. "
-                f"Triage the new rows, or raise the budget with a recorded reason.")
+                f"Triage the new rows; do not raise the budget.")
 
     print(report.state_table(rows, decisions))
     if ungated:
@@ -299,6 +316,11 @@ def cmd_check(args) -> int:
     if state["stale"]:
         print(f"\nwarning: {len(state['stale'])} triaged row(s) changed since the decision — "
               f"`audit.py open --stale`")
+    if state["expired"]:
+        print(f"\nwarning: {len(state['expired'])} decision(s) past their review date — "
+              "`audit.py expiring`")
+    if args.review and (state["stale"] or state["expired"]):
+        errors.append("review required: stale or expired decisions remain")
     for message in errors:
         print(f"error: {message}", file=sys.stderr)
     if errors:
@@ -335,10 +357,18 @@ def cmd_refresh(args) -> int:
     print("\n== code checks ==")
     run_scan(None)
 
+    print("\n== archive absent decisions ==")
+    rows, decisions = core.load_all(), core.load_triage()
+    archived = core.archive_orphans(rows, decisions)
+    core.save_triage(decisions)
+    print(f"archived {len(archived)} decision(s); unresolved work is not marked resolved")
+
     print("\n== generated docs indexes ==")
     docs_gate = core.REPO_ROOT / "scripts" / "docs" / "check_docs.py"
     if docs_gate.exists():
-        subprocess.run([sys.executable, str(docs_gate), "--write"], cwd=core.REPO_ROOT)
+        result = subprocess.run([sys.executable, str(docs_gate), "--write"], cwd=core.REPO_ROOT)
+        if result.returncode:
+            return result.returncode
     else:
         print("scripts/docs/check_docs.py not found; skipped")
 
@@ -426,12 +456,19 @@ def main() -> int:
     p = sub.add_parser("orphans", help="decisions that no longer match any row")
     p.set_defaults(fn=cmd_orphans)
 
+    p = sub.add_parser("archive", help="list archived decisions; --apply rescans and archives absent rows")
+    p.add_argument("--apply", action="store_true")
+    p.add_argument("-n", "--number", type=int, default=20)
+    p.set_defaults(fn=cmd_archive)
+
     p = sub.add_parser("expiring", help="decisions past their review date")
     p.set_defaults(fn=cmd_expiring)
 
     p = sub.add_parser("check", help="the gate")
     p.add_argument("--refresh", action="store_true",
                    help="regenerate the inventory without failing on drift")
+    p.add_argument("--review", action="store_true",
+                   help="also fail if any live decision is stale or expired")
     p.set_defaults(fn=cmd_check)
 
     p = sub.add_parser("report", help="write a dated run under audit/runs/")

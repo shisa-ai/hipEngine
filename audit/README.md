@@ -42,8 +42,9 @@ python3 audit/audit.py refresh
 
 One command brings everything derived back in step with the tree. It rescans the
 catalogue, re-runs the code checks, re-matches decisions onto rows whose text
-changed, regenerates the `docs/` indexes, ratchets the budget **down** if cleanup
-happened, writes a dated report, and finishes with a **needs a human** section
+changed, archives decisions for absent rows, regenerates the `docs/` indexes,
+ratchets the budget **down** if cleanup happened, writes a dated report, and
+finishes with a **needs a human** section
 naming what it could not decide for you.
 
 It is safe to run at any time and it never hides a problem: the budget only ever
@@ -88,8 +89,10 @@ What to look at in the output:
   `rebound_from` set and should be re-read before being relied on.
 - **New rows.** The budget will fail the gate if untriaged counts rose. That is
   the point: triage the new rows, do not raise the budget.
-- **Orphans.** `audit.py orphans` lists decisions that now match nothing. Either
-  the debt is gone (`triage ... --resolved`) or an item changed past matching.
+- **Orphans.** `audit.py orphans` lists unmatched decisions that still need
+  attention. A full `refresh` archives absent decisions, but preserves candidates
+  that could match an open row so a conflicting or ambiguous match stays visible.
+  `audit.py archive` lists history; archival does not mark work resolved.
 
 Commit the regenerated JSON. It is generated but committed, so the diff between
 two scans is reviewable.
@@ -159,9 +162,9 @@ Choosing a disposition:
 
 ### Working the worklog rows
 
-A `worklog` row is an entry whose own text declared work unfinished. Nothing
-re-opens it: entries are immutable, so the row is decided once and stays decided.
-Work the unambiguous half first:
+A `worklog` row is an entry whose own text declared work unfinished. The entry
+is immutable, but references, unread flags and continuation evidence can change
+and make its decision stale. Work the unambiguous half first:
 
 ```bash
 python3 audit/audit.py open worklog --signal "recorded as blocked"
@@ -227,8 +230,9 @@ read site under `hipengine/`", "names 7 paths, 3 no longer exist" — and never 
 conclusion.
 
 **Triage is what turns a row into a decision**, and it is durable. Decisions live
-in `triage/*.jsonl`, keyed by row id, in files that re-scanning never touches.
-Every decision records a hash of the evidence it was made against.
+in `triage/*.jsonl`, keyed by row id. Rescanning may remap identities, but does
+not rewrite judgments or review dates. Every decision records a hash of the
+evidence it was made against.
 
 **A rescan lands on the same audit item even after the text changed.** Row ids
 for ledger entries and campaign candidates are content-derived, so rewording a
@@ -236,20 +240,41 @@ heading would otherwise orphan its decision. Each row therefore also carries
 match *hints* — a stable anchor, what the row names, and its content words — and
 a rescan re-attaches any decision whose id moved, reporting the similarity it
 matched on. A row that already has a decision is never claimed by a rebind, so a
-decision cannot be stolen from another item.
+decision cannot be stolen from another item. When several old decisions tie for
+one row, they must agree on tag, disposition, severity and expiry; the most
+recent review wins, with the ID breaking date ties deterministically. A decision
+that matches several new rows equally well is never assigned by scan order.
+Rebinding preserves the evidence hash and review date; it is not a new review.
 
 **A decision made against changed facts comes back.** When evidence moves, the
 row is reported `stale` rather than silently standing on a conclusion that may no
 longer hold. `--expires` does the same on a schedule. This is what lets a wrong
-early call be corrected instead of calcifying.
+early call be corrected instead of calcifying. The hash ignores line positions,
+file/body length and elapsed age. It retains defaults, referenced reader paths,
+continuation evidence and semantic numbers. Moving a read site within its file
+is not new evidence; adding a reader in another file is. A resolved decision also
+becomes stale if its evidence changes; `resolved` is not a permanent exemption.
 
-**A decision whose row vanishes is reported, not dropped.** `audit.py orphans`
-lists them.
+Changing the hash format is not a review. The one-time conversion record in
+`migrations/evidence-basis-v1.json` names the committed evidence blobs used to
+translate legacy hashes. Hashes without recoverable decision-time evidence stay
+unchanged and require review. The conversion preserves notes and review dates.
+
+**Archival is not resolution.** After a complete scan, absent decisions with no
+plausible open match move to `triage/archive/*.jsonl`. Their notes, deadlines,
+review dates and resolved state remain intact. Archived decisions never match
+new rows automatically, so reintroduced debt needs a fresh decision. Partial
+`inventory` or `scan` commands never archive. Use `archive --apply` to run both
+scans and archive without generating docs or changing the budget.
 
 **The budget is the anti-laziness gate.** `budget.json` records the untriaged
 count per kind. `check` fails when a count rises, so new debt cannot land without
 being triaged. **Never raise the budget to get past the gate.** Lowering it is
-the point.
+the point. A passing ordinary `check` means the inventory is fresh and new rows
+are within budget, not that every decision is current. `check --review` also
+fails on stale or expired live decisions. Use it to verify a completed review
+pass; never clear it by bulk-resetting hashes or extending deadlines without
+reviewing their conditions. The state table reports expiry separately.
 
 A kind whose population grows with ordinary work narrows its gate to the rows
 that need a decision, in the budget's `select` block:
@@ -277,6 +302,9 @@ python3 audit/audit.py status                 # where the cleanup stands
 python3 audit/audit.py queue -n 8 -e 3        # fixable work, grouped by cause
 python3 audit/audit.py open <kind> -n 20      # untriaged rows, most signals first
 python3 audit/audit.py open --stale           # decisions whose evidence moved
+python3 audit/audit.py archive                # list archived history
+python3 audit/audit.py archive --apply        # full rescan, then archive absent decisions
+python3 audit/audit.py check --review         # also require no stale or expired decisions
 python3 audit/audit.py expiring               # decisions past their review date
 python3 audit/audit.py orphans                # decisions that match no row
 python3 audit/audit.py show <row-id>          # one row, with its triage
@@ -435,7 +463,8 @@ audit/
     report.py         computed tables and the dated run
   inventory/*.json    the standing catalogue; generated; committed so diffs are reviewable
   findings/*.json     what code scanning queued to fix; generated
-  triage/*.jsonl      durable decisions for both; re-scanning never touches these
+  triage/*.jsonl      live decisions; remapping preserves judgments and review dates
+  triage/archive/     absent decisions; history only, never automatically rebound
   budget.json         the untriaged ceiling the gate enforces
   runs/<stamp>/       dated REPORT.md + snapshot.json
   agents/             assignments for whoever works the audit: triage.md, fix.md

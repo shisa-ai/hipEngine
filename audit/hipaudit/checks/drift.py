@@ -108,7 +108,10 @@ def doc_path_drift() -> tuple[list[Row], dict]:
                     skipped += 1
                     continue
                 rows.append(finding(
-                    "doc-path-drift", f"{path}:{number}:{target}",
+                    #  Keyed by document and target, not by line: `seen` above already
+                    #  collapses repeats within one document, so this is unique and a
+                    #  mention that moves down the page keeps its decision.
+                    "doc-path-drift", f"{path}:{target}",
                     f"names `{target}`, which is actually at `{elsewhere[0]}`", f"{path}:{number}",
                     fix=f"Change `{target}` to `{elsewhere[0]}`"
                         + (f" (or one of {len(elsewhere)} matches)." if len(elsewhere) > 1 else "."),
