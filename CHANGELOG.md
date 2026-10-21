@@ -6,6 +6,59 @@ This changelog is for package/API releases. Performance rollup history remains i
 [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md), with detailed benchmark
 evidence under [`benchmarks/results/`](benchmarks/results/).
 
+## v0.8.1 - 2026-10-21
+
+Patch release fixing GGUF serving startup and memory sizing on small GPUs,
+and reducing compact-DMS prefill and speculative rollback overhead. APIs
+remain alpha; support depends on the model, backend, storage layout, and
+request shape.
+
+### Fixed
+
+- **GGUF serving on 24 GB GPUs.** Automatic context sizing now accounts for
+  prefill scratch, resumable INT8 checkpoints, prefix snapshots, MTP draft
+  and verification state, and shared KV-pool reserves. Dense GGUF chooses
+  fewer resident request slots when needed to preserve usable context;
+  explicit context and request-slot settings remain available.
+- **Compact DMS with MTP.** Completed compact layers and portable NextN
+  prefix KV snapshots use host staging to avoid overlapping full device
+  allocations. MTP normalization uses bounded chunks, and bulk prefill
+  storage is released before compact-layer restoration and verifier setup.
+  See the [24 GB context table](README.md#long-context-on-a-24-gb-gpu) for
+  automatic sizing and the confirmed serving window.
+- **DMS sidecars in Hugging Face snapshots.** Symlinked `dms_metadata.json`
+  files now resolve companion files beside the snapshot metadata rather
+  than looking only in the cache's `blobs` directory.
+- **Startup failure reporting.** A warmup that closes the engine now fails
+  startup instead of leaving the server marked ready. Pinned-context
+  warnings report the requested size and the estimated memory fit correctly.
+- **ROCm virtual-memory compatibility.** Shared KV backing recovers from
+  rejected sub-range access updates and clears handled HIP errors before
+  continuing.
+- **Speculative rollback lifetime.** DMS keeps its undo image until the
+  enclosing transaction finishes. Failed cleanup remains retryable and
+  restores recurrent state as well as KV.
+
+### Changed
+
+- **Lower DMS overhead.** Exact-budget prefill collects and packs each layer
+  in one model pass. Speculative cycles use a bounded append-tail journal
+  when no token can expire, with the full transaction as fallback. Retention
+  decisions, INT8 codec arithmetic, FP32 scales, and MTP policy are unchanged.
+  Measurements, state comparisons, and limits are in the
+  [benchmark report](benchmarks/README.md#16k-int8mtp-with-and-without-dms--rx-7900-xtx).
+- NextN providers share the draft weights and reserve prefill scratch for
+  the rows they execute rather than the target's full context.
+
+### Known Limitations
+
+- Compact-DMS serving remains single-request; packed DMS ownership is not
+  implemented. Automatic context choices include a safety margin and are
+  not measured maximum-capacity boundaries.
+- The long-context confirmation exercises serving and memory ownership,
+  not a new long-context task-quality evaluation. Other model-specific
+  limitations from v0.8.0 remain unchanged.
+
 ## v0.8.0 - 2026-10-19
 
 Adds Gemma 4 text inference and speculative decoding, makes shared-batch

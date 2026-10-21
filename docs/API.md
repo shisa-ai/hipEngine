@@ -4,7 +4,7 @@ owns: OpenAI-compatible server usage, endpoint support, request/response semanti
 ---
 # OpenAI-Compatible Server API
 
-Last updated: 2026-10-18
+Last updated: 2026-10-21
 
 hipEngine ships a thin FastAPI layer that adapts OpenAI-style requests to the
 torch-free `hipengine.LLM.generate()` library API. Server dependencies are
@@ -85,11 +85,16 @@ The resident KV policy is server-wide: set `--kv-storage` (`auto`, `bf16`, or
 startup. Requests that ask for a different KV policy are rejected instead of
 rebuilding the resident model.
 
-The defaults are `--kv-storage bf16`, `--kv-scale-dtype fp32`,
-`--kv-scale-granularity per_token_head`, and four resident request slots.
+The defaults are `--kv-storage bf16`, `--kv-scale-dtype fp32`, and
+`--kv-scale-granularity per_token_head`. Dense GGUF automatically chooses up
+to four resident request slots, reducing the count when needed to preserve a
+usable context on smaller GPUs. Pass `--max-active-requests` to set the count
+explicitly. Compact DMS uses one resident request; Flash-Next has its own
+[shared-batch defaults](#flash-next-concurrency).
 Context length, request concurrency, and KV-pool memory are independent
-settings. BF16 is the higher-precision baseline, and it is the storage the
-speculative (MTP) route has retained evidence for. `int8_per_token_head` opts
+settings. GGUF sizing includes prefill workspaces, suspended-request
+checkpoints, prefix snapshots, and MTP draft and verification state, not just
+KV bytes. BF16 is the higher-precision baseline. `int8_per_token_head` opts
 into the compressed policy, which stores roughly half the per-token KV bytes at
 lower KV precision; on the supported dense GGUF artifact that policy selects
 **176,128 tokens** of resident context on a 48 GiB W7900 at the configured KV
