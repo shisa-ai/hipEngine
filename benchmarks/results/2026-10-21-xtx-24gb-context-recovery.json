@@ -1,0 +1,179 @@
+{
+ "schema_version": 1,
+ "purpose": "RX 7900 XTX automatic-context and full-depth serving validation after the 24 GB memory recovery; not a throughput or task-quality benchmark",
+ "hardware": {
+  "host": "epyc",
+  "gpu": "Radeon RX 7900 XTX (24 GB)",
+  "physical_gpu_index": 1,
+  "backend": "hip_gfx1100"
+ },
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "quant": "gguf_q4_k_m",
+ "execution_profile": "production",
+ "source_base": "81093d855640977e987e5c1f00bec6608123a101",
+ "measured_tree": "v0.8.1 (source_base) plus the changes later committed as 52d8461cf, 0c2d3f4f5 and d091610ec; source hashes below are of the measured tree",
+ "source_sha256": {
+  "hipengine/generation/qwen35_gguf.py": "07367a98533f119ffab0346d4e6d35b6924cb23b15a739ca97427acf98a96a35",
+  "hipengine/runtime/qwen35_gguf_runner.py": "ca96cda53e44666f42db4954134a587457a8c375d4a107d8182b98d280da1016",
+  "hipengine/loading/qwen35_gguf_materialize.py": "ca9c0ae0b850e8a5c3e1f405fea64f7e7e447cfaf185831005237ccab1f42825",
+  "hipengine/llm.py": "b2b4f116e4062b142c3c20bfe2912ce6f5e3432b736630c29bae03fadb0f3477",
+  "hipengine/server/api.py": "ce2e830408989345c780a9bc2f90e16b6c7674391e7fc4b453c209f570bb2710"
+ },
+ "command": "env HIP_VISIBLE_DEVICES=1 PYTHONPATH=<tree> python <malloc-owner tracer> serve --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --port 18879 <serve_arguments>",
+ "instrumentation": "A wrapper records live HipRuntime.malloc/free owners and device free memory at each new low; it does not change allocation or execution. Request walls include it.",
+ "request": "One chat request at 97% of the selected context (99.5% for the pinned DMS row): 'Count the words.' plus a repeated sentence, greedy, max_tokens 64 (32 for DMS), default prefix cache, automatic MTP. Concurrency rows then send four ~2K-token requests at once.",
+ "baseline": "v0.8.1 automatic contexts from benchmarks/results/2026-10-20-xtx-serving-checkpoint-accounting.json and 2026-10-20-xtx-compact-dms-serving-memory.json (same host, GPU and flags)",
+ "rows": [
+  {
+   "name": "x3_default",
+   "serve_arguments": "",
+   "v0_8_1_automatic_context": 28160,
+   "kv_storage": "bf16",
+   "effective_context_tokens": 53760,
+   "automatic_context": true,
+   "ready_gpu_memory_used_gib": 23.09,
+   "status": "pass",
+   "prompt_tokens": 51993,
+   "completion_tokens": 64,
+   "realized_route": "speculative_mtp",
+   "mtp_acceptance_rate": 0.7818181818181819,
+   "concurrent_short_requests": {
+    "count": 4,
+    "ok": 4
+   },
+   "lowest_device_free_gib": 0.554,
+   "sidecar_loaded": false,
+   "token_table_on_device": false
+  },
+  {
+   "name": "x3_int8",
+   "serve_arguments": "--kv-storage int8_per_token_head",
+   "v0_8_1_automatic_context": 17664,
+   "kv_storage": "int8_per_token_head",
+   "effective_context_tokens": 62720,
+   "automatic_context": true,
+   "ready_gpu_memory_used_gib": 21.9,
+   "status": "pass",
+   "prompt_tokens": 60683,
+   "completion_tokens": 64,
+   "realized_route": "speculative_mtp",
+   "mtp_acceptance_rate": 0.8301886792452831,
+   "concurrent_short_requests": {
+    "count": 4,
+    "ok": 4
+   },
+   "lowest_device_free_gib": 0.937,
+   "sidecar_loaded": false,
+   "token_table_on_device": false
+  },
+  {
+   "name": "x3_bf16_off_c1",
+   "serve_arguments": "--speculative-mtp-serving off --max-active-requests 1",
+   "v0_8_1_automatic_context": 55808,
+   "kv_storage": "bf16",
+   "effective_context_tokens": 83456,
+   "automatic_context": true,
+   "ready_gpu_memory_used_gib": 22.94,
+   "status": "pass",
+   "prompt_tokens": 80803,
+   "completion_tokens": 64,
+   "realized_route": "default",
+   "mtp_acceptance_rate": null,
+   "lowest_device_free_gib": 0.884,
+   "sidecar_loaded": false,
+   "token_table_on_device": false
+  },
+  {
+   "name": "x3_int8_off_c1",
+   "serve_arguments": "--kv-storage int8_per_token_head --speculative-mtp-serving off --max-active-requests 1",
+   "v0_8_1_automatic_context": 46336,
+   "kv_storage": "int8_per_token_head",
+   "effective_context_tokens": 98304,
+   "automatic_context": true,
+   "ready_gpu_memory_used_gib": 21.01,
+   "status": "pass",
+   "prompt_tokens": 95203,
+   "completion_tokens": 64,
+   "realized_route": "default",
+   "mtp_acceptance_rate": null,
+   "lowest_device_free_gib": 1.688,
+   "sidecar_loaded": false,
+   "token_table_on_device": false
+  },
+  {
+   "name": "x3_dms_auto",
+   "serve_arguments": "--kv-storage int8_per_token_head --dms-metadata-path /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json",
+   "v0_8_1_automatic_context": 110592,
+   "kv_storage": "int8_per_token_head",
+   "effective_context_tokens": 156672,
+   "automatic_context": true,
+   "ready_gpu_memory_used_gib": 17.36,
+   "status": "pass",
+   "prompt_tokens": 151823,
+   "completion_tokens": 32,
+   "realized_route": "speculative_mtp",
+   "mtp_acceptance_rate": 0.8461538461538461,
+   "lowest_device_free_gib": 2.869,
+   "sidecar_loaded": false,
+   "token_table_on_device": false
+  },
+  {
+   "name": "x3_dms_229k",
+   "serve_arguments": "--kv-storage int8_per_token_head --dms-metadata-path /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --max-context-tokens 229376",
+   "v0_8_1_automatic_context": null,
+   "kv_storage": "int8_per_token_head",
+   "effective_context_tokens": 229376,
+   "automatic_context": false,
+   "ready_gpu_memory_used_gib": 17.68,
+   "status": "pass",
+   "prompt_tokens": 228073,
+   "completion_tokens": 32,
+   "realized_route": "speculative_mtp",
+   "mtp_acceptance_rate": 0.8461538461538461,
+   "lowest_device_free_gib": 1.379,
+   "sidecar_loaded": false,
+   "token_table_on_device": false
+  }
+ ],
+ "w7900_speed_checks": {
+  "host": "epyc GPU0 Radeon Pro W7900",
+  "decode_c1_bf16_mtp_32k_tok_s": {
+   "base": [
+    53.66,
+    52.94
+   ],
+   "final_tree_without_hot_vocab_change": [
+    53.23,
+    52.47
+   ],
+   "hot_vocab_off": [
+    52.37,
+    52.03
+   ]
+  },
+  "request_wall_s": {
+   "int8_mtp_49513_prompt": {
+    "base": [
+     147,
+     147
+    ],
+    "final": [
+     150,
+     150
+    ]
+   },
+   "bf16_mtp_off_70123_prompt": {
+    "base": [
+     201,
+     205
+    ],
+    "final": [
+     201,
+     213
+    ]
+   }
+  },
+  "greedy_output_identity": "base and final generated identical text for INT8+MTP 16,983, INT8 MTP-off 44,793, BF16+MTP 27,163 and BF16 MTP-off 53,983-token prompts"
+ },
+ "limitations": "Automatic contexts are validated settings, not maximum-capacity searches. The pinned DMS row is one synthetic full-depth request. No long-context task-quality claim."
+}
