@@ -26,9 +26,9 @@ def test_priming_only_finishes_the_last_row_of_each_chunk(chunks):
         draft.prime_prompt_chunk(tuple(range(offset, offset + size)), hidden[offset:offset + size],
                                  previous_hidden=None if offset == 0 else hidden[offset - 1])
         offset += size
-    assert [call.get("cache_only", False) for call in calls] == [
-        flag for size in chunks for flag in [True] * (size - 1) + [False]
-    ]
+    assert len(calls) == len(chunks)
+    assert not any(call.get("cache_only", False) for call in calls)
+    assert sum(map(len, draft.cache_tiles)) == sum(size - 1 for size in chunks)
     assert all(call["run_head"] is False for call in calls)
     assert draft.position == sum(chunks)
 

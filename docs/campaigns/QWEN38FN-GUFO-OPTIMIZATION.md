@@ -7,7 +7,7 @@ owns: The October 20 Flash-Next Gufo gap analysis and implementation campaign fo
 State: **in progress; execution started 2026-10-21**.
 Review date: 2026-10-20. hipEngine review source: `a4c7ca473`.
 Execution baseline starts at `926c1728c`, including the subsequent prefix-cache
-work. `MTP-PREFILL` implementation is active. Canonical measurements, native
+work. `MTP-PREFILL` implementation is complete. Canonical measurements, native
 served phase accounting and the ordered-depth runs are available. At the
 lead's direction, expanded baseline matrices are deferred while implementation
 progresses; their final validation and quality bindings remain on the checklist.
@@ -281,7 +281,16 @@ and feed-forward outputs except on each chunk's final carry row. The existing
 QSA restore cursor also no longer marks uncomputed pooled blocks valid. Five
 real-sidecar cache/carry/full-logit cases and twenty matched public response
 pairs pass; see the [scoped diagnostic artifact](../../benchmarks/results/20261021-qwen38fn-mtp-cache-only.json).
-Batched projections and device hidden handoff below remain unfinished.
+**Bulk implementation complete:** bounded prompt projections and synchronous
+device hidden handoff run on the default path. Sixteen real-sidecar cases
+cover scalar/workspace/device execution, unfused and matrix-kernel overrides,
+cache state, final carry and complete proposal logits. Cancellation commits
+only checked rows. The short public resource probe and all twenty matched
+HTTP response pairs pass, including a 2K suffix on a 32K cached prefix.
+All five scoped prefill medians improve against the preceding scalar increment;
+see the [bulk implementation artifact](../../benchmarks/results/20261021-qwen38fn-mtp-bulk.json)
+and [worklog](../../worklog/entries/20261021T224428.114242Z-qwen38fn-gufo-qwen38fn-mtp-bulk-5bdac7.md).
+This closes this packet, not the campaign's broader quality or concurrency gates.
 
 Implement a batched prompt path that consumes the shifted target-hidden
 sequence, writes every required predictor KV/index row, and computes only the
@@ -669,7 +678,7 @@ because they fall short of final parity.
   timing accounting, model/sidecar identities and route witnesses.
 - [ ] `QUALITY`: inherited numerical and candidate-specific task failures
   resolved under the unchanged applicable gates.
-- [ ] `MTP-PREFILL`: bulk prompt/catch-up implementation, boundary tests and
+- [x] `MTP-PREFILL`: bulk prompt/catch-up implementation, boundary tests and
   complete HTTP prefill measurement including predictor work.
 - [ ] `VERIFY`: persistent transactional state, compact result/handoff,
   few-row kernel and graph decisions supported by full-cycle evidence.

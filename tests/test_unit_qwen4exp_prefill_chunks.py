@@ -82,21 +82,48 @@ def test_prefill_append_checks_remaining_capacity_before_mutation(monkeypatch):
     assert runner.position == 2 and runner.history == [4, 5]
 
 
+class _DraftHarness(Qwen4ExpGGUFMTPDraftRunner):
+    @property
+    def rows(self):
+        return self.staged[:self.position]
+
+
 def _draft():
-    draft = object.__new__(Qwen4ExpGGUFMTPDraftRunner)
+    draft = object.__new__(_DraftHarness)
+    draft.closed = False
     draft.max_sequence_length = 8
     draft.config = SimpleNamespace(residual_width=2)
     draft.position = 0
-    draft.rows = []
+    draft.staged = []
+    draft.cache_tiles = []
+    draft.index = SimpleNamespace(count=0)
+    draft.index.restore_count = lambda count: setattr(draft.index, "count", count)
+    draft.attention = SimpleNamespace(set_position=lambda pos: None)
+
+    def store(position, token, hidden):
+        row = (int(token), tuple(float(value) for value in hidden))
+        if position == len(draft.staged):
+            draft.staged.append(row)
+        else:
+            draft.staged[position] = row
 
     def reset():
-        draft.position = 0
-        draft.rows.clear()
+        draft.position = draft.index.count = 0
+        draft.staged.clear()
+        draft.cache_tiles.clear()
 
     def forward(token, hidden, **kwargs):
-        draft.rows.append((int(token), tuple(float(value) for value in hidden)))
+        store(draft.position, token, hidden)
         draft.position += 1
+        draft.index.count = draft.position
 
+    def append(tokens, hidden):
+        draft.cache_tiles.append(tuple(tokens))
+        for offset, (token, seed) in enumerate(zip(tokens, hidden, strict=True)):
+            store(draft.position + offset, token, seed)
+        draft.index.count += len(tokens)
+
+    draft._prefill_workspace = SimpleNamespace(rows=2, append=append)
     draft.reset = reset
     draft.forward = forward
     return draft
@@ -143,6 +170,8 @@ def test_draft_chunk_checks_cancellation_before_each_token():
         )
     assert checks == [0, 1]
     assert draft.position == 1 and draft.rows == [(1, (0.0, 0.0))]
+    assert draft.index.count == 1
+    assert len(draft.staged) == 2  # The second raw row was never committed.
     # Reclaim can reset this partial request without touching a neighbor.
     draft.reset()
     draft.prime_prompt_chunk((9,), np.ones((1, 2), dtype=np.float32), previous_hidden=None)

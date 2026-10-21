@@ -278,8 +278,24 @@ class Qwen4ExpMTPTextProvider:
 
         prefill_started = time.perf_counter()
         if prefill_result is None:
-            result = target_runner.prefill(token_ids, capture_hidden_seeds=True, **capture_kwargs)
-            record_phase("target_prefill_hidden_export", prefill_started)
+            prefill_kwargs = dict(capture_kwargs)
+            if callable(getattr(draft_runner, "prime_prompt_device_chunk", None)):
+                draft_runner.reset()
+                previous_hidden = None
+
+                def consume_hidden(tokens, buffer):
+                    nonlocal previous_hidden
+                    previous_hidden = draft_runner.prime_prompt_device_chunk(
+                        tokens, buffer, previous_hidden=previous_hidden,
+                        check_cancelled=lambda: raise_if_generation_deadline_expired(request),
+                    )
+                    return previous_hidden
+
+                prefill_kwargs["hidden_seed_consumer"] = consume_hidden
+                draft_primed = True
+            result = target_runner.prefill(token_ids, capture_hidden_seeds=True, **prefill_kwargs)
+            record_phase("target_and_draft_prefill" if "hidden_seed_consumer" in prefill_kwargs
+                         else "target_prefill_hidden_export", prefill_started)
         else:
             # The caller already prefilled this prompt; reuse those hidden rows
             # and the cursor they left behind instead of prefilling twice.
@@ -505,6 +521,10 @@ class Qwen4ExpMTPTextProvider:
                 "phase_census": {
                     "cycles": len(cycles),
                     "target_verify_rows": phase_calls.get("target_verify", 0),
+                    "target_and_draft_prefill": {
+                        "calls": phase_calls.get("target_and_draft_prefill", 0),
+                        "ms": phase_ms.get("target_and_draft_prefill", 0.0),
+                    },
                     "target_prefill_hidden_export": {
                         "calls": phase_calls.get("target_prefill_hidden_export", 0),
                         "ms": phase_ms.get("target_prefill_hidden_export", 0.0),

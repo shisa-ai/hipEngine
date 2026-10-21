@@ -212,6 +212,7 @@ from hipengine.runtime.gguf_linear import (
     wmma_prefill_weight_filter_session,
     GGUF_OUTPUT_F32,
     launch_gguf_linear,
+    launch_gguf_linear_decode_rows,
     q8_mmq_prefill_session,
     resolve_q8_mmq_prefill_policy,
 )
@@ -2768,11 +2769,12 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
     index_dim: int,
     index_rotary_dim: int,
     rope_positions_ptr: int | None = None,
+    cache_only: bool = False,
     eps: float = 1e-6,
     stream: int = 0,
     runtime: HipRuntime | None = None,
-) -> DeviceBuffer:
-    """Execute one contiguous QSA prompt chunk over shared paged state."""
+) -> DeviceBuffer | None:
+    """Append a contiguous QSA chunk, optionally omitting unused attention."""
 
     count = int(rows)
     start = int(start_position)
@@ -2808,7 +2810,10 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
         ("index_q", scratch.index_q_projected, index_heads * index_dim),
         ("index_k", scratch.index_k_projected, index_dim),
     ):
-        launch_gguf_linear(
+        if cache_only and slot == "index_q":
+            continue
+        project = launch_gguf_linear_decode_rows if cache_only else launch_gguf_linear
+        project(
             weights.projections[slot],
             mixed_ptr,
             output.ptr,
@@ -2854,22 +2859,23 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
         if rope_positions_ptr is not None
         else qwen4_exp_qsa_norm_rope_rows_f32
     )
-    index_rope_rows(
-        scratch.index_q_projected.ptr,
-        weights.index_q_norm_weight_ptr,
-        metadata.positions.ptr
-        if rope_positions_ptr is None
-        else int(rope_positions_ptr),
-        scratch.index_query.ptr,
-        count,
-        index_heads,
-        index_dim,
-        index_rotary_dim,
-        theta,
-        eps,
-        stream=stream,
-        runtime=active_runtime,
-    )
+    if not cache_only:
+        index_rope_rows(
+            scratch.index_q_projected.ptr,
+            weights.index_q_norm_weight_ptr,
+            metadata.positions.ptr
+            if rope_positions_ptr is None
+            else int(rope_positions_ptr),
+            scratch.index_query.ptr,
+            count,
+            index_heads,
+            index_dim,
+            index_rotary_dim,
+            theta,
+            eps,
+            stream=stream,
+            runtime=active_runtime,
+        )
     index_state.append_rows(
         scratch.index_k_projected.ptr,
         start_position=start,
@@ -2891,6 +2897,8 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
         stream=stream,
         runtime=active_runtime,
     )
+    if cache_only:
+        return None
     dense_rows = max(0, min(count, index_state.dense_equivalent_limit - start))
     qsa_flash = (
         dense_rows > 0
@@ -3471,6 +3479,7 @@ def run_qwen4_exp_gr_read(
     stream: int = 0,
     runtime: HipRuntime | None = None,
     pending_write: tuple[int, int, int, bool] | None = None,
+    decode_rows: bool = False,
 ) -> Qwen4ExpGRReadDeviceResult:
     """Execute strict grouped GR read using model-neutral resident projections.
 
@@ -3491,7 +3500,7 @@ def run_qwen4_exp_gr_read(
     invalidate_f16_mirror()
     residual_width = branches * hidden
     if (
-        _qwen4_exp_gr_decode_fused_enabled(rows, branches, hidden, low_rank)
+        _qwen4_exp_gr_decode_fused_enabled(1 if decode_rows else rows, branches, hidden, low_rank)
         and down_weight.spec.quant_key == "gguf_q8_0"
         and up_weight.spec.quant_key == "gguf_q8_0"
         and "raw" in down_weight.allocations
@@ -3544,6 +3553,24 @@ def run_qwen4_exp_gr_read(
             mixed=scratch.mixed,
             inject_logits=scratch.inject_logits,
         )
+    if decode_rows:
+        # Preserve the scalar fallback when the row-independent fused kernels
+        # do not cover the geometry or their rollback switch is selected.
+        if pending_write is not None:
+            _qwen4_exp_gr_flush_write(pending_write, residual_ptr, rows, branches,
+                hidden, stream=stream, runtime=active_runtime)
+        widths = {"normalized": residual_width, "low_rank": low_rank,
+                  "gate": residual_width, "inject_logits": branches, "mixed": hidden}
+        for row in range(rows):
+            views = {name: DeviceBuffer(getattr(scratch, name).ptr + row * width * 4, width * 4)
+                     for name, width in widths.items()}
+            run_qwen4_exp_gr_read(residual_ptr + row * residual_width * 2,
+                norm_weight_ptr, down_weight, up_weight, inject_weight,
+                Qwen4ExpGRScratch(**views, runtime=active_runtime), rows=1,
+                branches=branches, hidden=hidden, low_rank=low_rank, eps=eps,
+                stream=stream, runtime=active_runtime)
+        return Qwen4ExpGRReadDeviceResult(normalized=scratch.normalized,
+            gate=scratch.gate, mixed=scratch.mixed, inject_logits=scratch.inject_logits)
     # Without the FP32 normalized plane: the up epilogue and the inject logits
     # recompute bf16(residual) * inv_rms * weight, the value the norm stores,
     # so nothing downstream changes. Requires the fused up epilogue and an
@@ -9370,11 +9397,13 @@ class Qwen4ExpGGUFResidentModelRunner:
         capture_target_hidden: bool = True,
         embedding_overrides: Mapping[int, np.ndarray] | None = None,
         mrope_positions: np.ndarray | None = None,
+        hidden_seed_consumer=None,
     ) -> Qwen4ExpTokenResult:
         options = dict(
             capture_hidden_seeds=capture_hidden_seeds, capture_logits=capture_logits,
             capture_target_hidden=capture_target_hidden,
-            embedding_overrides=embedding_overrides, mrope_positions=mrope_positions)
+            embedding_overrides=embedding_overrides, mrope_positions=mrope_positions,
+            hidden_seed_consumer=hidden_seed_consumer)
         choices = getattr(self, "_prefill_workspace_selection", None)
         if not choices:
             return self._prefill_chunked_impl(token_ids, **options)
@@ -9413,6 +9442,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         mrope_positions: np.ndarray | None = None,
         reset: bool = True,
         yield_layers: bool = False,
+        hidden_seed_consumer=None,
     ):
         if not token_ids:
             raise ValueError("Qwen4Exp prefill requires at least one token")
@@ -9462,19 +9492,19 @@ class Qwen4ExpGGUFResidentModelRunner:
                 and int(parts[1]) in q8_wmma_layers
             )
 
-        with (
-            raw_k_prefill_rowbatch_session(selected_raw_rowbatch),
-            raw_k_prefill_variant_session(selected_raw_variant),
-            wmma_prefill_session(True if q8_wmma_layers else None),
-            wmma_prefill_weight_filter_session(
-                q8_wmma_weight_filter if q8_wmma_layers else None
-            ),
-            self._q8_mmq_prefill_context(),
-            self._wide_f16_activation_context(),
-        ):
-            for start in range(0, len(values), self.prefill_chunk_size):
+        for start in range(0, len(values), self.prefill_chunk_size):
+            with (
+                raw_k_prefill_rowbatch_session(selected_raw_rowbatch),
+                raw_k_prefill_variant_session(selected_raw_variant),
+                wmma_prefill_session(True if q8_wmma_layers else None),
+                wmma_prefill_weight_filter_session(
+                    q8_wmma_weight_filter if q8_wmma_layers else None
+                ),
+                self._q8_mmq_prefill_context(),
+                self._wide_f16_activation_context(),
+            ):
                 chunk_kwargs = dict(
-                    capture_hidden_seeds=capture_hidden_seeds,
+                    capture_hidden_seeds=capture_hidden_seeds and hidden_seed_consumer is None,
                     embedding_overrides=embedding_overrides,
                     mrope_positions=(
                         None
@@ -9491,8 +9521,18 @@ class Qwen4ExpGGUFResidentModelRunner:
                     )
                 else:
                     last_residual_ptr, hidden_rows = self._prefill_chunk(chunk, **chunk_kwargs)
-                if hidden_rows is not None:
-                    captured.append(hidden_rows)
+            if hidden_seed_consumer is not None:
+                # Borrow only until this synchronous callback returns, before
+                # another chunk can reuse the target scratch. Restore target
+                # projection contexts first; the predictor has its own policy.
+                stride = self.config.residual_width * DType.BF16.itemsize
+                view = DeviceBuffer(last_residual_ptr - (len(chunk) - 1) * stride,
+                                    len(chunk) * stride)
+                last_seed = hidden_seed_consumer(chunk, view)
+                if capture_hidden_seeds:
+                    captured[:] = [np.asarray(last_seed, dtype=np.float32).reshape(1, -1)]
+            elif hidden_rows is not None:
+                captured.append(hidden_rows)
         cfg = self.config
         assert self.head_scratch is not None
         if capture_target_hidden:
@@ -9582,18 +9622,23 @@ class Qwen4ExpGGUFResidentModelRunner:
         capture_hidden_seeds: bool = False,
         capture_logits: bool = True,
         capture_target_hidden: bool = True,
+        hidden_seed_consumer=None,
     ) -> Qwen4ExpTokenResult:
         """Append prompt work to the current request using its prepared workspace.
 
         The caller owns reset, chunk boundaries and request retirement. Each
         call restores dispatch contexts before returning to the scheduler; no
         context manager or temporary workspace binding spans another request.
+        A hidden consumer synchronously receives each chunk's borrowed BF16
+        rows and returns its final host seed. With a consumer, hidden capture
+        returns only that final row rather than downloading the entire prompt.
         """
         return self._prefill_chunked_impl(
             token_ids,
             capture_hidden_seeds=capture_hidden_seeds,
             capture_logits=capture_logits,
             capture_target_hidden=capture_target_hidden,
+            hidden_seed_consumer=hidden_seed_consumer,
             reset=False,
         )
 
@@ -9606,6 +9651,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         capture_target_hidden: bool = True,
         embedding_overrides: Mapping[int, np.ndarray] | None = None,
         mrope_positions: np.ndarray | None = None,
+        hidden_seed_consumer=None,
     ) -> Qwen4ExpTokenResult:
         return self.prefill_chunked(
             token_ids,
@@ -9614,6 +9660,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             capture_target_hidden=capture_target_hidden,
             embedding_overrides=embedding_overrides,
             mrope_positions=mrope_positions,
+            hidden_seed_consumer=hidden_seed_consumer,
         )
 
     def generate(

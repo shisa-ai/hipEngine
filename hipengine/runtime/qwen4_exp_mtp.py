@@ -169,6 +169,7 @@ class Qwen4ExpGGUFMTPDraftRunner:
         self._buffers: list[DeviceBuffer] = []
         self.position = 0
         self.closed = False
+        self._prefill_workspace = None
         self.last_forward_stage_timings_ms: dict[str, float] = {}
         self.last_proposal_stage_timings_ms: dict[str, float] = {}
         try:
@@ -631,16 +632,23 @@ class Qwen4ExpGGUFMTPDraftRunner:
         *,
         previous_hidden: np.ndarray | None,
         check_cancelled: Callable[[], None] | None = None,
+        target_hidden_buffer: DeviceBuffer | None = None,
     ) -> None:
         """Append one prompt chunk without resetting the request-owned draft.
 
         The first token of a later chunk consumes the previous target chunk's
-        final hidden row, not zeros or the current row's hidden state.
+        final hidden row, not zeros or the current row's hidden state. A BF16
+        device buffer is borrowed synchronously, never retained after return.
         """
         tokens = tuple(int(token) for token in token_ids)
-        hidden = np.ascontiguousarray(target_hidden_rows, dtype=np.float32)
         width = self.config.residual_width
-        if not tokens or hidden.shape != (len(tokens), width):
+        hidden = None
+        if target_hidden_buffer is None:
+            hidden = np.ascontiguousarray(target_hidden_rows, dtype=np.float32)
+            aligned = hidden.shape == (len(tokens), width)
+        else:
+            aligned = target_hidden_buffer.ptr > 0 and target_hidden_buffer.nbytes == len(tokens) * width * 2
+        if not tokens or not aligned:
             raise ValueError("Qwen4Exp MTP prompt chunk requires aligned hidden rows")
         if self.position + len(tokens) > self.max_sequence_length:
             raise ValueError("Qwen4Exp MTP prompt chunk exceeds capacity")
@@ -652,13 +660,61 @@ class Qwen4ExpGGUFMTPDraftRunner:
             previous = np.ascontiguousarray(previous_hidden, dtype=np.float32)
             if self.position == 0 or previous.shape != (width,):
                 raise ValueError("previous_hidden must describe the preceding target row")
-        for row, token in enumerate(tokens):
+        self._require_open()
+        offset = 0
+        while offset + 1 < len(tokens):
             if check_cancelled is not None:
                 check_cancelled()
-            self.forward(
-                token, previous if row == 0 else hidden[row - 1],
-                run_head=False, cache_only=row + 1 < len(tokens),
-            )
+            if self._prefill_workspace is None:
+                from hipengine.runtime.qwen4_exp_mtp_prefill import Qwen4ExpMTPPrefillWorkspace
+                self._prefill_workspace = Qwen4ExpMTPPrefillWorkspace(self)
+            workspace = self._prefill_workspace
+            end = min(len(tokens) - 1, offset + workspace.rows)
+            start = self.position
+            try:
+                if target_hidden_buffer is None:
+                    shifted = np.empty((end - offset, width), dtype=np.float32)
+                    shifted[0] = previous if offset == 0 else hidden[offset - 1]
+                    shifted[1:] = hidden[offset:end - 1]
+                    workspace.append(tokens[offset:end], shifted)
+                else:
+                    workspace.append(tokens[offset:end], target_hidden_buffer=target_hidden_buffer,
+                        row_offset=offset, previous_hidden=previous)
+                # Raw future rows may be staged, but cancellation only commits
+                # the prefix whose per-token checks have completed.
+                self.index.count = start
+                for row in range(end - offset):
+                    if row and check_cancelled is not None:
+                        check_cancelled()
+                    self.position += 1
+                    self.index.count = self.position
+            finally:
+                self.index.restore_count(self.position)
+                self.attention.set_position(max(0, self.position - 1))
+            offset = end
+        if check_cancelled is not None:
+            check_cancelled()
+        if target_hidden_buffer is not None and len(tokens) > 1:
+            self.runtime.memcpy(self.last_hidden.ptr,
+                target_hidden_buffer.ptr + (len(tokens) - 2) * width * 2,
+                width * 2, HipMemcpyKind.DEVICE_TO_DEVICE)
+            self.forward(tokens[-1], None, run_head=False, hidden_seed_resident=True)
+        else:
+            self.forward(tokens[-1], previous if len(tokens) == 1 else hidden[-2], run_head=False)
+
+    def prime_prompt_device_chunk(self, token_ids, hidden_buffer, *, previous_hidden,
+                                  check_cancelled=None) -> np.ndarray:
+        """Consume borrowed BF16 target rows before their workspace is reused.
+
+        Only the final target row is exported, for prefix snapshots and the
+        next chunk's shifted seed. No device pointer escapes this call.
+        """
+        self.prime_prompt_chunk(token_ids, None, previous_hidden=previous_hidden,
+            check_cancelled=check_cancelled, target_hidden_buffer=hidden_buffer)
+        bits = np.empty((self.config.residual_width,), dtype=np.uint16)
+        source = DeviceBuffer(hidden_buffer.ptr + hidden_buffer.nbytes - bits.nbytes, bits.nbytes)
+        copy_device_to_host(host_array_ptr(bits), source, bits.nbytes, runtime=self.runtime)
+        return np.ascontiguousarray((bits.astype(np.uint32) << 16).view(np.float32))
 
     def propose_chain(
         self,
@@ -738,6 +794,10 @@ class Qwen4ExpGGUFMTPDraftRunner:
         if self.closed:
             return
         self.closed = True
+        workspace = getattr(self, "_prefill_workspace", None)
+        if workspace is not None:
+            workspace.close()
+            self._prefill_workspace = None
         for buffer in reversed(getattr(self, "_buffers", ())):
             free(buffer, runtime=self.runtime)
         if hasattr(self, "_buffers"):

@@ -986,6 +986,8 @@ class _Qwen4ExpServingRow:
     mtp_steps: Any | None = None
     mtp_output: GenerationOutput | None = None
     previous_hidden: Any | None = None
+    mtp_prefill_device_rows: int = 0
+    mtp_prefill_cache_tiles: int = 0
     sampling_state: RowSamplingState | None = None
     token_logprobs: list[TokenLogprob] = field(default_factory=list)
     mixed_mtp: bool = False
@@ -1302,6 +1304,8 @@ class Qwen4ExpResidentServingRunner(
             prefill_kwargs["capture_logits"] = True
         if row.mtp_budget:
             prefill_kwargs["capture_hidden_seeds"] = True
+            if callable(getattr(row.draft, "prime_prompt_device_chunk", None)):
+                prefill_kwargs["hidden_seed_consumer"] = lambda tokens, buffer: self._consume_mtp_hidden(row, tokens, buffer)
         pending = getattr(row.runner, "_pending_prefill_append", None)
         resume = getattr(row.runner, "prefill_append_resumable", None)
         rest = ()
@@ -1727,6 +1731,10 @@ class Qwen4ExpResidentServingRunner(
         diagnostics = {
             "prefix_cache": self._prefix_request_telemetry(row),
             "request_phases": self._request_phase_telemetry(row),
+            "mtp_prefill": {
+                "device_hidden_rows": getattr(row, "mtp_prefill_device_rows", 0),
+                "cache_tiles": getattr(row, "mtp_prefill_cache_tiles", 0),
+            },
         }
         if telemetry is None:
             return GenerationTelemetry(
