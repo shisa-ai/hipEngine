@@ -202,8 +202,9 @@ class PrefixChain:
         return all(segment.has_draft for segment in self.segments)
 
 
-@dataclass
+@dataclass(eq=False)
 class PrefixSnapshot:
+    """One allocation owner; eviction compares identity, not token arrays."""
     tokens: np.ndarray
     depth: int
     segments: tuple[_Segment, ...]

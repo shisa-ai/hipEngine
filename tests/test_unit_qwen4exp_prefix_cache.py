@@ -283,6 +283,38 @@ def test_budget_evicts_least_recently_used_and_frees_unshared_rows() -> None:
     assert len(arena.live) == baseline
 
 
+@pytest.mark.parametrize("depths", [(512, 512), (512, 997), (4096, 8138)])
+def test_lru_eviction_removes_the_selected_owner_not_array_equal_snapshot(depths) -> None:
+    arena = _Arena()
+    runner = _ArenaRunner(arena, positions=16384)
+    baseline = dict(arena.live)
+    cache = Qwen4ExpPrefixCache(arena, limit_bytes=1 << 21, max_entries=2)
+    prompts = [_tokens(depth, seed=index + 31) for index, depth in enumerate((*depths, 257))]
+    snapshots = []
+    for prompt in prompts[:2]:
+        runner.reset()
+        _prefill(runner, prompt)
+        chain, snapshot, _ = cache.capture(prompt, runner, None, chain=PrefixChain(),
+                                          previous_hidden=None, kind="prompt_end")
+        assert snapshot is not None
+        snapshots.append(snapshot)
+        cache.release_chain(chain)
+    # Refresh the first entry so eviction must remove the second list element.
+    assert cache.lookup(prompts[0] + [7], need_draft=False).snapshot is snapshots[0]
+    runner.reset()
+    _prefill(runner, prompts[2])
+    chain, newest, _ = cache.capture(prompts[2], runner, None, chain=PrefixChain(),
+                                    previous_hidden=None, kind="prompt_end")
+    assert newest is not None and cache.counters["evictions"] == 1
+    assert cache.lookup(prompts[1] + [7], need_draft=False).snapshot is None
+    assert cache.lookup(prompts[0] + [7], need_draft=False).snapshot is snapshots[0]
+    assert snapshots[1].recurrent.ptr not in arena.live
+    assert snapshots[0].recurrent.ptr in arena.live and newest.recurrent.ptr in arena.live
+    cache.release_chain(chain)
+    cache.close()
+    assert arena.live == baseline
+
+
 def test_capture_targets_cover_the_tail_and_long_prompt_grid() -> None:
     assert capture_targets(200, 1024) == ()
     assert capture_targets(3000, 1024) == (1976,)
