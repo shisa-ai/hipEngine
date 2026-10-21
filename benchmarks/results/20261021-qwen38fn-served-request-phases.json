@@ -1,0 +1,491 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_served_request_phase_validation",
+  "status": "passed",
+  "performance_claim": false,
+  "source": {
+    "commit": "0cbcb58156c1597617078955d396e3527ea92a82",
+    "unit_diff_sha256": "177edbd45e1cf41dc60408bdb743a684ac643377e59fcd332951eb2dd28ed785"
+  },
+  "validation": {
+    "fixture": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+    "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+    "cases": {
+      "AR": "code-p1024",
+      "MTP": "general_ja-p1024"
+    },
+    "sequence": "Prepare the first 996 IDs with 1 output; request the first 997 IDs with 8 outputs; repeat the 997-ID request with streaming.",
+    "controls": {
+      "temperature": 0,
+      "top_p": 1,
+      "ignore_eos": true,
+      "speculative_mtp": "explicit boolean per arm"
+    },
+    "assertions": [
+      "phase counts equal exact output IDs",
+      "cached follow-up reuses 996 prompt tokens",
+      "stream and blocking IDs equal",
+      "positive prefill and nonnegative decode wall",
+      "explicit speculative route ran"
+    ]
+  },
+  "server_command": [
+    "/home/lhl/miniforge3/envs/therock/bin/python",
+    "-m",
+    "hipengine.server",
+    "--model",
+    "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--backend",
+    "hip_gfx1151",
+    "--quant",
+    "gguf_ud_q4_k_xl",
+    "--execution-profile",
+    "production",
+    "--served-model-name",
+    "phases",
+    "--max-context-tokens",
+    "4096",
+    "--max-active-requests",
+    "2",
+    "--speculative-provider",
+    "qwen4_exp_mtp",
+    "--draft-model",
+    "/home/lhl/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+    "--speculative-candidate-budget",
+    "3",
+    "--prefix-cache",
+    "radix",
+    "--port",
+    "18082"
+  ],
+  "rows": [
+    {
+      "kind": "prepare",
+      "speculative_requested": false,
+      "usage": {
+        "prompt_tokens": 996,
+        "completion_tokens": 1,
+        "total_tokens": 997,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "route": "qwen4exp_full_model_ar_batch",
+      "speculative": {
+        "effective_route": "default",
+        "used": false,
+        "draft_tokens": 0,
+        "accepted_draft_tokens": 0,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": null,
+        "draft_cycles": 0
+      },
+      "generated_token_ids": [
+        248046
+      ],
+      "finish_reason": "length",
+      "sampler_mode": "greedy",
+      "request_phases": {
+        "schema": 1,
+        "scope": "backend wall including scheduler waits; excludes tokenization and HTTP delivery",
+        "complete": true,
+        "registered_to_prefill_ms": 3.5448820563033223,
+        "prefill_wall_ms": 1243.9211528981104,
+        "decode_wall_ms": 0.32180408015847206,
+        "request_wall_ms": 1247.7878390345722,
+        "cache_restore_ms": 0.029896036721765995,
+        "prompt_tokens": 996,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 996,
+        "generated_tokens": 1,
+        "decode_transitions": 0
+      },
+      "prefix_cache": {
+        "mode": "radix",
+        "block_size_tokens": 256,
+        "reuse_scope": "prompt_prefix",
+        "eligible": true,
+        "lookup": true,
+        "hit": false,
+        "source": null,
+        "matched_tokens": 0,
+        "reused_tokens": 0,
+        "avoided_prefill_tokens": 0,
+        "executed_prefill_tokens": 996,
+        "state_clone_bytes": 0,
+        "restore_ms": 0.03,
+        "captures": 1,
+        "fallback_reason": "no_cached_prefix",
+        "cache_resident_entries": 1,
+        "cache_resident_bytes": 151660544
+      }
+    },
+    {
+      "kind": "cached",
+      "speculative_requested": false,
+      "usage": {
+        "prompt_tokens": 997,
+        "completion_tokens": 8,
+        "total_tokens": 1005,
+        "prompt_tokens_details": {
+          "cached_tokens": 996
+        }
+      },
+      "route": "qwen4exp_full_model_ar_batch",
+      "speculative": {
+        "effective_route": "default",
+        "used": false,
+        "draft_tokens": 0,
+        "accepted_draft_tokens": 0,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": null,
+        "draft_cycles": 0
+      },
+      "generated_token_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "finish_reason": "length",
+      "sampler_mode": "greedy",
+      "request_phases": {
+        "schema": 1,
+        "scope": "backend wall including scheduler waits; excludes tokenization and HTTP delivery",
+        "complete": true,
+        "registered_to_prefill_ms": 4.756424925290048,
+        "prefill_wall_ms": 53.07629506569356,
+        "decode_wall_ms": 496.0981769254431,
+        "request_wall_ms": 553.9308969164267,
+        "cache_restore_ms": 2.1141469478607178,
+        "prompt_tokens": 997,
+        "cached_prompt_tokens": 996,
+        "new_prompt_tokens": 1,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "prefix_cache": {
+        "mode": "radix",
+        "block_size_tokens": 256,
+        "reuse_scope": "prompt_prefix",
+        "eligible": true,
+        "lookup": true,
+        "hit": true,
+        "source": "checkpoint",
+        "matched_tokens": 996,
+        "reused_tokens": 996,
+        "avoided_prefill_tokens": 996,
+        "executed_prefill_tokens": 1,
+        "state_clone_bytes": 151660544,
+        "restore_ms": 2.114,
+        "captures": 1,
+        "fallback_reason": null,
+        "cache_resident_entries": 2,
+        "cache_resident_bytes": 271224832
+      }
+    },
+    {
+      "kind": "stream",
+      "speculative_requested": false,
+      "usage": {
+        "prompt_tokens": 997,
+        "completion_tokens": 8,
+        "total_tokens": 1005,
+        "prompt_tokens_details": {
+          "cached_tokens": 996
+        }
+      },
+      "route": "qwen4exp_full_model_ar_batch",
+      "speculative": null,
+      "generated_token_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "finish_reason": "length",
+      "sampler_mode": "greedy",
+      "request_phases": {
+        "schema": 1,
+        "scope": "backend wall including scheduler waits; excludes tokenization and HTTP delivery",
+        "complete": true,
+        "registered_to_prefill_ms": 4.527875920757651,
+        "prefill_wall_ms": 43.54136309120804,
+        "decode_wall_ms": 400.2544719260186,
+        "request_wall_ms": 448.3237109379843,
+        "cache_restore_ms": 2.099720062687993,
+        "prompt_tokens": 997,
+        "cached_prompt_tokens": 996,
+        "new_prompt_tokens": 1,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "prefix_cache": {
+        "mode": "radix",
+        "block_size_tokens": 256,
+        "reuse_scope": "prompt_prefix",
+        "eligible": true,
+        "lookup": true,
+        "hit": true,
+        "source": "checkpoint",
+        "matched_tokens": 997,
+        "reused_tokens": 996,
+        "avoided_prefill_tokens": 996,
+        "executed_prefill_tokens": 1,
+        "state_clone_bytes": 151660544,
+        "restore_ms": 2.1,
+        "captures": 0,
+        "fallback_reason": null,
+        "cache_resident_entries": 2,
+        "cache_resident_bytes": 271224832
+      }
+    },
+    {
+      "kind": "prepare",
+      "speculative_requested": true,
+      "usage": {
+        "prompt_tokens": 996,
+        "completion_tokens": 1,
+        "total_tokens": 997,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "route": "qwen4exp_mtp_batched_state_rows_verify",
+      "speculative": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 0,
+        "accepted_draft_tokens": 0,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": null,
+        "draft_cycles": 0,
+        "requested_route": "speculative_mtp",
+        "decision_reason": "implemented_gguf_qwen4exp_mtp_bf16_c1_chain",
+        "thinking_policy": "hint",
+        "thinking_controls": "prompt_hint_only"
+      },
+      "generated_token_ids": [
+        248046
+      ],
+      "finish_reason": "length",
+      "sampler_mode": "greedy_speculative_mtp",
+      "request_phases": {
+        "schema": 1,
+        "scope": "backend wall including scheduler waits; excludes tokenization and HTTP delivery",
+        "complete": true,
+        "registered_to_prefill_ms": 1.9035720033571124,
+        "prefill_wall_ms": 2494.1740760114044,
+        "decode_wall_ms": 1.115093007683754,
+        "request_wall_ms": 2497.1927410224453,
+        "cache_restore_ms": 0.05723803769797087,
+        "prompt_tokens": 996,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 996,
+        "generated_tokens": 1,
+        "decode_transitions": 0
+      },
+      "prefix_cache": {
+        "mode": "radix",
+        "block_size_tokens": 256,
+        "reuse_scope": "prompt_prefix",
+        "eligible": true,
+        "lookup": true,
+        "hit": false,
+        "source": null,
+        "matched_tokens": 3,
+        "reused_tokens": 0,
+        "avoided_prefill_tokens": 0,
+        "executed_prefill_tokens": 996,
+        "state_clone_bytes": 0,
+        "restore_ms": 0.057,
+        "captures": 1,
+        "fallback_reason": "no_cached_prefix",
+        "cache_resident_entries": 3,
+        "cache_resident_bytes": 425562624
+      }
+    },
+    {
+      "kind": "cached",
+      "speculative_requested": true,
+      "usage": {
+        "prompt_tokens": 997,
+        "completion_tokens": 8,
+        "total_tokens": 1005,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 5,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 996
+        }
+      },
+      "route": "qwen4exp_mtp_batched_state_rows_verify",
+      "speculative": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 5,
+        "accepted_draft_tokens": 5,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": 1.0,
+        "draft_cycles": 2,
+        "requested_route": "speculative_mtp",
+        "decision_reason": "implemented_gguf_qwen4exp_mtp_bf16_c1_chain",
+        "thinking_policy": "hint",
+        "thinking_controls": "prompt_hint_only"
+      },
+      "generated_token_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "finish_reason": "length",
+      "sampler_mode": "greedy_speculative_mtp",
+      "request_phases": {
+        "schema": 1,
+        "scope": "backend wall including scheduler waits; excludes tokenization and HTTP delivery",
+        "complete": true,
+        "registered_to_prefill_ms": 3.725019982084632,
+        "prefill_wall_ms": 45.99711007904261,
+        "decode_wall_ms": 161.32700094021857,
+        "request_wall_ms": 211.0491310013458,
+        "cache_restore_ms": 2.0692929392680526,
+        "prompt_tokens": 997,
+        "cached_prompt_tokens": 996,
+        "new_prompt_tokens": 1,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "prefix_cache": {
+        "mode": "radix",
+        "block_size_tokens": 256,
+        "reuse_scope": "prompt_prefix",
+        "eligible": true,
+        "lookup": true,
+        "hit": true,
+        "source": "checkpoint",
+        "matched_tokens": 996,
+        "reused_tokens": 996,
+        "avoided_prefill_tokens": 996,
+        "executed_prefill_tokens": 1,
+        "state_clone_bytes": 154337792,
+        "restore_ms": 2.069,
+        "captures": 1,
+        "fallback_reason": null,
+        "cache_resident_entries": 4,
+        "cache_resident_bytes": 545129472
+      }
+    },
+    {
+      "kind": "stream",
+      "speculative_requested": true,
+      "usage": {
+        "prompt_tokens": 997,
+        "completion_tokens": 8,
+        "total_tokens": 1005,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 5,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 996
+        }
+      },
+      "route": "qwen4exp_mtp_batched_state_rows_verify",
+      "speculative": {
+        "effective_route": "speculative_mtp",
+        "used": true,
+        "draft_tokens": 5,
+        "accepted_draft_tokens": 5,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": 1.0,
+        "draft_cycles": 2,
+        "requested_route": "speculative_mtp",
+        "decision_reason": "implemented_gguf_qwen4exp_mtp_bf16_c1_chain",
+        "thinking_policy": "hint",
+        "thinking_controls": "prompt_hint_only"
+      },
+      "generated_token_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "finish_reason": "length",
+      "sampler_mode": "greedy_speculative_mtp",
+      "request_phases": {
+        "schema": 1,
+        "scope": "backend wall including scheduler waits; excludes tokenization and HTTP delivery",
+        "complete": true,
+        "registered_to_prefill_ms": 3.728386014699936,
+        "prefill_wall_ms": 43.81957498844713,
+        "decode_wall_ms": 154.5920829521492,
+        "request_wall_ms": 202.14004395529628,
+        "cache_restore_ms": 2.0300400210544467,
+        "prompt_tokens": 997,
+        "cached_prompt_tokens": 996,
+        "new_prompt_tokens": 1,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "prefix_cache": {
+        "mode": "radix",
+        "block_size_tokens": 256,
+        "reuse_scope": "prompt_prefix",
+        "eligible": true,
+        "lookup": true,
+        "hit": true,
+        "source": "checkpoint",
+        "matched_tokens": 997,
+        "reused_tokens": 996,
+        "avoided_prefill_tokens": 996,
+        "executed_prefill_tokens": 1,
+        "state_clone_bytes": 154337792,
+        "restore_ms": 2.03,
+        "captures": 0,
+        "fallback_reason": null,
+        "cache_resident_entries": 4,
+        "cache_resident_bytes": 545129472
+      }
+    }
+  ],
+  "logs": [
+    "/tmp/kendex-pi-bg/bg-8-1792610188111.log",
+    "/tmp/kendex-pi-bg/bg-9-1792610446901.log"
+  ],
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.2.9-2-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  }
+}
