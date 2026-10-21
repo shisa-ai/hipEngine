@@ -39,6 +39,19 @@ def _declare_serving_context(generator: Any, max_sequence_length: int | None) ->
         declare(int(max_sequence_length))
 
 
+def _declare_serving_capacity(generator: Any, max_active_requests: int | None) -> None:
+    """Publish the resident request width before the generator loads weights.
+
+    ``None`` means the capacity will be chosen automatically. Generators use
+    the bound to skip weight layouts that only a wider batch would read.
+    Generators without the hook are unaffected.
+    """
+
+    declare = getattr(generator, "declare_serving_capacity", None)
+    if callable(declare):
+        declare(None if max_active_requests is None else int(max_active_requests))
+
+
 def _factory_capacity_kwargs(factory, *, max_sequence_length, resident_capacity, vision_max_scratch_bytes=None, prefill_max_scratch_bytes=None, vision_max_seconds=None):
     """Forward configured limits only to factories that explicitly declare them."""
     try:
@@ -1503,6 +1516,7 @@ class LLM:
                 if profile_resolution is None
                 else profile_resolution.construct_generator(factory, **factory_kwargs)
             )
+            _declare_serving_capacity(generator, self.max_active_requests)
             if self.dms_metadata_path is not None:
                 configure_metadata_dms = getattr(generator, "configure_dms", None)
                 if not callable(configure_metadata_dms):

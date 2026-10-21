@@ -347,6 +347,16 @@ _GGUF_AR_NATIVE_MAX_SLOTS = 8
 # multiplier: the shared pool grows against its independent device budget.
 # Pass --max-active-requests to change how many requests may be in flight.
 _GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY = 4
+# The raw recurrent-output Q5 sidecar is read only by the eight-request MTP
+# verify owner (R24/R32 rows); narrower servers keep the exact T16 route and
+# never touch it, so it is not loaded for them.
+_GGUF_C8_Q5_RAW_SIDECAR_MIN_REQUESTS = 8
+
+
+def _gguf_serving_width_dense_flag_overrides(capacity_bound: int | None) -> dict[str, bool]:
+    if capacity_bound is None or int(capacity_bound) >= _GGUF_C8_Q5_RAW_SIDECAR_MIN_REQUESTS:
+        return {}
+    return {"dense_q5_raw_mmq_ssm_out": False, "dense_q5_qmicro_planar_ssm_out": False}
 
 # A retained prefix snapshot holds one full hybrid Conv/GDN state clone (~64 MiB
 # for a 35B-A3B checkpoint) plus its KV pages. Retained boundaries are the
@@ -1446,6 +1456,9 @@ class Qwen35GGUFBringupGenerator:
     _mtp_serving_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
     _shared_runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False, repr=False)
     _shared_runner_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
+    # Largest resident request width this generator can serve, when the owner
+    # declared one before the weights loaded (``declare_serving_capacity``).
+    _serving_capacity_bound: int | None = field(default=None, init=False, repr=False)
     _prepared_max_sequence_length: int | None = field(default=None, init=False, repr=False)
     _prepared_kv_policy: FixedPagedKVPolicy | None = field(default=None, init=False, repr=False)
     _prepared_kv_scale_dtype: str = field(default="fp16", init=False, repr=False)
@@ -2116,9 +2129,27 @@ class Qwen35GGUFBringupGenerator:
                     self.model_path, backend=self.backend,
                     execution_routes=(("eager", "native_rows", "native_graph")
                                       if getattr(self, "native_batch_decode", False) else ("eager",)),
+                    dense_flag_overrides=_gguf_serving_width_dense_flag_overrides(
+                        getattr(self, "_serving_capacity_bound", None)
+                    ),
                 )
                 self._shared_runner = runner
             return runner
+
+    def declare_serving_capacity(self, max_active_requests: int | None) -> None:
+        """Bound the resident request width before the shared weights load.
+
+        An unpinned capacity is chosen by ``automatic_serving_capacity``,
+        which never exceeds the resident loop default.
+        """
+
+        if getattr(self, "_shared_runner", None) is not None:
+            return
+        self._serving_capacity_bound = (
+            int(_GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY)
+            if max_active_requests is None
+            else int(max_active_requests)
+        )
 
     def _prepared_shared_runner(self) -> Qwen35GGUFFullStackRunner | None:
         return getattr(self, "_shared_runner", None)

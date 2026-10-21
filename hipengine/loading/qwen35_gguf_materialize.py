@@ -795,6 +795,7 @@ def materialize_qwen35_gguf_weights(
     selected_call_intents: Iterable[SelectedCallIntent] | None = None,
     recurrent_state_dtype: str = "f32",
     gdn_force_bf16: bool = False,
+    dense_flag_overrides: Mapping[str, Any] | None = None,
 ) -> Qwen35GGUFResidentWeights:
     """Materialize a validated Qwen3.5 GGUF map to resident device records.
 
@@ -855,6 +856,11 @@ def materialize_qwen35_gguf_weights(
         capability_reader=backend_package_capability,
         environ=os.environ,
     )
+    if dense_flag_overrides:
+        unknown = sorted(set(dense_flag_overrides) - set(dense_flags))
+        if unknown:
+            raise ValueError(f"unknown GGUF dense planner flag override(s): {unknown}")
+        dense_flags.update(dense_flag_overrides)
     # UD-U1 admission preflight: qualify every requested operation over every
     # planned slot BEFORE any device allocation, aggregating every unsupported
     # slot/mode. Unknown manifests (plain stamp lane) resolve to no preset and

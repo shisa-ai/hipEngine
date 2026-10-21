@@ -3154,6 +3154,10 @@ class Qwen35GGUFFullStackRunner:
     execution_routes: tuple[str, ...] = ("eager",)
     owns_resident_weights: bool = False
     token_embedding_placement: str = "device"
+    # Planner flags the owner fixes for this load (for example, a serving
+    # width that never reaches a sidecar's consumer). Absent keys keep the
+    # backend-package and environment resolution.
+    dense_flag_overrides: Mapping[str, object] = field(default_factory=dict, repr=False)
     use_selective_weight_arena: bool = False
     selective_weight_max_allocation_bytes: int = (
         GGUF_SELECTIVE_WEIGHT_ARENA_MAX_ALLOCATION_BYTES
@@ -3212,6 +3216,8 @@ class Qwen35GGUFFullStackRunner:
                 materialize_kwargs["recurrent_state_dtype"] = "fp16" if native_fp16 else "f32"
             if placement == "host":
                 materialize_kwargs["deferred_device_slots"] = ("root.token_embedding",)
+            if self.dense_flag_overrides:
+                materialize_kwargs["dense_flag_overrides"] = dict(self.dense_flag_overrides)
             if self.use_selective_weight_arena:
                 materialize_kwargs["use_selective_weight_arena"] = True
                 materialize_kwargs["selective_weight_max_allocation_bytes"] = int(

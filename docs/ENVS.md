@@ -4,7 +4,7 @@ owns: Complete environment-variable reference and the recommended profiles for n
 ---
 # Environment variables
 
-Last updated: 2026-09-20
+Last updated: 2026-10-21
 
 This is the complete env-var reference for hipEngine. Every environment
 variable read by the runtime, the tests, or the bundled benchmark/development
@@ -426,7 +426,7 @@ independent workload gates.
 | `HIPENGINE_GGUF_ROW_COMPACT_GEMV` | unset | Diagnostic route | Parity-workbench candidate: compact grouped selected-MoE GEMV routing for the target block verifier. |
 | `HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD` | unset | Diagnostic route | Parity-workbench candidate: row-batched lm-head/argmax sampling in the target block verifier. |
 | `HIPENGINE_GGUF_SELECTED_DOWN_RAW` | unset | Harness-set materialization | Keeps selected-down expert tensors in raw GGUF layout (workbench value `both`), pairing with the raw dp4a route. |
-| `HIPENGINE_GGUF_C8_Q5_RAW_MMQ` | true (capability-gated) | Retained default | Gates the raw-MMQ Q5 sidecar on the `GGUF_C8_Q5_RAW_MMQ_SSM_OUT` backend capability. |
+| `HIPENGINE_GGUF_C8_Q5_RAW_MMQ` | true (capability-gated) | Retained default | Gates the raw-MMQ Q5 sidecar on the `GGUF_C8_Q5_RAW_MMQ_SSM_OUT` backend capability. The sidecar (about 1 GiB on the 27B) is read only by eight-request MTP verification, so it is loaded only when `max_active_requests` is pinned to 8 or more; an unpinned server never exceeds four requests and keeps the exact T16 route. |
 | `HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ` | unset | Diagnostic | Source-MMQ Q5 verifier-numerics route selector. |
 | `HIPENGINE_C8_Q5_PLANAR_DP4A` | false | Diagnostic route | Gates the optional planar INT8 Q5 sidecar (uploaded at materialization) for the planar-dp4a route. |
 | `HIPENGINE_C8_Q6_DP4A_GROUPED` | false | Opt-in diagnostic | Routes planar-decode rows 8-64 to the grouped integer-dp4a Q6 sibling (x quantized to q8_1); the BF16 grouped owner stays the exact default and strict fallback. |
