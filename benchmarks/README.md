@@ -4,21 +4,21 @@ Last updated: **2026-10-21 UTC**
 
 ## 16K INT8/MTP with and without DMS — RX 7900 XTX
 
-Qwen3.8-27B `Q4_K_M`, **epyc / RX 7900 XTX**, production INT8 KV/FP32 scales, MTP budget 3.
+Qwen3.8-27B `Q4_K_M`, **epyc / RX 7900 XTX**, production INT8 KV/FP32 scales, W8192/2x DMS, MTP budget 3.
 Ten category prompts × two passes, one discarded warmup per arm, one active request.
 Each request: 16,384 inputs, 63–256 greedy outputs, prefix cache off, no allocation tracing.
 
 | Policy | Prefill tok/s | Decode tok/s | Median time to first text |
 | --- | ---: | ---: | ---: |
-| INT8 + MTP, DMS off | 644.7 | 28.62 | 25.41 s |
-| INT8 + MTP, DMS on | 328.6 | 9.82 | 49.85 s |
+| INT8 + MTP, DMS off | 645.9 | 28.55 | 25.36 s |
+| INT8 + MTP, DMS on | 608.1 | 19.18 | 26.93 s |
 
 Pooled prefill includes MTP priming and first-token overhead; decode divides
-output tokens minus one by the first-to-last-text window. DMS lowers prefill
-**49.0%** and decode **65.7%**. All 40 requests used MTP and repeat exact IDs
-within policy; 6/10 prompts match across policies. This is a current-source
-DMS-on/off diagnostic, not an isolated memory-fix cost or task-quality score.
-[Commands, samples, route checks, and provenance](results/2026-10-21-xtx-16k-int8-mtp-dms-comparison.json).
+output tokens minus one by the first-to-last-text window. DMS lowers prefill **5.8%** and decode **32.8%** relative to DMS off.
+All 40 requests used MTP and repeat exact IDs within policy, matching that policy's pre-optimization IDs; 6/10 prompts match across policies.
+This is not a task-quality score or an MTP-versus-AR comparison.
+[Commands, samples, baseline comparison, route checks, and provenance](results/2026-10-21-xtx-dms-speed-recovery.json).
+[Capacity and prefix checks](results/2026-10-21-xtx-dms-capacity-prefix.json): default prefix caching and MTP complete 131,039 inputs plus 32 outputs at configured context 131,072; not a maximum search.
 
 ## Gemma 4 on Radeon Pro W7900 — October 16
 
