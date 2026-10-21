@@ -22,10 +22,38 @@ from . import finding, register
 PATHISH = re.compile(r"`([A-Za-z0-9_][A-Za-z0-9_./-]*(?:/[A-Za-z0-9_./-]*|\.(?:py|hip|md|json|toml)))`")
 #  Records of what something said at the time; drift there is history, not error.
 EXEMPT = ("docs/campaigns/", "docs/archive/", "docs/testing/", "docs/examples/")
+#  The same holds for any document whose front-matter declares it finished.
+RECORD_STATUS = re.compile(r"\A---\n(?:.*\n)*?status:\s*(?:closed|superseded)\b", re.MULTILINE)
 MIME = re.compile(r"^(?:image|application|text|audio|video|multipart)/")
 #  OUTDIR/TAG-NAME.log, <path>, FOO/BAR — illustrative, not real.
 PLACEHOLDER = re.compile(r"[<>{}*]|(?:^|/)[A-Z][A-Z0-9_-]{2,}(?:/|$|\.)")
 SKIP_DIRS = {".git", "__pycache__", ".venv", "node_modules", ".pytest_cache", ".ruff_cache"}
+#  A section that says where its paths live: "Device sources: `hipengine/kernels/hip_gfx1100/`.",
+#  "... relative to `hipengine/`", or a table column headed "Target file (`hipengine/kernels/x/...`)".
+#  Its shorthand paths resolve against that root.
+ROOT_DECLARATION = re.compile(
+    r"(?:^(?:Device )?[Ss]ources?:\s+|relative to\s+)`([A-Za-z0-9_][A-Za-z0-9_./-]*/)`"
+    r"|\(`([A-Za-z0-9_][A-Za-z0-9_./-]*/)\.\.\.`\)")
+SECTION_BREAK = re.compile(r"^#{1,2}\s")
+
+
+def declared_roots(lines: list[str]) -> list[tuple[str, ...]]:
+    """The roots in force on each line, from declarations earlier in its section.
+
+    A declaration holds until the next top- or second-level heading, so it
+    covers the subsections beneath it and no further.
+    """
+    roots: tuple[str, ...] = ()
+    out = []
+    for line in lines:
+        if SECTION_BREAK.match(line):
+            roots = ()
+        for match in ROOT_DECLARATION.finditer(line):
+            root = match.group(1) or match.group(2)
+            if root not in roots:
+                roots += (root,)
+        out.append(roots)
+    return out
 
 
 @functools.lru_cache(maxsize=1)
@@ -44,10 +72,12 @@ def doc_path_drift() -> tuple[list[Row], dict]:
     index = tree_index()
     rows, checked, skipped = [], 0, 0
     for path, text in sorted(doc_corpus().items()):
-        if any(path.startswith(prefix) for prefix in EXEMPT):
+        if any(path.startswith(prefix) for prefix in EXEMPT) or RECORD_STATUS.match(text):
             continue
+        here = path.rsplit("/", 1)[0] + "/" if "/" in path else ""
         seen: set[str] = set()
-        for number, line in enumerate(text.splitlines(), 1):
+        lines = text.splitlines()
+        for number, (line, roots) in enumerate(zip(lines, declared_roots(lines)), 1):
             for target in PATHISH.findall(line):
                 target = target.rstrip("/")
                 if target in seen:
@@ -65,6 +95,8 @@ def doc_path_drift() -> tuple[list[Row], dict]:
                     continue
                 checked += 1
                 if (REPO_ROOT / target).exists():
+                    continue
+                if any((REPO_ROOT / root / target).exists() for root in (here, *roots)):
                     continue
                 #  Only report it when we can say where it actually is. An
                 #  unfindable name is far more likely to be illustrative.
