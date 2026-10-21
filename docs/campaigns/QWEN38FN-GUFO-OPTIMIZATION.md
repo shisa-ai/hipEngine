@@ -7,9 +7,10 @@ owns: The October 20 Flash-Next Gufo gap analysis and implementation campaign fo
 State: **in progress; execution started 2026-10-21**.
 Review date: 2026-10-20. hipEngine review source: `a4c7ca473`.
 Execution baseline starts at `926c1728c`, including the subsequent prefix-cache
-work. `BASE` is active: benchmark controls are being corrected before matched
-GPU measurements. The task queue follows the packets below; no packet is closed
-until its implementation and validation evidence are recorded.
+work. `BASE` is active: canonical measurements and native served phase
+accounting are available; prepared-session, ordered-depth and quality bindings
+are still being completed. The task queue follows the packets below; no packet
+is closed until its implementation and validation evidence are recorded.
 
 The next work is not another wholesale port of Gufo's prefill kernels. Those
 ports already removed most of the earlier prefill deficit. Prioritize bulk
@@ -534,11 +535,33 @@ run_hip scripts/qwen4exp_long_context_gate.py --help
 Check [THEROCK](../reference/THEROCK.md) if the installed SDK differs. These
 commands isolate hipEngine's ROCm libraries; launch the Gufo comparator with
 its own recorded environment, not through `run_hip` with inherited TheRock
-libraries. These are existing entry points, **not an already-implemented Gufo
-HTTP replay command**. `BASE` must add and document the missing prepared/depth
-adapter, compact AR arm and repeated/counterbalanced MTP protocol. Existing
-`qwen38fn_mixed_economics.py` measures all-AR and one-MTP-plus-peers, not the
-all-MTP prepared table.
+libraries. Canonical and in-process compact AR controls are implemented.
+The HTTP economics harness supports explicit AR/all-MTP/mixed arms, repeated
+counterbalanced measurements and hipEngine preparation through `--prepared`.
+It renders each chat prompt once, prefills its exact token sequence minus the
+final token before the timed cohort, then requires that checkpoint to be reused.
+This is a declared one-token-suffix adaptation, not Gufo's identical-prompt
+preparation. A missing checkpoint invalidates the row rather than silently
+pricing full prefill as prepared decode. Native phase metrics distinguish
+output-count decode rates, transition-count rates and complete cohort wall.
+
+For a running hipEngine server, set `PROMPTS` to frozen JSONL rows with `id`,
+`category`, and either `messages` or `prompt_token_ids`. Use the pp2048 prompt
+set for the prepared matrix, not the shorter task battery. Set `SERVER_MANIFEST`
+to the captured server command, source, model and host identities; the harness
+records its own source separately.
+
+```bash
+run_hip scripts/qwen4exp_http_mtp_economics.py \
+  --url http://127.0.0.1:18400 --model qwen38fn-capon \
+  --prompts "$PROMPTS" --server-manifest "$SERVER_MANIFEST" \
+  --prepared --width 8 --max-tokens 128 --arms ar,mtp,mixed \
+  --repetitions 3 --output "$OUT/prepared-http.json"
+```
+
+`BASE` still needs the ordered Gufo HTTP replay, cross-engine adapters and
+quality-column bindings. Existing `qwen38fn_mixed_economics.py` measures
+all-AR and one-MTP-plus-peers, not the all-MTP prepared table.
 
 Use counterbalanced same-session arms and unchanged-code controls to distinguish
 small gains from thermal/run-order variation. Profile only a warmed serving

@@ -123,6 +123,9 @@ def test_http_pins_both_routes_and_retains_request_intent(mtp):
     payloads = []
 
     def post(url, *, json):
+        from hipengine.server.api import ChatCompletionRequest, ServerConfig, _validate_generation_request
+
+        _validate_generation_request(ServerConfig(model="m"), ChatCompletionRequest(**json))
         payloads.append(json)
         return SimpleNamespace(status_code=200, json=lambda: {
             "choices": [{"finish_reason": "length"}],
@@ -137,8 +140,9 @@ def test_http_pins_both_routes_and_retains_request_intent(mtp):
         })
 
     result = http._one(SimpleNamespace(post=post), "http://localhost", "m",
-                       {"id": "p", "category": "code", "messages": []}, mtp, 4)
+                       {"id": "p", "category": "code", "messages": [{"role": "user", "content": "Hi"}]}, mtp, 4)
     assert payloads[0]["speculative_mtp"] is mtp
+    assert payloads[0]["ignore_eos"] is True
     assert result["speculative_requested"] is mtp
 
 
