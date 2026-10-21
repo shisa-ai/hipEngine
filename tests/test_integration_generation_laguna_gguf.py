@@ -157,6 +157,10 @@ def _request(**overrides) -> GenerationRequest:
 @pytest.fixture
 def generator(monkeypatch, tmp_path):
     from hipengine.generation import laguna_gguf
+    from hipengine.kernels import backends
+
+    # The model, weights and session are stand-ins; their selected device is too.
+    monkeypatch.setattr(backends, "selected_device_arches", lambda **kwargs: ("gfx1151",))
 
     model = tmp_path / "laguna.gguf"
     model.touch()
