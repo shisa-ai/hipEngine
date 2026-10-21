@@ -1459,6 +1459,9 @@ class Qwen35GGUFBringupGenerator:
     # Largest resident request width this generator can serve, when the owner
     # declared one before the weights loaded (``declare_serving_capacity``).
     _serving_capacity_bound: int | None = field(default=None, init=False, repr=False)
+    # Sized NextN hot-vocabulary choice, wrapped so ``(None,)`` (head dropped)
+    # differs from ``None`` (not decided yet).
+    _mtp_hot_vocab_choice: tuple[str | None] | None = field(default=None, init=False, repr=False)
     _prepared_max_sequence_length: int | None = field(default=None, init=False, repr=False)
     _prepared_kv_policy: FixedPagedKVPolicy | None = field(default=None, init=False, repr=False)
     _prepared_kv_scale_dtype: str = field(default="fp16", init=False, repr=False)
@@ -2264,9 +2267,7 @@ class Qwen35GGUFBringupGenerator:
                 self._shared_dense_mtp_nextn_weights(
                     shared_runner,
                     runtime=runtime,
-                    hot_vocab_path=_gguf_mtp_hot_vocab_setting(
-                        str(getattr(self, "execution_profile", "strict"))
-                    ),
+                    hot_vocab_path=self._mtp_hot_vocab_path(),
                 )
             except Exception as exc:  # noqa: BLE001 - MTP reports its own failure later
                 _LOGGER.warning("GGUF MTP draft weights unavailable for sizing: %s", exc)
@@ -2340,7 +2341,7 @@ class Qwen35GGUFBringupGenerator:
                 "transient_fixed_bytes": _gguf_auto_context_transient_fixed_bytes(),
             }
         try:
-            return estimate_qwen35_gguf_kv_capacity(
+            estimate = estimate_qwen35_gguf_kv_capacity(
                 cfg,
                 available_bytes=int(free_bytes),
                 requested_context_tokens=int(requested),
@@ -2374,6 +2375,89 @@ class Qwen35GGUFBringupGenerator:
         except Exception as exc:  # noqa: BLE001 - best-effort sizing probe
             _LOGGER.debug("GGUF automatic context sizing unavailable: %s", exc)
             return None
+        if (
+            mtp_sized
+            and hasattr(estimate, "allocatable_context_tokens")
+            and self._mtp_hot_vocab_choice_pending()
+        ):
+            fits = int(estimate.allocatable_context_tokens) >= int(requested)
+            if fits or not self._drop_mtp_hot_vocab(
+                shared_runner,
+                runtime=runtime,
+                context_tokens=int(estimate.allocatable_context_tokens),
+                target_tokens=int(requested),
+            ):
+                self._mtp_hot_vocab_choice = (self._mtp_hot_vocab_path(),)
+                return estimate
+            return self._resident_capacity_estimate(
+                shared_runner,
+                max_batch_size=max_batch_size,
+                defer_kv_allocation=defer_kv_allocation,
+                requested_context_tokens=requested_context_tokens,
+            )
+        return estimate
+
+    def _mtp_hot_vocab_path(self) -> str | None:
+        """Hot-vocabulary selection the NextN draft uses on this generator."""
+
+        choice = getattr(self, "_mtp_hot_vocab_choice", None)
+        if choice is not None:
+            return choice[0]
+        return _gguf_mtp_hot_vocab_setting(str(getattr(self, "execution_profile", "strict")))
+
+    def _mtp_hot_vocab_choice_pending(self) -> bool:
+        """The packaged default is undecided: no env choice and not yet sized."""
+
+        return (
+            getattr(self, "_mtp_hot_vocab_choice", None) is None
+            and os.environ.get(_GGUF_MTP_HOT_VOCAB_ENV) is None
+            and self._mtp_hot_vocab_path() == "auto"
+        )
+
+    def _drop_mtp_hot_vocab(
+        self,
+        runner: Any,
+        *,
+        runtime: Any,
+        context_tokens: int,
+        target_tokens: int,
+    ) -> bool:
+        """Trade the draft's hot-vocabulary head for context on a full GPU.
+
+        The head is a decode-speed cache (the draft can score the full output
+        head instead); when the context it would cost is needed, free it and
+        keep the draft block. Returns False when there is no head to free.
+        """
+
+        self._ensure_shared_pools()
+        key = (int(id(runtime)), "auto")
+        with self._shared_mtp_draft_pool_lock:
+            weights = self._shared_mtp_nextn_weights.get(key)
+            if weights is None or getattr(weights, "hot_vocab", None) is None:
+                return False
+            if any(pool_key[-1] == "auto" for pool_key in self._shared_mtp_draft_pool):
+                # A provider already borrows the head; keep it.
+                return False
+            hot_vocab = weights.hot_vocab
+            freed = int(
+                getattr(getattr(hot_vocab.lm_head.allocation("tiles"), "buffer", None), "nbytes", 0)
+                or 0
+            )
+            hot_vocab.free(runtime=runtime)
+            del self._shared_mtp_nextn_weights[key]
+            self._shared_mtp_nextn_weights[(int(id(runtime)), None)] = dataclasses.replace(
+                weights, hot_vocab=None
+            )
+        self._mtp_hot_vocab_choice = (None,)
+        _LOGGER.info(
+            "MTP draft vocabulary cache off: the %d-token context is below the "
+            "%d-token target, so its %.2f GiB goes to context "
+            "(HIPENGINE_GGUF_MTP_HOT_VOCAB=auto keeps it)",
+            int(context_tokens),
+            int(target_tokens),
+            freed / 1024**3,
+        )
+        return True
 
     def _dms_layer_outer_capacity_terms(self, runner, terms, *, mtp_sized):
         """Price compact serving, including the uncompressed decode allowance.
@@ -3285,9 +3369,7 @@ class Qwen35GGUFBringupGenerator:
         )
 
         self._ensure_shared_pools()
-        hot_vocab_path = _gguf_mtp_hot_vocab_setting(
-            str(getattr(self, "execution_profile", "strict"))
-        )
+        hot_vocab_path = self._mtp_hot_vocab_path()
         key = (
             int(id(target.runtime)),
             "dense_nextn",
