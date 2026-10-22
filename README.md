@@ -4,9 +4,9 @@ hipEngine is a ROCm-native local inference engine built primarily for AMD
 Radeon GPUs. It pairs a small Python host with custom HIP kernels for torch-free
 model loading, generation, and OpenAI-compatible serving on supported hardware.
 
-**Current release: v0.8.1.** Fixes GGUF serving startup and memory sizing on
-24 GB GPUs, and reduces compact-DMS prefill and speculative rollback overhead.
-See the [release notes](CHANGELOG.md#v081---2026-10-21) for scope and limitations.
+**Current release: v0.8.2.** Roughly doubles GGUF context on 24 GB GPUs, sizes
+compact DMS for the rows it keeps, and adds prefix reuse to Flash-Next serving.
+See the [release notes](CHANGELOG.md#v082---2026-10-22) for scope and limitations.
 
 ## Why use hipEngine?
 
