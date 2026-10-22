@@ -978,6 +978,7 @@ class Qwen4ExpQSAPrefillMetadata:
     max_positions: int
     runtime: HipRuntime
     closed: bool = False
+    _uploaded_contiguous: tuple[int, int] | None = None
 
     @classmethod
     def allocate(
@@ -1051,6 +1052,12 @@ class Qwen4ExpQSAPrefillMetadata:
         self.context_counts_host[:count] = self.positions_host[:count] + 1
         self.selected_positions_host[:count] = -1
         self.selected_counts_host[:count] = 0
+        # Layers share these read-only position planes. Selection buffers are
+        # layer-local scratch, so their host reset above must still happen.
+        if self._uploaded_contiguous == (start, count):
+            return
+        # A partial copy failure invalidates even the previous cached pair.
+        self._uploaded_contiguous = None
         copy_host_to_device(
             self.positions,
             host_array_ptr(self.positions_host),
@@ -1063,6 +1070,7 @@ class Qwen4ExpQSAPrefillMetadata:
             count * np.dtype(np.int64).itemsize,
             runtime=self.runtime,
         )
+        self._uploaded_contiguous = (start, count)
 
     def spans(self, *, start_row: int, rows: int, decode: bool) -> KVLiveSpans:
         if self.closed:

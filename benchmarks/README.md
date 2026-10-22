@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-10-21 UTC**
+Last updated: **2026-10-22 UTC**
 
 ## 16K INT8/MTP with and without DMS — RX 7900 XTX
 
@@ -172,6 +172,27 @@ It is not an optimization journal.
 UD/main integration validation is documented in the
 [integration report](../docs/campaigns/UD-MAIN-INTEGRATION.md); its working-tree timings do not
 replace the published performance rows.
+
+## Qwen3.8 Flash Next HTTP metadata reuse
+
+On Framework Desktop / Radeon 8060S (`gfx1151`), Qwen3.8-Flash-Next
+`UD-Q4_K_XL` with a `Q8_0` MTP sidecar, production profile and BF16 KV,
+shared attention-position uploads are now reused across layers. The matched
+October 22 HTTP run uses one active request, fresh prompts, prefix cache off,
+64 greedy outputs and MTP budget 3. Each cell pools four categories and three
+measured repetitions after one warmup per case and arm.
+
+| Fresh prompt | AR prefill before → now | MTP prefill before → now | AR decode before → now | MTP decode before → now |
+| ---: | ---: | ---: | ---: | ---: |
+| 1,024 | 1314.1 → 1321.7 | 1028.8 → 1032.4 | 15.262 → 15.314 | 36.313 → 36.705 (+1.08%) |
+| 4,096 | 1314.2 → 1321.5 | 1013.1 → 1019.1 | 12.104 → 12.143 | 34.802 → 35.223 (+1.21%) |
+
+All rates are tok/s. MTP prefill includes predictor priming; decode measures
+63 first-to-last-output transitions. AR decode, which this change does not
+alter, also moved +0.32–0.34%, so the MTP delta is not entirely attributable
+to metadata reuse. All matched outputs and acceptance counts are unchanged.
+These HTTP windows differ from the canonical and whole-request rates below.
+[Protocol, samples and correctness checks](results/2026-10-22-gfx1151-flashnext-metadata-reuse.json).
 
 ## Qwen3.8 Flash Next current production rates
 
