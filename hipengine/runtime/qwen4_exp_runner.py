@@ -2818,7 +2818,7 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
         ("index_q", scratch.index_q_projected, index_heads * index_dim),
         ("index_k", scratch.index_k_projected, index_dim),
     ):
-        if cache_only and slot == "index_q":
+        if cache_only and slot in {"attn_q", "index_q"}:
             continue
         project = launch_gguf_linear_decode_rows if cache_only else launch_gguf_linear
         project(
@@ -2841,34 +2841,52 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
         if rope_positions_ptr is not None
         else qwen4_exp_qsa_split_norm_rope_rows_f32
     )
-    split_rope_rows(
-        scratch.q_projected.ptr,
-        scratch.key_projected.ptr,
-        weights.q_norm_weight_ptr,
-        weights.k_norm_weight_ptr,
-        metadata.positions.ptr
-        if rope_positions_ptr is None
-        else int(rope_positions_ptr),
-        scratch.query.ptr,
-        scratch.key.ptr,
-        0 if strided_gate else scratch.gate.ptr,
-        count,
-        query_heads,
-        kv_heads,
-        head_dim,
-        rotary_dim,
-        theta,
-        eps,
-        stream=stream,
-        runtime=active_runtime,
-    )
-    index_rope_rows = (
+    norm_rope_rows = (
         qwen4_exp_qsa_norm_mrope_rows_f32
         if rope_positions_ptr is not None
         else qwen4_exp_qsa_norm_rope_rows_f32
     )
-    if not cache_only:
-        index_rope_rows(
+    positions_ptr = (
+        metadata.positions.ptr if rope_positions_ptr is None else int(rope_positions_ptr)
+    )
+    if cache_only:
+        # Prompt cache construction never consumes queries or gates. The
+        # standalone norm/rope uses the split kernel's per-key reduction.
+        norm_rope_rows(
+            scratch.key_projected.ptr,
+            weights.k_norm_weight_ptr,
+            positions_ptr,
+            scratch.key.ptr,
+            count,
+            kv_heads,
+            head_dim,
+            rotary_dim,
+            theta,
+            eps,
+            stream=stream,
+            runtime=active_runtime,
+        )
+    else:
+        split_rope_rows(
+            scratch.q_projected.ptr,
+            scratch.key_projected.ptr,
+            weights.q_norm_weight_ptr,
+            weights.k_norm_weight_ptr,
+            positions_ptr,
+            scratch.query.ptr,
+            scratch.key.ptr,
+            0 if strided_gate else scratch.gate.ptr,
+            count,
+            query_heads,
+            kv_heads,
+            head_dim,
+            rotary_dim,
+            theta,
+            eps,
+            stream=stream,
+            runtime=active_runtime,
+        )
+        norm_rope_rows(
             scratch.index_q_projected.ptr,
             weights.index_q_norm_weight_ptr,
             metadata.positions.ptr

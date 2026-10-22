@@ -173,26 +173,26 @@ UD/main integration validation is documented in the
 [integration report](../docs/campaigns/UD-MAIN-INTEGRATION.md); its working-tree timings do not
 replace the published performance rows.
 
-## Qwen3.8 Flash Next HTTP metadata reuse
+## Qwen3.8 Flash Next HTTP prefill and decode
 
 On Framework Desktop / Radeon 8060S (`gfx1151`), Qwen3.8-Flash-Next
 `UD-Q4_K_XL` with a `Q8_0` MTP sidecar, production profile and BF16 KV,
-shared attention-position uploads are now reused across layers. The matched
+MTP prompt-cache construction now omits unused query projections. The matched
 October 22 HTTP run uses one active request, fresh prompts, prefix cache off,
 64 greedy outputs and MTP budget 3. Each cell pools four categories and three
 measured repetitions after one warmup per case and arm.
 
 | Fresh prompt | AR prefill before → now | MTP prefill before → now | AR decode before → now | MTP decode before → now |
 | ---: | ---: | ---: | ---: | ---: |
-| 1,024 | 1314.1 → 1321.7 | 1028.8 → 1032.4 | 15.262 → 15.314 | 36.313 → 36.705 (+1.08%) |
-| 4,096 | 1314.2 → 1321.5 | 1013.1 → 1019.1 | 12.104 → 12.143 | 34.802 → 35.223 (+1.21%) |
+| 1,024 | 1323.1 → 1322.0 | 1032.6 → 1102.2 (+6.75%) | 15.295 → 15.298 | 36.625 → 36.710 |
+| 4,096 | 1322.2 → 1321.4 | 1019.4 → 1095.4 (+7.45%) | 12.130 → 12.133 | 35.173 → 35.231 |
 
 All rates are tok/s. MTP prefill includes predictor priming; decode measures
-63 first-to-last-output transitions. AR decode, which this change does not
-alter, also moved +0.32–0.34%, so the MTP delta is not entirely attributable
-to metadata reuse. All matched outputs and acceptance counts are unchanged.
-These HTTP windows differ from the canonical and whole-request rates below.
-[Protocol, samples and correctness checks](results/2026-10-22-gfx1151-flashnext-metadata-reuse.json).
+63 first-to-last-output transitions. All matched outputs and acceptance counts
+are unchanged. MTP prefill throughput is still about 17% below AR; this change
+reduces that penalty rather than removing it. These HTTP windows differ from
+the canonical and whole-request rates below.
+[Protocol, samples and correctness checks](results/2026-10-22-gfx1151-flashnext-prefill-k-only.json).
 
 ## Qwen3.8 Flash Next current production rates
 
