@@ -103,6 +103,17 @@ def pytest_collection_finish(session: pytest.Session) -> None:  # pragma: no cov
     # the once-per-process side effect and every later test that relies on those
     # keys after the teardown restore sees an incomplete registry.
     import_gfx1100_kernel_modules()
+    # That helper imports the modules gfx1151 aliases, not every module that
+    # registers on import. A runtime that imports the rest lazily (Gemma 4's
+    # selected-expert prefill owners, for example) registers them during its
+    # first test; the teardown restore then drops them for every later test.
+    import pkgutil
+    from importlib import import_module
+
+    from hipengine.kernels import hip_gfx1100
+
+    for module in pkgutil.walk_packages(hip_gfx1100.__path__, f"{hip_gfx1100.__name__}."):
+        import_module(module.name)
 
     global _BASELINE_KERNELS, _BASELINE_RUNTIME_PROFILE_PLANS
     global _BASELINE_PROFILE_ENV, _BASELINE_HIPENGINE_ENV

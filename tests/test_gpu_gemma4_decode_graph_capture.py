@@ -162,7 +162,12 @@ def test_gemma4_decode_graph_class_global_replay_is_exact(monkeypatch):
     from hipengine.runtime.gemma4_decode_graph import Gemma4DecodeGraphSession
 
     monkeypatch.setattr(gemma4_decode_graph, "_capture_max_keys", lambda backend: 1 << 30)
-    with owned_llm(str(_TARGET), max_sequence_length=16384 + 512) as llm:
+    # The production profile sends long global rows to the long-row flash
+    # variant on gfx1100, which refuses capture past 8192 keys. The strict
+    # profile keeps the plain route, which at 16384 keys is the class kernel.
+    with owned_llm(
+        str(_TARGET), max_sequence_length=16384 + 512, execution_profile="strict"
+    ) as llm:
         runner = llm._get_text_generator()._ensure_runner()
         vocab = int(runner.weights.config.vocab_size or 0)
 

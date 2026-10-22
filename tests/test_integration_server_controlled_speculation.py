@@ -5,7 +5,6 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from hipengine.generation import EngineService
 from hipengine.server import create_app
 from tests.test_integration_server_sampled_speculation import ResidentLLM
 from tests.test_integration_server_speculative_provider import _config
@@ -32,9 +31,9 @@ def setup(monkeypatch, text, *, invalid_argmax=False):
     # Byte pieces must not be decoded separately when generating Japanese.
     model.tokenizer.decode_token_bytes = lambda i: bytes([i]) if i < 256 else model.tokenizer.decode((i,)).encode()
     target.max_sequence_length = draft.max_sequence_length = 4096
-    service = EngineService(api)
-    llm = ResidentLLM(service)
-    llm._text_generator = service
+    # ResidentLLM owns the only service; the tests' ``close()`` stops its thread.
+    llm = ResidentLLM(api)
+    service = llm.api
     llm.tokenize, llm.detokenize = model.tokenize, model.detokenize
     llm.count_tokens = model.count_tokens
     from hipengine.chat.qwen4_exp import Qwen4ExpReasoningParser
