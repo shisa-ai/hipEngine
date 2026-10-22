@@ -872,6 +872,13 @@ def test_layers_share_one_expert_workspace_and_temporaries_pool(
                     assert name not in pool._sizes
                 else:
                     assert pool._sizes[name] >= nbytes
+        # Layer buffers come from the layer module's allocator; keep it off
+        # the device so this stays a CPU contract.
+        from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_layer
+
+        layer_allocator = _FakeAllocator()
+        monkeypatch.setattr(gemma4_layer, "malloc", layer_allocator.malloc)
+        monkeypatch.setattr(gemma4_layer, "hip_free", layer_allocator.free)
         first, second = runner._scratches[:2]
         assert first.buffer("normalized") is second.buffer("normalized")
         assert first.buffer("k_rot") is not second.buffer("k_rot")

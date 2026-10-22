@@ -63,3 +63,39 @@ def test_verify_attention_and_c1_fallback_are_registered(backend):
         backend=backend, layer="paged_attn_decode", quant="int8_per_token_head",
         variant="gqa_splitk_gate_bf16_spans",
     ))
+
+
+def _packed_spans(*, pool_blocks: int, rows: int = 8, table: int = 4):
+    """Packed multi-request verify: every row carries its request's table."""
+
+    device = Device("hip", 0)
+    metadata = KVScaleMetadata(
+        Tensor.from_handle(0x1000, (pool_blocks, 256, 4), DType.FP32, device),
+        Tensor.from_handle(0x2000, (pool_blocks, 256, 4), DType.FP32, device),
+        scale_dtype=DType.FP32,
+    )
+    return KVLiveSpans.paged_uniform(
+        block_table=Tensor.from_handle(0x3000, (rows, table), DType.INT32, device),
+        live_counts=Tensor.from_handle(0x4000, (rows,), DType.INT64, device),
+        max_live_count=258,
+        storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        scale_metadata=metadata,
+    )
+
+
+def test_packed_verify_rows_may_repeat_pool_blocks():
+    # Two requests x four verify rows: 32 table entries index a 24-block pool.
+    # Rows of one request share its blocks, so entries are not pool blocks;
+    # counting them refused every n=2 INT8 MTP verify.
+    spans = _packed_spans(pool_blocks=24)
+    assert attention._check_int8_qwen35_gqa_batch_shape(
+        spans, 8, 256, 2, 256, 24, 4, 256, k_scale_ptr=0x1000, v_scale_ptr=0x2000,
+    ) == 4
+
+
+def test_packed_verify_still_needs_a_scale_pool_covering_one_table():
+    spans = _packed_spans(pool_blocks=3)
+    with pytest.raises(ValueError, match="cover the paged block table"):
+        attention._check_int8_qwen35_gqa_batch_shape(
+            spans, 8, 256, 2, 256, 24, 4, 256, k_scale_ptr=0x1000, v_scale_ptr=0x2000,
+        )

@@ -4602,6 +4602,7 @@ def _check_int8_qwen35_gqa_batch_shape(
         head_dim,
         k_scale_ptr=k_scale_ptr,
         v_scale_ptr=v_scale_ptr,
+        required_blocks=block_table_len,
     )
     return block_table_len
 
@@ -4732,7 +4733,15 @@ def _check_int8_scale_metadata(
     *,
     k_scale_ptr: int,
     v_scale_ptr: int,
+    required_blocks: int | None = None,
 ) -> None:
+    """Validate the INT8 scale planes against the spans they serve.
+
+    ``required_blocks`` is the block-table length one row indexes: table
+    entries are pool block indices, and the rows of a packed batch repeat
+    their request's blocks, so the entry count is not a pool size. It defaults
+    to the whole table, which is one row's for single-row decode.
+    """
     metadata = spans.scale_metadata
     if metadata is None:  # defensive; KVLiveSpans rejects this combination first.
         raise ValueError("int8_per_token_head spans require scale metadata")
@@ -4772,7 +4781,9 @@ def _check_int8_scale_metadata(
         raise ValueError(
             "INT8 attention scale granularity must be per_token_head, block16, or hadamard_group32"
         )
-    if scale_blocks < spans.base_offsets.numel:
+    if required_blocks is None:
+        required_blocks = spans.base_offsets.numel
+    if scale_blocks < int(required_blocks):
         raise ValueError("INT8 attention scale tensors must cover the paged block table")
 
 
