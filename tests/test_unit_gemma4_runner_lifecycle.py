@@ -843,6 +843,67 @@ def test_shared_attention_owner_reuses_one_buffer_per_stream(
         runner.close()
 
 
+def test_layers_share_one_expert_workspace_and_temporaries_pool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One expert owner and one temporaries pool per runner, each counted once.
+
+    Per-layer expert owners multiplied the workspace by the layer count in
+    every runner, and a resident server builds several runners: a default
+    Gemma 4 ``LLM`` on a 48 GB card ran out of memory on its first decode.
+    """
+
+    from hipengine.runtime import gemma4 as runtime_module
+
+    config = _config(num_layers=4)
+    runner, _ = _make_runner(monkeypatch, config=config)
+    try:
+        experts = runner._scratches[0].experts
+        assert experts is not None
+        assert all(scratch.experts is experts for scratch in runner._scratches)
+        pool = runner._scratches[0].shared_buffers
+        assert pool is not None
+        assert all(scratch.shared_buffers is pool for scratch in runner._scratches)
+        # Each shared name is sized for the widest layer, so no layer outgrows
+        # it; the decode graph's per-layer append sources stay per layer.
+        for scratch in runner._scratches:
+            for name, nbytes in scratch._sizes().items():
+                if name in pool.PER_LAYER:
+                    assert name not in pool._sizes
+                else:
+                    assert pool._sizes[name] >= nbytes
+        first, second = runner._scratches[:2]
+        assert first.buffer("normalized") is second.buffer("normalized")
+        assert first.buffer("k_rot") is not second.buffer("k_rot")
+        # Make the expert workspace dominate the estimate: it must appear once,
+        # not once per layer.
+        sentinel = 1 << 40
+        monkeypatch.setattr(
+            runtime_module.Gemma4ExpertScratch, "resident_bytes", lambda self: sentinel
+        )
+        planned = runtime_module._resident_bytes(
+            block=runner.max_block,
+            capacity=runner.capacity,
+            hidden=config.hidden_size,
+            config=config,
+            dense_widths=[config.intermediate_size] * len(config.attention),
+        )
+        assert sentinel <= planned < 2 * sentinel
+        monkeypatch.setattr(
+            runtime_module.Gemma4SharedLayerBuffers, "resident_bytes", lambda self: 2 * sentinel
+        )
+        planned = runtime_module._resident_bytes(
+            block=runner.max_block,
+            capacity=runner.capacity,
+            hidden=config.hidden_size,
+            config=config,
+            dense_widths=[config.intermediate_size] * len(config.attention),
+        )
+        assert 3 * sentinel <= planned < 4 * sentinel
+    finally:
+        runner.close()
+
+
 def test_close_synchronizes_then_frees_the_shared_workspace_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

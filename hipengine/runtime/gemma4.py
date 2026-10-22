@@ -55,8 +55,10 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
     Gemma4AttentionScratch,
     gemma4_attention_serves_keys,
 )
+from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import Gemma4ExpertScratch
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_rope import gemma4_rope_cos_sin_tables
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_layer import (
+    Gemma4SharedLayerBuffers,
     Gemma4LayerGeometry,
     Gemma4LayerKV,
     Gemma4PackedSegment,
@@ -196,6 +198,24 @@ _FIT_RESERVE_BYTES = 512 * 1024 * 1024
 GEMMA4_SLIDING_BUCKET_WIDTH = 64
 
 
+def _shared_expert_scratch(block: int, *, hidden: int, config: Any) -> Gemma4ExpertScratch:
+    """The one expert workspace a runner's layers share.
+
+    Layers run serially and every Gemma 4 layer has the same expert shape, so
+    layer N+1's experts start only after layer N's combine has consumed its
+    output. A per-layer owner multiplied the workspace by the layer count in
+    every runner; a resident server builds several runners.
+    """
+
+    return Gemma4ExpertScratch(
+        tokens=block,
+        top_k=config.top_k_experts,
+        hidden_size=hidden,
+        intermediate=config.moe_intermediate_size,
+        num_experts=config.num_experts,
+    )
+
+
 def _resident_bytes(
     *,
     block: int,
@@ -228,8 +248,11 @@ def _resident_bytes(
         + hidden * _BF16_BYTES
         + int(config.vocab_size or 0) * _F32_BYTES
     )
-    for index, attention in enumerate(config.attention):
-        scratch = Gemma4LayerScratch(
+    # Every layer shares the runner's one expert owner and one temporaries
+    # pool, so each is charged once; a layer charges only its own router.
+    experts = _shared_expert_scratch(block, hidden=hidden, config=config)
+    layers = [
+        Gemma4LayerScratch(
             tokens=block,
             hidden_size=hidden,
             dense_intermediate=dense_widths[index],
@@ -237,7 +260,14 @@ def _resident_bytes(
             num_experts=config.num_experts,
             top_k=config.top_k_experts,
             expert_intermediate=config.moe_intermediate_size,
+            experts=experts,
         )
+        for index, attention in enumerate(config.attention)
+    ]
+    shared = Gemma4SharedLayerBuffers.for_layers(layers)
+    total += experts.resident_bytes() + shared.resident_bytes()
+    for scratch in layers:
+        scratch.shared_buffers = shared
         total += scratch.resident_bytes()
     if kv_storage == "int8_per_token_head":
         attentions = tuple(
@@ -1222,6 +1252,11 @@ class Gemma4Runner:
             # handed, and ``Gemma4AttentionScratch.close`` is idempotent, so the
             # workspace is synchronized and freed exactly once.
             shared_attention = Gemma4AttentionScratch()
+            # The expert workspace is shared the same way; its free() is
+            # idempotent, so every layer scratch can still release it.
+            shared_experts = _shared_expert_scratch(
+                self.max_block, hidden=hidden, config=config
+            )
             for index, attention in enumerate(config.attention):
                 self._scratches.append(
                     Gemma4LayerScratch(
@@ -1233,6 +1268,7 @@ class Gemma4Runner:
                         top_k=config.top_k_experts,
                         expert_intermediate=config.moe_intermediate_size,
                         attention=shared_attention,
+                        experts=shared_experts,
                     )
                 )
                 if self._kv_storage_resolved == "int8_per_token_head":
@@ -1264,6 +1300,12 @@ class Gemma4Runner:
                         write_offset=0,
                     )
                 )
+            # The layers take their temporaries from one pool sized for the
+            # widest layer, for the same reason they share the attention and
+            # expert owners. Its free() is idempotent like theirs.
+            shared_buffers = Gemma4SharedLayerBuffers.for_layers(self._scratches)
+            for scratch in self._scratches:
+                scratch.shared_buffers = shared_buffers
             self._bounded_sliding = any(
                 bounded < self.capacity for bounded in self._kv_capacity
             )

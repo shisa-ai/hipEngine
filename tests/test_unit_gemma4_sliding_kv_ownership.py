@@ -322,11 +322,16 @@ def test_resident_bytes_charges_sliding_layers_their_band_and_staging() -> None:
     kv_term = 25 * sliding_rows * REAL_SLIDING_KV_BYTES + 5 * capacity * REAL_GLOBAL_KV_BYTES
     # One staging plane for the widest bounded sliding layer.
     staging = (REAL_WINDOW - 1 + BUCKET) * (8 * 256) * 2
-    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_layer import Gemma4LayerScratch
+    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_layer import (
+        Gemma4LayerScratch,
+        Gemma4SharedLayerBuffers,
+    )
 
-    scratch = 0
-    for index, attention in enumerate(config.attention):
-        scratch += Gemma4LayerScratch(
+    # The layers share one expert owner and one temporaries pool, as the
+    # runner builds them; each layer then charges only what it owns.
+    experts = gemma4_module._shared_expert_scratch(block, hidden=config.hidden_size, config=config)
+    layers = [
+        Gemma4LayerScratch(
             tokens=block,
             hidden_size=config.hidden_size,
             dense_intermediate=2112,
@@ -334,7 +339,15 @@ def test_resident_bytes_charges_sliding_layers_their_band_and_staging() -> None:
             num_experts=config.num_experts,
             top_k=config.top_k_experts,
             expert_intermediate=config.moe_intermediate_size,
-        ).resident_bytes()
+            experts=experts,
+        )
+        for attention in config.attention
+    ]
+    pool = Gemma4SharedLayerBuffers.for_layers(layers)
+    scratch = experts.resident_bytes() + pool.resident_bytes()
+    for layer in layers:
+        layer.shared_buffers = pool
+        scratch += layer.resident_bytes()
     runner_buffers = (
         block * 8 + block * config.hidden_size * 2 + config.hidden_size * 2
         + int(config.vocab_size) * 4

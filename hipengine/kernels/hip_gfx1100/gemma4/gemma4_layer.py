@@ -319,6 +319,63 @@ class Gemma4LayerGeometry:
     sliding_window: int | None = None
 
 
+class Gemma4SharedLayerBuffers:
+    """One set of layer temporaries that a runner's layers take in turn.
+
+    Every named buffer is transient within one layer forward: the layer writes
+    its result to the caller's ``hidden_ptr``, and the next layer's launches are
+    ordered behind this one's on the same streams. One buffer per name, sized
+    for the widest layer, therefore serves every layer. Per-layer owners
+    multiplied these temporaries by the layer count in each runner, and a
+    resident server builds several runners.
+
+    Sizes are fixed when the pool is built and never grow, so a captured decode
+    graph can hold the pointers.
+
+    ``PER_LAYER`` names stay with each layer: the decode graph recognizes a
+    layer's KV-append memcpy by its source, the layer's own rotated-K and V
+    buffers, so those pointers must differ between layers.
+    """
+
+    PER_LAYER = frozenset({"k_rot", "v"})
+
+    def __init__(self, sizes: dict[str, int]) -> None:
+        self._sizes = dict(sizes)
+        self._buffers: list[DeviceBuffer] = []
+        self._by_name: dict[str, DeviceBuffer] = {}
+
+    @classmethod
+    def for_layers(cls, layers: "Sequence[Gemma4LayerScratch]") -> "Gemma4SharedLayerBuffers":
+        sizes: dict[str, int] = {}
+        for layer in layers:
+            for name, nbytes in layer._sizes().items():
+                if name not in cls.PER_LAYER:
+                    sizes[name] = max(sizes.get(name, 0), int(nbytes))
+        return cls(sizes)
+
+    def buffer(self, name: str) -> DeviceBuffer:
+        existing = self._by_name.get(name)
+        if existing is not None:
+            return existing
+        try:
+            nbytes = self._sizes[name]
+        except KeyError:
+            raise ValueError(f"unknown scratch buffer {name!r}") from None
+        buf = malloc(nbytes)
+        self._by_name[name] = buf
+        self._buffers.append(buf)
+        return buf
+
+    def resident_bytes(self) -> int:
+        return sum(self._sizes.values())
+
+    def free(self) -> None:
+        for buf in self._buffers:
+            hip_free(buf)
+        self._buffers.clear()
+        self._by_name.clear()
+
+
 @dataclass
 class Gemma4LayerScratch:
     """Reusable device scratch for one layer shape.
@@ -339,6 +396,9 @@ class Gemma4LayerScratch:
     experts: Gemma4ExpertScratch | None = field(default=None, repr=False)
     router: Gemma4RouterScratch | None = field(default=None, repr=False)
     attention: Gemma4AttentionScratch = field(default_factory=Gemma4AttentionScratch, repr=False)
+    # A runner's layers can share one temporaries pool; see
+    # ``Gemma4SharedLayerBuffers``. Without one, this scratch owns its own.
+    shared_buffers: Gemma4SharedLayerBuffers | None = field(default=None, repr=False)
     # Pair of HIP events gating the parallel MoE branch: one recorded on the
     # main stream after attention so the branch cannot read `hidden` early, one
     # recorded on the branch stream so the combine cannot run ahead of it.
@@ -358,13 +418,17 @@ class Gemma4LayerScratch:
         ):
             if int(value) <= 0:
                 raise ValueError(f"{name} must be positive")
-        self.experts = Gemma4ExpertScratch(
-            tokens=self.tokens,
-            top_k=self.top_k,
-            hidden_size=self.hidden_size,
-            intermediate=self.expert_intermediate,
-            num_experts=self.num_experts,
-        )
+        # A runner hands every layer one shared expert owner, as it does the
+        # attention owner; a standalone layer scratch builds its own.
+        self._owns_experts = self.experts is None
+        if self.experts is None:
+            self.experts = Gemma4ExpertScratch(
+                tokens=self.tokens,
+                top_k=self.top_k,
+                hidden_size=self.hidden_size,
+                intermediate=self.expert_intermediate,
+                num_experts=self.num_experts,
+            )
         self.router = Gemma4RouterScratch(
             tokens=self.tokens,
             hidden_size=self.hidden_size,
@@ -387,6 +451,9 @@ class Gemma4LayerScratch:
     def buffer(self, name: str) -> DeviceBuffer:
         """Allocate ``name`` on first use, then reuse it."""
 
+        shared = self.shared_buffers
+        if shared is not None and name not in shared.PER_LAYER:
+            return shared.buffer(name)
         existing = self._by_name.get(name)
         if existing is not None:
             return existing
@@ -412,6 +479,8 @@ class Gemma4LayerScratch:
         self._moe_entry_event = None
         self._moe_exit_event = None
         self.attention.close()
+        if self.shared_buffers is not None:
+            self.shared_buffers.free()
         if self.experts is not None:
             self.experts.free()
         if self.router is not None:
@@ -483,8 +552,14 @@ class Gemma4LayerScratch:
         forward path happens to touch: the memory planner must not assume a
         path, and over-estimating only costs a smaller block.
         """
-        total = sum(self._sizes().values())
-        if self.experts is not None:
+        # Shared owners are charged once by whoever holds them, not per layer.
+        shared = self.shared_buffers
+        total = sum(
+            nbytes
+            for name, nbytes in self._sizes().items()
+            if shared is None or name in shared.PER_LAYER
+        )
+        if self.experts is not None and self._owns_experts:
             total += self.experts.resident_bytes()
         if self.router is not None:
             total += self.router.resident_bytes()
