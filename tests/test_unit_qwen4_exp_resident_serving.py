@@ -331,6 +331,7 @@ def test_qwen4_exp_engine_loop_prefills_arrivals_while_decoding() -> None:
     try:
         assert generator.engine_loop_config_defaults == {
             "prefill_decode_policy": "token_budget",
+            "max_prefill_chunk_tokens": _FakeRunner.prefill_chunk_size,
             "round_prefill_token_budget": _FakeRunner.prefill_chunk_size,
             "decode_prefill_token_budget": _FakeRunner.prefill_chunk_size,
             "round_decode_row_budget": 32,

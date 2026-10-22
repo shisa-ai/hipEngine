@@ -505,9 +505,11 @@ class Qwen4ExpGGUFTextGenerator:
         # arrived behind a long prompt waited for its whole prefill. The
         # token-budget round rotates prefill chunks across requests and steps
         # every decoding row in the same round; its prefill budget is this
-        # runner's chunk, and its decode budget covers every request.
+        # runner's admitted chunk, including the per-slice limit. The smaller
+        # decode-active round budget still bounds prefill when decode is due.
         return {
             "prefill_decode_policy": "token_budget",
+            "max_prefill_chunk_tokens": int(self.runner.prefill_chunk_size),
             "round_prefill_token_budget": int(self.runner.prefill_chunk_size),
             "decode_prefill_token_budget": min(1024, int(self.runner.prefill_chunk_size)),
             "round_decode_row_budget": max(32, int(self._configured_resident_capacity)),

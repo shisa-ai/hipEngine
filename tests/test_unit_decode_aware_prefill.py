@@ -117,3 +117,47 @@ def test_operator_round_budget_disables_implicit_decode_slice():
     )
     assert pinned.round_prefill_token_budget == 512
     assert pinned.decode_prefill_token_budget is None
+
+
+@pytest.mark.parametrize("chunk", [512, 1024, 1537, 4096])
+def test_qwen4exp_admitted_chunk_bounds_idle_and_decode_active_work(chunk):
+    from types import SimpleNamespace
+    from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
+
+    defaults = Qwen4ExpGGUFTextGenerator.engine_loop_config_defaults.fget(
+        SimpleNamespace(runner=SimpleNamespace(prefill_chunk_size=chunk),
+                        _configured_resident_capacity=3)
+    )
+    generator = SimpleNamespace(engine_loop_config_defaults=defaults)
+    config = _engine_loop_config_with_generator_defaults(
+        EngineLoopConfig(max_active_requests=3), generator, environ={}
+    )
+    assert config.max_prefill_chunk_tokens == chunk
+    assert config.round_prefill_token_budget == chunk
+    assert config.decode_prefill_token_budget == min(1024, chunk)
+    runner = _Runner()
+    loop = ResidentEngineLoop(runner, config=config)
+    long = loop.submit(tuple(range(2 * chunk + 13)), max_new_tokens=1)
+    loop.tick()
+    assert runner.chunks == [(chunk,)]
+    loop.cancel(long)
+    peer = loop.submit((1,), max_new_tokens=10)
+    loop.tick()
+    loop.submit(tuple(range(2 * chunk + 13)), max_new_tokens=1)
+    before = len(runner.chunks)
+    loop.tick()
+    assert sum(sum(row) for row in runner.chunks[before:]) == min(1024, chunk)
+    loop.cancel(peer)
+    loop.tick()
+    assert runner.chunks[-1] == (chunk,)
+
+    pinned = _engine_loop_config_with_generator_defaults(
+        EngineLoopConfig(max_prefill_chunk_tokens=137, round_prefill_token_budget=251,
+                         decode_prefill_token_budget=113), generator,
+        environ={"HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": "137",
+                 "HIPENGINE_ROUND_PREFILL_TOKEN_BUDGET": "251",
+                 "HIPENGINE_DECODE_PREFILL_TOKEN_BUDGET": "113"},
+    )
+    assert pinned.max_prefill_chunk_tokens == 137
+    assert pinned.round_prefill_token_budget == 251
+    assert pinned.decode_prefill_token_budget == 113
