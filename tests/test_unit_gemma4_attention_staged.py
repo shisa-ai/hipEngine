@@ -49,6 +49,9 @@ class Runtime:
     def stream_synchronize(self, stream: int) -> None:
         self.events.append(("sync", stream))
 
+    def device_synchronize(self) -> None:
+        self.events.append(("device_sync",))
+
 
 class FailingLibrary:
     """A fake kernel library whose entry points report a launch failure.
@@ -633,8 +636,8 @@ def test_workspace_buffer_is_per_stream_and_freed_after_the_stream_quiets():
     scratch.close()
     assert runtime.live == {}
     first_free = next(i for i, event in enumerate(runtime.events) if event[0] == "free")
-    assert ("sync", 0) in runtime.events[:first_free]
-    assert ("sync", 7) in runtime.events[:first_free]
+    # One device-wide wait covers both streams before anything is freed.
+    assert ("device_sync",) in runtime.events[:first_free]
     with pytest.raises(RuntimeError, match="closed"):
         staged.staged_workspace_buffer(scratch, plan, stream=0, runtime=runtime)
 
@@ -667,7 +670,7 @@ def test_a_failed_launch_releases_the_temporary_workspace():
             library=FailingLibrary(), runtime=runtime,
         )
     assert runtime.live == {}
-    assert any(event[0] == "sync" for event in runtime.events)
+    assert any(event[0] in ("sync", "device_sync") for event in runtime.events)
 
 
 # --- the independent oracle -------------------------------------------------

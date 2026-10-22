@@ -337,12 +337,11 @@ class Gemma4AttentionScratch:
         if self._runtime is not None:
             if self._runtime.current_device() != self._device:
                 raise ValueError("attention scratch must close on its owning device")
-            for stream in self._current:
-                self._runtime.stream_synchronize(stream)
-            for stream, _ in self._named:
-                self._runtime.stream_synchronize(stream)
-            for _, stream, _ in self._pending:
-                self._runtime.stream_synchronize(stream)
+            # One device-wide wait covers every stream these buffers served. The
+            # remembered handles are not owned here: a decode-graph session
+            # destroys its capture stream before the runner closes, and
+            # synchronizing that handle dereferences a destroyed stream.
+            self._runtime.device_synchronize()
             while self._pending:
                 event, _, buffer = self._pending.pop()
                 free(buffer, runtime=self._runtime)

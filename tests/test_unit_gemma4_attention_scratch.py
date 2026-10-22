@@ -15,6 +15,7 @@ class Runtime:
         self.event_stream = {}
         self.last_event = {}
         self.next_event = 100
+        self.destroyed = set()
 
     def current_device(self):
         return self.device
@@ -32,8 +33,14 @@ class Runtime:
         del self.live[ptr]
 
     def stream_synchronize(self, stream):
+        if stream in self.destroyed:
+            raise AssertionError(f"synchronized destroyed stream {stream}")
         self.events.append(("sync", stream))
         self.synced.add(stream)
+
+    def device_synchronize(self):
+        self.events.append(("device_sync",))
+        self.synced.update(self.event_stream.values())
 
     def event_create(self):
         self.next_event += 1
@@ -129,6 +136,22 @@ def test_failed_growth_preserves_old_owner_and_close_releases_it():
     assert not runtime.live
 
 
+def test_close_does_not_touch_a_stream_its_owner_already_destroyed():
+    # A decode-graph session runs layers on its own capture stream and destroys
+    # that stream when it closes; the runner's scratch closes later. Syncing the
+    # remembered handle then dereferenced a destroyed stream and segfaulted.
+    runtime = Runtime()
+    scratch = attention.Gemma4AttentionScratch()
+    scratch.buffer(100, stream=0, runtime=runtime)
+    scratch.buffer(100, stream=9, runtime=runtime)
+    scratch.buffer(200, stream=9, runtime=runtime)
+    scratch.named_buffer("meta", 8, stream=9, runtime=runtime)
+    runtime.destroyed.add(9)
+    scratch.close()
+    assert not runtime.live
+    assert not runtime.event_stream
+
+
 def test_scratch_rejects_runtime_or_device_migration():
     runtime = Runtime()
     scratch = attention.Gemma4AttentionScratch()
@@ -181,7 +204,7 @@ def test_wrapper_without_owner_releases_temporary_even_on_launch_error(monkeypat
     else:
         attention.gemma4_attention_prefill_f32(1, 2, 3, 4, 5, **kwargs)
     assert runtime.live == {}
-    assert runtime.events[-2][0] == "sync"
+    assert runtime.events[-2][0] == "device_sync"
     assert runtime.events[-1][0] == "free"
 
 

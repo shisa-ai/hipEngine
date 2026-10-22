@@ -743,6 +743,10 @@ class _FakeAttentionRuntime:
         self.events.append(("sync", stream))
         self.synced.add(stream)
 
+    def device_synchronize(self) -> None:
+        self.events.append(("device_sync",))
+        self.synced.update(self.event_stream.values())
+
     def event_create(self) -> int:
         self.next_event += 1
         return self.next_event
@@ -864,8 +868,8 @@ def test_close_synchronizes_then_frees_the_shared_workspace_once(
         frees = [event for event in runtime.events if event[0] == "free"]
         assert frees == [("free", buffer.ptr)]
         first_free = runtime.events.index(frees[0])
-        assert ("sync", 0) in runtime.events[:first_free]
-        assert [event for event in runtime.events if event[0] == "sync"] == [("sync", 0)]
+        assert ("device_sync",) in runtime.events[:first_free]
+        assert [event for event in runtime.events if event[0] == "device_sync"] == [("device_sync",)]
         assert len(allocator.freed) == len(allocator.allocated)
     finally:
         runner.close()
@@ -918,7 +922,7 @@ def test_constructor_failure_closes_the_shared_workspace_once(
     frees = [event for event in runtime.events if event[0] == "free"]
     assert frees == [("free", primed[0])]
     first_free = runtime.events.index(frees[0])
-    assert ("sync", 0) in runtime.events[:first_free]
+    assert ("device_sync",) in runtime.events[:first_free]
     assert len(allocator.freed) == len(allocator.allocated)
 
 
