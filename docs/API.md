@@ -200,7 +200,10 @@ min-token/EOS floor, and reports the same per-token logprob the autoregressive
 route reports for the request. Forced tokens and dynamic constraints retain
 their ordinary-decoding fallback, and so does every one of these fields on a
 greedy request, whose raw-argmax route still refuses them.
-`"speculative_mtp": false` always disables MTP for a request.
+`"speculative_mtp": false` always disables MTP for a request. In the Python
+API, `LLM.generate` takes the MTP route only for
+`SamplingParams(speculative_mtp=True)`; the default `False` decodes without
+drafts even when an assistant head is attached.
 
 Operators may still select explicit diagnostics with
 `--speculative-mtp-serving opt_in` plus `"speculative_mtp": true`. Explicit

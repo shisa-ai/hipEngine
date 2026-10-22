@@ -202,6 +202,25 @@ def test_resident_ar_opt_out_never_runs_the_assistant():
     assert output.generated_token_ids == tuple(_greedy_reference(5, 11))
     assert not resident._proposal_widths
     assert output.telemetry.decode_state.execution_path == "gemma4_resident_ar"
+    # The opt-out reports the plain route, not the provider's MTP labels.
+    assert output.finish_details.sampler_mode == "processed_argmax"
+    assert output.telemetry.decode_state.sampler_mode == "processed_argmax"
+    diagnostics = output.telemetry.diagnostics
+    assert diagnostics["speculative_provider"] is None
+    assert "verify_equivalence" not in diagnostics
+    assert "target_verify" not in diagnostics
+
+
+def test_sampled_resident_ar_opt_out_reports_host_sampling():
+    driver, resident = _driver()
+    submission = driver.submit_detailed(replace(_request(5, 11), temperature=0.7, seed=3))
+    for _ in range(30):
+        if driver.generation_complete(submission):
+            break
+        driver.poll(max_ticks=1)
+    output = driver.take_result(submission)[0]
+    assert not resident._proposal_widths
+    assert output.finish_details.sampler_mode == "host_logits_sample"
 
 
 def test_zero_tokens_reclaims_without_target_or_proposal_work():

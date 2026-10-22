@@ -34,6 +34,15 @@ class _Row:
     proposal_widths: list[int] = field(default_factory=list)
 
 
+# Provider diagnostics that describe drafting and verification; a plain row
+# served on the same owners reports none of them.
+_MTP_ONLY_DIAGNOSTICS = (
+    "candidate_budget", "draft_acceptance", "tokens_per_cycle", "cycles",
+    "target_verify", "draft_rollback", "accept_rule", "draft_law",
+    "verify_equivalence",
+)
+
+
 class Gemma4ResidentModelRunner:
     """Physical target/proposal packing with stable request-local cache owners."""
 
@@ -287,7 +296,7 @@ class Gemma4ResidentModelRunner:
             events.append(GeneratedToken(int(rid), token, finished=terminal,
                 stream_chunk=GenerationStreamChunk(
                     text=delta, token_logprobs=records,
-                    finish_details=output.finish_details if terminal else None,
+                    finish_details=self._finish_details(row, output.finish_details) if terminal else None,
                     telemetry=telemetry,
                 )))
         return tuple(events)
@@ -306,13 +315,33 @@ class Gemma4ResidentModelRunner:
         })
         if not row.speculative:
             diagnostics["speculative_provider"] = None
+            # A plain row runs no draft and no verifier; it must not claim one.
+            for key in _MTP_ONLY_DIAGNOSTICS:
+                diagnostics.pop(key, None)
         state = telemetry.decode_state
         if state is not None:
             state = replace(state, generated_tokens=row.published)
             if not row.speculative:
                 state = replace(state, execution_path="gemma4_resident_ar",
-                                sampler_mode="greedy" if row.request.temperature == 0 else "sampled")
+                                sampler_mode=self._plain_sampler_mode(row))
         return replace(telemetry, decode_state=state, diagnostics=diagnostics)
+
+    def _plain_sampler_mode(self, row):
+        """The sampler mode the plain Gemma 4 route reports for this row.
+
+        Resident rows select from host logits, so in that route's terms a
+        greedy row is ``processed_argmax`` and a sampled one
+        ``host_logits_sample``.
+        """
+        from hipengine.generation.gemma4_gguf import _ar_sampler_mode
+        from hipengine.generation.gemma4_sampling import Gemma4Sampler
+
+        return _ar_sampler_mode(True, Gemma4Sampler(row.request, list(row.prompt_ids)))
+
+    def _finish_details(self, row, finish):
+        if finish is None or row.speculative:
+            return finish
+        return replace(finish, sampler_mode=self._plain_sampler_mode(row))
 
     def compact_batch(self, moves):
         # Scheduler slot numbers never address a request's device cache.
@@ -333,7 +362,7 @@ class Gemma4ResidentModelRunner:
             output, generated_token_ids=ids,
             text=self.generator.tokenizer.decode(ids[:visible], skip_special=False),
             token_logprobs=output.token_logprobs[:visible],
-            finish_details=finish, telemetry=self._telemetry(row),
+            finish_details=self._finish_details(row, finish), telemetry=self._telemetry(row),
         )
         self._release(row)
 
