@@ -54,6 +54,8 @@ def _snapshot_or_skip():
         path = resolve_model_path(PINNED_MODEL_ID)
     except Exception:
         pytest.skip(f"{PINNED_MODEL_ID} not in local HF cache")
+    if not path.is_dir():
+        pytest.skip(f"{PINNED_MODEL_ID} not in local HF cache")
     return path
 
 

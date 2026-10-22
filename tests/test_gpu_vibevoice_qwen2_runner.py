@@ -31,9 +31,12 @@ def _hf_snapshot_or_skip():
     from hipengine.loading.hf_cache import resolve_model_path
 
     try:
-        return resolve_model_path(PINNED_HF_MODEL_ID)
+        path = resolve_model_path(PINNED_HF_MODEL_ID)
     except Exception:
         pytest.skip(f"{PINNED_HF_MODEL_ID} not in local HF cache")
+    if not path.is_dir():
+        pytest.skip(f"{PINNED_HF_MODEL_ID} not in local HF cache")
+    return path
 
 
 @pytest.fixture(scope="module")

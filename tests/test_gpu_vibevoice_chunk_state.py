@@ -17,6 +17,8 @@ def frontend():
         path = resolve_model_path('microsoft/VibeVoice-ASR-HF')
     except (FileNotFoundError,ValueError):
         pytest.skip('HF checkpoint unavailable')
+    if not path.is_dir():
+        pytest.skip('microsoft/VibeVoice-ASR-HF not in local HF cache')
     ac = load_vibevoice_encoder(path,'acoustic')
     se = load_vibevoice_encoder(path,'semantic')
     r = VibevoiceFrontendRuntime(*ac,*se,load_vibevoice_connector(path,'acoustic'),load_vibevoice_connector(path,'semantic'))
