@@ -234,11 +234,19 @@ def _projected_rows(harness: Harness, hidden: np.ndarray) -> Qwen4ExpMixedGdnPro
     """
 
     arrays = harness.weights.arrays
+
+    def project(name: str) -> np.ndarray:
+        # One product per row: a BLAS matmul over the whole set may block rows
+        # differently by position, which would hand a permuted layout
+        # different input bits for the same row.
+        weight = arrays[name].T
+        return np.stack([row @ weight for row in hidden]).astype(np.float32)
+
     return Qwen4ExpMixedGdnProjectedRows(
-        qkv=harness.upload((hidden @ arrays["attn_qkv"].T).astype(np.float32)),
-        gate=harness.upload((hidden @ arrays["attn_gate"].T).astype(np.float32)),
-        alpha=harness.upload((hidden @ arrays["ssm_alpha"].T).astype(np.float32)),
-        beta=harness.upload((hidden @ arrays["ssm_beta"].T).astype(np.float32)),
+        qkv=harness.upload(project("attn_qkv")),
+        gate=harness.upload(project("attn_gate")),
+        alpha=harness.upload(project("ssm_alpha")),
+        beta=harness.upload(project("ssm_beta")),
     )
 
 

@@ -89,7 +89,7 @@ def build_qwen4_exp_gdn_dpp(
     return build_hip(
         sources=[_SOURCE], family="qwen4_exp_gdn_multi" if multi_column else "qwen4_exp_gdn_dpp", profile="decode",
         cache_root=cache_root, compiler_version=compiler_version,
-        target_arch="gfx1151", extra_flags=flags,
+        extra_flags=flags,
         output_name="qwen4_exp_gdn_dpp.so", require_cached=require_cached, load=load,
     )
 
