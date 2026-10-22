@@ -49,6 +49,7 @@ from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
 from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_scatter_index_keys_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_f32,
+    qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32,
     qwen4_exp_qsa_split_norm_mrope_f32,
     qwen4_exp_qsa_split_norm_rope_f32,
     qwen4_exp_qsa_topk_expand_f32_i64,
@@ -70,7 +71,10 @@ from hipengine.runtime.qwen4_exp_batch_ple import (
     batch_ple_indexed_conv_fallback_key,
     batch_ple_indexed_conv_key,
 )
-from hipengine.runtime.qwen4_exp_batch_qsa import batch_qsa_call_table
+from hipengine.runtime.qwen4_exp_batch_qsa import (
+    batch_qsa_attention_implementation,
+    batch_qsa_call_table,
+)
 from hipengine.runtime.qwen4_exp_batch_qsa_index import batch_qsa_index_call_table
 from hipengine.runtime.qwen4_exp_batch_runner import (
     Qwen4ExpGGUFBatchRunner,
@@ -515,12 +519,14 @@ def _embedding_quant(runner: Any, explicit: str | None) -> str | None:
         return None
 
 
-def live_batch_direct_calls() -> dict[str, Callable[..., Any]]:
+def live_batch_direct_calls(
+    *, attention_geometry: dict[str, int] | None = None,
+) -> dict[str, Callable[..., Any]]:
     """Return the exact callables the batch modules import and call directly."""
 
     calls: dict[str, Callable[..., Any]] = {}
     calls.update(batch_gdn_call_table())
-    calls.update(batch_qsa_call_table())
+    calls.update(batch_qsa_call_table(attention_geometry=attention_geometry))
     calls.update(batch_qsa_index_call_table())
     calls.update(batch_ple_call_table())
     calls.update(batch_runner_call_table())
@@ -567,6 +573,12 @@ def build_qwen4_exp_batch_variant_manifest(
         raise ValueError("batch variant manifest needs a source revision")
 
     config = _config_summary(getattr(runner, "config", None))
+    config["qsa_geometry"] = {
+        "head_dim": int(getattr(runner.config, "attention_key_length", 0)),
+        "query_heads": int(getattr(runner.config, "attention_head_count", 0)),
+        "kv_heads": int(getattr(runner.config, "attention_kv_head_count", 0)),
+        "block_size": int(getattr(runner, "block_size", 0)),
+    }
     required_roles = list(BATCH_CORE_REQUIRED_ROLES)
     if config["ple_layers"]:
         required_roles.extend(BATCH_PLE_REQUIRED_ROLES)
@@ -603,7 +615,16 @@ def build_qwen4_exp_batch_variant_manifest(
         },
     ]
 
-    direct_calls = live_batch_direct_calls()
+    geometry = config["qsa_geometry"]
+    direct_calls = live_batch_direct_calls(attention_geometry=geometry)
+    _, attention_variant = batch_qsa_attention_implementation(**geometry)
+    registered_keys = dict(_DIRECT_REGISTERED_KEYS)
+    registered_keys["qsa_rows_attention"] = (
+        "qsa_sparse_attention", "bf16_kv", attention_variant,
+    )
+    oracles = dict(_ORACLE_CALLS)
+    if attention_variant != "strict_rows_spans":
+        oracles["qsa_rows_attention"] = qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32
     for role, fn in sorted(direct_calls.items()):
         if role == "qsa_split_norm_mrope":
             continue
@@ -620,8 +641,8 @@ def build_qwen4_exp_batch_variant_manifest(
                 fn,
                 backend=backend,
                 scope=scope,
-                oracle=_ORACLE_CALLS.get(role),
-                registered_key=_DIRECT_REGISTERED_KEYS.get(role),
+                oracle=oracles.get(role),
+                registered_key=registered_keys.get(role),
             )
         )
 
@@ -1004,6 +1025,12 @@ def normalize_batch_variant_manifest(payload: Mapping[str, Any]) -> dict[str, An
         "qsa_layer_count": int(raw_config.get("qsa_layer_count", 0)),
         "ple_layers": sorted(int(layer) for layer in raw_config.get("ple_layers", [])),
     }
+    if "qsa_geometry" in raw_config:
+        geometry = raw_config["qsa_geometry"]
+        fields = {"head_dim", "block_size", "query_heads", "kv_heads"}
+        if not isinstance(geometry, Mapping) or set(geometry) != fields:
+            raise ValueError("batch manifest qsa_geometry must name all four shape fields")
+        config_result["qsa_geometry"] = {key: int(geometry[key]) for key in sorted(fields)}
     config_unknown = set(raw_config) - set(config_result)
     if config_unknown:
         raise ValueError(
@@ -1231,10 +1258,15 @@ def validate_batch_variant_manifest(
             )
             reasons.append(f"required_role_unbound:{role}")
 
-    live = live_batch_direct_calls()
+    live = live_batch_direct_calls(
+        attention_geometry=normalized["runtime_config"].get("qsa_geometry")
+    )
     oracles = live_batch_oracle_calls()
     known: dict[str, Callable[..., Any]] = {
-        function_identity(fn): fn for fn in (*live.values(), *oracles.values())
+        function_identity(fn): fn for fn in (
+            *live.values(), *oracles.values(),
+            qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32,
+        )
     }
     for entry in normalized["entries"]:
         role = entry["role"]

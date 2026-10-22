@@ -134,6 +134,33 @@ def _rehash(payload):
 # -- real binding -----------------------------------------------------------
 
 
+def test_head_pair_manifest_binds_actual_geometry_and_strict_rows_oracle(profile_manifest):
+    from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
+        qwen4_exp_qsa_sparse_attention_paged_bf16_h256_head_pair_rows_f32,
+    )
+
+    runner = _runner()
+    runner.block_size = 256
+    runner.config.attention_head_count = 24
+    runner.config.attention_kv_head_count = 2
+    runner.config.attention_key_length = 256
+    built = _build(profile_manifest, runner=runner)
+    entry = _entry(built, "qsa_rows_attention")
+    assert entry["identity"] == batch_manifest.function_identity(
+        qwen4_exp_qsa_sparse_attention_paged_bf16_h256_head_pair_rows_f32
+    )
+    assert entry["registered_keys"][0]["variant"] == "strict_h256_head_pair_rows_spans"
+    assert entry["oracle"]["identity"] == batch_manifest.function_identity(
+        qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32
+    )
+    assert _validate(built, profile_manifest)["valid"]
+    altered = copy.deepcopy(built)
+    altered["runtime_config"]["qsa_geometry"]["head_dim"] = 128
+    assert "direct_identity_mismatch:qsa_rows_attention" in _validate(
+        _rehash(altered), profile_manifest
+    )["reasons"]
+
+
 def test_manifest_binds_real_batch_calls(profile_manifest):
     built = _build(profile_manifest)
     result = _validate(built, profile_manifest)

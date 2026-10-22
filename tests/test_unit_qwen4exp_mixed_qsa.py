@@ -633,12 +633,14 @@ def test_dense_and_sparse_rows_share_a_wave_and_switch_by_depth(
     transition_fixture: Fixture, recorder: Recorder, monkeypatch
 ) -> None:
     built = transition_fixture
-    snapshots: list[list[int]] = []
+    snapshots: list[tuple[int, list[int]]] = []
     staged = batch_qsa.qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32
 
     def spy(*args, **kwargs):
-        rows = kwargs["rows"]
-        snapshots.append(built.scratch.selection.counts_host[:rows].tolist())
+        # Which counts buffer the wave reads, and what the batch-wide staging
+        # mirror holds while it does. A mixed wave stages host metadata; an
+        # all-sparse wave reads the index owner's own device buffer instead.
+        snapshots.append((args[4], built.scratch.selection.counts_host.tolist()))
         return staged(*args, **kwargs)
 
     monkeypatch.setattr(
@@ -649,11 +651,17 @@ def test_dense_and_sparse_rows_share_a_wave_and_switch_by_depth(
 
     # Wave 0 holds a dense root (position 6, so its selection is all 7 visible
     # positions) and a sparse root; both are attended by one rows dispatch, but
-    # only the sparse row is scored and selected.
+    # only the sparse row is scored and selected, so the wave stages host
+    # metadata into the batch-wide buffer.
     assert run.wave_rows == (2, 2, 1, 1)
-    assert snapshots[0] == [STRIDE, SELECT_COUNT]
-    # From wave 1 on, every row is past the bound and selects.
-    assert snapshots[1:] == [[SELECT_COUNT, SELECT_COUNT], [SELECT_COUNT], [SELECT_COUNT]]
+    wave0_mirror = snapshots[0][1]
+    assert snapshots[0][0] == built.scratch.selection.counts.ptr
+    assert wave0_mirror[:2] == [STRIDE, SELECT_COUNT]
+    # From wave 1 on, every row is past the bound and selects, so each wave hands
+    # the index owner's own counts buffer to the kernel and leaves the staging
+    # mirror exactly as wave 0 left it.
+    assert [ptr for ptr, _ in snapshots[1:]] == [built.index.selected_counts.ptr] * 3
+    assert [counts for _, counts in snapshots[1:]] == [wave0_mirror] * 3
     # One index-query projection per wave, sized by the whole wave: the mixer's
     # own rule, which is what the adapter reports rather than replaces.
     assert run.index_query_rows == (2, 2, 1, 1)

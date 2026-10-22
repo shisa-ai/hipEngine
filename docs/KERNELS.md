@@ -974,23 +974,24 @@ accounting; canonical A/B 72 trajectories exact, p4096 weighted TG+14.705%
 (arithmetic-mean-rate ratio+16.516%). Evidence:
 `2026-09-08-framework-qwen4exp-qsa-ordered-v2-kernels.json`.
 
-H256 QSA exposes kernel-only `strict_h256_head_pair_rows_spans`,
-page256 with even GQA ratio;two adjacent query heads share each K/V
+H256 QSA batch decode selects `strict_h256_head_pair_rows_spans`
+for page256 with an even GQA ratio, with `strict_rows_spans` as fallback.
+Two adjacent query heads share each K/V
 load but retain independent score/online-softmax state. Explicit
 `fma(acc,old_scale,score_scale*value)` preserves parent's contraction;
 initial alternative failed strict equality.23 tests pass including
 poisoned unused KV and parent CPU-reference chain. Synthetic2051-selected
 attention512/1024 rows2.544x/2.610x,30 pairs exact.
-VGPR40->72,no scratch/LDS,half head blocks. No runtime default.
+VGPR40->72,no scratch/LDS,half head blocks.
 Evidence: `2026-09-07-framework-qwen4exp-qsa-head-pair.json`.
-Default-off model admission via `HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR=1`
+Default-off private-runner prefill admission via `HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR=1`
 passes eight full-logit/state/KV cases at chunk1024,all four p4096
 categories included.24 calls per sparse p4096 arm,zero decode,dense
 short paths unchanged. Hq24/Hkv2 page256 parent only;both binders0.
 Admission: `2026-09-07-framework-qwen4exp-qsa-head-pair-state.json`.
 Staged full-model qualification preserves72 trajectories and improves
 p4096 PP3.560%,but TG drops6.526%;two long-request averages regress.
-Candidate retained default-off pending causal decode/phase investigation.
+The private-runner prefill candidate stays default-off pending causal decode/phase investigation.
 Model evidence: `2026-09-07-framework-qwen4exp-qsa-head-pair-model.json`.
 
 Raw-vector64x64 MMQ tested against current128x64 on Framework:
@@ -1452,8 +1453,8 @@ The Qwen4Exp `attention/qwen4_exp_qsa.{hip,py}` family registers a separate
 Eight coordinates per lane preserve the parent 256-element score tree;
 an explicit product register boundary prevents compiler contraction across
 the parent's rounding point. `strict_rows_spans` remains its fallback.
-Qwen4Exp production selects its qualified page256 sibling for sparse rows;
-strict retains the original rows owner.
+For private-runner prefill, Qwen4Exp production selects its page256 sibling
+for sparse rows; strict retains the original rows owner.
 Its separately registered `strict_h256_page256_wave_rows_spans` sibling
 specializes 256-token page addressing to remove runtime division/modulo;
 it rejects other page sizes and retains the generic H256 wave parent.

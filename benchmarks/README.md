@@ -177,22 +177,25 @@ replace the published performance rows.
 
 On Framework Desktop / Radeon 8060S (`gfx1151`), Qwen3.8-Flash-Next
 `UD-Q4_K_XL` with a `Q8_0` MTP sidecar, production profile and BF16 KV,
-MTP prompt-cache construction now omits unused query projections. The matched
-October 22 HTTP run uses one active request, fresh prompts, prefix cache off,
-64 greedy outputs and MTP budget 3. Each cell pools four categories and three
-measured repetitions after one warmup per case and arm.
+the October 22 HTTP comparison isolates batch-decode attention and selection
+changes. Both arms use one active request, fresh prompts, prefix cache off,
+64 greedy outputs, MTP budget 3 and up to 4096-token idle prefill chunks.
+Each cell is the median of four categories and three measured repetitions
+after one warmup per case and arm.
 
 | Fresh prompt | AR prefill before → now | MTP prefill before → now | AR decode before → now | MTP decode before → now |
 | ---: | ---: | ---: | ---: | ---: |
-| 1,024 | 1323.1 → 1322.0 | 1032.6 → 1102.2 (+6.75%) | 15.295 → 15.298 | 36.625 → 36.710 |
-| 4,096 | 1322.2 → 1321.4 | 1019.4 → 1095.4 (+7.45%) | 12.130 → 12.133 | 35.173 → 35.231 |
+| 1,024 | 1319.3 → 1314.3 | 1100.8 → 1091.2 | 15.315 → 17.082 (+11.54%) | 37.986 → 36.799 (−3.13%) |
+| 4,096 | 1654.4 → 1644.6 | 1325.5 → 1305.5 | 12.153 → 14.676 (+20.76%) | 37.440 → 36.783 (−1.75%) |
 
 All rates are tok/s. MTP prefill includes predictor priming; decode measures
-63 first-to-last-output transitions. All matched outputs and acceptance counts
-are unchanged. MTP prefill throughput is still about 17% below AR; this change
-reduces that penalty rather than removing it. These HTTP windows differ from
-the canonical and whole-request rates below.
-[Protocol, samples and correctness checks](results/2026-10-22-gfx1151-flashnext-prefill-k-only.json).
+63 first-to-last-output transitions, not whole-request throughput. All 208
+canonical and category/heldout outputs match their baselines. A counterbalanced
+old/new MTP rerun did not reproduce the table's slowdown: median paired change
+−0.001%, with all eight cases between −0.194% and +0.016%. No MTP gain is claimed.
+These are diagnostic timings: inherited strict-teacher numerical findings remain open,
+and this exact change does not establish a new numerical-quality verdict.
+[Protocol, samples and correctness checks](results/2026-10-22-gfx1151-flashnext-batch-decode.json).
 
 ## Qwen3.8 Flash Next current production rates
 

@@ -77,6 +77,7 @@ from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_gate_context_f32,
     qwen4_exp_qsa_norm_mrope_rows_f32,
     qwen4_exp_qsa_norm_rope_rows_f32,
+    qwen4_exp_qsa_sparse_attention_paged_bf16_h256_head_pair_rows_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32,
     qwen4_exp_qsa_split_norm_mrope_rows_f32,
     qwen4_exp_qsa_split_norm_rope_rows_f32,
@@ -444,9 +445,20 @@ def run_qwen4_exp_batch_qsa_mixed_token_mixer(
 
     Serial work, accepted as the current fallback and not hidden: the index
     append is one scatter per row, ``select_active`` is one pooled-key score and
-    one selection per sparse row, and the two metadata uploads stage host
-    selections. Every projection, the KV write, the attention, the gate, and the
-    output projection are single N-row dispatches; no stage loops the c1 mixer.
+    one selection per sparse row, and a mixed row set's metadata uploads stage
+    host selections. Every projection, the KV write, the attention, the gate, and
+    the output projection are single N-row dispatches; no stage loops the c1
+    mixer.
+
+    An **all-sparse** row set takes the device form instead. The sparse group is
+    then the whole row set, so the index owner's own ``selected_positions`` and
+    ``selected_counts`` already hold one selection per row in this step's row
+    order, at the owner's own ``output_stride``. Those device buffers go straight
+    to the attention kernel -- the same device-resident selection the c1 owner
+    hands its kernel -- and no selection metadata is copied to or from the host.
+    A mixed or dense-only row set keeps the host-staged path unchanged, because
+    only a sparse row has a device selection to reuse and the staging buffer is
+    what carries a dense row's all-visible selection.
 
     ``attention_state.prepare`` and ``index_state.prepare`` must already have
     admitted the same slot list in the same row order for the current positions.
@@ -766,35 +778,77 @@ def run_qwen4_exp_batch_qsa_attention(
                 query_bytes,
                 MemcpyKind.DEVICE_TO_DEVICE,
             )
-        index_state.prepare([slot_ids[row] for row in sparse_rows])
-        sparse_counts, sparse_positions = index_state.select_active(
-            selection.queries.ptr,
-            key_norm_weight_ptr=weights.index_k_norm_weight_ptr,
-            rotary_dim=index_rotary_dim,
-            theta=theta,
-            eps=eps,
-            stream=stream,
-        )
+        subset_slots = [slot_ids[row] for row in sparse_rows]
+        index_state.prepare(subset_slots)
+        if sparse_rows == tuple(range(count)):
+            # Every row is sparse, so the sparse group *is* the row set: the
+            # owner's own buffers already hold one selection per row in this
+            # step's row order, at the owner's own stride. Handing them to the
+            # attention kernel is what the c1 owner does, and it keeps the whole
+            # selection on device instead of staging it through host memory.
+            device_selection = index_state.select_active_device(
+                selection.queries.ptr,
+                key_norm_weight_ptr=weights.index_k_norm_weight_ptr,
+                rotary_dim=index_rotary_dim,
+                theta=theta,
+                eps=eps,
+                stream=stream,
+            )
+            if device_selection.slot_ids != tuple(subset_slots):
+                raise RuntimeError(
+                    "QSA device selection covers slots "
+                    f"{list(device_selection.slot_ids)} for the prepared sparse "
+                    f"group {subset_slots}; the selection cannot be attributed "
+                    "to these rows"
+                )
+        else:
+            device_selection = None
+            sparse_counts, sparse_positions = index_state.select_active(
+                selection.queries.ptr,
+                key_norm_weight_ptr=weights.index_k_norm_weight_ptr,
+                rotary_dim=index_rotary_dim,
+                theta=theta,
+                eps=eps,
+                stream=stream,
+            )
         index_state.prepare(slot_ids)
-    _stage_selection(
-        selection,
-        rows=count,
-        contexts=attention_state.context_host,
-        sparse_rows=sparse_rows,
-        sparse_counts=sparse_counts,
-        sparse_positions=sparse_positions,
-        runtime=active_runtime,
+    else:
+        device_selection = None
+    if device_selection is None:
+        _stage_selection(
+            selection,
+            rows=count,
+            contexts=attention_state.context_host,
+            sparse_rows=sparse_rows,
+            sparse_counts=sparse_counts,
+            sparse_positions=sparse_positions,
+            runtime=active_runtime,
+        )
+        selected_positions_ptr = selection.positions.ptr
+        selected_counts_ptr = selection.counts.ptr
+        selected_stride = selection.stride
+    else:
+        # ``stride`` is the index owner's, which is the stride its selection
+        # kernel wrote; the selection scratch only has to cover it.
+        selected_positions_ptr = device_selection.positions_ptr
+        selected_counts_ptr = device_selection.counts_ptr
+        selected_stride = device_selection.stride
+    attention_fn, _ = batch_qsa_attention_implementation(
+        head_dim=head_dim,
+        block_size=attention_state.block_size,
+        query_heads=query_heads,
+        kv_heads=kv_heads,
     )
-    qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32(
+    attention_fn(
         scratch.query.ptr,
         attention_state.key_cache.ptr,
         attention_state.value_cache.ptr,
-        selection.positions.ptr,
-        selection.counts.ptr,
+        selected_positions_ptr,
+        selected_counts_ptr,
         scratch.context.ptr,
         active.decode_spans,
         rows=count,
-        selected_stride=selection.stride,
+        selected_stride=selected_stride,
         block_size=attention_state.block_size,
         query_heads=query_heads,
         kv_heads=kv_heads,
@@ -858,6 +912,11 @@ def _stage_selection(
     every QSA layer after the first in one step. Sparse rows upload their own
     positions, and a row they overwrote is restored to the arange when it next
     runs dense.
+
+    This is the mixed and dense-only path. An all-sparse row set does not call it:
+    that step hands the index owner's device selection to the kernel directly, so
+    the staging mirrors keep whatever a previous staged step left in them and are
+    recomputed by the next call.
     """
 
     counts = selection.counts_host
@@ -1301,7 +1360,27 @@ def _is_finite_positive(value: object, name: str) -> bool:
     return math.isfinite(parsed) and parsed > 0.0
 
 
-def batch_qsa_call_table() -> dict[str, Callable[..., Any]]:
+def batch_qsa_attention_implementation(
+    *, head_dim: int = 0, block_size: int = 0,
+    query_heads: int = 0, kv_heads: int = 0,
+) -> tuple[Callable[..., Any], str]:
+    """Select an exact rows kernel and its existing registry variant by shape."""
+
+    if (
+        head_dim == 256 and block_size == 256
+        and query_heads > 0 and kv_heads > 0
+        and query_heads % (2 * kv_heads) == 0
+    ):
+        return (
+            qwen4_exp_qsa_sparse_attention_paged_bf16_h256_head_pair_rows_f32,
+            "strict_h256_head_pair_rows_spans",
+        )
+    return qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32, "strict_rows_spans"
+
+
+def batch_qsa_call_table(
+    *, attention_geometry: dict[str, int] | None = None,
+) -> dict[str, Callable[..., Any]]:
     """The exact direct callables this module uses for one mixed QSA step.
 
     The mixed path attends every row through the variable-selection rows
@@ -1315,6 +1394,8 @@ def batch_qsa_call_table() -> dict[str, Callable[..., Any]]:
         "qsa_split_norm_rope": qwen4_exp_qsa_split_norm_rope_rows_f32,
         "qsa_split_norm_mrope": qwen4_exp_qsa_split_norm_mrope_rows_f32,
         "qsa_paged_kv_write": qwen35_write_paged_kv_f32_batch_spans,
-        "qsa_rows_attention": qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32,
+        "qsa_rows_attention": batch_qsa_attention_implementation(
+            **(attention_geometry or {})
+        )[0],
         "qsa_gate_context": qwen4_exp_qsa_gate_context_f32,
     }

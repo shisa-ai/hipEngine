@@ -13,15 +13,22 @@ indexing/keying mistake that a CPU test can pin:
    slot's own window, so a neighbour's writes looked like corruption;
 4. the composition baseline was keyed by slot, but every single-row record
    carries slot 0, so the second prompt compared against the first prompt's
-   selections.
+   selections;
+5. the selection tap always read the batch-wide host staging mirror, which an
+   all-sparse step no longer fills: that step hands the index owner's own device
+   buffers to the attention kernel, so the tap recorded count 0 and an empty
+   selection for every row.
 
 These tests are CPU-only: no HIP runtime, no GPU, no model.
 """
 
 import numpy as np
+import pytest
 
+import scripts.qwen4exp_batch_sparse_threshold_check as threshold_check
 from scripts.qwen4exp_batch_sparse_threshold_check import (
     EAGER_PROFILE_ENV,
+    Taps,
     _apply_eager_profile,
     _baseline_for,
     _block_margin,
@@ -192,3 +199,190 @@ def test_the_near_tie_test_is_conservative_not_decisive():
     assert result["block_margin_c1"] == 8.0
     assert result["score_max_abs_delta"] == 90.0
     assert result["cut_is_near_tie"] is True
+
+
+# -- the selection tap must read the source the step actually consumed -------
+
+TAP_RATIO = 4
+TAP_BUDGET = 2
+TAP_STRIDE = 7  # index owner's output_stride for these fake rows
+TAP_DIM = 2
+TAP_HEADS = 1
+DEVICE_COUNTS = 0xD000
+DEVICE_POSITIONS = 0xD100
+RAW_KEYS = 0xE000
+POOLED_KEYS = 0xE100
+BLOCK_STARTS = 0xE200
+SCORES = 0xE300
+INDEX_QUERY = 0xE400
+STAGED_MARKER = -5
+
+
+class _Active:
+    def __init__(self, slots: tuple[int, ...]) -> None:
+        self.slots = slots
+        self.rows = len(slots)
+
+
+class _Buffer:
+    def __init__(self, ptr: int) -> None:
+        self.ptr = ptr
+
+
+class _FakeIndexState:
+    """The fields ``Taps._batch_records`` reads, with no device behind them."""
+
+    def __init__(self, *, slots, cursors, state_slots=8, slot_capacity_tokens=64) -> None:
+        self.active = _Active(tuple(slots))
+        self.cursor_host = dict(cursors)
+        self.state_slots = state_slots
+        self.slot_capacity_tokens = slot_capacity_tokens
+        self.compression_ratio = TAP_RATIO
+        self.block_budget = TAP_BUDGET
+        self.complete_blocks = 8
+        self.index_dim = TAP_DIM
+        self.index_heads = TAP_HEADS
+        self.block_size = 4
+        self.output_stride = TAP_STRIDE
+        self.raw_keys = _Buffer(RAW_KEYS)
+        self.pooled_keys = _Buffer(POOLED_KEYS)
+        self.block_starts = _Buffer(BLOCK_STARTS)
+        self.scores = _Buffer(SCORES)
+        self.attention = type(
+            "Attention",
+            (),
+            {
+                # One page table per slot, distinct so ownership stays visible.
+                # Blocks map into a slab of ``state_slots * slot_capacity_tokens``
+                # positions, which is what the raw-key read reshapes to.
+                "block_host": [
+                    np.arange(16, dtype=np.int64) + 16 * slot for slot in range(state_slots)
+                ]
+            },
+        )()
+
+    def partition_rows(self):
+        blocks = np.array([self.cursor_host[slot] for slot in self.active.slots]) // TAP_RATIO
+        sparse = tuple(int(row) for row in np.nonzero(blocks > TAP_BUDGET)[0])
+        dense = tuple(int(row) for row in np.nonzero(blocks <= TAP_BUDGET)[0])
+        return dense, sparse
+
+    def selected_counts_row_ptr(self, row: int) -> int:
+        return DEVICE_COUNTS + int(row) * np.dtype(np.int32).itemsize
+
+    def selected_positions_row_ptr(self, row: int) -> int:
+        return DEVICE_POSITIONS + int(row) * TAP_STRIDE * np.dtype(np.int64).itemsize
+
+
+class _Selection:
+    """The batch-wide staging mirror, holding deliberately different bytes."""
+
+    def __init__(self, counts, positions) -> None:
+        self.counts_host = np.asarray(counts, dtype=np.int32)
+        self.positions_host = np.asarray(positions, dtype=np.int64)
+
+
+def _device_slabs(rows: int, counts, positions) -> dict[int, np.ndarray]:
+    return {
+        DEVICE_COUNTS: np.asarray(counts, dtype=np.int32),
+        DEVICE_POSITIONS: np.asarray(positions, dtype=np.int64).reshape(rows, TAP_STRIDE),
+    }
+
+
+def _install_reader(monkeypatch, slabs: dict[int, np.ndarray]) -> list[tuple[int, int]]:
+    """Serve ``_read`` from fake slabs and record every (ptr, count) it served."""
+
+    reads: list[tuple[int, int]] = []
+
+    def fake_read(runtime, ptr, dtype, count):
+        reads.append((int(ptr), int(count)))
+        itemsize = np.dtype(dtype).itemsize
+        for base, values in slabs.items():
+            if base <= ptr < base + values.nbytes:
+                offset = (ptr - base) // itemsize
+                flat = values.reshape(-1)
+                return np.asarray(flat[offset : offset + int(count)], dtype=dtype)
+        return np.zeros(int(count), dtype=dtype)
+
+    monkeypatch.setattr(threshold_check, "_read", fake_read)
+    return reads
+
+
+def _tap_records(index_state, selection, rows: int) -> list[dict]:
+    taps = Taps()
+    taps.runtime = None
+    qsa = type("Qsa", (), {"index_query": _Buffer(INDEX_QUERY)})()
+    kwargs = {
+        "scratch": type("Scratch", (), {"qsa": qsa})(),
+        "index_state": index_state,
+        "selection": selection,
+        "rows": rows,
+    }
+    weights = type("Weights", (), {"layer_id": 3, "qsa_state_index": 1})()
+    return taps._batch_records(weights, kwargs)
+
+
+def _staged(rows: int, counts) -> _Selection:
+    return _Selection(
+        counts,
+        np.full((rows, TAP_STRIDE), STAGED_MARKER, dtype=np.int64),
+    )
+
+
+def test_all_sparse_records_read_the_index_owners_device_selection(monkeypatch) -> None:
+    """Every row sparse: the kernel consumed the device buffers, so read those."""
+
+    # Permuted slots, so the row order is not the slot order.
+    slots = (2, 0, 3)
+    index_state = _FakeIndexState(slots=slots, cursors={2: 40, 0: 44, 3: 48})
+    device_counts = [6, 5, 4]
+    device_positions = [
+        [100 * (row + 1) + column for column in range(TAP_STRIDE)] for row in range(3)
+    ]
+    reads = _install_reader(monkeypatch, _device_slabs(3, device_counts, device_positions))
+    # Staging holds nothing for this step; reading it would report count 0.
+    selection = _staged(3, [0, 0, 0])
+
+    records = _tap_records(index_state, selection, 3)
+
+    assert [record["slot"] for record in records] == [2, 0, 3]
+    assert [record["sparse"] for record in records] == [True, True, True]
+    assert [record["selected_count"] for record in records] == device_counts
+    for row, record in enumerate(records):
+        assert record["selected"].tolist() == device_positions[row][: device_counts[row]]
+        assert (DEVICE_COUNTS + row * 4, 1) in reads
+        assert (DEVICE_POSITIONS + row * TAP_STRIDE * 8, device_counts[row]) in reads
+
+
+def test_mixed_records_keep_reading_the_staged_host_metadata(monkeypatch) -> None:
+    """A mixed step stages every row, so the tap must not bypass the mirror."""
+
+    # Rows 1 and 3 are sparse; the sparse group is (1, 3), not the row set.
+    slots = (0, 2, 1, 3)
+    index_state = _FakeIndexState(slots=slots, cursors={0: 8, 2: 40, 1: 4, 3: 52})
+    assert index_state.partition_rows()[1] == (1, 3)
+    # Device buffers hold markers, so any device read is visible in the record.
+    reads = _install_reader(monkeypatch, _device_slabs(4, [0] * 4, [[-9] * TAP_STRIDE] * 4))
+    staged_counts = [8, 5, 4, 6]
+    selection = _staged(4, staged_counts)
+    for row in range(4):
+        selection.positions_host[row, : staged_counts[row]] = 100 * (row + 1)
+
+    records = _tap_records(index_state, selection, 4)
+
+    assert [record["sparse"] for record in records] == [False, True, False, True]
+    sparse = [record for record in records if record["sparse"]]
+    assert [record["selected_count"] for record in sparse] == [5, 6]
+    assert sparse[0]["selected"].tolist() == [200] * 5
+    assert sparse[1]["selected"].tolist() == [400] * 6
+    # No device selection read at all: the staging mirror is the consumed source.
+    assert not [
+        pointer
+        for pointer, _ in reads
+        if DEVICE_COUNTS <= pointer < DEVICE_COUNTS + 64
+        or DEVICE_POSITIONS <= pointer < DEVICE_POSITIONS + 4 * TAP_STRIDE * 8
+    ]
+    # The score slab still uses the sparse-subset row, which is not the mixer row:
+    # mixer row 1 owns subset row 0, mixer row 3 owns subset row 1.
+    assert (SCORES + 0 * 8 * 4, 10) in reads
+    assert (SCORES + 1 * 8 * 4, 13) in reads
