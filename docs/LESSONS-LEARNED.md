@@ -73,8 +73,12 @@ identity: do not rewrite a pinned version file in place during a session.
 If a kernel hangs with an idle GPU after source changes, inspect build identity
 and the affected cache entry before blaming the kernel. Rebuild only the
 identified family in a private cache where possible; do not delete another
-worker's shared cache. Profiling can cause a similar symptom by injecting its
-libraries into compiler probes; the ROCm-specific procedure is in
+worker's shared cache. A library with no code object for the running GPU can
+segfault inside `hipLaunchKernel` rather than return an error. Check the
+manifest's `target_arch` and `--offload-arch` before reading kernel source.
+Leave `target_arch` unset in a family builder: the build then follows
+`HIPENGINE_HIP_ARCH` or the local device. Profiling can cause a similar
+symptom by injecting its libraries into compiler probes; the ROCm-specific procedure is in
 [RDNA3-TUNING-GUIDE.md §4.9](RDNA3-TUNING-GUIDE.md#49-rocprofv3-toolchain-traps).
 
 

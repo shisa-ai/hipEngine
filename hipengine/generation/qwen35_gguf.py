@@ -353,6 +353,18 @@ _GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY = 4
 _GGUF_C8_Q5_RAW_SIDECAR_MIN_REQUESTS = 8
 
 
+def _dms_exact_budget_retained_rows(tokens: int, *, window: int, ratio: int) -> int:
+    """Rows per head an exact-budget DMS store keeps for ``tokens`` positions.
+
+    The newest ``window`` + 1 positions stay; older ones keep one in ``ratio``
+    (``build_dms_exact_budget_eviction``).
+    """
+
+    tokens = max(0, int(tokens))
+    eligible = max(0, tokens - int(window) - 1)
+    return tokens - eligible + -(-eligible // max(1, int(ratio)))
+
+
 def _gguf_serving_width_dense_flag_overrides(capacity_bound: int | None) -> dict[str, bool]:
     if capacity_bound is None or int(capacity_bound) >= _GGUF_C8_Q5_RAW_SIDECAR_MIN_REQUESTS:
         return {}
@@ -1459,6 +1471,9 @@ class Qwen35GGUFBringupGenerator:
     # Largest resident request width this generator can serve, when the owner
     # declared one before the weights loaded (``declare_serving_capacity``).
     _serving_capacity_bound: int | None = field(default=None, init=False, repr=False)
+    # Sized NextN hot-vocabulary choice, wrapped so ``(None,)`` (head dropped)
+    # differs from ``None`` (not decided yet).
+    _mtp_hot_vocab_choice: tuple[str | None] | None = field(default=None, init=False, repr=False)
     _prepared_max_sequence_length: int | None = field(default=None, init=False, repr=False)
     _prepared_kv_policy: FixedPagedKVPolicy | None = field(default=None, init=False, repr=False)
     _prepared_kv_scale_dtype: str = field(default="fp16", init=False, repr=False)
@@ -2264,9 +2279,7 @@ class Qwen35GGUFBringupGenerator:
                 self._shared_dense_mtp_nextn_weights(
                     shared_runner,
                     runtime=runtime,
-                    hot_vocab_path=_gguf_mtp_hot_vocab_setting(
-                        str(getattr(self, "execution_profile", "strict"))
-                    ),
+                    hot_vocab_path=self._mtp_hot_vocab_path(),
                 )
             except Exception as exc:  # noqa: BLE001 - MTP reports its own failure later
                 _LOGGER.warning("GGUF MTP draft weights unavailable for sizing: %s", exc)
@@ -2340,7 +2353,7 @@ class Qwen35GGUFBringupGenerator:
                 "transient_fixed_bytes": _gguf_auto_context_transient_fixed_bytes(),
             }
         try:
-            return estimate_qwen35_gguf_kv_capacity(
+            estimate = estimate_qwen35_gguf_kv_capacity(
                 cfg,
                 available_bytes=int(free_bytes),
                 requested_context_tokens=int(requested),
@@ -2374,6 +2387,89 @@ class Qwen35GGUFBringupGenerator:
         except Exception as exc:  # noqa: BLE001 - best-effort sizing probe
             _LOGGER.debug("GGUF automatic context sizing unavailable: %s", exc)
             return None
+        if (
+            mtp_sized
+            and hasattr(estimate, "allocatable_context_tokens")
+            and self._mtp_hot_vocab_choice_pending()
+        ):
+            fits = int(estimate.allocatable_context_tokens) >= int(requested)
+            if fits or not self._drop_mtp_hot_vocab(
+                shared_runner,
+                runtime=runtime,
+                context_tokens=int(estimate.allocatable_context_tokens),
+                target_tokens=int(requested),
+            ):
+                self._mtp_hot_vocab_choice = (self._mtp_hot_vocab_path(),)
+                return estimate
+            return self._resident_capacity_estimate(
+                shared_runner,
+                max_batch_size=max_batch_size,
+                defer_kv_allocation=defer_kv_allocation,
+                requested_context_tokens=requested_context_tokens,
+            )
+        return estimate
+
+    def _mtp_hot_vocab_path(self) -> str | None:
+        """Hot-vocabulary selection the NextN draft uses on this generator."""
+
+        choice = getattr(self, "_mtp_hot_vocab_choice", None)
+        if choice is not None:
+            return choice[0]
+        return _gguf_mtp_hot_vocab_setting(str(getattr(self, "execution_profile", "strict")))
+
+    def _mtp_hot_vocab_choice_pending(self) -> bool:
+        """The packaged default is undecided: no env choice and not yet sized."""
+
+        return (
+            getattr(self, "_mtp_hot_vocab_choice", None) is None
+            and os.environ.get(_GGUF_MTP_HOT_VOCAB_ENV) is None
+            and self._mtp_hot_vocab_path() == "auto"
+        )
+
+    def _drop_mtp_hot_vocab(
+        self,
+        runner: Any,
+        *,
+        runtime: Any,
+        context_tokens: int,
+        target_tokens: int,
+    ) -> bool:
+        """Trade the draft's hot-vocabulary head for context on a full GPU.
+
+        The head is a decode-speed cache (the draft can score the full output
+        head instead); when the context it would cost is needed, free it and
+        keep the draft block. Returns False when there is no head to free.
+        """
+
+        self._ensure_shared_pools()
+        key = (int(id(runtime)), "auto")
+        with self._shared_mtp_draft_pool_lock:
+            weights = self._shared_mtp_nextn_weights.get(key)
+            if weights is None or getattr(weights, "hot_vocab", None) is None:
+                return False
+            if any(pool_key[-1] == "auto" for pool_key in self._shared_mtp_draft_pool):
+                # A provider already borrows the head; keep it.
+                return False
+            hot_vocab = weights.hot_vocab
+            freed = int(
+                getattr(getattr(hot_vocab.lm_head.allocation("tiles"), "buffer", None), "nbytes", 0)
+                or 0
+            )
+            hot_vocab.free(runtime=runtime)
+            del self._shared_mtp_nextn_weights[key]
+            self._shared_mtp_nextn_weights[(int(id(runtime)), None)] = dataclasses.replace(
+                weights, hot_vocab=None
+            )
+        self._mtp_hot_vocab_choice = (None,)
+        _LOGGER.info(
+            "MTP draft vocabulary cache off: the %d-token context is below the "
+            "%d-token target, so its %.2f GiB goes to context "
+            "(HIPENGINE_GGUF_MTP_HOT_VOCAB=auto keeps it)",
+            int(context_tokens),
+            int(target_tokens),
+            freed / 1024**3,
+        )
+        return True
 
     def _dms_layer_outer_capacity_terms(self, runner, terms, *, mtp_sized):
         """Price compact serving, including the uncompressed decode allowance.
@@ -2401,6 +2497,7 @@ class Qwen35GGUFBringupGenerator:
                      or self.speculative_candidate_budget_default()) if mtp_sized else 0
         probe = object.__new__(Qwen35GGUFResidentSession)
         probe.__dict__.update(runner=runner, prefill_config=None, prefill_chunk_size=0)
+        retention = self._dms_exact_budget_retention()
 
         def workspace(positions):
             n = int(positions)
@@ -2409,9 +2506,16 @@ class Qwen35GGUFBringupGenerator:
                 plan_mode=None, dms_prefill_mode="layer_outer",
                 geometry_plane_count=_gguf_prefill_hidden_buffer_count(runner, rows=rows),
             )
-            # Compact slots include all possible output rows plus the serving
-            # verifier's extra allowance. Positions/eviction/scales are payload.
-            per_head = n + max(1, budget) + 1
+            # Compact slots hold the context's retained rows plus the serving
+            # verifier's extra allowance; outputs are clamped to fit that store
+            # (``scheduler_max_new_tokens_for_prompt``). Without an exact-budget
+            # bound every position may be retained. Positions/eviction/scales
+            # are payload.
+            retained = (
+                n if retention is None
+                else _dms_exact_budget_retained_rows(n, window=retention[0], ratio=retention[1])
+            )
+            per_head = retained + max(1, budget) + 1
             compact = layers * (heads * per_head * slot_bytes + 12 * heads)
             pack_rows = min(n, 4096)
             staging = (pack_rows + 1) * heads * (4 * dim + 1) + 12 + 16 * heads + 8 * queries * dim
@@ -2442,6 +2546,46 @@ class Qwen35GGUFBringupGenerator:
                     None if os.environ.get(_GGUF_AUTO_CONTEXT_TRANSIENT_KIB_ENV)
                     else lambda positions: 0
                 )}
+
+    def _dms_exact_budget_retention(self) -> tuple[int, int] | None:
+        """``(window, ratio)`` when the DMS sidecar bounds retention exactly."""
+
+        cached = self.__dict__.get("_dms_retention_cache")
+        if cached is not None:
+            return cached[0]
+        retention = None
+        path = getattr(self, "dms_metadata_path", None)
+        if path is not None:
+            try:
+                from hipengine.kvcache.dms import load_dms_retrofit_config
+
+                config = load_dms_retrofit_config(self.model_path, metadata_path=path)
+                if str(config.prefill_selection_mode) == "exact_budget":
+                    retention = (int(config.window_size), int(config.target_compression_ratio))
+            except Exception as exc:  # noqa: BLE001 - full retention is the safe bound
+                _LOGGER.warning("DMS retention bound unavailable (%s); sizing full retention", exc)
+        self.__dict__["_dms_retention_cache"] = (retention,)
+        return retention
+
+    def dms_output_token_cap(self, prompt_tokens: int) -> int | None:
+        """Most output tokens a DMS request with this prompt can keep.
+
+        The compact store is sized for the served context's retained rows, so
+        a short prompt cannot also retain a near-context-length output.
+        ``None`` when retention is unbounded or the context is unresolved.
+        """
+
+        retention = self._dms_exact_budget_retention()
+        context = (
+            getattr(self, "_prepared_max_sequence_length", None)
+            or getattr(self, "_auto_resolved_max_sequence_length", None)
+        )
+        if retention is None or not context:
+            return None
+        window, ratio = retention
+        store = _dms_exact_budget_retained_rows(int(context), window=window, ratio=ratio)
+        held = _dms_exact_budget_retained_rows(int(prompt_tokens), window=window, ratio=ratio)
+        return max(1, store - held)
 
     def kv_pool_execution_reserve_bytes(
         self,
@@ -2705,9 +2849,15 @@ class Qwen35GGUFBringupGenerator:
             return (
                 packed_scratch(max_positions) + snapshot_bytes
                 + checkpoint_bytes(max_positions)
-                + (_gguf_packed_state_linear_bytes(shared_runner, slot_count=capacity)
-                   if server_pool else 0)
             )
+
+        # The packed verify linear state is charged against the KV pool's own
+        # budget (``reserve_resident_bytes``), so it is priced here but kept
+        # out of the pool's execution reserve, which would charge it twice.
+        packed_linear_state = (
+            _gguf_packed_state_linear_bytes(shared_runner, slot_count=capacity)
+            if server_pool else 0
+        )
 
         def prefill_workspace(max_positions: int) -> int:
             total = _gguf_prefill_scratch_nbytes(
@@ -2723,7 +2873,7 @@ class Qwen35GGUFBringupGenerator:
                 if _int8_layer_outer_hidden_alias_enabled():
                     hidden_bytes = int(max_positions) * int(shared_runner.hidden_size) * 2
                 total += hidden_bytes + int(plan.layer_outer_token_bytes)
-            return total + post_pool_workspace(max_positions)
+            return total + post_pool_workspace(max_positions) + packed_linear_state
 
         def prefill_transient(max_positions: int) -> int:
             # BF16 prefill writes request KV directly; its hidden planes are
@@ -3285,9 +3435,7 @@ class Qwen35GGUFBringupGenerator:
         )
 
         self._ensure_shared_pools()
-        hot_vocab_path = _gguf_mtp_hot_vocab_setting(
-            str(getattr(self, "execution_profile", "strict"))
-        )
+        hot_vocab_path = self._mtp_hot_vocab_path()
         key = (
             int(id(target.runtime)),
             "dense_nextn",
@@ -8938,6 +9086,17 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         # transition so the scheduler can publish an empty completed output.
         return 1
 
+    def scheduler_max_new_tokens_for_prompt(
+        self, request: GenerationRequest, prompt_tokens: Sequence[int]
+    ) -> int:
+        """Clamp a DMS request's output to what its compact store can hold."""
+
+        limit = self.scheduler_max_new_tokens(request)
+        if getattr(self.generator, "dms_metadata_path", None) is None:
+            return limit
+        cap = self.generator.dms_output_token_cap(len(prompt_tokens))
+        return limit if cap is None else min(limit, cap)
+
     def _resolved_mtp2_adapter(self):
         if self._mtp2_adapter is not None:
             return self._mtp2_adapter
@@ -9383,11 +9542,19 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                 0.0,
                 float(getattr(source_prompt, "tokenize_ms", 0.0)),
             )
+            # A clamped DMS output limit is the row's own max_tokens, so its
+            # finish reports "length" when the store bound ends it.
+            row_limit = self.scheduler_max_new_tokens_for_prompt(request, prompt_ids)
+            row_request = (
+                replace(request, max_tokens=row_limit)
+                if 0 < row_limit < int(request.max_tokens)
+                else request
+            )
             self._rows[request_id] = _GGUFResidentLoopRow(
                 request_id=request_id,
                 batch_id=batch_id,
                 row_index=row_index,
-                request=request,
+                request=row_request,
                 prompt_ids=prompt_ids,
                 native_greedy=native_greedy,
                 native_sampled=native_sampled,
@@ -10584,6 +10751,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         raise_if_generation_deadline_expired(row.request)
         row.lease = row.lease or self._acquire_lease()
         session = row.lease.session
+        # ``register_batch`` already clamped the row's max_tokens to the store.
         session.dms_max_new_tokens = max(1, int(row.request.max_tokens)) + max(1, row.mtp2_candidate_budget) + 1
         if row.native_sampled:
             self._prepare_sampled_prefill(row)

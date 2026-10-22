@@ -1,0 +1,100 @@
+{
+ "schema_version": 1,
+ "purpose": "RX 7900 XTX automatic contexts after the DMS output clamp, the memory-bound MTP draft vocabulary drop and the pool reserve fix; floors for tests/test_slow_qwen38_24gb_serving_capacity.py. Not a throughput or task-quality benchmark.",
+ "hardware": {
+  "host": "epyc",
+  "gpu": "Radeon RX 7900 XTX (24 GB)",
+  "physical_gpu_index": 1,
+  "backend": "hip_gfx1100"
+ },
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "quant": "gguf_q4_k_m",
+ "execution_profile": "production",
+ "source_commit": "07cdd7b22766562101254d573b3f2ea45a48374d",
+ "command": "HIP_VISIBLE_DEVICES=1 uv run pytest tests/test_slow_qwen38_24gb_serving_capacity.py -v -s",
+ "request": "Each case starts `hipengine serve --model <model> <serve_arguments>`, reads the effective context from /v1/models, sends one greedy chat request at 97% of it (max_tokens 16), then four ~2K-token requests at once where capacity is automatic, and checks /ready.",
+ "provenance_note": "The six cases ran in three passes on frozen trees as fixes landed: MTP-off cases before the draft-head size fix (unaffected), INT8+MTP/DMS after it, BF16+MTP after the pool reserve fix. The reserve fix only raises the pool budget and leaves context sizing unchanged. bf16_mtp_off_c1 passed its depth check; its served prompt count was not captured.",
+ "previous_artifact": "benchmarks/results/2026-10-21-xtx-24gb-context-recovery.json",
+ "rows": [
+  {
+   "name": "bf16_mtp_default",
+   "serve_arguments": "",
+   "slots": 2,
+   "automatic_context": 35072,
+   "prompt_tokens_served": 34023,
+   "concurrent_short_requests": {
+    "count": 4,
+    "ok": 4
+   },
+   "floor": 34000
+  },
+  {
+   "name": "bf16_mtp_c1",
+   "serve_arguments": "--max-active-requests 1",
+   "slots": 1,
+   "automatic_context": 61440,
+   "prompt_tokens_served": 59603,
+   "floor": 59000,
+   "previous_automatic_context": 53760
+  },
+  {
+   "name": "int8_mtp",
+   "serve_arguments": "--kv-storage int8_per_token_head",
+   "slots": 1,
+   "automatic_context": 71680,
+   "prompt_tokens_served": 69533,
+   "concurrent_short_requests": {
+    "count": 4,
+    "ok": 4
+   },
+   "floor": 69000,
+   "previous_automatic_context": 62720
+  },
+  {
+   "name": "bf16_mtp_off_c1",
+   "serve_arguments": "--speculative-mtp-serving off --max-active-requests 1",
+   "slots": 1,
+   "automatic_context": 83456,
+   "prompt_tokens_served": null,
+   "floor": 80000,
+   "previous_automatic_context": 83456
+  },
+  {
+   "name": "int8_mtp_off_c1",
+   "serve_arguments": "--kv-storage int8_per_token_head --speculative-mtp-serving off --max-active-requests 1",
+   "slots": 1,
+   "automatic_context": 98304,
+   "prompt_tokens_served": 95363,
+   "floor": 95000,
+   "previous_automatic_context": 98304
+  },
+  {
+   "name": "dms_int8_mtp",
+   "serve_arguments": "--kv-storage int8_per_token_head --dms-metadata-path <W8192 DMS sidecar>",
+   "slots": 1,
+   "automatic_context": 262144,
+   "prompt_tokens_served": 254283,
+   "floor": 250000,
+   "previous_automatic_context": 156672,
+   "startup_output_limit": "135,169 tokens after a short prompt, 65,536 after 131,072"
+  },
+  {
+   "name": "dms_int8_mtp_off",
+   "serve_arguments": "--kv-storage int8_per_token_head --dms-metadata-path <W8192 DMS sidecar> --speculative-mtp-serving off",
+   "slots": 1,
+   "automatic_context": 262144,
+   "prompt_tokens_served": 254123,
+   "lowest_device_free_gib": 3.369,
+   "note": "measured after the floors were set; not a test case"
+  }
+ ],
+ "dms_clamp_check": {
+  "host": "epyc GPU0 Radeon Pro W7900",
+  "context": 16384,
+  "prompt_tokens": 13993,
+  "requested_max_tokens": 2000,
+  "completion_tokens": 1196,
+  "finish_reason": "length"
+ },
+ "limitations": "Automatic contexts are validated settings, not maximum searches; one synthetic full-depth request per case. Two-slot automatic capacity on BF16+MTP is the existing (4, 2, 1)-reaching-32K policy."
+}

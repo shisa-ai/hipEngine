@@ -557,3 +557,49 @@ def test_dms_sizing_loads_mtp_draft_before_reading_free_memory(monkeypatch, dms)
         is None
     )
     assert calls == (["draft", "free"] if dms else ["free"])
+
+
+@pytest.mark.parametrize("positions", [4096, 131072, 229376])
+def test_dms_exact_budget_store_is_priced_by_retained_rows(monkeypatch, positions):
+    """Outputs are clamped to the store, so it holds the context's retained rows."""
+    monkeypatch.setattr(gguf_runner, "_gguf_prefill_scratch_nbytes", lambda *a, **kw: 0)
+    monkeypatch.setattr(gguf_runner, "_try_allocate_gguf_aotriton_head_major_kv_scratch", lambda **kw: None)
+    generator = _route_generator(monkeypatch)
+    generator._prepared_kv_signature = ("int8_per_token_head", "uniform", "fp32", "per_token_head")
+    runner = _dense_27b_runner()
+    cfg = runner.weights.config
+    seed = {"speculative_bytes_resolver": lambda n: 0}
+    generator.__dict__["_dms_retention_cache"] = (None,)
+    full = generator._dms_layer_outer_capacity_terms(runner, seed, mtp_sized=True)
+    generator.__dict__["_dms_retention_cache"] = ((8192, 2),)
+    bounded = generator._dms_layer_outer_capacity_terms(runner, seed, mtp_sized=True)
+    retained = qwen35_gguf._dms_exact_budget_retained_rows(positions, window=8192, ratio=2)
+    layers = sum(kind == "full_attention" for kind in cfg.layer_types)
+    saved = (full["prefill_workspace_bytes_resolver"](positions)
+             - bounded["prefill_workspace_bytes_resolver"](positions))
+    # The decode split workspace also scales with the per-head slot count.
+    split_rows = lambda per_head: (per_head + 255) // 256
+    split = 4 * cfg.head_count * (split_rows(positions + 4) - split_rows(retained + 4)) * (cfg.key_length + 2)
+    assert saved == layers * cfg.head_count_kv * (positions - retained) * (2 * cfg.key_length + 13) + split
+
+
+@pytest.mark.parametrize("capacity", [2, 4])
+def test_packed_linear_state_is_not_reserved_twice(monkeypatch, capacity):
+    """The pool charges the packed verify linear state to its own budget.
+
+    It belongs in the context sizing, but the pool's execution reserve (the
+    memory kept outside the pool) must not hold it a second time: on a 24 GB
+    card the double charge left a two-slot pool unable to admit one request
+    at its advertised context.
+    """
+    sentinel = 10**12
+    real = gguf_runner._gguf_packed_state_linear_bytes
+
+    def priced(runner, *, slot_count):
+        return sentinel if int(slot_count) == capacity else real(runner, slot_count=slot_count)
+
+    # Capacity 1 shares ``slot_count=1`` with the prefix-snapshot price.
+    monkeypatch.setattr(gguf_runner, "_gguf_packed_state_linear_bytes", priced)
+    terms = _route_terms(monkeypatch, storage="bf16", capacity=capacity, mtp=True)
+    assert terms["prefill_workspace_bytes_resolver"](32_768) >= sentinel
+    assert terms["_packed_scratch_bytes_resolver"](32_768) < sentinel

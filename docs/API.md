@@ -253,6 +253,13 @@ to `hipengine.LLM`. The metadata selects the retention policy; `--kv-storage`
 payloads. Compact INT8 uses FP32 per-token/head scales. Dense INT8 policy
 records do not select the compact codec.
 
+With an exact-budget sidecar, the compact store is sized for the rows the
+policy keeps at the served context, not for every token. A request's
+`max_tokens` is clamped to the store left after its retained prompt; a clamped
+reply ends with `finish_reason: "length"`. The startup banner prints the output
+limit after a short prompt and after a long one. Threshold-mode sidecars keep
+full-retention sizing and no clamp.
+
 DMS defaults to one resident request; wider residency fails because packed
 ownership is not implemented. The default `radix` cache supports complete-prompt
 hits, extensions, and branches that share a cached block boundary, for both

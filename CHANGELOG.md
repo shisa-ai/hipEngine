@@ -6,6 +6,72 @@ This changelog is for package/API releases. Performance rollup history remains i
 [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md), with detailed benchmark
 evidence under [`benchmarks/results/`](benchmarks/results/).
 
+## v0.8.2 - 2026-10-22
+
+Patch release that roughly doubles usable GGUF context on 24 GB GPUs, sizes
+compact DMS for the rows it keeps, and adds prefix reuse and prefill time
+sharing to Qwen3.8 Flash-Next serving. APIs remain alpha; support depends on
+the model, backend, storage layout, and request shape.
+
+### Changed
+
+- **More context on 24 GB GPUs.** Qwen3.8-27B Q4_K_M single-request automatic
+  context on an RX 7900 XTX:
+
+  | KV configuration | v0.8.1 | v0.8.2 |
+  | --- | ---: | ---: |
+  | BF16 KV, MTP on | 28,160 | 61,440 |
+  | BF16 KV, MTP off | 55,808 | 83,456 |
+  | INT8 KV, MTP on | 17,664 | 71,680 |
+  | INT8 KV, MTP off | 46,336 | 98,304 |
+  | DMS INT8, MTP on | 110,592 | 262,144 |
+
+  Each context served a prompt at about 97% depth. With automatic request
+  slots, a BF16 + MTP server now picks two slots at 35,072 tokens; pass
+  `--max-active-requests 1` for the long single-request context. The savings
+  come from:
+  - INT8 prefill staying on the layer-outer route, with one-plane resumable
+    checkpoints and none at one request slot.
+  - The eight-request Q5 MMQ sidecar (about 1 GiB) loading only when the
+    server can reach eight requests.
+  - The shared Q4_K token table mapped from host memory
+    (`HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=0` keeps it on the device).
+  - The MTP draft's hot-vocabulary cache (0.5 GiB) given back to context
+    when the context would otherwise fall short of the model maximum. Decode
+    is about 2% slower without it; the startup log names the choice, and an
+    explicit `HIPENGINE_GGUF_MTP_HOT_VOCAB` is always kept.
+- **Compact DMS sized for retained rows.** Exact-budget DMS sizes its store
+  for the rows the policy keeps at the served context. `max_tokens` is
+  clamped to the store left after the retained prompt, a clamped reply ends
+  with `finish_reason: "length"`, and the startup banner prints the output
+  limit. See [DMS sidecars](docs/API.md#run).
+- **Flash-Next prefix reuse.** With the default `--prefix-cache radix`,
+  Flash-Next restores KV, recurrent, and MTP draft state from device
+  checkpoints and prefills only the new suffix. On gfx1151, a follow-up to a
+  24.8K-token prompt reached its first token in 0.68 s instead of 59.4 s.
+- **Flash-Next prefill time sharing.** While decode is due, long prefills run
+  in bounded chunks and yield at completed-layer boundaries, which lowers
+  decode inter-token tail latency for peers of a long prompt.
+
+### Fixed
+
+- A two-slot GGUF server no longer refuses a near-full-context prompt because
+  the KV pool charged the packed verification state twice.
+- DMS startup banners name the resolved context instead of "unknown", and
+  capacity warnings suggest INT8 KV only to servers not already using it.
+- Streamed Flash-Next replies report `cached_tokens` and prefix-cache
+  diagnostics.
+- The strict Q4 route rebuilds the Q8_0 down-projection tile map instead of
+  passing an invalid row total to the guarded Q8_0 owner.
+
+### Known Limitations
+
+- Compact-DMS serving remains single-request. Automatic context choices
+  include a safety margin and are not measured maximum-capacity boundaries.
+- Shared MTP and AR target execution for Flash-Next is opt-in
+  (`HIPENGINE_QWEN4_EXP_SHARED_MTP_TARGET=1`) because it measures slower than
+  separate execution. Other limitations from v0.8.1 remain unchanged.
+
 ## v0.8.1 - 2026-10-21
 
 Patch release fixing GGUF serving startup and memory sizing on small GPUs,

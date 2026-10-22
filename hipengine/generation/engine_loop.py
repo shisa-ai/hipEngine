@@ -856,7 +856,7 @@ class SubmitPollTextGenerator:
             if tokenize_started is None
             else max(0.0, (time.perf_counter() - tokenize_started) * 1_000.0)
         )
-        max_new_tokens = int(self._runner.scheduler_max_new_tokens(request))
+        max_new_tokens = _runner_max_new_tokens(self._runner, request, prompt_row)
         desired_depth = getattr(
             self._runner,
             "speculative_desired_candidate_count",
@@ -1056,12 +1056,16 @@ class SubmitPollTextGenerator:
                 else max(0.0, (time.perf_counter() - tokenize_started) * 1_000.0)
             )
         prompt_rows = tuple(prompt_rows_list)
-        max_new_tokens = int(self._runner.scheduler_max_new_tokens(normalized))
+        row_limits = tuple(
+            _runner_max_new_tokens(self._runner, normalized, prompt_row)
+            for prompt_row in prompt_rows
+        )
+        max_new_tokens = max(row_limits)
         request_ids: list[int] = []
         try:
-            for prompt_row in prompt_rows:
+            for prompt_row, row_limit in zip(prompt_rows, row_limits, strict=True):
                 request_ids.append(
-                    self._loop.submit(prompt_row, max_new_tokens=max_new_tokens)
+                    self._loop.submit(prompt_row, max_new_tokens=row_limit)
                 )
             # Native resident scheduling owns row deadlines/cancellation. Keep
             # the original request on the submission, but prevent one row's
@@ -1875,6 +1879,19 @@ def _events_advance_submission_tick(
         not owned.isdisjoint(int(request_id) for request_id in event.request_ids)
         for event in events
     )
+
+
+def _runner_max_new_tokens(runner: Any, request: Any, prompt_row: Sequence[int]) -> int:
+    """Output limit for one prompt row; a runner may bound it by the prompt.
+
+    ``scheduler_max_new_tokens_for_prompt`` lets an owner whose KV store is
+    sized for a compressed prompt clamp the output it can hold.
+    """
+
+    per_prompt = getattr(runner, "scheduler_max_new_tokens_for_prompt", None)
+    if callable(per_prompt):
+        return int(per_prompt(request, tuple(prompt_row)))
+    return int(runner.scheduler_max_new_tokens(request))
 
 
 def _submit_poll_max_ticks(

@@ -640,11 +640,11 @@ on RX 7900 XTX, with `--max-active-requests 1`. Add the
 for long context. Omit `--max-context-tokens` to let the server calculate the
 context from available GPU memory.
 
-| KV configuration | Auto context, MTP on | Auto context, MTP off | Manual context, MTP on |
-| --- | ---: | ---: | ---: |
-| BF16 KV | 28,160 | 55,808 | — |
-| INT8 KV | 17,664 | 46,336 | — |
-| DMS INT8 | 110,592 | — | 131,072 |
+| KV configuration | Auto context, MTP on | Auto context, MTP off |
+| --- | ---: | ---: |
+| BF16 KV | 61,440 | 83,456 |
+| INT8 KV | 71,680 | 98,304 |
+| DMS INT8 | 262,144 | 262,144 |
 
 ### Prefix caching
 

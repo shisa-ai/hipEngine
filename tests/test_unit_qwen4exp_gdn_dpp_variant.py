@@ -11,8 +11,24 @@ def test_dpp_builder_uses_source_hashed_compile_flag_and_separate_family(monkeyp
     assert call["sources"] == [gdn._SOURCE]
     assert call["family"] == "qwen4_exp_gdn_dpp"
     assert call["extra_flags"] == ("-DHIPENGINE_QWEN4_GDN_DPP=1",)
-    assert call["target_arch"] == "gfx1151"
     assert call["require_cached"] is True
+
+
+def test_dpp_builders_compile_for_the_running_device(monkeypatch):
+    """gfx1100 batch decode loads the multi-column library too.
+
+    A library compiled only for gfx1151 has no code for gfx1100, and HIP
+    segfaults on the launch instead of returning an error. The build target
+    must come from ``HIPENGINE_HIP_ARCH`` or the local device, like every other
+    HIP family.
+    """
+
+    calls = []
+    monkeypatch.setattr(gdn, "build_hip", lambda **kw: calls.append(kw) or "library")
+    gdn.build_qwen4_exp_gdn_dpp()
+    gdn.build_qwen4_exp_gdn_dpp(multi_column=True)
+    assert [call["family"] for call in calls] == ["qwen4_exp_gdn_dpp", "qwen4_exp_gdn_multi"]
+    assert all(call.get("target_arch") is None for call in calls)
 
 
 def test_dpp_wrapper_preserves_explicit_parent_library_boundary(monkeypatch):
