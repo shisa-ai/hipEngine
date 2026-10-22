@@ -494,6 +494,22 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert not _qwen4_exp_production_moe_prefill_enabled(weight(47), rows=256)
 
 
+@pytest.mark.parametrize("profile", [ExecutionProfile.STRICT, ExecutionProfile.PRODUCTION, ExecutionProfile.FAST])
+def test_ud_q4_decode_binding_matches_the_manifest_after_numerical_repair(profile):
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    resolved = _resolve(profile, quant="gguf_ud_q4_k_xl")
+    resolved.construct_generator(lambda: SimpleNamespace())
+    decode = _selection_map(resolved)[("linear", "decode_c1_calibrated_q4_dp4a_43_layers")]
+    assert decode["selected_variant"] == "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "0"
+    if profile != ExecutionProfile.STRICT:
+        # Repair the decode operation, not the complete production composition.
+        assert os.environ["HIPENGINE_QWEN4_EXP_ROUTED_F16"] == "1"
+        assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"] == "1"
+        assert os.environ["HIPENGINE_QWEN4_EXP_QSA_WMMA"] == "1"
+
+
 def test_qwen4_exp_profiles_cover_both_registered_quant_names() -> None:
     register_qwen4_exp_gfx1151_profiles()
     for quant in QWEN4_EXP_QUANTS:

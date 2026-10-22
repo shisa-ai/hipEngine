@@ -3546,10 +3546,28 @@ these quants than the shared DS4 plane, which would likely recover the mean.
   (`scripts/execution_profile_q8_wmma_prefill_layers_gate.py`). Give the folded
   request-local surface an explicit getter so callers stop depending on binder
   ordering.
-- `HIPENGINE_QWEN4_EXP_Q4_DP4A64{,_LAYERS}` remains an internal named-profile
-  bridge for calibrated decode layers `0,2,5,6,8,9,10,11,13–47`. Remove the
-  process-global transport with the MMQ bridges once Qwen4Exp profile state is
-  request-local; retain logical128/t64 strict Q4 fallback.
+- `HIPENGINE_QWEN4_EXP_Q4_DP4A64{,_LAYERS}` is the internal Q4 decode
+  bridge. UD-Q4_K_XL production and fast bind `Q4_DP4A64=0`: the one-plane
+  route caused the isolated long-context decode discrepancy, and the manifest
+  already declared the strict logical128/t64 owner. Other production routes
+  stay enabled. The historical layer list remains available for diagnostics.
+  Evidence: `benchmarks/results/20261022-qwen38fn-q4-decode-repair.json`.
+  Remove the process-global transport when profile state becomes request-local;
+  keep the registered strict fallback.
+
+  To reconsider DP4A, repair the operation and run the existing explicit
+  candidate, which pins the logical128 consumer rather than allowing the warp
+  override. Set `MODEL_ROOT` to the model directory and `LONG_PROMPTS` to the
+  long numerical JSONL fixture including the 12,287-token failure and controls:
+
+  ```bash
+  python3 scripts/qwen4exp_layer2_profile_gate.py --model-root "$MODEL_ROOT" --candidate decode_dp4a_linear --decode-steps 32 --prefill-chunk-size 1024 --output /tmp/q4-decode-short.json
+  python3 scripts/qwen4exp_long_context_gate.py --model-root "$MODEL_ROOT" --candidate decode_dp4a_linear --numeric-prompts "$LONG_PROMPTS" --max-sequence-length 20000 --prefill-chunk-size 1024 --candidate-repeats 3 --output /tmp/q4-decode-long.json
+  ```
+
+  Both numerical gates and the campaign's complete task/serving gates must pass
+  before restoring this arithmetic default. A two-trajectory screen does not
+  clear the failure.
 
 ## 2026-08-29 Qwen4Exp per-layer MoE graphs
 

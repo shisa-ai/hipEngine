@@ -22,7 +22,7 @@ def test_default_restores_guarded_q8_and_qualified_qsa_paths(monkeypatch):
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR"] == "quad"
     for flag in ("Q8_MMQ_PREFILL", "QSA_FLASH_PREFILL", "GR_IU8", "GR_IU8_DOWN"):
         assert os.environ["HIPENGINE_QWEN4_EXP_" + flag] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "1"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2"] == "1"
     selected = {(r["layer"], r["scope"]): r["selected_variant"]

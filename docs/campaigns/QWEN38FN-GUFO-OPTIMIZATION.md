@@ -247,6 +247,14 @@ mean/max limits after disabling dense-wide on top of other recovery overrides.
 Neither successful batching nor agreement between mixed and batch logits
 resolves those failures.
 
+**October 22 checkpoint:** the Q4 decode binder now selects the strict owner
+already declared in its manifest, while other production routes stay on.
+Public generation confirms that selection; three short-suite repeats and state
+fingerprints agree. The complete short composition still fails its top-1 floor,
+so this packet remains open. A two-plane correction was tested and set aside
+without a production promotion. See the
+[scoped repair evidence](../../benchmarks/results/20261022-qwen38fn-q4-decode-repair.json).
+
 1. Reproduce current c1 and serving controls with identical input tokens,
    chunking and forced continuation. Keep same-chunk strict controls separate
    from chunk-boundary changes. Retain effective, finite BF16-rounding controls.

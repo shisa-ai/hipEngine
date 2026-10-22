@@ -35,8 +35,9 @@ def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
     for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS:
         assert os.environ["HIPENGINE_QWEN4_EXP_" + flag] == expected.get(flag, "0")
     for flag in ("Q4_IU8_EXACT", "Q51_IU8_EXACT", "GDN_REGISTER_PREFILL",
-                 "GDN_WAVE_NORM", "FORKB_GROUPED_DOWN", "Q4_DP4A64"):
+                 "GDN_WAVE_NORM", "FORKB_GROUPED_DOWN"):
         assert os.environ["HIPENGINE_QWEN4_EXP_" + flag] == "1"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "0"
     variants = {row["selected_variant"] for row in profile.manifest["selections"]}
     assert "qwen4exp_sigmoid_wave_norm_prefill" in variants
     assert not any("mmq" in variant or "dp4a" in variant or

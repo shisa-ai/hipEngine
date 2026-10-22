@@ -942,7 +942,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN` | production profile | Admits the mapped-down key when the mmap table is ready (rows>=512). |
 | `HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER` | production profile | Register GEMV down-projection variant (rows>=512, in_features==640). |
 | `HIPENGINE_QWEN4_EXP_FUSED_COMBINE` | unset | Opt-in fused PF-4 lever-2 combine; default stays unfused after the whole-model A/B measured a loss. |
-| `HIPENGINE_QWEN4_EXP_Q4_DP4A64` | production profile | DP4A64 selected dual q8_1 dp4a GEMV decode for matching gate/up quant at rows==1. |
+| `HIPENGINE_QWEN4_EXP_Q4_DP4A64` | `0` in UD production/fast | Profile-owned Q4 gate/up decode selector. The strict owner is selected after an observed long-context numerical failure. Setting `1` after profile binding selects the registered one-plane DP4A diagnostic; see the clearing gates in `REFACTOR.md`. |
 | `HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS` | unset | Comma-separated layer list admitting the DP4A64 decode route. |
 | `HIPENGINE_QWEN4_EXP_GR_IU8` | `0` | iu8 WMM prefill remap for the raw-Q rows>256 route. |
 | `HIPENGINE_QWEN4_EXP_GR_IU8_DOWN` | `0` | iu8 WMM prefill remap for the down projection of the rows>256 route. |

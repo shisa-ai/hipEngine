@@ -104,35 +104,23 @@ def test_dp9_owner_is_near_its_comparator_so_the_row_stays_closed() -> None:
     assert headroom_ms / DECODE_KERNEL_SUM_MS < 0.02
 
 
-def test_dp9_closure_depends_on_the_dp4a_promotion_being_live() -> None:
-    """The closure is only valid while the promoted route is the production default.
+def test_dp9_historical_closure_does_not_restore_the_failing_decode_owner() -> None:
+    """The old bandwidth result cannot override the later numerical repair.
 
-    DE-1 records the exact mechanism: "Q4_DP4A64 moved into
-    PRODUCTION_Q8_QSA_RESTORED_FLAGS; the base profile already set it to \"1\" and
-    the blanket arithmetic-recovery sweep was the only thing suppressing it".
-
-    That is a two-sided invariant, so pin both sides. `Q4_DP4A64` must be listed in
-    the recovery-sweep set (otherwise the sweep stops suppressing it and the flag is
-    no longer evidence of a deliberate restoration) AND carry "1" in the restored
-    dict (otherwise the sweep wins and the promoted owner is reverted, invalidating
-    DP-9's closure). The end-to-end strict/production environment binding is pinned
-    by `test_unit_qwen4_exp_profiles.py`; this asserts the closure's own precondition.
+    DP-9's old throughput calculation still describes its captured one-plane
+    route. Current production keeps the manifest's strict Q4 decode owner;
+    reopening DP4A requires the numerical gates recorded in the cleanup ledger.
+    The end-to-end binder and manifest agreement is tested in
+    test_unit_qwen4_exp_profiles.py.
     """
     from hipengine.generation.qwen4_exp_profiles import (
         PRODUCTION_ARITHMETIC_RECOVERY_FLAGS,
         PRODUCTION_Q8_QSA_RESTORED_FLAGS,
     )
 
-    assert "Q4_DP4A64" in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS, (
-        "Q4_DP4A64 left the recovery-sweep set: the restoration is no longer what "
-        "keeps the promoted decode owner live, so DP-9's closure basis changed"
-    )
-    assert PRODUCTION_Q8_QSA_RESTORED_FLAGS.get("Q4_DP4A64") == "1", (
-        "Q4_DP4A64 is no longer restored to 1: the arithmetic-recovery sweep would "
-        "suppress the promoted decode owner and DP-9 must be re-opened"
-    )
-    # 43 of 48 layers carry the dp4a route; the rest keep the exact residual, and
-    # the shortfall is the dynamic quantization of this model, not a config error.
+    assert "Q4_DP4A64" in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS
+    assert "Q4_DP4A64" not in PRODUCTION_Q8_QSA_RESTORED_FLAGS
+    # Keep the historical layer list for explicit diagnostic reproduction.
     assert len(PRODUCTION_Q4_DP4A_DECODE_LAYERS) == 43
     assert max(PRODUCTION_Q4_DP4A_DECODE_LAYERS) < BLOCK_COUNT
     assert len(set(PRODUCTION_Q4_DP4A_DECODE_LAYERS)) == len(
