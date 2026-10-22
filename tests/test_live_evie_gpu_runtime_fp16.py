@@ -38,6 +38,41 @@ if not _hip_available():
     pytest.skip("ROCm/HIP runtime not available", allow_module_level=True)
 
 
+# Recorded fp16 envelopes, per architecture: the recorded values less a tiny
+# cross-build slack, not independent quality thresholds. rocBLAS selects
+# different fp16 GEMM kernels per architecture, so the rounding, and with it
+# the document path's drift through the vision tower, differs.
+#
+# gfx1151: zbook (Radeon 8060S), 2026-09-10, after the elementwise-kernel
+# coalescing pass. gfx1100: RX 7900 XTX and Radeon Pro W7900, 2026-10-23,
+# accepted by the lead for MaxSim; evidence and analysis in
+# benchmarks/results/2026-10-23-xtx-evie-4p5b-gfx1100-numerics.json. Record
+# another architecture with scripts/evie_numerics_report.py.
+_FP16_BOUNDS = {
+    "gfx1151": {
+        "query_cos_mean": 0.9999985, "query_cos_min": 0.999992,
+        "doc_cos_mean": 0.999949, "doc_cos_min": 0.99845, "maxsim_abs": 8e-4,
+    },
+    "gfx1100": {
+        "query_cos_mean": 0.9999985, "query_cos_min": 0.999992,
+        "doc_cos_mean": 0.99987, "doc_cos_min": 0.9947, "maxsim_abs": 8e-3,
+    },
+}
+
+
+def _bounds() -> dict[str, float]:
+    from hipengine.kernels.backends import selected_device_arches
+
+    arches = selected_device_arches()
+    arch = arches[0] if arches else "gfx1151"
+    if arch not in _FP16_BOUNDS:
+        pytest.fail(
+            f"no fp16 envelope recorded for {arch}; measure one with "
+            "scripts/evie_numerics_report.py and add it to _FP16_BOUNDS"
+        )
+    return _FP16_BOUNDS[arch]
+
+
 @pytest.fixture(scope="module")
 def runner():
     from hipengine.loading.evie import load_evie_model
@@ -85,17 +120,13 @@ def test_fp16_query_and_doc_embeddings_match_oracle(runner, fixture) -> None:
     cd = _cos_rows(doc, fixture["doc_embeddings_128"][0])
     # Manifest-pinned production envelope (docs/EXECUTION-PROFILES.md
     # sec 5 / 6.4): the fp16 GEMM path is class T1 (local implementation
-    # drift). Manifest re-recorded after the elementwise-kernel
-    # coalescing pass (reduction reassociation): 3 bit-identical runs
-    # give q mean/min 0.9999986/0.9999924, d mean/min
-    # 0.9999491/0.9984596. These bounds are the recorded values less a
-    # tiny cross-build slack, not independent quality thresholds; a
-    # future path that shifts parity must re-run the full profile
-    # adjudication.
-    assert cq.mean() >= 0.9999985, cq.mean()
-    assert cd.mean() >= 0.999949, cd.mean()
-    assert cq.min() >= 0.999992, cq.min()
-    assert cd.min() >= 0.99845, cd.min()
+    # drift). A future path that shifts parity past the recorded envelope
+    # must re-run the profile adjudication; see _FP16_BOUNDS.
+    bounds = _bounds()
+    assert cq.mean() >= bounds["query_cos_mean"], cq.mean()
+    assert cd.mean() >= bounds["doc_cos_mean"], cd.mean()
+    assert cq.min() >= bounds["query_cos_min"], cq.min()
+    assert cd.min() >= bounds["doc_cos_min"], cd.min()
 
 
 def test_fp16_maxsim_within_half_percent(runner, fixture) -> None:
@@ -110,10 +141,11 @@ def test_fp16_maxsim_within_half_percent(runner, fixture) -> None:
         fixture["pixel_values"][0],
         fixture["image_grid_thw"],
     )
-    # manifest-pinned: measured 5.91077 vs oracle 5.91139 (delta 6.2e-4)
+    # Recorded: gfx1151 5.91077 vs oracle 5.91139 (delta 6.2e-4); gfx1100
+    # 5.91850 (delta 7.1e-3, 0.12%). See _FP16_BOUNDS.
     score = maxsim(qry, doc)
     ref = float(fixture["maxsim_score"][0, 0])
-    assert abs(score - ref) <= 8e-4, (score, ref)
+    assert abs(score - ref) <= _bounds()["maxsim_abs"], (score, ref)
 
 
 def test_fp16_doc_encode_bit_repeatability(runner, fixture) -> None:

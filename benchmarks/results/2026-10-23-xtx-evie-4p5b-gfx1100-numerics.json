@@ -1,0 +1,161 @@
+{
+ "schema_version": 1,
+ "purpose": "EVIE-4.5B fp32 and fp16 numerics on gfx1100 against the torch fp32 oracle fixture, to decide whether the fp16 tier recorded on gfx1151 is acceptable on gfx1100. Correctness evidence, not a throughput row.",
+ "hardware": {
+  "host": "epyc",
+  "gpu": "Radeon RX 7900 XTX (24 GB)",
+  "physical_gpu_index": 1,
+  "backend": "hip_gfx1100"
+ },
+ "model": "tencent/EVIE-4.5B",
+ "model_revision": "b732dca38a4a6f89696a5822a72b01c20295dd8a",
+ "fixture": "tests/fixtures/evie/evie_4p5b_doc_query.npz",
+ "source_commit": "884878923",
+ "command": "HIP_VISIBLE_DEVICES=1 python3 scripts/evie_numerics_report.py --out report.json",
+ "cross_check": "The same fp16 document cosine mean (0.9998727) and MaxSim (5.918503) were measured on GPU0, a Radeon Pro W7900, through tests/test_live_evie_gpu_runtime_fp16.py.",
+ "gfx1151_recorded_fp16_bounds": {
+  "source": "tests/test_live_evie_gpu_runtime_fp16.py, recorded 2026-09-10 on zbook (gfx1151, Radeon 8060S)",
+  "query_cos_mean": 0.9999986,
+  "query_cos_min": 0.9999924,
+  "document_cos_mean": 0.9999491,
+  "document_cos_min": 0.9984596,
+  "maxsim_abs_error": 0.00062
+ },
+ "measurements": {
+  "fp32": {
+   "query": {
+    "cos_mean": 0.9999999999935393,
+    "cos_min": 0.9999999999790723,
+    "max_abs": 1.7343554645776749e-06,
+    "mean_abs": 2.4043798836882e-07
+   },
+   "document": {
+    "cos_mean": 0.9999999997634723,
+    "cos_min": 0.9999999929821445,
+    "max_abs": 3.27378511428833e-05,
+    "mean_abs": 1.1005911097215246e-06
+   },
+   "visual_features": {
+    "cos_mean": 0.9999999999724228,
+    "cos_min": 0.9999999995420147,
+    "max_abs": 7.677078247070312e-05,
+    "mean_abs": 9.212702151728536e-07
+   },
+   "maxsim": {
+    "score": 5.911391258239746,
+    "oracle": 5.911393165588379,
+    "abs_error": 1.9073486328125e-06,
+    "rel_error": 3.2265636532444305e-07
+   },
+   "maxsim_selection": {
+    "query_tokens": 17,
+    "same_choice": 17,
+    "changed": [],
+    "oracle_smallest_top2_margin": 0.0010786197004247766
+   },
+   "batching": {
+    "three_repeats_max_abs_between_rows": 1.9669532775878906e-06,
+    "three_repeats_vs_single_max_abs": 1.0132789611816406e-06,
+    "short_segments_vs_sequential_max_abs": 2.428889274597168e-05
+   }
+  },
+  "fp16": {
+   "query": {
+    "cos_mean": 0.9999986220810207,
+    "cos_min": 0.9999923998331153,
+    "max_abs": 0.0009092129766941071,
+    "mean_abs": 0.00010199802151710039
+   },
+   "document": {
+    "cos_mean": 0.9998725118340078,
+    "cos_min": 0.9947628450092749,
+    "max_abs": 0.027717115823179483,
+    "mean_abs": 0.0007820509793173048
+   },
+   "visual_features": {
+    "cos_mean": 0.9999810950259416,
+    "cos_min": 0.9995524871724519,
+    "max_abs": 0.08429336547851562,
+    "mean_abs": 0.0007777583950190652
+   },
+   "maxsim": {
+    "score": 5.918503284454346,
+    "oracle": 5.911393165588379,
+    "abs_error": 0.007110118865966797,
+    "rel_error": 0.0012027822658381927
+   },
+   "maxsim_selection": {
+    "query_tokens": 17,
+    "same_choice": 16,
+    "changed": [
+     {
+      "query_token": 1,
+      "oracle_choice": 50,
+      "selected": 110,
+      "oracle_gap_to_selected": 0.0010786197004247766
+     }
+    ],
+    "oracle_smallest_top2_margin": 0.0010786197004247766
+   },
+   "batching": {
+    "three_repeats_max_abs_between_rows": 0.0,
+    "three_repeats_vs_single_max_abs": 0.0,
+    "short_segments_vs_sequential_max_abs": 0.0
+   }
+  },
+  "fp16_vs_fp32": {
+   "query": {
+    "cos_mean": 0.9999986200871026,
+    "cos_min": 0.9999923784663037,
+    "max_abs": 0.0009102579206228256,
+    "mean_abs": 0.00010204366088076126
+   },
+   "document": {
+    "cos_mean": 0.9998725382311328,
+    "cos_min": 0.9947625959316171,
+    "max_abs": 0.02771722013130784,
+    "mean_abs": 0.0007819384706089301
+   }
+  }
+ },
+ "summary_table": [
+  {
+   "metric": "query cosine mean / min",
+   "fp32": "1.0000000 / 1.0000000",
+   "fp16_gfx1100": "0.9999986 / 0.9999924",
+   "fp16_gfx1151_recorded": "0.9999986 / 0.9999924"
+  },
+  {
+   "metric": "document cosine mean / min",
+   "fp32": "1.0000000 / 0.99999999",
+   "fp16_gfx1100": "0.99987 / 0.9948",
+   "fp16_gfx1151_recorded": "0.99995 / 0.9985"
+  },
+  {
+   "metric": "visual-feature cosine min",
+   "fp32": "1.0000000",
+   "fp16_gfx1100": "0.99955",
+   "fp16_gfx1151_recorded": null
+  },
+  {
+   "metric": "MaxSim abs error (score 5.911)",
+   "fp32": "1.9e-6",
+   "fp16_gfx1100": "7.1e-3 (0.12%)",
+   "fp16_gfx1151_recorded": "6.2e-4 (0.01%)"
+  },
+  {
+   "metric": "query tokens selecting the oracle's document token",
+   "fp32": "17/17",
+   "fp16_gfx1100": "16/17",
+   "fp16_gfx1151_recorded": null
+  }
+ ],
+ "analysis": [
+  "fp32 (the default precision) matches the oracle to 1.9e-6 in MaxSim with every token selection unchanged.",
+  "fp16 query embeddings reproduce the gfx1151 recorded values to the printed digits; the drift is confined to the document path (27-layer vision tower plus document pass), consistent with rocBLAS fp16 gemm_ex selecting different per-architecture kernels and therefore different rounding, compounded through depth.",
+  "The single changed MaxSim selection (query token 1) is the oracle's own closest tie: its top-2 margin, 0.00108, is the smallest of all 17 tokens.",
+  "Batching deltas are at the fp32 oracle-error scale: at most 2.4e-5 cross-shape (fp32 document error 3.3e-5), 0 in fp16."
+ ],
+ "decision": "2026-10-23, lead: fp16 is acceptable on gfx1100 for the MaxSim score. The fp16 tier gets gfx1100 bounds from these measurements; the gfx1151 bounds are unchanged.",
+ "limitations": "One document and one query: the fixture cannot show whether a 0.12% MaxSim error reorders documents in retrieval. A multi-page ranking corpus remains the open leg of the fp16 qualification."
+}
