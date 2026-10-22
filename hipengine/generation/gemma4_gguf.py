@@ -530,6 +530,11 @@ class Gemma4GGUFGenerator:
             if self._closed:
                 return
             self._closed = True
+            # The provider's assistant head borrows the backbone embedding, so
+            # it closes before the weights it reads are freed.
+            provider = self.__dict__.get("_speculative_provider")
+            if provider is not None:
+                provider.close()
             if self._runner is not None:
                 self._runner.close()
                 self._runner = None

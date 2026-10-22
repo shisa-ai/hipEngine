@@ -1618,8 +1618,16 @@ class SubmitPollTextGenerator:
             with self._cancel_commands_lock:
                 self._cancel_commands.clear()
             closer = getattr(self._runner, "close", None)
-            if callable(closer):
-                closer()
+            try:
+                if callable(closer):
+                    closer()
+            finally:
+                # A native resident runner need not close the generator it was
+                # built from; the driver owns both, so release the weights too.
+                # Generator close is idempotent where a runner already did it.
+                inner_closer = getattr(self._inner, "close", None)
+                if self._has_resident_runner and callable(inner_closer):
+                    inner_closer()
 
 
 @dataclass(frozen=True, slots=True)
