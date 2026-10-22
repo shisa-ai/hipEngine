@@ -123,7 +123,7 @@ before calling the work dropped.
   change that kind's `select` policy and say why — a policy change, not a way
   past a red gate.
 - Do not edit `audit/inventory/*.json` or `audit/findings/*.json` by hand. Both
-  are generated; re-run `inventory` and `scan`.
+  are a git-ignored cache that every command regenerates when the tree changes.
 - Do not re-triage a row a rescan re-matched (`rebound_from` is set) without
   re-reading it. The text changed; the old conclusion may not survive it.
 - Do not treat a campaign document as binding. Most of `docs/campaigns/` is

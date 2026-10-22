@@ -66,14 +66,15 @@ outputs, and mixing them produces a commit nobody can review.
 
 ## Workflow 1 — Gather (refresh the inventory)
 
-`refresh` is the whole workflow. Run it when the tree has moved: after a batch of
-commits, before starting a triage pass, or when `check` says the inventory is
-stale.
+`refresh` is the whole workflow: a full rescan, archival of absent decisions,
+the docs indexes, a budget ratchet and a local report. Every other command
+rescans on its own when the tree has changed, so `refresh` is for a deliberate
+pass, not a chore after each commit.
 
 ```bash
 python3 audit/audit.py refresh
 python3 audit/audit.py check          # the gate; must exit 0
-git add audit/inventory audit/findings audit/triage audit/budget.json audit/runs docs
+git add audit/triage audit/budget.json docs    # only what changed
 ```
 
 The individual steps exist if you need one on its own — `inventory` for the
@@ -94,8 +95,35 @@ What to look at in the output:
   that could match an open row so a conflicting or ambiguous match stays visible.
   `audit.py archive` lists history; archival does not mark work resolved.
 
-Commit the regenerated JSON. It is generated but committed, so the diff between
-two scans is reviewable.
+Rows, findings and reports are not committed. See "Several agents, one tree"
+below.
+
+### Several agents, one tree
+
+The audit is built for a checkout that several agents commit to at different
+rates, and an origin that keeps moving:
+
+- **Rows are a cache, not state.** `audit/inventory/`, `audit/findings/` and
+  `audit/runs/` are git-ignored. Rows are a pure function of the tracked tree,
+  so every command recomputes them when a fingerprint of the tree (and of the
+  extractor code) changes. Another agent's commit or a merge from origin never
+  leaves your copy stale, and nobody regenerates or merges megabytes of JSON.
+- **Only the tracked tree counts.** Scans read git-tracked and staged files.
+  Another agent's untracked scratch, unstaged worklog entry or half-written
+  script cannot move your gate. Stage a new file for the audit to see it.
+- **Decisions merge line by line.** `audit/triage/*.jsonl` holds one decision
+  per line and is union-merged (`.gitattributes`). Two agents triaging
+  different rows never conflict; if both re-decided the same row, the loader
+  keeps the most recently reviewed copy and the next write drops the other.
+- **Decisions are content-anchored.** Finding ids name the file, the enclosing
+  scope and the statement, never a line number, so edits elsewhere in a file do
+  not move them. A decision goes stale only when a fact it rests on changes.
+- **The budget changes only when a ceiling moves**, so concurrent refreshes do
+  not conflict over a date.
+
+What is left to coordinate is real: if your branch and origin both add debt,
+the merged tree can exceed the budget, and whoever runs `check` next triages
+the new rows.
 
 ---
 
@@ -479,12 +507,13 @@ audit/
     inventory/        the extractors
     checks/           the code checks
     report.py         computed tables and the dated run
-  inventory/*.json    the standing catalogue; generated; committed so diffs are reviewable
-  findings/*.json     what code scanning queued to fix; generated
+  inventory/*.json    the standing catalogue; generated local cache (git-ignored)
+  findings/*.json     what code scanning queued to fix; generated local cache (git-ignored)
   triage/*.jsonl      live decisions; remapping preserves judgments and review dates
   triage/archive/     absent decisions; history only, never automatically rebound
   budget.json         the untriaged ceiling the gate enforces
-  runs/<stamp>/       dated REPORT.md + snapshot.json
+  runs/<stamp>/       dated REPORT.md + snapshot.json; local (git-ignored)
+  migrations/         records of each change to how decisions are hashed
   agents/             assignments for whoever works the audit: triage.md, fix.md
   tests/              contract tests for durability and validation
 ```

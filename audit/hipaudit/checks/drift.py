@@ -15,7 +15,10 @@ from __future__ import annotations
 import functools
 import re
 
-from ..core import REPO_ROOT, Row
+import posixpath
+
+from .. import core
+from ..core import REPO_ROOT, Row, _tracked, _tracked_dirs, in_tree
 from ..inventory import doc_corpus
 from . import finding, register
 
@@ -58,12 +61,16 @@ def declared_roots(lines: list[str]) -> list[tuple[str, ...]]:
 
 @functools.lru_cache(maxsize=1)
 def tree_index() -> dict[str, list[str]]:
-    """Every repo path, indexed by basename, so a moved file can be located."""
+    """Every tracked file and directory, indexed by basename, so a moved file can be located."""
     index: dict[str, list[str]] = {}
-    for path in sorted(REPO_ROOT.rglob("*")):
-        if any(part in SKIP_DIRS for part in path.parts):
-            continue
-        index.setdefault(path.name, []).append(path.relative_to(REPO_ROOT).as_posix())
+    tracked = _tracked() if REPO_ROOT == core.REPO_ROOT else None
+    if tracked is None:
+        paths = [p.relative_to(REPO_ROOT).as_posix() for p in REPO_ROOT.rglob("*")
+                 if not any(part in SKIP_DIRS for part in p.parts)]
+    else:
+        paths = [p for p in tracked if in_tree(p)] + list(_tracked_dirs())
+    for rel in sorted(paths):
+        index.setdefault(posixpath.basename(rel), []).append(rel)
     return index
 
 
@@ -94,9 +101,9 @@ def doc_path_drift() -> tuple[list[Row], dict]:
                     skipped += 1
                     continue
                 checked += 1
-                if (REPO_ROOT / target).exists():
+                if in_tree(target, REPO_ROOT):
                     continue
-                if any((REPO_ROOT / root / target).exists() for root in (here, *roots)):
+                if any(in_tree(posixpath.join(root, target), REPO_ROOT) for root in (here, *roots)):
                     continue
                 #  Only report it when we can say where it actually is. An
                 #  unfindable name is far more likely to be illustrative.

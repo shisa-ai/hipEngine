@@ -15,10 +15,14 @@ for review instead of quietly standing on facts that no longer hold.
 from __future__ import annotations
 
 import dataclasses
+import functools
 import hashlib
 import json
+import os
 import pathlib
+import posixpath
 import re
+import subprocess
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -228,6 +232,97 @@ class Triage:
         return out
 
 
+@functools.lru_cache(maxsize=1)
+def _tracked() -> frozenset[str] | None:
+    """Every path git tracks or has staged, or None outside a git checkout.
+
+    The audit reads the tree that commits are made from, not the working
+    directory. Several agents share one checkout, and one agent's untracked
+    scratch must not move another agent's gate. Stage a new file to make the
+    audit see it, as `scripts/worklog.py check` already requires for entries.
+    """
+    try:
+        out = subprocess.run(["git", "ls-files", "-z"], cwd=REPO_ROOT, capture_output=True,
+                             check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return frozenset(p for p in out.decode("utf-8", "surrogateescape").split("\0") if p)
+
+
+@functools.lru_cache(maxsize=1)
+def _tracked_dirs() -> frozenset[str]:
+    dirs: set[str] = set()
+    for path in _tracked() or ():
+        parent = posixpath.dirname(path)
+        while parent and parent not in dirs:
+            dirs.add(parent)
+            parent = posixpath.dirname(parent)
+    return frozenset(dirs)
+
+
+def tree_files(base: pathlib.Path) -> list[pathlib.Path]:
+    """Files under `base` that belong to the tree, sorted.
+
+    Inside the repository that means tracked or staged files present on disk;
+    anywhere else (a test's temporary directory) every file under `base`.
+    """
+    tracked = _tracked()
+    try:
+        rel = base.resolve().relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        tracked = None
+    if tracked is None:
+        return sorted(p for p in base.rglob("*") if p.is_file()) if base.exists() else []
+    prefix = "" if rel == "." else rel + "/"
+    return sorted(REPO_ROOT / p for p in tracked
+                  if p.startswith(prefix) and (REPO_ROOT / p).is_file())
+
+
+def in_tree(path: str, root: pathlib.Path | None = None) -> bool:
+    """Whether a repository-relative file or directory is part of the tree.
+
+    `root` other than the repository (a test's fixture tree) is read from disk.
+    """
+    tracked = _tracked() if root is None or root == REPO_ROOT else None
+    if tracked is None:
+        return ((root or REPO_ROOT) / path).exists()
+    rel = posixpath.normpath(path.strip()).lstrip("/")
+    if rel.startswith("..") or rel == ".":
+        return rel == "."
+    return (rel in tracked and (REPO_ROOT / rel).exists()) or rel in _tracked_dirs()
+
+
+def tree_fingerprint() -> str:
+    """Changes whenever anything a scan reads could have changed.
+
+    Paths, sizes and modification times of every file in the tree, plus the
+    audit's own extractor code. Decisions and generated rows are excluded: a
+    rescan writes them, and must not invalidate itself.
+    """
+    _tracked.cache_clear()
+    _tracked_dirs.cache_clear()
+    h = hashlib.sha256()
+    for rel in sorted(_tracked() or ()):
+        if rel.startswith("audit/"):
+            continue
+        try:
+            st = os.stat(REPO_ROOT / rel)
+        except OSError:
+            continue
+        h.update(f"{rel}\0{st.st_size}\0{st.st_mtime_ns}\n".encode("utf-8", "surrogateescape"))
+    for source in sorted((AUDIT_ROOT / "hipaudit").rglob("*.py")):
+        h.update(source.read_bytes())
+    return h.hexdigest()[:16]
+
+
+def _newer(a: Triage, b: Triage) -> Triage:
+    """Of two copies of one decision, the one reviewed last (deterministic on ties)."""
+    def rank(d: Triage) -> tuple:
+        return (d.last_reviewed or d.decided, d.decided,
+                json.dumps(dataclasses.asdict(d), sort_keys=True))
+    return a if rank(a) >= rank(b) else b
+
+
 def load_triage() -> dict[str, Triage]:
     """Every recorded decision, keyed by row id."""
     out: dict[str, Triage] = {}
@@ -243,7 +338,11 @@ def load_triage() -> dict[str, Triage]:
             except json.JSONDecodeError as exc:
                 raise SystemExit(f"{path}:{number}: invalid JSON — {exc}") from exc
             known = {f.name for f in dataclasses.fields(Triage)}
-            out[payload["id"]] = Triage(**{k: v for k, v in payload.items() if k in known})
+            decision = Triage(**{k: v for k, v in payload.items() if k in known})
+            #  The store is union-merged (.gitattributes), so two agents that
+            #  re-decided one row leave two lines. The later review wins.
+            previous = out.get(decision.id)
+            out[decision.id] = decision if previous is None else _newer(previous, decision)
     return out
 
 
@@ -463,9 +562,11 @@ def orphaned(rows: list[Row], decisions: dict[str, Triage]) -> list[Triage]:
 def load_archive() -> list[Triage]:
     out: list[Triage] = []
     known = {f.name for f in dataclasses.fields(Triage)}
+    seen: set[str] = set()
     for path in sorted(ARCHIVE_DIR.glob("*.jsonl")) if ARCHIVE_DIR.exists() else []:
         for line in path.read_text(encoding="utf-8").splitlines():
-            if line.strip():
+            if line.strip() and line not in seen:     # a union merge can repeat a line
+                seen.add(line)
                 payload = json.loads(line)
                 out.append(Triage(**{k: v for k, v in payload.items() if k in known}))
     return out

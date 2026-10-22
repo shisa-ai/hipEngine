@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 
-from ..core import REPO_ROOT, Row
+from ..core import REPO_ROOT, Row, tree_files
 from . import corpus, register, tokens
 
 KERNEL_ROOT = REPO_ROOT / "hipengine" / "kernels"
@@ -31,10 +31,8 @@ def extract() -> tuple[list[Row], dict]:
         for backend, layer in KERNEL_KEY.findall(text):
             keys.setdefault((backend, layer), []).append(path)
 
-    sources = sorted(
-        p for p in KERNEL_ROOT.rglob("*")
-        if p.suffix in (".hip", ".py") and "__pycache__" not in p.parts and p.name != "__init__.py"
-    ) if KERNEL_ROOT.exists() else []
+    sources = [p for p in tree_files(KERNEL_ROOT)
+               if p.suffix in (".hip", ".py") and "__pycache__" not in p.parts and p.name != "__init__.py"]
 
     for path in sources:
         rel = path.relative_to(REPO_ROOT).as_posix()

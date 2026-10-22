@@ -12,7 +12,7 @@ import pathlib
 import re
 from typing import Callable
 
-from ..core import REPO_ROOT, Row
+from ..core import REPO_ROOT, Row, in_tree, tree_files
 
 CODE_ROOTS = ("hipengine", "scripts", "tests", "benchmarks")
 CODE_SUFFIXES = (".py", ".hip", ".h", ".sh", ".toml")
@@ -23,13 +23,10 @@ def corpus() -> dict[str, str]:
     """Every code file's text, keyed by repo-relative path. Read once per process."""
     out: dict[str, str] = {}
     for root in CODE_ROOTS:
-        base = REPO_ROOT / root
-        if not base.exists():
-            continue
-        #  Sorted: extractors keep the first few readers they meet, so filesystem
-        #  order would otherwise decide what a row records on each machine.
-        for path in sorted(base.rglob("*")):
-            if path.suffix not in CODE_SUFFIXES or not path.is_file():
+        #  Tracked files only, sorted: another agent's untracked scratch must not
+        #  move this gate, and extractors keep the first few readers they meet.
+        for path in tree_files(REPO_ROOT / root):
+            if path.suffix not in CODE_SUFFIXES:
                 continue
             if "__pycache__" in path.parts or ".venv" in path.parts:
                 continue
@@ -44,11 +41,11 @@ def corpus() -> dict[str, str]:
 def doc_corpus() -> dict[str, str]:
     """Every doc, keyed by repo-relative path. Excludes immutable worklog entries."""
     out: dict[str, str] = {}
-    for path in sorted((REPO_ROOT / "docs").rglob("*.md")):
+    for path in (p for p in tree_files(REPO_ROOT / "docs") if p.suffix == ".md"):
         out[path.relative_to(REPO_ROOT).as_posix()] = path.read_text(encoding="utf-8", errors="replace")
     for name in ("AGENTS.md", "README.md", "TODO.md"):
         candidate = REPO_ROOT / name
-        if candidate.exists():
+        if in_tree(name):
             out[name] = candidate.read_text(encoding="utf-8", errors="replace")
     return out
 
