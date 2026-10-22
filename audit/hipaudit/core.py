@@ -87,7 +87,7 @@ def digest(*parts: Any) -> str:
 VOLATILE_EVIDENCE = frozenset({
     "line", "lines", "age_days", "body_chars",            # position, size, age
     "referrers", "runtime_referrers", "test_referrers",   # kernels: signals carry presence
-    "sites_by_root", "runtime_sites",                      # flags: signals carry roots and spread
+    "sites_by_root", "runtime_sites", "runtime_reads",     # flags: signals carry roots, spread, reads
     "continuation_entries",                                # worklog: signal carries presence
 })
 VOLATILE_SIGNAL = re.compile(r"\b\d+ days? old\b|\bwritten \d+ days ago\b")

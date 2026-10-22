@@ -77,6 +77,16 @@ python3 audit/audit.py confirm <row-id> --note "why the change does not affect i
   `AGENTS.md` "Product Defaults" says it ships on. Check it actually works first.
 - `remove` — the flag, path, or entry is dead. Confirm no reader, including
   tests and harnesses, before saying so.
+
+**Flags: start from `runtime_read`, not a grep.** A flag row records how the
+runtime uses the name: `env` (read from the environment, directly or through
+a `*_ENV` constant or an `_env_*` helper), `indirect` (handed to a helper or a
+table), `mention` (strings, comments, `__all__` only) or `none`.
+`runtime_bound` is true when a profile sets the variable. `runtime_reads` gives
+example sites, and `default` comes from the read call. Grepping for
+`environ.get("NAME")` misses most reads in this tree: 187 decisions once called
+runtime-read flags "phantom" or "harness-only" that way. Never write either word
+when the row says `env`.
 - `qualify` — plausible but unproven. Name the **exact command** that would
   settle it. If you cannot name one, that is itself a `GATE-CATCH22`.
 - `keep` — justified as it stands. The note gives the justification.
