@@ -60,7 +60,7 @@ def declared_roots(lines: list[str]) -> list[tuple[str, ...]]:
 def tree_index() -> dict[str, list[str]]:
     """Every repo path, indexed by basename, so a moved file can be located."""
     index: dict[str, list[str]] = {}
-    for path in REPO_ROOT.rglob("*"):
+    for path in sorted(REPO_ROOT.rglob("*")):
         if any(part in SKIP_DIRS for part in path.parts):
             continue
         index.setdefault(path.name, []).append(path.relative_to(REPO_ROOT).as_posix())

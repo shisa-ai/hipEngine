@@ -39,6 +39,13 @@ python3 audit/audit.py triage <row-id> --tag <TAG> --do <disposition> \
     --severity high|medium|low --note "what you established, and why this is right"
 ```
 
+   For a `--stale` row, `open --stale` prints what changed since the decision.
+   If the change does not affect it, re-affirm instead of re-typing it:
+
+```bash
+python3 audit/audit.py confirm <row-id> --note "why the change does not affect it"
+```
+
 5. `python3 audit/audit.py check` before finishing.
 
 ## Rules

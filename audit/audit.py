@@ -9,6 +9,8 @@ Inventory the debt mechanically, triage it durably, and gate against it growing.
     python3 audit/audit.py show flag/HIPENGINE_X
     python3 audit/audit.py triage flag/HIPENGINE_X --tag LOST-OPT \
         --do promote --severity high --note "why"
+    python3 audit/audit.py open --stale       # decisions whose evidence moved, with the change
+    python3 audit/audit.py confirm flag/HIPENGINE_X --note "still holds: why"
     python3 audit/audit.py check              # the gate
     python3 audit/audit.py report             # write a dated run
 
@@ -176,6 +178,16 @@ def cmd_open(args) -> int:
     print(f"{len(picked)} {label} row(s)" + (f" matching {args.signal!r}" if args.signal else ""))
     for row in picked[:args.number]:
         print(f"\n{row.id}\n  {row.title[:100]}\n  {row.location}")
+        if args.stale:
+            decision = decisions[row.id]
+            print(f"  decided {decision.tag}/{decision.disposition}: {decision.note[:110]}")
+            if decision.basis:
+                print("  changed since the decision:")
+                for change in core.basis_changes(decision.basis, core.compact_basis(row.basis())):
+                    print(f"    {change[:140]}")
+            else:
+                print("  (decision predates recorded bases; compare `show` with the note)")
+            continue
         for signal in row.signals:
             print(f"    - {signal}")
     if len(picked) > args.number:
@@ -256,6 +268,7 @@ def cmd_triage(args) -> int:
                                      text=True).stdout.strip() or "unknown",
         evidence_hash=row.evidence_hash, resolved=args.resolved,
         expires=args.expires, last_reviewed=dt.date.today().isoformat(), hints=row.hints,
+        basis=core.compact_basis(row.basis()),
     )
     problems = decision.problems()
     if problems:
@@ -265,6 +278,42 @@ def cmd_triage(args) -> int:
     decisions[args.id] = decision
     core.save_triage(decisions)
     print(f"recorded {args.tag}/{args.do} for {args.id}")
+    return 0
+
+
+def cmd_confirm(args) -> int:
+    """Re-affirm decisions against the row as it is now, keeping what they decided."""
+    rows = {r.id: r for r in core.load_all()}
+    decisions = core.load_triage()
+    today = dt.date.today().isoformat()
+    failed = 0
+    for row_id in args.ids:
+        row, decision = rows.get(row_id), decisions.get(row_id)
+        if row is None or decision is None:
+            print(f"error: {row_id}: " + ("no such row" if row is None else "no decision to confirm"),
+                  file=sys.stderr)
+            failed += 1
+            continue
+        decision.evidence_hash = row.evidence_hash
+        decision.basis = core.compact_basis(row.basis())
+        decision.hints = row.hints
+        decision.last_reviewed = today
+        if args.expires is not None:
+            decision.expires = args.expires
+        if args.note:
+            decision.note = f"{decision.note} [{today}: {args.note}]" if decision.note else args.note
+        problems = decision.problems()
+        if decision.is_expired(today):
+            problems.append(f"review date {decision.expires} has passed — pass --expires")
+        if problems:
+            for problem in problems:
+                print(f"error: {row_id}: {problem}", file=sys.stderr)
+            failed += 1
+            continue
+        print(f"confirmed {decision.tag}/{decision.disposition} for {row_id}")
+    if failed:
+        return 1
+    core.save_triage(decisions)
     return 0
 
 
@@ -452,6 +501,13 @@ def main() -> int:
     p.add_argument("--expires", default="",
                    help="ISO date after which this decision must be re-confirmed (e.g. a defer)")
     p.set_defaults(fn=cmd_triage)
+
+    p = sub.add_parser("confirm", help="re-affirm decisions after checking the row's change still fits them")
+    p.add_argument("ids", nargs="+")
+    p.add_argument("--note", required=True, help="why the decision still holds; appended, dated")
+    p.add_argument("--expires", default=None,
+                   help="new review date; '' clears it; omitted keeps the current one")
+    p.set_defaults(fn=cmd_confirm)
 
     p = sub.add_parser("orphans", help="decisions that no longer match any row")
     p.set_defaults(fn=cmd_orphans)

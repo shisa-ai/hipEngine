@@ -58,6 +58,38 @@ class Maintenance(unittest.TestCase):
             self.assertEqual(calls, ["inventory", "scan", "archive"])
             save.assert_called_once_with({})
 
+    def confirm(self, decision, row, **kw):
+        args = argparse.Namespace(ids=[row.id], note="still holds", expires=None)
+        vars(args).update(kw)
+        with mock.patch.object(core, "load_all", return_value=[row]), \
+             mock.patch.object(core, "load_triage", return_value={row.id: decision}), \
+             mock.patch.object(core, "save_triage") as save, \
+             mock.patch("builtins.print"), mock.patch("sys.stderr"):
+            return cli.cmd_confirm(args), save
+
+    def test_confirm_rebases_a_stale_decision_and_keeps_the_verdict(self):
+        row = core.Row(kind="flag", key="X", title="X", evidence={"default": "on"}, signals=[])
+        decision = core.Triage(id=row.id, tag="NOT-DEBT", disposition="keep", note="lever",
+                               evidence_hash="old", basis={"title": "X"})
+        status, save = self.confirm(decision, row)
+        self.assertEqual(status, 0)
+        save.assert_called_once()
+        self.assertEqual(decision.evidence_hash, row.evidence_hash)
+        self.assertEqual(decision.basis, core.compact_basis(row.basis()))
+        self.assertEqual((decision.tag, decision.disposition), ("NOT-DEBT", "keep"))
+        self.assertTrue(decision.note.startswith("lever [") and decision.note.endswith("still holds]"))
+
+    def test_confirm_refuses_to_keep_a_past_review_date(self):
+        row = core.Row(kind="flag", key="X", title="X", evidence={}, signals=[])
+        decision = core.Triage(id=row.id, tag="NOT-DEBT", disposition="defer", note="later",
+                               expires="2000-01-01")
+        status, save = self.confirm(decision, row)
+        self.assertEqual(status, 1)
+        save.assert_not_called()
+        status, save = self.confirm(decision, row, expires="2999-01-01")
+        self.assertEqual(status, 0)
+        self.assertEqual(decision.expires, "2999-01-01")
+
 
 if __name__ == "__main__":
     unittest.main()

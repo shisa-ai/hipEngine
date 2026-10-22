@@ -26,7 +26,9 @@ def corpus() -> dict[str, str]:
         base = REPO_ROOT / root
         if not base.exists():
             continue
-        for path in base.rglob("*"):
+        #  Sorted: extractors keep the first few readers they meet, so filesystem
+        #  order would otherwise decide what a row records on each machine.
+        for path in sorted(base.rglob("*")):
             if path.suffix not in CODE_SUFFIXES or not path.is_file():
                 continue
             if "__pycache__" in path.parts or ".venv" in path.parts:
@@ -42,7 +44,7 @@ def corpus() -> dict[str, str]:
 def doc_corpus() -> dict[str, str]:
     """Every doc, keyed by repo-relative path. Excludes immutable worklog entries."""
     out: dict[str, str] = {}
-    for path in (REPO_ROOT / "docs").rglob("*.md"):
+    for path in sorted((REPO_ROOT / "docs").rglob("*.md")):
         out[path.relative_to(REPO_ROOT).as_posix()] = path.read_text(encoding="utf-8", errors="replace")
     for name in ("AGENTS.md", "README.md", "TODO.md"):
         candidate = REPO_ROOT / name

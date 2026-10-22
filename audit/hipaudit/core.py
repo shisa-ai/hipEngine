@@ -74,15 +74,34 @@ def digest(*parts: Any) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
 
 
-# Only presentation measurements are excluded. Reader paths, continuation
-# evidence and numeric values in signals can change a decision's meaning.
-VOLATILE_EVIDENCE = frozenset({"line", "lines", "age_days", "body_chars", "referrers"})
+# The hash covers what a decision rests on, not how big things are. Positions,
+# sizes and age move without anything changing. Counts and reader lists move with
+# every ordinary commit (a new test that mentions a kernel, a tenth script that
+# reads a flag), and the signals already state the part a decision depends on:
+# whether a runtime caller exists, whether any test names it, whether branching
+# is spread out. Hashing the counts too made most "stale" decisions noise.
+VOLATILE_EVIDENCE = frozenset({
+    "line", "lines", "age_days", "body_chars",            # position, size, age
+    "referrers", "runtime_referrers", "test_referrers",   # kernels: signals carry presence
+    "sites_by_root", "runtime_sites",                      # flags: signals carry roots and spread
+    "continuation_entries",                                # worklog: signal carries presence
+})
 VOLATILE_SIGNAL = re.compile(r"\b\d+ days? old\b|\bwritten \d+ days ago\b")
+# Counts inside the audit's own signal templates. Numbers anywhere else in a
+# signal (a quoted dependency, a phase) are content and still age a decision.
+COUNTED_SIGNAL = re.compile(
+    r"\bread at \d+ runtime sites\b|^\d+ later entr(?:y|ies)\b|^\d+ __global__ entry point"
+    r"|\bnames \d+ path\(s\)|\b\d+ no longer exist\b")
+
+
+def _uncount(match: re.Match) -> str:
+    text = re.sub(r"\d+", "#", match.group(0))
+    return re.sub(r"later entr(?:y|ies)", "later entries", text)
 
 
 def basis_signals(signals: list[str]) -> list[str]:
-    """Ignore elapsed age, not semantic counts or numbers in identifiers."""
-    return sorted(s for s in signals if not VOLATILE_SIGNAL.search(s))
+    """Ignore elapsed age and template counts, not other numbers in a signal."""
+    return sorted({COUNTED_SIGNAL.sub(_uncount, s) for s in signals if not VOLATILE_SIGNAL.search(s)})
 
 
 def basis_value(value: Any) -> Any:
@@ -92,6 +111,33 @@ def basis_value(value: Any) -> Any:
     if isinstance(value, list):
         return [basis_value(v) for v in value]
     return value
+
+
+def compact_basis(basis: dict[str, Any]) -> dict[str, Any]:
+    """A basis small enough to keep on a decision: long text becomes its digest."""
+    def shrink(value: Any) -> Any:
+        if isinstance(value, str) and len(value) > 160:
+            return f"sha:{digest(value)}"
+        if isinstance(value, dict):
+            return {k: shrink(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [shrink(v) for v in value]
+        return value
+    return shrink(basis)
+
+
+def basis_changes(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
+    """What moved between the basis a decision recorded and the row now."""
+    out: list[str] = []
+    if before.get("title") != after.get("title"):
+        out.append(f"title: {before.get('title')!r} -> {after.get('title')!r}")
+    old, new = before.get("evidence", {}), after.get("evidence", {})
+    for name in sorted(old.keys() | new.keys()):
+        if old.get(name) != new.get(name):
+            out.append(f"{name}: {json.dumps(old.get(name))[:80]} -> {json.dumps(new.get(name))[:80]}")
+    was, now = set(before.get("signals", [])), set(after.get("signals", []))
+    out += [f"- {s}" for s in sorted(was - now)] + [f"+ {s}" for s in sorted(now - was)]
+    return out
 
 
 @dataclass
@@ -114,8 +160,9 @@ class Row:
     def evidence_hash(self) -> str:
         """Hash of the facts a triage decision rests on.
 
-        Presentation-only positions, sizes and elapsed age do not make a
-        decision stale. Changed readers, defaults and other facts do.
+        Positions, sizes, elapsed age and counts do not make a decision stale.
+        A changed title, default, ledger or docs entry, missing path, or signal
+        (a runtime caller appearing or going away, say) does.
         """
         return digest(json.dumps(self.basis(), sort_keys=True))
 
@@ -127,10 +174,6 @@ class Row:
                 continue
             if name == "flag_signals":
                 value = basis_signals(value)
-            if name == "runtime_sites":
-                value = sorted({re.sub(r":\d+$", "", site) if isinstance(site, str)
-                                else json.dumps(basis_value(site), sort_keys=True)
-                                for site in value})
             evidence[name] = basis_value(value)
         return {"title": self.title, "evidence": evidence, "signals": basis_signals(self.signals)}
 
@@ -159,6 +202,7 @@ class Triage:
     hints: dict[str, Any] = field(default_factory=dict)   # the row's identity at decision time
     rebound_from: str = ""        # the id this decision carried before a rescan re-matched it
     archived: str = ""            # when its row vanished and the decision left the live store
+    basis: dict[str, Any] = field(default_factory=dict)   # compact_basis() it was decided against
 
     def is_expired(self, today: str) -> bool:
         return bool(self.expires) and self.expires < today

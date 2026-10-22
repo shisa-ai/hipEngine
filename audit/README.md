@@ -249,16 +249,33 @@ Rebinding preserves the evidence hash and review date; it is not a new review.
 **A decision made against changed facts comes back.** When evidence moves, the
 row is reported `stale` rather than silently standing on a conclusion that may no
 longer hold. `--expires` does the same on a schedule. This is what lets a wrong
-early call be corrected instead of calcifying. The hash ignores line positions,
-file/body length and elapsed age. It retains defaults, referenced reader paths,
-continuation evidence and semantic numbers. Moving a read site within its file
-is not new evidence; adding a reader in another file is. A resolved decision also
-becomes stale if its evidence changes; `resolved` is not a permanent exemption.
+early call be corrected instead of calcifying. A resolved decision also becomes
+stale if its evidence changes; `resolved` is not a permanent exemption.
 
-Changing the hash format is not a review. The one-time conversion record in
-`migrations/evidence-basis-v1.json` names the committed evidence blobs used to
-translate legacy hashes. Hashes without recoverable decision-time evidence stay
-unchanged and require review. The conversion preserves notes and review dates.
+The hash covers facts, not sizes, so `stale` stays worth reading. It retains the
+title, defaults, ledger and docs membership, missing paths, quoted text and every
+signal. It ignores line positions, file/body length, elapsed age, and counts:
+how many sites read a flag, which files mention a kernel, how many later entries
+continue a worklog topic. Those move with ordinary commits, and the signals
+already state the part a decision rests on: whether a runtime caller or a test
+exists, whether branching is spread past six sites, whether anyone continued the
+work. A kernel gaining its fifth test is not new evidence; losing its only
+runtime caller is.
+
+Each decision also keeps a compact copy of that basis (long text as a digest).
+`open --stale` prints what changed since the decision, and `confirm <id> --note
+"..."` re-affirms it against the row as it is now, keeping the tag, disposition
+and severity and appending a dated note. Confirm only after checking that the
+change fits the decision; if it does not, record a new `triage`. An expired
+decision needs a new `--expires` to be confirmed.
+
+Changing the hash format is not a review. Each conversion is recorded under
+`migrations/`: `evidence-basis-v1.json` translated legacy hashes from committed
+evidence blobs, and `evidence-basis-v2.json` lists the decisions that went stale
+only through counts and were rebased, the ones that stay stale with a recorded
+basis, and the ones whose decision-time evidence could not be recovered. Those
+last stay unchanged and require review. Conversions preserve notes and review
+dates.
 
 **Archival is not resolution.** After a complete scan, absent decisions with no
 plausible open match move to `triage/archive/*.jsonl`. Their notes, deadlines,
@@ -301,7 +318,8 @@ python3 audit/audit.py scan                   # run the code checks
 python3 audit/audit.py status                 # where the cleanup stands
 python3 audit/audit.py queue -n 8 -e 3        # fixable work, grouped by cause
 python3 audit/audit.py open <kind> -n 20      # untriaged rows, most signals first
-python3 audit/audit.py open --stale           # decisions whose evidence moved
+python3 audit/audit.py open --stale           # decisions whose evidence moved, and what moved
+python3 audit/audit.py confirm <row-id> --note "..." [--expires YYYY-MM-DD]  # still holds
 python3 audit/audit.py archive                # list archived history
 python3 audit/audit.py archive --apply        # full rescan, then archive absent decisions
 python3 audit/audit.py check --review         # also require no stale or expired decisions

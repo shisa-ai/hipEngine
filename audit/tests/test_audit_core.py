@@ -343,15 +343,48 @@ class TriageValidation(unittest.TestCase):
         b = row(line=2, age_days=11, runtime_sites=[{"path": "a.py", "line": 7}])
         self.assertEqual(a.evidence_hash, b.evidence_hash)
 
-    def test_reader_and_continuation_changes_age_evidence(self):
-        for name, a, b in (("runtime_referrers", ["a.py"], ["b.py"]),
-                           ("continuation_entries", 0, 1),
-                           ("runtime_sites", [], [{"path": "a.py", "line": 5}])):
-            self.assertNotEqual(row(**{name: a}).evidence_hash, row(**{name: b}).evidence_hash)
+    def test_counts_and_reader_lists_do_not_age_evidence(self):
+        # A new test that mentions a kernel, or a tenth script that reads a flag,
+        # changes nothing a decision rests on. The signals carry presence.
+        for name, a, b in (("runtime_referrers", ["a.py"], ["a.py", "b.py"]),
+                           ("test_referrers", ["tests/a.py"], ["tests/b.py"]),
+                           ("sites_by_root", {"hipengine": 9}, {"hipengine": 10, "tests": 1}),
+                           ("runtime_sites", ["a.py:1"], ["a.py:1", "b.py:2"]),
+                           ("continuation_entries", 1, 2)):
+            self.assertEqual(row(**{name: a}).evidence_hash, row(**{name: b}).evidence_hash, name)
         a, b = row(), row()
-        a.signals, b.signals = ["phase 2 unsupported"], ["phase 3 unsupported"]
-        self.assertNotEqual(a.evidence_hash, b.evidence_hash)
+        a.signals = ["read at 9 runtime sites — branching is spread out", "2 later entries by x"]
+        b.signals = ["read at 11 runtime sites — branching is spread out", "1 later entry by x"]
+        self.assertEqual(a.evidence_hash, b.evidence_hash)
+        self.assertEqual(core.basis_signals(["3 __global__ entry point(s), none named elsewhere"]),
+                         ["# __global__ entry point(s), none named elsewhere"])
 
+    def test_facts_and_presence_still_age_evidence(self):
+        for name, a, b in (("default", "off", "on"), ("in_refactor_ledger", False, True),
+                           ("paths_missing", [], ["gone.py"])):
+            self.assertNotEqual(row(**{name: a}).evidence_hash, row(**{name: b}).evidence_hash, name)
+        cases = ((["no test file names it"], []),
+                 (["no later entry by the same worker shares this topic prefix"],
+                  ["1 later entry by the same worker share this topic prefix"]),
+                 (["phase 2 unsupported"], ["phase 3 unsupported"]),
+                 (["Next names a dependency: 'after PR 41'"], ["Next names a dependency: 'after PR 42'"]))
+        for before, after in cases:
+            a, b = row(), row()
+            a.signals, b.signals = before, after
+            self.assertNotEqual(a.evidence_hash, b.evidence_hash, before)
+
+    def test_basis_changes_name_what_moved(self):
+        before = core.compact_basis(row(default="off").basis())
+        after = row(default="on")
+        after.signals = ["s", "reads as default-off"]
+        changes = core.basis_changes(before, core.compact_basis(after.basis()))
+        self.assertEqual(changes, ['default: "off" -> "on"', "+ reads as default-off"])
+
+    def test_compact_basis_keeps_long_text_as_a_digest(self):
+        long = row(open_text="x" * 400)
+        compact = core.compact_basis(long.basis())
+        self.assertTrue(compact["evidence"]["open_text"].startswith("sha:"))
+        self.assertNotEqual(compact, core.compact_basis(row(open_text="y" * 400).basis()))
 
 
 class Store(unittest.TestCase):
