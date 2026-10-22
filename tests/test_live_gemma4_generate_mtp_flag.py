@@ -1,8 +1,9 @@
 """User-surface check for the explicit ``speculative_mtp`` flag (M7).
 
 The unit tests prove the dispatch; this proves what a caller actually gets on
-the real gemma 4 artifact: an explicit request raises naming the capability
-instead of quietly returning plain autoregressive text. Before the flag
+the real gemma 4 artifact: an explicit request runs through MTP when a head is
+attached or discovered, and otherwise raises naming the capability instead of
+quietly returning plain autoregressive text. Before the flag
 existed, ``SamplingParams(speculative_mtp=True)`` did not even construct, so
 there was no way to ask -- and therefore no way to be told no.
 """
@@ -49,10 +50,21 @@ def live_llm():
 
 
 def test_live_gemma4_explicit_mtp_request_fails_naming_the_capability(live_llm):
+    from hipengine.models.gemma4 import Gemma4GGUFModel
+
     llm = live_llm
 
-    with pytest.raises(NotImplementedError, match="speculative MTP"):
-        llm.generate("Name one colour.", SamplingParams(speculative_mtp=True))
+    # A plain ``LLM`` discovers an assistant head stored beside the model. With
+    # one, the explicit request runs through MTP; without one, it must refuse
+    # naming the capability rather than quietly return plain text.
+    discovered = Gemma4GGUFModel.resolve_speculative_mtp_draft_model(str(_TARGET))
+    if discovered is not None:
+        params = SamplingParams(max_tokens=8, temperature=0.0, speculative_mtp=True)
+        speculative = llm.generate_detailed(["Name one colour."], params)[0]
+        assert speculative.finish_details.sampler_mode == "greedy_speculative_mtp"
+    else:
+        with pytest.raises(NotImplementedError, match="speculative MTP"):
+            llm.generate("Name one colour.", SamplingParams(speculative_mtp=True))
 
     # The same prompt without the flag must still be served, so the refusal is
     # attributable to the request and not to the model being broken.
@@ -84,9 +96,10 @@ def test_live_gemma4_attached_mtp_preserves_plain_request_state():
         assert after.generated_token_ids == before.generated_token_ids
         diagnostics = speculative.telemetry.diagnostics
         assert diagnostics["proposed_draft_tokens"] > 0
-        # The profile decides the verify contract, and the telemetry has to say
-        # which one ran: only the exact one promises plain greedy's tokens.
-        if llm._get_text_generator().verify_dense_exact:
+        # The telemetry has to say which verify contract ran: only the exact one
+        # promises plain greedy's tokens. The resident scheduler verifies with
+        # the row-exact fallback whatever the profile selects for prefill.
+        if diagnostics["target_verify"] == "batched_exact":
             assert before.generated_token_ids == speculative.generated_token_ids
             assert diagnostics["verify_equivalence"] == "bit_identical_to_target_ar_greedy"
             assert diagnostics["target_verify"] == "batched_exact"
@@ -135,7 +148,12 @@ def test_live_gemma4_sampled_requests_run_plain_and_through_mtp():
             assert first.generated_token_ids == again.generated_token_ids
             assert first.generated_token_ids != other.generated_token_ids
         plain, speculative = run(3, mtp=False), run(3, mtp=True)
-        assert plain.finish_details.sampler_mode == "host_logits_sample"
+        # ``speculative_mtp=False`` is the default, not an opt-out: with a head
+        # attached, the resident scheduler may serve it through MTP as well.
+        # Either way it samples.
+        assert plain.finish_details.sampler_mode in (
+            "host_logits_sample", "sampled_speculative_mtp",
+        )
         assert speculative.finish_details.sampler_mode == "sampled_speculative_mtp"
         diagnostics = speculative.telemetry.diagnostics
         assert diagnostics["draft_law"] == "sampled"

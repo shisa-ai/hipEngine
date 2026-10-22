@@ -63,10 +63,14 @@ def test_live_generate_with_int8_kv_storage_runs_the_int8_route():
         assert outputs and outputs[0], "the INT8 KV request produced no text"
 
         generator = llm._get_text_generator()
-        # ``_get_text_generator`` returns the submit/poll adapter; the model
-        # generator that owns the runner is its ``_inner``.
-        model_generator = generator._inner
-        runner = model_generator._runner
+        # ``_get_text_generator`` returns the engine service. A resident server
+        # runs each request on a per-slot owner runner, built with the
+        # request's KV storage; the model generator's own runner stays BF16.
+        driver = getattr(generator, "_driver", generator)
+        owners = list(getattr(driver._runner, "_owners", ()))
+        int8_owners = [owner for owner in owners if owner.uses_int8_kv]
+        model_generator = driver._inner
+        runner = int8_owners[0] if int8_owners else model_generator._runner
         assert runner is not None, "the generator built no runner"
         assert runner.uses_int8_kv is True, "the runner did not take the INT8 KV cache"
         assert runner.kv_cache is not None
@@ -89,15 +93,22 @@ def test_live_generate_with_int8_kv_storage_runs_the_int8_route():
             SamplingParams(max_tokens=4, temperature=0.0, top_p=1.0, ignore_eos=True),
         )
         assert default_outputs and default_outputs[0]
-        rebuilt = model_generator._runner
-        assert rebuilt is not None
-        assert rebuilt is not runner, "the runner was not rebuilt for the new storage"
-        assert rebuilt.kv_storage_resolved == "bf16"
-        assert rebuilt.uses_int8_kv is False
-        # The replaced runner's INT8 owner was released with it, not leaked.
-        assert int8_owner.closed is True, "the replaced INT8 owner was not closed"
+        if owners:
+            # Resident slots keep their own storage; BF16 requests have BF16
+            # owners to run on, so the INT8 cache does not serve them.
+            assert any(owner.kv_storage_resolved == "bf16" for owner in owners)
+        else:
+            rebuilt = model_generator._runner
+            assert rebuilt is not None
+            assert rebuilt is not runner, "the runner was not rebuilt for the new storage"
+            assert rebuilt.kv_storage_resolved == "bf16"
+            assert rebuilt.uses_int8_kv is False
+            # The replaced runner's INT8 owner was released with it, not leaked.
+            assert int8_owner.closed is True, "the replaced INT8 owner was not closed"
     finally:
         llm.close()
+
+    assert int8_owner.closed is True, "close did not release the INT8 owner"
 
     # Public close releases the runner and the resident weights, so a later
     # load in the same process starts from an empty device.
