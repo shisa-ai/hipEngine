@@ -148,12 +148,9 @@ def test_live_gemma4_sampled_requests_run_plain_and_through_mtp():
             assert first.generated_token_ids == again.generated_token_ids
             assert first.generated_token_ids != other.generated_token_ids
         plain, speculative = run(3, mtp=False), run(3, mtp=True)
-        # ``speculative_mtp=False`` is the default, not an opt-out: with a head
-        # attached, the resident scheduler may serve it through MTP as well.
-        # Either way it samples.
-        assert plain.finish_details.sampler_mode in (
-            "host_logits_sample", "sampled_speculative_mtp",
-        )
+        # ``speculative_mtp=False`` opts out: the resident scheduler runs the
+        # row without drafts and reports the plain route.
+        assert plain.finish_details.sampler_mode == "host_logits_sample"
         assert speculative.finish_details.sampler_mode == "sampled_speculative_mtp"
         diagnostics = speculative.telemetry.diagnostics
         assert diagnostics["draft_law"] == "sampled"
