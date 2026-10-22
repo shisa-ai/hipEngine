@@ -91,13 +91,15 @@ def test_an_older_block_is_never_left_without_a_kernel() -> None:
         ) in {"tiled", "aotriton", "exact"}
 
 
-def test_the_route_reporter_is_none_before_any_forward_call() -> None:
+def test_the_route_reporter_is_none_before_any_forward_call(monkeypatch) -> None:
     """Observability must not invent an answer it has not been given."""
 
-    # Other tests may have run a layer already; the contract is only that the
-    # accessor exists and returns one of the three route names or None.
-    route_seen = last_prefill_attention_route()
-    assert route_seen is None or route_seen in {"tiled", "aotriton", "exact"}
+    from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_layer
+
+    # Earlier GPU tests in the same process may have run a layer and recorded
+    # a variant name; reset to the state before any forward call.
+    monkeypatch.setattr(gemma4_layer, "_last_prefill_route", None)
+    assert last_prefill_attention_route() is None
 
 
 def test_the_tiled_variant_is_registered_on_the_four_axis_key() -> None:
