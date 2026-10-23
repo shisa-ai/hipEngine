@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "status": "analysis_complete_execution_prerequisites_pending",
+  "status": "published_and_fresh_clone_verified",
   "baseline": "2ec101ae91a298a4baf9aaebceac2aac50fe961a",
   "date_utc": "2026-10-23",
   "entries": [

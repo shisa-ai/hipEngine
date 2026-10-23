@@ -7,10 +7,10 @@ owns: One-time Git history cleanup scope, artifact preservation, rewrite validat
 ## Objective and authorization
 
 Remove disposable traces, logs and generated caches from every affected branch
-and tag in one coordinated history rewrite. The lead approved rewriting published
-tags on October 23, 2026, then required this broader analysis before execution.
-No remote rewrite has happened. The seven-file trial mirror is not the release
-candidate for this campaign.
+and tag in one coordinated history rewrite. The lead approved rewriting published tags on October 23, 2026, then required
+this broader analysis before execution. The consolidated rewrite was published
+atomically on that date and verified from a fresh GitHub clone. The original
+seven-file trial mirror was not published.
 
 The inventory baseline is `2ec101ae91a298a4baf9aaebceac2aac50fe961a`.
 The candidate manifest is `CLEANUP-HISTORY-MANIFEST.json` beside this document.
@@ -148,7 +148,7 @@ storage reclamation is not proven solely by a successful push.
 
 ## Status
 
-The isolated rewrite is validated and ready for publication. All 64 original
+The rewrite is published and verified. All 64 original
 branch/tag tip trees differ only by the declared removals, raw-payload
 compactions and operational journal-pointer repair. The rewritten journal
 regenerates all 7,232 legacy entries byte-for-byte. Documentation, audit budget,
@@ -182,7 +182,12 @@ snapshots and uncompressed maps are in the same directory. The original
 The prepared rewritten checkout is `~/hipEngine-clean`. Never push backup refs
 or merge the original history back into the rewritten repository.
 
-Publication changes 52 refs, including 11 release tags from v0.3.0 onward and the
+Publication changed 52 refs, including 11 release tags from v0.3.0 onward and the
 ROCm reproducer tag. Older unaffected tags keep their original IDs. PyPI files
-are not republished. This document describes the validated candidate; the final
-publication receipt is recorded separately after verifying the remote refs.
+were not republished; the publishing workflow was disabled during the atomic
+push and restored afterwards. All 64 remote refs matched the expected IDs.
+A fresh GitHub clone passed Git integrity, legacy-port, worklog, documentation,
+audit-budget and artifact-provenance checks. The targeted paths and original raw
+payload blobs are absent from its reachable history. GitHub's internal caches
+and pull-request refs may still retain unreachable objects; their reclamation
+was not verified.
