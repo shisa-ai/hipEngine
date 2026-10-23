@@ -81,16 +81,16 @@ The focused repair here required `git lfs install --local` followed by
 `git lfs pull`; the four affected test files then passed (201 passed, 12 skipped).
 No test assertions or runtime code were changed to clear these failures.
 
-The audit has 138 unittest contract tests, separately runnable with:
+At the baseline, the audit had 138 unittest contract tests, separately runnable with:
 
 ```bash
 python3 -m unittest discover -s audit/tests -t audit
 ```
 
-They are outside `pyproject.toml`'s pytest roots. An explicit `pytest audit/tests`
-also misses the four modules lacking tier prefixes. Integrate this safety net
-without importing the product's global fixture machinery into the audit tests.
-Preserve the standalone unittest command.
+They were outside `pyproject.toml`'s pytest roots, and an explicit
+`pytest audit/tests` missed four modules lacking tier prefixes. That discovery
+gap is now fixed, with product fixtures kept separate and the standalone
+unittest command preserved.
 
 The sample review found substantial behavioral coverage, not a suite dominated
 by source-text assertions. A heuristic source-read/string-assert census found
@@ -107,13 +107,12 @@ between owners, exercise construction through `LLM` or the server as well.
 Public import, server conformance, cancellation and speculative-ownership tests
 live partly in the integration tier; plain `pytest` does not select them.
 
-The per-layer llama.cpp parity-tool family is a large consolidation target:
-143 scripts plus 142 test files account for about 100,237 physical lines.
-Its tests protect diagnostic classification, not product execution directly.
-The campaign is closed, but that does not prove the tooling is unused. In
-particular, `scripts/llamacpp_mtp_audit_layer0_attn_norm_formula.py` supplies
-shared numerical helpers to many other scripts and tests. Trace CLI, replay,
-documentation and import consumers before retiring any member.
+The initial review identified the per-layer llama.cpp parity-tool family:
+143 scripts plus 142 test files accounted for about 100,237 physical lines.
+Its tests protected diagnostic classification, not product execution directly.
+The lead subsequently chose retirement over consolidation. The archive section
+below records the narrower removal set after tracing consumers and preserving
+shared helpers such as `scripts/llamacpp_mtp_audit_layer0_attn_norm_formula.py`.
 
 ## Ordered cleanup units and acceptance
 
@@ -129,11 +128,11 @@ documentation and import consumers before retiring any member.
    configuration forms and rejection without mutation after preparation, and
    confirm the duplicate disappears from the audit. This is a calibration unit,
    not a material reduction in repository size.
-3. **Consolidate one diagnostic family.** Start with the four
-   `llamacpp_mtp_audit_layer{3,7,11,15}_attn_output_oracle` implementations.
-   Compare drift, preserve CLI/report schemas and shared helper consumers, and
-   parameterize the layer-specific cases rather than deleting assertions.
-   Decide on the remaining families only after this proof of consolidation.
+3. **Retire historical diagnostic copies before consolidating them.** The
+   per-layer llama.cpp campaign copies are archived and removed as recorded
+   below. Preserve the small shared dependency set, not hundreds of historical
+   classifiers merely because they can be parameterized. Future consolidation
+   must serve an identified current caller.
 4. **Map product ownership before moving code.** Trace one request through
    `LLM`/server admission, generation, resident runner, scheduler, KV ownership,
    kernel selection and teardown. Record who owns each decision and state
@@ -170,10 +169,51 @@ line count alone is not sufficient acceptance evidence.
   unguarded method makes both rejection tests fail. Three other reviewed pairs
   remain in the removal queue.
 
+## Historical llama.cpp parity tooling archive
+
+The lead chose archival/removal rather than maintaining the closed campaign's
+per-layer copies. Branch `archive/llamacpp-parity-tooling-20261023`, published to
+`origin`, preserves the full pre-removal tree at
+`af11c32d05dcc4f79170aafdf96de8250c019b3b`. The older `origin/mtp-gguf` branch
+also contains all 276 removed files when its pre-tier test names are accounted
+for: 275 are byte-identical, and one script differs only in a documentation
+path. The dedicated archive preserves the exact current names and contents.
+
+The removal covers 138 scripts and 138 dedicated tests, totaling 94,397 physical
+Python lines. The set is `scripts/llamacpp_mtp_*` files with `_layer` in their
+stem, minus the eight shared tools below, plus their dedicated matching tests.
+Every deleted file was compared byte-for-byte with the archive before deletion.
+No runtime implementation, numerical fixture, result artifact or historical
+worklog entry is removed. The historical test-tier migration JSON remains a
+record of the tree it classified, not today's test inventory.
+
+| Preserved script suffix after `scripts/llamacpp_mtp_` | Consumer or reason |
+| --- | --- |
+| `audit_layer0_attn_norm_formula.py` | Shared numerical helpers used by `compare_full_attn_boundary.py` |
+| `compare_layer0_attn_norm.py` | Dependency of the numerical helper above |
+| `compare_layer0_linear_attn.py` | Used by `compare_full_attn_boundary.py` |
+| `build_layer_boundary_harness.py` | Used by `build_input_embed_harness.py`; integration coverage retained |
+| `build_layer0_attn_norm_harness.py` | Standalone capture harness with integration coverage retained |
+| `layer_boundary_bisect_plan.py` | Used by `initial_input_capture_plan.py` |
+| `layer_input_patch.py` | Used by `prepare_patched_source.py` and build-plan tests |
+| `sweep_hidden_in_layers.py` | Used by `scripts/gguf_hidden_in_earliest_divergence.py` |
+
+To inspect or replay the old campaign without reintroducing its files to main:
+
+```bash
+git fetch origin archive/llamacpp-parity-tooling-20261023
+git worktree add --detach ../hipEngine-parity-archive origin/archive/llamacpp-parity-tooling-20261023
+```
+
+This is an ordinary deletion commit, not a history rewrite. The archive preserves
+source, not a guarantee that historical commands work against today's external
+llama.cpp checkout, model files or compiler environment.
+
 ## Completion boundary
 
 This assessment does not claim comprehensive dead-code detection, full dynamic
 reachability, useful coverage of every test, or a cleaned product architecture.
-The first implementation pass covers the audit guard and a small proven removal.
-The diagnostic consolidation and product ownership work remain explicitly
-pending; they must not disappear behind a green audit count.
+The first implementation pass covers the audit guard, a small proven removal,
+and retirement of the historical per-layer diagnostic copies. Product ownership
+mapping and larger architectural refactors remain pending; they must not
+disappear behind a green audit count.
