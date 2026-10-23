@@ -1,0 +1,169 @@
+{
+  "schema": 1,
+  "source_commit": "2ec101ae91a298a4baf9aaebceac2aac50fe961a",
+  "date_utc": "2026-10-23",
+  "purpose": "Preserve unique diagnostic log measurements before the one-time history cleanup; these are historical observations, not new benchmark claims.",
+  "extracted_summaries": {
+    "benchmarks/external-survey/results/laurent-fixed-n3-server.log": {
+      "note": "2 tasks, fixed draft limit 3",
+      "tasks": [
+        {
+          "slot": 3,
+          "decode_tok_s": 25.84,
+          "prefill_tok_s": 83.73,
+          "generated_tokens": 300
+        },
+        {
+          "slot": 2,
+          "decode_tok_s": 42.53,
+          "prefill_tok_s": 178.34,
+          "generated_tokens": 300
+        }
+      ]
+    },
+    "benchmarks/external-survey/results/laurent-fixed-n7-server.log": {
+      "note": "2 tasks, fixed draft limit 7",
+      "tasks": [
+        {
+          "slot": 3,
+          "decode_tok_s": 24.48,
+          "prefill_tok_s": 81.6,
+          "generated_tokens": 300
+        },
+        {
+          "slot": 2,
+          "decode_tok_s": 20.86,
+          "prefill_tok_s": 172.74,
+          "generated_tokens": 300
+        }
+      ]
+    },
+    "benchmarks/external-survey/results/laurent-adaptive-3-7-server.log": {
+      "note": "2 tasks, adaptive 3-7 draft window",
+      "tasks": [
+        {
+          "slot": 3,
+          "decode_tok_s": 25.62,
+          "prefill_tok_s": 81.49,
+          "generated_tokens": 300
+        },
+        {
+          "slot": 2,
+          "decode_tok_s": 66.84,
+          "prefill_tok_s": 179.86,
+          "generated_tokens": 300
+        }
+      ]
+    },
+    "benchmarks/results/2026-10-04-gfx1151-gufo-vs-hipengine-same-file/raw/gufo-serve-q4km.server.log": {
+      "server_side_http": [
+        {
+          "request": "r2",
+          "method": "GET",
+          "path": "/v1/models",
+          "status": 200,
+          "duration_ms": 0.1
+        },
+        {
+          "request": "r3",
+          "method": "POST",
+          "path": "/v1/completions",
+          "status": 200,
+          "duration_ms": 6543.0,
+          "prompt_tokens": 2481,
+          "prefill_tokens": 2481,
+          "generated_tokens": 0
+        },
+        {
+          "request": "r4",
+          "method": "POST",
+          "path": "/v1/completions",
+          "status": 200,
+          "duration_ms": 0.9,
+          "prompt_tokens": 2481,
+          "prefill_tokens": 0,
+          "generated_tokens": 0
+        }
+      ],
+      "derived": "r3 server-side prefill = 2481 tokens / 6.543 s = 379.2 tok/s, against the client-side 380.37 tok/s in gufo-serve-q4km.probe.json."
+    },
+    "benchmarks/results/2026-09-07-rx7900xtx-natural25-suite-current-tree.log": {
+      "host": "RX 7900 XTX (gfx1100)",
+      "suite": "natural25, run=0",
+      "rows": [
+        {
+          "prompt": "code_merge_intervals",
+          "ar_tok_s": 35.849134,
+          "mtp_b3_tok_s": 73.997875,
+          "accepted": 17,
+          "exact": true
+        },
+        {
+          "prompt": "code_topological_sort",
+          "ar_tok_s": 35.653727,
+          "mtp_b3_tok_s": 80.306304,
+          "accepted": 17,
+          "exact": true
+        },
+        {
+          "prompt": "code_lru_cache",
+          "ar_tok_s": 35.658289,
+          "mtp_b3_tok_s": 74.248153,
+          "accepted": 17,
+          "exact": true
+        },
+        {
+          "prompt": "code_markdown_table",
+          "ar_tok_s": 35.611827,
+          "mtp_b3_tok_s": 82.193314,
+          "accepted": 17,
+          "exact": true
+        },
+        {
+          "prompt": "general_en_plan",
+          "ar_tok_s": 35.718906,
+          "mtp_b3_tok_s": 51.552466,
+          "accepted": 13,
+          "exact": true
+        },
+        {
+          "prompt": "general_en_explain",
+          "ar_tok_s": 35.708138,
+          "mtp_b3_tok_s": 57.564253,
+          "accepted": 14,
+          "exact": true
+        },
+        {
+          "prompt": "general_ja_plan",
+          "ar_tok_s": 35.657558,
+          "mtp_b3_tok_s": 51.357462,
+          "accepted": 13,
+          "exact": true
+        },
+        {
+          "prompt": "general_ja_explain",
+          "ar_tok_s": 35.702205,
+          "mtp_b3_tok_s": 57.428005,
+          "accepted": 14,
+          "exact": true
+        },
+        {
+          "prompt": "mixed_ja_en_translate",
+          "ar_tok_s": 35.416811,
+          "mtp_b3_tok_s": 58.837612,
+          "accepted": 15,
+          "exact": true
+        },
+        {
+          "prompt": "mixed_ja_en_review",
+          "ar_tok_s": 35.404731,
+          "mtp_b3_tok_s": null,
+          "accepted": null,
+          "exact": null
+        }
+      ],
+      "aborted_at": "prompt 10 of 10 (mixed_ja_en_review, MTP arm)",
+      "error": "RuntimeError: initial-state-only journal cannot capture serial rows"
+    }
+  }
+}
