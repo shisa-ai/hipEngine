@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import inspect
+from pathlib import Path
 import subprocess
 import sys
 
 import pytest
-
-from tests.conftest import pytest_addoption, pytest_configure
-
 
 @pytest.mark.parametrize(
     ("args", "expected"),
@@ -24,10 +21,7 @@ from tests.conftest import pytest_addoption, pytest_configure
 def test_suite_discovery(tmp_path, args, expected):
     # Reuse the real hooks in an isolated root to avoid collecting this repo.
     (tmp_path / "conftest.py").write_text(
-        "import pytest\n\n"
-        + inspect.getsource(pytest_addoption)
-        + "\n"
-        + inspect.getsource(pytest_configure),
+        (Path(__file__).parents[1] / "conftest.py").read_text(encoding="utf-8"),
         encoding="utf-8",
     )
     (tmp_path / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
