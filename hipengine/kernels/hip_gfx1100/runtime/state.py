@@ -37,6 +37,7 @@ _SYMBOL_ADVANCE_POSITION = "hipengine_advance_decode_position_i64"
 _SYMBOL_ADVANCE_POSITIONS = "hipengine_advance_decode_positions_i64"
 _SYMBOL_RECORD_I64_INDEXED = "hipengine_record_i64_scalar_indexed"
 _SYMBOL_RECORD_F32_ROW_INDEXED = "hipengine_record_f32_row_indexed"
+_SYMBOL_REMAP_PREFIX_TAIL_I64 = "hipengine_remap_prefix_tail_i64"
 _SYMBOL_UNPACK_VERIFY_CHAIN_DYNAMIC_METADATA = "hipengine_unpack_verify_chain_dynamic_metadata_i64"
 
 
@@ -926,6 +927,61 @@ def record_f32_row_indexed(
     _check_launch(runtime, err)
 
 
+def remap_prefix_tail_i64(
+    index_i64_ptr: int,
+    extra_ids_i64_ptr: int | None,
+    prefix_size: int,
+    extra_count: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Map one draft-head row index through the prefix rows and the extra table.
+
+    ``index[0]`` is rewritten in place by a single device thread: a row in
+    ``[0, prefix_size)`` keeps its value, a row in
+    ``[prefix_size, prefix_size + extra_count)`` becomes
+    ``extra_ids[row - prefix_size]``, and a negative or out-of-range row becomes
+    ``-1`` without reading past either table. ``extra_ids_i64_ptr`` may be
+    ``None`` when ``extra_count`` is zero, because the table is then never read.
+    """
+
+    prefix = int(prefix_size)
+    extra = int(extra_count)
+    if prefix < 0:
+        raise ValueError("prefix_size must be non-negative")
+    if extra < 0:
+        raise ValueError("extra_count must be non-negative")
+    if prefix + extra <= 0:
+        raise ValueError("prefix_size + extra_count must be positive")
+    if extra > 0 and extra_ids_i64_ptr is None:
+        raise ValueError("extra_ids_i64_ptr is required when extra_count is positive")
+    library = library or build_runtime_state(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_REMAP_PREFIX_TAIL_I64)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(index_i64_ptr),
+        (
+            ctypes.c_void_p(extra_ids_i64_ptr)
+            if extra_ids_i64_ptr is not None
+            else ctypes.c_void_p()
+        ),
+        ctypes.c_int64(prefix),
+        ctypes.c_int64(extra),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def unpack_verify_chain_dynamic_metadata_i64(
     packed_i64_ptr: int,
     token_ids_i64_ptr: int,
@@ -1109,6 +1165,16 @@ def register_runtime_state_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "scalar_state", "w4_paro", "record_f32_row_indexed"),
         record_f32_row_indexed,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "mtp_draft_token_index",
+            "w4_paro",
+            "remap_prefix_tail_i64",
+        ),
+        remap_prefix_tail_i64,
         replace=replace,
     )
     register(

@@ -212,6 +212,24 @@ shows no per-case median decode regression. This is a restore-window improvement
 not an isolated end-to-end speedup claim.
 [Commands, state checks and all timing samples](results/2026-10-23-gfx1151-flashnext-mtp-cursors.json).
 
+A subsequent same-host comparison enables a request-local subset of the MTP
+output head: a fixed token prefix plus special tokens and committed-history
+rows. Target verification is unchanged. Against the cursor-upload baseline,
+median MTP decode improves **6.10–6.79%** across the eight 1K/4K canonical
+cases using the same protocol above. The 18 category/heldout cases use natural
+prompt lengths and 32 outputs (31 decode transitions), with the same warmup,
+repetition and alternating-arm schedule. In those cases, code
+and English improve **6.59–7.48%**, Japanese changes by −0.03% to +0.19%, and
+mixed-language cases improve 0.08–3.11%. Japanese requests mostly select the
+full-head fallback because of recent vocabulary misses. AR changes by less
+than 0.1% in either direction.
+
+All 208 output sequences and acceptance rates match the previous baseline.
+Greedy and sampled public controls, repeatability and cancellation/reuse checks
+pass. These are native diagnostic timings, not a new cross-engine comparison
+or a resolution of the inherited numerical findings above.
+[Source, commands, route checks and per-case samples](results/2026-10-23-gfx1151-flashnext-mtp-subset-head.json).
+
 ## Qwen3.8 Flash Next current production rates
 
 On Framework Desktop / Radeon 8060S/gfx1151, Qwen3.8-Flash-Next UD-Q4_K_XL,

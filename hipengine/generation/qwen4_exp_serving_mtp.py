@@ -192,6 +192,9 @@ class Qwen4ExpServingMTP:
                 raise RuntimeError("Flash-Next scheduler has no free draft owner")
             row.draft = self._available_drafts.pop()
             row.draft.reset()
+            begin = getattr(self.generator._speculative_provider, "begin_draft_vocabulary", None)
+            if callable(begin):
+                begin(row.draft)
 
     def _consume_mtp_hidden(self, row, tokens, buffer):
         before = getattr(row.draft._prefill_workspace, "append_calls", 0)

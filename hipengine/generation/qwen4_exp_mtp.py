@@ -127,6 +127,24 @@ class Qwen4ExpMTPTextProvider:
                 raise
         self.draft = draft_runner
 
+    def begin_draft_vocabulary(self, draft_runner) -> None:
+        begin = getattr(draft_runner, "begin_draft_vocabulary", None)
+        if not callable(begin):
+            return
+        if not hasattr(self, "_draft_special_ids"):
+            tokenizer = self.target_generator.tokenizer
+            ids = {index for index, kind in enumerate(getattr(tokenizer, "token_types", ()))
+                   if kind in (2, 3, 4)}
+            for name in ("bos_token_id", "eos_token_id", "padding_token_id"):
+                token = getattr(tokenizer, name, None)
+                if token is not None:
+                    ids.add(int(token))
+            extra = getattr(tokenizer, "_extra_special_ids", None)
+            if callable(extra):
+                ids.update(extra())
+            self._draft_special_ids = tuple(sorted(ids))
+        begin(self._draft_special_ids)
+
     def capabilities(self) -> dict[str, Any]:
         row = SpeculativeProviderCapabilities(
             provider_name=self.provider_name,
@@ -309,6 +327,9 @@ class Qwen4ExpMTPTextProvider:
         if int(target_runner.position) != int(draft_runner.position):
             raise RuntimeError("Qwen4Exp target/draft prompt cursors diverged")
 
+        self.begin_draft_vocabulary(draft_runner)
+        committed_history = list(token_ids)
+        committed_generated = 0
         generated: list[int] = [select(result)]
         root_token = generated[0]
         root_hidden = result.hidden_seed
@@ -372,14 +393,19 @@ class Qwen4ExpMTPTextProvider:
             )
             start_position = int(target_runner.position)
             proposal_started = time.perf_counter()
+            committed_history.extend(generated[committed_generated:])
+            committed_generated = len(generated)
+            prepare_vocab = getattr(draft_runner, "prepare_draft_vocabulary", None)
+            if callable(prepare_vocab):
+                prepare_vocab(committed_history, anchor=root_token)
             proposal = prepare_proposal(
                 draft_runner,
                 start_position=start_position,
                 root_token=root_token,
                 target_hidden_seed=root_hidden,
                 draft_n_max=budget,
-                # Device argmax and device-resident chaining; only the ids
-                # come back. Same draft tokens as the logits path.
+                # Device-resident deterministic proposals. The target still
+                # scores the full vocabulary and owns every output decision.
                 compact_output=os.environ.get(
                     "HIPENGINE_QWEN4_EXP_MTP_COMPACT_PROPOSAL", "1"
                 ) not in {"", "0", "false", "False"},
@@ -517,6 +543,10 @@ class Qwen4ExpMTPTextProvider:
                     "target_draw_match_deterministic_draft" if controlled else "raw_argmax_match"
                 ),
                 "draft_rollback": "cursor_trim",
+                "draft_vocabulary": (
+                    draft_runner.draft_vocabulary_diagnostics()
+                    if callable(getattr(draft_runner, "draft_vocabulary_diagnostics", None)) else {}
+                ),
                 "target_hidden_handoff": "host",
                 "phase_census": {
                     "cycles": len(cycles),

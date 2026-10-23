@@ -165,6 +165,9 @@ class Qwen4ExpServingMixed:
                 lease = self._ar_batch._leases[row.request_id]
                 position = int(batch._positions[lease.slot])
                 if row.mixed_mtp:
+                    prepare_vocab = getattr(row.draft, 'prepare_draft_vocabulary', None)
+                    if count and callable(prepare_vocab):
+                        prepare_vocab([*row.prompt_ids, *row.generated_ids], anchor=row.generated_ids[-1])
                     proposal = prepare_proposal(
                         row.draft, start_position=position, root_token=row.generated_ids[-1],
                         target_hidden_seed=row.mixed_root_hidden, draft_n_max=count,
@@ -405,6 +408,8 @@ class Qwen4ExpServingMixed:
             diagnostics=dict(execution_path=execution_path, **provider,
                              candidate_budget=row.mtp_budget, proposed_draft_tokens=row.mixed_proposed,
                              accepted_draft_tokens=row.mixed_accepted, cycles_count=row.mixed_cycles,
+                             draft_vocabulary=(row.draft.draft_vocabulary_diagnostics()
+                                 if callable(getattr(getattr(row, 'draft', None), 'draft_vocabulary_diagnostics', None)) else {}),
                              physical_request_width_histogram=dict(row.mixed_widths),
                              physical_target_rows=row.mixed_target_rows),
         )

@@ -170,6 +170,7 @@ class Qwen4ExpGGUFMTPDraftRunner:
         self.position = 0
         self.closed = False
         self._prefill_workspace = None
+        self._draft_head = None
         self.last_forward_stage_timings_ms: dict[str, float] = {}
         self.last_proposal_stage_timings_ms: dict[str, float] = {}
         try:
@@ -301,8 +302,38 @@ class Qwen4ExpGGUFMTPDraftRunner:
             qsa_state_index=0,
         )
 
+    def begin_draft_vocabulary(self, special_ids: Sequence[int]) -> None:
+        """Start request-local subset scoring without changing draft KV state."""
+        from hipengine.runtime.mtp_draft_head import MTPSubsetHead
+
+        self._require_open()
+        special_ids = tuple(special_ids)
+        head = getattr(self, "_draft_head", None)
+        if head is not None and head.special_ids == special_ids:
+            head.reset()
+            return
+        if head is not None:
+            head.close()
+        self._draft_head = None
+        self._draft_head = MTPSubsetHead(
+            self.resident.weight("root.lm_head"), vocab_size=self.config.vocab_size,
+            hidden_size=self.config.hidden_size, special_ids=special_ids, runtime=self.runtime,
+        )
+
+    def prepare_draft_vocabulary(self, committed: Sequence[int], *, anchor: int) -> None:
+        head = getattr(self, "_draft_head", None)
+        if head is not None:
+            head.prepare(committed, anchor=anchor)
+
+    def draft_vocabulary_diagnostics(self) -> dict:
+        head = getattr(self, "_draft_head", None)
+        return {} if head is None else head.diagnostics()
+
     def reset(self) -> None:
         self._require_open()
+        head = getattr(self, "_draft_head", None)
+        if head is not None:
+            head.reset()
         self.runtime.memset(
             self.attention.key_cache.ptr, 0, self.attention.key_cache.nbytes
         )
@@ -537,17 +568,19 @@ class Qwen4ExpGGUFMTPDraftRunner:
         )
         finish_stage("draft_head_gr", started)
         started = time.perf_counter()
-        launch_gguf_linear(
-            self.resident.weight("root.lm_head"),
-            head.mixed.ptr,
-            self.logits_buffer.ptr,
-            1,
-            self.config.hidden_size,
-            self.config.vocab_size,
-            activation_dtype=GGUF_ACTIVATION_F32,
-            output_dtype=GGUF_OUTPUT_F32,
-            runtime=self.runtime,
-        )
+        subset_head = getattr(self, "_draft_head", None)
+        if subset_head is None:
+            score_count = self.config.vocab_size
+            launch_gguf_linear(
+                self.resident.weight("root.lm_head"), head.mixed.ptr,
+                self.logits_buffer.ptr, 1, self.config.hidden_size, score_count,
+                activation_dtype=GGUF_ACTIVATION_F32,
+                output_dtype=GGUF_OUTPUT_F32, runtime=self.runtime,
+            )
+        else:
+            score_count = subset_head.project(
+                head.mixed.ptr, self.logits_buffer.ptr, capture_logits=capture_logits,
+            )
         finish_stage("draft_lm_head", started)
         logits = None
         if capture_logits:
@@ -571,9 +604,11 @@ class Qwen4ExpGGUFMTPDraftRunner:
                 self.argmax_block_indices.ptr,
                 self.token_id_buffer.ptr,
                 self.argmax_value.ptr,
-                self.config.vocab_size,
+                score_count,
                 runtime=self.runtime,
             )
+            if score_count != self.config.vocab_size:
+                subset_head.remap(self.token_id_buffer.ptr)
             token_id_result = -1
             if capture_token_id:
                 token_host = np.empty(1, dtype=np.int64)
@@ -794,6 +829,10 @@ class Qwen4ExpGGUFMTPDraftRunner:
         if self.closed:
             return
         self.closed = True
+        head = getattr(self, "_draft_head", None)
+        if head is not None:
+            head.close()
+            self._draft_head = None
         workspace = getattr(self, "_prefill_workspace", None)
         if workspace is not None:
             workspace.close()

@@ -142,6 +142,29 @@ __global__ void record_f32_row_indexed_kernel(
   }
 }
 
+// Request-local draft-head token index map. One thread rewrites index[0] in
+// place: a row that names a prefix row keeps its value, a row that names a tail
+// row resolves through the request's own extra-id table, and every other row
+// becomes the -1 sentinel. The tail branch is the only extra_ids access, so a
+// null table stays safe when extra_count is zero.
+__global__ void remap_prefix_tail_i64_kernel(
+    int64_t* index,
+    const int64_t* extra_ids,
+    int64_t prefix_size,
+    int64_t extra_count) {
+  if (threadIdx.x != 0 || blockIdx.x != 0) {
+    return;
+  }
+  const int64_t value = index[0];
+  int64_t mapped = -1;
+  if (value >= 0 && value < prefix_size) {
+    mapped = value;
+  } else if (value >= prefix_size && value - prefix_size < extra_count) {
+    mapped = extra_ids[value - prefix_size];
+  }
+  index[0] = mapped;
+}
+
 __global__ void set_i64_vector_kernel(int64_t* out, const int64_t* values, int64_t rows) {
   const int64_t row = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (row < rows) {
@@ -722,6 +745,32 @@ extern "C" int hipengine_record_f32_row_indexed(
       index,
       cols,
       capacity);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_remap_prefix_tail_i64(
+    int64_t* index,
+    const int64_t* extra_ids,
+    int64_t prefix_size,
+    int64_t extra_count,
+    hipStream_t stream) {
+  // Two independent range checks instead of a sum: prefix_size + extra_count
+  // could overflow int64 for adversarial counts.
+  if (index == nullptr || prefix_size < 0 || extra_count < 0 ||
+      (prefix_size == 0 && extra_count == 0) ||
+      (extra_count > 0 && extra_ids == nullptr)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      remap_prefix_tail_i64_kernel,
+      dim3(1),
+      dim3(1),
+      0,
+      stream,
+      index,
+      extra_ids,
+      prefix_size,
+      extra_count);
   return static_cast<int>(hipGetLastError());
 }
 
