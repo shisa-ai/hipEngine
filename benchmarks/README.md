@@ -246,6 +246,22 @@ uses neural proposals. Those controls ignore EOS and are not a copy-throughput
 claim. Six cancellation/reuse checks pass.
 [Commands, controls and samples](results/2026-10-23-gfx1151-flashnext-prompt-lookup.json).
 
+The exact fused router selection/BF16 cast now runs by default. Against the
+prompt-lookup baseline on the same Radeon 8060S and canonical protocol above:
+
+| Fresh prompt | AR before → after (tok/s) | MTP before → after (tok/s) |
+| --- | ---: | ---: |
+| 1024 tokens | 17.153 → 17.177 | 39.273 → 39.235 |
+| 4096 tokens | 14.694 → 14.714 | 39.063 → 39.041 |
+
+Rates pool 63 decode transitions per request across four categories and three
+measured repetitions per arm (harmonic mean of request rates). All 208 canonical
+and category/heldout outputs and acceptance results match. The four-row router
+API window falls from 17.844 to 16.752 microseconds, but this does not establish
+an end-to-end MTP speedup. The public trace confirms fused execution; four device
+cases preserve exact selection, routing and cast bits, and four expert tests pass.
+[Source, commands, attribution and samples](results/2026-10-23-gfx1151-flashnext-router-default.json).
+
 ## Qwen3.8 Flash Next current production rates
 
 On Framework Desktop / Radeon 8060S/gfx1151, Qwen3.8-Flash-Next UD-Q4_K_XL,

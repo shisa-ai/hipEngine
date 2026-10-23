@@ -4,6 +4,20 @@ owns: Cleanup ledger for dead flags, duplicate dispatch paths, and fallback code
 ---
 # hipEngine Refactor / Dead-Path Ledger
 
+## Router select/cast rollback
+
+`HIPENGINE_QWEN4_EXP_ROUTER_SELECT_CAST` defaults to `1`. The fused kernel keeps
+selection, routing and BF16 cast bits equal to the unfused pair and removes one
+launch per expert layer. `0` keeps the old chain available for fault isolation.
+
+Remove this environment branch when the unfused pair is selectable through the
+same registered composite interface as the fused operation, so strict comparison
+does not require a process-global switch. Preserve the unfused primitive chain.
+Validate that replacement with
+`uv run pytest tests/test_unit_qwen4exp_router_select_cast.py tests/test_gpu_qwen4exp_router_select_cast_fusion.py`
+and a public MTP request that confirms the selected route. The current direct
+wrapper dispatch predates this default change; this entry tracks its replacement.
+
 ## DMS extent compaction: replace the memmove with a ring head
 
 The DMS append/decode kernel compacts the live extent on every decode step:

@@ -4980,12 +4980,11 @@ def run_qwen4_exp_moe(
             stream=stream, runtime=active_runtime,
         )
     if os.environ.get(
-        "HIPENGINE_QWEN4_EXP_ROUTER_SELECT_CAST", "0"
+        "HIPENGINE_QWEN4_EXP_ROUTER_SELECT_CAST", "1"
     ) not in {"", "0", "false", "False"}:
-        # Fused select+cast sibling (2026-10-08 dispatch-gap fusion):
-        # bit-identical selection, routing and cast bits with one launch
-        # instead of two; the unfused pair stays the default path and the
-        # registered fallback.
+        # Same selection and cast bits with one launch instead of two.
+        # The opt-out retains the strict unfused chain for fault isolation.
+        # Removal condition: docs/REFACTOR.md, router select/cast rollback.
         qwen35_router_select_cast_bf16(
             scratch.router_logits.ptr,
             scratch.selected.ptr,

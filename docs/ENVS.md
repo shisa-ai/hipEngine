@@ -816,7 +816,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_QSA_WMMA` | unset (fast/F16 route sets `1`) | QSA prefill attention on the WMMA kernel. |
 | `HIPENGINE_QWEN4_EXP_ROUTED_F16` | unset (production/F16 route sets `1`) | Routed-expert gate/up and down on the wide F16 WMMA GEMMs from two rows (Q4_K) or 64 rows (Q5_K); multi-row decode batches use it too. |
 | `HIPENGINE_QWEN4_EXP_ROUTED_F16_INDEXED` | `1` | The routed F16 gate/up reads token rows through the lane map; `0` builds the gathered activation copy. |
-| `HIPENGINE_QWEN4_EXP_ROUTER_SELECT_CAST` | `0` | `1` fuses router top-k selection with the BF16 cast (bit-identical candidate). |
+| `HIPENGINE_QWEN4_EXP_ROUTER_SELECT_CAST` | `1` | Fuses router top-k selection with the exact BF16 cast. `0` restores the unfused pair for fault isolation; see the router select/cast rollback entry in `REFACTOR.md`. |
 | `HIPENGINE_QWEN4_EXP_ROUTER_VARIANT` | profile-selected | Names the router-logit producer; the UD production profile selects ordered DPP, strict/Q4_K_M keep tile4. Rollback/bisection only. |
 | `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP` | unset (F16 route sets `1`) | Warp-per-expert routed gate/up decode owner (reduction order differs). |
 | `HIPENGINE_QWEN4_EXP_GDN_DECODE_ROWSPLIT` | unset (F16 route sets `1`) | Row-split GDN decode step. |
