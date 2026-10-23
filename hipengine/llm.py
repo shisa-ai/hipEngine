@@ -1492,6 +1492,17 @@ class LLM:
         if self._text_generator is not None:
             return self._text_generator
 
+        from hipengine.generation.construction import ConstructionOwner
+
+        with ConstructionOwner() as ownership:
+            generator = self._construct_text_generator(ownership)
+            self._text_generator = generator
+            ownership.release()
+        return self._text_generator
+
+    def _construct_text_generator(self, ownership: Any) -> Any:
+        """Build the service while keeping each unpublished owner reachable."""
+
         from hipengine.generation import (
             EngineService,
             SubmitPollTextGenerator,
@@ -1540,6 +1551,7 @@ class LLM:
                 if profile_resolution is None
                 else profile_resolution.construct_generator(factory, **factory_kwargs)
             )
+            ownership.take(generator)
             _declare_serving_capacity(generator, self.max_active_requests)
             if self.dms_metadata_path is not None:
                 configure_metadata_dms = getattr(generator, "configure_dms", None)
@@ -1589,23 +1601,25 @@ class LLM:
                 backend=backend,
                 quant=quant,
             )
-            provider = provider_factory(
-                target_generator=generator,
-                config=SpeculativeProviderConfig(
-                    provider=effective_provider,
-                    draft_model=effective_draft_model or "",
-                    candidate_budget=provider_budget,
-                ),
-            )
-            attach = getattr(generator, "attach_speculative_provider", None)
-            if not callable(attach):
-                closer = getattr(provider, "close", None)
-                if callable(closer):
-                    closer()
-                raise TypeError(
-                    "registered target generator cannot attach a speculative provider"
-                )
-            attach(provider)
+            from hipengine.generation.construction import ConstructionOwner
+
+            with ConstructionOwner() as provider_ownership:
+                provider = provider_ownership.take(provider_factory(
+                    target_generator=generator,
+                    config=SpeculativeProviderConfig(
+                        provider=effective_provider,
+                        draft_model=effective_draft_model or "",
+                        candidate_budget=provider_budget,
+                    ),
+                ))
+                attach = getattr(generator, "attach_speculative_provider", None)
+                if not callable(attach):
+                    raise TypeError(
+                        "registered target generator cannot attach a speculative provider"
+                    )
+                attach(provider)
+                # Successful attachment makes the target the provider's owner.
+                provider_ownership.release()
         loop_config = _engine_loop_config_with_generator_defaults(
             engine_loop_config_from_env(),
             generator,
@@ -1661,7 +1675,8 @@ class LLM:
             generator,
             config=loop_config,
         )
-        self._text_generator = (
+        ownership.take(resident_driver)
+        service = (
             EngineService(
                 resident_driver,
                 idle_wait_seconds=0.0,
@@ -1670,7 +1685,7 @@ class LLM:
             if resident_driver.supports_controlled_streaming
             else resident_driver
         )
-        return self._text_generator
+        return ownership.take(service)
 
     def _resolve_backend(self) -> str:
         if self._resolved_backend is not None:

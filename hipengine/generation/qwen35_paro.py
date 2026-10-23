@@ -2444,10 +2444,11 @@ class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
     ) -> None:
         del static_eligibility
         row = self._row(request_id)
-        row.mtp2_candidate_budget = 1
         adapter = self._resolved_mtp2_adapter()
-        if adapter is not None:
-            adapter.register_request(request_id, candidate_budget)
+        if adapter is None:
+            raise NotImplementedError(self._staged_adapter_missing_error())
+        adapter.register_request(request_id, candidate_budget)
+        row.mtp2_candidate_budget = 1
 
     # StagedAdapterDelegation hooks: this runner resolves the PARO C1 adapter
     # lazily and counts every recovered cycle into its fallback-reason table.

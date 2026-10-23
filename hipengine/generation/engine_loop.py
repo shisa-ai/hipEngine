@@ -532,66 +532,70 @@ class SubmitPollTextGenerator:
         resident_runner_factory = getattr(self._inner, "create_resident_model_runner", None)
         has_resident_runner = callable(resident_runner_factory)
         self._has_resident_runner = bool(has_resident_runner)
-        if has_resident_runner:
-            self._runner = resident_runner_factory(capacity=configured_capacity)
-            resolved_capacity = int(self._runner.capacity)
-        else:
-            resolved_capacity = 32 if configured_capacity is None else int(configured_capacity)
-            self._runner = _SubmitPollTextRunner(self._inner, capacity=resolved_capacity)
-        if config is None:
-            self._loop = ResidentEngineLoop(
-                self._runner,
-                capacity=resolved_capacity,
-                prefill_chunk_size=int(prefill_chunk_size),
-                context_bucket_size=self._context_bucket_size,
-                prefill_decode_policy="protect_ttft",
-            )
-        else:
-            loop_config = (
-                config
-                if config.max_active_requests is not None
-                else replace(config, max_active_requests=resolved_capacity)
-            )
-            if not has_resident_runner:
-                # The compatibility bridge invokes one whole inner generation
-                # call per decode work item.  Prefill every submitted row first
-                # so prompt-list calls remain one ordered inner batch; native
-                # resident runners consume the configured scheduling policy.
-                loop_config = replace(loop_config, prefill_decode_policy="protect_ttft")
-            self._loop = ResidentEngineLoop(
-                self._runner,
-                capacity=resolved_capacity,
-                context_bucket_size=self._context_bucket_size,
-                config=loop_config,
-            )
-        self._prefill_chunk_size = int(self._loop.prefill_chunk_size)
-        configure_engine_loop = getattr(self._runner, "configure_engine_loop", None)
-        if callable(configure_engine_loop):
-            configure_engine_loop(self._loop.config)
-        if has_resident_runner:
-            # Global pools/session slabs are a model-load responsibility. Doing
-            # this before EngineService starts keeps submit commands O(1) and
-            # avoids applying the short command timeout to first-use allocation.
-            prepare_runner = getattr(self._runner, "prepare", None)
-            if callable(prepare_runner):
-                prepare_runner()
-        # The lock protects one mutable scheduler tick, never an entire request.
-        # Native runners therefore release it after each model transition so a
-        # later D2 admission worker can enqueue between decode steps.
-        self._loop_lock = threading.Lock()
-        self._submission_priority = _SubmissionPriority()
-        self._stream_queue_max_chunks = int(stream_queue_max_chunks)
-        self._stream_states_by_request: dict[int, _ResidentStreamState] = {}
-        self._submissions_by_request: dict[int, GenerationSubmission] = {}
-        self._speculative_outputs_by_request: dict[int, GenerationOutput] = {}
-        self._next_speculative_request_id = 1 << 60
-        self._last_speculative_submission: GenerationSubmission | None = None
-        self._cancel_dispatch_by_submission: dict[
-            int,
-            tuple[Any, Callable[[FinishDetails], None]],
-        ] = {}
-        self._cancel_commands_lock = threading.Lock()
-        self._cancel_commands: deque[tuple[GenerationSubmission, FinishDetails]] = deque()
+        from hipengine.generation.construction import ConstructionOwner
+
+        # The caller still owns inner until this constructor returns. Only a
+        # native runner acquires additional resources before loop preparation.
+        with ConstructionOwner() as ownership:
+            if has_resident_runner:
+                self._runner = ownership.take(
+                    resident_runner_factory(capacity=configured_capacity)
+                )
+                resolved_capacity = int(self._runner.capacity)
+            else:
+                resolved_capacity = 32 if configured_capacity is None else int(configured_capacity)
+                self._runner = _SubmitPollTextRunner(self._inner, capacity=resolved_capacity)
+            if config is None:
+                self._loop = ResidentEngineLoop(
+                    self._runner,
+                    capacity=resolved_capacity,
+                    prefill_chunk_size=int(prefill_chunk_size),
+                    context_bucket_size=self._context_bucket_size,
+                    prefill_decode_policy="protect_ttft",
+                )
+            else:
+                loop_config = (
+                    config
+                    if config.max_active_requests is not None
+                    else replace(config, max_active_requests=resolved_capacity)
+                )
+                if not has_resident_runner:
+                    # Compatibility execution must prefill all rows before its
+                    # single whole-batch generation call.
+                    loop_config = replace(loop_config, prefill_decode_policy="protect_ttft")
+                self._loop = ResidentEngineLoop(
+                    self._runner,
+                    capacity=resolved_capacity,
+                    context_bucket_size=self._context_bucket_size,
+                    config=loop_config,
+                )
+            self._prefill_chunk_size = int(self._loop.prefill_chunk_size)
+            configure_engine_loop = getattr(self._runner, "configure_engine_loop", None)
+            if callable(configure_engine_loop):
+                configure_engine_loop(self._loop.config)
+            if has_resident_runner:
+                # Prepare before service startup: model loading must not consume
+                # a submit command's timeout or run on the admission path.
+                prepare_runner = getattr(self._runner, "prepare", None)
+                if callable(prepare_runner):
+                    prepare_runner()
+            # Locks protect individual scheduler transitions, not whole requests.
+            self._loop_lock = threading.Lock()
+            self._closed = False
+            self._submission_priority = _SubmissionPriority()
+            self._stream_queue_max_chunks = int(stream_queue_max_chunks)
+            self._stream_states_by_request: dict[int, _ResidentStreamState] = {}
+            self._submissions_by_request: dict[int, GenerationSubmission] = {}
+            self._speculative_outputs_by_request: dict[int, GenerationOutput] = {}
+            self._next_speculative_request_id = 1 << 60
+            self._last_speculative_submission: GenerationSubmission | None = None
+            self._cancel_dispatch_by_submission: dict[
+                int,
+                tuple[Any, Callable[[FinishDetails], None]],
+            ] = {}
+            self._cancel_commands_lock = threading.Lock()
+            self._cancel_commands: deque[tuple[GenerationSubmission, FinishDetails]] = deque()
+            ownership.release()
 
     @property
     def inner(self) -> TextGenerator:
@@ -1598,6 +1602,8 @@ class SubmitPollTextGenerator:
         """Force-reclaim any remaining rows and release long-lived resources."""
 
         with self._loop_lock:
+            if self._closed:
+                return
             states = {id(state): state for state in self._stream_states_by_request.values()}
             for state in states.values():
                 self._abort_submission_locked(state.submission, reason="cancel")
@@ -1626,8 +1632,11 @@ class SubmitPollTextGenerator:
                 # built from; the driver owns both, so release the weights too.
                 # Generator close is idempotent where a runner already did it.
                 inner_closer = getattr(self._inner, "close", None)
-                if self._has_resident_runner and callable(inner_closer):
-                    inner_closer()
+                try:
+                    if self._has_resident_runner and callable(inner_closer):
+                        inner_closer()
+                finally:
+                    self._closed = True
 
 
 @dataclass(frozen=True, slots=True)

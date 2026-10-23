@@ -49,9 +49,8 @@ operator rollback resolves to AR and the response reports the substitution
 | width | The due group forms only within the declaration's `max_group_rows` and the backend's listed cells; a wider explicit group is refused by name (`*_group_above_offered_width` or the physical-bucket reason) |
 | breaker/rollback open | AR with the named substitution reason |
 
-The one surface where "forceable" is not yet true end-to-end is PARO through
-the OpenAI route — see the gap list below; the runner seam itself is complete
-and tested.
+PARO supports a single resident request with one draft candidate, greedy
+sampling, and BF16 KV. Sampled requests and wider groups are refused by name.
 
 ## The matrix (current head)
 
@@ -102,7 +101,15 @@ gate for promoting it beyond explicit-only.
 | Backend | Width/depth | Sampling | Automatic | Explicit today |
 | --- | --- | --- | --- | --- |
 | gfx1100 | C1, K=1 | greedy only | declaration-scoped (no evidence rows yet) | **resolvable through the OpenAI route** via the `paro_w4_gfx1100_c1_native_chain` declaration; sampled is refused by name (`mtp_sampling_unsupported`) until the decider lands |
-| gfx1151 | — | — | no (verifier is gfx1100-only behind the `PARO_SPECDEC2_MTP2_C1` package gate) | refused by name (`mtp_backend_unsupported`) |
+| gfx1151 | C1, K=1 | greedy only | declaration-scoped | yes, via `paro_w4_gfx1151_c1_native_chain`; sampled is refused by name (`mtp_sampling_unsupported`) |
+
+Both backends use the shared staged adapter. The gfx1151 public-generation
+checks confirm real speculative cycles, repeatable outputs, and cleanup.
+The existing bulk verifier can produce different greedy trajectories from
+ordinary decoding; cross-route token identity is not promised. See the
+[adapter validation record](../benchmarks/results/2026-10-23-gfx1151-paro-mtp-adapter/validation.json)
+for the comparisons and numerical diagnostics. This repair does not change
+kernel arithmetic or publish an MTP throughput result.
 
 ### Gemma 4 (assistant-head MTP)
 
@@ -133,8 +140,8 @@ common scenario" — each is in flight, and this section shrinks as they land:
 - **PARO sampled MTP** — the declaration stays greedy-only until the sampled
   decider is real: the device sampled accept (the shared native-spec
   `sampled_accept`/workspace machinery the dense/MoE lanes use) ports behind a
-  graph-warmup gate, and qualification runs on the W7900 host because the
-  PARO verifier is gfx1100-only. Owner: the PARO sampled-decider unit.
+  graph-warmup gate. The shared adapter runs on gfx1100 and gfx1151; a sampled
+  decider would need validation on each backend. Owner: the PARO sampled-decider unit.
 - **MoE sampled at c=N** — closed as misrecorded: the production c2 lane
   (dense adapter) already decides sampled rows exactly per-row before commit;
   the "C1-only" reading came from the C1 adapter's own width-2 lane, which

@@ -604,18 +604,25 @@ class Qwen35ParoMoeModel:
     # not been run for this artifact family.  The declaration below is the
     # implementation contract an explicit request resolves against.
     speculative_mtp_serving_evidence: tuple[SpeculativeMTPServingEvidence, ...] = ()
-    # The packed-PARO C1 chain is declared for the backend its verifier is
-    # qualified on: gfx1100, behind the ``PARO_SPECDEC2_MTP2_C1`` package gate.
-    # The fixed-capacity owner serves one row at depth 1, greedy only until a
-    # sampled decider lands - the adapter declines any other mode at
-    # capability, so the declaration is exactly the scope an explicit request
-    # may force and a wider request is refused by name.
+    # Both gfx11 packages expose the shared single-request, one-candidate
+    # adapter through PARO_SPECDEC2_MTP2_C1. Sampling and wider request groups
+    # are not implemented by this adapter.
     speculative_mtp_serving_implementations: tuple[SpeculativeMTPServingImplementation, ...] = (
         SpeculativeMTPServingImplementation(
             name="paro_w4_gfx1100_c1_native_chain",
             sampling_modes=("greedy_fast",),
             kv_storage="bf16",
             backends=(("hip_gfx1100", "gfx1100"),),
+            max_candidate_count=1,
+            max_group_rows=1,
+            group_rejection_reason="paro_group_above_offered_width",
+            automatic_eligible=True,
+        ),
+        SpeculativeMTPServingImplementation(
+            name="paro_w4_gfx1151_c1_native_chain",
+            sampling_modes=("greedy_fast",),
+            kv_storage="bf16",
+            backends=(("hip_gfx1151", "gfx1151"),),
             max_candidate_count=1,
             max_group_rows=1,
             group_rejection_reason="paro_group_above_offered_width",

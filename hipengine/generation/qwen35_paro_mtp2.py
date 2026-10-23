@@ -1,4 +1,4 @@
-"""Staged packed-PARO MTP2 adapter for gfx1100 SPECDEC2 C1/K1."""
+"""Staged packed-PARO MTP adapter for one request and one candidate."""
 
 from __future__ import annotations
 

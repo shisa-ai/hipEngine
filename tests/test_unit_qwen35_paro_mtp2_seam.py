@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 import hipengine.generation.qwen35_paro as paro_generation_module
 import hipengine.generation.qwen35_paro_mtp2 as paro_mtp2_module
 from hipengine.generation.qwen35_paro import Qwen35ParoResidentModelRunner
@@ -81,7 +83,7 @@ class _ProposerDouble:
         return Tensor.from_handle(0x7000, (1,), DType.INT32, Device("hip", 0))
 
 
-def test_gfx1100_package_exposes_only_paro_c1_scope() -> None:
+def test_gfx11_packages_expose_only_paro_c1_scope() -> None:
     assert backend_package_capability(
         "hip_gfx1100", "PARO_SPECDEC2_MTP2_C1", False
     ) is True
@@ -90,7 +92,40 @@ def test_gfx1100_package_exposes_only_paro_c1_scope() -> None:
     ) is False
     assert backend_package_capability(
         "hip_gfx1151", "PARO_SPECDEC2_MTP2_C1", False
+    ) is True
+    assert backend_package_capability(
+        "hip_gfx1151", "PARO_SPECDEC2_MTP2_C4", False
     ) is False
+
+
+@pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
+def test_paro_resident_runner_resolves_singleton_adapter(backend) -> None:
+    runner = object.__new__(Qwen35ParoResidentModelRunner)
+    runner.generator = SimpleNamespace(backend=backend)
+    runner.capacity = 1
+    runner._mtp2_adapter = None
+    runner._mtp2_adapter_resolved = False
+    assert isinstance(runner._resolved_mtp2_adapter(), Qwen35ParoMTP2Adapter)
+
+
+def test_missing_adapter_refuses_before_marking_prompt_for_capture() -> None:
+    runner = object.__new__(Qwen35ParoResidentModelRunner)
+    runner._mtp2_adapter = None
+    runner._mtp2_adapter_resolved = True
+    runner._rows = {7: SimpleNamespace(mtp2_candidate_budget=0)}
+    with pytest.raises(NotImplementedError, match="PARO MTP2 adapter is unavailable"):
+        runner.register_speculative_request(7, 1)
+    assert runner._rows[7].mtp2_candidate_budget == 0
+
+
+def test_invalid_budget_does_not_mark_prompt_for_capture() -> None:
+    runner = object.__new__(Qwen35ParoResidentModelRunner)
+    runner.generator = SimpleNamespace()
+    runner._mtp2_adapter = Qwen35ParoMTP2Adapter(runner)
+    runner._rows = {7: SimpleNamespace(mtp2_candidate_budget=0)}
+    with pytest.raises(ValueError, match="candidate budget must be positive"):
+        runner.register_speculative_request(7, 0)
+    assert runner._rows[7].mtp2_candidate_budget == 0
 
 
 def test_paro_resident_runner_delegates_staged_methods() -> None:
@@ -121,7 +156,11 @@ def test_paro_resident_runner_delegates_staged_methods() -> None:
     ) == "owner:op"
 
 
-def test_paro_capability_is_c1_k1_and_profile_specific() -> None:
+@pytest.mark.parametrize("backend,variant", [
+    ("hip_gfx1100", "fast_d64_candidate"),
+    ("hip_gfx1151", "fast_d64_candidate"),
+])
+def test_paro_capability_is_c1_k1_and_profile_specific(backend, variant) -> None:
     row = SimpleNamespace(
         model_slot=0,
         native_greedy=True,
@@ -130,7 +169,7 @@ def test_paro_capability_is_c1_k1_and_profile_specific() -> None:
     session = SimpleNamespace(max_sequence_length=4096)
     owner = SimpleNamespace(
         generator=SimpleNamespace(
-            backend="hip_gfx1100",
+            backend=backend,
             execution_profile="production",
         ),
         _row=lambda request_id: row,
@@ -158,7 +197,7 @@ def test_paro_capability_is_c1_k1_and_profile_specific() -> None:
     assert capability.proposal_widths == (1,)
     assert capability.target_row_buckets == (2,)
     assert capability.execution_profile == "production"
-    assert "fast_d64_candidate" in capability.capability_key
+    assert variant in capability.capability_key
     assert capability.strict_fallback_key == "paro_target_c1_loop_exact"
 
     owner.generator.execution_profile = "strict"
@@ -343,7 +382,11 @@ def test_staged_prefill_uses_packed_target_and_streams_final_hidden_rows(monkeyp
     ]
 
 
-def test_prefill_completion_reserves_c1_verify_scratch_before_first_cycle() -> None:
+@pytest.mark.parametrize("backend,mode", [
+    ("hip_gfx1100", "decode_batched"),
+    ("hip_gfx1151", "decode_batched"),
+])
+def test_prefill_completion_reserves_c1_verify_scratch_before_first_cycle(backend, mode) -> None:
     proposer = _ProposerDouble()
     row = SimpleNamespace(
         prompt_ids=(10, 11),
@@ -352,7 +395,7 @@ def test_prefill_completion_reserves_c1_verify_scratch_before_first_cycle() -> N
     )
     calls = []
     owner = SimpleNamespace(
-        generator=SimpleNamespace(backend="hip_gfx1100"),
+        generator=SimpleNamespace(backend=backend),
         _row=lambda request_id: row,
         _session=SimpleNamespace(
             prepare_specdec2_verify_scratch=lambda *, rows, chain_attn_mode, max_context_tokens: calls.append(
@@ -370,7 +413,7 @@ def test_prefill_completion_reserves_c1_verify_scratch_before_first_cycle() -> N
 
     adapter.observe_prefill_result(7)
 
-    assert calls == [("reserve", 2, "decode_batched", 10), ("release", row)]
+    assert calls == [("reserve", 2, mode, 10), ("release", row)]
 
     owner.generator.execution_profile = "strict"
     adapter.observe_prefill_result(7)

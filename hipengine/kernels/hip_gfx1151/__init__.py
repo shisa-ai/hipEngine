@@ -2688,6 +2688,9 @@ GGUF_SHORT_C1_SPLIT_ATTN_POLICIES = {
 # full-attention execution. Diagnostic c2 row chunking changes row-local
 # numerics at these widths and must therefore remain an explicit override.
 PARO_FULL_ATTN_NATIVE_EXACT_WIDTHS = frozenset({4, 8})
+# The shared packed-PARO adapter implements one request with one candidate.
+# It uses an eager verifier and a spare resident slot for transactional restore.
+PARO_SPECDEC2_MTP2_C1 = True
 # G5 retains p512/d128 blocking and SSE c1/c2/c4/c8 scaling, delayed c4->c8
 # admission, serial-c8 control, and repeated c8 exactness. Package capabilities
 # select those identity-matched widths by default without branching in model or
@@ -4107,6 +4110,7 @@ __all__ = [
     "LAGUNA_SWA_SPLIT_WAVE_LOCAL",
     "LAGUNA_SWA_PREFILL_ROLE_VARIANTS",
     "LAGUNA_SWA_PREFILL_VARIANT",
+    "PARO_SPECDEC2_MTP2_C1",
     "PARO_FULL_ATTN_NATIVE_EXACT_WIDTHS",
     "PARO_NATIVE_BATCH_DECODE_DEFAULT",
     "PARO_RETAINED_BATCH_DEFAULTS",

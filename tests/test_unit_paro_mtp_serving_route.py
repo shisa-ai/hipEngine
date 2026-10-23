@@ -58,13 +58,14 @@ def _generator(
     return generator
 
 
-def test_paro_declares_its_gfx1100_c1_chain_implementation_scope() -> None:
+@pytest.mark.parametrize("index,arch", [(0, "gfx1100"), (1, "gfx1151")])
+def test_paro_declares_its_c1_chain_implementation_scope(index, arch) -> None:
     declarations = _plugin().speculative_mtp_serving_implementations
 
-    assert len(declarations) == 1
-    declaration = declarations[0]
-    assert declaration.name == "paro_w4_gfx1100_c1_native_chain"
-    assert declaration.backends == (("hip_gfx1100", "gfx1100"),)
+    assert len(declarations) == 2
+    declaration = declarations[index]
+    assert declaration.name == f"paro_w4_{arch}_c1_native_chain"
+    assert declaration.backends == ((f"hip_{arch}", arch),)
     assert declaration.max_candidate_count == 1
     assert declaration.max_group_rows == 1
     # Greedy only: a sampled decider does not exist yet, so the declaration
@@ -73,21 +74,23 @@ def test_paro_declares_its_gfx1100_c1_chain_implementation_scope() -> None:
     assert declaration.automatic_eligible is True
 
 
+@pytest.mark.parametrize("backend,arch", [("hip_gfx1100", "gfx1100"), ("hip_gfx1151", "gfx1151")])
 @pytest.mark.parametrize("request_mode", ["explicit", "automatic"])
-def test_an_explicit_or_automatic_greedy_c1_request_resolves(request_mode: str) -> None:
+def test_an_explicit_or_automatic_greedy_c1_request_resolves(request_mode: str, backend: str, arch: str) -> None:
     decision = _plugin().resolve_speculative_mtp_serving_plan(
-        key=_key(), request_mode=request_mode
+        key=_key(backend=backend, target_arch=arch), request_mode=request_mode
     )
 
     assert decision.admitted
     payload = decision.as_dict()
     assert payload["admission_basis"] == "implementation"
-    assert payload["implementation_key"] == "paro_w4_gfx1100_c1_native_chain"
+    assert payload["implementation_key"] == f"paro_w4_{arch}_c1_native_chain"
 
 
-def test_a_sampled_request_is_refused_by_name_not_downgraded_to_greedy() -> None:
+@pytest.mark.parametrize("arch", ["gfx1100", "gfx1151"])
+def test_a_sampled_request_is_refused_by_name_not_downgraded_to_greedy(arch) -> None:
     decision = _plugin().resolve_speculative_mtp_serving_plan(
-        key=_key(sampling_mode="sampled"),
+        key=_key(backend=f"hip_{arch}", target_arch=arch, sampling_mode="sampled"),
         request_mode="explicit",
     )
 
@@ -95,11 +98,9 @@ def test_a_sampled_request_is_refused_by_name_not_downgraded_to_greedy() -> None
     assert decision.as_dict()["reason"] == "mtp_sampling_unsupported"
 
 
-def test_an_unqualified_backend_is_refused_by_name() -> None:
-    # The PARO verifier is gfx1100-only behind the PARO_SPECDEC2_MTP2_C1
-    # package gate, so the same request on gfx1151 is a named backend miss.
+def test_an_unimplemented_backend_is_refused_by_name() -> None:
     decision = _plugin().resolve_speculative_mtp_serving_plan(
-        key=_key(backend="hip_gfx1151", target_arch="gfx1151"),
+        key=_key(backend="cuda_sm86", target_arch="sm86"),
         request_mode="explicit",
     )
 
@@ -107,9 +108,10 @@ def test_an_unqualified_backend_is_refused_by_name() -> None:
     assert decision.as_dict()["reason"] == "mtp_backend_unsupported"
 
 
-def test_a_wider_group_is_refused_by_the_named_width_reason() -> None:
+@pytest.mark.parametrize("arch", ["gfx1100", "gfx1151"])
+def test_a_wider_group_is_refused_by_the_named_width_reason(arch) -> None:
     decision = _plugin().resolve_speculative_mtp_serving_plan(
-        key=_key(realized_group_rows=2),
+        key=_key(backend=f"hip_{arch}", target_arch=arch, realized_group_rows=2),
         request_mode="explicit",
     )
 
@@ -160,7 +162,7 @@ def test_the_generator_resolves_the_resolved_runner_backend() -> None:
     )
     assert decision.admitted
 
-    unresolvable = _generator(backend="hip_gfx1151", target_arch="gfx1151")
+    unresolvable = _generator(backend="cuda_sm86", target_arch="sm86")
     refused = unresolvable.resolve_speculative_mtp_serving_plan(
         realized_group_rows=1,
         sampling_mode="greedy_fast",

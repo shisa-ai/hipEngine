@@ -281,8 +281,15 @@ class EngineService:
             daemon=True,
         )
         self._thread.start()
-        if not self._driver_ready.wait(timeout=self._command_timeout_seconds):
-            raise RuntimeError("engine service driver thread did not start")
+        # The thread already owns driver.close once started. Join its shutdown
+        # before reporting a failed startup so no unpublished worker survives.
+        from hipengine.generation.construction import ConstructionOwner
+
+        with ConstructionOwner() as startup:
+            startup.take(self)
+            if not self._driver_ready.wait(timeout=self._command_timeout_seconds):
+                raise RuntimeError("engine service driver thread did not start")
+            startup.release()
 
     @property
     def inner(self) -> Any:
