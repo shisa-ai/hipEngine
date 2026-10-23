@@ -11162,40 +11162,21 @@ runtime call site to registry resolution, and drop the
 
 ## 2026-09-11 Committed profiler traces and oversized captures under `benchmarks/results/`
 
-**State.** `git ls-files benchmarks/results | xargs du -cb | tail -1` totals
-**155.7 MB**. Seven raw `rocprofv3` trace CSVs carry ~73 MB of it:
+**State: resolved for raw profiler output.** The one-time history cleanup removes
+all eight September 11 profiler CSVs. Six existing compact censuses remain; the
+two q5-local32 study censuses preserve every kernel's dispatch count and total
+duration, with source SHA-256 hashes. Their values were checked against every
+source CSV row before removal.
 
-| file | size |
-| --- | ---: |
-| `final-decode-campaign-2026-09-11/plainks-trace.csv` | 11.2 MB |
-| `final-decode-campaign-2026-09-11/plainkm-trace.csv` | 10.9 MB |
-| `2026-09-11-q5-local32-decode-study/trace-unrouted.csv` | 10.5 MB |
-| `final-decode-campaign-2026-09-11/ud-k_m-trace.csv` | 10.3 MB |
-| `2026-09-11-q5-local32-decode-study/trace-routed.csv` | 10.3 MB |
-| `final-decode-campaign-2026-09-11/wudkm-trace.csv` | 10.3 MB |
-| `final-decode-campaign-2026-09-11/wudks-trace.csv` | 10.3 MB |
+The earlier recommendation to delete oversized window captures was too broad.
+Nine named replay inputs remain because scripts or published comparisons consume
+them. Twenty-nine other captures retain their metadata and tensor summaries but
+omit raw boundary arrays. New raw-vector comparisons require recapture or the
+offline recovery archive.
 
-Six further JSON captures are 2.9-10.1 MB
-(`mtp-gguf-iter271-gdn-replay-window-capture.json` is the largest at 10.1 MB).
-The compact census summaries beside them — `{ud-k_m,udks,plainkm,plainks,wudkm,wudks}-census.json`,
-each a few KB — carry the numbers every published claim actually uses, and the
-per-kernel table in this repository's own W7900 correction was derived from
-those, not from the CSVs.
-
-**Why it matters.** `AGENTS.md` "Never Committed" lists "`rocprofv3` dumps, raw
-benchmark logs". These were committed anyway (introduced by `b6cb557f9` and
-`1570712a1`). They are not linked from `benchmarks/README.md`,
-`benchmarks/HISTORY.md`, or the campaign rollup README, so nothing references
-them; a 159 MB result tree also makes the branch expensive to clone and review.
-
-**Removal trigger.** Before the branch is merged, delete the trace CSVs and the
-oversized window captures, or move them to external storage and leave a pointer.
-No claim depends on them: every retained number is in a census or summary
-artifact. Confirm no doc link breaks first — currently none exists.
-
-**Not done here.** These files belong to other agents' committed units, and
-`AGENTS.md` forbids cleaning up another agent's benchmark outputs unless the task
-asks for it. This entry records the debt rather than acting on it.
+The exact exclusions, removal list and migration checks are in
+`docs/campaigns/CLEANUP-HISTORY.md` and its companion manifest. Generated audit
+caches are removed from history, but durable triage decisions remain unchanged.
 
 ## 2026-09-12 `--ar-decode-mode eager` retained as a diagnostic control
 

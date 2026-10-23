@@ -1,0 +1,384 @@
+{
+  "source": "benchmarks/results/2026-09-11-q5-local32-decode-study/trace-unrouted.csv",
+  "rows": 39266,
+  "kernels": 59,
+  "by_kernel": [
+    {
+      "kernel": "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false, false, true>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+      "launches": 4972,
+      "total_us": 366371.27,
+      "us_per_call": 73.687,
+      "vgpr": [
+        "128"
+      ],
+      "lds_bytes": [
+        "512"
+      ],
+      "workgroup_x": [
+        "128"
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 4532,
+      "total_us": 205088.41,
+      "us_per_call": 45.253,
+      "vgpr": [
+        "96"
+      ],
+      "lds_bytes": [
+        "0"
+      ],
+      "workgroup_x": [
+        "32"
+      ]
+    },
+    {
+      "kernel": "void gguf_iq4_xs_local32_dual_silu_kernel<2>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 880,
+      "total_us": 137346.96,
+      "us_per_call": 156.076,
+      "vgpr": [
+        "96"
+      ],
+      "lds_bytes": [
+        "2560"
+      ],
+      "workgroup_x": [
+        "64"
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<2>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 1540,
+      "total_us": 116685.35,
+      "us_per_call": 75.77,
+      "vgpr": [
+        "56"
+      ],
+      "lds_bytes": [
+        "2560"
+      ],
+      "workgroup_x": [
+        "64"
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_shared_bf16_kernel<8, 2, 4, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+      "launches": 113,
+      "total_us": 115843.9,
+      "us_per_call": 1025.167,
+      "vgpr": [
+        "248"
+      ],
+      "lds_bytes": [
+        "34816"
+      ],
+      "workgroup_x": [
+        "256"
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 1848,
+      "total_us": 110897.61,
+      "us_per_call": 60.01,
+      "vgpr": [
+        "56"
+      ],
+      "lds_bytes": [
+        "2560"
+      ],
+      "workgroup_x": [
+        "128"
+      ]
+    },
+    {
+      "kernel": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, float)",
+      "launches": 704,
+      "total_us": 109996.64,
+      "us_per_call": 156.245,
+      "vgpr": [
+        "40"
+      ],
+      "lds_bytes": [
+        "0"
+      ],
+      "workgroup_x": [
+        "256"
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<4, 8, 2, unsigned short, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+      "launches": 93,
+      "total_us": 98921.44,
+      "us_per_call": 1063.671,
+      "vgpr": [
+        "248"
+      ],
+      "lds_bytes": [
+        "34816"
+      ],
+      "workgroup_x": [
+        "256"
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::q5_k_t16_dense_dual_silu_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 396,
+      "total_us": 92843.67,
+      "us_per_call": 234.454,
+      "vgpr": [
+        "208"
+      ],
+      "lds_bytes": [
+        "512"
+      ],
+      "workgroup_x": [
+        "128"
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq_prefill_wmma_coop_kernel<0, unsigned short, unsigned short, 4, 2, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+      "launches": 77,
+      "total_us": 86294.71,
+      "us_per_call": 1120.71,
+      "vgpr": [
+        "224"
+      ],
+      "lds_bytes": [
+        "38912"
+      ],
+      "workgroup_x": [
+        "256"
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq_dense_strict_kernel<3, true, 8, 1>(unsigned short const*, unsigned char const*, void*, long, long, long)",
+      "launches": 308,
+      "total_us": 66202.61,
+      "us_per_call": 214.944,
+      "vgpr": [
+        "72"
+      ],
+      "lds_bytes": [
+        "2560"
+      ],
+      "workgroup_x": [
+        "128"
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+      "launches": 45,
+      "total_us": 57794.51,
+      "us_per_call": 1284.322,
+      "vgpr": [
+        "96"
+      ],
+      "lds_bytes": [
+        "512"
+      ],
+      "workgroup_x": [
+        "128"
+      ]
+    },
+    {
+      "kernel": "void gguf_iq_prefill_wmma_dual_silu_kernel<0, unsigned short, 2, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)",
+      "launches": 20,
+      "total_us": 50250.16,
+      "us_per_call": 2512.508,
+      "vgpr": [
+        "224"
+      ],
+      "lds_bytes": [
+        "36864"
+      ],
+      "workgroup_x": [
+        "256"
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::q8_0_t16_dual_split_gemv_kernel<unsigned short, unsigned short, true>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long, long)",
+      "launches": 2156,
+      "total_us": 41165.59,
+      "us_per_call": 19.094,
+      "vgpr": [
+        "64"
+      ],
+      "lds_bytes": [
+        "512"
+      ],
+      "workgroup_x": [
+        "128"
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+      "launches": 1012,
+      "total_us": 40811.9,
+      "us_per_call": 40.328,
+      "vgpr": [
+        "96"
+      ],
+      "lds_bytes": [
+        "512"
+      ],
+      "workgroup_x": [
+        "128"
+      ]
+    },
+    {
+      "kernel": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+      "launches": 2880,
+      "total_us": 38840.89,
+      "us_per_call": 13.486,
+      "vgpr": [
+        "24"
+      ],
+      "lds_bytes": [
+        "0"
+      ],
+      "workgroup_x": [
+        "256"
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq_dense_strict_kernel<2, true, 8, 1>(unsigned short const*, unsigned char const*, void*, long, long, long)",
+      "launches": 176,
+      "total_us": 38682.93,
+      "us_per_call": 219.789,
+      "vgpr": [
+        "88"
+      ],
+      "lds_bytes": [
+        "4608"
+      ],
+      "workgroup_x": [
+        "128"
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_q5_k_t16_dense_dual_wmma_prefill_silu_bf16_kernel<2, 8, 256>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)",
+      "launches": 9,
+      "total_us": 35552.15,
+      "us_per_call": 3950.239,
+      "vgpr": [
+        "240"
+      ],
+      "lds_bytes": [
+        "32768"
+      ],
+      "workgroup_x": [
+        "256"
+      ]
+    },
+    {
+      "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+      "launches": 2925,
+      "total_us": 31849.98,
+      "us_per_call": 10.889,
+      "vgpr": [
+        "16"
+      ],
+      "lds_bytes": [
+        "0"
+      ],
+      "workgroup_x": [
+        "256"
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_iq_dense_strict_kernel<3, true, 8, 8>(unsigned short const*, unsigned char const*, void*, long, long, long)",
+      "launches": 1,
+      "total_us": 30479.82,
+      "us_per_call": 30479.817,
+      "vgpr": [
+        "136"
+      ],
+      "lds_bytes": [
+        "3072"
+      ],
+      "workgroup_x": [
+        "128"
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_kernel<float>(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
+      "launches": 48,
+      "total_us": 29604.02,
+      "us_per_call": 616.75,
+      "vgpr": [
+        "40"
+      ],
+      "lds_bytes": [
+        "0"
+      ],
+      "workgroup_x": [
+        "128"
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short, true, float>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, unsigned short*, float, long, long, long, long)",
+      "launches": 1452,
+      "total_us": 24164.76,
+      "us_per_call": 16.642,
+      "vgpr": [
+        "56"
+      ],
+      "lds_bytes": [
+        "0"
+      ],
+      "workgroup_x": [
+        "128"
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel<4, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+      "launches": 23,
+      "total_us": 19184.58,
+      "us_per_call": 834.112,
+      "vgpr": [
+        "176"
+      ],
+      "lds_bytes": [
+        "0"
+      ],
+      "workgroup_x": [
+        "32"
+      ]
+    },
+    {
+      "kernel": "void (anonymous namespace)::gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<false, false, 4, 4>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)",
+      "launches": 5,
+      "total_us": 16027.97,
+      "us_per_call": 3205.594,
+      "vgpr": [
+        "256"
+      ],
+      "lds_bytes": [
+        "32768"
+      ],
+      "workgroup_x": [
+        "128"
+      ]
+    },
+    {
+      "kernel": "void gguf_iq4_nl_local32_gemv_kernel<2>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+      "launches": 176,
+      "total_us": 15347.24,
+      "us_per_call": 87.2,
+      "vgpr": [
+        "72"
+      ],
+      "lds_bytes": [
+        "2560"
+      ],
+      "workgroup_x": [
+        "64"
+      ]
+    }
+  ],
+  "source_sha256": "0414ef807e85311c8c5cca0f90e9dd7181cef8ab7d4718e2a936d128bdb411d2",
+  "aggregation": "All CSV kernel dispatch rows, grouped by Kernel_Name; duration = (End_Timestamp - Start_Timestamp) / 1000 microseconds. Original raw trace retained in offline history recovery archive."
+}

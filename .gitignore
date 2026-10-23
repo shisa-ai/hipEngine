@@ -37,6 +37,11 @@ profile_*/
 bench_*.json
 bench_*.csv
 trace_*.csv
+# Keep new raw output local; existing compact/cited tracked evidence is unaffected.
+benchmarks/**/*.log
+benchmarks/**/*-trace.csv
+benchmarks/**/trace-*.csv
+benchmarks/**/*token-tensor-trace*.jsonl
 
 # Editor / env
 .env

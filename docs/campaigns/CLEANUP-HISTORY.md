@@ -148,8 +148,41 @@ storage reclamation is not proven solely by a successful push.
 
 ## Status
 
-Inventory and per-file classification are complete, including all 121 logs.
-All 29 proposed tensor compactions were independently compared as parsed JSON:
-only boundary-capture `values` fields changed; every other value was preserved.
-The manifest records preservation prerequisites that must pass before execution.
-No source artifact has been removed, and no remote ref has changed.
+The isolated rewrite is validated and ready for publication. All 64 original
+branch/tag tip trees differ only by the declared removals, raw-payload
+compactions and operational journal-pointer repair. The rewritten journal
+regenerates all 7,232 legacy entries byte-for-byte. Documentation, audit budget,
+artifact provenance and focused worklog/lineage tests pass.
+
+The same 64 refs packed with `git repack -Ad` occupy 403.28 MiB before cleanup
+and 350.42 MiB after cleanup, excluding unreachable loose backup objects. This
+comparison precedes the preservation/migration commit. The main-tree gross
+reduction is approximately 493 MiB; the two censuses and compressed commit map
+add less than 1 MiB. LFS assets are unchanged.
+
+## Migrating existing clones
+
+Use a fresh clone instead of pulling or merging the rewritten history into an
+old checkout. Keep the old checkout until all uncommitted work and private
+branches have been transferred. Do not merge an old branch wholesale: that would
+make the removed history reachable again. Review and cherry-pick the necessary
+commits, or apply patches containing only the desired changes.
+
+The original-to-rewritten map is
+`worklog/history-rewrites/20261023-commit-map.tsv.gz`. Read it with
+`gzip -dc worklog/history-rewrites/20261023-commit-map.tsv.gz`. A zero target means
+the original commit became empty and was removed. The map records rewritten
+history before the final preservation commit; that new commit has no original
+counterpart. Historical evidence still records its original commit IDs.
+
+On the cleanup host, the verified recovery bundle is
+`~/hipengine-history-recovery-20261023/original-all-refs.bundle`; remote-ref
+snapshots and uncompressed maps are in the same directory. The original
+`~/hipEngine` checkout, scratch probes, stash and other worktrees are preserved.
+The prepared rewritten checkout is `~/hipEngine-clean`. Never push backup refs
+or merge the original history back into the rewritten repository.
+
+Publication changes 52 refs, including 11 release tags from v0.3.0 onward and the
+ROCm reproducer tag. Older unaffected tags keep their original IDs. PyPI files
+are not republished. This document describes the validated candidate; the final
+publication receipt is recorded separately after verifying the remote refs.

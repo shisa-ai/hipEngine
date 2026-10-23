@@ -2,7 +2,7 @@
 
 ## The study
 
-- trace-unrouted.csv: rocprofv3 kernel trace before the route. The Q5
+- trace-unrouted.census.json: per-kernel summary of the rocprofv3 trace before the route. The Q5
   direct GEMV (`qk_t16_selected_direct_gemv_kernel<u16,5,...>`) runs
   73.7 us/call with VGPR 128, LDS 512 B, 128-thread blocks; the Q4
   local32 comparator runs 45.3 us/call with VGPR 96, LDS 0, 32-thread
@@ -14,7 +14,7 @@
   191.5->77.5 at 17408x5120). GPU0: 1.6-2.1x. The T16 layout needs no
   repack: the QL nibble window is the same aligned u32 per lane-row the
   Q4 owner reads; the Q5 high bit adds one u8 per lane-row.
-- trace-routed.csv: after the route, the local32 kernel serves every Q5
+- trace-routed.census.json: after the route, the local32 kernel serves every Q5
   decode single (3036 calls, 53.5 us/call in-situ); the direct kernel
   is gone from the decode window.
 
