@@ -43,7 +43,9 @@ def _hip_available() -> bool:
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.skipif(not DEFAULT_MODEL.exists(), reason=f"Model fixture {DEFAULT_MODEL} is missing")
-def test_p10_x2_layer0_wmma_vs_gemv_prefill_correctness(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_p10_x2_layer0_wmma_vs_gemv_prefill_correctness(
+    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> None:
     # Force ALLOW_UNSAFE so the safety gate does not bypass our test request.
     monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
     monkeypatch.setenv("HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATHS", "1")
@@ -57,6 +59,9 @@ def test_p10_x2_layer0_wmma_vs_gemv_prefill_correctness(monkeypatch: pytest.Monk
         use_wmma_prefill=None,
         use_gemv_decode=None,
     )
+    # The session owns the model weights (about 21 GiB); without a close they
+    # stay resident for every later test in the process.
+    request.addfinalizer(session.close)
     runner = session.runner
     hidden_size = runner.hidden_size
 

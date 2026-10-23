@@ -160,7 +160,11 @@ def shared_runner():
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(runner_module, "_GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS", 0)
-        yield Qwen35GGUFFullStackRunner(_MODEL, backend=_BACKEND)
+        runner = Qwen35GGUFFullStackRunner(_MODEL, backend=_BACKEND)
+        try:
+            yield runner
+        finally:
+            runner.close()
 
 
 def _dms_session(shared_runner):
