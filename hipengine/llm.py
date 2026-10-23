@@ -562,6 +562,12 @@ class LLM:
             )
         return tuple(tuple(handles) for handles in submit(requests))
 
+    def count_multimodal_tokens(self, prompt: str, image: Any) -> int | None:
+        """Return the model's expanded image-prompt count, or None if unavailable."""
+
+        counter = getattr(self._get_text_generator(), 'count_multimodal_tokens', None)
+        return int(counter(str(prompt), image)) if callable(counter) else None
+
     def generate_multimodal_detailed(
         self,
         prompt: str,
@@ -577,6 +583,8 @@ class LLM:
         if not callable(detailed):
             raise NotImplementedError("multimodal generation is not supported")
         params = sampling_params or SamplingParams()
+        if params.speculative_mtp:
+            raise NotImplementedError('multimodal speculative MTP generation is not implemented')
         request = _generation_request((str(prompt),), params)
         output = detailed(str(prompt), image, request)
         return output if isinstance(output, GenerationOutput) else GenerationOutput(text=str(output))
@@ -755,6 +763,12 @@ class LLM:
         """Media form the wrapped generator accepts (``"items"`` / ``"image_array"``)."""
 
         return self._generator_vision_declaration("vision_media_input")
+
+    @property
+    def vision_uses_chat_template(self) -> bool:
+        """Whether image HTTP requests use the model's chat and sampling policy."""
+
+        return self._generator_vision_declaration("vision_uses_chat_template")
 
     @property
     def vision_prompt_marker(self) -> str:

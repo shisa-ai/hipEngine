@@ -1879,6 +1879,39 @@ class Gemma4Runner:
 
         return self._normalized_hidden_rows
 
+    @contextmanager
+    def image_input(self, embeddings: dict[int, np.ndarray], spans: Sequence[tuple[int, int]]):
+        """Scope projected image rows to one request, after text embedding scaling."""
+
+        if getattr(self, "_image_embeddings", None) is not None:
+            raise RuntimeError("image input is already active on this runner")
+        hidden = int(self.weights.config.hidden_size)
+        image_spans = tuple((int(a), int(b)) for a, b in spans)
+        previous = 0
+        for begin, end in image_spans:
+            if begin < previous or end <= begin or end > self.capacity:
+                raise ValueError("image spans must be ordered, disjoint and within capacity")
+            previous = end
+        gemma4_image_block_ranges(previous, self.max_block, image_spans)
+        expected = {index for begin, end in image_spans for index in range(begin, end)}
+        if set(embeddings) != expected:
+            raise ValueError("image embedding rows must cover exactly the image spans")
+        values = {}
+        for index, row in embeddings.items():
+            value = np.asarray(row, dtype=np.float32)
+            if value.shape != (hidden,) or not np.isfinite(value).all():
+                raise ValueError(f"image embedding row must be finite and shaped ({hidden},)")
+            values[index] = _bf16_bits(value)
+        self._image_embeddings, self._image_spans = values, image_spans
+        try:
+            yield
+        finally:
+            self._image_embeddings, self._image_spans = None, ()
+
+    def _image_block_active(self, start: int, rows: int) -> bool:
+        return any(a < start + rows and b > start
+                   for a, b in getattr(self, "_image_spans", ()))
+
     def _validated_tokens(self, token_ids: Sequence[int]) -> list[int]:
         """Admission checks shared by :meth:`forward` and :meth:`forward_argmax`."""
 
@@ -1980,6 +2013,13 @@ class Gemma4Runner:
         logits = None
         last_start = min(((rows - 1) // self.max_block) * self.max_block, rows - wanted)
         block_starts = [*range(0, last_start, self.max_block), last_start]
+        if self._image_block_active(self._position, rows):
+            if wanted != 1:
+                raise ValueError("image prefill returns one logits row")
+            relative_spans = tuple((a - self._position, b - self._position)
+                                   for a, b in self._image_spans)
+            block_starts = [a for a, _ in gemma4_image_block_ranges(rows, self.max_block, relative_spans)]
+            last_start = block_starts[-1]
         # A prompt of several blocks stages each block's content off the compute
         # stream, alternating two staging slots; see ``_prefill_stage_begin``.
         pipelined = len(block_starts) > 1
@@ -1992,7 +2032,7 @@ class Gemma4Runner:
                 # block's copy is overwritten on the next iteration, so its final
                 # norm, projection and device-to-host copy are unread.
                 last = start == last_start
-                end = rows if last else min(start + self.max_block, last_start)
+                end = rows if last else block_starts[index + 1]
                 block = tokens[start:end]
                 # A full block opts into the dense WMMA prefill; a partial block or a
                 # verify block stays on the strict route. An explicitly set
@@ -2052,13 +2092,19 @@ class Gemma4Runner:
         rows = len(tokens)
         token = -1
         last_start = ((rows - 1) // self.max_block) * self.max_block
-        pipelined = rows > self.max_block
+        blocks = tuple((a, min(a + self.max_block, rows)) for a in range(0, rows, self.max_block))
+        if self._image_block_active(self._position, rows):
+            relative_spans = tuple((a - self._position, b - self._position)
+                                   for a, b in self._image_spans)
+            blocks = gemma4_image_block_ranges(rows, self.max_block, relative_spans)
+            last_start = blocks[-1][0]
+        pipelined = len(blocks) > 1
         try:
-            for index, start in enumerate(range(0, rows, self.max_block)):
+            for index, (start, end) in enumerate(blocks):
                 self._prefill_stage_slot = (
                     index % self._PREFILL_STAGE_SLOTS if pipelined else None
                 )
-                block = tokens[start : start + self.max_block]
+                block = tokens[start:end]
                 with _gemma4_block_wmma_session(len(block) == self.max_block):
                     token = self._forward_block(
                         block,
@@ -2733,6 +2779,7 @@ class Gemma4Runner:
                     _keep_mask(
                         attention, start, rows, extent,
                         key_begin=None if key_begin_at is None else key_begin_at(attention),
+                        image_spans=getattr(self, "_image_spans", ()),
                     ),
                     stream=upload_stream,
                 )
@@ -3023,6 +3070,15 @@ class Gemma4Runner:
             stream=stream,
         )
 
+        image_rows = getattr(self, "_image_embeddings", None)
+        if image_rows and packed_segments is None:
+            for row in range(rows):
+                bits = image_rows.get(int(kv_write_offset) + row)
+                if bits is not None:
+                    destination = DeviceBuffer(self._hidden.ptr + row * hidden * _BF16_BYTES,
+                                               hidden * _BF16_BYTES)
+                    enqueue_host_to_device(destination, host_array_ptr(bits), bits.nbytes, stream=stream)
+
         # INT8 storage stages this block's append positions and live counts once
         # for every layer, on the same stream, ahead of the writer and consumer
         # launches that read them.
@@ -3114,24 +3170,32 @@ class Gemma4Runner:
                 # bound, and the window bound is vacuous while the attended range
                 # is no wider than the window. The layer re-checks the range; this
                 # flag is the mask's *semantics*, which only the builder knows.
-                attention_mask_is_causal=True,
-                # A global layer's window is the whole attended range, so saying
-                # so lets the kernel trim the trailing masked run as it already
-                # trims a sliding layer's leading one. A sliding layer keeps its
-                # own window.
+                attention_mask_is_causal=not (
+                    attention.sliding_window is not None
+                    and self._image_block_active(kv_write_offset, rows)
+                ),
+                # Positive window also promises a causal walk. Image blocks
+                # must walk future keys and let the explicit mask decide.
                 window=(
-                    0 if key_begin_at is not None else (
+                    0 if key_begin_at is not None or (
+                        attention.sliding_window is not None
+                        and self._image_block_active(kv_write_offset, rows)
+                    ) else (
                         slot_write + rows - key_begin
                         if attention.sliding_window is None
                         else int(attention.sliding_window)
                     )
                 ),
-                **self._attention_scope(
-                    rows=rows,
-                    verification=verification,
-                    row_exact=row_exact,
-                    decode_phase=decode_phase,
-                ),
+                **({"prefill_attention_variants": ("gemma4_plain",),
+                    "decode_attention_variants": None,
+                    "exact_prefill_attention_variants": None}
+                   if attention.sliding_window is not None and self._image_block_active(kv_write_offset, rows)
+                   else self._attention_scope(
+                       rows=rows,
+                       verification=verification,
+                       row_exact=row_exact,
+                       decode_phase=decode_phase,
+                   )),
                 # A verify block under ``verify_dense_exact`` keeps its dense
                 # projections off the WMMA prefill kernels and attends each
                 # row over that row's own decode range, so each row is the
@@ -3397,6 +3461,31 @@ def _sliding_read_range(
     return max(0, start - window + 1)
 
 
+def gemma4_image_block_ranges(
+    rows: int, max_block: int, spans: Sequence[tuple[int, int]],
+) -> tuple[tuple[int, int], ...]:
+    """Chunk prefill without separating mutually visible image tokens."""
+
+    if rows < 0 or max_block <= 0:
+        raise ValueError("rows must be nonnegative and max_block positive")
+    for begin, end in spans:
+        if end - begin > max_block:
+            raise ValueError(f"image span ({end - begin} tokens) exceeds max_block {max_block}")
+    blocks = []
+    start = 0
+    while start < rows:
+        end = min(start + max_block, rows)
+        for begin, finish in spans:
+            if begin < end < finish:
+                end = begin
+                break
+        if end <= start:
+            raise ValueError("image span is not contained within this prefill")
+        blocks.append((start, end))
+        start = end
+    return tuple(blocks)
+
+
 def _keep_mask(
     attention: Gemma4AttentionGeometry,
     start: int,
@@ -3404,6 +3493,7 @@ def _keep_mask(
     keys_extent: int | None = None,
     *,
     key_begin: int | None = None,
+    image_spans: Sequence[tuple[int, int]] = (),
 ) -> np.ndarray:
     """Build the ``(rows, keys - key_begin)`` uint8 keep-mask for one block.
 
@@ -3432,5 +3522,8 @@ def _keep_mask(
     key_positions = np.arange(key_begin, keys, dtype=np.int64)[None, :]
     keep = key_positions <= queries
     if attention.sliding_window is not None:
+        for begin, end in image_spans:
+            keep |= ((queries >= begin) & (queries < end)
+                     & (key_positions >= begin) & (key_positions < end))
         keep &= (queries - key_positions) < int(attention.sliding_window)
     return np.ascontiguousarray(keep.astype(np.uint8))

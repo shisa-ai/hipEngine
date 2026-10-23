@@ -9064,6 +9064,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 or getattr(request,"guided_grammar",None) is not None):
                 raise OpenAIHTTPError(400,"multimodal grammar decoding is not supported",
                                       code="unsupported_parameter",param="grammar")
+            if (_request_speculative_mtp_enabled(request) is True
+                    or _request_speculative_provider_config(request)[0] is True):
+                raise OpenAIHTTPError(400, 'multimodal speculative generation is not implemented',
+                                      code='unsupported_parameter', param='speculative_mtp')
             if request.stream:
                 raise OpenAIHTTPError(
                     400,
@@ -9121,6 +9125,32 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 deadline_at=control.deadline_at,
                 cancellation_token=control.cancellation_token,
             )
+            if bool(getattr(engine, 'vision_uses_chat_template', False)):
+                chat_request = _chat_request_with_messages(request, [ChatMessage(role='user', content=prompt)])
+                prompt, thinking = _render_chat_prompt_for_request(
+                    chat_request, chat_default_max_tokens=config.chat_default_max_tokens,
+                    engine=engine, max_context_tokens=effective_max_context_tokens(engine),
+                )
+                if _request_completion_cap(chat_request) is None:
+                    counter = getattr(engine, 'count_multimodal_tokens', None)
+                    capacity = effective_max_context_tokens(engine)
+                    if callable(counter) and capacity is not None:
+                        try:
+                            count = await _await_with_request_control(
+                                run_in_threadpool(counter, prompt, adapted_media), control,
+                            )
+                        except (ValueError, NotImplementedError) as exc:
+                            raise OpenAIHTTPError(400, str(exc), code='invalid_request', param='messages') from exc
+                        if count is not None:
+                            remaining = max(0, int(capacity) - int(count) - 1)
+                            default = config.chat_default_max_tokens
+                            chat_request.max_completion_tokens = (
+                                remaining if default is None else min(max(0, int(default)), remaining)
+                            )
+                sampling = sampling_params(
+                    chat_request, (prompt,), engine, deadline_at=control.deadline_at,
+                    cancellation_token=control.cancellation_token, prepared_thinking=thinking,
+                )
             try:
                 detail = await _await_with_request_control(
                     run_in_threadpool(
@@ -9176,6 +9206,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     {
                         "index": 0,
                         "message": message,
+                        **({'logprobs': _chat_visible_content_logprobs(detail, text)}
+                           if _request_logprobs_enabled(request) else {}),
                         "finish_reason": finish_reason,
                         "finish_details": _chat_finish_details_payload(
                             detail,

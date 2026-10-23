@@ -996,6 +996,8 @@ artifacts or explicitly opt into GPU-gated suites. They are not product knobs.
 | `HIPENGINE_RUN_CUDA_MAPLE` | unset | Opt-in for the CUDA Maple backend tests. |
 | `HIPENGINE_RUN_MOONSHINE_MODEL_GATE` | unset | Opt-in for the real-model Moonshine runtime gate (requires `HIPENGINE_HIP_ARCH=gfx1151` and the local snapshot). |
 | `HIPENGINE_TEST_GEMMA4_MODEL_DIR` | `/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF` | Fixture directory for live Gemma MTP flag, INT8 KV generation and resident-session tests. A missing target skips these tests; set this to the installed GGUF directory on other hosts. |
+| `HIPENGINE_GEMMA4_GGUF` | unset | Text GGUF path for `tests/test_live_gemma4_vision.py`; both Gemma image artifact variables must point to existing files. |
+| `HIPENGINE_GEMMA4_MMPROJ` | unset | Gemma 4 vision-sidecar GGUF path for the live encoder-parity and public image-generation tests. |
 | `HIPENGINE_TEST_PARO_MODEL` | unset | PARO model directory override for the live PARO tokenizer/EOS tests; falls back to the standard `/models/hipengine/...` candidates. |
 | `HIPENGINE_TEST_REQUIRE_CACHED_BUILD` | unset | When truthy, GPU kernel tests require cached JIT builds (the test-side analogue of `HIPENGINE_REQUIRE_CACHED_BUILD`). |
 | `HIPENGINE_INT8_MTP_MODEL` | `/models/gguf/Qwen3.8-27B-Q4_K_M.gguf` | Dense GGUF model path for the live INT8 MTP test. |

@@ -122,6 +122,7 @@ Source: `hipengine/kernels/cpu_reference/`. These are NumPy reference operations
 | `moonshine_encoder.py` | Moonshine encoder convolution, normalization, and attention. |
 | `qwen2.py` | Qwen2 decoder operations. |
 | `qwen4_exp.py` | Qwen4Exp branch mixing, positional embeddings, sparse attention, recurrence, and experts. |
+| `gemma4_vision.py` | Gemma 4 image encoder, spatial pooling, standardization and text projection. |
 | `surya.py` | Surya OCR vision and text operations. |
 | `timesfm.py` | TimesFM 2.5 normalization, attention, patch processing, and forecasting. |
 | `timesfm3.py` | TimesFM 3.0 sequence/variate attention and multivariate forecasting. |
@@ -328,6 +329,7 @@ gfx1151 compilation; it does not enable every gfx1100 variant.
 | `vibevoice/decoder.hip` | Streaming speech-decoder convolutions and upsampling. |
 | `vibevoice/diffusion.hip` | Diffusion-head normalization, modulation, and solver steps. |
 | `evie/evie_ops.hip` | Vision patch embedding, normalization, attention, and merger operations. |
+| `vision/gemma4_vision.{hip,py}` | FP32 Gemma 4 image RMSNorm, elementwise stages, X/Y rotary head layouts, softmax and spatial pooling; `vision_*` / `fp32` / `gemma4` registrations share gfx11 sources. The runtime composes these primitives with rocBLAS linear and attention contractions. |
 | `surya/surya_ops.hip` | Surya normalization, query/gate splitting, cache writes, and attention. |
 | `timesfm/timesfm.hip` | TimesFM normalization, rotary transforms, attention, and layout operations. |
 | `timesfm3/timesfm3.hip` | TimesFM 3.0 variate attention, query/key normalization, and ReLU. |

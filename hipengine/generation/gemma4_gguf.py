@@ -23,7 +23,7 @@ from __future__ import annotations
 import os
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Iterator, Sequence
 
@@ -150,6 +150,10 @@ class Gemma4GGUFGenerator:
     model_plugin: Any
     backend: str = "hip_gfx1100"
     context_length: int = _GEMMA4_DEFAULT_CONTEXT
+    vision_model_path: str | Path | None = None
+    _vision_reader: GGUFReader | None = field(default=None, init=False, repr=False)
+    _vision_config: Any | None = field(default=None, init=False, repr=False)
+    _vision_runner: Any | None = field(default=None, init=False, repr=False)
     # The prefill-attention variants this run requests, or ``None`` for the
     # strict kernel. The execution profile supplies them before the runner is
     # built; the layer still matches each against its own layer's head geometry
@@ -205,6 +209,9 @@ class Gemma4GGUFGenerator:
     # so a streamed ``logprobs`` request reports what the blocking one does.
     supports_stream_logprobs = True
     chat_template_family = "gemma"
+    vision_prompt_marker = "<|image|>"
+    vision_media_input = "items"
+    vision_uses_chat_template = True
     reasoning_parser_name = "gemma_tags"
     tool_parser_name = "unsupported"
 
@@ -238,6 +245,88 @@ class Gemma4GGUFGenerator:
         self.context_length = int(self.context_length)
         if self.context_length <= 0:
             raise ValueError("context_length must be positive")
+        if self.vision_model_path is not None:
+            from hipengine.loading.gemma4_vision_gguf import build_gemma4_vision_gguf_map
+
+            self.vision_model_path = Path(self.vision_model_path).expanduser().resolve()
+            self._vision_reader = GGUFReader(self.vision_model_path)
+            self._vision_config = build_gemma4_vision_gguf_map(self._vision_reader.info).config
+            if self._vision_config.output_size != gemma4_text_config_from_reader(self.reader).hidden_size:
+                raise ValueError('Gemma 4 vision projection width does not match the text embedding width')
+            if self._vision_config.head_count_kv != self._vision_config.heads:
+                raise NotImplementedError('Gemma 4 HIP vision requires equal query and KV head counts')
+            if self._vision_config.clipped_linears:
+                raise NotImplementedError('Gemma 4 HIP vision does not implement clipped linear tensors')
+
+    @property
+    def supports_vision(self) -> bool:
+        return self._vision_config is not None
+
+    def _prepare_image_input(self, prompt, image):
+        from hipengine.generation.gemma4_multimodal import gemma4_media_images, gemma4_image_prompt
+        from hipengine.loading.gemma4_image import preprocess_gemma4_image
+
+        if not self.supports_vision:
+            raise ValueError('Gemma 4 image tokens require an attached vision_model_path')
+        c = self._vision_config
+        images = tuple(preprocess_gemma4_image(
+            value, patch_size=c.patch_size, pooling_kernel_size=c.pooling_kernel_size,
+            max_soft_tokens=c.max_soft_tokens,
+        ) for value in gemma4_media_images(image))
+        for value in images:
+            c.check_grid(*value.grid_size)
+        ids, spans = gemma4_image_prompt(
+            prompt, [value.num_soft_tokens for value in images], self.tokenizer, self.render_chat_prompt,
+        )
+        return images, ids, spans
+
+    def count_multimodal_tokens(self, prompt, image):
+        """Count expanded image placeholders without loading or running the tower."""
+
+        with self._lock:
+            self._require_open()
+            return len(self._prepare_image_input(prompt, image)[1])
+
+    def generate_multimodal_detailed(self, prompt, image, request):
+        """Encode ordered images and run the normal sampler over image-aware KV."""
+
+        from hipengine.generation.gemma4_multimodal import gemma4_embedding_overrides
+        from hipengine.runtime.gemma4_vision import Gemma4VisionRunner
+
+        self._validate_request(request)
+        if len(request.prompts) != 1:
+            raise ValueError('Gemma 4 image generation requires one prompt per request')
+        if request.kv_storage == 'int8_per_token_head':
+            raise NotImplementedError('Gemma 4 image prefill requires BF16 KV; INT8 attention has no bidirectional image mask')
+        with self._lock:
+            self._require_open()
+            if not self.supports_vision:
+                raise NotImplementedError('Gemma 4 images require a Gemma 4 mmproj GGUF via vision_model_path')
+            raise_if_generation_deadline_expired(request)
+            c = self._vision_config
+            images, ids, spans = self._prepare_image_input(prompt, image)
+            if len(ids) + request.max_tokens > self.context_length:
+                raise ValueError('Gemma 4 image prompt plus max_tokens exceeds context_length')
+            prepared = replace(request, prompts=(ids,))
+            if request.max_tokens == 0:
+                result = self.generate_detailed(prepared)[0]
+            else:
+                if self._vision_runner is None:
+                    self._vision_runner = Gemma4VisionRunner(self._vision_reader, c, backend=self.backend)
+                features = []
+                for value in images:
+                    import numpy as np
+                    positions = np.stack((value.pos_x, value.pos_y), axis=-1)
+                    features.append(self._vision_runner.forward(
+                        value.patches_chw, positions, value.grid_size, request=request,
+                    ))
+                storage, scale_dtype, granularity = _resolve_kv_storage(request)
+                runner = self._ensure_runner(storage=storage, scale_dtype=scale_dtype, granularity=granularity)
+                with runner.image_input(gemma4_embedding_overrides(features, spans), spans):
+                    result = self.generate_detailed(prepared)[0]
+            result = replace(result, prompt_tokens=len(ids))
+            self.last_generation_outputs = (result,)
+            return result
 
     # --- tokenizer ------------------------------------------------------
 
@@ -530,6 +619,9 @@ class Gemma4GGUFGenerator:
             if self._closed:
                 return
             self._closed = True
+            if self._vision_runner is not None:
+                self._vision_runner.close()
+                self._vision_runner = None
             # The provider's assistant head borrows the backbone embedding, so
             # it closes before the weights it reads are freed.
             provider = self.__dict__.get("_speculative_provider")
@@ -922,6 +1014,7 @@ def make_gemma4_generator(
     weight_index: WeightIndex,
     model_plugin: Any,
     max_sequence_length: int | None = None,
+    vision_model_path: str | Path | None = None,
 ) -> Gemma4GGUFGenerator:
     """Create the Gemma 4 generator for one concrete HIP backend.
 
@@ -946,6 +1039,7 @@ def make_gemma4_generator(
         model_plugin=model_plugin,
         backend=backend,
         context_length=context_length,
+        vision_model_path=vision_model_path,
     )
 
 
@@ -955,6 +1049,7 @@ def make_gemma4_generator_gfx1100(
     weight_index: WeightIndex,
     model_plugin: Any,
     max_sequence_length: int | None = None,
+    vision_model_path: str | Path | None = None,
 ) -> Gemma4GGUFGenerator:
     """Create the gfx1100 Gemma 4 generator."""
 
@@ -964,6 +1059,7 @@ def make_gemma4_generator_gfx1100(
         weight_index=weight_index,
         model_plugin=model_plugin,
         max_sequence_length=max_sequence_length,
+        vision_model_path=vision_model_path,
     )
 
 
@@ -973,6 +1069,7 @@ def make_gemma4_generator_gfx1151(
     weight_index: WeightIndex,
     model_plugin: Any,
     max_sequence_length: int | None = None,
+    vision_model_path: str | Path | None = None,
 ) -> Gemma4GGUFGenerator:
     """Create the gfx1151 (Strix Halo) Gemma 4 generator.
 
@@ -986,6 +1083,7 @@ def make_gemma4_generator_gfx1151(
         weight_index=weight_index,
         model_plugin=model_plugin,
         max_sequence_length=max_sequence_length,
+        vision_model_path=vision_model_path,
     )
 
 

@@ -1,8 +1,8 @@
 ---
 status: current
-owns: Gemma 4 model support: GGUF text inference, server usage, exercised coverage, architecture contract, format decision, kernel gap audit, and implementation limits.
+owns: Gemma 4 model support: GGUF text and image inference, server usage, exercised coverage, architecture contract, format decision, kernel gap audit, and implementation limits.
 ---
-# Gemma 4 text inference
+# Gemma 4 inference
 
 Gemma 4 GGUF text inference runs through `hipengine.LLM` and `hipengine serve`
 on the `hip_gfx1100` and `hip_gfx1151` backends. The generator decodes greedily or samples, as the
@@ -62,9 +62,10 @@ does not imply token-by-token delivery during generation.
   rows to bound per-layer global scratch. Other head geometries retain their
   shared-memory capability limit. Available GPU memory can impose a lower
   practical capacity; the default context is 8192.
-- This guide covers text inference, not image or audio input. Speculative
-  decoding with the assistant head is described in
-  `docs/reference/GEMMA4-ASSISTANT-MTP.md`.
+- Image input uses a separate vision sidecar; see the
+  [Gemma 4 image interface](../reference/GEMMA4-VISION.md). Audio input is not
+  implemented. Text-only speculative decoding with the assistant head is
+  described in `docs/reference/GEMMA4-ASSISTANT-MTP.md`.
 
 ## Exercised coverage
 
