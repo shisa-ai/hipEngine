@@ -4526,6 +4526,60 @@ def _record_gguf_linear_dispatch(
     )
 
 
+def launch_gguf_linear_decode_rows(
+    weight: GGUFDeviceWeight, x_ptr: int, out_ptr: int, rows: int,
+    in_features: int, out_features: int, *,
+    activation_dtype: str = GGUF_ACTIVATION_F32,
+    output_dtype: str = GGUF_OUTPUT_F32,
+    reference_rows: int = 1,
+    stream: int = 0, runtime=None,
+) -> None:
+    """Batch row-independent decode kernels without bypassing parent policy.
+
+    Execute the first reference group through the normal dispatcher. Reuse its
+    registered GEMV reduction for the remaining rows, with its original thread
+    count. Other variants (including WMMA) keep the scalar group shape: they
+    do not declare this independent-row contract. No model identity is used.
+    """
+    if reference_rows <= 0 or rows <= 0 or rows % reference_rows:
+        raise ValueError("independent decode rows must contain whole reference groups")
+    input_stride = in_features * (4 if activation_dtype == GGUF_ACTIVATION_F32 else 2)
+    output_stride = out_features * (4 if output_dtype == GGUF_OUTPUT_F32 else 2)
+    parent_records = _GGUF_LINEAR_DISPATCH_RECORDER.get()
+    with record_gguf_linear_dispatch() as records:
+        launch_gguf_linear(weight, x_ptr, out_ptr, reference_rows, in_features, out_features,
+            activation_dtype=activation_dtype, output_dtype=output_dtype, stream=stream, runtime=runtime)
+    if parent_records is not None:
+        parent_records.extend(records)
+    remaining = rows - reference_rows
+    if not remaining:
+        return
+    # These existing kernels use one independent row per grid dimension;
+    # their reduction and rounding do not depend on the grid's row count.
+    independent = {"pack8_gemv_bf16_bf16_out", "pack8_gemv_f32_f32_out",
+                   "gemv_bf16_bf16_out", "gemv_f32_f32_out", "f32_hidden_f32_out"}
+    record = records[0] if len(records) == 1 else None
+    if (record is None or record["abi"] not in {"raw", "pack8", "dense_bf16"}
+            or record["key"]["variant"] not in independent):
+        for offset in range(reference_rows, rows, reference_rows):
+            launch_gguf_linear(weight, x_ptr + offset * input_stride, out_ptr + offset * output_stride,
+                reference_rows, in_features, out_features, activation_dtype=activation_dtype,
+                output_dtype=output_dtype, stream=stream, runtime=runtime)
+        return
+    key = record["key"]
+    fn = resolve(**key)
+    kwargs = {"stream": stream, "runtime": runtime}
+    threads = _pack8_gemv_decode_threads(rows=reference_rows, out_features=out_features,
+        variant=key["variant"], threads=0)
+    if threads:
+        kwargs["threads"] = threads
+    _record_gguf_linear_dispatch(**key, abi=record["abi"], rows=remaining,
+        in_features=in_features, out_features=out_features,
+        activation_dtype=activation_dtype, output_dtype=output_dtype)
+    _LAUNCH_ABI[record["abi"]](fn, weight, x_ptr + reference_rows * input_stride,
+        out_ptr + reference_rows * output_stride, remaining, in_features, out_features, kwargs)
+
+
 def launch_gguf_linear(
     weight: GGUFDeviceWeight,
     x_ptr: int,

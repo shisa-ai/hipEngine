@@ -157,6 +157,10 @@ def save_budget(rows: list[Row], decisions: dict[str, Triage],
             #  row ungated. `min` is the ratchet - a refresh may lower a ceiling,
             #  never raise one.
             counts[kind] = min(counts.get(kind, 0), was)
+    #  Rewrite only when a ceiling moves. Several agents refresh concurrently;
+    #  bumping the date on every run would make this file conflict on every merge.
+    if dict(sorted(counts.items())) == payload.get("open") and payload.get("recorded"):
+        return payload
     payload.update({
         "recorded": dt.date.today().isoformat(),
         "note": "Untriaged rows per kind. `audit.py check` fails when a count rises. "

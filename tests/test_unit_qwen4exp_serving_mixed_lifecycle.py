@@ -179,8 +179,9 @@ class _Lifecycle:
         return tuple(self.emit() for _ in range(count))
 
     def propose(self, draft_runner, *, start_position, root_token, target_hidden_seed,
-                draft_n_max, compact_output=False):
+                draft_n_max, compact_output=False, lookup_candidates=()):
         del target_hidden_seed, compact_output
+        assert not lookup_candidates, "this fixture exercises neural-chain lifecycle"
         candidates = self.chain(int(root_token), int(draft_n_max))
         assert len(candidates) == int(draft_n_max), "chain must fill the planned depth"
         draft_runner.position = int(start_position) + len(candidates)

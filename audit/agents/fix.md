@@ -49,8 +49,8 @@ python3 audit/audit.py triage <row-id> --tag DOC-DRIFT --do document \
 - **Never raise `audit/budget.json`.** It is the ceiling that stops debt growing.
   Your job is to lower it by fixing things. `refresh` ratchets it down for you.
 - **Do not edit generated files** — `audit/inventory/*.json`,
-  `audit/findings/*.json`, or the generated `docs/` index tables. Re-run
-  `refresh`.
+  `audit/findings/*.json` (a git-ignored local cache), or the generated `docs/`
+  index tables. Re-run `refresh`.
 - **Stop and report if a fix turns out to be substantive.** Some findings look
   cosmetic and are not: a `stub` may be an unimplemented feature, an
   `ungoverned-flag-branch` may hide a real decision about a default. Those need

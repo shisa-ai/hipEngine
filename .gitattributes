@@ -11,3 +11,9 @@ hipengine/kernels/hip_gfx1100/attention/aotriton_runtime/**/*.so* filter=lfs dif
 # that patch syntax as trailing whitespace when the reproducibility bundle is
 # added or reviewed.
 benchmarks/llama.cpp/*.patch -whitespace
+
+# Cleanup-audit decisions: one JSON object per line. Concurrent agents triage
+# different rows of one file; keep both sides and let `load_triage` choose the
+# most recently reviewed copy of any id that appears twice.
+audit/triage/*.jsonl merge=union
+audit/triage/archive/*.jsonl merge=union

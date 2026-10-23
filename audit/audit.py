@@ -9,6 +9,8 @@ Inventory the debt mechanically, triage it durably, and gate against it growing.
     python3 audit/audit.py show flag/HIPENGINE_X
     python3 audit/audit.py triage flag/HIPENGINE_X --tag LOST-OPT \
         --do promote --severity high --note "why"
+    python3 audit/audit.py open --stale       # decisions whose evidence moved, with the change
+    python3 audit/audit.py confirm flag/HIPENGINE_X --note "still holds: why"
     python3 audit/audit.py check              # the gate
     python3 audit/audit.py report             # write a dated run
 
@@ -67,6 +69,37 @@ def run_inventory(kinds: list[str] | None) -> dict:
         print(f"\n{len(lost)} decision(s) no longer match any row — "
               f"`audit.py orphans` to review")
     return existing
+
+
+def ensure_current(force: bool = False, quiet: bool = True) -> bool:
+    """Bring the generated rows in step with the tree; True if it rescanned.
+
+    Rows are a pure function of the tracked tree, so they are a local cache
+    (git-ignored), not committed state: another agent's commit never makes your
+    copy stale, and two agents never conflict over them. The cache is reused
+    while the tree fingerprint and the extractor code are unchanged.
+    """
+    stamp = core.INVENTORY_DIR / ".fingerprint"
+    current = core.tree_fingerprint()
+    have = stamp.read_text().strip() if stamp.exists() else ""
+    if not force and have == current and (core.INVENTORY_DIR / "flags.json").exists():
+        return False
+    if quiet:
+        print("audit: the tree changed since the last scan; rescanning (~40 s)", file=sys.stderr)
+    import contextlib
+    import io
+    sink = io.StringIO() if quiet else sys.stdout
+    with contextlib.redirect_stdout(sink):
+        run_inventory(None)
+        run_scan(None)
+    if quiet:
+        tail = [line for line in sink.getvalue().splitlines()
+                if line.startswith(("re-matched", "  ")) or "no longer match" in line]
+        for line in tail:
+            print(line, file=sys.stderr)
+    stamp.parent.mkdir(parents=True, exist_ok=True)
+    stamp.write_text(current + "\n", encoding="utf-8")
+    return True
 
 
 def run_scan(names: list[str] | None) -> dict:
@@ -133,7 +166,7 @@ def cmd_status(args) -> int:
         print("no inventory yet — run `python3 audit/audit.py inventory`", file=sys.stderr)
         return 1
     meta = load_meta()
-    print(f"inventory generated {meta.get('generated', '?')} at {meta.get('commit', '?')}\n")
+    print(f"rows scanned {meta.get('generated', '?')} at {meta.get('commit', '?')}\n")
     print(report.state_table(rows, decisions))
     budget = report.load_budget().get("open", {})
     gated, ungated = report.open_counts(rows, decisions)
@@ -176,6 +209,16 @@ def cmd_open(args) -> int:
     print(f"{len(picked)} {label} row(s)" + (f" matching {args.signal!r}" if args.signal else ""))
     for row in picked[:args.number]:
         print(f"\n{row.id}\n  {row.title[:100]}\n  {row.location}")
+        if args.stale:
+            decision = decisions[row.id]
+            print(f"  decided {decision.tag}/{decision.disposition}: {decision.note[:110]}")
+            if decision.basis:
+                print("  changed since the decision:")
+                for change in core.basis_changes(decision.basis, core.compact_basis(row.basis())):
+                    print(f"    {change[:140]}")
+            else:
+                print("  (decision predates recorded bases; compare `show` with the note)")
+            continue
         for signal in row.signals:
             print(f"    - {signal}")
     if len(picked) > args.number:
@@ -201,8 +244,7 @@ def cmd_orphans(args) -> int:
 def cmd_archive(args) -> int:
     """List history, or archive absent decisions after a complete rescan."""
     if args.apply:
-        run_inventory(None)
-        run_scan(None)
+        ensure_current(force=True)
         rows, decisions = core.load_all(), core.load_triage()
         archived = core.archive_orphans(rows, decisions)
         core.save_triage(decisions)
@@ -256,6 +298,7 @@ def cmd_triage(args) -> int:
                                      text=True).stdout.strip() or "unknown",
         evidence_hash=row.evidence_hash, resolved=args.resolved,
         expires=args.expires, last_reviewed=dt.date.today().isoformat(), hints=row.hints,
+        basis=core.compact_basis(row.basis()),
     )
     problems = decision.problems()
     if problems:
@@ -268,35 +311,51 @@ def cmd_triage(args) -> int:
     return 0
 
 
+def cmd_confirm(args) -> int:
+    """Re-affirm decisions against the row as it is now, keeping what they decided."""
+    rows = {r.id: r for r in core.load_all()}
+    decisions = core.load_triage()
+    today = dt.date.today().isoformat()
+    failed = 0
+    for row_id in args.ids:
+        row, decision = rows.get(row_id), decisions.get(row_id)
+        if row is None or decision is None:
+            print(f"error: {row_id}: " + ("no such row" if row is None else "no decision to confirm"),
+                  file=sys.stderr)
+            failed += 1
+            continue
+        decision.evidence_hash = row.evidence_hash
+        decision.basis = core.compact_basis(row.basis())
+        decision.hints = row.hints
+        decision.last_reviewed = today
+        if args.expires is not None:
+            decision.expires = args.expires
+        if args.note:
+            decision.note = f"{decision.note} [{today}: {args.note}]" if decision.note else args.note
+        problems = decision.problems()
+        if decision.is_expired(today):
+            problems.append(f"review date {decision.expires} has passed — pass --expires")
+        if problems:
+            for problem in problems:
+                print(f"error: {row_id}: {problem}", file=sys.stderr)
+            failed += 1
+            continue
+        print(f"confirmed {decision.tag}/{decision.disposition} for {row_id}")
+    if failed:
+        return 1
+    core.save_triage(decisions)
+    return 0
+
+
 def cmd_check(args) -> int:
     errors: list[str] = []
-    rows, decisions = core.load_all(), core.load_triage()
-    if not rows:
-        print("error: no inventory — run `python3 audit/audit.py inventory`", file=sys.stderr)
-        return 1
-
-    for decision in decisions.values():
+    #  Always judged against the tree as it is now. No "inventory was stale"
+    #  failure: rows are recomputed, so another agent's commit cannot leave this
+    #  gate behind, and nothing generated needs committing.
+    ensure_current(force=args.rescan, quiet=False)
+    for decision in core.load_triage().values():
         for problem in decision.problems():
             errors.append(f"{decision.id}: {problem}")
-
-    #  The inventory must reflect the tree, or every count below is fiction.
-    def fingerprint() -> dict[str, bytes]:
-        out = {}
-        for directory in (core.INVENTORY_DIR, core.FINDINGS_DIR):
-            for candidate in directory.glob("*.json"):
-                if candidate.name != "meta.json":
-                    out[f"{directory.name}/{candidate.name}"] = candidate.read_bytes()
-        return out
-
-    before = fingerprint()
-    run_inventory(None)
-    run_scan(None)
-    after = fingerprint()
-    drifted = sorted(k for k in after if before.get(k) != after[k])
-    if drifted and not args.refresh:
-        errors.append(
-            "inventory was stale and has been regenerated: " + ", ".join(drifted)
-            + " — review the new rows and commit them")
 
     rows, decisions = core.load_all(), core.load_triage()
     state = core.reconcile(rows, decisions)
@@ -352,10 +411,8 @@ def cmd_refresh(args) -> int:
     Safe to run at any time: it regenerates what is computed, ratchets the
     budget down but never up, and finishes by naming what needs a human.
     """
-    print("== inventory ==")
-    run_inventory(None)
-    print("\n== code checks ==")
-    run_scan(None)
+    print("== inventory and code checks ==")
+    ensure_current(force=True, quiet=False)
 
     print("\n== archive absent decisions ==")
     rows, decisions = core.load_all(), core.load_triage()
@@ -405,8 +462,13 @@ def cmd_refresh(args) -> int:
             print(f"  - {item}")
     else:
         print("  nothing; everything derived is current and within budget")
-    print("\nCommit the regenerated audit/ and docs/ files with your change.")
+    print("\nCommit decision (audit/triage/), budget and docs/ changes with your change; "
+          "rows and reports are a local cache.")
     return 0
+
+
+NEEDS_CURRENT_ROWS = {cmd_status, cmd_open, cmd_show, cmd_triage, cmd_confirm, cmd_orphans,
+                      cmd_queue, cmd_report, cmd_budget}
 
 
 def main() -> int:
@@ -453,6 +515,13 @@ def main() -> int:
                    help="ISO date after which this decision must be re-confirmed (e.g. a defer)")
     p.set_defaults(fn=cmd_triage)
 
+    p = sub.add_parser("confirm", help="re-affirm decisions after checking the row's change still fits them")
+    p.add_argument("ids", nargs="+")
+    p.add_argument("--note", required=True, help="why the decision still holds; appended, dated")
+    p.add_argument("--expires", default=None,
+                   help="new review date; '' clears it; omitted keeps the current one")
+    p.set_defaults(fn=cmd_confirm)
+
     p = sub.add_parser("orphans", help="decisions that no longer match any row")
     p.set_defaults(fn=cmd_orphans)
 
@@ -465,8 +534,8 @@ def main() -> int:
     p.set_defaults(fn=cmd_expiring)
 
     p = sub.add_parser("check", help="the gate")
-    p.add_argument("--refresh", action="store_true",
-                   help="regenerate the inventory without failing on drift")
+    p.add_argument("--rescan", "--refresh", action="store_true",
+                   help="rescan even if the tree fingerprint is unchanged")
     p.add_argument("--review", action="store_true",
                    help="also fail if any live decision is stale or expired")
     p.set_defaults(fn=cmd_check)
@@ -483,6 +552,8 @@ def main() -> int:
     p.set_defaults(fn=cmd_refresh)
 
     args = parser.parse_args()
+    if args.fn in NEEDS_CURRENT_ROWS:
+        ensure_current()
     return args.fn(args)
 
 

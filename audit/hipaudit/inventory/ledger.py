@@ -13,7 +13,7 @@ from __future__ import annotations
 import datetime as dt
 import re
 
-from ..core import REPO_ROOT, Row, digest, slug
+from ..core import REPO_ROOT, Row, digest, in_tree, slug
 from . import corpus, grep, register, tokens
 
 LEDGER = REPO_ROOT / "docs" / "REFACTOR.md"
@@ -57,7 +57,7 @@ def extract() -> tuple[list[Row], dict]:
         signals: list[str] = []
 
         paths = sorted(set(PATHISH.findall(block)))
-        missing = [p for p in paths if not (REPO_ROOT / p).exists()]
+        missing = [p for p in paths if not in_tree(p)]
         flags = sorted(set(FLAG.findall(block)))
         unread = [f for f in flags if not grep(f, code)]
 

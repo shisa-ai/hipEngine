@@ -15,10 +15,14 @@ for review instead of quietly standing on facts that no longer hold.
 from __future__ import annotations
 
 import dataclasses
+import functools
 import hashlib
 import json
+import os
 import pathlib
+import posixpath
 import re
+import subprocess
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -74,15 +78,34 @@ def digest(*parts: Any) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
 
 
-# Only presentation measurements are excluded. Reader paths, continuation
-# evidence and numeric values in signals can change a decision's meaning.
-VOLATILE_EVIDENCE = frozenset({"line", "lines", "age_days", "body_chars", "referrers"})
+# The hash covers what a decision rests on, not how big things are. Positions,
+# sizes and age move without anything changing. Counts and reader lists move with
+# every ordinary commit (a new test that mentions a kernel, a tenth script that
+# reads a flag), and the signals already state the part a decision depends on:
+# whether a runtime caller exists, whether any test names it, whether branching
+# is spread out. Hashing the counts too made most "stale" decisions noise.
+VOLATILE_EVIDENCE = frozenset({
+    "line", "lines", "age_days", "body_chars",            # position, size, age
+    "referrers", "runtime_referrers", "test_referrers",   # kernels: signals carry presence
+    "sites_by_root", "runtime_sites", "runtime_reads",     # flags: signals carry roots, spread, reads
+    "continuation_entries",                                # worklog: signal carries presence
+})
 VOLATILE_SIGNAL = re.compile(r"\b\d+ days? old\b|\bwritten \d+ days ago\b")
+# Counts inside the audit's own signal templates. Numbers anywhere else in a
+# signal (a quoted dependency, a phase) are content and still age a decision.
+COUNTED_SIGNAL = re.compile(
+    r"\bread at \d+ runtime sites\b|^\d+ later entr(?:y|ies)\b|^\d+ __global__ entry point"
+    r"|\bnames \d+ path\(s\)|\b\d+ no longer exist\b")
+
+
+def _uncount(match: re.Match) -> str:
+    text = re.sub(r"\d+", "#", match.group(0))
+    return re.sub(r"later entr(?:y|ies)", "later entries", text)
 
 
 def basis_signals(signals: list[str]) -> list[str]:
-    """Ignore elapsed age, not semantic counts or numbers in identifiers."""
-    return sorted(s for s in signals if not VOLATILE_SIGNAL.search(s))
+    """Ignore elapsed age and template counts, not other numbers in a signal."""
+    return sorted({COUNTED_SIGNAL.sub(_uncount, s) for s in signals if not VOLATILE_SIGNAL.search(s)})
 
 
 def basis_value(value: Any) -> Any:
@@ -92,6 +115,33 @@ def basis_value(value: Any) -> Any:
     if isinstance(value, list):
         return [basis_value(v) for v in value]
     return value
+
+
+def compact_basis(basis: dict[str, Any]) -> dict[str, Any]:
+    """A basis small enough to keep on a decision: long text becomes its digest."""
+    def shrink(value: Any) -> Any:
+        if isinstance(value, str) and len(value) > 160:
+            return f"sha:{digest(value)}"
+        if isinstance(value, dict):
+            return {k: shrink(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [shrink(v) for v in value]
+        return value
+    return shrink(basis)
+
+
+def basis_changes(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
+    """What moved between the basis a decision recorded and the row now."""
+    out: list[str] = []
+    if before.get("title") != after.get("title"):
+        out.append(f"title: {before.get('title')!r} -> {after.get('title')!r}")
+    old, new = before.get("evidence", {}), after.get("evidence", {})
+    for name in sorted(old.keys() | new.keys()):
+        if old.get(name) != new.get(name):
+            out.append(f"{name}: {json.dumps(old.get(name))[:80]} -> {json.dumps(new.get(name))[:80]}")
+    was, now = set(before.get("signals", [])), set(after.get("signals", []))
+    out += [f"- {s}" for s in sorted(was - now)] + [f"+ {s}" for s in sorted(now - was)]
+    return out
 
 
 @dataclass
@@ -114,8 +164,9 @@ class Row:
     def evidence_hash(self) -> str:
         """Hash of the facts a triage decision rests on.
 
-        Presentation-only positions, sizes and elapsed age do not make a
-        decision stale. Changed readers, defaults and other facts do.
+        Positions, sizes, elapsed age and counts do not make a decision stale.
+        A changed title, default, ledger or docs entry, missing path, or signal
+        (a runtime caller appearing or going away, say) does.
         """
         return digest(json.dumps(self.basis(), sort_keys=True))
 
@@ -127,10 +178,6 @@ class Row:
                 continue
             if name == "flag_signals":
                 value = basis_signals(value)
-            if name == "runtime_sites":
-                value = sorted({re.sub(r":\d+$", "", site) if isinstance(site, str)
-                                else json.dumps(basis_value(site), sort_keys=True)
-                                for site in value})
             evidence[name] = basis_value(value)
         return {"title": self.title, "evidence": evidence, "signals": basis_signals(self.signals)}
 
@@ -159,6 +206,7 @@ class Triage:
     hints: dict[str, Any] = field(default_factory=dict)   # the row's identity at decision time
     rebound_from: str = ""        # the id this decision carried before a rescan re-matched it
     archived: str = ""            # when its row vanished and the decision left the live store
+    basis: dict[str, Any] = field(default_factory=dict)   # compact_basis() it was decided against
 
     def is_expired(self, today: str) -> bool:
         return bool(self.expires) and self.expires < today
@@ -184,6 +232,97 @@ class Triage:
         return out
 
 
+@functools.lru_cache(maxsize=1)
+def _tracked() -> frozenset[str] | None:
+    """Every path git tracks or has staged, or None outside a git checkout.
+
+    The audit reads the tree that commits are made from, not the working
+    directory. Several agents share one checkout, and one agent's untracked
+    scratch must not move another agent's gate. Stage a new file to make the
+    audit see it, as `scripts/worklog.py check` already requires for entries.
+    """
+    try:
+        out = subprocess.run(["git", "ls-files", "-z"], cwd=REPO_ROOT, capture_output=True,
+                             check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return frozenset(p for p in out.decode("utf-8", "surrogateescape").split("\0") if p)
+
+
+@functools.lru_cache(maxsize=1)
+def _tracked_dirs() -> frozenset[str]:
+    dirs: set[str] = set()
+    for path in _tracked() or ():
+        parent = posixpath.dirname(path)
+        while parent and parent not in dirs:
+            dirs.add(parent)
+            parent = posixpath.dirname(parent)
+    return frozenset(dirs)
+
+
+def tree_files(base: pathlib.Path) -> list[pathlib.Path]:
+    """Files under `base` that belong to the tree, sorted.
+
+    Inside the repository that means tracked or staged files present on disk;
+    anywhere else (a test's temporary directory) every file under `base`.
+    """
+    tracked = _tracked()
+    try:
+        rel = base.resolve().relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        tracked = None
+    if tracked is None:
+        return sorted(p for p in base.rglob("*") if p.is_file()) if base.exists() else []
+    prefix = "" if rel == "." else rel + "/"
+    return sorted(REPO_ROOT / p for p in tracked
+                  if p.startswith(prefix) and (REPO_ROOT / p).is_file())
+
+
+def in_tree(path: str, root: pathlib.Path | None = None) -> bool:
+    """Whether a repository-relative file or directory is part of the tree.
+
+    `root` other than the repository (a test's fixture tree) is read from disk.
+    """
+    tracked = _tracked() if root is None or root == REPO_ROOT else None
+    if tracked is None:
+        return ((root or REPO_ROOT) / path).exists()
+    rel = posixpath.normpath(path.strip()).lstrip("/")
+    if rel.startswith("..") or rel == ".":
+        return rel == "."
+    return (rel in tracked and (REPO_ROOT / rel).exists()) or rel in _tracked_dirs()
+
+
+def tree_fingerprint() -> str:
+    """Changes whenever anything a scan reads could have changed.
+
+    Paths, sizes and modification times of every file in the tree, plus the
+    audit's own extractor code. Decisions and generated rows are excluded: a
+    rescan writes them, and must not invalidate itself.
+    """
+    _tracked.cache_clear()
+    _tracked_dirs.cache_clear()
+    h = hashlib.sha256()
+    for rel in sorted(_tracked() or ()):
+        if rel.startswith("audit/"):
+            continue
+        try:
+            st = os.stat(REPO_ROOT / rel)
+        except OSError:
+            continue
+        h.update(f"{rel}\0{st.st_size}\0{st.st_mtime_ns}\n".encode("utf-8", "surrogateescape"))
+    for source in sorted((AUDIT_ROOT / "hipaudit").rglob("*.py")):
+        h.update(source.read_bytes())
+    return h.hexdigest()[:16]
+
+
+def _newer(a: Triage, b: Triage) -> Triage:
+    """Of two copies of one decision, the one reviewed last (deterministic on ties)."""
+    def rank(d: Triage) -> tuple:
+        return (d.last_reviewed or d.decided, d.decided,
+                json.dumps(dataclasses.asdict(d), sort_keys=True))
+    return a if rank(a) >= rank(b) else b
+
+
 def load_triage() -> dict[str, Triage]:
     """Every recorded decision, keyed by row id."""
     out: dict[str, Triage] = {}
@@ -199,7 +338,11 @@ def load_triage() -> dict[str, Triage]:
             except json.JSONDecodeError as exc:
                 raise SystemExit(f"{path}:{number}: invalid JSON — {exc}") from exc
             known = {f.name for f in dataclasses.fields(Triage)}
-            out[payload["id"]] = Triage(**{k: v for k, v in payload.items() if k in known})
+            decision = Triage(**{k: v for k, v in payload.items() if k in known})
+            #  The store is union-merged (.gitattributes), so two agents that
+            #  re-decided one row leave two lines. The later review wins.
+            previous = out.get(decision.id)
+            out[decision.id] = decision if previous is None else _newer(previous, decision)
     return out
 
 
@@ -419,9 +562,11 @@ def orphaned(rows: list[Row], decisions: dict[str, Triage]) -> list[Triage]:
 def load_archive() -> list[Triage]:
     out: list[Triage] = []
     known = {f.name for f in dataclasses.fields(Triage)}
+    seen: set[str] = set()
     for path in sorted(ARCHIVE_DIR.glob("*.jsonl")) if ARCHIVE_DIR.exists() else []:
         for line in path.read_text(encoding="utf-8").splitlines():
-            if line.strip():
+            if line.strip() and line not in seen:     # a union merge can repeat a line
+                seen.add(line)
                 payload = json.loads(line)
                 out.append(Triage(**{k: v for k, v in payload.items() if k in known}))
     return out

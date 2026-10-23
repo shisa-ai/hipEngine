@@ -270,7 +270,7 @@ when an adapter/parser calls `add_engine_loop_config_args(...)`.
 | --- | --- | --- | --- |
 | `HIPENGINE_PREFILL_DECODE_POLICY` | `protect_decode` | `--prefill-decode-policy` | One of `protect_decode`, `protect_ttft`, or `fair`. The independently gated gfx1100 and gfx1151 Q4_K_M package defaults select `fair` when the env is unset. |
 | `HIPENGINE_MAX_ACTIVE_REQUESTS` | unset | `--max-active-requests` | Optional active resident request cap used as the engine-loop scheduler capacity when set; must be > 0. |
-| `HIPENGINE_MAX_PREFILL_CHUNK_TOKENS` | `256` | `--max-prefill-chunk-tokens` | Maximum prefill chunk tokens per loop tick; must be > 0. |
+| `HIPENGINE_MAX_PREFILL_CHUNK_TOKENS` | `1024`; model override | `--max-prefill-chunk-tokens` | Maximum tokens per prefill slice; must be > 0. When unset, Qwen4Exp uses the runner's admitted chunk size (up to 4096 with automatic capacity selection). Its decode-active round budget remains at most 1024 tokens. An explicit value overrides the model default. |
 | `HIPENGINE_FAIR_PREFILL_BURST_CHUNKS` | `1` | `--fair-prefill-burst-chunks` | Maximum consecutive prefill chunks while `fair` scheduling also has decode-ready rows; must be > 0. The independently gated gfx1151 Q4_K_M package default may override this when the env is unset. |
 | `HIPENGINE_KV_POOL_INITIAL_PAGES` | `128` | `--kv-pool-initial-pages` | Initial resident device-KV pages, clamped to the runner's maximum useful capacity; must be > 0. |
 | `HIPENGINE_KV_POOL_LOW_WATER_PAGES` | `128` | `--kv-pool-low-water-pages` | Idle-shrink low-water pages, clamped with the initial allocation; must be > 0 and no greater than configured initial pages. |
@@ -816,7 +816,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_QSA_WMMA` | unset (fast/F16 route sets `1`) | QSA prefill attention on the WMMA kernel. |
 | `HIPENGINE_QWEN4_EXP_ROUTED_F16` | unset (production/F16 route sets `1`) | Routed-expert gate/up and down on the wide F16 WMMA GEMMs from two rows (Q4_K) or 64 rows (Q5_K); multi-row decode batches use it too. |
 | `HIPENGINE_QWEN4_EXP_ROUTED_F16_INDEXED` | `1` | The routed F16 gate/up reads token rows through the lane map; `0` builds the gathered activation copy. |
-| `HIPENGINE_QWEN4_EXP_ROUTER_SELECT_CAST` | `0` | `1` fuses router top-k selection with the BF16 cast (bit-identical candidate). |
+| `HIPENGINE_QWEN4_EXP_ROUTER_SELECT_CAST` | `1` | Fuses router top-k selection with the exact BF16 cast. `0` restores the unfused pair for fault isolation; see the router select/cast rollback entry in `REFACTOR.md`. |
 | `HIPENGINE_QWEN4_EXP_ROUTER_VARIANT` | profile-selected | Names the router-logit producer; the UD production profile selects ordered DPP, strict/Q4_K_M keep tile4. Rollback/bisection only. |
 | `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP` | unset (F16 route sets `1`) | Warp-per-expert routed gate/up decode owner (reduction order differs). |
 | `HIPENGINE_QWEN4_EXP_GDN_DECODE_ROWSPLIT` | unset (F16 route sets `1`) | Row-split GDN decode step. |
@@ -942,7 +942,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN` | production profile | Admits the mapped-down key when the mmap table is ready (rows>=512). |
 | `HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER` | production profile | Register GEMV down-projection variant (rows>=512, in_features==640). |
 | `HIPENGINE_QWEN4_EXP_FUSED_COMBINE` | unset | Opt-in fused PF-4 lever-2 combine; default stays unfused after the whole-model A/B measured a loss. |
-| `HIPENGINE_QWEN4_EXP_Q4_DP4A64` | production profile | DP4A64 selected dual q8_1 dp4a GEMV decode for matching gate/up quant at rows==1. |
+| `HIPENGINE_QWEN4_EXP_Q4_DP4A64` | `0` in UD production/fast | Profile-owned Q4 gate/up decode selector. The strict owner is selected after an observed long-context numerical failure. Setting `1` after profile binding selects the registered one-plane DP4A diagnostic; see the clearing gates in `REFACTOR.md`. |
 | `HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS` | unset | Comma-separated layer list admitting the DP4A64 decode route. |
 | `HIPENGINE_QWEN4_EXP_GR_IU8` | `0` | iu8 WMM prefill remap for the raw-Q rows>256 route. |
 | `HIPENGINE_QWEN4_EXP_GR_IU8_DOWN` | `0` | iu8 WMM prefill remap for the down projection of the rows>256 route. |

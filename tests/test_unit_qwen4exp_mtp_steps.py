@@ -223,6 +223,83 @@ def _drain(iterator) -> tuple[list[Qwen4ExpMTPProgress], GenerationOutput]:
             return steps, stop.value
 
 
+class _VocabularyDraft(_DraftRunner):
+    def __init__(self):
+        super().__init__()
+        self.beginnings = []
+        self.histories = []
+
+    def begin_draft_vocabulary(self, special_ids):
+        self.beginnings.append(tuple(special_ids))
+        self.histories = []
+
+    def prepare_draft_vocabulary(self, committed, *, anchor):
+        self.histories.append((tuple(committed), anchor))
+
+    def draft_vocabulary_diagnostics(self):
+        return {"prepared_cycles": len(self.histories)}
+
+
+def test_subset_head_sees_commits_not_rejected_proposals_and_resets_between_requests():
+    draft = _VocabularyDraft()
+    provider, target, _ = _provider(draft=draft)
+    target.tokenizer.token_types = (1, 2, 3, 4, 6)
+    target.tokenizer._extra_special_ids = lambda: (42,)
+    _, result = _drain(provider.iter_generate((1, 2), _request()))
+    assert draft.beginnings == [(1, 2, 3, 42, 99_999)]
+    assert draft.histories == [((1, 2, 10), 10), ((1, 2, 10, 11, 12), 12)]
+    assert result.telemetry.diagnostics['draft_vocabulary'] == {'prepared_cycles': 2}
+    _drain(provider.iter_generate((6, 7), _request()))
+    assert len(draft.beginnings) == 2
+    assert draft.histories[0] == ((6, 7, 10), 10)
+
+
+def test_subset_head_includes_committed_k0_tokens_before_the_next_proposal():
+    draft = _VocabularyDraft()
+    provider, _, _ = _provider(draft=draft)
+    steps = provider.iter_generate((1, 2), _request())
+    assert next(steps).token_ids == (10,)
+    assert steps.send(0).token_ids == (11,)
+    assert not draft.histories
+    steps.send(2)
+    assert draft.histories[0] == ((1, 2, 10, 11), 11)
+    steps.close()
+
+
+def test_prompt_lookup_candidates_are_target_verified_and_observed_after_commit(monkeypatch):
+    from hipengine.speculative import prompt_lookup
+    policies = []
+    class Lookup:
+        def __init__(self, **kwargs):
+            self.observed = []
+            self.histories = []
+            policies.append(self)
+        def propose(self, committed, budget, *, require_full=False):
+            assert require_full
+            self.histories.append(tuple(committed))
+            return (11, 98) if len(self.histories) == 1 else (13, 14)
+        def observe(self, accepted):
+            self.observed.append(accepted)
+        def diagnostics(self):
+            return {'accepted': self.observed}
+    monkeypatch.setattr(prompt_lookup, 'PromptLookup', Lookup)
+    draft = _DraftRunner()
+    def copied(*, candidates, **kwargs):
+        draft.position += len(candidates)
+        return tuple(SimpleNamespace(token_id=t) for t in candidates)
+    draft.propose_lookup_chain = copied
+    provider, target, _ = _provider(draft=draft)
+    _, result = _drain(provider.iter_generate((1, 2), _request()))
+    assert draft.propose_calls == 0
+    assert policies[0].observed == [1, 2]
+    assert policies[0].histories == [(1, 2, 10), (1, 2, 10, 11, 12)]
+    assert result.telemetry.diagnostics['prompt_lookup'] == {'accepted': [1, 2]}
+    assert draft.position == target.runner.position
+    _drain(provider.iter_generate((6, 7), _request()))
+    assert len(policies) == 2
+    assert policies[1].histories[0] == (6, 7, 10)
+
+
 def test_iter_generate_is_lazy_until_the_first_step() -> None:
     provider, target, draft = _provider()
 

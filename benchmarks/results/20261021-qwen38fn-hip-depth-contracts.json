@@ -1,0 +1,1698 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_ordered_depth_adapter_validation",
+  "status": "passed",
+  "performance_claim": false,
+  "scope": "Public HTTP harness validation at depths 0 and 4096, not full-depth execution or quality characterization.",
+  "protocol": "Gufo pinned prompt/calibration/prefix-reply/retry recipe with an additional untimed hipEngine common-prefix checkpoint.",
+  "timing_scope": "Native backend wall includes scheduler waits; not GPU interval cost.",
+  "validation": {
+    "focused_tests": 76,
+    "cpu_deterministic_bundle": "passed",
+    "documentation_gates": "all four passed",
+    "real_execution": "a10476e9-9e8c-44e9-95c2-512e82cd43d5"
+  },
+  "log": {
+    "path": "/tmp/kendex-pi-bg/bg-19-1792615623428.log",
+    "sha256": "7dd708a5a293cb4a3390f0d697541b6a60d4c382e57f31318b17fe67e97e9061"
+  },
+  "validator": {
+    "path": "/tmp/qwen38fn-gufo-20261021/validate-hip-depth.py",
+    "sha256": "c55d6c6d5b83c9318a50c0e8835b543863618613c62ef09db0d0dadbd5e42040"
+  },
+  "launch": {
+    "path": "/tmp/qwen38fn-gufo-20261021/run-hip.sh",
+    "sha256": "7dea3503ca9f59f374eb538f37a8e61941b0049b88d515bde90306d8a9633aae",
+    "content": "#!/usr/bin/env bash\nset -euo pipefail\nBASE=/tmp/qwen38fn-gufo-20261021\nENV_PREFIX=\"$HOME/miniforge3/envs/therock\"\nPY=\"$ENV_PREFIX/bin/python\"\nROOT=$(\"$PY\" -m rocm_sdk path --root)\nSITE=$(\"$PY\" -c 'import site; print(site.getsitepackages()[0])')\nif [[ ! -f \"$BASE/hipcc-version.txt\" ]]; then\n  \"$ROOT/bin/hipcc\" --version > \"$BASE/hipcc-version.txt\"\nfi\nexec env -i HOME=\"$HOME\" USER=\"$USER\" \\\n  PATH=\"$ENV_PREFIX/bin:$ROOT/bin:$ROOT/lib/llvm/bin:/usr/local/bin:/usr/bin:/bin\" \\\n  LD_LIBRARY_PATH=\"$SITE/_rocm_sdk_core/lib:$SITE/_rocm_sdk_devel/lib:$SITE/_rocm_sdk_libraries/lib\" \\\n  HIP_PATH=\"$ROOT\" ROCM_PATH=\"$ROOT\" HIP_LIB_PATH=\"$ROOT/lib\" \\\n  HIP_INCLUDE_PATH=\"$ROOT/include\" HIP_DEVICE_LIB_PATH=\"$ROOT/lib/llvm/amdgcn/bitcode\" \\\n  HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 \\\n  HIPENGINE_COMPILER_VERSION_FILE=\"$BASE/hipcc-version.txt\" \\\n  PYTHONPATH=\"$PWD\" \"$PY\" \"$@\"\n"
+  },
+  "models": {
+    "created_at": "2026-10-21T18:33:17.166428+00:00",
+    "files": [
+      {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+        "size_bytes": 10946624,
+        "sha256": "4448186216b3af4cc558bbce2c3213f01608f8f8b2e5267a9767971dd3ec8082"
+      },
+      {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+        "size_bytes": 49859583136,
+        "sha256": "3f342f1c1580473f1ee94ddd5b28206e8c07a70fa1a366f59d1d6c922919a6c9"
+      },
+      {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00003-of-00004.gguf",
+        "size_bytes": 49376141504,
+        "sha256": "56758f40269cad5cd9b0d3d6fbae0f40f6d5be6de49e4ab392dbe83157d9cbd3"
+      },
+      {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00004-of-00004.gguf",
+        "size_bytes": 12087983520,
+        "sha256": "753bda48b98ba4f1636134a90a967de1b2d3908a236c026e464777342e53510a"
+      },
+      {
+        "path": "/home/lhl/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+        "size_bytes": 4137429088,
+        "sha256": "9db03a687670608286e99b563fcc86d0ee76c8dd863f64b2afc0b54eb0eb975d"
+      }
+    ]
+  },
+  "arms": [
+    {
+      "command": [
+        "scripts/qwen4exp_hip_http_replay.py",
+        "--source-root",
+        "/tmp/qwen38fn-gufo-20261021/gufo-fec4759d",
+        "--url",
+        "http://127.0.0.1:18082",
+        "--model",
+        "depth",
+        "--server-manifest",
+        "/tmp/qwen38fn-gufo-20261021/hipengine-depth-contract/ar-server.json",
+        "--output-dir",
+        "/tmp/qwen38fn-gufo-20261021/hipengine-depth-contract/ar",
+        "--arm",
+        "ar",
+        "--depths",
+        "0,4096",
+        "--context",
+        "8192"
+      ],
+      "source_before": {
+        "path": "/home/lhl/hipEngine",
+        "head": "b8d5c01ec3b79059bbbdaa7b9b4875a91f3f7abf",
+        "tracked_clean": false,
+        "tracked_diff_sha256": "8ce335f9215ca44d5e6bed618a21c6c88fba7c8a5d46a617ff7b7fd55a7c4ca9"
+      },
+      "source_after": {
+        "path": "/home/lhl/hipEngine",
+        "head": "b8d5c01ec3b79059bbbdaa7b9b4875a91f3f7abf",
+        "tracked_clean": false,
+        "tracked_diff_sha256": "8ce335f9215ca44d5e6bed618a21c6c88fba7c8a5d46a617ff7b7fd55a7c4ca9"
+      },
+      "host_before": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "gpu_temperature_millidegrees_c": {
+          "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 40000
+        }
+      },
+      "host_after": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "gpu_temperature_millidegrees_c": {
+          "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 52000
+        }
+      },
+      "recipe_source": {
+        "path": "/tmp/qwen38fn-gufo-20261021/gufo-fec4759d",
+        "head": "fec4759d064585d72f87c6e11af5cfa0e1fa95c7",
+        "tracked_clean": true
+      },
+      "recipe_hashes": {
+        "tools/gufo/model_bench/llm.py": "3e3a038c98c4656f1366fc183fb207bd6ea3dbbebbd2ff28b083a330ef716c0d",
+        "tools/gufo/serving_bench.py": "cc1e4c39a960a4fb72e67c5a00bcc1b3258b2f4c6334ea1adc66d73c5bffc9ce",
+        "docs/models/qwen3.8-flash-next/artifacts/bench.json": "a8c70e48be58ff68e54651014030deb6298589e42fee0530e6463bd467cd9ff3"
+      },
+      "harness_sha256": "88193c98e2603d6ee18eca399c1edc0580e63a4efb91c42abb4abdb1c8c61aa5",
+      "helper_sha256": {
+        "scripts/qwen4exp_gufo_http_replay.py": "65107794687d72c2dd63550c8508bb090b2481cc09c8c73ca2a7deafc82923f4",
+        "scripts/qwen4exp_http_mtp_economics.py": "c62549273ca64e176bfbe65986b29e820dacc182023a572d7642fd3816c2c9d7"
+      },
+      "calibration": {
+        "overhead": 12,
+        "initial_ratio": 1.167,
+        "final_ratio": 1.167
+      },
+      "quality": {
+        "G0": {
+          "status": "pending",
+          "reason": "bind full identities, tokenization and host-state checks"
+        },
+        "G1": {
+          "status": "pending",
+          "reason": "native output IDs recorded; bind identical-input comparison"
+        },
+        "G2": {
+          "status": "pending",
+          "reason": "bind full-vocabulary strict-relative numerical packet"
+        },
+        "G3": {
+          "status": "pending",
+          "reason": "requires identical-input repeats and cross-launch checks"
+        },
+        "G4": {
+          "status": "pending",
+          "reason": "bind the same-pin task battery and workload scope"
+        }
+      },
+      "arm": "ar",
+      "raw_report": {
+        "path": "/tmp/qwen38fn-gufo-20261021/hipengine-depth-contract/ar/replay.json",
+        "sha256": "d7c2fb1339bca71aab717da81e2b022a1544ecb5cfaaaaa4e9f2a1590363c45b"
+      },
+      "journal": {
+        "path": "/tmp/qwen38fn-gufo-20261021/hipengine-depth-contract/ar/requests.jsonl",
+        "sha256": "a0d6c806c290def61089ad5fe6d7ccb9ba4a04b08c7ed79f68a6aa7d91eb0852"
+      },
+      "server_manifest": {
+        "path": "/tmp/qwen38fn-gufo-20261021/hipengine-depth-contract/ar-server.json",
+        "sha256": "e398b79bb1d05d580f6b8a5eddfb4a8ff3d6b45b5e7a41c3e336e0bbb5a91b6f"
+      },
+      "server_command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python",
+        "-m",
+        "hipengine.server",
+        "--model",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--backend",
+        "hip_gfx1151",
+        "--quant",
+        "gguf_ud_q4_k_xl",
+        "--execution-profile",
+        "production",
+        "--served-model-name",
+        "depth",
+        "--max-context-tokens",
+        "8192",
+        "--max-active-requests",
+        "1",
+        "--prefix-cache",
+        "radix",
+        "--port",
+        "18082"
+      ],
+      "launch_environment": {
+        "HOME": "/home/lhl",
+        "USER": "lhl",
+        "PATH": "/home/lhl/miniforge3/envs/therock/bin:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin:/usr/local/bin:/usr/bin:/bin",
+        "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries/lib",
+        "HIP_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+        "ROCM_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+        "HIP_LIB_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib",
+        "HIP_INCLUDE_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/include",
+        "HIP_DEVICE_LIB_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/amdgcn/bitcode",
+        "HIPENGINE_HIP_ARCH": "gfx1151",
+        "GPU_MAX_HW_QUEUES": "2",
+        "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/qwen38fn-gufo-20261021/hipcc-version.txt",
+        "PYTHONPATH": "/home/lhl/hipEngine",
+        "LC_CTYPE": "C.UTF-8"
+      },
+      "loaded_rocm_libraries": [
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/libamd_comgr.so.3",
+          "sha256": "f18da4b1298b9c6f3eaa595365fb234922e6a5784861e6612f92eedde47331da"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/libamdhip64.so.7",
+          "sha256": "1a8bcd00d05cce36bebcf4acf30289f36f6562ec532e9c618c42e9bd2d90ed05"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/libhsa-amd-aqlprofile64.so",
+          "sha256": "0001175c61c8ad3491e75a12a056697261b6ffe86b3bdd65c153834602f1b686"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/libhsa-runtime64.so.1",
+          "sha256": "815364af872593e577206ff22a29141af63e800a78488b2ee02cf04532e14a46"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/librocm_kpack.so.0",
+          "sha256": "fc0e0284de21f72abada2eeba340ed9bd69ddadb299940bcbf9c2f8b95f3fbae"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/librocprofiler-register.so.0",
+          "sha256": "5c1090a94786d3618a3f72fac2a4982e259014817c7c160bac95c1bf56d765ae"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/lib/libLLVM.so.23.0git",
+          "sha256": "2c66b0bd3190c42e51dccee627e81fb5d6d6b57d631b10959c5967acc2bbe1ae"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/lib/libclang-cpp.so.23.0git",
+          "sha256": "9fd457eede5fd689edb3ce8302b3fcc80be336915d487a46c434dd0fc3e7582c"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_bz2.so",
+          "sha256": "37a39b12a7e6e9f480d10e5e139b9aedbe5824e63b6b9e12a16837baee608602"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_drm.so.2",
+          "sha256": "b715ae24e1d62e407ffceca56b546e8a35abe37ac50878cbb16fa8b93d9c9fd5"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_drm_amdgpu.so.1",
+          "sha256": "163acff64693b08e0f88fcaee4745f67134e38a45886fed21f6ed317dab2d1c9"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_elf.so.1",
+          "sha256": "692dd9fe3575a45df78b319ad0e2a58ee36814958771dd810d5d91f9616c6d8f"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_liblzma.so.5",
+          "sha256": "d17f947bfe3947db5aefee897f6d32dfe98c73bf80b477764ba7f4107594a671"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_numa.so.1",
+          "sha256": "26fffd0f85369950b834cfb8f56fa9e1ea4804be8bbc40db98b788c554802bc3"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_z.so.1",
+          "sha256": "e1d7568f4a0b77eeab26f30cc9d2794dfe7ffd14e34b4ae55a9f80bc4f94ba7a"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_zstd.so.1",
+          "sha256": "fc3edd0b74fa071079b0095abe7b3f41418ca39be138f4ec0c57d0640a0b2d8b"
+        }
+      ],
+      "journal_kinds": {
+        "request": 5,
+        "prefix_reply": 1,
+        "checkpoint": 1
+      },
+      "rows": [
+        {
+          "depth": 0,
+          "counts": {
+            "prompt_tokens": 2040,
+            "cached_prompt_tokens": 0,
+            "new_prompt_tokens": 2040,
+            "generated_tokens": 128,
+            "decode_transitions": 127
+          },
+          "checkpoint_tokens": 0,
+          "generated_token_ids": [
+            760,
+            3766,
+            1414,
+            369,
+            264,
+            83123,
+            11,
+            2397,
+            59229,
+            93558,
+            314,
+            39107,
+            421,
+            3514,
+            7690,
+            279,
+            16078,
+            314,
+            264,
+            55355,
+            11,
+            829,
+            17246,
+            44833,
+            13721,
+            2199,
+            11,
+            4222,
+            716,
+            303,
+            264,
+            6583,
+            344,
+            5364,
+            2261,
+            279,
+            40297,
+            321,
+            12050,
+            15127,
+            13,
+            24944,
+            1056,
+            264,
+            53916,
+            18641,
+            11,
+            279,
+            20438,
+            5568,
+            430,
+            264,
+            46368,
+            14991,
+            314,
+            54936,
+            13486,
+            13,
+            1049,
+            18253,
+            94476,
+            19094,
+            279,
+            24149,
+            2022,
+            314,
+            6775,
+            2218,
+            71944,
+            11,
+            10849,
+            11,
+            27786,
+            28552,
+            11,
+            321,
+            8981,
+            82051,
+            78015,
+            279,
+            39026,
+            314,
+            3611,
+            3511,
+            11,
+            7489,
+            1452,
+            539,
+            3807,
+            4009,
+            11,
+            5904,
+            20329,
+            11,
+            321,
+            46234,
+            13,
+            271,
+            1536,
+            80996,
+            2830,
+            279,
+            41916,
+            30222,
+            6775,
+            314,
+            27141,
+            9050,
+            25,
+            279,
+            63433,
+            314,
+            31958,
+            11,
+            39332,
+            11,
+            321,
+            37260,
+            26,
+            279,
+            10810,
+            314,
+            11228,
+            1040,
+            11679,
+            11,
+            16657,
+            11
+          ],
+          "speculative_used": false,
+          "proposed_draft_tokens": 0,
+          "accepted_draft_tokens": 0,
+          "decode_state": {
+            "row_index": 0,
+            "step_index": 128,
+            "prompt_tokens": 2040,
+            "generated_tokens": 128,
+            "phase": "done",
+            "continuation_eligible": false,
+            "request_id": "6",
+            "execution_path": "qwen4exp_full_model_ar_batch"
+          }
+        },
+        {
+          "depth": 4096,
+          "counts": {
+            "prompt_tokens": 6138,
+            "cached_prompt_tokens": 4099,
+            "new_prompt_tokens": 2039,
+            "generated_tokens": 128,
+            "decode_transitions": 127
+          },
+          "checkpoint_tokens": 4099,
+          "generated_token_ids": [
+            13962,
+            60552,
+            20858,
+            314,
+            279,
+            95072,
+            271,
+            760,
+            3766,
+            1414,
+            369,
+            264,
+            27044,
+            11,
+            83123,
+            93558,
+            314,
+            33761,
+            421,
+            3514,
+            7690,
+            264,
+            55355,
+            11,
+            86198,
+            6047,
+            11,
+            4222,
+            29099,
+            303,
+            264,
+            18508,
+            13721,
+            466,
+            32469,
+            2261,
+            279,
+            72555,
+            3818,
+            13,
+            561,
+            18641,
+            5759,
+            369,
+            2397,
+            59229,
+            321,
+            7859,
+            11,
+            68219,
+            264,
+            4129,
+            8404,
+            63355,
+            2022,
+            4779,
+            466,
+            264,
+            72860,
+            14991,
+            314,
+            13721,
+            2199,
+            4598,
+            1056,
+            264,
+            8343,
+            6868,
+            13,
+            271,
+            332,
+            1536,
+            59995,
+            321,
+            73819,
+            702,
+            64700,
+            198,
+            16,
+            13,
+            220,
+            2972,
+            33704,
+            278,
+            39928,
+            64700,
+            561,
+            1414,
+            16421,
+            62861,
+            279,
+            8869,
+            1881,
+            15127,
+            11,
+            7695,
+            40297,
+            321,
+            12050,
+            13,
+            26734,
+            1040,
+            328,
+            71944,
+            1288,
+            328,
+            86,
+            48260,
+            1288,
+            328,
+            2630,
+            20715,
+            1288,
+            328,
+            12610,
+            6801,
+            1288,
+            328,
+            69,
+            40128,
+            1288,
+            321,
+            328,
+            84068,
+            1,
+            61400,
+            13418,
+            11
+          ],
+          "speculative_used": false,
+          "proposed_draft_tokens": 0,
+          "accepted_draft_tokens": 0,
+          "decode_state": {
+            "row_index": 0,
+            "step_index": 128,
+            "prompt_tokens": 6138,
+            "generated_tokens": 128,
+            "phase": "done",
+            "continuation_eligible": false,
+            "request_id": "9",
+            "execution_path": "qwen4exp_full_model_ar_batch"
+          }
+        }
+      ]
+    },
+    {
+      "command": [
+        "scripts/qwen4exp_hip_http_replay.py",
+        "--source-root",
+        "/tmp/qwen38fn-gufo-20261021/gufo-fec4759d",
+        "--url",
+        "http://127.0.0.1:18082",
+        "--model",
+        "depth",
+        "--server-manifest",
+        "/tmp/qwen38fn-gufo-20261021/hipengine-depth-contract/mtp-prose-server.json",
+        "--output-dir",
+        "/tmp/qwen38fn-gufo-20261021/hipengine-depth-contract/mtp-prose",
+        "--arm",
+        "mtp-prose",
+        "--depths",
+        "0,4096",
+        "--context",
+        "8192"
+      ],
+      "source_before": {
+        "path": "/home/lhl/hipEngine",
+        "head": "b8d5c01ec3b79059bbbdaa7b9b4875a91f3f7abf",
+        "tracked_clean": false,
+        "tracked_diff_sha256": "8ce335f9215ca44d5e6bed618a21c6c88fba7c8a5d46a617ff7b7fd55a7c4ca9"
+      },
+      "source_after": {
+        "path": "/home/lhl/hipEngine",
+        "head": "b8d5c01ec3b79059bbbdaa7b9b4875a91f3f7abf",
+        "tracked_clean": false,
+        "tracked_diff_sha256": "8ce335f9215ca44d5e6bed618a21c6c88fba7c8a5d46a617ff7b7fd55a7c4ca9"
+      },
+      "host_before": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "gpu_temperature_millidegrees_c": {
+          "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 44000
+        }
+      },
+      "host_after": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "gpu_temperature_millidegrees_c": {
+          "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 55000
+        }
+      },
+      "recipe_source": {
+        "path": "/tmp/qwen38fn-gufo-20261021/gufo-fec4759d",
+        "head": "fec4759d064585d72f87c6e11af5cfa0e1fa95c7",
+        "tracked_clean": true
+      },
+      "recipe_hashes": {
+        "tools/gufo/model_bench/llm.py": "3e3a038c98c4656f1366fc183fb207bd6ea3dbbebbd2ff28b083a330ef716c0d",
+        "tools/gufo/serving_bench.py": "cc1e4c39a960a4fb72e67c5a00bcc1b3258b2f4c6334ea1adc66d73c5bffc9ce",
+        "docs/models/qwen3.8-flash-next/artifacts/bench.json": "a8c70e48be58ff68e54651014030deb6298589e42fee0530e6463bd467cd9ff3"
+      },
+      "harness_sha256": "88193c98e2603d6ee18eca399c1edc0580e63a4efb91c42abb4abdb1c8c61aa5",
+      "helper_sha256": {
+        "scripts/qwen4exp_gufo_http_replay.py": "65107794687d72c2dd63550c8508bb090b2481cc09c8c73ca2a7deafc82923f4",
+        "scripts/qwen4exp_http_mtp_economics.py": "c62549273ca64e176bfbe65986b29e820dacc182023a572d7642fd3816c2c9d7"
+      },
+      "calibration": {
+        "overhead": 12,
+        "initial_ratio": 1.167,
+        "final_ratio": 1.167
+      },
+      "quality": {
+        "G0": {
+          "status": "pending",
+          "reason": "bind full identities, tokenization and host-state checks"
+        },
+        "G1": {
+          "status": "pending",
+          "reason": "native output IDs recorded; bind identical-input comparison"
+        },
+        "G2": {
+          "status": "pending",
+          "reason": "bind full-vocabulary strict-relative numerical packet"
+        },
+        "G3": {
+          "status": "pending",
+          "reason": "requires identical-input repeats and cross-launch checks"
+        },
+        "G4": {
+          "status": "pending",
+          "reason": "bind the same-pin task battery and workload scope"
+        }
+      },
+      "arm": "mtp-prose",
+      "raw_report": {
+        "path": "/tmp/qwen38fn-gufo-20261021/hipengine-depth-contract/mtp-prose/replay.json",
+        "sha256": "ca30e65c0f1e8217e3aede0f2884bc7b4075321f915e51ee5c042112b42a9a51"
+      },
+      "journal": {
+        "path": "/tmp/qwen38fn-gufo-20261021/hipengine-depth-contract/mtp-prose/requests.jsonl",
+        "sha256": "cfbdc5ba0fd512ebb689ccb49efc4ab80d7f1d3c3a0c228c62570e238ba8f92d"
+      },
+      "server_manifest": {
+        "path": "/tmp/qwen38fn-gufo-20261021/hipengine-depth-contract/mtp-prose-server.json",
+        "sha256": "259ea1c27a3e97083a983a814e994fcdefebb712a16c74572fc8df89049fdf00"
+      },
+      "server_command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python",
+        "-m",
+        "hipengine.server",
+        "--model",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--backend",
+        "hip_gfx1151",
+        "--quant",
+        "gguf_ud_q4_k_xl",
+        "--execution-profile",
+        "production",
+        "--served-model-name",
+        "depth",
+        "--max-context-tokens",
+        "8192",
+        "--max-active-requests",
+        "1",
+        "--speculative-provider",
+        "qwen4_exp_mtp",
+        "--draft-model",
+        "/home/lhl/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+        "--speculative-candidate-budget",
+        "3",
+        "--prefix-cache",
+        "radix",
+        "--port",
+        "18082"
+      ],
+      "launch_environment": {
+        "HOME": "/home/lhl",
+        "USER": "lhl",
+        "PATH": "/home/lhl/miniforge3/envs/therock/bin:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin:/usr/local/bin:/usr/bin:/bin",
+        "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries/lib",
+        "HIP_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+        "ROCM_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+        "HIP_LIB_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib",
+        "HIP_INCLUDE_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/include",
+        "HIP_DEVICE_LIB_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/amdgcn/bitcode",
+        "HIPENGINE_HIP_ARCH": "gfx1151",
+        "GPU_MAX_HW_QUEUES": "2",
+        "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/qwen38fn-gufo-20261021/hipcc-version.txt",
+        "PYTHONPATH": "/home/lhl/hipEngine",
+        "LC_CTYPE": "C.UTF-8"
+      },
+      "loaded_rocm_libraries": [
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/libamd_comgr.so.3",
+          "sha256": "f18da4b1298b9c6f3eaa595365fb234922e6a5784861e6612f92eedde47331da"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/libamdhip64.so.7",
+          "sha256": "1a8bcd00d05cce36bebcf4acf30289f36f6562ec532e9c618c42e9bd2d90ed05"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/libhsa-amd-aqlprofile64.so",
+          "sha256": "0001175c61c8ad3491e75a12a056697261b6ffe86b3bdd65c153834602f1b686"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/libhsa-runtime64.so.1",
+          "sha256": "815364af872593e577206ff22a29141af63e800a78488b2ee02cf04532e14a46"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/librocm_kpack.so.0",
+          "sha256": "fc0e0284de21f72abada2eeba340ed9bd69ddadb299940bcbf9c2f8b95f3fbae"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/librocprofiler-register.so.0",
+          "sha256": "5c1090a94786d3618a3f72fac2a4982e259014817c7c160bac95c1bf56d765ae"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/lib/libLLVM.so.23.0git",
+          "sha256": "2c66b0bd3190c42e51dccee627e81fb5d6d6b57d631b10959c5967acc2bbe1ae"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/lib/libclang-cpp.so.23.0git",
+          "sha256": "9fd457eede5fd689edb3ce8302b3fcc80be336915d487a46c434dd0fc3e7582c"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_bz2.so",
+          "sha256": "37a39b12a7e6e9f480d10e5e139b9aedbe5824e63b6b9e12a16837baee608602"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_drm.so.2",
+          "sha256": "b715ae24e1d62e407ffceca56b546e8a35abe37ac50878cbb16fa8b93d9c9fd5"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_drm_amdgpu.so.1",
+          "sha256": "163acff64693b08e0f88fcaee4745f67134e38a45886fed21f6ed317dab2d1c9"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_elf.so.1",
+          "sha256": "692dd9fe3575a45df78b319ad0e2a58ee36814958771dd810d5d91f9616c6d8f"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_liblzma.so.5",
+          "sha256": "d17f947bfe3947db5aefee897f6d32dfe98c73bf80b477764ba7f4107594a671"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_numa.so.1",
+          "sha256": "26fffd0f85369950b834cfb8f56fa9e1ea4804be8bbc40db98b788c554802bc3"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_z.so.1",
+          "sha256": "e1d7568f4a0b77eeab26f30cc9d2794dfe7ffd14e34b4ae55a9f80bc4f94ba7a"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_zstd.so.1",
+          "sha256": "fc3edd0b74fa071079b0095abe7b3f41418ca39be138f4ec0c57d0640a0b2d8b"
+        }
+      ],
+      "journal_kinds": {
+        "request": 5,
+        "prefix_reply": 1,
+        "checkpoint": 1
+      },
+      "rows": [
+        {
+          "depth": 0,
+          "counts": {
+            "prompt_tokens": 2040,
+            "cached_prompt_tokens": 0,
+            "new_prompt_tokens": 2040,
+            "generated_tokens": 128,
+            "decode_transitions": 127
+          },
+          "checkpoint_tokens": 0,
+          "generated_token_ids": [
+            760,
+            3766,
+            1414,
+            369,
+            264,
+            83123,
+            11,
+            2397,
+            59229,
+            93558,
+            314,
+            39107,
+            421,
+            3514,
+            7690,
+            279,
+            16078,
+            314,
+            264,
+            55355,
+            11,
+            829,
+            17246,
+            44833,
+            13721,
+            2199,
+            11,
+            4222,
+            716,
+            303,
+            264,
+            6583,
+            344,
+            5364,
+            2261,
+            279,
+            40297,
+            321,
+            12050,
+            15127,
+            13,
+            24944,
+            1056,
+            264,
+            53916,
+            18641,
+            11,
+            279,
+            20438,
+            5568,
+            430,
+            264,
+            46368,
+            14991,
+            11,
+            80725,
+            3658,
+            20730,
+            314,
+            3809,
+            11,
+            9050,
+            11,
+            9931,
+            9916,
+            11,
+            321,
+            279,
+            20438,
+            314,
+            854,
+            13,
+            561,
+            43741,
+            80996,
+            4052,
+            264,
+            41916,
+            30222,
+            13486,
+            25849,
+            539,
+            279,
+            22700,
+            321,
+            279,
+            9722,
+            8831,
+            13,
+            5141,
+            5255,
+            2830,
+            27141,
+            7253,
+            2218,
+            86,
+            19354,
+            11,
+            39332,
+            11,
+            62857,
+            11,
+            37260,
+            11,
+            321,
+            43299,
+            47267,
+            8418,
+            430,
+            279,
+            6739,
+            321,
+            6745,
+            53566,
+            314,
+            279,
+            7975,
+            13,
+            4081,
+            513,
+            95374,
+            440,
+            3471,
+            54684,
+            25,
+            42940,
+            11,
+            5904
+          ],
+          "speculative_used": true,
+          "proposed_draft_tokens": 168,
+          "accepted_draft_tokens": 70,
+          "decode_state": {
+            "row_index": 0,
+            "step_index": 128,
+            "prompt_tokens": 2040,
+            "generated_tokens": 128,
+            "phase": "done",
+            "continuation_eligible": false,
+            "sampler_mode": "greedy_speculative_mtp",
+            "execution_path": "qwen4exp_mtp_batched_state_rows_verify"
+          }
+        },
+        {
+          "depth": 4096,
+          "counts": {
+            "prompt_tokens": 6138,
+            "cached_prompt_tokens": 4099,
+            "new_prompt_tokens": 2039,
+            "generated_tokens": 128,
+            "decode_transitions": 127
+          },
+          "checkpoint_tokens": 4099,
+          "generated_token_ids": [
+            13962,
+            60552,
+            20858,
+            314,
+            279,
+            95072,
+            271,
+            760,
+            3766,
+            1414,
+            369,
+            264,
+            27044,
+            11,
+            83123,
+            93558,
+            314,
+            33761,
+            421,
+            3514,
+            7690,
+            264,
+            55355,
+            11,
+            86198,
+            6047,
+            11,
+            4222,
+            29099,
+            303,
+            264,
+            18508,
+            13721,
+            466,
+            32469,
+            2261,
+            279,
+            72555,
+            3818,
+            13,
+            561,
+            18641,
+            5759,
+            369,
+            2397,
+            59229,
+            321,
+            20158,
+            4384,
+            11,
+            68219,
+            264,
+            4129,
+            8404,
+            63355,
+            2022,
+            3874,
+            466,
+            264,
+            4281,
+            314,
+            81859,
+            290,
+            18352,
+            4598,
+            1056,
+            264,
+            8343,
+            6868,
+            13,
+            271,
+            332,
+            14951,
+            321,
+            52022,
+            7771,
+            64700,
+            198,
+            760,
+            5918,
+            369,
+            74483,
+            303,
+            264,
+            17865,
+            4364,
+            539,
+            5629,
+            321,
+            855,
+            26015,
+            22005,
+            25,
+            33002,
+            11,
+            82446,
+            11,
+            34343,
+            11,
+            37683,
+            11,
+            66814,
+            11,
+            321,
+            9506,
+            13976,
+            13,
+            561,
+            16078,
+            369,
+            8545,
+            440,
+            279,
+            4528,
+            314,
+            15127,
+            11,
+            11352,
+            40297,
+            321,
+            12050,
+            13,
+            2532,
+            369,
+            264,
+            68373,
+            5357,
+            314
+          ],
+          "speculative_used": true,
+          "proposed_draft_tokens": 166,
+          "accepted_draft_tokens": 71,
+          "decode_state": {
+            "row_index": 0,
+            "step_index": 128,
+            "prompt_tokens": 6138,
+            "generated_tokens": 128,
+            "phase": "done",
+            "continuation_eligible": false,
+            "sampler_mode": "greedy_speculative_mtp",
+            "execution_path": "qwen4exp_mtp_batched_state_rows_verify"
+          }
+        }
+      ]
+    },
+    {
+      "command": [
+        "scripts/qwen4exp_hip_http_replay.py",
+        "--source-root",
+        "/tmp/qwen38fn-gufo-20261021/gufo-fec4759d",
+        "--url",
+        "http://127.0.0.1:18082",
+        "--model",
+        "depth",
+        "--server-manifest",
+        "/tmp/qwen38fn-gufo-20261021/hipengine-depth-contract/mtp-repetition-server.json",
+        "--output-dir",
+        "/tmp/qwen38fn-gufo-20261021/hipengine-depth-contract/mtp-repetition",
+        "--arm",
+        "mtp-repetition",
+        "--depths",
+        "0,4096",
+        "--context",
+        "8192"
+      ],
+      "source_before": {
+        "path": "/home/lhl/hipEngine",
+        "head": "b8d5c01ec3b79059bbbdaa7b9b4875a91f3f7abf",
+        "tracked_clean": false,
+        "tracked_diff_sha256": "8ce335f9215ca44d5e6bed618a21c6c88fba7c8a5d46a617ff7b7fd55a7c4ca9"
+      },
+      "source_after": {
+        "path": "/home/lhl/hipEngine",
+        "head": "b8d5c01ec3b79059bbbdaa7b9b4875a91f3f7abf",
+        "tracked_clean": false,
+        "tracked_diff_sha256": "8ce335f9215ca44d5e6bed618a21c6c88fba7c8a5d46a617ff7b7fd55a7c4ca9"
+      },
+      "host_before": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "gpu_temperature_millidegrees_c": {
+          "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 44000
+        }
+      },
+      "host_after": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "gpu_temperature_millidegrees_c": {
+          "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 55000
+        }
+      },
+      "recipe_source": {
+        "path": "/tmp/qwen38fn-gufo-20261021/gufo-fec4759d",
+        "head": "fec4759d064585d72f87c6e11af5cfa0e1fa95c7",
+        "tracked_clean": true
+      },
+      "recipe_hashes": {
+        "tools/gufo/model_bench/llm.py": "3e3a038c98c4656f1366fc183fb207bd6ea3dbbebbd2ff28b083a330ef716c0d",
+        "tools/gufo/serving_bench.py": "cc1e4c39a960a4fb72e67c5a00bcc1b3258b2f4c6334ea1adc66d73c5bffc9ce",
+        "docs/models/qwen3.8-flash-next/artifacts/bench.json": "a8c70e48be58ff68e54651014030deb6298589e42fee0530e6463bd467cd9ff3"
+      },
+      "harness_sha256": "88193c98e2603d6ee18eca399c1edc0580e63a4efb91c42abb4abdb1c8c61aa5",
+      "helper_sha256": {
+        "scripts/qwen4exp_gufo_http_replay.py": "65107794687d72c2dd63550c8508bb090b2481cc09c8c73ca2a7deafc82923f4",
+        "scripts/qwen4exp_http_mtp_economics.py": "c62549273ca64e176bfbe65986b29e820dacc182023a572d7642fd3816c2c9d7"
+      },
+      "calibration": {
+        "overhead": 12,
+        "initial_ratio": 1.167,
+        "final_ratio": 1.167
+      },
+      "quality": {
+        "G0": {
+          "status": "pending",
+          "reason": "bind full identities, tokenization and host-state checks"
+        },
+        "G1": {
+          "status": "pending",
+          "reason": "native output IDs recorded; bind identical-input comparison"
+        },
+        "G2": {
+          "status": "pending",
+          "reason": "bind full-vocabulary strict-relative numerical packet"
+        },
+        "G3": {
+          "status": "pending",
+          "reason": "requires identical-input repeats and cross-launch checks"
+        },
+        "G4": {
+          "status": "pending",
+          "reason": "bind the same-pin task battery and workload scope"
+        }
+      },
+      "arm": "mtp-repetition",
+      "raw_report": {
+        "path": "/tmp/qwen38fn-gufo-20261021/hipengine-depth-contract/mtp-repetition/replay.json",
+        "sha256": "117c153266a82cae6ee5cbf5d31f0ec5b439b4a8cc92f5bccd8d0124359bc38c"
+      },
+      "journal": {
+        "path": "/tmp/qwen38fn-gufo-20261021/hipengine-depth-contract/mtp-repetition/requests.jsonl",
+        "sha256": "586c08ba3dcfe60ce63dbc664037d7ff71ecd7613ae4b848bcfaedf5574794c1"
+      },
+      "server_manifest": {
+        "path": "/tmp/qwen38fn-gufo-20261021/hipengine-depth-contract/mtp-repetition-server.json",
+        "sha256": "eec232f93490b77aa19a3940802847e80cbdc25575cd2654c11c88a3236a2c1c"
+      },
+      "server_command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python",
+        "-m",
+        "hipengine.server",
+        "--model",
+        "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+        "--backend",
+        "hip_gfx1151",
+        "--quant",
+        "gguf_ud_q4_k_xl",
+        "--execution-profile",
+        "production",
+        "--served-model-name",
+        "depth",
+        "--max-context-tokens",
+        "8192",
+        "--max-active-requests",
+        "1",
+        "--speculative-provider",
+        "qwen4_exp_mtp",
+        "--draft-model",
+        "/home/lhl/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+        "--speculative-candidate-budget",
+        "3",
+        "--prefix-cache",
+        "radix",
+        "--port",
+        "18082"
+      ],
+      "launch_environment": {
+        "HOME": "/home/lhl",
+        "USER": "lhl",
+        "PATH": "/home/lhl/miniforge3/envs/therock/bin:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin:/usr/local/bin:/usr/bin:/bin",
+        "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries/lib",
+        "HIP_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+        "ROCM_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+        "HIP_LIB_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib",
+        "HIP_INCLUDE_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/include",
+        "HIP_DEVICE_LIB_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/amdgcn/bitcode",
+        "HIPENGINE_HIP_ARCH": "gfx1151",
+        "GPU_MAX_HW_QUEUES": "2",
+        "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/qwen38fn-gufo-20261021/hipcc-version.txt",
+        "PYTHONPATH": "/home/lhl/hipEngine",
+        "LC_CTYPE": "C.UTF-8"
+      },
+      "loaded_rocm_libraries": [
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/libamd_comgr.so.3",
+          "sha256": "f18da4b1298b9c6f3eaa595365fb234922e6a5784861e6612f92eedde47331da"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/libamdhip64.so.7",
+          "sha256": "1a8bcd00d05cce36bebcf4acf30289f36f6562ec532e9c618c42e9bd2d90ed05"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/libhsa-amd-aqlprofile64.so",
+          "sha256": "0001175c61c8ad3491e75a12a056697261b6ffe86b3bdd65c153834602f1b686"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/libhsa-runtime64.so.1",
+          "sha256": "815364af872593e577206ff22a29141af63e800a78488b2ee02cf04532e14a46"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/librocm_kpack.so.0",
+          "sha256": "fc0e0284de21f72abada2eeba340ed9bd69ddadb299940bcbf9c2f8b95f3fbae"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/librocprofiler-register.so.0",
+          "sha256": "5c1090a94786d3618a3f72fac2a4982e259014817c7c160bac95c1bf56d765ae"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/lib/libLLVM.so.23.0git",
+          "sha256": "2c66b0bd3190c42e51dccee627e81fb5d6d6b57d631b10959c5967acc2bbe1ae"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/lib/libclang-cpp.so.23.0git",
+          "sha256": "9fd457eede5fd689edb3ce8302b3fcc80be336915d487a46c434dd0fc3e7582c"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_bz2.so",
+          "sha256": "37a39b12a7e6e9f480d10e5e139b9aedbe5824e63b6b9e12a16837baee608602"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_drm.so.2",
+          "sha256": "b715ae24e1d62e407ffceca56b546e8a35abe37ac50878cbb16fa8b93d9c9fd5"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_drm_amdgpu.so.1",
+          "sha256": "163acff64693b08e0f88fcaee4745f67134e38a45886fed21f6ed317dab2d1c9"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_elf.so.1",
+          "sha256": "692dd9fe3575a45df78b319ad0e2a58ee36814958771dd810d5d91f9616c6d8f"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_liblzma.so.5",
+          "sha256": "d17f947bfe3947db5aefee897f6d32dfe98c73bf80b477764ba7f4107594a671"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_numa.so.1",
+          "sha256": "26fffd0f85369950b834cfb8f56fa9e1ea4804be8bbc40db98b788c554802bc3"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_z.so.1",
+          "sha256": "e1d7568f4a0b77eeab26f30cc9d2794dfe7ffd14e34b4ae55a9f80bc4f94ba7a"
+        },
+        {
+          "path": "/home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/rocm_sysdeps/lib/librocm_sysdeps_zstd.so.1",
+          "sha256": "fc3edd0b74fa071079b0095abe7b3f41418ca39be138f4ec0c57d0640a0b2d8b"
+        }
+      ],
+      "journal_kinds": {
+        "request": 5,
+        "prefix_reply": 1,
+        "checkpoint": 1
+      },
+      "rows": [
+        {
+          "depth": 0,
+          "counts": {
+            "prompt_tokens": 2034,
+            "cached_prompt_tokens": 0,
+            "new_prompt_tokens": 2034,
+            "generated_tokens": 128,
+            "decode_transitions": 127
+          },
+          "checkpoint_tokens": 0,
+          "generated_token_ids": [
+            23373,
+            89600,
+            7112,
+            279,
+            3807,
+            4009,
+            4370,
+            39332,
+            13,
+            1541,
+            948,
+            30592,
+            11129,
+            314,
+            364,
+            279,
+            5904,
+            31958,
+            321,
+            2748,
+            3807,
+            4009,
+            13,
+            271,
+            33,
+            851,
+            3055,
+            33002,
+            279,
+            6092,
+            17942,
+            321,
+            2902,
+            321,
+            13,
+            1541,
+            3807,
+            4009,
+            3609,
+            2957,
+            279,
+            6092,
+            852,
+            539,
+            852,
+            314,
+            11456,
+            13,
+            37680,
+            321,
+            31958,
+            4370,
+            22700,
+            7629,
+            40297,
+            364,
+            29123,
+            13,
+            1690,
+            29123,
+            948,
+            421,
+            1990,
+            852,
+            5459,
+            8574,
+            1518,
+            40297,
+            279,
+            1754,
+            13,
+            271,
+            48427,
+            11012,
+            28552,
+            89600,
+            3609,
+            17942,
+            13,
+            414,
+            10876,
+            279,
+            321,
+            43287,
+            10849,
+            364,
+            2902,
+            1698,
+            1396,
+            5909,
+            321,
+            4370,
+            13,
+            14388,
+            82,
+            279,
+            32469,
+            6092,
+            321,
+            314,
+            321,
+            321,
+            13,
+            8618,
+            39332,
+            8742,
+            321,
+            421,
+            27786,
+            13,
+            9358,
+            30860,
+            40297,
+            3162,
+            17942,
+            66814,
+            321,
+            264,
+            1698,
+            12077,
+            9506,
+            13,
+            271,
+            57044,
+            18197,
+            4751,
+            9283,
+            5909
+          ],
+          "speculative_used": true,
+          "proposed_draft_tokens": 96,
+          "accepted_draft_tokens": 94,
+          "decode_state": {
+            "row_index": 0,
+            "step_index": 128,
+            "prompt_tokens": 2034,
+            "generated_tokens": 128,
+            "phase": "done",
+            "continuation_eligible": false,
+            "sampler_mode": "greedy_speculative_mtp",
+            "execution_path": "qwen4exp_mtp_batched_state_rows_verify"
+          }
+        },
+        {
+          "depth": 4096,
+          "counts": {
+            "prompt_tokens": 6134,
+            "cached_prompt_tokens": 4099,
+            "new_prompt_tokens": 2035,
+            "generated_tokens": 128,
+            "decode_transitions": 127
+          },
+          "checkpoint_tokens": 4099,
+          "generated_token_ids": [
+            8791,
+            12077,
+            62857,
+            4477,
+            17942,
+            14367,
+            18197,
+            888,
+            11012,
+            3162,
+            18213,
+            1345,
+            2235,
+            279,
+            13,
+            5875,
+            43287,
+            1754,
+            11388,
+            279,
+            321,
+            1332,
+            12077,
+            1698,
+            70676,
+            82,
+            13,
+            9254,
+            8742,
+            310,
+            39332,
+            17061,
+            11012,
+            17061,
+            1990,
+            852,
+            11456,
+            13,
+            80046,
+            4751,
+            11388,
+            310,
+            852,
+            17942,
+            13,
+            30798,
+            14367,
+            40297,
+            1754,
+            27786,
+            948,
+            314,
+            4370,
+            4477,
+            13,
+            271,
+            67243,
+            852,
+            4751,
+            279,
+            16657,
+            82051,
+            1518,
+            279,
+            321,
+            13,
+            42680,
+            883,
+            5459,
+            15530,
+            70676,
+            82,
+            37260,
+            5459,
+            40297,
+            18213,
+            314,
+            8574,
+            4370,
+            17942,
+            2957,
+            13,
+            271,
+            14750,
+            17061,
+            279,
+            17942,
+            7112,
+            1754,
+            30860,
+            13,
+            11888,
+            3055,
+            6564,
+            4751,
+            8742,
+            948,
+            30592,
+            13759,
+            13,
+            561,
+            1698,
+            539,
+            30860,
+            539,
+            4477,
+            2235,
+            70676,
+            82,
+            279,
+            17942,
+            321,
+            33002,
+            19719,
+            321,
+            13,
+            561,
+            4370,
+            40297,
+            3055,
+            321,
+            12077,
+            30592,
+            5381,
+            10849,
+            28552,
+            13,
+            271
+          ],
+          "speculative_used": true,
+          "proposed_draft_tokens": 107,
+          "accepted_draft_tokens": 90,
+          "decode_state": {
+            "row_index": 0,
+            "step_index": 128,
+            "prompt_tokens": 6134,
+            "generated_tokens": 128,
+            "phase": "done",
+            "continuation_eligible": false,
+            "sampler_mode": "greedy_speculative_mtp",
+            "execution_path": "qwen4exp_mtp_batched_state_rows_verify"
+          }
+        }
+      ]
+    }
+  ]
+}

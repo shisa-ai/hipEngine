@@ -505,9 +505,11 @@ class Qwen4ExpGGUFTextGenerator:
         # arrived behind a long prompt waited for its whole prefill. The
         # token-budget round rotates prefill chunks across requests and steps
         # every decoding row in the same round; its prefill budget is this
-        # runner's chunk, and its decode budget covers every request.
+        # runner's admitted chunk, including the per-slice limit. The smaller
+        # decode-active round budget still bounds prefill when decode is due.
         return {
             "prefill_decode_policy": "token_budget",
+            "max_prefill_chunk_tokens": int(self.runner.prefill_chunk_size),
             "round_prefill_token_budget": int(self.runner.prefill_chunk_size),
             "decode_prefill_token_budget": min(1024, int(self.runner.prefill_chunk_size)),
             "round_decode_row_budget": max(32, int(self._configured_resident_capacity)),
@@ -971,6 +973,9 @@ class _Qwen4ExpServingRow:
     request: GenerationRequest
     prompt_ids: tuple[int, ...]
     submitted_at: float
+    prefill_started_at: float | None = None
+    prefill_completed_at: float | None = None
+    phase_completed_at: float | None = None
     runner: Qwen4ExpGGUFResidentModelRunner | None = None
     prefill_tokens_seen: int = 0
     next_result: Any | None = None
@@ -983,6 +988,8 @@ class _Qwen4ExpServingRow:
     mtp_steps: Any | None = None
     mtp_output: GenerationOutput | None = None
     previous_hidden: Any | None = None
+    mtp_prefill_device_rows: int = 0
+    mtp_prefill_cache_tiles: int = 0
     sampling_state: RowSamplingState | None = None
     token_logprobs: list[TokenLogprob] = field(default_factory=list)
     mixed_mtp: bool = False
@@ -990,6 +997,7 @@ class _Qwen4ExpServingRow:
     mixed_proposed: int = 0
     mixed_accepted: int = 0
     mixed_cycles: int = 0
+    prompt_lookup: Any | None = None
     mixed_widths: dict[int, int] = field(default_factory=dict)
     mixed_target_rows: int = 0
     prefix_chain: Any | None = None
@@ -1292,11 +1300,15 @@ class Qwen4ExpResidentServingRunner(
             return True
         if row.runner is None:
             raise RuntimeError("Qwen4Exp admitted row has no runner")
+        if row.prefill_started_at is None:
+            row.prefill_started_at = time.perf_counter()
         prefill_kwargs = _qwen4_exp_compact_prefill_kwargs()
         if row.controlled:
             prefill_kwargs["capture_logits"] = True
         if row.mtp_budget:
             prefill_kwargs["capture_hidden_seeds"] = True
+            if callable(getattr(row.draft, "prime_prompt_device_chunk", None)):
+                prefill_kwargs["hidden_seed_consumer"] = lambda tokens, buffer: self._consume_mtp_hidden(row, tokens, buffer)
         pending = getattr(row.runner, "_pending_prefill_append", None)
         resume = getattr(row.runner, "prefill_append_resumable", None)
         rest = ()
@@ -1324,6 +1336,7 @@ class Qwen4ExpResidentServingRunner(
         if row.prefill_tokens_seen == len(row.prompt_ids):
             row.next_result = result
             self._import_ar_batch(row)
+            row.prefill_completed_at = time.perf_counter()
         return True
 
     def _import_ar_batch(self, row) -> None:
@@ -1566,6 +1579,8 @@ class Qwen4ExpResidentServingRunner(
                 token_logprobs=tuple(row.token_logprobs[index:index + 1]) if index < len(visible) else (),
                 finish_details=finish,
             )
+            if event.finished:
+                chunk = replace(chunk, telemetry=self._with_prefix_telemetry(row, chunk.telemetry))
             decorated.append(replace(event, stream_chunk=chunk))
         return tuple(decorated)
 
@@ -1687,8 +1702,43 @@ class Qwen4ExpResidentServingRunner(
             diagnostics={"decode_batch": batch},
         )
 
+    def _request_phase_telemetry(self, row):
+        """Backend wall intervals, including scheduler waits, not GPU cost.
+
+        Prefill spans the first suffix work through target/draft catch-up and
+        batch import. Restore happens before that interval. Decode starts when
+        the prompt's first output is ready and ends at terminal publication.
+        Freeze the endpoint so later reclamation cannot extend the measurement.
+        """
+        if row.phase_completed_at is None:
+            row.phase_completed_at = time.perf_counter()
+        start, prefilled, end = row.prefill_started_at, row.prefill_completed_at, row.phase_completed_at
+        generated = len(row.generated_ids)
+        return {
+            "schema": 1,
+            "scope": "backend wall including scheduler waits; excludes tokenization and HTTP delivery",
+            "complete": start is not None and prefilled is not None and generated > 0,
+            "registered_to_prefill_ms": None if start is None else (start - row.submitted_at) * 1000,
+            "prefill_wall_ms": None if start is None or prefilled is None else (prefilled - start) * 1000,
+            "decode_wall_ms": None if prefilled is None else (end - prefilled) * 1000,
+            "request_wall_ms": (end - row.submitted_at) * 1000,
+            "cache_restore_ms": float(row.prefix_restore_ms),
+            "prompt_tokens": len(row.prompt_ids),
+            "cached_prompt_tokens": int(row.prefix_reused_tokens),
+            "new_prompt_tokens": len(row.prompt_ids) - int(row.prefix_reused_tokens),
+            "generated_tokens": generated,
+            "decode_transitions": max(0, generated - 1),
+        }
+
     def _with_prefix_telemetry(self, row, telemetry):
-        block = self._prefix_request_telemetry(row)
+        diagnostics = {
+            "prefix_cache": self._prefix_request_telemetry(row),
+            "request_phases": self._request_phase_telemetry(row),
+            "mtp_prefill": {
+                "device_hidden_rows": getattr(row, "mtp_prefill_device_rows", 0),
+                "cache_tiles": getattr(row, "mtp_prefill_cache_tiles", 0),
+            },
+        }
         if telemetry is None:
             return GenerationTelemetry(
                 decode_state=DecodeState(
@@ -1699,11 +1749,11 @@ class Qwen4ExpResidentServingRunner(
                     execution_path="qwen4exp_request_owned_runner_pool",
                 ),
                 event="generation_complete",
-                diagnostics={"prefix_cache": block},
+                diagnostics=diagnostics,
             )
         return replace(
             telemetry,
-            diagnostics={**dict(telemetry.diagnostics or {}), "prefix_cache": block},
+            diagnostics={**dict(telemetry.diagnostics or {}), **diagnostics},
         )
 
     def _release_runner(self, row: _Qwen4ExpServingRow) -> None:

@@ -342,7 +342,27 @@ class BatchRig:
         self.positions = [position + 1 for position in self.positions]
         return result, index_keys
 
-    def selection_rows(self, rows: int) -> tuple[np.ndarray, np.ndarray]:
+    def selection_rows(
+        self, rows: int, sparse_rows: tuple[int, ...]
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """This step's batch selection, read from whichever form it published.
+
+        An all-sparse step hands the index owner's device buffers straight to the
+        attention kernel, so its selection never reaches the host staging mirror.
+        A mixed step still stages every row there, because a dense row's
+        all-visible selection exists only in that buffer.
+        """
+
+        if sparse_rows == tuple(range(rows)):
+            return (
+                _download(self.index.selected_counts, (rows,), np.int32, self.runtime),
+                _download(
+                    self.index.selected_positions,
+                    (rows, self.index.output_stride),
+                    np.int64,
+                    self.runtime,
+                ),
+            )
         return (
             self.selection.counts_host[:rows].copy(),
             self.selection.positions_host[:rows].copy(),
@@ -536,7 +556,12 @@ def _run_steps(
             reference.seed(positions[row], keys[row], values[row], index_keys[row])
         for step in range(STEPS):
             outputs, step_index_keys = rig.step(slots, mixed_rows)
-            counts, selected = rig.selection_rows(len(slots))
+            step_sparse = tuple(
+                row
+                for row in range(len(slots))
+                if positions[row] + step + 1 > DENSE_LIMIT
+            )
+            counts, selected = rig.selection_rows(len(slots), step_sparse)
             queries = rig.index_query_rows(len(slots))
             step_outputs, step_selections, step_c1, step_oracle = [], [], [], []
             step_modes = []

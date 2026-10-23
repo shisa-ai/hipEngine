@@ -94,6 +94,9 @@ def ungoverned_flag_branch() -> tuple[list[Row], dict]:
         if row.evidence.get("default") in ("off", "split")
         and not row.evidence.get("in_refactor_ledger")
         and row.evidence.get("sites_by_root", {}).get("hipengine")
+        #  A name the runtime only mentions (a docstring, a constant nothing
+        #  reads) guards no branch.
+        and row.evidence.get("runtime_read", "env") in ("env", "indirect")
     }
     rows = []
     for path, text in sorted(corpus().items()):

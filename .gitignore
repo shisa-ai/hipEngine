@@ -73,3 +73,10 @@ benchmarks/results/**/*_agent_info.csv
 benchmarks/results/**/*_hip_api_trace.csv
 benchmarks/results/**/*_marker_api_trace.csv
 benchmarks/results/**/*_results.db
+
+# Cleanup audit: rows and reports are a pure function of the tracked tree,
+# recomputed by `audit/audit.py` on demand. Decisions (audit/triage/), the
+# budget and migration records are the committed state.
+audit/inventory/
+audit/findings/
+audit/runs/

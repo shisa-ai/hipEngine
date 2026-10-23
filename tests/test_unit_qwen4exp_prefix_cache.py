@@ -21,6 +21,7 @@ from hipengine.generation.qwen4_exp_ar_batch import AR_BATCH_ENV
 from hipengine.generation.qwen4_exp_gguf import (
     Qwen4ExpGGUFTextGenerator,
     Qwen4ExpResidentServingRunner,
+    _Qwen4ExpServingRow,
 )
 from hipengine.generation.registry import GenerationRequest
 from hipengine.runtime.qwen4_exp_prefix_cache import (
@@ -282,6 +283,38 @@ def test_budget_evicts_least_recently_used_and_frees_unshared_rows() -> None:
     assert len(arena.live) == baseline
 
 
+@pytest.mark.parametrize("depths", [(512, 512), (512, 997), (4096, 8138)])
+def test_lru_eviction_removes_the_selected_owner_not_array_equal_snapshot(depths) -> None:
+    arena = _Arena()
+    runner = _ArenaRunner(arena, positions=16384)
+    baseline = dict(arena.live)
+    cache = Qwen4ExpPrefixCache(arena, limit_bytes=1 << 21, max_entries=2)
+    prompts = [_tokens(depth, seed=index + 31) for index, depth in enumerate((*depths, 257))]
+    snapshots = []
+    for prompt in prompts[:2]:
+        runner.reset()
+        _prefill(runner, prompt)
+        chain, snapshot, _ = cache.capture(prompt, runner, None, chain=PrefixChain(),
+                                          previous_hidden=None, kind="prompt_end")
+        assert snapshot is not None
+        snapshots.append(snapshot)
+        cache.release_chain(chain)
+    # Refresh the first entry so eviction must remove the second list element.
+    assert cache.lookup(prompts[0] + [7], need_draft=False).snapshot is snapshots[0]
+    runner.reset()
+    _prefill(runner, prompts[2])
+    chain, newest, _ = cache.capture(prompts[2], runner, None, chain=PrefixChain(),
+                                    previous_hidden=None, kind="prompt_end")
+    assert newest is not None and cache.counters["evictions"] == 1
+    assert cache.lookup(prompts[1] + [7], need_draft=False).snapshot is None
+    assert cache.lookup(prompts[0] + [7], need_draft=False).snapshot is snapshots[0]
+    assert snapshots[1].recurrent.ptr not in arena.live
+    assert snapshots[0].recurrent.ptr in arena.live and newest.recurrent.ptr in arena.live
+    cache.release_chain(chain)
+    cache.close()
+    assert arena.live == baseline
+
+
 def test_capture_targets_cover_the_tail_and_long_prompt_grid() -> None:
     assert capture_targets(200, 1024) == ()
     assert capture_targets(3000, 1024) == (1976,)
@@ -394,3 +427,116 @@ def test_streamed_follow_up_reports_prefix_reuse_on_the_terminal_chunk(monkeypat
     block = chunks[-1].telemetry.diagnostics["prefix_cache"]
     assert block["hit"] is True
     assert block["reused_tokens"] == len(_Tokenizer().encode(first))
+
+
+def test_request_phase_clock_is_frozen_and_excludes_the_prefill_output(monkeypatch) -> None:
+    driver, generator = _serving(monkeypatch, prefix_cache="off")
+    native = generator._resident_model_runner
+    request = GenerationRequest(prompts=("abc",), max_tokens=4, temperature=0.0,
+                                top_p=1.0, ignore_eos=True)
+    row = _Qwen4ExpServingRow(9, 0, request, (1, 2, 3), 10.0)
+    row.prefill_started_at = 12.0
+    row.prefill_completed_at = 15.0
+    row.prefix_reused_tokens = 2
+    row.prefix_restore_ms = 30.0
+    row.generated_ids[:] = [4, 5, 6, 7]
+    clock = [17.0]
+    monkeypatch.setattr("hipengine.generation.qwen4_exp_gguf.time.perf_counter", lambda: clock[0])
+    try:
+        first = native._with_prefix_telemetry(row, None)
+        clock[0] = 99.0
+        second = native._with_prefix_telemetry(row, first)
+    finally:
+        driver.close()
+    phases = first.diagnostics["request_phases"]
+    assert second.diagnostics["request_phases"] == phases
+    assert phases["prefill_wall_ms"] == 3000.0
+    assert phases["decode_wall_ms"] == 2000.0
+    assert phases["registered_to_prefill_ms"] == 2000.0
+    assert phases["request_wall_ms"] == 7000.0
+    assert phases["cache_restore_ms"] == 30.0
+    assert phases["prompt_tokens"] == 3
+    assert phases["cached_prompt_tokens"] == 2
+    assert phases["new_prompt_tokens"] == 1
+    assert phases["generated_tokens"] == 4
+    assert phases["decode_transitions"] == 3
+    assert phases["complete"] is True
+
+
+def test_unstarted_request_does_not_fabricate_phase_durations(monkeypatch) -> None:
+    driver, generator = _serving(monkeypatch, prefix_cache="off")
+    row = _Qwen4ExpServingRow(
+        9, 0, GenerationRequest(prompts=("abc",), max_tokens=0, temperature=0.0,
+                                top_p=1.0, ignore_eos=True), (1, 2, 3), 10.0,
+    )
+    monkeypatch.setattr("hipengine.generation.qwen4_exp_gguf.time.perf_counter", lambda: 12.0)
+    try:
+        phases = generator._resident_model_runner._with_prefix_telemetry(row, None).diagnostics["request_phases"]
+    finally:
+        driver.close()
+    assert phases["prefill_wall_ms"] is None
+    assert phases["decode_wall_ms"] is None
+    assert phases["complete"] is False
+
+
+def test_prefill_clock_includes_resumed_work_draft_catchup_and_batch_import(monkeypatch) -> None:
+    driver, generator = _serving(monkeypatch, prefix_cache="off")
+    native = generator._resident_model_runner
+    request = GenerationRequest(prompts=("abc",), max_tokens=4, temperature=0.0,
+                                top_p=1.0, ignore_eos=True)
+    native.register_batch((9,), request, prompt_rows=((1, 2, 3),))
+    row = native._row(9)
+    row.runner = generator.runner
+    row.mtp_budget = 3
+    clock = [12.0]
+    calls = []
+
+    def resume(tokens, **kwargs):
+        calls.append(tuple(tokens))
+        clock[0] += 1.0
+        return None if len(calls) == 1 else SimpleNamespace(token_id=4)
+
+    def advance(seconds):
+        clock[0] += seconds
+
+    monkeypatch.setattr("hipengine.generation.qwen4_exp_gguf.time.perf_counter", lambda: clock[0])
+    monkeypatch.setattr(row.runner, "prefill_append_resumable", resume, raising=False)
+    monkeypatch.setattr(native, "_prefill_mtp", lambda *args: advance(2.0))
+    monkeypatch.setattr(native, "_capture_prefix", lambda *args: None)
+    monkeypatch.setattr(native, "_import_ar_batch", lambda *args: advance(3.0))
+    try:
+        assert native._prefill_row(row, (1, 2, 3), resumable=True) is False
+        assert row.prefill_started_at == 12.0 and row.prefill_completed_at is None
+        clock[0] = 20.0
+        assert native._prefill_row(row, (1, 2, 3), resumable=True) is True
+        assert row.prefill_started_at == 12.0 and row.prefill_completed_at == 26.0
+    finally:
+        driver.close()
+
+
+def test_served_phase_accounting_covers_cold_cached_and_streamed_requests(monkeypatch) -> None:
+    driver, _ = _serving(monkeypatch, prefix_cache="radix")
+    try:
+        first, second = _turns()
+        cold = driver.generate_detailed(GenerationRequest(
+            prompts=(first,), max_tokens=3, temperature=0.0, top_p=1.0, ignore_eos=True,
+        ))[0]
+        warm = driver.generate_detailed(GenerationRequest(
+            prompts=(second,), max_tokens=3, temperature=0.0, top_p=1.0, ignore_eos=True,
+        ))[0]
+        chunks = list(driver.stream_detailed(GenerationRequest(
+            prompts=(second + " third?",), max_tokens=3, temperature=0.0,
+            top_p=1.0, ignore_eos=True,
+        )))
+    finally:
+        driver.close()
+    for output in (cold, warm, chunks[-1]):
+        phases = output.telemetry.diagnostics["request_phases"]
+        assert phases["complete"] is True
+        assert phases["prefill_wall_ms"] > 0
+        assert phases["decode_wall_ms"] > 0
+        assert phases["generated_tokens"] == 3
+        assert phases["decode_transitions"] == 2
+        assert phases["request_wall_ms"] >= phases["prefill_wall_ms"] + phases["decode_wall_ms"]
+        assert phases["new_prompt_tokens"] + phases["cached_prompt_tokens"] == phases["prompt_tokens"]
+    assert warm.telemetry.diagnostics["request_phases"]["cached_prompt_tokens"] == len(_Tokenizer().encode(first))

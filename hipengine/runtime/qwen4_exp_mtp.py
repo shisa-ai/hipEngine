@@ -169,6 +169,8 @@ class Qwen4ExpGGUFMTPDraftRunner:
         self._buffers: list[DeviceBuffer] = []
         self.position = 0
         self.closed = False
+        self._prefill_workspace = None
+        self._draft_head = None
         self.last_forward_stage_timings_ms: dict[str, float] = {}
         self.last_proposal_stage_timings_ms: dict[str, float] = {}
         try:
@@ -300,8 +302,38 @@ class Qwen4ExpGGUFMTPDraftRunner:
             qsa_state_index=0,
         )
 
+    def begin_draft_vocabulary(self, special_ids: Sequence[int]) -> None:
+        """Start request-local subset scoring without changing draft KV state."""
+        from hipengine.runtime.mtp_draft_head import MTPSubsetHead
+
+        self._require_open()
+        special_ids = tuple(special_ids)
+        head = getattr(self, "_draft_head", None)
+        if head is not None and head.special_ids == special_ids:
+            head.reset()
+            return
+        if head is not None:
+            head.close()
+        self._draft_head = None
+        self._draft_head = MTPSubsetHead(
+            self.resident.weight("root.lm_head"), vocab_size=self.config.vocab_size,
+            hidden_size=self.config.hidden_size, special_ids=special_ids, runtime=self.runtime,
+        )
+
+    def prepare_draft_vocabulary(self, committed: Sequence[int], *, anchor: int) -> None:
+        head = getattr(self, "_draft_head", None)
+        if head is not None:
+            head.prepare(committed, anchor=anchor)
+
+    def draft_vocabulary_diagnostics(self) -> dict:
+        head = getattr(self, "_draft_head", None)
+        return {} if head is None else head.diagnostics()
+
     def reset(self) -> None:
         self._require_open()
+        head = getattr(self, "_draft_head", None)
+        if head is not None:
+            head.reset()
         self.runtime.memset(
             self.attention.key_cache.ptr, 0, self.attention.key_cache.nbytes
         )
@@ -452,11 +484,18 @@ class Qwen4ExpGGUFMTPDraftRunner:
         token_id_resident: bool = False,
         hidden_seed_resident: bool = False,
         run_head: bool = True,
+        cache_only: bool = False,
     ) -> Qwen4ExpMTPDraftResult:
-        """One draft position. ``run_head=False`` only advances the draft's
-        KV and hidden state (prompt priming, accepted-token catch-up) and
-        skips the vocabulary head, whose output that caller discards."""
+        """Advance one draft position, optionally omitting unused output work.
+
+        ``run_head=False`` skips vocabulary scoring but preserves hidden carry.
+        ``cache_only=True`` also skips attention and MoE output; its caller must
+        supply an authoritative hidden seed for the next row. Prompt priming
+        uses this for all but each chunk's final row.
+        """
         self._require_open()
+        if cache_only and run_head:
+            raise ValueError("cache-only draft work cannot run the vocabulary head")
         if self.position >= self.max_sequence_length:
             raise ValueError("Qwen4Exp MTP draft capacity exceeded")
         stages: dict[str, float] = {}
@@ -496,8 +535,13 @@ class Qwen4ExpGGUFMTPDraftRunner:
             experts=self.config.expert_count,
             top_k=self.config.expert_used_count,
             runtime=self.runtime,
+            cache_only=cache_only,
         )
-        finish_stage("draft_layer", started)
+        finish_stage("draft_cache_only" if cache_only else "draft_layer", started)
+        if cache_only:
+            self.last_forward_stage_timings_ms = stages
+            self.position += 1
+            return Qwen4ExpMTPDraftResult(token_id=-1, logits=None, hidden_seed=None)
         self.runtime.memcpy(
             self.last_hidden.ptr,
             output.ptr,
@@ -524,17 +568,19 @@ class Qwen4ExpGGUFMTPDraftRunner:
         )
         finish_stage("draft_head_gr", started)
         started = time.perf_counter()
-        launch_gguf_linear(
-            self.resident.weight("root.lm_head"),
-            head.mixed.ptr,
-            self.logits_buffer.ptr,
-            1,
-            self.config.hidden_size,
-            self.config.vocab_size,
-            activation_dtype=GGUF_ACTIVATION_F32,
-            output_dtype=GGUF_OUTPUT_F32,
-            runtime=self.runtime,
-        )
+        subset_head = getattr(self, "_draft_head", None)
+        if subset_head is None:
+            score_count = self.config.vocab_size
+            launch_gguf_linear(
+                self.resident.weight("root.lm_head"), head.mixed.ptr,
+                self.logits_buffer.ptr, 1, self.config.hidden_size, score_count,
+                activation_dtype=GGUF_ACTIVATION_F32,
+                output_dtype=GGUF_OUTPUT_F32, runtime=self.runtime,
+            )
+        else:
+            score_count = subset_head.project(
+                head.mixed.ptr, self.logits_buffer.ptr, capture_logits=capture_logits,
+            )
         finish_stage("draft_lm_head", started)
         logits = None
         if capture_logits:
@@ -558,9 +604,11 @@ class Qwen4ExpGGUFMTPDraftRunner:
                 self.argmax_block_indices.ptr,
                 self.token_id_buffer.ptr,
                 self.argmax_value.ptr,
-                self.config.vocab_size,
+                score_count,
                 runtime=self.runtime,
             )
+            if score_count != self.config.vocab_size:
+                subset_head.remap(self.token_id_buffer.ptr)
             token_id_result = -1
             if capture_token_id:
                 token_host = np.empty(1, dtype=np.int64)
@@ -619,16 +667,23 @@ class Qwen4ExpGGUFMTPDraftRunner:
         *,
         previous_hidden: np.ndarray | None,
         check_cancelled: Callable[[], None] | None = None,
+        target_hidden_buffer: DeviceBuffer | None = None,
     ) -> None:
         """Append one prompt chunk without resetting the request-owned draft.
 
         The first token of a later chunk consumes the previous target chunk's
-        final hidden row, not zeros or the current row's hidden state.
+        final hidden row, not zeros or the current row's hidden state. A BF16
+        device buffer is borrowed synchronously, never retained after return.
         """
         tokens = tuple(int(token) for token in token_ids)
-        hidden = np.ascontiguousarray(target_hidden_rows, dtype=np.float32)
         width = self.config.residual_width
-        if not tokens or hidden.shape != (len(tokens), width):
+        hidden = None
+        if target_hidden_buffer is None:
+            hidden = np.ascontiguousarray(target_hidden_rows, dtype=np.float32)
+            aligned = hidden.shape == (len(tokens), width)
+        else:
+            aligned = target_hidden_buffer.ptr > 0 and target_hidden_buffer.nbytes == len(tokens) * width * 2
+        if not tokens or not aligned:
             raise ValueError("Qwen4Exp MTP prompt chunk requires aligned hidden rows")
         if self.position + len(tokens) > self.max_sequence_length:
             raise ValueError("Qwen4Exp MTP prompt chunk exceeds capacity")
@@ -640,10 +695,61 @@ class Qwen4ExpGGUFMTPDraftRunner:
             previous = np.ascontiguousarray(previous_hidden, dtype=np.float32)
             if self.position == 0 or previous.shape != (width,):
                 raise ValueError("previous_hidden must describe the preceding target row")
-        for row, token in enumerate(tokens):
+        self._require_open()
+        offset = 0
+        while offset + 1 < len(tokens):
             if check_cancelled is not None:
                 check_cancelled()
-            self.forward(token, previous if row == 0 else hidden[row - 1], run_head=False)
+            if self._prefill_workspace is None:
+                from hipengine.runtime.qwen4_exp_mtp_prefill import Qwen4ExpMTPPrefillWorkspace
+                self._prefill_workspace = Qwen4ExpMTPPrefillWorkspace(self)
+            workspace = self._prefill_workspace
+            end = min(len(tokens) - 1, offset + workspace.rows)
+            start = self.position
+            try:
+                if target_hidden_buffer is None:
+                    shifted = np.empty((end - offset, width), dtype=np.float32)
+                    shifted[0] = previous if offset == 0 else hidden[offset - 1]
+                    shifted[1:] = hidden[offset:end - 1]
+                    workspace.append(tokens[offset:end], shifted)
+                else:
+                    workspace.append(tokens[offset:end], target_hidden_buffer=target_hidden_buffer,
+                        row_offset=offset, previous_hidden=previous)
+                # Raw future rows may be staged, but cancellation only commits
+                # the prefix whose per-token checks have completed.
+                self.index.count = start
+                for row in range(end - offset):
+                    if row and check_cancelled is not None:
+                        check_cancelled()
+                    self.position += 1
+                    self.index.count = self.position
+            finally:
+                self.index.restore_count(self.position)
+                self.attention.set_position(max(0, self.position - 1))
+            offset = end
+        if check_cancelled is not None:
+            check_cancelled()
+        if target_hidden_buffer is not None and len(tokens) > 1:
+            self.runtime.memcpy(self.last_hidden.ptr,
+                target_hidden_buffer.ptr + (len(tokens) - 2) * width * 2,
+                width * 2, HipMemcpyKind.DEVICE_TO_DEVICE)
+            self.forward(tokens[-1], None, run_head=False, hidden_seed_resident=True)
+        else:
+            self.forward(tokens[-1], previous if len(tokens) == 1 else hidden[-2], run_head=False)
+
+    def prime_prompt_device_chunk(self, token_ids, hidden_buffer, *, previous_hidden,
+                                  check_cancelled=None) -> np.ndarray:
+        """Consume borrowed BF16 target rows before their workspace is reused.
+
+        Only the final target row is exported, for prefix snapshots and the
+        next chunk's shifted seed. No device pointer escapes this call.
+        """
+        self.prime_prompt_chunk(token_ids, None, previous_hidden=previous_hidden,
+            check_cancelled=check_cancelled, target_hidden_buffer=hidden_buffer)
+        bits = np.empty((self.config.residual_width,), dtype=np.uint16)
+        source = DeviceBuffer(hidden_buffer.ptr + hidden_buffer.nbytes - bits.nbytes, bits.nbytes)
+        copy_device_to_host(host_array_ptr(bits), source, bits.nbytes, runtime=self.runtime)
+        return np.ascontiguousarray((bits.astype(np.uint32) << 16).view(np.float32))
 
     def propose_chain(
         self,
@@ -719,10 +825,53 @@ class Qwen4ExpGGUFMTPDraftRunner:
         self.last_proposal_stage_timings_ms = stage_totals
         return tuple(results)
 
+    def propose_lookup_chain(
+        self, *, start_token: int, target_hidden_seed: np.ndarray,
+        candidates: Sequence[int],
+    ) -> tuple[Qwen4ExpMTPDraftResult, ...]:
+        """Advance the predictor over copied tokens without unused head work.
+
+        The input/hidden recurrence is the same as compact neural drafting;
+        only candidate selection comes from committed request-local history.
+        Verification, bonus catch-up and trimming remain the caller's job.
+        """
+        import operator
+
+        tokens = tuple(operator.index(t) for t in candidates)
+        root = operator.index(start_token)
+        if not 1 <= len(tokens) <= 4:
+            raise ValueError("Qwen4Exp lookup proposal must contain 1..4 tokens")
+        if any(t < 0 or t >= self.config.vocab_size for t in (root, *tokens)):
+            raise ValueError("Qwen4Exp lookup token is outside the vocabulary")
+        if self.position + len(tokens) > self.max_sequence_length:
+            raise ValueError("Qwen4Exp lookup proposal exceeds capacity")
+        if target_hidden_seed is None:
+            raise ValueError("Qwen4Exp lookup requires the target hidden seed")
+        totals: dict[str, float] = {}
+        for depth, token in enumerate((root, *tokens[:-1])):
+            self.forward(
+                token, target_hidden_seed if depth == 0 else None,
+                capture_logits=False, capture_hidden_seed=False,
+                capture_token_id=False, hidden_seed_resident=depth > 0,
+                run_head=False,
+            )
+            for name, ms in self.last_forward_stage_timings_ms.items():
+                totals[name] = totals.get(name, 0.0) + ms
+        self.last_proposal_stage_timings_ms = totals
+        return tuple(Qwen4ExpMTPDraftResult(t, None, None) for t in tokens)
+
     def close(self) -> None:
         if self.closed:
             return
         self.closed = True
+        head = getattr(self, "_draft_head", None)
+        if head is not None:
+            head.close()
+            self._draft_head = None
+        workspace = getattr(self, "_prefill_workspace", None)
+        if workspace is not None:
+            workspace.close()
+            self._prefill_workspace = None
         for buffer in reversed(getattr(self, "_buffers", ())):
             free(buffer, runtime=self.runtime)
         if hasattr(self, "_buffers"):

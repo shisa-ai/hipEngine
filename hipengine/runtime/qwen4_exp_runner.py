@@ -212,6 +212,7 @@ from hipengine.runtime.gguf_linear import (
     wmma_prefill_weight_filter_session,
     GGUF_OUTPUT_F32,
     launch_gguf_linear,
+    launch_gguf_linear_decode_rows,
     q8_mmq_prefill_session,
     resolve_q8_mmq_prefill_policy,
 )
@@ -977,6 +978,7 @@ class Qwen4ExpQSAPrefillMetadata:
     max_positions: int
     runtime: HipRuntime
     closed: bool = False
+    _uploaded_contiguous: tuple[int, int] | None = None
 
     @classmethod
     def allocate(
@@ -1050,6 +1052,12 @@ class Qwen4ExpQSAPrefillMetadata:
         self.context_counts_host[:count] = self.positions_host[:count] + 1
         self.selected_positions_host[:count] = -1
         self.selected_counts_host[:count] = 0
+        # Layers share these read-only position planes. Selection buffers are
+        # layer-local scratch, so their host reset above must still happen.
+        if self._uploaded_contiguous == (start, count):
+            return
+        # A partial copy failure invalidates even the previous cached pair.
+        self._uploaded_contiguous = None
         copy_host_to_device(
             self.positions,
             host_array_ptr(self.positions_host),
@@ -1062,6 +1070,7 @@ class Qwen4ExpQSAPrefillMetadata:
             count * np.dtype(np.int64).itemsize,
             runtime=self.runtime,
         )
+        self._uploaded_contiguous = (start, count)
 
     def spans(self, *, start_row: int, rows: int, decode: bool) -> KVLiveSpans:
         if self.closed:
@@ -1567,7 +1576,10 @@ class Qwen4ExpQSAIndexDeviceState:
         if restored < 0 or restored > self.capacity:
             raise ValueError("QSA index restore count exceeds capacity")
         self.count = restored
-        self.pooled_count = restored // self.compression_ratio
+        # Dense rows append raw keys without preparing pooled blocks. Restoring
+        # a cursor cannot make those uncomputed blocks valid; sparse selection
+        # prepares the missing suffix when it is first needed.
+        self.pooled_count = min(self.pooled_count, restored // self.compression_ratio)
 
     def reset(self) -> None:
         self.restore_count(0)
@@ -2445,11 +2457,12 @@ def run_qwen4_exp_dense_qsa_token_mixer(
     position_prepared: bool = False,
     device_position_owned: bool = False,
     attention_context_limit: int | None = None,
+    cache_only: bool = False,
     eps: float = 1e-6,
     stream: int = 0,
     runtime: HipRuntime | None = None,
-) -> DeviceBuffer:
-    """Execute dense-equivalent QSA decode below the sparse-selection budget."""
+) -> DeviceBuffer | None:
+    """Append exact scalar cache state; optionally omit the unused attention output."""
 
     if rows != 1:
         raise ValueError("strict dense QSA decode currently requires rows == 1")
@@ -2516,7 +2529,7 @@ def run_qwen4_exp_dense_qsa_token_mixer(
             index_state.append(
                 scratch.index_k_projected.ptr, position=position, stream=stream
             )
-        if not device_position_owned and index_state.count > index_state.dense_equivalent_limit:
+        if not cache_only and not device_position_owned and index_state.count > index_state.dense_equivalent_limit:
             launch_gguf_linear(
                 weights.projections["index_q"], mixed_ptr, scratch.index_q_projected.ptr,
                 rows, hidden, index_heads * index_dim,
@@ -2590,6 +2603,8 @@ def run_qwen4_exp_dense_qsa_token_mixer(
         stream=stream,
         runtime=active_runtime,
     )
+    if cache_only:
+        return None
     if selected_positions is None:
         qwen35_paged_full_attn_decode_context_bf16_spans(
             scratch.query.ptr,
@@ -2762,11 +2777,12 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
     index_dim: int,
     index_rotary_dim: int,
     rope_positions_ptr: int | None = None,
+    cache_only: bool = False,
     eps: float = 1e-6,
     stream: int = 0,
     runtime: HipRuntime | None = None,
-) -> DeviceBuffer:
-    """Execute one contiguous QSA prompt chunk over shared paged state."""
+) -> DeviceBuffer | None:
+    """Append a contiguous QSA chunk, optionally omitting unused attention."""
 
     count = int(rows)
     start = int(start_position)
@@ -2802,7 +2818,10 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
         ("index_q", scratch.index_q_projected, index_heads * index_dim),
         ("index_k", scratch.index_k_projected, index_dim),
     ):
-        launch_gguf_linear(
+        if cache_only and slot in {"attn_q", "index_q"}:
+            continue
+        project = launch_gguf_linear_decode_rows if cache_only else launch_gguf_linear
+        project(
             weights.projections[slot],
             mixed_ptr,
             output.ptr,
@@ -2822,48 +2841,67 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
         if rope_positions_ptr is not None
         else qwen4_exp_qsa_split_norm_rope_rows_f32
     )
-    split_rope_rows(
-        scratch.q_projected.ptr,
-        scratch.key_projected.ptr,
-        weights.q_norm_weight_ptr,
-        weights.k_norm_weight_ptr,
-        metadata.positions.ptr
-        if rope_positions_ptr is None
-        else int(rope_positions_ptr),
-        scratch.query.ptr,
-        scratch.key.ptr,
-        0 if strided_gate else scratch.gate.ptr,
-        count,
-        query_heads,
-        kv_heads,
-        head_dim,
-        rotary_dim,
-        theta,
-        eps,
-        stream=stream,
-        runtime=active_runtime,
-    )
-    index_rope_rows = (
+    norm_rope_rows = (
         qwen4_exp_qsa_norm_mrope_rows_f32
         if rope_positions_ptr is not None
         else qwen4_exp_qsa_norm_rope_rows_f32
     )
-    index_rope_rows(
-        scratch.index_q_projected.ptr,
-        weights.index_q_norm_weight_ptr,
-        metadata.positions.ptr
-        if rope_positions_ptr is None
-        else int(rope_positions_ptr),
-        scratch.index_query.ptr,
-        count,
-        index_heads,
-        index_dim,
-        index_rotary_dim,
-        theta,
-        eps,
-        stream=stream,
-        runtime=active_runtime,
+    positions_ptr = (
+        metadata.positions.ptr if rope_positions_ptr is None else int(rope_positions_ptr)
     )
+    if cache_only:
+        # Prompt cache construction never consumes queries or gates. The
+        # standalone norm/rope uses the split kernel's per-key reduction.
+        norm_rope_rows(
+            scratch.key_projected.ptr,
+            weights.k_norm_weight_ptr,
+            positions_ptr,
+            scratch.key.ptr,
+            count,
+            kv_heads,
+            head_dim,
+            rotary_dim,
+            theta,
+            eps,
+            stream=stream,
+            runtime=active_runtime,
+        )
+    else:
+        split_rope_rows(
+            scratch.q_projected.ptr,
+            scratch.key_projected.ptr,
+            weights.q_norm_weight_ptr,
+            weights.k_norm_weight_ptr,
+            positions_ptr,
+            scratch.query.ptr,
+            scratch.key.ptr,
+            0 if strided_gate else scratch.gate.ptr,
+            count,
+            query_heads,
+            kv_heads,
+            head_dim,
+            rotary_dim,
+            theta,
+            eps,
+            stream=stream,
+            runtime=active_runtime,
+        )
+        norm_rope_rows(
+            scratch.index_q_projected.ptr,
+            weights.index_q_norm_weight_ptr,
+            metadata.positions.ptr
+            if rope_positions_ptr is None
+            else int(rope_positions_ptr),
+            scratch.index_query.ptr,
+            count,
+            index_heads,
+            index_dim,
+            index_rotary_dim,
+            theta,
+            eps,
+            stream=stream,
+            runtime=active_runtime,
+        )
     index_state.append_rows(
         scratch.index_k_projected.ptr,
         start_position=start,
@@ -2885,6 +2923,8 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
         stream=stream,
         runtime=active_runtime,
     )
+    if cache_only:
+        return None
     dense_rows = max(0, min(count, index_state.dense_equivalent_limit - start))
     qsa_flash = (
         dense_rows > 0
@@ -3465,6 +3505,7 @@ def run_qwen4_exp_gr_read(
     stream: int = 0,
     runtime: HipRuntime | None = None,
     pending_write: tuple[int, int, int, bool] | None = None,
+    decode_rows: bool = False,
 ) -> Qwen4ExpGRReadDeviceResult:
     """Execute strict grouped GR read using model-neutral resident projections.
 
@@ -3485,7 +3526,7 @@ def run_qwen4_exp_gr_read(
     invalidate_f16_mirror()
     residual_width = branches * hidden
     if (
-        _qwen4_exp_gr_decode_fused_enabled(rows, branches, hidden, low_rank)
+        _qwen4_exp_gr_decode_fused_enabled(1 if decode_rows else rows, branches, hidden, low_rank)
         and down_weight.spec.quant_key == "gguf_q8_0"
         and up_weight.spec.quant_key == "gguf_q8_0"
         and "raw" in down_weight.allocations
@@ -3538,6 +3579,24 @@ def run_qwen4_exp_gr_read(
             mixed=scratch.mixed,
             inject_logits=scratch.inject_logits,
         )
+    if decode_rows:
+        # Preserve the scalar fallback when the row-independent fused kernels
+        # do not cover the geometry or their rollback switch is selected.
+        if pending_write is not None:
+            _qwen4_exp_gr_flush_write(pending_write, residual_ptr, rows, branches,
+                hidden, stream=stream, runtime=active_runtime)
+        widths = {"normalized": residual_width, "low_rank": low_rank,
+                  "gate": residual_width, "inject_logits": branches, "mixed": hidden}
+        for row in range(rows):
+            views = {name: DeviceBuffer(getattr(scratch, name).ptr + row * width * 4, width * 4)
+                     for name, width in widths.items()}
+            run_qwen4_exp_gr_read(residual_ptr + row * residual_width * 2,
+                norm_weight_ptr, down_weight, up_weight, inject_weight,
+                Qwen4ExpGRScratch(**views, runtime=active_runtime), rows=1,
+                branches=branches, hidden=hidden, low_rank=low_rank, eps=eps,
+                stream=stream, runtime=active_runtime)
+        return Qwen4ExpGRReadDeviceResult(normalized=scratch.normalized,
+            gate=scratch.gate, mixed=scratch.mixed, inject_logits=scratch.inject_logits)
     # Without the FP32 normalized plane: the up epilogue and the inject logits
     # recompute bf16(residual) * inv_rms * weight, the value the norm stores,
     # so nothing downstream changes. Requires the fused up epilogue and an
@@ -4921,12 +4980,11 @@ def run_qwen4_exp_moe(
             stream=stream, runtime=active_runtime,
         )
     if os.environ.get(
-        "HIPENGINE_QWEN4_EXP_ROUTER_SELECT_CAST", "0"
+        "HIPENGINE_QWEN4_EXP_ROUTER_SELECT_CAST", "1"
     ) not in {"", "0", "false", "False"}:
-        # Fused select+cast sibling (2026-10-08 dispatch-gap fusion):
-        # bit-identical selection, routing and cast bits with one launch
-        # instead of two; the unfused pair stays the default path and the
-        # registered fallback.
+        # Same selection and cast bits with one launch instead of two.
+        # The opt-out retains the strict unfused chain for fault isolation.
+        # Removal condition: docs/REFACTOR.md, router select/cast rollback.
         qwen35_router_select_cast_bf16(
             scratch.router_logits.ptr,
             scratch.selected.ptr,
@@ -6577,8 +6635,9 @@ def run_qwen4_exp_dense_qsa_layer(
     runtime: HipRuntime | None = None,
     moe_graph_cache: MoeGraphCache | None = None,
     moe_graph_key: object | None = None,
-) -> DeviceBuffer:
-    """Execute one complete dense-equivalent Qwen4Exp QSA+MoE layer."""
+    cache_only: bool = False,
+) -> DeviceBuffer | None:
+    """Execute a QSA+MoE layer, or only its independent cache-state writes."""
 
     if scratch.closed:
         raise RuntimeError("Qwen4Exp QSA layer scratch is closed")
@@ -6609,8 +6668,11 @@ def run_qwen4_exp_dense_qsa_layer(
         position_prepared=position_prepared,
         device_position_owned=device_position_owned,
         attention_context_limit=attention_context_limit,
+        cache_only=cache_only,
         stream=stream, runtime=active_runtime,
     )
+    if cache_only:
+        return None
     pending_write = _qwen4_exp_gr_pending_write(
         rows, residual_ptr, mixer.ptr, attention_read.inject_logits.ptr)
     if pending_write is None:
@@ -8499,11 +8561,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                 runtime=self.runtime,
             )
         position = start + consumed
-        for attention in self.attention_states:
-            attention.set_position(max(position - 1, 0))
-        for index in self.index_states:
-            index.restore_count(position)
-        _, self._ple_hash_states = ple_hash_rows(
+        _, accepted_hash_states = ple_hash_rows(
             list(tokens[:consumed]),
             positions=list(range(start, position)),
             sequence_ids=[0] * consumed,
@@ -8515,7 +8573,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             heads_per_ngram=cfg.ple_heads_per_ngram,
             ngram_size=cfg.ple_ngram_size,
         )
-        self.position = position
+        self.adopt_prefix_cursor(position, accepted_hash_states)
 
     def verify_target_block_with_acceptance(
         self,
@@ -8643,13 +8701,35 @@ class Qwen4ExpGGUFResidentModelRunner:
         The caller has already written the K/V rows, index keys, pooled index
         blocks and recurrent state that describe that position. The attention
         and index states bound-check the cursor.
+
+        With shared position/context staging the QSA cursor moves with one
+        interleaved copy instead of two 8-byte copies per state. That copy
+        writes every state at once, so each state's closed flag and position
+        bound is checked first and a refusal leaves the device untouched.
         """
 
         self._require_open()
         position = int(position)
         cursor = max(position - 1, 0)
-        for attention in self.attention_states:
-            attention.set_position(cursor)
+        compact = (
+            self._shared_position_context is not None
+            and self._shared_position_context_host is not None
+        )
+        if compact:
+            for attention in self.attention_states:
+                if attention.closed:
+                    raise RuntimeError("Qwen4Exp attention state is closed")
+                if not 0 <= cursor < attention.max_positions:
+                    raise ValueError("attention position exceeds state capacity")
+            for index in self.index_states:
+                if index.closed:
+                    raise RuntimeError("QSA index state is closed")
+                if position < 0 or position > index.capacity:
+                    raise ValueError("QSA index restore count exceeds capacity")
+            self._prepare_decode_positions(cursor)
+        else:
+            for attention in self.attention_states:
+                attention.set_position(cursor)
         for index in self.index_states:
             index.restore_count(position)
         self._ple_hash_states = dict(ple_hash_states)
@@ -9360,11 +9440,13 @@ class Qwen4ExpGGUFResidentModelRunner:
         capture_target_hidden: bool = True,
         embedding_overrides: Mapping[int, np.ndarray] | None = None,
         mrope_positions: np.ndarray | None = None,
+        hidden_seed_consumer=None,
     ) -> Qwen4ExpTokenResult:
         options = dict(
             capture_hidden_seeds=capture_hidden_seeds, capture_logits=capture_logits,
             capture_target_hidden=capture_target_hidden,
-            embedding_overrides=embedding_overrides, mrope_positions=mrope_positions)
+            embedding_overrides=embedding_overrides, mrope_positions=mrope_positions,
+            hidden_seed_consumer=hidden_seed_consumer)
         choices = getattr(self, "_prefill_workspace_selection", None)
         if not choices:
             return self._prefill_chunked_impl(token_ids, **options)
@@ -9403,6 +9485,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         mrope_positions: np.ndarray | None = None,
         reset: bool = True,
         yield_layers: bool = False,
+        hidden_seed_consumer=None,
     ):
         if not token_ids:
             raise ValueError("Qwen4Exp prefill requires at least one token")
@@ -9452,19 +9535,19 @@ class Qwen4ExpGGUFResidentModelRunner:
                 and int(parts[1]) in q8_wmma_layers
             )
 
-        with (
-            raw_k_prefill_rowbatch_session(selected_raw_rowbatch),
-            raw_k_prefill_variant_session(selected_raw_variant),
-            wmma_prefill_session(True if q8_wmma_layers else None),
-            wmma_prefill_weight_filter_session(
-                q8_wmma_weight_filter if q8_wmma_layers else None
-            ),
-            self._q8_mmq_prefill_context(),
-            self._wide_f16_activation_context(),
-        ):
-            for start in range(0, len(values), self.prefill_chunk_size):
+        for start in range(0, len(values), self.prefill_chunk_size):
+            with (
+                raw_k_prefill_rowbatch_session(selected_raw_rowbatch),
+                raw_k_prefill_variant_session(selected_raw_variant),
+                wmma_prefill_session(True if q8_wmma_layers else None),
+                wmma_prefill_weight_filter_session(
+                    q8_wmma_weight_filter if q8_wmma_layers else None
+                ),
+                self._q8_mmq_prefill_context(),
+                self._wide_f16_activation_context(),
+            ):
                 chunk_kwargs = dict(
-                    capture_hidden_seeds=capture_hidden_seeds,
+                    capture_hidden_seeds=capture_hidden_seeds and hidden_seed_consumer is None,
                     embedding_overrides=embedding_overrides,
                     mrope_positions=(
                         None
@@ -9481,8 +9564,18 @@ class Qwen4ExpGGUFResidentModelRunner:
                     )
                 else:
                     last_residual_ptr, hidden_rows = self._prefill_chunk(chunk, **chunk_kwargs)
-                if hidden_rows is not None:
-                    captured.append(hidden_rows)
+            if hidden_seed_consumer is not None:
+                # Borrow only until this synchronous callback returns, before
+                # another chunk can reuse the target scratch. Restore target
+                # projection contexts first; the predictor has its own policy.
+                stride = self.config.residual_width * DType.BF16.itemsize
+                view = DeviceBuffer(last_residual_ptr - (len(chunk) - 1) * stride,
+                                    len(chunk) * stride)
+                last_seed = hidden_seed_consumer(chunk, view)
+                if capture_hidden_seeds:
+                    captured[:] = [np.asarray(last_seed, dtype=np.float32).reshape(1, -1)]
+            elif hidden_rows is not None:
+                captured.append(hidden_rows)
         cfg = self.config
         assert self.head_scratch is not None
         if capture_target_hidden:
@@ -9572,18 +9665,23 @@ class Qwen4ExpGGUFResidentModelRunner:
         capture_hidden_seeds: bool = False,
         capture_logits: bool = True,
         capture_target_hidden: bool = True,
+        hidden_seed_consumer=None,
     ) -> Qwen4ExpTokenResult:
         """Append prompt work to the current request using its prepared workspace.
 
         The caller owns reset, chunk boundaries and request retirement. Each
         call restores dispatch contexts before returning to the scheduler; no
         context manager or temporary workspace binding spans another request.
+        A hidden consumer synchronously receives each chunk's borrowed BF16
+        rows and returns its final host seed. With a consumer, hidden capture
+        returns only that final row rather than downloading the entire prompt.
         """
         return self._prefill_chunked_impl(
             token_ids,
             capture_hidden_seeds=capture_hidden_seeds,
             capture_logits=capture_logits,
             capture_target_hidden=capture_target_hidden,
+            hidden_seed_consumer=hidden_seed_consumer,
             reset=False,
         )
 
@@ -9596,6 +9694,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         capture_target_hidden: bool = True,
         embedding_overrides: Mapping[int, np.ndarray] | None = None,
         mrope_positions: np.ndarray | None = None,
+        hidden_seed_consumer=None,
     ) -> Qwen4ExpTokenResult:
         return self.prefill_chunked(
             token_ids,
@@ -9604,6 +9703,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             capture_target_hidden=capture_target_hidden,
             embedding_overrides=embedding_overrides,
             mrope_positions=mrope_positions,
+            hidden_seed_consumer=hidden_seed_consumer,
         )
 
     def generate(

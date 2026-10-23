@@ -359,6 +359,14 @@ class Taps:
         # ascending order, so its score rows are subset rows -- not mixer rows.
         # ``partition_rows`` re-derives the same split from the same cursors.
         _, sparse_group = index_state.partition_rows()
+        # An all-sparse step hands the index owner's own device selection to the
+        # attention kernel, so its batch-wide staging mirror is never written; a
+        # mixed step stages every row there, because a dense row's all-visible
+        # selection exists only in that buffer. Read the source the step actually
+        # consumed, so a staging bug cannot hide behind a device read.
+        selection_on_device = tuple(int(value) for value in sparse_group) == tuple(
+            range(rows)
+        )
         ratio = int(index_state.compression_ratio)
         dim = int(index_state.index_dim)
         heads = int(index_state.index_heads)
@@ -383,7 +391,27 @@ class Taps:
             }
             if record["blocks"] > int(index_state.block_budget):
                 blocks = record["blocks"]
-                staged = int(selection.counts_host[row])
+                subset_row = _sparse_subset_row(sparse_group, row)
+                if selection_on_device:
+                    staged = int(
+                        _read(
+                            self.runtime,
+                            index_state.selected_counts_row_ptr(subset_row),
+                            np.int32,
+                            1,
+                        )[0]
+                    )
+                    selected = _read(
+                        self.runtime,
+                        index_state.selected_positions_row_ptr(subset_row),
+                        np.int64,
+                        staged,
+                    )
+                else:
+                    staged = int(selection.counts_host[row])
+                    selected = np.asarray(
+                        selection.positions_host[row, :staged], dtype=np.int64
+                    ).copy()
                 pooled_stride = int(index_state.complete_blocks) * dim
                 score_stride = int(index_state.complete_blocks)
                 record.update(
@@ -407,14 +435,11 @@ class Taps:
                         ),
                         "scores": _read(
                             self.runtime,
-                            index_state.scores.ptr
-                            + _sparse_subset_row(sparse_group, row) * score_stride * 4,
+                            index_state.scores.ptr + subset_row * score_stride * 4,
                             np.float32,
                             blocks,
                         ),
-                        "selected": np.asarray(
-                            selection.positions_host[row, :staged], dtype=np.int64
-                        ).copy(),
+                        "selected": selected,
                     }
                 )
                 # This slot's own raw keys, read through its own page table.

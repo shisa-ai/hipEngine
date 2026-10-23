@@ -15,6 +15,7 @@ import ctypes
 import hashlib
 import importlib.metadata
 import json
+import math
 import os
 import platform
 import resource
@@ -707,10 +708,7 @@ def openai_completions_payload(adapter: str, text: str, transitions: int) -> dic
         "temperature": 0.0,
     }
     if adapter == "gufo":
-        # gufo v0.12.0 accepts ignore_eos on /v1/completions, which makes the
-        # decode leg exactly the requested 128 transitions like the llamacpp
-        # leg instead of stopping at an early EOS.
-        payload["ignore_eos"] = True
+        payload.update({"ignore_eos": True, "cache_prompt": False})
         return payload
     if adapter == "kyojin":
         # The AR protocol launches kyojin with --draft-policy off, so no
@@ -730,30 +728,14 @@ def openai_completions_payload(adapter: str, text: str, transitions: int) -> dic
     raise ValueError(f"unknown OpenAI-completions adapter: {adapter!r}")
 
 
-OPENAI_OPTIONAL_FIELDS = ("temperature", "ignore_eos", "top_k", "top_p", "min_p")
-
-
 def _post_openai_completion(
     host: str,
     port: int,
     payload: Mapping[str, Any],
     timeout: float,
 ) -> dict[str, Any]:
-    try:
-        return _post_json(host, port, OPENAI_COMPLETIONS_PATH, payload, timeout)
-    except urllib.error.HTTPError as exc:
-        # Engines reject unknown request fields with 400s; optional fields
-        # (sampling switches, ignore_eos) fall back to the minimal payload
-        # rather than failing the case. Server-side defaults are greedy for
-        # the pinned engines, so dropping an explicitly rejected optional
-        # field does not change the greedy protocol.
-        if exc.code != 400:
-            raise
-        body = exc.read().decode("utf-8", errors="replace")
-        if not any(field in body for field in OPENAI_OPTIONAL_FIELDS):
-            raise
-        minimal = {key: value for key, value in payload.items() if key in ("prompt", "max_tokens")}
-        return _post_json(host, port, OPENAI_COMPLETIONS_PATH, minimal, timeout)
+    # A rejected control invalidates this protocol; do not retry with defaults.
+    return _post_json(host, port, OPENAI_COMPLETIONS_PATH, payload, timeout)
 
 
 def openai_response_sample(
@@ -782,8 +764,17 @@ def openai_response_sample(
     predicted_ms = float(timings.get("predicted_ms") or 0.0)
     predicted_n = int(timings.get("predicted_n") or 0)
     cached_n = int(timings.get("cache_n") or 0)
-    if prompt_ms <= 0.0:
-        raise ValueError(f"{adapter} response prompt_ms must be positive")
+    if not math.isfinite(prompt_ms) or prompt_ms <= 0.0:
+        raise ValueError(f"{adapter} response prompt_ms must be finite and positive")
+    if predicted_n <= 0:
+        raise ValueError(f"{adapter} response predicted_n must be positive")
+    if not math.isfinite(predicted_ms) or predicted_ms < 0 or (predicted_n > 1 and predicted_ms == 0):
+        raise ValueError(f"{adapter} response predicted_ms must be finite and positive for decode")
+    if cached_n != 0:
+        raise ValueError(f"{adapter} response has cached prompt tokens ({cached_n})")
+    if isinstance(usage, Mapping) and "completion_tokens" in usage:
+        if int(usage["completion_tokens"]) != predicted_n:
+            raise ValueError(f"{adapter} completion count differs between usage and timings")
     choices = response.get("choices")
     if not isinstance(choices, list) or not choices:
         raise ValueError(f"{adapter} response omitted choices")
@@ -797,16 +788,17 @@ def openai_response_sample(
     if isinstance(raw_ids, list) and raw_ids:
         normalized_ids = [int(token_id) for token_id in raw_ids]
         ids_source = "return_token_ids"
+        if len(normalized_ids) != predicted_n:
+            raise ValueError(f"{adapter} returned token ID count differs from timings")
     else:
         text = choice.get("text")
-        if not isinstance(text, str) or not text:
+        if not isinstance(text, str):
             raise ValueError(f"{adapter} response omitted completion text")
         normalized_ids = tokenizer.encode(text, add_special_tokens=False)
-    transitions_actual = max(len(normalized_ids) - 1, 0)
-    if transitions_actual:
-        decode_tok_s = 1000.0 * transitions_actual / predicted_ms if predicted_ms > 0.0 else 0.0
-    else:
-        decode_tok_s = 0.0
+    # Text can merge tokens or omit special tokens. Only the native count
+    # describes the work charged to predicted_ms, even if re-encoding agrees.
+    transitions_actual = predicted_n - 1
+    decode_tok_s = 1000.0 * transitions_actual / predicted_ms if transitions_actual else 0.0
     return {
         "case_id": str(case["id"]),
         "category": str(case["category"]),
@@ -819,7 +811,9 @@ def openai_response_sample(
         "decode_transitions": transitions_actual,
         "decode_tok_s": decode_tok_s,
         "client_wall_s": float(client_wall_s),
-        "output_token_count": len(normalized_ids),
+        "output_token_count": predicted_n,
+        "output_id_count": len(normalized_ids),
+        "output_ids_exact": ids_source == "return_token_ids",
         "output_token_ids": normalized_ids,
         "output_token_ids_sha256": token_ids_sha256(normalized_ids),
         "output_ids_source": ids_source,
@@ -890,10 +884,10 @@ def run_openai(args: argparse.Namespace) -> dict[str, Any]:
             "prompt_cache": "cache_prompt=false where supported; measured rows must report cache_n=0",
             "tokenizer_round_trip_verified_cases": len(qualified_cases),
             "timing_boundary": (
-                "engine-reported timings.prompt_ms for exact prefill; decode is the "
-                "engine-reported predicted_ms over the actual generated tokens, so an "
-                "early EOS truncates the decode leg (recorded per row) and the decode "
-                "leg is not comparable to the ignore_eos llamacpp leg"
+                "engine-reported timings.prompt_ms for exact prefill; decode is "
+                "(timings.predicted_n - 1) / predicted_ms because the first output "
+                "belongs to prefill. Early EOS is recorded as decode_truncated; "
+                "re-tokenized text never supplies the throughput denominator."
             ),
             "output_ids": (
                 "return_token_ids where the engine returns ids; otherwise the completion "
@@ -1482,8 +1476,15 @@ def compare_engine_artifacts(
                     if str(row["case_id"]) == case_id
                 }
             )
+        ids_exact = all(
+            row.get("output_ids_exact", row.get("output_ids_source") != "text_retokenized")
+            for payload in engines.values()
+            for row in payload["samples"] if str(row["case_id"]) == case_id
+        )
+        hashes_equal = len({digest for rows in hashes.values() for digest in rows}) == 1
         correctness[case_id] = {
-            "all_engines_exact": len({digest for rows in hashes.values() for digest in rows}) == 1,
+            "all_engines_exact": hashes_equal if ids_exact else None,
+            "output_hashes_equal": hashes_equal,
             "engine_hashes": hashes,
         }
 
@@ -1525,8 +1526,11 @@ def compare_engine_artifacts(
             for engine, payload in engines.items()
         },
         "cross_engine_outputs": {
-            "all_cases_exact": all(row["all_engines_exact"] for row in correctness.values()),
-            "exact_case_count": sum(row["all_engines_exact"] for row in correctness.values()),
+            "all_cases_exact": (
+                None if any(row["all_engines_exact"] is None for row in correctness.values())
+                else all(row["all_engines_exact"] for row in correctness.values())
+            ),
+            "exact_case_count": sum(row["all_engines_exact"] is True for row in correctness.values()),
             "case_count": len(correctness),
             "cases": correctness,
         },

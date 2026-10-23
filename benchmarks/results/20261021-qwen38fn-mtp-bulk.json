@@ -1,0 +1,1627 @@
+{
+  "schema": 1,
+  "created_at": "2026-10-21T23:12:35.638409+00:00",
+  "status": "implementation_validated",
+  "performance_claim": false,
+  "scope": "MTP-PREFILL structural batching and synchronous device hidden handoff",
+  "arithmetic": "T0: existing parent-selected projection reductions; independent GEMV rows batch; other variants retain scalar group shape",
+  "limitations": [
+    "Five scoped public cases, not the full campaign numerical/task suite or a new topline.",
+    "The preceding measured scalar cache-only control is reused, not rerun; identical driver, input and policy bindings are checked.",
+    "Backend prefill wall includes target work and draft catch-up; it is not a GPU interval.",
+    "Eight output tokens verify route and before/after equality; no decode or MTP-versus-AR performance claim.",
+    "Host policies are stable; temperatures and process launch times differ."
+  ],
+  "hardware": {
+    "system": "Framework Desktop",
+    "gpu": "Radeon 8060S",
+    "architecture": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668"
+  },
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "sidecar": "Q8_0",
+  "kv": "BF16",
+  "execution_profile": "production",
+  "models": {
+    "created_at": "2026-10-21T18:33:17.166428+00:00",
+    "files": [
+      {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+        "size_bytes": 10946624,
+        "sha256": "4448186216b3af4cc558bbce2c3213f01608f8f8b2e5267a9767971dd3ec8082"
+      },
+      {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+        "size_bytes": 49859583136,
+        "sha256": "3f342f1c1580473f1ee94ddd5b28206e8c07a70fa1a366f59d1d6c922919a6c9"
+      },
+      {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00003-of-00004.gguf",
+        "size_bytes": 49376141504,
+        "sha256": "56758f40269cad5cd9b0d3d6fbae0f40f6d5be6de49e4ab392dbe83157d9cbd3"
+      },
+      {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00004-of-00004.gguf",
+        "size_bytes": 12087983520,
+        "sha256": "753bda48b98ba4f1636134a90a967de1b2d3908a236c026e464777342e53510a"
+      },
+      {
+        "path": "/home/lhl/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+        "size_bytes": 4137429088,
+        "sha256": "9db03a687670608286e99b563fcc86d0ee76c8dd863f64b2afc0b54eb0eb975d"
+      }
+    ]
+  },
+  "protocol": "public raw-token greedy MTP; 8 output tokens; one warmup then three repeats; backend prefill wall includes draft priming",
+  "warmups_per_case": 1,
+  "measured_repetitions": 3,
+  "control_artifact": "benchmarks/results/20261021-qwen38fn-mtp-cache-only.json",
+  "source": {
+    "control": {
+      "path": "/tmp/qwen38fn-gufo-20261021/hipengine-mtp-prefill",
+      "head": "3d78d45494279e8b1d18305a44c655f56a3478b5",
+      "runtime_diff": "diff --git a/hipengine/runtime/qwen4_exp_mtp.py b/hipengine/runtime/qwen4_exp_mtp.py\nindex 558687a6a..5af97a7fd 100644\n--- a/hipengine/runtime/qwen4_exp_mtp.py\n+++ b/hipengine/runtime/qwen4_exp_mtp.py\n@@ -452,11 +452,18 @@ class Qwen4ExpGGUFMTPDraftRunner:\n         token_id_resident: bool = False,\n         hidden_seed_resident: bool = False,\n         run_head: bool = True,\n+        cache_only: bool = False,\n     ) -> Qwen4ExpMTPDraftResult:\n-        \"\"\"One draft position. ``run_head=False`` only advances the draft's\n-        KV and hidden state (prompt priming, accepted-token catch-up) and\n-        skips the vocabulary head, whose output that caller discards.\"\"\"\n+        \"\"\"Advance one draft position, optionally omitting unused output work.\n+\n+        ``run_head=False`` skips vocabulary scoring but preserves hidden carry.\n+        ``cache_only=True`` also skips attention and MoE output; its caller must\n+        supply an authoritative hidden seed for the next row. Prompt priming\n+        uses this for all but each chunk's final row.\n+        \"\"\"\n         self._require_open()\n+        if cache_only and run_head:\n+            raise ValueError(\"cache-only draft work cannot run the vocabulary head\")\n         if self.position >= self.max_sequence_length:\n             raise ValueError(\"Qwen4Exp MTP draft capacity exceeded\")\n         stages: dict[str, float] = {}\n@@ -496,8 +503,13 @@ class Qwen4ExpGGUFMTPDraftRunner:\n             experts=self.config.expert_count,\n             top_k=self.config.expert_used_count,\n             runtime=self.runtime,\n+            cache_only=cache_only,\n         )\n-        finish_stage(\"draft_layer\", started)\n+        finish_stage(\"draft_cache_only\" if cache_only else \"draft_layer\", started)\n+        if cache_only:\n+            self.last_forward_stage_timings_ms = stages\n+            self.position += 1\n+            return Qwen4ExpMTPDraftResult(token_id=-1, logits=None, hidden_seed=None)\n         self.runtime.memcpy(\n             self.last_hidden.ptr,\n             output.ptr,\n@@ -643,7 +655,10 @@ class Qwen4ExpGGUFMTPDraftRunner:\n         for row, token in enumerate(tokens):\n             if check_cancelled is not None:\n                 check_cancelled()\n-            self.forward(token, previous if row == 0 else hidden[row - 1], run_head=False)\n+            self.forward(\n+                token, previous if row == 0 else hidden[row - 1],\n+                run_head=False, cache_only=row + 1 < len(tokens),\n+            )\n \n     def propose_chain(\n         self,\ndiff --git a/hipengine/runtime/qwen4_exp_runner.py b/hipengine/runtime/qwen4_exp_runner.py\nindex 9559fd852..75910b866 100644\n--- a/hipengine/runtime/qwen4_exp_runner.py\n+++ b/hipengine/runtime/qwen4_exp_runner.py\n@@ -1567,7 +1567,10 @@ class Qwen4ExpQSAIndexDeviceState:\n         if restored < 0 or restored > self.capacity:\n             raise ValueError(\"QSA index restore count exceeds capacity\")\n         self.count = restored\n-        self.pooled_count = restored // self.compression_ratio\n+        # Dense rows append raw keys without preparing pooled blocks. Restoring\n+        # a cursor cannot make those uncomputed blocks valid; sparse selection\n+        # prepares the missing suffix when it is first needed.\n+        self.pooled_count = min(self.pooled_count, restored // self.compression_ratio)\n \n     def reset(self) -> None:\n         self.restore_count(0)\n@@ -2445,11 +2448,12 @@ def run_qwen4_exp_dense_qsa_token_mixer(\n     position_prepared: bool = False,\n     device_position_owned: bool = False,\n     attention_context_limit: int | None = None,\n+    cache_only: bool = False,\n     eps: float = 1e-6,\n     stream: int = 0,\n     runtime: HipRuntime | None = None,\n-) -> DeviceBuffer:\n-    \"\"\"Execute dense-equivalent QSA decode below the sparse-selection budget.\"\"\"\n+) -> DeviceBuffer | None:\n+    \"\"\"Append exact scalar cache state; optionally omit the unused attention output.\"\"\"\n \n     if rows != 1:\n         raise ValueError(\"strict dense QSA decode currently requires rows == 1\")\n@@ -2516,7 +2520,7 @@ def run_qwen4_exp_dense_qsa_token_mixer(\n             index_state.append(\n                 scratch.index_k_projected.ptr, position=position, stream=stream\n             )\n-        if not device_position_owned and index_state.count > index_state.dense_equivalent_limit:\n+        if not cache_only and not device_position_owned and index_state.count > index_state.dense_equivalent_limit:\n             launch_gguf_linear(\n                 weights.projections[\"index_q\"], mixed_ptr, scratch.index_q_projected.ptr,\n                 rows, hidden, index_heads * index_dim,\n@@ -2590,6 +2594,8 @@ def run_qwen4_exp_dense_qsa_token_mixer(\n         stream=stream,\n         runtime=active_runtime,\n     )\n+    if cache_only:\n+        return None\n     if selected_positions is None:\n         qwen35_paged_full_attn_decode_context_bf16_spans(\n             scratch.query.ptr,\n@@ -6577,8 +6583,9 @@ def run_qwen4_exp_dense_qsa_layer(\n     runtime: HipRuntime | None = None,\n     moe_graph_cache: MoeGraphCache | None = None,\n     moe_graph_key: object | None = None,\n-) -> DeviceBuffer:\n-    \"\"\"Execute one complete dense-equivalent Qwen4Exp QSA+MoE layer.\"\"\"\n+    cache_only: bool = False,\n+) -> DeviceBuffer | None:\n+    \"\"\"Execute a QSA+MoE layer, or only its independent cache-state writes.\"\"\"\n \n     if scratch.closed:\n         raise RuntimeError(\"Qwen4Exp QSA layer scratch is closed\")\n@@ -6609,8 +6616,11 @@ def run_qwen4_exp_dense_qsa_layer(\n         position_prepared=position_prepared,\n         device_position_owned=device_position_owned,\n         attention_context_limit=attention_context_limit,\n+        cache_only=cache_only,\n         stream=stream, runtime=active_runtime,\n     )\n+    if cache_only:\n+        return None\n     pending_write = _qwen4_exp_gr_pending_write(\n         rows, residual_ptr, mixer.ptr, attention_read.inject_logits.ptr)\n     if pending_write is None:\n",
+      "runtime_diff_sha256": "55ad85ba8f16c7c6c58b1b51a5ddedc6745fd06288841e48e5b90f26ef70f874"
+    },
+    "candidate": {
+      "path": "/tmp/qwen38fn-gufo-20261021/hipengine-mtp-prefill",
+      "head": "2582247493e2b679be194aa787e7fca45a1e8833",
+      "runtime_diff": "diff --git a/hipengine/generation/qwen4_exp_gguf.py b/hipengine/generation/qwen4_exp_gguf.py\nindex e3b250439..2b33d13d1 100644\n--- a/hipengine/generation/qwen4_exp_gguf.py\n+++ b/hipengine/generation/qwen4_exp_gguf.py\n@@ -986,6 +986,8 @@ class _Qwen4ExpServingRow:\n     mtp_steps: Any | None = None\n     mtp_output: GenerationOutput | None = None\n     previous_hidden: Any | None = None\n+    mtp_prefill_device_rows: int = 0\n+    mtp_prefill_cache_tiles: int = 0\n     sampling_state: RowSamplingState | None = None\n     token_logprobs: list[TokenLogprob] = field(default_factory=list)\n     mixed_mtp: bool = False\n@@ -1302,6 +1304,8 @@ class Qwen4ExpResidentServingRunner(\n             prefill_kwargs[\"capture_logits\"] = True\n         if row.mtp_budget:\n             prefill_kwargs[\"capture_hidden_seeds\"] = True\n+            if callable(getattr(row.draft, \"prime_prompt_device_chunk\", None)):\n+                prefill_kwargs[\"hidden_seed_consumer\"] = lambda tokens, buffer: self._consume_mtp_hidden(row, tokens, buffer)\n         pending = getattr(row.runner, \"_pending_prefill_append\", None)\n         resume = getattr(row.runner, \"prefill_append_resumable\", None)\n         rest = ()\n@@ -1727,6 +1731,10 @@ class Qwen4ExpResidentServingRunner(\n         diagnostics = {\n             \"prefix_cache\": self._prefix_request_telemetry(row),\n             \"request_phases\": self._request_phase_telemetry(row),\n+            \"mtp_prefill\": {\n+                \"device_hidden_rows\": getattr(row, \"mtp_prefill_device_rows\", 0),\n+                \"cache_tiles\": getattr(row, \"mtp_prefill_cache_tiles\", 0),\n+            },\n         }\n         if telemetry is None:\n             return GenerationTelemetry(\ndiff --git a/hipengine/generation/qwen4_exp_mtp.py b/hipengine/generation/qwen4_exp_mtp.py\nindex aa137e38f..6a1e74e75 100644\n--- a/hipengine/generation/qwen4_exp_mtp.py\n+++ b/hipengine/generation/qwen4_exp_mtp.py\n@@ -278,8 +278,23 @@ class Qwen4ExpMTPTextProvider:\n \n         prefill_started = time.perf_counter()\n         if prefill_result is None:\n+            if callable(getattr(draft_runner, \"prime_prompt_device_chunk\", None)):\n+                draft_runner.reset()\n+                previous_hidden = None\n+\n+                def consume_hidden(tokens, buffer):\n+                    nonlocal previous_hidden\n+                    previous_hidden = draft_runner.prime_prompt_device_chunk(\n+                        tokens, buffer, previous_hidden=previous_hidden,\n+                        check_cancelled=lambda: raise_if_generation_deadline_expired(request),\n+                    )\n+                    return previous_hidden\n+\n+                capture_kwargs[\"hidden_seed_consumer\"] = consume_hidden\n+                draft_primed = True\n             result = target_runner.prefill(token_ids, capture_hidden_seeds=True, **capture_kwargs)\n-            record_phase(\"target_prefill_hidden_export\", prefill_started)\n+            record_phase(\"target_and_draft_prefill\" if \"hidden_seed_consumer\" in capture_kwargs\n+                         else \"target_prefill_hidden_export\", prefill_started)\n         else:\n             # The caller already prefilled this prompt; reuse those hidden rows\n             # and the cursor they left behind instead of prefilling twice.\ndiff --git a/hipengine/generation/qwen4_exp_serving_mtp.py b/hipengine/generation/qwen4_exp_serving_mtp.py\nindex 6708aba10..781d82183 100644\n--- a/hipengine/generation/qwen4_exp_serving_mtp.py\n+++ b/hipengine/generation/qwen4_exp_serving_mtp.py\n@@ -193,11 +193,22 @@ class Qwen4ExpServingMTP:\n             row.draft = self._available_drafts.pop()\n             row.draft.reset()\n \n-    def _prefill_mtp(self, row, chunk, result):\n-        row.draft.prime_prompt_chunk(\n-            chunk, result.hidden_seeds, previous_hidden=row.previous_hidden,\n+    def _consume_mtp_hidden(self, row, tokens, buffer):\n+        before = getattr(row.draft._prefill_workspace, \"append_calls\", 0)\n+        row.previous_hidden = row.draft.prime_prompt_device_chunk(\n+            tokens, buffer, previous_hidden=row.previous_hidden,\n             check_cancelled=lambda: self._check_request_live(row),\n         )\n+        row.mtp_prefill_device_rows += len(tokens)\n+        row.mtp_prefill_cache_tiles += getattr(row.draft._prefill_workspace, \"append_calls\", 0) - before\n+        return row.previous_hidden\n+\n+    def _prefill_mtp(self, row, chunk, result):\n+        if row.draft.position != row.prefill_tokens_seen + len(chunk):\n+            row.draft.prime_prompt_chunk(\n+                chunk, result.hidden_seeds, previous_hidden=row.previous_hidden,\n+                check_cancelled=lambda: self._check_request_live(row),\n+            )\n         self._check_request_live(row)\n         row.previous_hidden = result.hidden_seed\n         if row.prefill_tokens_seen + len(chunk) == len(row.prompt_ids):\ndiff --git a/hipengine/runtime/gguf_linear.py b/hipengine/runtime/gguf_linear.py\nindex a55dd5ff6..1385c2551 100644\n--- a/hipengine/runtime/gguf_linear.py\n+++ b/hipengine/runtime/gguf_linear.py\n@@ -4526,6 +4526,60 @@ def _record_gguf_linear_dispatch(\n     )\n \n \n+def launch_gguf_linear_decode_rows(\n+    weight: GGUFDeviceWeight, x_ptr: int, out_ptr: int, rows: int,\n+    in_features: int, out_features: int, *,\n+    activation_dtype: str = GGUF_ACTIVATION_F32,\n+    output_dtype: str = GGUF_OUTPUT_F32,\n+    reference_rows: int = 1,\n+    stream: int = 0, runtime=None,\n+) -> None:\n+    \"\"\"Batch row-independent decode kernels without bypassing parent policy.\n+\n+    Execute the first reference group through the normal dispatcher. Reuse its\n+    registered GEMV reduction for the remaining rows, with its original thread\n+    count. Other variants (including WMMA) keep the scalar group shape: they\n+    do not declare this independent-row contract. No model identity is used.\n+    \"\"\"\n+    if reference_rows <= 0 or rows <= 0 or rows % reference_rows:\n+        raise ValueError(\"independent decode rows must contain whole reference groups\")\n+    input_stride = in_features * (4 if activation_dtype == GGUF_ACTIVATION_F32 else 2)\n+    output_stride = out_features * (4 if output_dtype == GGUF_OUTPUT_F32 else 2)\n+    parent_records = _GGUF_LINEAR_DISPATCH_RECORDER.get()\n+    with record_gguf_linear_dispatch() as records:\n+        launch_gguf_linear(weight, x_ptr, out_ptr, reference_rows, in_features, out_features,\n+            activation_dtype=activation_dtype, output_dtype=output_dtype, stream=stream, runtime=runtime)\n+    if parent_records is not None:\n+        parent_records.extend(records)\n+    remaining = rows - reference_rows\n+    if not remaining:\n+        return\n+    # These existing kernels use one independent row per grid dimension;\n+    # their reduction and rounding do not depend on the grid's row count.\n+    independent = {\"pack8_gemv_bf16_bf16_out\", \"pack8_gemv_f32_f32_out\",\n+                   \"gemv_bf16_bf16_out\", \"gemv_f32_f32_out\", \"f32_hidden_f32_out\"}\n+    record = records[0] if len(records) == 1 else None\n+    if (record is None or record[\"abi\"] not in {\"raw\", \"pack8\", \"dense_bf16\"}\n+            or record[\"key\"][\"variant\"] not in independent):\n+        for offset in range(reference_rows, rows, reference_rows):\n+            launch_gguf_linear(weight, x_ptr + offset * input_stride, out_ptr + offset * output_stride,\n+                reference_rows, in_features, out_features, activation_dtype=activation_dtype,\n+                output_dtype=output_dtype, stream=stream, runtime=runtime)\n+        return\n+    key = record[\"key\"]\n+    fn = resolve(**key)\n+    kwargs = {\"stream\": stream, \"runtime\": runtime}\n+    threads = _pack8_gemv_decode_threads(rows=reference_rows, out_features=out_features,\n+        variant=key[\"variant\"], threads=0)\n+    if threads:\n+        kwargs[\"threads\"] = threads\n+    _record_gguf_linear_dispatch(**key, abi=record[\"abi\"], rows=remaining,\n+        in_features=in_features, out_features=out_features,\n+        activation_dtype=activation_dtype, output_dtype=output_dtype)\n+    _LAUNCH_ABI[record[\"abi\"]](fn, weight, x_ptr + reference_rows * input_stride,\n+        out_ptr + reference_rows * output_stride, remaining, in_features, out_features, kwargs)\n+\n+\n def launch_gguf_linear(\n     weight: GGUFDeviceWeight,\n     x_ptr: int,\ndiff --git a/hipengine/runtime/qwen4_exp_mtp.py b/hipengine/runtime/qwen4_exp_mtp.py\nindex 5af97a7fd..c4f058b19 100644\n--- a/hipengine/runtime/qwen4_exp_mtp.py\n+++ b/hipengine/runtime/qwen4_exp_mtp.py\n@@ -169,6 +169,7 @@ class Qwen4ExpGGUFMTPDraftRunner:\n         self._buffers: list[DeviceBuffer] = []\n         self.position = 0\n         self.closed = False\n+        self._prefill_workspace = None\n         self.last_forward_stage_timings_ms: dict[str, float] = {}\n         self.last_proposal_stage_timings_ms: dict[str, float] = {}\n         try:\n@@ -631,16 +632,23 @@ class Qwen4ExpGGUFMTPDraftRunner:\n         *,\n         previous_hidden: np.ndarray | None,\n         check_cancelled: Callable[[], None] | None = None,\n+        target_hidden_buffer: DeviceBuffer | None = None,\n     ) -> None:\n         \"\"\"Append one prompt chunk without resetting the request-owned draft.\n \n         The first token of a later chunk consumes the previous target chunk's\n-        final hidden row, not zeros or the current row's hidden state.\n+        final hidden row, not zeros or the current row's hidden state. A BF16\n+        device buffer is borrowed synchronously, never retained after return.\n         \"\"\"\n         tokens = tuple(int(token) for token in token_ids)\n-        hidden = np.ascontiguousarray(target_hidden_rows, dtype=np.float32)\n         width = self.config.residual_width\n-        if not tokens or hidden.shape != (len(tokens), width):\n+        hidden = None\n+        if target_hidden_buffer is None:\n+            hidden = np.ascontiguousarray(target_hidden_rows, dtype=np.float32)\n+            aligned = hidden.shape == (len(tokens), width)\n+        else:\n+            aligned = target_hidden_buffer.ptr > 0 and target_hidden_buffer.nbytes == len(tokens) * width * 2\n+        if not tokens or not aligned:\n             raise ValueError(\"Qwen4Exp MTP prompt chunk requires aligned hidden rows\")\n         if self.position + len(tokens) > self.max_sequence_length:\n             raise ValueError(\"Qwen4Exp MTP prompt chunk exceeds capacity\")\n@@ -652,13 +660,61 @@ class Qwen4ExpGGUFMTPDraftRunner:\n             previous = np.ascontiguousarray(previous_hidden, dtype=np.float32)\n             if self.position == 0 or previous.shape != (width,):\n                 raise ValueError(\"previous_hidden must describe the preceding target row\")\n-        for row, token in enumerate(tokens):\n+        self._require_open()\n+        offset = 0\n+        while offset + 1 < len(tokens):\n             if check_cancelled is not None:\n                 check_cancelled()\n-            self.forward(\n-                token, previous if row == 0 else hidden[row - 1],\n-                run_head=False, cache_only=row + 1 < len(tokens),\n-            )\n+            if self._prefill_workspace is None:\n+                from hipengine.runtime.qwen4_exp_mtp_prefill import Qwen4ExpMTPPrefillWorkspace\n+                self._prefill_workspace = Qwen4ExpMTPPrefillWorkspace(self)\n+            workspace = self._prefill_workspace\n+            end = min(len(tokens) - 1, offset + workspace.rows)\n+            start = self.position\n+            try:\n+                if target_hidden_buffer is None:\n+                    shifted = np.empty((end - offset, width), dtype=np.float32)\n+                    shifted[0] = previous if offset == 0 else hidden[offset - 1]\n+                    shifted[1:] = hidden[offset:end - 1]\n+                    workspace.append(tokens[offset:end], shifted)\n+                else:\n+                    workspace.append(tokens[offset:end], target_hidden_buffer=target_hidden_buffer,\n+                        row_offset=offset, previous_hidden=previous)\n+                # Raw future rows may be staged, but cancellation only commits\n+                # the prefix whose per-token checks have completed.\n+                self.index.count = start\n+                for row in range(end - offset):\n+                    if row and check_cancelled is not None:\n+                        check_cancelled()\n+                    self.position += 1\n+                    self.index.count = self.position\n+            finally:\n+                self.index.restore_count(self.position)\n+                self.attention.set_position(max(0, self.position - 1))\n+            offset = end\n+        if check_cancelled is not None:\n+            check_cancelled()\n+        if target_hidden_buffer is not None and len(tokens) > 1:\n+            self.runtime.memcpy(self.last_hidden.ptr,\n+                target_hidden_buffer.ptr + (len(tokens) - 2) * width * 2,\n+                width * 2, HipMemcpyKind.DEVICE_TO_DEVICE)\n+            self.forward(tokens[-1], None, run_head=False, hidden_seed_resident=True)\n+        else:\n+            self.forward(tokens[-1], previous if len(tokens) == 1 else hidden[-2], run_head=False)\n+\n+    def prime_prompt_device_chunk(self, token_ids, hidden_buffer, *, previous_hidden,\n+                                  check_cancelled=None) -> np.ndarray:\n+        \"\"\"Consume borrowed BF16 target rows before their workspace is reused.\n+\n+        Only the final target row is exported, for prefix snapshots and the\n+        next chunk's shifted seed. No device pointer escapes this call.\n+        \"\"\"\n+        self.prime_prompt_chunk(token_ids, None, previous_hidden=previous_hidden,\n+            check_cancelled=check_cancelled, target_hidden_buffer=hidden_buffer)\n+        bits = np.empty((self.config.residual_width,), dtype=np.uint16)\n+        source = DeviceBuffer(hidden_buffer.ptr + hidden_buffer.nbytes - bits.nbytes, bits.nbytes)\n+        copy_device_to_host(host_array_ptr(bits), source, bits.nbytes, runtime=self.runtime)\n+        return np.ascontiguousarray((bits.astype(np.uint32) << 16).view(np.float32))\n \n     def propose_chain(\n         self,\n@@ -738,6 +794,10 @@ class Qwen4ExpGGUFMTPDraftRunner:\n         if self.closed:\n             return\n         self.closed = True\n+        workspace = getattr(self, \"_prefill_workspace\", None)\n+        if workspace is not None:\n+            workspace.close()\n+            self._prefill_workspace = None\n         for buffer in reversed(getattr(self, \"_buffers\", ())):\n             free(buffer, runtime=self.runtime)\n         if hasattr(self, \"_buffers\"):\ndiff --git a/hipengine/runtime/qwen4_exp_mtp_prefill.py b/hipengine/runtime/qwen4_exp_mtp_prefill.py\nnew file mode 100644\nindex 000000000..d9e1a3c0a\n--- /dev/null\n+++ b/hipengine/runtime/qwen4_exp_mtp_prefill.py\n@@ -0,0 +1,153 @@\n+\"\"\"Bounded, request-owned predictor prompt projections using existing kernels.\"\"\"\n+from __future__ import annotations\n+\n+import numpy as np\n+\n+from hipengine.core.hip import HipMemcpyKind\n+from hipengine.core.memory import copy_host_to_device, free, host_array_ptr, malloc\n+from hipengine.kernels.hip_gfx1100.fused.gguf_ops import gguf_rmsnorm_bf16_f32_weight\n+from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import qwen4_exp_gather_bf16_lanes\n+from hipengine.kernels.registry import resolve\n+from hipengine.loading.materialize import float_array_to_bf16_bits\n+from hipengine.runtime.gguf_linear import launch_gguf_linear_decode_rows\n+from hipengine.runtime.qwen4_exp_runner import (\n+    Qwen4ExpGRScratch, Qwen4ExpQSAScratch, Qwen4ExpQSAPrefillMetadata,\n+    run_qwen4_exp_gr_read, run_qwen4_exp_qsa_prefill_token_mixer,\n+)\n+\n+\n+def prompt_fusion_indices(rows: int, branches: int) -> np.ndarray:\n+    \"\"\"Gather normalized embedding/hidden rows into paired predictor branches.\"\"\"\n+    if rows <= 0 or branches <= 0:\n+        raise ValueError(\"prompt rows and branches must be positive\")\n+    indices = np.empty((rows, branches, 2), dtype=np.int64)\n+    indices[:, :, 0] = np.arange(rows, dtype=np.int64)[:, None]\n+    indices[:, :, 1] = rows + np.arange(rows * branches, dtype=np.int64).reshape(rows, branches)\n+    return indices.reshape(-1)\n+\n+\n+class Qwen4ExpMTPPrefillWorkspace:\n+    \"\"\"Project one bounded tile and append its raw KV/index rows.\n+\n+    The owner controls logical commit and cancellation. This operation does not\n+    compute hidden carry or update the owner's prompt cursor. The final row\n+    must still run through the complete scalar predictor.\n+    \"\"\"\n+\n+    def __init__(self, owner, *, rows: int = 64):\n+        self.owner, self.runtime = owner, owner.runtime\n+        self.rows = min(int(rows), owner.max_sequence_length)\n+        if self.rows <= 0:\n+            raise ValueError(\"prompt workspace rows must be positive\")\n+        self.closed = False\n+        self.append_calls = 0\n+        self.buffers = {}\n+        self.gr = self.qsa = self.metadata = None\n+        c = owner.config\n+        n, h, b = self.rows, c.hidden_size, c.residual_branch_count\n+        sizes = {\"tokens\": n * 8, \"hidden\": n * c.residual_width * 2,\n+                 \"embedding\": n * h * 2, \"normalized\": n * (1 + b) * h * 2,\n+                 \"fused\": n * b * 2 * h * 2, \"indices\": n * b * 2 * 8,\n+                 \"residual\": n * c.residual_width * 2}\n+        try:\n+            for name, size in sizes.items():\n+                self.buffers[name] = malloc(size, runtime=self.runtime)\n+            self.gr = Qwen4ExpGRScratch.allocate(rows=n, branches=b, hidden=h,\n+                low_rank=c.residual_low_rank, runtime=self.runtime)\n+            self.qsa = Qwen4ExpQSAScratch.allocate(rows=n, hidden=h,\n+                query_heads=c.attention_head_count, kv_heads=c.attention_kv_head_count,\n+                head_dim=c.attention_key_length, index_heads=c.indexer_head_count,\n+                index_dim=c.indexer_key_length, runtime=self.runtime)\n+            # Cache-only execution uses positions and write spans, never score\n+            # or selection storage. Keep those unused planes minimal.\n+            self.metadata = Qwen4ExpQSAPrefillMetadata.allocate(owner.attention,\n+                rows=n, selection_capacity=1, score_blocks=1)\n+        except BaseException:\n+            self.close()\n+            raise\n+\n+    def append(self, token_ids, shifted_hidden_rows=None, *, target_hidden_buffer=None,\n+               row_offset=0, previous_hidden=None):\n+        if self.closed:\n+            raise RuntimeError(\"MTP prompt workspace is closed\")\n+        owner, c = self.owner, self.owner.config\n+        tokens = np.ascontiguousarray(token_ids, dtype=np.int64)\n+        count = int(tokens.size)\n+        if tokens.ndim != 1 or not 0 < count <= self.rows:\n+            raise ValueError(\"MTP prompt tile must fit its row capacity\")\n+        if target_hidden_buffer is None:\n+            hidden = np.ascontiguousarray(shifted_hidden_rows, dtype=np.float32)\n+            if hidden.shape != (count, c.residual_width):\n+                raise ValueError(\"MTP prompt tile needs one shifted hidden row per token\")\n+            bits = np.ascontiguousarray(float_array_to_bf16_bits(hidden), dtype=np.uint16)\n+        else:\n+            stride = c.residual_width * 2\n+            if row_offset < 0 or target_hidden_buffer.ptr <= 0 or target_hidden_buffer.nbytes < (row_offset + count) * stride:\n+                raise ValueError(\"MTP target hidden buffer does not cover the prompt tile\")\n+            if row_offset == 0:\n+                previous = np.asarray(previous_hidden, dtype=np.float32)\n+                if previous.shape != (c.residual_width,):\n+                    raise ValueError(\"MTP prompt tile needs its preceding hidden row\")\n+                bits = np.ascontiguousarray(float_array_to_bf16_bits(previous), dtype=np.uint16)\n+            else:\n+                bits = None\n+        if np.any(tokens < 0) or np.any(tokens >= c.vocab_size):\n+            raise ValueError(\"MTP prompt token is outside the vocabulary\")\n+        if owner.position != owner.index.count or owner.position + count > owner.max_sequence_length:\n+            raise ValueError(\"MTP prompt tile exceeds the contiguous cache capacity\")\n+        if bits is not None:\n+            copy_host_to_device(self.buffers[\"hidden\"], host_array_ptr(bits), bits.nbytes, runtime=self.runtime)\n+        if target_hidden_buffer is not None:\n+            first = int(row_offset == 0)\n+            if count > first:\n+                self.runtime.memcpy(self.buffers[\"hidden\"].ptr + first * stride,\n+                    target_hidden_buffer.ptr + max(0, row_offset - 1) * stride,\n+                    (count - first) * stride, HipMemcpyKind.DEVICE_TO_DEVICE)\n+        indices = prompt_fusion_indices(count, c.residual_branch_count)\n+        for name, array in ((\"tokens\", tokens), (\"indices\", indices)):\n+            copy_host_to_device(self.buffers[name], host_array_ptr(array), array.nbytes, runtime=self.runtime)\n+        embedding = owner.resident.weight(\"root.token_embedding\")\n+        resolve(backend=owner.backend, layer=\"embedding\", quant=embedding.spec.quant_key,\n+                variant=\"lookup_bf16_out\")(\n+            self.buffers[\"tokens\"].ptr, embedding.allocation(\"raw\").tensor.ptr,\n+            self.buffers[\"embedding\"].ptr, count, c.hidden_size, c.vocab_size, runtime=self.runtime)\n+        normalized = self.buffers[\"normalized\"].ptr\n+        for source, destination, role, width in (\n+            (self.buffers[\"embedding\"].ptr, normalized, \"nextn.enorm\", c.hidden_size),\n+            (self.buffers[\"hidden\"].ptr, normalized + count * c.hidden_size * 2,\n+             \"nextn.hnorm\", c.residual_width),\n+        ):\n+            gguf_rmsnorm_bf16_f32_weight(source,\n+                owner.resident.weight(role).allocation(\"raw\").tensor.ptr, destination,\n+                count, width, c.attention_rms_epsilon, runtime=self.runtime)\n+        qwen4_exp_gather_bf16_lanes(normalized, self.buffers[\"indices\"].ptr,\n+            self.buffers[\"fused\"].ptr, count * c.residual_branch_count * 2,\n+            c.hidden_size, runtime=self.runtime)\n+        launch_gguf_linear_decode_rows(owner.resident.weight(\"nextn.eh_proj\"), self.buffers[\"fused\"].ptr,\n+            self.buffers[\"residual\"].ptr, count * c.residual_branch_count,\n+            2 * c.hidden_size, c.hidden_size, activation_dtype=\"bf16\", output_dtype=\"bf16\",\n+            runtime=self.runtime, reference_rows=c.residual_branch_count)\n+        weights = owner.binding.attention_gr\n+        mixed = run_qwen4_exp_gr_read(self.buffers[\"residual\"].ptr,\n+            weights.norm_weight_ptr, weights.down, weights.up, weights.inject, self.gr,\n+            rows=count, branches=c.residual_branch_count, hidden=c.hidden_size,\n+            low_rank=c.residual_low_rank, runtime=self.runtime, decode_rows=True)\n+        run_qwen4_exp_qsa_prefill_token_mixer(mixed.mixed.ptr, owner.binding.mixer,\n+            attention_state=owner.attention, index_state=owner.index, scratch=self.qsa,\n+            metadata=self.metadata, start_position=owner.position, rows=count,\n+            hidden=c.hidden_size, query_heads=c.attention_head_count,\n+            kv_heads=c.attention_kv_head_count, head_dim=c.attention_key_length,\n+            rotary_dim=c.rope_dimension_count, theta=c.rope_freq_base,\n+            index_heads=c.indexer_head_count, index_dim=c.indexer_key_length,\n+            index_rotary_dim=c.rope_dimension_count, runtime=self.runtime, cache_only=True)\n+        self.append_calls += 1\n+\n+    def close(self):\n+        if self.closed:\n+            return\n+        for resource in (self.metadata, self.qsa, self.gr):\n+            if resource is not None:\n+                resource.close()\n+        for buffer in reversed(tuple(self.buffers.values())):\n+            free(buffer, runtime=self.runtime)\n+        self.closed = True\ndiff --git a/hipengine/runtime/qwen4_exp_runner.py b/hipengine/runtime/qwen4_exp_runner.py\nindex 75910b866..003b31858 100644\n--- a/hipengine/runtime/qwen4_exp_runner.py\n+++ b/hipengine/runtime/qwen4_exp_runner.py\n@@ -212,6 +212,7 @@ from hipengine.runtime.gguf_linear import (\n     wmma_prefill_weight_filter_session,\n     GGUF_OUTPUT_F32,\n     launch_gguf_linear,\n+    launch_gguf_linear_decode_rows,\n     q8_mmq_prefill_session,\n     resolve_q8_mmq_prefill_policy,\n )\n@@ -2768,11 +2769,12 @@ def run_qwen4_exp_qsa_prefill_token_mixer(\n     index_dim: int,\n     index_rotary_dim: int,\n     rope_positions_ptr: int | None = None,\n+    cache_only: bool = False,\n     eps: float = 1e-6,\n     stream: int = 0,\n     runtime: HipRuntime | None = None,\n-) -> DeviceBuffer:\n-    \"\"\"Execute one contiguous QSA prompt chunk over shared paged state.\"\"\"\n+) -> DeviceBuffer | None:\n+    \"\"\"Append a contiguous QSA chunk, optionally omitting unused attention.\"\"\"\n \n     count = int(rows)\n     start = int(start_position)\n@@ -2808,7 +2810,10 @@ def run_qwen4_exp_qsa_prefill_token_mixer(\n         (\"index_q\", scratch.index_q_projected, index_heads * index_dim),\n         (\"index_k\", scratch.index_k_projected, index_dim),\n     ):\n-        launch_gguf_linear(\n+        if cache_only and slot == \"index_q\":\n+            continue\n+        project = launch_gguf_linear_decode_rows if cache_only else launch_gguf_linear\n+        project(\n             weights.projections[slot],\n             mixed_ptr,\n             output.ptr,\n@@ -2854,22 +2859,23 @@ def run_qwen4_exp_qsa_prefill_token_mixer(\n         if rope_positions_ptr is not None\n         else qwen4_exp_qsa_norm_rope_rows_f32\n     )\n-    index_rope_rows(\n-        scratch.index_q_projected.ptr,\n-        weights.index_q_norm_weight_ptr,\n-        metadata.positions.ptr\n-        if rope_positions_ptr is None\n-        else int(rope_positions_ptr),\n-        scratch.index_query.ptr,\n-        count,\n-        index_heads,\n-        index_dim,\n-        index_rotary_dim,\n-        theta,\n-        eps,\n-        stream=stream,\n-        runtime=active_runtime,\n-    )\n+    if not cache_only:\n+        index_rope_rows(\n+            scratch.index_q_projected.ptr,\n+            weights.index_q_norm_weight_ptr,\n+            metadata.positions.ptr\n+            if rope_positions_ptr is None\n+            else int(rope_positions_ptr),\n+            scratch.index_query.ptr,\n+            count,\n+            index_heads,\n+            index_dim,\n+            index_rotary_dim,\n+            theta,\n+            eps,\n+            stream=stream,\n+            runtime=active_runtime,\n+        )\n     index_state.append_rows(\n         scratch.index_k_projected.ptr,\n         start_position=start,\n@@ -2891,6 +2897,8 @@ def run_qwen4_exp_qsa_prefill_token_mixer(\n         stream=stream,\n         runtime=active_runtime,\n     )\n+    if cache_only:\n+        return None\n     dense_rows = max(0, min(count, index_state.dense_equivalent_limit - start))\n     qsa_flash = (\n         dense_rows > 0\n@@ -3471,6 +3479,7 @@ def run_qwen4_exp_gr_read(\n     stream: int = 0,\n     runtime: HipRuntime | None = None,\n     pending_write: tuple[int, int, int, bool] | None = None,\n+    decode_rows: bool = False,\n ) -> Qwen4ExpGRReadDeviceResult:\n     \"\"\"Execute strict grouped GR read using model-neutral resident projections.\n \n@@ -3491,7 +3500,7 @@ def run_qwen4_exp_gr_read(\n     invalidate_f16_mirror()\n     residual_width = branches * hidden\n     if (\n-        _qwen4_exp_gr_decode_fused_enabled(rows, branches, hidden, low_rank)\n+        _qwen4_exp_gr_decode_fused_enabled(1 if decode_rows else rows, branches, hidden, low_rank)\n         and down_weight.spec.quant_key == \"gguf_q8_0\"\n         and up_weight.spec.quant_key == \"gguf_q8_0\"\n         and \"raw\" in down_weight.allocations\n@@ -3544,6 +3553,24 @@ def run_qwen4_exp_gr_read(\n             mixed=scratch.mixed,\n             inject_logits=scratch.inject_logits,\n         )\n+    if decode_rows:\n+        # Preserve the scalar fallback when the row-independent fused kernels\n+        # do not cover the geometry or their rollback switch is selected.\n+        if pending_write is not None:\n+            _qwen4_exp_gr_flush_write(pending_write, residual_ptr, rows, branches,\n+                hidden, stream=stream, runtime=active_runtime)\n+        widths = {\"normalized\": residual_width, \"low_rank\": low_rank,\n+                  \"gate\": residual_width, \"inject_logits\": branches, \"mixed\": hidden}\n+        for row in range(rows):\n+            views = {name: DeviceBuffer(getattr(scratch, name).ptr + row * width * 4, width * 4)\n+                     for name, width in widths.items()}\n+            run_qwen4_exp_gr_read(residual_ptr + row * residual_width * 2,\n+                norm_weight_ptr, down_weight, up_weight, inject_weight,\n+                Qwen4ExpGRScratch(**views, runtime=active_runtime), rows=1,\n+                branches=branches, hidden=hidden, low_rank=low_rank, eps=eps,\n+                stream=stream, runtime=active_runtime)\n+        return Qwen4ExpGRReadDeviceResult(normalized=scratch.normalized,\n+            gate=scratch.gate, mixed=scratch.mixed, inject_logits=scratch.inject_logits)\n     # Without the FP32 normalized plane: the up epilogue and the inject logits\n     # recompute bf16(residual) * inv_rms * weight, the value the norm stores,\n     # so nothing downstream changes. Requires the fused up epilogue and an\n@@ -9370,11 +9397,13 @@ class Qwen4ExpGGUFResidentModelRunner:\n         capture_target_hidden: bool = True,\n         embedding_overrides: Mapping[int, np.ndarray] | None = None,\n         mrope_positions: np.ndarray | None = None,\n+        hidden_seed_consumer=None,\n     ) -> Qwen4ExpTokenResult:\n         options = dict(\n             capture_hidden_seeds=capture_hidden_seeds, capture_logits=capture_logits,\n             capture_target_hidden=capture_target_hidden,\n-            embedding_overrides=embedding_overrides, mrope_positions=mrope_positions)\n+            embedding_overrides=embedding_overrides, mrope_positions=mrope_positions,\n+            hidden_seed_consumer=hidden_seed_consumer)\n         choices = getattr(self, \"_prefill_workspace_selection\", None)\n         if not choices:\n             return self._prefill_chunked_impl(token_ids, **options)\n@@ -9413,6 +9442,7 @@ class Qwen4ExpGGUFResidentModelRunner:\n         mrope_positions: np.ndarray | None = None,\n         reset: bool = True,\n         yield_layers: bool = False,\n+        hidden_seed_consumer=None,\n     ):\n         if not token_ids:\n             raise ValueError(\"Qwen4Exp prefill requires at least one token\")\n@@ -9462,19 +9492,19 @@ class Qwen4ExpGGUFResidentModelRunner:\n                 and int(parts[1]) in q8_wmma_layers\n             )\n \n-        with (\n-            raw_k_prefill_rowbatch_session(selected_raw_rowbatch),\n-            raw_k_prefill_variant_session(selected_raw_variant),\n-            wmma_prefill_session(True if q8_wmma_layers else None),\n-            wmma_prefill_weight_filter_session(\n-                q8_wmma_weight_filter if q8_wmma_layers else None\n-            ),\n-            self._q8_mmq_prefill_context(),\n-            self._wide_f16_activation_context(),\n-        ):\n-            for start in range(0, len(values), self.prefill_chunk_size):\n+        for start in range(0, len(values), self.prefill_chunk_size):\n+            with (\n+                raw_k_prefill_rowbatch_session(selected_raw_rowbatch),\n+                raw_k_prefill_variant_session(selected_raw_variant),\n+                wmma_prefill_session(True if q8_wmma_layers else None),\n+                wmma_prefill_weight_filter_session(\n+                    q8_wmma_weight_filter if q8_wmma_layers else None\n+                ),\n+                self._q8_mmq_prefill_context(),\n+                self._wide_f16_activation_context(),\n+            ):\n                 chunk_kwargs = dict(\n-                    capture_hidden_seeds=capture_hidden_seeds,\n+                    capture_hidden_seeds=capture_hidden_seeds and hidden_seed_consumer is None,\n                     embedding_overrides=embedding_overrides,\n                     mrope_positions=(\n                         None\n@@ -9491,8 +9521,18 @@ class Qwen4ExpGGUFResidentModelRunner:\n                     )\n                 else:\n                     last_residual_ptr, hidden_rows = self._prefill_chunk(chunk, **chunk_kwargs)\n-                if hidden_rows is not None:\n-                    captured.append(hidden_rows)\n+            if hidden_seed_consumer is not None:\n+                # Borrow only until this synchronous callback returns, before\n+                # another chunk can reuse the target scratch. Restore target\n+                # projection contexts first; the predictor has its own policy.\n+                stride = self.config.residual_width * DType.BF16.itemsize\n+                view = DeviceBuffer(last_residual_ptr - (len(chunk) - 1) * stride,\n+                                    len(chunk) * stride)\n+                last_seed = hidden_seed_consumer(chunk, view)\n+                if capture_hidden_seeds:\n+                    captured[:] = [np.asarray(last_seed, dtype=np.float32).reshape(1, -1)]\n+            elif hidden_rows is not None:\n+                captured.append(hidden_rows)\n         cfg = self.config\n         assert self.head_scratch is not None\n         if capture_target_hidden:\n@@ -9582,18 +9622,23 @@ class Qwen4ExpGGUFResidentModelRunner:\n         capture_hidden_seeds: bool = False,\n         capture_logits: bool = True,\n         capture_target_hidden: bool = True,\n+        hidden_seed_consumer=None,\n     ) -> Qwen4ExpTokenResult:\n         \"\"\"Append prompt work to the current request using its prepared workspace.\n \n         The caller owns reset, chunk boundaries and request retirement. Each\n         call restores dispatch contexts before returning to the scheduler; no\n         context manager or temporary workspace binding spans another request.\n+        A hidden consumer synchronously receives each chunk's borrowed BF16\n+        rows and returns its final host seed. With a consumer, hidden capture\n+        returns only that final row rather than downloading the entire prompt.\n         \"\"\"\n         return self._prefill_chunked_impl(\n             token_ids,\n             capture_hidden_seeds=capture_hidden_seeds,\n             capture_logits=capture_logits,\n             capture_target_hidden=capture_target_hidden,\n+            hidden_seed_consumer=hidden_seed_consumer,\n             reset=False,\n         )\n \n@@ -9606,6 +9651,7 @@ class Qwen4ExpGGUFResidentModelRunner:\n         capture_target_hidden: bool = True,\n         embedding_overrides: Mapping[int, np.ndarray] | None = None,\n         mrope_positions: np.ndarray | None = None,\n+        hidden_seed_consumer=None,\n     ) -> Qwen4ExpTokenResult:\n         return self.prefill_chunked(\n             token_ids,\n@@ -9614,6 +9660,7 @@ class Qwen4ExpGGUFResidentModelRunner:\n             capture_target_hidden=capture_target_hidden,\n             embedding_overrides=embedding_overrides,\n             mrope_positions=mrope_positions,\n+            hidden_seed_consumer=hidden_seed_consumer,\n         )\n \n     def generate(\n",
+      "runtime_diff_sha256": "88d366d04b5b9928c56e784c54afacc89d8aad86442530030199b2d138f24c00"
+    }
+  },
+  "host": {
+    "control": {
+      "host_before": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "gpu_temperature_millidegrees_c": {
+          "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 51000
+        }
+      },
+      "host_after": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "gpu_temperature_millidegrees_c": {
+          "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 53000
+        }
+      }
+    },
+    "candidate": {
+      "host_before": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "gpu_temperature_millidegrees_c": {
+          "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 41000
+        }
+      },
+      "host_after": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "gpu_temperature_millidegrees_c": {
+          "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 55000
+        }
+      }
+    }
+  },
+  "launch_environment": {
+    "HOME": "/home/lhl",
+    "USER": "lhl",
+    "PATH": "/home/lhl/miniforge3/envs/therock/bin:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin:/usr/local/bin:/usr/bin:/bin",
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries/lib",
+    "HIP_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+    "ROCM_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+    "HIP_LIB_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib",
+    "HIP_INCLUDE_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/include",
+    "HIP_DEVICE_LIB_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/amdgcn/bitcode",
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "GPU_MAX_HW_QUEUES": "2",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/qwen38fn-gufo-20261021/hipcc-version.txt",
+    "PYTHONPATH": "/tmp/qwen38fn-gufo-20261021/hipengine-mtp-prefill",
+    "LC_CTYPE": "C.UTF-8"
+  },
+  "server_commands": {
+    "control": [
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python",
+          "-m",
+          "hipengine.server",
+          "--model",
+          "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+          "--backend",
+          "hip_gfx1151",
+          "--quant",
+          "gguf_ud_q4_k_xl",
+          "--execution-profile",
+          "production",
+          "--served-model-name",
+          "prime",
+          "--max-context-tokens",
+          "8192",
+          "--max-active-requests",
+          "1",
+          "--speculative-provider",
+          "qwen4_exp_mtp",
+          "--draft-model",
+          "/home/lhl/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+          "--speculative-candidate-budget",
+          "3",
+          "--prefix-cache",
+          "off",
+          "--port",
+          "18082"
+        ],
+        "cache": "off",
+        "cwd": "/tmp/qwen38fn-gufo-20261021/hipengine-mtp-prefill",
+        "returncode": -15,
+        "log_sha256": "2b3907d959ef8ffaf97a7c0f54da9e25a085dd1931a3737535f5e6317e65ed00"
+      },
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python",
+          "-m",
+          "hipengine.server",
+          "--model",
+          "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+          "--backend",
+          "hip_gfx1151",
+          "--quant",
+          "gguf_ud_q4_k_xl",
+          "--execution-profile",
+          "production",
+          "--served-model-name",
+          "prime",
+          "--max-context-tokens",
+          "40960",
+          "--max-active-requests",
+          "1",
+          "--speculative-provider",
+          "qwen4_exp_mtp",
+          "--draft-model",
+          "/home/lhl/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+          "--speculative-candidate-budget",
+          "3",
+          "--prefix-cache",
+          "radix",
+          "--port",
+          "18082"
+        ],
+        "cache": "radix",
+        "cwd": "/tmp/qwen38fn-gufo-20261021/hipengine-mtp-prefill",
+        "returncode": -15,
+        "log_sha256": "48e6af680955edd2dc80d2b10310685759fc210cef8a035050a67272cc6f5ee6"
+      }
+    ],
+    "candidate": [
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python",
+          "-m",
+          "hipengine.server",
+          "--model",
+          "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+          "--backend",
+          "hip_gfx1151",
+          "--quant",
+          "gguf_ud_q4_k_xl",
+          "--execution-profile",
+          "production",
+          "--served-model-name",
+          "prime",
+          "--max-context-tokens",
+          "8192",
+          "--max-active-requests",
+          "1",
+          "--speculative-provider",
+          "qwen4_exp_mtp",
+          "--draft-model",
+          "/home/lhl/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+          "--speculative-candidate-budget",
+          "3",
+          "--prefix-cache",
+          "off",
+          "--port",
+          "18082"
+        ],
+        "cache": "off",
+        "cwd": "/tmp/qwen38fn-gufo-20261021/hipengine-mtp-prefill",
+        "returncode": -15,
+        "log_sha256": "23223bed5f002b2f2a4124c44e28f9ce3d1fd75ba5145cd16ff5420b66b1a153"
+      },
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python",
+          "-m",
+          "hipengine.server",
+          "--model",
+          "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+          "--backend",
+          "hip_gfx1151",
+          "--quant",
+          "gguf_ud_q4_k_xl",
+          "--execution-profile",
+          "production",
+          "--served-model-name",
+          "prime",
+          "--max-context-tokens",
+          "40960",
+          "--max-active-requests",
+          "1",
+          "--speculative-provider",
+          "qwen4_exp_mtp",
+          "--draft-model",
+          "/home/lhl/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+          "--speculative-candidate-budget",
+          "3",
+          "--prefix-cache",
+          "radix",
+          "--port",
+          "18082"
+        ],
+        "cache": "radix",
+        "cwd": "/tmp/qwen38fn-gufo-20261021/hipengine-mtp-prefill",
+        "returncode": -15,
+        "log_sha256": "01b12192e6d4f08174da652f750729c9d54dd092ccab1a71bd4a0c1bdae403cf"
+      }
+    ]
+  },
+  "fixture": {
+    "path": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+    "sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1"
+  },
+  "driver": {
+    "sha256": "b668d8669ec776b5850008dc91ea05c51513ca152731ccceb80616c73dc2dd62",
+    "source": "\"\"\"Matched public MTP-prefill checks for the cache-only change, not a scoreboard.\"\"\"\nimport argparse\nimport hashlib\nimport json\nimport os\nfrom pathlib import Path\nimport subprocess\nimport sys\n\nimport httpx\nfrom scripts.qwen4exp_canonical_ar_bench import _wait_for_health, _terminate\nfrom scripts.qwen4exp_http_mtp_economics import _one, route_matches_request\nfrom scripts.qwen4exp_gufo_http_replay import host_state\n\nbase = Path('/tmp/qwen38fn-gufo-20261021')\nparser = argparse.ArgumentParser()\nparser.add_argument('--engine-root', type=Path, required=True)\nparser.add_argument('--output', type=Path, required=True)\nargs = parser.parse_args()\nif args.output.exists():\n    raise ValueError('use a new output path; preserve earlier attempts')\nfixture = Path('benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json')\ncases = json.loads(fixture.read_text())['cases']\noriginal = json.loads((base / 'served-request-phases.json').read_text())['command']\nroot = args.engine_root.resolve()\nenvironment = dict(os.environ, PYTHONPATH=str(root))\n\ndef identity():\n    head = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD']).decode().strip()\n    diff = subprocess.check_output(['git', '-C', str(root), 'diff', 'HEAD', '--', 'hipengine'])\n    return {'path': str(root), 'head': head, 'runtime_diff': diff.decode(),\n            'runtime_diff_sha256': hashlib.sha256(diff).hexdigest()}\n\nresult = {'schema': 1, 'status': 'running', 'performance_claim': False,\n    'source_before': identity(), 'host_before': host_state(),\n    'models': json.loads((base / 'model-identities-full.json').read_text()),\n    'fixture_sha256': hashlib.sha256(fixture.read_bytes()).hexdigest(),\n    'driver_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),\n    'protocol': 'public raw-token greedy MTP; 8 output tokens; one warmup then three repeats; backend prefill wall includes draft priming',\n    'launch_environment': environment, 'servers': [], 'rows': []}\n\ndef save():\n    args.output.write_text(json.dumps(result, indent=2) + '\\n')\n\ntry:\n    for cache, capacity in [('off', 8192), ('radix', 40960)]:\n        command = list(original)\n        for flag, value in [('--max-context-tokens', str(capacity)), ('--max-active-requests', '1'),\n                            ('--prefix-cache', cache), ('--served-model-name', 'prime')]:\n            command[command.index(flag) + 1] = value\n        server_record = {'command': command, 'cache': cache, 'cwd': str(root)}\n        result['servers'].append(server_record)\n        log_path = args.output.with_suffix(f'.{cache}.server.log')\n        with log_path.open('wb') as log:\n            process = subprocess.Popen(command, cwd=root, env=environment, stdout=log, stderr=subprocess.STDOUT)\n            try:\n                _wait_for_health('127.0.0.1', 18082, 600, process=process)\n                with httpx.Client(timeout=1800) as client:\n                    if cache == 'off':\n                        workloads = []\n                        for category, count in [('code', 997), ('general_en', 1025), ('general_ja', 2052), ('mixed_ja_en', 4093)]:\n                            source = next(c for c in cases if c['category'] == category and c['prompt_tokens'] == 4096)\n                            workloads.append((category, source['prompt_token_ids'][:count], 0))\n                    else:\n                        source = next(c for c in cases if c['category'] == 'general_en' and c['prompt_tokens'] == 4096)\n                        prefix = source['prompt_token_ids'] * 8\n                        assert len(prefix) == 32768\n                        prepared = _one(client, 'http://127.0.0.1:18082', 'prime',\n                            {'id': 'cached-prefix', 'prompt_token_ids': prefix}, True, 1)\n                        assert route_matches_request(prepared)\n                        server_record['preparation'] = prepared\n                        workloads = [('cached_32768_suffix_2048', prefix + source['prompt_token_ids'][:2048], 32768)]\n                    for name, tokens, cached in workloads:\n                        for repetition in range(-1, 3):\n                            ids = list(tokens)\n                            if cached:\n                                # Separate suffix branches force exactly the declared checkpoint,\n                                # not an accidental hit in an earlier measured continuation.\n                                ids[cached] = 1000 + repetition\n                            case = _one(client, 'http://127.0.0.1:18082', 'prime',\n                                {'id': name, 'prompt_token_ids': ids}, True, 8, ignore_eos=True)\n                            assert route_matches_request(case), case\n                            counts = case['phase_metrics']['counts']\n                            assert counts['prompt_tokens'] == len(ids) and counts['cached_prompt_tokens'] == cached\n                            assert counts['new_prompt_tokens'] == len(ids) - cached\n                            assert counts['generated_tokens'] == 8 and counts['decode_transitions'] == 7\n                            result['rows'].append({'case': name, 'repetition': repetition,\n                                'prompt_sha256': hashlib.sha256(json.dumps(ids).encode()).hexdigest(), 'result': case})\n                            save()\n                        print('PUBLIC_PRIME_CASE_PASS', root.name, name, flush=True)\n            finally:\n                _terminate(process)\n                server_record['returncode'] = process.returncode\n                server_record['log_sha256'] = hashlib.sha256(log_path.read_bytes()).hexdigest()\n                save()\n    result['source_after'] = identity()\n    assert result['source_before'] == result['source_after']\n    result['status'] = 'passed'\n    print('PUBLIC_PRIME_CHECK_PASS', args.output, flush=True)\nexcept BaseException as exc:\n    result['status'], result['error'] = 'failed', repr(exc)\n    raise\nfinally:\n    result['host_after'] = host_state()\n    save()\n",
+    "commands": [
+      "bash /tmp/qwen38fn-gufo-20261021/run-hip.sh /tmp/qwen38fn-gufo-20261021/check-public-mtp-prime.py --engine-root /tmp/qwen38fn-gufo-20261021/hipengine-mtp-prefill --output /tmp/qwen38fn-gufo-20261021/mtp-cache-only-public-candidate.json",
+      "bash /tmp/qwen38fn-gufo-20261021/run-hip.sh /tmp/qwen38fn-gufo-20261021/check-public-mtp-prime.py --engine-root /tmp/qwen38fn-gufo-20261021/hipengine-mtp-prefill --output /tmp/qwen38fn-gufo-20261021/mtp-bulk-public-candidate.json"
+    ]
+  },
+  "checks": {
+    "same_host_policies": true,
+    "unchanged_sources_during_runs": true,
+    "native_mtp_route": true,
+    "native_token_and_cache_counts": true,
+    "device_handoff_and_cache_tile_witnesses": true,
+    "exact_output_pairs": 20,
+    "real_sidecar_bulk_cache_carry_complete_logits": "16 cases passed, including device chunks, unfused fallback and WMMA parent policy",
+    "host_chunk_trim_and_poisoned_pool_oracle": "5 cases passed",
+    "existing_qsa_gpu_tests": "4 passed",
+    "default_cpu_suite": "passed",
+    "compileall_fixtures_registry_cpu_smoke_build_plan": "passed"
+  },
+  "capacity": {
+    "kind": "gguf_capacity_probe",
+    "protocol_tier": 1,
+    "model": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "max_sequence_length": 40960,
+    "kv_storage": "bf16",
+    "prompt_length": 129,
+    "decode_tokens": 8,
+    "max_batch_size": 1,
+    "prefill_chunk_size": 4096,
+    "architecture": "qwen4exp",
+    "command": [
+      "/home/lhl/miniforge3/envs/therock/bin/python",
+      "scripts/gguf_capacity_probe.py",
+      "--model",
+      "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--sidecar",
+      "/home/lhl/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+      "--execution-profile",
+      "production",
+      "--kv-storage",
+      "bf16",
+      "--max-sequence-length",
+      "40960",
+      "--max-batch-size",
+      "1",
+      "--prefix-cache",
+      "radix",
+      "--prompt-length",
+      "129",
+      "--decode-tokens",
+      "8",
+      "--json",
+      "/tmp/qwen38fn-gufo-20261021/mtp-bulk-capacity-40960.json"
+    ],
+    "probe_implementation": "qwen4exp_public_pool_and_c1_logits",
+    "execution_profile": "production",
+    "finite_logits_scope": "separate c1 prefill and decode; public cohort checked by exact counts",
+    "capacity_scope": "fixed resident pool and exercised short-request transients; not maximum prefix-cache growth",
+    "scratch": {
+      "schema": 1,
+      "backend": "hip_gfx1151",
+      "execution_path": "qwen4exp_request_owned_runner_pool",
+      "max_batch_size": 1,
+      "max_sequence_length": 136,
+      "released_after_probe": false,
+      "decode": {
+        "decode_path": "qwen4exp_full_model_ar_batch",
+        "ar_batch": {
+          "execution_path": "qwen4exp_full_model_ar_batch",
+          "state_slots": 1,
+          "max_positions": 40960,
+          "pool_blocks": 160,
+          "free_blocks": 160,
+          "block_positions": 256,
+          "live_slots": 0,
+          "steps": 0,
+          "step_widths": {},
+          "imports": 0,
+          "releases": 0,
+          "failure": null
+        },
+        "request_capacity": 1,
+        "staging_runners": 1,
+        "free_staging_runners": 1,
+        "mtp_demotions": 0,
+        "mixed_target_passes": 0,
+        "last_mixed_target_pass": null,
+        "recent_mixed_target_passes": [],
+        "recent_prefill_slices": [],
+        "prefix_cache": {
+          "mode": "radix",
+          "block_size_tokens": 256,
+          "snapshot_entries": 0,
+          "snapshot_limit": 64,
+          "retained_snapshot_entries": 0,
+          "snapshot_bytes": 0,
+          "retained_kv_pages": 0,
+          "retained_kv_bytes": 0,
+          "resident_bytes": 0,
+          "resident_limit_bytes": 0,
+          "unsupported": null,
+          "stats": {
+            "lookups": 0,
+            "hits": 0,
+            "reused_tokens": 0,
+            "captures": 0,
+            "capture_bytes": 0,
+            "restore_bytes": 0,
+            "evictions": 0,
+            "snapshot_entries": 0,
+            "snapshot_limit": 64,
+            "resident_bytes": 0,
+            "resident_limit_bytes": 0,
+            "segment_count": 0,
+            "segment_bytes": 0,
+            "fallback_reasons": {},
+            "capture_skips": {}
+          }
+        }
+      }
+    },
+    "execution_profile_manifest_sha256": "cb30620a20748d2e9756444eb804c29a943dc5bcffe3abe3f31fc6c66a456eab",
+    "generator": "Qwen4ExpGGUFTextGenerator",
+    "runner_capacity": 40960,
+    "context_admission": {
+      "mode": "explicit",
+      "device_free_bytes": 128844787712,
+      "device_total_bytes": 128849018880,
+      "vision_weight_reserve_bytes": 0,
+      "plan": {
+        "available_device_bytes": 128844787712,
+        "required_bytes": 95121417720,
+        "device_weight_bytes": 82523491840,
+        "staging_bytes": 83886080,
+        "kv_bytes": 1006632960,
+        "index_bytes": 318259632,
+        "runtime_state_bytes": 119533568,
+        "scratch_bytes": 6774646344,
+        "reserve_bytes": 4294967296,
+        "context_tokens": 40960,
+        "resident_capacity": 1
+      },
+      "scratch_policy": "max(4GiB floor, mandatory runner scratch and repair queues) per runner; optional resources require separate qualification"
+    },
+    "request_protocol": "concurrent independent one-prompt LLM.generate_detailed calls",
+    "responses": [
+      {
+        "generated_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "prompt_tokens": 129,
+        "speculative_used": true,
+        "diagnostics": {
+          "speculative_provider": "qwen4_exp_mtp",
+          "candidate_budget": 3,
+          "proposed_draft_tokens": 5,
+          "accepted_draft_tokens": 5,
+          "draft_acceptance": 1.0,
+          "cycles": [
+            {
+              "start_position": 129,
+              "candidates": [
+                9707,
+                9707,
+                9707
+              ],
+              "accepted": 3,
+              "mismatch_token": null,
+              "committed_position": 133
+            },
+            {
+              "start_position": 133,
+              "candidates": [
+                9707,
+                9707
+              ],
+              "accepted": 2,
+              "mismatch_token": null,
+              "committed_position": 136
+            }
+          ],
+          "target_verify": "batched_state_rows",
+          "sampling_algorithm": "raw_argmax_match",
+          "draft_rollback": "cursor_trim",
+          "target_hidden_handoff": "host",
+          "phase_census": {
+            "cycles": 2,
+            "target_verify_rows": 2,
+            "target_prefill_hidden_export": {
+              "calls": 0,
+              "ms": 0.0
+            },
+            "proposal": {
+              "calls": 2,
+              "ms": 24.403831106610596
+            },
+            "target_verify": {
+              "calls": 2,
+              "ms": 139.50874796137214,
+              "includes_hidden_export": true
+            },
+            "target_k0": {
+              "calls": 0,
+              "ms": 0.0
+            },
+            "acceptance_control": {
+              "calls": 2,
+              "ms": 1.881083007901907
+            },
+            "draft_commit_or_rollback": {
+              "calls": 2,
+              "ms": 1.156382029876113
+            },
+            "draft_stages_ms": {
+              "draft_candidate_packet_d2h": 7.282907143235207,
+              "draft_device_argmax": 0.04992308095097542,
+              "draft_head_gr": 0.12640771456062794,
+              "draft_input_fusion": 2.7204788057133555,
+              "draft_layer": 13.95193103235215,
+              "draft_lm_head": 0.14132482465356588
+            }
+          },
+          "prefix_cache": {
+            "mode": "radix",
+            "block_size_tokens": 256,
+            "reuse_scope": "prompt_prefix",
+            "eligible": true,
+            "lookup": false,
+            "hit": false,
+            "source": null,
+            "matched_tokens": 0,
+            "reused_tokens": 0,
+            "avoided_prefill_tokens": 0,
+            "executed_prefill_tokens": 129,
+            "state_clone_bytes": 0,
+            "restore_ms": 0.0,
+            "captures": 0,
+            "fallback_reason": "prompt_too_short",
+            "cache_resident_entries": 0,
+            "cache_resident_bytes": 0
+          },
+          "request_phases": {
+            "schema": 1,
+            "scope": "backend wall including scheduler waits; excludes tokenization and HTTP delivery",
+            "complete": true,
+            "registered_to_prefill_ms": 2.0251430105417967,
+            "prefill_wall_ms": 544.5844139903784,
+            "decode_wall_ms": 169.5519289933145,
+            "request_wall_ms": 716.1614859942347,
+            "cache_restore_ms": 0.0,
+            "prompt_tokens": 129,
+            "cached_prompt_tokens": 0,
+            "new_prompt_tokens": 129,
+            "generated_tokens": 8,
+            "decode_transitions": 7
+          },
+          "mtp_prefill": {
+            "device_hidden_rows": 129,
+            "cache_tiles": 2
+          }
+        }
+      }
+    ],
+    "decode": {
+      "decode_path": "qwen4exp_full_model_ar_batch",
+      "ar_batch": {
+        "execution_path": "qwen4exp_full_model_ar_batch",
+        "state_slots": 1,
+        "max_positions": 40960,
+        "pool_blocks": 160,
+        "free_blocks": 160,
+        "block_positions": 256,
+        "live_slots": 0,
+        "steps": 0,
+        "step_widths": {},
+        "imports": 0,
+        "releases": 0,
+        "failure": null
+      },
+      "request_capacity": 1,
+      "staging_runners": 1,
+      "free_staging_runners": 1,
+      "mtp_demotions": 0,
+      "mixed_target_passes": 0,
+      "last_mixed_target_pass": null,
+      "recent_mixed_target_passes": [],
+      "recent_prefill_slices": [
+        {
+          "request_ids": [
+            0
+          ],
+          "token_budget": 4096,
+          "tokens": 129,
+          "committed_tokens": 129,
+          "context_lengths": [
+            0
+          ],
+          "decode_rows": 0,
+          "duration_ms": 544.6417909115553
+        }
+      ],
+      "prefix_cache": {
+        "mode": "radix",
+        "block_size_tokens": 256,
+        "snapshot_entries": 0,
+        "snapshot_limit": 64,
+        "retained_snapshot_entries": 0,
+        "snapshot_bytes": 0,
+        "retained_kv_pages": 0,
+        "retained_kv_bytes": 0,
+        "resident_bytes": 0,
+        "resident_limit_bytes": 0,
+        "unsupported": null,
+        "stats": {
+          "lookups": 0,
+          "hits": 0,
+          "reused_tokens": 0,
+          "captures": 0,
+          "capture_bytes": 0,
+          "restore_bytes": 0,
+          "evictions": 0,
+          "snapshot_entries": 0,
+          "snapshot_limit": 64,
+          "resident_bytes": 0,
+          "resident_limit_bytes": 0,
+          "segment_count": 0,
+          "segment_bytes": 0,
+          "fallback_reasons": {},
+          "capture_skips": {}
+        }
+      }
+    },
+    "status": "pass",
+    "finite_logits": true,
+    "first_token": 9707,
+    "tracked_peak_gib": 89.61137148365378,
+    "resident_gib": 89.0576426833868,
+    "resident_plus_transient_peak_gib": 89.61137148365378,
+    "transient_peak_gib": 0.5537288002669811,
+    "memory_after_close": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 96219477468,
+      "total_allocated_bytes": 595303152,
+      "total_freed_bytes": 96220218848,
+      "active_allocations": 0,
+      "peak_allocations": 2194
+    }
+  },
+  "validation_commands": "#!/usr/bin/env bash\nset -euo pipefail\nBASE=/tmp/qwen38fn-gufo-20261021\nCANDIDATE=\"$BASE/hipengine-mtp-prefill\"\nPY=\"$HOME/miniforge3/envs/therock/bin/python\"\ncd \"$CANDIDATE\"\n\"$PY\" -m compileall -q hipengine tests scripts\n\"$PY\" -m pytest -q\n\"$PY\" scripts/check_fixtures.py\n\"$PY\" scripts/smoke.py --mode registry\n\"$PY\" scripts/smoke.py --mode cpu-fixtures\n\"$PY\" scripts/smoke.py --mode smoke-add-plan\nprintf '\\nMTP_BULK_CPU_PASS\\n'\nbash \"$BASE/run-hip.sh\" -m pytest -q tests/test_live_qwen4exp_mtp_cache_only.py tests/test_gpu_qwen4_exp_runner_qsa.py\nprintf '\\nMTP_BULK_GPU_PASS\\n'\nbash \"$BASE/run-hip.sh\" scripts/gguf_capacity_probe.py \\\n  --model \"$HOME/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL\" \\\n  --sidecar \"$HOME/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf\" \\\n  --execution-profile production --kv-storage bf16 --max-sequence-length 40960 \\\n  --max-batch-size 1 --prefix-cache radix --prompt-length 129 --decode-tokens 8 \\\n  --json \"$BASE/mtp-bulk-capacity-40960.json\"\n\"$PY\" - <<'PY'\nimport json\nfrom pathlib import Path\np=Path('/tmp/qwen38fn-gufo-20261021/mtp-bulk-capacity-40960.json')\nd=json.loads(p.read_text())\nassert d['status']=='pass', d\nassert d['finite_logits'] and d['memory_after_close']['current_allocated_bytes']==0\nfor row in d['responses']:\n stats=row['diagnostics']['mtp_prefill']\n assert stats['device_hidden_rows']==129 and stats['cache_tiles']>0, stats\nprint('MTP_BULK_PUBLIC_CAPACITY_PASS')\nPY\nbash \"$BASE/run-hip.sh\" \"$BASE/check-public-mtp-prime.py\" \\\n  --engine-root \"$CANDIDATE\" --output \"$BASE/mtp-bulk-public-candidate.json\"\n\"$PY\" \"$BASE/audit-mtp-bulk-public.py\"\nprintf '\\nMTP_BULK_VALIDATION_PASS\\n'\n",
+  "audit_source": "\"\"\"Audit the fixed public prefill cases against the preceding scalar increment.\"\"\"\nimport hashlib\nimport json\nfrom pathlib import Path\nimport statistics\n\nbase = Path('/tmp/qwen38fn-gufo-20261021')\ncontrol_path = base / 'mtp-cache-only-public-candidate.json'\ncandidate_path = base / 'mtp-bulk-public-candidate.json'\ncontrol, candidate = (json.loads(path.read_text()) for path in (control_path, candidate_path))\nassert control['status'] == candidate['status'] == 'passed'\nassert control['driver_sha256'] == candidate['driver_sha256']\nassert control['fixture_sha256'] == candidate['fixture_sha256']\nassert control['models'] == candidate['models']\npolicy_fields = ('machine_id', 'kernel', 'tuned_active', 'cpu_governors',\n                 'gpu_clock_policies', 'rocm_platform', 'hipcc_version')\nfor capture in (control['host_after'], candidate['host_before'], candidate['host_after']):\n    assert {key: capture[key] for key in policy_fields} == {\n        key: control['host_before'][key] for key in policy_fields}\nassert candidate['source_before'] == candidate['source_after']\nassert len(control['rows']) == len(candidate['rows']) == 20\ncases = {}\nfor left, right in zip(control['rows'], candidate['rows'], strict=True):\n    assert (left['case'], left['repetition'], left['prompt_sha256']) == (right['case'], right['repetition'], right['prompt_sha256'])\n    a, b = left['result'], right['result']\n    assert a['token_accounting']['choice_generated_token_ids'] == b['token_accounting']['choice_generated_token_ids']\n    assert a['phase_metrics']['counts'] == b['phase_metrics']['counts']\n    stats = b['diagnostics']['mtp_prefill']\n    assert stats['device_hidden_rows'] == b['phase_metrics']['counts']['new_prompt_tokens'], stats\n    assert stats['cache_tiles'] > 0, stats\n    if left['repetition'] >= 0:\n        values = cases.setdefault(left['case'], {'control_ms': [], 'candidate_ms': [], 'device_rows': [], 'cache_tiles': []})\n        values['control_ms'].append(a['phase_metrics']['times_ms']['prefill_wall_ms'])\n        values['candidate_ms'].append(b['phase_metrics']['times_ms']['prefill_wall_ms'])\n        values['device_rows'].append(stats['device_hidden_rows'])\n        values['cache_tiles'].append(stats['cache_tiles'])\nfor values in cases.values():\n    values['control_median_ms'] = statistics.median(values['control_ms'])\n    values['candidate_median_ms'] = statistics.median(values['candidate_ms'])\n    values['ratio'] = values['control_median_ms'] / values['candidate_median_ms']\n    assert values['candidate_median_ms'] < values['control_median_ms'], values\nresult = {'status': 'passed', 'performance_claim': False, 'exact_output_pairs': 20,\n          'comparison': 'same fixed driver and workloads; preceding measured scalar cache-only control reused, not rerun',\n          'control_sha256': hashlib.sha256(control_path.read_bytes()).hexdigest(),\n          'candidate_sha256': hashlib.sha256(candidate_path.read_bytes()).hexdigest(), 'cases': cases}\n(base / 'mtp-bulk-public-comparison.json').write_text(json.dumps(result, indent=2) + '\\n')\nprint(json.dumps(result, indent=2))\n",
+  "validation_log_sha256": "0f8c6e5dbc03a66b78614cb7a7e78865d904435f578e275fdec2dea1b82f5321",
+  "raw_artifacts": {
+    "control": {
+      "path": "/tmp/qwen38fn-gufo-20261021/mtp-cache-only-public-candidate.json",
+      "sha256": "6633de018c1e101f1c1691ffde6b1c158613180677fe430fa558981cd9faab00"
+    },
+    "candidate": {
+      "path": "/tmp/qwen38fn-gufo-20261021/mtp-bulk-public-candidate.json",
+      "sha256": "c1f42ae1e9f99380bde0e8890a0b5dccfde73773865b89a83d445ddb27151200"
+    },
+    "comparison": {
+      "path": "/tmp/qwen38fn-gufo-20261021/mtp-bulk-public-comparison.json",
+      "sha256": "5ae8469b5c464169040c82b2f2a8001c91fa91161b7e3f767d93f681b5ad7bb9"
+    },
+    "capacity": {
+      "path": "/tmp/qwen38fn-gufo-20261021/mtp-bulk-capacity-40960.json",
+      "sha256": "4dbfdc8e59346befd57186456601a85c1079ca2c3d97fc1c61f9bb904b5d3f3b"
+    }
+  },
+  "diagnostic_summary": {
+    "code": {
+      "control_ms": [
+        1395.6916179740801,
+        1396.825155010447,
+        1400.6214179098606
+      ],
+      "candidate_ms": [
+        1069.8185550281778,
+        1068.7362919561565,
+        1070.0410309946164
+      ],
+      "device_rows": [
+        997,
+        997,
+        997
+      ],
+      "cache_tiles": [
+        16,
+        16,
+        16
+      ],
+      "control_median_ms": 1396.825155010447,
+      "candidate_median_ms": 1069.8185550281778,
+      "ratio": 1.3056654779872052
+    },
+    "general_en": {
+      "control_ms": [
+        1360.8306159731,
+        1358.7899979902431,
+        1363.7296259403229
+      ],
+      "candidate_ms": [
+        1028.4403359983116,
+        1028.1212460249662,
+        1028.0967589933425
+      ],
+      "device_rows": [
+        1025,
+        1025,
+        1025
+      ],
+      "cache_tiles": [
+        16,
+        16,
+        16
+      ],
+      "control_median_ms": 1360.8306159731,
+      "candidate_median_ms": 1028.1212460249662,
+      "ratio": 1.3236090794101287
+    },
+    "general_ja": {
+      "control_ms": [
+        2681.744429981336,
+        2681.0187429655343,
+        2680.610380950384
+      ],
+      "candidate_ms": [
+        2014.8431179113686,
+        2124.1497279843315,
+        2159.734371001832
+      ],
+      "device_rows": [
+        2052,
+        2052,
+        2052
+      ],
+      "cache_tiles": [
+        33,
+        33,
+        33
+      ],
+      "control_median_ms": 2681.0187429655343,
+      "candidate_median_ms": 2124.1497279843315,
+      "ratio": 1.262160904970495
+    },
+    "mixed_ja_en": {
+      "control_ms": [
+        5411.959851975553,
+        5476.42999899108,
+        5414.064810029231
+      ],
+      "candidate_ms": [
+        4365.702265058644,
+        4386.3835809752345,
+        4428.938664961606
+      ],
+      "device_rows": [
+        4093,
+        4093,
+        4093
+      ],
+      "cache_tiles": [
+        64,
+        64,
+        64
+      ],
+      "control_median_ms": 5414.064810029231,
+      "candidate_median_ms": 4386.3835809752345,
+      "ratio": 1.2342889558294192
+    },
+    "cached_32768_suffix_2048": {
+      "control_ms": [
+        2928.0006859917194,
+        2992.11713206023,
+        2926.3927170541137
+      ],
+      "candidate_ms": [
+        2399.2057669674978,
+        2399.5190319838002,
+        2395.584962097928
+      ],
+      "device_rows": [
+        2048,
+        2048,
+        2048
+      ],
+      "cache_tiles": [
+        32,
+        32,
+        32
+      ],
+      "control_median_ms": 2928.0006859917194,
+      "candidate_median_ms": 2399.2057669674978,
+      "ratio": 1.2204041547018276
+    }
+  },
+  "rows": [
+    {
+      "case": "code",
+      "repetition": -1,
+      "prompt_sha256": "3edcfd228f3b0a6e604f2b7e0e23407b6c09838070cc4fdf22ce357fdf9c86d0",
+      "counts": {
+        "prompt_tokens": 997,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 997,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "control_times_ms": {
+        "prefill_wall_ms": 1783.9587280759588,
+        "decode_wall_ms": 168.2715149363503,
+        "request_wall_ms": 1955.2022690186277,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 1452.693228959106,
+        "decode_wall_ms": 166.8425239622593,
+        "request_wall_ms": 1621.8932699412107,
+        "cache_restore_ms": 0.0
+      },
+      "control_client_wall_s": 1.9639100240310654,
+      "candidate_client_wall_s": 1.6312736860709265,
+      "mtp_prefill": {
+        "device_hidden_rows": 997,
+        "cache_tiles": 16
+      }
+    },
+    {
+      "case": "code",
+      "repetition": 0,
+      "prompt_sha256": "3edcfd228f3b0a6e604f2b7e0e23407b6c09838070cc4fdf22ce357fdf9c86d0",
+      "counts": {
+        "prompt_tokens": 997,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 997,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "control_times_ms": {
+        "prefill_wall_ms": 1395.6916179740801,
+        "decode_wall_ms": 153.91916106455028,
+        "request_wall_ms": 1550.954390084371,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 1069.8185550281778,
+        "decode_wall_ms": 154.08838097937405,
+        "request_wall_ms": 1225.5657620262355,
+        "cache_restore_ms": 0.0
+      },
+      "control_client_wall_s": 1.5582168129039928,
+      "candidate_client_wall_s": 1.2330537040252239,
+      "mtp_prefill": {
+        "device_hidden_rows": 997,
+        "cache_tiles": 16
+      }
+    },
+    {
+      "case": "code",
+      "repetition": 1,
+      "prompt_sha256": "3edcfd228f3b0a6e604f2b7e0e23407b6c09838070cc4fdf22ce357fdf9c86d0",
+      "counts": {
+        "prompt_tokens": 997,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 997,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "control_times_ms": {
+        "prefill_wall_ms": 1396.825155010447,
+        "decode_wall_ms": 154.01283802930266,
+        "request_wall_ms": 1552.6648500235751,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 1068.7362919561565,
+        "decode_wall_ms": 154.0135310497135,
+        "request_wall_ms": 1224.406884983182,
+        "cache_restore_ms": 0.0
+      },
+      "control_client_wall_s": 1.5591236660256982,
+      "candidate_client_wall_s": 1.2310488290386274,
+      "mtp_prefill": {
+        "device_hidden_rows": 997,
+        "cache_tiles": 16
+      }
+    },
+    {
+      "case": "code",
+      "repetition": 2,
+      "prompt_sha256": "3edcfd228f3b0a6e604f2b7e0e23407b6c09838070cc4fdf22ce357fdf9c86d0",
+      "counts": {
+        "prompt_tokens": 997,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 997,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "control_times_ms": {
+        "prefill_wall_ms": 1400.6214179098606,
+        "decode_wall_ms": 154.0273140417412,
+        "request_wall_ms": 1556.4570140559226,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 1070.0410309946164,
+        "decode_wall_ms": 154.2559559457004,
+        "request_wall_ms": 1225.8438220014796,
+        "cache_restore_ms": 0.0
+      },
+      "control_client_wall_s": 1.563832530984655,
+      "candidate_client_wall_s": 1.2327332999557257,
+      "mtp_prefill": {
+        "device_hidden_rows": 997,
+        "cache_tiles": 16
+      }
+    },
+    {
+      "case": "general_en",
+      "repetition": -1,
+      "prompt_sha256": "afb5b707bfa48f9195434010f78ea23c5fdd75abdd25953fa3d612fb2f0025b5",
+      "counts": {
+        "prompt_tokens": 1025,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 1025,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "control_times_ms": {
+        "prefill_wall_ms": 1541.3431429769844,
+        "decode_wall_ms": 160.8934949617833,
+        "request_wall_ms": 1703.6759079201147,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 1202.3366760695353,
+        "decode_wall_ms": 161.22572496533394,
+        "request_wall_ms": 1365.0505159748718,
+        "cache_restore_ms": 0.0
+      },
+      "control_client_wall_s": 1.711082833004184,
+      "candidate_client_wall_s": 1.3723499940242618,
+      "mtp_prefill": {
+        "device_hidden_rows": 1025,
+        "cache_tiles": 16
+      }
+    },
+    {
+      "case": "general_en",
+      "repetition": 0,
+      "prompt_sha256": "afb5b707bfa48f9195434010f78ea23c5fdd75abdd25953fa3d612fb2f0025b5",
+      "counts": {
+        "prompt_tokens": 1025,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 1025,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "control_times_ms": {
+        "prefill_wall_ms": 1360.8306159731,
+        "decode_wall_ms": 156.270922976546,
+        "request_wall_ms": 1518.7762799905613,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 1028.4403359983116,
+        "decode_wall_ms": 154.51682498678565,
+        "request_wall_ms": 1184.7068070201203,
+        "cache_restore_ms": 0.0
+      },
+      "control_client_wall_s": 1.5257827750174329,
+      "candidate_client_wall_s": 1.1918406439945102,
+      "mtp_prefill": {
+        "device_hidden_rows": 1025,
+        "cache_tiles": 16
+      }
+    },
+    {
+      "case": "general_en",
+      "repetition": 1,
+      "prompt_sha256": "afb5b707bfa48f9195434010f78ea23c5fdd75abdd25953fa3d612fb2f0025b5",
+      "counts": {
+        "prompt_tokens": 1025,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 1025,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "control_times_ms": {
+        "prefill_wall_ms": 1358.7899979902431,
+        "decode_wall_ms": 155.25206306483597,
+        "request_wall_ms": 1515.8143860753626,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 1028.1212460249662,
+        "decode_wall_ms": 154.4181799981743,
+        "request_wall_ms": 1184.402144048363,
+        "cache_restore_ms": 0.0
+      },
+      "control_client_wall_s": 1.522554027964361,
+      "candidate_client_wall_s": 1.1918555609881878,
+      "mtp_prefill": {
+        "device_hidden_rows": 1025,
+        "cache_tiles": 16
+      }
+    },
+    {
+      "case": "general_en",
+      "repetition": 2,
+      "prompt_sha256": "afb5b707bfa48f9195434010f78ea23c5fdd75abdd25953fa3d612fb2f0025b5",
+      "counts": {
+        "prompt_tokens": 1025,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 1025,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "control_times_ms": {
+        "prefill_wall_ms": 1363.7296259403229,
+        "decode_wall_ms": 155.1424670033157,
+        "request_wall_ms": 1520.5581450136378,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 1028.0967589933425,
+        "decode_wall_ms": 154.77835689671338,
+        "request_wall_ms": 1184.487533988431,
+        "cache_restore_ms": 0.0
+      },
+      "control_client_wall_s": 1.5273188480641693,
+      "candidate_client_wall_s": 1.1920183759648353,
+      "mtp_prefill": {
+        "device_hidden_rows": 1025,
+        "cache_tiles": 16
+      }
+    },
+    {
+      "case": "general_ja",
+      "repetition": -1,
+      "prompt_sha256": "b0408127f7ddaed10b22d0076d6d601b6f7d4313bae2b640a855bc6d35518cc3",
+      "counts": {
+        "prompt_tokens": 2052,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 2052,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "control_times_ms": {
+        "prefill_wall_ms": 2873.702497105114,
+        "decode_wall_ms": 245.80389191396534,
+        "request_wall_ms": 3121.4171139290556,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 2191.9322659960017,
+        "decode_wall_ms": 244.58156304899603,
+        "request_wall_ms": 2438.3323240326717,
+        "cache_restore_ms": 0.0
+      },
+      "control_client_wall_s": 3.1306452250573784,
+      "candidate_client_wall_s": 2.4478599360445514,
+      "mtp_prefill": {
+        "device_hidden_rows": 2052,
+        "cache_tiles": 33
+      }
+    },
+    {
+      "case": "general_ja",
+      "repetition": 0,
+      "prompt_sha256": "b0408127f7ddaed10b22d0076d6d601b6f7d4313bae2b640a855bc6d35518cc3",
+      "counts": {
+        "prompt_tokens": 2052,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 2052,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "control_times_ms": {
+        "prefill_wall_ms": 2681.744429981336,
+        "decode_wall_ms": 228.8765780394897,
+        "request_wall_ms": 2912.120350985788,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 2014.8431179113686,
+        "decode_wall_ms": 227.08970308303833,
+        "request_wall_ms": 2243.7805510126054,
+        "cache_restore_ms": 0.0
+      },
+      "control_client_wall_s": 2.9216270650504157,
+      "candidate_client_wall_s": 2.253206673078239,
+      "mtp_prefill": {
+        "device_hidden_rows": 2052,
+        "cache_tiles": 33
+      }
+    },
+    {
+      "case": "general_ja",
+      "repetition": 1,
+      "prompt_sha256": "b0408127f7ddaed10b22d0076d6d601b6f7d4313bae2b640a855bc6d35518cc3",
+      "counts": {
+        "prompt_tokens": 2052,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 2052,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "control_times_ms": {
+        "prefill_wall_ms": 2681.0187429655343,
+        "decode_wall_ms": 227.59140701964498,
+        "request_wall_ms": 2910.432348959148,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 2124.1497279843315,
+        "decode_wall_ms": 227.35484095755965,
+        "request_wall_ms": 2353.230239939876,
+        "cache_restore_ms": 0.0
+      },
+      "control_client_wall_s": 2.9195652520284057,
+      "candidate_client_wall_s": 2.3625058688921854,
+      "mtp_prefill": {
+        "device_hidden_rows": 2052,
+        "cache_tiles": 33
+      }
+    },
+    {
+      "case": "general_ja",
+      "repetition": 2,
+      "prompt_sha256": "b0408127f7ddaed10b22d0076d6d601b6f7d4313bae2b640a855bc6d35518cc3",
+      "counts": {
+        "prompt_tokens": 2052,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 2052,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "control_times_ms": {
+        "prefill_wall_ms": 2680.610380950384,
+        "decode_wall_ms": 227.7178349904716,
+        "request_wall_ms": 2910.251813940704,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 2159.734371001832,
+        "decode_wall_ms": 227.33833000529557,
+        "request_wall_ms": 2389.08500992693,
+        "cache_restore_ms": 0.0
+      },
+      "control_client_wall_s": 2.9189503819216043,
+      "candidate_client_wall_s": 2.398946519009769,
+      "mtp_prefill": {
+        "device_hidden_rows": 2052,
+        "cache_tiles": 33
+      }
+    },
+    {
+      "case": "mixed_ja_en",
+      "repetition": -1,
+      "prompt_sha256": "368c914c98d361c99390b2a93e7742bbc85666a50d213ff1bd274f6dfdb76ac7",
+      "counts": {
+        "prompt_tokens": 4093,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 4093,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760,
+        1156,
+        682
+      ],
+      "control_times_ms": {
+        "prefill_wall_ms": 5725.56605306454,
+        "decode_wall_ms": 287.96241094823927,
+        "request_wall_ms": 6015.407118014991,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 4539.003217010759,
+        "decode_wall_ms": 287.36689896322787,
+        "request_wall_ms": 4828.465029946528,
+        "cache_restore_ms": 0.0
+      },
+      "control_client_wall_s": 6.0279194209724665,
+      "candidate_client_wall_s": 4.843170906999148,
+      "mtp_prefill": {
+        "device_hidden_rows": 4093,
+        "cache_tiles": 64
+      }
+    },
+    {
+      "case": "mixed_ja_en",
+      "repetition": 0,
+      "prompt_sha256": "368c914c98d361c99390b2a93e7742bbc85666a50d213ff1bd274f6dfdb76ac7",
+      "counts": {
+        "prompt_tokens": 4093,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 4093,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760,
+        1156,
+        682
+      ],
+      "control_times_ms": {
+        "prefill_wall_ms": 5411.959851975553,
+        "decode_wall_ms": 267.33279204927385,
+        "request_wall_ms": 5681.2016849871725,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 4365.702265058644,
+        "decode_wall_ms": 271.91023202612996,
+        "request_wall_ms": 4639.715165016241,
+        "cache_restore_ms": 0.0
+      },
+      "control_client_wall_s": 5.693263793014921,
+      "candidate_client_wall_s": 4.653975846013054,
+      "mtp_prefill": {
+        "device_hidden_rows": 4093,
+        "cache_tiles": 64
+      }
+    },
+    {
+      "case": "mixed_ja_en",
+      "repetition": 1,
+      "prompt_sha256": "368c914c98d361c99390b2a93e7742bbc85666a50d213ff1bd274f6dfdb76ac7",
+      "counts": {
+        "prompt_tokens": 4093,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 4093,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760,
+        1156,
+        682
+      ],
+      "control_times_ms": {
+        "prefill_wall_ms": 5476.42999899108,
+        "decode_wall_ms": 267.64020905829966,
+        "request_wall_ms": 5745.831571985036,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 4386.3835809752345,
+        "decode_wall_ms": 268.0305760586634,
+        "request_wall_ms": 4656.287273974158,
+        "cache_restore_ms": 0.0
+      },
+      "control_client_wall_s": 5.759002550970763,
+      "candidate_client_wall_s": 4.6696054440690205,
+      "mtp_prefill": {
+        "device_hidden_rows": 4093,
+        "cache_tiles": 64
+      }
+    },
+    {
+      "case": "mixed_ja_en",
+      "repetition": 2,
+      "prompt_sha256": "368c914c98d361c99390b2a93e7742bbc85666a50d213ff1bd274f6dfdb76ac7",
+      "counts": {
+        "prompt_tokens": 4093,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 4093,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760,
+        1156,
+        682
+      ],
+      "control_times_ms": {
+        "prefill_wall_ms": 5414.064810029231,
+        "decode_wall_ms": 267.6407709950581,
+        "request_wall_ms": 5683.72756394092,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 4428.938664961606,
+        "decode_wall_ms": 267.17391598504037,
+        "request_wall_ms": 4697.902721934952,
+        "cache_restore_ms": 0.0
+      },
+      "control_client_wall_s": 5.696823341073468,
+      "candidate_client_wall_s": 4.710721976007335,
+      "mtp_prefill": {
+        "device_hidden_rows": 4093,
+        "cache_tiles": 64
+      }
+    },
+    {
+      "case": "cached_32768_suffix_2048",
+      "repetition": -1,
+      "prompt_sha256": "6f3b82af7cb52059ddf42634ba0865dec5291f5eba60353e6a8f64577e5c2196",
+      "counts": {
+        "prompt_tokens": 34816,
+        "cached_prompt_tokens": 32768,
+        "new_prompt_tokens": 2048,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "control_times_ms": {
+        "prefill_wall_ms": 2932.1150420000777,
+        "decode_wall_ms": 243.98890091106296,
+        "request_wall_ms": 3195.521599962376,
+        "cache_restore_ms": 13.245177106000483
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 2476.350549957715,
+        "decode_wall_ms": 242.3401380656287,
+        "request_wall_ms": 2738.085299031809,
+        "cache_restore_ms": 13.22827092371881
+      },
+      "control_client_wall_s": 3.270172746037133,
+      "candidate_client_wall_s": 2.812253267969936,
+      "mtp_prefill": {
+        "device_hidden_rows": 2048,
+        "cache_tiles": 32
+      }
+    },
+    {
+      "case": "cached_32768_suffix_2048",
+      "repetition": 0,
+      "prompt_sha256": "f6edb9a27cfc73526ddcf0875fa89a524ae2abac17889d98e901908b79ddc7af",
+      "counts": {
+        "prompt_tokens": 34816,
+        "cached_prompt_tokens": 32768,
+        "new_prompt_tokens": 2048,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        23819,
+        6011,
+        25716,
+        60,
+        248046,
+        198,
+        248045,
+        74455
+      ],
+      "control_times_ms": {
+        "prefill_wall_ms": 2928.0006859917194,
+        "decode_wall_ms": 242.92998597957194,
+        "request_wall_ms": 3190.8292119624093,
+        "cache_restore_ms": 13.2538239704445
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 2399.2057669674978,
+        "decode_wall_ms": 242.62355908285826,
+        "request_wall_ms": 2661.747270030901,
+        "cache_restore_ms": 13.325033010914922
+      },
+      "control_client_wall_s": 3.2663249119650573,
+      "candidate_client_wall_s": 2.734521521953866,
+      "mtp_prefill": {
+        "device_hidden_rows": 2048,
+        "cache_tiles": 32
+      }
+    },
+    {
+      "case": "cached_32768_suffix_2048",
+      "repetition": 1,
+      "prompt_sha256": "8955dce57eb2315ffa8030315bc8741d6e911128983c3ec5f4c5b270f7f6fafc",
+      "counts": {
+        "prompt_tokens": 34816,
+        "cached_prompt_tokens": 32768,
+        "new_prompt_tokens": 2048,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "control_times_ms": {
+        "prefill_wall_ms": 2992.11713206023,
+        "decode_wall_ms": 226.09777899924666,
+        "request_wall_ms": 3238.0485890898854,
+        "cache_restore_ms": 13.292456045746803
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 2399.5190319838002,
+        "decode_wall_ms": 225.47203104477376,
+        "request_wall_ms": 2644.93382407818,
+        "cache_restore_ms": 13.288934947922826
+      },
+      "control_client_wall_s": 3.3133799500064924,
+      "candidate_client_wall_s": 2.720604052999988,
+      "mtp_prefill": {
+        "device_hidden_rows": 2048,
+        "cache_tiles": 32
+      }
+    },
+    {
+      "case": "cached_32768_suffix_2048",
+      "repetition": 2,
+      "prompt_sha256": "154cdfbe8ee58e26e017fb0a57350b9fcf9a2054fffc95e39351474a1ad9b43b",
+      "counts": {
+        "prompt_tokens": 34816,
+        "cached_prompt_tokens": 32768,
+        "new_prompt_tokens": 2048,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "control_times_ms": {
+        "prefill_wall_ms": 2926.3927170541137,
+        "decode_wall_ms": 225.91906401794404,
+        "request_wall_ms": 3172.311450005509,
+        "cache_restore_ms": 13.309167930856347
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 2395.584962097928,
+        "decode_wall_ms": 226.425330969505,
+        "request_wall_ms": 2642.1301050577313,
+        "cache_restore_ms": 13.326275045983493
+      },
+      "control_client_wall_s": 3.2457382989814505,
+      "candidate_client_wall_s": 2.717254178947769,
+      "mtp_prefill": {
+        "device_hidden_rows": 2048,
+        "cache_tiles": 32
+      }
+    }
+  ],
+  "post_measurement_repair": {
+    "scope": "direct-provider-only prefill kwargs isolation and phase census; serving branch and measured runtime kernels unchanged",
+    "red": "serial, batched, K0 and head-only direct-device provider regression cases failed",
+    "green": "209 affected provider, sampling, submission and economics CPU tests passed",
+    "final_runtime_diff_sha256": "b3b0a092fd79424590af3c84fd904bbe9c6eb3096568bd187653f06422801c3f",
+    "final_runtime_diff": "diff --git a/hipengine/generation/qwen4_exp_gguf.py b/hipengine/generation/qwen4_exp_gguf.py\nindex e3b250439..2b33d13d1 100644\n--- a/hipengine/generation/qwen4_exp_gguf.py\n+++ b/hipengine/generation/qwen4_exp_gguf.py\n@@ -986,6 +986,8 @@ class _Qwen4ExpServingRow:\n     mtp_steps: Any | None = None\n     mtp_output: GenerationOutput | None = None\n     previous_hidden: Any | None = None\n+    mtp_prefill_device_rows: int = 0\n+    mtp_prefill_cache_tiles: int = 0\n     sampling_state: RowSamplingState | None = None\n     token_logprobs: list[TokenLogprob] = field(default_factory=list)\n     mixed_mtp: bool = False\n@@ -1302,6 +1304,8 @@ class Qwen4ExpResidentServingRunner(\n             prefill_kwargs[\"capture_logits\"] = True\n         if row.mtp_budget:\n             prefill_kwargs[\"capture_hidden_seeds\"] = True\n+            if callable(getattr(row.draft, \"prime_prompt_device_chunk\", None)):\n+                prefill_kwargs[\"hidden_seed_consumer\"] = lambda tokens, buffer: self._consume_mtp_hidden(row, tokens, buffer)\n         pending = getattr(row.runner, \"_pending_prefill_append\", None)\n         resume = getattr(row.runner, \"prefill_append_resumable\", None)\n         rest = ()\n@@ -1727,6 +1731,10 @@ class Qwen4ExpResidentServingRunner(\n         diagnostics = {\n             \"prefix_cache\": self._prefix_request_telemetry(row),\n             \"request_phases\": self._request_phase_telemetry(row),\n+            \"mtp_prefill\": {\n+                \"device_hidden_rows\": getattr(row, \"mtp_prefill_device_rows\", 0),\n+                \"cache_tiles\": getattr(row, \"mtp_prefill_cache_tiles\", 0),\n+            },\n         }\n         if telemetry is None:\n             return GenerationTelemetry(\ndiff --git a/hipengine/generation/qwen4_exp_mtp.py b/hipengine/generation/qwen4_exp_mtp.py\nindex aa137e38f..ba1152e1e 100644\n--- a/hipengine/generation/qwen4_exp_mtp.py\n+++ b/hipengine/generation/qwen4_exp_mtp.py\n@@ -278,8 +278,24 @@ class Qwen4ExpMTPTextProvider:\n \n         prefill_started = time.perf_counter()\n         if prefill_result is None:\n-            result = target_runner.prefill(token_ids, capture_hidden_seeds=True, **capture_kwargs)\n-            record_phase(\"target_prefill_hidden_export\", prefill_started)\n+            prefill_kwargs = dict(capture_kwargs)\n+            if callable(getattr(draft_runner, \"prime_prompt_device_chunk\", None)):\n+                draft_runner.reset()\n+                previous_hidden = None\n+\n+                def consume_hidden(tokens, buffer):\n+                    nonlocal previous_hidden\n+                    previous_hidden = draft_runner.prime_prompt_device_chunk(\n+                        tokens, buffer, previous_hidden=previous_hidden,\n+                        check_cancelled=lambda: raise_if_generation_deadline_expired(request),\n+                    )\n+                    return previous_hidden\n+\n+                prefill_kwargs[\"hidden_seed_consumer\"] = consume_hidden\n+                draft_primed = True\n+            result = target_runner.prefill(token_ids, capture_hidden_seeds=True, **prefill_kwargs)\n+            record_phase(\"target_and_draft_prefill\" if \"hidden_seed_consumer\" in prefill_kwargs\n+                         else \"target_prefill_hidden_export\", prefill_started)\n         else:\n             # The caller already prefilled this prompt; reuse those hidden rows\n             # and the cursor they left behind instead of prefilling twice.\n@@ -505,6 +521,10 @@ class Qwen4ExpMTPTextProvider:\n                 \"phase_census\": {\n                     \"cycles\": len(cycles),\n                     \"target_verify_rows\": phase_calls.get(\"target_verify\", 0),\n+                    \"target_and_draft_prefill\": {\n+                        \"calls\": phase_calls.get(\"target_and_draft_prefill\", 0),\n+                        \"ms\": phase_ms.get(\"target_and_draft_prefill\", 0.0),\n+                    },\n                     \"target_prefill_hidden_export\": {\n                         \"calls\": phase_calls.get(\"target_prefill_hidden_export\", 0),\n                         \"ms\": phase_ms.get(\"target_prefill_hidden_export\", 0.0),\ndiff --git a/hipengine/generation/qwen4_exp_serving_mtp.py b/hipengine/generation/qwen4_exp_serving_mtp.py\nindex 6708aba10..781d82183 100644\n--- a/hipengine/generation/qwen4_exp_serving_mtp.py\n+++ b/hipengine/generation/qwen4_exp_serving_mtp.py\n@@ -193,11 +193,22 @@ class Qwen4ExpServingMTP:\n             row.draft = self._available_drafts.pop()\n             row.draft.reset()\n \n-    def _prefill_mtp(self, row, chunk, result):\n-        row.draft.prime_prompt_chunk(\n-            chunk, result.hidden_seeds, previous_hidden=row.previous_hidden,\n+    def _consume_mtp_hidden(self, row, tokens, buffer):\n+        before = getattr(row.draft._prefill_workspace, \"append_calls\", 0)\n+        row.previous_hidden = row.draft.prime_prompt_device_chunk(\n+            tokens, buffer, previous_hidden=row.previous_hidden,\n             check_cancelled=lambda: self._check_request_live(row),\n         )\n+        row.mtp_prefill_device_rows += len(tokens)\n+        row.mtp_prefill_cache_tiles += getattr(row.draft._prefill_workspace, \"append_calls\", 0) - before\n+        return row.previous_hidden\n+\n+    def _prefill_mtp(self, row, chunk, result):\n+        if row.draft.position != row.prefill_tokens_seen + len(chunk):\n+            row.draft.prime_prompt_chunk(\n+                chunk, result.hidden_seeds, previous_hidden=row.previous_hidden,\n+                check_cancelled=lambda: self._check_request_live(row),\n+            )\n         self._check_request_live(row)\n         row.previous_hidden = result.hidden_seed\n         if row.prefill_tokens_seen + len(chunk) == len(row.prompt_ids):\ndiff --git a/hipengine/runtime/gguf_linear.py b/hipengine/runtime/gguf_linear.py\nindex a55dd5ff6..1385c2551 100644\n--- a/hipengine/runtime/gguf_linear.py\n+++ b/hipengine/runtime/gguf_linear.py\n@@ -4526,6 +4526,60 @@ def _record_gguf_linear_dispatch(\n     )\n \n \n+def launch_gguf_linear_decode_rows(\n+    weight: GGUFDeviceWeight, x_ptr: int, out_ptr: int, rows: int,\n+    in_features: int, out_features: int, *,\n+    activation_dtype: str = GGUF_ACTIVATION_F32,\n+    output_dtype: str = GGUF_OUTPUT_F32,\n+    reference_rows: int = 1,\n+    stream: int = 0, runtime=None,\n+) -> None:\n+    \"\"\"Batch row-independent decode kernels without bypassing parent policy.\n+\n+    Execute the first reference group through the normal dispatcher. Reuse its\n+    registered GEMV reduction for the remaining rows, with its original thread\n+    count. Other variants (including WMMA) keep the scalar group shape: they\n+    do not declare this independent-row contract. No model identity is used.\n+    \"\"\"\n+    if reference_rows <= 0 or rows <= 0 or rows % reference_rows:\n+        raise ValueError(\"independent decode rows must contain whole reference groups\")\n+    input_stride = in_features * (4 if activation_dtype == GGUF_ACTIVATION_F32 else 2)\n+    output_stride = out_features * (4 if output_dtype == GGUF_OUTPUT_F32 else 2)\n+    parent_records = _GGUF_LINEAR_DISPATCH_RECORDER.get()\n+    with record_gguf_linear_dispatch() as records:\n+        launch_gguf_linear(weight, x_ptr, out_ptr, reference_rows, in_features, out_features,\n+            activation_dtype=activation_dtype, output_dtype=output_dtype, stream=stream, runtime=runtime)\n+    if parent_records is not None:\n+        parent_records.extend(records)\n+    remaining = rows - reference_rows\n+    if not remaining:\n+        return\n+    # These existing kernels use one independent row per grid dimension;\n+    # their reduction and rounding do not depend on the grid's row count.\n+    independent = {\"pack8_gemv_bf16_bf16_out\", \"pack8_gemv_f32_f32_out\",\n+                   \"gemv_bf16_bf16_out\", \"gemv_f32_f32_out\", \"f32_hidden_f32_out\"}\n+    record = records[0] if len(records) == 1 else None\n+    if (record is None or record[\"abi\"] not in {\"raw\", \"pack8\", \"dense_bf16\"}\n+            or record[\"key\"][\"variant\"] not in independent):\n+        for offset in range(reference_rows, rows, reference_rows):\n+            launch_gguf_linear(weight, x_ptr + offset * input_stride, out_ptr + offset * output_stride,\n+                reference_rows, in_features, out_features, activation_dtype=activation_dtype,\n+                output_dtype=output_dtype, stream=stream, runtime=runtime)\n+        return\n+    key = record[\"key\"]\n+    fn = resolve(**key)\n+    kwargs = {\"stream\": stream, \"runtime\": runtime}\n+    threads = _pack8_gemv_decode_threads(rows=reference_rows, out_features=out_features,\n+        variant=key[\"variant\"], threads=0)\n+    if threads:\n+        kwargs[\"threads\"] = threads\n+    _record_gguf_linear_dispatch(**key, abi=record[\"abi\"], rows=remaining,\n+        in_features=in_features, out_features=out_features,\n+        activation_dtype=activation_dtype, output_dtype=output_dtype)\n+    _LAUNCH_ABI[record[\"abi\"]](fn, weight, x_ptr + reference_rows * input_stride,\n+        out_ptr + reference_rows * output_stride, remaining, in_features, out_features, kwargs)\n+\n+\n def launch_gguf_linear(\n     weight: GGUFDeviceWeight,\n     x_ptr: int,\ndiff --git a/hipengine/runtime/qwen4_exp_mtp.py b/hipengine/runtime/qwen4_exp_mtp.py\nindex 5af97a7fd..c4f058b19 100644\n--- a/hipengine/runtime/qwen4_exp_mtp.py\n+++ b/hipengine/runtime/qwen4_exp_mtp.py\n@@ -169,6 +169,7 @@ class Qwen4ExpGGUFMTPDraftRunner:\n         self._buffers: list[DeviceBuffer] = []\n         self.position = 0\n         self.closed = False\n+        self._prefill_workspace = None\n         self.last_forward_stage_timings_ms: dict[str, float] = {}\n         self.last_proposal_stage_timings_ms: dict[str, float] = {}\n         try:\n@@ -631,16 +632,23 @@ class Qwen4ExpGGUFMTPDraftRunner:\n         *,\n         previous_hidden: np.ndarray | None,\n         check_cancelled: Callable[[], None] | None = None,\n+        target_hidden_buffer: DeviceBuffer | None = None,\n     ) -> None:\n         \"\"\"Append one prompt chunk without resetting the request-owned draft.\n \n         The first token of a later chunk consumes the previous target chunk's\n-        final hidden row, not zeros or the current row's hidden state.\n+        final hidden row, not zeros or the current row's hidden state. A BF16\n+        device buffer is borrowed synchronously, never retained after return.\n         \"\"\"\n         tokens = tuple(int(token) for token in token_ids)\n-        hidden = np.ascontiguousarray(target_hidden_rows, dtype=np.float32)\n         width = self.config.residual_width\n-        if not tokens or hidden.shape != (len(tokens), width):\n+        hidden = None\n+        if target_hidden_buffer is None:\n+            hidden = np.ascontiguousarray(target_hidden_rows, dtype=np.float32)\n+            aligned = hidden.shape == (len(tokens), width)\n+        else:\n+            aligned = target_hidden_buffer.ptr > 0 and target_hidden_buffer.nbytes == len(tokens) * width * 2\n+        if not tokens or not aligned:\n             raise ValueError(\"Qwen4Exp MTP prompt chunk requires aligned hidden rows\")\n         if self.position + len(tokens) > self.max_sequence_length:\n             raise ValueError(\"Qwen4Exp MTP prompt chunk exceeds capacity\")\n@@ -652,13 +660,61 @@ class Qwen4ExpGGUFMTPDraftRunner:\n             previous = np.ascontiguousarray(previous_hidden, dtype=np.float32)\n             if self.position == 0 or previous.shape != (width,):\n                 raise ValueError(\"previous_hidden must describe the preceding target row\")\n-        for row, token in enumerate(tokens):\n+        self._require_open()\n+        offset = 0\n+        while offset + 1 < len(tokens):\n             if check_cancelled is not None:\n                 check_cancelled()\n-            self.forward(\n-                token, previous if row == 0 else hidden[row - 1],\n-                run_head=False, cache_only=row + 1 < len(tokens),\n-            )\n+            if self._prefill_workspace is None:\n+                from hipengine.runtime.qwen4_exp_mtp_prefill import Qwen4ExpMTPPrefillWorkspace\n+                self._prefill_workspace = Qwen4ExpMTPPrefillWorkspace(self)\n+            workspace = self._prefill_workspace\n+            end = min(len(tokens) - 1, offset + workspace.rows)\n+            start = self.position\n+            try:\n+                if target_hidden_buffer is None:\n+                    shifted = np.empty((end - offset, width), dtype=np.float32)\n+                    shifted[0] = previous if offset == 0 else hidden[offset - 1]\n+                    shifted[1:] = hidden[offset:end - 1]\n+                    workspace.append(tokens[offset:end], shifted)\n+                else:\n+                    workspace.append(tokens[offset:end], target_hidden_buffer=target_hidden_buffer,\n+                        row_offset=offset, previous_hidden=previous)\n+                # Raw future rows may be staged, but cancellation only commits\n+                # the prefix whose per-token checks have completed.\n+                self.index.count = start\n+                for row in range(end - offset):\n+                    if row and check_cancelled is not None:\n+                        check_cancelled()\n+                    self.position += 1\n+                    self.index.count = self.position\n+            finally:\n+                self.index.restore_count(self.position)\n+                self.attention.set_position(max(0, self.position - 1))\n+            offset = end\n+        if check_cancelled is not None:\n+            check_cancelled()\n+        if target_hidden_buffer is not None and len(tokens) > 1:\n+            self.runtime.memcpy(self.last_hidden.ptr,\n+                target_hidden_buffer.ptr + (len(tokens) - 2) * width * 2,\n+                width * 2, HipMemcpyKind.DEVICE_TO_DEVICE)\n+            self.forward(tokens[-1], None, run_head=False, hidden_seed_resident=True)\n+        else:\n+            self.forward(tokens[-1], previous if len(tokens) == 1 else hidden[-2], run_head=False)\n+\n+    def prime_prompt_device_chunk(self, token_ids, hidden_buffer, *, previous_hidden,\n+                                  check_cancelled=None) -> np.ndarray:\n+        \"\"\"Consume borrowed BF16 target rows before their workspace is reused.\n+\n+        Only the final target row is exported, for prefix snapshots and the\n+        next chunk's shifted seed. No device pointer escapes this call.\n+        \"\"\"\n+        self.prime_prompt_chunk(token_ids, None, previous_hidden=previous_hidden,\n+            check_cancelled=check_cancelled, target_hidden_buffer=hidden_buffer)\n+        bits = np.empty((self.config.residual_width,), dtype=np.uint16)\n+        source = DeviceBuffer(hidden_buffer.ptr + hidden_buffer.nbytes - bits.nbytes, bits.nbytes)\n+        copy_device_to_host(host_array_ptr(bits), source, bits.nbytes, runtime=self.runtime)\n+        return np.ascontiguousarray((bits.astype(np.uint32) << 16).view(np.float32))\n \n     def propose_chain(\n         self,\n@@ -738,6 +794,10 @@ class Qwen4ExpGGUFMTPDraftRunner:\n         if self.closed:\n             return\n         self.closed = True\n+        workspace = getattr(self, \"_prefill_workspace\", None)\n+        if workspace is not None:\n+            workspace.close()\n+            self._prefill_workspace = None\n         for buffer in reversed(getattr(self, \"_buffers\", ())):\n             free(buffer, runtime=self.runtime)\n         if hasattr(self, \"_buffers\"):\ndiff --git a/hipengine/runtime/qwen4_exp_mtp_prefill.py b/hipengine/runtime/qwen4_exp_mtp_prefill.py\nnew file mode 100644\nindex 000000000..d9e1a3c0a\n--- /dev/null\n+++ b/hipengine/runtime/qwen4_exp_mtp_prefill.py\n@@ -0,0 +1,153 @@\n+\"\"\"Bounded, request-owned predictor prompt projections using existing kernels.\"\"\"\n+from __future__ import annotations\n+\n+import numpy as np\n+\n+from hipengine.core.hip import HipMemcpyKind\n+from hipengine.core.memory import copy_host_to_device, free, host_array_ptr, malloc\n+from hipengine.kernels.hip_gfx1100.fused.gguf_ops import gguf_rmsnorm_bf16_f32_weight\n+from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import qwen4_exp_gather_bf16_lanes\n+from hipengine.kernels.registry import resolve\n+from hipengine.loading.materialize import float_array_to_bf16_bits\n+from hipengine.runtime.gguf_linear import launch_gguf_linear_decode_rows\n+from hipengine.runtime.qwen4_exp_runner import (\n+    Qwen4ExpGRScratch, Qwen4ExpQSAScratch, Qwen4ExpQSAPrefillMetadata,\n+    run_qwen4_exp_gr_read, run_qwen4_exp_qsa_prefill_token_mixer,\n+)\n+\n+\n+def prompt_fusion_indices(rows: int, branches: int) -> np.ndarray:\n+    \"\"\"Gather normalized embedding/hidden rows into paired predictor branches.\"\"\"\n+    if rows <= 0 or branches <= 0:\n+        raise ValueError(\"prompt rows and branches must be positive\")\n+    indices = np.empty((rows, branches, 2), dtype=np.int64)\n+    indices[:, :, 0] = np.arange(rows, dtype=np.int64)[:, None]\n+    indices[:, :, 1] = rows + np.arange(rows * branches, dtype=np.int64).reshape(rows, branches)\n+    return indices.reshape(-1)\n+\n+\n+class Qwen4ExpMTPPrefillWorkspace:\n+    \"\"\"Project one bounded tile and append its raw KV/index rows.\n+\n+    The owner controls logical commit and cancellation. This operation does not\n+    compute hidden carry or update the owner's prompt cursor. The final row\n+    must still run through the complete scalar predictor.\n+    \"\"\"\n+\n+    def __init__(self, owner, *, rows: int = 64):\n+        self.owner, self.runtime = owner, owner.runtime\n+        self.rows = min(int(rows), owner.max_sequence_length)\n+        if self.rows <= 0:\n+            raise ValueError(\"prompt workspace rows must be positive\")\n+        self.closed = False\n+        self.append_calls = 0\n+        self.buffers = {}\n+        self.gr = self.qsa = self.metadata = None\n+        c = owner.config\n+        n, h, b = self.rows, c.hidden_size, c.residual_branch_count\n+        sizes = {\"tokens\": n * 8, \"hidden\": n * c.residual_width * 2,\n+                 \"embedding\": n * h * 2, \"normalized\": n * (1 + b) * h * 2,\n+                 \"fused\": n * b * 2 * h * 2, \"indices\": n * b * 2 * 8,\n+                 \"residual\": n * c.residual_width * 2}\n+        try:\n+            for name, size in sizes.items():\n+                self.buffers[name] = malloc(size, runtime=self.runtime)\n+            self.gr = Qwen4ExpGRScratch.allocate(rows=n, branches=b, hidden=h,\n+                low_rank=c.residual_low_rank, runtime=self.runtime)\n+            self.qsa = Qwen4ExpQSAScratch.allocate(rows=n, hidden=h,\n+                query_heads=c.attention_head_count, kv_heads=c.attention_kv_head_count,\n+                head_dim=c.attention_key_length, index_heads=c.indexer_head_count,\n+                index_dim=c.indexer_key_length, runtime=self.runtime)\n+            # Cache-only execution uses positions and write spans, never score\n+            # or selection storage. Keep those unused planes minimal.\n+            self.metadata = Qwen4ExpQSAPrefillMetadata.allocate(owner.attention,\n+                rows=n, selection_capacity=1, score_blocks=1)\n+        except BaseException:\n+            self.close()\n+            raise\n+\n+    def append(self, token_ids, shifted_hidden_rows=None, *, target_hidden_buffer=None,\n+               row_offset=0, previous_hidden=None):\n+        if self.closed:\n+            raise RuntimeError(\"MTP prompt workspace is closed\")\n+        owner, c = self.owner, self.owner.config\n+        tokens = np.ascontiguousarray(token_ids, dtype=np.int64)\n+        count = int(tokens.size)\n+        if tokens.ndim != 1 or not 0 < count <= self.rows:\n+            raise ValueError(\"MTP prompt tile must fit its row capacity\")\n+        if target_hidden_buffer is None:\n+            hidden = np.ascontiguousarray(shifted_hidden_rows, dtype=np.float32)\n+            if hidden.shape != (count, c.residual_width):\n+                raise ValueError(\"MTP prompt tile needs one shifted hidden row per token\")\n+            bits = np.ascontiguousarray(float_array_to_bf16_bits(hidden), dtype=np.uint16)\n+        else:\n+            stride = c.residual_width * 2\n+            if row_offset < 0 or target_hidden_buffer.ptr <= 0 or target_hidden_buffer.nbytes < (row_offset + count) * stride:\n+                raise ValueError(\"MTP target hidden buffer does not cover the prompt tile\")\n+            if row_offset == 0:\n+                previous = np.asarray(previous_hidden, dtype=np.float32)\n+                if previous.shape != (c.residual_width,):\n+                    raise ValueError(\"MTP prompt tile needs its preceding hidden row\")\n+                bits = np.ascontiguousarray(float_array_to_bf16_bits(previous), dtype=np.uint16)\n+            else:\n+                bits = None\n+        if np.any(tokens < 0) or np.any(tokens >= c.vocab_size):\n+            raise ValueError(\"MTP prompt token is outside the vocabulary\")\n+        if owner.position != owner.index.count or owner.position + count > owner.max_sequence_length:\n+            raise ValueError(\"MTP prompt tile exceeds the contiguous cache capacity\")\n+        if bits is not None:\n+            copy_host_to_device(self.buffers[\"hidden\"], host_array_ptr(bits), bits.nbytes, runtime=self.runtime)\n+        if target_hidden_buffer is not None:\n+            first = int(row_offset == 0)\n+            if count > first:\n+                self.runtime.memcpy(self.buffers[\"hidden\"].ptr + first * stride,\n+                    target_hidden_buffer.ptr + max(0, row_offset - 1) * stride,\n+                    (count - first) * stride, HipMemcpyKind.DEVICE_TO_DEVICE)\n+        indices = prompt_fusion_indices(count, c.residual_branch_count)\n+        for name, array in ((\"tokens\", tokens), (\"indices\", indices)):\n+            copy_host_to_device(self.buffers[name], host_array_ptr(array), array.nbytes, runtime=self.runtime)\n+        embedding = owner.resident.weight(\"root.token_embedding\")\n+        resolve(backend=owner.backend, layer=\"embedding\", quant=embedding.spec.quant_key,\n+                variant=\"lookup_bf16_out\")(\n+            self.buffers[\"tokens\"].ptr, embedding.allocation(\"raw\").tensor.ptr,\n+            self.buffers[\"embedding\"].ptr, count, c.hidden_size, c.vocab_size, runtime=self.runtime)\n+        normalized = self.buffers[\"normalized\"].ptr\n+        for source, destination, role, width in (\n+            (self.buffers[\"embedding\"].ptr, normalized, \"nextn.enorm\", c.hidden_size),\n+            (self.buffers[\"hidden\"].ptr, normalized + count * c.hidden_size * 2,\n+             \"nextn.hnorm\", c.residual_width),\n+        ):\n+            gguf_rmsnorm_bf16_f32_weight(source,\n+                owner.resident.weight(role).allocation(\"raw\").tensor.ptr, destination,\n+                count, width, c.attention_rms_epsilon, runtime=self.runtime)\n+        qwen4_exp_gather_bf16_lanes(normalized, self.buffers[\"indices\"].ptr,\n+            self.buffers[\"fused\"].ptr, count * c.residual_branch_count * 2,\n+            c.hidden_size, runtime=self.runtime)\n+        launch_gguf_linear_decode_rows(owner.resident.weight(\"nextn.eh_proj\"), self.buffers[\"fused\"].ptr,\n+            self.buffers[\"residual\"].ptr, count * c.residual_branch_count,\n+            2 * c.hidden_size, c.hidden_size, activation_dtype=\"bf16\", output_dtype=\"bf16\",\n+            runtime=self.runtime, reference_rows=c.residual_branch_count)\n+        weights = owner.binding.attention_gr\n+        mixed = run_qwen4_exp_gr_read(self.buffers[\"residual\"].ptr,\n+            weights.norm_weight_ptr, weights.down, weights.up, weights.inject, self.gr,\n+            rows=count, branches=c.residual_branch_count, hidden=c.hidden_size,\n+            low_rank=c.residual_low_rank, runtime=self.runtime, decode_rows=True)\n+        run_qwen4_exp_qsa_prefill_token_mixer(mixed.mixed.ptr, owner.binding.mixer,\n+            attention_state=owner.attention, index_state=owner.index, scratch=self.qsa,\n+            metadata=self.metadata, start_position=owner.position, rows=count,\n+            hidden=c.hidden_size, query_heads=c.attention_head_count,\n+            kv_heads=c.attention_kv_head_count, head_dim=c.attention_key_length,\n+            rotary_dim=c.rope_dimension_count, theta=c.rope_freq_base,\n+            index_heads=c.indexer_head_count, index_dim=c.indexer_key_length,\n+            index_rotary_dim=c.rope_dimension_count, runtime=self.runtime, cache_only=True)\n+        self.append_calls += 1\n+\n+    def close(self):\n+        if self.closed:\n+            return\n+        for resource in (self.metadata, self.qsa, self.gr):\n+            if resource is not None:\n+                resource.close()\n+        for buffer in reversed(tuple(self.buffers.values())):\n+            free(buffer, runtime=self.runtime)\n+        self.closed = True\ndiff --git a/hipengine/runtime/qwen4_exp_runner.py b/hipengine/runtime/qwen4_exp_runner.py\nindex 75910b866..003b31858 100644\n--- a/hipengine/runtime/qwen4_exp_runner.py\n+++ b/hipengine/runtime/qwen4_exp_runner.py\n@@ -212,6 +212,7 @@ from hipengine.runtime.gguf_linear import (\n     wmma_prefill_weight_filter_session,\n     GGUF_OUTPUT_F32,\n     launch_gguf_linear,\n+    launch_gguf_linear_decode_rows,\n     q8_mmq_prefill_session,\n     resolve_q8_mmq_prefill_policy,\n )\n@@ -2768,11 +2769,12 @@ def run_qwen4_exp_qsa_prefill_token_mixer(\n     index_dim: int,\n     index_rotary_dim: int,\n     rope_positions_ptr: int | None = None,\n+    cache_only: bool = False,\n     eps: float = 1e-6,\n     stream: int = 0,\n     runtime: HipRuntime | None = None,\n-) -> DeviceBuffer:\n-    \"\"\"Execute one contiguous QSA prompt chunk over shared paged state.\"\"\"\n+) -> DeviceBuffer | None:\n+    \"\"\"Append a contiguous QSA chunk, optionally omitting unused attention.\"\"\"\n \n     count = int(rows)\n     start = int(start_position)\n@@ -2808,7 +2810,10 @@ def run_qwen4_exp_qsa_prefill_token_mixer(\n         (\"index_q\", scratch.index_q_projected, index_heads * index_dim),\n         (\"index_k\", scratch.index_k_projected, index_dim),\n     ):\n-        launch_gguf_linear(\n+        if cache_only and slot == \"index_q\":\n+            continue\n+        project = launch_gguf_linear_decode_rows if cache_only else launch_gguf_linear\n+        project(\n             weights.projections[slot],\n             mixed_ptr,\n             output.ptr,\n@@ -2854,22 +2859,23 @@ def run_qwen4_exp_qsa_prefill_token_mixer(\n         if rope_positions_ptr is not None\n         else qwen4_exp_qsa_norm_rope_rows_f32\n     )\n-    index_rope_rows(\n-        scratch.index_q_projected.ptr,\n-        weights.index_q_norm_weight_ptr,\n-        metadata.positions.ptr\n-        if rope_positions_ptr is None\n-        else int(rope_positions_ptr),\n-        scratch.index_query.ptr,\n-        count,\n-        index_heads,\n-        index_dim,\n-        index_rotary_dim,\n-        theta,\n-        eps,\n-        stream=stream,\n-        runtime=active_runtime,\n-    )\n+    if not cache_only:\n+        index_rope_rows(\n+            scratch.index_q_projected.ptr,\n+            weights.index_q_norm_weight_ptr,\n+            metadata.positions.ptr\n+            if rope_positions_ptr is None\n+            else int(rope_positions_ptr),\n+            scratch.index_query.ptr,\n+            count,\n+            index_heads,\n+            index_dim,\n+            index_rotary_dim,\n+            theta,\n+            eps,\n+            stream=stream,\n+            runtime=active_runtime,\n+        )\n     index_state.append_rows(\n         scratch.index_k_projected.ptr,\n         start_position=start,\n@@ -2891,6 +2897,8 @@ def run_qwen4_exp_qsa_prefill_token_mixer(\n         stream=stream,\n         runtime=active_runtime,\n     )\n+    if cache_only:\n+        return None\n     dense_rows = max(0, min(count, index_state.dense_equivalent_limit - start))\n     qsa_flash = (\n         dense_rows > 0\n@@ -3471,6 +3479,7 @@ def run_qwen4_exp_gr_read(\n     stream: int = 0,\n     runtime: HipRuntime | None = None,\n     pending_write: tuple[int, int, int, bool] | None = None,\n+    decode_rows: bool = False,\n ) -> Qwen4ExpGRReadDeviceResult:\n     \"\"\"Execute strict grouped GR read using model-neutral resident projections.\n \n@@ -3491,7 +3500,7 @@ def run_qwen4_exp_gr_read(\n     invalidate_f16_mirror()\n     residual_width = branches * hidden\n     if (\n-        _qwen4_exp_gr_decode_fused_enabled(rows, branches, hidden, low_rank)\n+        _qwen4_exp_gr_decode_fused_enabled(1 if decode_rows else rows, branches, hidden, low_rank)\n         and down_weight.spec.quant_key == \"gguf_q8_0\"\n         and up_weight.spec.quant_key == \"gguf_q8_0\"\n         and \"raw\" in down_weight.allocations\n@@ -3544,6 +3553,24 @@ def run_qwen4_exp_gr_read(\n             mixed=scratch.mixed,\n             inject_logits=scratch.inject_logits,\n         )\n+    if decode_rows:\n+        # Preserve the scalar fallback when the row-independent fused kernels\n+        # do not cover the geometry or their rollback switch is selected.\n+        if pending_write is not None:\n+            _qwen4_exp_gr_flush_write(pending_write, residual_ptr, rows, branches,\n+                hidden, stream=stream, runtime=active_runtime)\n+        widths = {\"normalized\": residual_width, \"low_rank\": low_rank,\n+                  \"gate\": residual_width, \"inject_logits\": branches, \"mixed\": hidden}\n+        for row in range(rows):\n+            views = {name: DeviceBuffer(getattr(scratch, name).ptr + row * width * 4, width * 4)\n+                     for name, width in widths.items()}\n+            run_qwen4_exp_gr_read(residual_ptr + row * residual_width * 2,\n+                norm_weight_ptr, down_weight, up_weight, inject_weight,\n+                Qwen4ExpGRScratch(**views, runtime=active_runtime), rows=1,\n+                branches=branches, hidden=hidden, low_rank=low_rank, eps=eps,\n+                stream=stream, runtime=active_runtime)\n+        return Qwen4ExpGRReadDeviceResult(normalized=scratch.normalized,\n+            gate=scratch.gate, mixed=scratch.mixed, inject_logits=scratch.inject_logits)\n     # Without the FP32 normalized plane: the up epilogue and the inject logits\n     # recompute bf16(residual) * inv_rms * weight, the value the norm stores,\n     # so nothing downstream changes. Requires the fused up epilogue and an\n@@ -9370,11 +9397,13 @@ class Qwen4ExpGGUFResidentModelRunner:\n         capture_target_hidden: bool = True,\n         embedding_overrides: Mapping[int, np.ndarray] | None = None,\n         mrope_positions: np.ndarray | None = None,\n+        hidden_seed_consumer=None,\n     ) -> Qwen4ExpTokenResult:\n         options = dict(\n             capture_hidden_seeds=capture_hidden_seeds, capture_logits=capture_logits,\n             capture_target_hidden=capture_target_hidden,\n-            embedding_overrides=embedding_overrides, mrope_positions=mrope_positions)\n+            embedding_overrides=embedding_overrides, mrope_positions=mrope_positions,\n+            hidden_seed_consumer=hidden_seed_consumer)\n         choices = getattr(self, \"_prefill_workspace_selection\", None)\n         if not choices:\n             return self._prefill_chunked_impl(token_ids, **options)\n@@ -9413,6 +9442,7 @@ class Qwen4ExpGGUFResidentModelRunner:\n         mrope_positions: np.ndarray | None = None,\n         reset: bool = True,\n         yield_layers: bool = False,\n+        hidden_seed_consumer=None,\n     ):\n         if not token_ids:\n             raise ValueError(\"Qwen4Exp prefill requires at least one token\")\n@@ -9462,19 +9492,19 @@ class Qwen4ExpGGUFResidentModelRunner:\n                 and int(parts[1]) in q8_wmma_layers\n             )\n \n-        with (\n-            raw_k_prefill_rowbatch_session(selected_raw_rowbatch),\n-            raw_k_prefill_variant_session(selected_raw_variant),\n-            wmma_prefill_session(True if q8_wmma_layers else None),\n-            wmma_prefill_weight_filter_session(\n-                q8_wmma_weight_filter if q8_wmma_layers else None\n-            ),\n-            self._q8_mmq_prefill_context(),\n-            self._wide_f16_activation_context(),\n-        ):\n-            for start in range(0, len(values), self.prefill_chunk_size):\n+        for start in range(0, len(values), self.prefill_chunk_size):\n+            with (\n+                raw_k_prefill_rowbatch_session(selected_raw_rowbatch),\n+                raw_k_prefill_variant_session(selected_raw_variant),\n+                wmma_prefill_session(True if q8_wmma_layers else None),\n+                wmma_prefill_weight_filter_session(\n+                    q8_wmma_weight_filter if q8_wmma_layers else None\n+                ),\n+                self._q8_mmq_prefill_context(),\n+                self._wide_f16_activation_context(),\n+            ):\n                 chunk_kwargs = dict(\n-                    capture_hidden_seeds=capture_hidden_seeds,\n+                    capture_hidden_seeds=capture_hidden_seeds and hidden_seed_consumer is None,\n                     embedding_overrides=embedding_overrides,\n                     mrope_positions=(\n                         None\n@@ -9491,8 +9521,18 @@ class Qwen4ExpGGUFResidentModelRunner:\n                     )\n                 else:\n                     last_residual_ptr, hidden_rows = self._prefill_chunk(chunk, **chunk_kwargs)\n-                if hidden_rows is not None:\n-                    captured.append(hidden_rows)\n+            if hidden_seed_consumer is not None:\n+                # Borrow only until this synchronous callback returns, before\n+                # another chunk can reuse the target scratch. Restore target\n+                # projection contexts first; the predictor has its own policy.\n+                stride = self.config.residual_width * DType.BF16.itemsize\n+                view = DeviceBuffer(last_residual_ptr - (len(chunk) - 1) * stride,\n+                                    len(chunk) * stride)\n+                last_seed = hidden_seed_consumer(chunk, view)\n+                if capture_hidden_seeds:\n+                    captured[:] = [np.asarray(last_seed, dtype=np.float32).reshape(1, -1)]\n+            elif hidden_rows is not None:\n+                captured.append(hidden_rows)\n         cfg = self.config\n         assert self.head_scratch is not None\n         if capture_target_hidden:\n@@ -9582,18 +9622,23 @@ class Qwen4ExpGGUFResidentModelRunner:\n         capture_hidden_seeds: bool = False,\n         capture_logits: bool = True,\n         capture_target_hidden: bool = True,\n+        hidden_seed_consumer=None,\n     ) -> Qwen4ExpTokenResult:\n         \"\"\"Append prompt work to the current request using its prepared workspace.\n \n         The caller owns reset, chunk boundaries and request retirement. Each\n         call restores dispatch contexts before returning to the scheduler; no\n         context manager or temporary workspace binding spans another request.\n+        A hidden consumer synchronously receives each chunk's borrowed BF16\n+        rows and returns its final host seed. With a consumer, hidden capture\n+        returns only that final row rather than downloading the entire prompt.\n         \"\"\"\n         return self._prefill_chunked_impl(\n             token_ids,\n             capture_hidden_seeds=capture_hidden_seeds,\n             capture_logits=capture_logits,\n             capture_target_hidden=capture_target_hidden,\n+            hidden_seed_consumer=hidden_seed_consumer,\n             reset=False,\n         )\n \n@@ -9606,6 +9651,7 @@ class Qwen4ExpGGUFResidentModelRunner:\n         capture_target_hidden: bool = True,\n         embedding_overrides: Mapping[int, np.ndarray] | None = None,\n         mrope_positions: np.ndarray | None = None,\n+        hidden_seed_consumer=None,\n     ) -> Qwen4ExpTokenResult:\n         return self.prefill_chunked(\n             token_ids,\n@@ -9614,6 +9660,7 @@ class Qwen4ExpGGUFResidentModelRunner:\n             capture_target_hidden=capture_target_hidden,\n             embedding_overrides=embedding_overrides,\n             mrope_positions=mrope_positions,\n+            hidden_seed_consumer=hidden_seed_consumer,\n         )\n \n     def generate(\n"
+  }
+}

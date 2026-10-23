@@ -35,7 +35,7 @@ import pathlib
 import re
 from collections import defaultdict
 
-from ..core import REPO_ROOT, Row
+from ..core import REPO_ROOT, Row, in_tree, tree_files
 from . import corpus, register, tokens
 
 ENTRY_DIR = REPO_ROOT / "worklog" / "entries"
@@ -166,7 +166,9 @@ def _relative(path: pathlib.Path) -> str:
 
 @register("worklog")
 def extract() -> tuple[list[Row], dict]:
-    paths = sorted(ENTRY_DIR.glob("*.md")) if ENTRY_DIR.exists() else []
+    #  Committed or staged entries only: another worker's unstaged entry is
+    #  not part of the tree yet, exactly as `scripts/worklog.py check` treats it.
+    paths = [p for p in tree_files(ENTRY_DIR) if p.parent == ENTRY_DIR and p.suffix == ".md"]
     parsed = []
     unparsable = 0
     for path in paths:
@@ -228,7 +230,7 @@ def extract() -> tuple[list[Row], dict]:
             later = sum(1 for stamp, group in timeline.get(worker, []) if stamp > mine[0] and group == mine[1])
 
         named_paths = sorted(set(PATHISH.findall(open_text)))
-        missing = [name for name in named_paths if not (REPO_ROOT / name).exists()]
+        missing = [name for name in named_paths if not in_tree(name)]
         unread = _unread_flags(open_text)
 
         signals: list[str] = []

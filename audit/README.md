@@ -66,14 +66,15 @@ outputs, and mixing them produces a commit nobody can review.
 
 ## Workflow 1 — Gather (refresh the inventory)
 
-`refresh` is the whole workflow. Run it when the tree has moved: after a batch of
-commits, before starting a triage pass, or when `check` says the inventory is
-stale.
+`refresh` is the whole workflow: a full rescan, archival of absent decisions,
+the docs indexes, a budget ratchet and a local report. Every other command
+rescans on its own when the tree has changed, so `refresh` is for a deliberate
+pass, not a chore after each commit.
 
 ```bash
 python3 audit/audit.py refresh
 python3 audit/audit.py check          # the gate; must exit 0
-git add audit/inventory audit/findings audit/triage audit/budget.json audit/runs docs
+git add audit/triage audit/budget.json docs    # only what changed
 ```
 
 The individual steps exist if you need one on its own — `inventory` for the
@@ -94,8 +95,35 @@ What to look at in the output:
   that could match an open row so a conflicting or ambiguous match stays visible.
   `audit.py archive` lists history; archival does not mark work resolved.
 
-Commit the regenerated JSON. It is generated but committed, so the diff between
-two scans is reviewable.
+Rows, findings and reports are not committed. See "Several agents, one tree"
+below.
+
+### Several agents, one tree
+
+The audit is built for a checkout that several agents commit to at different
+rates, and an origin that keeps moving:
+
+- **Rows are a cache, not state.** `audit/inventory/`, `audit/findings/` and
+  `audit/runs/` are git-ignored. Rows are a pure function of the tracked tree,
+  so every command recomputes them when a fingerprint of the tree (and of the
+  extractor code) changes. Another agent's commit or a merge from origin never
+  leaves your copy stale, and nobody regenerates or merges megabytes of JSON.
+- **Only the tracked tree counts.** Scans read git-tracked and staged files.
+  Another agent's untracked scratch, unstaged worklog entry or half-written
+  script cannot move your gate. Stage a new file for the audit to see it.
+- **Decisions merge line by line.** `audit/triage/*.jsonl` holds one decision
+  per line and is union-merged (`.gitattributes`). Two agents triaging
+  different rows never conflict; if both re-decided the same row, the loader
+  keeps the most recently reviewed copy and the next write drops the other.
+- **Decisions are content-anchored.** Finding ids name the file, the enclosing
+  scope and the statement, never a line number, so edits elsewhere in a file do
+  not move them. A decision goes stale only when a fact it rests on changes.
+- **The budget changes only when a ceiling moves**, so concurrent refreshes do
+  not conflict over a date.
+
+What is left to coordinate is real: if your branch and origin both add debt,
+the merged tree can exceed the budget, and whoever runs `check` next triages
+the new rows.
 
 ---
 
@@ -249,16 +277,33 @@ Rebinding preserves the evidence hash and review date; it is not a new review.
 **A decision made against changed facts comes back.** When evidence moves, the
 row is reported `stale` rather than silently standing on a conclusion that may no
 longer hold. `--expires` does the same on a schedule. This is what lets a wrong
-early call be corrected instead of calcifying. The hash ignores line positions,
-file/body length and elapsed age. It retains defaults, referenced reader paths,
-continuation evidence and semantic numbers. Moving a read site within its file
-is not new evidence; adding a reader in another file is. A resolved decision also
-becomes stale if its evidence changes; `resolved` is not a permanent exemption.
+early call be corrected instead of calcifying. A resolved decision also becomes
+stale if its evidence changes; `resolved` is not a permanent exemption.
 
-Changing the hash format is not a review. The one-time conversion record in
-`migrations/evidence-basis-v1.json` names the committed evidence blobs used to
-translate legacy hashes. Hashes without recoverable decision-time evidence stay
-unchanged and require review. The conversion preserves notes and review dates.
+The hash covers facts, not sizes, so `stale` stays worth reading. It retains the
+title, defaults, ledger and docs membership, missing paths, quoted text and every
+signal. It ignores line positions, file/body length, elapsed age, and counts:
+how many sites read a flag, which files mention a kernel, how many later entries
+continue a worklog topic. Those move with ordinary commits, and the signals
+already state the part a decision rests on: whether a runtime caller or a test
+exists, whether branching is spread past six sites, whether anyone continued the
+work. A kernel gaining its fifth test is not new evidence; losing its only
+runtime caller is.
+
+Each decision also keeps a compact copy of that basis (long text as a digest).
+`open --stale` prints what changed since the decision, and `confirm <id> --note
+"..."` re-affirms it against the row as it is now, keeping the tag, disposition
+and severity and appending a dated note. Confirm only after checking that the
+change fits the decision; if it does not, record a new `triage`. An expired
+decision needs a new `--expires` to be confirmed.
+
+Changing the hash format is not a review. Each conversion is recorded under
+`migrations/`: `evidence-basis-v1.json` translated legacy hashes from committed
+evidence blobs, and `evidence-basis-v2.json` lists the decisions that went stale
+only through counts and were rebased, the ones that stay stale with a recorded
+basis, and the ones whose decision-time evidence could not be recovered. Those
+last stay unchanged and require review. Conversions preserve notes and review
+dates.
 
 **Archival is not resolution.** After a complete scan, absent decisions with no
 plausible open match move to `triage/archive/*.jsonl`. Their notes, deadlines,
@@ -301,7 +346,8 @@ python3 audit/audit.py scan                   # run the code checks
 python3 audit/audit.py status                 # where the cleanup stands
 python3 audit/audit.py queue -n 8 -e 3        # fixable work, grouped by cause
 python3 audit/audit.py open <kind> -n 20      # untriaged rows, most signals first
-python3 audit/audit.py open --stale           # decisions whose evidence moved
+python3 audit/audit.py open --stale           # decisions whose evidence moved, and what moved
+python3 audit/audit.py confirm <row-id> --note "..." [--expires YYYY-MM-DD]  # still holds
 python3 audit/audit.py archive                # list archived history
 python3 audit/audit.py archive --apply        # full rescan, then archive absent decisions
 python3 audit/audit.py check --review         # also require no stale or expired decisions
@@ -461,12 +507,13 @@ audit/
     inventory/        the extractors
     checks/           the code checks
     report.py         computed tables and the dated run
-  inventory/*.json    the standing catalogue; generated; committed so diffs are reviewable
-  findings/*.json     what code scanning queued to fix; generated
+  inventory/*.json    the standing catalogue; generated local cache (git-ignored)
+  findings/*.json     what code scanning queued to fix; generated local cache (git-ignored)
   triage/*.jsonl      live decisions; remapping preserves judgments and review dates
   triage/archive/     absent decisions; history only, never automatically rebound
   budget.json         the untriaged ceiling the gate enforces
-  runs/<stamp>/       dated REPORT.md + snapshot.json
+  runs/<stamp>/       dated REPORT.md + snapshot.json; local (git-ignored)
+  migrations/         records of each change to how decisions are hashed
   agents/             assignments for whoever works the audit: triage.md, fix.md
   tests/              contract tests for durability and validation
 ```

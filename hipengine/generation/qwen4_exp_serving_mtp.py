@@ -192,12 +192,26 @@ class Qwen4ExpServingMTP:
                 raise RuntimeError("Flash-Next scheduler has no free draft owner")
             row.draft = self._available_drafts.pop()
             row.draft.reset()
+            begin = getattr(self.generator._speculative_provider, "begin_draft_vocabulary", None)
+            if callable(begin):
+                begin(row.draft)
 
-    def _prefill_mtp(self, row, chunk, result):
-        row.draft.prime_prompt_chunk(
-            chunk, result.hidden_seeds, previous_hidden=row.previous_hidden,
+    def _consume_mtp_hidden(self, row, tokens, buffer):
+        before = getattr(row.draft._prefill_workspace, "append_calls", 0)
+        row.previous_hidden = row.draft.prime_prompt_device_chunk(
+            tokens, buffer, previous_hidden=row.previous_hidden,
             check_cancelled=lambda: self._check_request_live(row),
         )
+        row.mtp_prefill_device_rows += len(tokens)
+        row.mtp_prefill_cache_tiles += getattr(row.draft._prefill_workspace, "append_calls", 0) - before
+        return row.previous_hidden
+
+    def _prefill_mtp(self, row, chunk, result):
+        if row.draft.position != row.prefill_tokens_seen + len(chunk):
+            row.draft.prime_prompt_chunk(
+                chunk, result.hidden_seeds, previous_hidden=row.previous_hidden,
+                check_cancelled=lambda: self._check_request_live(row),
+            )
         self._check_request_live(row)
         row.previous_hidden = result.hidden_seed
         if row.prefill_tokens_seen + len(chunk) == len(row.prompt_ids):

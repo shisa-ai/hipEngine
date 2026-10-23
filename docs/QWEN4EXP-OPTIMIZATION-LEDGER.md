@@ -15,6 +15,15 @@ structural work. The F16/WMMA prefill and row-split GDN ports are already
 shipped. The dated tables and open-state descriptions below are not a substitute
 for that current review or its numerical/task blockers.
 
+**October 22 Q4 decode repair:** UD production and fast now execute the strict
+Q4 gate/up owner their manifests declared; the binder no longer overrides it
+with one-plane DP4A. The historical DE-1/DP-9 throughput and bandwidth rows do
+not describe this default. Other production optimizations stay enabled.
+A two-plane residual-activation prototype was not pursued after its bounded
+long-context screen; no prototype code remains. The complete short composition
+still misses the top-1 floor, so numerical/task closure stays open.
+[Repair evidence](../benchmarks/results/20261022-qwen38fn-q4-decode-repair.json).
+
 **Prefill checkpoint, 2026-10-06:** structural substitutions continue to produce
 measured gains under the production contract. GR-up ordered DPP improves
 canonical prefill +6.57%/+7.15%/+6.98% at p512/p1024/p4096; router ordered

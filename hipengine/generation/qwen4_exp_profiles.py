@@ -150,8 +150,11 @@ PRODUCTION_ARITHMETIC_RECOVERY_FLAGS = (
 _ARITHMETIC_RECOVERY_EVIDENCE = (
     "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json"
 )
+_Q4_DECODE_RECOVERY_EVIDENCE = "benchmarks/results/20261022-qwen38fn-q4-decode-repair.json"
+# Do not restore Q4_DP4A64: the October 20 long-context capture isolates a
+# decode error to that operation. Keep the strict variant already named in
+# the recovery manifest. The clearing gate is recorded in docs/REFACTOR.md.
 PRODUCTION_Q8_QSA_RESTORED_FLAGS = {
-    "Q4_DP4A64": "1",
     "Q8_0_SELECTED_WMMA_DOWN": "1",
     "Q8_DOWN_VARIANT": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
     "QSA_H256_WAVE_PREFILL": "page256",
@@ -829,7 +832,9 @@ def _production_selections(*, recovery: bool = False) -> tuple[VariantSelection,
             selection,
             selected_variant=variant,
             evidence_artifact=(
-                _GR_UP_DPP_ENGINE_EVIDENCE
+                _Q4_DECODE_RECOVERY_EVIDENCE
+                if selection.scope == "decode_c1_calibrated_q4_dp4a_43_layers"
+                else _GR_UP_DPP_ENGINE_EVIDENCE
                 if (
                     selection.layer == "linear+gr_gated_mean"
                     and selection.scope == "qwen4exp_rows_gt256_gr_up"

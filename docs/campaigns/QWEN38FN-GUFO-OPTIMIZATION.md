@@ -4,8 +4,14 @@ owns: The October 20 Flash-Next Gufo gap analysis and implementation campaign fo
 ---
 # Qwen3.8-Flash-Next: close the Gufo performance gap
 
-State: **planned; source review complete, execution not started**.
-Review date: 2026-10-20. hipEngine source: `a4c7ca473`.
+State: **in progress; execution started 2026-10-21**.
+Review date: 2026-10-20. hipEngine review source: `a4c7ca473`.
+Execution baseline starts at `926c1728c`, including the subsequent prefix-cache
+work. `MTP-PREFILL` implementation is complete. Canonical measurements, native
+served phase accounting and the ordered-depth runs are available. At the
+lead's direction, expanded baseline matrices are deferred while implementation
+progresses; their final validation and quality bindings remain on the checklist.
+No packet is closed until its implementation and validation evidence are recorded.
 
 The next work is not another wholesale port of Gufo's prefill kernels. Those
 ports already removed most of the earlier prefill deficit. Prioritize bulk
@@ -241,6 +247,14 @@ mean/max limits after disabling dense-wide on top of other recovery overrides.
 Neither successful batching nor agreement between mixed and batch logits
 resolves those failures.
 
+**October 22 checkpoint:** the Q4 decode binder now selects the strict owner
+already declared in its manifest, while other production routes stay on.
+Public generation confirms that selection; three short-suite repeats and state
+fingerprints agree. The complete short composition still fails its top-1 floor,
+so this packet remains open. A two-plane correction was tested and set aside
+without a production promotion. See the
+[scoped repair evidence](../../benchmarks/results/20261022-qwen38fn-q4-decode-repair.json).
+
 1. Reproduce current c1 and serving controls with identical input tokens,
    chunking and forced continuation. Keep same-chunk strict controls separate
    from chunk-boundary changes. Retain effective, finite BF16-rounding controls.
@@ -263,12 +277,28 @@ of this packet. Do not turn a historical task answer into a prompt-specific fix.
 
 ### MTP-PREFILL — bulk predictor K/V construction and final-row catch-up
 
-**Verified gap:** `hipengine/runtime/qwen4_exp_mtp.py::prime_prompt_chunk`
-loops over prompt tokens and calls the whole predictor layer with
-`run_head=False`. This skips the vocabulary head, but not the predictor's
-attention, feed-forward or repeated host dispatch. Target hidden rows also
-cross the host boundary. Gufo implements K/V-only prompt projection and
-final-tile catch-up instead of computing outputs it will discard.
+**Starting gap at the execution baseline:**
+`hipengine/runtime/qwen4_exp_mtp.py::prime_prompt_chunk` loops over prompt tokens
+and calls the whole predictor layer with `run_head=False`. This skips the
+vocabulary head, but not attention, feed-forward or repeated host dispatch.
+Target hidden rows also cross the host boundary. Gufo implements K/V-only prompt
+projection and final-tile catch-up instead of computing outputs it will discard.
+
+**First increment complete:** scalar prompt priming now omits unused attention
+and feed-forward outputs except on each chunk's final carry row. The existing
+QSA restore cursor also no longer marks uncomputed pooled blocks valid. Five
+real-sidecar cache/carry/full-logit cases and twenty matched public response
+pairs pass; see the [scoped diagnostic artifact](../../benchmarks/results/20261021-qwen38fn-mtp-cache-only.json).
+**Bulk implementation complete:** bounded prompt projections and synchronous
+device hidden handoff run on the default path. Sixteen real-sidecar cases
+cover scalar/workspace/device execution, unfused and matrix-kernel overrides,
+cache state, final carry and complete proposal logits. Cancellation commits
+only checked rows. The short public resource probe and all twenty matched
+HTTP response pairs pass, including a 2K suffix on a 32K cached prefix.
+All five scoped prefill medians improve against the preceding scalar increment;
+see the [bulk implementation artifact](../../benchmarks/results/20261021-qwen38fn-mtp-bulk.json)
+and [worklog](../../worklog/entries/20261021T224428.114242Z-qwen38fn-gufo-qwen38fn-mtp-bulk-5bdac7.md).
+This closes this packet, not the campaign's broader quality or concurrency gates.
 
 Implement a batched prompt path that consumes the shifted target-hidden
 sequence, writes every required predictor KV/index row, and computes only the
@@ -463,8 +493,9 @@ replacement. Freeze prompts, metrics and controller policy before timing.
 | State/shape boundaries | 997/1023/1025/2051/2052/4093/12287 tokens; tail chunks; widths 1–8 and dynamic admit/cancel/refill; each rejection depth | Behavior on both sides of dispatch/chunk/sparse thresholds and unrelated lengths |
 | Long context and lifecycle | Numerical controls plus retrieval; 32K/64K/128K serving; cold/warm PLE, cancellation, reuse and memory pressure | Quality, capacity and state stability rather than throughput alone |
 
-Retain an exact publication replay separately from the repeated comparison:
-Gufo's prepared-concurrency configuration specifies one warmup and one measured
+Retain an exact publication replay separately from the repeated comparison.
+Gufo's prepared-concurrency path prepares the cohort before every round; this
+replaces its configured decode warmup. The publication uses one measured
 repetition. The campaign's decision run uses at least three measured repetitions
 per arm; do not relabel that extension as the original single-sample protocol.
 The ordered depth replay retains its own warmup and prefix-preparation history.
@@ -530,9 +561,75 @@ run_hip scripts/qwen4exp_long_context_gate.py --help
 Check [THEROCK](../reference/THEROCK.md) if the installed SDK differs. These
 commands isolate hipEngine's ROCm libraries; launch the Gufo comparator with
 its own recorded environment, not through `run_hip` with inherited TheRock
-libraries. These are existing entry points, **not an already-implemented Gufo
-HTTP replay command**. `BASE` must add and document the missing prepared/depth
-adapter, compact AR arm and repeated/counterbalanced MTP protocol. Existing
+libraries. Canonical and in-process compact AR controls are implemented.
+The HTTP economics harness supports explicit AR/all-MTP/mixed arms, repeated
+counterbalanced measurements and hipEngine preparation through `--prepared`.
+It renders each chat prompt once, prefills its exact token sequence minus the
+final token before the timed cohort, then requires that checkpoint to be reused.
+This is a declared one-token-suffix adaptation, not Gufo's identical-prompt
+preparation. A missing checkpoint invalidates the row rather than silently
+pricing full prefill as prepared decode. Native phase metrics distinguish
+output-count decode rates, transition-count rates and complete cohort wall.
+
+For a running hipEngine server, set `PROMPTS` to frozen JSONL rows with `id`,
+`category`, and either `messages` or `prompt_token_ids`. Use the pp2048 prompt
+set for the prepared matrix, not the shorter task battery. Set `SERVER_MANIFEST`
+to the captured server command, source, model and host identities; the harness
+records its own source separately.
+
+```bash
+run_hip scripts/qwen4exp_http_mtp_economics.py \
+  --url http://127.0.0.1:18400 --model qwen38fn-capon \
+  --prompts "$PROMPTS" --server-manifest "$SERVER_MANIFEST" \
+  --prepared --width 8 --max-tokens 128 --arms ar,mtp,mixed \
+  --repetitions 3 --output "$OUT/prepared-http.json"
+```
+
+`scripts/qwen4exp_gufo_http_replay.py` calls the pinned Gufo checkout's prompt,
+calibration, prefix-reply and adaptive retry implementation without editing that
+checkout. It journals every request and prefix reply. It first checks allocation
+with a short request, then starts a fresh server to preserve the ordered replay's
+history. Set `GUFO_SOURCE`, `GUFO_BIN` and `GUFO_SIDECAR` to the reviewed source,
+its built executable and the verified shared sidecar. Run in that binary's
+isolated library environment, not through `run_hip`:
+
+```bash
+python3 scripts/qwen4exp_gufo_http_replay.py \
+  --source-root "$GUFO_SOURCE" --binary "$GUFO_BIN" \
+  --model "$MODEL_FIRST_SHARD" --sidecar "$GUFO_SIDECAR" \
+  --output-dir "$OUT/gufo-published-depth" --repetitions 1
+```
+
+`MODEL_FIRST_SHARD` names the target's first GGUF shard. The default replay
+retains all eight ordered depths, capacity 133760, all three workloads and
+native count/timing checks. `--probe-only` stops after the allocation checks;
+`--depths` subsets and repeat extensions are labelled separately. The output is
+diagnostic until its per-workload G0–G4 characterization is complete; unavailable
+native output IDs are not replaced by text hashes.
+
+`scripts/qwen4exp_hip_http_replay.py` uses the same pinned prompt, calibration,
+prefix-reply and retry recipe through hipEngine's public endpoints. It adds an
+untimed checkpoint of the common token prefix between the rendered history and
+continuation. The measured response must report exactly that cached count.
+This is a prompt-checkpoint adaptation, not Gufo's live reply-state reuse.
+Natural EOS is retained; prefix replies may be short, but measured responses
+must contain all 128 native tokens.
+
+Start a fresh hipEngine server for each `--arm` (`ar`, `mtp-prose`, or
+`mtp-repetition`), with context capacity 133760 and one active request slot.
+The MTP arms need the shared sidecar/provider configuration. Set `MODEL_ALIAS`
+to its served name and capture its command and identities in `SERVER_MANIFEST`.
+Run the Tier-1 allocation probe before the full depth workload.
+
+```bash
+run_hip scripts/qwen4exp_hip_http_replay.py \
+  --source-root "$GUFO_SOURCE" --url http://127.0.0.1:18400 \
+  --model "$MODEL_ALIAS" --server-manifest "$SERVER_MANIFEST" \
+  --arm ar --output-dir "$OUT/hipengine-ar-depth"
+```
+
+The hipEngine ordered-depth runs are complete. `BASE` still needs prepared
+cross-engine replay and quality-column bindings. Existing
 `qwen38fn_mixed_economics.py` measures all-AR and one-MTP-plus-peers, not the
 all-MTP prepared table.
 
@@ -589,7 +686,7 @@ because they fall short of final parity.
   timing accounting, model/sidecar identities and route witnesses.
 - [ ] `QUALITY`: inherited numerical and candidate-specific task failures
   resolved under the unchanged applicable gates.
-- [ ] `MTP-PREFILL`: bulk prompt/catch-up implementation, boundary tests and
+- [x] `MTP-PREFILL`: bulk prompt/catch-up implementation, boundary tests and
   complete HTTP prefill measurement including predictor work.
 - [ ] `VERIFY`: persistent transactional state, compact result/handoff,
   few-row kernel and graph decisions supported by full-cycle evidence.
@@ -616,8 +713,9 @@ staged version of this campaign. Its runtime changes were not authored or
 validated by this review. Refresh source and ownership before execution, and
 reuse that prefix-cache implementation when building the prepared/depth harness.
 
-No GPU experiment was run for this planning review. It adds no benchmark row,
-changes no product README, and makes no new measured speedup claim.
+The October 20 planning review ran no GPU experiment and added no benchmark row.
+Execution began October 21; its measurements and implementation outcomes will be
+linked from the checklist. The review itself makes no new measured speedup claim.
 
 [gufo-tree]: https://github.com/gufo-org/gufo/tree/f020bd3a037d58aa42138ca11fa895524e43cdd6
 [gufo-executor]: https://github.com/gufo-org/gufo/blob/f020bd3a037d58aa42138ca11fa895524e43cdd6/src/models/qwen38_flash_next/kernels/rocm/executor.cpp

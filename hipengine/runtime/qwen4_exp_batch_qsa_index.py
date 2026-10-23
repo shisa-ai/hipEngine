@@ -178,6 +178,39 @@ class Qwen4ExpBatchQsaIndexActiveRows:
 
 
 @dataclass(frozen=True)
+class Qwen4ExpBatchQsaDeviceSelection:
+    """One all-sparse row set's selection, still on the index owner's device.
+
+    ``positions_ptr`` and ``counts_ptr`` are the owner's own
+    ``selected_positions`` and ``selected_counts`` buffers, so a rows attention
+    kernel can read the selection with no host round-trip: this is the same
+    device-resident form the c1 owner hands its attention kernel.
+
+    Row ``r``'s selection is ``positions_ptr[r * stride]`` for the first
+    ``counts[r]`` entries, where ``stride`` is the owner's ``output_stride`` --
+    the stride the selection kernel wrote. It is deliberately not the caller's
+    selection-scratch stride, which only has to *cover* it.
+
+    ``slot_ids`` is the row order the buffers were written in, so a caller can
+    refuse a handle whose rows it did not prepare in that order.
+    """
+
+    counts_ptr: int
+    positions_ptr: int
+    rows: int
+    stride: int
+    slot_ids: tuple[int, ...]
+
+    def row_ptr(self, row: int) -> int:
+        """Device address of selection ``row``'s first position."""
+
+        parsed = operator.index(row)
+        if not 0 <= parsed < self.rows:
+            raise IndexError(f"row {parsed} is outside [0, {self.rows})")
+        return self.positions_ptr + parsed * self.stride * DType.INT64.itemsize
+
+
+@dataclass(frozen=True)
 class Qwen4ExpBatchQsaIndexRowPlan:
     """One index owner's validated active row set, before anything is published.
 
@@ -658,9 +691,68 @@ class Qwen4ExpBatchQsaIndexState:
         expects, matching the c1 owner exactly. The device buffers stay valid for
         the sparse attention kernel via ``selected_positions_row_ptr``.
 
+        This is the host-metadata form. It drains the caller's stream and copies
+        both buffers back, which a caller that only stages them for a mixed row
+        set needs; an all-sparse row set uses
+        :meth:`select_active_device` instead and keeps the selection on device.
+
         A row whose complete-block count is within the budget is rejected: the
         sparse path is only defined past the dense equivalence bound, and
         ``partition_rows`` is how a caller separates the two groups.
+        """
+
+        selection = self.select_active_device(
+            prepared_queries_ptr,
+            key_norm_weight_ptr=key_norm_weight_ptr,
+            rotary_dim=rotary_dim,
+            theta=theta,
+            eps=eps,
+            stream=stream,
+        )
+        # The readback needs the selection kernels finished; the device form
+        # deliberately does not drain, because a same-stream consumer is ordered
+        # behind them already.
+        if stream:
+            self.runtime.stream_synchronize(stream)
+        rows = selection.rows
+        copy_device_to_host(
+            host_array_ptr(self.selected_counts_host[:rows]),
+            self.selected_counts,
+            rows * DType.INT32.itemsize,
+            runtime=self.runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(self.selected_positions_host[:rows]),
+            self.selected_positions,
+            rows * self.output_stride * DType.INT64.itemsize,
+            runtime=self.runtime,
+        )
+        counts = self.selected_counts_host[:rows].copy()
+        widest = int(counts.max())
+        return counts, self.selected_positions_host[:rows, :widest].copy()
+
+    def select_active_device(
+        self,
+        prepared_queries_ptr: int,
+        *,
+        key_norm_weight_ptr: int,
+        rotary_dim: int,
+        theta: float,
+        eps: float = 1e-6,
+        stream: int = 0,
+    ) -> Qwen4ExpBatchQsaDeviceSelection:
+        """Score and select for every active row, leaving the result on device.
+
+        Same admission, pooling, scoring, and selection dispatch sequence as
+        :meth:`select_active`, which is now this call plus its readback. Nothing
+        is copied to the host and the caller's stream is not drained: the
+        selection kernels are enqueued on ``stream``, so a consumer launched on
+        that stream afterwards reads them in order.
+
+        The handle borrows the owner's buffers. Consume it on the same stream
+        before another selection overwrites them, and before closing the owner.
+        ``slot_ids`` records the row order used by this call; it does not make
+        the handle a snapshot or transfer ownership.
         """
 
         self._require_open()
@@ -767,24 +859,13 @@ class Qwen4ExpBatchQsaIndexState:
             stream=stream,
             runtime=self.runtime,
         )
-        if stream:
-            self.runtime.stream_synchronize(stream)
-        rows = active.rows
-        copy_device_to_host(
-            host_array_ptr(self.selected_counts_host[:rows]),
-            self.selected_counts,
-            rows * DType.INT32.itemsize,
-            runtime=self.runtime,
+        return Qwen4ExpBatchQsaDeviceSelection(
+            counts_ptr=self.selected_counts.ptr,
+            positions_ptr=self.selected_positions.ptr,
+            rows=active.rows,
+            stride=self.output_stride,
+            slot_ids=active.slot_ids,
         )
-        copy_device_to_host(
-            host_array_ptr(self.selected_positions_host[:rows]),
-            self.selected_positions,
-            rows * self.output_stride * DType.INT64.itemsize,
-            runtime=self.runtime,
-        )
-        counts = self.selected_counts_host[:rows].copy()
-        widest = int(counts.max())
-        return counts, self.selected_positions_host[:rows, :widest].copy()
 
     def begin_rollback(self) -> Qwen4ExpBatchQsaIndexRollback:
         """Issue the single rollback token for the next speculative step.

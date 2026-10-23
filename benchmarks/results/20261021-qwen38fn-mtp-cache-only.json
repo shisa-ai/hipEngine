@@ -1,0 +1,1145 @@
+{
+  "schema": 1,
+  "created_at": "2026-10-21T22:28:28.918270+00:00",
+  "status": "implementation_validated",
+  "performance_claim": false,
+  "scope": "first scalar cache-only MTP-PREFILL increment; bulk projection remains unfinished",
+  "limitations": [
+    "Five scoped public cases, not the full MTP suite plus heldouts or a new topline.",
+    "Measures backend prefill wall including target and draft catch-up, not GPU intervals.",
+    "Eight output tokens check route and before/after equality; no decode or MTP-versus-AR speedup claim.",
+    "Baseline runs first, candidate second; host policies are stable but temperatures differ."
+  ],
+  "hardware": {
+    "system": "Framework Desktop",
+    "gpu": "Radeon 8060S",
+    "architecture": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668"
+  },
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "sidecar": "Q8_0",
+  "kv": "BF16",
+  "execution_profile": "production",
+  "models": {
+    "created_at": "2026-10-21T18:33:17.166428+00:00",
+    "files": [
+      {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+        "size_bytes": 10946624,
+        "sha256": "4448186216b3af4cc558bbce2c3213f01608f8f8b2e5267a9767971dd3ec8082"
+      },
+      {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+        "size_bytes": 49859583136,
+        "sha256": "3f342f1c1580473f1ee94ddd5b28206e8c07a70fa1a366f59d1d6c922919a6c9"
+      },
+      {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00003-of-00004.gguf",
+        "size_bytes": 49376141504,
+        "sha256": "56758f40269cad5cd9b0d3d6fbae0f40f6d5be6de49e4ab392dbe83157d9cbd3"
+      },
+      {
+        "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00004-of-00004.gguf",
+        "size_bytes": 12087983520,
+        "sha256": "753bda48b98ba4f1636134a90a967de1b2d3908a236c026e464777342e53510a"
+      },
+      {
+        "path": "/home/lhl/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+        "size_bytes": 4137429088,
+        "sha256": "9db03a687670608286e99b563fcc86d0ee76c8dd863f64b2afc0b54eb0eb975d"
+      }
+    ]
+  },
+  "protocol": "public raw-token greedy MTP; 8 output tokens; one warmup then three repeats; backend prefill wall includes draft priming",
+  "warmups_per_case": 1,
+  "measured_repetitions": 3,
+  "source": {
+    "baseline": {
+      "path": "/home/lhl/hipEngine",
+      "head": "3d78d45494279e8b1d18305a44c655f56a3478b5",
+      "runtime_diff": "",
+      "runtime_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "candidate": {
+      "path": "/tmp/qwen38fn-gufo-20261021/hipengine-mtp-prefill",
+      "head": "3d78d45494279e8b1d18305a44c655f56a3478b5",
+      "runtime_diff": "diff --git a/hipengine/runtime/qwen4_exp_mtp.py b/hipengine/runtime/qwen4_exp_mtp.py\nindex 558687a6a..5af97a7fd 100644\n--- a/hipengine/runtime/qwen4_exp_mtp.py\n+++ b/hipengine/runtime/qwen4_exp_mtp.py\n@@ -452,11 +452,18 @@ class Qwen4ExpGGUFMTPDraftRunner:\n         token_id_resident: bool = False,\n         hidden_seed_resident: bool = False,\n         run_head: bool = True,\n+        cache_only: bool = False,\n     ) -> Qwen4ExpMTPDraftResult:\n-        \"\"\"One draft position. ``run_head=False`` only advances the draft's\n-        KV and hidden state (prompt priming, accepted-token catch-up) and\n-        skips the vocabulary head, whose output that caller discards.\"\"\"\n+        \"\"\"Advance one draft position, optionally omitting unused output work.\n+\n+        ``run_head=False`` skips vocabulary scoring but preserves hidden carry.\n+        ``cache_only=True`` also skips attention and MoE output; its caller must\n+        supply an authoritative hidden seed for the next row. Prompt priming\n+        uses this for all but each chunk's final row.\n+        \"\"\"\n         self._require_open()\n+        if cache_only and run_head:\n+            raise ValueError(\"cache-only draft work cannot run the vocabulary head\")\n         if self.position >= self.max_sequence_length:\n             raise ValueError(\"Qwen4Exp MTP draft capacity exceeded\")\n         stages: dict[str, float] = {}\n@@ -496,8 +503,13 @@ class Qwen4ExpGGUFMTPDraftRunner:\n             experts=self.config.expert_count,\n             top_k=self.config.expert_used_count,\n             runtime=self.runtime,\n+            cache_only=cache_only,\n         )\n-        finish_stage(\"draft_layer\", started)\n+        finish_stage(\"draft_cache_only\" if cache_only else \"draft_layer\", started)\n+        if cache_only:\n+            self.last_forward_stage_timings_ms = stages\n+            self.position += 1\n+            return Qwen4ExpMTPDraftResult(token_id=-1, logits=None, hidden_seed=None)\n         self.runtime.memcpy(\n             self.last_hidden.ptr,\n             output.ptr,\n@@ -643,7 +655,10 @@ class Qwen4ExpGGUFMTPDraftRunner:\n         for row, token in enumerate(tokens):\n             if check_cancelled is not None:\n                 check_cancelled()\n-            self.forward(token, previous if row == 0 else hidden[row - 1], run_head=False)\n+            self.forward(\n+                token, previous if row == 0 else hidden[row - 1],\n+                run_head=False, cache_only=row + 1 < len(tokens),\n+            )\n \n     def propose_chain(\n         self,\ndiff --git a/hipengine/runtime/qwen4_exp_runner.py b/hipengine/runtime/qwen4_exp_runner.py\nindex 9559fd852..75910b866 100644\n--- a/hipengine/runtime/qwen4_exp_runner.py\n+++ b/hipengine/runtime/qwen4_exp_runner.py\n@@ -1567,7 +1567,10 @@ class Qwen4ExpQSAIndexDeviceState:\n         if restored < 0 or restored > self.capacity:\n             raise ValueError(\"QSA index restore count exceeds capacity\")\n         self.count = restored\n-        self.pooled_count = restored // self.compression_ratio\n+        # Dense rows append raw keys without preparing pooled blocks. Restoring\n+        # a cursor cannot make those uncomputed blocks valid; sparse selection\n+        # prepares the missing suffix when it is first needed.\n+        self.pooled_count = min(self.pooled_count, restored // self.compression_ratio)\n \n     def reset(self) -> None:\n         self.restore_count(0)\n@@ -2445,11 +2448,12 @@ def run_qwen4_exp_dense_qsa_token_mixer(\n     position_prepared: bool = False,\n     device_position_owned: bool = False,\n     attention_context_limit: int | None = None,\n+    cache_only: bool = False,\n     eps: float = 1e-6,\n     stream: int = 0,\n     runtime: HipRuntime | None = None,\n-) -> DeviceBuffer:\n-    \"\"\"Execute dense-equivalent QSA decode below the sparse-selection budget.\"\"\"\n+) -> DeviceBuffer | None:\n+    \"\"\"Append exact scalar cache state; optionally omit the unused attention output.\"\"\"\n \n     if rows != 1:\n         raise ValueError(\"strict dense QSA decode currently requires rows == 1\")\n@@ -2516,7 +2520,7 @@ def run_qwen4_exp_dense_qsa_token_mixer(\n             index_state.append(\n                 scratch.index_k_projected.ptr, position=position, stream=stream\n             )\n-        if not device_position_owned and index_state.count > index_state.dense_equivalent_limit:\n+        if not cache_only and not device_position_owned and index_state.count > index_state.dense_equivalent_limit:\n             launch_gguf_linear(\n                 weights.projections[\"index_q\"], mixed_ptr, scratch.index_q_projected.ptr,\n                 rows, hidden, index_heads * index_dim,\n@@ -2590,6 +2594,8 @@ def run_qwen4_exp_dense_qsa_token_mixer(\n         stream=stream,\n         runtime=active_runtime,\n     )\n+    if cache_only:\n+        return None\n     if selected_positions is None:\n         qwen35_paged_full_attn_decode_context_bf16_spans(\n             scratch.query.ptr,\n@@ -6577,8 +6583,9 @@ def run_qwen4_exp_dense_qsa_layer(\n     runtime: HipRuntime | None = None,\n     moe_graph_cache: MoeGraphCache | None = None,\n     moe_graph_key: object | None = None,\n-) -> DeviceBuffer:\n-    \"\"\"Execute one complete dense-equivalent Qwen4Exp QSA+MoE layer.\"\"\"\n+    cache_only: bool = False,\n+) -> DeviceBuffer | None:\n+    \"\"\"Execute a QSA+MoE layer, or only its independent cache-state writes.\"\"\"\n \n     if scratch.closed:\n         raise RuntimeError(\"Qwen4Exp QSA layer scratch is closed\")\n@@ -6609,8 +6616,11 @@ def run_qwen4_exp_dense_qsa_layer(\n         position_prepared=position_prepared,\n         device_position_owned=device_position_owned,\n         attention_context_limit=attention_context_limit,\n+        cache_only=cache_only,\n         stream=stream, runtime=active_runtime,\n     )\n+    if cache_only:\n+        return None\n     pending_write = _qwen4_exp_gr_pending_write(\n         rows, residual_ptr, mixer.ptr, attention_read.inject_logits.ptr)\n     if pending_write is None:\n",
+      "runtime_diff_sha256": "55ad85ba8f16c7c6c58b1b51a5ddedc6745fd06288841e48e5b90f26ef70f874"
+    }
+  },
+  "host": {
+    "baseline": {
+      "host_before": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "gpu_temperature_millidegrees_c": {
+          "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 36000
+        }
+      },
+      "host_after": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "gpu_temperature_millidegrees_c": {
+          "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 51000
+        }
+      }
+    },
+    "candidate": {
+      "host_before": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "gpu_temperature_millidegrees_c": {
+          "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 51000
+        }
+      },
+      "host_after": {
+        "hostname": "gfx1151",
+        "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+        "kernel": "7.2.9-2-cachyos",
+        "tuned_active": "Current active profile: accelerator-performance",
+        "cpu_governors": {
+          "performance": 32
+        },
+        "gpu_clock_policies": {
+          "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+        },
+        "rocm_platform": "10.0.0",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "gpu_temperature_millidegrees_c": {
+          "/sys/class/drm/card1/device/hwmon/hwmon3/temp1_input": 53000
+        }
+      }
+    }
+  },
+  "launch_environment": {
+    "HOME": "/home/lhl",
+    "USER": "lhl",
+    "PATH": "/home/lhl/miniforge3/envs/therock/bin:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin:/usr/local/bin:/usr/bin:/bin",
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries/lib",
+    "HIP_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+    "ROCM_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel",
+    "HIP_LIB_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib",
+    "HIP_INCLUDE_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/include",
+    "HIP_DEVICE_LIB_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/amdgcn/bitcode",
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "GPU_MAX_HW_QUEUES": "2",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/qwen38fn-gufo-20261021/hipcc-version.txt",
+    "PYTHONPATH": "/home/lhl/hipEngine",
+    "LC_CTYPE": "C.UTF-8"
+  },
+  "server_commands": {
+    "baseline": [
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python",
+          "-m",
+          "hipengine.server",
+          "--model",
+          "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+          "--backend",
+          "hip_gfx1151",
+          "--quant",
+          "gguf_ud_q4_k_xl",
+          "--execution-profile",
+          "production",
+          "--served-model-name",
+          "prime",
+          "--max-context-tokens",
+          "8192",
+          "--max-active-requests",
+          "1",
+          "--speculative-provider",
+          "qwen4_exp_mtp",
+          "--draft-model",
+          "/home/lhl/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+          "--speculative-candidate-budget",
+          "3",
+          "--prefix-cache",
+          "off",
+          "--port",
+          "18082"
+        ],
+        "cache": "off",
+        "cwd": "/home/lhl/hipEngine",
+        "returncode": -15,
+        "log_sha256": "e84b1928559dc7bae80a842e539a63a2e500eda67a03737dda2b2cf3b864f58e"
+      },
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python",
+          "-m",
+          "hipengine.server",
+          "--model",
+          "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+          "--backend",
+          "hip_gfx1151",
+          "--quant",
+          "gguf_ud_q4_k_xl",
+          "--execution-profile",
+          "production",
+          "--served-model-name",
+          "prime",
+          "--max-context-tokens",
+          "40960",
+          "--max-active-requests",
+          "1",
+          "--speculative-provider",
+          "qwen4_exp_mtp",
+          "--draft-model",
+          "/home/lhl/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+          "--speculative-candidate-budget",
+          "3",
+          "--prefix-cache",
+          "radix",
+          "--port",
+          "18082"
+        ],
+        "cache": "radix",
+        "cwd": "/home/lhl/hipEngine",
+        "returncode": -15,
+        "log_sha256": "be0e5b22794a19e1ac5fa598d8f1c2e70666d89102b216d459d0870431247503"
+      }
+    ],
+    "candidate": [
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python",
+          "-m",
+          "hipengine.server",
+          "--model",
+          "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+          "--backend",
+          "hip_gfx1151",
+          "--quant",
+          "gguf_ud_q4_k_xl",
+          "--execution-profile",
+          "production",
+          "--served-model-name",
+          "prime",
+          "--max-context-tokens",
+          "8192",
+          "--max-active-requests",
+          "1",
+          "--speculative-provider",
+          "qwen4_exp_mtp",
+          "--draft-model",
+          "/home/lhl/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+          "--speculative-candidate-budget",
+          "3",
+          "--prefix-cache",
+          "off",
+          "--port",
+          "18082"
+        ],
+        "cache": "off",
+        "cwd": "/tmp/qwen38fn-gufo-20261021/hipengine-mtp-prefill",
+        "returncode": -15,
+        "log_sha256": "2b3907d959ef8ffaf97a7c0f54da9e25a085dd1931a3737535f5e6317e65ed00"
+      },
+      {
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python",
+          "-m",
+          "hipengine.server",
+          "--model",
+          "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+          "--backend",
+          "hip_gfx1151",
+          "--quant",
+          "gguf_ud_q4_k_xl",
+          "--execution-profile",
+          "production",
+          "--served-model-name",
+          "prime",
+          "--max-context-tokens",
+          "40960",
+          "--max-active-requests",
+          "1",
+          "--speculative-provider",
+          "qwen4_exp_mtp",
+          "--draft-model",
+          "/home/lhl/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+          "--speculative-candidate-budget",
+          "3",
+          "--prefix-cache",
+          "radix",
+          "--port",
+          "18082"
+        ],
+        "cache": "radix",
+        "cwd": "/tmp/qwen38fn-gufo-20261021/hipengine-mtp-prefill",
+        "returncode": -15,
+        "log_sha256": "48e6af680955edd2dc80d2b10310685759fc210cef8a035050a67272cc6f5ee6"
+      }
+    ]
+  },
+  "fixture": {
+    "path": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+    "sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1"
+  },
+  "driver": {
+    "sha256": "b668d8669ec776b5850008dc91ea05c51513ca152731ccceb80616c73dc2dd62",
+    "source": "\"\"\"Matched public MTP-prefill checks for the cache-only change, not a scoreboard.\"\"\"\nimport argparse\nimport hashlib\nimport json\nimport os\nfrom pathlib import Path\nimport subprocess\nimport sys\n\nimport httpx\nfrom scripts.qwen4exp_canonical_ar_bench import _wait_for_health, _terminate\nfrom scripts.qwen4exp_http_mtp_economics import _one, route_matches_request\nfrom scripts.qwen4exp_gufo_http_replay import host_state\n\nbase = Path('/tmp/qwen38fn-gufo-20261021')\nparser = argparse.ArgumentParser()\nparser.add_argument('--engine-root', type=Path, required=True)\nparser.add_argument('--output', type=Path, required=True)\nargs = parser.parse_args()\nif args.output.exists():\n    raise ValueError('use a new output path; preserve earlier attempts')\nfixture = Path('benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json')\ncases = json.loads(fixture.read_text())['cases']\noriginal = json.loads((base / 'served-request-phases.json').read_text())['command']\nroot = args.engine_root.resolve()\nenvironment = dict(os.environ, PYTHONPATH=str(root))\n\ndef identity():\n    head = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD']).decode().strip()\n    diff = subprocess.check_output(['git', '-C', str(root), 'diff', 'HEAD', '--', 'hipengine'])\n    return {'path': str(root), 'head': head, 'runtime_diff': diff.decode(),\n            'runtime_diff_sha256': hashlib.sha256(diff).hexdigest()}\n\nresult = {'schema': 1, 'status': 'running', 'performance_claim': False,\n    'source_before': identity(), 'host_before': host_state(),\n    'models': json.loads((base / 'model-identities-full.json').read_text()),\n    'fixture_sha256': hashlib.sha256(fixture.read_bytes()).hexdigest(),\n    'driver_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),\n    'protocol': 'public raw-token greedy MTP; 8 output tokens; one warmup then three repeats; backend prefill wall includes draft priming',\n    'launch_environment': environment, 'servers': [], 'rows': []}\n\ndef save():\n    args.output.write_text(json.dumps(result, indent=2) + '\\n')\n\ntry:\n    for cache, capacity in [('off', 8192), ('radix', 40960)]:\n        command = list(original)\n        for flag, value in [('--max-context-tokens', str(capacity)), ('--max-active-requests', '1'),\n                            ('--prefix-cache', cache), ('--served-model-name', 'prime')]:\n            command[command.index(flag) + 1] = value\n        server_record = {'command': command, 'cache': cache, 'cwd': str(root)}\n        result['servers'].append(server_record)\n        log_path = args.output.with_suffix(f'.{cache}.server.log')\n        with log_path.open('wb') as log:\n            process = subprocess.Popen(command, cwd=root, env=environment, stdout=log, stderr=subprocess.STDOUT)\n            try:\n                _wait_for_health('127.0.0.1', 18082, 600, process=process)\n                with httpx.Client(timeout=1800) as client:\n                    if cache == 'off':\n                        workloads = []\n                        for category, count in [('code', 997), ('general_en', 1025), ('general_ja', 2052), ('mixed_ja_en', 4093)]:\n                            source = next(c for c in cases if c['category'] == category and c['prompt_tokens'] == 4096)\n                            workloads.append((category, source['prompt_token_ids'][:count], 0))\n                    else:\n                        source = next(c for c in cases if c['category'] == 'general_en' and c['prompt_tokens'] == 4096)\n                        prefix = source['prompt_token_ids'] * 8\n                        assert len(prefix) == 32768\n                        prepared = _one(client, 'http://127.0.0.1:18082', 'prime',\n                            {'id': 'cached-prefix', 'prompt_token_ids': prefix}, True, 1)\n                        assert route_matches_request(prepared)\n                        server_record['preparation'] = prepared\n                        workloads = [('cached_32768_suffix_2048', prefix + source['prompt_token_ids'][:2048], 32768)]\n                    for name, tokens, cached in workloads:\n                        for repetition in range(-1, 3):\n                            ids = list(tokens)\n                            if cached:\n                                # Separate suffix branches force exactly the declared checkpoint,\n                                # not an accidental hit in an earlier measured continuation.\n                                ids[cached] = 1000 + repetition\n                            case = _one(client, 'http://127.0.0.1:18082', 'prime',\n                                {'id': name, 'prompt_token_ids': ids}, True, 8, ignore_eos=True)\n                            assert route_matches_request(case), case\n                            counts = case['phase_metrics']['counts']\n                            assert counts['prompt_tokens'] == len(ids) and counts['cached_prompt_tokens'] == cached\n                            assert counts['new_prompt_tokens'] == len(ids) - cached\n                            assert counts['generated_tokens'] == 8 and counts['decode_transitions'] == 7\n                            result['rows'].append({'case': name, 'repetition': repetition,\n                                'prompt_sha256': hashlib.sha256(json.dumps(ids).encode()).hexdigest(), 'result': case})\n                            save()\n                        print('PUBLIC_PRIME_CASE_PASS', root.name, name, flush=True)\n            finally:\n                _terminate(process)\n                server_record['returncode'] = process.returncode\n                server_record['log_sha256'] = hashlib.sha256(log_path.read_bytes()).hexdigest()\n                save()\n    result['source_after'] = identity()\n    assert result['source_before'] == result['source_after']\n    result['status'] = 'passed'\n    print('PUBLIC_PRIME_CHECK_PASS', args.output, flush=True)\nexcept BaseException as exc:\n    result['status'], result['error'] = 'failed', repr(exc)\n    raise\nfinally:\n    result['host_after'] = host_state()\n    save()\n",
+    "commands": [
+      "bash /tmp/qwen38fn-gufo-20261021/run-hip.sh /tmp/qwen38fn-gufo-20261021/check-public-mtp-prime.py --engine-root /home/lhl/hipEngine --output /tmp/qwen38fn-gufo-20261021/mtp-cache-only-public-baseline.json",
+      "bash /tmp/qwen38fn-gufo-20261021/run-hip.sh /tmp/qwen38fn-gufo-20261021/check-public-mtp-prime.py --engine-root /tmp/qwen38fn-gufo-20261021/hipengine-mtp-prefill --output /tmp/qwen38fn-gufo-20261021/mtp-cache-only-public-candidate.json"
+    ]
+  },
+  "checks": {
+    "same_host_policies": true,
+    "unchanged_sources_during_runs": true,
+    "native_mtp_route": true,
+    "native_token_and_cache_counts": true,
+    "exact_output_pairs": 20,
+    "real_sidecar_full_logits_cache_carry": "5 cases pass, including poisoned lazy pool and trimmed dense-to-sparse continuation",
+    "existing_qsa_gpu_tests": "4 pass",
+    "default_cpu_suite": "passed",
+    "compileall_fixtures_registry_cpu_smoke_build_plan": "passed",
+    "documentation_gates": "all 4 pass"
+  },
+  "validation_commands": "#!/usr/bin/env bash\nset -euo pipefail\nBASE=/tmp/qwen38fn-gufo-20261021\nCANDIDATE=\"$BASE/hipengine-mtp-prefill\"\nMAIN=/home/lhl/hipEngine\nPY=\"$HOME/miniforge3/envs/therock/bin/python\"\ncd \"$CANDIDATE\"\n# Run only once the existing bg-22 job has exited and released the GPU.\nbash \"$BASE/run-hip.sh\" -m pytest -q \\\n  tests/test_live_qwen4exp_mtp_cache_only.py \\\n  tests/test_gpu_qwen4_exp_runner_qsa.py\nprintf '\\nCACHE_ONLY_GPU_ORACLE_PASS\\n'\n\"$PY\" -m compileall -q hipengine tests scripts\n\"$PY\" -m pytest -q\n\"$PY\" scripts/check_fixtures.py\n\"$PY\" scripts/smoke.py --mode registry\n\"$PY\" scripts/smoke.py --mode cpu-fixtures\n\"$PY\" scripts/smoke.py --mode smoke-add-plan\npython3 scripts/docs/check_all.py\nprintf '\\nCACHE_ONLY_CPU_DOCS_PASS\\n'\nbash \"$BASE/run-hip.sh\" \"$BASE/check-public-mtp-prime.py\" \\\n  --engine-root \"$MAIN\" --output \"$BASE/mtp-cache-only-public-baseline.json\"\nbash \"$BASE/run-hip.sh\" \"$BASE/check-public-mtp-prime.py\" \\\n  --engine-root \"$CANDIDATE\" --output \"$BASE/mtp-cache-only-public-candidate.json\"\n\"$PY\" - <<'PY'\nimport json, statistics\nfrom pathlib import Path\nbase=Path('/tmp/qwen38fn-gufo-20261021')\na=json.loads((base/'mtp-cache-only-public-baseline.json').read_text())\nb=json.loads((base/'mtp-cache-only-public-candidate.json').read_text())\nassert a['status']==b['status']=='passed'\nassert a['driver_sha256']==b['driver_sha256'] and a['fixture_sha256']==b['fixture_sha256']\nassert len(a['rows'])==len(b['rows'])==20\nrates={}\nfor x,y in zip(a['rows'],b['rows'],strict=True):\n assert (x['case'],x['repetition'],x['prompt_sha256'])==(y['case'],y['repetition'],y['prompt_sha256'])\n assert x['result']['token_accounting']['choice_generated_token_ids']==y['result']['token_accounting']['choice_generated_token_ids']\n assert x['result']['phase_metrics']['counts']==y['result']['phase_metrics']['counts']\n if x['repetition']>=0:\n  groups=rates.setdefault(x['case'],{'baseline_ms':[],'candidate_ms':[]})\n  groups['baseline_ms'].append(x['result']['phase_metrics']['times_ms']['prefill_wall_ms'])\n  groups['candidate_ms'].append(y['result']['phase_metrics']['times_ms']['prefill_wall_ms'])\nfor group in rates.values():\n group['baseline_median_ms']=statistics.median(group['baseline_ms'])\n group['candidate_median_ms']=statistics.median(group['candidate_ms'])\n group['ratio']=group['baseline_median_ms']/group['candidate_median_ms']\nreport={'status':'passed','performance_claim':False,'exact_output_pairs':20,'cases':rates}\n(base/'mtp-cache-only-public-comparison.json').write_text(json.dumps(report,indent=2)+'\\n')\nprint(json.dumps(report,indent=2))\nPY\nprintf '\\nCACHE_ONLY_VALIDATION_PASS\\n'\n",
+  "validation_log_sha256": "19b0ccb19be8049c57e12597112f45279565800c9067f06ded2d972fd1c0f340",
+  "raw_artifacts": {
+    "baseline": {
+      "path": "/tmp/qwen38fn-gufo-20261021/mtp-cache-only-public-baseline.json",
+      "sha256": "aca296c728669a7900c38ea6a774a913446244872950a93accbf0c115209ad70"
+    },
+    "candidate": {
+      "path": "/tmp/qwen38fn-gufo-20261021/mtp-cache-only-public-candidate.json",
+      "sha256": "6633de018c1e101f1c1691ffde6b1c158613180677fe430fa558981cd9faab00"
+    },
+    "comparison": {
+      "path": "/tmp/qwen38fn-gufo-20261021/mtp-cache-only-public-comparison.json",
+      "sha256": "24b265c23432e5c81b8497db4f7902208248eec8136abd3c9abd7f96dc149a49"
+    }
+  },
+  "diagnostic_summary": {
+    "code": {
+      "baseline_ms": [
+        2319.5539839798585,
+        2318.739761947654,
+        2317.7008390193805
+      ],
+      "candidate_ms": [
+        1395.6916179740801,
+        1396.825155010447,
+        1400.6214179098606
+      ],
+      "baseline_median_ms": 2318.739761947654,
+      "candidate_median_ms": 1396.825155010447,
+      "ratio": 1.6600071624070316
+    },
+    "general_en": {
+      "baseline_ms": [
+        2314.3317489884794,
+        2314.156064996496,
+        2315.0073770666495
+      ],
+      "candidate_ms": [
+        1360.8306159731,
+        1358.7899979902431,
+        1363.7296259403229
+      ],
+      "baseline_median_ms": 2314.3317489884794,
+      "candidate_median_ms": 1360.8306159731,
+      "ratio": 1.7006758385822702
+    },
+    "general_ja": {
+      "baseline_ms": [
+        4906.915216008201,
+        4903.764166985638,
+        4910.606894060038
+      ],
+      "candidate_ms": [
+        2681.744429981336,
+        2681.0187429655343,
+        2680.610380950384
+      ],
+      "baseline_median_ms": 4906.915216008201,
+      "candidate_median_ms": 2681.0187429655343,
+      "ratio": 1.8302427869566302
+    },
+    "mixed_ja_en": {
+      "baseline_ms": [
+        9795.774295111187,
+        9736.02676205337,
+        9717.294050962664
+      ],
+      "candidate_ms": [
+        5411.959851975553,
+        5476.42999899108,
+        5414.064810029231
+      ],
+      "baseline_median_ms": 9736.02676205337,
+      "candidate_median_ms": 5414.064810029231,
+      "ratio": 1.7982841180655915
+    },
+    "cached_32768_suffix_2048": {
+      "baseline_ms": [
+        5239.288324955851,
+        5171.50383500848,
+        5179.271111963317
+      ],
+      "candidate_ms": [
+        2928.0006859917194,
+        2992.11713206023,
+        2926.3927170541137
+      ],
+      "baseline_median_ms": 5179.271111963317,
+      "candidate_median_ms": 2928.0006859917194,
+      "ratio": 1.7688763314647544
+    }
+  },
+  "rows": [
+    {
+      "case": "code",
+      "repetition": -1,
+      "prompt_sha256": "3edcfd228f3b0a6e604f2b7e0e23407b6c09838070cc4fdf22ce357fdf9c86d0",
+      "counts": {
+        "prompt_tokens": 997,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 997,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "baseline_times_ms": {
+        "prefill_wall_ms": 2699.8862760374323,
+        "decode_wall_ms": 166.9609328964725,
+        "request_wall_ms": 2869.5439979201183,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 1783.9587280759588,
+        "decode_wall_ms": 168.2715149363503,
+        "request_wall_ms": 1955.2022690186277,
+        "cache_restore_ms": 0.0
+      },
+      "baseline_client_wall_s": 2.879363476065919,
+      "candidate_client_wall_s": 1.9639100240310654
+    },
+    {
+      "case": "code",
+      "repetition": 0,
+      "prompt_sha256": "3edcfd228f3b0a6e604f2b7e0e23407b6c09838070cc4fdf22ce357fdf9c86d0",
+      "counts": {
+        "prompt_tokens": 997,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 997,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "baseline_times_ms": {
+        "prefill_wall_ms": 2319.5539839798585,
+        "decode_wall_ms": 155.12574405875057,
+        "request_wall_ms": 2476.480005076155,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 1395.6916179740801,
+        "decode_wall_ms": 153.91916106455028,
+        "request_wall_ms": 1550.954390084371,
+        "cache_restore_ms": 0.0
+      },
+      "baseline_client_wall_s": 2.4834313730243593,
+      "candidate_client_wall_s": 1.5582168129039928
+    },
+    {
+      "case": "code",
+      "repetition": 1,
+      "prompt_sha256": "3edcfd228f3b0a6e604f2b7e0e23407b6c09838070cc4fdf22ce357fdf9c86d0",
+      "counts": {
+        "prompt_tokens": 997,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 997,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "baseline_times_ms": {
+        "prefill_wall_ms": 2318.739761947654,
+        "decode_wall_ms": 154.75627104751766,
+        "request_wall_ms": 2475.2966100350022,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 1396.825155010447,
+        "decode_wall_ms": 154.01283802930266,
+        "request_wall_ms": 1552.6648500235751,
+        "cache_restore_ms": 0.0
+      },
+      "baseline_client_wall_s": 2.482807978987694,
+      "candidate_client_wall_s": 1.5591236660256982
+    },
+    {
+      "case": "code",
+      "repetition": 2,
+      "prompt_sha256": "3edcfd228f3b0a6e604f2b7e0e23407b6c09838070cc4fdf22ce357fdf9c86d0",
+      "counts": {
+        "prompt_tokens": 997,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 997,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "baseline_times_ms": {
+        "prefill_wall_ms": 2317.7008390193805,
+        "decode_wall_ms": 154.5746100600809,
+        "request_wall_ms": 2473.808535025455,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 1400.6214179098606,
+        "decode_wall_ms": 154.0273140417412,
+        "request_wall_ms": 1556.4570140559226,
+        "cache_restore_ms": 0.0
+      },
+      "baseline_client_wall_s": 2.4802556569920853,
+      "candidate_client_wall_s": 1.563832530984655
+    },
+    {
+      "case": "general_en",
+      "repetition": -1,
+      "prompt_sha256": "afb5b707bfa48f9195434010f78ea23c5fdd75abdd25953fa3d612fb2f0025b5",
+      "counts": {
+        "prompt_tokens": 1025,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 1025,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "baseline_times_ms": {
+        "prefill_wall_ms": 2490.286348038353,
+        "decode_wall_ms": 160.49350297544152,
+        "request_wall_ms": 2652.3164530517533,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 1541.3431429769844,
+        "decode_wall_ms": 160.8934949617833,
+        "request_wall_ms": 1703.6759079201147,
+        "cache_restore_ms": 0.0
+      },
+      "baseline_client_wall_s": 2.6583880520192906,
+      "candidate_client_wall_s": 1.711082833004184
+    },
+    {
+      "case": "general_en",
+      "repetition": 0,
+      "prompt_sha256": "afb5b707bfa48f9195434010f78ea23c5fdd75abdd25953fa3d612fb2f0025b5",
+      "counts": {
+        "prompt_tokens": 1025,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 1025,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "baseline_times_ms": {
+        "prefill_wall_ms": 2314.3317489884794,
+        "decode_wall_ms": 155.85979202296585,
+        "request_wall_ms": 2471.6258520493284,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 1360.8306159731,
+        "decode_wall_ms": 156.270922976546,
+        "request_wall_ms": 1518.7762799905613,
+        "cache_restore_ms": 0.0
+      },
+      "baseline_client_wall_s": 2.479267876013182,
+      "candidate_client_wall_s": 1.5257827750174329
+    },
+    {
+      "case": "general_en",
+      "repetition": 1,
+      "prompt_sha256": "afb5b707bfa48f9195434010f78ea23c5fdd75abdd25953fa3d612fb2f0025b5",
+      "counts": {
+        "prompt_tokens": 1025,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 1025,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "baseline_times_ms": {
+        "prefill_wall_ms": 2314.156064996496,
+        "decode_wall_ms": 155.39156401064247,
+        "request_wall_ms": 2471.113806939684,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 1358.7899979902431,
+        "decode_wall_ms": 155.25206306483597,
+        "request_wall_ms": 1515.8143860753626,
+        "cache_restore_ms": 0.0
+      },
+      "baseline_client_wall_s": 2.477982059936039,
+      "candidate_client_wall_s": 1.522554027964361
+    },
+    {
+      "case": "general_en",
+      "repetition": 2,
+      "prompt_sha256": "afb5b707bfa48f9195434010f78ea23c5fdd75abdd25953fa3d612fb2f0025b5",
+      "counts": {
+        "prompt_tokens": 1025,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 1025,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "baseline_times_ms": {
+        "prefill_wall_ms": 2315.0073770666495,
+        "decode_wall_ms": 155.28841002378613,
+        "request_wall_ms": 2472.1590420231223,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 1363.7296259403229,
+        "decode_wall_ms": 155.1424670033157,
+        "request_wall_ms": 1520.5581450136378,
+        "cache_restore_ms": 0.0
+      },
+      "baseline_client_wall_s": 2.4793202449800447,
+      "candidate_client_wall_s": 1.5273188480641693
+    },
+    {
+      "case": "general_ja",
+      "repetition": -1,
+      "prompt_sha256": "b0408127f7ddaed10b22d0076d6d601b6f7d4313bae2b640a855bc6d35518cc3",
+      "counts": {
+        "prompt_tokens": 2052,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 2052,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "baseline_times_ms": {
+        "prefill_wall_ms": 5083.251443924382,
+        "decode_wall_ms": 243.98971302434802,
+        "request_wall_ms": 5329.058505943976,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 2873.702497105114,
+        "decode_wall_ms": 245.80389191396534,
+        "request_wall_ms": 3121.4171139290556,
+        "cache_restore_ms": 0.0
+      },
+      "baseline_client_wall_s": 5.337622279068455,
+      "candidate_client_wall_s": 3.1306452250573784
+    },
+    {
+      "case": "general_ja",
+      "repetition": 0,
+      "prompt_sha256": "b0408127f7ddaed10b22d0076d6d601b6f7d4313bae2b640a855bc6d35518cc3",
+      "counts": {
+        "prompt_tokens": 2052,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 2052,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "baseline_times_ms": {
+        "prefill_wall_ms": 4906.915216008201,
+        "decode_wall_ms": 227.99098398536444,
+        "request_wall_ms": 5136.398358037695,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 2681.744429981336,
+        "decode_wall_ms": 228.8765780394897,
+        "request_wall_ms": 2912.120350985788,
+        "cache_restore_ms": 0.0
+      },
+      "baseline_client_wall_s": 5.145223231986165,
+      "candidate_client_wall_s": 2.9216270650504157
+    },
+    {
+      "case": "general_ja",
+      "repetition": 1,
+      "prompt_sha256": "b0408127f7ddaed10b22d0076d6d601b6f7d4313bae2b640a855bc6d35518cc3",
+      "counts": {
+        "prompt_tokens": 2052,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 2052,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "baseline_times_ms": {
+        "prefill_wall_ms": 4903.764166985638,
+        "decode_wall_ms": 227.7230320032686,
+        "request_wall_ms": 5133.33097693976,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 2681.0187429655343,
+        "decode_wall_ms": 227.59140701964498,
+        "request_wall_ms": 2910.432348959148,
+        "cache_restore_ms": 0.0
+      },
+      "baseline_client_wall_s": 5.142053909017704,
+      "candidate_client_wall_s": 2.9195652520284057
+    },
+    {
+      "case": "general_ja",
+      "repetition": 2,
+      "prompt_sha256": "b0408127f7ddaed10b22d0076d6d601b6f7d4313bae2b640a855bc6d35518cc3",
+      "counts": {
+        "prompt_tokens": 2052,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 2052,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "baseline_times_ms": {
+        "prefill_wall_ms": 4910.606894060038,
+        "decode_wall_ms": 227.2767259273678,
+        "request_wall_ms": 5139.425090979785,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 2680.610380950384,
+        "decode_wall_ms": 227.7178349904716,
+        "request_wall_ms": 2910.251813940704,
+        "cache_restore_ms": 0.0
+      },
+      "baseline_client_wall_s": 5.1484382869675756,
+      "candidate_client_wall_s": 2.9189503819216043
+    },
+    {
+      "case": "mixed_ja_en",
+      "repetition": -1,
+      "prompt_sha256": "368c914c98d361c99390b2a93e7742bbc85666a50d213ff1bd274f6dfdb76ac7",
+      "counts": {
+        "prompt_tokens": 4093,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 4093,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760,
+        1156,
+        682
+      ],
+      "baseline_times_ms": {
+        "prefill_wall_ms": 10062.573974952102,
+        "decode_wall_ms": 289.8455220274627,
+        "request_wall_ms": 10354.189036064781,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 5725.56605306454,
+        "decode_wall_ms": 287.96241094823927,
+        "request_wall_ms": 6015.407118014991,
+        "cache_restore_ms": 0.0
+      },
+      "baseline_client_wall_s": 10.366639651008882,
+      "candidate_client_wall_s": 6.0279194209724665
+    },
+    {
+      "case": "mixed_ja_en",
+      "repetition": 0,
+      "prompt_sha256": "368c914c98d361c99390b2a93e7742bbc85666a50d213ff1bd274f6dfdb76ac7",
+      "counts": {
+        "prompt_tokens": 4093,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 4093,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760,
+        1156,
+        682
+      ],
+      "baseline_times_ms": {
+        "prefill_wall_ms": 9795.774295111187,
+        "decode_wall_ms": 268.1785029126331,
+        "request_wall_ms": 10065.851490013301,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 5411.959851975553,
+        "decode_wall_ms": 267.33279204927385,
+        "request_wall_ms": 5681.2016849871725,
+        "cache_restore_ms": 0.0
+      },
+      "baseline_client_wall_s": 10.079044646001421,
+      "candidate_client_wall_s": 5.693263793014921
+    },
+    {
+      "case": "mixed_ja_en",
+      "repetition": 1,
+      "prompt_sha256": "368c914c98d361c99390b2a93e7742bbc85666a50d213ff1bd274f6dfdb76ac7",
+      "counts": {
+        "prompt_tokens": 4093,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 4093,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760,
+        1156,
+        682
+      ],
+      "baseline_times_ms": {
+        "prefill_wall_ms": 9736.02676205337,
+        "decode_wall_ms": 268.33492796868086,
+        "request_wall_ms": 10006.420181016438,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 5476.42999899108,
+        "decode_wall_ms": 267.64020905829966,
+        "request_wall_ms": 5745.831571985036,
+        "cache_restore_ms": 0.0
+      },
+      "baseline_client_wall_s": 10.019662220031023,
+      "candidate_client_wall_s": 5.759002550970763
+    },
+    {
+      "case": "mixed_ja_en",
+      "repetition": 2,
+      "prompt_sha256": "368c914c98d361c99390b2a93e7742bbc85666a50d213ff1bd274f6dfdb76ac7",
+      "counts": {
+        "prompt_tokens": 4093,
+        "cached_prompt_tokens": 0,
+        "new_prompt_tokens": 4093,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760,
+        1156,
+        682
+      ],
+      "baseline_times_ms": {
+        "prefill_wall_ms": 9717.294050962664,
+        "decode_wall_ms": 267.6850309362635,
+        "request_wall_ms": 9986.96133994963,
+        "cache_restore_ms": 0.0
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 5414.064810029231,
+        "decode_wall_ms": 267.6407709950581,
+        "request_wall_ms": 5683.72756394092,
+        "cache_restore_ms": 0.0
+      },
+      "baseline_client_wall_s": 9.999460114981048,
+      "candidate_client_wall_s": 5.696823341073468
+    },
+    {
+      "case": "cached_32768_suffix_2048",
+      "repetition": -1,
+      "prompt_sha256": "6f3b82af7cb52059ddf42634ba0865dec5291f5eba60353e6a8f64577e5c2196",
+      "counts": {
+        "prompt_tokens": 34816,
+        "cached_prompt_tokens": 32768,
+        "new_prompt_tokens": 2048,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "baseline_times_ms": {
+        "prefill_wall_ms": 5182.801043963991,
+        "decode_wall_ms": 242.35863704234362,
+        "request_wall_ms": 5444.879733026028,
+        "cache_restore_ms": 13.354551047086716
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 2932.1150420000777,
+        "decode_wall_ms": 243.98890091106296,
+        "request_wall_ms": 3195.521599962376,
+        "cache_restore_ms": 13.245177106000483
+      },
+      "baseline_client_wall_s": 5.517211770056747,
+      "candidate_client_wall_s": 3.270172746037133
+    },
+    {
+      "case": "cached_32768_suffix_2048",
+      "repetition": 0,
+      "prompt_sha256": "f6edb9a27cfc73526ddcf0875fa89a524ae2abac17889d98e901908b79ddc7af",
+      "counts": {
+        "prompt_tokens": 34816,
+        "cached_prompt_tokens": 32768,
+        "new_prompt_tokens": 2048,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        23819,
+        6011,
+        25716,
+        60,
+        248046,
+        198,
+        248045,
+        74455
+      ],
+      "baseline_times_ms": {
+        "prefill_wall_ms": 5239.288324955851,
+        "decode_wall_ms": 243.17145196255296,
+        "request_wall_ms": 5502.11144099012,
+        "cache_restore_ms": 13.263250002637506
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 2928.0006859917194,
+        "decode_wall_ms": 242.92998597957194,
+        "request_wall_ms": 3190.8292119624093,
+        "cache_restore_ms": 13.2538239704445
+      },
+      "baseline_client_wall_s": 5.5748570340219885,
+      "candidate_client_wall_s": 3.2663249119650573
+    },
+    {
+      "case": "cached_32768_suffix_2048",
+      "repetition": 1,
+      "prompt_sha256": "8955dce57eb2315ffa8030315bc8741d6e911128983c3ec5f4c5b270f7f6fafc",
+      "counts": {
+        "prompt_tokens": 34816,
+        "cached_prompt_tokens": 32768,
+        "new_prompt_tokens": 2048,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "baseline_times_ms": {
+        "prefill_wall_ms": 5171.50383500848,
+        "decode_wall_ms": 225.80351296346635,
+        "request_wall_ms": 5417.266870033927,
+        "cache_restore_ms": 13.335205032490194
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 2992.11713206023,
+        "decode_wall_ms": 226.09777899924666,
+        "request_wall_ms": 3238.0485890898854,
+        "cache_restore_ms": 13.292456045746803
+      },
+      "baseline_client_wall_s": 5.49141256895382,
+      "candidate_client_wall_s": 3.3133799500064924
+    },
+    {
+      "case": "cached_32768_suffix_2048",
+      "repetition": 2,
+      "prompt_sha256": "154cdfbe8ee58e26e017fb0a57350b9fcf9a2054fffc95e39351474a1ad9b43b",
+      "counts": {
+        "prompt_tokens": 34816,
+        "cached_prompt_tokens": 32768,
+        "new_prompt_tokens": 2048,
+        "generated_tokens": 8,
+        "decode_transitions": 7
+      },
+      "generated_ids": [
+        248046,
+        198,
+        248045,
+        74455,
+        198,
+        248068,
+        198,
+        760
+      ],
+      "baseline_times_ms": {
+        "prefill_wall_ms": 5179.271111963317,
+        "decode_wall_ms": 226.03431704919785,
+        "request_wall_ms": 5425.110632088035,
+        "cache_restore_ms": 13.295511016622186
+      },
+      "candidate_times_ms": {
+        "prefill_wall_ms": 2926.3927170541137,
+        "decode_wall_ms": 225.91906401794404,
+        "request_wall_ms": 3172.311450005509,
+        "cache_restore_ms": 13.309167930856347
+      },
+      "baseline_client_wall_s": 5.498826545081101,
+      "candidate_client_wall_s": 3.2457382989814505
+    }
+  ]
+}
