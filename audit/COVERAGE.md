@@ -164,6 +164,11 @@ line count alone is not sufficient acceptance evidence.
   pairs were reviewed and recorded for removal. Decorated, conditionally rebound
   and multi-definition groups are excluded; dynamic reachability is still a
   review responsibility, not a property this check proves.
+- The earlier DMS configuration method is removed. The live method's parsed
+  implementation is unchanged, and tests cover both configuration forms and
+  rejection without mutation after preparation. Substituting the discarded
+  unguarded method makes both rejection tests fail. Three other reviewed pairs
+  remain in the removal queue.
 
 ## Completion boundary
 
