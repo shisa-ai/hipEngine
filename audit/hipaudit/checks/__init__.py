@@ -186,4 +186,4 @@ def finding(kind: str, key: str, title: str, location: str, *,
     )
 
 
-from . import invariants, skeletons, drift  # noqa: E402,F401
+from . import invariants, skeletons, drift, shadowed  # noqa: E402,F401
