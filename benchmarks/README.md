@@ -698,7 +698,6 @@ context** is a capacity limit, not a full-length prefill.
 | Qwen3.6-35B-A3B | ParoQuant W4 | **2879.4** | **113.3** | 115.8 |
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **2924.5** | **95.0** | 122.7 |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` (BF16 KV) | **898.6** | **30.8** | 39.7 |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` (INT8 KV) | 868.6 | 27.9 | — |
 | Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **3805.6** | **75.8** | **120.2** |
 | Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** | — | — |
 
@@ -708,7 +707,6 @@ context** is a capacity limit, not a full-length prefill.
 | --- | --- | ---: | ---: | ---: |
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1418.1** | **56.7** | 80.1 |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.15** | **22.4** |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` (INT8 KV) | — | **10.84** | **19.3** |
 | Qwen3.8 Flash-Next | GGUF `UD-Q4_K_XL` | **1036.2** | **23.7** | **28.9** |
 | Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **1865.6** | **43.3** | **69.4** |
 | Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — |
@@ -758,6 +756,17 @@ Aggregate tokens/s across all active requests, Qwen3.8-27B `Q4_K_M` on the W7900
 | llama.cpp HIP | 21.0 | 34.4 | 30.6 | 27.7 | 36.7 | 46.4 | 52.1 | 58.4 |
 | hipEngine advantage | +12% | +14% | +74% | +130% | +99% | +71% | +60% | **+47%** |
 <!-- END TOPLINE:README_HIGHLIGHTS -->
+
+### INT8 KV measurements omitted from the root highlights
+
+These previously published Qwen3.8-27B `Q4_K_M` measurements are preserved
+here; removing them from the product-page summary does not change runtime
+support or defaults. Rates are tok/s; dashes are unmeasured.
+
+| Hardware | Prompt processing | Text generation | With MTP |
+| --- | ---: | ---: | ---: |
+| Radeon Pro W7900, INT8 KV | 868.6 | 27.9 | — |
+| Strix Halo / Radeon 8060S, INT8 KV | — | 10.84 | 19.3 |
 
 ## RX 7900 XTX Same-Model Comparison
 
