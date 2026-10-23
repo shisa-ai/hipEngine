@@ -1732,13 +1732,6 @@ class Qwen35GGUFBringupGenerator:
         )
         return resolved.create_policy(), resolved.scale_dtype.value, signature
 
-    def configure_dms(self, config) -> None:
-        """Bind either a compact DMS config or a sidecar metadata path."""
-        if isinstance(config, str):
-            self.dms_metadata_path = config
-            self.dms_config = None
-        else:
-            self.dms_config = config
     def _prepare_kv_policy(self, params: Any | None) -> None:
         current = getattr(self, "_prepared_kv_signature", None)
         requested_storage = getattr(params, "kv_storage", "auto") or "auto"

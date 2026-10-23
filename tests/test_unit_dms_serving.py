@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from hipengine import LLM
+from hipengine import DMSConfig, LLM
 from hipengine.generation.qwen35_gguf import Qwen35GGUFBringupGenerator
 from hipengine.generation.qwen35_gguf_mtp2 import _target_verify_mode_for_context
 from hipengine.server.api import ServerConfig
@@ -41,6 +41,41 @@ def test_server_config_retains_dms_selection():
                           kv_storage="int8_per_token_head")
     assert config.dms_metadata_path == "sidecar.json"
     assert config.max_active_requests == 1
+
+
+@pytest.fixture
+def dms_generator(monkeypatch):
+    from hipengine.generation.qwen35_gguf import Qwen35GGUFTokenizer
+
+    monkeypatch.setattr(Qwen35GGUFTokenizer, "from_gguf_info",
+                        classmethod(lambda cls, index: object()))
+    return Qwen35GGUFBringupGenerator(
+        model_path="unused.gguf", weight_index=object(), model_plugin=object(),
+        backend="cpu_reference",
+    )
+
+
+@pytest.mark.parametrize("config", ["sidecar.json", DMSConfig("sidecar.json")])
+def test_configure_dms_binds_before_preparation(dms_generator, config):
+    assert dms_generator._prepared_kv_signature is None
+    dms_generator.configure_dms(config)
+    if isinstance(config, str):
+        assert dms_generator.dms_metadata_path == config
+        assert dms_generator.dms_config is None
+    else:
+        assert dms_generator.dms_config is config
+
+
+@pytest.mark.parametrize("config", ["replacement.json", DMSConfig("replacement.json")])
+def test_configure_dms_rejects_late_binding_without_mutation(dms_generator, config):
+    dms_generator.configure_dms("original.json")
+    signature = ("bf16", "uniform", "fp16", "per_token_head")
+    dms_generator._prepared_kv_signature = signature
+    with pytest.raises(RuntimeError, match="before resident preparation"):
+        dms_generator.configure_dms(config)
+    assert dms_generator.dms_metadata_path == "original.json"
+    assert dms_generator.dms_config is None
+    assert dms_generator._prepared_kv_signature == signature
 
 
 def test_dms_policy_is_not_routed_through_dense_int8_evidence(monkeypatch):
