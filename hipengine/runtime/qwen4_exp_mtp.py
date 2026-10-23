@@ -825,6 +825,41 @@ class Qwen4ExpGGUFMTPDraftRunner:
         self.last_proposal_stage_timings_ms = stage_totals
         return tuple(results)
 
+    def propose_lookup_chain(
+        self, *, start_token: int, target_hidden_seed: np.ndarray,
+        candidates: Sequence[int],
+    ) -> tuple[Qwen4ExpMTPDraftResult, ...]:
+        """Advance the predictor over copied tokens without unused head work.
+
+        The input/hidden recurrence is the same as compact neural drafting;
+        only candidate selection comes from committed request-local history.
+        Verification, bonus catch-up and trimming remain the caller's job.
+        """
+        import operator
+
+        tokens = tuple(operator.index(t) for t in candidates)
+        root = operator.index(start_token)
+        if not 1 <= len(tokens) <= 4:
+            raise ValueError("Qwen4Exp lookup proposal must contain 1..4 tokens")
+        if any(t < 0 or t >= self.config.vocab_size for t in (root, *tokens)):
+            raise ValueError("Qwen4Exp lookup token is outside the vocabulary")
+        if self.position + len(tokens) > self.max_sequence_length:
+            raise ValueError("Qwen4Exp lookup proposal exceeds capacity")
+        if target_hidden_seed is None:
+            raise ValueError("Qwen4Exp lookup requires the target hidden seed")
+        totals: dict[str, float] = {}
+        for depth, token in enumerate((root, *tokens[:-1])):
+            self.forward(
+                token, target_hidden_seed if depth == 0 else None,
+                capture_logits=False, capture_hidden_seed=False,
+                capture_token_id=False, hidden_seed_resident=depth > 0,
+                run_head=False,
+            )
+            for name, ms in self.last_forward_stage_timings_ms.items():
+                totals[name] = totals.get(name, 0.0) + ms
+        self.last_proposal_stage_timings_ms = totals
+        return tuple(Qwen4ExpMTPDraftResult(t, None, None) for t in tokens)
+
     def close(self) -> None:
         if self.closed:
             return

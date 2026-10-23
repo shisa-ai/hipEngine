@@ -997,6 +997,7 @@ class _Qwen4ExpServingRow:
     mixed_proposed: int = 0
     mixed_accepted: int = 0
     mixed_cycles: int = 0
+    prompt_lookup: Any | None = None
     mixed_widths: dict[int, int] = field(default_factory=dict)
     mixed_target_rows: int = 0
     prefix_chain: Any | None = None

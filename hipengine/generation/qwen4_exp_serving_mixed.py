@@ -156,6 +156,11 @@ class Qwen4ExpServingMixed:
         transaction = self._mixed_transaction(plan, rows, checkpoints)
         finish_stage('checkpoint')
         proposals, groups, ar_tokens, ar_finishes = {}, [], {}, {}
+        lookup_copies = set()
+        lookup_checkpoints = {}
+        for row in rows:
+            lookup = getattr(row, 'prompt_lookup', None)
+            lookup_checkpoints[row.request_id] = (lookup, None if lookup is None else lookup.snapshot())
         target = layout = None
         primary_error = None
         commit_started = False
@@ -168,8 +173,17 @@ class Qwen4ExpServingMixed:
                     prepare_vocab = getattr(row.draft, 'prepare_draft_vocabulary', None)
                     if count and callable(prepare_vocab):
                         prepare_vocab([*row.prompt_ids, *row.generated_ids], anchor=row.generated_ids[-1])
+                    copied = ()
+                    if count and callable(getattr(row.draft, 'propose_lookup_chain', None)):
+                        from hipengine.speculative.prompt_lookup import PromptLookup
+                        if getattr(row, 'prompt_lookup', None) is None:
+                            row.prompt_lookup = PromptLookup(sampled=row.request.temperature > 0)
+                        copied = row.prompt_lookup.propose([*row.prompt_ids, *row.generated_ids], count, require_full=True)
+                        if copied:
+                            lookup_copies.add(row.request_id)
                     proposal = prepare_proposal(
                         row.draft, start_position=position, root_token=row.generated_ids[-1],
+                        lookup_candidates=copied,
                         target_hidden_seed=row.mixed_root_hidden, draft_n_max=count,
                         compact_output=True,
                     ) if count else self._mixed_zero_proposal(position, row.generated_ids[-1])
@@ -237,6 +251,10 @@ class Qwen4ExpServingMixed:
         except BaseException as error:
             primary_error = error
             for row, (state, grammar, log_count, draft) in zip(rows, checkpoints, strict=True):
+                lookup, lookup_state = lookup_checkpoints[row.request_id]
+                row.prompt_lookup = lookup
+                if lookup is not None:
+                    lookup.restore(lookup_state)
                 row.sampling_state, row.grammar = state, grammar
                 del row.token_logprobs[log_count:]
                 if draft is not None:
@@ -280,6 +298,8 @@ class Qwen4ExpServingMixed:
                 proposal = proposals[row.request_id]
                 row.mixed_proposed += len(proposal.candidates)
                 row.mixed_accepted += count
+                if row.request_id in lookup_copies:
+                    row.prompt_lookup.observe(count)
                 row.mixed_cycles += 1
                 if finish is not None:
                     from hipengine.generation.registry import GenerationOutput
@@ -408,6 +428,8 @@ class Qwen4ExpServingMixed:
             diagnostics=dict(execution_path=execution_path, **provider,
                              candidate_budget=row.mtp_budget, proposed_draft_tokens=row.mixed_proposed,
                              accepted_draft_tokens=row.mixed_accepted, cycles_count=row.mixed_cycles,
+                             prompt_lookup=(row.prompt_lookup.diagnostics()
+                                 if getattr(row, 'prompt_lookup', None) is not None else {}),
                              draft_vocabulary=(row.draft.draft_vocabulary_diagnostics()
                                  if callable(getattr(getattr(row, 'draft', None), 'draft_vocabulary_diagnostics', None)) else {}),
                              physical_request_width_histogram=dict(row.mixed_widths),

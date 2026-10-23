@@ -330,6 +330,8 @@ class Qwen4ExpMTPTextProvider:
         self.begin_draft_vocabulary(draft_runner)
         committed_history = list(token_ids)
         committed_generated = 0
+        from hipengine.speculative.prompt_lookup import PromptLookup
+        prompt_lookup = PromptLookup(sampled=request.temperature > 0)
         generated: list[int] = [select(result)]
         root_token = generated[0]
         root_hidden = result.hidden_seed
@@ -398,8 +400,13 @@ class Qwen4ExpMTPTextProvider:
             prepare_vocab = getattr(draft_runner, "prepare_draft_vocabulary", None)
             if callable(prepare_vocab):
                 prepare_vocab(committed_history, anchor=root_token)
+            lookup_candidates = (
+                prompt_lookup.propose(committed_history, budget, require_full=True)
+                if callable(getattr(draft_runner, "propose_lookup_chain", None)) else ()
+            )
             proposal = prepare_proposal(
                 draft_runner,
+                lookup_candidates=lookup_candidates,
                 start_position=start_position,
                 root_token=root_token,
                 target_hidden_seed=root_hidden,
@@ -483,6 +490,8 @@ class Qwen4ExpMTPTextProvider:
             trim_started = time.perf_counter()
             draft_runner.trim(int(target_runner.position))
             record_phase("draft_commit_or_rollback", trim_started)
+            if lookup_candidates:
+                prompt_lookup.observe(accepted)
             cycles.append(
                 Qwen4ExpMTPCycle(
                     start_position=start_position,
@@ -542,6 +551,7 @@ class Qwen4ExpMTPTextProvider:
                 "sampling_algorithm": (
                     "target_draw_match_deterministic_draft" if controlled else "raw_argmax_match"
                 ),
+                "prompt_lookup": prompt_lookup.diagnostics(),
                 "draft_rollback": "cursor_trim",
                 "draft_vocabulary": (
                     draft_runner.draft_vocabulary_diagnostics()

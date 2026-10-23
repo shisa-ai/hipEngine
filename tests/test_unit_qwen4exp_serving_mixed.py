@@ -120,6 +120,35 @@ def _cycle_fixture(monkeypatch, *, truth=(12, 29, 31, 18), ar_max_tokens=8):
     return SimpleNamespace(native=native, rows=rows, plan=plan, batch=batch, calls=calls, draft=draft)
 
 
+@pytest.mark.parametrize('cancel', [False, True])
+def test_mixed_lookup_decisions_commit_or_restore_with_the_transaction(monkeypatch, cancel):
+    from hipengine.generation.qwen4_exp_serving_mtp import _RequestRetired
+    f = _cycle_fixture(monkeypatch)
+    class Lookup:
+        state = 0
+        def snapshot(self): return self.state
+        def restore(self, state): self.state = state
+        def propose(self, history, count, *, require_full=False):
+            assert require_full
+            self.state += 1
+            return (12, 13)
+        def observe(self, count): self.state += 10 + count
+    lookup = Lookup()
+    f.rows[0].prompt_lookup = lookup
+    f.draft.propose_lookup_chain = lambda **kwargs: None  # fixture's proposal stub owns execution
+    if cancel:
+        visits = []
+        def check(row):
+            visits.append(row.request_id)
+            if len(visits) == 3:
+                raise _RequestRetired()
+        f.native._check_request_live = check
+        f.native.request_cancel_reason = lambda rid: 'disconnect' if rid == 1 else None
+    f.native._execute_mixed_cycle(f.plan)
+    assert lookup.state == (0 if cancel else 12)
+    assert f.rows[1].prompt_lookup is None
+
+
 def test_containment_refuses_device_fault_even_with_partial_wrapper():
     from hipengine.core.hip import HipError
     from hipengine.generation.qwen4_exp_serving_mixed import (

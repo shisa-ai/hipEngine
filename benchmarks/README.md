@@ -230,6 +230,22 @@ pass. These are native diagnostic timings, not a new cross-engine comparison
 or a resolution of the inherited numerical findings above.
 [Source, commands, route checks and per-case samples](results/2026-10-23-gfx1151-flashnext-mtp-subset-head.json).
 
+Request-local prompt lookup now supplies copied candidates when a committed
+suffix matches earlier text. The target still verifies every candidate. With
+that addition, the same model, host and protocols above show no suite speedup
+against the subset-head baseline:
+
+| Suite | Change in per-case median MTP decode |
+| --- | ---: |
+| Eight 1K/4K canonical cases, 64 outputs | −0.13% to 0.00% |
+| Eighteen category/heldout cases, 32 outputs | −0.13% to +0.03% |
+
+All 208 output sequences and acceptance results match. Separate greedy and
+sampled copy controls exercise lookup and preserve output IDs; varied prose
+uses neural proposals. Those controls ignore EOS and are not a copy-throughput
+claim. Six cancellation/reuse checks pass.
+[Commands, controls and samples](results/2026-10-23-gfx1151-flashnext-prompt-lookup.json).
+
 ## Qwen3.8 Flash Next current production rates
 
 On Framework Desktop / Radeon 8060S/gfx1151, Qwen3.8-Flash-Next UD-Q4_K_XL,

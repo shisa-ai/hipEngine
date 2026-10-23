@@ -201,6 +201,7 @@ def prepare_proposal(
     target_hidden_seed: Any,
     draft_n_max: int,
     compact_output: bool = False,
+    lookup_candidates: Sequence[int] = (),
 ) -> Qwen4ExpMTPProposal:
     """Prepare one draft chain. Performs no target work.
 
@@ -212,12 +213,20 @@ def prepare_proposal(
     start = _non_negative_int(start_position, "start_position")
     if int(draft_runner.position) != start:
         raise RuntimeError("Qwen4Exp target/draft cursors diverged before proposal")
-    rows = draft_runner.propose_chain(
-        start_token=_non_negative_int(root_token, "root_token"),
-        target_hidden_seed=target_hidden_seed,
-        draft_n_max=_non_negative_int(draft_n_max, "draft_n_max"),
-        compact_output=bool(compact_output),
-    )
+    root = _non_negative_int(root_token, "root_token")
+    budget = _non_negative_int(draft_n_max, "draft_n_max")
+    copied = _token_tuple(lookup_candidates, "lookup token id")
+    if len(copied) > budget:
+        raise ValueError("lookup proposal exceeds the candidate budget")
+    if copied:
+        rows = draft_runner.propose_lookup_chain(
+            start_token=root, target_hidden_seed=target_hidden_seed, candidates=copied,
+        )
+    else:
+        rows = draft_runner.propose_chain(
+            start_token=root, target_hidden_seed=target_hidden_seed,
+            draft_n_max=budget, compact_output=bool(compact_output),
+        )
     return Qwen4ExpMTPProposal(
         start_position=start,
         root_token=root_token,
