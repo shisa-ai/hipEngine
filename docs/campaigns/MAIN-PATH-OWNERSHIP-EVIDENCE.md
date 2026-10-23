@@ -1,14 +1,16 @@
 ---
-status: current
-owns: Main-path cleanup ownership map, finite prerequisite decisions, and behavioral validation evidence for the construction-lifetime refactor.
+status: closed
+owns: Completed main-path cleanup ownership map, prerequisite decisions, and validation evidence for construction, admission refusal, and MTP upload lifetime.
 ---
 # Main-path ownership and safety evidence
 
 This is the execution record for
 [MAIN-PATH-ARCHITECTURE-CLEANUP.md](MAIN-PATH-ARCHITECTURE-CLEANUP.md).
 Source baseline: `3d246c549`; concurrent documentation-only work advanced HEAD
-to `7ada31812` without changing the Python implementation. Results below are
-baseline evidence, not a claim that the campaign is complete.
+to `7ada31812` without changing the Python implementation. The selected campaign
+closed on October 23 after construction ownership, request refusal containment,
+and MTP upload lifetime repairs. The initial findings below describe the baseline;
+the final sections record implementation and acceptance evidence.
 
 ## Selected path
 
@@ -42,10 +44,10 @@ The oversized-request recovery check exposed a separate failure: a request with
 1,025 exact prompt IDs and four output tokens needs 1,028 KV positions. Its
 `reserve_admission` refusal raised `ValueError` and killed the entire service;
 a subsequent valid request raised `EngineServiceClosed`. Final close returned
-tracked device allocations to zero. This is an open repair, not a passing
-failure-recovery check. Speculative and HTTP checks remain to be completed.
+tracked device allocations to zero. This baseline failure was repaired by
+`a8cea4c6f`; final speculative and HTTP results are recorded below.
 
-## Ownership map
+## Baseline ownership map
 
 Anchors are symbols rather than line numbers so ordinary edits do not invalidate
 the table. Paths below are under `hipengine/`.
@@ -85,7 +87,7 @@ existing types. Candidate-budget publication stays on `LLM`, in its existing
 post-generator/pre-driver position. Its three-source selection ladder is not
 part of this lifecycle change.
 
-## Behavioral safety matrix
+## Baseline behavioral safety matrix
 
 All paths below are under `tests/`. Initial results were independently run on
 the unchanged implementation. Mocked tests prove host contracts, not GPU math.
@@ -142,9 +144,95 @@ The initial audit refresh archived three absent `ungoverned-flag-branch` rows
 without claiming their debt resolved. Existing engine-loop environment flags and
 their precedence are unchanged; no new flag or debt-budget increase is proposed.
 
-## Remaining acceptance evidence
+## Implemented ownership and removed paths
 
-The implementation, real speculative/HTTP checks, recovery repair, full suite,
-documentation/audit/worklog gates and campaign completion audit are still open.
-Record results here as units finish, then mark the campaign checklist from
-concrete evidence rather than from the size of this investigation.
+| Boundary | Final owner and implementation | Removed ambiguity; unchanged behavior |
+| --- | --- | --- |
+| Unpublished generator/provider | `generation/construction.py:ConstructionOwner`, used by `LLM._get_text_generator` | One temporary owner replaces the provider-only unwind. A successful attachment transfers provider responsibility to the target; failure closes all acquired resources. Registry selection, hook order, candidate budget and public exception types stay unchanged. |
+| Runner preparation | `SubmitPollTextGenerator.__init__` temporarily owns the returned runner | Failed prepare/configure closes the runner without calling normal close on a partially initialized driver. Successful driver construction transfers ownership outward. |
+| Service startup/publication | `EngineService.__init__` and the outer construction owner | Startup timeout joins the unpublished service; idempotent driver close prevents duplicate release. `LLM._text_generator` is published only on success. |
+| Impossible request context | `Qwen35GGUFResidentModelRunner.register_batch` | Validate the whole cohort against prepared session capacity before publishing rows or advancing batch IDs. Available and busy leases provide the same bound; DMS effective output limits and zero-output behavior are preserved. Unexpected execution/device faults are not swallowed. |
+| Resident MTP weights/embedding uploads | `_GGUFMTPServingAssets.upload_cache`; standalone drafts own a private `WeightUploadCache` | Resident runners no longer use the kernel wrapper's process-global name cache. Models have independent caches; allocating runtime identity separates entries inside one owner. Pooled drafts borrow uploads, and the generator closes uploads after drafts but before shared target weights. |
+
+Construction code and tests landed in `0e56e4a9d` together with a concurrent
+worker's PARO unit because the shared index was committed by that worker. The
+exact construction paths were verified afterward; history was preserved rather
+than rewriting the other worker's commit. `8c6ba95bf` normalized the regression
+file ending. Admission is `a8cea4c6f`; upload lifetime is `3fea5d9f9`.
+
+No kernel body, arithmetic, precision, selected variant, default or registry axis
+changed in these ownership units. Numerical promotion and performance gates are
+therefore not applicable. Short greedy-output agreement below is a lifecycle
+regression check, not a quality or batch-invariance certification.
+
+## Final behavioral acceptance matrix
+
+Run CPU targets with `uv run pytest <file-or-node> -q`. All named CPU nodes below
+passed in the milestone run unless a focused result is explicitly named. The
+real-model probes used the selected configuration above with the TheRock Python
+runtime. Their scripts and logs are local evidence under
+`/tmp/hipengine-main-path-campaign/`, not repository dependencies.
+
+| Contract | Exact target or public operation | Oracle and result | Dependency and coverage limit |
+| --- | --- | --- | --- |
+| Construction, failed setup and retry | `tests/test_unit_generation_construction_lifetime.py` | 14 cases pass: cleanup, clean retry, unpublished cache, error identity, provider attachment, width/context forwarding and startup timeout. Original RED run had ten cleanup failures and three controls passing. | Real public construction with synthetic registry generators; no GPU math. |
+| Capacity boundary and atomic refusal | `tests/test_unit_gguf_admission_context.py` | Prompt lengths 17, 1020, 1021, 1022 and 1400 against 1024 positions and four output tokens; mixed cohort rejection preserves a busy neighbor. DMS limits and zero output covered. Admission bundle: 77 passed. | Fake session capacity; real refusal/recovery also exercised below. |
+| Isolation and slot reuse | `tests/test_integration_generation_engine_service.py::test_engine_service_is_sole_driver_and_refills_before_long_neighbor_finishes`, `::test_engine_service_slow_consumer_and_cancel_are_child_scoped`; `tests/test_live_generation_qwen35_gguf_sampling.py::test_gguf_resident_runner_discards_only_terminal_packed_state` | Independent children preserve output and reclaim only their own state; all pass. | Real service with fake driver, and bare resident owner with fake sessions. No multi-request GPU numerical-invariance claim. |
+| Queued/pre-admission cancellation | `tests/test_integration_server_api.py::test_generation_batcher_skips_cancelled_queued_submit`, `::test_generation_batcher_releases_prestart_cancelled_controlled_reservation`, `::test_generation_batcher_drains_pending_controlled_cancellation_on_exit` | Queue/reservation accounting passes, including cancellation before backend work starts. | CPU transport tests with FakeLLM. |
+| Running cancellation and recovery | `tests/test_integration_generation_engine_service.py::test_engine_service_timeout_is_child_scoped_and_reclaimed`; real `LLM.stream_detailed` partial close then `generate` | Child-scoped timeout passes; real refill matches ordinary output and service remains healthy. | One real GPU request at a time; neighbor isolation covered by CPU tests. |
+| Speculative provisional state | `tests/test_unit_qwen35_gguf_linear_state_commit.py`, `tests/test_unit_qwen35_gguf_linear_state_snapshot.py`; `tests/test_live_generation_qwen35_gguf_sampling.py::test_gguf_speculative_mtp_partial_commit_uses_captured_row`, `::test_gguf_speculative_mtp_cancellation_releases_request_buffers_and_poisoned_draft` | Correct captured-row commit, pointer/journal rollback and cancelled draft release pass. | Kernel calls are patched in state ownership tests; arithmetic unchanged. |
+| Stop, finish, usage and terminal error | `tests/test_integration_generation_engine_service.py::test_engine_service_stop_holdback_is_owned_per_child_collector`; `tests/test_integration_engine_service_speculative_finish.py`; `tests/test_integration_server_controlled_speculation.py::test_text_stop_not_matching_standalone_tokenization_never_leaks`; `tests/test_integration_server_api.py::test_streaming_completion_backend_cancelled_exception_emits_error_and_done` | Stop text does not leak, finish precedence and accounting pass, terminal SSE error is followed by done. | CPU service/HTTP fixtures; real short generations ended by length, not a forced GPU EOS case. |
+| Shutdown and upload lifetime | `tests/test_unit_mtp_weight_upload_ownership.py`; `tests/test_live_generation_qwen35_gguf_sampling.py::test_gguf_generator_close_releases_pooled_children_before_shared_weights` | 18 owner tests pass; real constructor metadata/upload paths use fake JIT and allocation boundaries. Independent caches/runtimes, failed copy/free, constructor unwind and draft-before-upload close verified. | No simulated GPU free failure is claimed to recover a poisoned device; tests check host ownership and error preservation. |
+| Affected non-Qwen consumers | Cross-family files in the baseline matrix; `tests/test_unit_engine_loop_driver_close.py` | Shared construction/close contracts pass for Gemma, Qwen4Exp, Surya-related infrastructure, YuE2 and VibeVoice fixtures. | CPU coverage, not new model certification. Existing GPU prerequisites skip where absent. |
+| Actual HTTP text/chat and disconnect | `http-public.py`: real `create_app(ServerConfig(...))`, Uvicorn loopback; `/v1/completions`, `/v1/chat/completions`, close SSE after first data frame, then refill | HTTP success, oversized request returns 400, later text equals baseline, service healthy, final tracked allocations zero. | Real model and HTTP stack, not FakeLLM; server launched programmatically with the same app used by the CLI. |
+| Actual speculative route and close | `public-probe.py`: `LLM.generate_speculative_mtp_detailed(...)`; explicit HTTP `speculative_mtp: true` | Both report two MTP cycles; HTTP selected `gguf_specdec2_mtp2`, no fallback, IDs `[271, 248068, 198, 8160]` match ordinary generation. Global diagnostic cache stays empty in LLM probe. Both close with zero tracked allocations/bytes. | Four greedy output tokens on the selected artifact/configuration; no general accuracy or throughput claim. |
+
+Real admission probe `admission-public.py` separately rejected prompts of 1025
+and 1400 repeated tokens, preserving service health and ordinary output after
+each refusal. Its close also returned tracked allocations to zero. This repairs
+the baseline service poisoning rather than reclassifying it as expected behavior.
+
+The final context fault probe replaced `_declare_serving_context` with a no-op
+without editing source. The committed
+`test_llm_forwards_its_serving_context_and_width_to_the_generator` failed at the
+missing declaration assertion. Together with the capacity and context-map fault
+results above, this establishes that the relevant guards detect wrong behavior.
+
+### Milestone result and focused repair
+
+`uv run pytest --suite all -v` first stopped during collection because
+`test_integration_test_discovery.py` imported moved hooks from `tests/conftest.py`.
+`e7f5da918` reads the repository-root hooks instead; 21 discovery checks passed.
+No tests executed in that first milestone attempt, so the full command was rerun.
+
+The completed run reported **19,516 passed, 6,489 skipped and one failure** in
+254.76 seconds. The sole failure was the live sampling file's fake serving-assets
+object lacking the new upload cache. Its fixture now includes an upload owner and
+asserts that it closes after draft runners and before shared target weights.
+The complete file plus five affected files then passed **249 tests with one
+skip**. The owner file subsequently passed **18 tests**, including two added
+constructor-failure cases. No production code changed after the completed broad
+run; this uses the repository's focused-repair rule, not an all-green rerun claim.
+
+The skips include unavailable HIP/model/backend prerequisites in the uv Python
+environment. They are not passing GPU tests. The selected Qwen ownership path was
+separately exercised with real GPU execution through LLM and HTTP, so missing
+unrelated models do not block this bounded campaign. No claim is made that every
+backend or all 6,489 skipped cases were validated.
+
+## Result and next bounded unit
+
+The safety work found three concrete problems and protected their repairs:
+unpublished construction resources leaked, predictable oversized-input rejection
+poisoned the service, and resident MTP uploads outlived their model owner. Each
+now has explicit ownership, regression coverage and public-path evidence. The
+old provider-only unwind and resident use of the global upload cache are removed;
+there is no new fallback route or flag.
+
+The next candidate is the speculative candidate-budget selection ladder on
+`LLM`, already recorded in the scoped ledger table. First compare its three
+sources and define one owner without changing precedence. Transport backpressure
+and device scheduling remain distinct responsibilities; this campaign found no
+basis to collapse them. Broad protocol extraction, family unification, kernel
+selection cleanup and repository-wide debt remain separate work, not unfinished
+items in this bounded campaign.

@@ -1261,9 +1261,12 @@ state, batched state movement and graph replay remain optimization work. The
 repository-wide audit/refactor backlog is outside that campaign; existing
 serving routes and arithmetic contracts stay in place. The
 [main-path architecture cleanup campaign](campaigns/MAIN-PATH-ARCHITECTURE-CLEANUP.md)
-starts with bounded behavioral safety checks and scoped ledger triage, then maps
-Qwen GGUF request ownership before implementing one ownership improvement. It
-does not require clearing the entire ledger or changing arithmetic first.
+closed on October 23 with explicit unpublished-construction ownership,
+pre-publication rejection of oversized Qwen GGUF requests, and model-owned
+resident MTP uploads. Its [execution record](campaigns/MAIN-PATH-OWNERSHIP-EVIDENCE.md)
+contains public LLM/HTTP checks, the milestone result and focused fixture repair.
+Candidate-budget ownership is the next bounded follow-up; transport scheduling,
+repository-wide debt and arithmetic were not unified or changed by this work.
 
 Qwen3.8-Flash-Next serving status (October 18): the
 [production-serving campaign](QWEN4EXP-PRODUCTION-SERVING.md) closed its

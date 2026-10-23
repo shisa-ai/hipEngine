@@ -1,5 +1,5 @@
 ---
-status: current
+status: closed
 owns: Bounded main-path cleanup campaign, Qwen GGUF ownership mapping, refactoring safety checks, and implementation order.
 ---
 # Main-path architecture cleanup
@@ -19,8 +19,13 @@ Line count is a diagnostic, not an acceptance target. Moving a large class into
 several files, adding a protocol around the same implicit behavior, or making the
 audit count green does not by itself simplify the architecture.
 
-This document plans the next campaign. Creating it does not establish that the
-request path has been traced or that any proposed architectural change is ready.
+This campaign closed on October 23. The
+[ownership and safety evidence](MAIN-PATH-OWNERSHIP-EVIDENCE.md) records the
+baseline, implemented ownership boundaries, public LLM/HTTP checks, milestone
+result and focused repair. Construction cleanup, oversized-request containment
+and resident MTP upload lifetime are implemented. The plan below records the
+bounded scope and acceptance criteria used; it is not a mandate to continue
+repository-wide cleanup.
 
 ## Starting point
 
@@ -240,19 +245,27 @@ side effects.
 
 ## Completion checklist
 
-- [ ] Select and record the exact Qwen GGUF configurations and public entry points.
-- [ ] Complete the behavioral safety matrix with commands, results and limitations.
-- [ ] Confirm representative critical tests fail under deliberate faults.
-- [ ] Finish the finite prerequisite cleanup list and scoped ledger decisions.
-- [ ] Trace ordinary/speculative requests plus cancellation and failure recovery.
-- [ ] Record current/proposed ownership and select the first implementation unit.
-- [ ] Implement and validate one ownership improvement; remove its old path.
-- [ ] Check affected non-Qwen consumers of any changed shared contract.
-- [ ] Complete applicable public/stateful/numerical checks and milestone suite.
-- [ ] Update audit decisions, plan references and worklog evidence; commit all units.
-- [ ] Record remaining follow-ups and close this campaign without claiming the
+Evidence for each item is in the linked
+[execution record](MAIN-PATH-OWNERSHIP-EVIDENCE.md).
+
+- [x] Select and record the exact Qwen GGUF configurations and public entry points.
+- [x] Complete the behavioral safety matrix with commands, results and limitations.
+- [x] Confirm representative critical tests fail under deliberate faults.
+- [x] Finish the finite prerequisite cleanup list and scoped ledger decisions.
+- [x] Trace ordinary/speculative requests plus cancellation and failure recovery.
+- [x] Record current/proposed ownership and select the first implementation unit.
+- [x] Implement and validate one ownership improvement; remove its old path.
+- [x] Check affected non-Qwen consumers of any changed shared contract.
+- [x] Complete applicable public/stateful/numerical checks and milestone suite.
+- [x] Update audit decisions, plan references and worklog evidence; commit all units.
+- [x] Record remaining follow-ups and close this campaign without claiming the
       entire architecture or test suite has been cleaned.
 
-The first actionable deliverable is the **Qwen GGUF ownership map, behavioral
-matrix and finite prerequisite list**. Work can gather these together; none is a
-reason to start a repository-wide cleanup before implementing the selected change.
+The full suite completed with one outdated test fixture failure; the repaired
+file and affected bundle passed under the focused-repair rule. Unavailable
+GPU/model tests were skipped, not certified. Separate real-model LLM and HTTP
+checks covered the selected Qwen path, including explicit speculative execution
+and shutdown. No arithmetic changed and no performance claim is made.
+
+The next bounded candidate is candidate-budget ownership, not broad class
+splitting or queue unification. See the execution record for its scope.
