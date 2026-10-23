@@ -8562,11 +8562,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                 runtime=self.runtime,
             )
         position = start + consumed
-        for attention in self.attention_states:
-            attention.set_position(max(position - 1, 0))
-        for index in self.index_states:
-            index.restore_count(position)
-        _, self._ple_hash_states = ple_hash_rows(
+        _, accepted_hash_states = ple_hash_rows(
             list(tokens[:consumed]),
             positions=list(range(start, position)),
             sequence_ids=[0] * consumed,
@@ -8578,7 +8574,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             heads_per_ngram=cfg.ple_heads_per_ngram,
             ngram_size=cfg.ple_ngram_size,
         )
-        self.position = position
+        self.adopt_prefix_cursor(position, accepted_hash_states)
 
     def verify_target_block_with_acceptance(
         self,
@@ -8706,13 +8702,35 @@ class Qwen4ExpGGUFResidentModelRunner:
         The caller has already written the K/V rows, index keys, pooled index
         blocks and recurrent state that describe that position. The attention
         and index states bound-check the cursor.
+
+        With shared position/context staging the QSA cursor moves with one
+        interleaved copy instead of two 8-byte copies per state. That copy
+        writes every state at once, so each state's closed flag and position
+        bound is checked first and a refusal leaves the device untouched.
         """
 
         self._require_open()
         position = int(position)
         cursor = max(position - 1, 0)
-        for attention in self.attention_states:
-            attention.set_position(cursor)
+        compact = (
+            self._shared_position_context is not None
+            and self._shared_position_context_host is not None
+        )
+        if compact:
+            for attention in self.attention_states:
+                if attention.closed:
+                    raise RuntimeError("Qwen4Exp attention state is closed")
+                if not 0 <= cursor < attention.max_positions:
+                    raise ValueError("attention position exceeds state capacity")
+            for index in self.index_states:
+                if index.closed:
+                    raise RuntimeError("QSA index state is closed")
+                if position < 0 or position > index.capacity:
+                    raise ValueError("QSA index restore count exceeds capacity")
+            self._prepare_decode_positions(cursor)
+        else:
+            for attention in self.attention_states:
+                attention.set_position(cursor)
         for index in self.index_states:
             index.restore_count(position)
         self._ple_hash_states = dict(ple_hash_states)

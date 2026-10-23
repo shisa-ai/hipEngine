@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-10-22 UTC**
+Last updated: **2026-10-23 UTC**
 
 ## 16K INT8/MTP with and without DMS — RX 7900 XTX
 
@@ -183,7 +183,7 @@ changes. Both arms use one active request, fresh prompts, prefix cache off,
 Each cell is the median of four categories and three measured repetitions
 after one warmup per case and arm.
 
-| Fresh prompt | AR prefill before → now | MTP prefill before → now | AR decode before → now | MTP decode before → now |
+| Fresh prompt | AR prefill before → after | MTP prefill before → after | AR decode before → after | MTP decode before → after |
 | ---: | ---: | ---: | ---: | ---: |
 | 1,024 | 1319.3 → 1314.3 | 1100.8 → 1091.2 | 15.315 → 17.082 (+11.54%) | 37.986 → 36.799 (−3.13%) |
 | 4,096 | 1654.4 → 1644.6 | 1325.5 → 1305.5 | 12.153 → 14.676 (+20.76%) | 37.440 → 36.783 (−1.75%) |
@@ -196,6 +196,21 @@ old/new MTP rerun did not reproduce the table's slowdown: median paired change
 These are diagnostic timings: inherited strict-teacher numerical findings remain open,
 and this exact change does not establish a new numerical-quality verdict.
 [Protocol, samples and correctness checks](results/2026-10-22-gfx1151-flashnext-batch-decode.json).
+
+An October 23 comparison on the same host, model and execution profile reduces
+MTP partial-acceptance restoration overhead by combining cursor uploads.
+The synchronized diagnostic covers 56 partial restores across nine requests
+at 1,024, 1,537 and 4,096 prompt tokens, each generating 32 tokens.
+
+| Partial-acceptance restore | Before | After |
+| --- | ---: | ---: |
+| Median restore window | 1.503 ms | 1.211 ms (−19.4%) |
+| Cursor uploads per restore | 24 | 1 |
+
+The separate uninstrumented 208-request comparison preserves every output and
+shows no per-case median decode regression. This is a restore-window improvement,
+not an isolated end-to-end speedup claim.
+[Commands, state checks and all timing samples](results/2026-10-23-gfx1151-flashnext-mtp-cursors.json).
 
 ## Qwen3.8 Flash Next current production rates
 
