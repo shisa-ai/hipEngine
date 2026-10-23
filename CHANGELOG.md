@@ -15,6 +15,8 @@ model, backend, storage layout, and request shape.
 
 ### Fixed
 
+- **Gemma 4 INT8 KV on Strix Halo.** Register the direct INT8 attention
+  consumers for gfx1151 so public generation can select them.
 - **Gemma 4 serving memory.** Layers share temporary workspaces instead of
   allocating a full set per layer, preventing first-decode out-of-memory
   failures on a default W7900 server.
