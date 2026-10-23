@@ -1,12 +1,34 @@
 from pathlib import Path
+import subprocess
+import sys
+import tomllib
 
 import pytest
 
 from scripts.check_test_tiers import inspect_tests
 
 
-def test_repository_uses_tier_names_and_isolates_unit_imports() -> None:
-    assert inspect_tests(Path(__file__).parent) == []
+@pytest.mark.parametrize("root", ["tests", "audit/tests"])
+def test_repository_uses_tier_names_and_isolates_unit_imports(root: str) -> None:
+    assert inspect_tests(Path(__file__).resolve().parents[1] / root) == []
+
+
+def test_product_and_audit_contract_tests_are_in_default_discovery() -> None:
+    project = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    config = tomllib.loads(project.read_text())["tool"]["pytest"]["ini_options"]
+    assert {"tests", "audit/tests"} <= set(config["testpaths"])
+
+
+def test_explicit_audit_collection_respects_nonunit_suite() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "audit/tests", "--suite", "integration",
+         "--collect-only", "-q"],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True, text=True, timeout=30,
+    )
+    # All audit contracts are unit tests: an integration-only selection is empty,
+    # not an unknown-option error from suite hooks living in the product subtree.
+    assert result.returncode == 5, result.stdout + result.stderr
 
 
 def test_all_execution_tiers_are_accepted(tmp_path: Path) -> None:

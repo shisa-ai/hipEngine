@@ -13,6 +13,11 @@ worked through, and new debt landed faster than old debt retired.
 This tool makes that surface queryable, keeps decisions about it durable, and
 gates against it growing.
 
+For the measured code-size baseline, audit coverage gaps and ordered cleanup
+acceptance criteria, see [Architecture cleanup coverage](COVERAGE.md). A green
+audit gate is not proof of clean architecture, dead-code reachability or useful
+test coverage.
+
 ## The two halves
 
 They share one decision store, so a `wontfix` recorded once is honoured by both.
@@ -520,11 +525,17 @@ audit/
 
 ## Tests
 
+Audit contracts run in the default unit tier and in `--suite all`:
+
 ```bash
+uv run pytest audit/tests
 python3 -m unittest discover -s audit/tests -t audit
 ```
 
-Hermetic; the store tests run against a temporary directory.
+Both commands run the same contract modules. Repository-level `conftest.py`
+selects tiers for both test roots; product registry and GPU fixtures remain in
+`tests/conftest.py` and do not apply to `audit/tests/`. Hermetic store tests use
+temporary directories.
 
 ## What this does not establish
 
