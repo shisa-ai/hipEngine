@@ -96,8 +96,9 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     build_runtime_state,
     record_f32_row_indexed,
 )
+from hipengine.speculative.weight_uploads import WeightUploadCache
+
 from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import (
-    _cached_upload,
     build_mtp_nextn,
     mtp_add_f32,
     mtp_dense_attn_f32,
@@ -570,6 +571,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
     num_kv_heads: int = 2
     experts_used: int = 8
     eps: float = 1e-6
+    upload_cache: WeightUploadCache | None = None
+    _owns_upload_cache: bool = field(default=False, init=False)
     _buffers: list[DeviceBuffer] = field(default_factory=list, init=False)
     last_top1_probs: list[float] = field(default_factory=list, init=False)
     last_stage_timings_ms: dict[str, float] = field(default_factory=dict, init=False)
@@ -587,6 +590,9 @@ class Qwen35GGUFResidentMTPDraftRunner:
 
     def __post_init__(self) -> None:
         self.runtime = self.runtime or get_hip_runtime()
+        self._owns_upload_cache = self.upload_cache is None
+        if self.upload_cache is None:
+            self.upload_cache = WeightUploadCache()
         self.hidden_size = int(self.token_embd_f32.shape[1])
         self.qk_head_dim = int(np.asarray(self._get("blk.40.attn_q_norm.weight")).shape[0])
         self.value_head_dim = self.qk_head_dim
@@ -642,10 +648,15 @@ class Qwen35GGUFResidentMTPDraftRunner:
         # Max draft depth the precomputed-rope / topk-accumulator buffers cover.
         self._draft_chain_cap = 16
         self._embed_table_f32: DeviceBuffer | None = None
-        self._upload_weights()
-        self._allocate_buffers()
-        if self.prewarm_device_chain and self._device_chain_enabled:
-            self.ensure_device_chain_ready()
+        from hipengine.generation.construction import ConstructionOwner
+
+        with ConstructionOwner() as construction:
+            construction.take(self)
+            self._upload_weights()
+            self._allocate_buffers()
+            if self.prewarm_device_chain and self._device_chain_enabled:
+                self.ensure_device_chain_ready()
+            construction.release()
 
     def _get(self, name: str) -> np.ndarray:
         return self.weights[name][0]
@@ -674,7 +685,9 @@ class Qwen35GGUFResidentMTPDraftRunner:
 
     def _upload(self, name: str, data: np.ndarray | None = None) -> DeviceBuffer:
         array = self._get(name) if data is None else data
-        return _cached_upload(f"resident_mtp:{name}", np.ascontiguousarray(array), runtime=self.runtime)
+        return self.upload_cache.upload(
+            f"resident_mtp:{name}", np.ascontiguousarray(array), runtime=self.runtime
+        )
 
     def _upload_weights(self) -> None:
         self.eh_proj = self._upload("blk.40.nextn.eh_proj.weight")
@@ -814,6 +827,8 @@ class Qwen35GGUFResidentMTPDraftRunner:
         for buf in reversed(self._buffers):
             free(buf, runtime=runtime)
         self._buffers.clear()
+        if self._owns_upload_cache and self.upload_cache is not None:
+            self.upload_cache.close()
 
     def __enter__(self) -> "Qwen35GGUFResidentMTPDraftRunner":
         return self
@@ -1895,7 +1910,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             return
         rows = int(self.vocab)
         table = np.ascontiguousarray(self.token_embd_f32[:rows], dtype=np.float32)
-        self._embed_table_f32 = _cached_upload(
+        self._embed_table_f32 = self.upload_cache.upload(
             f"resident_mtp:token_embd_f32:vocab{rows}:hidden{self.hidden_size}",
             table,
             runtime=self.runtime,

@@ -45,6 +45,7 @@ from hipengine.generation.batch_scheduler import (
 )
 from hipengine.generation.constraints import token_sequence_state_for_tokens
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.speculative.weight_uploads import WeightUploadCache
 from hipengine.generation.engine_loop import (
     ExecutionFailure,
     GenerationAdmissionRejected,
@@ -1005,6 +1006,7 @@ class _GGUFMTPServingAssets:
     rope_sin: np.ndarray
     config: Qwen35GGUFConfig | None = None
     nextn_block_id: int = 40
+    upload_cache: WeightUploadCache = field(default_factory=WeightUploadCache)
 
 
 @dataclass(frozen=True)
@@ -1342,6 +1344,7 @@ def _new_mtp_draft_runner(
         device_chain_enabled=True,
         prewarm_device_chain=True,
         require_cached_build=bool(require_cached_build),
+        upload_cache=assets.upload_cache,
     )
 
 
@@ -3525,6 +3528,7 @@ class Qwen35GGUFBringupGenerator:
         with lock:
             shared_runner = getattr(self, "_shared_runner", None)
             self._shared_runner = None
+        assets = getattr(self, "_mtp_serving_assets", None)
         self._mtp_serving_assets = None
         # Draft providers borrow the shared NextN block, so it is freed after
         # them and before the target runner whose roots it borrows.
@@ -3533,6 +3537,8 @@ class Qwen35GGUFBringupGenerator:
             (lambda weights=weights: weights.free(runtime=runtime))
             for _key, weights in nextn_weights
         ]
+        if assets is not None:
+            weight_closers.append(assets.upload_cache.close)
 
         error: BaseException | None = None
         for resource in (*reversed(sessions), *reversed(drafts), *weight_closers, shared_runner):

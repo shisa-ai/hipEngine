@@ -269,12 +269,12 @@ def test_gguf_generator_close_releases_pooled_children_before_shared_weights() -
     generator._shared_session_pool_lock = threading.Lock()
     generator._shared_mtp_draft_pool = {7: [Resource("draft0"), Resource("draft1")]}
     generator._shared_mtp_draft_pool_lock = threading.Lock()
-    generator._mtp_serving_assets = SimpleNamespace()
+    generator._mtp_serving_assets = SimpleNamespace(upload_cache=Resource("uploads"))
 
     generator.close()
     generator.close()
 
-    assert events == ["session1", "session0", "draft1", "draft0", "shared_runner"]
+    assert events == ["session1", "session0", "draft1", "draft0", "uploads", "shared_runner"]
     assert generator._shared_session_pool == {}
     assert generator._shared_mtp_draft_pool == {}
     assert generator._mtp_serving_assets is None
