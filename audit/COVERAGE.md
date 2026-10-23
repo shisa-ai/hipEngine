@@ -11,6 +11,11 @@ This is the initial assessment at `cbc5682e5` (2026-10-23), not a certification 
 the whole repository. The standing decisions remain in `audit/triage/`; findings
 from a scan remain evidence to investigate, not deletion instructions.
 
+The [main-path architecture cleanup campaign](../docs/campaigns/MAIN-PATH-ARCHITECTURE-CLEANUP.md)
+owns the next execution sequence: bounded safety checks and cleanup, scoped
+ledger triage, Qwen GGUF ownership mapping, then one implemented ownership change.
+This file remains the baseline and completed-cleanup record.
+
 ## Size baseline
 
 `scc` 4.1.0, Python only, counted 3,999 files. Matching its per-file locations
