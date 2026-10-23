@@ -79,27 +79,26 @@ context** is a capacity limit, not a full-length prefill.
 
 ### Radeon Pro W7900 — 48 GB (`gfx1100`)
 
-| Model | Quant | Prompt processing | Text generation | With MTP | Max context |
-| --- | --- | ---: | ---: | ---: | ---: |
-| Qwen3.6-35B-A3B | ParoQuant W4 | **2879.4** | **113.3** | 115.8 | — |
-| Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **2924.5** | **95.0** | 122.7 | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` (BF16 KV) | **898.6** | **30.8** | 39.7 | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` (INT8 KV) | 868.6 | 27.9 | — | **176,128** |
-| Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **3805.6** | **75.8** | **120.2** | — |
-| Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** | — | — | — |
+| Model | Quant | Prompt processing | Text generation | With MTP |
+| --- | --- | ---: | ---: | ---: |
+| Qwen3.6-35B-A3B | ParoQuant W4 | **2879.4** | **113.3** | 115.8 |
+| Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **2924.5** | **95.0** | 122.7 |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` (BF16 KV) | **898.6** | **30.8** | 39.7 |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` (INT8 KV) | 868.6 | 27.9 | — |
+| Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **3805.6** | **75.8** | **120.2** |
+| Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** | — | — |
 
 ### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
 
 | Model | Quant | Prompt processing | Text generation | With MTP |
 | --- | --- | ---: | ---: | ---: |
-| Maple-Preview | 2-bit | **754.5** | **153.2** | — |
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1418.1** | **56.7** | 80.1 |
-| Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **1865.6** | **43.3** | **69.4** |
-| Qwen3.8 Flash-Next | GGUF `UD-Q4_K_XL` | **1036.2** | **23.7** | **28.9** |
-| Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — |
-| Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.15** | **22.4** |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` (INT8 KV) | — | **10.84** | **19.3** |
+| Qwen3.8 Flash-Next | GGUF `UD-Q4_K_XL` | **1036.2** | **23.7** | **28.9** |
+| Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **1865.6** | **43.3** | **69.4** |
+| Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — |
+| Maple-Preview | 2-bit | **754.5** | **153.2** | — |
 
 ### NVIDIA RTX PRO 6000 Blackwell — 96 GB (`sm_120a`)
 
