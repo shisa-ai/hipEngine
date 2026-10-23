@@ -153,6 +153,13 @@ applicable. Run the audit gate and commit a validated logical unit before taking
 the next. A caller search, coverage percentage, passing test count or reduced
 line count alone is not sufficient acceptance evidence.
 
+## Implementation progress
+
+- Audit test discovery is connected: both `tests/` and `audit/tests/` are pytest
+  roots, audit test filenames carry the unit prefix, and repository-level tier
+  selection no longer depends on loading product fixtures. The baseline gap
+  described above is closed; standalone unittest discovery remains supported.
+
 ## Completion boundary
 
 This assessment does not claim comprehensive dead-code detection, full dynamic
