@@ -31,6 +31,23 @@ def test_explicit_audit_collection_respects_nonunit_suite() -> None:
     assert result.returncode == 5, result.stdout + result.stderr
 
 
+def test_product_test_imports_resolve_to_product_tree() -> None:
+    import tests._rocm_guard as guard
+
+    assert Path(guard.__file__).resolve().parent == Path(__file__).resolve().parent
+
+
+def test_audit_first_collection_preserves_product_helper_imports() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "audit/tests",
+         "tests/test_unit_test_tier_names.py::test_product_test_imports_resolve_to_product_tree",
+         "-o", "addopts=", "-q"],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_all_execution_tiers_are_accepted(tmp_path: Path) -> None:
     for tier in ("unit", "integration", "gpu", "benchmark", "live", "slow"):
         (tmp_path / f"test_{tier}_example.py").write_text("def test_example(): pass\n")
