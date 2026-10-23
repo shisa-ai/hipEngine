@@ -81,7 +81,7 @@ context** is a capacity limit, not a full-length prefill.
 
 | Model | Quant | Prompt processing | Text generation | With MTP |
 | --- | --- | ---: | ---: | ---: |
-| Qwen3.6-35B-A3B | ParoQuant W4 | **2879.4** | **113.3** | 115.8 |
+| Qwen3.6-35B-A3B | ParoQuant W4 | **2859.0** | **116.0** | — |
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **2924.5** | **95.0** | 122.7 |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` (BF16 KV) | **898.6** | **30.8** | 39.7 |
 | Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **3805.6** | **75.8** | **120.2** |

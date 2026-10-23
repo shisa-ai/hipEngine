@@ -722,7 +722,7 @@ context** is a capacity limit, not a full-length prefill.
 
 | Model | Quant | Prompt processing | Text generation | With MTP |
 | --- | --- | ---: | ---: | ---: |
-| Qwen3.6-35B-A3B | ParoQuant W4 | **2879.4** | **113.3** | 115.8 |
+| Qwen3.6-35B-A3B | ParoQuant W4 | **2859.0** | **116.0** | — |
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **2924.5** | **95.0** | 122.7 |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` (BF16 KV) | **898.6** | **30.8** | 39.7 |
 | Gemma 4 26B-A4B | GGUF `UD-Q4_K_XL` | **3805.6** | **75.8** | **120.2** |
@@ -1912,21 +1912,22 @@ D08-X package is retained: the final gate is **1794/1800 top-1, max KL
 
 ### Radeon Pro W7900: Qwen3.6-35B-A3B
 
-The repaired-runtime publication uses two warmups and five measured resets per
-right-sized session. `Peak` is hipEngine tracked allocator high-water.
+PARO uses the October 23 refresh; GGUF uses the August 23 measurements. Both
+use two warmups and five measured resets per right-sized session. `Peak` is
+hipEngine tracked allocator high-water.
 
 | Workload | PARO prefill | PARO decode | PARO peak | GGUF prefill | GGUF decode | GGUF peak |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 512/128 | **2852.100** | **115.804** | **18.144 GiB** | 2763.590 | 94.603 | 21.073 GiB |
-| 1K/128 | 2965.063 | **103.113** | **18.367 GiB** | **3198.957** | 99.728 | 21.133 GiB |
-| 4K/128 | 2927.519 | **106.020** | **19.161 GiB** | **3177.565** | 101.917 | 21.468 GiB |
-| 32K/128 | 2085.511 | **92.422** | **19.851 GiB** | **2154.871** | 89.432 | 22.060 GiB |
-| 64K/128 | 1559.680 | **79.098** | **20.344 GiB** | **1600.734** | 78.021 | 22.736 GiB |
-| 128K/128 | 1049.467 | 61.804 | **21.881 GiB** | **1058.075** | **63.177** | 24.088 GiB |
+| 512/128 | **2858.998** | **115.973** | **18.144 GiB** | 2763.590 | 94.603 | 21.073 GiB |
+| 1K/128 | 2972.617 | **103.481** | **18.367 GiB** | **3198.957** | 99.728 | 21.133 GiB |
+| 4K/128 | 2931.920 | **106.051** | **19.161 GiB** | **3177.565** | 101.917 | 21.468 GiB |
+| 32K/128 | 2090.465 | **92.483** | **19.851 GiB** | **2154.871** | 89.432 | 22.060 GiB |
+| 64K/128 | 1569.342 | **79.569** | **20.344 GiB** | **1600.734** | 78.021 | 22.736 GiB |
+| 128K/128 | 1056.731 | 62.092 | **21.881 GiB** | **1058.075** | **63.177** | 24.088 GiB |
 
 PARO leads short-context generation and memory; GGUF leads prefill from 1K and
 128K generation. IDs, variance gates, and clean provenance pass. Evidence:
-[`PARO sweep`](results/2026-08-23-w7900-current-default-hipengine-paro-packed-5run.json), [`GGUF sweep`](results/2026-08-23-w7900-current-default-hipengine-gguf-q4km-5run.json).
+[`PARO sweep`](results/2026-10-23-w7900-paro-packed-5run.json), [`GGUF sweep`](results/2026-08-23-w7900-current-default-hipengine-gguf-q4km-5run.json).
 
 ### Radeon Pro W7900: Qwen3.6-27B Dense GGUF
 
@@ -2959,7 +2960,7 @@ for the current gfx1151 FP32 production profile.
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public strict/BF16 cap4 realized-C1 K3, natural25 | 11.150 | **20.985** | **1.882x** | Three full-suite runs; all 30 cells exact, engaged and budget-conformed; every category faster. Blocking/SSE and cancellation/refill pass. The production default was AR under that protocol; automatic C1 admission followed on 2026-09-18. [`artifact`](results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Historical FP16 production C1 B3, c68-128/h24 | 9.350 | 13.088 | 1.3998x | Older profile certificate; not current FP32-production admission. [`artifact`](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Historical FP16 production C3 K3 D24 diagnostic | 20.788 | 19.934 | 0.9589x | Older implementation comparison, slower than its AR baseline; not current-profile admission. [`artifact`](results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json) |
-| W7900 / Qwen3.6-35B-A3B packed PARO W4A16+MTP BF16 | Production/default B1 fast, raw D24 | 110.830 | **115.770** | **1.0446x** | Exact `720/720`; complete 10-prompt numerical/repeat/task/state gate passes. Fast improves strict MTP 10.33% overall and every category. [`artifact`](results/2026-08-24-w7900-paro-fast-d24-3run-default.json) |
+| W7900 / Qwen3.6-35B-A3B packed PARO W4A16+MTP BF16 | Production B1 fast, raw D24 | 111.778 | — | — | October 23 numerical gate fails on `general_ja_explain`: mean/p95/p99 KL 0.00272/0.01246/0.03527 exceeds 0.001/0.005/0.02; focused repeat is identical. All 720 generated IDs and ten public API pairs match AR, but the MTP rate is diagnostic only. Runtime defaults are unchanged. Pass the full raw-D24 `mtp_paro_verifier_numerics.py` suite before refreshing the MTP headline. [`artifact`](results/2026-10-23-w7900-paro-mtp-refresh.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 96.75 | **122.67** | **1.2679x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json) |
 | Radeon 8060S / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 56.09 | **80.10** | **1.4282x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json) |
 
