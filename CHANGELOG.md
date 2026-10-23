@@ -6,6 +6,53 @@ This changelog is for package/API releases. Performance rollup history remains i
 [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md), with detailed benchmark
 evidence under [`benchmarks/results/`](benchmarks/results/).
 
+## v0.8.3 - 2026-10-23
+
+Patch release fixing GPU resource cleanup and Gemma 4 serving, correcting
+Flash-Next Q4 decode selection, and reducing redundant Flash-Next prefill
+and speculative decode work. APIs remain alpha; support depends on the
+model, backend, storage layout, and request shape.
+
+### Fixed
+
+- **Gemma 4 serving memory.** Layers share temporary workspaces instead of
+  allocating a full set per layer, preventing first-decode out-of-memory
+  failures on a default W7900 server.
+- **GPU resource cleanup.** `LLM.close()` releases the generator and its MTP
+  head. Gemma attention scratch no longer synchronizes streams owned and
+  already destroyed by a decode-graph session.
+- **Flash-Next on gfx1100.** The GDN DPP library builds for the selected or
+  detected GPU architecture rather than hard-coding gfx1151.
+- **Flash-Next Q4 decode.** Production uses the registered strict Q4
+  implementation after an isolated numerical failure in the DP4A variant.
+  Other production implementations remain enabled.
+- **Flash-Next prefix eviction.** Cached snapshots are removed by owner
+  identity rather than array-valued equality.
+- **Packed INT8 MTP.** Verification rows from the same request can share
+  that request's KV blocks, avoiding an unintended AR fallback.
+- **Gemma MTP opt-out reporting.** Requests with `speculative_mtp=False`
+  report the ordinary decode route.
+
+### Changed
+
+- **Flash-Next prefill and decode work.** Prompt-cache construction batches
+  predictor work and omits unused projections and outputs. Idle prefill uses
+  admitted capacity; shared-batch attention avoids redundant selection
+  transfers; attention position and partial-restore cursor uploads are reused
+  or combined.
+- **Flash-Next MTP proposals.** A request-local vocabulary subset reduces
+  draft-head work, with a full-head fallback. Greedy requests can also propose
+  repeated sequences from their own prompt/history. Target verification still
+  decides which tokens are committed; sampled requests do not use prompt lookup.
+- Benchmark helpers check prepared-request token counts and distinguish
+  per-request decode rates from whole-cohort throughput.
+
+### Known Limitations
+
+- The Flash-Next Q4 repair does not establish full-model numerical parity;
+  broader numerical and task-quality validation remains open.
+- This release does not change the existing model/backend capability limits.
+
 ## v0.8.2 - 2026-10-22
 
 Patch release that roughly doubles usable GGUF context on 24 GB GPUs, sizes

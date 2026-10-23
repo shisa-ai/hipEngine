@@ -4,9 +4,9 @@ hipEngine is a ROCm-native local inference engine built primarily for AMD
 Radeon GPUs. It pairs a small Python host with custom HIP kernels for torch-free
 model loading, generation, and OpenAI-compatible serving on supported hardware.
 
-**Current release: v0.8.2.** Roughly doubles GGUF context on 24 GB GPUs, sizes
-compact DMS for the rows it keeps, and adds prefix reuse to Flash-Next serving.
-See the [release notes](CHANGELOG.md#v082---2026-10-22) for scope and limitations.
+**Current release: v0.8.3.** Fixes Gemma 4 serving and GPU resource cleanup,
+corrects Flash-Next Q4 decode selection, and reduces redundant Flash-Next work.
+See the [release notes](CHANGELOG.md#v083---2026-10-23) for scope and limitations.
 
 ## Why use hipEngine?
 
@@ -191,9 +191,8 @@ performance.
 | NVIDIA Blackwell | Linux x86-64, Python 3.11+ and the CUDA toolkit with `nvcc`; Maple only |
 | Published wheel | glibc 2.39 or newer, such as Ubuntu 24.04 |
 
-ROCm 7.x is the safest choice for the current wheel; ROCm 10.0 has also been
-tested and works. See the [TheRock setup guide](docs/reference/THEROCK.md) for
-ROCm 7.13 and gfx1151 ROCm 10 setup and JIT validation. The first model load
+ROCm 7.x or newer is recommended. See the [TheRock setup guide](docs/reference/THEROCK.md)
+for ROCm 7.13 and gfx1151 ROCm 10 setup and JIT validation. The first model load
 compiles and caches kernels, so it takes longer than later starts.
 
 Install from PyPI:
