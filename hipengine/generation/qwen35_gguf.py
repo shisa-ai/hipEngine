@@ -9506,6 +9506,28 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             raise ValueError("request_ids, prompts, and prompt_rows must have the same length")
         if request.row_seeds and len(request.row_seeds) != len(request.prompts):
             raise ValueError("row_seeds must have one entry per prompt")
+        # Invalid request shapes belong to submission, not the driver's tick.
+        # Validate the whole cohort before publishing any row. Busy leases still
+        # declare the same physical context bound when no slot is available.
+        if self._kv_pool is not None and int(request.max_tokens) > 0:
+            leases = [*self._available, *(
+                row.lease for row in self._rows.values() if row.lease is not None
+            )]
+            if leases:
+                capacity = min(
+                    int(getattr(getattr(lease.session, "scratch", None), "max_positions", 0))
+                    for lease in leases
+                )
+                for prompt_ids in prompts:
+                    limit = self.scheduler_max_new_tokens_for_prompt(request, prompt_ids)
+                    effective_limit = (
+                        int(limit) if 0 < limit < int(request.max_tokens) else int(request.max_tokens)
+                    )
+                    positions = len(prompt_ids) + max(0, effective_limit - 1)
+                    if positions > capacity:
+                        raise ValueError(
+                            f"GGUF request requires {positions} KV positions but resident capacity is {capacity}"
+                        )
         batch_id = self._next_batch_id
         self._next_batch_id += 1
         plan = _gguf_sampler_plan(
