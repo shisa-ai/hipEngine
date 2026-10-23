@@ -353,17 +353,18 @@ def test_gemma4_int8_oracle_visible_nonfinite_logit_is_nan() -> None:
 # --------------------------------------------------------------------------
 
 
-def test_gemma4_int8_attention_registers_direct_key() -> None:
+@pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
+def test_gemma4_int8_attention_registers_direct_key(backend: str) -> None:
     from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention_int8
     from hipengine.kernels.registry import KernelKey, is_registered, resolve
 
     gemma4_attention_int8.register_gemma4_int8_attention_kernels(replace=True)
     key = KernelKey(
-        "hip_gfx1100", "paged_attn_decode", "int8_per_token_head", "gemma4_direct_spans"
+        backend, "paged_attn_decode", "int8_per_token_head", "gemma4_direct_spans"
     )
     assert is_registered(key)
     resolved = resolve(
-        backend="hip_gfx1100",
+        backend=backend,
         layer="paged_attn_decode",
         quant="int8_per_token_head",
         variant="gemma4_direct_spans",

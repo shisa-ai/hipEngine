@@ -18,11 +18,14 @@ relying on that harness artefact either way.
 from __future__ import annotations
 
 import ctypes
+import os
 from pathlib import Path
 
 import pytest
 
-_MODEL_DIR = Path("/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF")
+_MODEL_DIR = Path(os.environ.get(
+    "HIPENGINE_TEST_GEMMA4_MODEL_DIR", "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF"
+))
 _TARGET = _MODEL_DIR / "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
 
 

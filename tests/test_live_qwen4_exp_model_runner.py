@@ -46,6 +46,8 @@ def test_qwen4_exp_model_runner_snapshot_restores_transactional_cursors_and_stat
     runner.max_sequence_length = 8
     runner.state = DecodeState()
     runner.position = 3
+    runner._shared_position_context = None
+    runner._shared_position_context_host = None
     runner._ple_hash_states = {0: PLEHashState((4, 5), 3)}
     runner.attention_states = (Attention(), Attention())
     runner.index_states = (Index(), Index())

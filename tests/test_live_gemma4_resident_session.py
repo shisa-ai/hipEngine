@@ -12,6 +12,7 @@ the byte comparison fails here rather than in a gate result later.
 from __future__ import annotations
 
 import ctypes
+import os
 from pathlib import Path
 
 import numpy as np
@@ -19,7 +20,9 @@ import pytest
 
 from hipengine.runtime.gemma4_session import Gemma4ResidentSession
 
-_MODEL_DIR = Path("/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF")
+_MODEL_DIR = Path(os.environ.get(
+    "HIPENGINE_TEST_GEMMA4_MODEL_DIR", "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF"
+))
 _TARGET = _MODEL_DIR / "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
 
 

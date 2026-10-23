@@ -868,23 +868,26 @@ def register_gemma4_int8_attention_kernels(*, replace: bool = False) -> None:
     Qwen3.5 INT8 consumers; the variant names the Gemma-specific direct route.
     """
 
-    register(
-        KernelKey(
-            "hip_gfx1100",
-            "paged_attn_decode",
-            _GEMMA4_INT8_ATTENTION_QUANT,
-            _GEMMA4_INT8_ATTENTION_VARIANT,
-        ),
-        gemma4_attention_decode_int8_per_token_head_spans,
-        replace=replace,
-    )
-    register(
-        KernelKey(
-            "hip_gfx1100",
-            "paged_attn_prefill",
-            _GEMMA4_INT8_ATTENTION_QUANT,
-            _GEMMA4_INT8_ATTENTION_VARIANT,
-        ),
-        gemma4_attention_prefill_int8_per_token_head_spans,
-        replace=replace,
-    )
+    # These consumers register lazily, after the gfx1151 import-time alias pass.
+    # Publish both supported backend keys, as for Gemma's BF16 attention variants.
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        register(
+            KernelKey(
+                backend,
+                "paged_attn_decode",
+                _GEMMA4_INT8_ATTENTION_QUANT,
+                _GEMMA4_INT8_ATTENTION_VARIANT,
+            ),
+            gemma4_attention_decode_int8_per_token_head_spans,
+            replace=replace,
+        )
+        register(
+            KernelKey(
+                backend,
+                "paged_attn_prefill",
+                _GEMMA4_INT8_ATTENTION_QUANT,
+                _GEMMA4_INT8_ATTENTION_VARIANT,
+            ),
+            gemma4_attention_prefill_int8_per_token_head_spans,
+            replace=replace,
+        )

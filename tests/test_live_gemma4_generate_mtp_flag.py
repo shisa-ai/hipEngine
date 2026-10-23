@@ -11,6 +11,7 @@ there was no way to ask -- and therefore no way to be told no.
 from __future__ import annotations
 
 import ctypes
+import os
 from pathlib import Path
 
 import pytest
@@ -22,7 +23,9 @@ from hipengine import LLM, SamplingParams
 # from restoring them. This imports wrappers only; it does not allocate a GPU.
 from hipengine.runtime.gemma4 import Gemma4Runner  # noqa: F401
 
-_MODEL_DIR = Path("/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF")
+_MODEL_DIR = Path(os.environ.get(
+    "HIPENGINE_TEST_GEMMA4_MODEL_DIR", "/mnt/nvme1/models/gemma-4-26B-A4B-it-GGUF"
+))
 _TARGET = _MODEL_DIR / "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
 
 
@@ -78,7 +81,7 @@ def test_live_gemma4_attached_mtp_preserves_plain_request_state():
         pytest.skip("needs the Gemma assistant GGUF sidecar")
     llm = LLM(
         model=str(_TARGET),
-        backend="hip_gfx1100",
+        backend="auto",
         speculative_provider="gemma4_mtp",
         draft_model=str(draft),
         speculative_candidate_budget=2,
@@ -123,7 +126,7 @@ def test_live_gemma4_sampled_requests_run_plain_and_through_mtp():
         pytest.skip("needs the Gemma assistant GGUF sidecar")
     llm = LLM(
         model=str(_TARGET),
-        backend="hip_gfx1100",
+        backend="auto",
         speculative_provider="gemma4_mtp",
         draft_model=str(draft),
         speculative_candidate_budget=4,
