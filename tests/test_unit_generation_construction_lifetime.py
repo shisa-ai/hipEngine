@@ -749,4 +749,3 @@ def test_startup_timeout_joins_unpublished_service_and_closes_driver_once(monkey
     assert ledger.count("runner", "release") == 1
     assert ledger.count("generator", "release") == 1
     assert constructed[0].close_call_count == 1
-
