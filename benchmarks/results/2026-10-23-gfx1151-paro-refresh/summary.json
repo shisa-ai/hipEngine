@@ -1,0 +1,490 @@
+{
+  "schema": 1,
+  "status": "accepted",
+  "performance_claim": true,
+  "performance_claim_scope": "Fresh eager resident PARO measurements at 512, 1024 and 4096 input tokens; not HTTP throughput, MTP or capacity.",
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 3,
+    "collected_at": "2026-10-23T22:14:31.074085+00:00",
+    "host_name": "gfx1151",
+    "repo_root": "/tmp/hipengine-paro-gfx1151-20261023",
+    "hipengine_commit": "3d246c549b303a74ab659e3a7076a360916a6c85",
+    "git_branch": null,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "dirty_paths": [],
+    "dirty_path_count": 0,
+    "untracked_paths": [],
+    "execution_affecting_dirty": false,
+    "execution_affecting_paths": [],
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "model_revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917",
+      "size_bytes": 20497454388,
+      "sampled_bytes": 16442350,
+      "file_count": 18,
+      "exists": true,
+      "path_type": "directory"
+    },
+    "quant": "w4_paro",
+    "kv_dtype": "bf16",
+    "command": [
+      "scripts/qwen35_readme_sweep.py",
+      "--engine",
+      "paro",
+      "--model",
+      "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+      "--backend",
+      "hip_gfx1151",
+      "--shared-expert-format",
+      "packed_paro_w4",
+      "--token-id",
+      "9707",
+      "--workloads",
+      "4K/128",
+      "--warmup-runs",
+      "2",
+      "--measured-runs",
+      "5",
+      "--warmup-decode-tokens",
+      "4",
+      "--attn-aotriton-min-tokens",
+      "512",
+      "--no-graph-replay-decode",
+      "--compiler-version-file",
+      "/tmp/hipengine-paro-refresh-20261023/hipcc-version.txt",
+      "--require-cached-build",
+      "--json",
+      "/tmp/hipengine-paro-refresh-20261023/paro-eager-4K-128-repeat.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": "2",
+      "HIPENGINE_BUILD_CACHE_ROOT": null,
+      "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "build_profile": "readme_resident_sweep",
+    "timing_protocol": "single resident max-context session; per-shape reset; separate prefill/decode wall; graph capture excluded where enabled",
+    "warmups": 2,
+    "repetitions": 5,
+    "profiler": {
+      "enabled": false,
+      "reason": "topline host-wall sweep"
+    }
+  },
+  "physical_host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "product_name": "Desktop (AMD Ryzen AI Max 300 Series)",
+    "sys_vendor": "Framework",
+    "rocm_platform_version": "10.0.0"
+  },
+  "execution_profile": {
+    "requested": null,
+    "resolved": null,
+    "manifest": null,
+    "manifest_sha256": null,
+    "strict_manifest_sha256": null
+  },
+  "profile_note": "No registered gfx1151 w4_paro execution profile resolves; these are the shipped default kernels, not a production-profile promotion.",
+  "protocol": {
+    "concurrency": 1,
+    "prompt_token_id": 9707,
+    "prompt_lengths": [
+      512,
+      1024,
+      4096
+    ],
+    "decode_steps": 128,
+    "discarded_runs": 2,
+    "measured_runs": 5,
+    "decode_warmup_steps": 4,
+    "kv_storage": "bf16",
+    "decode_route": "eager",
+    "timing": "Separate synchronized resident prefill and decode walls; load, four decode warmup steps and setup excluded.",
+    "variance_limit": "sample standard deviation <= 5% of median, using merge_readme_sweep_components._metric_gate",
+    "scope_note": "Deliberately bounded three-shape refresh; no six-shape rollup was assembled."
+  },
+  "components": [
+    {
+      "artifact": "paro-eager-512-128.json",
+      "shape": "512/128",
+      "summary": {
+        "prefill_tok_s": {
+          "count": 5,
+          "median": 1200.9280507546082,
+          "min": 1199.5518005568829,
+          "max": 1203.5548872888173,
+          "mean": 1201.126260365987,
+          "stdev": 1.485056057381006
+        },
+        "decode_tok_s": {
+          "count": 5,
+          "median": 66.38852543886271,
+          "min": 66.37232628067743,
+          "max": 66.40364525417176,
+          "mean": 66.38741998704346,
+          "stdev": 0.012316363474162095
+        },
+        "tracked_peak_allocated_gib": {
+          "count": 5,
+          "median": 18.039150319993496,
+          "min": 18.039150319993496,
+          "max": 18.039150319993496,
+          "mean": 18.039150319993496,
+          "stdev": 0.0
+        },
+        "hip_used_peak_sampled_gib": {
+          "count": 5,
+          "median": 18.12283706665039,
+          "min": 18.12283706665039,
+          "max": 18.12283706665039,
+          "mean": 18.12283706665039,
+          "stdev": 0.0
+        },
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "final_token_ids_stable": true
+      },
+      "source_sha256": "07519c70048661f78628638325b587291d2473c273cd47774a2eb75cd38b6efa"
+    },
+    {
+      "artifact": "paro-eager-1K-128.json",
+      "shape": "1K/128",
+      "summary": {
+        "prefill_tok_s": {
+          "count": 5,
+          "median": 1226.523507630999,
+          "min": 1225.7990721556143,
+          "max": 1228.6957107752303,
+          "mean": 1226.8513701183697,
+          "stdev": 1.181713321860405
+        },
+        "decode_tok_s": {
+          "count": 5,
+          "median": 66.45031482670969,
+          "min": 66.42134751694235,
+          "max": 66.4570252488783,
+          "mean": 66.44588081234808,
+          "stdev": 0.014031693588683253
+        },
+        "tracked_peak_allocated_gib": {
+          "count": 5,
+          "median": 18.051434129476547,
+          "min": 18.051434129476547,
+          "max": 18.051434129476547,
+          "mean": 18.051434129476547,
+          "stdev": 0.0
+        },
+        "hip_used_peak_sampled_gib": {
+          "count": 5,
+          "median": 18.132644653320312,
+          "min": 18.132644653320312,
+          "max": 18.132644653320312,
+          "mean": 18.132644653320312,
+          "stdev": 0.0
+        },
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "final_token_ids_stable": true
+      },
+      "source_sha256": "1592f72f3a2c0cd2d3ee161d3e97f8793c14e99524ff8ff10ca25867f59d2c4f"
+    },
+    {
+      "artifact": "paro-eager-4K-128.json",
+      "shape": "4K/128",
+      "summary": {
+        "prefill_tok_s": {
+          "count": 5,
+          "median": 1188.5213501701455,
+          "min": 1187.7225616354533,
+          "max": 1189.9059366030885,
+          "mean": 1188.718468741659,
+          "stdev": 1.0181019389698702
+        },
+        "decode_tok_s": {
+          "count": 5,
+          "median": 67.25953865510836,
+          "min": 67.14905459856409,
+          "max": 67.26926530493505,
+          "mean": 67.21950703572097,
+          "stdev": 0.06348538177567992
+        },
+        "tracked_peak_allocated_gib": {
+          "count": 5,
+          "median": 19.026058807969093,
+          "min": 19.026058807969093,
+          "max": 19.026058807969093,
+          "mean": 19.026058807969093,
+          "stdev": 0.0
+        },
+        "hip_used_peak_sampled_gib": {
+          "count": 5,
+          "median": 18.29037857055664,
+          "min": 18.29037857055664,
+          "max": 18.29037857055664,
+          "mean": 18.29037857055664,
+          "stdev": 0.0
+        },
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "final_token_ids_stable": true
+      },
+      "source_sha256": "5a3c9166e4448704a548697bf0a72b98020de8452c5c4d24e234cd41cffe0849"
+    }
+  ],
+  "confirmation_components": [
+    {
+      "artifact": "paro-eager-512-128-repeat.json",
+      "shape": "512/128",
+      "summary": {
+        "prefill_tok_s": {
+          "count": 5,
+          "median": 1197.550885097136,
+          "min": 1197.443721319937,
+          "max": 1202.9010664601844,
+          "mean": 1198.7141905812528,
+          "stdev": 2.3622639206024774
+        },
+        "decode_tok_s": {
+          "count": 5,
+          "median": 66.30724311053467,
+          "min": 66.26099034518126,
+          "max": 66.35342785869196,
+          "mean": 66.30726245890982,
+          "stdev": 0.035381106253380416
+        },
+        "tracked_peak_allocated_gib": {
+          "count": 5,
+          "median": 18.039150319993496,
+          "min": 18.039150319993496,
+          "max": 18.039150319993496,
+          "mean": 18.039150319993496,
+          "stdev": 0.0
+        },
+        "hip_used_peak_sampled_gib": {
+          "count": 5,
+          "median": 18.12283706665039,
+          "min": 18.12283706665039,
+          "max": 18.12283706665039,
+          "mean": 18.12283706665039,
+          "stdev": 0.0
+        },
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "final_token_ids_stable": true
+      },
+      "source_sha256": "891809cba4758feb33a9f49397a61a8b2a127cc005bdc85d71336e491fd7bad3"
+    },
+    {
+      "artifact": "paro-eager-1K-128-repeat.json",
+      "shape": "1K/128",
+      "summary": {
+        "prefill_tok_s": {
+          "count": 5,
+          "median": 1225.5610427532997,
+          "min": 1218.3529591168322,
+          "max": 1227.5388134758114,
+          "mean": 1224.330934502986,
+          "stdev": 3.569028971248054
+        },
+        "decode_tok_s": {
+          "count": 5,
+          "median": 66.32959850920506,
+          "min": 66.27175833176842,
+          "max": 66.34262262219671,
+          "mean": 66.32105135780141,
+          "stdev": 0.0284473310581373
+        },
+        "tracked_peak_allocated_gib": {
+          "count": 5,
+          "median": 18.051434129476547,
+          "min": 18.051434129476547,
+          "max": 18.051434129476547,
+          "mean": 18.051434129476547,
+          "stdev": 0.0
+        },
+        "hip_used_peak_sampled_gib": {
+          "count": 5,
+          "median": 18.132644653320312,
+          "min": 18.132644653320312,
+          "max": 18.132644653320312,
+          "mean": 18.132644653320312,
+          "stdev": 0.0
+        },
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "final_token_ids_stable": true
+      },
+      "source_sha256": "af0cd094809d07d1228bd37846630af860813465b4766320a232a3a735e704b6"
+    },
+    {
+      "artifact": "paro-eager-4K-128-repeat.json",
+      "shape": "4K/128",
+      "summary": {
+        "prefill_tok_s": {
+          "count": 5,
+          "median": 1176.9139152374623,
+          "min": 1167.8763423400098,
+          "max": 1182.2436214040188,
+          "mean": 1176.339384608282,
+          "stdev": 5.685553109699137
+        },
+        "decode_tok_s": {
+          "count": 5,
+          "median": 67.2950075110692,
+          "min": 65.10942226851412,
+          "max": 67.3262544761716,
+          "mean": 66.80633733943071,
+          "stdev": 0.9589214728647407
+        },
+        "tracked_peak_allocated_gib": {
+          "count": 5,
+          "median": 19.026058807969093,
+          "min": 19.026058807969093,
+          "max": 19.026058807969093,
+          "mean": 19.026058807969093,
+          "stdev": 0.0
+        },
+        "hip_used_peak_sampled_gib": {
+          "count": 5,
+          "median": 18.29037857055664,
+          "min": 18.29037857055664,
+          "max": 18.29037857055664,
+          "mean": 18.29037857055664,
+          "stdev": 0.0
+        },
+        "final_token_ids": [
+          9707,
+          9707,
+          9707,
+          9707,
+          9707
+        ],
+        "final_token_ids_stable": true
+      },
+      "source_sha256": "1946ae767fbdcf4f9f6d07c88895e7303de8e10350d8d1444d39a6977a790078"
+    }
+  ],
+  "confirmation_note": "Repeat the same commands with separate output destinations; publish the first sweep, not the best of the two sweeps.",
+  "correctness": {
+    "passed": true,
+    "numerical_rows": 90,
+    "serial_native_mean_kl": 0.0005082241012890279,
+    "serial_native_max_kl": 0.020022672800967915,
+    "serial_native_top1_agreement": 1.0,
+    "serial_native_gate": {
+      "max_kl": 0.05,
+      "min_top1_per_prompt": 0.9
+    },
+    "public_repeated_cases": 11,
+    "public_eager_ids_equal": true,
+    "public_generate_text_matches_detailed": true,
+    "teardown_allocations": 0,
+    "all_component_variance_and_finite_checks_passed": true,
+    "independent_quantization_quality": "Not rerun; prior same-checkpoint Transformers evidence is benchmarks/results/2026-08-16-zbook-qwen36-quant-quality.json. This refresh checks same-runtime serial/native agreement."
+  },
+  "mtp": {
+    "status": "unsupported",
+    "error_type": "GenerationExecutionFailed",
+    "error": "generation execution failed during prefill (request_ids=[0], work_kind=prefill, state_mutation=unknown, cause=RuntimeError: RuntimeError: PARO MTP2 prompt capture has no staged adapter)"
+  },
+  "rejected_graph_probe": {
+    "status": "rejected_correctness",
+    "performance_claim": false,
+    "natural_cases_with_different_ids": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "code_markdown_table",
+      "general_en_plan",
+      "general_en_explain",
+      "general_ja_plan",
+      "general_ja_explain",
+      "mixed_ja_en_translate",
+      "mixed_ja_en_review"
+    ],
+    "note": "Old wrapper forced graph replay. Known gfx1151 PARO graph/eager failure reproduced; all graph timings discarded. Public path and final measurements use eager."
+  },
+  "baseline": {
+    "artifact": "benchmarks/results/2026-07-12-gfx1151-paro-prefill-recovery.json",
+    "comparison": "Historical graph path and prior stack, with subsequent grouped-GDN correctness repair. No old-to-new speedup is asserted."
+  },
+  "profiler": {
+    "enabled": false,
+    "reason": "No kernel or arithmetic change. Public telemetry confirms native compact prefill and paro_resident_serial_decode."
+  },
+  "reproduction": {
+    "environment_file": "environment.sh",
+    "validation_driver": "validate.py",
+    "assembler": "assemble.py",
+    "validation_commands": [
+      [
+        "/home/lhl/miniforge3/envs/therock/bin/python",
+        "/tmp/hipengine-paro-refresh-20261023/validate.py",
+        "--model",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "--mtp-model",
+        "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+        "--mode",
+        "numerical",
+        "--output",
+        "/tmp/hipengine-paro-refresh-20261023/numerical.json"
+      ],
+      [
+        "/home/lhl/miniforge3/envs/therock/bin/python",
+        "/tmp/hipengine-paro-refresh-20261023/validate.py",
+        "--model",
+        "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+        "--mtp-model",
+        "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+        "--mode",
+        "public",
+        "--output",
+        "/tmp/hipengine-paro-refresh-20261023/public.json"
+      ]
+    ]
+  }
+}

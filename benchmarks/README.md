@@ -682,6 +682,33 @@ re-measured for this change.
 The superseded two-lever route is in
 [its own artifact](results/2026-09-27-fullattn-context-promoted/README.md).
 
+## Qwen3.6 packed PARO on Strix Halo — October 23
+
+Qwen3.6-35B-A3B packed ParoQuant W4, Framework Desktop / Radeon 8060S
+(`gfx1151`), ROCm 10, BF16 KV, one active request. Each resident measurement
+uses repeated token 9707, 128 greedy decode steps, two discarded warmups and
+five samples. Model loading and four decode warmup steps are excluded.
+These are separate prefill/decode medians, not HTTP or whole-request rates.
+
+| Prompt tokens | Prefill tok/s | Decode tok/s |
+| ---: | ---: | ---: |
+| 512 | 1200.9 | 66.4 |
+| 1024 | 1226.5 | 66.5 |
+| 4096 | 1188.5 | 67.3 |
+
+Public generation confirms native compact prefill and eager resident decode.
+All 90 serial/native numerical comparisons agree on the next token; 11
+repeated public cases match resident eager IDs. This checks the implementation,
+not quantization quality against BF16. The checkpoint's independent quality
+comparison is recorded [below](#current-qwen36-35b-quantization-quality).
+
+Graph-replay timings are excluded: the old wrapper forces a path that differs
+from eager output on every natural prompt in this check. The shipping route
+uses eager decode. An explicit public MTP request fails with
+`PARO MTP2 prompt capture has no staged adapter`, so no MTP rate is published.
+No kernel, execution-profile or default changes were made.
+[Commands, per-run samples, confirmation sweep and correctness evidence](results/2026-10-23-gfx1151-paro-refresh/summary.json).
+
 ## Root README performance summary
 
 The root README exports this compact retained summary verbatim.
@@ -705,6 +732,7 @@ context** is a capacity limit, not a full-length prefill.
 
 | Model | Quant | Prompt processing | Text generation | With MTP |
 | --- | --- | ---: | ---: | ---: |
+| Qwen3.6-35B-A3B | ParoQuant W4 | 1200.9 | **66.4** | — |
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1418.1** | **56.7** | 80.1 |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.15** | **22.4** |
 | Qwen3.8 Flash-Next | GGUF `UD-Q4_K_XL` | **1036.2** | **23.7** | **28.9** |
