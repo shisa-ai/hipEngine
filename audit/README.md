@@ -395,7 +395,16 @@ measure anything.
 | `doc-path-drift` | A documented path that does not exist **but is findable elsewhere**, so the fix is a known edit. |
 | `ungoverned-flag-branch` | Runtime branches on a flag that is default-off with no recorded removal condition. Cross-references the flag inventory. |
 | `stub` | `raise NotImplementedError` reachable from the runtime. |
+| `shadowed-definition` | Two undecorated functions bound to the same name directly in one scope, with no statically observed intervening use. Reports both definitions for review, not automatic deletion. |
 | `marker` | `TODO`/`FIXME`/`XXX`/`HACK` in shipped runtime code. |
+
+`shadowed-definition` skips decorated or mixed class/function bindings,
+conditional alternatives, intervening name reads/rebindings, later headers that
+use the earlier function, and groups larger than two. It scans Python files in
+the existing code corpus (`hipengine/`, `scripts/`, `tests/`, `benchmarks/`).
+It does not prove dynamic reachability or absence of definition-time side
+effects. Review defaults, annotations, aliases, registrations and dynamic access
+before removing an earlier definition; preserve the later live implementation.
 
 ### Tags
 

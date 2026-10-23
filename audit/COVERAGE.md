@@ -159,6 +159,11 @@ line count alone is not sufficient acceptance evidence.
   roots, audit test filenames carry the unit prefix, and repository-level tier
   selection no longer depends on loading product fixtures. The baseline gap
   described above is closed; standalone unittest discovery remains supported.
+- The `shadowed-definition` check now reports a conservative pair of overwritten
+  function definitions, with locations and signature/body comparisons. Four real
+  pairs were reviewed and recorded for removal. Decorated, conditionally rebound
+  and multi-definition groups are excluded; dynamic reachability is still a
+  review responsibility, not a property this check proves.
 
 ## Completion boundary
 
