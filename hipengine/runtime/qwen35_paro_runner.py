@@ -12896,7 +12896,9 @@ class Qwen35ParoResidentSession:
         attention_scratch = self.full_scratch[layer_id]
         moe_scratch = self.moe_scratch[layer_id]
         for row, position in enumerate(positions):
-            position_tensor, append_spans, decode_spans = self._verify_chain_row_spans(row)
+            position_tensor, append_spans, decode_spans = self._verify_chain_row_spans(
+                row, position=int(position),
+            )
             row_hidden = Tensor.from_handle(hidden.ptr + row * self.hidden_nbytes, (1, self.config.hidden_size), DType.FP16, self.device)
             row_out = Tensor.from_handle(next_hidden.ptr + row * self.hidden_nbytes, (1, self.config.hidden_size), DType.FP16, self.device)
             num_splits = max(1, (int(position) + 1 + self.decode_chunk_size - 1) // self.decode_chunk_size)
@@ -13191,7 +13193,9 @@ class Qwen35ParoResidentSession:
                 per_row_contexts = [] if needs_row_contexts else None
                 per_row_append_contexts = [] if needs_row_append_contexts else None
                 for row in range(rows):
-                    _row_position, row_append_spans, row_decode_spans = self._verify_chain_row_spans(row)
+                    _row_position, row_append_spans, row_decode_spans = self._verify_chain_row_spans(
+                        row, position=int(positions[row]),
+                    )
                     if per_row_contexts is not None:
                         per_row_contexts.append((row_key_cache, row_value_cache, row_decode_spans))
                     if per_row_append_contexts is not None:
@@ -13718,7 +13722,9 @@ class Qwen35ParoResidentSession:
         self.prefill_moe_scratch = scratch
         return scratch
 
-    def _verify_chain_row_spans(self, row: int) -> tuple[Tensor, KVLiveSpans, KVLiveSpans]:
+    def _verify_chain_row_spans(
+        self, row: int, *, position: int,
+    ) -> tuple[Tensor, KVLiveSpans, KVLiveSpans]:
         """Return c=1 full-attention spans for one verifier row.
 
         The row positions/context counts are already materialized by
@@ -13733,13 +13739,15 @@ class Qwen35ParoResidentSession:
         append_spans = KVLiveSpans.paged_uniform(
             block_table=self.block_table,
             live_counts=position_tensor,
-            max_live_count=self.max_sequence_length - 1,
+            max_live_count=int(position),
             storage_dtype=DType.BF16,
         )
         decode_spans = KVLiveSpans.paged_uniform(
             block_table=self.block_table,
             live_counts=context_tensor,
-            max_live_count=self.max_sequence_length,
+            # Kernel selection must match scalar decode for this row. Capacity
+            # would force split-K even when the live context uses dense attention.
+            max_live_count=int(position) + 1,
             storage_dtype=DType.BF16,
         )
         return position_tensor, append_spans, decode_spans
