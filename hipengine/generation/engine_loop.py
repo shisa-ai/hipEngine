@@ -3195,9 +3195,23 @@ class ResidentEngineLoop:
                 for item in generated
                 if _generated_token_request_id(item) not in cancelled_ids
             )
+        if self._pending_ar_reasons:
+            # Attribute surviving emissions before completion callbacks reclaim
+            # their runner rows, then refresh any prebuilt stream snapshots.
+            self._attribute_autoregressive_commits(
+                tuple(
+                    EngineLoopEvent(
+                        kind="token",
+                        request_id=_generated_token_request_id(item),
+                    )
+                    for item in generated
+                )
+            )
+            decorate = getattr(self.runner, "decorate_autoregressive_tokens", None)
+            if callable(decorate):
+                generated = tuple(decorate(generated))
         generated_events = self.scheduler.record_generated_events(generated)
         events = self._decode_events(work, generated_events)
-        self._attribute_autoregressive_commits(events)
         if not cancelled:
             return events
         return (

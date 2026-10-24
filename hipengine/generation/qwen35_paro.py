@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter, deque
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 import copy
 from dataclasses import dataclass, field, replace
 import os
@@ -16,6 +16,10 @@ from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer, free, malloc
 from hipengine.core.tensor import Tensor
+from hipengine.speculative.accounting import (
+    accounting_timing_fields,
+    speculative_output_accounting,
+)
 from hipengine.speculative.delegation import StagedAdapterDelegation
 from hipengine.dispatch import (
     BatchWidthGroup,
@@ -29,6 +33,7 @@ from hipengine.generation.batch_scheduler import (
     CompactPromptSlab,
     CompletedRequest,
     GeneratedToken,
+    GeneratedTokenEvent,
     PerRowSamplingParams,
     ResidentBatchScheduler,
 )
@@ -2307,6 +2312,26 @@ class _ParoResidentLoopRow:
     mtp2_bulk_prompt_rows: int = 0
     mtp2_candidate_device_handoffs: int = 0
     mtp2_candidate_d2h_after_target: int = 0
+    # Public MTP-versus-AR output accounting. These are the fields the shared
+    # ``hipengine.speculative.accounting`` helpers read and write; they are
+    # declared here because this row is a slots dataclass, so an undeclared
+    # attribute raises inside the engine loop instead of reporting a fact.
+    mtp2_requested_budget: int = 0
+    mtp2_mtp_output_tokens: int = 0
+    mtp2_ar_output_tokens: int = 0
+    mtp2_ar_step_output_tokens: int = 0
+    mtp2_first_fallback_position: int | None = None
+    mtp2_ar_step_reasons: dict[str, int] = field(default_factory=dict)
+    # Committed-cycle phase sums. Only the windows this route actually measures
+    # are declared; the shared block reports the unmeasured ones as zero rather
+    # than this row inventing them.
+    mtp2_proposal_ms: float = 0.0
+    mtp2_target_ms: float = 0.0
+    mtp2_provider_update_ms: float = 0.0
+    # Committed output spans (mode, reason, position, tokens), recorded only
+    # while HIPENGINE_MTP2_OUTPUT_SPANS is enabled. Declared for the same reason
+    # as the counters above: the shared helper cannot attach it at runtime.
+    mtp2_output_spans: list[dict[str, Any]] = field(default_factory=list)
 
 
 class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
@@ -2493,6 +2518,12 @@ class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
     ) -> None:
         del static_eligibility
         row = self._row(request_id)
+        # Preserve the requested depth even before the first cycle commits.
+        row.mtp2_requested_budget = max(
+            int(getattr(row, "mtp2_requested_budget", 0) or 0),
+            int(candidate_budget),
+            1,
+        )
         adapter = self._resolved_mtp2_adapter()
         if adapter is None:
             raise NotImplementedError(self._staged_adapter_missing_error())
@@ -3380,6 +3411,20 @@ class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
             timing["specdec2_mtp2_bulk_prompt_rows"] = int(
                 row.mtp2_bulk_prompt_rows
             )
+        diagnostics: dict[str, Any] = {
+            "stable_model_slot": row.model_slot,
+            "last_width_plan": copy.deepcopy(self._last_width_plan),
+        }
+        # The same public MTP-versus-AR block the GGUF routes publish. The
+        # helper returns ``None`` for a row without speculative intent, which is
+        # what keeps a plain autoregressive PARO response unchanged.
+        accounting = speculative_output_accounting(row)
+        if accounting is not None:
+            diagnostics["specdec2_mtp2"] = accounting
+            # Committed-cycle counters mirrored into ``timing``. The helper
+            # publishes nothing for a row that carried intent but committed no
+            # cycle, so a refused request stays indistinguishable from AR here.
+            timing.update(accounting_timing_fields(accounting))
         return _telemetry_for_tokens(
             row.prompt_ids,
             tuple(step.token_id for step in visible_steps),
@@ -3402,11 +3447,127 @@ class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
             ),
             native_sampler_rows=False,
             timing=timing,
-            diagnostics={
-                "stable_model_slot": row.model_slot,
-                "last_width_plan": copy.deepcopy(self._last_width_plan),
-            },
+            diagnostics=diagnostics,
         )
+
+    def _speculative_accounting_payload(
+        self,
+        row: _ParoResidentLoopRow,
+    ) -> tuple[dict[str, Any], dict[str, float]]:
+        """The accounting facts this row would publish at this moment.
+
+        Returned as the ``diagnostics`` entry and the ``timing`` mirrors the
+        row's own response telemetry would carry, so both publication paths
+        below add exactly what ``_row_telemetry`` adds and nothing else.
+        """
+
+        accounting = speculative_output_accounting(row)
+        if accounting is None:
+            return {}, {}
+        return {"specdec2_mtp2": accounting}, accounting_timing_fields(accounting)
+
+    def _row_if_present(self, request_id: int) -> _ParoResidentLoopRow | None:
+        rows = getattr(self, "_rows", None)
+        if not isinstance(rows, Mapping):
+            return None
+        return rows.get(int(request_id))
+
+    def decorate_autoregressive_tokens(
+        self,
+        generated: Sequence[Any],
+    ) -> tuple[Any, ...]:
+        """Refresh accounting on autoregressive chunks the loop already built.
+
+        The engine loop attributes an autoregressive token to the decode that
+        emitted it *after* that decode returned, and ``decode_batch`` snapshots
+        the row's accounting while it builds the chunk. The published chunk
+        would therefore report the request's state from before its own token,
+        which for the first step after a committed cycle means no fallback
+        position, no AR step reason, and a stale AR output count.
+
+        The chunk is refreshed rather than rebuilt: the request ownership, the
+        token id, the finish flag, the published text, the logprobs, and the
+        cumulative generated ids are the decode's record of what it produced
+        and stay exactly as the scheduler will publish them. Only the
+        accounting block and its timing mirrors are rewritten, and a token with
+        nothing new to say is returned untouched.
+        """
+
+        decorated: list[Any] = []
+        for item in generated:
+            request_id = getattr(item, "request_id", None)
+            chunk = getattr(item, "stream_chunk", None)
+            if request_id is None or chunk is None:
+                # A bare ``(request_id, token_id)`` decode result, or a runner
+                # chunk this route did not build: nothing to refresh.
+                decorated.append(item)
+                continue
+            row = self._row_if_present(int(request_id))
+            if row is None:
+                decorated.append(item)
+                continue
+            diagnostics, timing = self._speculative_accounting_payload(row)
+            telemetry = _telemetry_with_accounting(chunk.telemetry, diagnostics, timing)
+            if telemetry is chunk.telemetry:
+                decorated.append(item)
+                continue
+            decorated.append(replace(item, stream_chunk=replace(chunk, telemetry=telemetry)))
+        return tuple(decorated)
+
+    def prepare_speculative_stream_events(
+        self,
+        request_ids: Sequence[int],
+    ) -> Callable[[Sequence[GeneratedTokenEvent]], tuple[GeneratedTokenEvent, ...]]:
+        """Capture a committed cycle's accounting before rows can be reclaimed.
+
+        ``record_speculative_cycle_result`` publishes a committed cycle through
+        its own token chunks and may finish and reclaim a request while it does
+        so; reclaim is what builds that request's response telemetry. The
+        committed counters live on the row, so they are captured here, before
+        publication, and merged into the scheduler's chunks afterwards. The
+        scheduler keeps ownership of the per-token decode counts and the finish
+        metadata, and this route only adds the accounting facts it owns.
+        """
+
+        captured: dict[int, tuple[dict[str, Any], dict[str, float]]] = {}
+        for request_id in request_ids:
+            row = self._row_if_present(int(request_id))
+            if row is None:
+                continue
+            captured[int(request_id)] = self._speculative_accounting_payload(row)
+        tokenizer = getattr(self._session, "tokenizer", None)
+        return lambda events: self._decorate_speculative_stream_events(
+            events,
+            captured,
+            tokenizer,
+        )
+
+    def _decorate_speculative_stream_events(
+        self,
+        events: Sequence[GeneratedTokenEvent],
+        captured: Mapping[int, tuple[dict[str, Any], dict[str, float]]],
+        tokenizer: Any,
+    ) -> tuple[GeneratedTokenEvent, ...]:
+        decorated: list[GeneratedTokenEvent] = []
+        for event in events:
+            payload = captured.get(int(event.request_id))
+            chunk = event.stream_chunk
+            if payload is None:
+                decorated.append(event)
+                continue
+            diagnostics, timing = payload
+            telemetry = _telemetry_with_accounting(chunk.telemetry, diagnostics, timing)
+            # Canonical speculative events carry IDs but no rendered text.
+            # Keep the tokenizer captured before terminal reclaim, just as we
+            # keep the row's accounting snapshot.
+            text = chunk.text or _decode_token_cached(tokenizer, event.token_id)
+            if telemetry is chunk.telemetry and text == chunk.text:
+                decorated.append(event)
+                continue
+            decorated.append(
+                replace(event, stream_chunk=replace(chunk, text=text, telemetry=telemetry))
+            )
+        return tuple(decorated)
 
     def _output_for_row(
         self,
@@ -3747,6 +3908,50 @@ def _token_logprob_from_step(tokenizer: Any, step: Qwen35ParoAutoregressiveStepR
             (token_id, _decode_token_cached(tokenizer, token_id), logprob)
             for token_id, logprob in step.top_logprobs
         ),
+    )
+
+
+def _telemetry_with_accounting(
+    telemetry: GenerationTelemetry | None,
+    diagnostics_extra: Mapping[str, Any],
+    timing_extra: Mapping[str, float],
+) -> GenerationTelemetry | None:
+    """Merge accounting facts into an already-published telemetry snapshot.
+
+    Only ``diagnostics`` and ``timing`` are rewritten. The decode state the
+    scheduler counted, the finish metadata, and the usage block are the
+    scheduler's record of what it published and stay exactly as they were. The
+    timing scope, group width, and timing ownership the snapshot already
+    carries are preserved; a snapshot that carried no timing at all takes this
+    route's own convention, the one ``_telemetry_for_tokens`` applies.
+
+    Returning the input snapshot unchanged is the signal that there was nothing
+    to add, which is what keeps a plain autoregressive chunk identical.
+    """
+
+    if telemetry is None:
+        return None
+    diagnostics = dict(telemetry.diagnostics or {})
+    timing = dict(telemetry.timing or {})
+    changed = False
+    for key, value in diagnostics_extra.items():
+        if diagnostics.get(key) != value:
+            diagnostics[key] = value
+            changed = True
+    for key, value in timing_extra.items():
+        if timing.get(key) != value:
+            timing[key] = value
+            changed = True
+    if not changed:
+        return telemetry
+    has_timing = bool(timing)
+    return replace(
+        telemetry,
+        timing=timing if has_timing else None,
+        timing_scope=telemetry.timing_scope if has_timing else None,
+        group_rows=telemetry.group_rows if has_timing else None,
+        timing_owner=telemetry.timing_owner if has_timing else None,
+        diagnostics=diagnostics,
     )
 
 

@@ -15,6 +15,10 @@ from hipengine.runtime.qwen35_paro_runner import (
     Qwen35ParoAutoregressiveStepResult,
     _decode_token_cached,
 )
+from hipengine.speculative.accounting import (
+    record_autoregressive_step,
+    record_speculative_outputs,
+)
 from hipengine.speculative.frontier import (
     CandidateGraph,
     SpeculativeKVBinding,
@@ -1143,6 +1147,10 @@ class Qwen35ParoMTP2Adapter:
             *tuple(int(token) for token in verify.accepted_tokens),
             bonus,
         )
+        # The row's generated-token index before this cycle's output is what
+        # locates the committed span; it is read from the actual emitted list,
+        # never inferred from the acceptance count.
+        output_position = len(row.generated_steps)
         for token in output_ids:
             self.owner._record_step(
                 row,
@@ -1152,10 +1160,25 @@ class Qwen35ParoMTP2Adapter:
                     logit=float("nan"),
                 ),
             )
-        row.mtp2_cycles += 1
-        row.mtp2_candidate_counts.append(count)
-        row.mtp2_accepted_counts.append(accepted)
+        # One committed cycle, recorded through the shared accounting helper so
+        # this route reports the same public schema as the GGUF routes: the
+        # accepted draft count and the visible output it produced (accepted
+        # drafts plus the target-verified correction/bonus token) are written
+        # together, so a reported depth histogram cannot disagree with the
+        # reported output split. Reaching this line is the commit: an aborted or
+        # cancelled cycle returns above through ``_cancelled_result``.
+        record_speculative_outputs(
+            row,
+            candidate_count=int(plan.candidate_counts[0]),
+            accepted_count=accepted,
+            visible_count=len(output_ids),
+            output_position=output_position,
+            plan_reason=plan.reasons[0],
+        )
         row.mtp2_execution_routes.append(actual_route)
+        row.mtp2_proposal_ms += float(state.last_proposal_seconds) * 1000.0
+        row.mtp2_target_ms += float(target_seconds) * 1000.0
+        row.mtp2_provider_update_ms += float(provider_update_seconds) * 1000.0
         accept = AcceptResult(
             request_ids=plan.request_ids,
             accepted_counts=(accepted,),
@@ -1187,6 +1210,38 @@ class Qwen35ParoMTP2Adapter:
             provider_committed=True,
         )
         return SpecCycleResult.committed(committed, accept, telemetry=telemetry)
+
+    def note_speculative_ar_commit(
+        self,
+        request_id: int,
+        reason: Any | None = None,
+    ) -> None:
+        """Attribute one autoregressive token to the decode that emitted it.
+
+        The engine loop calls this after the AR decode that produced the token,
+        carrying the reason its plan selected autoregressive decoding. Counting
+        at the emitting decode rather than at plan preparation is what keeps a
+        plan prepared more than once for the same row from counting one emitted
+        token twice.
+
+        ``output_position`` is the index the token just occupied in the row's
+        generated output, so the first step after speculative output reports
+        where this request left the speculative path.
+        """
+
+        rid = int(request_id)
+        rows = getattr(self.owner, "_rows", None)
+        if isinstance(rows, Mapping) and rid not in rows:
+            return
+        row = self.owner._row(rid)
+        generated = getattr(row, "generated_steps", None)
+        if not generated:
+            return
+        record_autoregressive_step(
+            row,
+            plan_reason=reason,
+            output_position=max(0, len(generated) - 1),
+        )
 
     def rollback_cycle(
         self,
