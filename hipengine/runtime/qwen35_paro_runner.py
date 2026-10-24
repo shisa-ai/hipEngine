@@ -1833,8 +1833,10 @@ class Qwen35ParoBulkVerifyResult:
     commit_position: int
     next_token: int | None
     full_accept: bool
-    finite_logits: bool
-    gpu_accept_match_cpu: bool
+    # None means the trusted GPU path did not perform this host-side check.
+    # Finiteness covers returned top-1 values, not every vocabulary logit.
+    finite_logits: bool | None
+    gpu_accept_match_cpu: bool | None
     rows: int
     selected_target_hidden_ptr: int | None = None
     target_forward_calls: int = 1
@@ -1853,6 +1855,7 @@ class Qwen35ParoBulkVerifyResult:
             "next_token": self.next_token,
             "full_accept": self.full_accept,
             "finite_logits": self.finite_logits,
+            "finite_logits_scope": "top1_values" if self.target_top1_values else "not_checked",
             "gpu_accept_match_cpu": self.gpu_accept_match_cpu,
             "rows": self.rows,
             "selected_target_hidden_available": self.selected_target_hidden_ptr is not None,
@@ -11631,8 +11634,8 @@ class Qwen35ParoResidentSession:
                 commit_position=int(summary.commit_positions[0]),
                 next_token=None if next_token is None else int(next_token),
                 full_accept=bool(summary.full_accept[0]),
-                finite_logits=all(math.isfinite(float(value)) for value in target_values) if target_values else True,
-                gpu_accept_match_cpu=bool(gpu_accept_match),
+                finite_logits=all(math.isfinite(float(value)) for value in target_values) if target_values else None,
+                gpu_accept_match_cpu=bool(gpu_accept_match) if target_top1 else None,
                 rows=rows,
                 selected_target_hidden_ptr=(
                     int(self.batch_norm_out_bf16.ptr)
@@ -11860,8 +11863,8 @@ class Qwen35ParoResidentSession:
             commit_position=int(summary.commit_positions[0]),
             next_token=None if next_token is None else int(next_token),
             full_accept=bool(summary.full_accept[0]),
-            finite_logits=all(math.isfinite(float(value)) for value in target_values) if target_values else True,
-            gpu_accept_match_cpu=bool(gpu_accept_match),
+            finite_logits=all(math.isfinite(float(value)) for value in target_values) if target_values else None,
+            gpu_accept_match_cpu=bool(gpu_accept_match) if target_top1 else None,
             rows=rows,
             graph=graph_info,
             bucket_seconds=bucket_seconds,

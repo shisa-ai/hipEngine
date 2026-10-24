@@ -89,6 +89,12 @@ def test_bulk_commit_uses_authoritative_accept_row(
     assert result.accepted_tokens == (() if expected == 0 else (20,))
     assert result.next_token == (99 if expected == 0 else 88)
     assert result.full_accept == bool(expected)
+    # Trusted GPU mode did not read a CPU oracle or inspect even top-1 values.
+    assert result.gpu_accept_match_cpu == (None if accept_mode == "on" else gpu_matches)
+    assert result.finite_logits is (None if accept_mode == "on" else True)
+    assert result.to_json_dict()["finite_logits_scope"] == (
+        "not_checked" if accept_mode == "on" else "top1_values"
+    )
     assert state["row"] == expected, "canonical Conv/GDN must match selected hidden and metadata"
     cursor_owner = "host" if (accept_mode == "on" or gpu_matches) else "device"
     assert positions == [(cursor_owner, 7 + expected)]
