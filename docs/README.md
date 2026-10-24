@@ -54,7 +54,7 @@ session reads. Start there, then come here for the document your task touches.
 <!-- BEGIN GENERATED: sections -->
 | Directory | Contents | Files |
 | --- | --- | --- |
-| [`reference/`](reference/) | Current subsystem contracts. Read the one your task touches. | 44 |
+| [`reference/`](reference/) | Current subsystem contracts. Read the one your task touches. | 45 |
 | [`campaigns/`](campaigns/) | Bounded model/hardware campaigns. Mostly closed; kept as evidence. | 75 |
 | [`model-cards/`](model-cards/) | Per-model support status, quality, and integration notes. | 12 |
 | [`archive/`](archive/) | Superseded documents, closed proposals, and frozen history. | 25 |
