@@ -13,23 +13,27 @@ from hipengine.speculative import MtpDraftRequest, TargetVerifyBatch, compile_mt
 @pytest.mark.parametrize("accept_mode", ["validate", "off", "on"])
 @pytest.mark.parametrize("gpu_matches", [False, True])
 def test_bulk_commit_uses_authoritative_accept_row(
-    monkeypatch, mode, accept_mode, gpu_matches, native_commit=False,
+    monkeypatch, mode, accept_mode, gpu_matches, native_commit=False, depth=1, cpu_row=0,
 ):
     monkeypatch.setenv("HIPENGINE_VERIFY_GPU_ACCEPT", accept_mode)
+    tokens = (10, 20, 30, 40)[:depth + 1]
+    cpu_top1 = tuple(tokens[i + 1] if i < cpu_row else 99 - i * 11
+                     for i in range(depth + 1))
     batch = TargetVerifyBatch.from_draft(
         compile_mtp_chain(
-            [MtpDraftRequest(request_id=0, root_position=7, candidate_tokens=(20,), active_count=1)],
-            candidate_budget=1,
+            [MtpDraftRequest(request_id=0, root_position=7,
+                             candidate_tokens=tokens[1:], active_count=depth)],
+            candidate_budget=depth,
         ),
-        root_tokens=(10,), root_positions=(7,),
+        root_tokens=(tokens[0],), root_positions=(7,),
     )
     batch = replace(batch, mode=mode)
-    # CPU rejects the candidate; the injected GPU decision can incorrectly accept it.
-    gpu_row = 0 if gpu_matches else 1
+    # Exercise recovery in either direction, including an interior/full prefix.
+    gpu_row = cpu_row if gpu_matches else (cpu_row + 1) % (depth + 1)
     payload = dict(
         accepted_counts=(gpu_row,), commit_rows=(gpu_row,),
-        commit_tokens=(10 if gpu_row == 0 else 20,), commit_positions=(7 + gpu_row,),
-        next_tokens=(99 if gpu_row == 0 else 88,), full_accept=(bool(gpu_row),),
+        commit_tokens=(tokens[gpu_row],), commit_positions=(7 + gpu_row,),
+        next_tokens=(cpu_top1[gpu_row],), full_accept=(gpu_row == depth,),
         committed_output_lengths=(gpu_row + 1,),
     )
     state = {"row": None, "device_selector": None}
@@ -48,7 +52,7 @@ def test_bulk_commit_uses_authoritative_accept_row(
         _launch_verify_chain_forward_accept=noop,
         _read_verify_accept_payload=lambda *a, **k: payload,
         _verify_gpu_accept_enabled=lambda: accept_mode != "off",
-        _read_verify_top1=lambda rows: ((99, 88), (1.0, 1.0)),
+        _read_verify_top1=lambda rows: (cpu_top1, (1.0,) * (depth + 1)),
         _gpu_accept_payload_matches=Qwen35ParoResidentSession._gpu_accept_payload_matches,
         _commit_bulk_linear_states=commit,
         _verify_accept_updates_position_enabled=lambda batch: True,
@@ -64,7 +68,7 @@ def test_bulk_commit_uses_authoritative_accept_row(
         verify_commit_rows=SimpleNamespace(ptr=0x9000),
         batch_norm_out_bf16=SimpleNamespace(ptr=0x1000), hidden_nbytes=4,
     )
-    capture = SimpleNamespace(dtype=DType.BF16, ndim=2, shape=(2, 0))
+    capture = SimpleNamespace(dtype=DType.BF16, ndim=2, shape=(depth + 1, 0))
     verify = (
         Qwen35ParoResidentSession.verify_chain_bulk_and_commit
         if mode == "verify_chain"
@@ -81,14 +85,14 @@ def test_bulk_commit_uses_authoritative_accept_row(
         assert positions == []
         return
     result = verify(session, batch, **kwargs)
-    expected = gpu_row if accept_mode == "on" else 0
+    expected = gpu_row if accept_mode == "on" else cpu_row
     assert result.commit_row == expected
     assert result.commit_position == 7 + expected
-    assert result.commit_token == (10 if expected == 0 else 20)
+    assert result.commit_token == tokens[expected]
     assert result.accepted_count == expected
-    assert result.accepted_tokens == (() if expected == 0 else (20,))
-    assert result.next_token == (99 if expected == 0 else 88)
-    assert result.full_accept == bool(expected)
+    assert result.accepted_tokens == tokens[1:expected + 1]
+    assert result.next_token == cpu_top1[expected]
+    assert result.full_accept == (expected == depth)
     # Trusted GPU mode did not read a CPU oracle or inspect even top-1 values.
     assert result.gpu_accept_match_cpu == (None if accept_mode == "on" else gpu_matches)
     assert result.finite_logits is (None if accept_mode == "on" else True)
@@ -105,6 +109,18 @@ def test_bulk_commit_uses_authoritative_accept_row(
         assert not result.gpu_accept_match_cpu
     else:
         assert state["device_selector"] == 0x9000
+
+
+@pytest.mark.parametrize("mode", ["verify_chain", "verify_tree"])
+@pytest.mark.parametrize("accept_mode", ["validate", "off"])
+@pytest.mark.parametrize("gpu_matches", [False, True])
+@pytest.mark.parametrize("cpu_row", [0, 1, 2, 3])
+def test_depth_three_commit_uses_every_authoritative_row(
+    monkeypatch, mode, accept_mode, gpu_matches, cpu_row,
+):
+    test_bulk_commit_uses_authoritative_accept_row(
+        monkeypatch, mode, accept_mode, gpu_matches, depth=3, cpu_row=cpu_row,
+    )
 
 
 @pytest.mark.parametrize("accept_mode", ["validate", "off"])
