@@ -10,6 +10,7 @@ from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
 from hipengine.generation.sampling import RowSamplingState
 from hipengine.kvcache.backend import ResourceClaimSet
 from hipengine.llm import SamplingParams
+from hipengine.speculative.transaction import SpeculativeStateJournal
 from tests.test_unit_mtp_sampled_accept import _chain_batch
 from tests.test_unit_qwen35_gguf_mtp2_c1_physical import _c1_plan
 
@@ -29,7 +30,15 @@ def test_sampled_plan_preserves_logits_even_when_graph_is_unavailable(adapter_bu
         raise PreparedBoundary
 
     verifier = SimpleNamespace(graph_bucket=lambda *args: object(), prepare=prepare)
-    state = SimpleNamespace(verifier=verifier, sampled_accept_plan=object(), proposal_device=None)
+    state = SimpleNamespace(
+        verifier=verifier,
+        sampled_accept_plan=object(),
+        proposal_device=None,
+        # The singleton target route commits or rolls back the proposal cycle's
+        # state journal; an open one with no captures is the minimal owner.
+        state_journal=SpeculativeStateJournal(),
+        proposal_checkpoint=None,
+    )
     row = SimpleNamespace(
         lease=SimpleNamespace(session=SimpleNamespace(position=0)),
         slot=SimpleNamespace(generated_ids=[2]),
@@ -43,7 +52,6 @@ def test_sampled_plan_preserves_logits_even_when_graph_is_unavailable(adapter_bu
     adapter._transaction_sequence = 0
     adapter.candidate_budget = adapter_budget
     adapter._sampled_route_request = lambda rid: True
-    adapter._restore_provider_checkpoint = lambda state: None
     with pytest.raises(PreparedBoundary):
         adapter.execute_target_frontier(
             plan, SimpleNamespace(target_batch=batch), claims,

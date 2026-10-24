@@ -854,6 +854,9 @@ def test_physical_c1_cancelled_cycle_restores_provider_and_fails_closed() -> Non
         verifier=None,
         root_hidden_buffer=SimpleNamespace(ptr=1),
         proposal_checkpoint="checkpoint-1",
+        # A real proposal publishes its backup as restorable; this hand-built
+        # state has to say so explicitly or the backup counts as retired.
+        proposal_checkpoint_restorable=True,
         proposal_device_batch=proposal,
     )
     adapter._provider_groups[(7,)] = SimpleNamespace(

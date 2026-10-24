@@ -129,6 +129,7 @@ from hipengine.speculative.transaction import (
     SpecCycleStage,
     SpecCycleTelemetry,
     SpecCycleTransaction,
+    SpeculativeStateJournal,
 )
 
 
@@ -378,6 +379,26 @@ class _MTP2RequestState:
     root_hidden_buffer: DeviceBuffer
     last_proposal_seconds: float = 0.0
     proposal_checkpoint: Any | None = None
+    # True while ``proposal_checkpoint`` is a backup that may still be restored.
+    # It is retired -- set False -- the moment the backup's fate is decided: a
+    # commit drops it, a restore consumes it. It stays False if the following
+    # *release* then fails, because a retired backup must never be restored
+    # again. Restoring a committed cycle would undo published state, and
+    # restoring a rolled-back one would repeat a restore that already happened.
+    # ``_release_provider_checkpoint`` is what keeps such a backup reachable.
+    proposal_checkpoint_restorable: bool = False
+    # Completed-checkpoint undo for the singleton target-verifier route. The
+    # proposal opens it and captures the provider backup; the target execution
+    # captures the prepared target transaction and then commits or rolls the
+    # journal back. The packed routes leave it None and keep their own restore
+    # sites, because they capture no adapter-level target undo.
+    state_journal: SpeculativeStateJournal | None = None
+    # Release phases this request has already completed. ``_drop_request``
+    # keeps the state registered until every phase has run, so a failure leaves
+    # the owners it never reached reachable; recording completion is what makes
+    # a repeat drop safe, because a freed buffer or a closed verifier must never
+    # be touched a second time.
+    released_phases: set[str] = field(default_factory=set)
     proposal_context: MtpProposalContext | None = None
     proposal_device: Qwen35GGUFNextNDeviceProposal | None = None
     proposal_device_batch: Qwen35GGUFNextNBatchDeviceProposal | None = None
@@ -3601,6 +3622,7 @@ class Qwen35GGUFMTP2Adapter:
             targets[0].runtime,
             hidden_size=hidden_size,
         )
+        journal: SpeculativeStateJournal | None = None
         try:
             row_nbytes = hidden_size * DType.BF16.itemsize
             for index, target in enumerate(targets):
@@ -3628,13 +3650,33 @@ class Qwen35GGUFMTP2Adapter:
                     Device("hip", 0),
                 ),
             )
+            journal = (
+                self._begin_state_journal(states[0])
+                if self._state_journal_shape(states)
+                else None
+            )
             checkpoints = {}
             for request_id, state in zip(ids, states, strict=True):
                 if state.proposal_checkpoint is not None:
                     raise RuntimeError("GGUF MTP2 proposal checkpoint is already open")
-                checkpoints[request_id] = (
-                    state.provider.executor.capture_request_checkpoint(request_id)
+                executor = state.provider.executor
+                if journal is None:
+                    checkpoints[request_id] = executor.capture_request_checkpoint(
+                        request_id
+                    )
+                    continue
+                checkpoints[request_id] = journal.capture(
+                    "provider",
+                    lambda rid=request_id, capture=(
+                        executor.capture_request_checkpoint
+                    ): capture(rid),
+                    executor.restore_request_checkpoint,
                 )
+                # Publish the backup on the state before the proposal mutates
+                # anything. The journal's release site reads it, so a proposal
+                # failure must not leave the device backup unreachable.
+                state.proposal_checkpoint = checkpoints[request_id]
+                state.proposal_checkpoint_restorable = True
             proposal_started = time.perf_counter()
             device_draft = None
             device_proposal = None
@@ -3715,6 +3757,7 @@ class Qwen35GGUFMTP2Adapter:
             for index, (request_id, state) in enumerate(zip(ids, states, strict=True)):
                 state.last_proposal_seconds = proposal_seconds
                 state.proposal_checkpoint = checkpoints[request_id]
+                state.proposal_checkpoint_restorable = True
                 state.proposal_context = MtpProposalContext(
                     request_ids=(request_id,),
                     root_tokens=(int(context.root_tokens[index]),),
@@ -3732,6 +3775,12 @@ class Qwen35GGUFMTP2Adapter:
                     "ngram_mod" if ngram_proposal is not None else "mtp2"
                 )
         except Exception:
+            if journal is not None:
+                # The journal owns every backup this proposal captured, so its
+                # reverse rollback restores and releases exactly those and the
+                # request keeps no half-published proposal staging.
+                self._rollback_state_journal(states[0])
+                raise
             for request_id, checkpoint in locals().get("checkpoints", {}).items():
                 state = self._states[request_id]
                 state.provider.executor.restore_request_checkpoint(checkpoint)
@@ -3904,6 +3953,14 @@ class Qwen35GGUFMTP2Adapter:
             raise NotImplementedError(
                 "a survivor of a physical provider group requires physical target padding"
             )
+        if state.state_journal is None:
+            # The proposal opens this journal for exactly this shape and captures
+            # the provider backup in it. Reaching the singleton target without it
+            # would mean committing or cancelling a cycle whose provider undo has
+            # no owner, so refuse by name instead of dropping the undo silently.
+            raise RuntimeError(
+                "GGUF MTP2 C1 target requires the proposal cycle's state journal"
+            )
         row = self.owner._row(rid)
         target = row.lease.session
         slot = row.slot
@@ -3937,7 +3994,7 @@ class Qwen35GGUFMTP2Adapter:
             provider_open=True,
         )
         if tuple(int(value) for value in cancelled_request_ids()):
-            self._restore_provider_checkpoint(state)
+            self._rollback_state_journal(state)
             self._drop_request(rid, disable=True)
             return SpecCycleResult(
                 stage=SpecCycleStage.CANCELLED,
@@ -3949,45 +4006,49 @@ class Qwen35GGUFMTP2Adapter:
                 ),
                 cancelled_request_ids=(rid,),
             )
-        sampled_route = self._sampled_route_request(rid)
-        sampled_device_plan = state.sampled_accept_plan
-        sampled_device_state = sampled_device_plan
-        batch = frontier.target_batch
-        device_proposal = state.proposal_device
-        if batch is None:
-            graph = frontier.candidate_graph
-            if device_proposal is None or graph is None or graph.token_ids is None:
-                raise NotImplementedError("GGUF MTP2 requires a host or device chain")
-            if (
-                graph.token_ids.ptr != device_proposal.result_ptr
-                or graph.token_ids.strides != (2,)
-            ):
-                raise RuntimeError("C1 candidate graph lost its device proposal")
-            placeholder = getattr(
-                state.provider,
-                "placeholder_device_proposal",
-                None,
-            )
-            if not callable(placeholder):
-                raise RuntimeError("C1 provider omitted its device placeholder")
-            shape_draft = placeholder(device_proposal)
-            batch = TargetVerifyBatch.from_draft(
-                shape_draft,
-                root_tokens=frontier.root_tokens,
-                root_positions=frontier.root_positions,
-            )
-        remaining = max(0, int(row.request.max_tokens) - len(slot.generated_ids))
-        graph_key = (
-            "specdec2",
-            batch.mode,
-            batch.rows,
-            plan.execution_route,
-        )
-        bucket = state.verifier.graph_bucket(graph_key, batch)
         prepared = None
         target_seconds = 0.0
         provider_update_seconds = 0.0
         try:
+            # Everything below runs with the proposal's journal open, so every
+            # refusal and every cancellation has to close it. Leaving it open
+            # would strand the provider backup and the target transaction that
+            # only this cycle can restore or commit.
+            sampled_route = self._sampled_route_request(rid)
+            sampled_device_plan = state.sampled_accept_plan
+            sampled_device_state = sampled_device_plan
+            batch = frontier.target_batch
+            device_proposal = state.proposal_device
+            if batch is None:
+                graph = frontier.candidate_graph
+                if device_proposal is None or graph is None or graph.token_ids is None:
+                    raise NotImplementedError("GGUF MTP2 requires a host or device chain")
+                if (
+                    graph.token_ids.ptr != device_proposal.result_ptr
+                    or graph.token_ids.strides != (2,)
+                ):
+                    raise RuntimeError("C1 candidate graph lost its device proposal")
+                placeholder = getattr(
+                    state.provider,
+                    "placeholder_device_proposal",
+                    None,
+                )
+                if not callable(placeholder):
+                    raise RuntimeError("C1 provider omitted its device placeholder")
+                shape_draft = placeholder(device_proposal)
+                batch = TargetVerifyBatch.from_draft(
+                    shape_draft,
+                    root_tokens=frontier.root_tokens,
+                    root_positions=frontier.root_positions,
+                )
+            remaining = max(0, int(row.request.max_tokens) - len(slot.generated_ids))
+            graph_key = (
+                "specdec2",
+                batch.mode,
+                batch.rows,
+                plan.execution_route,
+            )
+            bucket = state.verifier.graph_bucket(graph_key, batch)
             target_started_ns = time.perf_counter_ns()
             prepared = state.verifier.prepare(
                 batch,
@@ -4026,6 +4087,15 @@ class Qwen35GGUFMTP2Adapter:
             )
             target_finished_ns = time.perf_counter_ns()
             target_seconds = (target_finished_ns - target_started_ns) / 1e9
+            # The prepared object *is* the open target transaction, and it owns
+            # the target undo. Capture it now that ``prepare`` published it: the
+            # journal's reverse rollback then restores the target before the
+            # provider, the order the explicit call sites used.
+            state.state_journal.capture(
+                "target",
+                lambda: prepared,
+                state.verifier.rollback,
+            )
             sampled_logit_readback_bytes = (
                 int(prepared.target_logits.nbytes) if sampled_route else 0
             )
@@ -4034,9 +4104,7 @@ class Qwen35GGUFMTP2Adapter:
             state.sampled_accept_plan = None
             cancelled = tuple(int(value) for value in cancelled_request_ids())
             if cancelled:
-                state.verifier.rollback(prepared)
-                prepared = None
-                self._restore_provider_checkpoint(state)
+                self._rollback_state_journal(state)
                 self._drop_request(rid, disable=True)
                 return SpecCycleResult(
                     stage=SpecCycleStage.CANCELLED,
@@ -4153,9 +4221,7 @@ class Qwen35GGUFMTP2Adapter:
             provider_update_seconds = time.perf_counter() - provider_update_started
             cancelled = tuple(int(value) for value in cancelled_request_ids())
             if cancelled:
-                state.verifier.rollback(prepared)
-                prepared = None
-                self._restore_provider_checkpoint(state)
+                self._rollback_state_journal(state)
                 self._drop_request(rid, disable=True)
                 return SpecCycleResult(
                     stage=SpecCycleStage.CANCELLED,
@@ -4173,8 +4239,11 @@ class Qwen35GGUFMTP2Adapter:
                 row.mtp2_device_accept_calls += 1
             state.verifier.finish(prepared)
             cycle_profile_finished_ns = time.perf_counter_ns()
+            # The target published its commit. Drop this cycle's undo before any
+            # post-commit work can fail: a later exception must never roll back
+            # state the scheduler is about to be told is committed.
+            self._commit_state_journal(state)
             prepared = None
-            self._release_provider_checkpoint(state)
             next_token = None if summary.next_tokens is None else summary.next_tokens[0]
             output_ids = (
                 *tuple(int(token) for token in summary.accepted_tokens[0]),
@@ -4330,9 +4399,7 @@ class Qwen35GGUFMTP2Adapter:
                 telemetry=telemetry,
             )
         except Exception:
-            if prepared is not None:
-                state.verifier.rollback(prepared)
-            self._restore_provider_checkpoint(state)
+            self._rollback_state_journal(state)
             raise
 
     def _sampled_accept_summary(
@@ -6491,28 +6558,109 @@ class Qwen35GGUFMTP2Adapter:
                 proposal_row.hidden,
             )
 
-    def _restore_provider_checkpoint(self, state: _MTP2RequestState) -> None:
-        checkpoint = state.proposal_checkpoint
-        if checkpoint is None:
+    @staticmethod
+    def _state_journal_shape(states: Sequence[_MTP2RequestState]) -> bool:
+        """Whether this proposal is the singleton target-verifier route.
+
+        Only that route has an adapter-level target undo to move. A packed route
+        captures per-row linear state inside the target owner and recovers an
+        uncertain selected commit by rebuilding canonical rows, so it keeps its
+        existing explicit restore sites and no journal is opened for it.
+        """
+
+        return len(states) == 1 and states[0].verifier is not None
+
+    def _begin_state_journal(
+        self, state: _MTP2RequestState
+    ) -> SpeculativeStateJournal:
+        """Open this request's cycle journal, refusing a second live one."""
+
+        if state.state_journal is not None:
+            raise RuntimeError(
+                "GGUF MTP2 previous cycle still owns a state journal"
+            )
+        state.state_journal = SpeculativeStateJournal()
+        return state.state_journal
+
+    def _commit_state_journal(self, state: _MTP2RequestState) -> None:
+        """Drop this cycle's undo after the target published its commit.
+
+        The journal is cleared and the backup is retired before it is released,
+        so a release failure can neither leave a closed journal behind that a
+        later rollback would still try to use, nor let containment restore state
+        this cycle already published. The retired backup stays on the request so
+        its release can be retried.
+        """
+
+        journal = state.state_journal
+        if journal is None:
+            return
+        journal.commit()
+        state.state_journal = None
+        state.proposal_checkpoint_restorable = False
+        self._release_provider_checkpoint(state)
+
+    def _rollback_state_journal(self, state: _MTP2RequestState) -> None:
+        """Restore every captured owner, then release the provider backup.
+
+        ``SpeculativeStateJournal`` restores in reverse capture order, so the
+        target goes back before the provider, and it retries only the owners
+        whose restore failed. A failed restore therefore never repeats a restore
+        that already succeeded, and the journal stays on the request with its
+        provider checkpoint still allocated: releasing a backup a pending
+        restore still needs would turn a retryable failure into a use-after-free.
+
+        Once every restore has completed the backup is retired before the
+        release, so a failed release is retried by the release path alone and can
+        never re-run a restore that already succeeded.
+        """
+
+        journal = state.state_journal
+        if journal is None:
             return
         try:
-            state.provider.executor.restore_request_checkpoint(checkpoint)
+            journal.rollback()
         finally:
-            state.provider.executor.release_request_checkpoint(checkpoint)
-            state.proposal_checkpoint = None
-            state.proposal_context = None
-            state.proposal_device = None
-            state.proposal_device_batch = None
-            state.proposal_ngram = None
-            state.ngram_candidate_tokens = ()
-            state.proposal_source = "mtp2"
+            if not journal.pending:
+                state.state_journal = None
+                state.proposal_checkpoint_restorable = False
+                self._release_provider_checkpoint(state)
 
-    def _release_provider_checkpoint(self, state: _MTP2RequestState) -> None:
+    def _restore_provider_checkpoint(self, state: _MTP2RequestState) -> None:
+        """Restore the proposal's provider backup, then retire and release it.
+
+        A backup whose fate is already decided is not restored again: this is
+        the containment path, and the cycle it belongs to either committed --
+        where a restore would undo published state -- or rolled back already.
+        Only its outstanding release remains, so that is all this does.
+        """
+
         checkpoint = state.proposal_checkpoint
         if checkpoint is None:
+            state.proposal_checkpoint_restorable = False
+            return
+        try:
+            if state.proposal_checkpoint_restorable:
+                state.provider.executor.restore_request_checkpoint(checkpoint)
+        finally:
+            state.proposal_checkpoint_restorable = False
+            self._release_provider_checkpoint(state)
+
+    def _release_provider_checkpoint(self, state: _MTP2RequestState) -> None:
+        """Release the backup and clear the proposal staging it protected.
+
+        The pointer and its retirement flag are cleared only after the release
+        returns, so a failed release stays retryable instead of losing the only
+        handle to a live device backup.
+        """
+
+        checkpoint = state.proposal_checkpoint
+        if checkpoint is None:
+            state.proposal_checkpoint_restorable = False
             return
         state.provider.executor.release_request_checkpoint(checkpoint)
         state.proposal_checkpoint = None
+        state.proposal_checkpoint_restorable = False
         state.proposal_context = None
         state.proposal_device = None
         state.proposal_device_batch = None
@@ -6529,7 +6677,11 @@ class Qwen35GGUFMTP2Adapter:
         del candidate_graph, error
         for request_id in plan.speculative_request_ids:
             state = self._states.get(int(request_id))
-            if state is not None:
+            if state is not None and state.state_journal is None:
+                # The packed routes capture no adapter-level target undo, so
+                # their containment still restores the provider directly. A
+                # request holding a journal is restored by ``_drop_request``,
+                # which owns the single rollback attempt for a torn-down cycle.
                 self._restore_provider_checkpoint(state)
             self._drop_request(int(request_id), disable=True)
 
@@ -6680,8 +6832,15 @@ class Qwen35GGUFMTP2Adapter:
                 tuple(self._prompt_streaming_sinks),
                 stream=0,
             )
+        failures: list[BaseException] = []
         for request_id in tuple(self._states):
-            self._drop_request(request_id, disable=False)
+            try:
+                self._drop_request(request_id, disable=False)
+            except BaseException as error:
+                # One request whose restore or release cannot complete must not
+                # strand the others, and it keeps its owners so a later close can
+                # retry. The failure is reported below instead of being lost.
+                failures.append(error)
         self._intents.clear()
         getattr(self, "_static_eligibility_by_request", {}).clear()
         self._prompt_hidden_rows.clear()
@@ -6713,6 +6872,13 @@ class Qwen35GGUFMTP2Adapter:
         # Keep host unregistration last: it may report a runtime failure after
         # dropping the arena, but must not strand the adapter's other owners.
         self._release_accept_staging()
+        if failures:
+            # ``BaseExceptionGroup`` rather than ``ExceptionGroup``: a sweep that
+            # meets a KeyboardInterrupt or SystemExit cannot nest it in an
+            # ExceptionGroup, and dropping the interrupt to keep the group type
+            # would lose it. With only ordinary errors this still constructs an
+            # ExceptionGroup.
+            raise BaseExceptionGroup("GGUF MTP2 adapter close failed", failures)
 
     def _open_batch_requests(self, request_ids: tuple[int, ...]) -> None:
         rows = [self.owner._row(request_id) for request_id in request_ids]
@@ -7197,29 +7363,69 @@ class Qwen35GGUFMTP2Adapter:
         self._sampling_mode_by_request.pop(rid, None)
         self._post_reject_pending.discard(rid)
         self.drop_c1_shadow_lifecycle(rid, reason="request_drop")
-        state = self._states.pop(rid, None)
+        state = self._states.get(rid)
         if state is not None:
-            target = self.owner._row(rid).lease.session
-            self._release_provider_checkpoint(state)
+            # Every obligation below is retryable and runs while the state is
+            # still registered. Popping first would destroy the only handle to
+            # a pending restore, a live device backup, and the owners this
+            # request has not released yet, turning a transient failure into a
+            # leaked or corrupted request.
+            try:
+                if state.state_journal is not None:
+                    self._rollback_state_journal(state)
+                self._release_provider_checkpoint(state)
+                self._release_request_owners(rid, state)
+            except BaseException:
+                # The request keeps whatever it has not released yet. It must not
+                # be planned again while that work is outstanding, and the
+                # failure must reach the caller instead of being reported to
+                # nobody.
+                self._disabled_requests.add(rid)
+                raise
+            self._states.pop(rid, None)
+        if disable:
+            self._disabled_requests.add(rid)
+
+    def _release_request_owners(self, rid: int, state: _MTP2RequestState) -> None:
+        """Close this request's remaining owners, each phase at most once.
+
+        ``_drop_request`` retains the state until this returns, so a failure
+        leaves every phase it had not reached reachable, and the phases already
+        completed are recorded so a repeat drop never closes a verifier or frees
+        a root buffer twice. The provider group is released last and only after
+        its shared draft runner is gone, so a failed runner release leaves the
+        group registered for a retry instead of stranding the runner.
+        """
+
+        released = state.released_phases
+        if "verifier" not in released:
             if state.verifier is not None:
                 state.verifier.close()
+            released.add("verifier")
+        if "hidden" not in released:
+            # The row is resolved here rather than up front so a retry that only
+            # owes the provider or group release never touches it.
+            target = self.owner._row(rid).lease.session
             if int(getattr(target, "_last_target_hidden_ptr", 0)) == int(
                 state.root_hidden_buffer.ptr
             ):
                 target._last_target_hidden_ptr = 0
             free(state.root_hidden_buffer, runtime=target.runtime)
+            released.add("hidden")
+        if "provider" not in released:
             state.provider.release_request(rid)
+            released.add("provider")
+        if "group" not in released:
             group = self._provider_groups.get(state.provider_group_key)
             if group is not None:
                 group.request_ids.discard(rid)
                 if not group.request_ids:
-                    self._provider_groups.pop(group.key, None)
                     self.generator._release_mtp_draft_runner(
                         group.provider_pool_key,
                         group.provider,
                     )
-        if disable:
-            self._disabled_requests.add(rid)
+                    self._provider_groups.pop(group.key, None)
+            released.add("group")
 
 
 __all__ = [

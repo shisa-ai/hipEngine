@@ -1,0 +1,22 @@
+{
+  "performance_claim": false,
+  "base_commit": "e8ad5eaf28a98f10197105c7dd6dd57ba9fdcaa3",
+  "candidate_module": "hipengine/generation/qwen35_gguf_mtp2.py",
+  "candidate_sha256": "b129330709acebb6a39ba423153533a5698f9012632051b0e1127d9c776d232b",
+  "parent_sha256": "60457eca8f40078003e17c4bea73bc481a9828df238c9e7ef41b774f3c55d54f",
+  "backend": "hip_gfx1151",
+  "device": "AMD Radeon 8060S",
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "kv_storage": "bf16",
+  "max_sequence_length": 2048,
+  "prefix_cache": "off",
+  "parent_candidate_ids_acceptance_routes_equal": true,
+  "checked_calls": 24,
+  "checked_request_outputs": 32,
+  "recovery_cases": 4,
+  "commands": [
+    "bash /tmp/hipengine-paro-refresh-20261023-env.sh env PYTHONPATH=/tmp/hipengine-shared-mtp-paro-graph-final HIPENGINE_REQUIRE_CACHED_BUILD=1 \"$HOME/miniforge3/envs/therock/bin/python\" /tmp/hipengine-shared-mtp/public_dense_journal.py --output /tmp/hipengine-shared-mtp/dense-journal-parent.json",
+    "bash /tmp/hipengine-paro-refresh-20261023-env.sh env PYTHONPATH=/tmp/hipengine-shared-mtp-dense-journal-final HIPENGINE_REQUIRE_CACHED_BUILD=1 \"$HOME/miniforge3/envs/therock/bin/python\" /tmp/hipengine-shared-mtp/public_dense_journal.py --candidate --output /tmp/hipengine-shared-mtp/dense-journal-candidate.json",
+    "bash /tmp/hipengine-paro-refresh-20261023-env.sh env PYTHONPATH=/tmp/hipengine-shared-mtp-dense-journal-final HIPENGINE_REQUIRE_CACHED_BUILD=1 \"$HOME/miniforge3/envs/therock/bin/python\" /tmp/hipengine-shared-mtp/public_dense_journal_recovery.py --output /tmp/hipengine-shared-mtp/dense-journal-recovery.json"
+  ]
+}

@@ -1677,6 +1677,8 @@ def test_c1_adapter_warms_budget_graph_before_device_handoff() -> None:
         executor=SimpleNamespace(
             hidden_size=8,
             capture_request_checkpoint=lambda request_id: "checkpoint",
+            restore_request_checkpoint=lambda checkpoint: None,
+            release_request_checkpoint=lambda checkpoint: None,
         ),
         propose=lambda context, **kwargs: (
             calls.append(("propose", kwargs["allow_graph"])) or draft
@@ -1756,6 +1758,8 @@ def test_c1_adapter_carries_cached_proposal_descriptor_without_materializing_ids
         executor=SimpleNamespace(
             hidden_size=8,
             capture_request_checkpoint=lambda request_id: "checkpoint",
+            restore_request_checkpoint=lambda checkpoint: None,
+            release_request_checkpoint=lambda checkpoint: None,
         ),
         launch_device_proposal=lambda context, candidate_budget: (
             calls.append(("device", int(candidate_budget))) or proposal
