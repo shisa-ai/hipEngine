@@ -681,7 +681,10 @@ class Qwen35ParoMTP2Adapter:
             target_row_buckets=(2,),
             target_transaction_mode=SpecTransactionMode.PACKED_SCRATCH,
             provider_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
-            graph_supported=False,
+            # The resident target captures and replays one verifier
+            # VERIFY|ACCEPT graph per row/split/mode bucket; the direct pass stays
+            # the per-cycle fallback and the eager route.
+            graph_supported=True,
             eager_supported=True,
             strict_fallback_key="paro_target_c1_loop_exact",
             max_context_tokens=int(session.max_sequence_length) - 2,
@@ -828,6 +831,7 @@ class Qwen35ParoMTP2Adapter:
         batch: Any,
         *,
         chain_attn_mode: str,
+        graph_mode: str,
         candidate_token_ids_i32: Tensor | None,
     ) -> Any:
         return session.verify_chain_bulk_and_commit(
@@ -839,11 +843,44 @@ class Qwen35ParoMTP2Adapter:
             ),
             capture_row_start=0,
             chain_attn_mode=str(chain_attn_mode),
-            graph_mode="off",
+            graph_mode=str(graph_mode),
             canonicalize_after=False,
             synchronize_after_commit=False,
             candidate_token_ids_i32=candidate_token_ids_i32,
         )
+
+    @staticmethod
+    def _target_graph_mode(plan: SpecRequestPlan) -> str:
+        """Honor the planned variant without disabling graph capability.
+
+        One-candidate public requests currently select eager verification:
+        graph replay lost 3.23% decode throughput, confirmed at 3.06%, in the
+        2026-10-24 gfx1151 comparison. Graph plans still execute capture/replay.
+        See docs/REFACTOR.md for the comparison that clears this preference.
+        """
+
+        return "auto" if plan.execution_route == "graph" else "off"
+
+    @staticmethod
+    def _executed_graph_route(verify: Any) -> str:
+        """Return the route the target actually executed for one verify cycle.
+
+        ``replayed`` is the truthful signal: it is true exactly when the graph
+        was launched and its outputs are the ones the caller reads. That covers
+        a cached replay, a ``validate`` capture that executed its fresh graph,
+        and a ``#107`` recapture cycle, none of which are the eager route. A
+        capture that never launched its graph leaves the direct-pass outputs
+        live and reports eager. The status string is only a fallback for a
+        provider record that carries no ``replayed`` field.
+        """
+
+        graph = getattr(verify, "graph", None)
+        if not isinstance(graph, Mapping):
+            return "eager"
+        executed = graph.get("replayed")
+        if isinstance(executed, bool):
+            return "graph" if executed else "eager"
+        return "graph" if str(graph.get("status")) == "replayed" else "eager"
 
     def execute_target_frontier(
         self,
@@ -895,12 +932,14 @@ class Qwen35ParoMTP2Adapter:
                 == "strict"
                 else "decode_batched"
             ),
+            graph_mode=self._target_graph_mode(plan),
             candidate_token_ids_i32=(
                 frontier.candidate_graph.token_ids
                 if frontier.candidate_graph is not None
                 else None
             ),
         )
+        actual_route = self._executed_graph_route(verify)
         target_seconds = time.perf_counter() - target_started
         row.mtp2_candidate_d2h_after_target += int(
             frontier.candidate_graph.candidate_rows
@@ -956,7 +995,7 @@ class Qwen35ParoMTP2Adapter:
         row.mtp2_cycles += 1
         row.mtp2_candidate_counts.append(1)
         row.mtp2_accepted_counts.append(accepted)
-        row.mtp2_execution_routes.append("eager")
+        row.mtp2_execution_routes.append(actual_route)
         accept = AcceptResult(
             request_ids=plan.request_ids,
             accepted_counts=(accepted,),
@@ -976,7 +1015,7 @@ class Qwen35ParoMTP2Adapter:
             k0_classes=plan.k0_classes,
             proposal_widths=plan.proposal_widths,
             target_row_decomposition=plan.target_row_decomposition,
-            execution_route="eager",
+            execution_route=actual_route,
             proposal_seconds=max(0.0, state.last_proposal_seconds),
             target_seconds=target_seconds,
             provider_update_seconds=provider_update_seconds,

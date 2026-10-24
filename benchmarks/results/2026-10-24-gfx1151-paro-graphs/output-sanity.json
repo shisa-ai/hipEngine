@@ -1,0 +1,124 @@
+{
+  "kind": "authoritative_completion_id_review",
+  "performance_claim": false,
+  "source": "first.json",
+  "source_sha256": "0202dbb6777812d89eb118e469c69c5877dc81f70b8b6e8b18fddcca453956fa",
+  "same_schedule_eager_graph_equal": true,
+  "cross_route_ar_graph_equal_cases": 18,
+  "total_cases": 27,
+  "notes": [
+    "All natural prefixes were inspected after decoding authoritative generated IDs, not joined streaming text fragments.",
+    "Natural outputs begin coherent task-specific reasoning or answers. Some short tasks produce EOS and then repeated dialogue markers because ignore_eos=True fixes output work to 128 tokens.",
+    "This is output sanity and repeatability evidence, not a completed-task quality evaluation or an AR/MTP numerical-equivalence claim."
+  ],
+  "natural": [
+    {
+      "id": "code_merge_intervals",
+      "prefix": "<think>\nHere's a thinking process:\n\n1.  **Understand the User Request:**\n   - **Function:** `merge_intervals(intervals)`\n   - **Input:** A list of closed integer intervals (e.g., `[[1, 3], [2, 6], [8, 10], [15, 18]]`)\n   - **Output:** A list of merged non-overlapping intervals\n   - **Requirements:**",
+      "eager_graph_equal": true,
+      "ar_graph_equal": true
+    },
+    {
+      "id": "code_topological_sort",
+      "prefix": "<think>\nHere's a thinking process:\n\n1.  **Understand User Request:**\n   - **Function:** `topo_sort(nodes, edges)`\n   - **Input:** `nodes` (list/iterable of node identifiers), `edges` (list/tuple of directed edges, e.g., `(u, v)` meaning `u -> v`)\n   - **Output:** A valid topological ordering (list o",
+      "eager_graph_equal": true,
+      "ar_graph_equal": true
+    },
+    {
+      "id": "code_lru_cache",
+      "prefix": "<think>\nHere's a thinking process:\n\n1.  **Understand User Request:**\n   - Implement a small LRU Cache class in Python\n   - Must support `get(key)` and `put(key, value)`\n   - Operations must be O(1)\n   - Include three focused tests\n   - Return *only* code\n\n2.  **Key Requirements for LRU Cache:**\n   -",
+      "eager_graph_equal": true,
+      "ar_graph_equal": false
+    },
+    {
+      "id": "code_markdown_table",
+      "prefix": "<think>\nHere's a thinking process:\n\n1.  **Understand User Request:**\n   - **Input:** `rows` - a list of dictionaries\n   - **Output:** A GitHub-flavored markdown table string\n   - **Requirements:**\n     - Stable column order based on first appearance in the dictionaries\n     - GitHub-flavored markdow",
+      "eager_graph_equal": true,
+      "ar_graph_equal": false
+    },
+    {
+      "id": "general_en_plan",
+      "prefix": "<think>\nHere's a thinking thinking sequence\n\n1.  **Deconstruct the user's request:**\n    *   Goal: Migrate a small Flask application from SQLite to PostgreSQL.\n    *   Constraints: Concise, practical, include risks, sequencing, validation steps.\n\n2.  **Initial analysis and planning:**\n    *   *Small",
+      "eager_graph_equal": true,
+      "ar_graph_equal": true
+    },
+    {
+      "id": "general_en_explain",
+      "prefix": "<think>\nHere's a thinking process:\n\n1.  **Understand User Query:**\n   - **Topic:** Transformer inference on local GPUs\n   - **Core Question:** Why is it usually memory-bandwidth limited?\n   - **Requirements:** Keep it technical and concrete, provide examples of what changes throughput.\n\n2.  **Decons",
+      "eager_graph_equal": true,
+      "ar_graph_equal": true
+    },
+    {
+      "id": "general_ja_plan",
+      "prefix": "<think>\n\n</think>\n\n小規模な社内Pythonツールを運用環境（本番環境）へ移行するための実践的な計画書を作成しました。\n小規模ツールであっても、「動いたまま放置」は技術的負債となるため、**再現性・保守性・セキュリティ**を軸に構成しています。\n\n---\n\n# 社内Pythonツール 運用環境移行計画書\n\n## 1. 目的と範囲\n*   **目的:** 開発環境（ローカルPC等）で動作していたPythonツールを、安定した運用環境（サーバー/コンテナ等）へ移行し、自動化・監視・保守体制を整",
+      "eager_graph_equal": true,
+      "ar_graph_equal": false
+    },
+    {
+      "id": "general_ja_explain",
+      "prefix": "<think>\n\n</think>\n\nローカルGPU（特に消費向けGPUや、VRAM容量に対して帯域幅が限られた環境）において、大規模言語モデル（LLM）の推論速度がメモリ帯域幅（Memory Bandwidth）に制約されやすい現象は、コンピュータアーキテクチャの観点から「メモリウォール（Memory Wall）」として知られる問題です。\n\nこの現象が起きる技術的・具体的な理由は、以下の3つの主要な要因に集約されます。\n\n### 1. 演算とデータ転送の非対称性（演算集約型 vs デ",
+      "eager_graph_equal": true,
+      "ar_graph_equal": false
+    },
+    {
+      "id": "mixed_ja_en_translate",
+      "prefix": "<think>\n\n</think>\n\n**English Summary:**\nFor next week's release, we aim to focus on verifying the changes to the log output format, the cache invalidation option, and the backward compatibility of API responses.\n\n**Japanese Reply:**\n了解しました。重点項目のチェックリストを作成し、進捗を共有します。<|im_end|>\n<|endoftext|><|im_start",
+      "eager_graph_equal": true,
+      "ar_graph_equal": true
+    },
+    {
+      "id": "mixed_ja_en_review",
+      "prefix": "<think>\n\n</think>\n\n- Enabling MTP in the new inference mode improves generation speed.\n- However, KV cache usage increases with longer contexts, so monitoring memory is recommended.<|im_end|>\n<|endoftext|><|im_start|><|im_start|>assistant\n<think>\n\n</think>\n\n- Enabling MTP in the new inference mode i",
+      "eager_graph_equal": true,
+      "ar_graph_equal": false
+    },
+    {
+      "id": "heldout_code_rate_limiter",
+      "prefix": "<think>\n\n</think>\n\n```python\nimport time\nfrom collections import defaultdict\nfrom typing import Dict, List, Tuple\n\n\nclass SlidingWindowRateLimiter:\n    \"\"\"\n    A sliding window rate limiter that tracks request counts per key within a time window.\n    \n    Uses a list of timestamps per key to impleme",
+      "eager_graph_equal": true,
+      "ar_graph_equal": false
+    },
+    {
+      "id": "heldout_code_interval_schedule",
+      "prefix": "<think>\nHere's a thinking process:\n\n1.  **Understand the User Request:**\n   - **Function Name:** `max_non_overlapping(intervals)`\n   - **Input:** A list of half-open intervals (presumably tuples/lists of two numbers: `[start, end]` or `(start, end)`)\n   - **Output:** A maximum-size subset of non-ove",
+      "eager_graph_equal": true,
+      "ar_graph_equal": true
+    },
+    {
+      "id": "heldout_general_en_incident",
+      "prefix": "<think>\nHere's a thinking thinking sequence\n\n1.  **Deconstruct the user's request:**\n    *   Goal: Draft a concise incident-response checklist.\n    *   Context: Production API, p99 latency doubled after a deploy.\n    *   Required sections: Containment, Evidence Collection, Rollback Criteria, Follow-",
+      "eager_graph_equal": true,
+      "ar_graph_equal": false
+    },
+    {
+      "id": "heldout_general_en_quant",
+      "prefix": "<think>\nHere's a thinking process:\n\n1.  **Understand User Query:**\n   - **Topic:** Inference on consumer GPUs\n   - **Formats:** Weight-only INT4, W8A8 INT8, BF16\n   - **Key Aspects to Cover:** Practical accuracy, throughput tradeoffs, memory capacity, memory bandwidth, native arithmetic support\n   -",
+      "eager_graph_equal": true,
+      "ar_graph_equal": false
+    },
+    {
+      "id": "heldout_general_ja_migration",
+      "prefix": "<think>\nHere's a thinking process:\n\n1.  **Analyze User Input:**\n   - **Topic:** Migration of internal REST API from synchronous processing to asynchronous job processing.\n   - **Language:** Japanese\n   - **Requirements:** Concise, include compatibility, monitoring, and rollback conditions.\n   - **Ta",
+      "eager_graph_equal": true,
+      "ar_graph_equal": true
+    },
+    {
+      "id": "heldout_general_ja_speculative",
+      "prefix": "<think>\nHere's a thinking process:\n\n1.  **Analyze User Input:**\n   - **Topic:** Speculative decoding (投機的デコード)\n   - **Question:** Why doesn't speculative decoding always lead to speedup? (投機的デコードが常に高速化につながるわけではない理由)\n   - **Language:** Japanese (日本語)\n   - **Required Technical Aspects:** Acceptance ra",
+      "eager_graph_equal": true,
+      "ar_graph_equal": true
+    },
+    {
+      "id": "heldout_mixed_summary",
+      "prefix": "<think>\nHere's a thinking process:\n\n1.  **Analyze User Input:**\n   - **Input Text:** \"The cache hit rate fell after keys were namespaced by region, while database load and timeout errors increased.\"\n   - **Tasks:**\n     a. Summarize in Japanese\n     b. Provide one short mitigation in English\n\n2.  **",
+      "eager_graph_equal": true,
+      "ar_graph_equal": false
+    },
+    {
+      "id": "heldout_mixed_review",
+      "prefix": "<think>\n\n</think>\n\n*   p99 latency が閾値を超えています。\n*   error rate も上昇しています。\n*   新しい retry policy の影響を確認してください。<|im_end|>\n<|endoftext|><|im_start|><|im_start|><|im_start|><|im_start|><|im_start|>user\n<|im_start|><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n*   p99 latency が閾値を超えています。\n*   error rat",
+      "eager_graph_equal": true,
+      "ar_graph_equal": true
+    }
+  ]
+}

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields as dataclass_fields, is_dataclass, replace
 from pathlib import Path
 from typing import Any
 import math
@@ -135,15 +135,20 @@ from hipengine.runtime.qwen35_paro_batch_width import (
 )
 from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.speculative import (
+    GRAPH_STAGE_BINDING_MISS,
+    GRAPH_STAGE_CAPTURE_FAILED,
     DraftBatch,
     NativeSpecCycleControl,
     NativeSpecCycleStage,
     NativeSpecCycleStatus,
+    SpecGraphBinding,
+    SpecGraphStageCache,
     TargetAcceptSummary,
     TargetCommitPlan,
     TargetStateCommitBuffers,
     TargetVerifyBatch,
     TargetVerifyBuffers,
+    describe_failure,
 )
 
 
@@ -175,6 +180,269 @@ _DEFAULT_BATCH_SAMPLE_EQ_ROWS = (2, 4, 8)
 _DEFAULT_BATCH_SAMPLE_STABILIZE_CAST_ELEMS = {8: 256}
 _LOGGER = logging.getLogger(__name__)
 _VERIFY_DYNAMIC_METADATA_FIELDS = 5
+#: Reusable verifier graphs retained by one resident session. A session verifies
+#: one row bucket at a time, so this only has to cover the row/split/mode
+#: combinations a live request walks through before the cache re-captures.
+_VERIFY_GRAPH_CACHE_MAX_ENTRIES = 8
+#: Session buffers a captured verifier graph dereferences by pointer. Scratch
+#: workspaces are fingerprinted separately because they are re-reserved per row
+#: bucket and after prefill.
+_VERIFY_GRAPH_SESSION_BUFFERS = (
+    "verify_token_ids_i64",
+    "verify_token_ids_i32",
+    "verify_dynamic_metadata_i64",
+    "verify_positions_i32",
+    "verify_parent_rows_i32",
+    "verify_parent_rows_i64",
+    "verify_draft_depths_i32",
+    "verify_row_to_request_i32",
+    "verify_active_mask_u8",
+    "verify_ancestor_mask_u8",
+    "verify_cache_slot_buf",
+    "verify_tree_committed_buf",
+    "verify_lm_logits",
+    "verify_lm_block_values",
+    "verify_lm_block_indices",
+    "verify_top1_i32",
+    "verify_top1_values",
+    "verify_candidate_counts_i32",
+    "verify_accepted_counts",
+    "verify_commit_rows",
+    "verify_commit_tokens",
+    "verify_commit_positions",
+    "verify_next_tokens",
+    "verify_full_accept",
+    "verify_committed_output_ids",
+    "verify_committed_output_lengths",
+    "verify_accept_payload_i32",
+    "verify_capture_hidden_concat",
+    "verify_trunk_hidden",
+    "verify_trunk_next_hidden",
+    # Shared full-attention staging the batched/decode-batched verifier layers
+    # normalize into. Allocated once with the other common buffers.
+    "batch_norm_out",
+    "batch_norm_out_bf16",
+    "prefill_block_table_buf",
+    "prefill_position_buf",
+    "prefill_context_count_buf",
+    "position_buf",
+    "context_buf",
+    "cos",
+    "sin",
+    "embedding",
+    "lm_head_weight",
+    "lm_head_scale",
+)
+
+
+#: Cached structural plans for scratch dataclasses, keyed by the container path
+#: and the type. Only field *names* are cached; every pointer is still read from
+#: the live instance each cycle, so a re-reserved scratch can never replay a
+#: stale pointer. Scratch instances are mutable, so a plan is used only while the
+#: instance's own member names match it exactly.
+_SCRATCH_POINTER_PLANS: dict[
+    tuple[str, type], tuple[frozenset[str], tuple[tuple[str, str], ...]]
+] = {}
+#: Cached ``(every field name, public field names)`` per scratch dataclass.
+_SCRATCH_FIELD_NAMES: dict[type, tuple[frozenset[str], tuple[str, ...]] | None] = {}
+#: Bound on the plan cache. A session has one entry per layer container, so this
+#: is only a guard against unbounded growth across many short-lived sessions.
+_SCRATCH_POINTER_PLAN_LIMIT = 4096
+
+
+def _scratch_field_names(
+    cls: type,
+) -> tuple[frozenset[str], tuple[str, ...]] | None:
+    """Return ``(every field name, public field names)`` for one scratch type."""
+
+    if cls in _SCRATCH_FIELD_NAMES:
+        return _SCRATCH_FIELD_NAMES[cls]
+    if not is_dataclass(cls):
+        _SCRATCH_FIELD_NAMES[cls] = None
+        return None
+    fields = dataclass_fields(cls)
+    plan = (
+        frozenset(field.name for field in fields),
+        tuple(field.name for field in fields if not field.name.startswith("_")),
+    )
+    _SCRATCH_FIELD_NAMES[cls] = plan
+    return plan
+
+
+def _scratch_pointer_plan(
+    prefix: str, value: object, members: dict
+) -> tuple[tuple[str, str], ...] | None:
+    """Return cached ``(binding key, field name)`` pairs for one scratch instance.
+
+    The plan describes the *structure* only: every pointer is read from the live
+    instance. It is used only when the instance's member names equal the plan's,
+    because a scratch is mutable: removing one field and adding another keeps
+    ``len(__dict__)`` unchanged, and a count check would then read a deleted name
+    and pick up a class default or raise ``AttributeError``. Anything that does
+    not match name for name falls back to the generic walk.
+    """
+
+    cls = type(value)
+    cached = _SCRATCH_POINTER_PLANS.get((prefix, cls))
+    if cached is not None and members.keys() == cached[0]:
+        return cached[1]
+    names = _scratch_field_names(cls)
+    if names is None or members.keys() != names[0]:
+        return None
+    plan = (
+        names[0],
+        tuple((prefix + "." + name, name) for name in names[1]),
+    )
+    if len(_SCRATCH_POINTER_PLANS) >= _SCRATCH_POINTER_PLAN_LIMIT:
+        _SCRATCH_POINTER_PLANS.clear()
+    _SCRATCH_POINTER_PLANS[(prefix, cls)] = plan
+    return plan[1]
+
+
+def _record_graph_pointer(key: str, item: object, out: dict[str, int]) -> bool:
+    """Record one value's device pointer under ``key`` when it carries one.
+
+    A ``bool`` is not a pointer even though it is an ``int``, and an ``int``
+    subclass still is one, so the leaf test is spelled out instead of comparing
+    exact types.
+    """
+
+    pointer = getattr(item, "ptr", None)
+    if type(pointer) is int:
+        out[key] = pointer
+        return True
+    if isinstance(pointer, int) and not isinstance(pointer, bool):
+        out[key] = int(pointer)
+        return True
+    return False
+
+
+def _collect_graph_pointers(prefix: str, value: object, out: dict[str, int]) -> None:
+    """Record every device pointer reachable from one scratch or weight view.
+
+    Only a device allocation can change what a captured kernel dereferences, so
+    host mirrors, scalars, dtypes and numpy views are skipped. Scratch
+    dataclasses expose their rows as Tensor fields, and a workspace allocation
+    reaches the graph through one of those views, so walking the views covers
+    the allocation that backs them.
+
+    Container elements and scratch fields are resolved in place: a value that
+    carries an integer ``ptr`` is the leaf in every case here, so recursing into
+    it only to read ``.ptr`` is wasted work on the verifier hot path. Anything
+    else still recurses, which is what keeps the walk equivalent to a full
+    ``__dict__`` traversal.
+    """
+
+    if value is None:
+        return
+    pointer = getattr(value, "ptr", None)
+    if type(pointer) is int:
+        out[prefix] = pointer
+        return
+    if _record_graph_pointer(prefix, value, out):
+        return
+    if isinstance(value, Mapping):
+        for name, item in value.items():
+            key = prefix + "[" + str(name) + "]"
+            pointer = getattr(item, "ptr", None)
+            if type(pointer) is int:
+                out[key] = pointer
+            elif not _record_graph_pointer(key, item, out):
+                _collect_graph_pointers(key, item, out)
+        return
+    if isinstance(value, (tuple, list)):
+        for index, item in enumerate(value):
+            key = prefix + "[" + str(index) + "]"
+            pointer = getattr(item, "ptr", None)
+            if type(pointer) is int:
+                out[key] = pointer
+            elif not _record_graph_pointer(key, item, out):
+                _collect_graph_pointers(key, item, out)
+        return
+    members = getattr(value, "__dict__", None)
+    if not isinstance(members, dict):
+        return
+    plan = _scratch_pointer_plan(prefix, value, members)
+    if plan is not None:
+        for key, name in plan:
+            # The plan's names were just checked against the instance's own
+            # members, so this reads the instance value, never a class default.
+            item = members[name]
+            pointer = getattr(item, "ptr", None)
+            if type(pointer) is int:
+                out[key] = pointer
+            elif not _record_graph_pointer(key, item, out):
+                _collect_graph_pointers(key, item, out)
+        return
+    for name, item in members.items():
+        if str(name).startswith("_"):
+            continue
+        _collect_graph_pointers(prefix + "." + str(name), item, out)
+
+
+def _cleanup_interrupts(error: BaseException) -> list[BaseException]:
+    """Flatten one cleanup failure into the interrupts it carries."""
+
+    return [
+        failure
+        for failure in _flatten_cleanup_failures(error)
+        if not isinstance(failure, Exception)
+    ]
+
+
+def _flatten_cleanup_failures(error: BaseException) -> list[BaseException]:
+    """Flatten one cleanup failure into its group members."""
+
+    if isinstance(error, BaseExceptionGroup):
+        found: list[BaseException] = []
+        for member in error.exceptions:
+            found.extend(_flatten_cleanup_failures(member))
+        return found
+    return [error]
+
+
+def _raise_cleanup_failures(
+    failures: Sequence[BaseException], message: str
+) -> None:
+    """Raise one collected cleanup failure, or a group when there are several.
+
+    Repeats are collapsed first: a retained failure is reported both by the
+    attempt that raised it and by the retained-ownership check, and raising the
+    same interrupt twice would hide it inside a group. Failures that agree on
+    type and message are reported once; the retained count stays visible through
+    ``verify_graph_cleanup``.
+    """
+
+    unique: list[BaseException] = []
+    seen: set[tuple[type, str]] = set()
+    for error in failures:
+        signature = (type(error), str(error))
+        if signature in seen:
+            continue
+        seen.add(signature)
+        unique.append(error)
+    if not unique:
+        return
+    if len(unique) == 1:
+        raise unique[0]
+    raise BaseExceptionGroup(message, unique)
+
+
+def _raise_cleanup_interrupts(errors: Sequence[BaseException]) -> None:
+    """Re-raise cleanup interrupts raised by a provider destroy call.
+
+    ``KeyboardInterrupt`` and ``SystemExit`` must never be absorbed into a
+    cleanup status string. Groups are flattened so the caller sees the interrupt
+    itself, and a group is raised when more than one handle reported one, so no
+    interrupt is lost. Every affected handle stays retained on its record, so a
+    later retry can still reach it.
+    """
+
+    interrupts: list[BaseException] = []
+    for error in errors:
+        interrupts.extend(_cleanup_interrupts(error))
+    _raise_cleanup_failures(interrupts, "PARO verifier graph cleanup interrupted")
+
 
 def _env_int(name: str, default: int, *aliases: str) -> int:
     for key in (name, *aliases):
@@ -1625,13 +1893,20 @@ class Qwen35ParoBulkVerifyResult:
 
 @dataclass
 class Qwen35ParoVerifierGraphEntry:
+    """One captured PARO verifier ``VERIFY|ACCEPT`` graph.
+
+    Handle fields are mutable so a partial release can be resumed: each field is
+    zeroed after a successful destroy, and :meth:`release` skips zeros. A retry
+    therefore never destroys a handle the runtime already accepted.
+    """
+
     rows: int
     capture_width: int
     base_slot: int
     graph: int
     graph_exec: int
     stream: int
-    validation_passed: bool
+    validation_passed: bool | None
     replay_count: int = 0
     # Capture-time per-layer verifier scratch (rows=B+1). The captured graph
     # writes these buffers, but `_canonicalize_decode_scratch` swaps the live
@@ -1646,6 +1921,58 @@ class Qwen35ParoVerifierGraphEntry:
     native_spec_target_commit: bool = False
     native_spec_commit_source_table: DeviceBuffer | None = None
     native_spec_commit_destination_table: DeviceBuffer | None = None
+
+    def release(self, runtime: HipRuntime) -> None:
+        """Free every handle this entry still owns, in dependency order.
+
+        Each release is attempted even if an earlier one fails. Successfully
+        released handles are zeroed so a later retry skips them, and the
+        provider launcher is dropped because it borrows ``graph_exec``.
+        """
+
+        errors: list[BaseException] = []
+        self.native_spec_launcher = None
+        for attribute in (
+            "native_spec_commit_source_table",
+            "native_spec_commit_destination_table",
+        ):
+            table = getattr(self, attribute)
+            if table is None:
+                continue
+            try:
+                free(table, runtime=runtime)
+            except BaseException as error:  # noqa: BLE001 - release every handle
+                error.add_note(f"PARO verifier graph release: {attribute}")
+                errors.append(error)
+            else:
+                setattr(self, attribute, None)
+        releases = (
+            ("graph_exec_destroy", "graph_exec"),
+            ("graph_destroy", "graph"),
+            ("stream_destroy", "stream"),
+        )
+        for name, attribute in releases:
+            handle = int(getattr(self, attribute))
+            if handle == 0:
+                continue
+            try:
+                getattr(runtime, name)(handle)
+            except BaseException as error:  # noqa: BLE001 - release every handle
+                error.add_note(f"PARO verifier graph release: {name}({handle:#x})")
+                errors.append(error)
+            else:
+                setattr(self, attribute, 0)
+        if errors:
+            raise BaseExceptionGroup("PARO verifier graph cleanup failed", errors)
+
+    def pending_handles(self) -> tuple[int, ...]:
+        """Return every HIP handle this record still owns, in release order."""
+
+        return tuple(
+            handle
+            for handle in (self.graph_exec, self.graph, self.stream)
+            if int(handle) != 0
+        )
 
 
 class Qwen35ParoResidentSession:
@@ -1816,6 +2143,15 @@ class Qwen35ParoResidentSession:
         )
 
     def close(self) -> None:
+        """Release every session resource, then report what the runtime refused.
+
+        Each step runs even when an earlier one raises, so a cleanup interrupt
+        or a refused release cannot strand the allocations behind it. The first
+        step releases verifier graphs while the pointers they recorded are still
+        valid; the last frees resident state and every tracked allocation. A
+        second ``close`` is a no-op, so nothing is freed twice.
+        """
+
         if self.closed:
             return
         # Callers can close while default-stream work or the isolated AOTriton
@@ -1823,16 +2159,48 @@ class Qwen35ParoResidentSession:
         # stream resources or their device allocations.
         self.runtime.device_synchronize()
         self.closed = True
-        self._invalidate_verify_graph_cache()
-        self._release_prefill_aotriton_bridge()
-        self._release_prefill_workspace()
-        self._release_prefill_hidden_buffer()
-        for state in reversed(self.states):
-            state.free()
-        for allocation in reversed(self.allocations):
-            allocation.free(runtime=self.runtime)
-        for buffer in reversed(self.buffers):
-            free(buffer, runtime=self.runtime)
+        failures: list[BaseException] = []
+        for step in (
+            self._invalidate_verify_graph_cache,
+            self._release_prefill_aotriton_bridge,
+            self._free_prefill_workspace,
+            self._release_prefill_hidden_buffer,
+            self._free_session_resources,
+        ):
+            try:
+                step()
+            except BaseException as error:  # noqa: BLE001 - finish the teardown
+                failures.extend(_flatten_cleanup_failures(error))
+        # A graph release refused during teardown belongs to this caller, not to
+        # a status string the session can no longer be asked about.
+        for error in self._retry_and_report_verify_graph_failures():
+            failures.extend(_flatten_cleanup_failures(error))
+        _raise_cleanup_failures(failures, "PARO session close failed")
+
+    def _free_session_resources(self) -> None:
+        """Free resident state and every tracked allocation and buffer.
+
+        Individual refusals are collected instead of aborting the loop: one
+        buffer the runtime will not release must not strand the rest.
+        """
+
+        failures: list[BaseException] = []
+        for state in reversed(getattr(self, "states", ())):
+            try:
+                state.free()
+            except BaseException as error:  # noqa: BLE001 - keep releasing
+                failures.append(error)
+        for allocation in reversed(getattr(self, "allocations", ())):
+            try:
+                allocation.free(runtime=self.runtime)
+            except BaseException as error:  # noqa: BLE001 - keep releasing
+                failures.append(error)
+        for buffer in reversed(getattr(self, "buffers", ())):
+            try:
+                free(buffer, runtime=self.runtime)
+            except BaseException as error:  # noqa: BLE001 - keep releasing
+                failures.append(error)
+        _raise_cleanup_failures(failures, "PARO session resource release failed")
 
     def _load_native_batch_width_profile(self) -> NativeBatchWidthProfile | None:
         if not _retained_batch_defaults_enabled(self.backend) or not _native_batch_decode_enabled(
@@ -4064,6 +4432,19 @@ class Qwen35ParoResidentSession:
         return self._prefill_scratch_state
 
     def _release_prefill_workspace(self) -> None:
+        # Prefill-owned scratch is shared with the batched verifier routes, so a
+        # cached verifier graph's recorded pointers die with it.
+        self._invalidate_verify_graph_cache()
+        self._free_prefill_workspace()
+
+    def _free_prefill_workspace(self) -> None:
+        """Free the prefill-owned workspace and drop its scratch views.
+
+        Split out of :meth:`_release_prefill_workspace` so ``close`` can free it
+        without re-entering graph invalidation, whose interrupt must not abort
+        the rest of the teardown.
+        """
+
         workspace = getattr(self, "prefill_workspace", None)
         if workspace is not None:
             workspace.free()
@@ -4077,6 +4458,9 @@ class Qwen35ParoResidentSession:
     def _release_decode_scratch_for_prefill(self) -> None:
         """Free token-1 decode scratch before allocating bulk prefill workspaces."""
 
+        # Every layer workspace is freed below, and a captured verifier graph
+        # holds raw pointers into those allocations.
+        self._invalidate_verify_graph_cache()
         for state in getattr(self, "states", ()):
             state.workspace.free()
             state._rotate_fuse_ready.clear()
@@ -4174,8 +4558,10 @@ class Qwen35ParoResidentSession:
 
     def _clear_verify_scratch_caches(self) -> None:
         self._verify_scratch_cache_generation = int(getattr(self, "_verify_scratch_cache_generation", 0)) + 1
-        self._verify_linear_scratch_cache.clear()
-        self._verify_mlp_scratch_cache.clear()
+        for name in ("_verify_linear_scratch_cache", "_verify_mlp_scratch_cache"):
+            cache = getattr(self, name, None)
+            if cache is not None:
+                cache.clear()
 
     def prepare_specdec2_verify_scratch(
         self,
@@ -8174,10 +8560,19 @@ class Qwen35ParoResidentSession:
             verify_rows * len(self.config.layer_types) * self.config.hidden_size * DType.BF16.itemsize,
             runtime=self.runtime,
         )
-        self._verify_graph_cache: dict[
-            tuple[int, int, int, str, str, str, bool],
-            Qwen35ParoVerifierGraphEntry,
-        ] = {}
+        self._verify_graphs = SpecGraphStageCache(
+            max_entries=_VERIFY_GRAPH_CACHE_MAX_ENTRIES
+        )
+        # Handles from a failed capture whose release the runtime refused. They
+        # are retried before the next capture and by ``close``, and reported by
+        # ``verify_graph_cleanup``.
+        self._verify_graph_partials: list[Qwen35ParoVerifierGraphEntry] = []
+        # Detached state tables whose release the runtime refused. Same
+        # ownership rule as ``_verify_graph_partials``: never drop the only
+        # reference to a device allocation.
+        self._verify_graph_partial_buffers: list[DeviceBuffer] = []
+        self._verify_graph_last_status = "unobserved"
+        self._verify_graph_last_error: str | None = None
         self.buffers.extend(
             (
                 self.lm_logits,
@@ -10628,6 +11023,60 @@ class Qwen35ParoResidentSession:
         copy_host_to_device(buf, host_array_ptr(array), runtime=self.runtime)
         return buf
 
+    def _dev_detached(self, array: np.ndarray) -> DeviceBuffer:
+        """Allocate a device copy the caller owns, not the session lifetime list.
+
+        ``_dev`` registers every buffer on ``self.buffers`` so ``close`` frees
+        it. A verifier graph entry frees its own state tables when the graph
+        retires, so registering them here as well would free the same buffer
+        twice: once from the entry and once from the session list.
+
+        The allocation exists before the copy, so a failed copy releases it. A
+        release the runtime refuses is retained on
+        ``_verify_graph_partial_buffers`` and retried by
+        :meth:`retry_verify_graph_cleanup`, because dropping the reference here
+        would strand the buffer with no path back to it.
+        """
+
+        buf = malloc(array.nbytes, runtime=self.runtime)
+        try:
+            copy_host_to_device(buf, host_array_ptr(array), runtime=self.runtime)
+        except BaseException as error:  # noqa: BLE001 - own the allocation
+            for failure in self._release_partial_buffer(buf):
+                error.add_note(
+                    f"PARO verifier graph buffer cleanup: {describe_failure(failure)}"
+                )
+            raise
+        return buf
+
+    def _dev_detached_pair(
+        self, first: np.ndarray, second: np.ndarray
+    ) -> tuple[DeviceBuffer, DeviceBuffer]:
+        """Allocate two detached copies, releasing the first if the second fails."""
+
+        built: list[DeviceBuffer] = []
+        try:
+            built.append(self._dev_detached(first))
+            built.append(self._dev_detached(second))
+        except BaseException as error:  # noqa: BLE001 - own both allocations
+            for buffer in built:
+                for failure in self._release_partial_buffer(buffer):
+                    error.add_note(
+                        f"PARO verifier graph buffer cleanup: {describe_failure(failure)}"
+                    )
+            raise
+        return built[0], built[1]
+
+    def _release_partial_buffer(self, buffer: DeviceBuffer) -> list[BaseException]:
+        """Free one buffer this attempt allocated, retaining it if refused."""
+
+        try:
+            free(buffer, runtime=self.runtime)
+        except BaseException as error:  # noqa: BLE001 - retain, do not drop
+            getattr(self, "_verify_graph_partial_buffers", []).append(buffer)
+            return _flatten_cleanup_failures(error)
+        return []
+
     def _emit(self, event: str, **fields: Any) -> None:
         if self.progress is not None:
             self.progress({"event": event, **fields})
@@ -10938,10 +11387,11 @@ class Qwen35ParoResidentSession:
             source[n_layers + idx] = np.uint64(scratch.tree_recurrent_state.ptr)
             destination[idx] = np.uint64(conv_state.ptr)
             destination[n_layers + idx] = np.uint64(recurrent_state.ptr)
-        # `_dev` binds both descriptor slabs to the resident session lifetime.
+        # `_dev_detached` keeps these out of the session lifetime list: the
+        # graph entry that bakes them owns and frees them when it retires.
         # Each graph entry gets fixed contents, so another row bucket cannot
         # retarget a captured selected-state commit.
-        return self._dev(source), self._dev(destination)
+        return self._dev_detached_pair(source, destination)
 
     def _launch_native_spec_provider_target_commit(
         self,
@@ -11061,8 +11511,10 @@ class Qwen35ParoResidentSession:
         ``tokens=rows``) so each full-attention layer runs in one batched pass.
         ``decode_batched`` keeps the row-batched projections/KV/MoE staging but
         swaps the prefill attention kernel for a small-B row-batched decode GQA
-        split-K primitive; it is currently graph-off only because the split
-        count changes with verifier position buckets.
+        split-K primitive. It is graph-eligible because the split count a
+        capture bakes is part of the verifier graph key: a cycle whose split
+        count differs from the capture re-captures instead of replaying a
+        narrower reduction.
         """
 
         if self.closed:
@@ -11073,11 +11525,11 @@ class Qwen35ParoResidentSession:
             raise ValueError("bulk verifier E2E path currently supports one request")
         if chain_attn_mode not in {"c1_loop", "batched", "decode_batched"}:
             raise ValueError("chain_attn_mode must be 'c1_loop', 'batched', or 'decode_batched'")
-        if chain_attn_mode == "decode_batched" and graph_mode != "off":
-            raise ValueError("chain_attn_mode='decode_batched' currently requires graph_mode='off'")
-        # NOTE: chain_attn_mode='batched' is now allowed with graph_mode!='off';
-        # the verifier graph cache key includes chain_attn_mode/linear_attn_mode
-        # so batched and c1_loop captures do not alias.  See `docs/reference/MTP.md` M12.1.
+        # Every chain attention mode is graph-eligible. The verifier graph key
+        # includes chain_attn_mode/linear_attn_mode and the per-row attention
+        # split counts, so a capture can only replay a cycle that bakes the same
+        # kernel sequence and the same split-K reduction. See
+        # `docs/reference/MTP.md` M12.1.
         rows = int(batch.rows)
         if rows <= 1:
             raise ValueError("bulk verifier requires root plus at least one candidate row")
@@ -11273,7 +11725,9 @@ class Qwen35ParoResidentSession:
             # Replays then read/write freed memory (#107 graph-auto drift).
             # Keep the verifier-shaped scratch alive while any graph is cached;
             # decode steps lazily re-reserve canonical c=1 views on demand.
-            if bool(canonicalize_after) and (graph_mode == "off" or not self._verify_graph_cache):
+            if bool(canonicalize_after) and (
+                graph_mode == "off" or not self._verify_graph_keepalive_active()
+            ):
                 t_bucket = time.perf_counter()
                 self._canonicalize_decode_scratch()
                 _mark_bucket("canonicalize_scratch", t_bucket)
@@ -11502,7 +11956,9 @@ class Qwen35ParoResidentSession:
         _mark_bucket("commit_scatter", t_bucket)
         # Same #107 keepalive as chain: canonicalizing decode scratch frees the
         # rows=B+1 buffers any cached verifier graph holds raw pointers to.
-        if bool(canonicalize_after) and (graph_mode == "off" or not self._verify_graph_cache):
+        if bool(canonicalize_after) and (
+            graph_mode == "off" or not self._verify_graph_keepalive_active()
+        ):
             t_bucket = time.perf_counter()
             self._canonicalize_decode_scratch()
             _mark_bucket("canonicalize_scratch", t_bucket)
@@ -11706,6 +12162,12 @@ class Qwen35ParoResidentSession:
             capture_hidden_concat=capture_hidden_concat,
             base_slot=base_slot,
         )
+        split_bucket = self._verify_graph_split_bucket(
+            batch,
+            rows=rows,
+            chain_attn_mode=chain_attn_mode,
+        )
+        capture_axis = tuple(int(layer_id) for layer_id in capture_ids)
         bucket_key = {
             "rows": int(rows),
             "capture_width": int(capture_hidden_concat.shape[1]),
@@ -11714,6 +12176,9 @@ class Qwen35ParoResidentSession:
             "linear_attn_mode": str(linear_attn_mode),
             "batch_mode": str(batch.mode),
             "native_spec_target_commit": bool(target_commit_requested),
+            "attention_splits": list(split_bucket),
+            "capture_row_start": int(capture_row_start),
+            "capture_ids": list(capture_axis),
         }
         key = (
             bucket_key["rows"],
@@ -11723,22 +12188,25 @@ class Qwen35ParoResidentSession:
             bucket_key["linear_attn_mode"],
             bucket_key["batch_mode"],
             bucket_key["native_spec_target_commit"],
+            split_bucket,
+            bucket_key["capture_row_start"],
+            capture_axis,
         )
-        entry = self._verify_graph_cache.get(key)
-        if (
-            entry is not None
-            and os.environ.get("HIPENGINE_VERIFY_GRAPH_RECAPTURE", "").strip() == "1"
-        ):
-            # Debug-only (#107): drop the cached graph each cycle so replay
-            # always executes a graph captured from the current state.
-            try:
-                self.runtime.graph_exec_destroy(entry.graph_exec)
-                self.runtime.graph_destroy(entry.graph)
-                self.runtime.stream_destroy(entry.stream)
-            except Exception:
-                pass
-            self._verify_graph_cache.pop(key, None)
-            entry = None
+        entry, miss_reason = self._verify_graphs.acquire(
+            key,
+            self._verify_graph_binding(
+                batch,
+                rows=rows,
+                capture_hidden_concat=capture_hidden_concat,
+                capture_row_start=capture_row_start,
+                capture_ids=capture_axis,
+                base_slot=base_slot,
+                chain_attn_mode=chain_attn_mode,
+                linear_attn_mode=linear_attn_mode,
+                native_spec_target_commit=bool(target_commit_requested),
+                split_bucket=split_bucket,
+            ),
+        )
         if graph_mode == "auto" and entry is not None:
             # Debug-only (#107): re-run the direct pass before each replay and
             # compare per-row top1 + accept payload to localize replay drift.
@@ -11806,6 +12274,7 @@ class Qwen35ParoResidentSession:
             native_stages = ["VERIFY", "ACCEPT"]
             if bool(entry.native_spec_target_commit):
                 native_stages.extend(["COMMIT", "UPDATE_CURSORS"])
+            self._record_verify_graph_status("replayed", None)
             return {
                 "mode": graph_mode,
                 "status": "replayed",
@@ -11849,122 +12318,76 @@ class Qwen35ParoResidentSession:
         self.runtime.stream_synchronize(stream)
         direct_top1, _ = self._read_verify_top1(rows)
         direct_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=stream)
-        commit_tables = (
-            self._native_spec_provider_target_commit_tables()
-            if target_commit_requested
-            else None
-        )
-        target_commit_captured = commit_tables is not None
-        commit_source = None if commit_tables is None else commit_tables[0]
-        commit_destination = None if commit_tables is None else commit_tables[1]
-        graph = 0
-        graph_stream = 0
-        try:
-            graph_stream = self.runtime.stream_create()
-            self.runtime.stream_begin_capture(graph_stream)
-            try:
-                self._launch_verify_chain_forward_accept(
-                    batch,
-                    base_slot=base_slot,
-                    capture_ids=capture_ids,
-                    capture_hidden_concat=capture_hidden_concat,
-                    capture_row_start=capture_row_start,
-                    rows=rows,
-                    stream=graph_stream,
-                    chain_attn_mode=chain_attn_mode,
-                    linear_attn_mode=linear_attn_mode,
-                    native_spec_commit_source_table=commit_source,
-                    native_spec_commit_destination_table=commit_destination,
-                )
-                graph = self.runtime.stream_end_capture(graph_stream)
-            except Exception:
-                try:
-                    self.runtime.stream_end_capture(graph_stream)
-                except Exception:
-                    pass
-                raise
-            graph_exec = self.runtime.graph_instantiate(graph)
-            if graph_mode == "validate":
-                # Validation pass: run the captured graph and compare with the
-                # direct pass we already executed above.  Launch on a separate
-                # stream so the direct outputs (already written into the
-                # caller-stream buffers) are not clobbered before we read them.
-                self.runtime.graph_launch(graph_exec, graph_stream)
-                self.runtime.stream_synchronize(graph_stream)
-                graph_top1, _ = self._read_verify_top1(rows)
-                graph_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=graph_stream)
-                validation_passed = tuple(graph_top1) == tuple(direct_top1) and graph_payload == direct_payload
-                if not validation_passed:
-                    self.runtime.graph_exec_destroy(graph_exec)
-                    self.runtime.graph_destroy(graph)
-                    self.runtime.stream_destroy(graph_stream)
-                    # Restore direct outputs for the caller.
-                    self._launch_verify_chain_forward_accept(
-                        batch,
-                        base_slot=base_slot,
-                        capture_ids=capture_ids,
-                        capture_hidden_concat=capture_hidden_concat,
-                        capture_row_start=capture_row_start,
-                        rows=rows,
-                        stream=stream,
-                        chain_attn_mode=chain_attn_mode,
-                        linear_attn_mode=linear_attn_mode,
-                    )
-                    return {
-                        "mode": graph_mode,
-                        "status": "validation_failed_fallback",
-                        "replayed": False,
-                        "validation_passed": False,
-                        "bucket_key": dict(bucket_key),
-                    }
-            if os.environ.get("HIPENGINE_VERIFY_GRAPH_RECAPTURE", "").strip() == "1":
-                # Debug-only (#107): execute the freshly captured graph so the
-                # accept payload comes from replay, not the direct pass.
-                self.runtime.graph_launch(graph_exec, stream)
-            entry = Qwen35ParoVerifierGraphEntry(
-                rows=rows,
-                capture_width=int(capture_hidden_concat.shape[1]),
-                base_slot=base_slot,
-                graph=graph,
-                graph_exec=graph_exec,
-                stream=graph_stream,
-                validation_passed=True,
-                replay_count=1,
-                linear_scratch=dict(self.linear_scratch),
-                moe_scratch=dict(self.moe_scratch),
-                native_spec_target_commit=bool(target_commit_captured),
-                native_spec_commit_source_table=commit_source,
-                native_spec_commit_destination_table=commit_destination,
-            )
-            self._verify_graph_cache[key] = entry
-            fresh_graph_executed = (
-                graph_mode == "validate"
-                or os.environ.get("HIPENGINE_VERIFY_GRAPH_RECAPTURE", "").strip() == "1"
+        # Drain a previous attempt's unowned handles before allocating another
+        # graph: a runtime that persistently refuses destroy must not accumulate
+        # one abandoned capture per cycle.
+        partial_errors = self._retry_verify_graph_partials()
+        if partial_errors:
+            self._record_verify_graph_status(
+                "capture_fallback",
+                "; ".join(describe_failure(error) for error in partial_errors),
             )
             return {
                 "mode": graph_mode,
-                "status": "captured_validated" if graph_mode == "validate" else "captured_validated_miss",
-                "replayed": graph_mode == "auto",
-                "validation_passed": True,
+                "status": "capture_failed_fallback",
+                "replayed": False,
+                "validation_passed": None,
+                "fallback_reason": self._verify_graph_last_error,
                 "bucket_key": dict(bucket_key),
-                "replay_count": entry.replay_count,
-                "native_spec_cycle_graph": False,
-                "native_spec_cycle_stages": [],
-                "native_spec_target_commit": bool(
-                    target_commit_captured and fresh_graph_executed
-                ),
             }
-        except Exception as exc:
-            if graph:
-                try:
-                    self.runtime.graph_destroy(graph)
-                except Exception:
-                    pass
-            if graph_stream:
-                try:
-                    self.runtime.stream_destroy(graph_stream)
-                except Exception:
-                    pass
+        execute = graph_mode == "validate"
+        # The binding is rebuilt here, not reused from the lookup above: the
+        # direct pass just reserved this bucket's lazy workspace, so these are
+        # the addresses the capture bakes into its kernels.
+        capture_binding = self._verify_graph_binding(
+            batch,
+            rows=rows,
+            capture_hidden_concat=capture_hidden_concat,
+            capture_row_start=capture_row_start,
+            capture_ids=capture_axis,
+            base_slot=base_slot,
+            chain_attn_mode=chain_attn_mode,
+            linear_attn_mode=linear_attn_mode,
+            native_spec_target_commit=bool(target_commit_requested),
+            split_bucket=split_bucket,
+        )
+        entry, capture_reason = self._verify_graphs.capture(
+            key,
+            capture_binding,
+            lambda: self._capture_verify_graph(
+                batch,
+                base_slot=base_slot,
+                capture_ids=capture_ids,
+                capture_hidden_concat=capture_hidden_concat,
+                capture_row_start=capture_row_start,
+                rows=rows,
+                chain_attn_mode=chain_attn_mode,
+                linear_attn_mode=linear_attn_mode,
+                validate=graph_mode == "validate",
+                execute=execute,
+                direct_top1=direct_top1,
+                direct_payload=direct_payload,
+                native_spec_target_commit=bool(target_commit_requested),
+            ),
+            self._close_verify_graph,
+        )
+        if entry is None:
+            # A drifted entry is already released; keep that cause in the record
+            # so a following capture failure reports both.
+            drift = (
+                f"{miss_reason}: captured binding changed"
+                if miss_reason == GRAPH_STAGE_BINDING_MISS
+                else None
+            )
+            detail = (
+                self._verify_graphs.last_failure(key)
+                or capture_reason
+                or GRAPH_STAGE_CAPTURE_FAILED
+            )
+            self._record_verify_graph_status(
+                "capture_fallback",
+                f"{drift}; {detail}" if drift else detail,
+            )
             # Restore direct outputs for the caller after capture failure.
             self._launch_verify_chain_forward_accept(
                 batch,
@@ -11982,9 +12405,410 @@ class Qwen35ParoResidentSession:
                 "status": "capture_failed_fallback",
                 "replayed": False,
                 "validation_passed": None,
-                "fallback_reason": str(exc),
+                "fallback_reason": self._verify_graph_last_error,
                 "bucket_key": dict(bucket_key),
             }
+        self._record_verify_graph_status("captured", None)
+        return {
+            "mode": graph_mode,
+            "status": "captured_validated" if graph_mode == "validate" else "captured",
+            # A capture that never executed its graph leaves the caller on the
+            # direct pass outputs, so it must not claim a replay or a validated
+            # result.
+            "replayed": bool(execute),
+            "validation_passed": entry.validation_passed,
+            "bucket_key": dict(bucket_key),
+            "replay_count": entry.replay_count,
+            "native_spec_cycle_graph": False,
+            "native_spec_cycle_stages": [],
+            "native_spec_target_commit": bool(
+                entry.native_spec_target_commit and execute
+            ),
+        }
+
+    def _capture_verify_graph(
+        self,
+        batch: TargetVerifyBatch,
+        *,
+        base_slot: int,
+        capture_ids: Sequence[int],
+        capture_hidden_concat: Tensor,
+        capture_row_start: int,
+        rows: int,
+        chain_attn_mode: str,
+        linear_attn_mode: str,
+        validate: bool,
+        execute: bool,
+        direct_top1: tuple[int, ...],
+        direct_payload: Any,
+        native_spec_target_commit: bool,
+    ) -> Qwen35ParoVerifierGraphEntry:
+        """Record one verifier ``VERIFY|ACCEPT`` graph on a private stream.
+
+        Owns partial cleanup: every handle this attempt acquired is released
+        before the failure is re-raised, and a release the runtime refuses is
+        retained on ``_verify_graph_partials`` so the session can retry it
+        instead of dropping the only reference to it.
+
+        Every prerequisite is built before the capture opens. A state table
+        allocates and copies host-to-device, which HIP forbids on a capturing
+        stream, so a table build that fails here leaves nothing to unwind.
+        """
+
+        # Fetch the graph-owned commit tables before any capture resource is
+        # created: the build allocates and copies, and both are illegal between
+        # ``stream_begin_capture`` and ``stream_end_capture``.
+        commit_tables = (
+            self._native_spec_provider_target_commit_tables()
+            if native_spec_target_commit
+            else None
+        )
+        commit_source = None if commit_tables is None else commit_tables[0]
+        commit_destination = None if commit_tables is None else commit_tables[1]
+        graph = 0
+        graph_exec = 0
+        graph_stream = 0
+        capturing = False
+        try:
+            graph_stream = int(self.runtime.stream_create())
+            capturing = True
+            self.runtime.stream_begin_capture(graph_stream)
+            self._launch_verify_chain_forward_accept(
+                batch,
+                base_slot=base_slot,
+                capture_ids=capture_ids,
+                capture_hidden_concat=capture_hidden_concat,
+                capture_row_start=capture_row_start,
+                rows=rows,
+                stream=graph_stream,
+                chain_attn_mode=chain_attn_mode,
+                linear_attn_mode=linear_attn_mode,
+                native_spec_commit_source_table=commit_source,
+                native_spec_commit_destination_table=commit_destination,
+            )
+            graph = int(self.runtime.stream_end_capture(graph_stream))
+            capturing = False
+            if not graph:
+                raise RuntimeError("HIP returned a null PARO verifier graph")
+            graph_exec = int(self.runtime.graph_instantiate(graph))
+            if not graph_exec:
+                raise RuntimeError("HIP returned a null PARO verifier graph executable")
+            validation_passed: bool | None = None
+            if execute:
+                # Launch on the capture stream so the direct pass outputs
+                # (already written into the caller-stream buffers) are not
+                # clobbered before they are compared or read.
+                self.runtime.graph_launch(graph_exec, graph_stream)
+                self.runtime.stream_synchronize(graph_stream)
+                if validate:
+                    graph_top1, _ = self._read_verify_top1(rows)
+                    graph_payload = self._read_verify_accept_payload(
+                        len(batch.request_ids),
+                        stream=graph_stream,
+                    )
+                    validation_passed = (
+                        tuple(graph_top1) == tuple(direct_top1)
+                        and graph_payload == direct_payload
+                    )
+                    if not validation_passed:
+                        raise RuntimeError(
+                            "captured PARO verifier graph diverged from the direct pass"
+                        )
+            return Qwen35ParoVerifierGraphEntry(
+                rows=rows,
+                capture_width=int(capture_hidden_concat.shape[1]),
+                base_slot=base_slot,
+                graph=graph,
+                graph_exec=graph_exec,
+                stream=graph_stream,
+                validation_passed=validation_passed,
+                replay_count=1 if execute else 0,
+                linear_scratch=dict(self.linear_scratch),
+                moe_scratch=dict(self.moe_scratch),
+                native_spec_target_commit=commit_tables is not None,
+                native_spec_commit_source_table=commit_source,
+                native_spec_commit_destination_table=commit_destination,
+            )
+        except BaseException as error:
+            for detail in self._release_capture_partial(
+                graph_stream=graph_stream,
+                graph=graph,
+                graph_exec=graph_exec,
+                capturing=capturing,
+                commit_source=commit_source,
+                commit_destination=commit_destination,
+            ):
+                error.add_note(
+                    f"PARO verifier graph capture cleanup: {describe_failure(detail)}"
+                )
+            raise
+
+    def _release_capture_partial(
+        self,
+        *,
+        graph_stream: int,
+        graph: int,
+        graph_exec: int,
+        capturing: bool,
+        commit_source: DeviceBuffer | None = None,
+        commit_destination: DeviceBuffer | None = None,
+    ) -> list[BaseException]:
+        """Own a failed capture's handles and release what the runtime accepts.
+
+        A handle the runtime refuses stays on a retained record, so a later
+        retry can still reach it instead of the only reference being dropped.
+        Returns the failures that remain unresolved after this attempt.
+        """
+
+        runtime = self.runtime
+        unresolved: list[BaseException] = []
+        abandoned = 0
+        if capturing and graph_stream:
+            try:
+                abandoned = int(runtime.stream_end_capture(graph_stream) or 0)
+            except BaseException as error:  # noqa: BLE001 - keep releasing
+                unresolved.append(error)
+        partial = Qwen35ParoVerifierGraphEntry(
+            rows=0,
+            capture_width=0,
+            base_slot=0,
+            graph=int(graph) or abandoned,
+            graph_exec=int(graph_exec),
+            stream=int(graph_stream),
+            validation_passed=False,
+            native_spec_commit_source_table=commit_source,
+            native_spec_commit_destination_table=commit_destination,
+        )
+        try:
+            partial.release(runtime)
+        except BaseException as error:  # noqa: BLE001 - retain, do not drop
+            self._verify_graph_partials.append(partial)
+            if isinstance(error, BaseExceptionGroup):
+                unresolved.extend(error.exceptions)
+            else:
+                unresolved.append(error)
+        return unresolved
+
+    def _retry_verify_graph_partials(self) -> list[BaseException]:
+        """Release retained failed-capture handles, keeping any still refused."""
+
+        unresolved: list[BaseException] = []
+        remaining: list[Qwen35ParoVerifierGraphEntry] = []
+        for partial in getattr(self, "_verify_graph_partials", ()):
+            try:
+                partial.release(self.runtime)
+            except BaseException as error:  # noqa: BLE001 - retain, do not drop
+                remaining.append(partial)
+                unresolved.extend(_flatten_cleanup_failures(error))
+        self._verify_graph_partials = remaining
+        # Detached state tables whose release the runtime refused, kept so the
+        # only reference to them is not dropped.
+        remaining_buffers: list[DeviceBuffer] = []
+        for buffer in getattr(self, "_verify_graph_partial_buffers", ()):
+            try:
+                free(buffer, runtime=self.runtime)
+            except BaseException as error:  # noqa: BLE001 - retain, do not drop
+                remaining_buffers.append(buffer)
+                unresolved.extend(_flatten_cleanup_failures(error))
+        self._verify_graph_partial_buffers = remaining_buffers
+        return unresolved
+
+    def _close_verify_graph(self, entry: Qwen35ParoVerifierGraphEntry) -> None:
+        """Release one captured verifier graph, resuming a partial release."""
+
+        entry.release(self.runtime)
+
+    def _record_verify_graph_status(self, status: str, error: str | None) -> None:
+        self._verify_graph_last_status = str(status)
+        self._verify_graph_last_error = None if error is None else str(error)
+
+    def _verify_graph_keepalive_active(self) -> bool:
+        """Return whether verifier-shaped scratch must stay live for a replay."""
+
+        cache = getattr(self, "_verify_graphs", None)
+        return bool(cache is not None and len(cache) > 0)
+
+    def verify_graph_cleanup(self) -> dict[str, Any]:
+        """Return verifier-graph release state for the owning caller.
+
+        ``pending_close`` lists graphs whose HIP handles the runtime refused to
+        release; the cache retains each one so a later retry can still reach it.
+        """
+
+        cache = getattr(self, "_verify_graphs", None)
+        partials = list(getattr(self, "_verify_graph_partials", ()) or ())
+        buffers = list(getattr(self, "_verify_graph_partial_buffers", ()) or ())
+        cleanup: dict[str, Any] = {
+            "reusable": 0 if cache is None else len(cache),
+            "pending_partial_releases": len(partials) + len(buffers),
+            "pending_partial_handles": [
+                list(item.pending_handles()) for item in partials
+            ]
+            + [[int(buffer.ptr)] for buffer in buffers],
+            "pending_close": [],
+            "pending_close_count": 0,
+            "close_failure_count": 0,
+            "close_failures": [],
+            "last_status": getattr(self, "_verify_graph_last_status", "unobserved"),
+            "last_error": getattr(self, "_verify_graph_last_error", None),
+        }
+        if cache is None:
+            return cleanup
+        cleanup["pending_close"] = [
+            list(key) for key in sorted(set(cache.pending_close_keys()), key=repr)
+        ]
+        cleanup["pending_close_count"] = int(cache.pending_close_count)
+        cleanup["close_failure_count"] = int(cache.close_failure_count)
+        cleanup["close_failures"] = [
+            [list(key), detail] for key, detail in cache.close_failures
+        ]
+        return cleanup
+
+    def _verify_graph_split_bucket(
+        self,
+        batch: TargetVerifyBatch,
+        *,
+        rows: int,
+        chain_attn_mode: str,
+    ) -> tuple[int, ...]:
+        """Return the attention split counts a captured verifier graph bakes.
+
+        ``c1_loop`` launches one decode attention per verifier row, so each
+        row's split count is a launch argument; ``decode_batched`` launches one
+        row-batched decode attention whose split count covers the widest row.
+        Prefill-style ``batched`` and tree attention have no split axis. The
+        split count sets both the grid and the reduction order, so a capture may
+        only replay at the counts it recorded: replaying a one-split capture
+        over a two-chunk context would silently truncate attention.
+        """
+
+        positions = tuple(int(position) for position in batch.positions)
+        if len(positions) != int(rows):
+            raise ValueError("verifier positions must match verifier rows")
+        chunk = int(self.decode_chunk_size)
+        if chunk <= 0:
+            raise ValueError("decode_chunk_size must be positive")
+        if chain_attn_mode == "decode_batched":
+            widest = max(positions)
+            return (max(1, (widest + 1 + chunk - 1) // chunk),)
+        if chain_attn_mode == "c1_loop":
+            return tuple(
+                max(1, (position + 1 + chunk - 1) // chunk) for position in positions
+            )
+        return ()
+
+    def _verify_graph_binding(
+        self,
+        batch: TargetVerifyBatch,
+        *,
+        rows: int,
+        capture_hidden_concat: Tensor,
+        capture_row_start: int,
+        capture_ids: Sequence[int],
+        base_slot: int,
+        chain_attn_mode: str,
+        linear_attn_mode: str,
+        native_spec_target_commit: bool,
+        split_bucket: tuple[int, ...],
+    ) -> SpecGraphBinding:
+        """Fingerprint one verifier graph's shapes, addresses and route.
+
+        The capture axes are part of the identity, not just the width: the
+        recorded taps write into the caller's tensor at
+        ``capture_hidden_concat.ptr + capture_row_start * width``, and
+        ``capture_ids`` selects which layer writes which column. A cycle that
+        changes any of them must re-capture instead of replaying a graph that
+        writes somewhere else.
+        """
+
+        capture_width = int(capture_hidden_concat.shape[1])
+        capture_axis = tuple(int(layer_id) for layer_id in capture_ids)
+        addresses = self._verify_graph_addresses()
+        if capture_width > 0:
+            # The destination is a device pointer baked into the recorded
+            # ``fp16_to_bf16_strided_rows`` launches, so the caller's allocation
+            # is part of the binding, not only its width.
+            addresses["verify_capture_destination"] = int(capture_hidden_concat.ptr)
+        return SpecGraphBinding(
+            # Built through the constructor, not ``build``: ``build`` normalizes
+            # the addresses and ``__post_init__`` normalizes them again, which
+            # re-sorts every pointer name twice on the replay hot path.
+            bucket=(
+                int(rows),
+                int(capture_width),
+                int(base_slot),
+                str(chain_attn_mode),
+                str(linear_attn_mode),
+                str(batch.mode),
+                bool(native_spec_target_commit),
+                tuple(split_bucket),
+                int(capture_row_start),
+                capture_axis,
+            ),
+            addresses=addresses,
+            configuration=(
+                int(self.config.hidden_size),
+                int(self.vocab_size),
+                int(self.max_sequence_length),
+                int(self.block_size),
+                int(self.decode_chunk_size),
+                int(self.max_splits),
+                int(self.max_batch_size),
+                int(self.layer_limit),
+                str(self.kv_storage_dtype.value),
+                str(self.kv_storage_layout),
+                bool(self._verify_gpu_accept_enabled()),
+                bool(self._verify_accept_packed_payload_enabled()),
+                bool(self._verify_accept_updates_position_enabled(batch)),
+                # Layer weights are materialized once per session and freed only
+                # by ``close`` after every graph has retired, so their identity
+                # is a sound guard against a wholesale replacement. Their device
+                # addresses are reached through the scratch views fingerprinted
+                # above, not re-walked per cycle.
+                id(self.states),
+                id(self.runner),
+                tuple(id(state.layer_weights) for state in self.states),
+            ),
+        )
+
+    def _verify_graph_addresses(self) -> dict[str, int]:
+        """Fingerprint every device allocation a captured verifier graph reads.
+
+        This runs after the direct pass for a capture (so the bucket's lazy
+        workspace exists) and before any launch for a replay. A pointer that
+        moved means the recorded kernels would dereference a different
+        allocation, so the entry is released and re-captured instead of replayed.
+        """
+
+        addresses: dict[str, int] = {}
+        for name in _VERIFY_GRAPH_SESSION_BUFFERS:
+            _collect_graph_pointers(name, getattr(self, name, None), addresses)
+        for layer_id, entry in getattr(self, "linear_states", {}).items():
+            _collect_graph_pointers(f"linear_state[{layer_id}]", entry[:4], addresses)
+        for layer_id, entry in getattr(self, "full_caches", {}).items():
+            _collect_graph_pointers(f"full_cache[{layer_id}]", entry[:4], addresses)
+        # Quantized KV attention reads per-layer scale buffers alongside the
+        # payload, so a re-specified KV format must invalidate the capture.
+        for layer_id, entry in getattr(self, "full_cache_scales", {}).items():
+            _collect_graph_pointers(f"full_cache_scale[{layer_id}]", entry[:4], addresses)
+        for name in ("linear_scratch", "moe_scratch", "full_scratch"):
+            _collect_graph_pointers(name, getattr(self, name, None), addresses)
+        for name in (
+            "prefill_linear_scratch",
+            "prefill_full_scratch",
+            "prefill_moe_scratch",
+        ):
+            _collect_graph_pointers(name, getattr(self, name, None), addresses)
+        workspace = getattr(self, "prefill_workspace", None)
+        if workspace is not None:
+            # Prefill-owned scratch is shared by the batched verifier routes and
+            # includes allocations no scratch dataclass names (the row-batched
+            # decode split partials), so the workspace table is fingerprinted too.
+            for allocation_name in workspace.names:
+                addresses[f"prefill_workspace.{allocation_name}"] = int(
+                    workspace.allocation(allocation_name).buffer.ptr
+                )
+        return addresses
 
     def _launch_verify_chain_forward_accept(
         self,
@@ -13924,29 +14748,101 @@ class Qwen35ParoResidentSession:
             )
 
     def _invalidate_verify_graph_cache(self) -> None:
-        """Destroy cached verifier graphs (their baked scratch pointers may dangle)."""
+        """Release cached verifier graphs (their baked scratch pointers may dangle).
+
+        Every path that frees or re-specs an allocation a captured verifier
+        graph dereferences calls this first, so a replay can never read a
+        released pointer. A release the runtime refuses is retained by the cache
+        and reported through :meth:`verify_graph_cleanup` instead of being
+        dropped, and the next invalidation or
+        :meth:`retry_verify_graph_cleanup` retries it.
+
+        A cleanup interrupt (``KeyboardInterrupt``/``SystemExit`` raised from a
+        destroy call) is recorded and then re-raised: swallowing it here would
+        turn an operator's interrupt into a silent teardown failure. The
+        retained handle survives, so the release can still be retried.
+        """
 
         self._clear_verify_scratch_caches()
-        if not getattr(self, "_verify_graph_cache", None):
+        cache = getattr(self, "_verify_graphs", None)
+        partials = tuple(getattr(self, "_verify_graph_partials", ()) or ())
+        buffers = tuple(getattr(self, "_verify_graph_partial_buffers", ()) or ())
+        if cache is None:
+            return
+        if (
+            len(cache) == 0
+            and not partials
+            and not buffers
+            and cache.pending_close_count == 0
+        ):
             return
         # A replay may still be in flight on the default stream; freeing the
         # scratch the graph writes (caller does so right after) corrupts it.
         self.runtime.device_synchronize()
-        for entry in list(getattr(self, "_verify_graph_cache", {}).values()):
-            try:
-                self.runtime.graph_exec_destroy(entry.graph_exec)
-            except Exception:
-                pass
-            try:
-                self.runtime.graph_destroy(entry.graph)
-            except Exception:
-                pass
-            try:
-                self.runtime.stream_destroy(entry.stream)
-            except Exception:
-                pass
-        if hasattr(self, "_verify_graph_cache"):
-            self._verify_graph_cache.clear()
+        cache.retire(reason="invalidated")
+        # Do not erase an interrupt by immediately succeeding on a retry.
+        pending = tuple(error for _key, error in cache.pending_errors())
+        if not any(not isinstance(error, Exception) for error in pending):
+            cache.retry_closes()
+        unresolved = self._retry_verify_graph_partials()
+        remaining = [
+            error for _key, error in cache.pending_errors()
+        ] + list(unresolved)
+        if remaining:
+            self._record_verify_graph_status(
+                "cleanup_failed",
+                "; ".join(describe_failure(error) for error in remaining),
+            )
+        else:
+            self._record_verify_graph_status("invalidated", None)
+        _raise_cleanup_interrupts(remaining)
+
+    def retry_verify_graph_cleanup(self) -> list[BaseException]:
+        """Retry every refused verifier-graph release and return what remains.
+
+        ``close`` sets ``closed`` and then invalidates once, so a release the
+        runtime refuses during teardown has no second attempt through the
+        normal paths. This entry point reaches the cache's retained closes and
+        the retained failed-capture handles even after ``close``, and returns
+        the failures that are still unresolved. Every successfully released
+        handle is zeroed on its record, so repeated calls cannot destroy the
+        same handle twice or drop the only reference to one.
+        """
+
+        cache = getattr(self, "_verify_graphs", None)
+        unresolved: list[BaseException] = []
+        if cache is not None:
+            cache.retry_closes()
+            unresolved.extend(error for _key, error in cache.pending_errors())
+        unresolved.extend(self._retry_verify_graph_partials())
+        if unresolved:
+            self._record_verify_graph_status(
+                "cleanup_failed",
+                "; ".join(describe_failure(error) for error in unresolved),
+            )
+        _raise_cleanup_interrupts(unresolved)
+        return unresolved
+
+    def _retry_and_report_verify_graph_failures(self) -> list[BaseException]:
+        """Retry every retained graph release and return what is still refused.
+
+        Used by :meth:`close`, which owns the final attempt: a release refused
+        during teardown must be reported to the caller that is tearing the
+        session down, not left in ``_verify_graph_last_status``.
+        """
+
+        cache = getattr(self, "_verify_graphs", None)
+        failures: list[BaseException] = []
+        if cache is not None:
+            cache.retry_closes()
+            failures.extend(error for _key, error in cache.pending_errors())
+        failures.extend(self._retry_verify_graph_partials())
+        if failures:
+            self._record_verify_graph_status(
+                "cleanup_failed",
+                "; ".join(describe_failure(error) for error in failures),
+            )
+        return failures
 
     def _full_attention_decode_scratch(
         self,

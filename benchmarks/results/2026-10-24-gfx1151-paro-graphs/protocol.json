@@ -1,0 +1,41 @@
+{
+  "parent_commit": "e8ad5eaf28a98f10197105c7dd6dd57ba9fdcaa3",
+  "scope": "PARO public one-candidate eager versus shared verifier graph, with independent AR baseline",
+  "host": "Framework Desktop / Radeon 8060S (gfx1151)",
+  "natural": "All ten mtpbench-code-general-ja.jsonl and eight gdn-prefill-category-heldouts.jsonl prompts",
+  "controls": [
+    37,
+    255,
+    257,
+    511,
+    512,
+    513,
+    1024,
+    1025,
+    4096
+  ],
+  "first": {
+    "warmups": 1,
+    "samples": 3
+  },
+  "confirmation": {
+    "warmups": 1,
+    "samples": 2
+  },
+  "smoke": {
+    "warmups": 1,
+    "samples": 1
+  },
+  "output_tokens": 128,
+  "criterion": "Exact same-schedule IDs, acceptance, live state and cleanup. Report performance including losses without a minimum percentage threshold; no arithmetic or variant changes. AR/MTP ID equality is diagnostic only.",
+  "sha256": {
+    "measure_graph.py": "8527b238abecf2b6cd6b15386e7505aa3dac899453212a24bd09755ea5a0d4e8",
+    "validate_graph.py": "d6d64aca4c796d25b118311cc758661812e1b9beb2144e368db80fc39b946fa1",
+    "test_validate_graph.py": "2dd18a99f78704b2dbeabc7312e58da98aff26e002f79e2752030b454fa86844",
+    "profile_paro_graph.py": "5ff2210afd959882caa9415d71010b5a9eb76a18c7328235b771dc96a8155f98",
+    "measure_graph_smoke_initial.py": "87b3a59770c4e5b2b2a3667b6c5a36bf31d6f18160774cd253147051f78ea662",
+    "source-hashes-pre-binding.json": "f952c9eff3287cee47cd54cadfd01ef5d3e14b987a171a8c9b93775f0dbd2876",
+    "source-hashes.json": "cafa698e5a6592c2acf55a418679979f2dac7945df2ed22860013fe5972b9b96",
+    "candidate.patch": "346c8268ea24b8c6fdf2e8a3aecf76c766b9f10ae7fb44bfaa2bac69c9a8749a"
+  }
+}

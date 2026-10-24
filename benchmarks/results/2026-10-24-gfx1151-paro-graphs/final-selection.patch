@@ -1,0 +1,32 @@
+--- a/hipengine/generation/qwen35_paro_mtp2.py
++++ b/hipengine/generation/qwen35_paro_mtp2.py
+@@ -851,22 +851,15 @@
+ 
+     @staticmethod
+     def _target_graph_mode(plan: SpecRequestPlan) -> str:
+-        """Return the verifier graph route this cycle asks the target for.
+-
+-        The public route asks for the reusable verifier graph (``auto``) and the
+-        resident session decides per cycle whether it can capture or replay one;
+-        a bucket that cannot capture, or whose binding drifted, runs the direct
+-        pass for that cycle and reports ``capture_failed_fallback`` rather than
+-        losing output. ``graph_mode="off"`` stays available as the eager route
+-        for any caller that requests it.
+-
+-        The planned ``execution_route`` is not consulted: the PARO runner reports
+-        graph availability per cycle (``speculative_graph_available``), and this
+-        adapter owns its own capture and telemetry, like the GGUF MTP adapters.
++        """Honor the planned variant without disabling graph capability.
++
++        One-candidate public requests currently select eager verification:
++        graph replay lost 3.23% decode throughput, confirmed at 3.06%, in the
++        2026-10-24 gfx1151 comparison. Graph plans still execute capture/replay.
++        See docs/REFACTOR.md for the comparison that clears this preference.
+         """
+ 
+-        del plan
+-        return "auto"
++        return "auto" if plan.execution_route == "graph" else "off"
+ 
+     @staticmethod
+     def _executed_graph_route(verify: Any) -> str:

@@ -485,6 +485,7 @@ def test_staged_target_commit_defers_host_sync_to_stream_order() -> None:
         session,
         "batch",
         chain_attn_mode="decode_batched",
+        graph_mode="off",
         candidate_token_ids_i32=Tensor.from_handle(
             0x7000, (1,), DType.INT32, Device("hip", 0)
         ),

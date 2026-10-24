@@ -699,7 +699,6 @@ unset except for bisection.
 | `HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP` | true | Fused linear-attention t-loop inside the verify chain; `0` restores the unfused chain. |
 | `HIPENGINE_VERIFY_ACCEPT_PACKED_PAYLOAD` | true | Packed accept-payload readback for the verifier; `0` restores the unpacked readback. |
 | `HIPENGINE_VERIFY_MOE_GROUPED_MIN_TOKENS` | `16` | Minimum tokens before the verifier MoE uses the grouped owner; clamps to at least 2. |
-| `HIPENGINE_VERIFY_GRAPH_RECAPTURE` | unset | Debug-only (`#107`): drop the cached verifier graph each cycle so replay always executes a freshly captured graph. |
 | `HIPENGINE_VERIFY_GRAPH_REVALIDATE` | unset | Debug-only (`#107`): re-run the direct pass before each graph replay and compare per-row top1 plus accept payload to localize replay drift. |
 | `HIPENGINE_VERIFY_ACCEPT_UPDATES_POSITION` | false | Opt-in: the packed verify-accept path also advances request positions (needs the packed-payload path enabled). |
 | `HIPENGINE_VERIFY_PACK_DYNAMIC_METADATA` | true | Packs dynamic per-row metadata for the verify-chain batch; `0` restores the static path. |

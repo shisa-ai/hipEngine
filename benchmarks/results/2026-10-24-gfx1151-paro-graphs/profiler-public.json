@@ -1,0 +1,1255 @@
+{
+  "passed": true,
+  "performance_claim": false,
+  "prompt_tokens": 37,
+  "ids": [
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707
+  ],
+  "verifications": [
+    {
+      "mode": "auto",
+      "status": "captured",
+      "replayed": false,
+      "validation_passed": null,
+      "bucket_key": {
+        "rows": 2,
+        "capture_width": 0,
+        "base_slot": 0,
+        "chain_attn_mode": "decode_batched",
+        "linear_attn_mode": "chain_tloop",
+        "batch_mode": "verify_chain",
+        "native_spec_target_commit": false,
+        "attention_splits": [
+          1
+        ],
+        "capture_row_start": 0,
+        "capture_ids": []
+      },
+      "replay_count": 0,
+      "native_spec_cycle_graph": false,
+      "native_spec_cycle_stages": [],
+      "native_spec_target_commit": false,
+      "chain_attn_mode": "decode_batched",
+      "linear_attn_mode": "chain_tloop",
+      "linear_attn_fallback": false
+    },
+    {
+      "mode": "auto",
+      "status": "replayed",
+      "replayed": true,
+      "validation_passed": null,
+      "bucket_key": {
+        "rows": 2,
+        "capture_width": 0,
+        "base_slot": 0,
+        "chain_attn_mode": "decode_batched",
+        "linear_attn_mode": "chain_tloop",
+        "batch_mode": "verify_chain",
+        "native_spec_target_commit": false,
+        "attention_splits": [
+          1
+        ],
+        "capture_row_start": 0,
+        "capture_ids": []
+      },
+      "replay_count": 1,
+      "native_spec_cycle_graph": false,
+      "native_spec_cycle_stages": [],
+      "native_spec_target_commit": false,
+      "native_spec_cycle_fallback_reason": null,
+      "chain_attn_mode": "decode_batched",
+      "linear_attn_mode": "chain_tloop",
+      "linear_attn_fallback": false
+    },
+    {
+      "mode": "auto",
+      "status": "replayed",
+      "replayed": true,
+      "validation_passed": null,
+      "bucket_key": {
+        "rows": 2,
+        "capture_width": 0,
+        "base_slot": 0,
+        "chain_attn_mode": "decode_batched",
+        "linear_attn_mode": "chain_tloop",
+        "batch_mode": "verify_chain",
+        "native_spec_target_commit": false,
+        "attention_splits": [
+          1
+        ],
+        "capture_row_start": 0,
+        "capture_ids": []
+      },
+      "replay_count": 2,
+      "native_spec_cycle_graph": false,
+      "native_spec_cycle_stages": [],
+      "native_spec_target_commit": false,
+      "native_spec_cycle_fallback_reason": null,
+      "chain_attn_mode": "decode_batched",
+      "linear_attn_mode": "chain_tloop",
+      "linear_attn_fallback": false
+    },
+    {
+      "mode": "auto",
+      "status": "replayed",
+      "replayed": true,
+      "validation_passed": null,
+      "bucket_key": {
+        "rows": 2,
+        "capture_width": 0,
+        "base_slot": 0,
+        "chain_attn_mode": "decode_batched",
+        "linear_attn_mode": "chain_tloop",
+        "batch_mode": "verify_chain",
+        "native_spec_target_commit": false,
+        "attention_splits": [
+          1
+        ],
+        "capture_row_start": 0,
+        "capture_ids": []
+      },
+      "replay_count": 3,
+      "native_spec_cycle_graph": false,
+      "native_spec_cycle_stages": [],
+      "native_spec_target_commit": false,
+      "native_spec_cycle_fallback_reason": null,
+      "chain_attn_mode": "decode_batched",
+      "linear_attn_mode": "chain_tloop",
+      "linear_attn_fallback": false
+    },
+    {
+      "mode": "auto",
+      "status": "replayed",
+      "replayed": true,
+      "validation_passed": null,
+      "bucket_key": {
+        "rows": 2,
+        "capture_width": 0,
+        "base_slot": 0,
+        "chain_attn_mode": "decode_batched",
+        "linear_attn_mode": "chain_tloop",
+        "batch_mode": "verify_chain",
+        "native_spec_target_commit": false,
+        "attention_splits": [
+          1
+        ],
+        "capture_row_start": 0,
+        "capture_ids": []
+      },
+      "replay_count": 4,
+      "native_spec_cycle_graph": false,
+      "native_spec_cycle_stages": [],
+      "native_spec_target_commit": false,
+      "native_spec_cycle_fallback_reason": null,
+      "chain_attn_mode": "decode_batched",
+      "linear_attn_mode": "chain_tloop",
+      "linear_attn_fallback": false
+    },
+    {
+      "mode": "auto",
+      "status": "replayed",
+      "replayed": true,
+      "validation_passed": null,
+      "bucket_key": {
+        "rows": 2,
+        "capture_width": 0,
+        "base_slot": 0,
+        "chain_attn_mode": "decode_batched",
+        "linear_attn_mode": "chain_tloop",
+        "batch_mode": "verify_chain",
+        "native_spec_target_commit": false,
+        "attention_splits": [
+          1
+        ],
+        "capture_row_start": 0,
+        "capture_ids": []
+      },
+      "replay_count": 5,
+      "native_spec_cycle_graph": false,
+      "native_spec_cycle_stages": [],
+      "native_spec_target_commit": false,
+      "native_spec_cycle_fallback_reason": null,
+      "chain_attn_mode": "decode_batched",
+      "linear_attn_mode": "chain_tloop",
+      "linear_attn_fallback": false
+    },
+    {
+      "mode": "auto",
+      "status": "replayed",
+      "replayed": true,
+      "validation_passed": null,
+      "bucket_key": {
+        "rows": 2,
+        "capture_width": 0,
+        "base_slot": 0,
+        "chain_attn_mode": "decode_batched",
+        "linear_attn_mode": "chain_tloop",
+        "batch_mode": "verify_chain",
+        "native_spec_target_commit": false,
+        "attention_splits": [
+          1
+        ],
+        "capture_row_start": 0,
+        "capture_ids": []
+      },
+      "replay_count": 6,
+      "native_spec_cycle_graph": false,
+      "native_spec_cycle_stages": [],
+      "native_spec_target_commit": false,
+      "native_spec_cycle_fallback_reason": null,
+      "chain_attn_mode": "decode_batched",
+      "linear_attn_mode": "chain_tloop",
+      "linear_attn_fallback": false
+    },
+    {
+      "mode": "auto",
+      "status": "replayed",
+      "replayed": true,
+      "validation_passed": null,
+      "bucket_key": {
+        "rows": 2,
+        "capture_width": 0,
+        "base_slot": 0,
+        "chain_attn_mode": "decode_batched",
+        "linear_attn_mode": "chain_tloop",
+        "batch_mode": "verify_chain",
+        "native_spec_target_commit": false,
+        "attention_splits": [
+          1
+        ],
+        "capture_row_start": 0,
+        "capture_ids": []
+      },
+      "replay_count": 7,
+      "native_spec_cycle_graph": false,
+      "native_spec_cycle_stages": [],
+      "native_spec_target_commit": false,
+      "native_spec_cycle_fallback_reason": null,
+      "chain_attn_mode": "decode_batched",
+      "linear_attn_mode": "chain_tloop",
+      "linear_attn_fallback": false
+    },
+    {
+      "mode": "auto",
+      "status": "replayed",
+      "replayed": true,
+      "validation_passed": null,
+      "bucket_key": {
+        "rows": 2,
+        "capture_width": 0,
+        "base_slot": 0,
+        "chain_attn_mode": "decode_batched",
+        "linear_attn_mode": "chain_tloop",
+        "batch_mode": "verify_chain",
+        "native_spec_target_commit": false,
+        "attention_splits": [
+          1
+        ],
+        "capture_row_start": 0,
+        "capture_ids": []
+      },
+      "replay_count": 8,
+      "native_spec_cycle_graph": false,
+      "native_spec_cycle_stages": [],
+      "native_spec_target_commit": false,
+      "native_spec_cycle_fallback_reason": null,
+      "chain_attn_mode": "decode_batched",
+      "linear_attn_mode": "chain_tloop",
+      "linear_attn_fallback": false
+    },
+    {
+      "mode": "auto",
+      "status": "replayed",
+      "replayed": true,
+      "validation_passed": null,
+      "bucket_key": {
+        "rows": 2,
+        "capture_width": 0,
+        "base_slot": 0,
+        "chain_attn_mode": "decode_batched",
+        "linear_attn_mode": "chain_tloop",
+        "batch_mode": "verify_chain",
+        "native_spec_target_commit": false,
+        "attention_splits": [
+          1
+        ],
+        "capture_row_start": 0,
+        "capture_ids": []
+      },
+      "replay_count": 9,
+      "native_spec_cycle_graph": false,
+      "native_spec_cycle_stages": [],
+      "native_spec_target_commit": false,
+      "native_spec_cycle_fallback_reason": null,
+      "chain_attn_mode": "decode_batched",
+      "linear_attn_mode": "chain_tloop",
+      "linear_attn_fallback": false
+    },
+    {
+      "mode": "auto",
+      "status": "replayed",
+      "replayed": true,
+      "validation_passed": null,
+      "bucket_key": {
+        "rows": 2,
+        "capture_width": 0,
+        "base_slot": 0,
+        "chain_attn_mode": "decode_batched",
+        "linear_attn_mode": "chain_tloop",
+        "batch_mode": "verify_chain",
+        "native_spec_target_commit": false,
+        "attention_splits": [
+          1
+        ],
+        "capture_row_start": 0,
+        "capture_ids": []
+      },
+      "replay_count": 10,
+      "native_spec_cycle_graph": false,
+      "native_spec_cycle_stages": [],
+      "native_spec_target_commit": false,
+      "native_spec_cycle_fallback_reason": null,
+      "chain_attn_mode": "decode_batched",
+      "linear_attn_mode": "chain_tloop",
+      "linear_attn_fallback": false
+    },
+    {
+      "mode": "auto",
+      "status": "replayed",
+      "replayed": true,
+      "validation_passed": null,
+      "bucket_key": {
+        "rows": 2,
+        "capture_width": 0,
+        "base_slot": 0,
+        "chain_attn_mode": "decode_batched",
+        "linear_attn_mode": "chain_tloop",
+        "batch_mode": "verify_chain",
+        "native_spec_target_commit": false,
+        "attention_splits": [
+          1
+        ],
+        "capture_row_start": 0,
+        "capture_ids": []
+      },
+      "replay_count": 11,
+      "native_spec_cycle_graph": false,
+      "native_spec_cycle_stages": [],
+      "native_spec_target_commit": false,
+      "native_spec_cycle_fallback_reason": null,
+      "chain_attn_mode": "decode_batched",
+      "linear_attn_mode": "chain_tloop",
+      "linear_attn_fallback": false
+    },
+    {
+      "mode": "auto",
+      "status": "replayed",
+      "replayed": true,
+      "validation_passed": null,
+      "bucket_key": {
+        "rows": 2,
+        "capture_width": 0,
+        "base_slot": 0,
+        "chain_attn_mode": "decode_batched",
+        "linear_attn_mode": "chain_tloop",
+        "batch_mode": "verify_chain",
+        "native_spec_target_commit": false,
+        "attention_splits": [
+          1
+        ],
+        "capture_row_start": 0,
+        "capture_ids": []
+      },
+      "replay_count": 12,
+      "native_spec_cycle_graph": false,
+      "native_spec_cycle_stages": [],
+      "native_spec_target_commit": false,
+      "native_spec_cycle_fallback_reason": null,
+      "chain_attn_mode": "decode_batched",
+      "linear_attn_mode": "chain_tloop",
+      "linear_attn_fallback": false
+    },
+    {
+      "mode": "auto",
+      "status": "replayed",
+      "replayed": true,
+      "validation_passed": null,
+      "bucket_key": {
+        "rows": 2,
+        "capture_width": 0,
+        "base_slot": 0,
+        "chain_attn_mode": "decode_batched",
+        "linear_attn_mode": "chain_tloop",
+        "batch_mode": "verify_chain",
+        "native_spec_target_commit": false,
+        "attention_splits": [
+          1
+        ],
+        "capture_row_start": 0,
+        "capture_ids": []
+      },
+      "replay_count": 13,
+      "native_spec_cycle_graph": false,
+      "native_spec_cycle_stages": [],
+      "native_spec_target_commit": false,
+      "native_spec_cycle_fallback_reason": null,
+      "chain_attn_mode": "decode_batched",
+      "linear_attn_mode": "chain_tloop",
+      "linear_attn_fallback": false
+    },
+    {
+      "mode": "auto",
+      "status": "replayed",
+      "replayed": true,
+      "validation_passed": null,
+      "bucket_key": {
+        "rows": 2,
+        "capture_width": 0,
+        "base_slot": 0,
+        "chain_attn_mode": "decode_batched",
+        "linear_attn_mode": "chain_tloop",
+        "batch_mode": "verify_chain",
+        "native_spec_target_commit": false,
+        "attention_splits": [
+          1
+        ],
+        "capture_row_start": 0,
+        "capture_ids": []
+      },
+      "replay_count": 14,
+      "native_spec_cycle_graph": false,
+      "native_spec_cycle_stages": [],
+      "native_spec_target_commit": false,
+      "native_spec_cycle_fallback_reason": null,
+      "chain_attn_mode": "decode_batched",
+      "linear_attn_mode": "chain_tloop",
+      "linear_attn_fallback": false
+    }
+  ],
+  "snapshot": {
+    "schema": 1,
+    "kind": "resident_engine_loop_observability",
+    "loop": {
+      "requests": {
+        "pending": 0,
+        "admitted_current": 0,
+        "active": 0,
+        "admitted_total": 1,
+        "completed_buffered": 0,
+        "reclaimed_total": 1
+      },
+      "physical_bucket": {
+        "capacity": 1,
+        "active_c": 0,
+        "occupied_slots": 0,
+        "free_slots": 1,
+        "active_mask": [
+          false
+        ],
+        "slot_to_request": [
+          null
+        ],
+        "occupancy_ratio": 0.0
+      },
+      "work_counts": {
+        "prefill": 1,
+        "decode": 2,
+        "reclaim": 1
+      },
+      "latency_seconds": {
+        "queue": {
+          "count": 1,
+          "sum": 0.026537083089351654,
+          "max": 0.026537083089351654,
+          "p50": 0.026537083089351654,
+          "p95": 0.026537083089351654,
+          "samples": [
+            0.026537083089351654
+          ]
+        },
+        "time_to_first_token": {
+          "count": 1,
+          "sum": 1.3473021509125829,
+          "max": 1.3473021509125829,
+          "p50": 1.3473021509125829,
+          "p95": 1.3473021509125829,
+          "samples": [
+            1.3473021509125829
+          ]
+        },
+        "inter_token": {
+          "count": 31,
+          "sum": 0.5062085930258036,
+          "max": 0.042791871121153235,
+          "p50": 0.030312274117022753,
+          "p95": 0.03206761600449681,
+          "samples": [
+            4.912191070616245e-05,
+            4.929304122924805e-05,
+            5.009397864341736e-05,
+            5.055498331785202e-05,
+            5.369982682168484e-05,
+            5.5543845519423485e-05,
+            5.5965036153793335e-05,
+            6.163609214127064e-05,
+            8.716387674212456e-05,
+            9.670201689004898e-05,
+            0.0001103370450437069,
+            0.00011612800881266594,
+            0.0001270079519599676,
+            0.0001390411052852869,
+            0.00020102690905332565,
+            0.030312274117022753,
+            0.03032808401621878,
+            0.030401010066270828,
+            0.030415388057008386,
+            0.03050110791809857,
+            0.030535152181982994,
+            0.03067007497884333,
+            0.03070149407722056,
+            0.030726791825145483,
+            0.0307778581045568,
+            0.03083287994377315,
+            0.030839693965390325,
+            0.030936365015804768,
+            0.03134049195796251,
+            0.03279474005103111,
+            0.042791871121153235
+          ]
+        },
+        "service": {
+          "count": 1,
+          "sum": 1.827003066893667,
+          "max": 1.827003066893667,
+          "p50": 1.827003066893667,
+          "p95": 1.827003066893667,
+          "samples": [
+            1.827003066893667
+          ]
+        },
+        "completion": {
+          "count": 1,
+          "sum": 1.8535401499830186,
+          "max": 1.8535401499830186,
+          "p50": 1.8535401499830186,
+          "p95": 1.8535401499830186,
+          "samples": [
+            1.8535401499830186
+          ]
+        }
+      },
+      "recent_completed": [
+        {
+          "request_id": 0,
+          "finish_reason": "stop",
+          "observability": {
+            "queue_seconds": 0.026537083089351654,
+            "time_to_first_token_seconds": 1.3473021509125829,
+            "inter_token_seconds": [
+              0.042791871121153235,
+              0.00020102690905332565,
+              0.030936365015804768,
+              0.0001103370450437069,
+              0.03279474005103111,
+              0.00011612800881266594,
+              0.03050110791809857,
+              0.0001390411052852869,
+              0.030726791825145483,
+              0.0001270079519599676,
+              0.030312274117022753,
+              9.670201689004898e-05,
+              0.030401010066270828,
+              8.716387674212456e-05,
+              0.03083287994377315,
+              6.163609214127064e-05,
+              0.03032808401621878,
+              5.5965036153793335e-05,
+              0.030415388057008386,
+              5.369982682168484e-05,
+              0.0307778581045568,
+              5.5543845519423485e-05,
+              0.030535152181982994,
+              5.055498331785202e-05,
+              0.03067007497884333,
+              4.912191070616245e-05,
+              0.030839693965390325,
+              5.009397864341736e-05,
+              0.03070149407722056,
+              4.929304122924805e-05,
+              0.03134049195796251
+            ],
+            "service_seconds": 1.827003066893667,
+            "completion_seconds": 1.8535401499830186,
+            "prefill_seconds": 1.3201278331689537,
+            "decode_seconds": 0.5000329993199557,
+            "kv_pages_owned": 1,
+            "kv_pages_peak": 1,
+            "bucket_key": "decode:c=1:ctx=256:mask=1:kv=bf16:layers=all:top_k=0:experts=0:replay=1:draft=0",
+            "admission_blocked_reason": null,
+            "finish_reason": "stop",
+            "finish_details": {
+              "reason": "stop"
+            },
+            "submitted_timestamp": 1066010.440755886,
+            "admitted_timestamp": 1066010.467292969,
+            "completion_timestamp": 1066012.294296036
+          }
+        }
+      ],
+      "recent_speculative_plans": [
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            0
+          ],
+          "requested_candidate_counts": [
+            1
+          ],
+          "reasons": [
+            "no_provider"
+          ],
+          "k0_classes": [
+            "transitional_k0"
+          ],
+          "execution_route": "ar"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            1
+          ],
+          "requested_candidate_counts": [
+            1
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            1
+          ],
+          "requested_candidate_counts": [
+            1
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            1
+          ],
+          "requested_candidate_counts": [
+            1
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            1
+          ],
+          "requested_candidate_counts": [
+            1
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            1
+          ],
+          "requested_candidate_counts": [
+            1
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            1
+          ],
+          "requested_candidate_counts": [
+            1
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            1
+          ],
+          "requested_candidate_counts": [
+            1
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            1
+          ],
+          "requested_candidate_counts": [
+            1
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            1
+          ],
+          "requested_candidate_counts": [
+            1
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            1
+          ],
+          "requested_candidate_counts": [
+            1
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            1
+          ],
+          "requested_candidate_counts": [
+            1
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            1
+          ],
+          "requested_candidate_counts": [
+            1
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            1
+          ],
+          "requested_candidate_counts": [
+            1
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            1
+          ],
+          "requested_candidate_counts": [
+            1
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            1
+          ],
+          "requested_candidate_counts": [
+            1
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            0
+          ],
+          "requested_candidate_counts": [
+            1
+          ],
+          "reasons": [
+            "target_graph_output_room_miss"
+          ],
+          "k0_classes": [
+            "transitional_k0"
+          ],
+          "execution_route": "ar"
+        }
+      ],
+      "last_speculative_plan": {
+        "request_ids": [
+          0
+        ],
+        "candidate_counts": [
+          0
+        ],
+        "requested_candidate_counts": [
+          1
+        ],
+        "reasons": [
+          "target_graph_output_room_miss"
+        ],
+        "k0_classes": [
+          "transitional_k0"
+        ],
+        "execution_route": "ar",
+        "logical_frontier_rows": 1
+      },
+      "scheduler_policy": {
+        "prefill_decode_policy": "protect_decode",
+        "prefill_chunk_tokens": 1024,
+        "fair_prefill_burst_chunks": 1,
+        "round_prefill_token_budget": 1024,
+        "decode_prefill_token_budget": null,
+        "recent_prefill_slices": [],
+        "round_decode_row_budget": 32,
+        "rounds": 0,
+        "round_prefill_tokens": 0,
+        "round_decode_rows": 0,
+        "consecutive_prefill_chunks": 0,
+        "cold_prefill_cohort_size": 0,
+        "last_work_kind": "decode"
+      }
+    },
+    "runner": {
+      "model_runner": {
+        "fixed_session": true,
+        "capacity": 1,
+        "active_request_ids": [],
+        "active_requests": 0,
+        "available_model_slots": [
+          0
+        ],
+        "stable_model_slot_by_request": {},
+        "session_max_sequence_length": 262144,
+        "kv_storage": "bf16"
+      },
+      "kv": {
+        "ownership": "fixed_session_model_slots",
+        "capacity_slots": 1,
+        "active_slots": 0,
+        "available_slots": 1,
+        "resident_total_bytes": 10737418240,
+        "resident_bytes_per_slot": 10737418240,
+        "storage_dtype": "bf16",
+        "storage_layout": "uniform",
+        "scale_dtype": null,
+        "scale_granularity": null
+      },
+      "specdec2_mtp2": {
+        "enabled": true,
+        "intents": 0,
+        "states": 0,
+        "pooled_proposers": 1,
+        "proposer_builds": 1,
+        "proposer_reuses": 0,
+        "active_claim": false,
+        "disabled_requests": [],
+        "bulk_prompt_chunks": 3,
+        "bulk_prompt_rows": 36
+      },
+      "routes": {
+        "counts": {
+          "admissions": 1,
+          "prefill_chunks": 1,
+          "native_group_calls": 0,
+          "native_rows": 0,
+          "serial_row_calls": 1,
+          "scheduler_compactions": 0,
+          "slot_resets": 2,
+          "reclaims": 1
+        },
+        "fallback_reasons": {
+          "native batch width profile embedded model snapshot does not match the session": 1,
+          "native batch width profile model snapshot does not match the session": 1
+        },
+        "last_width_plan": {
+          "requested_rows": 1,
+          "groups": [
+            {
+              "mode": "serial",
+              "width": 1,
+              "expected_step_ms": 14.122386023473155
+            }
+          ],
+          "group_widths": [
+            1
+          ],
+          "path": "serial_exact",
+          "expected_step_ms": 14.122386023473155,
+          "profile_source": "benchmarks/results/2026-07-18-gfx1151-paro-g3-native-c248-direct-retained.json",
+          "blockers": [
+            "native batch width profile embedded model snapshot does not match the session",
+            "native batch width profile model snapshot does not match the session"
+          ]
+        },
+        "last_execution_manifest": {},
+        "recent_completed": [
+          {
+            "request_id": 0,
+            "native_greedy": true,
+            "native_compact_prefill": true,
+            "native_decode_steps": 0,
+            "serial_decode_steps": 1,
+            "serial_decode_fallback": true,
+            "stable_model_slot": 0,
+            "specdec2_mtp2_used": true,
+            "specdec2_mtp2_cycles": 15,
+            "specdec2_mtp2_candidate_counts": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            "specdec2_mtp2_accepted_counts": [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            "specdec2_mtp2_execution_routes": [
+              "eager",
+              "graph",
+              "graph",
+              "graph",
+              "graph",
+              "graph",
+              "graph",
+              "graph",
+              "graph",
+              "graph",
+              "graph",
+              "graph",
+              "graph",
+              "graph",
+              "graph"
+            ],
+            "specdec2_mtp2_provider_open_ms": 1176.8462611362338,
+            "specdec2_mtp2_prompt_prime_ms": 4.105039872229099,
+            "specdec2_mtp2_bulk_prompt_chunks": 3,
+            "specdec2_mtp2_bulk_prompt_rows": 36,
+            "specdec2_mtp2_candidate_device_handoffs": 15,
+            "specdec2_mtp2_candidate_d2h_after_target": 15,
+            "scheduler_chunks": [
+              {
+                "request_id": 0,
+                "token_index": 0,
+                "token_id": 9707,
+                "finished": false,
+                "chunk": {
+                  "text": ".Q",
+                  "telemetry": {
+                    "decode_state": {
+                      "row_index": 0,
+                      "step_index": 1,
+                      "prompt_tokens": 37,
+                      "generated_tokens": 1,
+                      "phase": "done",
+                      "continuation_eligible": false,
+                      "request_id": "0",
+                      "sampler_mode": "greedy_fast",
+                      "execution_path": "paro_resident_model_loop",
+                      "native_compact_prefill": true,
+                      "native_caware_decode": false,
+                      "serial_decode_fallback": false,
+                      "native_sampler_rows": false
+                    },
+                    "timing": {
+                      "tokenize_ms": 0.0,
+                      "prompt_encode_ms": 0.0,
+                      "render_ms": 0.0,
+                      "admission_prepare_ms": 0.0,
+                      "request_total_ms": 1347.034168895334,
+                      "specdec2_mtp2_provider_open_ms": 1176.8462611362338,
+                      "specdec2_mtp2_prompt_prime_ms": 4.105039872229099,
+                      "specdec2_mtp2_bulk_prompt_chunks": 3.0,
+                      "specdec2_mtp2_bulk_prompt_rows": 36.0
+                    },
+                    "timing_scope": "choice",
+                    "group_rows": 1,
+                    "timing_owner": true,
+                    "diagnostics": {
+                      "stable_model_slot": 0,
+                      "last_width_plan": {}
+                    }
+                  }
+                }
+              },
+              {
+                "request_id": 0,
+                "token_index": 31,
+                "token_id": 9707,
+                "finished": true,
+                "chunk": {
+                  "text": ".Q",
+                  "finish_details": {
+                    "reason": "length",
+                    "length_limit": 32,
+                    "sampler_mode": "greedy_fast"
+                  },
+                  "telemetry": {
+                    "decode_state": {
+                      "row_index": 0,
+                      "step_index": 32,
+                      "prompt_tokens": 37,
+                      "generated_tokens": 32,
+                      "phase": "done",
+                      "continuation_eligible": false,
+                      "request_id": "0",
+                      "sampler_mode": "greedy_fast",
+                      "execution_path": "paro_resident_serial_decode",
+                      "native_compact_prefill": true,
+                      "native_caware_decode": false,
+                      "serial_decode_fallback": true,
+                      "native_sampler_rows": false
+                    },
+                    "timing": {
+                      "tokenize_ms": 0.0,
+                      "prompt_encode_ms": 0.0,
+                      "render_ms": 0.0,
+                      "admission_prepare_ms": 0.0,
+                      "request_total_ms": 1853.2332249451429,
+                      "specdec2_mtp2_provider_open_ms": 1176.8462611362338,
+                      "specdec2_mtp2_prompt_prime_ms": 4.105039872229099,
+                      "specdec2_mtp2_bulk_prompt_chunks": 3.0,
+                      "specdec2_mtp2_bulk_prompt_rows": 36.0
+                    },
+                    "timing_scope": "choice",
+                    "group_rows": 1,
+                    "timing_owner": true,
+                    "diagnostics": {
+                      "stable_model_slot": 0,
+                      "last_width_plan": {
+                        "requested_rows": 1,
+                        "groups": [
+                          {
+                            "mode": "serial",
+                            "width": 1,
+                            "expected_step_ms": 14.122386023473155
+                          }
+                        ],
+                        "group_widths": [
+                          1
+                        ],
+                        "path": "serial_exact",
+                        "expected_step_ms": 14.122386023473155,
+                        "profile_source": "benchmarks/results/2026-07-18-gfx1151-paro-g3-native-c248-direct-retained.json",
+                        "blockers": [
+                          "native batch width profile embedded model snapshot does not match the session",
+                          "native batch width profile model snapshot does not match the session"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "engine_service": {
+      "sole_driver": true,
+      "driver_thread_id": 140343630624448,
+      "active_children": 0,
+      "command_queue_depth": 0,
+      "speculative_routes": {
+        "engine_service_verify_chain": 1,
+        "legacy_prelaunch_fallback": 0
+      },
+      "last_speculative_route": "engine_service_verify_chain",
+      "generic_speculative_children": 0,
+      "last_speculative_work_kind": "verify_chain",
+      "last_speculative_draft_depth": null
+    }
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 33284270870,
+    "total_allocated_bytes": 33381895874,
+    "total_freed_bytes": 33381895874,
+    "active_allocations": 0,
+    "peak_allocations": 4533
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "performance_claim": false,
+  "selection": "Honor shared planner route; eager public default, explicit graph plans execute",
+  "files_sha256": {
+    "hipengine/generation/qwen35_paro_mtp2.py": "f9003325747ff9224311c72ccfad0f333ec97ad5850d1d87ae2509766420e557",
+    "hipengine/runtime/qwen35_paro_runner.py": "1438c69f1d2366a732c78a6de69a22528fbeca5576fae992602bb7de7449afcf",
+    "tests/test_live_paro_mtp_graph.py": "5662e899dc44d3e966b52d4dbc5d5f9365bd865fee29ffc52a6451beac53f984",
+    "tests/test_unit_qwen35_paro_verify_graph_cache.py": "19e2b78a57db3a8be8294fd00e0c8565dc954b9ff0ba42aa84ebd92a44e37a9f"
+  },
+  "public_device_tests": {
+    "passed": 11,
+    "command": "bash benchmarks/results/2026-10-24-gfx1151-paro-graphs/environment.sh env PYTHONPATH=\"$PWD\" HIPENGINE_REQUIRE_CACHED_BUILD=1 \"$HOME/miniforge3/envs/therock/bin/python\" -m pytest tests/test_live_paro_mtp_graph.py -v -o addopts=''"
+  },
+  "focused_cpu_tests": 113,
+  "documentation_gates": 4,
+  "benchmark_sync_validator_tests": 14,
+  "validator_negative_subtests": 20,
+  "audit": "passed"
+}

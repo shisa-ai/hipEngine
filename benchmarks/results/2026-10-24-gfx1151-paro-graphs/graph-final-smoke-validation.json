@@ -1,0 +1,68 @@
+{
+  "passed": true,
+  "checked_calls": 18,
+  "first": {
+    "natural": {
+      "ar": {
+        "samples": 1,
+        "decode_tokens_per_second": 67.63396655242578,
+        "whole_call_tokens_per_second": 63.57865367451596,
+        "median_first_token_seconds": 0.135489652864635,
+        "accepted_candidates": 0,
+        "proposed_candidates": 0
+      },
+      "eager": {
+        "samples": 1,
+        "decode_tokens_per_second": 66.82136022251142,
+        "whole_call_tokens_per_second": 62.11895031649766,
+        "median_first_token_seconds": 0.15990762086585164,
+        "accepted_candidates": 62,
+        "proposed_candidates": 65
+      },
+      "graph": {
+        "samples": 1,
+        "decode_tokens_per_second": 64.59539287448969,
+        "whole_call_tokens_per_second": 60.2100180638877,
+        "median_first_token_seconds": 0.15976910991594195,
+        "accepted_candidates": 62,
+        "proposed_candidates": 65
+      }
+    },
+    "controls": {
+      "p512": {
+        "ar": {
+          "decode_tokens_per_second": 64.13215581682789,
+          "first_token_seconds": 0.5164837269112468,
+          "whole_call_tokens_per_second": 51.26605522642192
+        },
+        "eager": {
+          "decode_tokens_per_second": 64.60666280557511,
+          "first_token_seconds": 0.6443186800461262,
+          "whole_call_tokens_per_second": 49.0402462897065
+        },
+        "graph": {
+          "decode_tokens_per_second": 62.40312087734878,
+          "first_token_seconds": 0.64398083393462,
+          "whole_call_tokens_per_second": 47.77548843932258
+        }
+      },
+      "p4096": {
+        "ar": {
+          "decode_tokens_per_second": 64.73069442699475,
+          "first_token_seconds": 4.1289002490229905,
+          "whole_call_tokens_per_second": 21.01501266360292
+        },
+        "eager": {
+          "decode_tokens_per_second": 46.954158876738596,
+          "first_token_seconds": 5.099577327957377,
+          "whole_call_tokens_per_second": 16.40102035448211
+        },
+        "graph": {
+          "decode_tokens_per_second": 45.76383019534172,
+          "first_token_seconds": 5.127089120913297,
+          "whole_call_tokens_per_second": 16.197900981463953
+        }
+      }
+    }
+  }
+}

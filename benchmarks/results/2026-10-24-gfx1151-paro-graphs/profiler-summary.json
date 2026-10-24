@@ -1,0 +1,34 @@
+{
+  "passed": true,
+  "performance_claim": false,
+  "source": "/tmp/hipengine-shared-mtp-paro-graph-final/source-hashes.json",
+  "graph_launches": 14,
+  "kernel_dispatches": 18103,
+  "graph_api_calls": {
+    "hipStreamBeginCapture": 1,
+    "hipStreamEndCapture": 1,
+    "hipGraphInstantiate": 1,
+    "hipGraphLaunch": 14,
+    "hipGraphExecDestroy": 1,
+    "hipGraphDestroy": 1
+  },
+  "selected_kernels": {
+    "(anonymous namespace)::unpack_verify_chain_dynamic_metadata_i64_kernel(long const*, long*, int*, long*, int*, long*, long)": {
+      "calls": 15,
+      "median_ns": 1483,
+      "min_ns": 1442,
+      "max_ns": 1924
+    },
+    "(anonymous namespace)::dflash_accept_chain_i32_kernel(int const*, int const*, int const*, int const*, unsigned char const*, int const*, int const*, int*, int*, int*, int*, int*, unsigned char*, int*, int*, int*, long*, long*, int*, int*, int, long, long, long)": {
+      "calls": 15,
+      "median_ns": 3727,
+      "min_ns": 3487,
+      "max_ns": 3807
+    }
+  },
+  "trace_sha256": {
+    "/tmp/hipengine-shared-mtp/graph-rocprof/gfx1151/3109486_kernel_trace.csv": "c5c583f3cff3f9ea46adc1628fb3356a8b6305abbb7bda181d24066ca866fb8a",
+    "/tmp/hipengine-shared-mtp/graph-rocprof/gfx1151/3109486_hip_api_trace.csv": "befbed2d9957ab578132e786377976e37fed9a4e3141d44a66ab4a02c1264e3f"
+  },
+  "warning": "Profiler fell back to system-memory intercept queues; trace is execution evidence, not throughput evidence."
+}

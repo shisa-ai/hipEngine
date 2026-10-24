@@ -1,0 +1,5 @@
+{
+  "hipengine/runtime/qwen35_paro_runner.py": "1438c69f1d2366a732c78a6de69a22528fbeca5576fae992602bb7de7449afcf",
+  "hipengine/generation/qwen35_paro_mtp2.py": "6e8b47a5c720c9882d6275c9859cdc77420a2e3b660c2fbec2d854aad99fb63c",
+  "tests/test_live_paro_mtp_graph.py": "49225cadd6873f17e85db3583fb6fb3e9772ee1aaced77cddf89e064e0bc99e7"
+}
