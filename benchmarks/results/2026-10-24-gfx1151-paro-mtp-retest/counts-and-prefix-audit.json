@@ -1,0 +1,73 @@
+{
+  "passed": true,
+  "inputs": {
+    "first": {
+      "path": "benchmarks/results/2026-10-24-gfx1151-paro-mtp-retest/first.json",
+      "sha256": "1a52ec6fe6f35bdbe8f54c180636e73950450acd3f3ea5f6c88dfe66a06856be"
+    },
+    "confirmation": {
+      "path": "benchmarks/results/2026-10-24-gfx1151-paro-mtp-retest/confirmation.json",
+      "sha256": "524b0d8afa1b7e9bb948e9707892550f9dc854c285887dcd41cfcf5cc105c0e8"
+    },
+    "prior": {
+      "path": "benchmarks/results/2026-10-23-gfx1151-paro-mtp-adapter/validation.json",
+      "sha256": "2cf9748a05a40ebf51a7c375c4049627785af50c447089df77680c9a3e617e79"
+    }
+  },
+  "sweeps": {
+    "first": {
+      "samples_reconciled": 294,
+      "mtp_serial_tail_tokens_measured": 55,
+      "prior_prefix_cases": [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "code_markdown_table",
+        "general_en_plan",
+        "general_en_explain",
+        "general_ja_plan",
+        "general_ja_explain",
+        "mixed_ja_en_translate",
+        "mixed_ja_en_review",
+        "heldout_code_rate_limiter",
+        "heldout_code_interval_schedule",
+        "heldout_general_en_incident",
+        "heldout_general_en_quant",
+        "heldout_general_ja_migration",
+        "heldout_general_ja_speculative",
+        "heldout_mixed_summary",
+        "heldout_mixed_review",
+        "p4096"
+      ],
+      "prior_prefix_arm_checks": 57
+    },
+    "confirmation": {
+      "samples_reconciled": 294,
+      "mtp_serial_tail_tokens_measured": 55,
+      "prior_prefix_cases": [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "code_markdown_table",
+        "general_en_plan",
+        "general_en_explain",
+        "general_ja_plan",
+        "general_ja_explain",
+        "mixed_ja_en_translate",
+        "mixed_ja_en_review",
+        "heldout_code_rate_limiter",
+        "heldout_code_interval_schedule",
+        "heldout_general_en_incident",
+        "heldout_general_en_quant",
+        "heldout_general_ja_migration",
+        "heldout_general_ja_speculative",
+        "heldout_mixed_summary",
+        "heldout_mixed_review",
+        "p4096"
+      ],
+      "prior_prefix_arm_checks": 57
+    }
+  },
+  "cross_sweep_case_arm_id_checks": 42,
+  "explanation": "Cycles plus accepted candidates exclude ordinary serial tail steps when only one output slot remains. Adding serial/native steps reconciles every post-first-token output. Acceptance uses candidates only; throughput uses output IDs, not inferred cycle counts."
+}

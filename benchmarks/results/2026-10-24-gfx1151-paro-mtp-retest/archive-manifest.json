@@ -1,0 +1,37 @@
+{
+  "first.json": {
+    "original_sha256": "a046d66fa84aa589e26868761cf5050e182f9c72f6db88d553ebe9543dbd108e",
+    "archived_sha256": "1a52ec6fe6f35bdbe8f54c180636e73950450acd3f3ea5f6c88dfe66a06856be",
+    "change": "Whitespace only; all fields and samples preserved."
+  },
+  "confirmation.json": {
+    "original_sha256": "625faeac863b9d215af492cf0377d795186686d007ed224700aa58f3552997b9",
+    "archived_sha256": "524b0d8afa1b7e9bb948e9707892550f9dc854c285887dcd41cfcf5cc105c0e8",
+    "change": "Whitespace only; all fields and samples preserved."
+  },
+  "protocol.json": {
+    "original_sha256": "47d7a747d20b7abcf614a977652b43db9c6a4474fd7b9a78501e606ca4bc6f88",
+    "archived_sha256": "54744f224a5c136e7098da3e2e1e1b9106b2bd94f75e1098e4c420f5be14ff35",
+    "change": "Whitespace only; all fields and samples preserved."
+  },
+  "smoke.json": {
+    "original_sha256": "7119712ee99e901da0ac68c16f7375d9c06f978e81502b04f7e5df09f06334d8",
+    "archived_sha256": "39ecca8b1a07e18b2a9dc7cea2e43226c7962c29bbaec0b4d3434dfc69515426",
+    "change": "Whitespace only; all fields and samples preserved."
+  },
+  "smoke-v1-failed.json": {
+    "original_sha256": "414da8a22054ae2afeb009eeb8e2f2d8ac7509db619a02c9d39556908e39bf84",
+    "archived_sha256": "4dc70d82f8f257a0b62bcdf25f77cf9c1711652dd01fa56b9f9746202fbec8e0",
+    "change": "Whitespace only; all fields and samples preserved."
+  },
+  "smoke-v2-failed.json": {
+    "original_sha256": "6274792a2e1abd368f57f760ca9f1d50a69c749a5449d75544bcbeaceb6d8ad8",
+    "archived_sha256": "d3c8cf81247698b06a221c952715695a9b75c303faf07027b52e318c175d0d11",
+    "change": "Whitespace only; all fields and samples preserved."
+  },
+  "confirmation-timeout-partial.json": {
+    "original_sha256": "fccb818f3f1d730c4030c8ebcbfa0cf22e57393dbd62556e2198ebda12de220f",
+    "archived_sha256": "07ad3aad7f0aac1163e3a03cc9f8c5e824835e220ea5357ca819786f27b1ba65",
+    "change": "Whitespace only; all fields and samples preserved."
+  }
+}

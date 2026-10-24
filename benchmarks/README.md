@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-10-23 UTC**
+Last updated: **2026-10-24 UTC**
 
 ## 16K INT8/MTP with and without DMS — RX 7900 XTX
 
@@ -682,13 +682,10 @@ re-measured for this change.
 The superseded two-lever route is in
 [its own artifact](results/2026-09-27-fullattn-context-promoted/README.md).
 
-## Qwen3.6 packed PARO on Strix Halo — October 23
+## Qwen3.6 packed PARO on Strix Halo — October 23–24
 
-Qwen3.6-35B-A3B packed ParoQuant W4, Framework Desktop / Radeon 8060S
-(`gfx1151`), ROCm 10, BF16 KV, one active request. Each resident measurement
-uses repeated token 9707, 128 greedy decode steps, two discarded warmups and
-five samples. Model loading and four decode warmup steps are excluded.
-These are separate prefill/decode medians, not HTTP or whole-request rates.
+Qwen3.6-35B-A3B packed ParoQuant W4, Framework Desktop / Radeon 8060S (`gfx1151`), ROCm 10, BF16 KV, one active request.
+October 23 resident eager medians: repeated token 9707, 128 greedy decode steps, two warmups and five samples; model loading excluded.
 
 | Prompt tokens | Prefill tok/s | Decode tok/s |
 | ---: | ---: | ---: |
@@ -696,18 +693,21 @@ These are separate prefill/decode medians, not HTTP or whole-request rates.
 | 1024 | 1226.5 | 66.5 |
 | 4096 | 1188.5 | 67.3 |
 
-Public generation confirms native compact prefill and eager resident decode.
-All 90 serial/native numerical comparisons agree on the next token; 11
-repeated public cases match resident eager IDs. This checks the implementation,
-not quantization quality against BF16. The checkpoint's independent quality
-comparison is recorded [below](#current-qwen36-35b-quantization-quality).
+All 90 serial/native next-token comparisons and 11 repeated public eager cases pass. Graph timings are excluded after output mismatches.
+[Resident protocol, commands and evidence](results/2026-10-23-gfx1151-paro-refresh/README.md) · [Independent quantization quality](#current-qwen36-35b-quantization-quality).
 
-Graph-replay timings are excluded: the old wrapper forces a path that differs
-from eager output on every natural prompt in this check. The shipping route
-uses eager decode. An explicit public MTP request fails with
-`PARO MTP2 prompt capture has no staged adapter`, so no MTP rate is published.
-No kernel, execution-profile or default changes were made.
-[Commands, per-run samples, confirmation sweep and correctness evidence](results/2026-10-23-gfx1151-paro-refresh/summary.json).
+October 24 repaired MTP public-streaming retest: one candidate, all ten category prompts plus eight heldouts, 128 greedy outputs, prefix cache off, two warmups and five alternating paired samples per arm. Rates pool tokens and elapsed time.
+
+| Metric | Plain decoding | MTP |
+| --- | ---: | ---: |
+| Decode tok/s, first-to-last-token window | 67.54 | 64.32 |
+| Whole-call tok/s, including prompt processing | 63.43 | 58.59 |
+| Median time to first token | 0.137 s | 0.209 s |
+
+MTP is 4.76% slower in decode and 7.63% slower over the whole call despite 88.42% acceptance. Independent aggregate decode repeats within 0.2%.
+All 588 calls repeat within arm and free tracked allocations; AR/MTP trajectories match on 12/21 cases, with nine natural divergences. Prior 64-token outputs are preserved on all 19 overlapping cases. No arithmetic changes, full strict-teacher quality gate, or token-parity claim.
+The README MTP cell uses the natural suite; its plain cell remains the earlier resident-harness result, not this matched streaming baseline.
+[Length controls, limitations, commands and failed attempts](results/2026-10-24-gfx1151-paro-mtp-retest/NOTES.md) · [Samples and confirmation](results/2026-10-24-gfx1151-paro-mtp-retest/summary.json).
 
 ## Root README performance summary
 
@@ -732,7 +732,7 @@ context** is a capacity limit, not a full-length prefill.
 
 | Model | Quant | Prompt processing | Text generation | With MTP |
 | --- | --- | ---: | ---: | ---: |
-| Qwen3.6-35B-A3B | ParoQuant W4 | 1200.9 | **66.4** | — |
+| Qwen3.6-35B-A3B | ParoQuant W4 | 1200.9 | **66.4** | 64.3 |
 | Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1418.1** | **56.7** | 80.1 |
 | Qwen3.8-27B Dense | GGUF `Q4_K_M` | **404.5** | **12.15** | **22.4** |
 | Qwen3.8 Flash-Next | GGUF `UD-Q4_K_XL` | **1036.2** | **23.7** | **28.9** |

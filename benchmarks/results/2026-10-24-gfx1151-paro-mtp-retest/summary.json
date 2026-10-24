@@ -1,0 +1,1128 @@
+{
+  "schema": 1,
+  "kind": "paro_mtp_retest_summary",
+  "published_sweep": "first",
+  "publication_rule": "first sweep published; confirmation sweep is drift evidence only",
+  "generated_at": "2026-10-24T02:28:18.358179+00:00",
+  "inputs": {
+    "first": {
+      "path": "/home/lhl/hipEngine/benchmarks/results/2026-10-24-gfx1151-paro-mtp-retest/first.json",
+      "sha256": "1a52ec6fe6f35bdbe8f54c180636e73950450acd3f3ea5f6c88dfe66a06856be",
+      "bytes": 2110028
+    },
+    "confirmation": {
+      "path": "/home/lhl/hipEngine/benchmarks/results/2026-10-24-gfx1151-paro-mtp-retest/confirmation.json",
+      "sha256": "524b0d8afa1b7e9bb948e9707892550f9dc854c285887dcd41cfcf5cc105c0e8",
+      "bytes": 2110027
+    },
+    "protocol": {
+      "path": "/home/lhl/hipEngine/benchmarks/results/2026-10-24-gfx1151-paro-mtp-retest/protocol.json",
+      "sha256": "54744f224a5c136e7098da3e2e1e1b9106b2bd94f75e1098e4c420f5be14ff35",
+      "bytes": 1920
+    },
+    "driver": {
+      "path": "/tmp/hipengine-paro-mtp-results-20261023/measure.py",
+      "sha256_recorded": "99f2f0e8076dcd70ac4ff82cbb5a9a6d4649ffbe2e57f48dd16a713ecedd71c6",
+      "sha256_now": "99f2f0e8076dcd70ac4ff82cbb5a9a6d4649ffbe2e57f48dd16a713ecedd71c6",
+      "confirmation_sha256_recorded": "99f2f0e8076dcd70ac4ff82cbb5a9a6d4649ffbe2e57f48dd16a713ecedd71c6"
+    },
+    "sources": [
+      {
+        "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+        "repo_root": "/tmp/hipengine-paro-mtp-retest-20261023"
+      },
+      {
+        "path": "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+        "sha256": "8d86154fdb52adf5085dbf278c4097dce78d9510d1a6d04ade29a327560e5280",
+        "repo_root": "/tmp/hipengine-paro-mtp-retest-20261023"
+      }
+    ]
+  },
+  "provenance": {
+    "hipengine_commit": "9c24d765b3bd66586a367eef24297da3e1411ad2",
+    "repo_root": "/tmp/hipengine-paro-mtp-retest-20261023",
+    "model_path": "/home/lhl/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "362ac5e97b22ed60e9c02a9b3b2341ad8ebedbc79b037289404812097d65e9d7",
+      "size_bytes": 22176626688,
+      "sampled_bytes": 9476570,
+      "file_count": 9,
+      "exists": true,
+      "path_type": "directory"
+    },
+    "backend": "hip_gfx1151",
+    "configured_backend": "hip_gfx1151",
+    "quant": "w4_paro",
+    "kv_dtype": "bf16",
+    "build_profile": "shipping public PARO staged adapter",
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "command": [
+      "/home/lhl/miniforge3/envs/therock/bin/python",
+      "/tmp/hipengine-paro-mtp-results-20261023/measure.py",
+      "--model",
+      "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+      "--cases",
+      "all",
+      "--warmups",
+      "2",
+      "--repetitions",
+      "5",
+      "--output",
+      "/tmp/hipengine-paro-mtp-results-20261023/first.json"
+    ],
+    "confirmation_command": [
+      "/home/lhl/miniforge3/envs/therock/bin/python",
+      "/tmp/hipengine-paro-mtp-results-20261023/measure.py",
+      "--model",
+      "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+      "--cases",
+      "all",
+      "--warmups",
+      "2",
+      "--repetitions",
+      "5",
+      "--output",
+      "/tmp/hipengine-paro-mtp-results-20261023/confirmation.json"
+    ],
+    "dirty": false,
+    "execution_affecting_dirty": false,
+    "memory_after_close": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 33899034446,
+      "total_allocated_bytes": 116445030818,
+      "total_freed_bytes": 116445030818,
+      "active_allocations": 0,
+      "peak_allocations": 4594
+    },
+    "timing_protocol": "Observed first-token to last-token wall; denominator is generated tokens minus first observed cumulative count. Terminal duplicate chunks excluded."
+  },
+  "validation": {
+    "passed": true,
+    "total": 76,
+    "checks": [
+      {
+        "name": "protocol.retest_constants",
+        "passed": true,
+        "detail": "11 checked"
+      },
+      {
+        "name": "protocol.retest_identity",
+        "passed": true,
+        "detail": "3 checked"
+      },
+      {
+        "name": "first.artifact.kind_and_schema",
+        "passed": true,
+        "detail": "2 checked"
+      },
+      {
+        "name": "first.artifact.passed",
+        "passed": true,
+        "detail": "2 checked"
+      },
+      {
+        "name": "first.artifact.memory_after_close",
+        "passed": true,
+        "detail": "1 checked"
+      },
+      {
+        "name": "first.protocol.matches_retest",
+        "passed": true,
+        "detail": "19 checked"
+      },
+      {
+        "name": "first.cases.present",
+        "passed": true,
+        "detail": "21 checked"
+      },
+      {
+        "name": "first.cases.count_and_splits",
+        "passed": true,
+        "detail": "21 checked"
+      },
+      {
+        "name": "first.cases.unique_ids",
+        "passed": true,
+        "detail": "21 checked"
+      },
+      {
+        "name": "first.cases.control_shapes",
+        "passed": true,
+        "detail": "3 checked"
+      },
+      {
+        "name": "first.cases.natural_metadata",
+        "passed": true,
+        "detail": "18 checked"
+      },
+      {
+        "name": "first.cases.reference_ids",
+        "passed": true,
+        "detail": "42 checked"
+      },
+      {
+        "name": "first.cases.identity_fields",
+        "passed": true,
+        "detail": "42 checked"
+      },
+      {
+        "name": "first.samples.present",
+        "passed": true,
+        "detail": "21 checked"
+      },
+      {
+        "name": "first.samples.count_and_order",
+        "passed": true,
+        "detail": "21 checked"
+      },
+      {
+        "name": "first.samples.warmup_flag",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "first.samples.count_per_arm",
+        "passed": true,
+        "detail": "42 checked"
+      },
+      {
+        "name": "first.samples.arm",
+        "passed": true,
+        "detail": "0 checked"
+      },
+      {
+        "name": "first.samples.generated_tokens",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "first.samples.id_hash",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "first.samples.token_events",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "first.samples.decode_tokens",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "first.samples.decode_window",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "first.samples.first_token",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "first.samples.whole_call_window",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "first.samples.decode_rate_arithmetic",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "first.samples.whole_call_rate_arithmetic",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "first.routes.present",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "first.routes.ar_no_speculation",
+        "passed": true,
+        "detail": "147 checked"
+      },
+      {
+        "name": "first.routes.mtp_real_cycles",
+        "passed": true,
+        "detail": "147 checked"
+      },
+      {
+        "name": "first.routes.mtp_candidate_accounting",
+        "passed": true,
+        "detail": "147 checked"
+      },
+      {
+        "name": "first.routes.mtp_eager",
+        "passed": true,
+        "detail": "147 checked"
+      },
+      {
+        "name": "first.routes.mtp_no_recovery",
+        "passed": true,
+        "detail": "147 checked"
+      },
+      {
+        "name": "first.cases.medians_match",
+        "passed": true,
+        "detail": "42 checked"
+      },
+      {
+        "name": "first.provenance.clean_checkout",
+        "passed": true,
+        "detail": "7 checked"
+      },
+      {
+        "name": "first.provenance.identity",
+        "passed": true,
+        "detail": "11 checked"
+      },
+      {
+        "name": "first.provenance.driver_hash",
+        "passed": true,
+        "detail": "1 checked"
+      },
+      {
+        "name": "first.provenance.sources",
+        "passed": true,
+        "detail": "2 checked"
+      },
+      {
+        "name": "confirmation.artifact.kind_and_schema",
+        "passed": true,
+        "detail": "2 checked"
+      },
+      {
+        "name": "confirmation.artifact.passed",
+        "passed": true,
+        "detail": "2 checked"
+      },
+      {
+        "name": "confirmation.artifact.memory_after_close",
+        "passed": true,
+        "detail": "1 checked"
+      },
+      {
+        "name": "confirmation.protocol.matches_retest",
+        "passed": true,
+        "detail": "19 checked"
+      },
+      {
+        "name": "confirmation.cases.present",
+        "passed": true,
+        "detail": "21 checked"
+      },
+      {
+        "name": "confirmation.cases.count_and_splits",
+        "passed": true,
+        "detail": "21 checked"
+      },
+      {
+        "name": "confirmation.cases.unique_ids",
+        "passed": true,
+        "detail": "21 checked"
+      },
+      {
+        "name": "confirmation.cases.control_shapes",
+        "passed": true,
+        "detail": "3 checked"
+      },
+      {
+        "name": "confirmation.cases.natural_metadata",
+        "passed": true,
+        "detail": "18 checked"
+      },
+      {
+        "name": "confirmation.cases.reference_ids",
+        "passed": true,
+        "detail": "42 checked"
+      },
+      {
+        "name": "confirmation.cases.identity_fields",
+        "passed": true,
+        "detail": "42 checked"
+      },
+      {
+        "name": "confirmation.samples.present",
+        "passed": true,
+        "detail": "21 checked"
+      },
+      {
+        "name": "confirmation.samples.count_and_order",
+        "passed": true,
+        "detail": "21 checked"
+      },
+      {
+        "name": "confirmation.samples.warmup_flag",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "confirmation.samples.count_per_arm",
+        "passed": true,
+        "detail": "42 checked"
+      },
+      {
+        "name": "confirmation.samples.arm",
+        "passed": true,
+        "detail": "0 checked"
+      },
+      {
+        "name": "confirmation.samples.generated_tokens",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "confirmation.samples.id_hash",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "confirmation.samples.token_events",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "confirmation.samples.decode_tokens",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "confirmation.samples.decode_window",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "confirmation.samples.first_token",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "confirmation.samples.whole_call_window",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "confirmation.samples.decode_rate_arithmetic",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "confirmation.samples.whole_call_rate_arithmetic",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "confirmation.routes.present",
+        "passed": true,
+        "detail": "294 checked"
+      },
+      {
+        "name": "confirmation.routes.ar_no_speculation",
+        "passed": true,
+        "detail": "147 checked"
+      },
+      {
+        "name": "confirmation.routes.mtp_real_cycles",
+        "passed": true,
+        "detail": "147 checked"
+      },
+      {
+        "name": "confirmation.routes.mtp_candidate_accounting",
+        "passed": true,
+        "detail": "147 checked"
+      },
+      {
+        "name": "confirmation.routes.mtp_eager",
+        "passed": true,
+        "detail": "147 checked"
+      },
+      {
+        "name": "confirmation.routes.mtp_no_recovery",
+        "passed": true,
+        "detail": "147 checked"
+      },
+      {
+        "name": "confirmation.cases.medians_match",
+        "passed": true,
+        "detail": "42 checked"
+      },
+      {
+        "name": "confirmation.provenance.clean_checkout",
+        "passed": true,
+        "detail": "7 checked"
+      },
+      {
+        "name": "confirmation.provenance.identity",
+        "passed": true,
+        "detail": "11 checked"
+      },
+      {
+        "name": "confirmation.provenance.driver_hash",
+        "passed": true,
+        "detail": "1 checked"
+      },
+      {
+        "name": "confirmation.provenance.sources",
+        "passed": true,
+        "detail": "2 checked"
+      },
+      {
+        "name": "pair.protocol_identical",
+        "passed": true,
+        "detail": "1 checked"
+      },
+      {
+        "name": "pair.provenance_identical",
+        "passed": true,
+        "detail": "16 checked"
+      }
+    ]
+  },
+  "published": {
+    "natural_suite": {
+      "cases": 18,
+      "ar": {
+        "samples": 90,
+        "decode_tokens": 11430,
+        "decode_seconds": 169.23269362852443,
+        "decode_tokens_per_second": 67.54014106216091,
+        "whole_call_tokens": 11520,
+        "whole_call_seconds": 181.6052595039364,
+        "whole_call_tokens_per_second": 63.43428616256732,
+        "first_token_seconds_median": 0.1367241705302149,
+        "cases": 18
+      },
+      "mtp": {
+        "samples": 90,
+        "decode_tokens": 11430,
+        "decode_seconds": 177.69414094428066,
+        "decode_tokens_per_second": 64.32401169368939,
+        "whole_call_tokens": 11520,
+        "whole_call_seconds": 196.61932303954381,
+        "whole_call_tokens_per_second": 58.59037566558559,
+        "first_token_seconds_median": 0.2090835430426523,
+        "cases": 18,
+        "candidate_acceptance": {
+          "samples": 90,
+          "cycles": 6045,
+          "candidates": 6045,
+          "accepted": 5345,
+          "accepted_per_candidate": 0.8842018196856907,
+          "tokens_from_cycles": 11390,
+          "expected_decode_tokens": 11430,
+          "accounting_delta": -40
+        }
+      }
+    },
+    "by_split": {
+      "category": {
+        "cases": 10,
+        "ar": {
+          "samples": 50,
+          "decode_tokens": 6350,
+          "decode_seconds": 94.0092481134925,
+          "decode_tokens_per_second": 67.54654597741249,
+          "whole_call_tokens": 6400,
+          "whole_call_seconds": 100.80983463663142,
+          "whole_call_tokens_per_second": 63.48586943990902,
+          "first_token_seconds_median": 0.13511175953317434,
+          "cases": 10
+        },
+        "mtp": {
+          "samples": 50,
+          "decode_tokens": 6350,
+          "decode_seconds": 99.71857933839783,
+          "decode_tokens_per_second": 63.679206444077934,
+          "whole_call_tokens": 6400,
+          "whole_call_seconds": 110.06454067875165,
+          "whole_call_tokens_per_second": 58.14770098100762,
+          "first_token_seconds_median": 0.19986112444894388,
+          "cases": 10,
+          "candidate_acceptance": {
+            "samples": 50,
+            "cycles": 3405,
+            "candidates": 3405,
+            "accepted": 2925,
+            "accepted_per_candidate": 0.8590308370044053,
+            "tokens_from_cycles": 6330,
+            "expected_decode_tokens": 6350,
+            "accounting_delta": -20
+          }
+        }
+      },
+      "heldout": {
+        "cases": 8,
+        "ar": {
+          "samples": 40,
+          "decode_tokens": 5080,
+          "decode_seconds": 75.22344551503193,
+          "decode_tokens_per_second": 67.53213662600528,
+          "whole_call_tokens": 5120,
+          "whole_call_seconds": 80.79542486730497,
+          "whole_call_tokens_per_second": 63.3699248244424,
+          "first_token_seconds_median": 0.13734871201450005,
+          "cases": 8
+        },
+        "mtp": {
+          "samples": 40,
+          "decode_tokens": 5080,
+          "decode_seconds": 77.97556160588283,
+          "decode_tokens_per_second": 65.14861702024268,
+          "whole_call_tokens": 5120,
+          "whole_call_seconds": 86.55478236079216,
+          "whole_call_tokens_per_second": 59.15328836086673,
+          "first_token_seconds_median": 0.21646458853501827,
+          "cases": 8,
+          "candidate_acceptance": {
+            "samples": 40,
+            "cycles": 2640,
+            "candidates": 2640,
+            "accepted": 2420,
+            "accepted_per_candidate": 0.9166666666666666,
+            "tokens_from_cycles": 5060,
+            "expected_decode_tokens": 5080,
+            "accounting_delta": -20
+          }
+        }
+      }
+    },
+    "by_category": [
+      {
+        "category": "code",
+        "cases": 6,
+        "ar": {
+          "samples": 30,
+          "decode_tokens": 3810,
+          "decode_seconds": 56.5962445755722,
+          "decode_tokens_per_second": 67.31895426228428,
+          "whole_call_tokens": 3840,
+          "whole_call_seconds": 60.694956115214154,
+          "whole_call_tokens_per_second": 63.267201193962855,
+          "first_token_seconds_median": 0.13580623653251678,
+          "cases": 6
+        },
+        "mtp": {
+          "samples": 30,
+          "decode_tokens": 3810,
+          "decode_seconds": 58.48962457617745,
+          "decode_tokens_per_second": 65.1397581640795,
+          "whole_call_tokens": 3840,
+          "whole_call_seconds": 64.72788439982105,
+          "whole_call_tokens_per_second": 59.32528207287764,
+          "first_token_seconds_median": 0.21014936006395146,
+          "cases": 6,
+          "candidate_acceptance": {
+            "samples": 30,
+            "cycles": 1985,
+            "candidates": 1985,
+            "accepted": 1810,
+            "accepted_per_candidate": 0.9118387909319899,
+            "tokens_from_cycles": 3795,
+            "expected_decode_tokens": 3810,
+            "accounting_delta": -15
+          }
+        }
+      },
+      {
+        "category": "general_en",
+        "cases": 4,
+        "ar": {
+          "samples": 20,
+          "decode_tokens": 2540,
+          "decode_seconds": 37.53358110017143,
+          "decode_tokens_per_second": 67.67273267160748,
+          "whole_call_tokens": 2560,
+          "whole_call_seconds": 40.20793458307162,
+          "whole_call_tokens_per_second": 63.66902519478863,
+          "first_token_seconds_median": 0.13600477145519108,
+          "cases": 4
+        },
+        "mtp": {
+          "samples": 20,
+          "decode_tokens": 2540,
+          "decode_seconds": 38.99171510711312,
+          "decode_tokens_per_second": 65.14204345775589,
+          "whole_call_tokens": 2560,
+          "whole_call_seconds": 42.99877669487614,
+          "whole_call_tokens_per_second": 59.53657747442515,
+          "first_token_seconds_median": 0.1973080140305683,
+          "cases": 4,
+          "candidate_acceptance": {
+            "samples": 20,
+            "cycles": 1330,
+            "candidates": 1330,
+            "accepted": 1205,
+            "accepted_per_candidate": 0.9060150375939849,
+            "tokens_from_cycles": 2535,
+            "expected_decode_tokens": 2540,
+            "accounting_delta": -5
+          }
+        }
+      },
+      {
+        "category": "general_ja",
+        "cases": 4,
+        "ar": {
+          "samples": 20,
+          "decode_tokens": 2540,
+          "decode_seconds": 37.53106220578775,
+          "decode_tokens_per_second": 67.67727452191058,
+          "whole_call_tokens": 2560,
+          "whole_call_seconds": 40.14296322269365,
+          "whole_call_tokens_per_second": 63.77207347146657,
+          "first_token_seconds_median": 0.1305914810509421,
+          "cases": 4
+        },
+        "mtp": {
+          "samples": 20,
+          "decode_tokens": 2540,
+          "decode_seconds": 41.01199065381661,
+          "decode_tokens_per_second": 61.93310686721386,
+          "whole_call_tokens": 2560,
+          "whole_call_seconds": 44.98132037289906,
+          "whole_call_tokens_per_second": 56.912513433962744,
+          "first_token_seconds_median": 0.19678301300155,
+          "cases": 4,
+          "candidate_acceptance": {
+            "samples": 20,
+            "cycles": 1400,
+            "candidates": 1400,
+            "accepted": 1125,
+            "accepted_per_candidate": 0.8035714285714286,
+            "tokens_from_cycles": 2525,
+            "expected_decode_tokens": 2540,
+            "accounting_delta": -15
+          }
+        }
+      },
+      {
+        "category": "mixed_ja_en",
+        "cases": 4,
+        "ar": {
+          "samples": 20,
+          "decode_tokens": 2540,
+          "decode_seconds": 37.57180574699305,
+          "decode_tokens_per_second": 67.60388406946029,
+          "whole_call_tokens": 2560,
+          "whole_call_seconds": 40.55940558295697,
+          "whole_call_tokens_per_second": 63.11729580858823,
+          "first_token_seconds_median": 0.15151475899619982,
+          "cases": 4
+        },
+        "mtp": {
+          "samples": 20,
+          "decode_tokens": 2540,
+          "decode_seconds": 39.20081060717348,
+          "decode_tokens_per_second": 64.79457849617012,
+          "whole_call_tokens": 2560,
+          "whole_call_seconds": 43.91134157194756,
+          "whole_call_tokens_per_second": 58.29928916668393,
+          "first_token_seconds_median": 0.23411004146328196,
+          "cases": 4,
+          "candidate_acceptance": {
+            "samples": 20,
+            "cycles": 1330,
+            "candidates": 1330,
+            "accepted": 1205,
+            "accepted_per_candidate": 0.9060150375939849,
+            "tokens_from_cycles": 2535,
+            "expected_decode_tokens": 2540,
+            "accounting_delta": -5
+          }
+        }
+      }
+    ],
+    "length_controls": {
+      "p512": {
+        "prompt_tokens": 512,
+        "cases": 1,
+        "ar": {
+          "samples": 5,
+          "median_decode_tokens_per_second": 64.5028527485868,
+          "median_first_token_seconds": 0.5008267059456557,
+          "median_whole_call_tokens_per_second": 51.73841852222089
+        },
+        "mtp": {
+          "samples": 5,
+          "median_decode_tokens_per_second": 64.31308421233571,
+          "median_first_token_seconds": 1.3301115810172632,
+          "median_whole_call_tokens_per_second": 38.72231545496318,
+          "candidate_acceptance": {
+            "samples": 5,
+            "cycles": 315,
+            "candidates": 315,
+            "accepted": 315,
+            "accepted_per_candidate": 1.0,
+            "tokens_from_cycles": 630,
+            "expected_decode_tokens": 635,
+            "accounting_delta": -5
+          }
+        }
+      },
+      "p1024": {
+        "prompt_tokens": 1024,
+        "cases": 1,
+        "ar": {
+          "samples": 5,
+          "median_decode_tokens_per_second": 64.17622125125236,
+          "median_first_token_seconds": 1.0707729149144143,
+          "median_whole_call_tokens_per_second": 41.97625341107459
+        },
+        "mtp": {
+          "samples": 5,
+          "median_decode_tokens_per_second": 60.77479940631494,
+          "median_first_token_seconds": 3.1226304040756077,
+          "median_whole_call_tokens_per_second": 24.554738072002316,
+          "candidate_acceptance": {
+            "samples": 5,
+            "cycles": 315,
+            "candidates": 315,
+            "accepted": 315,
+            "accepted_per_candidate": 1.0,
+            "tokens_from_cycles": 630,
+            "expected_decode_tokens": 635,
+            "accounting_delta": -5
+          }
+        }
+      },
+      "p4096": {
+        "prompt_tokens": 4096,
+        "cases": 1,
+        "ar": {
+          "samples": 5,
+          "median_decode_tokens_per_second": 64.92667067837269,
+          "median_first_token_seconds": 4.132939817034639,
+          "median_whole_call_tokens_per_second": 21.02149299105344
+        },
+        "mtp": {
+          "samples": 5,
+          "median_decode_tokens_per_second": 46.11565851157926,
+          "median_first_token_seconds": 22.31191975600086,
+          "median_whole_call_tokens_per_second": 5.103920065734474,
+          "candidate_acceptance": {
+            "samples": 5,
+            "cycles": 315,
+            "candidates": 315,
+            "accepted": 315,
+            "accepted_per_candidate": 1.0,
+            "tokens_from_cycles": 630,
+            "expected_decode_tokens": 635,
+            "accounting_delta": -5
+          }
+        }
+      }
+    },
+    "identity": {
+      "cases": 21,
+      "ar_mtp_ids_equal": 12,
+      "ar_mtp_ids_differ": [
+        "code_lru_cache",
+        "code_markdown_table",
+        "general_ja_plan",
+        "general_ja_explain",
+        "mixed_ja_en_review",
+        "heldout_code_rate_limiter",
+        "heldout_general_en_incident",
+        "heldout_general_en_quant",
+        "heldout_mixed_summary"
+      ],
+      "by_split": {
+        "category": {
+          "cases": 10,
+          "ar_mtp_ids_equal": 5
+        },
+        "heldout": {
+          "cases": 8,
+          "ar_mtp_ids_equal": 4
+        },
+        "control": {
+          "cases": 3,
+          "ar_mtp_ids_equal": 3
+        }
+      }
+    }
+  },
+  "confirmation_drift": {
+    "published_sweep": "first",
+    "natural_suite": {
+      "ar": {
+        "decode_tokens_per_second": {
+          "first": 67.54014106216091,
+          "confirmation": 67.48485114899775,
+          "relative_difference": -0.0008186230039448456,
+          "absolute_difference": -0.05528991316316478,
+          "limit": 0.05,
+          "flagged": false
+        },
+        "whole_call_tokens_per_second": {
+          "first": 63.43428616256732,
+          "confirmation": 63.372592676706034,
+          "relative_difference": -0.0009725574227031986,
+          "absolute_difference": -0.06169348586128365,
+          "flagged": false
+        }
+      },
+      "mtp": {
+        "decode_tokens_per_second": {
+          "first": 64.32401169368939,
+          "confirmation": 64.21710827924377,
+          "relative_difference": -0.0016619519154788519,
+          "absolute_difference": -0.10690341444561113,
+          "limit": 0.05,
+          "flagged": false
+        },
+        "whole_call_tokens_per_second": {
+          "first": 58.59037566558559,
+          "confirmation": 58.48447402627502,
+          "relative_difference": -0.001807492068578379,
+          "absolute_difference": -0.10590163931057361,
+          "flagged": false
+        }
+      }
+    },
+    "by_category": [
+      {
+        "category": "code",
+        "ar": {
+          "first": 67.31895426228428,
+          "confirmation": 67.14102091042102,
+          "relative_difference": -0.0026431389764316,
+          "absolute_difference": -0.17793335186325976,
+          "flagged": false
+        },
+        "mtp": {
+          "first": 65.1397581640795,
+          "confirmation": 64.8784540165034,
+          "relative_difference": -0.004011438711791087,
+          "absolute_difference": -0.261304147576098,
+          "flagged": false
+        }
+      },
+      {
+        "category": "general_en",
+        "ar": {
+          "first": 67.67273267160748,
+          "confirmation": 67.6570268609031,
+          "relative_difference": -0.00023208477158134238,
+          "absolute_difference": -0.015705810704375267,
+          "flagged": false
+        },
+        "mtp": {
+          "first": 65.14204345775589,
+          "confirmation": 65.08512387279647,
+          "relative_difference": -0.0008737764727372812,
+          "absolute_difference": -0.056919584959416625,
+          "flagged": false
+        }
+      },
+      {
+        "category": "general_ja",
+        "ar": {
+          "first": 67.67727452191058,
+          "confirmation": 67.69233283814631,
+          "relative_difference": 0.00022250181234563,
+          "absolute_difference": 0.015058316235737834,
+          "flagged": false
+        },
+        "mtp": {
+          "first": 61.93310686721386,
+          "confirmation": 61.93090066950872,
+          "relative_difference": -3.562226758404396e-05,
+          "absolute_difference": -0.0022061977051350823,
+          "flagged": false
+        }
+      },
+      {
+        "category": "mixed_ja_en",
+        "ar": {
+          "first": 67.60388406946029,
+          "confirmation": 67.6249445706991,
+          "relative_difference": 0.00031152797696014595,
+          "absolute_difference": 0.021060501238807205,
+          "flagged": false
+        },
+        "mtp": {
+          "first": 64.79457849617012,
+          "confirmation": 64.75381519188466,
+          "relative_difference": -0.0006291159728413412,
+          "absolute_difference": -0.04076330428546271,
+          "flagged": false
+        }
+      }
+    ],
+    "length_controls": {
+      "p512": {
+        "prompt_tokens": 512,
+        "ar": {
+          "median_decode_tokens_per_second": {
+            "first": 64.5028527485868,
+            "confirmation": 64.36954530276095,
+            "relative_difference": -0.002066690698866339,
+            "absolute_difference": -0.1333074458258494,
+            "limit": 0.1,
+            "flagged": false
+          },
+          "median_first_token_seconds": {
+            "first": 0.5008267059456557,
+            "confirmation": 0.5000990430125967,
+            "relative_difference": -0.0014529235849854917,
+            "absolute_difference": -0.0007276629330590367,
+            "flagged": false
+          },
+          "median_whole_call_tokens_per_second": {
+            "first": 51.73841852222089,
+            "confirmation": 51.75601677212926,
+            "relative_difference": 0.0003401389221204963,
+            "absolute_difference": 0.017598249908367336,
+            "flagged": false
+          }
+        },
+        "mtp": {
+          "median_decode_tokens_per_second": {
+            "first": 64.31308421233571,
+            "confirmation": 64.34112258645999,
+            "relative_difference": 0.00043596687155769644,
+            "absolute_difference": 0.028038374124278675,
+            "limit": 0.1,
+            "flagged": false
+          },
+          "median_first_token_seconds": {
+            "first": 1.3301115810172632,
+            "confirmation": 1.3241678329650313,
+            "relative_difference": -0.004468608601758219,
+            "absolute_difference": -0.0059437480522319674,
+            "flagged": false
+          },
+          "median_whole_call_tokens_per_second": {
+            "first": 38.72231545496318,
+            "confirmation": 38.773251860278314,
+            "relative_difference": 0.001315427673078515,
+            "absolute_difference": 0.050936405315134436,
+            "flagged": false
+          }
+        }
+      },
+      "p1024": {
+        "prompt_tokens": 1024,
+        "ar": {
+          "median_decode_tokens_per_second": {
+            "first": 64.17622125125236,
+            "confirmation": 64.11372323136766,
+            "relative_difference": -0.0009738501062569217,
+            "absolute_difference": -0.06249801988469983,
+            "limit": 0.1,
+            "flagged": false
+          },
+          "median_first_token_seconds": {
+            "first": 1.0707729149144143,
+            "confirmation": 1.0777535600354895,
+            "relative_difference": 0.00651925821417809,
+            "absolute_difference": 0.006980645121075213,
+            "flagged": false
+          },
+          "median_whole_call_tokens_per_second": {
+            "first": 41.97625341107459,
+            "confirmation": 41.84895445913495,
+            "relative_difference": -0.00303264206771848,
+            "absolute_difference": -0.12729895193963614,
+            "flagged": false
+          }
+        },
+        "mtp": {
+          "median_decode_tokens_per_second": {
+            "first": 60.77479940631494,
+            "confirmation": 60.770791270438586,
+            "relative_difference": -6.595062288165986e-05,
+            "absolute_difference": -0.004008135876354402,
+            "limit": 0.1,
+            "flagged": false
+          },
+          "median_first_token_seconds": {
+            "first": 3.1226304040756077,
+            "confirmation": 3.123831182019785,
+            "relative_difference": 0.00038454052795045896,
+            "absolute_difference": 0.0012007779441773891,
+            "flagged": false
+          },
+          "median_whole_call_tokens_per_second": {
+            "first": 24.554738072002316,
+            "confirmation": 24.55073952978082,
+            "relative_difference": -0.00016284198225900137,
+            "absolute_difference": -0.003998542221495427,
+            "flagged": false
+          }
+        }
+      },
+      "p4096": {
+        "prompt_tokens": 4096,
+        "ar": {
+          "median_decode_tokens_per_second": {
+            "first": 64.92667067837269,
+            "confirmation": 64.97110446619183,
+            "relative_difference": 0.0006843688018327084,
+            "absolute_difference": 0.044433787819144754,
+            "limit": 0.1,
+            "flagged": false
+          },
+          "median_first_token_seconds": {
+            "first": 4.132939817034639,
+            "confirmation": 4.117862235987559,
+            "relative_difference": -0.0036481491903016714,
+            "absolute_difference": -0.015077581047080457,
+            "flagged": false
+          },
+          "median_whole_call_tokens_per_second": {
+            "first": 21.02149299105344,
+            "confirmation": 21.078095519835212,
+            "relative_difference": 0.0026926026998112494,
+            "absolute_difference": 0.05660252878177374,
+            "flagged": false
+          }
+        },
+        "mtp": {
+          "median_decode_tokens_per_second": {
+            "first": 46.11565851157926,
+            "confirmation": 46.10306559506641,
+            "relative_difference": -0.00027307246430600414,
+            "absolute_difference": -0.012592916512851104,
+            "limit": 0.1,
+            "flagged": false
+          },
+          "median_first_token_seconds": {
+            "first": 22.31191975600086,
+            "confirmation": 22.29158114292659,
+            "relative_difference": -0.0009115581848936481,
+            "absolute_difference": -0.02033861307427287,
+            "flagged": false
+          },
+          "median_whole_call_tokens_per_second": {
+            "first": 5.103920065734474,
+            "confirmation": 5.108490777068131,
+            "relative_difference": 0.0008955295684081816,
+            "absolute_difference": 0.0045707113336570515,
+            "flagged": false
+          }
+        }
+      }
+    },
+    "flags": [],
+    "id_mismatches": []
+  },
+  "notes": [
+    "First sweep is published. The confirmation sweep is drift evidence only; the faster sweep is never selected.",
+    "Natural-suite decode throughput pools measured samples as sum(decode_tokens)/sum(decode_seconds). decode_tokens is 127 per sample (generated tokens minus the first observed cumulative count), so first-token latency, prefill, and MTP prompt priming are excluded.",
+    "Whole-call throughput pools sum(generated_tokens)/sum(whole_call_seconds) and includes prefill and first-token latency, so it is not comparable to the decode rate.",
+    "Per-length values are medians of per-sample rates, not ratios of pooled sums.",
+    "Candidate acceptance is sum(accepted_counts)/sum(candidate_counts) over measured MTP samples; the candidate budget is one per cycle.",
+    "AR/MTP id equality is a cross-route diagnostic, not a same-schedule repeatability check.",
+    "Drift flags are reported for review and do not block publication; the summary never chooses between sweeps.",
+    "MTP route counters do not reconcile with the decode window: cycles plus accepted candidates sum to 11390 for 90 measured natural-suite samples, while the 127-per-sample post-first-token count implies 11430. Treat cycle and acceptance counts as route-reported and do not derive token throughput from them."
+  ]
+}
