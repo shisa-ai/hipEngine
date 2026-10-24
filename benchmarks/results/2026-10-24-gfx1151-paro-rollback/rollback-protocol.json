@@ -1,0 +1,14 @@
+{
+  "kind": "PARO target backup comparison",
+  "baseline_commit": "4d8ecc3a789d5caaa2a56e643629dc2941f0ca71",
+  "baseline": "Current journal on both arms; full-prefix arm restores the parent's successful-cycle target backup by passing the live position to copy_slot_state.",
+  "candidate": "Same arithmetic and mutable-state backup; kv_rows=0 omits append-only live-prefix KV copies.",
+  "workload": "All 10 category prompts, all 8 heldouts, repeated-token controls at 512/1024/4096; 128 greedy outputs, BF16 KV, one request, one candidate, prefix cache off.",
+  "correctness": "Require exact cross-arm and repeat output IDs and acceptance counts, actual eager MTP route, per-cycle copy observation reconciliation, and zero tracked allocations/bytes after close. Public failure tests at 1/37/511/1025/4096 passed for target and provider mutation before measurement.",
+  "first": {"warmups_per_arm": 1, "samples_per_arm": 3},
+  "confirmation": {"warmups_per_arm": 1, "samples_per_arm": 2},
+  "order": "Alternate full-prefix/cursor-only order by pair.",
+  "attribution": "Separate synchronized copy windows on the first natural prompt and 512/4096 controls, one warmup and one sample per arm. Excluded from throughput claims.",
+  "acceptance": "Preserve exact control/state/output/acceptance; report every paired timing, including regressions. Retain measured non-regressive gains or copy-work elimination without claiming an aggregate gain when timings are flat. Do not alter arithmetic or prompt suite to obtain a result.",
+  "claims": "This compares two MTP backup implementations, not MTP against autoregressive decoding. No MTP-vs-AR speedup is inferred. The unrelated, unused bulk primitive is present in the source patch and must remain uncalled."
+}

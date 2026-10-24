@@ -39,6 +39,7 @@ from hipengine.speculative.transaction import (
     SpecCycleStage,
     SpecCycleTelemetry,
     SpecCycleTransaction,
+    SpeculativeStateJournal,
 )
 
 
@@ -58,6 +59,7 @@ class _ParoMTP2RequestState:
     proposer: NativeMtpChainProposer
     prompt_rows_consumed: int = 0
     checkpoint: NativeMtpStateSnapshot | None = None
+    journal: SpeculativeStateJournal | None = None
     last_proposal_seconds: float = 0.0
     prompt_prime_seconds: float = 0.0
 
@@ -369,7 +371,13 @@ class Qwen35ParoMTP2Adapter:
         row = self.owner._row(rid)
         state = self._states[rid]
         started = time.perf_counter()
-        state.checkpoint = state.proposer.save_state(0)
+        if state.journal is not None:
+            raise RuntimeError("PARO MTP2 previous cycle still owns a state journal")
+        state.journal = SpeculativeStateJournal()
+        state.checkpoint = state.journal.capture(
+            "provider", lambda: state.proposer.save_state(0),
+            state.proposer.restore_state,
+        )
         candidate_token_ids = state.proposer.device_candidate_token_ids()
         state.last_proposal_seconds = time.perf_counter() - started
         row.mtp2_candidate_device_handoffs += 1
@@ -456,9 +464,7 @@ class Qwen35ParoMTP2Adapter:
             target_open=True,
             provider_open=True,
         )
-        root_position = int(frontier.root_positions[0])
-        session.copy_slot_state(0, 1, kv_rows=root_position)
-        session._record_slot_position_host(int(session.position_arr[0]), slot=1)
+        self._checkpoint_target(state, session)
         if tuple(int(value) for value in cancelled_request_ids()):
             return self._cancelled_result(transaction, state, session)
         target_started = time.perf_counter()
@@ -512,6 +518,9 @@ class Qwen35ParoMTP2Adapter:
         cancelled = tuple(int(value) for value in cancelled_request_ids())
         if cancelled:
             return self._cancelled_result(transaction, state, session)
+        if state.journal is not None:
+            state.journal.commit()
+            state.journal = None
         state.checkpoint = None
         output_ids = (
             *tuple(int(token) for token in verify.accepted_tokens),
@@ -587,17 +596,39 @@ class Qwen35ParoMTP2Adapter:
             self._intents.pop(int(request_id), None)
             self._disabled_requests.discard(int(request_id))
 
+    def _checkpoint_target(
+        self, state: _ParoMTP2RequestState, session: Any,
+    ) -> None:
+        if state.journal is None:
+            raise RuntimeError("PARO MTP2 target checkpoint requires a provider journal")
+
+        def capture() -> int:
+            position = int(session.position_arr[0])
+            # Verify appends only at/after this cursor. The spare slot owns
+            # mutable recurrent/hidden state, not another copy of the KV prefix.
+            session.copy_slot_state(0, 1, kv_rows=0)
+            session._record_slot_position_host(position, slot=1)
+            return position
+
+        def restore(position: int) -> None:
+            session.copy_slot_state(1, 0, kv_rows=0)
+            session._record_slot_position_host(position, slot=0)
+
+        state.journal.capture("target", capture, restore)
+
     def _restore_target_and_provider(
         self,
         state: _ParoMTP2RequestState,
         session: Any,
     ) -> None:
-        session.copy_slot_state(1, 0, kv_rows=int(session.context_arr[1]))
-        session._record_slot_position_host(int(session.position_arr[1]), slot=0)
-        if state.checkpoint is not None:
-            state.proposer.restore_state(state.checkpoint)
+        if state.journal is None:
+            return
+        try:
+            state.journal.rollback()
+        finally:
+            session.runtime.device_synchronize()
         state.checkpoint = None
-        session.runtime.device_synchronize()
+        state.journal = None
 
     def _cancelled_result(
         self,
@@ -626,7 +657,7 @@ class Qwen35ParoMTP2Adapter:
     ) -> None:
         state = self._states.pop(int(request_id), None)
         if state is not None:
-            if recycle and not state.proposer.closed and state.checkpoint is None:
+            if recycle and not state.proposer.closed and state.checkpoint is None and state.journal is None:
                 state.proposer.reset()
                 self._proposer_pool.append(state.proposer)
             else:

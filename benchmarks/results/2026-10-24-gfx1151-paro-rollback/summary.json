@@ -1,0 +1,120 @@
+{
+  "passed": true,
+  "first": {
+    "natural": {
+      "full_prefix": {
+        "samples": 54,
+        "decode_tokens_per_second": 64.44666833249683,
+        "whole_call_tokens_per_second": 59.44456195791947,
+        "median_first_token_seconds": 0.18157645990140736,
+        "accepted_candidates": 3207,
+        "proposed_candidates": 3627
+      },
+      "cursor_only": {
+        "samples": 54,
+        "decode_tokens_per_second": 64.57655249951618,
+        "whole_call_tokens_per_second": 59.55175903171561,
+        "median_first_token_seconds": 0.18127635889686644,
+        "accepted_candidates": 3207,
+        "proposed_candidates": 3627
+      }
+    },
+    "controls": {
+      "p512": {
+        "full_prefix": {
+          "decode_tokens_per_second": 64.38068485894033,
+          "first_token_seconds": 0.7639163031708449,
+          "whole_call_tokens_per_second": 46.77242151371449
+        },
+        "cursor_only": {
+          "decode_tokens_per_second": 64.71569553363155,
+          "first_token_seconds": 0.7659226579125971,
+          "whole_call_tokens_per_second": 46.90640219477403
+        }
+      },
+      "p1024": {
+        "full_prefix": {
+          "decode_tokens_per_second": 60.812341759290625,
+          "first_token_seconds": 1.5717137549072504,
+          "whole_call_tokens_per_second": 34.97127817180295
+        },
+        "cursor_only": {
+          "decode_tokens_per_second": 61.262352067228605,
+          "first_token_seconds": 1.5703024012036622,
+          "whole_call_tokens_per_second": 35.1245712305875
+        }
+      },
+      "p4096": {
+        "full_prefix": {
+          "decode_tokens_per_second": 46.16452246414476,
+          "first_token_seconds": 6.026387993013486,
+          "whole_call_tokens_per_second": 14.582800025575512
+        },
+        "cursor_only": {
+          "decode_tokens_per_second": 47.030151720919626,
+          "first_token_seconds": 6.026085517834872,
+          "whole_call_tokens_per_second": 14.66791575927099
+        }
+      }
+    }
+  },
+  "checked_calls": 294,
+  "confirmation": {
+    "natural": {
+      "full_prefix": {
+        "samples": 36,
+        "decode_tokens_per_second": 64.42776063643997,
+        "whole_call_tokens_per_second": 59.43696984960805,
+        "median_first_token_seconds": 0.18018134695012122,
+        "accepted_candidates": 2138,
+        "proposed_candidates": 2418
+      },
+      "cursor_only": {
+        "samples": 36,
+        "decode_tokens_per_second": 64.62634431156086,
+        "whole_call_tokens_per_second": 59.59837330831603,
+        "median_first_token_seconds": 0.1807751670712605,
+        "accepted_candidates": 2138,
+        "proposed_candidates": 2418
+      }
+    },
+    "controls": {
+      "p512": {
+        "full_prefix": {
+          "decode_tokens_per_second": 64.33772432100582,
+          "first_token_seconds": 0.7636066998820752,
+          "whole_call_tokens_per_second": 46.75619781109353
+        },
+        "cursor_only": {
+          "decode_tokens_per_second": 64.7180633708268,
+          "first_token_seconds": 0.767148919054307,
+          "whole_call_tokens_per_second": 46.89417953336543
+        }
+      },
+      "p1024": {
+        "full_prefix": {
+          "decode_tokens_per_second": 60.778875180092214,
+          "first_token_seconds": 1.5720465634949505,
+          "whole_call_tokens_per_second": 34.95712729717401
+        },
+        "cursor_only": {
+          "decode_tokens_per_second": 61.234847674642666,
+          "first_token_seconds": 1.5708134190645069,
+          "whole_call_tokens_per_second": 35.118188155898586
+        }
+      },
+      "p4096": {
+        "full_prefix": {
+          "decode_tokens_per_second": 46.16583519700956,
+          "first_token_seconds": 6.023045483510941,
+          "whole_call_tokens_per_second": 14.588487588430887
+        },
+        "cursor_only": {
+          "decode_tokens_per_second": 47.0419024226855,
+          "first_token_seconds": 6.032344668521546,
+          "whole_call_tokens_per_second": 14.65855878878697
+        }
+      }
+    }
+  }
+}

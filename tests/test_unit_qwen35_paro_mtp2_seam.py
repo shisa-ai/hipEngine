@@ -76,6 +76,9 @@ class _ProposerDouble:
     def save_state(self, slot):
         return ("snapshot", slot)
 
+    def restore_state(self, snapshot):
+        self.restored = snapshot
+
     def reset(self):
         return None
 

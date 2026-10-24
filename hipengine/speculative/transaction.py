@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Mapping, Sequence
+from typing import Callable, Mapping, Sequence, TypeVar
 
 from hipengine.kvcache import (
     ClaimConfidence,
@@ -17,6 +17,67 @@ from hipengine.speculative.frontier import (
     SpecTransactionMode,
 )
 from hipengine.speculative.interfaces import AcceptResult
+
+
+_Snapshot = TypeVar("_Snapshot")
+
+
+class SpeculativeStateJournal:
+    """Own completed checkpoints for one provisional provider/target cycle.
+
+    Each owner captures its mutable state and the cursors that hide speculative
+    append-only suffixes. Immutable KV prefixes need no snapshot. This class
+    owns publication and rollback ordering, not a model's memory layout.
+    A failed capture is never published; rollback attempts every captured owner
+    and keeps failed restores available for retry. Commit drops all snapshots.
+    """
+
+    def __init__(self) -> None:
+        self._restores: dict[str, Callable[[], None]] = {}
+        self._closed = False
+        self._rolling_back = False
+
+    @property
+    def pending(self) -> bool:
+        return bool(self._restores)
+
+    def capture(
+        self,
+        name: str,
+        capture: Callable[[], _Snapshot],
+        restore: Callable[[_Snapshot], None],
+    ) -> _Snapshot:
+        if self._closed or self._rolling_back:
+            raise RuntimeError("speculative state journal is closed to captures")
+        name = _required_text(name, "checkpoint name")
+        if name in self._restores:
+            raise ValueError(f"duplicate speculative checkpoint: {name}")
+        snapshot = capture()
+        self._restores[name] = lambda: restore(snapshot)
+        return snapshot
+
+    def commit(self) -> None:
+        if self._rolling_back:
+            raise RuntimeError("cannot commit after speculative rollback started")
+        self._restores.clear()
+        self._closed = True
+
+    def rollback(self) -> None:
+        if self._closed:
+            return
+        self._rolling_back = True
+        errors: list[Exception] = []
+        for name in reversed(tuple(self._restores)):
+            try:
+                self._restores[name]()
+            except Exception as error:
+                error.add_note(f"speculative checkpoint: {name}")
+                errors.append(error)
+            else:
+                del self._restores[name]
+        if errors:
+            raise ExceptionGroup("speculative state rollback failed", errors)
+        self._closed = True
 
 
 def _required_text(value: object, label: str) -> str:

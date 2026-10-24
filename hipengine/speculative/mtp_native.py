@@ -613,8 +613,11 @@ class NativeMtpChainProposer:
         self.position = int(snapshot.position)
         self.current = snapshot.current
         self.final_hidden_valid = bool(snapshot.hidden_valid)
-        if not self.final_hidden_valid:
-            self.result_valid = False
+        # The snapshot carries the hidden row and the host readback, not the
+        # device head buffers (top-1 index/value, block maxima, logits). Those
+        # still hold the discarded advance's scores, so every score or candidate
+        # read needs a new result-producing advance at the restored state.
+        self.result_valid = False
 
     def vocab_topk(self, *, k: int = 8, stream: int = 0) -> tuple[list[int], list[float]]:
         """Exact top-k tokens+logits over the (capped) draft vocab.

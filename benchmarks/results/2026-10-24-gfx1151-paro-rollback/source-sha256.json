@@ -1,0 +1,7 @@
+{
+  "hipengine/speculative/transaction.py": "e7bda4ab3fb52584733972b8628abccf08d74f07b7aeb873548de583df7ceda7",
+  "hipengine/generation/qwen35_paro_mtp2.py": "3a9149d40673d87646aaa9ec79edcefa6647d214c539920d22bf9bb966ed8187",
+  "hipengine/speculative/mtp_native.py": "24ab3f313a14a542e2560bafe722f5a0944eb69d75d500677c5b6089528072af",
+  "hipengine/runtime/qwen35_paro_runner.py": "a24f3f19334103598b877c31d4eedac42eafb623cae17d6d27b573f5f2dc2b19",
+  "hipengine/generation/qwen35_paro.py": "20d0910826eec6810dca23eca909f27734fd650bbb8f09f786bd3aa18bf007f6"
+}
