@@ -1,0 +1,38 @@
+{
+  "performance_claim": false,
+  "parent": "b9fef462561dea37421ababd76be72fcc2538adb",
+  "host": "gfx1151",
+  "backend": "hip_gfx1151",
+  "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "kv_storage": "bf16",
+  "prompt_tokens": [
+    37,
+    94,
+    1021,
+    1023,
+    1024,
+    1025,
+    1100,
+    1278,
+    1279,
+    1280,
+    1531
+  ],
+  "max_tokens": 16,
+  "repeats": 2,
+  "tested_candidate_sha256": {
+    "hipengine/generation/qwen35_gguf_moe_mtp2.py": "4ae688342b0e221370daffb2a88679e19475ceaf80fc52ee0b1001e9f9f2f8ad",
+    "hipengine/runtime/gguf_native_spec_cycle.py": "43dcaa9f3c2e820ec112a5cf17c6fe4ae0a86c22dcbb48bd2826d40ac82a475a"
+  },
+  "candidate_sha256": {
+    "hipengine/generation/qwen35_gguf_moe_mtp2.py": "16b3cf63a33d4ae08255974d3bd745844b7e333a9a0570484d27e0768b5b1c51",
+    "hipengine/runtime/gguf_native_spec_cycle.py": "43dcaa9f3c2e820ec112a5cf17c6fe4ae0a86c22dcbb48bd2826d40ac82a475a",
+    "hipengine/generation/qwen35_gguf.py": "6546055d348991e69e311b0b45121d392a092dd50655f527aab7c50fe400b4ce"
+  },
+  "command": "bash docs/testing/2026-10-24-moe-mtp-context-capacity/environment.sh env PYTHONPATH=<source-root> ~/miniforge3/envs/therock/bin/python docs/testing/2026-10-24-moe-mtp-context-capacity/public_check.py --models Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --lengths 37 94 1021 1023 1024 1025 1100 1278 1279 1280 1531 --output <output.json>",
+  "notes": [
+    "A later separate failure-path fix adds partial-allocation rollback to the shared dense KV allocator; this MoE route uses its own grouped allocator and the public tested route is unchanged.",
+    "The final driver adds optional temperature/seed arguments; their defaults preserve the recorded greedy runs.",
+    "Sampled checks passed at lengths 94/1025, temperature 0.7, seed 123, two repetitions each."
+  ]
+}

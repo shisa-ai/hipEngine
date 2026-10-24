@@ -83,7 +83,7 @@ supported updates of the requested existing result cells.
 | --- | --- | --- | --- | --- |
 | PARO | Shared bounded hidden chunks; historical rows batch KV-only priming, final row computes a full prediction | Completed-checkpoint journal owns provider and target restore; spare-slot copy contains mutable state and cursors, not live KV | Native provider-target ABI exists; public adapter forces eager verification | Public adapter exposes one candidate; underlying verifier supports larger row batches |
 | GGUF dense | Streaming chunk sink, carried hidden row and prefix checkpoints | Recurrent/hidden journals and append-only KV cursors | Shared proposal-graph lifecycle cache; native target stage wrappers | Shared planner consumes declared capability; standalone adaptive policy also exists |
-| GGUF MoE | Target-hidden chunk sink; NextN also has a restricted bulk route | Transactional target and provider checkpoints | Uses compatible GGUF execution pieces, with route-specific capabilities | Adapter-specific bounds need reconciliation with actual provider support |
+| GGUF MoE | Request-sized target-hidden and draft-KV buffers; shared prompt chunk ledger | Transactional target and provider checkpoints | Compatible native graph buckets; temporary boundary transitions resume MTP | Shared planner selects the deepest legal provider/bucket depth |
 | Qwen4 | Bounded cache-only prompt workspace with final full predictor row | Reusable device transaction snapshot and KV/index cursors | Model-specific execution, not currently a native-cycle graph consumer | Provider supports chains up to four candidates |
 | Gemma | Assistant starts from target hidden; no historical prompt-cache priming to transfer | Attention cursors rewind; no Qwen-style recurrent-state journal | Model-specific decode graphs | Assistant generation supports up to eight candidates |
 | Generic/DFlash | Provider-specific context construction, not a target-hidden MTP prompt stream | Existing append plans and provider transactions | Existing DFlash bucket metadata and native-stage infrastructure where integrated | Provider-declared depths; do not substitute an MTP depth ladder |
@@ -107,14 +107,14 @@ real consumer migration and tests before calling that row complete.
 
 ## Findings requiring integration follow-up
 
-- The clean baseline's GGUF MoE C1 route silently leaves explicit MTP requests
-  on ordinary decoding once its existing draft-context bound is exceeded.
-  A 94-token prompt reaches the prompt sink but performs zero MTP cycles;
-  a 1,025-token prompt does not reach the 95-row sink buffer. A 37-token
-  prompt performs MTP cycles. These are observed pre-existing route limits,
-  not regressions from the shared ledger. The cross-model integration row
-  stays open until compatible requests execute and genuinely unsupported
-  requests fail with a named capability error rather than silently downgrading.
+- The GGUF MoE context repair now passes 22 greedy and four sampled public calls,
+  including short/split-attention boundaries and prompts beyond 1,024 tokens.
+  Prompt and draft buffers grow from request capacity; graph-boundary steps
+  resume speculation instead of permanently disabling it. A named explicit
+  context refusal is contained and the next request succeeds. See the
+  [capacity and recovery evidence](../testing/2026-10-24-moe-mtp-context-capacity/NOTES.md).
+  This closes the previously observed 95-token admission/sink defect, not the
+  broader cross-model integration row.
 - A repeated one-token PARO MTP request exposed stale full-attention scratch
   views: the one-row projection writes a compact Q/K layout, while a cached
   wider view reads K at its old offset. Exact-row scratch rebinding fixes the

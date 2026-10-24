@@ -192,6 +192,10 @@ def _wire_execute(adapter, *, row, target, budget=2):
             key_cache=SimpleNamespace(),
             value_cache=SimpleNamespace(),
             cache_len=3,
+            # The primed allocation this row writes into. A state that publishes
+            # none cannot prove a cycle stays inside one, so the write guard
+            # refuses it rather than assuming it is safe.
+            draft_kv_rows=8,
         )
     }
     row.lease = SimpleNamespace(session=target)

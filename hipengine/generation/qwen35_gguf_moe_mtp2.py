@@ -30,7 +30,6 @@ from hipengine.generation.sampling import (
     logprobs_requested,
     speculative_sampling_mode,
 )
-from hipengine.kernels.backends import backend_package_capability
 from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
     ACCEPT_PACKED_PAYLOAD_FIELDS,
     build_dflash_accept,
@@ -171,6 +170,8 @@ class _MoeMTP2RequestState:
     target_hidden_buffer: DeviceBuffer
     target_hidden_ptr: int
     cache_len: int
+    # Capacity published from the draft-KV allocation used during priming.
+    draft_kv_rows: int | None = None
     proposal_tokens: tuple[int, ...] = ()
     proposed_cache_len: int | None = None
     last_proposal_seconds: float = 0.0
@@ -188,6 +189,42 @@ class MoeSampledRouteUnsupportedError(RuntimeError):
     be served. The adapter raises this instead of quietly accepting by argmax
     or handing the request to the autoregressive path.
     """
+
+
+class MoePromptContextUnsupportedError(RuntimeError):
+    """An explicit MTP request whose first plan has no candidate room.
+
+    Raised at prefill for a request that asked for MTP by name and cannot run a
+    cycle at its prompt length. A request the server selected on its own keeps
+    the planner's K0 fallback and records why instead.
+    """
+
+
+class MoeDraftKVCapacityError(RuntimeError):
+    """A draft-KV row write that is invalid or outside the allocated slab.
+
+    The draft caches are dense row slabs addressed by a raw device offset, so an
+    overrun corrupts memory instead of failing. Every write site checks first.
+    """
+
+
+def _malloc_all(sizes: Sequence[int], *, runtime: Any) -> list[DeviceBuffer]:
+    """Allocate every size in order, freeing earlier buffers if one fails.
+
+    ``malloc`` has no rollback, and each slab below is several buffers, so a
+    failure partway through would otherwise leak the ones already allocated
+    while the caller releases the pool charge for the whole slab.
+    """
+
+    created: list[DeviceBuffer] = []
+    try:
+        for nbytes in sizes:
+            created.append(malloc(int(nbytes), runtime=runtime))
+    except BaseException:
+        for buffer in reversed(created):
+            free(buffer, runtime=runtime)
+        raise
+    return created
 
 
 class Qwen35GGUFMoEMTP2Adapter:
@@ -303,44 +340,11 @@ class Qwen35GGUFMoEMTP2Adapter:
                 hidden_size = int(target.runner.hidden_size)
                 rows = len(row.prompt_ids)
                 target_key = id(target)
-                slab = self._target_hidden_slabs.get(target_key)
-                if slab is None:
-                    slab_rows = 95
-                    # Priced before the three mallocs below.
-                    self._charge_resident_slab(
-                        target_key,
-                        "target_hidden_slab",
-                        slab_rows * hidden_size * DType.BF16.itemsize
-                        + slab_rows * hidden_size * DType.FP32.itemsize
-                        + hidden_size * DType.BF16.itemsize,
-                    )
-                    try:
-                        slab = (
-                            target,
-                            malloc(
-                                slab_rows * hidden_size * DType.BF16.itemsize,
-                                runtime=target.runtime,
-                            ),
-                            malloc(
-                                slab_rows * hidden_size * DType.FP32.itemsize,
-                                runtime=target.runtime,
-                            ),
-                            malloc(
-                                hidden_size * DType.BF16.itemsize,
-                                runtime=target.runtime,
-                            ),
-                        )
-                    except BaseException:
-                        self._release_resident_slab_charges(target_key)
-                        raise
-                    self._target_hidden_slabs[target_key] = slab
-                if rows > int(slab[1].nbytes) // (
-                    hidden_size * DType.BF16.itemsize
-                ):
-                    for created_sink in created:
-                        self._prompt_sinks.pop(created_sink.request_id, None)
-                        self._detach_sink(created_sink)
-                    return None
+                # Sized from this request's own prompt rows, not from a fixed
+                # row budget: the sink holds one trunk row and one
+                # post-output-norm row per prompt token, so the prompt length
+                # is the only honest bound.
+                slab = self._ensure_target_hidden_slab(target, target_key, rows)
                 sink = _MoeTargetHiddenSink(
                     request_id=rid,
                     hidden_size=hidden_size,
@@ -398,15 +402,26 @@ class Qwen35GGUFMoEMTP2Adapter:
             self._release_state(rid)
         sink = self._prompt_sinks.pop(rid, None)
         if sink is None:
-            if len(prompt) > 95:
-                self._disabled_requests.add(rid)
-                return
             raise RuntimeError("MoE MTP2 prefill lost its target-hidden sink")
         if not sink.finished:
             raise RuntimeError("MoE MTP2 prefill target-hidden sink is incomplete")
+        # A row whose first plan cannot reach one candidate never runs a cycle:
+        # context only grows from here, and the shared planner selects
+        # ``ceiling - context_tokens - 1`` as the depth room. Refuse the route
+        # here, before any draft work, rather than priming a provider the
+        # planner will then decline every tick.
+        ceiling = self._target_context_ceiling(target)
+        if self._planned_context_room(ceiling, len(prompt) + 1) <= 0:
+            self._detach_sink(sink)
+            if self._request_is_automatic(rid):
+                self._disable_request(rid, "target_context_k0")
+                return
+            raise MoePromptContextUnsupportedError(
+                f"MoE MTP cannot serve request {rid}: a {len(prompt)}-token "
+                f"prompt leaves no candidate room under the target's declared "
+                f"verify ceiling of {ceiling} positions"
+            )
         from hipengine.generation.qwen35_gguf import (
-            _allocate_mtp_dense_kv,
-            _mtp_dense_kv_nbytes,
             _new_mtp_context,
         )
 
@@ -419,34 +434,22 @@ class Qwen35GGUFMoEMTP2Adapter:
         )
         shifted = None
         target_key = id(target)
-        kv_slab = self._draft_kv_slabs.get(target_key)
-        if kv_slab is None:
-            capacity = min(1024, int(target.target_layout.max_sequence_length))
-            # Priced before the allocation, so an overload is refused by name
-            # here rather than surfacing as a HIP OOM from the dense-KV malloc.
-            self._charge_resident_slab(
-                target_key,
-                "draft_kv",
-                _mtp_dense_kv_nbytes(
-                    capacity=capacity,
-                    qk_head_dim=int(draft.qk_head_dim),
-                    kv_heads=int(draft.num_kv_heads),
-                ),
-            )
-            try:
-                key_cache, value_cache, _buffers = _allocate_mtp_dense_kv(
-                    runtime=target.runtime,
-                    capacity=capacity,
-                    qk_head_dim=int(draft.qk_head_dim),
-                    kv_heads=int(draft.num_kv_heads),
-                )
-            except BaseException:
-                self._release_resident_slab_charges(target_key)
-                raise
-            kv_slab = (target, key_cache, value_cache)
-            self._draft_kv_slabs[target_key] = kv_slab
-        key_cache, value_cache = kv_slab[1], kv_slab[2]
         try:
+            key_cache, value_cache = self._ensure_draft_kv_slab(
+                target,
+                target_key,
+                draft=draft,
+                rows=self._draft_kv_rows_needed(row, prompt, target),
+            )
+            draft_kv_rows = self._draft_kv_rows(key_cache, draft)
+            if len(prompt) > draft_kv_rows:
+                # The priming write below is one row per prompt token at a raw
+                # device offset, so an undersized slab would corrupt memory
+                # rather than fail. Refuse before enqueueing anything.
+                raise MoeDraftKVCapacityError(
+                    f"MoE MTP2 draft KV holds {draft_kv_rows} rows but the "
+                    f"{len(prompt)}-token prompt needs one row per token"
+                )
             context = _new_mtp_context(
                 target,
                 token_id=int(result.token_id),
@@ -493,6 +496,7 @@ class Qwen35GGUFMoEMTP2Adapter:
                 target_hidden_buffer=sink.buffer,
                 target_hidden_ptr=int(target._last_target_hidden_ptr),
                 cache_len=int(cache_len),
+                draft_kv_rows=int(draft_kv_rows),
             )
             state = self._states[rid]
             if self._sampled_accept_candidate(rid):
@@ -531,17 +535,125 @@ class Qwen35GGUFMoEMTP2Adapter:
             self._detach_sink(sink)
             raise
 
+    def _target_context_ceiling(self, target: Any) -> int:
+        """Positions this target's native complete cycle can verify.
+
+        The complete cycle runs the target's device accept graph without a
+        fallback, so the bound is the backend's declared native graph context
+        limit, or the session's own capacity when the geometry declares one. The
+        ceiling is the smaller of that and the allocated session positions.
+        """
+
+        from hipengine.runtime.gguf_native_spec_cycle import (
+            native_target_context_limit,
+        )
+
+        session_rows = int(
+            getattr(
+                getattr(target, "target_layout", None),
+                "max_sequence_length",
+                0,
+            )
+            or 0
+        )
+        if session_rows <= 0:
+            return 0
+        declared = int(
+            native_target_context_limit(
+                str(self.generator.backend),
+                target,
+                default=session_rows,
+                graph=True,
+            )
+        )
+        if declared <= 0:
+            return session_rows
+        return min(session_rows, declared)
+
+    @staticmethod
+    def _planned_context_room(ceiling: int, context_tokens: int) -> int:
+        """Depth room ``plan_speculative_requests`` computes at this context.
+
+        The planner selects ``min(desired, depth, output room, ceiling -
+        context_tokens - 1)`` and reports ``TARGET_GRAPH_CONTEXT_BUCKET_MISS``
+        when that is not positive. Sharing the expression keeps admission from
+        disagreeing with the planner about the boundary; which depth runs stays
+        the planner's decision.
+        """
+
+        return int(ceiling) - int(context_tokens) - 1
+
+    def _bucket_candidate_ceiling(self, target: Any, *, limit: int) -> int:
+        """Largest candidate depth whose rows fit one target-graph bucket.
+
+        The reusable target graph runs one attention schedule for every row, so
+        a cycle whose rows span the short/split-K transition (1024) or two split
+        workspaces (every 256 positions above it) has no legal bucket. Admission
+        reports the deepest depth that does fit and the shared planner selects
+        from it, so a smaller legal candidate count still runs. Zero means even a
+        one-candidate cycle has no bucket; the planner uses ordinary decode
+        until a complete speculative cycle fits the next bucket.
+        """
+
+        from hipengine.runtime.gguf_native_spec_cycle import (
+            native_target_graph_context_bucket,
+        )
+
+        for depth in range(int(limit), 0, -1):
+            if native_target_graph_context_bucket(target, rows=depth + 1) is not None:
+                return depth
+        return 0
+
+    @staticmethod
+    def _target_attention_mode(target: Any, *, rows: int) -> str:
+        """Attention schedule the target graph requires for this cycle.
+
+        Above the short-context limit the graph verifies with split-K native
+        attention and refuses the bulk schedule, so the cycle asks for the mode
+        its own bucket declares. Below that limit the bulk schedule is what the
+        measured short-context route runs, and it stays unchanged.
+        """
+
+        from hipengine.runtime.gguf_native_spec_cycle import (
+            _NATIVE_TARGET_LONG_CONTEXT_LIMIT,
+            native_target_graph_context_bucket,
+        )
+
+        bucket = native_target_graph_context_bucket(target, rows=int(rows))
+        if bucket is not None and int(bucket) >= _NATIVE_TARGET_LONG_CONTEXT_LIMIT:
+            return "native"
+        return "bulk"
+
+    def _request_is_automatic(self, request_id: int) -> bool:
+        """Whether the server, not the caller, selected MTP for this request."""
+
+        row = self.owner._row(int(request_id))
+        return bool(
+            getattr(getattr(row, "request", None), "speculative_mtp_automatic", False)
+        )
+
+    def _disable_request(self, request_id: int, reason: str) -> None:
+        """Retire a row from speculation and publish why it left the route."""
+
+        rid = int(request_id)
+        self._disabled_requests.add(rid)
+        row = self.owner._row(rid)
+        if row is None:
+            return
+        if getattr(row, "mtp2_prompt_fallback_reason", None) is None:
+            row.mtp2_prompt_fallback_reason = str(reason)
+
     def _target_mode(self, target: Any) -> str:
         if self.target_verify_mode != "native":
             return self.target_verify_mode
-        limit = int(
-            backend_package_capability(
-                self.generator.backend,
-                "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT",
-                int(target.position),
-            )
+        ceiling = self._target_context_ceiling(target)
+        if ceiling <= 0:
+            return "serial_exact"
+        return (
+            "native"
+            if int(getattr(target, "position", 0)) <= ceiling
+            else "serial_exact"
         )
-        return "native" if int(target.position) <= limit else "serial_exact"
 
     def _sampling_modes(self) -> dict[int, str]:
         """Lazily materialize the planner-mode record (built via ``__new__`` in tests)."""
@@ -727,7 +839,7 @@ class Qwen35GGUFMoEMTP2Adapter:
         ):
             return None
         targets = []
-        max_context = 95
+        ceilings: list[int] = []
         modes = set()
         sampled_qualified = capacity == 1 and self._sampled_route_qualified()
         for item in semantics:
@@ -776,19 +888,32 @@ class Qwen35GGUFMoEMTP2Adapter:
                     # autoregressive decoding instead of admitting a route the
                     # runtime cannot execute.
                     return None
-            request_max_context = min(
-                95,
-                int(target.target_layout.max_sequence_length)
-                - self.candidate_budget
-                - 1,
-            )
-            if int(item.context_tokens) > request_max_context:
+            request_ceiling = self._target_context_ceiling(target)
+            if request_ceiling <= 0:
                 return None
-            max_context = min(max_context, request_max_context)
+            # Depth selection stays with the shared planner: it subtracts this
+            # row's context and one committed token from the declared ceiling
+            # and reports a K0 context miss when no positive depth fits.
+            # Subtracting the candidate budget here as well made admission and
+            # planning disagree about where the boundary is.
+            ceilings.append(request_ceiling)
             modes.add(self._target_mode(target))
             targets.append(target)
         if len(modes) != 1:
             return None
+        # The C1 complete cycle runs on the reusable target graph, so its depth
+        # is bounded by the deepest cycle that graph has a context bucket for.
+        # Reporting that bound keeps depth selection in the shared planner: a
+        # shallower legal cycle still runs, and only a step where even one
+        # candidate has no bucket is planned K0 (the transition that advances
+        # the provider seed). The C2 lane executes through its packed physical
+        # frontier instead, which declares its own bucket misses.
+        depth = int(self.candidate_budget)
+        if capacity == 1:
+            depth = self._bucket_candidate_ceiling(targets[0], limit=depth)
+            if depth <= 0:
+                return None
+        max_context = min(ceilings)
         profile = getattr(self.generator, "execution_profile", None)
         profile = getattr(profile, "value", profile)
         if capacity > 1 and str(profile) != "production":
@@ -812,11 +937,11 @@ class Qwen35GGUFMoEMTP2Adapter:
                 ("greedy", "sampled") if sampled_qualified else ("greedy",)
             ),
             max_requests=capacity,
-            max_candidates_per_request=self.candidate_budget,
-            max_frontier_rows=capacity * (self.candidate_budget + 1),
+            max_candidates_per_request=depth,
+            max_frontier_rows=capacity * (depth + 1),
             proposal_widths=tuple(range(1, capacity + 1)),
             target_row_buckets=tuple(
-                range(capacity * 2, capacity * (self.candidate_budget + 1) + 1)
+                range(capacity * 2, capacity * (depth + 1) + 1)
             ),
             target_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
             provider_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
@@ -913,6 +1038,12 @@ class Qwen35GGUFMoEMTP2Adapter:
                 raise RuntimeError("MoE C2 proposal has no resident pending seed")
             root_token = int(row.slot.generated_ids[-1])
             root_position = int(target.position)
+            self._check_draft_kv_room(
+                state,
+                cursor=int(state.cache_len),
+                rows=count,
+                context=f"MoE C2 proposal for request {request_id}",
+            )
             tokens, topk, proposed_cache_len = (
                 state.draft.propose_chain_from_device_seed(
                     int(pending.hidden_ptr),
@@ -1604,6 +1735,12 @@ class Qwen35GGUFMoEMTP2Adapter:
         transaction_id = self._transaction_sequence
         start_position = int(target.position)
         cache_before = int(state.cache_len)
+        self._check_draft_kv_room(
+            state,
+            cursor=cache_before,
+            rows=budget,
+            context=f"MoE MTP cycle for request {rid}",
+        )
         from hipengine.runtime.gguf_native_spec_cycle import (
             NativeSpecTargetGraphUnsupportedError,
         )
@@ -1623,7 +1760,9 @@ class Qwen35GGUFMoEMTP2Adapter:
                 draft_cache_len=cache_before,
                 cycle_id=int(plan.cycle_id),
                 transaction_id=transaction_id,
-                target_bulk_attention_mode="bulk",
+                target_bulk_attention_mode=self._target_attention_mode(
+                    target, rows=budget + 1
+                ),
                 k1_disable_f32_verifier=True,
                 sampled_accept=bool(sampled_route),
                 sampled_accept_state=sampled_plan,
@@ -1772,10 +1911,11 @@ class Qwen35GGUFMoEMTP2Adapter:
         plan: SpecRequestPlan,
         error: BaseException,
     ) -> bool:
-        if isinstance(error, MoeSampledRouteUnsupportedError):
-            # A sampled request the cycle cannot serve fails loudly rather than
-            # silently continuing on the autoregressive path: containment
-            # retires exactly the affected rows.
+        if isinstance(error, (MoeSampledRouteUnsupportedError, MoeDraftKVCapacityError)):
+            # A sampled request the cycle cannot serve, or a draft-KV write that
+            # would leave its allocation, fails loudly rather than silently
+            # continuing on the autoregressive path: containment retires exactly
+            # the affected rows.
             return False
         reason = f"{type(error).__name__}:{error}"
         rows = tuple(self.owner._row(int(value)) for value in plan.speculative_request_ids)
@@ -1805,7 +1945,7 @@ class Qwen35GGUFMoEMTP2Adapter:
         path (adapter recovery, or fatal when that cannot prove the window).
         """
 
-        if not isinstance(error, MoeSampledRouteUnsupportedError):
+        if not isinstance(error, (MoeSampledRouteUnsupportedError, MoeDraftKVCapacityError)):
             return None
         return (
             "none",
@@ -1856,19 +1996,59 @@ class Qwen35GGUFMoEMTP2Adapter:
         reserve = getattr(pool, "reserve_resident_bytes", None)
         return pool if callable(reserve) else None
 
-    def _charge_resident_slab(self, target_key: int, name: str, nbytes: int) -> None:
+    def _charge_resident_slab(
+        self,
+        target_key: int,
+        name: str,
+        nbytes: int,
+    ) -> object | None:
         """Price a resident slab through the pool budget before allocating it.
 
-        Raises the pool's named refusal when the slab does not fit, so the
-        caller never reaches the malloc. A pool without the ledger is charged
-        nothing.
+        Returns the pool's charge token, which is what releases exactly this
+        slab when it is replaced or when its allocation fails. Raises the pool's
+        named refusal when the slab does not fit, so the caller never reaches
+        the malloc. A pool without the ledger is charged nothing.
         """
 
         pool = self._resident_charge_pool()
         if pool is None or int(nbytes) <= 0:
-            return
+            return None
         token = pool.reserve_resident_bytes(str(name), int(nbytes))
         self._resident_charge_tokens.setdefault(int(target_key), []).append(token)
+        return token
+
+    def _slab_charge_tokens(self) -> dict[tuple[int, str], object | None]:
+        """Charge token per target slab role, so a growth releases one slab.
+
+        ``_resident_charge_tokens`` answers "what does this target cost" for the
+        bulk release at close. Replacing one slab needs the narrower question,
+        and releasing the wrong token would either under-count a live slab or
+        double-release a freed one.
+        """
+
+        tokens = getattr(self, "_slab_charge_by_role", None)
+        if tokens is None:
+            tokens = {}
+            self._slab_charge_by_role = tokens
+        return tokens
+
+    def _release_resident_charge_token(self, token: object | None) -> None:
+        """Release one slab's charge, leaving every other slab charged."""
+
+        if token is None:
+            return
+        for tokens in self._resident_charge_tokens.values():
+            for index, candidate in enumerate(tokens):
+                if candidate is token:
+                    del tokens[index]
+                    break
+            else:
+                continue
+            break
+        pool = getattr(self.owner, "_kv_pool", None)
+        release = getattr(pool, "release_private_workspace", None)
+        if callable(release):
+            release(token)
 
     def _release_resident_slab_charges(self, target_key: int | None = None) -> None:
         """Release the charges for one target, or for every target when omitted."""
@@ -1885,6 +2065,207 @@ class Qwen35GGUFMoEMTP2Adapter:
                 continue
             for token in tokens:
                 release(token)
+        roles = self._slab_charge_tokens()
+        for role_key in tuple(roles):
+            if target_key is None or int(role_key[0]) == int(target_key):
+                roles.pop(role_key, None)
+
+    @staticmethod
+    def _hidden_slab_rows(slab: tuple[Any, ...], hidden_size: int) -> int:
+        """Prompt rows one target-hidden slab can hold."""
+
+        row_nbytes = int(hidden_size) * DType.BF16.itemsize
+        if row_nbytes <= 0:
+            return 0
+        return int(slab[1].nbytes) // row_nbytes
+
+    @staticmethod
+    def _draft_kv_rows(buffer: Any, draft: Any) -> int:
+        """Rows one draft-KV cache allocation holds, from its real byte size."""
+
+        row_nbytes = (
+            int(getattr(draft, "num_kv_heads", 0))
+            * int(getattr(draft, "qk_head_dim", 0))
+            * DType.FP32.itemsize
+        )
+        if row_nbytes <= 0:
+            return 0
+        return int(getattr(buffer, "nbytes", 0)) // row_nbytes
+
+    def _draft_kv_rows_needed(
+        self,
+        row: Any,
+        prompt: Sequence[int],
+        target: Any,
+    ) -> int:
+        """Draft-KV rows this request can reach, clamped to the verify ceiling.
+
+        Priming writes one row per prompt token and each committed or proposed
+        row advances the same cursor, so the request's extent bounds the slab and
+        the ceiling clamps it.
+        """
+
+        session_rows = int(
+            getattr(
+                getattr(target, "target_layout", None),
+                "max_sequence_length",
+                0,
+            )
+            or 0
+        )
+        horizon = int(getattr(getattr(row, "request", None), "max_tokens", 0) or 0)
+        depth = max(1, int(getattr(self, "candidate_budget", 1) or 1))
+        wanted = len(prompt) + max(0, horizon) + depth
+        reachable = int(session_rows)
+        ceiling = self._target_context_ceiling(target)
+        if ceiling > 0:
+            reachable = min(reachable, ceiling) if reachable > 0 else ceiling
+        if reachable <= 0:
+            return max(len(prompt), wanted)
+        return max(len(prompt), min(reachable, wanted))
+
+    def _ensure_target_hidden_slab(
+        self,
+        target: Any,
+        target_key: int,
+        rows: int,
+    ) -> tuple[Any, DeviceBuffer, DeviceBuffer, DeviceBuffer]:
+        """Return this target's prompt-hidden slab, grown to hold ``rows``.
+
+        The slab holds one BF16 trunk row and one FP32 post-output-norm row per
+        prompt token. It is charged before it is allocated, and the slab it
+        replaces is freed only after its replacement exists, so a refused charge
+        or a failed allocation leaves the live slab and its charge intact.
+        """
+
+        key = int(target_key)
+        wanted = max(1, int(rows))
+        hidden_size = int(target.runner.hidden_size)
+        slab = self._target_hidden_slabs.get(key)
+        if slab is not None and self._hidden_slab_rows(slab, hidden_size) >= wanted:
+            return slab
+        if slab is not None and any(
+            sink.buffer is slab[1] for sink in self._prompt_sinks.values()
+        ):
+            # Freeing rows a live sink is still writing would corrupt them.
+            raise RuntimeError(
+                "MoE target-hidden slab is still owned by a live prompt sink"
+            )
+        row_bf16 = hidden_size * DType.BF16.itemsize
+        row_f32 = hidden_size * DType.FP32.itemsize
+        token = self._charge_resident_slab(
+            key,
+            "target_hidden_slab",
+            wanted * row_bf16 + wanted * row_f32 + row_bf16,
+        )
+        try:
+            created = _malloc_all(
+                (wanted * row_bf16, wanted * row_f32, row_bf16),
+                runtime=target.runtime,
+            )
+        except BaseException:
+            self._release_resident_charge_token(token)
+            raise
+        roles = self._slab_charge_tokens()
+        previous = roles.get((key, "target_hidden_slab"))
+        roles[(key, "target_hidden_slab")] = token
+        if slab is not None:
+            self._detach_hidden_buffer(target, slab[1])
+            free(slab[3], runtime=target.runtime)
+            free(slab[2], runtime=target.runtime)
+            free(slab[1], runtime=target.runtime)
+            self._release_resident_charge_token(previous)
+        grown = (target, created[0], created[1], created[2])
+        self._target_hidden_slabs[key] = grown
+        return grown
+
+    def _ensure_draft_kv_slab(
+        self,
+        target: Any,
+        target_key: int,
+        *,
+        draft: Any,
+        rows: int,
+    ) -> tuple[DeviceBuffer, DeviceBuffer]:
+        """Return this target's draft-KV caches, grown to hold ``rows``.
+
+        Charged before allocation; the old slab is freed only after all
+        replacement buffers have been allocated. Key and value caches each
+        consume half the shared dense-KV byte estimate.
+        """
+
+        from hipengine.generation.qwen35_gguf import _mtp_dense_kv_nbytes
+
+        key = int(target_key)
+        wanted = max(1, int(rows))
+        slab = self._draft_kv_slabs.get(key)
+        if slab is not None and self._draft_kv_rows(slab[1], draft) >= wanted:
+            return slab[1], slab[2]
+        if slab is not None and any(
+            state.key_cache is slab[1] or state.value_cache is slab[2]
+            for state in self._states.values()
+        ):
+            # Freeing rows a live request still writes would corrupt them.
+            raise RuntimeError(
+                "MoE draft-KV slab is still owned by a live request state"
+            )
+        nbytes = _mtp_dense_kv_nbytes(
+            capacity=wanted,
+            qk_head_dim=int(draft.qk_head_dim),
+            kv_heads=int(draft.num_kv_heads),
+        )
+        token = self._charge_resident_slab(key, "draft_kv", nbytes)
+        try:
+            created = _malloc_all((nbytes // 2, nbytes // 2), runtime=target.runtime)
+        except BaseException:
+            self._release_resident_charge_token(token)
+            raise
+        key_cache, value_cache = created[0], created[1]
+        roles = self._slab_charge_tokens()
+        previous = roles.get((key, "draft_kv"))
+        roles[(key, "draft_kv")] = token
+        if slab is not None:
+            free(slab[2], runtime=target.runtime)
+            free(slab[1], runtime=target.runtime)
+            self._release_resident_charge_token(previous)
+        self._draft_kv_slabs[key] = (target, key_cache, value_cache)
+        return key_cache, value_cache
+
+    @staticmethod
+    def _check_draft_kv_room(
+        state: Any,
+        *,
+        cursor: int,
+        rows: int,
+        context: str,
+    ) -> None:
+        """Refuse a draft-KV write that is invalid or outside the allocation.
+
+        ``draft_kv_rows`` is the row count of the allocation the request was
+        primed into, so the write is compared against real bytes. A state with
+        no published allocation cannot prove its write is inside one and is
+        refused rather than assumed safe.
+        """
+
+        start = int(cursor)
+        count = int(rows)
+        if start < 0 or count < 0:
+            raise MoeDraftKVCapacityError(
+                f"{context} has an invalid draft-KV write at cursor {start} "
+                f"for {count} rows"
+            )
+        capacity = getattr(state, "draft_kv_rows", None)
+        if capacity is None:
+            raise MoeDraftKVCapacityError(
+                f"{context} has no published draft-KV allocation"
+            )
+        end = start + count
+        if end <= int(capacity):
+            return
+        raise MoeDraftKVCapacityError(
+            f"{context} writes draft-KV rows {start}..{end - 1} outside "
+            f"the {int(capacity)}-row allocation"
+        )
 
     def close(self) -> None:
         for request_id in tuple(set(self._states) | set(self._prompt_sinks)):

@@ -389,6 +389,9 @@ def _context_bucket(max_live_count: int) -> int:
 
 
 _NATIVE_TARGET_SHORT_CONTEXT_LIMIT = 1023
+# Above this context the target verify runs split-K native attention, and the
+# reusable graph refuses to span the short/long transition.
+_NATIVE_TARGET_LONG_CONTEXT_LIMIT = 1024
 _NATIVE_TARGET_GRAPH_CACHE_MAX_ENTRIES = 8
 
 
@@ -415,6 +418,18 @@ def native_target_context_limit(backend: str, target: Any, *, default: int, grap
     return int(default) if identity is not None and identity in policies else fallback
 
 
+def native_target_graph_context_bucket(session: Any, *, rows: int) -> int | None:
+    """The reusable target graph's context bucket for one cycle, or None.
+
+    None means no captured graph can run this cycle: the rows would span the
+    short/split-K transition or two split-workspace boundaries, or the cycle
+    leaves the session's positions. Callers use it to schedule the step on a
+    supported route instead of launching a cycle the graph refuses.
+    """
+
+    return _native_target_graph_context_limit(session, rows=int(rows))
+
+
 def _native_target_graph_context_limit(session: Any, *, rows: int) -> int | None:
     """Select the immutable target-graph context bucket for one live cycle."""
 
@@ -435,12 +450,12 @@ def _native_target_graph_context_limit(session: Any, *, rows: int) -> int | None
     if end > graph_context_limit:
         return None
     capacity = min(capacity, graph_context_limit)
-    if end < 1024:
+    if end < _NATIVE_TARGET_LONG_CONTEXT_LIMIT:
         return min(_NATIVE_TARGET_SHORT_CONTEXT_LIMIT, capacity)
     start = int(getattr(session, "position", 0))
     # A reusable graph must not force one attention schedule across rows that
     # straddle the short/split-K transition or a split-workspace boundary.
-    if start < 1024:
+    if start < _NATIVE_TARGET_LONG_CONTEXT_LIMIT:
         return None
     block_size = int(getattr(scratch, "block_size", 256))
     first_active_context = start + 1
@@ -943,7 +958,10 @@ def _validate_capture_admission(
         raise NativeSpecTargetGraphUnsupportedError(
             NATIVE_SPEC_TARGET_GRAPH_CONTEXT_BUCKET_MISS
         )
-    if context_limit >= 1024 and bulk_attention_mode != "native":
+    if (
+        context_limit >= _NATIVE_TARGET_LONG_CONTEXT_LIMIT
+        and bulk_attention_mode != "native"
+    ):
         raise NativeSpecTargetGraphUnsupportedError(
             "long-context native target graphs require split-K native attention"
         )

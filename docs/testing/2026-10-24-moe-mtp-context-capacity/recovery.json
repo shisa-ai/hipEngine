@@ -1,0 +1,1574 @@
+{
+  "passed": true,
+  "fault": "temporarily cap native target context at 128 positions",
+  "refusal": "GenerationExecutionFailed: generation execution failed during prefill (request_ids=[1], work_kind=prefill, state_mutation=partial, cause=MoePromptContextUnsupportedError: MoePromptContextUnsupportedError: MoE MTP cannot serve request 1: a 127-token prompt leaves no candidate room under the target's declared verify ceiling of 128 positions)",
+  "snapshot_after_refusal": {
+    "schema": 1,
+    "kind": "resident_engine_loop_observability",
+    "loop": {
+      "requests": {
+        "pending": 0,
+        "admitted_current": 0,
+        "active": 0,
+        "admitted_total": 2,
+        "completed_buffered": 0,
+        "reclaimed_total": 2
+      },
+      "physical_bucket": {
+        "capacity": 1,
+        "active_c": 0,
+        "occupied_slots": 0,
+        "free_slots": 1,
+        "active_mask": [
+          false
+        ],
+        "slot_to_request": [
+          null
+        ],
+        "occupancy_ratio": 0.0
+      },
+      "work_counts": {
+        "prefill": 1,
+        "decode": 1,
+        "reclaim": 2
+      },
+      "latency_seconds": {
+        "queue": {
+          "count": 2,
+          "sum": 0.0009404660668224096,
+          "max": 0.0006137730088084936,
+          "p50": 0.0004702330334112048,
+          "p95": 0.0005994190112687648,
+          "samples": [
+            0.000326693058013916,
+            0.0006137730088084936
+          ]
+        },
+        "time_to_first_token": {
+          "count": 1,
+          "sum": 0.8697498401161283,
+          "max": 0.8697498401161283,
+          "p50": 0.8697498401161283,
+          "p95": 0.8697498401161283,
+          "samples": [
+            0.8697498401161283
+          ]
+        },
+        "inter_token": {
+          "count": 15,
+          "sum": 0.21283571794629097,
+          "max": 0.07096291892230511,
+          "p50": 4.6236906200647354e-05,
+          "p95": 0.046124193165451244,
+          "samples": [
+            2.846401184797287e-05,
+            3.099814057350159e-05,
+            3.217998892068863e-05,
+            3.2901065424084663e-05,
+            3.779097460210323e-05,
+            4.353211261332035e-05,
+            4.511396400630474e-05,
+            4.6236906200647354e-05,
+            4.908186383545399e-05,
+            0.00013325014151632786,
+            0.03500545583665371,
+            0.0354466550052166,
+            0.03546211402863264,
+            0.03547902498394251,
+            0.07096291892230511
+          ]
+        },
+        "service": {
+          "count": 2,
+          "sum": 1.258515982888639,
+          "max": 1.082011389080435,
+          "p50": 0.6292579914443195,
+          "p95": 1.0367360493168234,
+          "samples": [
+            0.17650459380820394,
+            1.082011389080435
+          ]
+        },
+        "completion": {
+          "count": 2,
+          "sum": 1.2594564489554614,
+          "max": 1.0826251620892435,
+          "p50": 0.6297282244777307,
+          "p95": 1.0373354683280922,
+          "samples": [
+            0.17683128686621785,
+            1.0826251620892435
+          ]
+        }
+      },
+      "recent_completed": [
+        {
+          "request_id": 0,
+          "finish_reason": "length",
+          "observability": {
+            "queue_seconds": 0.0006137730088084936,
+            "time_to_first_token_seconds": 0.8697498401161283,
+            "inter_token_seconds": [
+              0.07096291892230511,
+              0.00013325014151632786,
+              3.779097460210323e-05,
+              0.03546211402863264,
+              4.908186383545399e-05,
+              3.2901065424084663e-05,
+              0.0354466550052166,
+              4.6236906200647354e-05,
+              3.099814057350159e-05,
+              0.03500545583665371,
+              4.353211261332035e-05,
+              3.217998892068863e-05,
+              0.03547902498394251,
+              4.511396400630474e-05,
+              2.846401184797287e-05
+            ],
+            "service_seconds": 1.082011389080435,
+            "completion_seconds": 1.0826251620892435,
+            "prefill_seconds": 0.8681696641724557,
+            "decode_seconds": 0.2109847953543067,
+            "kv_pages_owned": 1,
+            "kv_pages_peak": 1,
+            "bucket_key": "decode:c=1:ctx=256:mask=1:kv=bf16:layers=all:top_k=0:experts=0:replay=1:draft=0",
+            "admission_blocked_reason": null,
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 16
+            },
+            "submitted_timestamp": 1062492.271398455,
+            "admitted_timestamp": 1062492.272012228,
+            "completion_timestamp": 1062493.354023617
+          }
+        },
+        {
+          "request_id": 1,
+          "finish_reason": "cancel",
+          "observability": {
+            "queue_seconds": 0.000326693058013916,
+            "time_to_first_token_seconds": null,
+            "inter_token_seconds": [],
+            "service_seconds": 0.17650459380820394,
+            "completion_seconds": 0.17683128686621785,
+            "prefill_seconds": 0.0,
+            "decode_seconds": 0.0,
+            "kv_pages_owned": 1,
+            "kv_pages_peak": 1,
+            "bucket_key": "prefill:c=1:ctx=256:mask=1:kv=bf16:layers=all:top_k=0:experts=0:replay=1:draft=0",
+            "admission_blocked_reason": null,
+            "finish_reason": "cancel",
+            "finish_details": {
+              "reason": "cancelled",
+              "cancelled": true
+            },
+            "submitted_timestamp": 1062493.358287821,
+            "admitted_timestamp": 1062493.358614514,
+            "completion_timestamp": 1062493.535119108
+          }
+        }
+      ],
+      "recent_speculative_plans": [
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            0
+          ],
+          "requested_candidate_counts": [
+            2
+          ],
+          "reasons": [
+            "no_provider"
+          ],
+          "k0_classes": [
+            "transitional_k0"
+          ],
+          "execution_route": "ar"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            2
+          ],
+          "requested_candidate_counts": [
+            2
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            2
+          ],
+          "requested_candidate_counts": [
+            2
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            2
+          ],
+          "requested_candidate_counts": [
+            2
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            2
+          ],
+          "requested_candidate_counts": [
+            2
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            2
+          ],
+          "requested_candidate_counts": [
+            2
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        }
+      ],
+      "last_speculative_plan": {
+        "request_ids": [
+          0
+        ],
+        "candidate_counts": [
+          2
+        ],
+        "requested_candidate_counts": [
+          2
+        ],
+        "reasons": [
+          "speculative_qualified"
+        ],
+        "k0_classes": [
+          "not_k0"
+        ],
+        "execution_route": "eager",
+        "logical_frontier_rows": 3
+      },
+      "scheduler_policy": {
+        "prefill_decode_policy": "fair",
+        "prefill_chunk_tokens": 256,
+        "fair_prefill_burst_chunks": 2,
+        "round_prefill_token_budget": 1024,
+        "decode_prefill_token_budget": null,
+        "recent_prefill_slices": [],
+        "round_decode_row_budget": 32,
+        "rounds": 0,
+        "round_prefill_tokens": 0,
+        "round_decode_rows": 0,
+        "consecutive_prefill_chunks": 1,
+        "cold_prefill_cohort_size": 1,
+        "last_work_kind": "prefill"
+      }
+    },
+    "runner": {
+      "model_runner": {
+        "dms": null,
+        "capacity": 1,
+        "max_active_requests": 1,
+        "max_context_tokens": 2048,
+        "active_request_ids": [],
+        "active_requests": 0,
+        "available_sessions": 1,
+        "packed_workspace_current_bytes": 1011492936,
+        "packed_workspace_owner_sessions": 1,
+        "packed_workspace_leased_pool_bytes": 20971520,
+        "packed_kv_workspace_lease_skipped": false,
+        "packed_workspace_note": "current_bytes is owner-deduplicated unique allocation bytes (shared slot views report their workspace once, split-growth owners included); leased_pool_bytes counts the pool-plane pages pinned by workspace leases - a different accounting domain, never a substitute for either",
+        "prefill_transients": {
+          "oracle_owner_bytes": 0,
+          "oracle_owner_counts": [
+            0
+          ],
+          "oracle_owner_count_total": 0,
+          "oracle_observed_peak_bytes": 0,
+          "oracle_observed_peak_owners": 0,
+          "oracle_capacity_positions": [
+            2048
+          ],
+          "hidden_and_bulk_owner_bytes": 206187560,
+          "int8_prefill_lifetime_plan_modes": [
+            "bf16"
+          ],
+          "last_packed_executor_routes": [
+            "slot_fair_bounded_rounds"
+          ],
+          "last_packed_executor_modes": [
+            "None"
+          ],
+          "kv_attention_sources": [
+            "bf16"
+          ],
+          "oracle_per_layer_flags": [
+            false
+          ],
+          "note": "oracle_owner_bytes is the live per-layer/shared BF16 oracle pair total (unique buffers); oracle_capacity_positions is per-session pool-backed sizing, not prompt length; lifetime_plan_modes is the legacy plan while last_packed_executor_routes + oracle_per_layer report what actually ran"
+        },
+        "packed_workspace_release_events": 0,
+        "packed_workspace_released_bytes": 0,
+        "kv_layout_audits": [],
+        "persistent_int8_payload_bytes": 0,
+        "persistent_bf16_payload_bytes": 0,
+        "persistent_scale_bytes": 0,
+        "persistent_bf16_mirror_bytes": 0,
+        "persistent_kv_total_bytes": 0
+      },
+      "kv_pool": {
+        "current_pages": 12,
+        "current_bytes": 62914560,
+        "high_water_observed_pages": 5,
+        "high_water_observed_bytes": 26214400,
+        "free_pages": 8,
+        "refcounted_pages": 4,
+        "pinned_pages": 4,
+        "grow_events": 0,
+        "grow_failures": 0,
+        "shrink_events": 0,
+        "prefix_reuse_events": 0,
+        "prefix_reused_pages": 0,
+        "cow_fork_events": 0,
+        "cow_forked_pages": 0,
+        "retired_pages": 0,
+        "retired_bytes": 0,
+        "max_pages": 19854,
+        "budget_bytes": 104092139520,
+        "private_workspace_bytes": 68636672,
+        "accounted_bytes": 131551232
+      },
+      "prefix_cache": {
+        "mode": "off",
+        "block_size_tokens": 256,
+        "stats": null,
+        "usable_hits": 0,
+        "unusable_hits": 0,
+        "contiguous_admissions": 0,
+        "gapped_admissions": 0,
+        "admission_fallbacks": 0,
+        "fallback_reasons": {
+          "cache_off": 2
+        },
+        "reused_tokens": 0,
+        "state_clone_bytes": 0,
+        "snapshot_entries": 0,
+        "snapshot_limit": 1,
+        "retained_snapshot_limit": 1,
+        "retained_snapshot_state_limit_bytes": 1073741824,
+        "retained_snapshot_state_bytes": 0,
+        "retained_snapshot_evictions_by_reason": {},
+        "snapshot_promotions": 0,
+        "retained_snapshot_entries": 0,
+        "snapshot_hits": 0,
+        "snapshot_evictions": 0,
+        "snapshot_captures": 0,
+        "snapshot_capture_bytes": 0,
+        "phase_ms": {
+          "admission_lookup": 0.01,
+          "admission_pool": 0.41
+        },
+        "phase_calls": {
+          "admission_lookup": 2,
+          "admission_pool": 2
+        },
+        "snapshot_bytes": 0,
+        "retained_kv_pages": 0,
+        "retained_kv_bytes": 0,
+        "resident_bytes": 0,
+        "resident_limit_bytes": 104092139520
+      },
+      "graph_buckets": {
+        "entries": 0,
+        "captures_total": 1,
+        "hits_total": 0,
+        "replays_total": 0,
+        "invalidations_total": 1,
+        "buckets": {
+          "unkeyed": {
+            "bucket_key": {},
+            "entries": 0,
+            "captures": 1,
+            "hits": 0,
+            "replays": 0,
+            "invalidations": 1
+          }
+        }
+      },
+      "routes": {
+        "counts": {
+          "native_full_prefill_rows": 2,
+          "native_full_prefill_groups": 0,
+          "native_incremental_prefill_chunks": 0,
+          "native_incremental_prefill_unsampled_chunks": 0,
+          "native_packed_decode_steps": 0,
+          "native_packed_graph_captures": 0,
+          "native_packed_graph_replays": 0,
+          "native_c1_decode_steps": 0,
+          "native_sampled_prefill_rows": 0,
+          "native_sampler_requests": 0,
+          "native_sampler_batch_launches": 0,
+          "native_sampler_row_launches": 0,
+          "host_sampler_requests": 0,
+          "serial_decode_fallback_steps": 0,
+          "serial_c1_row_steps": 0,
+          "resident_fallback_requests": 0
+        },
+        "physical_width_decode_steps": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0
+        },
+        "fallback_reasons": {},
+        "last_execution_manifest": {},
+        "last_physical_group_plan": {},
+        "recent_completed": [
+          {
+            "request_id": 0,
+            "native_greedy": true,
+            "native_sampled": false,
+            "native_sampler": false,
+            "native_compact_prefill": true,
+            "native_decode_steps": 5,
+            "native_c1_decode_steps": 0,
+            "serial_decode_fallback": false,
+            "specdec2_mtp2_used": true,
+            "specdec2_mtp2_prompt_streaming": true,
+            "specdec2_mtp2_prompt_prime_rows": 37,
+            "specdec2_mtp2_prompt_carried_bytes": 4096,
+            "specdec2_mtp2_prompt_fallback_reason": null,
+            "specdec2_mtp2_cycles": 5,
+            "specdec2_mtp2_candidate_counts": [
+              2,
+              2,
+              2,
+              2,
+              2
+            ],
+            "specdec2_mtp2_accepted_counts": [
+              2,
+              2,
+              2,
+              2,
+              2
+            ],
+            "specdec2_mtp2_proposal_ms": 35.899423994123936,
+            "specdec2_mtp2_target_ms": 171.8433026690036,
+            "specdec2_mtp2_provider_update_ms": 1.761025981977582,
+            "specdec2_mtp2_accept_ms": 0.0,
+            "specdec2_mtp2_target_readback_ms": 0.0,
+            "specdec2_mtp2_accept_upload_ms": 0.0,
+            "specdec2_mtp2_accept_tail_ms": 0.0,
+            "specdec2_mtp2_accept_enqueue_ms": 0.0,
+            "specdec2_mtp2_selected_commit_ms": 0.0,
+            "specdec2_mtp2_candidate_readback_ms": 0.0,
+            "specdec2_mtp2_k0_catchups": 0,
+            "specdec2_mtp2_ngram_lookup_calls": 0,
+            "specdec2_mtp2_ngram_lookup_hits": 0,
+            "specdec2_mtp2_ngram_cycles": 0,
+            "specdec2_mtp2_ngram_probed_tokens": 0,
+            "specdec2_mtp2_ngram_accepted_tokens": 0,
+            "specdec2_mtp2_proposal_batch_calls": 0,
+            "specdec2_mtp2_proposal_physical_rows": [],
+            "specdec2_mtp2_target_batch_calls": 0,
+            "specdec2_mtp2_target_physical_rows": [],
+            "specdec2_mtp2_target_pass_ms": [],
+            "specdec2_mtp2_target_pass_start_ns": [],
+            "specdec2_mtp2_target_pass_end_ns": [],
+            "specdec2_mtp2_cycle_profile_start_ns": [],
+            "specdec2_mtp2_cycle_profile_end_ns": [],
+            "specdec2_mtp2_accept_pass_ms": [],
+            "specdec2_mtp2_provider_update_pass_ms": [],
+            "specdec2_mtp2_candidate_device_handoffs": 0,
+            "specdec2_mtp2_candidate_d2h_after_target": 0,
+            "specdec2_mtp2_device_chain_oracle_trace": [],
+            "specdec2_mtp2_device_accept_calls": 0,
+            "specdec2_mtp2_selected_commit_batch_calls": 0,
+            "specdec2_mtp2_execution_routes": [
+              "graph",
+              "graph",
+              "graph",
+              "graph",
+              "graph"
+            ],
+            "specdec2_mtp2_recoverable_failures": 0,
+            "specdec2_mtp2_failure_reasons": [],
+            "prefix_eligible": false,
+            "prefix_lookup": false,
+            "prefix_matched_tokens": 0,
+            "prefix_reused_tokens": 0,
+            "prefix_source_request_id": null,
+            "prefix_source_kind": null,
+            "prefix_state_clone_bytes": 0,
+            "prefix_snapshot_hit": false,
+            "prefix_admission_fallback": false,
+            "prefix_fallback_reason": "cache_off"
+          },
+          {
+            "request_id": 1,
+            "native_greedy": true,
+            "native_sampled": false,
+            "native_sampler": false,
+            "native_compact_prefill": true,
+            "native_decode_steps": 0,
+            "native_c1_decode_steps": 0,
+            "serial_decode_fallback": false,
+            "specdec2_mtp2_used": false,
+            "specdec2_mtp2_prompt_streaming": false,
+            "specdec2_mtp2_prompt_prime_rows": 0,
+            "specdec2_mtp2_prompt_carried_bytes": 0,
+            "specdec2_mtp2_prompt_fallback_reason": null,
+            "specdec2_mtp2_cycles": 0,
+            "specdec2_mtp2_candidate_counts": [],
+            "specdec2_mtp2_accepted_counts": [],
+            "specdec2_mtp2_proposal_ms": 0.0,
+            "specdec2_mtp2_target_ms": 0.0,
+            "specdec2_mtp2_provider_update_ms": 0.0,
+            "specdec2_mtp2_accept_ms": 0.0,
+            "specdec2_mtp2_target_readback_ms": 0.0,
+            "specdec2_mtp2_accept_upload_ms": 0.0,
+            "specdec2_mtp2_accept_tail_ms": 0.0,
+            "specdec2_mtp2_accept_enqueue_ms": 0.0,
+            "specdec2_mtp2_selected_commit_ms": 0.0,
+            "specdec2_mtp2_candidate_readback_ms": 0.0,
+            "specdec2_mtp2_k0_catchups": 0,
+            "specdec2_mtp2_ngram_lookup_calls": 0,
+            "specdec2_mtp2_ngram_lookup_hits": 0,
+            "specdec2_mtp2_ngram_cycles": 0,
+            "specdec2_mtp2_ngram_probed_tokens": 0,
+            "specdec2_mtp2_ngram_accepted_tokens": 0,
+            "specdec2_mtp2_proposal_batch_calls": 0,
+            "specdec2_mtp2_proposal_physical_rows": [],
+            "specdec2_mtp2_target_batch_calls": 0,
+            "specdec2_mtp2_target_physical_rows": [],
+            "specdec2_mtp2_target_pass_ms": [],
+            "specdec2_mtp2_target_pass_start_ns": [],
+            "specdec2_mtp2_target_pass_end_ns": [],
+            "specdec2_mtp2_cycle_profile_start_ns": [],
+            "specdec2_mtp2_cycle_profile_end_ns": [],
+            "specdec2_mtp2_accept_pass_ms": [],
+            "specdec2_mtp2_provider_update_pass_ms": [],
+            "specdec2_mtp2_candidate_device_handoffs": 0,
+            "specdec2_mtp2_candidate_d2h_after_target": 0,
+            "specdec2_mtp2_device_chain_oracle_trace": [],
+            "specdec2_mtp2_device_accept_calls": 0,
+            "specdec2_mtp2_selected_commit_batch_calls": 0,
+            "specdec2_mtp2_execution_routes": [],
+            "specdec2_mtp2_recoverable_failures": 0,
+            "specdec2_mtp2_failure_reasons": [],
+            "prefix_eligible": false,
+            "prefix_lookup": false,
+            "prefix_matched_tokens": 0,
+            "prefix_reused_tokens": 0,
+            "prefix_source_request_id": null,
+            "prefix_source_kind": null,
+            "prefix_state_clone_bytes": 0,
+            "prefix_snapshot_hit": false,
+            "prefix_admission_fallback": false,
+            "prefix_fallback_reason": "cache_off"
+          }
+        ]
+      }
+    },
+    "engine_service": {
+      "sole_driver": true,
+      "driver_thread_id": 139625790174912,
+      "active_children": 0,
+      "command_queue_depth": 0,
+      "speculative_routes": {
+        "engine_service_verify_chain": 2,
+        "legacy_prelaunch_fallback": 0
+      },
+      "last_speculative_route": "engine_service_verify_chain",
+      "generic_speculative_children": 0,
+      "last_speculative_work_kind": "verify_chain",
+      "last_speculative_draft_depth": null
+    }
+  },
+  "before_ids": [
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707
+  ],
+  "after_ids": [
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707,
+    9707
+  ],
+  "snapshot_after_recovery": {
+    "schema": 1,
+    "kind": "resident_engine_loop_observability",
+    "loop": {
+      "requests": {
+        "pending": 0,
+        "admitted_current": 0,
+        "active": 0,
+        "admitted_total": 3,
+        "completed_buffered": 0,
+        "reclaimed_total": 3
+      },
+      "physical_bucket": {
+        "capacity": 1,
+        "active_c": 0,
+        "occupied_slots": 0,
+        "free_slots": 1,
+        "active_mask": [
+          false
+        ],
+        "slot_to_request": [
+          null
+        ],
+        "occupancy_ratio": 0.0
+      },
+      "work_counts": {
+        "prefill": 2,
+        "decode": 2,
+        "reclaim": 3
+      },
+      "latency_seconds": {
+        "queue": {
+          "count": 3,
+          "sum": 0.0014359059277921915,
+          "max": 0.0006137730088084936,
+          "p50": 0.0004954398609697819,
+          "p95": 0.0006019396940246224,
+          "samples": [
+            0.000326693058013916,
+            0.0004954398609697819,
+            0.0006137730088084936
+          ]
+        },
+        "time_to_first_token": {
+          "count": 2,
+          "sum": 1.007032343186438,
+          "max": 0.8697498401161283,
+          "p50": 0.503516171593219,
+          "p95": 0.8331264732638374,
+          "samples": [
+            0.13728250307030976,
+            0.8697498401161283
+          ]
+        },
+        "inter_token": {
+          "count": 30,
+          "sum": 0.40355643490329385,
+          "max": 0.07096291892230511,
+          "p50": 4.567543510347605e-05,
+          "p95": 0.042826421535573866,
+          "samples": [
+            2.846401184797287e-05,
+            2.942606806755066e-05,
+            3.0366936698555946e-05,
+            3.0396971851587296e-05,
+            3.099814057350159e-05,
+            3.108801320195198e-05,
+            3.185984678566456e-05,
+            3.217998892068863e-05,
+            3.2901065424084663e-05,
+            3.779097460210323e-05,
+            4.351092502474785e-05,
+            4.353211261332035e-05,
+            4.391302354633808e-05,
+            4.471396096050739e-05,
+            4.511396400630474e-05,
+            4.6236906200647354e-05,
+            4.908186383545399e-05,
+            7.291696965694427e-05,
+            0.00011044717393815517,
+            0.00013325014151632786,
+            0.03500545583665371,
+            0.035048597026616335,
+            0.03536564204841852,
+            0.0354466550052166,
+            0.03546211402863264,
+            0.03547902498394251,
+            0.03548828209750354,
+            0.03565834206528962,
+            0.04869121382944286,
+            0.07096291892230511
+          ]
+        },
+        "service": {
+          "count": 3,
+          "sum": 1.586057045031339,
+          "max": 1.082011389080435,
+          "p50": 0.32754106214269996,
+          "p95": 1.0065643563866615,
+          "samples": [
+            0.17650459380820394,
+            0.32754106214269996,
+            1.082011389080435
+          ]
+        },
+        "completion": {
+          "count": 3,
+          "sum": 1.5874929509591311,
+          "max": 1.0826251620892435,
+          "p50": 0.32803650200366974,
+          "p95": 1.007166296080686,
+          "samples": [
+            0.17683128686621785,
+            0.32803650200366974,
+            1.0826251620892435
+          ]
+        }
+      },
+      "recent_completed": [
+        {
+          "request_id": 0,
+          "finish_reason": "length",
+          "observability": {
+            "queue_seconds": 0.0006137730088084936,
+            "time_to_first_token_seconds": 0.8697498401161283,
+            "inter_token_seconds": [
+              0.07096291892230511,
+              0.00013325014151632786,
+              3.779097460210323e-05,
+              0.03546211402863264,
+              4.908186383545399e-05,
+              3.2901065424084663e-05,
+              0.0354466550052166,
+              4.6236906200647354e-05,
+              3.099814057350159e-05,
+              0.03500545583665371,
+              4.353211261332035e-05,
+              3.217998892068863e-05,
+              0.03547902498394251,
+              4.511396400630474e-05,
+              2.846401184797287e-05
+            ],
+            "service_seconds": 1.082011389080435,
+            "completion_seconds": 1.0826251620892435,
+            "prefill_seconds": 0.8681696641724557,
+            "decode_seconds": 0.2109847953543067,
+            "kv_pages_owned": 1,
+            "kv_pages_peak": 1,
+            "bucket_key": "decode:c=1:ctx=256:mask=1:kv=bf16:layers=all:top_k=0:experts=0:replay=1:draft=0",
+            "admission_blocked_reason": null,
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 16
+            },
+            "submitted_timestamp": 1062492.271398455,
+            "admitted_timestamp": 1062492.272012228,
+            "completion_timestamp": 1062493.354023617
+          }
+        },
+        {
+          "request_id": 1,
+          "finish_reason": "cancel",
+          "observability": {
+            "queue_seconds": 0.000326693058013916,
+            "time_to_first_token_seconds": null,
+            "inter_token_seconds": [],
+            "service_seconds": 0.17650459380820394,
+            "completion_seconds": 0.17683128686621785,
+            "prefill_seconds": 0.0,
+            "decode_seconds": 0.0,
+            "kv_pages_owned": 1,
+            "kv_pages_peak": 1,
+            "bucket_key": "prefill:c=1:ctx=256:mask=1:kv=bf16:layers=all:top_k=0:experts=0:replay=1:draft=0",
+            "admission_blocked_reason": null,
+            "finish_reason": "cancel",
+            "finish_details": {
+              "reason": "cancelled",
+              "cancelled": true
+            },
+            "submitted_timestamp": 1062493.358287821,
+            "admitted_timestamp": 1062493.358614514,
+            "completion_timestamp": 1062493.535119108
+          }
+        },
+        {
+          "request_id": 2,
+          "finish_reason": "length",
+          "observability": {
+            "queue_seconds": 0.0004954398609697819,
+            "time_to_first_token_seconds": 0.13728250307030976,
+            "inter_token_seconds": [
+              0.04869121382944286,
+              0.00011044717393815517,
+              3.185984678566456e-05,
+              0.03565834206528962,
+              7.291696965694427e-05,
+              3.108801320195198e-05,
+              0.03548828209750354,
+              4.471396096050739e-05,
+              3.0396971851587296e-05,
+              0.035048597026616335,
+              4.391302354633808e-05,
+              3.0366936698555946e-05,
+              0.03536564204841852,
+              4.351092502474785e-05,
+              2.942606806755066e-05
+            ],
+            "service_seconds": 0.32754106214269996,
+            "completion_seconds": 0.32803650200366974,
+            "prefill_seconds": 0.13619590201415122,
+            "decode_seconds": 0.1888395359274,
+            "kv_pages_owned": 1,
+            "kv_pages_peak": 1,
+            "bucket_key": "decode:c=1:ctx=256:mask=1:kv=bf16:layers=all:top_k=0:experts=0:replay=1:draft=0",
+            "admission_blocked_reason": null,
+            "finish_reason": "length",
+            "finish_details": {
+              "reason": "length",
+              "length_limit": 16
+            },
+            "submitted_timestamp": 1062493.575222342,
+            "admitted_timestamp": 1062493.575717782,
+            "completion_timestamp": 1062493.903258844
+          }
+        }
+      ],
+      "recent_speculative_plans": [
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            0
+          ],
+          "requested_candidate_counts": [
+            2
+          ],
+          "reasons": [
+            "no_provider"
+          ],
+          "k0_classes": [
+            "transitional_k0"
+          ],
+          "execution_route": "ar"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            2
+          ],
+          "requested_candidate_counts": [
+            2
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            2
+          ],
+          "requested_candidate_counts": [
+            2
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            2
+          ],
+          "requested_candidate_counts": [
+            2
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            2
+          ],
+          "requested_candidate_counts": [
+            2
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            0
+          ],
+          "candidate_counts": [
+            2
+          ],
+          "requested_candidate_counts": [
+            2
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            2
+          ],
+          "candidate_counts": [
+            0
+          ],
+          "requested_candidate_counts": [
+            2
+          ],
+          "reasons": [
+            "no_provider"
+          ],
+          "k0_classes": [
+            "transitional_k0"
+          ],
+          "execution_route": "ar"
+        },
+        {
+          "request_ids": [
+            2
+          ],
+          "candidate_counts": [
+            2
+          ],
+          "requested_candidate_counts": [
+            2
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            2
+          ],
+          "candidate_counts": [
+            2
+          ],
+          "requested_candidate_counts": [
+            2
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            2
+          ],
+          "candidate_counts": [
+            2
+          ],
+          "requested_candidate_counts": [
+            2
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            2
+          ],
+          "candidate_counts": [
+            2
+          ],
+          "requested_candidate_counts": [
+            2
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        },
+        {
+          "request_ids": [
+            2
+          ],
+          "candidate_counts": [
+            2
+          ],
+          "requested_candidate_counts": [
+            2
+          ],
+          "reasons": [
+            "speculative_qualified"
+          ],
+          "k0_classes": [
+            "not_k0"
+          ],
+          "execution_route": "eager"
+        }
+      ],
+      "last_speculative_plan": {
+        "request_ids": [
+          2
+        ],
+        "candidate_counts": [
+          2
+        ],
+        "requested_candidate_counts": [
+          2
+        ],
+        "reasons": [
+          "speculative_qualified"
+        ],
+        "k0_classes": [
+          "not_k0"
+        ],
+        "execution_route": "eager",
+        "logical_frontier_rows": 3
+      },
+      "scheduler_policy": {
+        "prefill_decode_policy": "fair",
+        "prefill_chunk_tokens": 256,
+        "fair_prefill_burst_chunks": 2,
+        "round_prefill_token_budget": 1024,
+        "decode_prefill_token_budget": null,
+        "recent_prefill_slices": [],
+        "round_decode_row_budget": 32,
+        "rounds": 0,
+        "round_prefill_tokens": 0,
+        "round_decode_rows": 0,
+        "consecutive_prefill_chunks": 0,
+        "cold_prefill_cohort_size": 0,
+        "last_work_kind": "verify_chain"
+      }
+    },
+    "runner": {
+      "model_runner": {
+        "dms": null,
+        "capacity": 1,
+        "max_active_requests": 1,
+        "max_context_tokens": 2048,
+        "active_request_ids": [],
+        "active_requests": 0,
+        "available_sessions": 1,
+        "packed_workspace_current_bytes": 1011492936,
+        "packed_workspace_owner_sessions": 1,
+        "packed_workspace_leased_pool_bytes": 20971520,
+        "packed_kv_workspace_lease_skipped": false,
+        "packed_workspace_note": "current_bytes is owner-deduplicated unique allocation bytes (shared slot views report their workspace once, split-growth owners included); leased_pool_bytes counts the pool-plane pages pinned by workspace leases - a different accounting domain, never a substitute for either",
+        "prefill_transients": {
+          "oracle_owner_bytes": 0,
+          "oracle_owner_counts": [
+            0
+          ],
+          "oracle_owner_count_total": 0,
+          "oracle_observed_peak_bytes": 0,
+          "oracle_observed_peak_owners": 0,
+          "oracle_capacity_positions": [
+            2048
+          ],
+          "hidden_and_bulk_owner_bytes": 206187560,
+          "int8_prefill_lifetime_plan_modes": [
+            "bf16"
+          ],
+          "last_packed_executor_routes": [
+            "slot_fair_bounded_rounds"
+          ],
+          "last_packed_executor_modes": [
+            "None"
+          ],
+          "kv_attention_sources": [
+            "bf16"
+          ],
+          "oracle_per_layer_flags": [
+            false
+          ],
+          "note": "oracle_owner_bytes is the live per-layer/shared BF16 oracle pair total (unique buffers); oracle_capacity_positions is per-session pool-backed sizing, not prompt length; lifetime_plan_modes is the legacy plan while last_packed_executor_routes + oracle_per_layer report what actually ran"
+        },
+        "packed_workspace_release_events": 0,
+        "packed_workspace_released_bytes": 0,
+        "kv_layout_audits": [],
+        "persistent_int8_payload_bytes": 0,
+        "persistent_bf16_payload_bytes": 0,
+        "persistent_scale_bytes": 0,
+        "persistent_bf16_mirror_bytes": 0,
+        "persistent_kv_total_bytes": 0
+      },
+      "kv_pool": {
+        "current_pages": 12,
+        "current_bytes": 62914560,
+        "high_water_observed_pages": 5,
+        "high_water_observed_bytes": 26214400,
+        "free_pages": 8,
+        "refcounted_pages": 4,
+        "pinned_pages": 4,
+        "grow_events": 0,
+        "grow_failures": 0,
+        "shrink_events": 0,
+        "prefix_reuse_events": 0,
+        "prefix_reused_pages": 0,
+        "cow_fork_events": 0,
+        "cow_forked_pages": 0,
+        "retired_pages": 0,
+        "retired_bytes": 0,
+        "max_pages": 19854,
+        "budget_bytes": 104092139520,
+        "private_workspace_bytes": 68636672,
+        "accounted_bytes": 131551232
+      },
+      "prefix_cache": {
+        "mode": "off",
+        "block_size_tokens": 256,
+        "stats": null,
+        "usable_hits": 0,
+        "unusable_hits": 0,
+        "contiguous_admissions": 0,
+        "gapped_admissions": 0,
+        "admission_fallbacks": 0,
+        "fallback_reasons": {
+          "cache_off": 3
+        },
+        "reused_tokens": 0,
+        "state_clone_bytes": 0,
+        "snapshot_entries": 0,
+        "snapshot_limit": 1,
+        "retained_snapshot_limit": 1,
+        "retained_snapshot_state_limit_bytes": 1073741824,
+        "retained_snapshot_state_bytes": 0,
+        "retained_snapshot_evictions_by_reason": {},
+        "snapshot_promotions": 0,
+        "retained_snapshot_entries": 0,
+        "snapshot_hits": 0,
+        "snapshot_evictions": 0,
+        "snapshot_captures": 0,
+        "snapshot_capture_bytes": 0,
+        "phase_ms": {
+          "admission_lookup": 0.014,
+          "admission_pool": 0.649
+        },
+        "phase_calls": {
+          "admission_lookup": 3,
+          "admission_pool": 3
+        },
+        "snapshot_bytes": 0,
+        "retained_kv_pages": 0,
+        "retained_kv_bytes": 0,
+        "resident_bytes": 0,
+        "resident_limit_bytes": 104092139520
+      },
+      "graph_buckets": {
+        "entries": 0,
+        "captures_total": 2,
+        "hits_total": 0,
+        "replays_total": 0,
+        "invalidations_total": 2,
+        "buckets": {
+          "unkeyed": {
+            "bucket_key": {},
+            "entries": 0,
+            "captures": 2,
+            "hits": 0,
+            "replays": 0,
+            "invalidations": 2
+          }
+        }
+      },
+      "routes": {
+        "counts": {
+          "native_full_prefill_rows": 3,
+          "native_full_prefill_groups": 0,
+          "native_incremental_prefill_chunks": 0,
+          "native_incremental_prefill_unsampled_chunks": 0,
+          "native_packed_decode_steps": 0,
+          "native_packed_graph_captures": 0,
+          "native_packed_graph_replays": 0,
+          "native_c1_decode_steps": 0,
+          "native_sampled_prefill_rows": 0,
+          "native_sampler_requests": 0,
+          "native_sampler_batch_launches": 0,
+          "native_sampler_row_launches": 0,
+          "host_sampler_requests": 0,
+          "serial_decode_fallback_steps": 0,
+          "serial_c1_row_steps": 0,
+          "resident_fallback_requests": 0
+        },
+        "physical_width_decode_steps": {
+          "1": 0,
+          "2": 0,
+          "3": 0,
+          "4": 0,
+          "5": 0,
+          "6": 0,
+          "7": 0,
+          "8": 0
+        },
+        "fallback_reasons": {},
+        "last_execution_manifest": {},
+        "last_physical_group_plan": {},
+        "recent_completed": [
+          {
+            "request_id": 0,
+            "native_greedy": true,
+            "native_sampled": false,
+            "native_sampler": false,
+            "native_compact_prefill": true,
+            "native_decode_steps": 5,
+            "native_c1_decode_steps": 0,
+            "serial_decode_fallback": false,
+            "specdec2_mtp2_used": true,
+            "specdec2_mtp2_prompt_streaming": true,
+            "specdec2_mtp2_prompt_prime_rows": 37,
+            "specdec2_mtp2_prompt_carried_bytes": 4096,
+            "specdec2_mtp2_prompt_fallback_reason": null,
+            "specdec2_mtp2_cycles": 5,
+            "specdec2_mtp2_candidate_counts": [
+              2,
+              2,
+              2,
+              2,
+              2
+            ],
+            "specdec2_mtp2_accepted_counts": [
+              2,
+              2,
+              2,
+              2,
+              2
+            ],
+            "specdec2_mtp2_proposal_ms": 35.899423994123936,
+            "specdec2_mtp2_target_ms": 171.8433026690036,
+            "specdec2_mtp2_provider_update_ms": 1.761025981977582,
+            "specdec2_mtp2_accept_ms": 0.0,
+            "specdec2_mtp2_target_readback_ms": 0.0,
+            "specdec2_mtp2_accept_upload_ms": 0.0,
+            "specdec2_mtp2_accept_tail_ms": 0.0,
+            "specdec2_mtp2_accept_enqueue_ms": 0.0,
+            "specdec2_mtp2_selected_commit_ms": 0.0,
+            "specdec2_mtp2_candidate_readback_ms": 0.0,
+            "specdec2_mtp2_k0_catchups": 0,
+            "specdec2_mtp2_ngram_lookup_calls": 0,
+            "specdec2_mtp2_ngram_lookup_hits": 0,
+            "specdec2_mtp2_ngram_cycles": 0,
+            "specdec2_mtp2_ngram_probed_tokens": 0,
+            "specdec2_mtp2_ngram_accepted_tokens": 0,
+            "specdec2_mtp2_proposal_batch_calls": 0,
+            "specdec2_mtp2_proposal_physical_rows": [],
+            "specdec2_mtp2_target_batch_calls": 0,
+            "specdec2_mtp2_target_physical_rows": [],
+            "specdec2_mtp2_target_pass_ms": [],
+            "specdec2_mtp2_target_pass_start_ns": [],
+            "specdec2_mtp2_target_pass_end_ns": [],
+            "specdec2_mtp2_cycle_profile_start_ns": [],
+            "specdec2_mtp2_cycle_profile_end_ns": [],
+            "specdec2_mtp2_accept_pass_ms": [],
+            "specdec2_mtp2_provider_update_pass_ms": [],
+            "specdec2_mtp2_candidate_device_handoffs": 0,
+            "specdec2_mtp2_candidate_d2h_after_target": 0,
+            "specdec2_mtp2_device_chain_oracle_trace": [],
+            "specdec2_mtp2_device_accept_calls": 0,
+            "specdec2_mtp2_selected_commit_batch_calls": 0,
+            "specdec2_mtp2_execution_routes": [
+              "graph",
+              "graph",
+              "graph",
+              "graph",
+              "graph"
+            ],
+            "specdec2_mtp2_recoverable_failures": 0,
+            "specdec2_mtp2_failure_reasons": [],
+            "prefix_eligible": false,
+            "prefix_lookup": false,
+            "prefix_matched_tokens": 0,
+            "prefix_reused_tokens": 0,
+            "prefix_source_request_id": null,
+            "prefix_source_kind": null,
+            "prefix_state_clone_bytes": 0,
+            "prefix_snapshot_hit": false,
+            "prefix_admission_fallback": false,
+            "prefix_fallback_reason": "cache_off"
+          },
+          {
+            "request_id": 1,
+            "native_greedy": true,
+            "native_sampled": false,
+            "native_sampler": false,
+            "native_compact_prefill": true,
+            "native_decode_steps": 0,
+            "native_c1_decode_steps": 0,
+            "serial_decode_fallback": false,
+            "specdec2_mtp2_used": false,
+            "specdec2_mtp2_prompt_streaming": false,
+            "specdec2_mtp2_prompt_prime_rows": 0,
+            "specdec2_mtp2_prompt_carried_bytes": 0,
+            "specdec2_mtp2_prompt_fallback_reason": null,
+            "specdec2_mtp2_cycles": 0,
+            "specdec2_mtp2_candidate_counts": [],
+            "specdec2_mtp2_accepted_counts": [],
+            "specdec2_mtp2_proposal_ms": 0.0,
+            "specdec2_mtp2_target_ms": 0.0,
+            "specdec2_mtp2_provider_update_ms": 0.0,
+            "specdec2_mtp2_accept_ms": 0.0,
+            "specdec2_mtp2_target_readback_ms": 0.0,
+            "specdec2_mtp2_accept_upload_ms": 0.0,
+            "specdec2_mtp2_accept_tail_ms": 0.0,
+            "specdec2_mtp2_accept_enqueue_ms": 0.0,
+            "specdec2_mtp2_selected_commit_ms": 0.0,
+            "specdec2_mtp2_candidate_readback_ms": 0.0,
+            "specdec2_mtp2_k0_catchups": 0,
+            "specdec2_mtp2_ngram_lookup_calls": 0,
+            "specdec2_mtp2_ngram_lookup_hits": 0,
+            "specdec2_mtp2_ngram_cycles": 0,
+            "specdec2_mtp2_ngram_probed_tokens": 0,
+            "specdec2_mtp2_ngram_accepted_tokens": 0,
+            "specdec2_mtp2_proposal_batch_calls": 0,
+            "specdec2_mtp2_proposal_physical_rows": [],
+            "specdec2_mtp2_target_batch_calls": 0,
+            "specdec2_mtp2_target_physical_rows": [],
+            "specdec2_mtp2_target_pass_ms": [],
+            "specdec2_mtp2_target_pass_start_ns": [],
+            "specdec2_mtp2_target_pass_end_ns": [],
+            "specdec2_mtp2_cycle_profile_start_ns": [],
+            "specdec2_mtp2_cycle_profile_end_ns": [],
+            "specdec2_mtp2_accept_pass_ms": [],
+            "specdec2_mtp2_provider_update_pass_ms": [],
+            "specdec2_mtp2_candidate_device_handoffs": 0,
+            "specdec2_mtp2_candidate_d2h_after_target": 0,
+            "specdec2_mtp2_device_chain_oracle_trace": [],
+            "specdec2_mtp2_device_accept_calls": 0,
+            "specdec2_mtp2_selected_commit_batch_calls": 0,
+            "specdec2_mtp2_execution_routes": [],
+            "specdec2_mtp2_recoverable_failures": 0,
+            "specdec2_mtp2_failure_reasons": [],
+            "prefix_eligible": false,
+            "prefix_lookup": false,
+            "prefix_matched_tokens": 0,
+            "prefix_reused_tokens": 0,
+            "prefix_source_request_id": null,
+            "prefix_source_kind": null,
+            "prefix_state_clone_bytes": 0,
+            "prefix_snapshot_hit": false,
+            "prefix_admission_fallback": false,
+            "prefix_fallback_reason": "cache_off"
+          },
+          {
+            "request_id": 2,
+            "native_greedy": true,
+            "native_sampled": false,
+            "native_sampler": false,
+            "native_compact_prefill": true,
+            "native_decode_steps": 5,
+            "native_c1_decode_steps": 0,
+            "serial_decode_fallback": false,
+            "specdec2_mtp2_used": true,
+            "specdec2_mtp2_prompt_streaming": true,
+            "specdec2_mtp2_prompt_prime_rows": 37,
+            "specdec2_mtp2_prompt_carried_bytes": 4096,
+            "specdec2_mtp2_prompt_fallback_reason": null,
+            "specdec2_mtp2_cycles": 5,
+            "specdec2_mtp2_candidate_counts": [
+              2,
+              2,
+              2,
+              2,
+              2
+            ],
+            "specdec2_mtp2_accepted_counts": [
+              2,
+              2,
+              2,
+              2,
+              2
+            ],
+            "specdec2_mtp2_proposal_ms": 33.51598861627281,
+            "specdec2_mtp2_target_ms": 152.42907195352018,
+            "specdec2_mtp2_provider_update_ms": 1.7981550190597773,
+            "specdec2_mtp2_accept_ms": 0.0,
+            "specdec2_mtp2_target_readback_ms": 0.0,
+            "specdec2_mtp2_accept_upload_ms": 0.0,
+            "specdec2_mtp2_accept_tail_ms": 0.0,
+            "specdec2_mtp2_accept_enqueue_ms": 0.0,
+            "specdec2_mtp2_selected_commit_ms": 0.0,
+            "specdec2_mtp2_candidate_readback_ms": 0.0,
+            "specdec2_mtp2_k0_catchups": 0,
+            "specdec2_mtp2_ngram_lookup_calls": 0,
+            "specdec2_mtp2_ngram_lookup_hits": 0,
+            "specdec2_mtp2_ngram_cycles": 0,
+            "specdec2_mtp2_ngram_probed_tokens": 0,
+            "specdec2_mtp2_ngram_accepted_tokens": 0,
+            "specdec2_mtp2_proposal_batch_calls": 0,
+            "specdec2_mtp2_proposal_physical_rows": [],
+            "specdec2_mtp2_target_batch_calls": 0,
+            "specdec2_mtp2_target_physical_rows": [],
+            "specdec2_mtp2_target_pass_ms": [],
+            "specdec2_mtp2_target_pass_start_ns": [],
+            "specdec2_mtp2_target_pass_end_ns": [],
+            "specdec2_mtp2_cycle_profile_start_ns": [],
+            "specdec2_mtp2_cycle_profile_end_ns": [],
+            "specdec2_mtp2_accept_pass_ms": [],
+            "specdec2_mtp2_provider_update_pass_ms": [],
+            "specdec2_mtp2_candidate_device_handoffs": 0,
+            "specdec2_mtp2_candidate_d2h_after_target": 0,
+            "specdec2_mtp2_device_chain_oracle_trace": [],
+            "specdec2_mtp2_device_accept_calls": 0,
+            "specdec2_mtp2_selected_commit_batch_calls": 0,
+            "specdec2_mtp2_execution_routes": [
+              "graph",
+              "graph",
+              "graph",
+              "graph",
+              "graph"
+            ],
+            "specdec2_mtp2_recoverable_failures": 0,
+            "specdec2_mtp2_failure_reasons": [],
+            "prefix_eligible": false,
+            "prefix_lookup": false,
+            "prefix_matched_tokens": 0,
+            "prefix_reused_tokens": 0,
+            "prefix_source_request_id": null,
+            "prefix_source_kind": null,
+            "prefix_state_clone_bytes": 0,
+            "prefix_snapshot_hit": false,
+            "prefix_admission_fallback": false,
+            "prefix_fallback_reason": "cache_off"
+          }
+        ]
+      }
+    },
+    "engine_service": {
+      "sole_driver": true,
+      "driver_thread_id": 139625790174912,
+      "active_children": 0,
+      "command_queue_depth": 0,
+      "speculative_routes": {
+        "engine_service_verify_chain": 3,
+        "legacy_prelaunch_fallback": 0
+      },
+      "last_speculative_route": "engine_service_verify_chain",
+      "generic_speculative_children": 0,
+      "last_speculative_work_kind": "verify_chain",
+      "last_speculative_draft_depth": null
+    }
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 48043755964,
+    "total_allocated_bytes": 77471565788,
+    "total_freed_bytes": 77471565788,
+    "active_allocations": 0,
+    "peak_allocations": 1318
+  }
+}

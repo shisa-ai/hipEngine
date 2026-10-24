@@ -1374,7 +1374,13 @@ def _allocate_mtp_dense_kv(
     ) // 2
     value_nbytes = key_nbytes
     key_cache = malloc(key_nbytes, runtime=runtime)
-    value_cache = malloc(value_nbytes, runtime=runtime)
+    try:
+        value_cache = malloc(value_nbytes, runtime=runtime)
+    except BaseException:
+        from hipengine.core.memory import free
+
+        free(key_cache, runtime=runtime)
+        raise
     return key_cache, value_cache, [key_cache, value_cache]
 
 
