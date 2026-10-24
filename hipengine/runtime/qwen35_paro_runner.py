@@ -4042,7 +4042,10 @@ class Qwen35ParoResidentSession:
     ) -> Qwen35ParoAttentionScratch:
         query_dtype = DType.BF16 if aotriton_attention else DType.FP32
         scratch = getattr(self, "prefill_full_scratch", None)
-        if scratch is not None and scratch.attn_input.shape[0] >= tokens and scratch.query.dtype == query_dtype:
+        # Q/K and optional K/V split offsets depend on the executing row
+        # count. Capacity alone is insufficient: a one-row fused projection
+        # writes K immediately after Q, not at a prior wider layout's offset.
+        if scratch is not None and scratch.attn_input.shape[0] == tokens and scratch.query.dtype == query_dtype:
             return scratch
         scratch = self._prefill_scratch_owner().reserve_full_attention_scratch(
             tokens=tokens,
