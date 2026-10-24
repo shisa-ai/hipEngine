@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
-"""Aggregate repeated PARO verifier captures without inflating quality rows."""
+"""Review repeat determinism without promoting numerical samples to policy gates.
+
+One canonical trajectory per prompt supplies numerical observations. Every
+repeat contributes execution provenance and must have the same model, backend
+and manifests. Independent execution or repeatability failures fail the review;
+otherwise status and policy_decision remain inconclusive, at any sample size.
+"""
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Sequence
@@ -20,8 +27,16 @@ def aggregate_repeats(
     if expected_repeats <= 0:
         raise ValueError("expected_repeats must be positive")
     grouped: dict[str, list[tuple[Path, dict[str, Any]]]] = defaultdict(list)
+    seen_paths: set[Path] = set()
     for path in paths:
+        resolved = path.resolve()
+        if resolved in seen_paths:
+            raise ValueError(f"duplicate capture path: {path}")
+        seen_paths.add(resolved)
         payload = json.loads(path.read_text(encoding="utf-8"))
+        digest = payload.get("capture_sha256")
+        if not isinstance(digest, str) or re.fullmatch(r"[0-9a-fA-F]{64}", digest) is None:
+            raise ValueError(f"capture needs a usable SHA-256 hash: {path}")
         grouped[str(payload["prompt"]["name"])].append((path, payload))
     if not grouped:
         raise ValueError("at least one repeated capture is required")
@@ -35,7 +50,7 @@ def aggregate_repeats(
             raise ValueError(
                 f"prompt {prompt!r} has {len(entries)} repeats, expected {expected_repeats}"
             )
-        hashes = [str(payload["capture_sha256"]) for _path, payload in entries]
+        hashes = [payload["capture_sha256"].lower() for _path, payload in entries]
         unique = sorted(set(hashes))
         deterministic = len(unique) == 1
         if not deterministic:
@@ -49,7 +64,7 @@ def aggregate_repeats(
         }
 
     result = aggregate(canonical_paths)
-    result["schema"] = "hipengine.paro_mtp_verifier_full_repeat_review.v1"
+    result["schema"] = "hipengine.paro_mtp_verifier_full_repeat_review.v2"
     result["coverage"]["repeats_per_prompt"] = expected_repeats
     result["coverage"]["capture_files"] = len(paths)
     result["repeat_determinism"] = {
@@ -58,23 +73,39 @@ def aggregate_repeats(
         "prompts": repeat_summary,
     }
     result["checks"]["repeat_determinism"] = not repeat_failures
-    numerical_keys = (
-        "finite",
-        "mean_kl",
-        "p95_kl",
-        "p99_kl",
-        "max_kl",
-        "top1",
-        "per_scope",
-        "repeat_determinism",
-    )
-    numerical_repeat_pass = all(bool(result["checks"][key]) for key in numerical_keys)
-    result["review"]["numerical_and_repeat_gates_passed"] = numerical_repeat_pass
-    result["status"] = (
-        "numerical_repeat_pass_task_review_pending"
-        if numerical_repeat_pass
-        else "numerical_or_repeat_gate_failed"
-    )
+    repeat_reports = [aggregate([path]) for path in paths]
+    for repeat in repeat_reports:
+        if any(repeat[key] != result[key] for key in ("model", "backend", "manifests")):
+            raise ValueError("all repeats must share model, backend and manifests")
+    sources = [source for repeat in repeat_reports
+               for source in repeat["provenance"]["source_captures"]]
+    result["provenance"]["all_repeat_captures"] = sources
+    for summary, field in (
+        ("route_flags_attested_all", "route_flags_attested"),
+        ("manifests_stable_all", "manifests_stable_during_capture"),
+        ("execution_failures_known_all", "execution_failures_known"),
+    ):
+        result["provenance"][summary] = all(source[field] is True for source in sources)
+    failures = sorted({(failure["prompt"], failure["check"])
+                       for repeat in repeat_reports
+                       for failure in repeat["review"]["source_execution_failures"]})
+    result["review"]["source_execution_failures"] = [
+        {"prompt": prompt, "check": check} for prompt, check in failures
+    ]
+    result["qualification"]["execution_failure_count"] = len(failures)
+    result["review"]["aggregation_failures"] = sorted({
+        failure for repeat in repeat_reports for failure in repeat["review"]["aggregation_failures"]
+    })
+    result["qualification"]["aggregation_failures"] = result["review"]["aggregation_failures"]
+    result["execution_checks"] = {
+        "canonical_aggregation": result["status"] != "failed",
+        "repeat_determinism": not repeat_failures,
+        "all_repeat_executions": all(repeat["status"] != "failed" for repeat in repeat_reports),
+    }
+    result["execution_failures"] = [
+        name for name, passed in result["execution_checks"].items() if not passed
+    ]
+    result["status"] = "failed" if result["execution_failures"] else "inconclusive"
     return result
 
 
@@ -101,7 +132,7 @@ def main() -> int:
             sort_keys=True,
         )
     )
-    return 0 if result["status"] != "numerical_or_repeat_gate_failed" else 1
+    return 1 if result["status"] == "failed" else 0
 
 
 if __name__ == "__main__":
