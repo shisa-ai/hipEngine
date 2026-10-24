@@ -1,0 +1,556 @@
+{
+  "performance_claim": false,
+  "parent_commit": "07fba0543",
+  "source_sha256": "21a3c91b1959eb8ed1ba1a9543bf2da9a5ed8dae864132dfef47c257e558d722",
+  "calls": [
+    {
+      "length": 37,
+      "temperature": 0.0,
+      "arm": "baseline",
+      "ids": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "cycles": [
+        {
+          "budget": 0,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 2,
+          "committed": true
+        }
+      ]
+    },
+    {
+      "length": 37,
+      "temperature": 0.0,
+      "arm": "candidate",
+      "ids": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "cycles": [
+        {
+          "budget": 0,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 2,
+          "committed": true
+        }
+      ]
+    },
+    {
+      "length": 37,
+      "temperature": 0.0,
+      "arm": "candidate_repeat",
+      "ids": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "cycles": [
+        {
+          "budget": 0,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 2,
+          "committed": true
+        }
+      ]
+    },
+    {
+      "length": 37,
+      "temperature": 0.7,
+      "arm": "baseline",
+      "ids": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "cycles": [
+        {
+          "budget": 0,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 2,
+          "committed": true
+        }
+      ]
+    },
+    {
+      "length": 37,
+      "temperature": 0.7,
+      "arm": "candidate",
+      "ids": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "cycles": [
+        {
+          "budget": 0,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 2,
+          "committed": true
+        }
+      ]
+    },
+    {
+      "length": 37,
+      "temperature": 0.7,
+      "arm": "candidate_repeat",
+      "ids": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "cycles": [
+        {
+          "budget": 0,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 2,
+          "committed": true
+        }
+      ]
+    },
+    {
+      "length": 513,
+      "temperature": 0.0,
+      "arm": "baseline",
+      "ids": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "cycles": [
+        {
+          "budget": 0,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 2,
+          "committed": true
+        }
+      ]
+    },
+    {
+      "length": 513,
+      "temperature": 0.0,
+      "arm": "candidate",
+      "ids": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "cycles": [
+        {
+          "budget": 0,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 2,
+          "committed": true
+        }
+      ]
+    },
+    {
+      "length": 513,
+      "temperature": 0.0,
+      "arm": "candidate_repeat",
+      "ids": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "cycles": [
+        {
+          "budget": 0,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 2,
+          "committed": true
+        }
+      ]
+    },
+    {
+      "length": 513,
+      "temperature": 0.7,
+      "arm": "baseline",
+      "ids": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "cycles": [
+        {
+          "budget": 0,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 2,
+          "committed": true
+        }
+      ]
+    },
+    {
+      "length": 513,
+      "temperature": 0.7,
+      "arm": "candidate",
+      "ids": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "cycles": [
+        {
+          "budget": 0,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 2,
+          "committed": true
+        }
+      ]
+    },
+    {
+      "length": 513,
+      "temperature": 0.7,
+      "arm": "candidate_repeat",
+      "ids": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "cycles": [
+        {
+          "budget": 0,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 3,
+          "committed": true
+        },
+        {
+          "budget": 2,
+          "committed": true
+        }
+      ]
+    }
+  ],
+  "passed": true,
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 93589344680,
+    "total_allocated_bytes": 93595949632,
+    "total_freed_bytes": 93595949632,
+    "active_allocations": 0,
+    "peak_allocations": 2196
+  }
+}

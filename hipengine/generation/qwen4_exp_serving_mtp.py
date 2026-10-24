@@ -14,6 +14,7 @@ from hipengine.speculative import (
     AcceptResult, ProviderAttachment, ProviderCatchupMode, SpecCycleResult,
     SpecCycleStage, SpecCycleTransaction, SpecTransactionMode, SpeculativeCapability,
 )
+from hipengine.speculative.transaction import SpeculativeStateJournal
 
 
 class _RequestRetired(Exception):
@@ -230,33 +231,54 @@ class Qwen4ExpServingMTP:
     def _advance_mtp(self, row, budget, *, plan=None):
         """Return (progress, transaction) after commit or cancellation rollback."""
         target, draft = row.runner, row.draft
-        sampling_checkpoint = None if row.sampling_state is None else row.sampling_state.clone()
-        grammar_checkpoint = None if row.grammar is None else row.grammar.clone()
-        rng_counter = 0 if sampling_checkpoint is None else sampling_checkpoint.rng_draw_count
-        target_checkpoint = target.begin_device_transaction(reuse_snapshot=True)
-        draft_checkpoint = draft.snapshot()
+        # One journal owns this step's undo: the target's device transaction, the
+        # draft cursor, the row's sampler state and its grammar. Owners are
+        # captured in the reverse of the order they have to be restored in, so
+        # the target's device state goes back first and the host sampler/grammar
+        # objects are rebound last. A restore that fails does not skip the rest,
+        # and the iterator is closed by the enclosing ``finally`` either way.
+        journal = SpeculativeStateJournal()
         transaction = None
-        if plan is not None:
-            transaction = SpecCycleTransaction(
-                operation_id=plan.operation_id, transaction_id=plan.cycle_id,
-                cycle_id=plan.cycle_id, request_ids=plan.request_ids,
-                reserved_claims=ResourceClaimSet.from_mapping(
-                    plan.operation_id,
-                    {f"qwen4exp.target.{id(target)}": 1, f"qwen4exp.draft.{id(draft)}": 1},
-                    request_id=row.request_id, lifetime=ClaimLifetime.TRANSACTION,
-                ),
-                pre_target_cursors=(target_checkpoint.position,), pre_rng_counters=(rng_counter,),
-                target_transaction_mode=plan.target_transaction_mode,
-                target_owner=f"qwen4exp.target.{id(target)}",
-                target_checkpoint_ids=(f"device:{id(target_checkpoint)}",),
-                pre_provider_cursors=(draft_checkpoint.position,),
-                provider_transaction_mode=plan.provider_transaction_mode,
-                provider_owner=f"qwen4exp.draft.{id(draft)}",
-                provider_request_ids=plan.request_ids,
-                provider_checkpoint_ids=(f"cursor:{id(draft_checkpoint)}",),
-                target_open=True, provider_open=True,
-            )
         try:
+            if row.grammar is not None:
+                journal.capture(
+                    "grammar", row.grammar.clone,
+                    lambda snapshot: setattr(row, "grammar", snapshot),
+                )
+            sampling_checkpoint = (
+                None if row.sampling_state is None else
+                journal.capture(
+                    "sampling", row.sampling_state.clone,
+                    lambda snapshot: setattr(row, "sampling_state", snapshot),
+                )
+            )
+            rng_counter = 0 if sampling_checkpoint is None else sampling_checkpoint.rng_draw_count
+            draft_checkpoint = journal.capture("draft", draft.snapshot, draft.restore)
+            target_checkpoint = journal.capture(
+                "target",
+                lambda: target.begin_device_transaction(reuse_snapshot=True),
+                target.rollback_device_transaction,
+            )
+            if plan is not None:
+                transaction = SpecCycleTransaction(
+                    operation_id=plan.operation_id, transaction_id=plan.cycle_id,
+                    cycle_id=plan.cycle_id, request_ids=plan.request_ids,
+                    reserved_claims=ResourceClaimSet.from_mapping(
+                        plan.operation_id,
+                        {f"qwen4exp.target.{id(target)}": 1, f"qwen4exp.draft.{id(draft)}": 1},
+                        request_id=row.request_id, lifetime=ClaimLifetime.TRANSACTION,
+                    ),
+                    pre_target_cursors=(target_checkpoint.position,), pre_rng_counters=(rng_counter,),
+                    target_transaction_mode=plan.target_transaction_mode,
+                    target_owner=f"qwen4exp.target.{id(target)}",
+                    target_checkpoint_ids=(f"device:{id(target_checkpoint)}",),
+                    pre_provider_cursors=(draft_checkpoint.position,),
+                    provider_transaction_mode=plan.provider_transaction_mode,
+                    provider_owner=f"qwen4exp.draft.{id(draft)}",
+                    provider_request_ids=plan.request_ids,
+                    provider_checkpoint_ids=(f"cursor:{id(draft_checkpoint)}",),
+                    target_open=True, provider_open=True,
+                )
             self._check_request_live(row)
             progress = (next(row.mtp_steps) if not row.generated_ids
                         else row.mtp_steps.send(budget))
@@ -278,16 +300,17 @@ class Qwen4ExpServingMTP:
                         or len(progress.token_ids) - cycle.accepted > 1):
                     raise RuntimeError("Flash-Next MTP step differs from the planned cycle")
             self._check_request_live(row)
+            target.commit_device_transaction(target_checkpoint)
+            # The target commit is published; only now is the undo dropped.
+            journal.commit()
         except BaseException as error:
-            target.rollback_device_transaction(target_checkpoint)
-            draft.restore(draft_checkpoint)
-            row.mtp_steps.close()
-            row.sampling_state = sampling_checkpoint
-            row.grammar = grammar_checkpoint
+            try:
+                journal.rollback()
+            finally:
+                row.mtp_steps.close()
             if not isinstance(error, _RequestRetired):
                 raise
             return None, None if transaction is None else replace(transaction, rolled_back=True)
-        target.commit_device_transaction(target_checkpoint)
         row.generated_ids.extend(progress.token_ids)
         row.token_logprobs.extend(progress.token_logprobs)
         row.mtp_output = terminal

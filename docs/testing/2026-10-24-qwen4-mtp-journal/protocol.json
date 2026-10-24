@@ -1,0 +1,20 @@
+{
+  "parent_commit": "07fba0543",
+  "performance_claim": false,
+  "host": "gfx1151",
+  "command": "bash /tmp/hipengine-paro-refresh-20261023-env.sh env PYTHONPATH=\"$PWD\" \"$HOME/miniforge3/envs/therock/bin/python\" /tmp/hipengine-shared-mtp/qwen4_journal_public.py",
+  "attempts": [
+    {
+      "max_sequence_length": 768,
+      "outcome": "Setup refused: fewer QSA index blocks than selection budget; no comparison calls executed"
+    },
+    {
+      "max_sequence_length": 4096,
+      "outcome": "12 comparison calls passed; zero tracked allocations and bytes after close"
+    }
+  ],
+  "sha256": {
+    "compare_public.py": "639810d57905672c64de55a077cfa282918f1d9b66c1d8da52fbc8f56476bde1",
+    "public.json": "e1751af92aa4eda5d2b0217a04d9daa1040f9d293f55787399667b6a193eab08"
+  }
+}
