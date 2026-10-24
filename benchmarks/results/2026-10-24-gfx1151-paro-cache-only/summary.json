@@ -1,0 +1,127 @@
+{
+  "passed": true,
+  "first": {
+    "natural": {
+      "full": {
+        "samples": 54,
+        "decode_tokens_per_second": 64.47357988941135,
+        "whole_call_tokens_per_second": 58.552247517646364,
+        "median_first_token_seconds": 0.21524869301356375,
+        "accepted_candidates": 3207,
+        "proposed_candidates": 3627
+      },
+      "cache_only": {
+        "samples": 54,
+        "decode_tokens_per_second": 64.47473997168875,
+        "whole_call_tokens_per_second": 59.47220067251804,
+        "median_first_token_seconds": 0.18069719744380563,
+        "accepted_candidates": 3207,
+        "proposed_candidates": 3627
+      }
+    },
+    "controls": {
+      "p512": {
+        "full": {
+          "decode_tokens_per_second": 64.42844321245279,
+          "first_token_seconds": 1.3349784640595317,
+          "whole_call_tokens_per_second": 38.713128311922304
+        },
+        "cache_only": {
+          "decode_tokens_per_second": 64.39003173159826,
+          "first_token_seconds": 0.7657829159870744,
+          "whole_call_tokens_per_second": 46.762768614822335
+        }
+      },
+      "p1024": {
+        "full": {
+          "decode_tokens_per_second": 60.81805178055298,
+          "first_token_seconds": 3.13287267787382,
+          "whole_call_tokens_per_second": 24.515363976818154
+        },
+        "cache_only": {
+          "decode_tokens_per_second": 60.831517074441535,
+          "first_token_seconds": 1.5708998658228666,
+          "whole_call_tokens_per_second": 34.97239491315429
+        }
+      },
+      "p4096": {
+        "full": {
+          "decode_tokens_per_second": 46.193332919578474,
+          "first_token_seconds": 22.303817556006834,
+          "whole_call_tokens_per_second": 5.109132707571975
+        },
+        "cache_only": {
+          "decode_tokens_per_second": 46.19013972857423,
+          "first_token_seconds": 6.02126617799513,
+          "whole_call_tokens_per_second": 14.590455138352246
+        }
+      }
+    }
+  },
+  "checked_calls": 294,
+  "confirmation_completion": {
+    "partial_cases": 19,
+    "tail_cases": 2,
+    "partial_process_teardown": "not observed: process time limit terminated it",
+    "tail_process_teardown": "zero tracked allocations and bytes after close",
+    "driver_change": "resume copy adds only explicit case selection; original driver hash is retained in the partial artifact"
+  },
+  "confirmation": {
+    "natural": {
+      "full": {
+        "samples": 36,
+        "decode_tokens_per_second": 64.42445294770214,
+        "whole_call_tokens_per_second": 58.51071593475575,
+        "median_first_token_seconds": 0.215308737475425,
+        "accepted_candidates": 2138,
+        "proposed_candidates": 2418
+      },
+      "cache_only": {
+        "samples": 36,
+        "decode_tokens_per_second": 64.37212066520691,
+        "whole_call_tokens_per_second": 59.38940292457098,
+        "median_first_token_seconds": 0.18121730198618025,
+        "accepted_candidates": 2138,
+        "proposed_candidates": 2418
+      }
+    },
+    "controls": {
+      "p512": {
+        "full": {
+          "decode_tokens_per_second": 64.28144040300437,
+          "first_token_seconds": 1.3346865000203252,
+          "whole_call_tokens_per_second": 38.66589422368572
+        },
+        "cache_only": {
+          "decode_tokens_per_second": 64.29728598239379,
+          "first_token_seconds": 0.7634483521105722,
+          "whole_call_tokens_per_second": 46.7377367283478
+        }
+      },
+      "p1024": {
+        "full": {
+          "decode_tokens_per_second": 60.75158236001339,
+          "first_token_seconds": 3.129627757007256,
+          "whole_call_tokens_per_second": 24.520401770433576
+        },
+        "cache_only": {
+          "decode_tokens_per_second": 60.76713106361827,
+          "first_token_seconds": 1.5678665759041905,
+          "whole_call_tokens_per_second": 34.99323758880268
+        }
+      },
+      "p4096": {
+        "full": {
+          "decode_tokens_per_second": 46.2316105569695,
+          "first_token_seconds": 22.290176746435463,
+          "whole_call_tokens_per_second": 5.112380845224644
+        },
+        "cache_only": {
+          "decode_tokens_per_second": 46.19380341045328,
+          "first_token_seconds": 6.017752906540409,
+          "whole_call_tokens_per_second": 14.600063549520758
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,30 @@
+[
+  {
+    "source": "/tmp/hipengine-shared-mtp/cache-only-sweep.json",
+    "source_sha256": "922bc01e2dbc7cccec6b4015f7b0f7099193bf1d1bdc9249dcb899c218ddcb92",
+    "archive": "first.json",
+    "archive_sha256": "6b9ef7c3e71304b7e97049bb4999b2325c08414f74b05ee437d171a49175cd82",
+    "transformation": "JSON whitespace compaction only"
+  },
+  {
+    "source": "/tmp/hipengine-shared-mtp/cache-only-smoke.json",
+    "source_sha256": "ea055e9d2767a256b0a456a4b9f520b0325e9f774e2af8a48fd4cecad9e81cac",
+    "archive": "smoke.json",
+    "archive_sha256": "e72cfdb321cf0fbd4bef8e7aee78a05d0d35bb927810722a0d48db6da8b56296",
+    "transformation": "JSON whitespace compaction only"
+  },
+  {
+    "source": "/tmp/hipengine-shared-mtp/cache-only-confirmation-timeout-partial.json",
+    "source_sha256": "ec6a24cdeeaa4fc60bc2eb0f23298725f8b03b1b22482ba8cdddf5720cd7d5d5",
+    "archive": "confirmation-timeout-partial.json",
+    "archive_sha256": "1eebebc317bf59da44799e4e0f5352286fe875bb648b8ba8e77ae356d90b9dc8",
+    "transformation": "JSON whitespace compaction only"
+  },
+  {
+    "source": "/tmp/hipengine-shared-mtp/cache-only-confirmation-tail.json",
+    "source_sha256": "79c4888d1bb622bf9394d356b85f53910974b64304a010729248a56c2a181d83",
+    "archive": "confirmation-tail.json",
+    "archive_sha256": "00b5554161e2c288e0002308c941508ae6d7444a485b944b9ae06534f9b06dd3",
+    "transformation": "JSON whitespace compaction only"
+  }
+]

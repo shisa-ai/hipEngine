@@ -32,7 +32,7 @@ An untested idea is not a rejected candidate. Keep all rows active across units.
 | --- | --- | --- |
 | Map existing ownership and extension points | Complete | Source-backed consumer matrix below; existing staged-provider, native-cycle and prompt-sink contracts are the extension points |
 | Shared prompt-priming orchestration | Complete for existing GGUF consumers | Common protocol, split planner and publication ledger; dense/MoE public IDs, chunks and acceptance match clean `1906b54d2`; repeated-call and teardown checks pass. PARO chunk adoption remains in its bulk-priming row |
-| PARO KV-only prompt priming | In progress | Historical rows use the KV-only prefix; device oracle and singleton scratch repair are under validation |
+| PARO KV-only prompt priming | Complete | Default historical rows stop after cache writes. Eleven-length device oracle and 294 category/heldout/control calls preserve KV/state/IDs and acceptance; [paired measurements](../../benchmarks/results/2026-10-24-gfx1151-paro-cache-only/NOTES.md) confirm lower prompt latency, flat decode |
 | PARO batched prompt priming | Pending | Bounded row workspace; compare serial and bulk cache/final outputs; numerical gate if arithmetic changes; paired prompt-latency measurements |
 | Shared rollback/state-journal contract | Pending | Separate mutable state, append-only KV and cursors; atomic target/provider rollback, failure/cancel/reclaim tests; migrate compatible consumers |
 | PARO bounded rollback | Pending | Eliminate live-prefix copying only where append-only semantics hold; preserve recurrent-state rollback and output IDs; measure cycle/copy work and decode |
@@ -81,7 +81,7 @@ supported updates of the requested existing result cells.
 
 | Consumer | Prompt priming | Rollback | Graph stages | Candidate depth |
 | --- | --- | --- | --- | --- |
-| PARO | Row callbacks run a full draft block; contiguous target hidden slabs already exist | Spare-slot copy includes the live KV prefix and mutable recurrent state | Native provider-target ABI exists; public adapter forces eager verification | Public adapter exposes one candidate; underlying verifier supports larger row batches |
+| PARO | Historical row callbacks compute KV only; final row computes a full prediction; contiguous target hidden slabs already exist | Spare-slot copy includes the live KV prefix and mutable recurrent state | Native provider-target ABI exists; public adapter forces eager verification | Public adapter exposes one candidate; underlying verifier supports larger row batches |
 | GGUF dense | Streaming chunk sink, carried hidden row and prefix checkpoints | Recurrent/hidden journals and append-only KV cursors | Native proposal and target stage wrappers | Shared planner consumes declared capability; standalone adaptive policy also exists |
 | GGUF MoE | Target-hidden chunk sink; NextN also has a restricted bulk route | Transactional target and provider checkpoints | Uses compatible GGUF execution pieces, with route-specific capabilities | Adapter-specific bounds need reconciliation with actual provider support |
 | Qwen4 | Bounded cache-only prompt workspace with final full predictor row | Reusable device transaction snapshot and KV/index cursors | Model-specific execution, not currently a native-cycle graph consumer | Provider supports chains up to four candidates |

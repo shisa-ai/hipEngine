@@ -1,0 +1,175 @@
+diff --git a/hipengine/generation/qwen35_paro_mtp2.py b/hipengine/generation/qwen35_paro_mtp2.py
+index 4cc10a4c7..a42bd5c69 100644
+--- a/hipengine/generation/qwen35_paro_mtp2.py
++++ b/hipengine/generation/qwen35_paro_mtp2.py
+@@ -170,9 +170,16 @@ class Qwen35ParoMTP2Adapter:
+-        state.proposer.advance_with_target_hidden(
+-            input_token=input_token,
+-            target_hidden_ptr=int(target_hidden_ptr),
+-            position=index + 1,
+-            need_result=final,
+-            read_token_id=False,
+-            read_expert_topk=False,
+-            read_lm_head_value=False,
+-        )
++        if final:
++            state.proposer.advance_with_target_hidden(
++                input_token=input_token,
++                target_hidden_ptr=int(target_hidden_ptr),
++                position=index + 1,
++                need_result=True,
++                read_token_id=False,
++                read_expert_topk=False,
++                read_lm_head_value=False,
++            )
++        else:
++            state.proposer.append_prompt_kv(
++                input_token=input_token,
++                target_hidden_ptr=int(target_hidden_ptr),
++                position=index + 1,
++            )
+diff --git a/hipengine/speculative/mtp_native.py b/hipengine/speculative/mtp_native.py
+index d00650235..d4f59f26f 100644
+--- a/hipengine/speculative/mtp_native.py
++++ b/hipengine/speculative/mtp_native.py
+@@ -190,0 +191,4 @@ class NativeMtpStateSnapshot:
++    # Whether ``final_hidden_buf`` held a hidden produced by an advance when the
++    # snapshot was taken. A K/V-only row leaves no hidden behind, and restoring
++    # a snapshot must not resurrect a carry that was never computed.
++    hidden_valid: bool = True
+@@ -312,0 +317,2 @@ class NativeMtpChainProposer:
++        self.final_hidden_valid = False
++        self.result_valid = False
+@@ -403,0 +410,2 @@ class NativeMtpChainProposer:
++        self.final_hidden_valid = False
++        self.result_valid = False
+@@ -459,0 +468 @@ class NativeMtpChainProposer:
++        kv_write_only: bool = False,
+@@ -467 +476,38 @@ class NativeMtpChainProposer:
+-        return self.advance(
++        forwarded: dict[str, Any] = {
++            "input_token": int(input_token),
++            "target_hidden_ptr": int(target_hidden_ptr),
++            "position": int(position),
++            "need_result": need_result,
++            "read_token_id": read_token_id,
++            "read_expert_topk": read_expert_topk,
++            "read_lm_head_value": read_lm_head_value,
++            "stream": stream,
++        }
++        if kv_write_only:
++            forwarded["kv_write_only"] = True
++        return self.advance(**forwarded)
++
++    def append_prompt_kv(
++        self,
++        input_token: int,
++        target_hidden_ptr: int,
++        position: int,
++        *,
++        stream: int = 0,
++    ) -> None:
++        """Append one historical prompt row's K/V without producing a proposal.
++
++        Historical prompt rows carry a target-supplied hidden state, so the MTP
++        proposer only owes the cache that row's rotated key and projected value.
++        This runs the same input fusion, projection, normalization, rotary, and
++        cache write as :meth:`advance` and stops there: no attention, no expert
++        block, no proposal head, and no host readback. ``cache_len`` and
++        ``position`` advance exactly as a full step advances them.
++
++        The row leaves no usable hidden or proposal behind. The next row must
++        supply its own target hidden through this method or
++        :meth:`advance_with_target_hidden`, and a result-producing advance must
++        run before any proposal surface is read.
++        """
++
++        self.advance(
+@@ -471,4 +517,5 @@ class NativeMtpChainProposer:
+-            need_result=need_result,
+-            read_token_id=read_token_id,
+-            read_expert_topk=read_expert_topk,
+-            read_lm_head_value=read_lm_head_value,
++            need_result=False,
++            kv_write_only=True,
++            read_token_id=False,
++            read_expert_topk=False,
++            read_lm_head_value=False,
+@@ -476,0 +524 @@ class NativeMtpChainProposer:
++        return None
+@@ -488,0 +537,4 @@ class NativeMtpChainProposer:
++        if not self.final_hidden_valid:
++            raise RuntimeError(
++                "proposer final hidden is not valid; run a hidden-producing advance first"
++            )
+@@ -502,0 +555,4 @@ class NativeMtpChainProposer:
++        if not self.result_valid:
++            raise RuntimeError(
++                "device candidate token requires a result-producing advance"
++            )
+@@ -514,0 +571,4 @@ class NativeMtpChainProposer:
++        if not self.final_hidden_valid:
++            raise RuntimeError(
++                "proposer final hidden is not valid; run a hidden-producing advance first"
++            )
+@@ -534 +594,7 @@ class NativeMtpChainProposer:
+-        return NativeMtpStateSnapshot(slot=int(slot), cache_len=int(self.cache_len), position=int(self.position), current=self.current)
++        return NativeMtpStateSnapshot(
++            slot=int(slot),
++            cache_len=int(self.cache_len),
++            position=int(self.position),
++            current=self.current,
++            hidden_valid=bool(self.final_hidden_valid),
++        )
+@@ -548,0 +615,3 @@ class NativeMtpChainProposer:
++        self.final_hidden_valid = bool(snapshot.hidden_valid)
++        if not self.final_hidden_valid:
++            self.result_valid = False
+@@ -557,0 +627,2 @@ class NativeMtpChainProposer:
++        if not self.result_valid:
++            raise RuntimeError("vocab_topk requires a result-producing advance")
+@@ -580,0 +652,2 @@ class NativeMtpChainProposer:
++        if not self.result_valid:
++            raise RuntimeError("top1_prob_proxy requires a result-producing advance")
+@@ -599,0 +673 @@ class NativeMtpChainProposer:
++        kv_write_only: bool = False,
+@@ -610,0 +685,7 @@ class NativeMtpChainProposer:
++
++        ``kv_write_only=True`` is for historical prompt rows whose hidden comes
++        from the target session. It appends this row's rotated key and projected
++        value to the MTP cache and publishes the cursor, then returns before
++        attention, the expert block, and the head. It requires an explicit
++        target hidden, cannot be combined with ``need_result=True``, and leaves
++        no valid hidden carry or proposal behind.
+@@ -620,0 +702,14 @@ class NativeMtpChainProposer:
++        if kv_write_only:
++            # A K/V-only row exists to append its own cache entry and nothing
++            # else. Its hidden belongs to the target, so it can neither produce
++            # a proposal nor leave a hidden behind for a later row to carry.
++            if need_result:
++                raise ValueError("kv_write_only advance cannot produce a proposal result")
++            if int(target_hidden_ptr) <= 0:
++                raise ValueError(
++                    "kv_write_only advance requires an explicit target hidden pointer"
++                )
++            if int(target_hidden_ptr) == self.final_hidden_buf.ptr:
++                raise ValueError(
++                    "kv_write_only advance requires a target hidden, not the proposer's own final hidden"
++                )
+@@ -770,0 +866,10 @@ class NativeMtpChainProposer:
++        if kv_write_only:
++            # The remaining attention/expert/head work reads this cache but
++            # does not write it. Historical rows use target-provided hidden
++            # states, so their unused predictor hidden can be discarded.
++            self.cache_len = context_len
++            self.position = int(position)
++            self.final_hidden_valid = False
++            self.result_valid = False
++            self.current = NativeMtpStepResult(token=-1, logit=float("nan"), topk_experts=(), topk_logits=())
++            return self.current
+@@ -929,0 +1035 @@ class NativeMtpChainProposer:
++        self.final_hidden_valid = True
+@@ -930,0 +1037 @@ class NativeMtpChainProposer:
++            self.result_valid = False
+@@ -991,0 +1099 @@ class NativeMtpChainProposer:
++        self.result_valid = True

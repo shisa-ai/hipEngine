@@ -68,6 +68,10 @@ class _ProposerDouble:
 
     def __init__(self) -> None:
         self.advances = []
+        self.prompt_kv = []
+
+    def append_prompt_kv(self, **kwargs):
+        self.prompt_kv.append(kwargs)
 
     def save_state(self, slot):
         return ("snapshot", slot)
@@ -278,13 +282,39 @@ def test_streaming_prompt_priming_uses_shifted_tokens_and_final_root() -> None:
     adapter.consume_prompt_row(7, prompt_index=1, target_hidden_ptr=0x2000, seed_token=None)
     adapter.consume_prompt_row(7, prompt_index=2, target_hidden_ptr=0x3000, seed_token=99)
 
-    assert [row["input_token"] for row in proposer.advances] == [11, 12, 99]
-    assert [row["position"] for row in proposer.advances] == [1, 2, 3]
-    assert [row["need_result"] for row in proposer.advances] == [False, False, True]
-    assert [row["read_token_id"] for row in proposer.advances] == [False, False, False]
+    priming = proposer.prompt_kv + proposer.advances
+    assert [row["input_token"] for row in priming] == [11, 12, 99]
+    assert [row["position"] for row in priming] == [1, 2, 3]
+    assert [row["target_hidden_ptr"] for row in priming] == [0x1000, 0x2000, 0x3000]
+    assert len(proposer.prompt_kv) == 2
+    assert len(proposer.advances) == 1
+    assert proposer.advances[0]["need_result"] is True
+    assert proposer.advances[0]["read_token_id"] is False
     assert adapter._states[7].prompt_rows_consumed == 3
     assert adapter._states[7].prompt_prime_seconds > 0.0
     assert row.mtp2_prompt_prime_ms > 0.0
+
+
+def test_cache_only_prompt_failure_does_not_publish_a_consumed_row() -> None:
+    proposer = _ProposerDouble()
+    row = SimpleNamespace(prompt_ids=(10, 11), mtp2_prompt_prime_ms=0.0)
+    owner = SimpleNamespace(
+        generator=SimpleNamespace(backend="hip_gfx1100"),
+        _row=lambda request_id: row,
+    )
+    adapter = Qwen35ParoMTP2Adapter(owner)
+    state = _ParoMTP2RequestState(7, proposer)
+    adapter._states[7] = state
+
+    def fail(**kwargs):
+        raise RuntimeError("injected KV append failure")
+
+    proposer.append_prompt_kv = fail
+    with pytest.raises(RuntimeError, match="injected KV append failure"):
+        adapter.consume_prompt_row(7, prompt_index=0, target_hidden_ptr=0x1000, seed_token=None)
+    assert state.prompt_rows_consumed == 0
+    assert state.prompt_prime_seconds == row.mtp2_prompt_prime_ms == 0.0
+    assert not proposer.advances
 
 
 def test_staged_prefill_uses_packed_target_and_streams_final_hidden_rows(monkeypatch) -> None:

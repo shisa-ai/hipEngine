@@ -1,0 +1,9 @@
+{
+  "base_commit": "071d5a87a8a71ea1edfab31516ae1a16da8c557b",
+  "source_sha256": {
+    "hipengine/generation/qwen35_paro_mtp2.py": "02b228c38d1e933e062009df8340f70474af3ccf7a12d921d53074b6010aef46",
+    "hipengine/speculative/mtp_native.py": "8d69b78c64053dc881777d602fa71c70f7c36beebc6293e5ce91e08991dd9fc0"
+  },
+  "patch_sha256": "e28005b44cac21acb48b8259f7a3213bba2cb35e8acee46e1f80c62ad855e0cc",
+  "scope": "Both timed arms use these files and the committed scratch repair; full arm substitutes only historical priming using the archived driver."
+}

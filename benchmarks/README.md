@@ -693,21 +693,21 @@ October 23 resident eager medians: repeated token 9707, 128 greedy decode steps,
 | 1024 | 1226.5 | 66.5 |
 | 4096 | 1188.5 | 67.3 |
 
-All 90 serial/native next-token comparisons and 11 repeated public eager cases pass. Graph timings are excluded after output mismatches.
-[Resident protocol, commands and evidence](results/2026-10-23-gfx1151-paro-refresh/README.md) · [Independent quantization quality](#current-qwen36-35b-quantization-quality).
+All 90 serial/native next-token comparisons and 11 repeated public eager cases pass. Graph timings are excluded after output mismatches. [Resident protocol, commands and evidence](results/2026-10-23-gfx1151-paro-refresh/README.md) · [Independent quantization quality](#current-qwen36-35b-quantization-quality).
 
-October 24 repaired MTP public-streaming retest: one candidate, all ten category prompts plus eight heldouts, 128 greedy outputs, prefix cache off, two warmups and five alternating paired samples per arm. Rates pool tokens and elapsed time.
+The [October 24 AR/MTP retest](results/2026-10-24-gfx1151-paro-mtp-retest/NOTES.md) measured natural-suite decode 67.54 → 64.32 tok/s and whole-call 63.43 → 58.59 tok/s, with 88.42% acceptance. All 588 calls repeat within arm; AR/MTP IDs match on 12/21 cases, not all. The README MTP cell uses that natural suite; its plain cell is the earlier resident-harness result.
 
-| Metric | Plain decoding | MTP |
-| --- | ---: | ---: |
-| Decode tok/s, first-to-last-token window | 67.54 | 64.32 |
-| Whole-call tok/s, including prompt processing | 63.43 | 58.59 |
-| Median time to first token | 0.137 s | 0.209 s |
+**Cache-only MTP prompt priming:** On the same model/host with BF16 KV, one request/candidate and 128 greedy EOS-ignored outputs, historical rows now compute KV only. Both arms use public eager MTP, prefix cache off. One warmup and three alternating pairs cover ten category prompts, eight heldouts and 512/1K/4K controls; a separate two-pair confirmation agrees.
 
-MTP is 4.76% slower in decode and 7.63% slower over the whole call despite 88.42% acceptance. Independent aggregate decode repeats within 0.2%.
-All 588 calls repeat within arm and free tracked allocations; AR/MTP trajectories match on 12/21 cases, with nine natural divergences. Prior 64-token outputs are preserved on all 19 overlapping cases. No arithmetic changes, full strict-teacher quality gate, or token-parity claim.
-The README MTP cell uses the natural suite; its plain cell remains the earlier resident-harness result, not this matched streaming baseline.
-[Length controls, limitations, commands and failed attempts](results/2026-10-24-gfx1151-paro-mtp-retest/NOTES.md) · [Samples and confirmation](results/2026-10-24-gfx1151-paro-mtp-retest/summary.json).
+| Workload | Full priming: first token | Cache-only: first token | Reduction |
+| --- | ---: | ---: | ---: |
+| Natural/category-heldout suite | 0.215 s | 0.181 s | 16.1% |
+| 512 input tokens | 1.335 s | 0.766 s | 42.6% |
+| 1024 input tokens | 3.133 s | 1.571 s | 49.9% |
+| 4096 input tokens | 22.304 s | 6.021 s | 73.0% |
+
+Natural-suite pooled decode is unchanged at 64.47 tok/s; whole-call throughput improves 58.55 → 59.47 tok/s (+1.57%). All 294 sweep/confirmation calls preserve IDs and acceptance. This is prompt-work elimination, not an AR/MTP speedup or a new quality claim.
+[Commands, source patch, correctness and interrupted-confirmation accounting](results/2026-10-24-gfx1151-paro-cache-only/NOTES.md) · [Summary](results/2026-10-24-gfx1151-paro-cache-only/summary.json).
 
 ## Root README performance summary
 

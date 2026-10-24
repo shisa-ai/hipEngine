@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "candidate": "PARO non-final prompt rows use append_prompt_kv instead of full advance_with_target_hidden",
+  "baseline": "Same working tree and repaired target scratch; test-only substitution of the original full historical step, with all result readbacks disabled as before",
+  "correctness": "Exact generated token IDs and accepted-count sequences across arms and repetitions; 128 output tokens; actual eager C1 K1 MTP; no recovery; no active requests or allocation leaks after close",
+  "workloads": "All 10 mtpbench-code-general-ja prompts, all 8 gdn-prefill-category-heldouts prompts, repeated-token controls 512/1024/4096",
+  "timing": "Public streaming first-token, decode and whole-call wall time, alternating full/cache-only order. No attribution synchronization in timed calls.",
+  "warmups_per_case_per_arm": 1,
+  "samples_per_case_per_arm": 3,
+  "confirmation_samples_per_case_per_arm": 2,
+  "scope": "Same Framework Desktop gfx1151 host, packed Qwen3.6-35B-A3B PARO, BF16 MTP/KV, shipping variants, no arithmetic change",
+  "decision": "Require exact correctness; report paired medians for every case and natural aggregate separately from controls. Do not claim decode gains from a prompt-only change. No automatic numerical promotion or keep/revert threshold.",
+  "driver": "/tmp/hipengine-shared-mtp/measure_cache_only.py"
+}

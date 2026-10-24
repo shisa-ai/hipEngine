@@ -188,6 +188,10 @@ class NativeMtpStateSnapshot:
     cache_len: int
     position: int
     current: NativeMtpStepResult
+    # Whether ``final_hidden_buf`` held a hidden produced by an advance when the
+    # snapshot was taken. A K/V-only row leaves no hidden behind, and restoring
+    # a snapshot must not resurrect a carry that was never computed.
+    hidden_valid: bool = True
 
 
 class NativeMtpChainProposer:
@@ -310,6 +314,8 @@ class NativeMtpChainProposer:
         self.cache_len = 0
         self.position = -1
         self.current = NativeMtpStepResult(token=0, logit=float("nan"), topk_experts=(), topk_logits=())
+        self.final_hidden_valid = False
+        self.result_valid = False
 
     def _load_info(self, name: str) -> DeviceTensorAllocation:
         alloc = load_tensor_info_to_device(self.infos[name], runtime=self.runtime)
@@ -401,6 +407,8 @@ class NativeMtpChainProposer:
         self.cache_len = 0
         self.position = -1
         self.current = NativeMtpStepResult(token=0, logit=float("nan"), topk_experts=(), topk_logits=())
+        self.final_hidden_valid = False
+        self.result_valid = False
 
     def _copy_device_to_host_array(self, host_array: np.ndarray, buffer: DeviceBuffer, *, nbytes: int | None = None, stream: int = 0) -> None:
         count = int(buffer.nbytes if nbytes is None else nbytes)
@@ -457,6 +465,7 @@ class NativeMtpChainProposer:
         target_hidden_ptr: int,
         position: int,
         need_result: bool = True,
+        kv_write_only: bool = False,
         read_token_id: bool = True,
         read_expert_topk: bool = True,
         read_lm_head_value: bool = True,
@@ -464,16 +473,55 @@ class NativeMtpChainProposer:
     ) -> NativeMtpStepResult:
         if int(target_hidden_ptr) <= 0:
             raise ValueError("target_hidden_ptr must be non-zero")
-        return self.advance(
+        forwarded: dict[str, Any] = {
+            "input_token": int(input_token),
+            "target_hidden_ptr": int(target_hidden_ptr),
+            "position": int(position),
+            "need_result": need_result,
+            "read_token_id": read_token_id,
+            "read_expert_topk": read_expert_topk,
+            "read_lm_head_value": read_lm_head_value,
+            "stream": stream,
+        }
+        if kv_write_only:
+            forwarded["kv_write_only"] = True
+        return self.advance(**forwarded)
+
+    def append_prompt_kv(
+        self,
+        input_token: int,
+        target_hidden_ptr: int,
+        position: int,
+        *,
+        stream: int = 0,
+    ) -> None:
+        """Append one historical prompt row's K/V without producing a proposal.
+
+        Historical prompt rows carry a target-supplied hidden state, so the MTP
+        proposer only owes the cache that row's rotated key and projected value.
+        This runs the same input fusion, projection, normalization, rotary, and
+        cache write as :meth:`advance` and stops there: no attention, no expert
+        block, no proposal head, and no host readback. ``cache_len`` and
+        ``position`` advance exactly as a full step advances them.
+
+        The row leaves no usable hidden or proposal behind. The next row must
+        supply its own target hidden through this method or
+        :meth:`advance_with_target_hidden`, and a result-producing advance must
+        run before any proposal surface is read.
+        """
+
+        self.advance(
             input_token=int(input_token),
             target_hidden_ptr=int(target_hidden_ptr),
             position=int(position),
-            need_result=need_result,
-            read_token_id=read_token_id,
-            read_expert_topk=read_expert_topk,
-            read_lm_head_value=read_lm_head_value,
+            need_result=False,
+            kv_write_only=True,
+            read_token_id=False,
+            read_expert_topk=False,
+            read_lm_head_value=False,
             stream=stream,
         )
+        return None
 
     def advance_with_previous_hidden(
         self,
@@ -486,6 +534,10 @@ class NativeMtpChainProposer:
         read_lm_head_value: bool = True,
         stream: int = 0,
     ) -> NativeMtpStepResult:
+        if not self.final_hidden_valid:
+            raise RuntimeError(
+                "proposer final hidden is not valid; run a hidden-producing advance first"
+            )
         return self.advance_with_target_hidden(
             input_token=int(input_token),
             target_hidden_ptr=self.final_hidden_buf.ptr,
@@ -500,6 +552,10 @@ class NativeMtpChainProposer:
     def device_candidate_token_ids(self) -> Tensor:
         """Return the stable packed-PARO top-1 scalar without host readback."""
 
+        if not self.result_valid:
+            raise RuntimeError(
+                "device candidate token requires a result-producing advance"
+            )
         if self.scoring_head is None:
             raise NotImplementedError("device candidate descriptor requires W8A16 scoring")
         return Tensor.from_handle(
@@ -512,6 +568,10 @@ class NativeMtpChainProposer:
     def read_final_hidden_bf16(self, *, stream: int = 0) -> np.ndarray:
         """Copy the current one-row BF16 MTP hidden for correctness diagnostics."""
 
+        if not self.final_hidden_valid:
+            raise RuntimeError(
+                "proposer final hidden is not valid; run a hidden-producing advance first"
+            )
         host = np.empty((1, self.hidden), dtype=np.uint16)
         self._copy_device_to_host_array(
             host,
@@ -531,7 +591,13 @@ class NativeMtpChainProposer:
             HipMemcpyKind.DEVICE_TO_DEVICE,
             int(stream),
         )
-        return NativeMtpStateSnapshot(slot=int(slot), cache_len=int(self.cache_len), position=int(self.position), current=self.current)
+        return NativeMtpStateSnapshot(
+            slot=int(slot),
+            cache_len=int(self.cache_len),
+            position=int(self.position),
+            current=self.current,
+            hidden_valid=bool(self.final_hidden_valid),
+        )
 
     def restore_state(self, snapshot: NativeMtpStateSnapshot, *, stream: int = 0) -> None:
         if snapshot.slot < 0 or snapshot.slot >= self.max_mtp_tokens:
@@ -546,6 +612,9 @@ class NativeMtpChainProposer:
         self.cache_len = int(snapshot.cache_len)
         self.position = int(snapshot.position)
         self.current = snapshot.current
+        self.final_hidden_valid = bool(snapshot.hidden_valid)
+        if not self.final_hidden_valid:
+            self.result_valid = False
 
     def vocab_topk(self, *, k: int = 8, stream: int = 0) -> tuple[list[int], list[float]]:
         """Exact top-k tokens+logits over the (capped) draft vocab.
@@ -555,6 +624,8 @@ class NativeMtpChainProposer:
         Used for the gated branching tree (#99 -> persistent path).
         """
 
+        if not self.result_valid:
+            raise RuntimeError("vocab_topk requires a result-producing advance")
         if k <= 0 or k > 8:
             raise ValueError("vocab_topk supports 1..8")
         if self.scoring_head is not None:
@@ -578,6 +649,8 @@ class NativeMtpChainProposer:
         truncation, without a vocab-sized D2H.
         """
 
+        if not self.result_valid:
+            raise RuntimeError("top1_prob_proxy requires a result-producing advance")
         scoring_threads = 256 if self.scoring_head is None else int(self.scoring_head.threads)
         valid = lm_head_argmax_stage1_blocks(self.draft_vocab, threads=scoring_threads)
         self._copy_device_to_host_array(
@@ -597,6 +670,7 @@ class NativeMtpChainProposer:
         target_hidden_ptr: int,
         position: int,
         need_result: bool = True,
+        kv_write_only: bool = False,
         read_token_id: bool = True,
         read_expert_topk: bool = True,
         read_lm_head_value: bool = True,
@@ -608,6 +682,13 @@ class NativeMtpChainProposer:
         the updated hidden/KV state is consumed by the following step. It skips
         the draft lm-head/argmax and host reads, so ``current`` is intentionally
         marked invalid until a later result-producing advance runs.
+
+        ``kv_write_only=True`` is for historical prompt rows whose hidden comes
+        from the target session. It appends this row's rotated key and projected
+        value to the MTP cache and publishes the cursor, then returns before
+        attention, the expert block, and the head. It requires an explicit
+        target hidden, cannot be combined with ``need_result=True``, and leaves
+        no valid hidden carry or proposal behind.
         """
 
         if self.closed:
@@ -618,6 +699,20 @@ class NativeMtpChainProposer:
             raise RuntimeError("MTP cache capacity exceeded")
         if position < 0 or position >= self.max_positions:
             raise ValueError("position outside MTP RoPE table")
+        if kv_write_only:
+            # A K/V-only row exists to append its own cache entry and nothing
+            # else. Its hidden belongs to the target, so it can neither produce
+            # a proposal nor leave a hidden behind for a later row to carry.
+            if need_result:
+                raise ValueError("kv_write_only advance cannot produce a proposal result")
+            if int(target_hidden_ptr) <= 0:
+                raise ValueError(
+                    "kv_write_only advance requires an explicit target hidden pointer"
+                )
+            if int(target_hidden_ptr) == self.final_hidden_buf.ptr:
+                raise ValueError(
+                    "kv_write_only advance requires a target hidden, not the proposer's own final hidden"
+                )
         self.token_host[0] = int(input_token)
         self.position_host[0] = int(position)
         self.cache_slot_host[0] = int(self.cache_len)
@@ -768,6 +863,16 @@ class NativeMtpChainProposer:
             self.runtime.memcpy_async(key_cache_dst, self.key_rot_buf.ptr, self.kv_features * DType.FP32.itemsize, HipMemcpyKind.DEVICE_TO_DEVICE, int(stream))
             self.runtime.memcpy_async(value_cache_dst, self.v_proj_buf.ptr, self.kv_features * DType.BF16.itemsize, HipMemcpyKind.DEVICE_TO_DEVICE, int(stream))
         context_len = self.cache_len + 1
+        if kv_write_only:
+            # The remaining attention/expert/head work reads this cache but
+            # does not write it. Historical rows use target-provided hidden
+            # states, so their unused predictor hidden can be discarded.
+            self.cache_len = context_len
+            self.position = int(position)
+            self.final_hidden_valid = False
+            self.result_valid = False
+            self.current = NativeMtpStepResult(token=-1, logit=float("nan"), topk_experts=(), topk_logits=())
+            return self.current
         dflash_gqa_attention_f32_bf16(self.query_rot_buf.ptr, self.key_cache_buf.ptr, self.value_cache_buf.ptr, self.attn_out_buf.ptr, 1, 1, context_len, self.q_heads, self.kv_heads, self.head_dim, threads=128, stream=stream, library=self.dflash_lib)
         mtp_gate_mul_bf16(self.attn_out_buf.ptr, self.gate_buf.ptr, self.gated_buf.ptr, self.q_features, threads=256, stream=stream, library=self.mtp_lib)
         dflash_dense_bf16_to_bf16(self.gated_buf.ptr, self.weights["mtp.layers.0.self_attn.o_proj.weight"].ptr, self.o_out_buf.ptr, 1, self.q_features, self.hidden, threads=128, stream=stream, library=self.dflash_lib)
@@ -927,7 +1032,9 @@ class NativeMtpChainProposer:
         mtp_add_rmsnorm_bf16_oneplus(self.moe_out_buf.ptr, self.residual2_buf.ptr, self.weights["mtp.norm.weight"].ptr, self.final_hidden_buf.ptr, self.final_residual_buf.ptr, 1, self.hidden, eps=self.eps, threads=256, stream=stream, library=self.mtp_lib)
         self.cache_len += 1
         self.position = int(position)
+        self.final_hidden_valid = True
         if not need_result:
+            self.result_valid = False
             self.current = NativeMtpStepResult(token=-1, logit=float("nan"), topk_experts=(), topk_logits=())
             return self.current
         if self.scoring_head is None:
@@ -989,6 +1096,7 @@ class NativeMtpChainProposer:
         else:
             topk_experts = ()
             topk_logits = ()
+        self.result_valid = True
         self.current = NativeMtpStepResult(
             token=int(index_host[0]),
             logit=logit,

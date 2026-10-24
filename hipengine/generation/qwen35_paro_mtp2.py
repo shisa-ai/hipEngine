@@ -167,15 +167,22 @@ class Qwen35ParoMTP2Adapter:
             else int(row.prompt_ids[index + 1])
         )
         started = time.perf_counter()
-        state.proposer.advance_with_target_hidden(
-            input_token=input_token,
-            target_hidden_ptr=int(target_hidden_ptr),
-            position=index + 1,
-            need_result=final,
-            read_token_id=False,
-            read_expert_topk=False,
-            read_lm_head_value=False,
-        )
+        if final:
+            state.proposer.advance_with_target_hidden(
+                input_token=input_token,
+                target_hidden_ptr=int(target_hidden_ptr),
+                position=index + 1,
+                need_result=True,
+                read_token_id=False,
+                read_expert_topk=False,
+                read_lm_head_value=False,
+            )
+        else:
+            state.proposer.append_prompt_kv(
+                input_token=input_token,
+                target_hidden_ptr=int(target_hidden_ptr),
+                position=index + 1,
+            )
         elapsed = time.perf_counter() - started
         state.prompt_prime_seconds += elapsed
         row.mtp2_prompt_prime_ms += elapsed * 1000.0
