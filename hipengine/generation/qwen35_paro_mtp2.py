@@ -316,10 +316,9 @@ class _ParoPromptPrimeSink:
                 target_hidden_ptr=int(self._final_row_ptr),
                 position=self.total_rows,
                 need_result=True,
-                # A chained cycle drafts from this row's sampled token, so the
-                # host readback is required; a one-candidate cycle reads the
-                # provider's own packed top-1 scalar on device instead.
-                read_token_id=self.adapter.request_depth(self.request_id) > 1,
+                # The next cycle's first candidate is published from this row's
+                # device candidate row, so the readback stays off the host.
+                read_token_id=False,
                 read_expert_topk=False,
                 read_lm_head_value=False,
                 stream=0 if self._stream is None else int(self._stream),
@@ -525,6 +524,7 @@ class Qwen35ParoMTP2Adapter:
             self.candidate_budget,
         )
         proposer_capacity = _proposer_capacity_bucket(required_tokens)
+        depth = self.request_depth(rid)
         proposer = None
         while self._proposer_pool:
             candidate = self._proposer_pool.pop()
@@ -532,6 +532,9 @@ class Qwen35ParoMTP2Adapter:
                 not candidate.closed
                 and int(candidate.max_positions) >= int(session.max_sequence_length)
                 and int(candidate.max_mtp_tokens) >= required_tokens
+                # An undeclared candidate-row capacity is one row: a proposer
+                # that cannot hold more must not be reused for a deeper request.
+                and int(getattr(candidate, "max_candidate_rows", 1)) >= depth
                 and candidate.scoring_head is not None
                 and candidate.scoring_head.owner is session
             ):
@@ -551,6 +554,9 @@ class Qwen35ParoMTP2Adapter:
                 self.generator.model_path,
                 max_positions=int(session.max_sequence_length),
                 max_mtp_tokens=proposer_capacity,
+                # One device candidate row per draft the chain may hold, so
+                # draft ``i`` is scored straight into row ``i``.
+                max_candidate_rows=depth,
                 runtime=session.runtime,
                 compiler_version=session.compiler_version,
                 scoring_head=scoring_head,
@@ -592,9 +598,10 @@ class Qwen35ParoMTP2Adapter:
                 target_hidden_ptr=int(target_hidden_ptr),
                 position=index + 1,
                 need_result=True,
-                # The root's sampled token seeds the first candidate of the
-                # first cycle, so a chained request needs it on the host.
-                read_token_id=self.request_depth(rid) > 1,
+                # The first candidate of the first cycle stays on device: the
+                # chain publishes it from its own candidate row, so no depth
+                # needs the root's sampled token back on the host.
+                read_token_id=False,
                 read_expert_topk=False,
                 read_lm_head_value=False,
             )
@@ -913,34 +920,32 @@ class Qwen35ParoMTP2Adapter:
         )
         snapshots: list[NativeMtpStateSnapshot] = []
         candidate_token_ids: Tensor | None = None
-        if depth == 1:
+        if count == 1:
             # A one-candidate cycle hands the target the provider's own packed
-            # top-1 scalar and keeps the candidate token off the host.
+            # top-1 scalar and keeps the candidate token off the host. A short
+            # cycle at a deeper budget has the same shape, so it takes the same
+            # path.
             candidate_tokens: tuple[int, ...] = (0,)
             candidate_token_ids = state.proposer.device_candidate_token_ids()
-            handoff = "device_i32"
             row.mtp2_candidate_device_handoffs += 1
         else:
-            candidate_tokens = (self._host_candidate_token(state.proposer),)
-            if count > 1:
-                # One snapshot per candidate the cycle may have to undo. The
-                # pre-draft state repairs a zero-length accepted prefix, and the
-                # live draft state already repairs ``count - 1``, so slots
-                # ``1 .. count-1`` cover every shorter prefix.
-                snapshots.append(state.proposer.save_state(1))
-                for step in range(1, count):
-                    state.proposer.advance_with_previous_hidden(
-                        input_token=candidate_tokens[-1],
-                        position=state.proposer.position + 1,
-                        need_result=True,
-                        read_token_id=True,
-                        read_expert_topk=False,
-                        read_lm_head_value=False,
-                    )
-                    candidate_tokens += (self._host_candidate_token(state.proposer),)
-                    if step < count - 1:
-                        snapshots.append(state.proposer.save_state(1 + step))
-            handoff = "host_i32"
+            # Candidate 0 is already on device from the priming/reseed scoring
+            # pass, so publish its int64 form and consume it from device: every
+            # later candidate comes from the previous provider hidden plus that
+            # device token, and no draft id is read back to the host.
+            candidate_tokens = (0,) * count
+            state.proposer.ensure_chain_token()
+            # Slot 0 is the cycle checkpoint, so the repair points start at slot
+            # 1: ``draft_snapshots[k]`` is the prefix that consumed ``k``
+            # candidates, and the live draft state already covers ``count - 1``.
+            snapshots.append(state.proposer.save_state(1))
+            for step in range(1, count):
+                state.proposer.advance_chain_step(candidate_row=step)
+                state.proposer.publish_chain_token()
+                if step < count - 1:
+                    snapshots.append(state.proposer.save_state(1 + step))
+            candidate_token_ids = state.proposer.device_candidate_token_ids(count)
+            row.mtp2_candidate_device_handoffs += 1
         state.draft_snapshots = tuple(snapshots)
         state.last_proposal_seconds = time.perf_counter() - started
         return CandidateGraph(
@@ -962,23 +967,8 @@ class Qwen35ParoMTP2Adapter:
             candidate_tokens=candidate_tokens,
             token_ids=candidate_token_ids,
             mode="verify_chain",
-            provider_metadata=(("candidate_handoff", handoff),),
+            provider_metadata=(("candidate_handoff", "device_i32"),),
         )
-
-    @staticmethod
-    def _host_candidate_token(proposer: NativeMtpChainProposer) -> int:
-        """Return the provider's host-visible next candidate token.
-
-        A device-only result leaves ``current.token`` at its sentinel, so a
-        chained proposal refuses instead of drafting from an invalid id.
-        """
-
-        token = int(proposer.current.token)
-        if token < 0:
-            raise RuntimeError(
-                "PARO MTP2 chained proposal requires a host candidate token"
-            )
-        return token
 
     def kv_live_spans_owner(self, plan: SpecRequestPlan) -> str:
         return f"paro-resident:{id(self.owner)}:{plan.operation_id}"
@@ -1118,7 +1108,6 @@ class Qwen35ParoMTP2Adapter:
             if verify.next_token is not None
             else verify.target_top1[accepted]
         )
-        depth = max(1, self.request_depth(rid))
         update_started = time.perf_counter()
         try:
             self._repair_provider_after_verify(
@@ -1128,9 +1117,6 @@ class Qwen35ParoMTP2Adapter:
                 accepted_tokens=tuple(int(token) for token in verify.accepted_tokens),
                 bonus=bonus,
                 target_hidden_ptr=int(verify.selected_target_hidden_ptr),
-                # The next cycle's first candidate comes from this row's host
-                # readback, which only a chained cycle needs.
-                read_token_id=depth > 1,
             )
         except Exception:
             self._restore_target_and_provider(state, session)
@@ -1277,7 +1263,6 @@ class Qwen35ParoMTP2Adapter:
         accepted_tokens: tuple[int, ...],
         bonus: int,
         target_hidden_ptr: int,
-        read_token_id: bool,
     ) -> None:
         """Move the provider onto the accepted prefix, then take the bonus row.
 
@@ -1288,6 +1273,9 @@ class Qwen35ParoMTP2Adapter:
         restores the snapshot taken before the first rejected candidate. A
         one-candidate cycle is the ``count == 1`` case of the same table, so its
         two provider calls are unchanged.
+
+        The reseed leaves its candidate on device: the next cycle publishes that
+        row's int64 form itself, so no depth reads a draft id back to the host.
         """
 
         proposer = state.proposer
@@ -1310,7 +1298,7 @@ class Qwen35ParoMTP2Adapter:
             input_token=bonus,
             target_hidden_ptr=int(target_hidden_ptr),
             position=proposer.position + 1,
-            read_token_id=bool(read_token_id),
+            read_token_id=False,
             read_expert_topk=False,
             read_lm_head_value=False,
         )

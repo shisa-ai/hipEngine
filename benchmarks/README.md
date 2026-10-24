@@ -2,33 +2,6 @@
 
 Last updated: **2026-10-24 UTC**
 
-## PARO provider prompt and attention — W7900, October 24
-
-Qwen3.6-35B-A3B packed PARO W4 + BF16 MTP, host **epyc / Radeon Pro W7900**,
-production profile, BF16 KV, one active request, greedy fixed-length outputs.
-One warmup and two measured repetitions per case rotate true AR, the previous
-provider, KV-only prompt priming, and KV-only priming plus staged attention in
-one public-library owner. Rates below include the complete request, not just
-decode. The short-prompt rows pool all ten category prompts (27–59 inputs);
-the 4K rows use one padded code prompt.
-
-| Inputs | Outputs | True AR tok/s | Previous MTP tok/s | New MTP tok/s |
-| --- | ---: | ---: | ---: | ---: |
-| Natural prompts | 25 | 78.64 | 76.03 | 77.11 |
-| Natural prompts | 129 | 98.96 | 109.87 | 110.84 |
-| 4096 | 25 | 13.96 | 1.46 | 10.30 |
-| 4096 | 129 | 45.65 | 6.93 | 34.84 |
-
-Non-final prompt rows now append only their needed K/V; the final row still
-runs the full provider. Attention from 128 cached rows uses parallel scores
-with the parent's reduction, softmax and value-sum order. All 90 comparisons,
-including 127/128/257/512/4096 context probes, preserve the previous provider's
-IDs and acceptance schedules. The long-prompt gain is primarily prompt work
-removed, not a faster target verifier; MTP still trails AR at 4K. These are
-diagnostic timings: the existing Japanese strict-teacher numerical failure is
-not repaired and no MTP quality or new topline claim follows.
-[Protocol, samples, correctness and source snapshots](results/2026-10-24-w7900-paro-provider-exact.json).
-
 ## 16K INT8/MTP with and without DMS — RX 7900 XTX
 
 Qwen3.8-27B `Q4_K_M`, **epyc / RX 7900 XTX**, production INT8 KV/FP32 scales, W8192/2x DMS, MTP budget 3.
@@ -1939,9 +1912,8 @@ D08-X package is retained: the final gate is **1794/1800 top-1, max KL
 
 ### Radeon Pro W7900: Qwen3.6-35B-A3B
 
-PARO uses the October 23 refresh; GGUF uses the August 23 measurements. Both
-use two warmups and five measured resets per right-sized session. `Peak` is
-hipEngine tracked allocator high-water.
+PARO uses the October 23 refresh; GGUF uses the August 23 measurements. Both use
+two warmups and five measured resets per right-sized session. `Peak` is tracked allocator high-water.
 
 | Workload | PARO prefill | PARO decode | PARO peak | GGUF prefill | GGUF decode | GGUF peak |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -2987,7 +2959,7 @@ for the current gfx1151 FP32 production profile.
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public strict/BF16 cap4 realized-C1 K3, natural25 | 11.150 | **20.985** | **1.882x** | Three full-suite runs; all 30 cells exact, engaged and budget-conformed; every category faster. Blocking/SSE and cancellation/refill pass. The production default was AR under that protocol; automatic C1 admission followed on 2026-09-18. [`artifact`](results/2026-09-12-gfx1151-qwen38-final-headline-refresh.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Historical FP16 production C1 B3, c68-128/h24 | 9.350 | 13.088 | 1.3998x | Older profile certificate; not current FP32-production admission. [`artifact`](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Historical FP16 production C3 K3 D24 diagnostic | 20.788 | 19.934 | 0.9589x | Older implementation comparison, slower than its AR baseline; not current-profile admission. [`artifact`](results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json) |
-| W7900 / Qwen3.6-35B-A3B packed PARO W4A16+MTP BF16 | Production B1 fast, raw D24 | 111.778 | — | — | October 23 numerical gate fails on `general_ja_explain`: mean/p95/p99 KL 0.00272/0.01246/0.03527 exceeds 0.001/0.005/0.02; focused repeat is identical. All 720 generated IDs and ten public API pairs match AR, but the MTP rate is diagnostic only. Runtime defaults are unchanged. Pass the full raw-D24 `mtp_paro_verifier_numerics.py` suite before refreshing the MTP headline. [`artifact`](results/2026-10-23-w7900-paro-mtp-refresh.json) |
+| W7900 / Qwen3.6-35B-A3B packed PARO W4A16+MTP BF16 | Production B1 fast, raw D24 | 111.778 | — | — | October 23 diagnostic; numerical review remains open. All 720 timed IDs and ten public API pairs match AR. No refreshed MTP headline. [`artifact`](results/2026-10-23-w7900-paro-mtp-refresh.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 96.75 | **122.67** | **1.2679x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json) |
 | Radeon 8060S / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 56.09 | **80.10** | **1.4282x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json) |
 

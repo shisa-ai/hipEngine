@@ -34,32 +34,92 @@ REQUEST_ID = 7
 
 
 class _ChainProposer:
-    """MTP proposer double that drafts from host tokens and keeps snapshots."""
+    """MTP proposer double with device candidate rows and a chain token.
 
-    def __init__(self, *, token: int, drafted: tuple[int, ...] = (), position: int = 127):
+    ``rows[0]`` starts on the candidate the prompt root (or a cycle's reseed)
+    scored. Each ``advance_chain_step`` consumes the published chain token and
+    scores the next drafted id into the row the adapter names, and a prefix
+    snapshot owns the rows, the published token, and the cursors together, as
+    ``NativeMtpStateSnapshot`` does.
+    """
+
+    def __init__(
+        self,
+        *,
+        token: int,
+        drafted: tuple[int, ...] = (),
+        position: int = 127,
+        max_candidate_rows: int = 3,
+    ):
         self.position = int(position)
         self.cache_len = self.position + 1
-        self.current = SimpleNamespace(token=int(token))
+        self.current = SimpleNamespace(token=-1)
         self.final_hidden_valid = True
         self.result_valid = True
         self.closed = False
+        self.max_candidate_rows = int(max_candidate_rows)
         self.calls: list[tuple] = []
         self._drafted = list(drafted)
-        self._snapshots: dict[int, tuple] = {}
+        self._candidate_row = 0
+        self._rows: dict[int, int] = {0: int(token)}
+        self._chain_token: int | None = None
+        self._chain_token_current = False
+        self._snapshots: dict[int, SimpleNamespace] = {}
+
+    # -- device candidate chain -------------------------------------------
+
+    def ensure_chain_token(self) -> None:
+        self.calls.append(("ensure",))
+        if not self._chain_token_current:
+            self.publish_chain_token()
+
+    def publish_chain_token(self) -> None:
+        self._chain_token = int(self._rows[self._candidate_row])
+        self._chain_token_current = True
+        self.calls.append(("publish", self._candidate_row, self._chain_token))
+
+    def advance_chain_step(self, *, candidate_row: int) -> SimpleNamespace:
+        if not self._chain_token_current:
+            raise RuntimeError("chained advance requires a published chain token")
+        consumed = self._chain_token
+        self.position += 1
+        self.cache_len += 1
+        self._rows[int(candidate_row)] = self._drafted.pop(0)
+        self._candidate_row = int(candidate_row)
+        self._chain_token_current = False
+        self.current = SimpleNamespace(token=-1)
+        self.calls.append(("step", int(candidate_row), consumed))
+        return self.current
+
+    def device_candidate_token_ids(self, rows: int = 1) -> Tensor:
+        self.calls.append(("device_candidates", int(rows)))
+        return Tensor.from_handle(0x7000, (int(rows),), DType.INT32, Device("hip", 0))
 
     # -- snapshot/restore --------------------------------------------------
 
-    def save_state(self, slot: int, *, stream: int = 0) -> tuple:
-        snapshot = ("snapshot", int(slot), self.position, self.cache_len)
+    def save_state(self, slot: int, *, stream: int = 0) -> SimpleNamespace:
+        snapshot = SimpleNamespace(
+            slot=int(slot),
+            position=self.position,
+            cache_len=self.cache_len,
+            rows=dict(self._rows),
+            candidate_row=self._candidate_row,
+            chain_token=self._chain_token,
+            chain_token_current=self._chain_token_current,
+        )
         self._snapshots[int(slot)] = snapshot
         self.calls.append(("save", int(slot), self.position))
         return snapshot
 
-    def restore_state(self, snapshot: tuple, *, stream: int = 0) -> None:
-        self.calls.append(("restore", snapshot[1]))
-        self.position = int(snapshot[2])
-        self.cache_len = int(snapshot[3])
+    def restore_state(self, snapshot: SimpleNamespace, *, stream: int = 0) -> None:
+        self.position = int(snapshot.position)
+        self.cache_len = int(snapshot.cache_len)
+        self._rows = dict(snapshot.rows)
+        self._candidate_row = int(snapshot.candidate_row)
+        self._chain_token = snapshot.chain_token
+        self._chain_token_current = bool(snapshot.chain_token_current)
         self.result_valid = False
+        self.calls.append(("restore", int(snapshot.slot)))
 
     # -- advances ----------------------------------------------------------
 
@@ -70,8 +130,8 @@ class _ChainProposer:
                 int(kwargs["input_token"]),
                 int(kwargs["position"]),
                 bool(kwargs["need_result"]),
-                # The repair advance leaves ``read_token_id`` at its default
-                # because it consumes no result; drafting always sets it.
+                # The repair advance consumes no result and leaves the host
+                # sentinel in place; drafting no longer runs through here.
                 bool(kwargs.get("read_token_id", True)),
             )
         )
@@ -80,7 +140,6 @@ class _ChainProposer:
         self.final_hidden_valid = True
         if kwargs["need_result"]:
             self.result_valid = True
-            self.current = SimpleNamespace(token=self._drafted.pop(0))
         return self.current
 
     def advance_with_target_hidden(self, **kwargs) -> SimpleNamespace:
@@ -97,15 +156,14 @@ class _ChainProposer:
         self.cache_len = self.position + 1
         self.final_hidden_valid = True
         self.result_valid = True
-        # A device-only read leaves the host sentinel in place.
+        # The reseed scores a fresh candidate into row 0 and leaves no valid
+        # chain token, so the next proposal publishes row 0 before chaining.
+        self._candidate_row = 0
+        self._chain_token_current = False
         self.current = SimpleNamespace(
             token=int(kwargs["input_token"]) if kwargs["read_token_id"] else -1
         )
         return self.current
-
-    def device_candidate_token_ids(self) -> Tensor:
-        self.calls.append(("device_candidates",))
-        return Tensor.from_handle(0x7000, (1,), DType.INT32, Device("hip", 0))
 
     def reset(self) -> None:
         return None
@@ -165,6 +223,8 @@ def _semantics(*, context_tokens: int = 128, remaining_decode: int = 32):
 
 
 def _row(*, max_tokens: int = 8, prompt_ids: tuple[int, ...] = (10, 11)) -> SimpleNamespace:
+    # The cycle record reads the row's emitted tokens and its timing counters,
+    # so the double carries them with production's initial values.
     return SimpleNamespace(
         request_id=REQUEST_ID,
         model_slot=0,
@@ -172,6 +232,7 @@ def _row(*, max_tokens: int = 8, prompt_ids: tuple[int, ...] = (10, 11)) -> Simp
         first_token_emitted=True,
         prompt_ids=tuple(prompt_ids),
         request=SimpleNamespace(max_tokens=int(max_tokens)),
+        generated_steps=[],
         mtp2_cycles=0,
         mtp2_candidate_counts=[],
         mtp2_accepted_counts=[],
@@ -181,6 +242,9 @@ def _row(*, max_tokens: int = 8, prompt_ids: tuple[int, ...] = (10, 11)) -> Simp
         mtp2_candidate_budget=0,
         mtp2_prompt_prime_ms=0.0,
         mtp2_provider_open_ms=0.0,
+        mtp2_proposal_ms=0.0,
+        mtp2_target_ms=0.0,
+        mtp2_provider_update_ms=0.0,
         mtp2_prompt_hidden_buffer=None,
     )
 
@@ -440,7 +504,7 @@ def test_a_depth_three_plan_steps_down_as_context_space_shrinks(
 # -- proposal chains -------------------------------------------------------
 
 
-def test_chained_proposal_drafts_host_tokens_and_keeps_repair_snapshots() -> None:
+def test_chained_proposal_drafts_device_tokens_and_keeps_repair_snapshots() -> None:
     proposer = _ChainProposer(token=201, drafted=(202, 203))
     adapter = _adapter(depth=3, proposer=proposer)
     plan = _plan(adapter, desired=3)
@@ -448,53 +512,62 @@ def test_chained_proposal_drafts_host_tokens_and_keeps_repair_snapshots() -> Non
 
     graph = adapter.propose_batch(plan, (_semantics(),))
 
-    assert graph.candidate_tokens == (201, 202, 203)
-    assert graph.token_ids is None
-    assert graph.provider_metadata == (("candidate_handoff", "host_i32"),)
+    # Every candidate reaches the target from the device rows, so the host tuple
+    # is a placeholder that keeps one graph shape for both hand-offs.
+    assert graph.candidate_tokens == (0, 0, 0)
+    assert graph.token_ids is not None
+    assert graph.token_ids.ptr == 0x7000
+    assert graph.token_ids.shape == (3,)
+    assert graph.provider_metadata == (("candidate_handoff", "device_i32"),)
     assert graph.row_offsets == (0, 3)
     assert graph.row_to_request == (REQUEST_ID,) * 3
     assert graph.parent_candidate_rows == (-1, 0, 1)
     assert graph.draft_depths == (1, 2, 3)
     assert graph.root_positions == (127,)
     assert graph.policy_fingerprint == "paro-mtp2:c3:k1"
-    advances = [call for call in proposer.calls if call[0] == "previous"]
-    assert advances == [
-        ("previous", 201, 128, True, True),
-        ("previous", 202, 129, True, True),
-    ]
-    assert [call for call in proposer.calls if call[0] == "save"] == [
-        # Slot 0 is the cycle checkpoint; slots 1..count-1 are repair points.
+    assert proposer.calls == [
+        # Slot 0 is the cycle checkpoint; the published primed candidate seeds
+        # the chain and slot 1 repairs the empty accepted prefix.
         ("save", 0, 127),
+        ("ensure",),
+        ("publish", 0, 201),
         ("save", 1, 127),
+        ("step", 1, 201),
+        ("publish", 1, 202),
         ("save", 2, 128),
+        ("step", 2, 202),
+        ("publish", 2, 203),
+        ("device_candidates", 3),
     ]
     # The proposal checkpoint uses slot 0 and must not collide with repair slots.
-    assert adapter._states[REQUEST_ID].checkpoint == ("snapshot", 0, 127, 128)
-    assert [snapshot[1] for snapshot in adapter._states[REQUEST_ID].draft_snapshots] == [1, 2]
-    assert row.mtp2_candidate_device_handoffs == 0
+    assert adapter._states[REQUEST_ID].checkpoint is proposer._snapshots[0]
+    assert [
+        snapshot.slot for snapshot in adapter._states[REQUEST_ID].draft_snapshots
+    ] == [1, 2]
+    assert row.mtp2_candidate_device_handoffs == 1
 
 
-def test_shallow_plan_at_a_deep_budget_uses_host_tokens_and_no_snapshots() -> None:
+def test_shallow_plan_at_a_deep_budget_uses_the_device_scalar_and_no_snapshots() -> None:
     proposer = _ChainProposer(token=201, drafted=(202,))
     adapter = _adapter(depth=3, proposer=proposer)
     plan = _plan(adapter, desired=1)
+    row = adapter.owner._row(REQUEST_ID)
 
     graph = adapter.propose_batch(plan, (_semantics(),))
 
     assert plan.candidate_counts == (1,)
-    assert graph.candidate_tokens == (201,)
-    assert graph.token_ids is None
+    assert graph.candidate_tokens == (0,)
+    assert graph.token_ids is not None and graph.token_ids.shape == (1,)
     assert graph.row_offsets == (0, 1)
-    assert graph.provider_metadata == (("candidate_handoff", "host_i32"),)
-    assert [call for call in proposer.calls if call[0] == "previous"] == []
-    assert [call for call in proposer.calls if call[0] == "save"] == [
-        ("save", 0, 127)
-    ]
+    assert graph.provider_metadata == (("candidate_handoff", "device_i32"),)
+    # A one-candidate cycle never touches the chain: one checkpoint, one scalar.
+    assert proposer.calls == [("save", 0, 127), ("device_candidates", 1)]
     assert adapter._states[REQUEST_ID].draft_snapshots == ()
+    assert row.mtp2_candidate_device_handoffs == 1
 
 
 def test_depth_one_proposal_keeps_the_device_candidate_handoff() -> None:
-    proposer = _ChainProposer(token=201)
+    proposer = _ChainProposer(token=201, max_candidate_rows=1)
     adapter = _adapter(depth=1, proposer=proposer)
     plan = _plan(adapter, desired=1)
     row = adapter.owner._row(REQUEST_ID)
@@ -503,20 +576,27 @@ def test_depth_one_proposal_keeps_the_device_candidate_handoff() -> None:
 
     assert graph.candidate_tokens == (0,)
     assert graph.token_ids is not None and graph.token_ids.ptr == 0x7000
+    assert graph.token_ids.shape == (1,)
     assert graph.provider_metadata == (("candidate_handoff", "device_i32"),)
     assert graph.policy_fingerprint == "paro-mtp2:c1:k1"
     assert row.mtp2_candidate_device_handoffs == 1
-    assert [call for call in proposer.calls if call[0] == "previous"] == []
+    assert proposer.calls == [("save", 0, 127), ("device_candidates", 1)]
     assert adapter._states[REQUEST_ID].draft_snapshots == ()
 
 
-def test_chained_proposal_refuses_a_device_only_candidate_token() -> None:
-    proposer = _ChainProposer(token=-1, drafted=(202, 203))
+def test_chained_proposal_never_reads_a_host_candidate_token() -> None:
+    """A depth-K cycle drafts from the device rows, not from a host readback."""
+
+    proposer = _ChainProposer(token=201, drafted=(202, 203))
+    assert proposer.current.token < 0
     adapter = _adapter(depth=3, proposer=proposer)
     plan = _plan(adapter, desired=3)
 
-    with pytest.raises(RuntimeError, match="host candidate token"):
-        adapter.propose_batch(plan, (_semantics(),))
+    graph = adapter.propose_batch(plan, (_semantics(),))
+
+    assert graph.provider_metadata == (("candidate_handoff", "device_i32"),)
+    # Each step consumed the candidate the previous prefix published on device.
+    assert [call[2] for call in proposer.calls if call[0] == "step"] == [201, 202]
 
 
 def test_proposal_refuses_a_depth_beyond_the_registered_budget() -> None:
@@ -578,14 +658,18 @@ def test_cycle_repairs_the_provider_to_the_accepted_prefix(depth, count, accepte
 
     advances = [call for call in proposer.calls if call[0] in {"previous", "restore"}]
     if accepted >= count:
+        # Full acceptance materializes the last draft. The advance produces no
+        # result, so it leaves ``read_token_id`` at its default and reads
+        # nothing back.
         assert advances == [("previous", drafted[-1], 127 + count, False, True)]
     elif accepted == count - 1:
         assert advances == []
     else:
         assert advances == [("restore", accepted + 1)]
-    # The bonus row is always taken from the repaired prefix.
+    # The bonus row is always taken from the repaired prefix, and its candidate
+    # stays on device for the next cycle's chain.
     target = [call for call in proposer.calls if call[0] == "target"]
-    assert target == [("target", 900, 127 + accepted + 1, 0x5000, depth > 1)]
+    assert target == [("target", 900, 127 + accepted + 1, 0x5000, False)]
     assert proposer.position == 127 + accepted + 1
     assert adapter._states[REQUEST_ID].draft_snapshots == ()
 
@@ -667,7 +751,7 @@ def test_proposal_failure_leaves_a_rollbackable_provider_journal() -> None:
     def fail(**kwargs):
         raise RuntimeError("injected draft failure")
 
-    proposer.advance_with_previous_hidden = fail
+    proposer.advance_chain_step = fail
     with pytest.raises(RuntimeError, match="injected draft failure"):
         adapter.propose_batch(plan, (_semantics(),))
 
@@ -736,6 +820,7 @@ def test_prefill_reserves_one_verify_row_per_candidate(monkeypatch, depth) -> No
         def __init__(self, _model, **kwargs) -> None:
             self.max_positions = kwargs["max_positions"]
             self.max_mtp_tokens = kwargs["max_mtp_tokens"]
+            self.max_candidate_rows = kwargs["max_candidate_rows"]
             self.scoring_head = kwargs["scoring_head"]
 
         def reset(self) -> None:
@@ -767,10 +852,14 @@ def test_prefill_reserves_one_verify_row_per_candidate(monkeypatch, depth) -> No
     assert state.proposer.max_mtp_tokens == _proposer_capacity_bucket(
         _proposer_token_requirement(2, 8, depth)
     )
+    # One device candidate row per draft the request may chain.
+    assert state.proposer.max_candidate_rows == depth
 
 
 @pytest.mark.parametrize("depth", (1, 2, 3))
-def test_prompt_root_reads_the_host_token_only_for_chained_depths(depth) -> None:
+def test_prompt_root_never_reads_a_host_token(depth) -> None:
+    """The first candidate of every depth stays on the device candidate row."""
+
     proposer = _ChainProposer(token=201)
     adapter = _adapter(depth=depth, proposer=proposer)
     row = adapter.owner._row(REQUEST_ID)
@@ -785,7 +874,7 @@ def test_prompt_root_reads_the_host_token_only_for_chained_depths(depth) -> None
     )
 
     assert [call for call in proposer.calls if call[0] == "target"] == [
-        ("target", 99, len(row.prompt_ids), 0x3000, depth > 1)
+        ("target", 99, len(row.prompt_ids), 0x3000, False)
     ]
 
 

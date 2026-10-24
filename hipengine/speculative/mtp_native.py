@@ -21,6 +21,7 @@ from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_array_to_device, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import build_dense_gemv, dense_dual_gemv_out_bf16_wmma
+from hipengine.kernels.hip_gfx1100.runtime.state import build_runtime_state, copy_i32_to_i64
 from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     build_lm_head,
     lm_head_argmax_stage1_blocks,
@@ -206,6 +207,17 @@ class NativeMtpStepResult:
 
 @dataclass(frozen=True, slots=True)
 class NativeMtpStateSnapshot:
+    """One saved proposal prefix.
+
+    A prefix is not only the hidden row and the host cursors: the device
+    candidate index and the int64 chain token belong to it too. Proposal for a
+    depth-K chain advances the provider K-1 times, so every one of those
+    advances overwrites both. Partial acceptance restores an intermediate
+    prefix, and the following cycle reads the device candidate index again, so
+    a snapshot that restored only hidden/cache/position/current would hand the
+    next proposal the last draft instead of the accepted one.
+    """
+
     slot: int
     cache_len: int
     position: int
@@ -214,6 +226,9 @@ class NativeMtpStateSnapshot:
     # snapshot was taken. A K/V-only row leaves no hidden behind, and restoring
     # a snapshot must not resurrect a carry that was never computed.
     hidden_valid: bool = True
+    candidate_ready: bool = False
+    chain_token_current: bool = False
+    candidate_row: int = 0
 
 
 class NativeMtpChainProposer:
@@ -230,6 +245,7 @@ class NativeMtpChainProposer:
         *,
         max_positions: int,
         max_mtp_tokens: int,
+        max_candidate_rows: int = 1,
         runtime: HipRuntime | None = None,
         compiler_version: str | None = None,
         require_cached_build: bool = False,
@@ -239,6 +255,8 @@ class NativeMtpChainProposer:
             raise ValueError("max_positions must be positive")
         if max_mtp_tokens <= 0:
             raise ValueError("max_mtp_tokens must be positive")
+        if max_candidate_rows <= 0:
+            raise ValueError("max_candidate_rows must be positive")
         self.model = Path(model)
         validation = validate_qwen35_mtp_model(self.model)
         validation.raise_for_errors()
@@ -275,6 +293,7 @@ class NativeMtpChainProposer:
         self.eps = float(self.config.rms_norm_eps)
         self.max_positions = int(max_positions)
         self.max_mtp_tokens = int(max_mtp_tokens)
+        self.max_candidate_rows = int(max_candidate_rows)
         if self.top_k > 8:
             raise ValueError("native MTP proposer currently supports top_k <= 8")
         weight_names = [
@@ -329,6 +348,7 @@ class NativeMtpChainProposer:
         self.dflash_lib = build_dflash_drafter(**build_kwargs)
         self.dense_lib = None
         self.lm_lib = build_lm_head(**build_kwargs)
+        self.runtime_state_lib = None
         self.gate_up_base = self.weights["mtp.layers.0.mlp.experts.gate_up_proj"].ptr
         self.down_base = self.weights["mtp.layers.0.mlp.experts.down_proj"].ptr
         self.gate_up_expert_bytes = (2 * self.intermediate) * self.hidden * DType.BF16.itemsize
@@ -341,6 +361,11 @@ class NativeMtpChainProposer:
         # Allocated on the first bulk append and reused; it holds only scratch
         # for rows that have already been launched, so ``reset()`` keeps it.
         self._bulk_workspace: _BulkPromptWorkspace | None = None
+        # A result-producing advance leaves a device candidate that a chained
+        # draft may consume; the int64 chain token is published separately, on
+        # demand, so a depth-1 cycle pays no extra launch.
+        self._candidate_ready = False
+        self._chain_token_current = False
 
     def _load_info(self, name: str) -> DeviceTensorAllocation:
         alloc = load_tensor_info_to_device(self.infos[name], runtime=self.runtime)
@@ -399,8 +424,28 @@ class NativeMtpChainProposer:
         _, self.block_indices_buf = _empty_device((block_count,), np.int64, self.buffers, runtime=self.runtime)
         _, self.w8_block_indices_buf = _empty_device((block_count,), np.int32, self.buffers, runtime=self.runtime)
         self.out_index_host, self.out_index_buf = _empty_device((1,), np.int64, self.buffers, runtime=self.runtime)
-        self.w8_out_index_host, self.w8_out_index_buf = _empty_device((1,), np.int32, self.buffers, runtime=self.runtime)
         self.out_value_host, self.out_value_buf = _empty_device((1,), np.float32, self.buffers, runtime=self.runtime)
+        # One int32 row per declared candidate row, so a depth-K chain can write
+        # draft i straight into row i on device. Row 0 is the same address the
+        # scalar hand-off has always used, which keeps the depth-1 tensor
+        # identical to before.
+        _, self.candidate_ids_buf = _empty_device((self.max_candidate_rows,), np.int32, self.buffers, runtime=self.runtime)
+        self.w8_out_index_host = np.zeros((1,), dtype=np.int32)
+        self.w8_out_index_buf = DeviceBuffer(self.candidate_ids_buf.ptr, np.dtype(np.int32).itemsize)
+        # Prefix snapshots own the device candidate index and the int64 chain
+        # token in addition to the hidden row, because proposal advances mutate
+        # both and partial acceptance restores an intermediate prefix.
+        index_buf = self.out_index_buf if self.scoring_head is None else self.w8_out_index_buf
+        self._candidate_index_nbytes = int(index_buf.nbytes)
+        self._candidate_index_buf = index_buf
+        self._candidate_row = 0
+        _, self.snapshot_index_buf = _empty_device(
+            (self.max_mtp_tokens * self._candidate_index_nbytes,),
+            np.uint8,
+            self.buffers,
+            runtime=self.runtime,
+        )
+        _, self.snapshot_token_buf = _empty_device((self.max_mtp_tokens,), np.int64, self.buffers, runtime=self.runtime)
 
     def _ensure_shared_gate_up_dual(self) -> DeviceBuffer:
         if self.shared_gate_up_proj_buf is None:
@@ -435,6 +480,8 @@ class NativeMtpChainProposer:
         self.current = NativeMtpStepResult(token=0, logit=float("nan"), topk_experts=(), topk_logits=())
         self.final_hidden_valid = False
         self.result_valid = False
+        self._candidate_ready = False
+        self._chain_token_current = False
 
     def _copy_device_to_host_array(self, host_array: np.ndarray, buffer: DeviceBuffer, *, nbytes: int | None = None, stream: int = 0) -> None:
         count = int(buffer.nbytes if nbytes is None else nbytes)
@@ -581,11 +628,12 @@ class NativeMtpChainProposer:
 
         The request is validated in full before the first launch, so a rejected
         request appends nothing and leaves the previous carry and proposal
-        intact. Once the first chunk is launched the previous carry and proposal
-        are cleared, because a partially launched chunk may already have written
-        cache rows the caller cannot observe: a device failure at any point then
-        leaves the already-committed chunks published, no valid hidden or
-        proposal behind, and the caller free to resume from ``cache_len``.
+        intact. Once the first chunk is launched the previous carry, candidate
+        descriptor, and chain token are cleared, because a partially launched
+        chunk may already have written cache rows the caller cannot observe: a
+        device failure at any point then leaves the already-committed chunks
+        published, no valid hidden or proposal behind, and the caller free to
+        resume from ``cache_len``.
 
         Returns the number of appended rows.
         """
@@ -603,12 +651,16 @@ class NativeMtpChainProposer:
         if self.cache_len + len(pending) > self.max_mtp_tokens:
             raise RuntimeError("MTP cache capacity exceeded")
         workspace = self._bulk_prompt_workspace()
-        # From here on device work happens. Clear the carry and proposal before
-        # the first launch, not after a chunk commits: a chunk that fails part
-        # way through may already have written this row's K/V, so the previous
-        # hidden and proposal stop describing a state the caller can observe.
+        # From here on device work happens. Clear the carry, the candidate
+        # descriptor, and the chain token before the first launch, not after a
+        # chunk commits: a chunk that fails part way through may already have
+        # written this row's K/V, so the previous hidden and proposal stop
+        # describing a state the caller can observe. This mirrors the serial
+        # cache-only row, which clears the same four flags.
         self.final_hidden_valid = False
         self.result_valid = False
+        self._candidate_ready = False
+        self._chain_token_current = False
         self.current = NativeMtpStepResult(token=-1, logit=float("nan"), topk_experts=(), topk_logits=())
         appended = 0
         for start in range(0, len(pending), chunk):
@@ -898,18 +950,102 @@ class NativeMtpChainProposer:
             stream=stream,
         )
 
-    def device_candidate_token_ids(self) -> Tensor:
-        """Return the stable packed-PARO top-1 scalar without host readback."""
+    def advance_chain_step(
+        self,
+        *,
+        candidate_row: int,
+        stream: int = 0,
+    ) -> NativeMtpStepResult:
+        """Advance one chained draft without touching the host.
 
-        if not self.result_valid:
+        The input token is the *device* candidate published by the previous
+        scoring pass and the target hidden is the provider's own previous
+        hidden row, so a depth-K chain never round-trips a draft id to the host
+        to build the next draft. The new candidate is written straight into
+        ``candidate_row`` of the device candidate rows.
+        """
+
+        # This path reads ``final_hidden_buf`` directly instead of going through
+        # ``advance_with_previous_hidden``, so it carries the same guard: a
+        # cache-only row or a failed bulk append leaves no hidden to chain on.
+        if not self.final_hidden_valid:
             raise RuntimeError(
-                "device candidate token requires a result-producing advance"
+                "proposer final hidden is not valid; run a hidden-producing advance first"
+            )
+        if not self._chain_token_current:
+            raise RuntimeError(
+                "chained advance requires a published chain token; "
+                "call ensure_chain_token() after the last scoring advance"
+            )
+        return self.advance(
+            input_token_ptr=self.token_buf.ptr,
+            target_hidden_ptr=self.final_hidden_buf.ptr,
+            position=self.position + 1,
+            candidate_row=int(candidate_row),
+            read_token_id=False,
+            read_expert_topk=False,
+            read_lm_head_value=False,
+            stream=stream,
+        )
+
+    def ensure_chain_token(self, *, stream: int = 0) -> None:
+        """Publish the int64 chain token for the current candidate if stale."""
+
+        if self._chain_token_current:
+            return
+        self.publish_chain_token(stream=stream)
+
+    def _candidate_index_ptr(self) -> int:
+        if self.scoring_head is None:
+            return self.out_index_buf.ptr
+        return self.candidate_ids_buf.ptr + self._candidate_row * np.dtype(np.int32).itemsize
+
+    def publish_chain_token(self, *, stream: int = 0) -> None:
+        """Exactly widen the current winner to the fuse kernel's int64 input.
+
+        Read the saved candidate scalar, not scorer scratch: a restored prefix
+        remains publishable even after later proposals overwrite that scratch.
+        """
+
+        if self.scoring_head is None:
+            raise NotImplementedError("device chained proposal requires W8A16 scoring")
+        if not self._candidate_ready:
+            raise RuntimeError("no device candidate is ready to publish")
+        if self.runtime_state_lib is None:
+            self.runtime_state_lib = build_runtime_state(
+                load=True,
+                compiler_version=self.compiler_version,
+                require_cached=self.require_cached_build,
+            )
+        copy_i32_to_i64(
+            self._candidate_index_ptr(), self.token_buf.ptr, 1,
+            stream=stream, library=self.runtime_state_lib, runtime=self.runtime,
+        )
+        self._chain_token_current = True
+
+    def device_candidate_token_ids(self, rows: int = 1) -> Tensor:
+        """Return device candidate ids for ``rows`` chain drafts without readback.
+
+        The descriptor is the saved candidate identity, not a score: a restored
+        prefix keeps it publishable while the score queries still need a fresh
+        result-producing advance at the restored state.
+        """
+
+        if not self._candidate_ready:
+            raise RuntimeError(
+                "device candidate token requires a scored candidate row; "
+                "run a result-producing advance"
             )
         if self.scoring_head is None:
             raise NotImplementedError("device candidate descriptor requires W8A16 scoring")
+        count = int(rows)
+        if count <= 0 or count > self.max_candidate_rows:
+            raise ValueError(
+                f"candidate rows must be in 1..{self.max_candidate_rows}, got {count}"
+            )
         return Tensor.from_handle(
-            self.w8_out_index_buf.ptr,
-            (1,),
+            self.candidate_ids_buf.ptr,
+            (count,),
             DType.INT32,
             Device("hip", 0),
         )
@@ -931,6 +1067,8 @@ class NativeMtpChainProposer:
         return host
 
     def save_state(self, slot: int, *, stream: int = 0) -> NativeMtpStateSnapshot:
+        """Save one proposal prefix: hidden row, candidate index, chain token."""
+
         if slot < 0 or slot >= self.max_mtp_tokens:
             raise ValueError("snapshot slot outside capacity")
         self.runtime.memcpy_async(
@@ -940,15 +1078,34 @@ class NativeMtpChainProposer:
             HipMemcpyKind.DEVICE_TO_DEVICE,
             int(stream),
         )
+        self.runtime.memcpy_async(
+            self.snapshot_index_buf.ptr + int(slot) * self._candidate_index_nbytes,
+            self._candidate_index_ptr(),
+            self._candidate_index_nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            int(stream),
+        )
+        self.runtime.memcpy_async(
+            self.snapshot_token_buf.ptr + int(slot) * np.dtype(np.int64).itemsize,
+            self.token_buf.ptr,
+            np.dtype(np.int64).itemsize,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            int(stream),
+        )
         return NativeMtpStateSnapshot(
             slot=int(slot),
             cache_len=int(self.cache_len),
             position=int(self.position),
             current=self.current,
             hidden_valid=bool(self.final_hidden_valid),
+            candidate_ready=bool(self._candidate_ready),
+            chain_token_current=bool(self._chain_token_current),
+            candidate_row=int(self._candidate_row),
         )
 
     def restore_state(self, snapshot: NativeMtpStateSnapshot, *, stream: int = 0) -> None:
+        """Restore one proposal prefix, including its device candidate identity."""
+
         if snapshot.slot < 0 or snapshot.slot >= self.max_mtp_tokens:
             raise ValueError("snapshot slot outside capacity")
         self.runtime.memcpy_async(
@@ -958,15 +1115,36 @@ class NativeMtpChainProposer:
             HipMemcpyKind.DEVICE_TO_DEVICE,
             int(stream),
         )
+        self._candidate_row = int(snapshot.candidate_row)
+        self.runtime.memcpy_async(
+            self._candidate_index_ptr(),
+            self.snapshot_index_buf.ptr + int(snapshot.slot) * self._candidate_index_nbytes,
+            self._candidate_index_nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            int(stream),
+        )
+        self.runtime.memcpy_async(
+            self.token_buf.ptr,
+            self.snapshot_token_buf.ptr + int(snapshot.slot) * np.dtype(np.int64).itemsize,
+            np.dtype(np.int64).itemsize,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            int(stream),
+        )
         self.cache_len = int(snapshot.cache_len)
         self.position = int(snapshot.position)
         self.current = snapshot.current
         self.final_hidden_valid = bool(snapshot.hidden_valid)
         # The snapshot carries the hidden row and the host readback, not the
         # device head buffers (top-1 index/value, block maxima, logits). Those
-        # still hold the discarded advance's scores, so every score or candidate
-        # read needs a new result-producing advance at the restored state.
+        # still hold the discarded advance's scores, so every score query needs
+        # a new result-producing advance at the restored state.
         self.result_valid = False
+        # The candidate descriptor and the chain token are snapshotted device
+        # identity, not scores: a restored prefix stays publishable, and a
+        # count=1 cycle after a rollback can still hand the target its candidate
+        # without scoring again.
+        self._candidate_ready = bool(snapshot.candidate_ready)
+        self._chain_token_current = bool(snapshot.chain_token_current)
 
     def vocab_topk(self, *, k: int = 8, stream: int = 0) -> tuple[list[int], list[float]]:
         """Exact top-k tokens+logits over the (capped) draft vocab.
@@ -1018,7 +1196,8 @@ class NativeMtpChainProposer:
     def advance(
         self,
         *,
-        input_token: int,
+        input_token: int | None = None,
+        input_token_ptr: int | None = None,
         target_hidden_ptr: int,
         position: int,
         need_result: bool = True,
@@ -1026,6 +1205,7 @@ class NativeMtpChainProposer:
         read_token_id: bool = True,
         read_expert_topk: bool = True,
         read_lm_head_value: bool = True,
+        candidate_row: int = 0,
         stream: int = 0,
     ) -> NativeMtpStepResult:
         """Advance one MTP step.
@@ -1041,8 +1221,30 @@ class NativeMtpChainProposer:
         attention, the expert block, and the head. It requires an explicit
         target hidden, cannot be combined with ``need_result=True``, and leaves
         no valid hidden carry or proposal behind.
+
+        Exactly one of ``input_token`` (host id) or ``input_token_ptr`` (device
+        int64 id) supplies the row's token. The pointer form is what keeps a
+        draft chain on device. When it is used, the position/cache-slot metadata
+        upload deliberately does *not* include the token field: that scalar
+        belongs to the device chain, and a packed upload would overwrite it.
         """
 
+        if (input_token is None) == (input_token_ptr is None):
+            raise ValueError(
+                "advance requires exactly one of input_token or input_token_ptr"
+            )
+        row = int(candidate_row)
+        # Declared in __init__; a hand-built proposer (no scratch, no scorer)
+        # supports the single row 0 it can actually write.
+        limit = int(getattr(self, "max_candidate_rows", 1))
+        if row < 0 or row >= limit:
+            raise ValueError(
+                f"candidate_row must be in 0..{limit - 1}, got {row}"
+            )
+        if row and self.scoring_head is None:
+            raise NotImplementedError(
+                "multi-row device candidates require W8A16 scoring"
+            )
         if self.closed:
             raise RuntimeError("NativeMtpChainProposer is closed")
         if self.scoring_head is not None:
@@ -1065,21 +1267,45 @@ class NativeMtpChainProposer:
                 raise ValueError(
                     "kv_write_only advance requires a target hidden, not the proposer's own final hidden"
                 )
-        self.token_host[0] = int(input_token)
+        if input_token is not None:
+            self.token_host[0] = int(input_token)
+        token_ptr = self.token_buf.ptr if input_token_ptr is None else int(input_token_ptr)
+        if int(token_ptr) <= 0:
+            raise ValueError("input_token_ptr must be non-zero")
         self.position_host[0] = int(position)
         self.cache_slot_host[0] = int(self.cache_len)
         indexed_kv_write = _indexed_kv_write_enabled()
-        self.runtime.memcpy_async(
-            self.token_position_buf.ptr,
-            host_array_ptr(self.token_position_host),
-            self.token_position_host.nbytes,
-            HipMemcpyKind.HOST_TO_DEVICE,
-            int(stream),
-        )
+        if input_token is not None:
+            # One packed upload carries the row's token, position, and slot.
+            self.runtime.memcpy_async(
+                self.token_position_buf.ptr,
+                host_array_ptr(self.token_position_host),
+                self.token_position_host.nbytes,
+                HipMemcpyKind.HOST_TO_DEVICE,
+                int(stream),
+            )
+        else:
+            # The token belongs to the device chain, so it is not uploaded: the
+            # position and cache slot are published without touching it.
+            self.runtime.memcpy_async(
+                self.position_buf.ptr,
+                host_array_ptr(self.position_host),
+                self.position_host.nbytes,
+                HipMemcpyKind.HOST_TO_DEVICE,
+                int(stream),
+            )
+            if indexed_kv_write:
+                self.runtime.memcpy_async(
+                    self.cache_slot_buf.ptr,
+                    host_array_ptr(self.cache_slot_host),
+                    self.cache_slot_host.nbytes,
+                    HipMemcpyKind.HOST_TO_DEVICE,
+                    int(stream),
+                )
         key_cache_dst = self.key_cache_buf.ptr + self.cache_len * self.kv_features * DType.FP32.itemsize
         value_cache_dst = self.value_cache_buf.ptr + self.cache_len * self.kv_features * DType.BF16.itemsize
         mtp_fuse_inputs_f16_bf16(
-            self.token_buf.ptr,
+            token_ptr,
             self.weights["embed_tokens.weight"].ptr,
             int(target_hidden_ptr),
             self.weights["mtp.pre_fc_norm_embedding.weight"].ptr,
@@ -1193,6 +1419,8 @@ class NativeMtpChainProposer:
             self.position = int(position)
             self.final_hidden_valid = False
             self.result_valid = False
+            self._candidate_ready = False
+            self._chain_token_current = False
             self.current = NativeMtpStepResult(token=-1, logit=float("nan"), topk_experts=(), topk_logits=())
             return self.current
         if context_len >= 128:
@@ -1363,6 +1591,8 @@ class NativeMtpChainProposer:
         self.cache_len += 1
         self.position = int(position)
         self.final_hidden_valid = True
+        self._candidate_ready = False
+        self._chain_token_current = False
         if not need_result:
             self.result_valid = False
             self.current = NativeMtpStepResult(token=-1, logit=float("nan"), topk_experts=(), topk_logits=())
@@ -1391,7 +1621,7 @@ class NativeMtpChainProposer:
                 int(self.scoring_head.scale_f32_ptr),
                 self.block_values_buf.ptr,
                 self.w8_block_indices_buf.ptr,
-                self.w8_out_index_buf.ptr,
+                self.candidate_ids_buf.ptr + row * np.dtype(np.int32).itemsize,
                 self.out_value_buf.ptr,
                 1,
                 self.hidden,
@@ -1402,7 +1632,13 @@ class NativeMtpChainProposer:
                 runtime=self.runtime,
             )
             index_host = self.w8_out_index_host
-            index_buf = self.w8_out_index_buf
+            index_buf = DeviceBuffer(
+                self.candidate_ids_buf.ptr + row * np.dtype(np.int32).itemsize,
+                np.dtype(np.int32).itemsize,
+            )
+        self._candidate_row = row
+        self._candidate_ready = True
+        self._chain_token_current = False
         # Blocking D2H of the argmax pair implies a stream sync; the explicit
         # device_synchronize on top of it was pure host stall (#107 host-time trim).
         if read_token_id:

@@ -518,11 +518,37 @@ def test_previous_hidden_carry_is_rejected_after_a_cache_only_row(harness: _Harn
     assert proposer.position == 9
 
 
+def test_chain_step_requires_a_valid_hidden(harness: _Harness) -> None:
+    """The device-pointer chain path carries the same guard as the host carry."""
+
+    proposer = harness.make()
+    proposer.advance_with_target_hidden(
+        input_token=11,
+        target_hidden_ptr=_TARGET_HIDDEN_PTR,
+        position=9,
+        read_expert_topk=False,
+        read_lm_head_value=False,
+    )
+    assert proposer.final_hidden_valid is True
+    # Stage the hole the guard closes: a published chain token outlives the
+    # hidden it was published beside, so the token check alone would let the
+    # step read a stale hidden row.
+    proposer._chain_token_current = True
+    proposer.final_hidden_valid = False
+
+    with pytest.raises(RuntimeError, match="final hidden"):
+        proposer.advance_chain_step(candidate_row=1)
+
+    # The rejected step must not move the cursor.
+    assert proposer.cache_len == 1
+    assert proposer.position == 9
+
+
 def test_proposal_surfaces_are_invalid_after_a_cache_only_row(harness: _Harness) -> None:
     proposer = harness.make()
     proposer.append_prompt_kv(input_token=11, target_hidden_ptr=_TARGET_HIDDEN_PTR, position=9)
 
-    with pytest.raises(RuntimeError, match="result-producing advance"):
+    with pytest.raises(RuntimeError, match="scored candidate row"):
         proposer.device_candidate_token_ids()
     with pytest.raises(RuntimeError, match="result-producing advance"):
         proposer.vocab_topk(k=4)
@@ -631,8 +657,12 @@ def test_snapshot_round_trip_carries_hidden_validity(harness: _Harness) -> None:
     assert proposer.final_hidden_valid is True
     proposer.restore_state(invalid)
     assert proposer.final_hidden_valid is False
-    with pytest.raises(RuntimeError, match="result-producing"):
+    # The snapshot carried no candidate either, so the descriptor stays refused
+    # while the score query stays refused for the score reason.
+    with pytest.raises(RuntimeError, match="scored candidate row"):
         proposer.device_candidate_token_ids()
+    with pytest.raises(RuntimeError, match="result-producing"):
+        proposer.vocab_topk(k=4)
     with pytest.raises(RuntimeError, match="final hidden"):
         proposer.advance_with_previous_hidden(input_token=16, position=13, need_result=False)
 

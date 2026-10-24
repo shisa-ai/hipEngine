@@ -679,8 +679,10 @@ def test_bulk_appends_the_same_kv_producer_chain_and_no_downstream_work(
     assert harness.rec.d2h == []
     assert proposer.final_hidden_valid is False
     assert proposer.result_valid is False
+    assert proposer._candidate_ready is False
+    assert proposer._chain_token_current is False
     assert proposer.current.token == -1
-    with pytest.raises(RuntimeError, match="result-producing advance"):
+    with pytest.raises(RuntimeError, match="scored candidate row"):
         proposer.device_candidate_token_ids()
     with pytest.raises(RuntimeError, match="final hidden"):
         proposer.read_final_hidden_bf16()
@@ -772,16 +774,25 @@ def test_bulk_then_final_row_attends_over_every_primed_row(harness: _Harness) ->
 # --------------------------------------------------------------------------
 
 
-def test_bulk_first_chunk_failure_clears_a_previous_result(harness: _Harness) -> None:
+def test_bulk_first_chunk_failure_clears_a_previous_result(
+    harness: _Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
     proposer = harness.make()
-    # A valid carry and proposal exist before the append starts.
+    proposer.runtime_state_lib = object()
+    monkeypatch.setattr(
+        mtp_native, "copy_i32_to_i64", lambda *args, **kwargs: None, raising=False
+    )
+    # A valid carry and a published proposal exist before the append starts.
     proposer.advance_with_target_hidden(
         input_token=11,
         target_hidden_ptr=_TARGET_HIDDEN_PTR,
         position=5,
     )
+    proposer.publish_chain_token()
     assert proposer.final_hidden_valid is True
     assert proposer.result_valid is True
+    assert proposer._candidate_ready is True
+    assert proposer._chain_token_current is True
     cache_len = proposer.cache_len
     position = proposer.position
 
@@ -792,16 +803,50 @@ def test_bulk_first_chunk_failure_clears_a_previous_result(harness: _Harness) ->
 
     # Nothing is published, and the pre-append carry/proposal is gone: a
     # partially launched chunk may already have written cache rows, so the old
-    # hidden and proposal no longer describe a state the caller can observe.
+    # hidden, candidate descriptor, and chain token no longer describe a state
+    # the caller can observe.
     assert proposer.cache_len == cache_len
     assert proposer.position == position
     assert proposer.final_hidden_valid is False
     assert proposer.result_valid is False
+    assert proposer._candidate_ready is False
+    assert proposer._chain_token_current is False
     assert proposer.current.token == -1
-    with pytest.raises(RuntimeError, match="result-producing advance"):
+    with pytest.raises(RuntimeError, match="scored candidate row"):
         proposer.device_candidate_token_ids()
     with pytest.raises(RuntimeError, match="final hidden"):
         proposer.read_final_hidden_bf16()
+
+
+def test_bulk_append_clears_a_publishable_candidate(
+    harness: _Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A committed append moves the cache, so the proposal stops describing it."""
+
+    proposer = harness.make()
+    proposer.runtime_state_lib = object()
+    monkeypatch.setattr(
+        mtp_native, "copy_i32_to_i64", lambda *args, **kwargs: None, raising=False
+    )
+    proposer.advance_with_target_hidden(
+        input_token=11,
+        target_hidden_ptr=_TARGET_HIDDEN_PTR,
+        position=5,
+    )
+    proposer.publish_chain_token()
+    assert proposer._candidate_ready is True
+    assert proposer._chain_token_current is True
+
+    proposer.append_prompt_kv_bulk(_rows(2), chunk_rows=2)
+
+    assert proposer._candidate_ready is False
+    assert proposer._chain_token_current is False
+    with pytest.raises(RuntimeError, match="scored candidate row"):
+        proposer.device_candidate_token_ids()
+    # The chain step refuses on the missing carry before it can consume the
+    # cleared token.
+    with pytest.raises(RuntimeError, match="final hidden"):
+        proposer.advance_chain_step(candidate_row=1)
 
 
 def test_bulk_device_failure_keeps_only_the_committed_chunks(harness: _Harness) -> None:

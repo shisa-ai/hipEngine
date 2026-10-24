@@ -3,8 +3,10 @@
 The target-contract proposer is shared by both profiles: final-normalized target
 hidden, selected-row reseed after verification, and borrowed full-vocabulary
 W8A16 scoring. Strict selects the exact c1-loop verifier. Production selects the
-qualified decode-batched T2 verifier with the strict route as its registered
-fallback.
+decode-batched verifier with the strict route as its registered fallback.
+Public serving carries the actual depth (1–3) separately from this arithmetic
+manifest. Historical B1 variant IDs and evidence links stay unchanged; they do
+not establish numerical parity for a new depth.
 """
 
 from __future__ import annotations
@@ -45,7 +47,7 @@ FAST_VERIFIER_CANDIDATE_VARIANT = "b1_graph_off_fast_d64_candidate"
 _PROVIDER_EVIDENCE = "benchmarks/results/2026-08-24-w7900-paro-mtp-provider-contract-spike.json"
 _PRODUCTION_EVIDENCE = "benchmarks/results/2026-08-24-w7900-paro-fast-d24-3run-default.json"
 _KV_POLICY = "paged_bf16_kv_live_spans"
-_GRAPH_POLICY = "off_b1_fixed_chain"
+_GRAPH_POLICY = "off_fixed_chain"
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,7 +146,7 @@ def _register_semantic_routes() -> None:
 def _selection(layer: str, variant: str, *, evidence: str | None = None) -> VariantSelection:
     return VariantSelection(
         layer=layer,
-        scope="b1_graph_off_fixed_chain",
+        scope="graph_off_fixed_chain",
         selected_variant=variant,
         strict_fallback_variant=(
             TARGET_CONTRACT_VARIANT if layer == PROPOSER_LAYER else STRICT_VERIFIER_VARIANT

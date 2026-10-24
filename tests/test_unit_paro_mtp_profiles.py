@@ -57,6 +57,9 @@ def test_paro_mtp_strict_and_production_manifests_are_registered() -> None:
     )
     assert production.fell_back_to_strict is False
     assert production.strict_manifest_sha256 == strict.manifest_sha256
+    for resolved in (strict, production):
+        assert resolved.manifest["graph_policy"] == "off_fixed_chain"
+        assert all(row["scope"] == "graph_off_fixed_chain" for row in resolved.manifest["selections"])
 
 
 def test_fast_verifier_route_is_certified_and_selected_by_production() -> None:

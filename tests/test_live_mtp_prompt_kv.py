@@ -102,11 +102,16 @@ def test_prompt_kv_only_preserves_full_prefix_final_hidden_and_continuation(prop
                 candidate.advance_with_target_hidden(**kwargs, read_token_id=False, read_expert_topk=False, read_lm_head_value=False)
             else:
                 if not asynchronous:
-                    before = candidate.read_final_hidden_bf16().copy()
-                candidate.append_prompt_kv_with_target_hidden(**kwargs)
+                    before = _read(candidate, candidate.final_hidden_buf.ptr, (1, parent.hidden), np.uint16)
+                candidate.append_prompt_kv(**kwargs)
                 if not asynchronous:
-                    after = candidate.read_final_hidden_bf16()
+                    after = _read(candidate, candidate.final_hidden_buf.ptr, (1, parent.hidden), np.uint16)
                     assert before.tobytes() == after.tobytes(), "KV-only append touched hidden"
+                    # A K/V-only row leaves no carry behind, so the public read
+                    # must refuse until a hidden-producing advance runs.
+                    assert candidate.final_hidden_valid is False
+                    with pytest.raises(RuntimeError, match="final hidden is not valid"):
+                        candidate.read_final_hidden_bf16()
         _assert_live_equal(parent, candidate)
         snapshots = [owner.save_state(0) for owner in proposers]
         # Both no-accept reseeding and accepted-token hidden-producing repair

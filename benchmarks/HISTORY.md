@@ -9,6 +9,82 @@ the promotion rules in [`docs/BENCHMARK.md`](../docs/BENCHMARK.md).
 The operational scoreboard, platform freshness index, reproduction commands,
 and root README export blocks are in [`benchmarks/README.md`](README.md).
 
+## PARO October 23 numerical diagnostic — W7900
+
+The October 23 production B1 fast/raw-D24 snapshot reported
+`general_ja_explain` mean/p95/p99 KL of 0.00272/0.01246/0.03527 against
+0.001/0.005/0.02, with an identical focused repeat. All 720 timed generated
+IDs and ten public API pairs matched AR. The snapshot withdrew the MTP
+headline without changing runtime defaults and called for a full raw-D24
+`mtp_paro_verifier_numerics.py` rerun before refreshing it. Subsequent local
+commits repaired attention dispatch and diagnostic reporting; this archived
+observation is not a fresh verdict on the synchronized branch.
+[Original artifact](results/2026-10-23-w7900-paro-mtp-refresh.json).
+
+## PARO public draft depths — W7900, October 24
+
+This snapshot records the October 24 depth experiment before subsequent
+correctness repairs and integration with upstream's depth-two default. It is
+not a statement of the synchronized branch's defaults or correctness status.
+
+Qwen3.6-35B-A3B packed PARO W4 + BF16 MTP, **epyc / Radeon Pro W7900**,
+production profile, BF16 KV, one active request, greedy with EOS ignored.
+One warmup and two measured repetitions rotate true AR and draft depths
+1/2/3 in one public-library owner. Complete-request rates pool ten category
+prompts (27–59 inputs), including prompt and provider work; not decode-only.
+
+| Outputs | True AR tok/s | B1 tok/s | B2 tok/s | B3 tok/s |
+| ---: | ---: | ---: | ---: | ---: |
+| 25 | 79.34 | 78.60 | 78.36 | 76.63 |
+| 129 | 99.84 | 110.98 | 115.82 | 118.55 |
+
+At 129 outputs, B3 improves over B1 by 6.8%; selected on the six training
+prompts, it reaches 117.24 versus B1's 111.44 tok/s on the four heldout prompts.
+It loses to B1 on the Japanese category and at 25 outputs, so default depth
+stays 1. Explicit `speculative_candidate_budget=2` or `3` now executes that
+depth. At 4096 inputs / 129 outputs, B1/B2/B3 reach 35.00/35.38/35.39 tok/s
+versus AR's 45.55.
+
+All 90 cases repeat exact IDs within each arm and balance output accounting;
+27 blocking/stream comparisons and the live provider-state gate pass. This
+is not cross-arm numerical approval: production outputs can differ from AR,
+with additional B2 differences on Japanese prompts. A separate strict screen
+reproduces an inherited code129 mismatch at output index 89 for every depth;
+the pre-depth commit produces identical AR and B1 sequences. The earlier
+Japanese production strict-teacher finding also remains open. No MTP quality
+or new topline claim follows.
+[Protocol, category splits, samples, failures and source snapshots](results/2026-10-24-w7900-paro-public-depths.json).
+
+## PARO provider prompt and attention — W7900, October 24
+
+This snapshot precedes the later numerical diagnostic repairs; its observations
+apply to the source versions recorded in the linked artifact.
+
+Qwen3.6-35B-A3B packed PARO W4 + BF16 MTP, host **epyc / Radeon Pro W7900**,
+production profile, BF16 KV, one active request, greedy fixed-length outputs.
+One warmup and two measured repetitions per case rotate true AR, the previous
+provider, KV-only prompt priming, and KV-only priming plus staged attention in
+one public-library owner. Rates below include the complete request, not just
+decode. The short-prompt rows pool all ten category prompts (27–59 inputs);
+the 4K rows use one padded code prompt.
+
+| Inputs | Outputs | True AR tok/s | Previous MTP tok/s | New MTP tok/s |
+| --- | ---: | ---: | ---: | ---: |
+| Natural prompts | 25 | 78.64 | 76.03 | 77.11 |
+| Natural prompts | 129 | 98.96 | 109.87 | 110.84 |
+| 4096 | 25 | 13.96 | 1.46 | 10.30 |
+| 4096 | 129 | 45.65 | 6.93 | 34.84 |
+
+Non-final prompt rows now append only their needed K/V; the final row still
+runs the full provider. Attention from 128 cached rows uses parallel scores
+with the parent's reduction, softmax and value-sum order. All 90 comparisons,
+including 127/128/257/512/4096 context probes, preserve the previous provider's
+IDs and acceptance schedules. The long-prompt gain is primarily prompt work
+removed, not a faster target verifier; MTP still trails AR at 4K. These are
+diagnostic timings: the existing Japanese strict-teacher numerical failure is
+not repaired and no MTP quality or new topline claim follows.
+[Protocol, samples, correctness and source snapshots](results/2026-10-24-w7900-paro-provider-exact.json).
+
 ## 24 GB context table before the October 21 serving refresh
 
 The earlier product summary combined different Qwen3.8-27B `Q4_K_M`

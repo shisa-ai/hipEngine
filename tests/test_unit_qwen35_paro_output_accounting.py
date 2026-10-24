@@ -40,7 +40,6 @@ from hipengine.runtime.qwen35_paro_runner import (
     Qwen35ParoAutoregressiveStepResult,
 )
 from hipengine.speculative.accounting import (
-    accounting_timing_fields,
     record_speculative_outputs,
     span_accounting,
     speculative_output_accounting,
@@ -92,7 +91,7 @@ class _ProposerDouble:
     def restore_state(self, snapshot) -> None:
         self.checkpoints.append(snapshot)
 
-    def device_candidate_token_ids(self):
+    def device_candidate_token_ids(self, rows=1):
         return None
 
     def advance_with_previous_hidden(self, **kwargs):
@@ -126,7 +125,7 @@ def _row(*, generated=1) -> _ParoResidentLoopRow:
         request_id=REQUEST_ID,
         batch_id=0,
         row_index=0,
-        request=SimpleNamespace(max_tokens=16),
+        request=SimpleNamespace(max_tokens=16, eos_token_id=None),
         sampling_request=SimpleNamespace(
             stop_token_sequences=(),
             stop_token_ids=(),
@@ -164,7 +163,7 @@ def _runner(row, session, adapter) -> Qwen35ParoResidentModelRunner:
     runner._route_counts = Counter()
     runner._fallback_reasons = Counter()
     runner._last_width_plan = {"groups": 1}
-    runner._mtp2_adapter = adapter
+    runner._mtp2_adapter = adapter if adapter is not None else Qwen35ParoMTP2Adapter(runner)
     runner._mtp2_adapter_resolved = True
     runner._closed = False
     return runner
@@ -184,6 +183,7 @@ def _plan() -> SimpleNamespace:
         provider_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
         provider_key="qwen_paro_mtp_bf16",
         resident_slots=(0,),
+        execution_route="eager",
     )
 
 
@@ -192,7 +192,7 @@ def _frontier() -> SimpleNamespace:
         target_batch="batch",
         provider_transaction_id=5,
         root_positions=(2,),
-        candidate_graph=SimpleNamespace(candidate_rows=1, token_ids=None),
+        candidate_graph=SimpleNamespace(candidate_rows=1, candidate_counts=(1,), token_ids=None),
     )
 
 
@@ -380,7 +380,6 @@ def test_plain_autoregressive_paro_response_gains_no_speculative_block() -> None
     assert diagnostics["last_width_plan"] == {"groups": 1}
     timing = runner._row_telemetry(row).timing
     assert timing is not None
-    assert accounting_timing_fields(None) == {}
     assert "mtp_cycles_count" not in timing
     assert "mtp_visible_output_tokens" not in timing
 
@@ -411,14 +410,8 @@ def test_accepted_b1_cycle_publishes_the_shared_accounting_block(monkeypatch) ->
     assert accounting["cycle_timing_ms"]["provider_update"] == 31.25
     # Phases this route does not measure report zero rather than a guess.
     assert accounting["cycle_timing_ms"]["accept"] == 0.0
-    # Scalar timing mirrors, published only for a committed cycle.
-    timing = harness.timing()
-    assert timing["mtp_cycles_count"] == 1.0
-    assert timing["mtp_generated_draft_tokens"] == 1.0
-    assert timing["mtp_accepted_draft_tokens"] == 1.0
-    assert timing["mtp_visible_output_tokens"] == 2.0
-    assert timing["mtp_ar_output_tokens"] == 0.0
-    assert timing["mtp_accept_per_draft"] == 1.0
+    # Diagnostics are authoritative; upstream removed legacy timing mirrors.
+    assert not any(name.startswith("mtp_") for name in harness.timing())
     # The route fields this change must not disturb.
     assert harness.row.mtp2_execution_routes == ["eager"]
     assert harness.runner._execution_metadata(harness.row)["specdec2_mtp2_cycles"] == 1
@@ -511,8 +504,8 @@ def test_rejected_b1_cycle_counts_the_bonus_without_an_accepted_draft(
     assert accounting["accepted_draft_tokens"] == 0
     assert accounting["mtp_output_tokens"] == 1
     assert accounting["ar_output_tokens_in_cycles"] == 0
-    assert accounting_timing_fields(accounting)["mtp_accept_per_draft"] == 0.0
-    assert harness.timing()["mtp_visible_output_tokens"] == 1.0
+    assert accounting["accepted_draft_tokens"] == 0
+    assert "mtp_visible_output_tokens" not in harness.timing()
 
 
 def test_rolled_back_cycle_records_no_committed_output(monkeypatch) -> None:
@@ -566,7 +559,6 @@ def test_cancelled_cycle_publishes_no_committed_output(monkeypatch) -> None:
     assert accounting["mtp_output_tokens"] == 0
     assert accounting["ar_output_tokens_in_cycles"] == 0
     # A zero-cycle refusal must stay indistinguishable from plain AR in timing.
-    assert accounting_timing_fields(accounting) == {}
     assert "mtp_cycles_count" not in harness.timing()
 
 
@@ -595,7 +587,7 @@ def test_autoregressive_step_reports_the_real_fallback_position(monkeypatch) -> 
     assert accounting["first_fallback_position"] == 3
     assert accounting["ar_step_reason_counts"] == {"no_provider": 1}
     assert accounting["failure_reason_counts"] == {}
-    assert harness.timing()["mtp_ar_output_tokens"] == 1.0
+    assert "mtp_ar_output_tokens" not in harness.timing()
 
 
 def test_autoregressive_step_before_any_speculative_output_is_not_a_fallback() -> None:
@@ -721,7 +713,7 @@ def test_autoregressive_chunk_metadata_is_stale_until_the_hook_refreshes_it(
     assert stale_accounting["ar_output_tokens_in_cycles"] == 0
     assert stale_accounting["first_fallback_position"] is None
     assert stale_accounting["ar_step_reason_counts"] == {}
-    assert (stale.telemetry.timing or {})["mtp_ar_output_tokens"] == 0.0
+    assert "mtp_ar_output_tokens" not in (stale.telemetry.timing or {})
 
     harness.adapter.note_speculative_ar_commit(REQUEST_ID, "no_provider")
     token = GeneratedToken(
@@ -750,8 +742,8 @@ def test_autoregressive_chunk_metadata_is_stale_until_the_hook_refreshes_it(
     assert accounting["first_fallback_position"] == 3
     assert accounting["ar_step_reason_counts"] == {"no_provider": 1}
     timing = dict(chunk.telemetry.timing or {})
-    assert timing["mtp_ar_output_tokens"] == 1.0
-    assert timing["mtp_visible_output_tokens"] == 2.0
+    assert "mtp_ar_output_tokens" not in timing
+    assert "mtp_visible_output_tokens" not in timing
     # The refresh is a merge, not a rebuild: the route facts survive beside it.
     assert chunk.telemetry.diagnostics["stable_model_slot"] == 0
     assert chunk.telemetry.diagnostics["last_width_plan"] == {"groups": 1}
@@ -792,7 +784,7 @@ def test_terminal_autoregressive_chunk_is_refreshed_before_reclaim(monkeypatch) 
     accounting = dict(chunk.telemetry.diagnostics or {})["specdec2_mtp2"]
     assert accounting["ar_output_tokens_in_cycles"] == 1
     assert accounting["first_fallback_position"] == 3
-    assert dict(chunk.telemetry.timing or {})["mtp_ar_output_tokens"] == 1.0
+    assert "mtp_ar_output_tokens" not in (chunk.telemetry.timing or {})
 
     harness.runner._rows.pop(REQUEST_ID)
     (after_reclaim,) = harness.runner.decorate_autoregressive_tokens((token,))
@@ -887,9 +879,7 @@ def test_speculative_stream_events_keep_the_accounting_after_reclaim(
         assert accounting["requested_budget"] == 1
         assert accounting["accepted_draft_tokens"] == accepted
         assert accounting["mtp_output_tokens"] == mtp_tokens
-        assert dict(chunk.telemetry.timing or {})["mtp_visible_output_tokens"] == (
-            float(mtp_tokens)
-        )
+        assert "mtp_visible_output_tokens" not in (chunk.telemetry.timing or {})
 
 
 def test_plain_autoregressive_stream_events_gain_no_speculative_block() -> None:

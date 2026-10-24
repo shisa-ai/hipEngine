@@ -16,10 +16,7 @@ from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer, free, malloc
 from hipengine.core.tensor import Tensor
-from hipengine.speculative.accounting import (
-    accounting_timing_fields,
-    speculative_output_accounting,
-)
+from hipengine.speculative.accounting import speculative_output_accounting
 from hipengine.speculative.delegation import StagedAdapterDelegation
 from hipengine.dispatch import (
     BatchWidthGroup,
@@ -2561,6 +2558,11 @@ class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
             return 1
         return max(1, min(int(adapter.candidate_budget), max_tokens))
 
+    @staticmethod
+    def speculative_ignore_eos_supported(request_id: int) -> bool:
+        del request_id
+        return True  # The output owner applies finish rules after commit.
+
     def mtp2_verify_row_requirement(self) -> int:
         """Target verify rows this owner must launch, or 0 without the adapter.
 
@@ -3421,10 +3423,6 @@ class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
         accounting = speculative_output_accounting(row)
         if accounting is not None:
             diagnostics["specdec2_mtp2"] = accounting
-            # Committed-cycle counters mirrored into ``timing``. The helper
-            # publishes nothing for a row that carried intent but committed no
-            # cycle, so a refused request stays indistinguishable from AR here.
-            timing.update(accounting_timing_fields(accounting))
         return _telemetry_for_tokens(
             row.prompt_ids,
             tuple(step.token_id for step in visible_steps),
@@ -3454,17 +3452,12 @@ class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
         self,
         row: _ParoResidentLoopRow,
     ) -> tuple[dict[str, Any], dict[str, float]]:
-        """The accounting facts this row would publish at this moment.
-
-        Returned as the ``diagnostics`` entry and the ``timing`` mirrors the
-        row's own response telemetry would carry, so both publication paths
-        below add exactly what ``_row_telemetry`` adds and nothing else.
-        """
+        """Return authoritative diagnostics without legacy timing mirrors."""
 
         accounting = speculative_output_accounting(row)
         if accounting is None:
             return {}, {}
-        return {"specdec2_mtp2": accounting}, accounting_timing_fields(accounting)
+        return {"specdec2_mtp2": accounting}, {}
 
     def _row_if_present(self, request_id: int) -> _ParoResidentLoopRow | None:
         rows = getattr(self, "_rows", None)

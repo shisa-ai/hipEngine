@@ -128,6 +128,10 @@ def _terminal_failure_request_ids(
 
 def _speculative_sampling_mode(runner, request_id, params):
     blockers = speculative_mtp_sampling_blockers(params)
+    if bool(getattr(params, "ignore_eos", False)) and set(blockers) <= {"eos_token_id", "ignore_eos"}:
+        supports_ignore = getattr(runner, "speculative_ignore_eos_supported", None)
+        if callable(supports_ignore) and supports_ignore(int(request_id)):
+            return "greedy"
     if blockers == ("eos_token_id",):
         supports_eos = getattr(runner, "speculative_eos_supported", None)
         if callable(supports_eos) and supports_eos(int(request_id)):

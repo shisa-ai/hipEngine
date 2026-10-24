@@ -1,4 +1,8 @@
-"""Prompt-only KV appends must not truncate hidden-producing repair steps."""
+"""Prompt-only KV appends must not truncate hidden-producing repair steps.
+
+A device-token row must also leave the int64 chain token alone: the token
+scalar it reads belongs to the chain, not to the host metadata upload.
+"""
 from types import SimpleNamespace
 
 import numpy as np
@@ -8,20 +12,20 @@ from hipengine.generation.qwen35_paro_mtp2 import Qwen35ParoMTP2Adapter, _ParoMT
 from hipengine.speculative import mtp_native
 
 
-def test_prompt_kv_append_forwards_an_explicit_dead_suffix_boundary():
+def test_prompt_kv_append_forwards_kv_write_only_to_advance():
     proposer = object.__new__(mtp_native.NativeMtpChainProposer)
     calls = []
     proposer.advance = lambda **kwargs: calls.append(kwargs)
 
-    proposer.append_prompt_kv_with_target_hidden(
+    proposer.append_prompt_kv(
         input_token=13, target_hidden_ptr=0x1234, position=9, stream=7,
     )
 
     assert calls == [{
         "input_token": 13, "target_hidden_ptr": 0x1234, "position": 9,
-        "need_result": False, "read_token_id": False,
-        "read_expert_topk": False, "read_lm_head_value": False,
-        "stream": 7, "_prompt_kv_only": True,
+        "need_result": False, "kv_write_only": True,
+        "read_token_id": False, "read_expert_topk": False,
+        "read_lm_head_value": False, "stream": 7,
     }]
 
 
@@ -29,7 +33,7 @@ def test_prompt_kv_append_forwards_an_explicit_dead_suffix_boundary():
 def test_only_nonfinal_prompt_rows_are_kv_only(prompt):
     calls = []
     proposer = SimpleNamespace(
-        append_prompt_kv_with_target_hidden=lambda **kw: calls.append(("kv", kw)),
+        append_prompt_kv=lambda **kw: calls.append(("kv", kw)),
         advance_with_target_hidden=lambda **kw: calls.append(("full", kw)),
     )
     row = SimpleNamespace(prompt_ids=prompt, mtp2_prompt_prime_ms=0.0)
@@ -51,7 +55,7 @@ def test_only_nonfinal_prompt_rows_are_kv_only(prompt):
     assert adapter._states[7].prompt_rows_consumed == len(prompt)
 
 
-def _prefix_proposer(monkeypatch, *, indexed, direct):
+def _prefix_proposer(monkeypatch, *, indexed):
     proposer = object.__new__(mtp_native.NativeMtpChainProposer)
     proposer.closed = False
     proposer.scoring_head = None
@@ -71,7 +75,7 @@ def _prefix_proposer(monkeypatch, *, indexed, direct):
     proposer.token_host = proposer.token_position_host[:1]
     proposer.position_host = proposer.token_position_host[1:2]
     proposer.cache_slot_host = proposer.token_position_host[2:]
-    buffers = ("token_position_buf", "token_buf", "position_buf", "cache_slot_buf", "key_cache_buf", "value_cache_buf", "v_proj_buf", "key_rot_buf", "fused_buf", "fc_buf", "attn_in_buf", "q_proj_buf", "k_proj_buf", "query_buf", "gate_buf", "query_rot_buf", "q_norm_oneplus", "k_norm_oneplus", "cos_buf", "sin_buf")
+    buffers = ("token_position_buf", "token_buf", "position_buf", "cache_slot_buf", "key_cache_buf", "value_cache_buf", "final_hidden_buf", "fused_buf", "fc_buf", "attn_in_buf", "q_proj_buf", "k_proj_buf", "query_buf", "gate_buf", "query_rot_buf", "q_norm_oneplus", "k_norm_oneplus", "cos_buf", "sin_buf")
     for index, name in enumerate(buffers):
         setattr(proposer, name, SimpleNamespace(ptr=0x1000 * (index + 1)))
     proposer.mtp_lib = proposer.dflash_lib = object()
@@ -83,30 +87,66 @@ def _prefix_proposer(monkeypatch, *, indexed, direct):
     for name in ("mtp_fuse_inputs_f16_bf16", "dflash_dense_bf16_to_bf16", "mtp_rmsnorm_bf16_oneplus", "dflash_qkv_proj_bf16_mixed_indexed_v", "dflash_qkv_proj_bf16_mixed", "mtp_split_q_gate_f32_bf16", "dflash_head_rmsnorm_rotary_indexed_key_f32", "dflash_head_rmsnorm_rotary_f32"):
         monkeypatch.setattr(mtp_native, name, lambda *args, _name=name, **kwargs: calls.append((_name, args)))
     monkeypatch.setattr(mtp_native, "_indexed_kv_write_enabled", lambda: indexed)
-    monkeypatch.setattr(mtp_native, "_direct_kv_write_enabled", lambda: direct)
-    monkeypatch.setattr(mtp_native, "_pack_token_position_enabled", lambda: True)
+
     def forbidden(*_args, **_kwargs):
         raise AssertionError("attention suffix executed")
     monkeypatch.setattr(mtp_native, "dflash_gqa_attention_f32_bf16", forbidden)
     return proposer, calls
 
 
-@pytest.mark.parametrize("indexed,direct", [(False, False), (False, True), (True, True)])
-def test_kv_only_appends_existing_prefix_and_advances_cursors(monkeypatch, indexed, direct):
-    proposer, calls = _prefix_proposer(monkeypatch, indexed=indexed, direct=direct)
-    proposer.append_prompt_kv_with_target_hidden(input_token=13, target_hidden_ptr=0xABCD, position=3)
+@pytest.mark.parametrize("indexed", [False, True])
+def test_kv_only_appends_existing_prefix_and_advances_cursors(monkeypatch, indexed):
+    proposer, calls = _prefix_proposer(monkeypatch, indexed=indexed)
+    proposer.append_prompt_kv(input_token=13, target_hidden_ptr=0xABCD, position=3)
     assert proposer.cache_len == 3
     assert proposer.position == 3
     assert proposer.current.token == -1  # No stale prediction is consumable.
+    assert proposer.final_hidden_valid is False
+    assert proposer.result_valid is False
     names = [name for name, _ in calls]
     assert "mtp_fuse_inputs_f16_bf16" in names
     assert any("rotary" in name for name in names)
-    assert names.count("copy") == (3 if not (indexed or direct) else 1)
+    # A host-token row uploads token, position, and slot in one packed copy, and
+    # the K/V projection writes the cache directly.
+    assert names.count("copy") == 1
     assert proposer.token_position_host.tolist() == [13, 3, 2]
 
 
 def test_hidden_producing_repair_is_not_kv_only(monkeypatch):
-    proposer, _ = _prefix_proposer(monkeypatch, indexed=True, direct=True)
+    proposer, _ = _prefix_proposer(monkeypatch, indexed=True)
     proposer.attn_out_buf = SimpleNamespace(ptr=0xBEEF)
     with pytest.raises(AssertionError, match="attention suffix executed"):
         proposer.advance(input_token=13, target_hidden_ptr=0xABCD, position=3, need_result=False)
+
+
+@pytest.mark.parametrize("indexed", [False, True])
+def test_device_token_row_publishes_metadata_without_uploading_the_token(monkeypatch, indexed):
+    """A device-chain row must not have its token scalar overwritten by a copy."""
+
+    proposer, calls = _prefix_proposer(monkeypatch, indexed=indexed)
+
+    class _Launched(Exception):
+        pass
+
+    def launched(*_args, **_kwargs):
+        raise _Launched
+
+    monkeypatch.setattr(mtp_native, "mtp_fuse_inputs_f16_bf16", launched)
+    with pytest.raises(_Launched):
+        proposer.advance(
+            input_token_ptr=0xCAFE,
+            target_hidden_ptr=0xABCD,
+            position=3,
+            need_result=False,
+            read_token_id=False,
+            read_expert_topk=False,
+            read_lm_head_value=False,
+        )
+    destinations = [args[0] for name, args in calls if name == "copy"]
+    # Position (and the slot an indexed write reads) go out separately; neither
+    # the packed record nor the token scalar is uploaded for a device token.
+    assert destinations == [
+        proposer.position_buf.ptr,
+        *([proposer.cache_slot_buf.ptr] if indexed else []),
+    ]
+    assert proposer.token_position_host.tolist() == [0, 3, 2]
