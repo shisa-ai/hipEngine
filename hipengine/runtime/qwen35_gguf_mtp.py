@@ -51,6 +51,13 @@ from hipengine.speculative import (
     TargetVerifyBufferSpec,
     TargetVerifyBuffers,
 )
+from hipengine.speculative.prompt_prime import (
+    PROMPT_PRIME_REFUSAL_FINISHED,
+    PROMPT_PRIME_REFUSAL_NOT_CONTIGUOUS,
+    PromptPrimeChunk,
+    PromptPrimeLedger,
+    PromptPrimePlan,
+)
 
 _GGUF_MTP_CANDIDATE_BUDGETS = (1, 2, 3, 4, 5, 6, 7)
 _GGUF_MTP_TARGET_VERIFY_MODES = ("serial_exact", "native")
@@ -218,7 +225,12 @@ class _StreamingNextNPromptSink:
         except Exception:
             free(self._pending_hidden, runtime=runtime)
             raise
-        self.consumed_rows = 0
+        # Row accounting and chunk-shape policy are shared with every other
+        # prompt-priming route; this sink keeps only its own device work.
+        self.prompt_prime_ledger = PromptPrimeLedger(
+            request_id=self.request_id,
+            total_rows=self.total_rows,
+        )
         # Absolute prefix length to capture at, in the same coordinates as
         # ``start_position``; 0 means no capture for this sink.
         self.capture_boundary = int(capture_boundary)
@@ -227,7 +239,6 @@ class _StreamingNextNPromptSink:
         self._capture_missed = False
         self._captured = False
         self._stream: int | None = None
-        self._finished = False
         self._failed = False
         self._transferred = False
         self._closed = False
@@ -244,6 +255,12 @@ class _StreamingNextNPromptSink:
             DType.BF16,
             Device("hip", 0),
         )
+
+    @property
+    def consumed_rows(self) -> int:
+        """Rows this sink has published, from the shared ledger."""
+
+        return self.prompt_prime_ledger.published_rows
 
     def _validate_owner(self, request_id: int) -> None:
         if int(request_id) != self.request_id:
@@ -281,58 +298,62 @@ class _StreamingNextNPromptSink:
             raise RuntimeError("streaming NextN prompt sink is closed")
         if self._failed:
             raise RuntimeError("streaming NextN prompt sink is failed")
-        if self._finished:
+        ledger = self.prompt_prime_ledger
+        refusal = ledger.check(chunk_start=int(chunk_start), rows=int(rows))
+        if refusal == PROMPT_PRIME_REFUSAL_FINISHED:
             raise RuntimeError("streaming NextN prompt sink is already finished")
-        start = int(chunk_start)
-        count = int(rows)
-        stream = int(stream)
-        if start != self.consumed_rows:
+        if refusal == PROMPT_PRIME_REFUSAL_NOT_CONTIGUOUS:
             raise RuntimeError(
                 "streaming NextN prompt chunks must be contiguous: "
-                f"expected {self.consumed_rows}, got {start}"
+                f"expected {ledger.published_rows}, got {int(chunk_start)}"
             )
-        if count <= 0 or start + count > self.total_rows:
+        if refusal is not None:
             raise ValueError("streaming NextN prompt chunk is outside the prompt")
         if int(hidden_ptr) <= 0:
             raise ValueError("streaming NextN prompt chunk requires a device hidden pointer")
+        stream = int(stream)
         if self._stream is None:
             self._stream = stream
         elif stream != self._stream:
             raise RuntimeError("streaming NextN prompt chunks must use one stream")
-        if self.max_chunk_rows and count > self.max_chunk_rows:
-            # Keep transforms bounded even when layer-outer prefill hands off
-            # the whole prompt. The carried row preserves the shifted-hidden
-            # seam, and all work stays ordered on the same stream.
-            for offset in range(0, count, self.max_chunk_rows):
-                self.consume(
-                    request_id=request_id, chunk_start=start + offset,
-                    hidden_ptr=int(hidden_ptr) + offset * self.hidden_nbytes,
-                    rows=min(self.max_chunk_rows, count - offset), stream=stream,
-                )
-            return
-        if self.capture_boundaries:
-            absolute_start = self.start_position + start
-            absolute_end = absolute_start + count
-            cuts = [point for point in self.capture_boundaries if absolute_start < point < absolute_end]
-            if cuts:
-                points = [absolute_start, *cuts, absolute_end]
-                for a, b in zip(points, points[1:]):
-                    self.consume(request_id=request_id, chunk_start=a - self.start_position,
-                                 hidden_ptr=int(hidden_ptr) + (a - absolute_start) * self.hidden_nbytes,
-                                 rows=b - a, stream=stream)
-                return
-            if absolute_end in self.capture_boundaries:
-                self.capture_boundary = absolute_end
-                self._captured = False
+        # Row limits and prefix-capture boundaries are chunk-shape policy, so
+        # they are shared. The carried row preserves the shifted-hidden seam
+        # and every slice stays ordered on the same stream.
+        plan = PromptPrimePlan(
+            start_position=self.start_position,
+            max_chunk_rows=self.max_chunk_rows,
+        )
+        for chunk in plan.split(
+            chunk_start=int(chunk_start),
+            rows=int(rows),
+            capture_boundaries=self.capture_boundaries,
+        ):
+            self._consume_slice(chunk=chunk, hidden_ptr=int(hidden_ptr), stream=stream)
+
+    def _consume_slice(
+        self,
+        *,
+        chunk: PromptPrimeChunk,
+        hidden_ptr: int,
+        stream: int,
+    ) -> None:
+        """Consume one validated slice, publishing it only after it lands."""
+
+        start = chunk.chunk_start
+        count = chunk.rows
+        absolute_end = self.start_position + start + count
+        if absolute_end in self.capture_boundaries:
+            self.capture_boundary = absolute_end
+            self._captured = False
         if self.checkpoint is not None:
             self.checkpoint()
 
         tokens = self.prompt_tokens[start : start + count]
         try:
-            draft_hidden_ptr = int(hidden_ptr)
+            draft_hidden_ptr = int(hidden_ptr) + chunk.row_offset * self.hidden_nbytes
             if self.transform_hidden_rows is not None:
                 draft_hidden_ptr = int(
-                    self.transform_hidden_rows(int(hidden_ptr), count, stream)
+                    self.transform_hidden_rows(draft_hidden_ptr, count, stream)
                 )
                 if draft_hidden_ptr <= 0:
                     raise RuntimeError(
@@ -365,13 +386,15 @@ class _StreamingNextNPromptSink:
         except Exception:
             self._failed = True
             raise
-        self.consumed_rows += count
-        # The provider cursor is now at start_position + consumed_rows, and the
+        # Only now, after every enqueue for this slice succeeded, does the row
+        # count move: a slice that fails mid-enqueue must not be published.
+        self.prompt_prime_ledger.publish(chunk_start=start, rows=count)
+        # The provider cursor is now at start_position + published rows, and the
         # row it would consume next is the one this chunk ended on -- still live
         # in the caller's chunk buffer at this point in the call, which is why
         # the capture is taken here rather than after the sink retires.
         if self.prefix_capture is not None and self.capture_boundary > self.start_position:
-            reached = self.start_position + self.consumed_rows
+            reached = self.start_position + self.prompt_prime_ledger.published_rows
             if reached == self.capture_boundary:
                 try:
                     self.prefix_capture(
@@ -412,13 +435,13 @@ class _StreamingNextNPromptSink:
             raise RuntimeError("streaming NextN prompt sink is closed")
         if self._failed:
             raise RuntimeError("streaming NextN prompt sink is failed")
-        if int(total_rows) != self.total_rows or self.consumed_rows != self.total_rows:
+        if int(total_rows) != self.total_rows or not self.prompt_prime_ledger.complete:
             raise RuntimeError(
                 "streaming NextN prompt sink finished before every row was consumed"
             )
         if self._stream is not None and int(stream) != self._stream:
             raise RuntimeError("streaming NextN prompt finish must use the chunk stream")
-        self._finished = True
+        self.prompt_prime_ledger.mark_finished()
 
     def take_final_pending_buffer(self) -> DeviceBuffer:
         """Transfer the one carried BF16 row to the request-state owner."""
@@ -427,7 +450,7 @@ class _StreamingNextNPromptSink:
             raise RuntimeError("streaming NextN carried hidden row was already transferred")
         if self._closed:
             raise RuntimeError("streaming NextN prompt sink is closed")
-        if self._failed or not self._finished:
+        if self._failed or not self.prompt_prime_ledger.finished:
             raise RuntimeError("streaming NextN carried hidden row is not complete")
         self._transferred = True
         return self._pending_hidden

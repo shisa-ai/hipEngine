@@ -1602,6 +1602,14 @@ Method-specific details live in `docs/reference/MTP.md` and `docs/reference/DFLA
 contract below remains authoritative for plugin boundaries and scheduler/KV
 integration.
 
+`hipengine/speculative/prompt_prime.py` owns the target-hidden chunk sink
+contract, split planning and two-phase row accounting shared by dense and MoE
+GGUF prompt priming. Sequential append and position-addressed writes keep their
+own ordering contracts; providers retain hidden alignment, device launches and
+borrowed-buffer lifetime. The PARO adoption and remaining rollback, graph and
+candidate-policy work are tracked in the
+[shared optimization matrix](reference/SHARED-SPECULATIVE-OPTIMIZATION.md).
+
 Required contract:
 
 - `DraftModel.propose(batch_state) -> DraftBatch` emits candidate tokens plus `request_id`, `draft_depth`, parent position, optional tree parent, and active mask metadata. `DraftBatch` carries candidate rows only; verifier implementations may insert a root/current-token row into an internal verify batch.

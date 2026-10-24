@@ -76,6 +76,33 @@ def test_moe_target_hidden_sink_preserves_rows_and_publishes_final_target() -> N
     assert sink.finished is True
 
 
+def test_moe_close_detaches_slab_without_a_synthetic_request(monkeypatch) -> None:
+    from hipengine.generation import qwen35_gguf_moe_mtp2 as module
+
+    adapter = object.__new__(Qwen35GGUFMoEMTP2Adapter)
+    adapter.owner = SimpleNamespace()
+    adapter._states = {}
+    adapter._prompt_sinks = {}
+    adapter._intents = {}
+    adapter._disabled_requests = set()
+    adapter._batch_accept_workspace = None
+    adapter._resident_charge_tokens = {}
+    adapter._draft_kv_slabs = {}
+    target = SimpleNamespace(runtime=object(), runner=SimpleNamespace(hidden_size=4),
+                             _last_target_hidden_ptr=0x1008)
+    buffers = tuple(DeviceBuffer(ptr, 32) for ptr in (0x1000, 0x2000, 0x3000))
+    adapter._target_hidden_slabs = {id(target): (target, *buffers)}
+    freed = []
+    monkeypatch.setattr(module, 'free', lambda buffer, **kwargs: freed.append(buffer.ptr))
+
+    adapter.close()
+    adapter.close()
+
+    assert target._last_target_hidden_ptr == 0
+    assert freed == [0x3000, 0x2000, 0x1000]
+    assert adapter._target_hidden_slabs == {}
+
+
 def test_moe_adapter_capability_is_c1_k2_and_short_context_only() -> None:
     adapter = object.__new__(Qwen35GGUFMoEMTP2Adapter)
     adapter.enabled = True

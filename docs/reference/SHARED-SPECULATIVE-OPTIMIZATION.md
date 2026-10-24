@@ -31,8 +31,8 @@ An untested idea is not a rejected candidate. Keep all rows active across units.
 | Deliverable | Status | Completion evidence required |
 | --- | --- | --- |
 | Map existing ownership and extension points | Complete | Source-backed consumer matrix below; existing staged-provider, native-cycle and prompt-sink contracts are the extension points |
-| Shared prompt-priming orchestration | Pending | Explicit causal input/hidden alignment, chunk lifetime and final-row semantics; at least two real consumers; cancellation and reuse tests |
-| PARO KV-only prompt priming | Pending | Compare cached K/V and final draft state to current full priming; remove discarded attention/expert work; public short/long calls |
+| Shared prompt-priming orchestration | Complete for existing GGUF consumers | Common protocol, split planner and publication ledger; dense/MoE public IDs, chunks and acceptance match clean `1906b54d2`; repeated-call and teardown checks pass. PARO chunk adoption remains in its bulk-priming row |
+| PARO KV-only prompt priming | In progress | Historical rows use the KV-only prefix; device oracle and singleton scratch repair are under validation |
 | PARO batched prompt priming | Pending | Bounded row workspace; compare serial and bulk cache/final outputs; numerical gate if arithmetic changes; paired prompt-latency measurements |
 | Shared rollback/state-journal contract | Pending | Separate mutable state, append-only KV and cursors; atomic target/provider rollback, failure/cancel/reclaim tests; migrate compatible consumers |
 | PARO bounded rollback | Pending | Eliminate live-prefix copying only where append-only semantics hold; preserve recurrent-state rollback and output IDs; measure cycle/copy work and decode |
@@ -104,6 +104,24 @@ binding, and `hipengine/speculative/mtp_budget.py` for candidate policy. The
 later units should extend these owners rather than introduce parallel engines.
 A generic rollback-domain record alone would not eliminate any copy; require a
 real consumer migration and tests before calling that row complete.
+
+## Findings requiring integration follow-up
+
+- The clean baseline's GGUF MoE C1 route silently leaves explicit MTP requests
+  on ordinary decoding once its existing draft-context bound is exceeded.
+  A 94-token prompt reaches the prompt sink but performs zero MTP cycles;
+  a 1,025-token prompt does not reach the 95-row sink buffer. A 37-token
+  prompt performs MTP cycles. These are observed pre-existing route limits,
+  not regressions from the shared ledger. The cross-model integration row
+  stays open until compatible requests execute and genuinely unsupported
+  requests fail with a named capability error rather than silently downgrading.
+- A repeated one-token PARO MTP request exposed stale full-attention scratch
+  views: the one-row projection writes a compact Q/K layout, while a cached
+  wider view reads K at its old offset. Exact-row scratch rebinding fixes the
+  device trace's live KV, recurrent state and output mismatch. Commit
+  `ac99757d0` includes the repair and CPU regression; the 11-length public
+  oracle and refreshed default CPU suite pass. This is separate from cache-only
+  work elimination and makes no performance claim.
 
 ## Implementation boundaries
 

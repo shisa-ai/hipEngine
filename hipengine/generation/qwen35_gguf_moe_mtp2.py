@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import time
 from typing import Any, Callable, Mapping, Sequence
 
@@ -59,6 +59,7 @@ from hipengine.speculative.interfaces import (
     TargetVerifyBuffers,
 )
 from hipengine.speculative.accounting import record_speculative_outputs
+from hipengine.speculative.prompt_prime import PromptPrimeLedger
 from hipengine.speculative.provider import (
     SpeculativeRequestSemantics,
     validate_staged_target_adapter,
@@ -85,6 +86,16 @@ class _MoeTargetHiddenSink:
     normalized: DeviceBuffer
     normalized_bf16: DeviceBuffer
     finished: bool = False
+    # This sink writes each chunk at its own row offset, so its ledger is
+    # position-addressed rather than a sequential cursor.
+    prompt_prime_ledger: PromptPrimeLedger = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self.prompt_prime_ledger = PromptPrimeLedger(
+            request_id=self.request_id,
+            total_rows=self.total_rows,
+            contiguous=False,
+        )
 
     def consume(
         self,
@@ -99,7 +110,8 @@ class _MoeTargetHiddenSink:
             raise RuntimeError("MoE target-hidden sink request owner changed")
         count = int(rows)
         start = int(chunk_start)
-        if count <= 0 or start < 0 or start + count > self.total_rows:
+        ledger = self.prompt_prime_ledger
+        if ledger.check(chunk_start=start, rows=count) is not None:
             raise ValueError("MoE target-hidden sink chunk is invalid")
         row_nbytes = self.hidden_size * DType.BF16.itemsize
         self.target.runtime.memcpy_async(
@@ -109,6 +121,8 @@ class _MoeTargetHiddenSink:
             HipMemcpyKind.DEVICE_TO_DEVICE,
             int(stream),
         )
+        # Published only once the copy for this chunk has been enqueued.
+        ledger.publish(chunk_start=start, rows=count)
 
     def finish(self, *, request_id: int, total_rows: int, stream: int) -> None:
         if int(request_id) != self.request_id or int(total_rows) != self.total_rows:
@@ -1800,9 +1814,12 @@ class Qwen35GGUFMoEMTP2Adapter:
 
     @staticmethod
     def _detach_sink(sink: _MoeTargetHiddenSink) -> None:
-        target = sink.target
+        Qwen35GGUFMoEMTP2Adapter._detach_hidden_buffer(sink.target, sink.buffer)
+
+    @staticmethod
+    def _detach_hidden_buffer(target: Any, buffer: DeviceBuffer) -> None:
         current = int(getattr(target, "_last_target_hidden_ptr", 0))
-        if int(sink.buffer.ptr) <= current < int(sink.buffer.ptr + sink.buffer.nbytes):
+        if int(buffer.ptr) <= current < int(buffer.ptr + buffer.nbytes):
             target._last_target_hidden_ptr = 0
 
     def _release_state(self, request_id: int) -> None:
@@ -1884,17 +1901,7 @@ class Qwen35GGUFMoEMTP2Adapter:
             self._batch_accept_payload = None
             self._batch_accept_library = None
         for target, buffer, normalized, normalized_bf16 in self._target_hidden_slabs.values():
-            self._detach_sink(
-                _MoeTargetHiddenSink(
-                    request_id=-1,
-                    hidden_size=int(target.runner.hidden_size),
-                    total_rows=1,
-                    target=target,
-                    buffer=buffer,
-                    normalized=normalized,
-                    normalized_bf16=normalized_bf16,
-                )
-            )
+            self._detach_hidden_buffer(target, buffer)
             free(normalized_bf16, runtime=target.runtime)
             free(normalized, runtime=target.runtime)
             free(buffer, runtime=target.runtime)

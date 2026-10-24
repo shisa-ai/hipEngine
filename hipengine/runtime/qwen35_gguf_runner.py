@@ -18,7 +18,7 @@ from dataclasses import asdict, dataclass, field, replace
 from functools import partial
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
-from typing import Callable, Mapping, Protocol, Sequence
+from typing import Callable, Mapping, Sequence
 
 import numpy as np
 
@@ -449,6 +449,7 @@ from hipengine.runtime.gguf_linear import (
 )
 from hipengine.runtime.prefill import PrefillConfig, resolve_prefill_config_for_sequence
 from hipengine.speculative import TargetStateCommitBuffers, TargetVerifyBatch
+from hipengine.speculative.prompt_prime import PromptPrimeSink
 from hipengine.runtime.prefill_flight_recorder import (
     FlightRecorderPhase,
     PrefillFlightRecorder,
@@ -465,24 +466,10 @@ DFLASH2_TAP_LAYER_IDS: tuple[int, ...] = (5, 19, 33, 47, 61)
 DFLASH2_TAP_DEPTHS: tuple[int, ...] = tuple(layer + 1 for layer in DFLASH2_TAP_LAYER_IDS)
 
 
-class TargetHiddenChunkSink(Protocol):
-    """Request-owned consumer for completed post-output-norm target chunks."""
-
-    request_id: int
-    hidden_size: int
-    total_rows: int
-
-    def consume(
-        self,
-        *,
-        request_id: int,
-        chunk_start: int,
-        hidden_ptr: int,
-        rows: int,
-        stream: int,
-    ) -> None: ...
-
-    def finish(self, *, request_id: int, total_rows: int, stream: int) -> None: ...
+# This seam's public spelling for the shared prompt-priming contract. The
+# contract lives in :mod:`hipengine.speculative.prompt_prime` so a
+# generation-side sink can name it without importing this runtime module.
+TargetHiddenChunkSink = PromptPrimeSink
 
 
 def _normalize_packed_target_hidden_for_sinks(
