@@ -361,7 +361,7 @@ uses separate variate Q/K normalization and `timesfm3_sgemm_f64acc` in FP32.
 
 | Source | Purpose |
 | --- | --- |
-| `speculative/dflash_drafter.hip` | DFlash draft-model projections, normalization, attention, and metadata. |
+| `speculative/dflash_drafter.hip` | DFlash draft-model projections, normalization, attention, and metadata. `dflash_gqa_attention` / `f32_bf16_staged` splits exact score, softmax and value passes using caller-owned FP32 scores; `f32_bf16` is the monolithic parent. |
 | `speculative/dflash2.hip` | DFlash2 dynamic convolution, top-k, and candidate selection. |
 | `speculative/dflash_accept.hip` | Draft-chain acceptance and commit summaries. |
 | `speculative/dflash_commit.hip` | Commit selected recurrent states and cursors. |

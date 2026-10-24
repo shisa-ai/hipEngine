@@ -1113,6 +1113,146 @@ __global__ void dflash_gqa_attention_f32_bf16_kernel(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Staged exact GQA attention (score / softmax / value passes).
+//
+// The two kernels above keep one (batch, query, head) triple inside one block:
+// a single serial loop over ``kv_len`` that tree-reduces one score per
+// iteration, then a thread-0 softmax, then one serial value pass.  For
+// verifier-shaped calls (few query rows, long context) that serialises
+// ``kv_len`` tree reductions per block and leaves the grid with only
+// ``batch * query_len * num_q_heads`` blocks.
+//
+// The staged variant splits the same block into three kernels that run in
+// order on one stream, so the score pass exposes
+// ``batch * query_len * num_q_heads * kv_len`` independent blocks instead.
+//
+// Arithmetic is deliberately unchanged.  Every staged pass performs the same
+// floating-point operations in the same order as the corresponding statement
+// in ``dflash_gqa_attention_f32_bf16_kernel``:
+//
+//  * score pass: per-lane dot over ``dim = tid, tid + blockDim.x, ...``, then
+//    the same power-of-two tree over ``blockDim.x`` lanes, then ``* scale`` by
+//    thread 0.  Lanes that own no dimension still contribute their zero
+//    partial, exactly as in the parent, so the reduction tree is identical for
+//    ``head_dim < blockDim.x`` and for ``head_dim > blockDim.x``.
+//  * softmax pass: one thread owns a whole score row and walks it three times
+//    in increasing KV order (max, then exp + denominator, then
+//    ``* inv_denom``).  The denominator is a serial accumulation, never an
+//    online/streaming rescale, and normalisation multiplies by ``1 / denom``
+//    rather than dividing per element.
+//  * value pass: one thread owns a whole output dimension and accumulates
+//    ``scores[kv_row] * value[...]`` in increasing KV order.  The value sum is
+//    never split, reassociated, or reduced across lanes.
+//
+// The only state that moves between passes is the caller-owned FP32 score
+// workspace.  It holds exactly the float32 values the parent keeps in shared
+// memory -- ``partial[0] * scale``, then ``expf(score - max)``, then
+// ``prob * inv_denom`` -- so global storage preserves the parent's rounding as
+// long as it is never widened to double or re-rounded through BF16.
+
+__global__ void dflash_gqa_attention_scores_f32_kernel(
+    const float* __restrict__ query,
+    const float* __restrict__ key,
+    float* __restrict__ scores,
+    int64_t batch_size,
+    int64_t query_len,
+    int64_t kv_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale) {
+  // Flat grid: one block per (batch, query row, q head, kv row) score.
+  const int64_t score_index = static_cast<int64_t>(blockIdx.x);
+  const int64_t kv_row = score_index % kv_len;
+  const int64_t head_index = score_index / kv_len;
+  const int64_t q_head = head_index % num_q_heads;
+  const int64_t row_index = head_index / num_q_heads;
+  const int64_t batch = row_index / query_len;
+  if (batch >= batch_size) {
+    return;
+  }
+  extern __shared__ float shared[];
+  float* partial = shared;
+  const int64_t group_size = num_q_heads / num_kv_heads;
+  const int64_t kv_head = q_head / group_size;
+  const int64_t q_base = (row_index * num_q_heads + q_head) * head_dim;
+  const int64_t k_base = ((batch * kv_len + kv_row) * num_kv_heads + kv_head) * head_dim;
+  float dot = 0.0f;
+  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+    dot += query[q_base + dim] * key[k_base + dim];
+  }
+  partial[threadIdx.x] = dot;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      partial[threadIdx.x] += partial[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) {
+    scores[score_index] = partial[0] * scale;
+  }
+}
+
+__global__ void dflash_gqa_attention_softmax_f32_kernel(
+    float* __restrict__ scores,
+    int64_t score_rows,
+    int64_t kv_len) {
+  const int64_t row_index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (row_index >= score_rows) {
+    return;
+  }
+  float* row_scores = scores + row_index * kv_len;
+  float max_score = -3.4028234663852886e+38F;
+  for (int64_t kv_row = 0; kv_row < kv_len; ++kv_row) {
+    max_score = fmaxf(max_score, row_scores[kv_row]);
+  }
+  float denom = 0.0f;
+  for (int64_t kv_row = 0; kv_row < kv_len; ++kv_row) {
+    const float prob = expf(row_scores[kv_row] - max_score);
+    row_scores[kv_row] = prob;
+    denom += prob;
+  }
+  const float inv_denom = denom > 0.0f ? 1.0f / denom : 0.0f;
+  for (int64_t kv_row = 0; kv_row < kv_len; ++kv_row) {
+    row_scores[kv_row] *= inv_denom;
+  }
+}
+
+__global__ void dflash_gqa_attention_values_f32_bf16_kernel(
+    const float* __restrict__ scores,
+    const uint16_t* __restrict__ value,
+    uint16_t* __restrict__ out,
+    int64_t batch_size,
+    int64_t query_len,
+    int64_t kv_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim) {
+  // Flat grid: one block per (batch, query row, q head); thread tid owns
+  // dimensions tid, tid + blockDim.x, ... in the parent's own order.
+  const int64_t head_index = static_cast<int64_t>(blockIdx.x);
+  const int64_t q_head = head_index % num_q_heads;
+  const int64_t row_index = head_index / num_q_heads;
+  const int64_t batch = row_index / query_len;
+  if (batch >= batch_size) {
+    return;
+  }
+  const int64_t group_size = num_q_heads / num_kv_heads;
+  const int64_t kv_head = q_head / group_size;
+  const int64_t score_base = head_index * kv_len;
+  const int64_t out_base = head_index * head_dim;
+  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+    float acc = 0.0f;
+    for (int64_t kv_row = 0; kv_row < kv_len; ++kv_row) {
+      const int64_t v_base = ((batch * kv_len + kv_row) * num_kv_heads + kv_head) * head_dim;
+      acc += scores[score_base + kv_row] * bf16_bits_to_float(value[v_base + dim]);
+    }
+    out[out_base + dim] = float_to_bf16_bits(acc);
+  }
+}
+
 bool valid_elements(int64_t elements, int64_t threads) {
   return elements > 0 && valid_threads(threads);
 }
@@ -1183,6 +1323,73 @@ bool valid_bucketed_attention_shape(
     int64_t threads) {
   return bucket_context_len >= 0 && bucket_context_len <= kv_len &&
          valid_attention_shape(batch_size, query_len, kv_len, num_q_heads, num_kv_heads, head_dim, threads);
+}
+
+// 2147483647 is the maximum HIP grid extent on x, which is the only launch
+// dimension the staged passes use.
+constexpr int64_t kMaxStagedGridBlocks = 2147483647LL;
+// The softmax pass is one thread per score row, so the block size is free: it
+// cannot change the arithmetic of any row.
+constexpr int64_t kStagedSoftmaxThreads = 64;
+
+bool safe_mul_i64(int64_t a, int64_t b, int64_t* out) {
+  if (a != 0 && b > INT64_MAX / a) {
+    return false;
+  }
+  *out = a * b;
+  return true;
+}
+
+// Required FP32 score workspace, in elements, for the staged passes.
+bool staged_score_elements(int64_t batch_size, int64_t query_len, int64_t kv_len, int64_t num_q_heads, int64_t* out) {
+  int64_t elements = 0;
+  if (!safe_mul_i64(batch_size, query_len, &elements)) {
+    return false;
+  }
+  if (!safe_mul_i64(elements, num_q_heads, &elements)) {
+    return false;
+  }
+  if (!safe_mul_i64(elements, kv_len, &elements)) {
+    return false;
+  }
+  *out = elements;
+  return true;
+}
+
+bool valid_staged_attention_shape(
+    int64_t batch_size,
+    int64_t query_len,
+    int64_t kv_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t threads,
+    int64_t scores_workspace_elements,
+    int64_t* required_out) {
+  if (!valid_attention_shape(batch_size, query_len, kv_len, num_q_heads, num_kv_heads, head_dim, threads)) {
+    return false;
+  }
+  int64_t required = 0;
+  if (!staged_score_elements(batch_size, query_len, kv_len, num_q_heads, &required)) {
+    return false;
+  }
+  if (required > kMaxStagedGridBlocks) {
+    return false;
+  }
+  int64_t query_elements = 0, kv_elements = 0;
+  if (!staged_score_elements(batch_size, query_len, head_dim, num_q_heads, &query_elements) ||
+      !staged_score_elements(batch_size, kv_len, head_dim, num_kv_heads, &kv_elements) ||
+      query_elements > INT64_MAX / 4 || kv_elements > INT64_MAX / 4 ||
+      required > INT64_MAX / 4) {
+    return false;
+  }
+  if (scores_workspace_elements < required) {
+    return false;
+  }
+  if (required_out != nullptr) {
+    *required_out = required;
+  }
+  return true;
 }
 
 }  // namespace
@@ -1947,6 +2154,135 @@ extern "C" int hipengine_dflash_gqa_attention_f32_bf16(
       num_kv_heads,
       head_dim,
       scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dflash_gqa_attention_scores_f32(
+    const float* query,
+    const float* key,
+    float* scores,
+    int64_t batch_size,
+    int64_t query_len,
+    int64_t kv_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    int64_t scores_workspace_elements,
+    int64_t threads,
+    hipStream_t stream) {
+  int64_t required = 0;
+  if (!valid_staged_attention_shape(
+          batch_size,
+          query_len,
+          kv_len,
+          num_q_heads,
+          num_kv_heads,
+          head_dim,
+          threads,
+          scores_workspace_elements,
+          &required)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const size_t smem = static_cast<size_t>(threads) * sizeof(float);
+  hipLaunchKernelGGL(
+      dflash_gqa_attention_scores_f32_kernel,
+      dim3(static_cast<unsigned int>(required)),
+      dim3(static_cast<unsigned int>(threads)),
+      smem,
+      stream,
+      query,
+      key,
+      scores,
+      batch_size,
+      query_len,
+      kv_len,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dflash_gqa_attention_softmax_f32(
+    float* scores,
+    int64_t batch_size,
+    int64_t query_len,
+    int64_t kv_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t scores_workspace_elements,
+    hipStream_t stream) {
+  int64_t required = 0;
+  if (!valid_staged_attention_shape(
+          batch_size,
+          query_len,
+          kv_len,
+          num_q_heads,
+          num_kv_heads,
+          head_dim,
+          kStagedSoftmaxThreads,
+          scores_workspace_elements,
+          &required)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t score_rows = required / kv_len;
+  const int64_t blocks = (score_rows + kStagedSoftmaxThreads - 1) / kStagedSoftmaxThreads;
+  hipLaunchKernelGGL(
+      dflash_gqa_attention_softmax_f32_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(static_cast<unsigned int>(kStagedSoftmaxThreads)),
+      0,
+      stream,
+      scores,
+      score_rows,
+      kv_len);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dflash_gqa_attention_values_f32_bf16(
+    const float* scores,
+    const uint16_t* value,
+    uint16_t* out,
+    int64_t batch_size,
+    int64_t query_len,
+    int64_t kv_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t scores_workspace_elements,
+    int64_t threads,
+    hipStream_t stream) {
+  int64_t required = 0;
+  if (!valid_staged_attention_shape(
+          batch_size,
+          query_len,
+          kv_len,
+          num_q_heads,
+          num_kv_heads,
+          head_dim,
+          threads,
+          scores_workspace_elements,
+          &required)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t score_rows = required / kv_len;
+  hipLaunchKernelGGL(
+      dflash_gqa_attention_values_f32_bf16_kernel,
+      dim3(static_cast<unsigned int>(score_rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      scores,
+      value,
+      out,
+      batch_size,
+      query_len,
+      kv_len,
+      num_q_heads,
+      num_kv_heads,
+      head_dim);
   return static_cast<int>(hipGetLastError());
 }
 

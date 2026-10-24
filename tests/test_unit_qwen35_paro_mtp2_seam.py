@@ -93,6 +93,9 @@ class _ProposerDouble:
         self.advances.append(kwargs)
         return self.current
 
+    def append_prompt_kv_with_target_hidden(self, **kwargs):
+        self.advances.append({**kwargs, "need_result": False, "read_token_id": False, "prompt_kv_only": True})
+
     def device_candidate_token_ids(self):
         return Tensor.from_handle(0x7000, (1,), DType.INT32, Device("hip", 0))
 

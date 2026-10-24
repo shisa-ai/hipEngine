@@ -35,6 +35,9 @@ _SYMBOL_KEY_RMS_ROTARY = "hipengine_dflash_key_rmsnorm_rotary_f32"
 _SYMBOL_UPDATE_KV_METADATA = "hipengine_dflash_update_kv_metadata_i32"
 _SYMBOL_GQA_ATTENTION = "hipengine_dflash_gqa_attention_f32_bf16"
 _SYMBOL_GQA_ATTENTION_BUCKETED = "hipengine_dflash_gqa_attention_f32_bf16_bucketed"
+_SYMBOL_GQA_ATTENTION_SCORES = "hipengine_dflash_gqa_attention_scores_f32"
+_SYMBOL_GQA_ATTENTION_SOFTMAX = "hipengine_dflash_gqa_attention_softmax_f32"
+_SYMBOL_GQA_ATTENTION_VALUES = "hipengine_dflash_gqa_attention_values_f32_bf16"
 _ALLOWED_THREADS = {64, 128, 256}
 
 _DFLASH_WMMA_TILE_K = 16
@@ -1206,6 +1209,368 @@ def dflash_gqa_attention_f32_bf16_bucketed(
         runtime.check(int(err))
 
 
+def dflash_gqa_attention_scores_workspace_elements(
+    batch_size: int,
+    query_len: int,
+    kv_len: int,
+    num_q_heads: int,
+) -> int:
+    """Return the FP32 score-workspace size, in elements, for the staged route."""
+
+    values = (batch_size, query_len, kv_len, num_q_heads)
+    if any(not isinstance(value, int) or value <= 0 or value > (1 << 63) - 1 for value in values):
+        raise ValueError("score dimensions must be positive signed 64-bit integers")
+    required = batch_size * query_len * num_q_heads * kv_len
+    if required > 2147483647:
+        raise ValueError("score grid exceeds the HIP x-grid limit")
+    return required
+
+
+def _check_staged_tensor_ranges(scores_ptr: int, scores_elements: int, *ranges: tuple[int, int]) -> None:
+    limit = (1 << (ctypes.sizeof(ctypes.c_void_p) * 8)) - 1
+    score_end = scores_ptr + scores_elements * 4
+    if scores_ptr <= 0 or score_end > limit:
+        raise ValueError("score workspace pointer extent is invalid")
+    for ptr, nbytes in ranges:
+        if ptr <= 0 or nbytes > (1 << 63) - 1 or ptr + nbytes > limit:
+            raise ValueError("attention tensor pointer extent is invalid")
+        if ptr < score_end and scores_ptr < ptr + nbytes:
+            raise ValueError("score workspace must not overlap attention inputs or output")
+
+
+def _check_staged_scores_workspace(
+    scores_f32_ptr: int,
+    batch_size: int,
+    query_len: int,
+    kv_len: int,
+    num_q_heads: int,
+    scores_workspace_elements: int,
+) -> None:
+    if scores_f32_ptr == 0:
+        raise ValueError("scores_f32_ptr must be non-zero")
+    required = dflash_gqa_attention_scores_workspace_elements(
+        batch_size, query_len, kv_len, num_q_heads
+    )
+    if scores_workspace_elements > (1 << 63) - 1:
+        raise ValueError("scores_workspace_elements exceeds signed 64-bit range")
+    if scores_workspace_elements < required:
+        raise ValueError(
+            "scores_workspace_elements must be at least "
+            f"batch_size * query_len * num_q_heads * kv_len = {required} "
+            f"float32 elements (got {scores_workspace_elements})"
+        )
+
+
+def dflash_gqa_attention_scores_f32(
+    query_f32_ptr: int,
+    key_f32_ptr: int,
+    scores_f32_ptr: int,
+    batch_size: int,
+    query_len: int,
+    kv_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    scores_workspace_elements: int,
+    scale: float | None = None,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Staged attention pass 1: independent per-KV-row dot scores.
+
+    Launches one block per ``(batch, query row, q head, kv row)`` score, each
+    with ``threads`` lanes, and writes the scaled FP32 scores into
+    ``scores_f32_ptr[((batch * query_len + q_row) * num_q_heads + q_head) * kv_len + kv_row]``.
+
+    The reduction is the parent's: each lane sums the dimensions it owns in
+    ascending order, then the block tree-reduces all ``threads`` lane partials
+    in the parent's stride order, and thread 0 multiplies by ``scale``.  This is
+    the pass that removes the parent's serial ``kv_len`` score loop; the
+    per-score block granularity is a hypothesis until it is measured.
+    """
+
+    _check_attention_shape(batch_size, query_len, kv_len, num_q_heads, num_kv_heads, head_dim, threads)
+    _check_staged_scores_workspace(
+        scores_f32_ptr, batch_size, query_len, kv_len, num_q_heads, scores_workspace_elements
+    )
+    _check_staged_tensor_ranges(
+        scores_f32_ptr, batch_size * query_len * num_q_heads * kv_len,
+        (query_f32_ptr, batch_size * query_len * num_q_heads * head_dim * 4),
+        (key_f32_ptr, batch_size * kv_len * num_kv_heads * head_dim * 4),
+    )
+    scale_value = float(head_dim ** -0.5 if scale is None else scale)
+    library = library or build_dflash_drafter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GQA_ATTENTION_SCORES)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_f32_ptr),
+        ctypes.c_void_p(key_f32_ptr),
+        ctypes.c_void_p(scores_f32_ptr),
+        ctypes.c_int64(batch_size),
+        ctypes.c_int64(query_len),
+        ctypes.c_int64(kv_len),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale_value),
+        ctypes.c_int64(scores_workspace_elements),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def dflash_gqa_attention_softmax_f32(
+    scores_f32_ptr: int,
+    batch_size: int,
+    query_len: int,
+    kv_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    scores_workspace_elements: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Staged attention pass 2: serial per-row softmax, in place.
+
+    One thread owns a whole score row and walks it three times in increasing KV
+    order: max, then ``expf(score - max)`` with a serial denominator, then
+    ``* (1 / denom)``.  Nothing is rescaled online and nothing is reduced across
+    lanes, so the probabilities are bit-identical to the parent's thread-0
+    softmax.  Block size cannot affect any row's arithmetic.
+    """
+
+    # This pass takes no thread count, so validate the shape against the default
+    # one; the launch picks its own block size, which cannot affect any row.
+    _check_attention_shape(batch_size, query_len, kv_len, num_q_heads, num_kv_heads, head_dim, 128)
+    _check_staged_scores_workspace(
+        scores_f32_ptr, batch_size, query_len, kv_len, num_q_heads, scores_workspace_elements
+    )
+    library = library or build_dflash_drafter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GQA_ATTENTION_SOFTMAX)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(scores_f32_ptr),
+        ctypes.c_int64(batch_size),
+        ctypes.c_int64(query_len),
+        ctypes.c_int64(kv_len),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int64(scores_workspace_elements),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def dflash_gqa_attention_values_f32_bf16(
+    scores_f32_ptr: int,
+    value_bf16_ptr: int,
+    out_bf16_ptr: int,
+    batch_size: int,
+    query_len: int,
+    kv_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    scores_workspace_elements: int,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Staged attention pass 3: per-output-dimension weighted value sums.
+
+    One block per ``(batch, query row, q head)``; thread ``tid`` owns dimensions
+    ``tid, tid + threads, ...`` and accumulates
+    ``scores[kv_row] * value[...]`` in increasing KV order, then rounds to BF16.
+    The value sum is never split or reassociated.  This pass keeps the parent's
+    block granularity, so its cost should be unchanged; only passes 1 and 2 are
+    expected to move.
+    """
+
+    _check_attention_shape(batch_size, query_len, kv_len, num_q_heads, num_kv_heads, head_dim, threads)
+    _check_staged_scores_workspace(
+        scores_f32_ptr, batch_size, query_len, kv_len, num_q_heads, scores_workspace_elements
+    )
+    _check_staged_tensor_ranges(
+        scores_f32_ptr, batch_size * query_len * num_q_heads * kv_len,
+        (value_bf16_ptr, batch_size * kv_len * num_kv_heads * head_dim * 2),
+        (out_bf16_ptr, batch_size * query_len * num_q_heads * head_dim * 2),
+    )
+    library = library or build_dflash_drafter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GQA_ATTENTION_VALUES)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(scores_f32_ptr),
+        ctypes.c_void_p(value_bf16_ptr),
+        ctypes.c_void_p(out_bf16_ptr),
+        ctypes.c_int64(batch_size),
+        ctypes.c_int64(query_len),
+        ctypes.c_int64(kv_len),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_int64(scores_workspace_elements),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def dflash_gqa_attention_f32_bf16_staged(
+    query_f32_ptr: int,
+    key_f32_ptr: int,
+    value_bf16_ptr: int,
+    out_bf16_ptr: int,
+    scores_f32_ptr: int,
+    batch_size: int,
+    query_len: int,
+    kv_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    scores_workspace_elements: int,
+    scale: float | None = None,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the three staged passes of :func:`dflash_gqa_attention_f32_bf16`.
+
+    Same inputs, same layout, same BF16 output as
+    :func:`dflash_gqa_attention_f32_bf16`; the difference is that the per-head
+    serial score loop and thread-0 softmax become separate kernels, so the score
+    pass exposes ``batch * query_len * num_q_heads * kv_len`` blocks.  Outputs
+    are expected to match the parent byte for byte, and that expectation is what
+    ``tests/test_gpu_dflash_attention_exact.py`` checks on the GPU.
+
+    ``scores_f32_ptr`` is caller-owned FP32 workspace of at least
+    :func:`dflash_gqa_attention_scores_workspace_elements` elements.  It is
+    scratch: its final contents are the normalised probabilities and no input
+    is preserved.  Passing the same value to the individual pass wrappers lets
+    a caller time or profile each stage separately.
+    ``scores_f32_ptr`` must not overlap Q, K, V or output. Its allocation must
+    remain live and cannot be reused on another stream until all three passes
+    finish. Launches are asynchronous on ``stream``.
+    """
+
+    _check_attention_shape(batch_size, query_len, kv_len, num_q_heads, num_kv_heads, head_dim, threads)
+    _check_staged_scores_workspace(
+        scores_f32_ptr, batch_size, query_len, kv_len, num_q_heads, scores_workspace_elements
+    )
+    _check_staged_tensor_ranges(
+        scores_f32_ptr, batch_size * query_len * num_q_heads * kv_len,
+        (query_f32_ptr, batch_size * query_len * num_q_heads * head_dim * 4),
+        (key_f32_ptr, batch_size * kv_len * num_kv_heads * head_dim * 4),
+        (value_bf16_ptr, batch_size * kv_len * num_kv_heads * head_dim * 2),
+        (out_bf16_ptr, batch_size * query_len * num_q_heads * head_dim * 2),
+    )
+    library = library or build_dflash_drafter(load=True)
+    runtime = runtime or get_hip_runtime()
+    dflash_gqa_attention_scores_f32(
+        query_f32_ptr,
+        key_f32_ptr,
+        scores_f32_ptr,
+        batch_size,
+        query_len,
+        kv_len,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scores_workspace_elements=scores_workspace_elements,
+        scale=scale,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+    dflash_gqa_attention_softmax_f32(
+        scores_f32_ptr,
+        batch_size,
+        query_len,
+        kv_len,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scores_workspace_elements=scores_workspace_elements,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+    dflash_gqa_attention_values_f32_bf16(
+        scores_f32_ptr,
+        value_bf16_ptr,
+        out_bf16_ptr,
+        batch_size,
+        query_len,
+        kv_len,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scores_workspace_elements=scores_workspace_elements,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def register_dflash_drafter_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "dflash_prepare_noise_inputs", "w4_paro", "bf16_i32"),
@@ -1315,6 +1680,11 @@ def register_dflash_drafter_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "dflash_gqa_attention", "w4_paro", "f32_bf16_bucketed"),
         dflash_gqa_attention_f32_bf16_bucketed,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "dflash_gqa_attention", "w4_paro", "f32_bf16_staged"),
+        dflash_gqa_attention_f32_bf16_staged,
         replace=replace,
     )
 
@@ -1770,8 +2140,8 @@ def _check_attention_shape(
         ("num_kv_heads", num_kv_heads),
         ("head_dim", head_dim),
     ):
-        if value <= 0:
-            raise ValueError(f"{name} must be positive")
+        if not isinstance(value, int) or value <= 0 or value > (1 << 63) - 1:
+            raise ValueError(f"{name} must be positive and fit signed 64-bit storage")
     if num_q_heads % num_kv_heads != 0:
         raise ValueError("num_q_heads must be divisible by num_kv_heads")
     if threads not in _ALLOWED_THREADS:

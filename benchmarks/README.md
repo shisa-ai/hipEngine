@@ -2,6 +2,33 @@
 
 Last updated: **2026-10-24 UTC**
 
+## PARO provider prompt and attention — W7900, October 24
+
+Qwen3.6-35B-A3B packed PARO W4 + BF16 MTP, host **epyc / Radeon Pro W7900**,
+production profile, BF16 KV, one active request, greedy fixed-length outputs.
+One warmup and two measured repetitions per case rotate true AR, the previous
+provider, KV-only prompt priming, and KV-only priming plus staged attention in
+one public-library owner. Rates below include the complete request, not just
+decode. The short-prompt rows pool all ten category prompts (27–59 inputs);
+the 4K rows use one padded code prompt.
+
+| Inputs | Outputs | True AR tok/s | Previous MTP tok/s | New MTP tok/s |
+| --- | ---: | ---: | ---: | ---: |
+| Natural prompts | 25 | 78.64 | 76.03 | 77.11 |
+| Natural prompts | 129 | 98.96 | 109.87 | 110.84 |
+| 4096 | 25 | 13.96 | 1.46 | 10.30 |
+| 4096 | 129 | 45.65 | 6.93 | 34.84 |
+
+Non-final prompt rows now append only their needed K/V; the final row still
+runs the full provider. Attention from 128 cached rows uses parallel scores
+with the parent's reduction, softmax and value-sum order. All 90 comparisons,
+including 127/128/257/512/4096 context probes, preserve the previous provider's
+IDs and acceptance schedules. The long-prompt gain is primarily prompt work
+removed, not a faster target verifier; MTP still trails AR at 4K. These are
+diagnostic timings: the existing Japanese strict-teacher numerical failure is
+not repaired and no MTP quality or new topline claim follows.
+[Protocol, samples, correctness and source snapshots](results/2026-10-24-w7900-paro-provider-exact.json).
+
 ## 16K INT8/MTP with and without DMS — RX 7900 XTX
 
 Qwen3.8-27B `Q4_K_M`, **epyc / RX 7900 XTX**, production INT8 KV/FP32 scales, W8192/2x DMS, MTP budget 3.

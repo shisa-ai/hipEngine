@@ -35,6 +35,7 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
     dflash_dense_bf16_to_bf16_expert_routes,
     dflash_dense_bf16_to_f32,
     dflash_gqa_attention_f32_bf16,
+    dflash_gqa_attention_f32_bf16_staged,
     dflash_head_rmsnorm_rotary_f32,
     dflash_head_rmsnorm_rotary_indexed_key_f32,
     dflash_qkv_proj_bf16_mixed,
@@ -363,6 +364,9 @@ class NativeMtpChainProposer:
         _, self.key_cache_buf = _empty_device((self.max_mtp_tokens, self.kv_features), np.float32, self.buffers, runtime=self.runtime)
         _, self.value_cache_buf = _empty_device((self.max_mtp_tokens, self.kv_features), np.uint16, self.buffers, runtime=self.runtime)
         _, self.attn_out_buf = _empty_device((1, self.q_features), np.uint16, self.buffers, runtime=self.runtime)
+        # Global FP32 scores keep the parent's reduction/softmax order while
+        # independent KV-row dot products execute in parallel.
+        _, self.attention_scores_buf = _empty_device((self.q_heads * self.max_mtp_tokens,), np.float32, self.buffers, runtime=self.runtime)
         _, self.gated_buf = _empty_device((1, self.q_features), np.uint16, self.buffers, runtime=self.runtime)
         _, self.o_out_buf = _empty_device((1, self.hidden), np.uint16, self.buffers, runtime=self.runtime)
         _, self.moe_in_buf = _empty_device((1, self.hidden), np.uint16, self.buffers, runtime=self.runtime)
@@ -1191,7 +1195,18 @@ class NativeMtpChainProposer:
             self.result_valid = False
             self.current = NativeMtpStepResult(token=-1, logit=float("nan"), topk_experts=(), topk_logits=())
             return self.current
-        dflash_gqa_attention_f32_bf16(self.query_rot_buf.ptr, self.key_cache_buf.ptr, self.value_cache_buf.ptr, self.attn_out_buf.ptr, 1, 1, context_len, self.q_heads, self.kv_heads, self.head_dim, threads=128, stream=stream, library=self.dflash_lib)
+        if context_len >= 128:
+            dflash_gqa_attention_f32_bf16_staged(
+                self.query_rot_buf.ptr, self.key_cache_buf.ptr, self.value_cache_buf.ptr,
+                self.attn_out_buf.ptr, self.attention_scores_buf.ptr,
+                1, 1, context_len, self.q_heads, self.kv_heads, self.head_dim,
+                scores_workspace_elements=self.q_heads * self.max_mtp_tokens,
+                threads=128, stream=stream, library=self.dflash_lib,
+            )
+        else:
+            # Three launches lose to the monolithic parent at very short
+            # contexts. This shape crossover changes scheduling, not arithmetic.
+            dflash_gqa_attention_f32_bf16(self.query_rot_buf.ptr, self.key_cache_buf.ptr, self.value_cache_buf.ptr, self.attn_out_buf.ptr, 1, 1, context_len, self.q_heads, self.kv_heads, self.head_dim, threads=128, stream=stream, library=self.dflash_lib)
         mtp_gate_mul_bf16(self.attn_out_buf.ptr, self.gate_buf.ptr, self.gated_buf.ptr, self.q_features, threads=256, stream=stream, library=self.mtp_lib)
         dflash_dense_bf16_to_bf16(self.gated_buf.ptr, self.weights["mtp.layers.0.self_attn.o_proj.weight"].ptr, self.o_out_buf.ptr, 1, self.q_features, self.hidden, threads=128, stream=stream, library=self.dflash_lib)
         mtp_add_rmsnorm_bf16_oneplus(
