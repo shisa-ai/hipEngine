@@ -2260,6 +2260,8 @@ class _ParoResidentLoopRow:
     mtp2_execution_routes: list[str] = field(default_factory=list)
     mtp2_provider_open_ms: float = 0.0
     mtp2_prompt_prime_ms: float = 0.0
+    mtp2_bulk_prompt_chunks: int = 0
+    mtp2_bulk_prompt_rows: int = 0
     mtp2_candidate_device_handoffs: int = 0
     mtp2_candidate_d2h_after_target: int = 0
 
@@ -2996,40 +2998,27 @@ class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
         if adapter is None:
             raise RuntimeError("PARO MTP2 prompt capture has no staged adapter")
         adapter.begin_prompt(row.request_id)
-        if row.mtp2_prompt_hidden_buffer is None:
-            row.mtp2_prompt_hidden_buffer = malloc(
-                self._session.hidden_nbytes,
-                runtime=self._session.runtime,
-            )
-        capture_ptr = int(row.mtp2_prompt_hidden_buffer.ptr)
-
-        def consume_final_hidden_row(
-            request_id: int,
-            prompt_index: int,
-            hidden: Tensor,
-            seed_token: int | None,
-        ) -> None:
-            if int(request_id) != int(row.request_id):
-                raise RuntimeError("PARO MTP2 packed prefill returned a peer request row")
-            self._session._write_final_normalized_hidden_bf16(
-                hidden,
-                destination_ptr=capture_ptr,
-                stream=0,
-            )
-            adapter.consume_prompt_row(
-                row.request_id,
-                prompt_index=int(prompt_index),
-                target_hidden_ptr=capture_ptr,
-                seed_token=seed_token,
-            )
-
-        return tuple(
+        # The packed path hands the provider one contiguous chunk per request
+        # instead of one row at a time, so normalization, the BF16 cast, and the
+        # historical K/V append each run over a bounded row block. The sink owns
+        # that workspace and is released with the request's prompt capture.
+        sink = adapter.prompt_capture_sink(row.request_id)
+        results = tuple(
             self._session.prefill_native_packed(
                 slab,
                 sample=bool(sample_final),
-                final_hidden_row_sink=consume_final_hidden_row,
+                final_hidden_chunk_sink=sink,
             )
         )
+        if len(results) != 1:
+            raise RuntimeError(
+                f"PARO MTP2 packed prefill returned {len(results)} result(s) for one row"
+            )
+        adapter.finish_prompt_capture(
+            row.request_id,
+            seed_token=(None if results[0] is None else int(results[0].token_id)),
+        )
+        return results
 
     def _prefill_row_serial_with_mtp2_capture(
         self,
@@ -3343,6 +3332,12 @@ class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
             timing["specdec2_mtp2_prompt_prime_ms"] = float(
                 row.mtp2_prompt_prime_ms
             )
+            timing["specdec2_mtp2_bulk_prompt_chunks"] = int(
+                row.mtp2_bulk_prompt_chunks
+            )
+            timing["specdec2_mtp2_bulk_prompt_rows"] = int(
+                row.mtp2_bulk_prompt_rows
+            )
         return _telemetry_for_tokens(
             row.prompt_ids,
             tuple(step.token_id for step in visible_steps),
@@ -3420,6 +3415,8 @@ class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
             "specdec2_mtp2_execution_routes": list(row.mtp2_execution_routes),
             "specdec2_mtp2_provider_open_ms": float(row.mtp2_provider_open_ms),
             "specdec2_mtp2_prompt_prime_ms": float(row.mtp2_prompt_prime_ms),
+            "specdec2_mtp2_bulk_prompt_chunks": int(row.mtp2_bulk_prompt_chunks),
+            "specdec2_mtp2_bulk_prompt_rows": int(row.mtp2_bulk_prompt_rows),
             "specdec2_mtp2_candidate_device_handoffs": int(
                 row.mtp2_candidate_device_handoffs
             ),

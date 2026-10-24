@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 import pytest
 
-import hipengine.generation.qwen35_paro as paro_generation_module
 import hipengine.generation.qwen35_paro_mtp2 as paro_mtp2_module
 from hipengine.generation.qwen35_paro import Qwen35ParoResidentModelRunner
 from hipengine.generation.qwen35_paro_mtp2 import (
@@ -320,12 +319,49 @@ def test_cache_only_prompt_failure_does_not_publish_a_consumed_row() -> None:
     assert not proposer.advances
 
 
-def test_staged_prefill_uses_packed_target_and_streams_final_hidden_rows(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("final_chunk", "prompt_total", "sample", "seed_token"),
+    (
+        (True, 2, True, 99),
+        (False, 5, False, None),
+    ),
+)
+def test_staged_prefill_uses_packed_target_and_streams_final_hidden_rows(
+    final_chunk,
+    prompt_total,
+    sample,
+    seed_token,
+) -> None:
+    """The packed path hands the provider one chunk, not one row at a time.
+
+    The target owns hidden normalization and the K/V append; this seam owns only
+    which rows the provider sees and whether the packed sample reaches it. A
+    request's rows of one slab are one contiguous span, so they arrive as a
+    single ``PromptPrimeSink.consume`` carrying the span's first prompt row and
+    the slab's base pointer, and the sampled root is delivered only on the chunk
+    that ends the prompt.
+    """
+
     calls = []
+    packed_result = SimpleNamespace(token_id=99)
+
+    class FakeSink:
+        request_id = 7
+        hidden_size = 8
+        total_rows = prompt_total
+
+        def consume(self, *, request_id, chunk_start, hidden_ptr, rows, stream):
+            calls.append(("consume", request_id, chunk_start, hidden_ptr, rows, stream))
+
+        def finish(self, *, request_id, total_rows, stream):
+            calls.append(("finish", request_id, total_rows, stream))
+
+    sink = FakeSink()
     adapter = SimpleNamespace(
         begin_prompt=lambda request_id: calls.append(("begin", request_id)),
-        consume_prompt_row=lambda request_id, **kwargs: calls.append(
-            ("consume", request_id, kwargs)
+        prompt_capture_sink=lambda request_id: calls.append(("sink", request_id)) or sink,
+        finish_prompt_capture=lambda request_id, *, seed_token: calls.append(
+            ("finish_capture", request_id, seed_token)
         ),
     )
 
@@ -341,22 +377,28 @@ def test_staged_prefill_uses_packed_target_and_streams_final_hidden_rows(monkeyp
             *,
             sample=True,
             final_hidden_row_sink=None,
+            final_hidden_chunk_sink=None,
         ):
             calls.append(("packed", slab.token_rows, sample))
-            assert final_hidden_row_sink is not None
-            final_hidden_row_sink(7, 0, SimpleNamespace(ptr=0x9000), None)
-            result = SimpleNamespace(token_id=99)
-            final_hidden_row_sink(7, 1, SimpleNamespace(ptr=0x9010), result.token_id)
-            return (result,)
-
-        def _write_final_normalized_hidden_bf16(
-            self,
-            hidden,
-            *,
-            destination_ptr,
-            stream=0,
-        ):
-            calls.append(("normalize", hidden.ptr, destination_ptr, stream))
+            # The chunk seam replaces the per-row seam for this route.
+            assert final_hidden_row_sink is None
+            assert final_hidden_chunk_sink is sink
+            # Rows 0 and 1 of the slab are one contiguous span: prompt index 0,
+            # base pointer of the post-output-norm rows, two rows, one stream.
+            final_hidden_chunk_sink.consume(
+                request_id=7,
+                chunk_start=0,
+                hidden_ptr=0x9000,
+                rows=2,
+                stream=0,
+            )
+            if 0 + 2 == final_hidden_chunk_sink.total_rows:
+                final_hidden_chunk_sink.finish(
+                    request_id=7,
+                    total_rows=final_hidden_chunk_sink.total_rows,
+                    stream=0,
+                )
+            return (packed_result,) if sample else (None,)
 
     runner = object.__new__(Qwen35ParoResidentModelRunner)
     runner._session = FakeSession()
@@ -374,44 +416,23 @@ def test_staged_prefill_uses_packed_target_and_streams_final_hidden_rows(monkeyp
         mtp2_prompt_hidden_buffer=None,
         native_prefill=False,
     )
-    monkeypatch.setattr(
-        paro_generation_module,
-        "malloc",
-        lambda nbytes, runtime=None: SimpleNamespace(ptr=0x8000, nbytes=nbytes),
-    )
 
     result = runner._prefill_row_chunk(
         row,
         (10, 11),
         start_position=0,
-        final_chunk=True,
+        final_chunk=final_chunk,
     )
 
-    assert result.token_id == 99
     assert row.native_prefill is True
+    assert result is (packed_result if sample else None)
     assert calls == [
         ("begin", 7),
-        ("packed", ((10, 11),), True),
-        ("normalize", 0x9000, 0x8000, 0),
-        (
-            "consume",
-            7,
-            {
-                "prompt_index": 0,
-                "target_hidden_ptr": 0x8000,
-                "seed_token": None,
-            },
-        ),
-        ("normalize", 0x9010, 0x8000, 0),
-        (
-            "consume",
-            7,
-            {
-                "prompt_index": 1,
-                "target_hidden_ptr": 0x8000,
-                "seed_token": 99,
-            },
-        ),
+        ("sink", 7),
+        ("packed", ((10, 11),), sample),
+        ("consume", 7, 0, 0x9000, 2, 0),
+        *([("finish", 7, 2, 0)] if final_chunk else []),
+        ("finish_capture", 7, seed_token),
     ]
 
 

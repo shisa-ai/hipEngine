@@ -8,6 +8,7 @@ from typing import Any, Mapping, Sequence
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
+from hipengine.core.memory import DeviceBuffer, free, malloc
 from hipengine.core.tensor import Tensor
 from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
 from hipengine.runtime.qwen35_paro_runner import (
@@ -30,6 +31,14 @@ from hipengine.speculative.mtp_native import (
     NativeMtpStateSnapshot,
     NativeMtpW8A16Head,
 )
+from hipengine.speculative.prompt_prime import (
+    PROMPT_PRIME_REFUSAL_FINISHED,
+    PROMPT_PRIME_REFUSAL_NOT_CONTIGUOUS,
+    PromptPrimeChunk,
+    PromptPrimeLedger,
+    PromptPrimePlan,
+    PromptPrimeSink,
+)
 from hipengine.speculative.provider import (
     SpeculativeRequestSemantics,
     validate_staged_target_adapter,
@@ -45,6 +54,13 @@ from hipengine.speculative.transaction import (
 
 _PROPOSER_CAPACITY_FLOOR = 256
 
+#: Rows one bulk historical-prompt append stages. This bounds the request's
+#: prompt-priming workspace, never the prompt: a longer prompt is primed in more
+#: chunks through the same slab. It matches the proposer's default per-launch row
+#: chunk, so one sink chunk is one bulk launch set, and it must stay at or below
+#: that primitive's hard row cap (64).
+PROMPT_PRIME_CHUNK_ROWS = 16
+
 
 def _proposer_capacity_bucket(required_tokens: int) -> int:
     required = int(required_tokens)
@@ -58,10 +74,346 @@ class _ParoMTP2RequestState:
     request_id: int
     proposer: NativeMtpChainProposer
     prompt_rows_consumed: int = 0
+    prompt_sink: "_ParoPromptPrimeSink | None" = None
     checkpoint: NativeMtpStateSnapshot | None = None
     journal: SpeculativeStateJournal | None = None
     last_proposal_seconds: float = 0.0
     prompt_prime_seconds: float = 0.0
+
+
+class _ParoPromptPrimeSink:
+    """Request-owned prompt-priming sink over the PARO MTP proposer.
+
+    The target fans one contiguous span of a request's post-output-norm hidden
+    rows into :meth:`consume`, and this sink turns them into the proposer's
+    historical prompt K/V. Row accounting, chunk splitting and refusal codes
+    come from the shared :mod:`hipengine.speculative.prompt_prime` plan and
+    ledger, so the chunk contract is the same one the GGUF prompt sinks use;
+    only the device work here is PARO's.
+
+    Every historical prompt row consumes the *next* prompt token at position
+    ``index + 1``, so the rows of one slice are one contiguous token/position/
+    hidden run and go to the bulk append primitive as a single request. The last
+    prompt row is different in kind: it consumes the target's own root token and
+    must produce a prediction, so it is staged here and completed by
+    :meth:`complete` once the target root exists.
+
+    The workspace is two bounded slabs sized by ``PROMPT_PRIME_CHUNK_ROWS``, not
+    by prompt length: a longer prompt is primed in more chunks through the same
+    allocation. Nothing here is shared between requests.
+    """
+
+    def __init__(
+        self,
+        *,
+        adapter: "Qwen35ParoMTP2Adapter",
+        state: _ParoMTP2RequestState,
+        request_id: int,
+        prompt_ids: Sequence[int],
+        session: Any,
+        chunk_rows: int = PROMPT_PRIME_CHUNK_ROWS,
+    ) -> None:
+        proposer = state.proposer
+        self.adapter = adapter
+        self.state = state
+        self.proposer = proposer
+        self.session = session
+        self.prompt_ids = tuple(int(token) for token in prompt_ids)
+        self.request_id = int(request_id)
+        self.hidden_size = int(session.config.hidden_size)
+        self.total_rows = len(self.prompt_ids)
+        self.hidden_nbytes = self.hidden_size * DType.BF16.itemsize
+        self.device = getattr(session, "device", Device("hip", 0))
+        if self.total_rows <= 0:
+            raise ValueError("PARO MTP2 prompt sink requires a non-empty prompt")
+        proposer_hidden = getattr(proposer, "hidden", None)
+        if proposer_hidden is not None and int(proposer_hidden) != self.hidden_size:
+            raise ValueError(
+                "PARO MTP2 prompt sink width does not match the proposer hidden size: "
+                f"target {self.hidden_size}, proposer {int(proposer_hidden)}"
+            )
+        rows = int(chunk_rows)
+        if rows <= 0:
+            raise ValueError("PARO MTP2 prompt sink chunk rows must be positive")
+        # One chunk is one bounded slice; the slab is never resized.
+        self.chunk_rows = min(rows, self.total_rows)
+        self.plan = PromptPrimePlan(start_position=0, max_chunk_rows=self.chunk_rows)
+        self.ledger = PromptPrimeLedger(
+            request_id=self.request_id,
+            total_rows=self.total_rows,
+        )
+        # A request may already own published rows from the row-at-a-time seam
+        # (a serial chunk, or a chunk that fell back to serial prefill). Carry
+        # that cursor into the ledger so one sink can take over mid-prompt.
+        already_published = int(state.prompt_rows_consumed)
+        if already_published:
+            if already_published > self.total_rows:
+                raise RuntimeError(
+                    "PARO MTP2 prompt sink cannot resume past the registered prompt"
+                )
+            self.ledger.publish(chunk_start=0, rows=already_published)
+        self.bulk_chunks = 0
+        self.bulk_rows = 0
+        self._stream: int | None = None
+        self._final_row_ptr = 0
+        self._fanout_finished = False
+        self._completed = False
+        self._failed = False
+        self._closed = False
+        self._slab: DeviceBuffer | None = None
+        self._norm_scratch: DeviceBuffer | None = None
+        runtime = getattr(session, "runtime", None)
+        slab = malloc(self.chunk_rows * self.hidden_nbytes, runtime=runtime)
+        try:
+            scratch = malloc(
+                self.chunk_rows * self.hidden_size * DType.FP16.itemsize,
+                runtime=runtime,
+            )
+        except Exception:
+            free(slab, runtime=runtime)
+            raise
+        self._slab = slab
+        self._norm_scratch = scratch
+
+    # -- shared contract ---------------------------------------------------
+
+    @property
+    def published_rows(self) -> int:
+        """Prompt rows this sink has appended, from the shared ledger."""
+
+        return self.ledger.published_rows
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    def consume(
+        self,
+        *,
+        request_id: int,
+        chunk_start: int,
+        hidden_ptr: int,
+        rows: int,
+        stream: int,
+    ) -> None:
+        """Prime the proposer from one contiguous target-hidden chunk."""
+
+        self._validate_owner(int(request_id))
+        if self._closed:
+            raise RuntimeError("PARO MTP2 prompt sink is closed")
+        if self._failed:
+            raise RuntimeError("PARO MTP2 prompt sink is failed")
+        refusal = self.ledger.check(chunk_start=int(chunk_start), rows=int(rows))
+        if refusal == PROMPT_PRIME_REFUSAL_FINISHED:
+            raise RuntimeError("PARO MTP2 prompt sink is already finished")
+        if refusal == PROMPT_PRIME_REFUSAL_NOT_CONTIGUOUS:
+            raise RuntimeError(
+                "PARO MTP2 prompt chunks must be contiguous: "
+                f"expected {self.ledger.published_rows}, got {int(chunk_start)}"
+            )
+        if refusal is not None:
+            raise ValueError(f"PARO MTP2 prompt chunk is refused: {refusal}")
+        if int(hidden_ptr) <= 0:
+            raise ValueError("PARO MTP2 prompt chunk requires a device hidden pointer")
+        stream = int(stream)
+        if self._stream is None:
+            self._stream = stream
+        elif stream != self._stream:
+            raise RuntimeError("PARO MTP2 prompt chunks must use one stream")
+        started = time.perf_counter()
+        # Row limits are chunk-shape policy, so they come from the shared plan.
+        for chunk in self.plan.split(chunk_start=int(chunk_start), rows=int(rows)):
+            self._consume_slice(chunk=chunk, hidden_ptr=int(hidden_ptr), stream=stream)
+        self._account(time.perf_counter() - started)
+
+    def finish(self, *, request_id: int, total_rows: int, stream: int) -> None:
+        """Record that the target fanned out this request's whole prompt.
+
+        PARO's last prompt row is not a cache-only append: it must run a full
+        prediction from the target's own root token. That root is only sampled
+        once the target prefill has committed, so the row is completed by
+        :meth:`complete` rather than here, and this call only pins that the
+        fan-out itself is done.
+        """
+
+        self._validate_owner(int(request_id))
+        del stream
+        if self._closed:
+            raise RuntimeError("PARO MTP2 prompt sink is closed")
+        if self._failed:
+            raise RuntimeError("PARO MTP2 prompt sink is failed")
+        if int(total_rows) != self.total_rows:
+            raise ValueError(
+                "PARO MTP2 prompt sink completion row count does not match the prompt: "
+                f"expected {self.total_rows}, got {int(total_rows)}"
+            )
+        self._fanout_finished = True
+
+    def note_row_published(self, index: int) -> None:
+        """Record one row that a row-at-a-time caller appended itself."""
+
+        if self._closed:
+            raise RuntimeError("PARO MTP2 prompt sink is closed")
+        self.ledger.publish(chunk_start=int(index), rows=1)
+        if self.ledger.complete:
+            self.ledger.mark_finished()
+        self._mirror_published_rows()
+
+    def complete(self, *, seed_token: int | None) -> None:
+        """Run the final prompt row's full prediction from the target root.
+
+        A no-op when this request's prompt has not reached its last row yet, so
+        repeated scheduler chunks leave it untouched until the chunk that ends
+        the prompt. The advance is refused until the target has declared its
+        fan-out complete, so a mismatched completion signal fails loudly instead
+        of running a prediction the target does not expect. The ledger is
+        published only after the advance succeeded, so a failed advance never
+        claims a completed prompt.
+        """
+
+        if self._closed or self._failed or self._completed:
+            return
+        if int(self._final_row_ptr) <= 0:
+            return
+        if not self._fanout_finished:
+            raise RuntimeError(
+                "PARO MTP2 final prompt row completed before the target finished the prompt"
+            )
+        if seed_token is None:
+            raise RuntimeError(
+                "PARO MTP2 final prompt row requires the target root token"
+            )
+        started = time.perf_counter()
+        try:
+            self.proposer.advance_with_target_hidden(
+                input_token=int(seed_token),
+                target_hidden_ptr=int(self._final_row_ptr),
+                position=self.total_rows,
+                need_result=True,
+                read_token_id=False,
+                read_expert_topk=False,
+                read_lm_head_value=False,
+                stream=0 if self._stream is None else int(self._stream),
+            )
+        except Exception:
+            self._failed = True
+            raise
+        self.ledger.publish(chunk_start=self.total_rows - 1, rows=1)
+        self.ledger.mark_finished()
+        self._completed = True
+        self._final_row_ptr = 0
+        self._mirror_published_rows()
+        self._account(time.perf_counter() - started)
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        runtime = getattr(self.session, "runtime", None)
+        for buffer in (self._norm_scratch, self._slab):
+            if buffer is not None:
+                free(buffer, runtime=runtime)
+        self._norm_scratch = None
+        self._slab = None
+
+    # -- device work -------------------------------------------------------
+
+    def _validate_owner(self, request_id: int) -> None:
+        if request_id != self.request_id:
+            raise RuntimeError(
+                "PARO MTP2 prompt sink owner mismatch: "
+                f"expected request {self.request_id}, got {request_id}"
+            )
+
+    def _consume_slice(
+        self,
+        *,
+        chunk: PromptPrimeChunk,
+        hidden_ptr: int,
+        stream: int,
+    ) -> None:
+        """Prime one validated slice, publishing it only after it lands."""
+
+        slab = self._slab
+        scratch = self._norm_scratch
+        if slab is None or scratch is None:
+            raise RuntimeError("PARO MTP2 prompt sink is closed")
+        start = int(chunk.chunk_start)
+        count = int(chunk.rows)
+        end = start + count
+        if end > self.total_rows:
+            raise ValueError("PARO MTP2 prompt slice runs past the registered prompt")
+        # The row that ends the prompt consumes the target's own root instead of
+        # the next prompt token, so it is staged rather than bulk-appended.
+        historical = count if end < self.total_rows else count - 1
+        # Target prompt rows are FP16 and the slab is BF16; both are two bytes
+        # wide, so one row stride covers the source and the destination.
+        source_ptr = int(hidden_ptr) + int(chunk.row_offset) * self.hidden_nbytes
+        # One row-capable normalize+cast covers the whole slice. The kernels are
+        # per-row and elementwise, so each row gets the arithmetic the single-row
+        # seam gives it. Every slice refills the same slab from row zero; that is
+        # safe because this sink pins one stream and the cast is enqueued ahead
+        # of the append that reads it.
+        self.session._write_final_normalized_hidden_bf16_rows(
+            Tensor.from_handle(
+                source_ptr,
+                (count, self.hidden_size),
+                DType.FP16,
+                self.device,
+            ),
+            rows=count,
+            destination_ptr=int(slab.ptr),
+            scratch_ptr=int(scratch.ptr),
+            stream=stream,
+        )
+        if historical > 0:
+            rows = tuple(
+                (
+                    int(self.prompt_ids[start + offset + 1]),
+                    int(slab.ptr) + offset * self.hidden_nbytes,
+                    start + offset + 1,
+                )
+                for offset in range(historical)
+            )
+            try:
+                appended = int(
+                    self.proposer.append_prompt_kv_bulk(rows, stream=stream)
+                )
+            except Exception:
+                # A chunk that fails mid-enqueue may already hold cache rows the
+                # ledger never saw, so this request cannot resume priming.
+                self._failed = True
+                raise
+            self.bulk_chunks += 1
+            self.bulk_rows += appended
+            self.adapter._note_bulk_prompt(chunks=1, rows=appended)
+            row = self.adapter.owner._row(self.request_id)
+            row.mtp2_bulk_prompt_chunks = int(
+                getattr(row, "mtp2_bulk_prompt_chunks", 0)
+            ) + 1
+            row.mtp2_bulk_prompt_rows = int(
+                getattr(row, "mtp2_bulk_prompt_rows", 0)
+            ) + appended
+        if historical < count:
+            self._final_row_ptr = int(slab.ptr) + historical * self.hidden_nbytes
+        # Only now, after every launch for this slice succeeded, does the row
+        # count move: a slice that fails mid-enqueue must not be published. A
+        # slice with no historical row (a one-token prompt) publishes nothing.
+        if historical > 0:
+            self.ledger.publish(chunk_start=start, rows=historical)
+            self._mirror_published_rows()
+
+    # -- accounting --------------------------------------------------------
+
+    def _mirror_published_rows(self) -> None:
+        """Keep the request's published-row cursor equal to the ledger."""
+
+        self.state.prompt_rows_consumed = int(self.ledger.published_rows)
+
+    def _account(self, elapsed: float) -> None:
+        seconds = max(0.0, float(elapsed))
+        self.state.prompt_prime_seconds += seconds
+        self.adapter.owner._row(self.request_id).mtp2_prompt_prime_ms += seconds * 1000.0
 
 
 class Qwen35ParoMTP2Adapter:
@@ -86,6 +438,8 @@ class Qwen35ParoMTP2Adapter:
         self._transaction_sequence = 0
         self._proposer_builds = 0
         self._proposer_reuses = 0
+        self._bulk_prompt_chunks = 0
+        self._bulk_prompt_rows = 0
         validate_staged_target_adapter(self)
 
     def register_request(self, request_id: int, candidate_budget: int) -> None:
@@ -188,7 +542,70 @@ class Qwen35ParoMTP2Adapter:
         elapsed = time.perf_counter() - started
         state.prompt_prime_seconds += elapsed
         row.mtp2_prompt_prime_ms += elapsed * 1000.0
-        state.prompt_rows_consumed += 1
+        if state.prompt_sink is not None:
+            # A chunk sink may already own this request's prompt accounting, so
+            # publish the row there too: one ledger, one cursor, both seams.
+            state.prompt_sink.note_row_published(index)
+        else:
+            state.prompt_rows_consumed += 1
+
+    def prompt_capture_sink(self, request_id: int) -> PromptPrimeSink:
+        """Return the request-owned chunk sink for packed prompt priming.
+
+        The sink is created on first use and reused for every scheduler chunk of
+        the same prompt, so its ledger cursor survives chunk boundaries. It owns
+        the bounded workspace and is released by :meth:`release_prompt_capture`.
+        """
+
+        rid = int(request_id)
+        self.begin_prompt(rid)
+        state = self._states.get(rid)
+        if state is None:
+            raise RuntimeError("PARO MTP2 prompt capture has no staged request state")
+        existing = state.prompt_sink
+        if existing is not None and not existing.closed:
+            return existing
+        session = self.owner._session
+        if session is None:
+            raise RuntimeError("PARO MTP2 target session is unavailable")
+        row = self.owner._row(rid)
+        sink = _ParoPromptPrimeSink(
+            adapter=self,
+            state=state,
+            request_id=rid,
+            prompt_ids=tuple(row.prompt_ids),
+            session=session,
+        )
+        state.prompt_sink = sink
+        return sink
+
+    def finish_prompt_capture(
+        self,
+        request_id: int,
+        *,
+        seed_token: int | None,
+    ) -> None:
+        """Complete a request's prompt priming after the target prefill ran.
+
+        Historical rows were appended inside the target's hidden-chunk fan-out.
+        The final prompt row needs the root the target just sampled, so it runs
+        here: exactly one full prediction, and only once the target root exists.
+        A chunk that does not end the prompt leaves this a no-op.
+        """
+
+        state = self._states.get(int(request_id))
+        if state is None or state.prompt_sink is None:
+            return
+        state.prompt_sink.complete(seed_token=seed_token)
+
+    def release_prompt_capture(self, request_id: int) -> None:
+        """Free a request's prompt-priming workspace once priming is done."""
+
+        state = self._states.get(int(request_id))
+        if state is None or state.prompt_sink is None:
+            return
+        state.prompt_sink.close()
+        state.prompt_sink = None
 
     def observe_prefill_result(self, request_id: int) -> None:
         rid = int(request_id)
@@ -211,6 +628,7 @@ class Qwen35ParoMTP2Adapter:
             ),
             max_context_tokens=len(row.prompt_ids) + int(row.request.max_tokens),
         )
+        self.release_prompt_capture(rid)
         self.owner._release_mtp2_prompt_capture(row)
 
     def capability(
@@ -657,6 +1075,9 @@ class Qwen35ParoMTP2Adapter:
     ) -> None:
         state = self._states.pop(int(request_id), None)
         if state is not None:
+            if state.prompt_sink is not None:
+                state.prompt_sink.close()
+                state.prompt_sink = None
             if recycle and not state.proposer.closed and state.checkpoint is None and state.journal is None:
                 state.proposer.reset()
                 self._proposer_pool.append(state.proposer)
@@ -669,6 +1090,12 @@ class Qwen35ParoMTP2Adapter:
         self._transaction_sequence += 1
         return self._transaction_sequence
 
+    def _note_bulk_prompt(self, *, chunks: int, rows: int) -> None:
+        """Count bulk prompt-priming work that actually ran on the device."""
+
+        self._bulk_prompt_chunks += int(chunks)
+        self._bulk_prompt_rows += int(rows)
+
     def observability_snapshot(self) -> dict[str, Any]:
         return {
             "enabled": self.enabled,
@@ -679,6 +1106,8 @@ class Qwen35ParoMTP2Adapter:
             "proposer_reuses": self._proposer_reuses,
             "active_claim": self._active_claims is not None,
             "disabled_requests": sorted(self._disabled_requests),
+            "bulk_prompt_chunks": self._bulk_prompt_chunks,
+            "bulk_prompt_rows": self._bulk_prompt_rows,
         }
 
     def close(self) -> None:
@@ -692,4 +1121,4 @@ class Qwen35ParoMTP2Adapter:
         self._active_claims = None
 
 
-__all__ = ["Qwen35ParoMTP2Adapter"]
+__all__ = ["PROMPT_PRIME_CHUNK_ROWS", "Qwen35ParoMTP2Adapter"]

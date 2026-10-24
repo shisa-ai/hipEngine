@@ -1,0 +1,1224 @@
+diff --git a/hipengine/generation/qwen35_paro.py b/hipengine/generation/qwen35_paro.py
+index d0527b24a..4cad756d1 100644
+--- a/hipengine/generation/qwen35_paro.py
++++ b/hipengine/generation/qwen35_paro.py
+@@ -2260,6 +2260,8 @@ class _ParoResidentLoopRow:
+     mtp2_execution_routes: list[str] = field(default_factory=list)
+     mtp2_provider_open_ms: float = 0.0
+     mtp2_prompt_prime_ms: float = 0.0
++    mtp2_bulk_prompt_chunks: int = 0
++    mtp2_bulk_prompt_rows: int = 0
+     mtp2_candidate_device_handoffs: int = 0
+     mtp2_candidate_d2h_after_target: int = 0
+ 
+@@ -2996,40 +2998,27 @@ class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
+         if adapter is None:
+             raise RuntimeError("PARO MTP2 prompt capture has no staged adapter")
+         adapter.begin_prompt(row.request_id)
+-        if row.mtp2_prompt_hidden_buffer is None:
+-            row.mtp2_prompt_hidden_buffer = malloc(
+-                self._session.hidden_nbytes,
+-                runtime=self._session.runtime,
+-            )
+-        capture_ptr = int(row.mtp2_prompt_hidden_buffer.ptr)
+-
+-        def consume_final_hidden_row(
+-            request_id: int,
+-            prompt_index: int,
+-            hidden: Tensor,
+-            seed_token: int | None,
+-        ) -> None:
+-            if int(request_id) != int(row.request_id):
+-                raise RuntimeError("PARO MTP2 packed prefill returned a peer request row")
+-            self._session._write_final_normalized_hidden_bf16(
+-                hidden,
+-                destination_ptr=capture_ptr,
+-                stream=0,
+-            )
+-            adapter.consume_prompt_row(
+-                row.request_id,
+-                prompt_index=int(prompt_index),
+-                target_hidden_ptr=capture_ptr,
+-                seed_token=seed_token,
+-            )
+-
+-        return tuple(
++        # The packed path hands the provider one contiguous chunk per request
++        # instead of one row at a time, so normalization, the BF16 cast, and the
++        # historical K/V append each run over a bounded row block. The sink owns
++        # that workspace and is released with the request's prompt capture.
++        sink = adapter.prompt_capture_sink(row.request_id)
++        results = tuple(
+             self._session.prefill_native_packed(
+                 slab,
+                 sample=bool(sample_final),
+-                final_hidden_row_sink=consume_final_hidden_row,
++                final_hidden_chunk_sink=sink,
++            )
++        )
++        if len(results) != 1:
++            raise RuntimeError(
++                f"PARO MTP2 packed prefill returned {len(results)} result(s) for one row"
+             )
++        adapter.finish_prompt_capture(
++            row.request_id,
++            seed_token=(None if results[0] is None else int(results[0].token_id)),
+         )
++        return results
+ 
+     def _prefill_row_serial_with_mtp2_capture(
+         self,
+@@ -3343,6 +3332,12 @@ class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
+             timing["specdec2_mtp2_prompt_prime_ms"] = float(
+                 row.mtp2_prompt_prime_ms
+             )
++            timing["specdec2_mtp2_bulk_prompt_chunks"] = int(
++                row.mtp2_bulk_prompt_chunks
++            )
++            timing["specdec2_mtp2_bulk_prompt_rows"] = int(
++                row.mtp2_bulk_prompt_rows
++            )
+         return _telemetry_for_tokens(
+             row.prompt_ids,
+             tuple(step.token_id for step in visible_steps),
+@@ -3420,6 +3415,8 @@ class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
+             "specdec2_mtp2_execution_routes": list(row.mtp2_execution_routes),
+             "specdec2_mtp2_provider_open_ms": float(row.mtp2_provider_open_ms),
+             "specdec2_mtp2_prompt_prime_ms": float(row.mtp2_prompt_prime_ms),
++            "specdec2_mtp2_bulk_prompt_chunks": int(row.mtp2_bulk_prompt_chunks),
++            "specdec2_mtp2_bulk_prompt_rows": int(row.mtp2_bulk_prompt_rows),
+             "specdec2_mtp2_candidate_device_handoffs": int(
+                 row.mtp2_candidate_device_handoffs
+             ),
+diff --git a/hipengine/generation/qwen35_paro_mtp2.py b/hipengine/generation/qwen35_paro_mtp2.py
+index 8c05984f5..f28fb074c 100644
+--- a/hipengine/generation/qwen35_paro_mtp2.py
++++ b/hipengine/generation/qwen35_paro_mtp2.py
+@@ -8,6 +8,7 @@ from typing import Any, Mapping, Sequence
+ 
+ from hipengine.core.device import Device
+ from hipengine.core.dtype import DType
++from hipengine.core.memory import DeviceBuffer, free, malloc
+ from hipengine.core.tensor import Tensor
+ from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
+ from hipengine.runtime.qwen35_paro_runner import (
+@@ -30,6 +31,14 @@ from hipengine.speculative.mtp_native import (
+     NativeMtpStateSnapshot,
+     NativeMtpW8A16Head,
+ )
++from hipengine.speculative.prompt_prime import (
++    PROMPT_PRIME_REFUSAL_FINISHED,
++    PROMPT_PRIME_REFUSAL_NOT_CONTIGUOUS,
++    PromptPrimeChunk,
++    PromptPrimeLedger,
++    PromptPrimePlan,
++    PromptPrimeSink,
++)
+ from hipengine.speculative.provider import (
+     SpeculativeRequestSemantics,
+     validate_staged_target_adapter,
+@@ -45,6 +54,13 @@ from hipengine.speculative.transaction import (
+ 
+ _PROPOSER_CAPACITY_FLOOR = 256
+ 
++#: Rows one bulk historical-prompt append stages. This bounds the request's
++#: prompt-priming workspace, never the prompt: a longer prompt is primed in more
++#: chunks through the same slab. It matches the proposer's default per-launch row
++#: chunk, so one sink chunk is one bulk launch set, and it must stay at or below
++#: that primitive's hard row cap (64).
++PROMPT_PRIME_CHUNK_ROWS = 16
++
+ 
+ def _proposer_capacity_bucket(required_tokens: int) -> int:
+     required = int(required_tokens)
+@@ -58,12 +74,348 @@ class _ParoMTP2RequestState:
+     request_id: int
+     proposer: NativeMtpChainProposer
+     prompt_rows_consumed: int = 0
++    prompt_sink: "_ParoPromptPrimeSink | None" = None
+     checkpoint: NativeMtpStateSnapshot | None = None
+     journal: SpeculativeStateJournal | None = None
+     last_proposal_seconds: float = 0.0
+     prompt_prime_seconds: float = 0.0
+ 
+ 
++class _ParoPromptPrimeSink:
++    """Request-owned prompt-priming sink over the PARO MTP proposer.
++
++    The target fans one contiguous span of a request's post-output-norm hidden
++    rows into :meth:`consume`, and this sink turns them into the proposer's
++    historical prompt K/V. Row accounting, chunk splitting and refusal codes
++    come from the shared :mod:`hipengine.speculative.prompt_prime` plan and
++    ledger, so the chunk contract is the same one the GGUF prompt sinks use;
++    only the device work here is PARO's.
++
++    Every historical prompt row consumes the *next* prompt token at position
++    ``index + 1``, so the rows of one slice are one contiguous token/position/
++    hidden run and go to the bulk append primitive as a single request. The last
++    prompt row is different in kind: it consumes the target's own root token and
++    must produce a prediction, so it is staged here and completed by
++    :meth:`complete` once the target root exists.
++
++    The workspace is two bounded slabs sized by ``PROMPT_PRIME_CHUNK_ROWS``, not
++    by prompt length: a longer prompt is primed in more chunks through the same
++    allocation. Nothing here is shared between requests.
++    """
++
++    def __init__(
++        self,
++        *,
++        adapter: "Qwen35ParoMTP2Adapter",
++        state: _ParoMTP2RequestState,
++        request_id: int,
++        prompt_ids: Sequence[int],
++        session: Any,
++        chunk_rows: int = PROMPT_PRIME_CHUNK_ROWS,
++    ) -> None:
++        proposer = state.proposer
++        self.adapter = adapter
++        self.state = state
++        self.proposer = proposer
++        self.session = session
++        self.prompt_ids = tuple(int(token) for token in prompt_ids)
++        self.request_id = int(request_id)
++        self.hidden_size = int(session.config.hidden_size)
++        self.total_rows = len(self.prompt_ids)
++        self.hidden_nbytes = self.hidden_size * DType.BF16.itemsize
++        self.device = getattr(session, "device", Device("hip", 0))
++        if self.total_rows <= 0:
++            raise ValueError("PARO MTP2 prompt sink requires a non-empty prompt")
++        proposer_hidden = getattr(proposer, "hidden", None)
++        if proposer_hidden is not None and int(proposer_hidden) != self.hidden_size:
++            raise ValueError(
++                "PARO MTP2 prompt sink width does not match the proposer hidden size: "
++                f"target {self.hidden_size}, proposer {int(proposer_hidden)}"
++            )
++        rows = int(chunk_rows)
++        if rows <= 0:
++            raise ValueError("PARO MTP2 prompt sink chunk rows must be positive")
++        # One chunk is one bounded slice; the slab is never resized.
++        self.chunk_rows = min(rows, self.total_rows)
++        self.plan = PromptPrimePlan(start_position=0, max_chunk_rows=self.chunk_rows)
++        self.ledger = PromptPrimeLedger(
++            request_id=self.request_id,
++            total_rows=self.total_rows,
++        )
++        # A request may already own published rows from the row-at-a-time seam
++        # (a serial chunk, or a chunk that fell back to serial prefill). Carry
++        # that cursor into the ledger so one sink can take over mid-prompt.
++        already_published = int(state.prompt_rows_consumed)
++        if already_published:
++            if already_published > self.total_rows:
++                raise RuntimeError(
++                    "PARO MTP2 prompt sink cannot resume past the registered prompt"
++                )
++            self.ledger.publish(chunk_start=0, rows=already_published)
++        self.bulk_chunks = 0
++        self.bulk_rows = 0
++        self._stream: int | None = None
++        self._final_row_ptr = 0
++        self._fanout_finished = False
++        self._completed = False
++        self._failed = False
++        self._closed = False
++        self._slab: DeviceBuffer | None = None
++        self._norm_scratch: DeviceBuffer | None = None
++        runtime = getattr(session, "runtime", None)
++        slab = malloc(self.chunk_rows * self.hidden_nbytes, runtime=runtime)
++        try:
++            scratch = malloc(
++                self.chunk_rows * self.hidden_size * DType.FP16.itemsize,
++                runtime=runtime,
++            )
++        except Exception:
++            free(slab, runtime=runtime)
++            raise
++        self._slab = slab
++        self._norm_scratch = scratch
++
++    # -- shared contract ---------------------------------------------------
++
++    @property
++    def published_rows(self) -> int:
++        """Prompt rows this sink has appended, from the shared ledger."""
++
++        return self.ledger.published_rows
++
++    @property
++    def closed(self) -> bool:
++        return self._closed
++
++    def consume(
++        self,
++        *,
++        request_id: int,
++        chunk_start: int,
++        hidden_ptr: int,
++        rows: int,
++        stream: int,
++    ) -> None:
++        """Prime the proposer from one contiguous target-hidden chunk."""
++
++        self._validate_owner(int(request_id))
++        if self._closed:
++            raise RuntimeError("PARO MTP2 prompt sink is closed")
++        if self._failed:
++            raise RuntimeError("PARO MTP2 prompt sink is failed")
++        refusal = self.ledger.check(chunk_start=int(chunk_start), rows=int(rows))
++        if refusal == PROMPT_PRIME_REFUSAL_FINISHED:
++            raise RuntimeError("PARO MTP2 prompt sink is already finished")
++        if refusal == PROMPT_PRIME_REFUSAL_NOT_CONTIGUOUS:
++            raise RuntimeError(
++                "PARO MTP2 prompt chunks must be contiguous: "
++                f"expected {self.ledger.published_rows}, got {int(chunk_start)}"
++            )
++        if refusal is not None:
++            raise ValueError(f"PARO MTP2 prompt chunk is refused: {refusal}")
++        if int(hidden_ptr) <= 0:
++            raise ValueError("PARO MTP2 prompt chunk requires a device hidden pointer")
++        stream = int(stream)
++        if self._stream is None:
++            self._stream = stream
++        elif stream != self._stream:
++            raise RuntimeError("PARO MTP2 prompt chunks must use one stream")
++        started = time.perf_counter()
++        # Row limits are chunk-shape policy, so they come from the shared plan.
++        for chunk in self.plan.split(chunk_start=int(chunk_start), rows=int(rows)):
++            self._consume_slice(chunk=chunk, hidden_ptr=int(hidden_ptr), stream=stream)
++        self._account(time.perf_counter() - started)
++
++    def finish(self, *, request_id: int, total_rows: int, stream: int) -> None:
++        """Record that the target fanned out this request's whole prompt.
++
++        PARO's last prompt row is not a cache-only append: it must run a full
++        prediction from the target's own root token. That root is only sampled
++        once the target prefill has committed, so the row is completed by
++        :meth:`complete` rather than here, and this call only pins that the
++        fan-out itself is done.
++        """
++
++        self._validate_owner(int(request_id))
++        del stream
++        if self._closed:
++            raise RuntimeError("PARO MTP2 prompt sink is closed")
++        if self._failed:
++            raise RuntimeError("PARO MTP2 prompt sink is failed")
++        if int(total_rows) != self.total_rows:
++            raise ValueError(
++                "PARO MTP2 prompt sink completion row count does not match the prompt: "
++                f"expected {self.total_rows}, got {int(total_rows)}"
++            )
++        self._fanout_finished = True
++
++    def note_row_published(self, index: int) -> None:
++        """Record one row that a row-at-a-time caller appended itself."""
++
++        if self._closed:
++            raise RuntimeError("PARO MTP2 prompt sink is closed")
++        self.ledger.publish(chunk_start=int(index), rows=1)
++        if self.ledger.complete:
++            self.ledger.mark_finished()
++        self._mirror_published_rows()
++
++    def complete(self, *, seed_token: int | None) -> None:
++        """Run the final prompt row's full prediction from the target root.
++
++        A no-op when this request's prompt has not reached its last row yet, so
++        repeated scheduler chunks leave it untouched until the chunk that ends
++        the prompt. The advance is refused until the target has declared its
++        fan-out complete, so a mismatched completion signal fails loudly instead
++        of running a prediction the target does not expect. The ledger is
++        published only after the advance succeeded, so a failed advance never
++        claims a completed prompt.
++        """
++
++        if self._closed or self._failed or self._completed:
++            return
++        if int(self._final_row_ptr) <= 0:
++            return
++        if not self._fanout_finished:
++            raise RuntimeError(
++                "PARO MTP2 final prompt row completed before the target finished the prompt"
++            )
++        if seed_token is None:
++            raise RuntimeError(
++                "PARO MTP2 final prompt row requires the target root token"
++            )
++        started = time.perf_counter()
++        try:
++            self.proposer.advance_with_target_hidden(
++                input_token=int(seed_token),
++                target_hidden_ptr=int(self._final_row_ptr),
++                position=self.total_rows,
++                need_result=True,
++                read_token_id=False,
++                read_expert_topk=False,
++                read_lm_head_value=False,
++                stream=0 if self._stream is None else int(self._stream),
++            )
++        except Exception:
++            self._failed = True
++            raise
++        self.ledger.publish(chunk_start=self.total_rows - 1, rows=1)
++        self.ledger.mark_finished()
++        self._completed = True
++        self._final_row_ptr = 0
++        self._mirror_published_rows()
++        self._account(time.perf_counter() - started)
++
++    def close(self) -> None:
++        if self._closed:
++            return
++        self._closed = True
++        runtime = getattr(self.session, "runtime", None)
++        for buffer in (self._norm_scratch, self._slab):
++            if buffer is not None:
++                free(buffer, runtime=runtime)
++        self._norm_scratch = None
++        self._slab = None
++
++    # -- device work -------------------------------------------------------
++
++    def _validate_owner(self, request_id: int) -> None:
++        if request_id != self.request_id:
++            raise RuntimeError(
++                "PARO MTP2 prompt sink owner mismatch: "
++                f"expected request {self.request_id}, got {request_id}"
++            )
++
++    def _consume_slice(
++        self,
++        *,
++        chunk: PromptPrimeChunk,
++        hidden_ptr: int,
++        stream: int,
++    ) -> None:
++        """Prime one validated slice, publishing it only after it lands."""
++
++        slab = self._slab
++        scratch = self._norm_scratch
++        if slab is None or scratch is None:
++            raise RuntimeError("PARO MTP2 prompt sink is closed")
++        start = int(chunk.chunk_start)
++        count = int(chunk.rows)
++        end = start + count
++        if end > self.total_rows:
++            raise ValueError("PARO MTP2 prompt slice runs past the registered prompt")
++        # The row that ends the prompt consumes the target's own root instead of
++        # the next prompt token, so it is staged rather than bulk-appended.
++        historical = count if end < self.total_rows else count - 1
++        # Target prompt rows are FP16 and the slab is BF16; both are two bytes
++        # wide, so one row stride covers the source and the destination.
++        source_ptr = int(hidden_ptr) + int(chunk.row_offset) * self.hidden_nbytes
++        # One row-capable normalize+cast covers the whole slice. The kernels are
++        # per-row and elementwise, so each row gets the arithmetic the single-row
++        # seam gives it. Every slice refills the same slab from row zero; that is
++        # safe because this sink pins one stream and the cast is enqueued ahead
++        # of the append that reads it.
++        self.session._write_final_normalized_hidden_bf16_rows(
++            Tensor.from_handle(
++                source_ptr,
++                (count, self.hidden_size),
++                DType.FP16,
++                self.device,
++            ),
++            rows=count,
++            destination_ptr=int(slab.ptr),
++            scratch_ptr=int(scratch.ptr),
++            stream=stream,
++        )
++        if historical > 0:
++            rows = tuple(
++                (
++                    int(self.prompt_ids[start + offset + 1]),
++                    int(slab.ptr) + offset * self.hidden_nbytes,
++                    start + offset + 1,
++                )
++                for offset in range(historical)
++            )
++            try:
++                appended = int(
++                    self.proposer.append_prompt_kv_bulk(rows, stream=stream)
++                )
++            except Exception:
++                # A chunk that fails mid-enqueue may already hold cache rows the
++                # ledger never saw, so this request cannot resume priming.
++                self._failed = True
++                raise
++            self.bulk_chunks += 1
++            self.bulk_rows += appended
++            self.adapter._note_bulk_prompt(chunks=1, rows=appended)
++            row = self.adapter.owner._row(self.request_id)
++            row.mtp2_bulk_prompt_chunks = int(
++                getattr(row, "mtp2_bulk_prompt_chunks", 0)
++            ) + 1
++            row.mtp2_bulk_prompt_rows = int(
++                getattr(row, "mtp2_bulk_prompt_rows", 0)
++            ) + appended
++        if historical < count:
++            self._final_row_ptr = int(slab.ptr) + historical * self.hidden_nbytes
++        # Only now, after every launch for this slice succeeded, does the row
++        # count move: a slice that fails mid-enqueue must not be published. A
++        # slice with no historical row (a one-token prompt) publishes nothing.
++        if historical > 0:
++            self.ledger.publish(chunk_start=start, rows=historical)
++            self._mirror_published_rows()
++
++    # -- accounting --------------------------------------------------------
++
++    def _mirror_published_rows(self) -> None:
++        """Keep the request's published-row cursor equal to the ledger."""
++
++        self.state.prompt_rows_consumed = int(self.ledger.published_rows)
++
++    def _account(self, elapsed: float) -> None:
++        seconds = max(0.0, float(elapsed))
++        self.state.prompt_prime_seconds += seconds
++        self.adapter.owner._row(self.request_id).mtp2_prompt_prime_ms += seconds * 1000.0
++
++
+ class Qwen35ParoMTP2Adapter:
+     """One bounded C1/K1 provider+target cycle on the qualified PARO route.
+ 
+@@ -86,6 +438,8 @@ class Qwen35ParoMTP2Adapter:
+         self._transaction_sequence = 0
+         self._proposer_builds = 0
+         self._proposer_reuses = 0
++        self._bulk_prompt_chunks = 0
++        self._bulk_prompt_rows = 0
+         validate_staged_target_adapter(self)
+ 
+     def register_request(self, request_id: int, candidate_budget: int) -> None:
+@@ -188,7 +542,70 @@ class Qwen35ParoMTP2Adapter:
+         elapsed = time.perf_counter() - started
+         state.prompt_prime_seconds += elapsed
+         row.mtp2_prompt_prime_ms += elapsed * 1000.0
+-        state.prompt_rows_consumed += 1
++        if state.prompt_sink is not None:
++            # A chunk sink may already own this request's prompt accounting, so
++            # publish the row there too: one ledger, one cursor, both seams.
++            state.prompt_sink.note_row_published(index)
++        else:
++            state.prompt_rows_consumed += 1
++
++    def prompt_capture_sink(self, request_id: int) -> PromptPrimeSink:
++        """Return the request-owned chunk sink for packed prompt priming.
++
++        The sink is created on first use and reused for every scheduler chunk of
++        the same prompt, so its ledger cursor survives chunk boundaries. It owns
++        the bounded workspace and is released by :meth:`release_prompt_capture`.
++        """
++
++        rid = int(request_id)
++        self.begin_prompt(rid)
++        state = self._states.get(rid)
++        if state is None:
++            raise RuntimeError("PARO MTP2 prompt capture has no staged request state")
++        existing = state.prompt_sink
++        if existing is not None and not existing.closed:
++            return existing
++        session = self.owner._session
++        if session is None:
++            raise RuntimeError("PARO MTP2 target session is unavailable")
++        row = self.owner._row(rid)
++        sink = _ParoPromptPrimeSink(
++            adapter=self,
++            state=state,
++            request_id=rid,
++            prompt_ids=tuple(row.prompt_ids),
++            session=session,
++        )
++        state.prompt_sink = sink
++        return sink
++
++    def finish_prompt_capture(
++        self,
++        request_id: int,
++        *,
++        seed_token: int | None,
++    ) -> None:
++        """Complete a request's prompt priming after the target prefill ran.
++
++        Historical rows were appended inside the target's hidden-chunk fan-out.
++        The final prompt row needs the root the target just sampled, so it runs
++        here: exactly one full prediction, and only once the target root exists.
++        A chunk that does not end the prompt leaves this a no-op.
++        """
++
++        state = self._states.get(int(request_id))
++        if state is None or state.prompt_sink is None:
++            return
++        state.prompt_sink.complete(seed_token=seed_token)
++
++    def release_prompt_capture(self, request_id: int) -> None:
++        """Free a request's prompt-priming workspace once priming is done."""
++
++        state = self._states.get(int(request_id))
++        if state is None or state.prompt_sink is None:
++            return
++        state.prompt_sink.close()
++        state.prompt_sink = None
+ 
+     def observe_prefill_result(self, request_id: int) -> None:
+         rid = int(request_id)
+@@ -211,6 +628,7 @@ class Qwen35ParoMTP2Adapter:
+             ),
+             max_context_tokens=len(row.prompt_ids) + int(row.request.max_tokens),
+         )
++        self.release_prompt_capture(rid)
+         self.owner._release_mtp2_prompt_capture(row)
+ 
+     def capability(
+@@ -657,6 +1075,9 @@ class Qwen35ParoMTP2Adapter:
+     ) -> None:
+         state = self._states.pop(int(request_id), None)
+         if state is not None:
++            if state.prompt_sink is not None:
++                state.prompt_sink.close()
++                state.prompt_sink = None
+             if recycle and not state.proposer.closed and state.checkpoint is None and state.journal is None:
+                 state.proposer.reset()
+                 self._proposer_pool.append(state.proposer)
+@@ -669,6 +1090,12 @@ class Qwen35ParoMTP2Adapter:
+         self._transaction_sequence += 1
+         return self._transaction_sequence
+ 
++    def _note_bulk_prompt(self, *, chunks: int, rows: int) -> None:
++        """Count bulk prompt-priming work that actually ran on the device."""
++
++        self._bulk_prompt_chunks += int(chunks)
++        self._bulk_prompt_rows += int(rows)
++
+     def observability_snapshot(self) -> dict[str, Any]:
+         return {
+             "enabled": self.enabled,
+@@ -679,6 +1106,8 @@ class Qwen35ParoMTP2Adapter:
+             "proposer_reuses": self._proposer_reuses,
+             "active_claim": self._active_claims is not None,
+             "disabled_requests": sorted(self._disabled_requests),
++            "bulk_prompt_chunks": self._bulk_prompt_chunks,
++            "bulk_prompt_rows": self._bulk_prompt_rows,
+         }
+ 
+     def close(self) -> None:
+@@ -692,4 +1121,4 @@ class Qwen35ParoMTP2Adapter:
+         self._active_claims = None
+ 
+ 
+-__all__ = ["Qwen35ParoMTP2Adapter"]
++__all__ = ["PROMPT_PRIME_CHUNK_ROWS", "Qwen35ParoMTP2Adapter"]
+diff --git a/hipengine/runtime/qwen35_paro_runner.py b/hipengine/runtime/qwen35_paro_runner.py
+index 9769ca8e6..688ccf208 100644
+--- a/hipengine/runtime/qwen35_paro_runner.py
++++ b/hipengine/runtime/qwen35_paro_runner.py
+@@ -2617,6 +2617,7 @@ class Qwen35ParoResidentSession:
+         *,
+         sample: bool = True,
+         final_hidden_row_sink: Any | None = None,
++        final_hidden_chunk_sink: Any | None = None,
+     ) -> tuple[Qwen35ParoAutoregressiveStepResult | None, ...]:
+         """Run a compact c>N native prompt slab, once packed stages exist.
+ 
+@@ -2626,8 +2627,20 @@ class Qwen35ParoResidentSession:
+         and full-attention layers, then commits/samples one final row per
+         physical slot. Decode after those seed tokens still uses the serial
+         c=1 bridge until c-aware decode graph replay lands.
++
++        ``final_hidden_row_sink`` receives one post-output-norm row at a time
++        and is the original per-row seam. ``final_hidden_chunk_sink`` receives
++        each request's whole contiguous row span of this slab through the
++        shared :class:`~hipengine.speculative.prompt_prime.PromptPrimeSink`
++        contract, so a provider can normalize, cast, and append many rows with
++        one launch instead of one launch per row. Pass at most one of them.
+         """
+ 
++        if final_hidden_row_sink is not None and final_hidden_chunk_sink is not None:
++            raise ValueError(
++                "packed prefill accepts a row hidden sink or a chunk hidden sink, not both"
++            )
++
+         from hipengine.generation.batch_scheduler import CompactPromptSlab
+ 
+         if not isinstance(slab, CompactPromptSlab):
+@@ -2670,7 +2683,15 @@ class Qwen35ParoResidentSession:
+             hidden = self._run_native_prefill_packed_layers(slab, metadata, stream=0)
+             self.runtime.stream_synchronize(0)
+             results = self._commit_packed_prefill_final_rows(hidden, slab, sample=sample, stream=0)
+-            if final_hidden_row_sink is not None:
++            if final_hidden_chunk_sink is not None:
++                self._consume_packed_prefill_hidden_chunks(
++                    slab,
++                    hidden,
++                    results,
++                    sink=final_hidden_chunk_sink,
++                    stream=0,
++                )
++            elif final_hidden_row_sink is not None:
+                 final_rows = self._packed_prefill_final_rows(slab)
+                 seed_tokens = {
+                     int(final_row): (
+@@ -2708,6 +2729,7 @@ class Qwen35ParoResidentSession:
+                 "blockers": list(getattr(self, "_last_packed_prefill_blockers", [])),
+                 "decode_scratch_released_for_prefill": minimize_prefill_workspace_overlap,
+                 "final_hidden_row_sink": final_hidden_row_sink is not None,
++                "final_hidden_chunk_sink": final_hidden_chunk_sink is not None,
+             }
+             return results
+         finally:
+@@ -3901,6 +3923,77 @@ class Qwen35ParoResidentSession:
+             raise ValueError("compact slab final rows are outside slab rows")
+         return rows
+ 
++    def _consume_packed_prefill_hidden_chunks(
++        self,
++        slab,
++        hidden: Tensor,
++        results: Sequence[Qwen35ParoAutoregressiveStepResult | None],
++        *,
++        sink: Any,
++        stream: int = 0,
++    ) -> None:
++        """Fan one slab's contiguous per-request hidden spans to a chunk sink.
++
++        A compact slab keeps each request's rows contiguous, so each request's
++        span of this slab is one chunk the sink can normalize, cast and append
++        with row-batched launches. ``chunk_start`` is the prompt index of the
++        span's first row, which is the coordinate the shared prompt-priming
++        ledger counts in. Completion is published only for the span that ends
++        the request's prompt: that is the row a provider must finish with a full
++        prediction, and it therefore needs the target root this slab sampled.
++        """
++
++        if int(getattr(sink, "hidden_size", -1)) != int(self.config.hidden_size):
++            raise ValueError(
++                "packed prefill hidden chunk sink width does not match the session hidden size"
++            )
++        cu_seqlens = tuple(int(value) for value in slab.cu_seqlens_q)
++        if len(cu_seqlens) != slab.request_count + 1 or not cu_seqlens or cu_seqlens[0] != 0:
++            raise ValueError("compact slab cu_seqlens_q must align with request_count")
++        row_requests = tuple(int(value) for value in slab.row_to_request)
++        row_positions = tuple(int(value) for value in slab.positions)
++        if len(row_requests) != slab.rows or len(row_positions) != slab.rows:
++            raise ValueError("compact slab row metadata must cover every slab row")
++        result_tuple = tuple(results)
++        if len(result_tuple) != slab.request_count:
++            raise ValueError("packed prefill results must align with slab request_count")
++        total_rows = int(getattr(sink, "total_rows", 0))
++        base_ptr = int(hidden.ptr)
++        row_nbytes = int(self.hidden_nbytes)
++        if base_ptr <= 0 or row_nbytes <= 0:
++            raise ValueError("packed prefill hidden chunk source must be a non-empty slab")
++        for index in range(slab.request_count):
++            row_start = cu_seqlens[index]
++            row_end = cu_seqlens[index + 1]
++            rows = row_end - row_start
++            if rows <= 0:
++                raise ValueError("packed prefill hidden chunk requires at least one row")
++            request_id = row_requests[row_start]
++            if any(value != request_id for value in row_requests[row_start:row_end]):
++                raise ValueError("compact slab rows of one request must be contiguous")
++            if int(getattr(sink, "request_id", -1)) != request_id:
++                raise RuntimeError("packed prefill returned a peer request hidden chunk")
++            chunk_start = row_positions[row_start]
++            if row_positions[row_end - 1] - chunk_start != rows - 1:
++                raise ValueError("packed prefill hidden chunk positions must be contiguous")
++            sink.consume(
++                request_id=request_id,
++                chunk_start=chunk_start,
++                hidden_ptr=base_ptr + row_start * row_nbytes,
++                rows=rows,
++                stream=int(stream),
++            )
++            if chunk_start + rows == total_rows:
++                if result_tuple[index] is None:
++                    raise RuntimeError(
++                        "packed prefill final prompt chunk produced no target root"
++                    )
++                sink.finish(
++                    request_id=request_id,
++                    total_rows=total_rows,
++                    stream=int(stream),
++                )
++
+     def _commit_packed_prefill_final_rows(
+         self,
+         hidden: Tensor,
+@@ -10547,13 +10640,47 @@ class Qwen35ParoResidentSession:
+         destination_ptr: int,
+         stream: int = 0,
+     ) -> None:
++        self._write_final_normalized_hidden_bf16_rows(
++            hidden,
++            rows=1,
++            destination_ptr=int(destination_ptr),
++            scratch_ptr=int(self.norm_out.ptr),
++            stream=stream,
++        )
++
++    def _write_final_normalized_hidden_bf16_rows(
++        self,
++        hidden: Tensor,
++        *,
++        rows: int,
++        destination_ptr: int,
++        scratch_ptr: int,
++        stream: int = 0,
++    ) -> None:
++        """Write post-output-norm BF16 rows for one contiguous FP16 row slab.
++
++        The row form of this helper is the prompt-priming seam for a provider
++        that appends one row at a time. The row-count form lets a chunk sink
++        normalize and cast a whole bounded chunk with one launch of each kernel:
++        ``paro_rmsnorm_out_fp16`` runs one block per row, so row ``r`` gets the
++        same reduction it would get from a one-row launch, and the cast is
++        elementwise over the contiguous slab. ``scratch_ptr`` must hold
++        ``rows * hidden_size`` FP16 elements; the session's one-row ``norm_out``
++        is only large enough for ``rows == 1``.
++        """
++
++        count = int(rows)
++        if count <= 0:
++            raise ValueError("final target-hidden row count must be positive")
+         if int(destination_ptr) <= 0:
+             raise ValueError("final target-hidden destination must be non-zero")
++        if int(scratch_ptr) <= 0:
++            raise ValueError("final target-hidden norm scratch must be non-zero")
+         paro_rmsnorm_out_fp16(
+             hidden.ptr,
+             self.norm_weight.tensor.ptr,
+-            self.norm_out.ptr,
+-            1,
++            int(scratch_ptr),
++            count,
+             self.config.hidden_size,
+             self.config.rms_norm_eps,
+             stream=stream,
+@@ -10561,9 +10688,9 @@ class Qwen35ParoResidentSession:
+             runtime=self.runtime,
+         )
+         fp16_to_bf16(
+-            self.norm_out.ptr,
++            int(scratch_ptr),
+             int(destination_ptr),
+-            self.config.hidden_size,
++            count * self.config.hidden_size,
+             stream=stream,
+             library=self.libraries["cast"],
+             runtime=self.runtime,
+diff --git a/hipengine/speculative/mtp_native.py b/hipengine/speculative/mtp_native.py
+index 7f3cffd84..f8e86c7d2 100644
+--- a/hipengine/speculative/mtp_native.py
++++ b/hipengine/speculative/mtp_native.py
+@@ -64,6 +64,12 @@ from hipengine.loading.safetensors import read_tensor_storage_bytes
+ 
+ _DEFAULT_DRAFT_VOCAB_CAP = 65536
+ 
++# Row budget for the bulk historical-prompt K/V workspace. This bounds the
++# scratch allocation, not the prompt: a longer prompt is appended in more
++# chunks through the same fixed-size workspace.
++_BULK_PROMPT_DEFAULT_ROWS = 16
++_BULK_PROMPT_MAX_ROWS = 64
++
+ 
+ def _f32_to_bf16_bits(array: np.ndarray) -> np.ndarray:
+     f32 = np.asarray(array, dtype=np.float32)
+@@ -151,6 +157,35 @@ def _empty_device(shape: tuple[int, ...], dtype: np.dtype[Any] | type[np.generic
+     return host, buf
+ 
+ 
++@dataclass(slots=True)
++class _BulkPromptWorkspace:
++    """Fixed-capacity row scratch for bulk historical-prompt K/V appends.
++
++    ``rows`` is the capacity this workspace was allocated for. Every buffer is
++    ``[rows, features]`` and a chunk fills the prefix it needs, so the footprint
++    is set once and does not grow with prompt length or chunk size.
++    """
++
++    rows: int
++    host: np.ndarray
++    tokens_host: np.ndarray
++    positions_host: np.ndarray
++    slots_host: np.ndarray
++    tokens_buf: DeviceBuffer
++    positions_buf: DeviceBuffer
++    slots_buf: DeviceBuffer
++    fused_buf: DeviceBuffer
++    fc_buf: DeviceBuffer
++    attn_in_buf: DeviceBuffer
++    q_proj_buf: DeviceBuffer
++    k_proj_buf: DeviceBuffer
++    v_proj_buf: DeviceBuffer
++    query_buf: DeviceBuffer
++    gate_buf: DeviceBuffer
++    query_rot_buf: DeviceBuffer
++    key_rot_buf: DeviceBuffer
++
++
+ @dataclass(frozen=True, slots=True)
+ class NativeMtpW8A16Head:
+     """Borrowed target-owned full-vocabulary W8A16 proposal scorer."""
+@@ -316,6 +351,9 @@ class NativeMtpChainProposer:
+         self.current = NativeMtpStepResult(token=0, logit=float("nan"), topk_experts=(), topk_logits=())
+         self.final_hidden_valid = False
+         self.result_valid = False
++        # Allocated on the first bulk append and reused; it holds only scratch
++        # for rows that have already been launched, so ``reset()`` keeps it.
++        self._bulk_workspace: _BulkPromptWorkspace | None = None
+ 
+     def _load_info(self, name: str) -> DeviceTensorAllocation:
+         alloc = load_tensor_info_to_device(self.infos[name], runtime=self.runtime)
+@@ -523,6 +561,353 @@ class NativeMtpChainProposer:
+         )
+         return None
+ 
++    def append_prompt_kv_bulk(
++        self,
++        rows: Sequence[tuple[int, int, int]],
++        *,
++        chunk_rows: int | None = None,
++        stream: int = 0,
++    ) -> int:
++        """Append several historical prompt rows' K/V with row-batched launches.
++
++        ``rows`` is a sequence of ``(input_token, target_hidden_ptr, position)``
++        triples in prompt order -- the same three arguments :meth:`append_prompt_kv`
++        takes one at a time. This runs the same input fusion, projection,
++        normalization, rotary, and cache write, with every kernel launched for a
++        block of rows instead of one row. No attention, no expert block, no
++        proposal head, and no host readback run, exactly as for the serial
++        cache-only row.
++
++        The target hidden rows must form one contiguous BF16 slab with the same
++        row width as the proposer hidden (``rows[i][1] == rows[0][1] +
++        i * hidden * 2``), because the fused input kernel reads the slab
++        row-major. Rows that are not contiguous in that layout need the serial
++        per-row primitive.
++
++        The row workspace is fixed: ``min(_BULK_PROMPT_MAX_ROWS, max_mtp_tokens)``
++        rows are allocated once on first use and reused for every later append,
++        so the footprint never tracks prompt length or ``chunk_rows`` and no
++        allocation is ever replaced while the proposer is live. At most
++        ``chunk_rows`` rows (default ``_BULK_PROMPT_DEFAULT_ROWS``, hard cap
++        ``_BULK_PROMPT_MAX_ROWS``) are launched per chunk.
++
++        The request is validated in full before the first launch, so a rejected
++        request appends nothing and leaves the previous carry and proposal
++        intact. Once the first chunk is launched the previous carry and proposal
++        are cleared, because a partially launched chunk may already have written
++        cache rows the caller cannot observe: a device failure at any point then
++        leaves the already-committed chunks published, no valid hidden or
++        proposal behind, and the caller free to resume from ``cache_len``.
++
++        Returns the number of appended rows.
++        """
++
++        if self.closed:
++            raise RuntimeError("NativeMtpChainProposer is closed")
++        if self.scoring_head is not None:
++            self.scoring_head.validate_live()
++        pending = self._validate_bulk_prompt_rows(rows)
++        chunk = _BULK_PROMPT_DEFAULT_ROWS if chunk_rows is None else int(chunk_rows)
++        if chunk <= 0 or chunk > _BULK_PROMPT_MAX_ROWS:
++            raise ValueError(
++                f"chunk_rows must be in 1..{_BULK_PROMPT_MAX_ROWS}; got {chunk}"
++            )
++        if self.cache_len + len(pending) > self.max_mtp_tokens:
++            raise RuntimeError("MTP cache capacity exceeded")
++        workspace = self._bulk_prompt_workspace()
++        # From here on device work happens. Clear the carry and proposal before
++        # the first launch, not after a chunk commits: a chunk that fails part
++        # way through may already have written this row's K/V, so the previous
++        # hidden and proposal stop describing a state the caller can observe.
++        self.final_hidden_valid = False
++        self.result_valid = False
++        self.current = NativeMtpStepResult(token=-1, logit=float("nan"), topk_experts=(), topk_logits=())
++        appended = 0
++        for start in range(0, len(pending), chunk):
++            block = pending[start : start + chunk]
++            count = len(block)
++            slot_base = int(self.cache_len)
++            tokens = workspace.tokens_host[:count]
++            positions = workspace.positions_host[:count]
++            slots = workspace.slots_host[:count]
++            for index, (token, _hidden_ptr, position) in enumerate(block):
++                tokens[index] = token
++                positions[index] = position
++                slots[index] = slot_base + index
++            # One packed upload carries the whole chunk's tokens, positions, and
++            # cache slots; the sub-buffers are views into that one allocation.
++            self.runtime.memcpy_async(
++                workspace.tokens_buf.ptr,
++                host_array_ptr(workspace.host),
++                workspace.host.nbytes,
++                HipMemcpyKind.HOST_TO_DEVICE,
++                int(stream),
++            )
++            self._append_prompt_kv_chunk(
++                workspace,
++                count=count,
++                slot_base=slot_base,
++                target_hidden_ptr=int(block[0][1]),
++                stream=stream,
++            )
++            # Only the cursor is published per chunk; the validity clearing above
++            # already covers every failure after the first launch.
++            self.cache_len = slot_base + count
++            self.position = int(block[-1][2])
++            appended += count
++        return appended
++
++    def _validate_bulk_prompt_rows(
++        self, rows: Sequence[tuple[int, int, int]]
++    ) -> tuple[tuple[int, int, int], ...]:
++        """Normalize and fully validate a bulk append before any device work."""
++
++        pending: list[tuple[int, int, int]] = []
++        for row in rows:
++            try:
++                token, hidden_ptr, position = row
++            except (TypeError, ValueError):
++                raise ValueError(
++                    "bulk prompt rows must be (input_token, target_hidden_ptr, position) triples"
++                ) from None
++            pending.append((int(token), int(hidden_ptr), int(position)))
++        if not pending:
++            raise ValueError("bulk prompt rows must be non-empty")
++        stride_bytes = self.hidden * DType.BF16.itemsize
++        base_ptr = pending[0][1]
++        for index, (_token, hidden_ptr, position) in enumerate(pending):
++            if hidden_ptr <= 0:
++                raise ValueError(
++                    "bulk prompt append requires an explicit target hidden pointer per row"
++                )
++            if hidden_ptr == self.final_hidden_buf.ptr:
++                raise ValueError(
++                    "bulk prompt append requires target hidden rows, not the proposer's own final hidden"
++                )
++            if position < 0 or position >= self.max_positions:
++                raise ValueError("position outside MTP RoPE table")
++            expected = base_ptr + index * stride_bytes
++            if hidden_ptr != expected:
++                raise ValueError(
++                    "bulk prompt target hidden rows must be one contiguous row-major slab: "
++                    f"row {index} is at {hidden_ptr}, expected {expected}; pass a compact "
++                    "stride-hidden slab or append the rows with append_prompt_kv"
++                )
++        return tuple(pending)
++
++    def _bulk_prompt_workspace(self) -> _BulkPromptWorkspace:
++        """Return the fixed row workspace, allocating it once for the proposer.
++
++        Capacity is ``min(_BULK_PROMPT_MAX_ROWS, max_mtp_tokens)``: the hard cap,
++        lowered to the cache capacity because one append can never stage more
++        rows than the cache can hold. That is also why a chunk cannot overflow
++        the workspace -- a chunk's row count is bounded by the rows the call may
++        append, which the capacity check bounds by ``max_mtp_tokens``.
++
++        The workspace is never replaced and never freed while the proposer is
++        live, so no buffer can be released while an earlier chunk's launches are
++        still in flight on a caller stream. ``close()`` synchronizes the device
++        before freeing the whole buffer list.
++        """
++
++        existing = self._bulk_workspace
++        if existing is not None:
++            return existing
++        rows = min(_BULK_PROMPT_MAX_ROWS, int(self.max_mtp_tokens))
++        host, packed_buf = _empty_device((2 * rows,), np.int64, self.buffers, runtime=self.runtime)
++        position_slot_host = host[rows:].view(np.int32)
++        # Tokens are int64 and lead the packed buffer, so both int32 views that
++        # follow are naturally aligned.
++        _, fused_buf = _empty_device((rows, 2 * self.hidden), np.uint16, self.buffers, runtime=self.runtime)
++        _, fc_buf = _empty_device((rows, self.hidden), np.uint16, self.buffers, runtime=self.runtime)
++        _, attn_in_buf = _empty_device((rows, self.hidden), np.uint16, self.buffers, runtime=self.runtime)
++        _, q_proj_buf = _empty_device((rows, self.q_proj_features), np.float32, self.buffers, runtime=self.runtime)
++        _, k_proj_buf = _empty_device((rows, self.kv_features), np.float32, self.buffers, runtime=self.runtime)
++        _, v_proj_buf = _empty_device((rows, self.kv_features), np.uint16, self.buffers, runtime=self.runtime)
++        _, query_buf = _empty_device((rows, self.q_features), np.float32, self.buffers, runtime=self.runtime)
++        _, gate_buf = _empty_device((rows, self.q_features), np.uint16, self.buffers, runtime=self.runtime)
++        _, query_rot_buf = _empty_device((rows, self.q_features), np.float32, self.buffers, runtime=self.runtime)
++        _, key_rot_buf = _empty_device((rows, self.kv_features), np.float32, self.buffers, runtime=self.runtime)
++        self._bulk_workspace = _BulkPromptWorkspace(
++            rows=int(rows),
++            host=host,
++            tokens_host=host[:rows],
++            positions_host=position_slot_host[:rows],
++            slots_host=position_slot_host[rows : 2 * rows],
++            tokens_buf=DeviceBuffer(packed_buf.ptr, rows * np.dtype(np.int64).itemsize),
++            positions_buf=DeviceBuffer(
++                packed_buf.ptr + rows * np.dtype(np.int64).itemsize,
++                rows * np.dtype(np.int32).itemsize,
++            ),
++            slots_buf=DeviceBuffer(
++                packed_buf.ptr
++                + rows * np.dtype(np.int64).itemsize
++                + rows * np.dtype(np.int32).itemsize,
++                rows * np.dtype(np.int32).itemsize,
++            ),
++            fused_buf=fused_buf,
++            fc_buf=fc_buf,
++            attn_in_buf=attn_in_buf,
++            q_proj_buf=q_proj_buf,
++            k_proj_buf=k_proj_buf,
++            v_proj_buf=v_proj_buf,
++            query_buf=query_buf,
++            gate_buf=gate_buf,
++            query_rot_buf=query_rot_buf,
++            key_rot_buf=key_rot_buf,
++        )
++        return self._bulk_workspace
++
++    def _append_prompt_kv_chunk(
++        self,
++        workspace: _BulkPromptWorkspace,
++        *,
++        count: int,
++        slot_base: int,
++        target_hidden_ptr: int,
++        stream: int,
++    ) -> None:
++        """Run the K/V producer prefix for ``count`` rows starting at ``slot_base``.
++
++        Every kernel here writes an independent row: the fused input, RMSNorm,
++        and split-q-gate blocks are per-row, the two GEMV kernels reduce over
++        input features per output element, and the head rotary kernel is
++        per-(row, head). Row ``r`` therefore receives the same accumulation the
++        serial one-row launch gives it. Cache destinations are the block's first
++        slot because both row strides equal the cache row stride.
++        """
++
++        hidden = self.hidden
++        indexed_kv_write = _indexed_kv_write_enabled()
++        key_cache_dst = self.key_cache_buf.ptr + slot_base * self.kv_features * DType.FP32.itemsize
++        value_cache_dst = self.value_cache_buf.ptr + slot_base * self.kv_features * DType.BF16.itemsize
++        direct_kv_write = _direct_kv_write_enabled() or indexed_kv_write
++        v_out_ptr = value_cache_dst if direct_kv_write else workspace.v_proj_buf.ptr
++        key_out_ptr = key_cache_dst if direct_kv_write else workspace.key_rot_buf.ptr
++        mtp_fuse_inputs_f16_bf16(
++            workspace.tokens_buf.ptr,
++            self.weights["embed_tokens.weight"].ptr,
++            int(target_hidden_ptr),
++            self.weights["mtp.pre_fc_norm_embedding.weight"].ptr,
++            self.weights["mtp.pre_fc_norm_hidden.weight"].ptr,
++            workspace.fused_buf.ptr,
++            count,
++            hidden,
++            self.vocab,
++            eps=self.eps,
++            threads=256,
++            stream=stream,
++            library=self.mtp_lib,
++        )
++        dflash_dense_bf16_to_bf16(workspace.fused_buf.ptr, self.weights["mtp.fc.weight"].ptr, workspace.fc_buf.ptr, count, 2 * hidden, hidden, threads=128, stream=stream, library=self.dflash_lib)
++        mtp_rmsnorm_bf16_oneplus(workspace.fc_buf.ptr, self.weights["mtp.layers.0.input_layernorm.weight"].ptr, workspace.attn_in_buf.ptr, count, hidden, eps=self.eps, threads=256, stream=stream, library=self.mtp_lib)
++        if indexed_kv_write:
++            dflash_qkv_proj_bf16_mixed_indexed_v(
++                workspace.attn_in_buf.ptr,
++                self.weights["mtp.layers.0.self_attn.q_proj.weight"].ptr,
++                self.weights["mtp.layers.0.self_attn.k_proj.weight"].ptr,
++                self.weights["mtp.layers.0.self_attn.v_proj.weight"].ptr,
++                workspace.q_proj_buf.ptr,
++                workspace.k_proj_buf.ptr,
++                self.value_cache_buf.ptr,
++                workspace.slots_buf.ptr,
++                self.max_mtp_tokens,
++                count,
++                hidden,
++                self.q_proj_features,
++                self.kv_features,
++                threads=128,
++                stream=stream,
++                library=self.dflash_lib,
++            )
++        else:
++            dflash_qkv_proj_bf16_mixed(
++                workspace.attn_in_buf.ptr,
++                self.weights["mtp.layers.0.self_attn.q_proj.weight"].ptr,
++                self.weights["mtp.layers.0.self_attn.k_proj.weight"].ptr,
++                self.weights["mtp.layers.0.self_attn.v_proj.weight"].ptr,
++                workspace.q_proj_buf.ptr,
++                workspace.k_proj_buf.ptr,
++                v_out_ptr,
++                count,
++                hidden,
++                self.q_proj_features,
++                self.kv_features,
++                threads=128,
++                stream=stream,
++                library=self.dflash_lib,
++            )
++        mtp_split_q_gate_f32_bf16(workspace.q_proj_buf.ptr, workspace.query_buf.ptr, workspace.gate_buf.ptr, count, self.q_heads, self.head_dim, threads=256, stream=stream, library=self.mtp_lib)
++        if indexed_kv_write:
++            dflash_head_rmsnorm_rotary_indexed_key_f32(
++                workspace.query_buf.ptr,
++                workspace.k_proj_buf.ptr,
++                self.q_norm_oneplus.ptr,
++                self.k_norm_oneplus.ptr,
++                self.cos_buf.ptr,
++                self.sin_buf.ptr,
++                workspace.positions_buf.ptr,
++                workspace.positions_buf.ptr,
++                workspace.query_rot_buf.ptr,
++                self.key_cache_buf.ptr,
++                workspace.slots_buf.ptr,
++                self.max_mtp_tokens,
++                1,
++                count,
++                count,
++                self.q_heads,
++                self.kv_heads,
++                self.head_dim,
++                self.rotary_dim,
++                self.max_positions,
++                eps=self.eps,
++                threads=128,
++                stream=stream,
++                library=self.dflash_lib,
++            )
++        else:
++            dflash_head_rmsnorm_rotary_f32(
++                workspace.query_buf.ptr,
++                workspace.k_proj_buf.ptr,
++                self.q_norm_oneplus.ptr,
++                self.k_norm_oneplus.ptr,
++                self.cos_buf.ptr,
++                self.sin_buf.ptr,
++                workspace.positions_buf.ptr,
++                workspace.positions_buf.ptr,
++                workspace.query_rot_buf.ptr,
++                key_out_ptr,
++                1,
++                count,
++                count,
++                self.q_heads,
++                self.kv_heads,
++                self.head_dim,
++                self.rotary_dim,
++                self.max_positions,
++                eps=self.eps,
++                threads=128,
++                stream=stream,
++                library=self.dflash_lib,
++            )
++        if not direct_kv_write:
++            # Both workspace rows and cache rows are contiguous, so one copy
++            # covers the whole chunk.
++            self.runtime.memcpy_async(
++                key_cache_dst,
++                workspace.key_rot_buf.ptr,
++                count * self.kv_features * DType.FP32.itemsize,
++                HipMemcpyKind.DEVICE_TO_DEVICE,
++                int(stream),
++            )
++            self.runtime.memcpy_async(
++                value_cache_dst,
++                workspace.v_proj_buf.ptr,
++                count * self.kv_features * DType.BF16.itemsize,
++                HipMemcpyKind.DEVICE_TO_DEVICE,
++                int(stream),
++            )
++
+     def advance_with_previous_hidden(
+         self,
+         *,

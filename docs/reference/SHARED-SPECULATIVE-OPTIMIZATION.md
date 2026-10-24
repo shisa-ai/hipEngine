@@ -33,7 +33,7 @@ An untested idea is not a rejected candidate. Keep all rows active across units.
 | Map existing ownership and extension points | Complete | Source-backed consumer matrix below; existing staged-provider, native-cycle and prompt-sink contracts are the extension points |
 | Shared prompt-priming orchestration | Complete for existing GGUF consumers | Common protocol, split planner and publication ledger; dense/MoE public IDs, chunks and acceptance match clean `1906b54d2`; repeated-call and teardown checks pass. PARO chunk adoption remains in its bulk-priming row |
 | PARO KV-only prompt priming | Complete | Default historical rows stop after cache writes. Eleven-length device oracle and 294 category/heldout/control calls preserve KV/state/IDs and acceptance; [paired measurements](../../benchmarks/results/2026-10-24-gfx1151-paro-cache-only/NOTES.md) confirm lower prompt latency, flat decode |
-| PARO batched prompt priming | In progress | Primitive lifecycle repairs and 26 CPU tests pass; public chunk integration and device parity remain before measurement |
+| PARO batched prompt priming | Complete | Default 16-row chunk integration passes the 16-length/64-call live-state oracle and all 294 paired category/heldout/control calls. [Measurements](../../benchmarks/results/2026-10-24-gfx1151-paro-bulk-prompt/NOTES.md): 4K first token 6.021 → 5.094 s; natural whole-call +0.41%, confirmed +0.40%; decode effectively flat |
 | Shared rollback/state-journal contract | In progress | Completed-checkpoint capture/restore journal adopted by PARO and Qwen4 single-request MTP; public device failure/cancel/recovery checks pass ([Qwen4 evidence](../testing/2026-10-24-qwen4-mtp-journal/NOTES.md)). Other compatible consumer migrations remain |
 | PARO bounded rollback | Complete | Mutable-state/cursor backup omits live prefix KV; public failure tests and all 294 paired calls preserve state/IDs/acceptance. [Measurements](../../benchmarks/results/2026-10-24-gfx1151-paro-rollback/NOTES.md): natural decode +0.20%, 4K +1.88%, confirmed at +0.31%/+1.90% |
 | Shared reusable graph-stage ownership | Pending | Stable address/shape keys, retirement/invalidation, eager fallback and capture-failure cleanup; reuse existing native-cycle interfaces |
@@ -81,7 +81,7 @@ supported updates of the requested existing result cells.
 
 | Consumer | Prompt priming | Rollback | Graph stages | Candidate depth |
 | --- | --- | --- | --- | --- |
-| PARO | Historical row callbacks compute KV only; final row computes a full prediction; contiguous target hidden slabs already exist | Completed-checkpoint journal owns provider and target restore; spare-slot copy contains mutable state and cursors, not live KV | Native provider-target ABI exists; public adapter forces eager verification | Public adapter exposes one candidate; underlying verifier supports larger row batches |
+| PARO | Shared bounded hidden chunks; historical rows batch KV-only priming, final row computes a full prediction | Completed-checkpoint journal owns provider and target restore; spare-slot copy contains mutable state and cursors, not live KV | Native provider-target ABI exists; public adapter forces eager verification | Public adapter exposes one candidate; underlying verifier supports larger row batches |
 | GGUF dense | Streaming chunk sink, carried hidden row and prefix checkpoints | Recurrent/hidden journals and append-only KV cursors | Native proposal and target stage wrappers | Shared planner consumes declared capability; standalone adaptive policy also exists |
 | GGUF MoE | Target-hidden chunk sink; NextN also has a restricted bulk route | Transactional target and provider checkpoints | Uses compatible GGUF execution pieces, with route-specific capabilities | Adapter-specific bounds need reconciliation with actual provider support |
 | Qwen4 | Bounded cache-only prompt workspace with final full predictor row | Reusable device transaction snapshot and KV/index cursors | Model-specific execution, not currently a native-cycle graph consumer | Provider supports chains up to four candidates |
@@ -92,8 +92,8 @@ The first extraction moves the existing `TargetHiddenChunkSink` contract out of
 `hipengine/runtime/qwen35_gguf_runner.py` and centralizes chunk validation,
 splitting and publication for `_StreamingNextNPromptSink` in
 `hipengine/runtime/qwen35_gguf_mtp.py` and `_MoeTargetHiddenSink` in
-`hipengine/generation/qwen35_gguf_moe_mtp2.py`. PARO can then consume the same
-chunk contract rather than retaining a second row-only orchestration path.
+`hipengine/generation/qwen35_gguf_moe_mtp2.py`. PARO now consumes the same
+chunk contract for bounded historical priming and final predictor publication.
 Model-specific hidden alignment and all kernel launches stay in their providers.
 
 Existing shared owners remain authoritative: `hipengine/speculative/provider.py`

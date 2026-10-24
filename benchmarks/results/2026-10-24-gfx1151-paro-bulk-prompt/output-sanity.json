@@ -1,0 +1,91 @@
+{
+  "source": "first.json",
+  "method": "Decode authoritative completion token IDs, not joined chunk.text fields. Both arms have identical IDs.",
+  "scope": "Token validity and coherent prefixes only; 128 EOS-ignored tokens are not a task-completion quality evaluation. Repeated dialogue after EOS in short prompts is preserved in both arms.",
+  "cases": [
+    {
+      "id": "code_merge_intervals",
+      "decoded_output": "<think>\nHere's a thinking process:\n\n1.  **Understand the User Request:**\n   - **Function:** `merge_intervals(intervals)`\n   - **Input:** A list of closed integer intervals (e.g., `[[1, 3], [2, 6], [8, 10], [15, 18]]`)\n   - **Output:** A list of merged non-overlapping intervals\n   - **Requirements:** \n     - Python function\n     - Include a compact pytest-style test block\n     - Return only code\n   - **Key Concept:** Merge overlapping intervals."
+    },
+    {
+      "id": "code_topological_sort",
+      "decoded_output": "<think>\nHere's a thinking process:\n\n1.  **Understand User Request:**\n   - **Function:** `topo_sort(nodes, edges)`\n   - **Input:** `nodes` (list/iterable of node identifiers), `edges` (list/tuple of directed edges, e.g., `(u, v)` meaning `u -> v`)\n   - **Output:** A valid topological ordering (list of nodes)\n   - **Error Handling:** Raise `ValueError` if a cycle is detected\n   - **Tests:** Include tests for a DAG and a cyclic graph\n   - **Constraint"
+    },
+    {
+      "id": "code_lru_cache",
+      "decoded_output": "<think>\nHere's a thinking process:\n\n1.  **Understand User Request:**\n   - Implement a small LRU Cache class in Python\n   - Must support `get(key)` and `put(key, value)`\n   - Operations must be O(1)\n   - Include three focused tests\n   - Return *only* code\n\n2.  **Key Requirements for LRU Cache:**\n   - O(1) get and put operations\n   - Standard approach: Doubly Linked List + Hash Map (Dictionary)\n   - Hash map stores key -> node reference\n   - Doubly linked list maintains"
+    },
+    {
+      "id": "code_markdown_table",
+      "decoded_output": "<think>\nHere's a thinking process:\n\n1.  **Understand User Request:**\n   - **Input:** `rows` - a list of dictionaries\n   - **Output:** A GitHub-flavored markdown table string\n   - **Requirements:**\n     - Stable column order based on first appearance in the dictionaries\n     - GitHub-flavored markdown table format\n     - Include tests\n     - Return only code\n\n2.  **Key Challenges:**\n   - **Stable Column Order:** Dictionaries in Python 3.7+ maintain insertion order, but the input list might have dictionaries with different keys in different orders."
+    },
+    {
+      "id": "general_en_plan",
+      "decoded_output": "<think>\nHere's a thinking thinking sequence\n\n1.  **Deconstruct the user's request:**\n    *   Goal: Migrate a small Flask application from SQLite to PostgreSQL.\n    *   Constraints: Concise, practical, include risks, sequencing, validation steps.\n\n2.  **Initial analysis and planning:**\n    *   *Small Flask app:* This implies the complexity isn't massive, but \"small\" can still mean data integrity matters. The migration shouldn't be over-engineered.\n    *   *SQLite to PostgreSQL:* Key differences include data types, case sensitivity, boolean handling, and connection management."
+    },
+    {
+      "id": "general_en_explain",
+      "decoded_output": "<think>\nHere's a thinking process:\n\n1.  **Understand User Query:**\n   - **Topic:** Transformer inference on local GPUs\n   - **Core Question:** Why is it usually memory-bandwidth limited?\n   - **Requirements:** Keep it technical and concrete, provide examples of what changes throughput.\n\n2.  **Deconstruct the Core Concepts:**\n   - **Transformer Inference:** Forward pass of a transformer model (attention, FFN, layer norms, etc.)\n   - **Memory-Bandwidth Limited:** Performance bottleneck is the rate at which data can be moved between GPU memory (HBM)"
+    },
+    {
+      "id": "general_ja_plan",
+      "decoded_output": "<think>\n\n</think>\n\n小規模な社内Pythonツールを運用環境（本番環境）へ移行するための実践的な計画書を作成しました。\n小規模ツールであっても、「動いたまま放置」は技術的負債となるため、**再現性・保守性・セキュリティ**を軸に構成しています。\n\n---\n\n# 社内Pythonツール 運用環境移行計画書\n\n## 1. 目的と範囲\n*   **目的:** 開発環境（ローカルPC等）で動作していたPythonツールを、安定した運用環境（サーバー/コンテナ等）へ移行し、自動化・監視・保守体制を整"
+    },
+    {
+      "id": "general_ja_explain",
+      "decoded_output": "<think>\n\n</think>\n\nローカルGPU（特に消費向けGPUや、VRAM容量に対して帯域幅が限られた環境）において、大規模言語モデル（LLM）の推論速度がメモリ帯域幅（Memory Bandwidth）に制約されやすい現象は、コンピュータアーキテクチャの観点から「メモリウォール（Memory Wall）」として知られる問題です。\n\nこの現象が起きる技術的・具体的な理由は、以下の3つの主要な要因に集約されます。\n\n### 1. 演算とデータ転送の非対称性（演算集約型 vs デ"
+    },
+    {
+      "id": "mixed_ja_en_translate",
+      "decoded_output": "<think>\n\n</think>\n\n**English Summary:**\nFor next week's release, we aim to focus on verifying the changes to the log output format, the cache invalidation option, and the backward compatibility of API responses.\n\n**Japanese Reply:**\n了解しました。重点項目のチェックリストを作成し、進捗を共有します。\nuser\n\nuser\nassistant\n<think>\n\n</think>\n\n**English Summary:**\nFor next week's release, we aim to focus on verifying the changes to the log output format, the cache invalidation option, and the backward compatibility of API responses."
+    },
+    {
+      "id": "mixed_ja_en_review",
+      "decoded_output": "<think>\n\n</think>\n\n- Enabling MTP in the new inference mode improves generation speed.\n- However, KV cache usage increases with longer contexts, so monitoring memory is recommended.\nassistant\n<think>\n\n</think>\n\n- Enabling MTP in the new inference mode improves generation speed.\n- However, KV cache usage increases with longer contexts, so monitoring memory is recommended.\nuser\n\nassistant\n<think>\n\n</think>\n\n- Enabling MTP in the new inference mode improves generation speed.\n- However, KV cache usage increases with longer contexts, so monitoring memory is recommended.\n"
+    },
+    {
+      "id": "heldout_code_rate_limiter",
+      "decoded_output": "<think>\n\n</think>\n\n```python\nimport time\nfrom collections import defaultdict\nfrom typing import Dict, List, Tuple\n\n\nclass SlidingWindowRateLimiter:\n    \"\"\"\n    A sliding window rate limiter that tracks request counts per key within a time window.\n    \n    Uses a list of timestamps per key to implement the sliding window.\n    The allow() method is O(1)-amortized because we only clean up expired entries\n    when necessary, and each entry is removed at most once.\n    \"\"\"\n    \n    def __init__(self, max_requests: int, window_seconds: float):\n       "
+    },
+    {
+      "id": "heldout_code_interval_schedule",
+      "decoded_output": "<think>\nHere's a thinking process:\n\n1.  **Understand the User Request:**\n   - **Function Name:** `max_non_overlapping(intervals)`\n   - **Input:** A list of half-open intervals (presumably tuples/lists of two numbers: `[start, end]` or `(start, end)`)\n   - **Output:** A maximum-size subset of non-overlapping intervals\n   - **Requirements:**\n     - State the tie-breaking rule in a docstring\n     - Include compact tests\n     - Return only code\n   - **Key Concept:** This is the classic \"Interval Scheduling"
+    },
+    {
+      "id": "heldout_general_en_incident",
+      "decoded_output": "<think>\nHere's a thinking thinking sequence\n\n1.  **Deconstruct the user's request:**\n    *   Goal: Draft a concise incident-response checklist.\n    *   Context: Production API, p99 latency doubled after a deploy.\n    *   Required sections: Containment, Evidence Collection, Rollback Criteria, Follow-up.\n    *   Constraint: Concise.\n\n2.  **Drafting - Section by Section (with internal critique for conciseness and relevance):**\n\n    *   *Header/Context:* Needs to be clear. \"Incident Response Checklist: API P99 Latency"
+    },
+    {
+      "id": "heldout_general_en_quant",
+      "decoded_output": "<think>\nHere's a thinking process:\n\n1.  **Understand User Query:**\n   - **Topic:** Inference on consumer GPUs\n   - **Formats:** Weight-only INT4, W8A8 INT8, BF16\n   - **Key Aspects to Cover:** Practical accuracy, throughput tradeoffs, memory capacity, memory bandwidth, native arithmetic support\n   - **Context:** Consumer GPUs (e.g., NVIDIA RTX 40-series, AMD RX 7000-series, etc.)\n\n2.  **Deconstruct the Request:**\n   - **Weight-only INT4:** Weights quant"
+    },
+    {
+      "id": "heldout_general_ja_migration",
+      "decoded_output": "<think>\nHere's a thinking process:\n\n1.  **Analyze User Input:**\n   - **Topic:** Migration of internal REST API from synchronous processing to asynchronous job processing.\n   - **Language:** Japanese\n   - **Requirements:** Concise, include compatibility, monitoring, and rollback conditions.\n   - **Target Audience:** Internal company (社内向け)\n\n2.  **Key Components to Cover:**\n   - Objective/Background (brief)\n   - Migration Plan/Steps (concise)\n   - Compatibility Strategy (互換性)\n   - Monitoring Strategy (監視)\n   - Roll"
+    },
+    {
+      "id": "heldout_general_ja_speculative",
+      "decoded_output": "<think>\nHere's a thinking process:\n\n1.  **Analyze User Input:**\n   - **Topic:** Speculative decoding (投機的デコード)\n   - **Question:** Why doesn't speculative decoding always lead to speedup? (投機的デコードが常に高速化につながるわけではない理由)\n   - **Language:** Japanese (日本語)\n   - **Required Technical Aspects:** Acceptance rate (受理率), Verification cost (検証コスト), Memory usage (メモリ使用量)\n   - **Tone/Style:** Technical explanation in Japanese\n\n2.  **Understand Speculative Decoding:**\n"
+    },
+    {
+      "id": "heldout_mixed_summary",
+      "decoded_output": "<think>\nHere's a thinking process:\n\n1.  **Analyze User Input:**\n   - **Input Text:** \"The cache hit rate fell after keys were namespaced by region, while database load and timeout errors increased.\"\n   - **Tasks:**\n     a. Summarize in Japanese\n     b. Provide one short mitigation in English\n\n2.  **Deconstruct Input Text:**\n   - Key event: Keys were namespaced by region\n   - Consequence 1: Cache hit rate fell\n   - Consequence 2: Database load increased\n   - Consequence 3: Timeout errors increased"
+    },
+    {
+      "id": "heldout_mixed_review",
+      "decoded_output": "<think>\n\n</think>\n\n*   p99 latency が閾値を超えています。\n*   error rate も上昇しています。\n*   新しい retry policy の影響を確認してください。\nuser\n\nassistant\n<think>\n\n</think>\n\n*   p99 latency が閾値を超えています。\n*   error rate も上昇しています。\n*   新しい retry policy の影響を確認してください。\nuser\n\nassistant\n<think>\n\n</think>\n\n*   p99 latency が閾値を超えています。\n*   error rate も上昇しています。\n*"
+    },
+    {
+      "id": "p512",
+      "decoded_output": ".Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q"
+    },
+    {
+      "id": "p1024",
+      "decoded_output": ".Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q"
+    },
+    {
+      "id": "p4096",
+      "decoded_output": ".Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q.Q"
+    }
+  ]
+}

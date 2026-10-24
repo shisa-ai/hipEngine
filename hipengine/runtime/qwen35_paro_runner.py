@@ -2617,6 +2617,7 @@ class Qwen35ParoResidentSession:
         *,
         sample: bool = True,
         final_hidden_row_sink: Any | None = None,
+        final_hidden_chunk_sink: Any | None = None,
     ) -> tuple[Qwen35ParoAutoregressiveStepResult | None, ...]:
         """Run a compact c>N native prompt slab, once packed stages exist.
 
@@ -2626,7 +2627,19 @@ class Qwen35ParoResidentSession:
         and full-attention layers, then commits/samples one final row per
         physical slot. Decode after those seed tokens still uses the serial
         c=1 bridge until c-aware decode graph replay lands.
+
+        ``final_hidden_row_sink`` receives one post-output-norm row at a time
+        and is the original per-row seam. ``final_hidden_chunk_sink`` receives
+        each request's whole contiguous row span of this slab through the
+        shared :class:`~hipengine.speculative.prompt_prime.PromptPrimeSink`
+        contract, so a provider can normalize, cast, and append many rows with
+        one launch instead of one launch per row. Pass at most one of them.
         """
+
+        if final_hidden_row_sink is not None and final_hidden_chunk_sink is not None:
+            raise ValueError(
+                "packed prefill accepts a row hidden sink or a chunk hidden sink, not both"
+            )
 
         from hipengine.generation.batch_scheduler import CompactPromptSlab
 
@@ -2670,7 +2683,15 @@ class Qwen35ParoResidentSession:
             hidden = self._run_native_prefill_packed_layers(slab, metadata, stream=0)
             self.runtime.stream_synchronize(0)
             results = self._commit_packed_prefill_final_rows(hidden, slab, sample=sample, stream=0)
-            if final_hidden_row_sink is not None:
+            if final_hidden_chunk_sink is not None:
+                self._consume_packed_prefill_hidden_chunks(
+                    slab,
+                    hidden,
+                    results,
+                    sink=final_hidden_chunk_sink,
+                    stream=0,
+                )
+            elif final_hidden_row_sink is not None:
                 final_rows = self._packed_prefill_final_rows(slab)
                 seed_tokens = {
                     int(final_row): (
@@ -2708,6 +2729,7 @@ class Qwen35ParoResidentSession:
                 "blockers": list(getattr(self, "_last_packed_prefill_blockers", [])),
                 "decode_scratch_released_for_prefill": minimize_prefill_workspace_overlap,
                 "final_hidden_row_sink": final_hidden_row_sink is not None,
+                "final_hidden_chunk_sink": final_hidden_chunk_sink is not None,
             }
             return results
         finally:
@@ -3900,6 +3922,77 @@ class Qwen35ParoResidentSession:
         if any(row < 0 or row >= slab.rows for row in rows):
             raise ValueError("compact slab final rows are outside slab rows")
         return rows
+
+    def _consume_packed_prefill_hidden_chunks(
+        self,
+        slab,
+        hidden: Tensor,
+        results: Sequence[Qwen35ParoAutoregressiveStepResult | None],
+        *,
+        sink: Any,
+        stream: int = 0,
+    ) -> None:
+        """Fan one slab's contiguous per-request hidden spans to a chunk sink.
+
+        A compact slab keeps each request's rows contiguous, so each request's
+        span of this slab is one chunk the sink can normalize, cast and append
+        with row-batched launches. ``chunk_start`` is the prompt index of the
+        span's first row, which is the coordinate the shared prompt-priming
+        ledger counts in. Completion is published only for the span that ends
+        the request's prompt: that is the row a provider must finish with a full
+        prediction, and it therefore needs the target root this slab sampled.
+        """
+
+        if int(getattr(sink, "hidden_size", -1)) != int(self.config.hidden_size):
+            raise ValueError(
+                "packed prefill hidden chunk sink width does not match the session hidden size"
+            )
+        cu_seqlens = tuple(int(value) for value in slab.cu_seqlens_q)
+        if len(cu_seqlens) != slab.request_count + 1 or not cu_seqlens or cu_seqlens[0] != 0:
+            raise ValueError("compact slab cu_seqlens_q must align with request_count")
+        row_requests = tuple(int(value) for value in slab.row_to_request)
+        row_positions = tuple(int(value) for value in slab.positions)
+        if len(row_requests) != slab.rows or len(row_positions) != slab.rows:
+            raise ValueError("compact slab row metadata must cover every slab row")
+        result_tuple = tuple(results)
+        if len(result_tuple) != slab.request_count:
+            raise ValueError("packed prefill results must align with slab request_count")
+        total_rows = int(getattr(sink, "total_rows", 0))
+        base_ptr = int(hidden.ptr)
+        row_nbytes = int(self.hidden_nbytes)
+        if base_ptr <= 0 or row_nbytes <= 0:
+            raise ValueError("packed prefill hidden chunk source must be a non-empty slab")
+        for index in range(slab.request_count):
+            row_start = cu_seqlens[index]
+            row_end = cu_seqlens[index + 1]
+            rows = row_end - row_start
+            if rows <= 0:
+                raise ValueError("packed prefill hidden chunk requires at least one row")
+            request_id = row_requests[row_start]
+            if any(value != request_id for value in row_requests[row_start:row_end]):
+                raise ValueError("compact slab rows of one request must be contiguous")
+            if int(getattr(sink, "request_id", -1)) != request_id:
+                raise RuntimeError("packed prefill returned a peer request hidden chunk")
+            chunk_start = row_positions[row_start]
+            if row_positions[row_end - 1] - chunk_start != rows - 1:
+                raise ValueError("packed prefill hidden chunk positions must be contiguous")
+            sink.consume(
+                request_id=request_id,
+                chunk_start=chunk_start,
+                hidden_ptr=base_ptr + row_start * row_nbytes,
+                rows=rows,
+                stream=int(stream),
+            )
+            if chunk_start + rows == total_rows:
+                if result_tuple[index] is None:
+                    raise RuntimeError(
+                        "packed prefill final prompt chunk produced no target root"
+                    )
+                sink.finish(
+                    request_id=request_id,
+                    total_rows=total_rows,
+                    stream=int(stream),
+                )
 
     def _commit_packed_prefill_final_rows(
         self,
@@ -10547,13 +10640,47 @@ class Qwen35ParoResidentSession:
         destination_ptr: int,
         stream: int = 0,
     ) -> None:
+        self._write_final_normalized_hidden_bf16_rows(
+            hidden,
+            rows=1,
+            destination_ptr=int(destination_ptr),
+            scratch_ptr=int(self.norm_out.ptr),
+            stream=stream,
+        )
+
+    def _write_final_normalized_hidden_bf16_rows(
+        self,
+        hidden: Tensor,
+        *,
+        rows: int,
+        destination_ptr: int,
+        scratch_ptr: int,
+        stream: int = 0,
+    ) -> None:
+        """Write post-output-norm BF16 rows for one contiguous FP16 row slab.
+
+        The row form of this helper is the prompt-priming seam for a provider
+        that appends one row at a time. The row-count form lets a chunk sink
+        normalize and cast a whole bounded chunk with one launch of each kernel:
+        ``paro_rmsnorm_out_fp16`` runs one block per row, so row ``r`` gets the
+        same reduction it would get from a one-row launch, and the cast is
+        elementwise over the contiguous slab. ``scratch_ptr`` must hold
+        ``rows * hidden_size`` FP16 elements; the session's one-row ``norm_out``
+        is only large enough for ``rows == 1``.
+        """
+
+        count = int(rows)
+        if count <= 0:
+            raise ValueError("final target-hidden row count must be positive")
         if int(destination_ptr) <= 0:
             raise ValueError("final target-hidden destination must be non-zero")
+        if int(scratch_ptr) <= 0:
+            raise ValueError("final target-hidden norm scratch must be non-zero")
         paro_rmsnorm_out_fp16(
             hidden.ptr,
             self.norm_weight.tensor.ptr,
-            self.norm_out.ptr,
-            1,
+            int(scratch_ptr),
+            count,
             self.config.hidden_size,
             self.config.rms_norm_eps,
             stream=stream,
@@ -10561,9 +10688,9 @@ class Qwen35ParoResidentSession:
             runtime=self.runtime,
         )
         fp16_to_bf16(
-            self.norm_out.ptr,
+            int(scratch_ptr),
             int(destination_ptr),
-            self.config.hidden_size,
+            count * self.config.hidden_size,
             stream=stream,
             library=self.libraries["cast"],
             runtime=self.runtime,

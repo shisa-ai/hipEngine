@@ -1,0 +1,55 @@
+{
+  "head": "c2815cbbb885ff2797760c8a3e285f5e52aa18b9",
+  "sha256": {
+    "hipengine/generation/qwen35_paro.py": "eb955934e02b4ab856df6eac27a129f7578ada4a9839b035fb63678e1ca9b66e",
+    "hipengine/generation/qwen35_paro_mtp2.py": "bcbd6d59e658a3e92f88775af6ad788ce8bf8cf7e49a253955ec5881cacd845c",
+    "hipengine/runtime/qwen35_paro_runner.py": "a5e4ca9d9d106aa02c6fd30b38ae178a3d2ec3ded61ba0b43341e419d7bf8cfe",
+    "hipengine/speculative/mtp_native.py": "24ab3f313a14a542e2560bafe722f5a0944eb69d75d500677c5b6089528072af",
+    "hipengine/speculative/prompt_prime.py": "1b7f6eb228a4264b4b7a7c5cf0a1b1a3d9b88132352f645463985bffd0685557",
+    "tests/test_live_paro_mtp_prompt_priming.py": "669713ea12a4145fe4d28e8201d2f8838c52c0b56deb9c1bcc3533503afccb60",
+    "tests/test_unit_mtp_native_bulk_prompt.py": "451f4820bca48246e9dc0888785ab53fc62593e6b2f697c828fc02694a718de6",
+    "tests/test_unit_paro_mtp_bulk_integration.py": "ab8a1c3c9a01308652b6acb792f1356caacbf5f33cae6e205ccf519659b92f95",
+    "tests/test_unit_qwen35_paro_mtp2_seam.py": "5e5c31ce4b8643a892b0c0c9ccbd1e44c2c397de70297c5832390f35dca0e29a"
+  },
+  "device_oracle": {
+    "command": "bash /tmp/hipengine-paro-refresh-20261023-env.sh env PYTHONPATH=\"$PWD\" \"$HOME/miniforge3/envs/therock/bin/python\" -m pytest tests/test_live_paro_mtp_prompt_priming.py -v -o addopts=''",
+    "passed": 16,
+    "calls": 64,
+    "lengths": [
+      1,
+      2,
+      15,
+      16,
+      17,
+      31,
+      32,
+      33,
+      37,
+      255,
+      256,
+      257,
+      511,
+      513,
+      1025,
+      4096
+    ],
+    "contracts": [
+      "live KV bytes",
+      "final predictor hidden and top1",
+      "generated IDs",
+      "acceptance counts",
+      "actual bulk route rows",
+      "tracked allocation cleanup"
+    ]
+  },
+  "cpu": {
+    "unit_suite": "uv run pytest -q: exit 0",
+    "compileall": "passed",
+    "fixtures": "passed",
+    "test_tiers": "passed",
+    "registry": "passed",
+    "cpu_fixtures": "passed",
+    "smoke_add_plan": "passed",
+    "new_torch_imports": false
+  }
+}

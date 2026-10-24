@@ -701,12 +701,11 @@ The [October 24 AR/MTP retest](results/2026-10-24-gfx1151-paro-mtp-retest/NOTES.
 
 **MTP target backup without prefix KV copies:** Both arms use the same prompt priming and completed-checkpoint journal; only the target backup extent changes. With the same model/host, BF16 KV, one request/candidate and 128 greedy outputs, all 294 category/heldout/control calls preserve IDs and acceptance. One warmup and three alternating pairs are confirmed with two pairs.
 
-| Workload | Full-prefix backup: decode tok/s | Mutable state + cursors: decode tok/s | Change |
-| --- | ---: | ---: | ---: |
-| Natural/category-heldout suite, pooled | 64.45 | 64.58 | +0.20% |
-| 4096 input tokens, median | 46.16 | 47.03 | +1.88% |
+Natural/category-heldout pooled decode improves 64.45 → 64.58 tok/s (+0.20%); the 4096-input median improves 46.16 → 47.03 tok/s (+1.88%).
 
 Confirmation gives +0.31% on the natural suite and +1.90% at 4K. Prompt latency is essentially unchanged. This is a small copy-elimination gain within MTP, not an MTP/AR comparison. [Commands, source patch, failure tests and separate copy attribution](results/2026-10-24-gfx1151-paro-rollback/NOTES.md) · [Summary](results/2026-10-24-gfx1151-paro-rollback/summary.json).
+
+**Batched MTP prompt priming:** With the same model/host, BF16 KV, one request/candidate and 128 greedy outputs, bounded 16-row priming preserves IDs and acceptance across all 294 category/heldout/control calls. Natural median first-token latency falls 0.1818 → 0.1715 s; 4K falls 6.0210 → 5.0944 s. Natural whole-call throughput improves 59.575 → 59.818 tok/s (+0.41%), confirmed at +0.40%; decode is effectively flat (64.607 → 64.555 tok/s). [All length results, interrupted-confirmation accounting and separate attribution](results/2026-10-24-gfx1151-paro-bulk-prompt/NOTES.md).
 
 ## Root README performance summary
 

@@ -1,0 +1,32 @@
+{
+  "parent_commit": "07fba0543",
+  "scope": "Paired PARO serial versus bounded bulk historical prompt KV; unchanged verifier/decode",
+  "host": "gfx1151",
+  "natural": "All 10 mtpbench-code-general-ja.jsonl and all 8 gdn-prefill-category-heldouts.jsonl prompts",
+  "controls": [
+    512,
+    1024,
+    4096
+  ],
+  "first": {
+    "warmups": 1,
+    "samples": 3
+  },
+  "confirmation": {
+    "warmups": 1,
+    "samples": 2
+  },
+  "smoke": {
+    "warmups": 1,
+    "samples": 1
+  },
+  "output_tokens": 128,
+  "chunk_rows": 16,
+  "criterion": "Exact control, repeat/cross-arm IDs and acceptance, live KV/final predictor state, no tracked leaks; report timing without minimum percentage threshold. If arithmetic differences appear, use execution-profile evaluation rather than reject on exactness alone.",
+  "sha256": {
+    "candidate.patch": "b62ae53791eb9cd06aa927856be3dc9e6e6f9b6e4bce03daef182e9842fb0462",
+    "measure_bulk.py": "f1094eb95d89fbb90588155ffa7f3b0e965f21d6edaacc1ce2f633453222fd4e",
+    "validate_bulk.py": "71637f9e4794dbf6cae8867a8b4adc4e6ac8f9719599d06e165e70e3c1de3520",
+    "test_validate_bulk.py": "b98ad6859066e0c3201d15b12d4134649d962d7995dee8a6c45ac0ae85f3ec7f"
+  }
+}

@@ -64,6 +64,12 @@ from hipengine.loading.safetensors import read_tensor_storage_bytes
 
 _DEFAULT_DRAFT_VOCAB_CAP = 65536
 
+# Row budget for the bulk historical-prompt K/V workspace. This bounds the
+# scratch allocation, not the prompt: a longer prompt is appended in more
+# chunks through the same fixed-size workspace.
+_BULK_PROMPT_DEFAULT_ROWS = 16
+_BULK_PROMPT_MAX_ROWS = 64
+
 
 def _f32_to_bf16_bits(array: np.ndarray) -> np.ndarray:
     f32 = np.asarray(array, dtype=np.float32)
@@ -149,6 +155,35 @@ def _empty_device(shape: tuple[int, ...], dtype: np.dtype[Any] | type[np.generic
     buf = malloc(host.nbytes, runtime=runtime)
     buffers.append(buf)
     return host, buf
+
+
+@dataclass(slots=True)
+class _BulkPromptWorkspace:
+    """Fixed-capacity row scratch for bulk historical-prompt K/V appends.
+
+    ``rows`` is the capacity this workspace was allocated for. Every buffer is
+    ``[rows, features]`` and a chunk fills the prefix it needs, so the footprint
+    is set once and does not grow with prompt length or chunk size.
+    """
+
+    rows: int
+    host: np.ndarray
+    tokens_host: np.ndarray
+    positions_host: np.ndarray
+    slots_host: np.ndarray
+    tokens_buf: DeviceBuffer
+    positions_buf: DeviceBuffer
+    slots_buf: DeviceBuffer
+    fused_buf: DeviceBuffer
+    fc_buf: DeviceBuffer
+    attn_in_buf: DeviceBuffer
+    q_proj_buf: DeviceBuffer
+    k_proj_buf: DeviceBuffer
+    v_proj_buf: DeviceBuffer
+    query_buf: DeviceBuffer
+    gate_buf: DeviceBuffer
+    query_rot_buf: DeviceBuffer
+    key_rot_buf: DeviceBuffer
 
 
 @dataclass(frozen=True, slots=True)
@@ -316,6 +351,9 @@ class NativeMtpChainProposer:
         self.current = NativeMtpStepResult(token=0, logit=float("nan"), topk_experts=(), topk_logits=())
         self.final_hidden_valid = False
         self.result_valid = False
+        # Allocated on the first bulk append and reused; it holds only scratch
+        # for rows that have already been launched, so ``reset()`` keeps it.
+        self._bulk_workspace: _BulkPromptWorkspace | None = None
 
     def _load_info(self, name: str) -> DeviceTensorAllocation:
         alloc = load_tensor_info_to_device(self.infos[name], runtime=self.runtime)
@@ -522,6 +560,353 @@ class NativeMtpChainProposer:
             stream=stream,
         )
         return None
+
+    def append_prompt_kv_bulk(
+        self,
+        rows: Sequence[tuple[int, int, int]],
+        *,
+        chunk_rows: int | None = None,
+        stream: int = 0,
+    ) -> int:
+        """Append several historical prompt rows' K/V with row-batched launches.
+
+        ``rows`` is a sequence of ``(input_token, target_hidden_ptr, position)``
+        triples in prompt order -- the same three arguments :meth:`append_prompt_kv`
+        takes one at a time. This runs the same input fusion, projection,
+        normalization, rotary, and cache write, with every kernel launched for a
+        block of rows instead of one row. No attention, no expert block, no
+        proposal head, and no host readback run, exactly as for the serial
+        cache-only row.
+
+        The target hidden rows must form one contiguous BF16 slab with the same
+        row width as the proposer hidden (``rows[i][1] == rows[0][1] +
+        i * hidden * 2``), because the fused input kernel reads the slab
+        row-major. Rows that are not contiguous in that layout need the serial
+        per-row primitive.
+
+        The row workspace is fixed: ``min(_BULK_PROMPT_MAX_ROWS, max_mtp_tokens)``
+        rows are allocated once on first use and reused for every later append,
+        so the footprint never tracks prompt length or ``chunk_rows`` and no
+        allocation is ever replaced while the proposer is live. At most
+        ``chunk_rows`` rows (default ``_BULK_PROMPT_DEFAULT_ROWS``, hard cap
+        ``_BULK_PROMPT_MAX_ROWS``) are launched per chunk.
+
+        The request is validated in full before the first launch, so a rejected
+        request appends nothing and leaves the previous carry and proposal
+        intact. Once the first chunk is launched the previous carry and proposal
+        are cleared, because a partially launched chunk may already have written
+        cache rows the caller cannot observe: a device failure at any point then
+        leaves the already-committed chunks published, no valid hidden or
+        proposal behind, and the caller free to resume from ``cache_len``.
+
+        Returns the number of appended rows.
+        """
+
+        if self.closed:
+            raise RuntimeError("NativeMtpChainProposer is closed")
+        if self.scoring_head is not None:
+            self.scoring_head.validate_live()
+        pending = self._validate_bulk_prompt_rows(rows)
+        chunk = _BULK_PROMPT_DEFAULT_ROWS if chunk_rows is None else int(chunk_rows)
+        if chunk <= 0 or chunk > _BULK_PROMPT_MAX_ROWS:
+            raise ValueError(
+                f"chunk_rows must be in 1..{_BULK_PROMPT_MAX_ROWS}; got {chunk}"
+            )
+        if self.cache_len + len(pending) > self.max_mtp_tokens:
+            raise RuntimeError("MTP cache capacity exceeded")
+        workspace = self._bulk_prompt_workspace()
+        # From here on device work happens. Clear the carry and proposal before
+        # the first launch, not after a chunk commits: a chunk that fails part
+        # way through may already have written this row's K/V, so the previous
+        # hidden and proposal stop describing a state the caller can observe.
+        self.final_hidden_valid = False
+        self.result_valid = False
+        self.current = NativeMtpStepResult(token=-1, logit=float("nan"), topk_experts=(), topk_logits=())
+        appended = 0
+        for start in range(0, len(pending), chunk):
+            block = pending[start : start + chunk]
+            count = len(block)
+            slot_base = int(self.cache_len)
+            tokens = workspace.tokens_host[:count]
+            positions = workspace.positions_host[:count]
+            slots = workspace.slots_host[:count]
+            for index, (token, _hidden_ptr, position) in enumerate(block):
+                tokens[index] = token
+                positions[index] = position
+                slots[index] = slot_base + index
+            # One packed upload carries the whole chunk's tokens, positions, and
+            # cache slots; the sub-buffers are views into that one allocation.
+            self.runtime.memcpy_async(
+                workspace.tokens_buf.ptr,
+                host_array_ptr(workspace.host),
+                workspace.host.nbytes,
+                HipMemcpyKind.HOST_TO_DEVICE,
+                int(stream),
+            )
+            self._append_prompt_kv_chunk(
+                workspace,
+                count=count,
+                slot_base=slot_base,
+                target_hidden_ptr=int(block[0][1]),
+                stream=stream,
+            )
+            # Only the cursor is published per chunk; the validity clearing above
+            # already covers every failure after the first launch.
+            self.cache_len = slot_base + count
+            self.position = int(block[-1][2])
+            appended += count
+        return appended
+
+    def _validate_bulk_prompt_rows(
+        self, rows: Sequence[tuple[int, int, int]]
+    ) -> tuple[tuple[int, int, int], ...]:
+        """Normalize and fully validate a bulk append before any device work."""
+
+        pending: list[tuple[int, int, int]] = []
+        for row in rows:
+            try:
+                token, hidden_ptr, position = row
+            except (TypeError, ValueError):
+                raise ValueError(
+                    "bulk prompt rows must be (input_token, target_hidden_ptr, position) triples"
+                ) from None
+            pending.append((int(token), int(hidden_ptr), int(position)))
+        if not pending:
+            raise ValueError("bulk prompt rows must be non-empty")
+        stride_bytes = self.hidden * DType.BF16.itemsize
+        base_ptr = pending[0][1]
+        for index, (_token, hidden_ptr, position) in enumerate(pending):
+            if hidden_ptr <= 0:
+                raise ValueError(
+                    "bulk prompt append requires an explicit target hidden pointer per row"
+                )
+            if hidden_ptr == self.final_hidden_buf.ptr:
+                raise ValueError(
+                    "bulk prompt append requires target hidden rows, not the proposer's own final hidden"
+                )
+            if position < 0 or position >= self.max_positions:
+                raise ValueError("position outside MTP RoPE table")
+            expected = base_ptr + index * stride_bytes
+            if hidden_ptr != expected:
+                raise ValueError(
+                    "bulk prompt target hidden rows must be one contiguous row-major slab: "
+                    f"row {index} is at {hidden_ptr}, expected {expected}; pass a compact "
+                    "stride-hidden slab or append the rows with append_prompt_kv"
+                )
+        return tuple(pending)
+
+    def _bulk_prompt_workspace(self) -> _BulkPromptWorkspace:
+        """Return the fixed row workspace, allocating it once for the proposer.
+
+        Capacity is ``min(_BULK_PROMPT_MAX_ROWS, max_mtp_tokens)``: the hard cap,
+        lowered to the cache capacity because one append can never stage more
+        rows than the cache can hold. That is also why a chunk cannot overflow
+        the workspace -- a chunk's row count is bounded by the rows the call may
+        append, which the capacity check bounds by ``max_mtp_tokens``.
+
+        The workspace is never replaced and never freed while the proposer is
+        live, so no buffer can be released while an earlier chunk's launches are
+        still in flight on a caller stream. ``close()`` synchronizes the device
+        before freeing the whole buffer list.
+        """
+
+        existing = self._bulk_workspace
+        if existing is not None:
+            return existing
+        rows = min(_BULK_PROMPT_MAX_ROWS, int(self.max_mtp_tokens))
+        host, packed_buf = _empty_device((2 * rows,), np.int64, self.buffers, runtime=self.runtime)
+        position_slot_host = host[rows:].view(np.int32)
+        # Tokens are int64 and lead the packed buffer, so both int32 views that
+        # follow are naturally aligned.
+        _, fused_buf = _empty_device((rows, 2 * self.hidden), np.uint16, self.buffers, runtime=self.runtime)
+        _, fc_buf = _empty_device((rows, self.hidden), np.uint16, self.buffers, runtime=self.runtime)
+        _, attn_in_buf = _empty_device((rows, self.hidden), np.uint16, self.buffers, runtime=self.runtime)
+        _, q_proj_buf = _empty_device((rows, self.q_proj_features), np.float32, self.buffers, runtime=self.runtime)
+        _, k_proj_buf = _empty_device((rows, self.kv_features), np.float32, self.buffers, runtime=self.runtime)
+        _, v_proj_buf = _empty_device((rows, self.kv_features), np.uint16, self.buffers, runtime=self.runtime)
+        _, query_buf = _empty_device((rows, self.q_features), np.float32, self.buffers, runtime=self.runtime)
+        _, gate_buf = _empty_device((rows, self.q_features), np.uint16, self.buffers, runtime=self.runtime)
+        _, query_rot_buf = _empty_device((rows, self.q_features), np.float32, self.buffers, runtime=self.runtime)
+        _, key_rot_buf = _empty_device((rows, self.kv_features), np.float32, self.buffers, runtime=self.runtime)
+        self._bulk_workspace = _BulkPromptWorkspace(
+            rows=int(rows),
+            host=host,
+            tokens_host=host[:rows],
+            positions_host=position_slot_host[:rows],
+            slots_host=position_slot_host[rows : 2 * rows],
+            tokens_buf=DeviceBuffer(packed_buf.ptr, rows * np.dtype(np.int64).itemsize),
+            positions_buf=DeviceBuffer(
+                packed_buf.ptr + rows * np.dtype(np.int64).itemsize,
+                rows * np.dtype(np.int32).itemsize,
+            ),
+            slots_buf=DeviceBuffer(
+                packed_buf.ptr
+                + rows * np.dtype(np.int64).itemsize
+                + rows * np.dtype(np.int32).itemsize,
+                rows * np.dtype(np.int32).itemsize,
+            ),
+            fused_buf=fused_buf,
+            fc_buf=fc_buf,
+            attn_in_buf=attn_in_buf,
+            q_proj_buf=q_proj_buf,
+            k_proj_buf=k_proj_buf,
+            v_proj_buf=v_proj_buf,
+            query_buf=query_buf,
+            gate_buf=gate_buf,
+            query_rot_buf=query_rot_buf,
+            key_rot_buf=key_rot_buf,
+        )
+        return self._bulk_workspace
+
+    def _append_prompt_kv_chunk(
+        self,
+        workspace: _BulkPromptWorkspace,
+        *,
+        count: int,
+        slot_base: int,
+        target_hidden_ptr: int,
+        stream: int,
+    ) -> None:
+        """Run the K/V producer prefix for ``count`` rows starting at ``slot_base``.
+
+        Every kernel here writes an independent row: the fused input, RMSNorm,
+        and split-q-gate blocks are per-row, the two GEMV kernels reduce over
+        input features per output element, and the head rotary kernel is
+        per-(row, head). Row ``r`` therefore receives the same accumulation the
+        serial one-row launch gives it. Cache destinations are the block's first
+        slot because both row strides equal the cache row stride.
+        """
+
+        hidden = self.hidden
+        indexed_kv_write = _indexed_kv_write_enabled()
+        key_cache_dst = self.key_cache_buf.ptr + slot_base * self.kv_features * DType.FP32.itemsize
+        value_cache_dst = self.value_cache_buf.ptr + slot_base * self.kv_features * DType.BF16.itemsize
+        direct_kv_write = _direct_kv_write_enabled() or indexed_kv_write
+        v_out_ptr = value_cache_dst if direct_kv_write else workspace.v_proj_buf.ptr
+        key_out_ptr = key_cache_dst if direct_kv_write else workspace.key_rot_buf.ptr
+        mtp_fuse_inputs_f16_bf16(
+            workspace.tokens_buf.ptr,
+            self.weights["embed_tokens.weight"].ptr,
+            int(target_hidden_ptr),
+            self.weights["mtp.pre_fc_norm_embedding.weight"].ptr,
+            self.weights["mtp.pre_fc_norm_hidden.weight"].ptr,
+            workspace.fused_buf.ptr,
+            count,
+            hidden,
+            self.vocab,
+            eps=self.eps,
+            threads=256,
+            stream=stream,
+            library=self.mtp_lib,
+        )
+        dflash_dense_bf16_to_bf16(workspace.fused_buf.ptr, self.weights["mtp.fc.weight"].ptr, workspace.fc_buf.ptr, count, 2 * hidden, hidden, threads=128, stream=stream, library=self.dflash_lib)
+        mtp_rmsnorm_bf16_oneplus(workspace.fc_buf.ptr, self.weights["mtp.layers.0.input_layernorm.weight"].ptr, workspace.attn_in_buf.ptr, count, hidden, eps=self.eps, threads=256, stream=stream, library=self.mtp_lib)
+        if indexed_kv_write:
+            dflash_qkv_proj_bf16_mixed_indexed_v(
+                workspace.attn_in_buf.ptr,
+                self.weights["mtp.layers.0.self_attn.q_proj.weight"].ptr,
+                self.weights["mtp.layers.0.self_attn.k_proj.weight"].ptr,
+                self.weights["mtp.layers.0.self_attn.v_proj.weight"].ptr,
+                workspace.q_proj_buf.ptr,
+                workspace.k_proj_buf.ptr,
+                self.value_cache_buf.ptr,
+                workspace.slots_buf.ptr,
+                self.max_mtp_tokens,
+                count,
+                hidden,
+                self.q_proj_features,
+                self.kv_features,
+                threads=128,
+                stream=stream,
+                library=self.dflash_lib,
+            )
+        else:
+            dflash_qkv_proj_bf16_mixed(
+                workspace.attn_in_buf.ptr,
+                self.weights["mtp.layers.0.self_attn.q_proj.weight"].ptr,
+                self.weights["mtp.layers.0.self_attn.k_proj.weight"].ptr,
+                self.weights["mtp.layers.0.self_attn.v_proj.weight"].ptr,
+                workspace.q_proj_buf.ptr,
+                workspace.k_proj_buf.ptr,
+                v_out_ptr,
+                count,
+                hidden,
+                self.q_proj_features,
+                self.kv_features,
+                threads=128,
+                stream=stream,
+                library=self.dflash_lib,
+            )
+        mtp_split_q_gate_f32_bf16(workspace.q_proj_buf.ptr, workspace.query_buf.ptr, workspace.gate_buf.ptr, count, self.q_heads, self.head_dim, threads=256, stream=stream, library=self.mtp_lib)
+        if indexed_kv_write:
+            dflash_head_rmsnorm_rotary_indexed_key_f32(
+                workspace.query_buf.ptr,
+                workspace.k_proj_buf.ptr,
+                self.q_norm_oneplus.ptr,
+                self.k_norm_oneplus.ptr,
+                self.cos_buf.ptr,
+                self.sin_buf.ptr,
+                workspace.positions_buf.ptr,
+                workspace.positions_buf.ptr,
+                workspace.query_rot_buf.ptr,
+                self.key_cache_buf.ptr,
+                workspace.slots_buf.ptr,
+                self.max_mtp_tokens,
+                1,
+                count,
+                count,
+                self.q_heads,
+                self.kv_heads,
+                self.head_dim,
+                self.rotary_dim,
+                self.max_positions,
+                eps=self.eps,
+                threads=128,
+                stream=stream,
+                library=self.dflash_lib,
+            )
+        else:
+            dflash_head_rmsnorm_rotary_f32(
+                workspace.query_buf.ptr,
+                workspace.k_proj_buf.ptr,
+                self.q_norm_oneplus.ptr,
+                self.k_norm_oneplus.ptr,
+                self.cos_buf.ptr,
+                self.sin_buf.ptr,
+                workspace.positions_buf.ptr,
+                workspace.positions_buf.ptr,
+                workspace.query_rot_buf.ptr,
+                key_out_ptr,
+                1,
+                count,
+                count,
+                self.q_heads,
+                self.kv_heads,
+                self.head_dim,
+                self.rotary_dim,
+                self.max_positions,
+                eps=self.eps,
+                threads=128,
+                stream=stream,
+                library=self.dflash_lib,
+            )
+        if not direct_kv_write:
+            # Both workspace rows and cache rows are contiguous, so one copy
+            # covers the whole chunk.
+            self.runtime.memcpy_async(
+                key_cache_dst,
+                workspace.key_rot_buf.ptr,
+                count * self.kv_features * DType.FP32.itemsize,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                int(stream),
+            )
+            self.runtime.memcpy_async(
+                value_cache_dst,
+                workspace.v_proj_buf.ptr,
+                count * self.kv_features * DType.BF16.itemsize,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                int(stream),
+            )
 
     def advance_with_previous_hidden(
         self,
