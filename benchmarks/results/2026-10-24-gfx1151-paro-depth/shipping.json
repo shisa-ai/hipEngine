@@ -1,0 +1,150 @@
+{
+  "passed": true,
+  "performance_claim": false,
+  "cases": [
+    {
+      "id": "code_merge_intervals",
+      "repeats": 2,
+      "ids_sha256": "009fb6e5a155d04f9299548ac86fbcce06ea2eef97dac821511864ad1b77bc1c"
+    },
+    {
+      "id": "code_topological_sort",
+      "repeats": 2,
+      "ids_sha256": "a3be118abb1293a11b852cbba8b129036f854d3ae55ba65ca8e2ad668cb7dfb8"
+    },
+    {
+      "id": "code_lru_cache",
+      "repeats": 2,
+      "ids_sha256": "791c376ba75d6d5f8c400405e33eb02050236b20c2b62550e5deaea4d062153a"
+    },
+    {
+      "id": "code_markdown_table",
+      "repeats": 2,
+      "ids_sha256": "e84d893111e0da2017068ac5762fff17d7bdea24810e8f3f2c03f229daaad00c"
+    },
+    {
+      "id": "general_en_plan",
+      "repeats": 2,
+      "ids_sha256": "7284edb80c97f000781d0142e844ebd4efb06a7234745ec2f9f000fc1a5d7c8d"
+    },
+    {
+      "id": "general_en_explain",
+      "repeats": 2,
+      "ids_sha256": "1f430d805f2d0b83f38915a6547d5d607e2d53e401cf2c04559604d9852b37bb"
+    },
+    {
+      "id": "general_ja_plan",
+      "repeats": 2,
+      "ids_sha256": "cb7c64d5c45613f51935b020b9ef028a236a26ccca501ca7f21452bdf861d7d5"
+    },
+    {
+      "id": "general_ja_explain",
+      "repeats": 2,
+      "ids_sha256": "a6a07a6b038f01ceb7779104d55e1282fb249accd45bebf0af3c30bd6cdca9dd"
+    },
+    {
+      "id": "mixed_ja_en_translate",
+      "repeats": 2,
+      "ids_sha256": "921c7c2b5eb154eef288fe7ecbeb38171834caaf08a5c3056597837da0b7779b"
+    },
+    {
+      "id": "mixed_ja_en_review",
+      "repeats": 2,
+      "ids_sha256": "73bfe5fc32c33991e90b1101eecaa7e82db60a0979e278ef89c4a191c4da8398"
+    },
+    {
+      "id": "heldout_code_rate_limiter",
+      "repeats": 2,
+      "ids_sha256": "efa6d20e718c04e91ba3dafc6e57ac0b75b149129c08fdc1c50590a5b06d8f91"
+    },
+    {
+      "id": "heldout_code_interval_schedule",
+      "repeats": 2,
+      "ids_sha256": "f455cd96a53d89a678e94e3af1c2ffffcf9c227427c0c31192edc64d931be116"
+    },
+    {
+      "id": "heldout_general_en_incident",
+      "repeats": 2,
+      "ids_sha256": "7634f0b509e1f8bc2a8ab00aeee031bd8534d7522c3c21f4f10e4b9f615d776a"
+    },
+    {
+      "id": "heldout_general_en_quant",
+      "repeats": 2,
+      "ids_sha256": "4c0d2e303449e0ac7f078aa8439c607c6dd228884731972f2366b7760e2af1a3"
+    },
+    {
+      "id": "heldout_general_ja_migration",
+      "repeats": 2,
+      "ids_sha256": "7fe23aafc0aae3537ecb2f74b287e751f0dfe67e6824c352c74b9ba89c7fe6cb"
+    },
+    {
+      "id": "heldout_general_ja_speculative",
+      "repeats": 2,
+      "ids_sha256": "a79e7b5c9fed7e1379f22ab1569f2580fcb929996b3f17f2a50185b92cf93fe2"
+    },
+    {
+      "id": "heldout_mixed_summary",
+      "repeats": 2,
+      "ids_sha256": "68c4eb47de1896af285e606a828077a4bc74353c314869165bde76d720233b06"
+    },
+    {
+      "id": "heldout_mixed_review",
+      "repeats": 2,
+      "ids_sha256": "d22a167bf9a56e969c2baf1d27a14d3933766de5e296d3c565f0c19dbee29341"
+    },
+    {
+      "id": "p37",
+      "repeats": 2,
+      "ids_sha256": "42555db639e99d0e36ecd3c1a347ae1b15f45fecf3b4a7c28771be3bf762f95a"
+    },
+    {
+      "id": "p255",
+      "repeats": 2,
+      "ids_sha256": "42555db639e99d0e36ecd3c1a347ae1b15f45fecf3b4a7c28771be3bf762f95a"
+    },
+    {
+      "id": "p257",
+      "repeats": 2,
+      "ids_sha256": "42555db639e99d0e36ecd3c1a347ae1b15f45fecf3b4a7c28771be3bf762f95a"
+    },
+    {
+      "id": "p511",
+      "repeats": 2,
+      "ids_sha256": "42555db639e99d0e36ecd3c1a347ae1b15f45fecf3b4a7c28771be3bf762f95a"
+    },
+    {
+      "id": "p512",
+      "repeats": 2,
+      "ids_sha256": "42555db639e99d0e36ecd3c1a347ae1b15f45fecf3b4a7c28771be3bf762f95a"
+    },
+    {
+      "id": "p513",
+      "repeats": 2,
+      "ids_sha256": "42555db639e99d0e36ecd3c1a347ae1b15f45fecf3b4a7c28771be3bf762f95a"
+    },
+    {
+      "id": "p1024",
+      "repeats": 2,
+      "ids_sha256": "42555db639e99d0e36ecd3c1a347ae1b15f45fecf3b4a7c28771be3bf762f95a"
+    },
+    {
+      "id": "p1025",
+      "repeats": 2,
+      "ids_sha256": "42555db639e99d0e36ecd3c1a347ae1b15f45fecf3b4a7c28771be3bf762f95a"
+    },
+    {
+      "id": "p4096",
+      "repeats": 2,
+      "ids_sha256": "42555db639e99d0e36ecd3c1a347ae1b15f45fecf3b4a7c28771be3bf762f95a"
+    }
+  ],
+  "driver_sha256": "8ca5400a9ddccd7d7d2aa0996cf4076f85c567c25951edad65e6ee82201d5046",
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 39422665722,
+    "total_allocated_bytes": 75712071386,
+    "total_freed_bytes": 75712071386,
+    "active_allocations": 0,
+    "peak_allocations": 4606
+  }
+}

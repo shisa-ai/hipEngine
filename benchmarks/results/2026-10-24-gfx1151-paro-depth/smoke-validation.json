@@ -1,0 +1,86 @@
+{
+  "passed": true,
+  "checked_calls": 24,
+  "first": {
+    "natural": {
+      "ar": {
+        "samples": 1,
+        "decode_tokens_per_second": 67.68826082242191,
+        "whole_call_tokens_per_second": 63.58595799954076,
+        "median_first_token_seconds": 0.13676334102638066,
+        "accepted_candidates": 0,
+        "proposed_candidates": 0
+      },
+      "b1": {
+        "samples": 1,
+        "decode_tokens_per_second": 66.76297686956707,
+        "whole_call_tokens_per_second": 62.11279836279522,
+        "median_first_token_seconds": 0.15847749006934464,
+        "accepted_candidates": 62,
+        "proposed_candidates": 65
+      },
+      "b2": {
+        "samples": 1,
+        "decode_tokens_per_second": 70.40824777327528,
+        "whole_call_tokens_per_second": 65.16990537969183,
+        "median_first_token_seconds": 0.1602845718152821,
+        "accepted_candidates": 81,
+        "proposed_candidates": 90
+      },
+      "b3": {
+        "samples": 1,
+        "decode_tokens_per_second": 69.89713975406043,
+        "whole_call_tokens_per_second": 64.80913783528887,
+        "median_first_token_seconds": 0.15803626202978194,
+        "accepted_candidates": 89,
+        "proposed_candidates": 113
+      }
+    },
+    "controls": {
+      "p513": {
+        "ar": {
+          "decode_tokens_per_second": 64.43386174106097,
+          "whole_call_tokens_per_second": 51.423944162740874,
+          "first_token_seconds": 0.51808898197487
+        },
+        "b1": {
+          "decode_tokens_per_second": 64.64008822896415,
+          "whole_call_tokens_per_second": 48.93933438242857,
+          "first_token_seconds": 0.6507193960715085
+        },
+        "b2": {
+          "decode_tokens_per_second": 71.31434306361271,
+          "whole_call_tokens_per_second": 52.64191728105761,
+          "first_token_seconds": 0.6506351090501994
+        },
+        "b3": {
+          "decode_tokens_per_second": 78.13941633107636,
+          "whole_call_tokens_per_second": 56.27480073533344,
+          "first_token_seconds": 0.6492101568728685
+        }
+      },
+      "p4096": {
+        "ar": {
+          "decode_tokens_per_second": 64.96526501613786,
+          "whole_call_tokens_per_second": 21.058285167626696,
+          "first_token_seconds": 4.1234642108902335
+        },
+        "b1": {
+          "decode_tokens_per_second": 47.04241855058316,
+          "whole_call_tokens_per_second": 16.403959363493076,
+          "first_token_seconds": 5.103257990907878
+        },
+        "b2": {
+          "decode_tokens_per_second": 50.41360482301286,
+          "whole_call_tokens_per_second": 16.80223764278687,
+          "first_token_seconds": 5.098826951114461
+        },
+        "b3": {
+          "decode_tokens_per_second": 53.34538189571609,
+          "whole_call_tokens_per_second": 17.0850133012043,
+          "first_token_seconds": 5.111203022068366
+        }
+      }
+    }
+  }
+}

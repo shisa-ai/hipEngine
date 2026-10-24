@@ -1,4 +1,4 @@
-"""Staged packed-PARO MTP adapter for one request and one candidate."""
+"""Staged packed-PARO MTP adapter for one request and a bounded candidate chain."""
 
 from __future__ import annotations
 
@@ -54,12 +54,30 @@ from hipengine.speculative.transaction import (
 
 _PROPOSER_CAPACITY_FLOOR = 256
 
+#: Deepest candidate chain the resident verifier executes for one request. The
+#: target owns ``depth + 1`` verify rows (the root plus one row per candidate) and
+#: the provider owns ``depth`` draft advances per cycle, so this is a structural
+#: bound on both owners rather than a tuned default.
+PARO_MTP2_MAX_CANDIDATE_DEPTH = 3
+
 #: Rows one bulk historical-prompt append stages. This bounds the request's
 #: prompt-priming workspace, never the prompt: a longer prompt is primed in more
 #: chunks through the same slab. It matches the proposer's default per-launch row
 #: chunk, so one sink chunk is one bulk launch set, and it must stay at or below
 #: that primitive's hard row cap (64).
 PROMPT_PRIME_CHUNK_ROWS = 16
+
+
+def _proposer_token_requirement(prompt_rows: int, max_tokens: int, depth: int) -> int:
+    """Tokens one proposer must hold for a request's prompt and candidate chain.
+
+    The provider walks the prompt, then one draft row per candidate, then the
+    target's bonus row. ``max_tokens`` is already counted twice for the prompt
+    tail, so the chain adds ``depth`` rows rather than a second copy of the
+    context.
+    """
+
+    return int(prompt_rows) + 2 * int(max_tokens) + int(depth) + 8
 
 
 def _proposer_capacity_bucket(required_tokens: int) -> int:
@@ -77,6 +95,10 @@ class _ParoMTP2RequestState:
     prompt_sink: "_ParoPromptPrimeSink | None" = None
     checkpoint: NativeMtpStateSnapshot | None = None
     journal: SpeculativeStateJournal | None = None
+    # One provider snapshot per drafted candidate past the accepted prefix:
+    # ``draft_snapshots[k]`` is the state after consuming a prefix of ``k``
+    # candidates, so accepting ``k`` restores ``draft_snapshots[k]``.
+    draft_snapshots: tuple[NativeMtpStateSnapshot, ...] = ()
     last_proposal_seconds: float = 0.0
     prompt_prime_seconds: float = 0.0
 
@@ -290,7 +312,10 @@ class _ParoPromptPrimeSink:
                 target_hidden_ptr=int(self._final_row_ptr),
                 position=self.total_rows,
                 need_result=True,
-                read_token_id=False,
+                # A chained cycle drafts from this row's sampled token, so the
+                # host readback is required; a one-candidate cycle reads the
+                # provider's own packed top-1 scalar on device instead.
+                read_token_id=self.adapter.request_depth(self.request_id) > 1,
                 read_expert_topk=False,
                 read_lm_head_value=False,
                 stream=0 if self._stream is None else int(self._stream),
@@ -417,19 +442,36 @@ class _ParoPromptPrimeSink:
 
 
 class Qwen35ParoMTP2Adapter:
-    """One bounded C1/K1 provider+target cycle on the qualified PARO route.
+    """One bounded provider+target cycle on the packed PARO route.
 
-    The first S7 capability deliberately exposes no C>1 shape.  Provider state
-    is checkpointed before proposal, target state is copied into the spare
-    resident slot before verify, and either both owners commit or both restore.
+    The adapter plans between one and ``candidate_budget`` candidates per cycle.
+    Provider state is checkpointed before proposal, target state is copied into
+    the spare resident slot before verify, and either both owners commit or both
+    restore. A chained cycle drafts candidates sequentially and keeps one
+    provider snapshot per candidate so the accepted prefix can be repaired
+    exactly; a one-candidate cycle hands the target the provider's own packed
+    top-1 scalar and never reads a token back to the host.
     """
 
     provider_name = "paro_mtp2"
 
-    def __init__(self, owner: Any, *, enabled: bool = True) -> None:
+    def __init__(
+        self,
+        owner: Any,
+        *,
+        enabled: bool = True,
+        candidate_budget: int = 1,
+    ) -> None:
         self.owner = owner
         self.generator = owner.generator
         self.enabled = bool(enabled)
+        # Deepest chain this adapter may execute. The scheduler resolves it
+        # through the shared serving policy and registers one intent per
+        # request; both numbers come from the same resolved depth, so the
+        # session's verify rows and the planned candidate count cannot drift.
+        self.candidate_budget = max(
+            1, min(PARO_MTP2_MAX_CANDIDATE_DEPTH, int(candidate_budget))
+        )
         self._intents: dict[int, int] = {}
         self._states: dict[int, _ParoMTP2RequestState] = {}
         self._disabled_requests: set[int] = set()
@@ -443,11 +485,24 @@ class Qwen35ParoMTP2Adapter:
         validate_staged_target_adapter(self)
 
     def register_request(self, request_id: int, candidate_budget: int) -> None:
+        """Record one request's desired chain depth, clamped to this adapter.
+
+        The scheduler hands the same number to the planner as its desired
+        candidate count, so the adapter never invents a depth the plan did not
+        ask for and never plans one it cannot execute.
+        """
+
         rid = int(request_id)
-        if int(candidate_budget) <= 0:
+        budget = int(candidate_budget)
+        if budget <= 0:
             raise ValueError("PARO MTP2 candidate budget must be positive")
-        self._intents[rid] = 1
+        self._intents[rid] = min(budget, self.candidate_budget)
         self._disabled_requests.discard(rid)
+
+    def request_depth(self, request_id: int) -> int:
+        """Return the candidate depth this request may plan for."""
+
+        return int(self._intents.get(int(request_id), 0))
 
     def begin_prompt(self, request_id: int) -> None:
         rid = int(request_id)
@@ -460,7 +515,11 @@ class Qwen35ParoMTP2Adapter:
         if session is None:
             raise RuntimeError("PARO MTP2 target session is unavailable")
         started = time.perf_counter()
-        required_tokens = len(row.prompt_ids) + 2 * int(row.request.max_tokens) + 8
+        required_tokens = _proposer_token_requirement(
+            len(row.prompt_ids),
+            int(row.request.max_tokens),
+            self.candidate_budget,
+        )
         proposer_capacity = _proposer_capacity_bucket(required_tokens)
         proposer = None
         while self._proposer_pool:
@@ -529,7 +588,9 @@ class Qwen35ParoMTP2Adapter:
                 target_hidden_ptr=int(target_hidden_ptr),
                 position=index + 1,
                 need_result=True,
-                read_token_id=False,
+                # The root's sampled token seeds the first candidate of the
+                # first cycle, so a chained request needs it on the host.
+                read_token_id=self.request_depth(rid) > 1,
                 read_expert_topk=False,
                 read_lm_head_value=False,
             )
@@ -618,15 +679,24 @@ class Qwen35ParoMTP2Adapter:
         session = self.owner._session
         if session is None:
             raise RuntimeError("PARO MTP2 target session is unavailable after prefill")
+        depth = self.request_depth(rid)
+        if depth <= 0:
+            depth = 1
+        # Verify writes rows at the root and one per candidate, so the highest
+        # position this request's cycles touch is ``context - 1 + depth``; the
+        # reservation must cover it rather than the root alone.
         session.prepare_specdec2_verify_scratch(
-            rows=2,
+            rows=depth + 1,
             chain_attn_mode=(
                 "c1_loop"
                 if str(getattr(self.generator, "execution_profile", "production"))
                 == "strict"
                 else "decode_batched"
             ),
-            max_context_tokens=len(row.prompt_ids) + int(row.request.max_tokens),
+            max_context_tokens=min(
+                int(session.max_sequence_length),
+                len(row.prompt_ids) + int(row.request.max_tokens) + depth,
+            ),
         )
         self.release_prompt_capture(rid)
         self.owner._release_mtp2_prompt_capture(row)
@@ -660,14 +730,17 @@ class Qwen35ParoMTP2Adapter:
             if profile == "strict"
             else "b1_graph_off_fast_d64_candidate"
         )
+        depth = self.request_depth(rid)
+        if depth <= 0:
+            return None
         return SpeculativeCapability(
             capability_key=(
-                f"paro_mtp2_c1:{self.generator.backend}:w4_paro:{profile}:{target_variant}"
+                f"paro_mtp2_c{depth}:{self.generator.backend}:w4_paro:{profile}:{target_variant}"
             ),
             target_key="qwen_paro_w4",
             provider_key="qwen_paro_mtp_bf16",
             method_key="mtp2",
-            policy_fingerprint=f"paro-mtp2:c1:k1:{profile}:{target_variant}",
+            policy_fingerprint=f"paro-mtp2:c{depth}:k1:{profile}:{target_variant}",
             execution_profile=profile,
             kv_backend_key="paged_bf16_kv_live_spans",
             attachment=ProviderAttachment.TARGET_ATTACHED,
@@ -675,10 +748,10 @@ class Qwen35ParoMTP2Adapter:
             supported_modes=("verify_chain",),
             supported_sampling_modes=("greedy",),
             max_requests=1,
-            max_candidates_per_request=1,
-            max_frontier_rows=2,
+            max_candidates_per_request=depth,
+            max_frontier_rows=depth + 1,
             proposal_widths=(1,),
-            target_row_buckets=(2,),
+            target_row_buckets=tuple(range(2, depth + 2)),
             target_transaction_mode=SpecTransactionMode.PACKED_SCRATCH,
             provider_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
             # The resident target captures and replays one verifier
@@ -687,7 +760,22 @@ class Qwen35ParoMTP2Adapter:
             graph_supported=True,
             eager_supported=True,
             strict_fallback_key="paro_target_c1_loop_exact",
-            max_context_tokens=int(session.max_sequence_length) - 2,
+            # The shared planner computes ``context_room = max_context_tokens -
+            # context_tokens - 1`` and clamps the candidate count against it, so
+            # this field is the target's context capacity and nothing else; the
+            # planner's own ``- 1`` is the root row's reservation.
+            #
+            # Bound: a cycle verifies the root at ``context_tokens - 1`` and
+            # candidate ``k`` at ``context_tokens - 1 + k``, so the highest
+            # position it may touch is ``context_tokens - 1 + count``, and
+            # ``_check_position`` requires that to be below
+            # ``max_sequence_length``. With ``count <= max_sequence_length -
+            # context_tokens - 1`` the highest touched position is at most
+            # ``max_sequence_length - 2``. Subtracting the depth here would
+            # reserve the whole chain a second time and refuse shallower tails
+            # near capacity. This matches the dense GGUF declaration, which
+            # publishes the target's capacity for the same reason.
+            max_context_tokens=int(session.max_sequence_length),
             kv_binding=SpeculativeKVBinding.for_resident_target(
                 target=session,
                 storage_view_key="paged_bf16_kv_live_spans",
@@ -697,17 +785,24 @@ class Qwen35ParoMTP2Adapter:
         )
 
     def claims_fit(self, plan: SpecRequestPlan) -> bool:
-        return bool(
-            self.enabled
-            and self._active_claims is None
-            and plan.request_ids == plan.speculative_request_ids
-            and len(plan.request_ids) == 1
-            and plan.candidate_counts == (1,)
-            and int(plan.request_ids[0]) in self._states
-        )
+        if (
+            not self.enabled
+            or self._active_claims is not None
+            or plan.request_ids != plan.speculative_request_ids
+            or len(plan.request_ids) != 1
+            or int(plan.request_ids[0]) not in self._states
+        ):
+            return False
+        counts = tuple(int(count) for count in plan.candidate_counts)
+        if len(counts) != 1:
+            return False
+        depth = self.request_depth(int(plan.request_ids[0]))
+        return bool(1 <= counts[0] <= depth)
 
     def component_claims(self, plan: SpecRequestPlan) -> Mapping[str, ResourceClaimSet]:
         rid = int(plan.request_ids[0])
+        # The target owns one verify row per candidate plus the root row.
+        target_rows = int(plan.candidate_counts[0]) + 1
         return {
             "provider": ResourceClaimSet.from_mapping(
                 f"{plan.operation_id}:provider",
@@ -717,7 +812,7 @@ class Qwen35ParoMTP2Adapter:
             ),
             "target": ResourceClaimSet.from_mapping(
                 f"{plan.operation_id}:target",
-                {"paro_mtp2.target_rows": 2},
+                {"paro_mtp2.target_rows": target_rows},
                 request_id=rid,
                 lifetime=ClaimLifetime.TRANSACTION,
             ),
@@ -768,11 +863,18 @@ class Qwen35ParoMTP2Adapter:
         stream: int | None = None,
     ) -> None:
         del request_semantics, stream
+        counts = tuple(int(count) for count in plan.candidate_counts)
+        depth = (
+            self.request_depth(int(plan.request_ids[0]))
+            if len(plan.request_ids) == 1
+            else 0
+        )
         if (
             self._active_claims is None
             or len(plan.request_ids) != 1
             or plan.request_ids != plan.speculative_request_ids
-            or plan.candidate_counts != (1,)
+            or len(counts) != 1
+            or not 1 <= counts[0] <= depth
             or int(plan.request_ids[0]) not in self._states
         ):
             raise RuntimeError("PARO MTP2 plan is not prepared/claim-fit")
@@ -791,6 +893,12 @@ class Qwen35ParoMTP2Adapter:
         rid = int(plan.request_ids[0])
         row = self.owner._row(rid)
         state = self._states[rid]
+        count = int(plan.candidate_counts[0])
+        depth = self.request_depth(rid)
+        if not 1 <= count <= depth:
+            raise RuntimeError(
+                "PARO MTP2 proposal depth exceeds the request's candidate budget"
+            )
         started = time.perf_counter()
         if state.journal is not None:
             raise RuntimeError("PARO MTP2 previous cycle still owns a state journal")
@@ -799,28 +907,74 @@ class Qwen35ParoMTP2Adapter:
             "provider", lambda: state.proposer.save_state(0),
             state.proposer.restore_state,
         )
-        candidate_token_ids = state.proposer.device_candidate_token_ids()
+        snapshots: list[NativeMtpStateSnapshot] = []
+        candidate_token_ids: Tensor | None = None
+        if depth == 1:
+            # A one-candidate cycle hands the target the provider's own packed
+            # top-1 scalar and keeps the candidate token off the host.
+            candidate_tokens: tuple[int, ...] = (0,)
+            candidate_token_ids = state.proposer.device_candidate_token_ids()
+            handoff = "device_i32"
+            row.mtp2_candidate_device_handoffs += 1
+        else:
+            candidate_tokens = (self._host_candidate_token(state.proposer),)
+            if count > 1:
+                # One snapshot per candidate the cycle may have to undo. The
+                # pre-draft state repairs a zero-length accepted prefix, and the
+                # live draft state already repairs ``count - 1``, so slots
+                # ``1 .. count-1`` cover every shorter prefix.
+                snapshots.append(state.proposer.save_state(1))
+                for step in range(1, count):
+                    state.proposer.advance_with_previous_hidden(
+                        input_token=candidate_tokens[-1],
+                        position=state.proposer.position + 1,
+                        need_result=True,
+                        read_token_id=True,
+                        read_expert_topk=False,
+                        read_lm_head_value=False,
+                    )
+                    candidate_tokens += (self._host_candidate_token(state.proposer),)
+                    if step < count - 1:
+                        snapshots.append(state.proposer.save_state(1 + step))
+            handoff = "host_i32"
+        state.draft_snapshots = tuple(snapshots)
         state.last_proposal_seconds = time.perf_counter() - started
-        row.mtp2_candidate_device_handoffs += 1
         return CandidateGraph(
             provider_key=plan.provider_key or "qwen_paro_mtp_bf16",
             method_key="mtp2",
-            policy_fingerprint="paro-mtp2:c1:k1",
+            policy_fingerprint=f"paro-mtp2:c{depth}:k1",
             cycle_id=plan.cycle_id,
             transaction_id=self._next_transaction_id(),
             request_ids=plan.request_ids,
             resident_slots=plan.resident_slots,
             root_positions=(int(semantics[0].context_tokens) - 1,),
-            row_offsets=(0, 1),
-            row_to_request=(rid,),
-            parent_candidate_rows=(-1,),
-            draft_depths=(1,),
-            active_mask=(True,),
-            candidate_tokens=(0,),
+            row_offsets=(0, count),
+            row_to_request=(rid,) * count,
+            parent_candidate_rows=tuple(
+                -1 if step == 0 else step - 1 for step in range(count)
+            ),
+            draft_depths=tuple(range(1, count + 1)),
+            active_mask=(True,) * count,
+            candidate_tokens=candidate_tokens,
             token_ids=candidate_token_ids,
             mode="verify_chain",
-            provider_metadata=(("candidate_handoff", "device_i32"),),
+            provider_metadata=(("candidate_handoff", handoff),),
         )
+
+    @staticmethod
+    def _host_candidate_token(proposer: NativeMtpChainProposer) -> int:
+        """Return the provider's host-visible next candidate token.
+
+        A device-only result leaves ``current.token`` at its sentinel, so a
+        chained proposal refuses instead of drafting from an invalid id.
+        """
+
+        token = int(proposer.current.token)
+        if token < 0:
+            raise RuntimeError(
+                "PARO MTP2 chained proposal requires a host candidate token"
+            )
+        return token
 
     def kv_live_spans_owner(self, plan: SpecRequestPlan) -> str:
         return f"paro-resident:{id(self.owner)}:{plan.operation_id}"
@@ -834,12 +988,17 @@ class Qwen35ParoMTP2Adapter:
         graph_mode: str,
         candidate_token_ids_i32: Tensor | None,
     ) -> Any:
+        rows = int(batch.rows)
         return session.verify_chain_bulk_and_commit(
             batch,
             base_slot=0,
             capture_layer_ids=(),
+            # A zero-width capture is the persistent PARO MTP contract, but the
+            # row count must equal this cycle's verify rows: the verifier refuses
+            # a capture buffer shorter than the cycle, and the graph-commit
+            # bucket keys on the same shape.
             capture_hidden_concat=Tensor.from_handle(
-                0, (2, 0), DType.BF16, Device("hip", 0)
+                0, (rows, 0), DType.BF16, Device("hip", 0)
             ),
             capture_row_start=0,
             chain_attn_mode=str(chain_attn_mode),
@@ -941,32 +1100,33 @@ class Qwen35ParoMTP2Adapter:
         )
         actual_route = self._executed_graph_route(verify)
         target_seconds = time.perf_counter() - target_started
-        row.mtp2_candidate_d2h_after_target += int(
-            frontier.candidate_graph.candidate_rows
+        candidate_graph = frontier.candidate_graph
+        count = (
+            int(candidate_graph.candidate_counts[0])
+            if candidate_graph is not None
+            else 1
         )
+        if candidate_graph is not None and candidate_graph.token_ids is not None:
+            row.mtp2_candidate_d2h_after_target += int(candidate_graph.candidate_rows)
         accepted = int(verify.accepted_count)
         bonus = int(
             verify.next_token
             if verify.next_token is not None
             else verify.target_top1[accepted]
         )
+        depth = max(1, self.request_depth(rid))
         update_started = time.perf_counter()
         try:
-            if accepted:
-                state.proposer.advance_with_previous_hidden(
-                    input_token=int(verify.accepted_tokens[0]),
-                    position=state.proposer.position + 1,
-                    need_result=False,
-                    read_expert_topk=False,
-                    read_lm_head_value=False,
-                )
-            state.proposer.advance_with_target_hidden(
-                input_token=bonus,
+            self._repair_provider_after_verify(
+                state,
+                accepted=accepted,
+                count=count,
+                accepted_tokens=tuple(int(token) for token in verify.accepted_tokens),
+                bonus=bonus,
                 target_hidden_ptr=int(verify.selected_target_hidden_ptr),
-                position=state.proposer.position + 1,
-                read_token_id=False,
-                read_expert_topk=False,
-                read_lm_head_value=False,
+                # The next cycle's first candidate comes from this row's host
+                # readback, which only a chained cycle needs.
+                read_token_id=depth > 1,
             )
         except Exception:
             self._restore_target_and_provider(state, session)
@@ -993,7 +1153,7 @@ class Qwen35ParoMTP2Adapter:
                 ),
             )
         row.mtp2_cycles += 1
-        row.mtp2_candidate_counts.append(1)
+        row.mtp2_candidate_counts.append(count)
         row.mtp2_accepted_counts.append(accepted)
         row.mtp2_execution_routes.append(actual_route)
         accept = AcceptResult(
@@ -1053,6 +1213,54 @@ class Qwen35ParoMTP2Adapter:
             self._intents.pop(int(request_id), None)
             self._disabled_requests.discard(int(request_id))
 
+    @staticmethod
+    def _repair_provider_after_verify(
+        state: _ParoMTP2RequestState,
+        *,
+        accepted: int,
+        count: int,
+        accepted_tokens: tuple[int, ...],
+        bonus: int,
+        target_hidden_ptr: int,
+        read_token_id: bool,
+    ) -> None:
+        """Move the provider onto the accepted prefix, then take the bonus row.
+
+        The proposal left one snapshot per candidate it drafted past the
+        accepted prefix. Accepting ``count - 1`` needs no restore because the
+        live draft state already sits after that candidate; full acceptance
+        consumes the last candidate from the live state; a shorter prefix
+        restores the snapshot taken before the first rejected candidate. A
+        one-candidate cycle is the ``count == 1`` case of the same table, so its
+        two provider calls are unchanged.
+        """
+
+        proposer = state.proposer
+        if accepted >= count:
+            proposer.advance_with_previous_hidden(
+                input_token=int(accepted_tokens[-1]),
+                position=proposer.position + 1,
+                need_result=False,
+                read_expert_topk=False,
+                read_lm_head_value=False,
+            )
+        elif accepted < count - 1:
+            snapshots = state.draft_snapshots
+            if accepted >= len(snapshots):
+                raise RuntimeError(
+                    "PARO MTP2 accepted prefix has no provider snapshot"
+                )
+            proposer.restore_state(snapshots[accepted])
+        proposer.advance_with_target_hidden(
+            input_token=bonus,
+            target_hidden_ptr=int(target_hidden_ptr),
+            position=proposer.position + 1,
+            read_token_id=bool(read_token_id),
+            read_expert_topk=False,
+            read_lm_head_value=False,
+        )
+        state.draft_snapshots = ()
+
     def _checkpoint_target(
         self, state: _ParoMTP2RequestState, session: Any,
     ) -> None:
@@ -1086,6 +1294,7 @@ class Qwen35ParoMTP2Adapter:
             session.runtime.device_synchronize()
         state.checkpoint = None
         state.journal = None
+        state.draft_snapshots = ()
 
     def _cancelled_result(
         self,

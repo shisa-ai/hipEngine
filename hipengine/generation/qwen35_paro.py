@@ -155,16 +155,67 @@ class Qwen35ParoOneTokenGenerator:
         self._resident_model_runner = owner
         return owner
 
-    # The packed-PARO C1/K1 adapter serves one candidate per cycle; an omitted
-    # server depth therefore publishes the adapter's own fixed budget instead
-    # of waiting for evidence rows that do not exist for this artifact family.
-    speculative_candidate_budget_default = 1
+    # Automatic selection prefers two candidates after the paired depth sweep.
+    # The implementation still accepts explicit depths through three; this
+    # preference does not narrow the declared capability.
+    def speculative_candidate_budget_default(self) -> int:
+        """Depth this generator's PARO MTP2 path uses when unpinned."""
+
+        from hipengine.generation.qwen35_paro_mtp2 import (
+            PARO_MTP2_MAX_CANDIDATE_DEPTH,
+        )
+
+        declarations = tuple(
+            getattr(self.model_plugin, "speculative_mtp_serving_implementations", ())
+            or ()
+        )
+        backend = str(getattr(self, "backend", "") or "")
+        # The backend may still be unresolved when the depth is published, so a
+        # placeholder accepts every BF16 declaration this plugin offers. Both
+        # PARO declarations carry the same depth, and the result is clamped to
+        # the adapter's structural bound either way.
+        offered = [
+            int(declaration.max_candidate_count)
+            for declaration in declarations
+            if declaration.kv_storage == "bf16"
+            and (
+                backend in {"", "auto"}
+                or any(pair[0] == backend for pair in declaration.backends)
+            )
+        ]
+        return max(
+            1,
+            min(
+                2,
+                PARO_MTP2_MAX_CANDIDATE_DEPTH,
+                max(offered, default=PARO_MTP2_MAX_CANDIDATE_DEPTH),
+            ),
+        )
+
+    def mtp2_candidate_depth(self) -> int:
+        """Candidate depth the resident PARO MTP2 adapter may execute.
+
+        The resolved serving budget and the adapter's per-request intent both
+        read this number, so the session's verify rows, the planner's desired
+        count and the adapter's structural bound cannot disagree.
+        """
+
+        from hipengine.generation.qwen35_paro_mtp2 import (
+            PARO_MTP2_MAX_CANDIDATE_DEPTH,
+        )
+
+        budget = getattr(self, "speculative_candidate_budget", None)
+        if budget is None:
+            budget = self.speculative_candidate_budget_default()
+        return max(1, min(PARO_MTP2_MAX_CANDIDATE_DEPTH, int(budget)))
 
     def resolve_speculative_mtp_serving_plan(
         self,
         *,
         realized_group_rows: int,
         sampling_mode: str,
+        resident_capacity: int | None = None,
+        candidate_budget: int | None = None,
         kv_storage: str = "auto",
         memory_fit: bool = True,
         request_mode: str = "automatic",
@@ -182,12 +233,15 @@ class Qwen35ParoOneTokenGenerator:
         backend = str(getattr(self, "backend", "") or "auto")
         target_arch = ""
         runner = self._resident_model_runner
-        if runner is not None:
-            generator = getattr(runner, "generator", None)
-            resolved_backend = getattr(generator, "backend", None)
+        runtime_runner = (
+            getattr(runner, "_runner", None) or getattr(self, "_runner", None)
+        )
+        identity_owner = runtime_runner or getattr(runner, "generator", None)
+        if identity_owner is not None:
+            resolved_backend = getattr(identity_owner, "backend", None)
             if resolved_backend:
                 backend = str(resolved_backend)
-            target_arch = str(getattr(generator, "target_arch", "") or "")
+            target_arch = str(getattr(identity_owner, "target_arch", "") or "")
         key = SpeculativeMTPServingKey(
             artifact_sha256=None,
             artifact_size_bytes=None,
@@ -199,9 +253,13 @@ class Qwen35ParoOneTokenGenerator:
             kv_layout="uniform",
             realized_group_rows=int(realized_group_rows),
             resident_capacity=(
-                int(getattr(runner, "capacity", 1)) if runner is not None else 1
+                int(resident_capacity) if resident_capacity is not None
+                else int(getattr(runner, "capacity", 1))
             ),
-            candidate_budget=1,
+            candidate_budget=(
+                int(candidate_budget) if candidate_budget is not None
+                else self.mtp2_candidate_depth()
+            ),
             sampling_mode=str(sampling_mode),
             memory_fit=bool(memory_fit),
         )
@@ -2434,7 +2492,11 @@ class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
             return None
         from hipengine.generation.qwen35_paro_mtp2 import Qwen35ParoMTP2Adapter
 
-        self._mtp2_adapter = Qwen35ParoMTP2Adapter(self, enabled=True)
+        resolve_depth = getattr(self.generator, "mtp2_candidate_depth", None)
+        depth = int(resolve_depth()) if callable(resolve_depth) else 1
+        self._mtp2_adapter = Qwen35ParoMTP2Adapter(
+            self, enabled=True, candidate_budget=depth
+        )
         return self._mtp2_adapter
 
     def register_speculative_request(
@@ -2450,7 +2512,7 @@ class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
         if adapter is None:
             raise NotImplementedError(self._staged_adapter_missing_error())
         adapter.register_request(request_id, candidate_budget)
-        row.mtp2_candidate_budget = 1
+        row.mtp2_candidate_budget = adapter.request_depth(request_id)
 
     # StagedAdapterDelegation hooks: this runner resolves the PARO C1 adapter
     # lazily and counts every recovered cycle into its fallback-reason table.
@@ -2466,7 +2528,42 @@ class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
             self._fallback_reasons[reason] += len(plan.request_ids)
 
     def speculative_desired_candidate_count(self, request: GenerationRequest) -> int:
-        return 1 if int(request.max_tokens) > 1 else 0
+        """Return the candidate depth the shared planner should plan for.
+
+        This is the single public lever for the chain depth: the same number
+        reaches the planner as its desired count and the adapter as its
+        per-request intent, so a deployment that pins one, two or three
+        candidates needs no other change. The planner still clamps it against
+        the capability, the remaining output budget and the context bound.
+        """
+
+        max_tokens = int(request.max_tokens)
+        if max_tokens <= 1:
+            return 0
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            return 1
+        return max(1, min(int(adapter.candidate_budget), max_tokens))
+
+    def mtp2_verify_row_requirement(self) -> int:
+        """Target verify rows this owner must launch, or 0 without the adapter.
+
+        One chained cycle launches ``depth + 1`` rows (the root plus one per
+        candidate) and the verifier refuses rows above the session's batch
+        capacity, so the session has to be built for the deepest chain this
+        owner may plan.
+        """
+
+        backend = str(getattr(self._runner, "backend", "") or "")
+        if not backend or not backend_package_capability(
+            backend,
+            "PARO_SPECDEC2_MTP2_C1",
+            False,
+        ):
+            return 0
+        resolve_depth = getattr(self.generator, "mtp2_candidate_depth", None)
+        depth = int(resolve_depth()) if callable(resolve_depth) else 1
+        return max(2, depth + 1)
 
     def speculative_graph_available(self, work) -> bool:
         del work
@@ -2875,9 +2972,19 @@ class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
         capacity_ok = session is not None and int(session.max_sequence_length) >= required
         key_ok = session is not None and self._session_kv_key == key
         if key_ok and (capacity_ok or auto_context_length):
-            return
+            # The depth is generator-wide and fixed before the first request, so
+            # the required row count is a stable build-time size rather than a
+            # rebuild trigger.
+            required_rows = self.mtp2_verify_row_requirement()
+            if int(getattr(session, "max_batch_size", required_rows)) >= required_rows:
+                return
         if self._rows:
-            reason = "KV policy" if not key_ok else "sequence capacity"
+            if not key_ok:
+                reason = "KV policy"
+            elif not capacity_ok and not auto_context_length:
+                reason = "sequence capacity"
+            else:
+                reason = "verifier rows"
             raise ValueError(
                 f"PARO resident {reason} cannot change while requests are registered"
             )
@@ -2891,14 +2998,8 @@ class Qwen35ParoResidentModelRunner(StagedAdapterDelegation):
         requested_capacity = _session_capacity_for(required)
         kwargs: dict[str, Any] = {
             "max_sequence_length": requested_capacity,
-            "max_batch_size": (
-                max(2, self.capacity)
-                if backend_package_capability(
-                    self._runner.backend,
-                    "PARO_SPECDEC2_MTP2_C1",
-                    False,
-                )
-                else self.capacity
+            "max_batch_size": max(
+                self.mtp2_verify_row_requirement(), self.capacity
             ),
             "kv_policy": kv_policy.create_policy(),
             "kv_scale_dtype": kv_policy.scale_dtype,

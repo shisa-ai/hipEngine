@@ -1,0 +1,36 @@
+{
+  "device_checks": 41,
+  "shipping_public_requests": 54,
+  "timing_calls_validated": 756,
+  "numerical_cases": 75,
+  "default_unit_suite": "passed; exit 0",
+  "full_suite": {
+    "command": "uv run pytest --suite all -v",
+    "passed": 20021,
+    "skipped": 6569,
+    "failed": 2,
+    "seconds": 273.81,
+    "failure_cause": "Outdated GGUF graph fixtures, repaired without production changes"
+  },
+  "focused_repair": {
+    "command": "uv run pytest tests/test_live_qwen35_gguf_nextn_provider.py tests/test_unit_qwen35_gguf_nextn_proposal_graph_cache.py -q -o addopts=",
+    "passed": 57,
+    "skipped": 2
+  },
+  "log_sha256": {
+    "depth-final-default-gpu.log": "79881e44a0598953ed0626c7000dae737550ba6023b7cf9d5166c033686eeb48",
+    "depth-final-unit.log": "f4ad8fec6fb6a05dbab4337f3d43a2f133c275a0128ff99bb1ea8ddf69429cba",
+    "depth-final-all.log": "adda5d82065765bfa9ab4df759955971c18e8d129fd9e81d53f94b4f67c0ea85"
+  },
+  "checks": [
+    "compileall",
+    "CPU fixtures",
+    "registry smoke",
+    "CPU fixture smoke",
+    "smoke-add-plan",
+    "audit",
+    "four documentation gates",
+    "12 benchmark sync tests",
+    "two synthetic artifact-validator tests"
+  ]
+}

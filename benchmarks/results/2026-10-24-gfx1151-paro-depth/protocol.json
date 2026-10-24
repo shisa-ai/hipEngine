@@ -1,0 +1,15 @@
+{
+  "kind": "public_paro_candidate_depth_comparison",
+  "arms": ["ar", "b1", "b2", "b3"],
+  "cases": "All 10 category prompts, all 8 heldouts, and repeated-token controls at 37, 255, 257, 511, 512, 513, 1024, 1025, 4096 tokens",
+  "outputs": 128,
+  "first_run_repetitions": 3,
+  "confirmation_repetitions": 2,
+  "warmups": "One discarded request per case and arm in each command",
+  "order": "Rotate all four arms by repetition index, including one warmup round",
+  "selection_control": "Only desired candidate count changes between MTP arms; registered capability, row sizing and arithmetic remain common",
+  "timing": "Public first-to-last-token interval for 127 output transitions; separately report first-token and whole-call time",
+  "correctness": "Require same-arm repeatable IDs, acceptance and actual eager MTP routes without recovery fallback. Compare B1 IDs to archived graph-unit eager IDs. Cross-depth equality is diagnostic, with numerical and task checks reported separately.",
+  "default_selection": "Choose one global default depth, not a prompt/category lookup. Compare pooled natural-suite decode throughput for B1/B2/B3 in both commands and report whole-call, heldout, per-category and every length-control result. Prefer a deeper depth only when its improvement over B1 repeats in confirmation and its correctness checks pass. If the rankings disagree, keep the previously shipped depth one. Every implemented explicit depth remains executable regardless of the automatic selection.",
+  "limitations": "A deeper path reuses existing registered kernel arithmetic. The cycle-local C1 numerical diagnostic is not an independent BF16 quality certificate. No cross-format PARO-versus-GGUF quality equivalence is claimed."
+}

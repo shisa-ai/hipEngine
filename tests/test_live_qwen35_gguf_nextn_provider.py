@@ -702,9 +702,14 @@ def test_nextn_graph_launch_metadata_survives_delayed_host_upload(monkeypatch) -
     executor._set_batch_session_position = lambda *_a: None
     executor._proposal_graph_runtime_library = object()
     executor._proposal_graph_replays = 0
-    executor._proposal_graphs = {
-        (0, 3): SimpleNamespace(stream=9, graph_exec=10, completion_event=11),
-    }
+    binding = nextn_mod.SpecGraphBinding(bucket=(0, 3))
+    executor._proposal_graph_binding = lambda **_kw: binding
+    executor._proposal_graphs = nextn_mod.SpecGraphStageCache(max_entries=1)
+    executor._proposal_graphs.capture(
+        (0, 3), binding,
+        lambda: SimpleNamespace(stream=9, graph_exec=10, completion_event=11),
+        lambda _graph: None,
+    )
     scratch = SimpleNamespace(
         position_host=np.zeros((1,), dtype=np.int64),
         context_host=np.zeros((1,), dtype=np.int64),
@@ -742,29 +747,39 @@ def test_nextn_graph_launch_metadata_survives_delayed_host_upload(monkeypatch) -
     assert device_values == {0x1000: 7, 0x2000: 25, 0x3000: 26}
 
 
-def test_nextn_proposal_graph_capture_failure_is_cached_as_eager_fallback(
+def test_nextn_proposal_graph_capture_failure_retries_then_caches_success(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     executor = object.__new__(Qwen35GGUFNextNExecutor)
-    executor._proposal_graphs = {}
-    executor._proposal_graph_unavailable = set()
+    executor._proposal_graphs = nextn_mod.SpecGraphStageCache(max_entries=1)
+    executor._proposal_graph_partials = []
+    binding = nextn_mod.SpecGraphBinding(bucket=(0, 3))
+    executor._proposal_graph_binding = lambda **_kw: binding
+    executor._close_proposal_graph = lambda _graph: None
     executor._proposal_graph_last_status = "ready"
     executor._proposal_graph_last_error = None
     executor._proposal_graph_captures = 0
     capture_calls: list[tuple[int, int, int]] = []
+    graph = object()
 
-    def fail_capture(request_id: int, slot: int, budget: int):
+    def capture(request_id: int, slot: int, budget: int):
         capture_calls.append((request_id, slot, budget))
-        raise RuntimeError("unsupported graph")
+        if len(capture_calls) == 1:
+            raise RuntimeError("unsupported graph")
+        return graph
 
-    monkeypatch.setattr(executor, "_capture_exact_chain_graph", fail_capture)
+    monkeypatch.setattr(executor, "_capture_exact_chain_graph", capture)
 
     assert executor._proposal_graph(41, 0, 3) is None
-    assert executor._proposal_graph(41, 0, 3) is None
-    assert capture_calls == [(41, 0, 3)]
-    assert executor._proposal_graph_unavailable == {(0, 3)}
+    assert executor._proposal_graphs.acquire((0, 3), binding)[0] is None
     assert executor._proposal_graph_last_status == "capture_fallback"
     assert executor._proposal_graph_last_error == "RuntimeError: unsupported graph"
+    assert executor._proposal_graph(41, 0, 3) is graph
+    assert executor._proposal_graph(41, 0, 3) is graph
+    assert capture_calls == [(41, 0, 3), (41, 0, 3)]
+    assert executor._proposal_graph_captures == 1
+    assert executor._proposal_graph_last_status == "captured"
+    assert executor._proposal_graph_last_error is None
 
 
 def test_nextn_provider_advances_only_a_fully_accepted_tail() -> None:

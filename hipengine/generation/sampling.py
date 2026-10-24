@@ -1004,7 +1004,11 @@ def speculative_serving_sampling_mode(params: Any) -> str:
     the autoregressive path at admission instead of being served inaccurately.
     """
 
-    if supports_speculative_mtp_sampling(params):
+    blockers = speculative_mtp_sampling_blockers(params)
+    # Ignoring EOS only relaxes completion; it does not process logits or
+    # change raw argmax. Keep actual EOS handling and logit processors subject
+    # to their existing capability checks.
+    if not blockers or blockers == ("ignore_eos",):
         return "greedy_fast"
     if sampler_fast_path_blockers(params) and supports_sampled_speculative_mtp(params):
         # A request that actually samples (temperature, penalties, filters) is the

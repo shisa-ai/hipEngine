@@ -98,6 +98,8 @@ class _SessionDouble:
         self.config = SimpleNamespace(hidden_size=hidden, rms_norm_eps=1e-6)
         self.runtime = None
         self.device = Device("hip", 0)
+        # The verifier reservation is clamped to the session's capacity.
+        self.max_sequence_length = 4096
         self.normalize_calls: list[dict[str, object]] = []
 
     def _write_final_normalized_hidden_bf16_rows(

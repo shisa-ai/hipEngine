@@ -20,9 +20,17 @@ from hipengine.speculative import SpeculativeRequestSemantics
 class _AdapterDouble:
     def __init__(self) -> None:
         self.calls = []
+        self.candidate_budget = 3
+        self.depths: dict[int, int] = {}
 
     def register_request(self, request_id, candidate_budget):
         self.calls.append(("register", request_id, candidate_budget))
+        self.depths[int(request_id)] = min(
+            int(candidate_budget), self.candidate_budget
+        )
+
+    def request_depth(self, request_id):
+        return self.depths.get(int(request_id), 0)
 
     def capability(self, semantics):
         self.calls.append(("capability", tuple(semantics)))
@@ -142,7 +150,7 @@ def test_paro_resident_runner_delegates_staged_methods() -> None:
     runner._rows = {7: SimpleNamespace(mtp2_candidate_budget=0)}
 
     runner.register_speculative_request(7, 3)
-    assert runner._rows[7].mtp2_candidate_budget == 1
+    assert runner._rows[7].mtp2_candidate_budget == 3
     assert adapter.calls == [("register", 7, 3)]
     assert runner.speculative_capability(("semantics",)) == "capability"
     assert runner.speculative_claims_fit("plan") is True
@@ -440,7 +448,7 @@ def test_staged_prefill_uses_packed_target_and_streams_final_hidden_rows(
     ("hip_gfx1100", "decode_batched"),
     ("hip_gfx1151", "decode_batched"),
 ])
-def test_prefill_completion_reserves_c1_verify_scratch_before_first_cycle(backend, mode) -> None:
+def test_prefill_completion_reserves_verify_scratch_before_first_cycle(backend, mode) -> None:
     proposer = _ProposerDouble()
     row = SimpleNamespace(
         prompt_ids=(10, 11),
@@ -452,6 +460,7 @@ def test_prefill_completion_reserves_c1_verify_scratch_before_first_cycle(backen
         generator=SimpleNamespace(backend=backend),
         _row=lambda request_id: row,
         _session=SimpleNamespace(
+            max_sequence_length=4096,
             prepare_specdec2_verify_scratch=lambda *, rows, chain_attn_mode, max_context_tokens: calls.append(
                 ("reserve", rows, chain_attn_mode, max_context_tokens)
             )
@@ -467,11 +476,13 @@ def test_prefill_completion_reserves_c1_verify_scratch_before_first_cycle(backen
 
     adapter.observe_prefill_result(7)
 
-    assert calls == [("reserve", 2, mode, 10), ("release", row)]
+    # Two verify rows for a one-candidate cycle, and the reserved context covers
+    # the highest position that cycle touches (``context - 1 + depth``).
+    assert calls == [("reserve", 2, mode, 11), ("release", row)]
 
     owner.generator.execution_profile = "strict"
     adapter.observe_prefill_result(7)
-    assert calls[-2:] == [("reserve", 2, "c1_loop", 10), ("release", row)]
+    assert calls[-2:] == [("reserve", 2, "c1_loop", 11), ("release", row)]
 
 
 def test_staged_target_commit_defers_host_sync_to_stream_order() -> None:
@@ -483,7 +494,7 @@ def test_staged_target_commit_defers_host_sync_to_stream_order() -> None:
 
     result = Qwen35ParoMTP2Adapter._verify_target(
         session,
-        "batch",
+        SimpleNamespace(rows=2),
         chain_attn_mode="decode_batched",
         graph_mode="off",
         candidate_token_ids_i32=Tensor.from_handle(
@@ -494,6 +505,29 @@ def test_staged_target_commit_defers_host_sync_to_stream_order() -> None:
     assert result == "verify"
     assert calls[0]["synchronize_after_commit"] is False
     assert calls[0]["candidate_token_ids_i32"].ptr == 0x7000
+    # The zero-width capture's row count must match this cycle's verify rows.
+    assert calls[0]["capture_hidden_concat"].shape == (2, 0)
+
+
+@pytest.mark.parametrize("rows", (2, 3, 4))
+def test_staged_target_commit_sizes_the_capture_buffer_to_the_cycle(rows) -> None:
+    calls = []
+    session = SimpleNamespace(
+        verify_chain_bulk_and_commit=lambda batch, **kwargs: calls.append(kwargs)
+        or "verify"
+    )
+
+    Qwen35ParoMTP2Adapter._verify_target(
+        session,
+        SimpleNamespace(rows=rows),
+        chain_attn_mode="decode_batched",
+        graph_mode="off",
+        candidate_token_ids_i32=None,
+    )
+
+    capture = calls[0]["capture_hidden_concat"]
+    assert capture.shape == (rows, 0)
+    assert capture.dtype == DType.BF16
 
 
 def test_initial_root_k0_keeps_primed_provider_live() -> None:
@@ -526,12 +560,14 @@ def test_paro_proposal_emits_one_stable_device_candidate() -> None:
         _row=lambda request_id: row,
     )
     adapter = Qwen35ParoMTP2Adapter(owner)
+    adapter.register_request(7, 1)
     adapter._states[7] = _ParoMTP2RequestState(7, proposer)
     plan = SimpleNamespace(
         request_ids=(7,),
         provider_key="qwen_paro_mtp_bf16",
         cycle_id=3,
         resident_slots=(0,),
+        candidate_counts=(1,),
     )
     semantics = (
         SpeculativeRequestSemantics(7, "greedy", "verify_chain", 128, 8),
