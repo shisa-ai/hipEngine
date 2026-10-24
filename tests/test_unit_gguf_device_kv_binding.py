@@ -154,7 +154,7 @@ def test_gguf_device_kv_chunk_allocates_policy_shaped_payload_and_scales() -> No
     )
 
     backing = gguf_runner._allocate_qwen35_gguf_kv_chunk(
-        runner,
+        runner.weights.config,
         runtime=runtime,
         start_block_id=12,
         pages=2,

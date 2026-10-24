@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from hipengine.core.memory import DeviceBuffer
+from hipengine.runtime import qwen35_gguf_kv as gguf_kv
 from hipengine.runtime import qwen35_gguf_runner as runner
 from tests.test_unit_gguf_packed_workspace_stability import (
     _allocator_fake_runner,
@@ -33,6 +34,8 @@ def test_runtime_growth_preserves_every_previous_device_page_pointer(monkeypatch
 
     monkeypatch.setattr(runner, 'malloc', malloc)
     monkeypatch.setattr(runner, 'free', free)
+    monkeypatch.setattr(gguf_kv, 'malloc', malloc)
+    monkeypatch.setattr(gguf_kv, 'free', free)
     monkeypatch.setattr(runner, 'copy_host_to_device', upload)
     session = object.__new__(runner.Qwen35GGUFResidentSession)
     session.defer_kv_allocation = True

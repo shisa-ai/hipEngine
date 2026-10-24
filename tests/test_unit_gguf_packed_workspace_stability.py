@@ -19,6 +19,7 @@ from types import MethodType, SimpleNamespace
 
 import pytest
 
+import hipengine.runtime.qwen35_gguf_kv as gguf_kv
 import hipengine.runtime.qwen35_gguf_runner as gguf_runner
 from tests.test_unit_qwen35_gguf_prefill_scratch_liveness import (
     _install_fake_device,
@@ -1446,6 +1447,8 @@ def test_private_workspace_budget_and_buffer_lifecycle(monkeypatch, fail_at):
 
     monkeypatch.setattr(gguf_runner, "malloc", malloc)
     monkeypatch.setattr(gguf_runner, "free", lambda buffer, **kwargs: live.remove(buffer.ptr))
+    monkeypatch.setattr(gguf_kv, "malloc", malloc)
+    monkeypatch.setattr(gguf_kv, "free", gguf_runner.free)
 
     def allocate():
         return gguf_runner._GGUFPackedTargetState.allocate(

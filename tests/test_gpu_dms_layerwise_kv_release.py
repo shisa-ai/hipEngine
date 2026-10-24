@@ -14,8 +14,8 @@ import pytest
 
 from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer
-from hipengine.runtime import qwen35_gguf_runner as gguf_runner
-from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFKVChunkBacking
+from hipengine.runtime import qwen35_gguf_kv as gguf_kv
+from hipengine.runtime.qwen35_gguf_kv import Qwen35GGUFKVChunkBacking
 
 from tests.test_gpu_dms_streaming_pack_hip import _hip_available
 
@@ -37,7 +37,7 @@ def _fake_backing(monkeypatch, pages: int = 4) -> tuple[Qwen35GGUFKVChunkBacking
     def fake_free(buffer, *, runtime=None):
         freed.append(buffer)
 
-    monkeypatch.setattr(gguf_runner, "free", fake_free)
+    monkeypatch.setattr(gguf_kv, "free", fake_free)
     layout = _fake_layout()
     layers = len(layout.layer_storage_dtypes)
     buffers: list[DeviceBuffer] = []

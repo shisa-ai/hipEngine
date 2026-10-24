@@ -8,6 +8,7 @@ from types import MethodType, SimpleNamespace
 import numpy as np
 import pytest
 
+from hipengine.runtime import qwen35_gguf_kv as gguf_kv
 import hipengine.runtime.qwen35_gguf_runner as gguf_runner
 from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer
@@ -1355,6 +1356,7 @@ def test_gguf_packed_target_state_allocates_per_slot_state(monkeypatch) -> None:
         return buffer
 
     monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
+    monkeypatch.setattr(gguf_kv, "malloc", fake_malloc)
     cfg = SimpleNamespace(
         layer_types=(LINEAR_ATTENTION, FULL_ATTENTION, LINEAR_ATTENTION),
         ssm_conv_kernel=4,
@@ -1410,6 +1412,7 @@ def test_gguf_packed_target_state_allocates_mirrored_int8_payload_and_scales(mon
         return buffer
 
     monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
+    monkeypatch.setattr(gguf_kv, "malloc", fake_malloc)
     cfg = SimpleNamespace(
         layer_types=(FULL_ATTENTION,),
         ssm_conv_kernel=4,
@@ -2713,6 +2716,7 @@ def test_gguf_packed_target_state_allocate_private_without_lease(monkeypatch) ->
         return DeviceBuffer(ptr=0x500000 + len(allocated) * 0x10000, nbytes=int(nbytes))
 
     monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
+    monkeypatch.setattr(gguf_kv, "malloc", fake_malloc)
     layout = _lease_test_layout()
 
     state = _GGUFPackedTargetState.allocate(
@@ -2762,6 +2766,7 @@ def test_gguf_packed_target_state_charges_its_scratch_by_name(monkeypatch) -> No
         return DeviceBuffer(ptr=0x500000 + len(allocated) * 0x10000, nbytes=int(nbytes))
 
     monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
+    monkeypatch.setattr(gguf_kv, "malloc", fake_malloc)
     runner = _lease_test_runner()
     runner.weights.config.layer_types = (LINEAR_ATTENTION, FULL_ATTENTION)
     layout = gguf_runner.Qwen35GGUFKVChunkLayout(
@@ -2813,6 +2818,7 @@ def test_gguf_packed_target_state_skips_the_charge_when_the_pool_cannot_take_one
         "malloc",
         lambda nbytes, *, runtime: DeviceBuffer(ptr=0x500000, nbytes=int(nbytes)),
     )
+    monkeypatch.setattr(gguf_kv, "malloc", gguf_runner.malloc)
     runner = _lease_test_runner()
     runner.weights.config.layer_types = (LINEAR_ATTENTION, FULL_ATTENTION)
     layout = gguf_runner.Qwen35GGUFKVChunkLayout(

@@ -139,7 +139,10 @@ def _install_fake_device(monkeypatch):
         allocations.append(buffer)
         return buffer
 
+    from hipengine.runtime import qwen35_gguf_kv
+
     monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
+    monkeypatch.setattr(qwen35_gguf_kv, "malloc", fake_malloc)
     monkeypatch.setattr(gguf_runner, "copy_host_to_device", lambda *args, **kwargs: None)
     return allocations
 

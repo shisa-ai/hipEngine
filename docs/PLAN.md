@@ -1182,6 +1182,16 @@ key. Explicit quant strings bypass the plugin default. GGUF text-generator
 factories are registered separately for `hip_gfx1100` and `hip_gfx1151`, and the
 resolved backend supplies the JIT target architecture.
 
+### Qwen hybrid GGUF runtime ownership
+
+The `qwen35`/`qwen35moe` architecture family keeps layer execution and resident
+session orchestration in `hipengine/runtime/qwen35_gguf_runner.py`. Physical KV
+layout, backing, byte accounting and allocation/release live in
+`hipengine/runtime/qwen35_gguf_kv.py`, which consumes model configuration rather than an
+executor. Session code retains policy, admission and growth publication.
+The [runtime structure reference](reference/QWEN-GGUF-RUNTIME.md) describes this
+boundary and the remaining scratch/session/execution separation.
+
 ### Backend Plugin
 
 ```python

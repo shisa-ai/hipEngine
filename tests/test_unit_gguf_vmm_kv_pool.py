@@ -16,6 +16,7 @@ import pytest
 
 from hipengine.core.memory import DeviceBuffer, memory_stats
 from hipengine.core.virtual_memory import VirtualMemoryBuffer
+from hipengine.runtime import qwen35_gguf_kv as gguf_kv
 from hipengine.runtime import qwen35_gguf_runner as runner
 from hipengine.runtime.memory_admission import MemoryAdmissionRefused
 from tests.test_unit_gguf_packed_workspace_stability import (
@@ -90,6 +91,8 @@ def _session(
     allocator = _FakeDeviceAllocator()
     monkeypatch.setattr(runner, "malloc", allocator.malloc)
     monkeypatch.setattr(runner, "free", allocator.free)
+    monkeypatch.setattr(gguf_kv, "malloc", allocator.malloc)
+    monkeypatch.setattr(gguf_kv, "free", allocator.free)
     monkeypatch.setattr(runner, "copy_host_to_device", allocator.upload)
     session = object.__new__(runner.Qwen35GGUFResidentSession)
     session.defer_kv_allocation = True
