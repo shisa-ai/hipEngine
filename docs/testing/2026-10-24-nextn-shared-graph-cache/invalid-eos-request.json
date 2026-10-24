@@ -1,0 +1,6 @@
+{
+  "passed": false,
+  "cases": [],
+  "error": "NotImplementedError: requested speculative MTP cannot execute: mtp_sampling_unsupported",
+  "last_proposal_records": []
+}

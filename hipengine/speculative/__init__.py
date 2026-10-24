@@ -102,6 +102,15 @@ from hipengine.speculative.registry import (
     registered_speculative_providers,
     resolve_speculative_provider,
 )
+from hipengine.speculative.graph_stage import (
+    GRAPH_STAGE_BINDING_MISS,
+    GRAPH_STAGE_CAPTURE_FAILED,
+    GRAPH_STAGE_CLOSED,
+    SpecGraphBinding,
+    SpecGraphSlot,
+    SpecGraphStageCache,
+    describe_failure,
+)
 from hipengine.speculative.verify_graph import (
     DFlashVerifyGraphAddresses,
     DFlashVerifyGraphBucketKey,
@@ -295,6 +304,13 @@ __all__ = [
     "DFlashVerifyGraphAddresses",
     "DFlashVerifyGraphBucketKey",
     "DFlashVerifyGraphValidation",
+    "GRAPH_STAGE_BINDING_MISS",
+    "GRAPH_STAGE_CAPTURE_FAILED",
+    "GRAPH_STAGE_CLOSED",
+    "SpecGraphBinding",
+    "SpecGraphSlot",
+    "SpecGraphStageCache",
+    "describe_failure",
     "MTP_CHAIN_CANDIDATE_BUDGETS",
     "MtpAdaptiveBudgetConfig",
     "MtpAdaptiveBudgetPolicy",

@@ -1,0 +1,33 @@
+{
+  "kind": "public route and lifecycle verification",
+  "performance_claim": false,
+  "parent": "b9fef462561dea37421ababd76be72fcc2538adb",
+  "candidate_sha256": {
+    "hipengine/speculative/graph_stage.py": "3fb0f50b56ec19bfc05abcdc6df7495ea90697d264e06e43ae364f5b374030ad",
+    "hipengine/speculative/__init__.py": "b1fa6c67f142dfdfc7dd60e8293ce7663c63a11eba4f90ed3095a983da6341bf",
+    "hipengine/runtime/qwen35_gguf_nextn.py": "cc6c0ffe9b4b35babc3b89785103a8e51ba56b7abfd8129e33966b104be08b61"
+  },
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "backend": "hip_gfx1151",
+  "kv_storage": "bf16",
+  "host": "gfx1151",
+  "lengths": [
+    37,
+    63,
+    257
+  ],
+  "max_tokens": 32,
+  "repeats": 2,
+  "command": "bash docs/testing/2026-10-24-nextn-shared-graph-cache/environment.sh env PYTHONPATH=<source-root> ~/miniforge3/envs/therock/bin/python docs/testing/2026-10-24-nextn-shared-graph-cache/public_check.py --output <output.json>",
+  "environment_script": "docs/testing/2026-10-24-nextn-shared-graph-cache/environment.sh",
+  "notes": [
+    "Final driver additionally checks pending partial-capture releases after close.",
+    "The invalid EOS request used ignore_eos=True and failed before execution; supported parent and candidate use default EOS behavior.",
+    "After the final GPU run, a focused RED/GREEN repair prevents immediate retry from suppressing a KeyboardInterrupt during graph destruction. No capture/replay arithmetic or ordinary cleanup path changed."
+  ],
+  "tested_candidate_sha256": {
+    "hipengine/speculative/graph_stage.py": "3fb0f50b56ec19bfc05abcdc6df7495ea90697d264e06e43ae364f5b374030ad",
+    "hipengine/speculative/__init__.py": "b1fa6c67f142dfdfc7dd60e8293ce7663c63a11eba4f90ed3095a983da6341bf",
+    "hipengine/runtime/qwen35_gguf_nextn.py": "26719bf4fee5b2b31174647a3bfcba0992ee36f799e745cbeb88ccd8051e0c3c"
+  }
+}

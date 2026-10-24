@@ -1,0 +1,6 @@
+{
+  "passed": false,
+  "cases": [],
+  "error": "AssertionError: Public route did not reach NextN graph proposal execution",
+  "last_proposal_records": []
+}

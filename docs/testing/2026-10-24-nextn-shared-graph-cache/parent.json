@@ -1,0 +1,1767 @@
+{
+  "passed": true,
+  "cases": [
+    {
+      "length": 37,
+      "runs": [
+        {
+          "ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "proposal_graphs": [
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 1,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 2,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 3,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 4,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 5,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 6,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 7,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 8,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 9,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 10,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            }
+          ]
+        },
+        {
+          "ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "proposal_graphs": [
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 11,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 12,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 13,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 14,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 15,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 16,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 17,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 18,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 19,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 20,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "length": 63,
+      "runs": [
+        {
+          "ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "proposal_graphs": [
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 21,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 22,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 23,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 24,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 25,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 26,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 27,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 28,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 29,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 30,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            }
+          ]
+        },
+        {
+          "ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "proposal_graphs": [
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 31,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 32,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 33,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 34,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 35,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 36,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 37,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 38,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 39,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 40,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "length": 257,
+      "runs": [
+        {
+          "ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "proposal_graphs": [
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 41,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 42,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 43,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 44,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 45,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 46,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 47,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 48,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 49,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            }
+          ]
+        },
+        {
+          "ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "proposal_graphs": [
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 50,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 51,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 52,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 53,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 54,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 55,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 56,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 57,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            },
+            {
+              "returned_device_proposal": true,
+              "contract": {
+                "eligible": true,
+                "budgets": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "max_context": 1023,
+                "graphs": 1,
+                "captures": 1,
+                "replays": 58,
+                "unavailable": [],
+                "last_status": "device_handoff",
+                "last_error": null,
+                "lm_head_path": "exact_q6_top1",
+                "lm_head_mapped": false,
+                "lm_head_score_vocab": 248320,
+                "lm_head_full_vocab": 248320
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "cleanup": [
+    null
+  ],
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 224790521412,
+    "total_allocated_bytes": 786944953928,
+    "total_freed_bytes": 786944953928,
+    "active_allocations": 0,
+    "peak_allocations": 1840
+  }
+}

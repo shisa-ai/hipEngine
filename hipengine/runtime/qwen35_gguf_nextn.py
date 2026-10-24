@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, is_dataclass, replace
 import hashlib
 import os
 from pathlib import Path
@@ -45,6 +45,12 @@ from hipengine.runtime.gguf_linear import GGUF_OUTPUT_F32, launch_gguf_linear
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFFullStackRunner,
     Qwen35GGUFResidentSession,
+)
+from hipengine.speculative.graph_stage import (
+    GRAPH_STAGE_BINDING_MISS,
+    SpecGraphBinding,
+    SpecGraphStageCache,
+    describe_failure,
 )
 from hipengine.speculative.mtp import (
     MTP_CHAIN_CANDIDATE_BUDGETS,
@@ -263,9 +269,14 @@ class Qwen35GGUFNextNBatchDeviceProposal:
                 raise ValueError("batch device proposal hidden rows must be BF16 [1,H]")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class _Qwen35GGUFNextNProposalGraph:
-    """One exact greedy proposal-chain graph bound to a resident request slot."""
+    """One exact greedy proposal-chain graph bound to a resident request slot.
+
+    Handle fields are mutable so a partial release can be resumed: each field is
+    zeroed after a successful destroy, and :meth:`release` skips zeros. A retry
+    therefore never destroys a handle the runtime already accepted.
+    """
 
     slot: int
     budget: int
@@ -273,6 +284,69 @@ class _Qwen35GGUFNextNProposalGraph:
     graph: int
     graph_exec: int
     completion_event: int
+
+    def release(self, runtime: HipRuntime) -> None:
+        """Destroy every handle not yet released, in dependency order.
+
+        Each release is attempted even if an earlier one fails. Successfully
+        released handles are zeroed so a later retry skips them.
+        """
+
+        releases = (
+            ("event_destroy", "completion_event"),
+            ("graph_exec_destroy", "graph_exec"),
+            ("graph_destroy", "graph"),
+            ("stream_destroy", "stream"),
+        )
+        errors: list[BaseException] = []
+        for name, attribute in releases:
+            handle = int(getattr(self, attribute))
+            if handle == 0:
+                continue
+            try:
+                getattr(runtime, name)(handle)
+            except BaseException as error:  # noqa: BLE001 - release every handle
+                error.add_note(f"GGUF NextN proposal graph release: {name}({handle:#x})")
+                errors.append(error)
+            else:
+                setattr(self, attribute, 0)
+        if errors:
+            raise BaseExceptionGroup("GGUF NextN proposal graph cleanup failed", errors)
+
+    def pending_handles(self) -> tuple[int, ...]:
+        """Return every handle this record still owns, in release order."""
+
+        return tuple(
+            handle
+            for handle in (self.completion_event, self.graph_exec, self.graph, self.stream)
+            if int(handle) != 0
+        )
+
+
+def _collect_device_pointers(prefix: str, value: object, out: dict[str, int]) -> None:
+    """Record every device pointer reachable from one scratch or weight view.
+
+    Only a device allocation can change what a captured kernel dereferences, so
+    host mirrors, scalars, enums and labels are skipped. ``_FullStackScratch``
+    exposes each allocation as a named field plus the ``buffers`` aggregate, and
+    the aggregate is walked too so a field added only there is still covered.
+    """
+
+    pointer = getattr(value, "ptr", None)
+    if isinstance(pointer, int) and not isinstance(pointer, bool):
+        out[prefix] = int(pointer)
+        return
+    if isinstance(value, (tuple, list)):
+        for index, item in enumerate(value):
+            if item is not None:
+                _collect_device_pointers(f"{prefix}[{index}]", item, out)
+        return
+    if is_dataclass(value) and not isinstance(value, type):
+        for field in fields(value):
+            if field.name.startswith("_"):
+                continue
+            name = f"{prefix}.{field.name}" if prefix else field.name
+            _collect_device_pointers(name, getattr(value, field.name), out)
 
 
 # The fixed graph topology is proven for the production B1-B3 ladder through
@@ -285,6 +359,11 @@ class _Qwen35GGUFNextNProposalGraph:
 # maxima remain gated separately by the adapter's width-depth policy.
 _NEXTN_EXACT_CHAIN_GRAPH_BUDGETS = (1, 2, 3, 4, 5, 6, 7)
 _NEXTN_EXACT_CHAIN_GRAPH_MAX_CONTEXT = 1023
+# The proposal-graph working set is one graph per (slot, budget) cell, so the
+# bound below is the exact working set rather than a heuristic. Eviction exists
+# so the cache cannot grow past it if a caller widens either axis without
+# retiring the old cell.
+_PROPOSAL_GRAPH_CACHE_MAX_ENTRIES = len(_NEXTN_EXACT_CHAIN_GRAPH_BUDGETS)
 # The draft batch session never runs chunked prefill: it steps 2-8 hidden rows
 # and (MoE) primes prompt K/V through a packed workspace that grows to the
 # prompt itself. Its bulk prefill scratch rows still floor that packed
@@ -624,8 +703,12 @@ class Qwen35GGUFNextNExecutor:
         self._lm_head_top1_mapped = False
         self.last_lm_head_path = "unobserved"
         self._prepare_exact_lm_head_top1()
-        self._proposal_graphs: dict[tuple[int, int], _Qwen35GGUFNextNProposalGraph] = {}
-        self._proposal_graph_unavailable: set[tuple[int, int]] = set()
+        self._proposal_graphs = SpecGraphStageCache(
+            max_entries=_PROPOSAL_GRAPH_CACHE_MAX_ENTRIES * int(self.max_requests)
+        )
+        # Handles from a failed capture whose release the runtime refused. They
+        # are retried by ``close`` and reported by ``proposal_graph_cleanup``.
+        self._proposal_graph_partials: list[_Qwen35GGUFNextNProposalGraph] = []
         self._proposal_graph_runtime_library: object | None = None
         self._proposal_graph_captures = 0
         self._proposal_graph_replays = 0
@@ -1775,6 +1858,67 @@ class Qwen35GGUFNextNExecutor:
         )
         return tuple(int(value) for value in values)
 
+    def _release_capture_partial(
+        self,
+        *,
+        slot: int,
+        budget: int,
+        stream: int,
+        graph: int,
+        graph_exec: int,
+        completion_event: int,
+        capturing: bool,
+    ) -> list[BaseException]:
+        """Own a failed capture's handles and release whatever the runtime accepts.
+
+        A handle the runtime refuses stays on a retained record, so the executor's
+        close retries it instead of dropping the only reference. Returns the
+        failures that remain unresolved after this attempt.
+        """
+
+        runtime = self.runtime
+        unresolved: list[BaseException] = []
+        abandoned = 0
+        if capturing:
+            try:
+                abandoned = int(runtime.stream_end_capture(stream) or 0)
+            except BaseException as error:  # noqa: BLE001 - keep releasing
+                unresolved.append(error)
+        partial = _Qwen35GGUFNextNProposalGraph(
+            slot=int(slot),
+            budget=int(budget),
+            stream=int(stream),
+            graph=int(graph) or abandoned,
+            graph_exec=int(graph_exec),
+            completion_event=int(completion_event),
+        )
+        try:
+            partial.release(runtime)
+        except BaseException as error:  # noqa: BLE001 - retain, do not drop
+            self._proposal_graph_partials.append(partial)
+            if isinstance(error, BaseExceptionGroup):
+                unresolved.extend(error.exceptions)
+            else:
+                unresolved.append(error)
+        return unresolved
+
+    def _retry_proposal_graph_partials(self) -> list[BaseException]:
+        """Release retained failed-capture handles, keeping any still refused."""
+
+        unresolved: list[BaseException] = []
+        remaining: list[_Qwen35GGUFNextNProposalGraph] = []
+        for partial in self._proposal_graph_partials:
+            try:
+                partial.release(self.runtime)
+            except BaseException as error:  # noqa: BLE001 - retain, do not drop
+                remaining.append(partial)
+                if isinstance(error, BaseExceptionGroup):
+                    unresolved.extend(error.exceptions)
+                else:
+                    unresolved.append(error)
+        self._proposal_graph_partials = remaining
+        return unresolved
+
     def _capture_exact_chain_graph(
         self,
         request_id: int,
@@ -1895,25 +2039,162 @@ class Qwen35GGUFNextNExecutor:
                 graph_exec=int(graph_exec),
                 completion_event=int(completion_event),
             )
-        except Exception:
-            if capturing:
-                try:
-                    abandoned = runtime.stream_end_capture(stream)
-                    if abandoned:
-                        runtime.graph_destroy(abandoned)
-                except Exception:
-                    pass
-            if completion_event:
-                runtime.event_destroy(completion_event)
-            if graph_exec:
-                runtime.graph_exec_destroy(graph_exec)
-            if graph:
-                runtime.graph_destroy(graph)
-            runtime.stream_destroy(stream)
+        except BaseException as error:
+            for detail in self._release_capture_partial(
+                slot=slot,
+                budget=budget,
+                stream=stream,
+                graph=graph,
+                graph_exec=graph_exec,
+                completion_event=completion_event,
+                capturing=capturing,
+            ):
+                error.add_note(f"GGUF NextN capture cleanup: {describe_failure(detail)}")
             raise
         finally:
             slot_scratch.position_host[0] = prior_position
             slot_scratch.context_host[0] = prior_context
+
+    def _proposal_graph_binding(self, *, slot: int, budget: int) -> SpecGraphBinding:
+        """Fingerprint every allocation the captured chain dereferences.
+
+        The capture records kernels, so a pointer it reads is baked into the
+        graph. That covers the executor's own per-slot rows, the scoring buffers,
+        and every allocation reachable from the scratch view -- including the
+        intermediate norm, attention and FFN rows a replacement would otherwise
+        leave stale.
+
+        ``_run_block`` passes ``_singleton_slot_scratch(slot)``, which slices the
+        base scratch at fixed offsets from ``slot``, ``max_requests`` and
+        ``kv_storage_dtype``. Fingerprinting the base plus those derivation axes
+        therefore covers each derived slot view without rebuilding it here.
+        """
+
+        if self._proposal_target_hidden is None or self._proposal_results is None:
+            raise RuntimeError("GGUF NextN proposal graph storage is unavailable")
+        addresses: dict[str, int] = {
+            "token": int(self._token_buf.ptr),
+            "embedding": int(self._embedding_buf.ptr),
+            "fusion": int(self._fusion_buf.ptr),
+            "fused": int(self._fused_buf.ptr),
+            "layer_out": int(self._layer_out_buf.ptr),
+            "final_hidden": int(self._final_hidden_buf.ptr),
+            "logits": int(self._logits_buf.ptr),
+            "proposal_target_hidden": int(self._proposal_target_hidden.ptr),
+            "proposal_results": int(self._proposal_results.ptr),
+            "proposal_history_hidden": int(self._proposal_history_hidden.ptr),
+        }
+        for name in (
+            "_lm_head_top1_block_values",
+            "_lm_head_top1_block_indices",
+            "_lm_head_top1_result",
+        ):
+            pointer = getattr(getattr(self, name, None), "ptr", None)
+            if pointer is not None:
+                addresses[name.lstrip("_")] = int(pointer)
+        scratch = self.scratch
+        _collect_device_pointers("scratch", scratch, addresses)
+        weights = self.weights
+        if weights is not None:
+            named_weights = (
+                ("token_embedding", weights.fallback("token_embedding")),
+                ("output_norm", weights.fallback("output_norm")),
+                ("enorm", weights.nextn("enorm")),
+                ("hnorm", weights.nextn("hnorm")),
+                ("eh_proj", weights.nextn("eh_proj")),
+                ("lm_head_top1", self._lm_head_top1_weight),
+            )
+            for label, weight in named_weights:
+                if weight is None:
+                    continue
+                allocations = getattr(weight, "allocations", None)
+                if allocations is None:
+                    addresses[f"weights.{label}"] = int(weight.allocation().tensor.ptr)
+                else:
+                    for name, allocation in allocations.items():
+                        addresses[f"weights.{label}.{name}"] = int(allocation.tensor.ptr)
+        return SpecGraphBinding.build(
+            bucket=(int(slot), int(budget)),
+            addresses=addresses,
+            configuration=(
+                int(self.hidden_size),
+                int(self.vocab_size),
+                bool(getattr(self, "_lm_head_top1_mapped", False)),
+                int(getattr(self, "_lm_head_top1_vocab_size", 0) or 0),
+                int(getattr(self, "_lm_head_top1_token_map_ptr", 0) or 0),
+                int(getattr(scratch, "max_positions", 0) or 0),
+                int(getattr(scratch, "slot_count", 0) or 0),
+                int(getattr(scratch, "blocks_per_slot", 0) or 0),
+                str(getattr(scratch, "kv_storage_dtype", "")),
+                int(getattr(scratch, "full_attn_split_count", 0) or 0),
+                int(_NEXTN_EXACT_CHAIN_GRAPH_MAX_CONTEXT),
+                # Weight objects are assigned once in ``__init__`` and freed only
+                # by ``close`` after graphs retire, so identity is a sound guard
+                # against a wholesale replacement.
+                id(weights),
+                id(self.runner),
+                id(getattr(self.runner, "weights", None)),
+            ),
+        )
+
+    def _close_proposal_graph(self, graph: _Qwen35GGUFNextNProposalGraph) -> None:
+        """Release one captured chain, resuming from whatever it already released."""
+
+        graph.release(self.runtime)
+
+    def _pending_proposal_graph_failures(self) -> list[BaseException]:
+        """Return the last release failure for every retained graph handle."""
+
+        return [error for _key, error in self._proposal_graphs.pending_errors()]
+
+    def _raise_cleanup_failures(
+        self,
+        failures: Sequence[BaseException] = (),
+    ) -> None:
+        """Raise every unresolved cleanup failure to the executor's owner."""
+
+        collected = [*failures, *self._pending_proposal_graph_failures()]
+        if collected:
+            raise BaseExceptionGroup("GGUF NextN executor cleanup failed", collected)
+
+    def _retire_proposal_graphs(self, *, reason: str) -> tuple[tuple[int, int], ...]:
+        """Close every cached proposal graph, then retry any failed release once.
+
+        A release can fail after the graph has left the lookup table. Retrying
+        here recovers a transient failure; anything still pending stays
+        reachable through :meth:`proposal_graph_cleanup` instead of being
+        dropped, so a failed teardown is never silent.
+        """
+
+        retired = tuple(self._proposal_graphs.close(reason=reason))
+        # Do not erase an interrupt by immediately succeeding on a retry.
+        # close() propagates it after releasing the remaining resources.
+        if all(isinstance(error, Exception) for error in self._pending_proposal_graph_failures()):
+            self._proposal_graphs.retry_closes()
+        return retired
+
+    def proposal_graph_cleanup(self) -> dict[str, object]:
+        """Return proposal-graph release state for the owning caller.
+
+        ``pending_close`` lists graphs whose HIP handles the runtime refused to
+        release; the cache retains each one so a later retry can still reach it.
+        """
+
+        cache = self._proposal_graphs
+        return {
+            "reusable": len(cache),
+            "pending_partial_releases": len(self._proposal_graph_partials),
+            "pending_partial_handles": [
+                list(partial.pending_handles())
+                for partial in self._proposal_graph_partials
+            ],
+            "pending_close": [list(key) for key in sorted(set(cache.pending_close_keys()))],
+            "pending_close_count": int(cache.pending_close_count),
+            "close_failure_count": int(cache.close_failure_count),
+            "close_failures": [
+                [list(key), detail] for key, detail in cache.close_failures
+            ],
+        }
 
     def _proposal_graph(
         self,
@@ -1921,21 +2202,36 @@ class Qwen35GGUFNextNExecutor:
         slot: int,
         budget: int,
     ) -> _Qwen35GGUFNextNProposalGraph | None:
+        """Return the cached chain for this binding, capturing when it drifted."""
+
         key = (int(slot), int(budget))
-        graph = self._proposal_graphs.get(key)
+        binding = self._proposal_graph_binding(slot=slot, budget=budget)
+        graph, reason = self._proposal_graphs.acquire(key, binding)
         if graph is not None:
             return graph
-        if key in self._proposal_graph_unavailable:
+        # Drain partial captures before allocating another graph. A persistent
+        # destroy failure must not accumulate new unowned HIP resources.
+        partial_errors = self._retry_proposal_graph_partials()
+        if partial_errors:
             self._proposal_graph_last_status = "capture_fallback"
+            self._proposal_graph_last_error = "; ".join(
+                describe_failure(error) for error in partial_errors
+            )
             return None
-        try:
-            graph = self._capture_exact_chain_graph(request_id, slot, budget)
-        except Exception as exc:
-            self._proposal_graph_unavailable.add(key)
+        # The stale entry is already released. Keep the drift in the recorded
+        # context so a following capture failure reports both causes.
+        drift = f"{reason}: captured binding changed" if reason == GRAPH_STAGE_BINDING_MISS else None
+        graph, reason = self._proposal_graphs.capture(
+            key,
+            binding,
+            lambda: self._capture_exact_chain_graph(request_id, slot, budget),
+            self._close_proposal_graph,
+        )
+        if graph is None:
+            detail = self._proposal_graphs.last_failure(key) or reason
             self._proposal_graph_last_status = "capture_fallback"
-            self._proposal_graph_last_error = f"{type(exc).__name__}: {exc}"
+            self._proposal_graph_last_error = f"{drift}; {detail}" if drift else detail
             return None
-        self._proposal_graphs[key] = graph
         self._proposal_graph_captures += 1
         self._proposal_graph_last_status = "captured"
         self._proposal_graph_last_error = None
@@ -1970,8 +2266,14 @@ class Qwen35GGUFNextNExecutor:
             self._proposal_graph_last_status = "eager_long_context"
             return None
         slot = self._slot(request_id)
-        graph = self._proposal_graphs.get((int(slot), budget))
-        if graph is None and not cached_only:
+        if cached_only:
+            # A cached-only launch must still reject a drifted binding; the
+            # capture path is deliberately not entered on this route.
+            graph, _reason = self._proposal_graphs.acquire(
+                (int(slot), budget),
+                self._proposal_graph_binding(slot=slot, budget=budget),
+            )
+        else:
             graph = self._proposal_graph(request_id, slot, budget)
         if graph is None:
             self._proposal_graph_last_status = "device_handoff_cache_miss"
@@ -2274,7 +2576,7 @@ class Qwen35GGUFNextNExecutor:
             "graphs": len(self._proposal_graphs),
             "captures": int(self._proposal_graph_captures),
             "replays": int(self._proposal_graph_replays),
-            "unavailable": [list(key) for key in sorted(self._proposal_graph_unavailable)],
+            "unavailable": [list(key) for key in sorted(self._proposal_graphs.failed_keys())],
             "last_status": self._proposal_graph_last_status,
             "last_error": self._proposal_graph_last_error,
             "lm_head_path": self.last_lm_head_path,
@@ -3227,30 +3529,61 @@ class Qwen35GGUFNextNExecutor:
         self._request_slots.pop(request_id, None)
 
     def close(self) -> None:
+        """Release every owned resource, then raise any unresolved failure.
+
+        The first call attempts graphs, buffers, sessions and weights even when an
+        earlier release fails. A later call retries only provider handles the
+        runtime refused, because every other resource was already released.
+        """
+
         if self.closed:
+            failures = self._retry_proposal_graph_partials()
+            self._proposal_graphs.retry_closes()
+            self._raise_cleanup_failures(failures)
             return
         self.closed = True
-        for proposal_graph in reversed(tuple(self._proposal_graphs.values())):
-            self.runtime.event_destroy(proposal_graph.completion_event)
-            self.runtime.graph_exec_destroy(proposal_graph.graph_exec)
-            self.runtime.graph_destroy(proposal_graph.graph)
-            self.runtime.stream_destroy(proposal_graph.stream)
-        self._proposal_graphs.clear()
+        failures: list[BaseException] = self._retry_proposal_graph_partials()
+        # Every cached chain is released even if one release fails; the cache
+        # retains the handles and its true failure count.
+        self._retire_proposal_graphs(reason="executor_closed")
         self._prompt_priming_staging.clear()
         self._prompt_prime_rows.clear()
         for buffer in reversed(self._buffers):
-            free(buffer, runtime=self.runtime)
-        self._batch_session.close()
-        self.runner.close()
+            try:
+                free(buffer, runtime=self.runtime)
+            except BaseException as error:  # noqa: BLE001 - release every buffer
+                error.add_note("GGUF NextN executor cleanup: buffer free")
+                failures.append(error)
+        for name, closer in (
+            ("batch session", self._batch_session.close),
+            ("runner", self.runner.close),
+        ):
+            try:
+                closer()
+            except BaseException as error:  # noqa: BLE001 - release every owner
+                error.add_note(f"GGUF NextN executor cleanup: {name}")
+                failures.append(error)
         if self.weights is not None and self._owns_weights:
-            self.weights.free(runtime=self.runtime)
+            try:
+                self.weights.free(runtime=self.runtime)
+            except BaseException as error:  # noqa: BLE001 - release every weight
+                error.add_note("GGUF NextN executor cleanup: weights")
+                failures.append(error)
         self.weights = None
+        self._raise_cleanup_failures(failures)
 
     def __enter__(self) -> "Qwen35GGUFNextNExecutor":
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
-        self.close()
+        try:
+            self.close()
+        except BaseException as cleanup:
+            if exc is None:
+                raise
+            # An in-flight exception stays primary; the cleanup failure rides
+            # along instead of replacing it.
+            exc.add_note(f"GGUF NextN executor cleanup: {describe_failure(cleanup)}")
 
 
 class Qwen35GGUFNextNDraftProvider:
