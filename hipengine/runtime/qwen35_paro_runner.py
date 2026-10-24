@@ -11595,7 +11595,12 @@ class Qwen35ParoResidentSession:
                     selected_row,
                     base_slot=base_slot,
                     stream=stream,
-                    commit_row_ptr=int(self.verify_commit_rows.ptr),
+                    # CPU fallback owns the selected row on disagreement.
+                    # The device selector still contains the original GPU row;
+                    # bypass it so Conv/GDN and selected hidden share ownership.
+                    commit_row_ptr=(
+                        int(self.verify_commit_rows.ptr) if gpu_accept_match else None
+                    ),
                 )
                 self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
                 _mark_bucket("commit_scatter", t_bucket)
@@ -11827,7 +11832,9 @@ class Qwen35ParoResidentSession:
             selected_row,
             base_slot=base_slot,
             stream=stream,
-            commit_row_ptr=int(self.verify_commit_rows.ptr),
+            commit_row_ptr=(
+                int(self.verify_commit_rows.ptr) if gpu_accept_match else None
+            ),
         )
         self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
         _mark_bucket("commit_scatter", t_bucket)
