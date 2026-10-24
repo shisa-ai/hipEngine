@@ -106,6 +106,7 @@ from hipengine.speculative.accounting import (
 )
 from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.memory_admission import MemoryAdmissionRefused
+from hipengine.runtime.qwen35_gguf_planning import estimate_qwen35_gguf_kv_capacity
 from hipengine.runtime.qwen35_gguf_runner import (
     PACKED_AR_PREFILL_CONTEXT_LIMIT,
     Qwen35GGUFFullStackRunner,
@@ -119,7 +120,6 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _gguf_packed_layer_outer_enabled,
     _admitted_no_mirror_int8_capability,
     _rope_tables as _gguf_rope_tables,
-    estimate_qwen35_gguf_kv_capacity,
     packed_verify_workspace_lease_pages,
 )
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
@@ -2756,9 +2756,11 @@ class Qwen35GGUFBringupGenerator:
         flat per-token meaning.
         """
 
-        from hipengine.runtime.qwen35_gguf_runner import (
+        from hipengine.runtime.qwen35_gguf_planning import (
             _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS,
             _full_stack_scratch_plan,
+        )
+        from hipengine.runtime.qwen35_gguf_runner import (
             _gguf_packed_state_linear_bytes,
             _gguf_prefill_hidden_buffer_count,
             _gguf_prefill_scratch_nbytes,

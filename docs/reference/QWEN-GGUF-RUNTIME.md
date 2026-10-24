@@ -1,29 +1,30 @@
 ---
 status: current
-owns: Qwen hybrid GGUF runtime module responsibilities, KV storage boundary, and remaining execution/session separation.
+owns: Qwen hybrid GGUF runtime module responsibilities, KV storage and scratch/capacity planning boundaries, and remaining execution/session separation.
 ---
 # Qwen hybrid GGUF runtime structure
 
 `qwen35` names the GGUF architecture family, not a restriction to a model release.
-`loading/qwen35_gguf.py:qwen35_gguf_config_from_metadata` accepts `qwen35` and
+`hipengine/loading/qwen35_gguf.py:qwen35_gguf_config_from_metadata` accepts `qwen35` and
 `qwen35moe`; newer model releases using those identifiers use the same family.
 Qwen4 experimental models have a separate runtime and are not covered here.
 
-Paths in this document are relative to `hipengine/` unless stated otherwise.
+Paths in this document are repository-relative.
 
 ## Responsibilities
 
 | Owner | Responsibility | Does not own |
 | --- | --- | --- |
-| `generation/qwen35_gguf.py` | Public generator configuration, resident model adapter, request admission and serving assets | Individual kernel arithmetic |
-| `runtime/qwen35_gguf_runner.py:Qwen35GGUFFullStackRunner` | Loaded target weights, selected execution primitives and full-stack layer execution | Public request scheduling |
-| `runtime/qwen35_gguf_runner.py:Qwen35GGUFResidentSession` | Request/session state, prefill/decode/verification orchestration, pool growth coordination and graph lifetime | Physical KV plane allocation formulas |
-| `runtime/qwen35_gguf_kv.py` | Resolved KV layout validation, backing and plane views, logical/physical byte accounting, allocation and release | Runner/session construction, storage-policy selection, admission budgets, graph scheduling or kernel dispatch |
-| `runtime/qwen35_gguf_nextn.py`, `runtime/qwen35_gguf_mtp.py` | NextN draft execution and transactional speculative integration | Canonical target session ownership |
-| `runtime/gguf_packed_decode_graph.py`, `runtime/gguf_native_spec_cycle.py` | Packed decode graph replay and native speculative-cycle coordination | Public generator construction |
+| `hipengine/generation/qwen35_gguf.py` | Public generator configuration, resident model adapter, request admission and serving assets | Individual kernel arithmetic |
+| `hipengine/runtime/qwen35_gguf_runner.py:Qwen35GGUFFullStackRunner` | Loaded target weights, selected execution primitives and full-stack layer execution | Public request scheduling |
+| `hipengine/runtime/qwen35_gguf_runner.py:Qwen35GGUFResidentSession` | Request/session state, prefill/decode/verification orchestration, pool growth coordination and graph lifetime | Physical KV plane allocation formulas |
+| `hipengine/runtime/qwen35_gguf_planning.py` | Geometry/storage-policy scratch plan, resolved KV layout construction, resident byte breakdown and capacity search | Device allocation, loaded executors, environment selection or kernel dispatch |
+| `hipengine/runtime/qwen35_gguf_kv.py` | Resolved KV layout validation, backing and plane views, logical/physical byte accounting, allocation and release | Runner/session construction, storage-policy selection, admission budgets, graph scheduling or kernel dispatch |
+| `hipengine/runtime/qwen35_gguf_nextn.py`, `hipengine/runtime/qwen35_gguf_mtp.py` | NextN draft execution and transactional speculative integration | Canonical target session ownership |
+| `hipengine/runtime/gguf_packed_decode_graph.py`, `hipengine/runtime/gguf_native_spec_cycle.py` | Packed decode graph replay and native speculative-cycle coordination | Public generator construction |
 
 The `qwen35_gguf_runner.py` filename describes only part of its contents. It still
-contains session orchestration, scratch planning, result contracts, hidden-state
+contains session orchestration, scratch allocation, result contracts, hidden-state
 capture and diagnostics as well as the full-stack executor. Its module description
 now identifies production execution and session orchestration rather than
 bring-up probes. Keeping the import path avoids a repository-wide rename before
@@ -58,13 +59,41 @@ rather than a runner. Tests that replace allocation/free functions patch the
 storage module for plane memory and the execution module for execution scratch;
 patching the executor's allocator no longer intercepts both responsibilities.
 
+## Scratch and capacity planning boundary
+
+`hipengine/runtime/qwen35_gguf_planning.py` owns `_FullStackScratchPlan` and its builder,
+`qwen35_gguf_resident_breakdown`, and `estimate_qwen35_gguf_kv_capacity`.
+Both `_FullStackScratch.allocate` and capacity estimation consume the same plan;
+there is no second set of allocation formulas in the estimator.
+
+Inputs are model configuration, explicit geometry, storage policy, context and
+slot counts. Planning does not take a loaded executor, allocate device memory,
+read environment selectors or choose kernels. `materialize=False` returns sizes
+with every host-array field set to `None`; `materialize=True` builds each set of
+host metadata and rotary-position tables once for allocation. The ordered owner
+sizes, alignment, mirror threshold and byte-accounting rules are shared.
+
+The execution module retains real scratch allocation and route-specific sizing
+adapters. In particular, `_gguf_prefill_scratch_nbytes` still runs the existing
+prefill allocator against a fake runtime, and its result enters capacity planning
+through a callback. Extracting that prefill allocator's geometry and lifetime
+planning is separate work; this boundary does not claim all workspace sizing is
+independent of execution. Context-dependent layer selection and speculative
+workspace costs also enter as explicit caller-supplied callbacks.
+
+Existing imports from `qwen35_gguf_runner` are aliases to the planning definitions.
+Serving capacity consumers import the planning owner directly. Diagnostics that
+patch the private mirror threshold must patch both execution policy and planning;
+the two modules must price and execute the same diagnostic layout.
+
 ## Remaining separation
 
 The following are candidates, not implemented modules or a mandate to move code
 by line count:
 
-1. **Scratch and capacity planning:** keep one plan shared by allocation and
-   estimation; separate geometry and policy inputs from executing runner objects.
+1. **Prefill scratch planning:** replace the execution-backed sizing adapter with
+   an explicit plan shared by the prefill allocator and estimator, after defining
+   its route and lifetime inputs.
 2. **Resident state and transactions:** define ownership of canonical state,
    provisional verification state, prefix snapshots and rollback journals before
    extracting the session's methods.
@@ -97,6 +126,13 @@ uv run pytest \
   tests/test_unit_gguf_packed_verify_layout.py \
   tests/test_gpu_dms_layerwise_kv_release.py -q
 ```
+
+`tests/test_unit_qwen35_gguf_scratch_plan_boundary.py` covers size-only versus
+materialized planning, byte equality, owner order, mirror thresholds, precision
+and invalid policies. `tests/test_unit_qwen35_gguf_planning_integration.py` verifies
+that allocation and estimation use the same planner and that planning has no
+direct execution/device-allocation dependency. Existing capacity tests compare
+planned sizes with the actual allocator using fake device buffers.
 
 Most of these tests use fake runtime allocations; the GPU node has an explicit
 availability guard. Public real-model generation remains a separate integration

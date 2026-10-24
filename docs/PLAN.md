@@ -1188,9 +1188,12 @@ The `qwen35`/`qwen35moe` architecture family keeps layer execution and resident
 session orchestration in `hipengine/runtime/qwen35_gguf_runner.py`. Physical KV
 layout, backing, byte accounting and allocation/release live in
 `hipengine/runtime/qwen35_gguf_kv.py`, which consumes model configuration rather than an
-executor. Session code retains policy, admission and growth publication.
-The [runtime structure reference](reference/QWEN-GGUF-RUNTIME.md) describes this
-boundary and the remaining scratch/session/execution separation.
+executor. Shared scratch sizing, resident byte breakdown and capacity search live
+in `hipengine/runtime/qwen35_gguf_planning.py`; real allocation and size-only
+estimation consume one plan. Session code retains policy, admission, growth
+publication and route-specific workspace sizing callbacks.
+The [runtime structure reference](reference/QWEN-GGUF-RUNTIME.md) describes these
+boundaries and the remaining prefill-scratch/session/execution separation.
 
 ### Backend Plugin
 

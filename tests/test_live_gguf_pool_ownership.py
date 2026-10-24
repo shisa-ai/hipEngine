@@ -73,7 +73,10 @@ def test_grow_reclaim_and_close_leave_no_orphaned_allocations() -> None:
     provider = None
 
     with pytest.MonkeyPatch.context() as patch:
+        from hipengine.runtime import qwen35_gguf_planning
+
         patch.setattr(runner_module, "_GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS", 0)
+        patch.setattr(qwen35_gguf_planning, "_GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS", 0)
         patch.setenv("HIPENGINE_GGUF_INT8_KV_BF16_PREFIX_FULL_LAYERS", "0")
         patch.setenv("HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG", "1")
         target = Qwen35GGUFResidentSession(

@@ -159,7 +159,10 @@ def shared_runner():
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFFullStackRunner
 
     with pytest.MonkeyPatch.context() as patch:
+        from hipengine.runtime import qwen35_gguf_planning
+
         patch.setattr(runner_module, "_GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS", 0)
+        patch.setattr(qwen35_gguf_planning, "_GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS", 0)
         runner = Qwen35GGUFFullStackRunner(_MODEL, backend=_BACKEND)
         try:
             yield runner

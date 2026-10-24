@@ -69,9 +69,12 @@ def session():
     # Keep the short-prompt prefill on the plain BF16 mirror route so the
     # captured graph binds the same planes the probe recipe exercised.
     with pytest.MonkeyPatch.context() as patch:
+        from hipengine.runtime import qwen35_gguf_planning
+
         patch.setattr(
             runner_module, "_GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS", 0
         )
+        patch.setattr(qwen35_gguf_planning, "_GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS", 0)
         with runner_module.Qwen35GGUFResidentSession(
             MODEL,
             max_sequence_length=1536,

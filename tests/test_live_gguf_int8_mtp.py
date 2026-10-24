@@ -50,7 +50,10 @@ def sessions():
     # Exercise compact storage itself, not the legacy short-context BF16 mirror.
     # This diagnostic does not publish or forge artifact qualification.
     with pytest.MonkeyPatch.context() as patch:
+        from hipengine.runtime import qwen35_gguf_planning
+
         patch.setattr(runner_module, "_GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS", 0)
+        patch.setattr(qwen35_gguf_planning, "_GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS", 0)
         patch.setenv("HIPENGINE_GGUF_INT8_KV_BF16_PREFIX_FULL_LAYERS", "0")
         patch.setenv("HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG", "1")
         kwargs = {
