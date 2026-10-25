@@ -1982,38 +1982,42 @@
       "start_line": 2387,
       "end_line": 2434,
       "sha256": "7e160070c2298022c47a41cb88dd538c70259d3d47eaa954e2642246caf67576",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "No runtime or atlas-agent references remain to HIPENGINE_MTP2_MAX_CONTEXT_TOKENS, _MTP2_QUALIFIED_CONTEXT_WINDOW or FORCE_LONG_MTP. The remaining preflight documentation/tests deliberately use the obsolete name to detect inert environment overrides.",
+        "hipengine/generation/qwen35_gguf_mtp2.py derives context capacity from target_layout.max_sequence_length. hipengine/runtime/qwen35_gguf_nextn.py retains its graph-only eager_long_context fallback; this is not request refusal. scripts/gguf_mtp_long_context_gate.py exists.",
+        "uv run pytest tests/test_unit_qwen35_gguf_mtp2_seam.py -q -o addopts='': 136 passed, including target-capacity and retired-window provider-admission coverage. Historical evidence remains in the original base_commit and the linked immutable worklogs; no new performance claim."
+      ],
       "subitems": [
         {
           "line": 2389,
           "text": "- **Removed.** The 1,023-token window and its",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 2395,
           "text": "- Why it had to go: it was a guard whose only cause was that nothing had been",
-          "status": "pending"
+          "status": "historical-removed"
         },
         {
           "line": 2404,
           "text": "- Both stated causes were resolved before removal. The staged linear-attention",
-          "status": "pending"
+          "status": "historical-removed"
         },
         {
           "line": 2412,
           "text": "- The long-context gate the entry asked for already exists:",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 2416,
           "text": "- The draft-side boundary stays: `runtime/qwen35_gguf_nextn.py`",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 2425,
           "text": "- Residue removed with it (2026-09-20): `benchmarks/atlas-agent/` still described",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

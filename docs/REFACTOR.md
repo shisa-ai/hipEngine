@@ -2337,54 +2337,6 @@ integration; the preservation commit `0f3bd43dc` keeps their history.
   override sites (the request-time helper and the realized-intent carry-forward
   in `_realized_model_serving_plan`).
 
-## Long-context MTP window override (found 2026-09-17, removed 2026-09-20)
-
-- **Removed.** The 1,023-token window and its
-  `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS` override are gone from
-  `hipengine/generation/qwen35_gguf_mtp2.py`. The adapter is now bounded only by
-  the target's own `max_sequence_length`, which is allocated capacity rather
-  than an evidence gap, and the advertised `max_context_tokens` reads that same
-  value so admission and per-cycle policy cannot disagree.
-- Why it had to go: it was a guard whose only cause was that nothing had been
-  measured past the 1,024 attention transition. `docs/EXECUTION-PROFILES.md`
-  section 1.1 says a restriction must name a concrete cause and that a guard
-  existing only because a case was not tested is an evaluation and cleanup task,
-  not a permanent safety boundary; section 2.9 lists prompt context as
-  explicitly **not** an admission axis, and `max_sequence_length_not_qualified`
-  and `context_bucket_not_qualified` were already removed as rejection reasons
-  elsewhere. A guard justified by "untested" also prevents the measurement that
-  would retire it, so it is permanent by construction.
-- Both stated causes were resolved before removal. The staged linear-attention
-  chain is byte-exact above the split threshold on the dense Q4_K_M path
-  (2026-09-19, see the row-wise strict dispatch entry below), so
-  `strict_long_rows` no longer covers it and the multi-row verifier is what runs
-  there. Measured long-context MTP then reaches 1.42x-1.74x from 1,804 to 12,142
-  prompt tokens at 0.992-0.996 coverage with greedy output identical to AR, and a
-  512-token prompt decoded 2,048 tokens across the 1,024 transition at 0.999
-  coverage with no bucket miss at all.
-- The long-context gate the entry asked for already exists:
-  `scripts/gguf_mtp_long_context_gate.py`. Long-context MTP claims still need the
-  mtp-bench category suite per `docs/BENCHMARK.md` "Anti-gaming"; the removal
-  makes that measurement reachable rather than blocked.
-- The draft-side boundary stays: `runtime/qwen35_gguf_nextn.py`
-  `_NEXTN_EXACT_CHAIN_GRAPH_MAX_CONTEXT = 1023` skips the proposal graph past it
-  (`eager_long_context`) and runs the eager proposal chain instead. That is a
-  per-cycle schedule choice with a working fallback, which section 1.1 permits
-  ("a graph-bucket miss may select eager execution for that cycle"), not a
-  refusal. Same for the target graph bucket and the split-K boundary. Assessed
-  2026-09-17
-  (`worklog/entries/20260917T170209.714945Z-lhl-mtp-long-context-assessment-8122b3.md`):
-  of the four boundaries on this path only the adapter window refused a request.
-- Residue removed with it (2026-09-20): `benchmarks/atlas-agent/` still described
-  the window as current behaviour, named the deleted
-  `_MTP2_QUALIFIED_CONTEXT_WINDOW`, and shipped a `FORCE_LONG_MTP=1` knob whose
-  only effects were to export the now-inert `HIPENGINE_MTP2_MAX_CONTEXT_TOKENS`
-  and to pass a `--max-context-tokens` the base command already passed. The
-  knob, its `force_long_mtp` provenance line, the README section and knob row,
-  and `analyze.py`'s "LONG-CONTEXT MTP" caveat are gone, and the prose now
-  reports the measured admission range instead. A dead knob is worse than no
-  knob: it warned an operator that a working route was unqualified.
-
 ## Long-context verifier rows are coupled to the global split-attention threshold (found 2026-09-17, resolved 2026-09-18)
 
 - Resolved: `_run_full_attention_attn_chain_rows_exact` no longer raises
