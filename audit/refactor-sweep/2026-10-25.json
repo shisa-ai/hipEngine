@@ -749,23 +749,25 @@
       "start_line": 824,
       "end_line": 840,
       "sha256": "aed19b2a5e554a01f3b0e83caf69a38c21f901171bdd706dc893b343569a1811",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Current binder and historical gate dispositions reconciled; stale selector/binder comments corrected without executable changes. IU8 repair conditions preserved, wide composition selection documented. Worklog:worklog/entries/20261025T211932.843745Z-cleanup-cleanup-refactor-r0026-r0028-gr-routes-6c34af.md."
+      ],
       "subitems": [
         {
           "line": 826,
           "text": "- The unchanged `GR_IU8` restoration independently fails the780-row",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 829,
           "text": "- Keep this arithmetic off. Revisit only after actual-input projection/",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 833,
           "text": "- Localization done 2026-09-22 (`benchmarks/results/2026-09-22-gr-drift-localization/`):",
-          "status": "pending"
+          "status": "not-debt"
         }
       ]
     },
@@ -775,23 +777,25 @@
       "start_line": 841,
       "end_line": 855,
       "sha256": "1bce6d63b05bc2d38e3cb66a9285974877cb01267bd13ae48950fc517e2ba196",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Current binder and historical gate dispositions reconciled; stale selector/binder comments corrected without executable changes. IU8 repair conditions preserved, wide composition selection documented. Worklog:worklog/entries/20261025T211932.843745Z-cleanup-cleanup-refactor-r0026-r0028-gr-routes-6c34af.md."
+      ],
       "subitems": [
         {
           "line": 843,
           "text": "- `GR_IU8_DOWN` independently fails the780-row gate with GR-up/generic",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 847,
           "text": "- This is an independent arithmetic failure, not a general prohibition on",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 849,
           "text": "- Localization done 2026-09-22 (`benchmarks/results/2026-09-22-gr-drift-localization/`):",
-          "status": "pending"
+          "status": "not-debt"
         }
       ]
     },
@@ -801,43 +805,45 @@
       "start_line": 856,
       "end_line": 914,
       "sha256": "e8df479ca1f5203349f1b61759ce2634858acd21eb0ba09d08328558960fb923",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Current binder and historical gate dispositions reconciled; stale selector/binder comments corrected without executable changes. IU8 repair conditions preserved, wide composition selection documented. Worklog:worklog/entries/20261025T211932.843745Z-cleanup-cleanup-refactor-r0026-r0028-gr-routes-6c34af.md."
+      ],
       "subitems": [
         {
           "line": 858,
           "text": "- Default-off route that replaces the GR-up projection with the promoted dense",
-          "status": "pending"
+          "status": "fixed"
         },
         {
           "line": 876,
           "text": "- **Bit-exact levers remain open and are the only actionable ones.** Three,",
-          "status": "pending"
+          "status": "fixed"
         },
         {
           "line": 885,
           "text": "- The 2026-09-06 `RB8/HT1` retile halves the re-read and measured 0.80x. That",
-          "status": "pending"
+          "status": "fixed"
         },
         {
           "line": 890,
           "text": "- Screen passed on the prefill-boundary KL and the 780-row production gate",
-          "status": "pending"
+          "status": "fixed"
         },
         {
           "line": 894,
           "text": "- **The prefill-boundary KL screen is not a predictor.** This route screened at",
-          "status": "pending"
+          "status": "fixed"
         },
         {
           "line": 901,
           "text": "- The gate's default prompt suite is 39-71 tokens, below these routes'",
-          "status": "pending"
+          "status": "fixed"
         },
         {
           "line": 906,
           "text": "- **Keep this arithmetic off.** The GR family is closed to arithmetic change:",
-          "status": "pending"
+          "status": "fixed"
         }
       ]
     },

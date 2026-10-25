@@ -4060,12 +4060,11 @@ def _qwen4_exp_gr_k320_full_rows_key(
 
 
 def _qwen4_exp_gr_iu8_down_enabled(rows: int) -> bool:
-    """Default-off iu8-WMMA GR down route (T1 production candidate).
+    """Experimental iu8-WMMA GR down route, disabled by production recovery.
 
-    Same three-plane fp32 staging chain as the up route, applied to the
-    10240->320 Q8_0 down projection (F32 in/out, no BF16 boundary inside
-    the composite). Screened separately from the up so each leg carries its
-    own A/B attribution.
+    The three-plane fp32 projection failed its standalone depth gate against
+    strict. A new projection correction and full requalification are required;
+    see docs/REFACTOR.md, "Isolated GR-Down IU8".
     """
 
     return (
@@ -4076,13 +4075,12 @@ def _qwen4_exp_gr_iu8_down_enabled(rows: int) -> bool:
 
 
 def _qwen4_exp_gr_wide_enabled(rows: int, low_rank: int) -> bool:
-    """Default-off wide-tile GR up route.
+    """Wide-tile GR up route selected by the production F16 composition.
 
-    The fused exact kernel runs at 1.03 TFLOP/s (3.9% of the gfx1151 FP32
-    peak) at the production chunk shape; the dense wide tile reaches 4.50
-    TFLOP/s on identical operands. The route changes arithmetic (F16 operands,
-    F32 accumulate), so it stays off until it crosses the GR prefill-boundary
-    KL screen.
+    The profile binder enables this after arithmetic recovery for UD production
+    and fast profiles. Its composition gate is distinct from the historical
+    standalone rejection; the prefill-boundary KL screen is not an admission
+    gate. See docs/REFACTOR.md, "GR-Up Wide Tile".
     """
     return (
         rows > 256
@@ -4155,12 +4153,12 @@ def _qwen4_exp_gr_up_sigmoid_mean_enabled(rows: int) -> bool:
 
 
 def _qwen4_exp_gr_iu8_enabled(rows: int) -> bool:
-    """Default-off iu8-WMMA GR up route (T1 production candidate).
+    """Experimental iu8-WMMA GR up route, disabled by production recovery.
 
-    Three-plane fp32 in-kernel staging; raw Q8_0 codes keep the weight path
-    exact. Qualified by the production numerical envelope, not bit-identity:
-    screened drift is ~1 fp32 ulp on gate/mixed versus the fused parent.
-    Prefill-sized rows only; the exact fused parent stays the fallback.
+    Three-plane fp32 staging preserves the raw Q8_0 weight path but failed the
+    standalone depth gate against strict. Keep the exact fused parent as the
+    fallback pending a new correction and requalification; see docs/REFACTOR.md,
+    "Isolated GR-Up IU8".
     """
 
     return (

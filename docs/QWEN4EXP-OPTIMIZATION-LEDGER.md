@@ -1179,6 +1179,15 @@ Live: exact F32 router tile4 (`20260831T103038`, +1.6% p508).
 
 ### 7D. Hyper-connections
 
+Current binding clarification (2026-10-25): the historical GR IU8 promotion
+text below is not the current UD plan. Recovery disables `GR_IU8` and
+`GR_IU8_DOWN` after their standalone depth-gate failures; their named repair
+conditions remain. Conversely, the F16 composition enables `GR_WIDE` after
+recovery for UD production and fast profiles. Its standalone rejection below
+is historical evidence, not the composition's disposition. See
+`docs/REFACTOR.md` sections "Isolated GR-Up IU8", "Isolated GR-Down IU8", and
+"GR-Up Wide Tile" for the current state and evidence.
+
 Live: exact fused GR sigmoid mean and GR up sigmoid mean (`20260831T094724`,
 `20260831T120921`), exact GR wave-scale prefill (`20260906T012226`).
 

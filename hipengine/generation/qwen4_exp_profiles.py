@@ -1039,16 +1039,12 @@ def _bind(
         # 12-case same-residency A/B +4.3% prefill geo-mean with every case
         # winning and identical output digests); production-only binding.
         "HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT": "1" if production else "0",
-        # iu8-WMMA GR up (T1, three-plane fp32 staging): teacher-forced
-        # logits KL <= 7.4e-8 versus the incumbent with 100% top-1 and
-        # 10-100x argmax margins, bit-deterministic; full-suite A/B
-        # +9.2% prefill geo-mean with all 12 cases winning; production-only
-        # binding, exact fused parent stays the strict fallback.
+        # Historical GR-up intent; UD recovery below disables this route after
+        # its standalone depth-gate failure. The exact fused parent stays the
+        # fallback pending correction; see docs/REFACTOR.md.
         "HIPENGINE_QWEN4_EXP_GR_IU8": "1" if production else "0",
-        # iu8-WMMA GR down (10240->320, T1, same chain): KL <= 5.5e-8 vs
-        # incumbent, top-1 100%, deterministic; full-suite A/B +2.0%
-        # prefill geo-mean on top of the promoted up leg; production-only
-        # binding, exact coltile parent stays the fallback.
+        # Historical GR-down intent; UD recovery below disables this independent
+        # depth-gate failure. Its projection repair condition remains open.
         "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE": "1" if production else "0",
