@@ -199,8 +199,9 @@ _ROUTER_WARP_REDUCE_EVIDENCE = (
 _ROUTER_DPP_EVIDENCE = (
     "benchmarks/results/2026-10-05-qwen4exp-router-dpp/README.md"
 )
-# Named router producer and temporary rollback switch. Strict/Q4_K_M keep
-# tile4; the measured UD production profile selects ordered DPP by default.
+# Named router producer and rollback switch. Strict/Q4_K_M keep tile4; the UD
+# production plan selects the F16-operand GEMM below, and ordered DPP is the
+# arithmetic-recovery default and the named rollback.
 _ROUTER_VARIANT_ENV = "HIPENGINE_QWEN4_EXP_ROUTER_VARIANT"
 _ROUTER_TILE4_VARIANT = "f32_hidden_token_tile4_dense_exact"
 _ROUTER_WARP_REDUCE_VARIANT = "f32_hidden_warp_reduce_dense_exact"
@@ -208,6 +209,8 @@ _ROUTER_DPP_VARIANT = "f32_hidden_token_tile4_dpp_exact"
 # One-barrier ordered DPP passed the natural-input/full-state canonical gate
 # and improves prefill in the same-residency twelve-case model-wall campaign.
 # Keep the exact tile4 parent as the strict fallback and temporary rollback.
+# The F16-operand WMMA GEMM is the UD production plan's router producer; see
+# _f16_route_selections for the replacement it performs.
 _ROUTER_F16_GEMM_VARIANT = "f32_hidden_f16_wmma_gemm"
 _ROUTER_VARIANTS = (
     _ROUTER_TILE4_VARIANT,
@@ -218,11 +221,14 @@ _ROUTER_VARIANTS = (
 
 
 def _selected_router_producer_variant(*, recovery: bool = False) -> str:
-    """Return the router producer for the named quant/profile plan.
+    """Return the named router producer, or the plan default when none is named.
 
-    UD production defaults to ordered DPP; Q4_K_M remains on tile4. The
-    binder publishes the manifest selection for the runner's launch-time
-    reader, including the strict tile4 fallback and explicit rollback.
+    The default is ordered DPP for the arithmetic-recovery plan and the tile4
+    parent otherwise, so strict and Q4_K_M production keep tile4. The UD
+    production plan then replaces the DPP default with the F16-operand GEMM
+    unless a producer was named before import. The binder publishes the
+    resolved manifest selection for the runner's launch-time reader, including
+    the strict tile4 fallback and explicit rollback.
     """
 
     default = _ROUTER_DPP_VARIANT if recovery else _ROUTER_TILE4_VARIANT
@@ -293,6 +299,7 @@ _ROUTER_VARIANT_EVIDENCE = {
     _ROUTER_TILE4_VARIANT: _ROUTER_F32_TILE4_EVIDENCE,
     _ROUTER_WARP_REDUCE_VARIANT: _ROUTER_WARP_REDUCE_EVIDENCE,
     _ROUTER_DPP_VARIANT: _ROUTER_DPP_EVIDENCE,
+    _ROUTER_F16_GEMM_VARIANT: _F16_ROUTE_EVIDENCE,
 }
 _ROUTER_LOGITS_EVIDENCE = _ROUTER_VARIANT_EVIDENCE[_ROUTER_LOGITS_SELECTED_VARIANT]
 _GR_UP_SIGMOID_MEAN_EVIDENCE = (

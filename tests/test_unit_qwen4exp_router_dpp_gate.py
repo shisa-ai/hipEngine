@@ -89,7 +89,7 @@ def test_private_checker_rejects_signed_zero_flip_and_nonfinite():
         assert_router_outputs_exact(parent, candidate, candidate)
 
 
-@pytest.mark.parametrize("override", [None, PARENT, DPP, "f32_hidden_warp_reduce_dense_exact"])
+@pytest.mark.parametrize("override", [None, PARENT, DPP, F16_GEMM, "f32_hidden_warp_reduce_dense_exact"])
 def test_named_default_manifest_and_strict_binder_in_fresh_process(override):
     # Import-time selection must be tested in a fresh interpreter; reloading
     # shared profile modules would mutate another test's module/registry state.

@@ -853,33 +853,35 @@
       "start_line": 915,
       "end_line": 936,
       "sha256": "25fb371f53b595d4a505eda41a7f4ede3373ffbfcb565bb5980a8d627bdd2265",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Router ownership corrected; explicit F16 import KeyError fixed with RED/GREEN fresh-process test.63 focused tests, CPU suite, explicit-selector production HTTP and docs/audit passed. Intentional rollback/publication reader preserved. Worklog:worklog/entries/20261025T212633.831377Z-cleanup-refactor-r0029-r0030-router-ownership-bd9ddc.md."
+      ],
       "subitems": [
         {
           "line": 917,
           "text": "- `f32_hidden_token_tile4_dpp_exact` is the gfx1151 UD-Q4_K_XL production",
-          "status": "pending"
+          "status": "fixed"
         },
         {
           "line": 921,
           "text": "- Complete operation screen improves 1.135\u20131.172x on layer0/22/47 weights;",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 925,
           "text": "- `HIPENGINE_QWEN4_EXP_ROUTER_VARIANT=f32_hidden_token_tile4_dense_exact`",
-          "status": "pending"
+          "status": "fixed"
         },
         {
           "line": 930,
           "text": "- The historical warp-per-token sibling remains registered for diagnostics,",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 935,
           "text": "- Evidence: `benchmarks/results/2026-10-05-qwen4exp-router-dpp/README.md`.",
-          "status": "pending"
+          "status": "not-debt"
         }
       ]
     },
@@ -889,53 +891,55 @@
       "start_line": 937,
       "end_line": 992,
       "sha256": "dbeae01c30914e934dd5e4852c48ff3565fce6873f9a4fb233441684a47889c6",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Router ownership corrected; explicit F16 import KeyError fixed with RED/GREEN fresh-process test.63 focused tests, CPU suite, explicit-selector production HTTP and docs/audit passed. Intentional rollback/publication reader preserved. Worklog:worklog/entries/20261025T212633.831377Z-cleanup-refactor-r0029-r0030-router-ownership-bd9ddc.md."
+      ],
       "subitems": [
         {
           "line": 939,
           "text": "- Historical warp screening: `f32_hidden_warp_reduce_dense_exact` uses one",
-          "status": "pending"
+          "status": "fixed"
         },
         {
           "line": 945,
           "text": "- Screened at `+1.65%` prefill on `code-p4096` (247.739 -> 251.823 tok/s,",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 949,
           "text": "- **Not bit-exact**: the reduction order changes from a 256-thread LDS tree to a",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 953,
           "text": "- **The risk mechanism is discrete, not drift.** The router logits feed",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 960,
           "text": "- **The 450-row production gate rejected the route.** `measurement_valid: true`,",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 967,
           "text": "- **The cause is the router's discrete selection, not drift.**",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 975,
           "text": "- **Tuning the router kernel cannot clear this gate.** Any reduction-order change",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 981,
           "text": "- **Reopening path, campaign-level.** Make the *selection* invariant instead of",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 987,
           "text": "- Historical screening note: the selector also accepts the ordered DPP",
-          "status": "pending"
+          "status": "fixed"
         }
       ]
     },

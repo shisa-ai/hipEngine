@@ -891,34 +891,79 @@ on this route alone.
 
 ## Router ordered DPP production owner
 
-- `f32_hidden_token_tile4_dpp_exact` is the gfx1151 UD-Q4_K_XL production
-  multirow router owner. Strict and Q4_K_M production keep the tile4 parent.
-  The raw-pointer/selection ABI and per-thread FMA/reduction association
-  are unchanged: one LDS publication, register inter-wave folds, DPP finish.
-- Complete operation screen improves 1.135–1.172x on layer0/22/47 weights;
-  canonical model prefill improves +0.553%/+0.486%/+0.589% at p512/1K/4K.
-  D128 full-state/KV, 576 natural-router calls and four GPU row-isolation/
-  ownership tests pass. Exact tile4 remains registered as strict fallback.
-- `HIPENGINE_QWEN4_EXP_ROUTER_VARIANT=f32_hidden_token_tile4_dense_exact`
-  is a temporary rollback/bisection lever. Remove the launch-time experiment
-  reader after one production checkpoint with no route regression; keep the
-  named profile selection and registered parent. Until then bind from the
-  resolved manifest so strict cannot inherit a production override.
+Cleanup status (2026-10-26, R0029): the ownership claim this section used to
+make is superseded, and no runtime cleanup follows from it. The heading records
+the route's DPP history; the current `gguf_ud_q4_k_xl` production owner of
+`router_logits/qwen4exp_multirow_f32_router` is `f32_hidden_f16_wmma_gemm`, the
+small-matrix F16 WMMA GEMM. `f32_hidden_token_tile4_dpp_exact` is the
+arithmetic-recovery plan's default producer and the named rollback; strict and
+`gguf_q4_k_m` production keep the tile4 parent. The selector comment, the
+selector docstring and the runner's launch-time docstring now say so. The
+reader stays, because the gate harnesses drive their arms through it.
+
+Precedence at HEAD, in the order that decides which producer runs:
+
+- The plan is built when the profiles are registered, and the selector is read
+  at that point. `_f16_route_selections` in
+  `hipengine/generation/qwen4_exp_profiles.py` starts from
+  `_production_selections(recovery=True)`, whose router row is
+  `_ROUTER_UD_LOGITS_SELECTED_VARIANT` - ordered DPP when nothing is named -
+  and replaces DPP with the F16 GEMM unless the caller named a producer before
+  the module was imported. A named producer replaces the F16 GEMM in the
+  production plan only; the strict plan keeps tile4 either way.
+- The production binder then publishes the resolved manifest row into
+  `HIPENGINE_QWEN4_EXP_ROUTER_VARIANT`, so the runner's launch-time reader
+  starts from the same name the manifest declares. That is the same
+  publication channel that keeps strict from inheriting a production override.
+- At launch, `_qwen4_exp_router_producer_variant` in
+  `hipengine/runtime/qwen4_exp_runner.py` takes the linear GGUF path below two
+  rows, the published producer from two rows, and ordered DPP instead of the
+  F16 GEMM below 64 rows, because the GEMM stages 128-row tiles. That width
+  fallback is the only place the running producer differs from the manifest
+  row. An empty variable falls back to tile4, which a bound run reaches only by
+  clearing the variable after the bind.
+
+- The DPP producer's own record stands and is not a production claim: complete
+  operation screen improves 1.135–1.172x on layer0/22/47 weights; canonical
+  model prefill improves +0.553%/+0.486%/+0.589% at p512/1K/4K. D128
+  full-state/KV, 576 natural-router calls and four GPU row-isolation/ownership
+  tests pass. Its raw-pointer/selection ABI and per-thread FMA/reduction
+  association are unchanged: one LDS publication, register inter-wave folds,
+  DPP finish. Exact tile4 remains registered as strict fallback.
+- `HIPENGINE_QWEN4_EXP_ROUTER_VARIANT` is the named rollback and bisection
+  lever; the rollback set is the three non-production names
+  `f32_hidden_token_tile4_dense_exact`, `f32_hidden_token_tile4_dpp_exact` and
+  `f32_hidden_warp_reduce_dense_exact`. The recorded "remove the launch-time
+  reader after one production checkpoint" condition was overtaken by the F16
+  composition: the reader is now both the named rollback and the binder's
+  publication channel.
+- Removal condition: a plan-level producer-selection API the gate harnesses
+  can drive (`scripts/qwen4exp_layer2_profile_gate.py`,
+  `scripts/qwen4exp_profile_gap.py`, `scripts/qwen4exp_row4_state_gate.py` and
+  `scripts/qwen4exp_halo_box_campaign_ab.py` set the variable directly today),
+  then delete the launch-time reader and the binder's publication of it.
+  Replacing the reader without that API would leave those arms measuring the
+  production producer twice, so it is a design decision rather than cleanup.
 - The historical warp-per-token sibling remains registered for diagnostics,
   unselected by default; its failed arithmetic gate does not qualify it.
-  This DPP owner replaces neither its reduction association nor selection
+  The DPP producer replaces neither its reduction association nor selection
   policy. Original model-wall evidence preserves a p4096 decode outlier and
   does not claim decode-speed or all-case request-wall non-regression.
 - Evidence: `benchmarks/results/2026-10-05-qwen4exp-router-dpp/README.md`.
 
 ## Router Producer Variant (`HIPENGINE_QWEN4_EXP_ROUTER_VARIANT`)
 
+Cleanup status (2026-10-26, R0030): no runtime cleanup. The closing ownership
+sentence is corrected; the rejection record and its campaign-level reopening
+condition stand. The reader-removal decision belongs to R0029 above, not here.
+
 - Historical warp screening: `f32_hidden_warp_reduce_dense_exact` uses one
   warp per token, a 32-lane shuffle reduction and one expert row staged per
   block in LDS. Its comparison parent was `f32_hidden_token_tile4_dense_exact`.
-  The current UD production default is ordered DPP as documented in the
-  preceding section. The runner reads the selector at launch, and the profile
-  binder publishes the resolved selection.
+  The current UD production producer is `f32_hidden_f16_wmma_gemm`; ordered DPP
+  is the arithmetic-recovery default and the named rollback, as documented in
+  the preceding section. The runner reads the selector at launch, and the
+  profile binder publishes the resolved selection.
 - Screened at `+1.65%` prefill on `code-p4096` (247.739 -> 251.823 tok/s,
   `-0.272 s`), with the router kernel itself `2.158x` faster
   (619.45 -> 287.11 ms). Same-session two-arm A/B, disjoint per-run spreads.
@@ -962,10 +1007,11 @@ on this route alone.
   kernel change. Reopen this route only alongside that decision; do not spend
   another kernel attempt on it before then.
 - Historical screening note: the selector also accepts the ordered DPP
-  owner described above. UD production defaults to that qualified T0 owner;
-  the failed warp route remains opt-in and diagnostic only. Remove the reader
-  under the DPP rollback checkpoint condition, not by treating all named
-  siblings as one failed candidate.
+  producer described above. UD production selects the F16-operand GEMM
+  producer, DPP is the recovery plan's default and the named rollback, and the
+  failed warp route remains opt-in and diagnostic only. Remove the reader under
+  the plan-level selection API condition recorded in the preceding section, not
+  by treating all named siblings as one failed candidate.
 
 ## MoE Decode warp256 GEMV Pair - REMOVED 2026-09-30
 
