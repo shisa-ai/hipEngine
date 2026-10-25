@@ -705,8 +705,9 @@ condition are in "Prefill chunk capacity guard"; they are not repeated here.
 
 ## Withdrawn Routes That Stay Bound In The Production Plan
 
-Cleanup status (2026-10-25, R0023): the rule below stands; the membership and the
-re-admission paths are the current ones. `PRODUCTION_ARITHMETIC_RECOVERY_FLAGS`
+Cleanup status (2026-10-25, R0023): membership and binding precedence are
+corrected below. No runtime cleanup remains in this section; individual routes
+keep their recorded repair or removal conditions. `PRODUCTION_ARITHMETIC_RECOVERY_FLAGS`
 in `hipengine/generation/qwen4_exp_profiles.py` holds 14 flags, and the sweep
 that zeroes them runs for the `gguf_ud_q4_k_xl` quant, whose production and fast
 plans share this binder. A binding plus a sweep entry means "the plan says on,
@@ -754,10 +755,14 @@ pins the F16 re-admission. These tests cover binder behavior, not the prose here
   are removed; the evidence is
   `benchmarks/results/2026-09-30-q8-iu8-role-isolation/` and worklog
   `20260930T092825`.
-- **Rule that follows:** when a route's reopen condition is *discharged
-  negatively* - the condition was met or its scope exhausted and the route still
-  fails - remove the production binding in the same unit. A route that fails the
-  task gate or the canonical envelope should never be one sweep edit from live.
+- **Removal condition:** remove a production binding when the recorded
+  disposition rejects the mechanism with no remaining repair condition, or
+  when its named reopen condition has been exhausted and the disposition calls
+  for removal. A failed candidate evaluation alone is not that decision. The
+  MoE packet below explicitly replaces its performance-based reopen condition
+  with a task-quality repair condition; its binding stays suppressed pending
+  that repair and the applicable production gate. Do not restore it merely by
+  narrowing the recovery sweep.
 - **No re-admission is claimed here.** A passing numerical envelope is not
   admission: the `production_moe_restore` candidate, which binds
   `PRODUCTION_MOE_PREFILL` together with `Q4_IU8_PREFILL`, passes every category
