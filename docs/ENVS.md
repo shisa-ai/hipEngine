@@ -854,6 +854,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_RISK_DIAGNOSTICS` | unset | Records iu8 risk/repair counts; synchronizes the stream, diagnostics only. |
 | `HIPENGINE_QWEN4_EXP_PREBINDER_CONFLICT` | unset | Policy for a caller-set route variable that conflicts with the profile binder. |
 | `HIPENGINE_QWEN4_EXP_MOE_BACKEND_CACHE` | retired | No longer read; tests assert that setting it does not disable the backend registration cache. |
+| `HIPENGINE_QWEN4_EXP_Q8_IU8_WMM` | retired | No longer read. Regression tests ensure it cannot restore the rejected generic dense Q8 IU8 WMMA route; the independent GR kernel remains registered. |
 
 ### GGUF and build selectors used by the Flash-Next routes
 
@@ -945,7 +946,6 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS` | unset | Comma-separated layer list admitting the DP4A64 decode route. |
 | `HIPENGINE_QWEN4_EXP_GR_IU8` | `0` | iu8 WMM prefill remap for the raw-Q rows>256 route. |
 | `HIPENGINE_QWEN4_EXP_GR_IU8_DOWN` | `0` | iu8 WMM prefill remap for the down projection of the rows>256 route. |
-| `HIPENGINE_QWEN4_EXP_Q8_IU8_WMM` | `0` | iu8 WMMA dense prefill dispatch for Q8_0 weights (rows>256, features%32==0). |
 | `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` | unset | Comma-separated layer list admitting the Q8 WMMA dense prefill. |
 | `HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE` / `HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE` | production profile | Wave-scaled variants of the Q8 coltile prefill and the raw-Q route. |
 | `HIPENGINE_QWEN4_EXP_MMQ_TOKEN64` | production profile | Remaps the raw-vec4 MMQ prefill to the token64 variant (rows>=512, 2560x12288 shape). |

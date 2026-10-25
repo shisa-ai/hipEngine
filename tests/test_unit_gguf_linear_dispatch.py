@@ -3248,6 +3248,45 @@ def test_native_batch_decode_routes_only_dense_bf16_ssm_out_rowtile_to_virtual25
     )
 
 
+@pytest.mark.parametrize("rows", [128, 257, 512])
+@pytest.mark.parametrize("retired_flag", ["0", "1"])
+def test_retired_dense_q8_iu8_selector_cannot_replace_f32_prefill(
+    monkeypatch, rows, retired_flag
+) -> None:
+    """A stale environment override must not restore rejected dense arithmetic."""
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_IU8_WMM", retired_flag)
+    weight = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q8_0")
+    calls = []
+    keys = {
+        name: KernelKey("hip_gfx1100", "linear", "gguf_q8_0", variant)
+        for name, variant in (
+            ("parent", "prefill_f32_f32_out"),
+            ("iu8", "iu8_wmma_prefill_f32_f32_out"),
+        )
+    }
+    originals = {
+        name: resolve(backend=key.backend, layer=key.layer,
+                      quant=key.quant, variant=key.variant)
+        for name, key in keys.items()
+    }
+    try:
+        for name, key in keys.items():
+            register(key, lambda *args, _name=name, **kwargs: calls.append(_name),
+                     replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+        launch_gguf_linear(
+            weight, x_ptr=100, out_ptr=200, rows=rows,
+            in_features=1024, out_features=512,
+            activation_dtype=GGUF_ACTIVATION_F32, output_dtype=GGUF_OUTPUT_F32,
+            use_wmma_prefill=False,
+        )
+        assert calls == ["parent"]
+    finally:
+        for name, key in keys.items():
+            register(key, originals[name], replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+
 def test_launch_gguf_linear_dense_f32_activation_f32_output_calls_registry_kernel() -> None:
     weight = _fake_weight(layout=LAYOUT_DENSE_F32, quant_key="f32")
     key = KernelKey("hip_gfx1100", "dense_gemv", "f32", "f32_hidden_f32_out")

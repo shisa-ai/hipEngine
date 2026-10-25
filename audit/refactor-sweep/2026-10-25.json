@@ -664,43 +664,47 @@
       "start_line": 731,
       "end_line": 801,
       "sha256": "7a627ff4f5faf8a7568d4a38179f1bf5b0b58552a42a17f686f9af2776770b62",
-      "status": "pending",
-      "evidence": [],
+      "status": "fixed-removed",
+      "evidence": [
+        "Removed resurrected _q8_iu8_wmma_dispatch and its call in hipengine/runtime/gguf_linear.py; docs/ENVS.md marks its environment name retired because regression tests deliberately set it. Shared GR kernel registration is preserved. Rejection evidence remains at benchmarks/results/2026-09-30-q8-iu8-role-isolation/.",
+        "Regression test reproduces rejected dispatch with the retired flag at rows 257 and 512, while rows 128 and flag-off controls pass. After removal all six cases pass; focused dispatch/profile bundle: 246 passed.",
+        "Completion evidence: worklog/entries/20261025T131609.889958Z-cleanup-refactor-r0024-b7917b.md."
+      ],
       "subitems": [
         {
           "line": 733,
           "text": "- **CLOSED `20260930T`.** `scripts/qwen4exp_dense_q8_nongr_gate.py` and",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 739,
           "text": "- `scripts/qwen4exp_dense_q8_nongr_gate.py` temporarily clears the existing",
-          "status": "pending"
+          "status": "historical-removed"
         },
         {
           "line": 742,
           "text": "- The counted780-row arm fails mean/p95/max KL with21744 non-GR IU8",
-          "status": "pending"
+          "status": "historical-removed"
         },
         {
           "line": 745,
           "text": "- If non-GR restoration qualifies, express its scope through the registered",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 749,
           "text": "- **`20260930T`: the role scope this entry asks for now exists as a dispatch",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 765,
           "text": "- **`20260930T` REJECTED, superseding the bullet above: role isolation closes the",
-          "status": "pending"
+          "status": "historical-removed"
         },
         {
           "line": 784,
           "text": "- **REMOVAL EXECUTED `20260930T`.** `HIPENGINE_QWEN4_EXP_Q8_IU8_WMM` is gone:",
-          "status": "pending"
+          "status": "fixed-removed"
         }
       ]
     },

@@ -3919,52 +3919,6 @@ def _q8_dense_wide_dispatch(
     return GGUFLinearDispatch(key, "raw")
 
 
-def _q8_iu8_wmma_dispatch(
-    dispatch: GGUFLinearDispatch,
-    *,
-    rows: int,
-    in_features: int,
-    out_features: int,
-) -> GGUFLinearDispatch:
-    """Default-off iu8-WMMA route for Q8_0 F32/F32 prefill linears (T1).
-
-    Replaces the retained F32 coltile family for prefill-sized rows when
-    the geometry fits the dense iu8 kernel (in_features % 32 == 0). The
-    three-plane fp32 staging drift is gated by the production numerical
-    envelope; the exact coltile parents stay the default and the
-    sub-256-row path.
-    """
-
-    if (
-        dispatch.abi != "raw"
-        or dispatch.key.quant != "gguf_q8_0"
-        or dispatch.key.variant
-        not in {
-            "prefill_f32_f32_out",
-            "coltile8_rowbatch4_f32_f32_out",
-            "coltile8_rowbatch4_wave_scale_f32_f32_out",
-        }
-        or rows <= 256
-        or in_features <= 0
-        or in_features % 32 != 0
-        or out_features <= 0
-        or os.environ.get("HIPENGINE_QWEN4_EXP_Q8_IU8_WMM", "0")
-        in {"", "0", "false", "False"}
-    ):
-        return dispatch
-    key = KernelKey(
-        dispatch.key.backend,
-        dispatch.key.layer,
-        dispatch.key.quant,
-        "iu8_wmma_prefill_f32_f32_out",
-    )
-    if not is_registered(key):
-        # Populate the raw families before deciding so the very first
-        # launch of a process cannot silently fall back past this route.
-        _ensure_linear_kernel_registered(key)
-    return GGUFLinearDispatch(key, "raw") if is_registered(key) else dispatch
-
-
 def _raw_k_wave_scale_dispatch(dispatch: GGUFLinearDispatch, *, enabled: bool) -> GGUFLinearDispatch:
     if not enabled or dispatch.abi != "raw" or dispatch.key.variant != "coltile8_rowbatch4_f32_f32_out":
         return dispatch
@@ -5173,12 +5127,6 @@ def launch_gguf_linear(
             in_features=in_features,
             out_features=out_features,
             weight=weight,
-        )
-        dispatch = _q8_iu8_wmma_dispatch(
-            dispatch,
-            rows=rows,
-            in_features=in_features,
-            out_features=out_features,
         )
         dispatch = _iq_dense_prefill_dispatch(
             dispatch,
