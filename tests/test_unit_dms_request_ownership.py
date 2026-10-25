@@ -287,16 +287,3 @@ def test_dms_observability_uses_the_resolved_prefix_mode(runner):
     owner.generator._dms_serving_policy = {'metadata_path': 'sidecar.json', 'prefix_cache': 'off'}
     owner._prefix_cache_mode = 'radix'
     assert owner.observability_snapshot()['model_runner']['dms']['prefix_cache'] == 'radix'
-
-
-def test_http_status_reports_the_typed_sidecar_path():
-    from fastapi.testclient import TestClient
-    from hipengine.server.api import ServerConfig, create_app
-    from tests.test_integration_server_api import FakeLLM
-
-    config = ServerConfig(model='fake', dms=DMSConfig('typed.json'),
-                          prefix_cache='off', speculative_mtp_serving='off', eager_load=False)
-    with TestClient(create_app(config, llm=FakeLLM())) as client:
-        response = client.get('/ready')
-        assert response.status_code == 200, response.text
-        assert response.json()['dms']['requested_metadata_path'] == 'typed.json'

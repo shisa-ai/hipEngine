@@ -56,6 +56,16 @@ from hipengine.core.virtual_memory import (
 )
 from hipengine.core.rocblas import Rocblas
 from hipengine.dispatch.kv import resolve_paged_attn_decode
+from hipengine.runtime.qwen35_gguf_prefill_plan import (
+    _GGUF_PREFILL_SCRATCH_ARENA_GROUPINGS,
+    _GGUF_PREFILL_SCRATCH_COMPACT_DISABLED_FIELDS,
+    _GGUF_PREFILL_SCRATCH_DENSE_DISABLED_FIELDS,
+    _GGUF_PREFILL_SCRATCH_OPTIONAL_FIELDS,
+    _GGUF_PREFILL_SCRATCH_PEER_DISABLED_FIELDS,
+    _prefill_scratch_allocations_conflict as _prefill_scratch_allocations_conflict,
+    _prefill_scratch_lifetimes_overlap as _prefill_scratch_lifetimes_overlap,
+    build_prefill_scratch_plan,
+)
 from hipengine.runtime.qwen35_gguf_planning import (
     Qwen35GGUFKVCapacityEstimate,
     Qwen35GGUFResidentBreakdown,
@@ -12793,6 +12803,42 @@ def _gguf_prefill_chunk_sizes_for(
     return linear, moe
 
 
+def _gguf_aotriton_head_major_kv_scratch_nbytes(
+    *,
+    backend: str,
+    capacity_tokens: int,
+    kv_width: int,
+) -> int:
+    """Bytes of one cross-layer BF16 K/V scratch pair, or 0 when not admitted.
+
+    Policy and size prefix of :func:`_try_allocate_gguf_aotriton_head_major_kv_scratch`.
+    The token and byte ceilings are exact fallback signals, so capacity planning
+    and allocation cannot disagree about whether a pair would be admitted.
+    """
+
+    if not _gguf_aotriton_head_major_kv_enabled(backend):
+        return 0
+    capacity_tokens = int(capacity_tokens)
+    kv_width = int(kv_width)
+    if capacity_tokens <= 0 or kv_width <= 0:
+        raise ValueError("head-major KV scratch dimensions must be positive")
+    max_tokens = _env_int(
+        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV,
+        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_DEFAULT,
+    )
+    if max_tokens <= 0 or capacity_tokens > max_tokens:
+        return 0
+    per_buffer_bytes = capacity_tokens * kv_width * DType.BF16.itemsize
+    total_bytes = 2 * per_buffer_bytes
+    max_bytes = _env_int(
+        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV,
+        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_DEFAULT,
+    )
+    if max_bytes <= 0 or total_bytes > max_bytes:
+        return 0
+    return int(total_bytes)
+
+
 def _try_allocate_gguf_aotriton_head_major_kv_scratch(
     *,
     backend: str,
@@ -12808,26 +12854,14 @@ def _try_allocate_gguf_aotriton_head_major_kv_scratch(
     first is released before returning.
     """
 
-    if not _gguf_aotriton_head_major_kv_enabled(backend):
-        return None
-    capacity_tokens = int(capacity_tokens)
-    kv_width = int(kv_width)
-    if capacity_tokens <= 0 or kv_width <= 0:
-        raise ValueError("head-major KV scratch dimensions must be positive")
-    max_tokens = _env_int(
-        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV,
-        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_DEFAULT,
+    total_bytes = _gguf_aotriton_head_major_kv_scratch_nbytes(
+        backend=backend,
+        capacity_tokens=capacity_tokens,
+        kv_width=kv_width,
     )
-    if max_tokens <= 0 or capacity_tokens > max_tokens:
+    if total_bytes <= 0:
         return None
-    per_buffer_bytes = capacity_tokens * kv_width * DType.BF16.itemsize
-    total_bytes = 2 * per_buffer_bytes
-    max_bytes = _env_int(
-        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV,
-        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_DEFAULT,
-    )
-    if max_bytes <= 0 or total_bytes > max_bytes:
-        return None
+    per_buffer_bytes = total_bytes // 2
     key_buffer: DeviceBuffer | None = None
     try:
         key_buffer = malloc(per_buffer_bytes, runtime=runtime)
@@ -32521,147 +32555,6 @@ class Qwen35GGUFResidentSession:
 
 
 _GGUF_PREFILL_SCRATCH_EMPTY = DeviceBuffer(ptr=0, nbytes=0)
-_GGUF_PREFILL_SCRATCH_COMPACT_DISABLED_FIELDS = frozenset(
-    {
-        "linear_z_f32",
-        "linear_alpha_f32",
-        "linear_beta_f32",
-        "prefill_query",
-        "prefill_key",
-        "prefill_value",
-        "linear_conv_state_tmp",
-        "linear_recurrent_state_tmp",
-        "post_norm_f32",
-        "ffn_intermediate_f32",
-        "moe_down_out_f32",
-        "moe_shared_out_f32",
-    }
-)
-_GGUF_PREFILL_SCRATCH_PEER_DISABLED_FIELDS = frozenset(
-    _GGUF_PREFILL_SCRATCH_COMPACT_DISABLED_FIELDS
-    - {"prefill_query", "prefill_key", "prefill_value"}
-)
-
-
-def _both_prefill_routes(start: int, end: int) -> tuple[tuple[str, int, int], ...]:
-    return (("linear", start, end), ("full", start, end))
-
-
-# Logical per-layer lifetimes for the production Qwen3.6 MoE bulk-prefill route.
-# Linear- and full-attention temporaries live in mutually-exclusive routes;
-# attention outputs hand off to one common post-attention MoE chain. Intervals
-# are conservative unions across the compact-WMMA and unfused MoE fallbacks.
-_GGUF_PREFILL_SCRATCH_LIFETIMES: Mapping[str, tuple[tuple[str, int, int], ...]] = MappingProxyType(
-    {
-        "norm": _both_prefill_routes(0, 1),
-        "linear_qkv": (("linear", 0, 2),),
-        "linear_qkv_f32": (("linear", 1, 3),),
-        "linear_z": (("linear", 0, 5),),
-        "linear_alpha": (("linear", 0, 4),),
-        "linear_beta": (("linear", 0, 4),),
-        # The fused route reads conv_out through stage 5. Split routes override
-        # this below after prepare materializes their recurrence inputs.
-        "conv_out": (("linear", 2, 5),),
-        # Normalized peer GDN materializes Q/K/V after convolution and keeps
-        # them live only through the recurrent output handoff.
-        "prefill_query": (("linear", 3, 5),),
-        "prefill_key": (("linear", 3, 5),),
-        "prefill_value": (("linear", 3, 5),),
-        # Optional changed-arithmetic Q4/Q5/Q6 routes consume these during
-        # initial projections, recurrent output, and dense FFN down. Production
-        # lifetimes let their transient planes reuse stage-disjoint scratch
-        # instead of growing a persistent weight sidecar.
-        "q6_f16_x": (
-            _both_prefill_routes(0, 1)
-            + (("full", 5, 6),)
-            + _both_prefill_routes(12, 13)
-        ),
-        "q6_f16_weight": (
-            _both_prefill_routes(0, 1)
-            + _both_prefill_routes(5, 6)
-            + _both_prefill_routes(12, 13)
-        ),
-        "q6_f16_out": (
-            _both_prefill_routes(0, 1)
-            + _both_prefill_routes(5, 6)
-            + _both_prefill_routes(12, 13)
-        ),
-        "prefill_beta": (("linear", 3, 5),),
-        "prefill_decay": (("linear", 3, 5),),
-        "prefill_query_scale": (("linear", 3, 5),),
-        "prefill_key_scale": (("linear", 3, 5),),
-        "recurrent_out": (("linear", 4, 5),),
-        "recurrent_bf16": (("linear", 5, 6),),
-        "full_q": (("full", 0, 2),),
-        "full_k": (("full", 0, 3),),
-        "full_v": (("full", 0, 4),),
-        "full_query_raw": (("full", 1, 3),),
-        "full_key_raw": (("full", 1, 3),),
-        "full_query": (("full", 2, 4),),
-        "full_key": (("full", 2, 4),),
-        "full_query_bf16": (("full", 3, 5),),
-        "full_gate": (("full", 1, 5),),
-        "full_attn_bf16": (("full", 4, 5),),
-        "full_gated": (("full", 5, 6),),
-        "attn_out": _both_prefill_routes(5, 7),
-        "post_norm": _both_prefill_routes(7, 15),
-        "residual": _both_prefill_routes(7, 17),
-        "ffn_gate_up": _both_prefill_routes(9, 15),
-        "ffn_intermediate": _both_prefill_routes(10, 12),
-        "ffn_down": _both_prefill_routes(12, 17),
-        # q8_1 is optional in the current default but remains provisioned for
-        # replacement layouts. Its union covers dense and selected routes.
-        "moe_q8_1": _both_prefill_routes(0, 17),
-        "moe_router_logits": _both_prefill_routes(7, 8),
-        "moe_shared_gate_logits": _both_prefill_routes(7, 17),
-        "moe_selected_experts": _both_prefill_routes(7, 12),
-        "moe_routing_weights": _both_prefill_routes(7, 17),
-        "moe_down_out": _both_prefill_routes(8, 17),
-        "moe_group_counts": _both_prefill_routes(8, 12),
-        "moe_padded_counts": _both_prefill_routes(8, 12),
-        "moe_scatter_offsets": _both_prefill_routes(8, 12),
-        "moe_expert_start_compact": _both_prefill_routes(8, 12),
-        "moe_expert_start_wmma": _both_prefill_routes(8, 12),
-        "moe_total_compact": _both_prefill_routes(8, 12),
-        "moe_wmma_total": _both_prefill_routes(8, 12),
-        "moe_tile_expert": _both_prefill_routes(8, 12),
-        "moe_sorted_lanes": _both_prefill_routes(8, 13),
-        "moe_sorted_experts": _both_prefill_routes(8, 13),
-        "moe_sorted_weights": _both_prefill_routes(8, 13),
-        "moe_lane_to_row": _both_prefill_routes(8, 13),
-        "moe_shared_gate": _both_prefill_routes(13, 15),
-        "moe_shared_up": _both_prefill_routes(13, 15),
-        "moe_shared_intermediate": _both_prefill_routes(14, 16),
-        "moe_shared_out": _both_prefill_routes(15, 17),
-    }
-)
-_GGUF_PREFILL_SCRATCH_DENSE_DISABLED_FIELDS = frozenset(
-    name for name in _GGUF_PREFILL_SCRATCH_LIFETIMES if name.startswith("moe_")
-)
-_GGUF_PREFILL_SCRATCH_DENSE_LIFETIMES = MappingProxyType(
-    {
-        **_GGUF_PREFILL_SCRATCH_LIFETIMES,
-        # Dense gate/up is dead after SiLU. Dense down reads all intermediate
-        # columns through stage 13, so only intermediate/output stay disjoint.
-        "ffn_gate_up": _both_prefill_routes(9, 12),
-        "ffn_intermediate": _both_prefill_routes(10, 13),
-    }
-)
-
-
-def _prefill_scratch_lifetimes_overlap(
-    lhs: tuple[tuple[str, int, int], ...],
-    rhs: tuple[tuple[str, int, int], ...],
-) -> bool:
-    return any(
-        lhs_route == rhs_route and lhs_start < rhs_end and rhs_start < lhs_end
-        for lhs_route, lhs_start, lhs_end in lhs
-        for rhs_route, rhs_start, rhs_end in rhs
-    )
-
-
-_GGUF_PREFILL_SCRATCH_COLOR_BYTES = 64 * 1024
-_GGUF_PREFILL_SCRATCH_ARENA_GROUPINGS = frozenset({"single", "owner_slots"})
 
 
 def _gguf_prefill_scratch_arena_grouping(backend: str) -> str:
@@ -32679,318 +32572,6 @@ def _gguf_prefill_scratch_arena_grouping(backend: str) -> str:
         choices = ", ".join(sorted(_GGUF_PREFILL_SCRATCH_ARENA_GROUPINGS))
         raise ValueError(f"GGUF_PREFILL_SCRATCH_ARENA_GROUPING must be one of: {choices}")
     return grouping
-
-
-
-
-def _prefill_scratch_field_subranges(
-    name: str,
-    size: int,
-    *,
-    lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]],
-    allocation_subranges: Mapping[
-        str,
-        tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
-    ],
-) -> tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...]:
-    subranges = allocation_subranges.get(name)
-    if subranges is None:
-        return ((0, int(size), lifetimes[name]),)
-    for relative_offset, subrange_size, _subrange_lifetimes in subranges:
-        if (
-            int(relative_offset) < 0
-            or int(subrange_size) <= 0
-            or int(relative_offset) + int(subrange_size) > int(size)
-        ):
-            raise ValueError(f"invalid bulk-prefill allocation subrange for {name}")
-    return subranges
-
-
-def _prefill_scratch_allocations_conflict(
-    name_a: str,
-    offset_a: int,
-    size_a: int,
-    name_b: str,
-    offset_b: int,
-    size_b: int,
-    *,
-    lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]],
-    allocation_subranges: Mapping[
-        str,
-        tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
-    ],
-) -> bool:
-    subranges_a = _prefill_scratch_field_subranges(
-        name_a,
-        size_a,
-        lifetimes=lifetimes,
-        allocation_subranges=allocation_subranges,
-    )
-    subranges_b = _prefill_scratch_field_subranges(
-        name_b,
-        size_b,
-        lifetimes=lifetimes,
-        allocation_subranges=allocation_subranges,
-    )
-    return any(
-        int(offset_a) + int(relative_a)
-        < int(offset_b) + int(relative_b) + int(subrange_size_b)
-        and int(offset_b) + int(relative_b)
-        < int(offset_a) + int(relative_a) + int(subrange_size_a)
-        and _prefill_scratch_lifetimes_overlap(lifetimes_a, lifetimes_b)
-        for relative_a, subrange_size_a, lifetimes_a in subranges_a
-        for relative_b, subrange_size_b, lifetimes_b in subranges_b
-    )
-
-
-def _plan_prefill_scratch_liveness_offsets(
-    sizes: Mapping[str, int],
-    order: tuple[str, ...],
-    *,
-    lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]],
-    allocation_subranges: Mapping[
-        str,
-        tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
-    ],
-) -> tuple[int, Mapping[str, tuple[int, int]]]:
-    offsets: dict[str, tuple[int, int]] = {}
-    for name in order:
-        size = int(sizes[name])
-        if size <= 0:
-            raise ValueError(f"bulk-prefill liveness field {name} must be positive")
-        candidates = {0}
-        # Leave one 64-KiB color between simultaneously-live subranges to
-        # avoid the measured RDNA3 L2/TLB collision from exact power-of-two
-        # weight/activation separation.
-        current_subranges = _prefill_scratch_field_subranges(
-            name,
-            size,
-            lifetimes=lifetimes,
-            allocation_subranges=allocation_subranges,
-        )
-        for other, (other_offset, other_size) in offsets.items():
-            other_subranges = _prefill_scratch_field_subranges(
-                other,
-                other_size,
-                lifetimes=lifetimes,
-                allocation_subranges=allocation_subranges,
-            )
-            candidates.update(
-                _align_prefill_scratch(
-                    other_offset
-                    + other_relative
-                    + other_subrange_size
-                    + _GGUF_PREFILL_SCRATCH_COLOR_BYTES
-                    - current_relative
-                )
-                for current_relative, _current_size, _current_lifetimes in current_subranges
-                for other_relative, other_subrange_size, _other_lifetimes in other_subranges
-                if (
-                    other_offset
-                    + other_relative
-                    + other_subrange_size
-                    + _GGUF_PREFILL_SCRATCH_COLOR_BYTES
-                    >= current_relative
-                )
-            )
-        for candidate in sorted(candidates):
-            if not any(
-                _prefill_scratch_allocations_conflict(
-                    name,
-                    candidate,
-                    size,
-                    other,
-                    other_offset,
-                    other_size,
-                    lifetimes=lifetimes,
-                    allocation_subranges=allocation_subranges,
-                )
-                for other, (other_offset, other_size) in offsets.items()
-            ):
-                offsets[name] = (candidate, size)
-                break
-        else:  # pragma: no cover - candidate set always includes the current end
-            raise RuntimeError(f"failed to place bulk-prefill liveness field {name}")
-    arena_nbytes = _align_prefill_scratch(
-        max(offset + size for offset, size in offsets.values())
-    )
-    return arena_nbytes, MappingProxyType(offsets)
-
-
-def _allocate_prefill_scratch_liveness_arena(
-    sizes: Mapping[str, int],
-    *,
-    runtime: HipRuntime,
-    lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]] = (
-        _GGUF_PREFILL_SCRATCH_LIFETIMES
-    ),
-    allocation_subranges: Mapping[
-        str,
-        tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
-    ] = MappingProxyType({}),
-    priority_min_live_stages: int | None = None,
-) -> tuple[DeviceBuffer, dict[str, DeviceBuffer], Mapping[str, tuple[int, int]]]:
-    missing = sorted(set(sizes) - set(lifetimes))
-    if missing:
-        raise ValueError(f"bulk-prefill liveness plan is missing fields: {missing}")
-    size_order = tuple(
-        sorted(sizes, key=lambda name: (-int(sizes[name]), name))
-    )
-    arena_nbytes, offsets = _plan_prefill_scratch_liveness_offsets(
-        sizes,
-        size_order,
-        lifetimes=lifetimes,
-        allocation_subranges=allocation_subranges,
-    )
-    if priority_min_live_stages is not None:
-        duration = {
-            name: sum(end - start for _route, start, end in lifetimes[name])
-            for name in sizes
-        }
-        priority = tuple(
-            sorted(
-                (
-                    name
-                    for name in sizes
-                    if duration[name] >= int(priority_min_live_stages)
-                ),
-                key=lambda name: (-duration[name], -int(sizes[name]), name),
-            )
-        )
-        priority_set = frozenset(priority)
-        candidate_order = priority + tuple(
-            name for name in size_order if name not in priority_set
-        )
-        candidate_nbytes, candidate_offsets = (
-            _plan_prefill_scratch_liveness_offsets(
-                sizes,
-                candidate_order,
-                lifetimes=lifetimes,
-                allocation_subranges=allocation_subranges,
-            )
-        )
-        # Keep established addresses on ties and never admit a larger plan.
-        if candidate_nbytes < arena_nbytes:
-            arena_nbytes = candidate_nbytes
-            offsets = candidate_offsets
-    arena = malloc(arena_nbytes, runtime=runtime)
-    views = {
-        name: DeviceBuffer(ptr=arena.ptr + offset, nbytes=size)
-        for name, (offset, size) in offsets.items()
-    }
-    return arena, views, offsets
-
-
-def _allocate_prefill_scratch_liveness_owner_slots(
-    sizes: Mapping[str, int],
-    *,
-    runtime: HipRuntime,
-    lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]] = (
-        _GGUF_PREFILL_SCRATCH_LIFETIMES
-    ),
-) -> tuple[
-    tuple[DeviceBuffer, ...],
-    dict[str, DeviceBuffer],
-    Mapping[str, tuple[int, int]],
-    Mapping[str, str],
-]:
-    missing = sorted(set(sizes) - set(lifetimes))
-    if missing:
-        raise ValueError(f"bulk-prefill liveness plan is missing fields: {missing}")
-
-    slot_members: list[list[str]] = []
-    slot_sizes: list[int] = []
-    # Descending size order makes each slot's first field its largest, so later
-    # disjoint fields can reuse the owner without resizing or address churn.
-    for name, raw_size in sorted(sizes.items(), key=lambda item: (-int(item[1]), item[0])):
-        size = int(raw_size)
-        if size <= 0:
-            raise ValueError(f"bulk-prefill liveness field {name} must be positive")
-        for members in slot_members:
-            if all(
-                not _prefill_scratch_lifetimes_overlap(
-                    lifetimes[name],
-                    lifetimes[other],
-                )
-                for other in members
-            ):
-                members.append(name)
-                break
-        else:
-            slot_members.append([name])
-            slot_sizes.append(size)
-
-    tracked: list[DeviceBuffer] = []
-    try:
-        for size in slot_sizes:
-            tracked.append(malloc(_align_prefill_scratch(size), runtime=runtime))
-    except BaseException:
-        for buffer in reversed(tracked):
-            free(buffer, runtime=runtime)
-        raise
-    owners = tuple(tracked)
-    views: dict[str, DeviceBuffer] = {}
-    virtual_offsets: dict[str, tuple[int, int]] = {}
-    field_groups: dict[str, str] = {}
-    virtual_base = 0
-    for slot_index, (owner, members) in enumerate(zip(owners, slot_members, strict=True)):
-        group = f"owner_slot_{slot_index:02d}"
-        for name in members:
-            size = int(sizes[name])
-            views[name] = DeviceBuffer(ptr=owner.ptr, nbytes=size)
-            virtual_offsets[name] = (virtual_base, size)
-            field_groups[name] = group
-        virtual_base = _align_prefill_scratch(virtual_base + owner.nbytes)
-    return (
-        owners,
-        views,
-        MappingProxyType(virtual_offsets),
-        MappingProxyType(field_groups),
-    )
-
-
-def _allocate_prefill_scratch_liveness_arenas(
-    sizes: Mapping[str, int],
-    *,
-    grouping: str,
-    runtime: HipRuntime,
-    lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]] = (
-        _GGUF_PREFILL_SCRATCH_LIFETIMES
-    ),
-    allocation_subranges: Mapping[
-        str,
-        tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
-    ] = MappingProxyType({}),
-    priority_min_live_stages: int | None = None,
-) -> tuple[
-    tuple[DeviceBuffer, ...],
-    dict[str, DeviceBuffer],
-    Mapping[str, tuple[int, int]],
-    Mapping[str, str],
-]:
-    if grouping == "owner_slots":
-        if allocation_subranges:
-            raise ValueError("owner-slot prefill arenas do not support allocation subranges")
-        return _allocate_prefill_scratch_liveness_owner_slots(
-            sizes,
-            runtime=runtime,
-            lifetimes=lifetimes,
-        )
-    if grouping != "single":  # pragma: no cover - validated by capability lookup
-        raise ValueError(f"unsupported prefill scratch arena grouping {grouping!r}")
-    arena, views, offsets = _allocate_prefill_scratch_liveness_arena(
-        sizes,
-        runtime=runtime,
-        lifetimes=lifetimes,
-        allocation_subranges=allocation_subranges,
-        priority_min_live_stages=priority_min_live_stages,
-    )
-    return (
-        (arena,),
-        views,
-        offsets,
-        MappingProxyType({name: "single" for name in sizes}),
-    )
 
 
 def _gguf_gdn_prefill_session_mode(
@@ -33066,7 +32647,9 @@ def _gguf_gdn_prefill_scratch_diagnostic() -> bool:
     )
 
 
-def _gguf_prefill_normalized_qk_heads(runner: object) -> int:
+def _gguf_prefill_normalized_qk_heads(
+    runner: object, *, gdn_mode: str | None = None
+) -> int:
     """Return the normalized-Q/K head capacity required by this session route."""
 
     weights = getattr(runner, "weights", None)
@@ -33075,13 +32658,16 @@ def _gguf_prefill_normalized_qk_heads(runner: object) -> int:
     if cfg is None:
         raise ValueError("GGUF prefill scratch requires model configuration")
     value_heads = int(cfg.ssm_time_step_rank)
-    if not isinstance(backend, str):
-        return value_heads
-    try:
-        mode = _gguf_gdn_prefill_session_mode(backend, weights=weights, cfg=cfg)
-    except ValueError:
-        return value_heads
-    if mode == "chain_compact_peer_wave32":
+    if gdn_mode is None:
+        if not isinstance(backend, str):
+            return value_heads
+        try:
+            gdn_mode = _gguf_gdn_prefill_session_mode(
+                backend, weights=weights, cfg=cfg
+            )
+        except ValueError:
+            return value_heads
+    if gdn_mode == "chain_compact_peer_wave32":
         return int(cfg.ssm_group_count)
     return value_heads
 
@@ -33090,6 +32676,7 @@ def _gguf_prefill_scratch_liveness_disabled_fields(
     runner: object,
     *,
     rows: int,
+    effective_mode: str | None = None,
 ) -> frozenset[str] | None:
     weights = getattr(runner, "weights", None)
     cfg = getattr(weights, "config", None)
@@ -33138,9 +32725,10 @@ def _gguf_prefill_scratch_liveness_disabled_fields(
             return None
     if int(rows) < max(1, min_rows):
         return None
-    effective_mode = _gguf_gdn_prefill_session_mode(
-        backend, weights=weights, cfg=cfg
-    )
+    if effective_mode is None:
+        effective_mode = _gguf_gdn_prefill_session_mode(
+            backend, weights=weights, cfg=cfg
+        )
     if effective_mode in {
         "chain_lds32_direct",
         "chain_lds32_direct_nonvolatile",
@@ -33666,123 +33254,32 @@ class _GGUFFullAttentionPrefillScratch:
             raise ValueError(f"capacity {capacity} must be >= rows {rows}")
         assert runner.weights is not None
         cfg = runner.weights.config
+        weights = runner.weights
         device = Device("hip", 0)
-        block_size = 256
-        blocks = (capacity + block_size - 1) // block_size
-        max_positions = blocks * block_size
+        # Session-frozen GDN route, resolved once before any owner exists: the
+        # dispatch marker and the scratch geometry must agree, and a policy
+        # failure here must not leave device allocations to unwind.
+        try:
+            gdn_mode = _gguf_gdn_prefill_session_mode(
+                runner.backend, weights=weights, cfg=cfg
+            )
+        except ValueError:
+            # Unvalidated/exotic backends have no capability policy; keep the
+            # neutral frozen marker so dispatch still resolves env-side.
+            gdn_mode = "auto"
+        plan = _gguf_prefill_scratch_plan(
+            runner,
+            rows=rows,
+            capacity=capacity,
+            segments=segments,
+            allocate_kv_cache=allocate_kv_cache,
+            gdn_mode=gdn_mode,
+        )
 
         def buf(nbytes: int):
             return malloc(nbytes, runtime=runtime)
 
-        hidden_bytes = rows * runner.hidden_size * 2
-        hidden_f32_bytes = rows * runner.hidden_size * DType.FP32.itemsize
-        q_proj_bytes = rows * 2 * runner.q_width * 2
-        kv_bf16_bytes = rows * runner.kv_width * 2
-        q_f32_bytes = rows * runner.q_width * 4
-        kv_f32_bytes = rows * runner.kv_width * 4
-        ffn_bytes = rows * runner.ffn_size * 2
-        moe_lane_count = max(1, int(cfg.expert_used_count)) if cfg.is_moe else 1
-        moe_top_k = max(1, int(cfg.expert_used_count))
-        moe_experts = max(1, int(cfg.expert_count))
-        moe_selected_rows_capacity = rows * moe_top_k
-        moe_wmma_rows_capacity = moe_selected_rows_capacity + 16 * moe_experts
-        moe_tile_capacity = max(1, (moe_wmma_rows_capacity + 15) // 16)
-        moe_group_counts_zero = np.zeros((moe_experts,), dtype=np.int32)
-        moe_scatter_offsets_zero = np.zeros((moe_experts,), dtype=np.int32)
-        moe_wmma_total_host = np.empty((1,), dtype=np.int64)
-        moe_shared_ffn = max(1, int(cfg.expert_shared_feed_forward_length or runner.ffn_size or 1))
-        q8_1_gate_blocks = rows * ((runner.hidden_size + _Q8_1_BLOCK - 1) // _Q8_1_BLOCK)
-        q8_1_down_blocks = moe_selected_rows_capacity * ((runner.ffn_size + _Q8_1_BLOCK - 1) // _Q8_1_BLOCK)
-        q8_1_moe_bytes = max(q8_1_gate_blocks, q8_1_down_blocks) * _Q8_1_BLOCK_BYTES
-        linear_qkv_bf16_bytes = rows * runner.linear_qkv_width * 2
-        linear_qkv_f32_bytes = rows * runner.linear_qkv_width * 4
-        linear_z_bytes = rows * cfg.ssm_inner_size * 2
-        linear_z_f32_bytes = rows * cfg.ssm_inner_size * 4
-        linear_ab_bytes = rows * cfg.ssm_time_step_rank * 2
-        linear_ab_f32_bytes = rows * cfg.ssm_time_step_rank * 4
-        recurrent_f32_bytes = rows * cfg.ssm_inner_size * 4
-        normalized_qk_f32_bytes = (
-            rows
-            * _gguf_prefill_normalized_qk_heads(runner)
-            * cfg.ssm_state_size
-            * DType.FP32.itemsize
-        )
-        q6_f16_policy = _gguf_t16_f16_rocblas_prefill_policy(runner)
-        q6_f16_x_bytes = (
-            rows * runner.hidden_size * DType.FP16.itemsize
-            if q6_f16_policy is not None
-            else 0
-        )
-        all_f16_shape_policies = (
-            tuple(
-                (shape, row_policy)
-                for quant, quant_policy in q6_f16_policy.items()
-                if quant
-                not in {
-                    "linear_variant_intervals_by_quant",
-                    "max_rows_by_quant_shape",
-                    "pair_only_second_operand_policies",
-                }
-                for shape, row_policy in quant_policy.items()
-            )
-            if q6_f16_policy is not None
-            else ()
-        )
-        q6_f16_weight_bytes = (
-            max(
-                int(tile) * int(shape[0])
-                for shape, row_policy in all_f16_shape_policies
-                for tile in row_policy.values()
-            )
-            * DType.FP16.itemsize
-            if all_f16_shape_policies
-            else 0
-        )
-        q6_f16_out_bytes = (
-            rows
-            * max(
-                int(tile)
-                for _shape, row_policy in all_f16_shape_policies
-                for tile in row_policy.values()
-            )
-            * DType.FP16.itemsize
-            if all_f16_shape_policies
-            else 0
-        )
-        conv_state_bytes = runner.linear_qkv_width * cfg.ssm_conv_kernel * DType.FP32.itemsize
-        recurrent_state_bytes = (
-            cfg.ssm_time_step_rank
-            * cfg.ssm_state_size
-            * runner.ssm_value_dim
-            * (
-                DType.FP16.itemsize
-                if bool(getattr(runner, "fp16_recurrent_state", False))
-                else DType.FP32.itemsize
-            )
-        )
-        prefill_scalar_bytes = rows * cfg.ssm_time_step_rank * 4
-        cache_nbytes = max_positions * cfg.head_count_kv * cfg.key_length * 2 if allocate_kv_cache else 0
-        full_attn_split_count = (capacity + block_size - 1) // block_size
-        full_attn_split_batch_rows = min(rows, _GGUF_FULL_ATTN_PREFILL_SPLIT_BATCH_ROWS)
-        # Demand-driven split-K partials: allocate the single-query decode
-        # floor here; the native prefill fallback and multi-row batch decode
-        # grow the buffers through ensure_full_attn_split_query_rows. Grown
-        # buffers stay owned for the scratch lifetime (they are small
-        # relative to the eager 16-row allocation this replaces).
-        full_attn_split_query_rows = 1
-        full_attn_split_partial_bytes = (
-            full_attn_split_query_rows
-            * runner.q_width
-            * full_attn_split_count
-            * DType.FP32.itemsize
-        )
-        full_attn_split_stat_bytes = (
-            full_attn_split_query_rows
-            * cfg.head_count
-            * full_attn_split_count
-            * DType.FP32.itemsize
-        )
-        block_table_arr = np.tile(np.arange(blocks, dtype=np.int32), (rows, 1))
+        block_table_arr = np.tile(np.arange(plan.blocks, dtype=np.int32), (rows, 1))
         positions_arr = np.arange(rows, dtype=np.int64)
         context_arr = positions_arr + np.int64(1)
         cu_arr = np.zeros((segments + 1,), dtype=np.int32)
@@ -33793,348 +33290,118 @@ class _GGUFFullAttentionPrefillScratch:
             rotary_dim=cfg.rope_dimension_count,
             base=cfg.rope_freq_base,
         )
-        field_sizes = {
-            "norm": hidden_bytes,
-            "full_q": q_proj_bytes,
-            "full_k": kv_bf16_bytes,
-            "full_v": kv_bf16_bytes,
-            "linear_qkv": linear_qkv_bf16_bytes,
-            "linear_qkv_f32": linear_qkv_f32_bytes,
-            "linear_z": linear_z_bytes,
-            "linear_z_f32": linear_z_f32_bytes,
-            "linear_alpha": linear_ab_bytes,
-            "linear_alpha_f32": linear_ab_f32_bytes,
-            "linear_beta": linear_ab_bytes,
-            "linear_beta_f32": linear_ab_f32_bytes,
-            "conv_out": linear_qkv_f32_bytes,
-            "prefill_query": normalized_qk_f32_bytes,
-            "prefill_key": normalized_qk_f32_bytes,
-            "prefill_value": recurrent_f32_bytes,
-            "q6_f16_x": q6_f16_x_bytes,
-            "q6_f16_weight": q6_f16_weight_bytes,
-            "q6_f16_out": q6_f16_out_bytes,
-            "prefill_beta": prefill_scalar_bytes,
-            "prefill_decay": prefill_scalar_bytes,
-            "prefill_query_scale": prefill_scalar_bytes,
-            "prefill_key_scale": prefill_scalar_bytes,
-            "recurrent_out": recurrent_f32_bytes,
-            "recurrent_bf16": linear_z_bytes,
-            "linear_conv_state_tmp": conv_state_bytes,
-            "linear_recurrent_state_tmp": recurrent_state_bytes,
-            "full_query_raw": q_f32_bytes,
-            "full_key_raw": kv_f32_bytes,
-            "full_query": q_f32_bytes,
-            "full_key": kv_f32_bytes,
-            "full_query_bf16": rows * runner.q_width * 2,
-            "full_gate": rows * runner.q_width * 2,
-            "full_attn_bf16": rows * runner.q_width * 2,
-            "full_gated": rows * runner.q_width * 2,
-            "attn_out": hidden_bytes,
-            "post_norm": hidden_bytes,
-            "post_norm_f32": hidden_f32_bytes,
-            "residual": hidden_bytes,
-            "ffn_gate_up": 2 * ffn_bytes * moe_lane_count,
-            "ffn_intermediate": ffn_bytes * moe_lane_count,
-            "ffn_intermediate_f32": moe_selected_rows_capacity * runner.ffn_size * DType.FP32.itemsize,
-            "ffn_down": hidden_bytes,
-            "moe_q8_1": q8_1_moe_bytes,
-            "moe_router_logits": rows * moe_experts * DType.FP32.itemsize,
-            "moe_shared_gate_logits": rows * DType.FP32.itemsize,
-            "moe_selected_experts": rows * moe_top_k * DType.INT64.itemsize,
-            "moe_routing_weights": rows * moe_top_k * DType.FP32.itemsize,
-            "moe_down_out": moe_top_k * hidden_bytes,
-            "moe_down_out_f32": moe_selected_rows_capacity * runner.hidden_size * DType.FP32.itemsize,
-            "moe_group_counts": moe_group_counts_zero.nbytes,
-            "moe_padded_counts": moe_group_counts_zero.nbytes,
-            "moe_scatter_offsets": moe_scatter_offsets_zero.nbytes,
-            "moe_expert_start_compact": (moe_experts + 1) * DType.INT64.itemsize,
-            "moe_expert_start_wmma": (moe_experts + 1) * DType.INT64.itemsize,
-            "moe_total_compact": DType.INT64.itemsize,
-            "moe_wmma_total": DType.INT64.itemsize,
-            "moe_tile_expert": moe_tile_capacity * DType.INT64.itemsize,
-            "moe_sorted_lanes": moe_selected_rows_capacity * DType.INT64.itemsize,
-            "moe_sorted_experts": moe_selected_rows_capacity * DType.INT64.itemsize,
-            "moe_sorted_weights": moe_selected_rows_capacity * DType.FP32.itemsize,
-            "moe_lane_to_row": moe_selected_rows_capacity * DType.INT64.itemsize,
-            "moe_shared_gate": rows * moe_shared_ffn * DType.BF16.itemsize,
-            "moe_shared_up": rows * moe_shared_ffn * DType.BF16.itemsize,
-            "moe_shared_intermediate": rows * moe_shared_ffn * DType.BF16.itemsize,
-            "moe_shared_out": hidden_bytes,
-            "moe_shared_out_f32": hidden_f32_bytes,
-        }
-        inactive_fields = frozenset(
-            name
-            for name in ("q6_f16_x", "q6_f16_weight", "q6_f16_out")
-            if int(field_sizes[name]) == 0
-        )
-        allocation_mode = "dedicated"
-        allocation_offsets: Mapping[str, tuple[int, int]] = MappingProxyType({})
-        allocation_lifetimes: Mapping[str, tuple[tuple[str, int, int], ...]] = MappingProxyType({})
-        allocation_groups: Mapping[str, str] = MappingProxyType({})
-        allocation_inplace_aliases: Mapping[str, str] = MappingProxyType({})
-        allocation_subranges: Mapping[
-            str,
-            tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
-        ] = MappingProxyType({})
+        moe_group_counts_zero = np.zeros((plan.moe_experts,), dtype=np.int32)
+        moe_scatter_offsets_zero = np.zeros((plan.moe_experts,), dtype=np.int32)
+        moe_wmma_total_host = np.empty((1,), dtype=np.int64)
+
         owners: list[DeviceBuffer] = []
         try:
-            liveness_disabled_fields = _gguf_prefill_scratch_liveness_disabled_fields(
-                runner,
-                rows=rows,
-            )
-            scratch_lifetimes = (
-                _GGUF_PREFILL_SCRATCH_LIFETIMES
-                if bool(cfg.is_moe)
-                else _GGUF_PREFILL_SCRATCH_DENSE_LIFETIMES
-            )
-            if liveness_disabled_fields is not None:
-                # NOTE: no conv_out lifetime override here. 59fd48631 briefly
-                # shrank conv_out to stage (2, 4) so its full-row plane could share
-                # arena pages with recurrent_out on the claim that split prepare
-                # consumes conv_out completely before recurrence begins. That is
-                # false: the exact recurrence reads the full convolution sequence
-                # while writing recurrent_out, so the shared pages alias and
-                # corrupt state in multi-row prefill (bit-exactness broken for
-                # packed c2/c8 vs independent c1; W7900 state oracle 2026-08-17).
-                # Keep the base ("linear", 2, 5) lifetime for every GDN mode.
-                arena_grouping = _gguf_prefill_scratch_arena_grouping(runner.backend)
-                # Dense SiLU consumes gate/up elementwise and may replace the dead
-                # gate plane in place.  Keep this intentional source/output alias
-                # separate from ordinary stage-disjoint arena coloring. Owner-slot
-                # arenas cannot describe subranges and retain the ordinary layout.
-                inplace_aliases = (
-                    {"ffn_intermediate": "ffn_gate_up"}
-                    if not bool(cfg.is_moe) and arena_grouping == "single"
-                    else {}
-                )
-                active_names = {
-                    name
-                    for name in field_sizes
-                    if name not in liveness_disabled_fields and name not in inactive_fields
-                }
-                active_sizes = {
-                    name: int(field_sizes[name])
-                    for name in active_names
-                    if name not in inplace_aliases
-                }
-                allocation_plan_lifetimes = dict(scratch_lifetimes)
-                planned_subranges: dict[
-                    str,
-                    tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...],
-                ] = {}
-                for alias, source in inplace_aliases.items():
-                    source_lifetimes = scratch_lifetimes[source]
-                    alias_lifetimes = scratch_lifetimes[alias]
-                    alias_nbytes = int(field_sizes[alias])
-                    source_nbytes = int(field_sizes[source])
-                    combined_lifetimes = tuple(
-                        dict.fromkeys((*source_lifetimes, *alias_lifetimes))
-                    )
-                    allocation_plan_lifetimes[source] = combined_lifetimes
-                    source_subranges = [(0, alias_nbytes, combined_lifetimes)]
-                    if source_nbytes > alias_nbytes:
-                        source_subranges.append(
-                            (
-                                alias_nbytes,
-                                source_nbytes - alias_nbytes,
-                                source_lifetimes,
-                            )
-                        )
-                    planned_subranges[source] = tuple(source_subranges)
-                arenas, active_fields, allocation_offsets, allocation_groups = (
-                    _allocate_prefill_scratch_liveness_arenas(
-                        active_sizes,
-                        grouping=arena_grouping,
-                        runtime=runtime,
-                        lifetimes=allocation_plan_lifetimes,
-                        allocation_subranges=planned_subranges,
-                        priority_min_live_stages=(
-                            _gguf_prefill_scratch_priority_min_live_stages(
-                                runner,
-                                rows=rows,
-                            )
-                        ),
-                    )
-                )
-                fields = {
-                    name: (
-                        _GGUF_PREFILL_SCRATCH_EMPTY
-                        if name in liveness_disabled_fields or name in inactive_fields
-                        else active_fields.get(name)
-                    )
-                    for name in field_sizes
-                }
-                offsets = dict(allocation_offsets)
-                groups = dict(allocation_groups)
-                for alias, source in inplace_aliases.items():
-                    alias_nbytes = int(field_sizes[alias])
-                    source_view = fields[source]
-                    if source_view is None or alias_nbytes > int(source_view.nbytes):
-                        raise RuntimeError(
-                            f"invalid dense prefill in-place alias {alias} -> {source}"
-                        )
-                    fields[alias] = DeviceBuffer(
-                        ptr=int(source_view.ptr),
-                        nbytes=alias_nbytes,
-                    )
-                    source_offset, _source_nbytes = offsets[source]
-                    offsets[alias] = (int(source_offset), alias_nbytes)
-                    groups[alias] = groups[source]
-                owners.extend(arenas)
-                allocation_mode = "liveness_aliased"
-                allocation_offsets = MappingProxyType(offsets)
-                allocation_lifetimes = MappingProxyType(
-                    {
-                        name: (
-                            scratch_lifetimes[name]
-                            if name in inplace_aliases
-                            else allocation_plan_lifetimes[name]
-                        )
-                        for name in active_names
-                    }
-                )
-                allocation_groups = MappingProxyType(groups)
-                allocation_inplace_aliases = MappingProxyType(inplace_aliases)
-                allocation_subranges = MappingProxyType(planned_subranges)
-            else:
-                fields = {}
-                for name, nbytes in field_sizes.items():
-                    buffer = (
-                        _GGUF_PREFILL_SCRATCH_EMPTY if name in inactive_fields else buf(nbytes)
-                    )
-                    fields[name] = buffer
-                    if name not in inactive_fields:
-                        owners.append(buffer)
-
-            dedicated_fields: dict[str, DeviceBuffer | None] = {}
-            for name, nbytes in (
-                ("gdn_cu_seqlens", (segments + 1) * DType.INT32.itemsize),
-                ("gdn_state_indices", segments * DType.INT64.itemsize),
-                ("block_table", block_table_arr.nbytes),
-                ("positions", positions_arr.nbytes),
-                ("context_counts", context_arr.nbytes),
-                ("cos_table", cos_arr.nbytes),
-                ("sin_table", sin_arr.nbytes),
-                ("cu_q", cu_arr.nbytes),
-                ("cu_k", cu_arr.nbytes),
-                ("softmax_lse", cfg.head_count * rows * 4),
-                ("full_attn_split_partial", full_attn_split_partial_bytes),
-                ("full_attn_split_m", full_attn_split_stat_bytes),
-                ("full_attn_split_l", full_attn_split_stat_bytes),
-                ("atomic", atomic_arr.nbytes),
-                ("moe_router_counter", DType.INT32.itemsize),
-            ):
-                buffer = buf(nbytes)
-                dedicated_fields[name] = buffer
+            owner_buffers: dict[str, DeviceBuffer] = {}
+            for owner_name, nbytes in plan.owner_sizes.items():
+                buffer = buf(int(nbytes))
+                owner_buffers[owner_name] = buffer
                 owners.append(buffer)
-            if allocate_kv_cache:
-                for name in ("key_cache", "value_cache"):
-                    buffer = buf(cache_nbytes)
-                    dedicated_fields[name] = buffer
-                    owners.append(buffer)
-            else:
-                dedicated_fields["key_cache"] = None
-                dedicated_fields["value_cache"] = None
-            fields.update(dedicated_fields)
-            try:
-                copy_host_to_device(fields["block_table"], host_array_ptr(block_table_arr), runtime=runtime)
-                copy_host_to_device(fields["positions"], host_array_ptr(positions_arr), runtime=runtime)
-                copy_host_to_device(fields["context_counts"], host_array_ptr(context_arr), runtime=runtime)
-                copy_host_to_device(fields["cos_table"], host_array_ptr(cos_arr), runtime=runtime)
-                copy_host_to_device(fields["sin_table"], host_array_ptr(sin_arr), runtime=runtime)
-                copy_host_to_device(fields["cu_q"], host_array_ptr(cu_arr), runtime=runtime)
-                copy_host_to_device(fields["cu_k"], host_array_ptr(cu_arr), runtime=runtime)
-                copy_host_to_device(fields["atomic"], host_array_ptr(atomic_arr), runtime=runtime)
-                copy_host_to_device(fields["moe_router_counter"], host_array_ptr(atomic_arr), runtime=runtime)
-                gdn_state_indices_arr = np.arange(segments, dtype=np.int64)
-                copy_host_to_device(
-                    fields["gdn_cu_seqlens"], host_array_ptr(cu_arr), cu_arr.nbytes, runtime=runtime
-                )
-                copy_host_to_device(
-                    fields["gdn_state_indices"],
-                    host_array_ptr(gdn_state_indices_arr),
-                    gdn_state_indices_arr.nbytes,
-                    runtime=runtime,
-                )
-                block_table_tensor = Tensor.from_handle(fields["block_table"].ptr, block_table_arr.shape, DType.INT32, device)
-                positions_tensor = Tensor.from_handle(fields["positions"].ptr, positions_arr.shape, DType.INT64, device)
-                context_tensor = Tensor.from_handle(fields["context_counts"].ptr, context_arr.shape, DType.INT64, device)
-                append_spans = KVLiveSpans.paged_uniform(
-                    block_table=block_table_tensor,
-                    live_counts=positions_tensor,
-                    max_live_count=rows - 1,
-                    storage_dtype=DType.BF16,
-                    row_positions=positions_tensor,
-                    span_role="prefill",
-                )
-                prefill_spans = KVLiveSpans.paged_uniform(
-                    block_table=block_table_tensor,
-                    live_counts=context_tensor,
-                    max_live_count=rows,
-                    storage_dtype=DType.BF16,
-                    row_positions=positions_tensor,
-                    span_role="prefill",
-                )
-                weights = getattr(runner, "weights", None)
-                cfg = getattr(weights, "config", None)
-                try:
-                    gdn_mode = _gguf_gdn_prefill_session_mode(
-                        runner.backend, weights=weights, cfg=cfg
+            fields: dict[str, DeviceBuffer | None] = {}
+            for name, view in plan.views.items():
+                if view is None:
+                    # Optional KV caches are typed ``object | None``; every
+                    # other unstored plane is the shared empty buffer.
+                    fields[name] = (
+                        None
+                        if name in _GGUF_PREFILL_SCRATCH_OPTIONAL_FIELDS
+                        else _GGUF_PREFILL_SCRATCH_EMPTY
                     )
-                except ValueError:
-                    # Unvalidated/exotic backends have no capability policy; keep the
-                    # neutral frozen marker so dispatch still resolves env-side.
-                    gdn_mode = "auto"
-                return cls(
-                    **fields,
-                    rows=rows,
-                    backend=runner.backend,
-                    gdn_effective_mode=gdn_mode,
-                    gdn_mode_diagnostic=_gguf_gdn_prefill_scratch_diagnostic(),
-                    block_table_tensor=block_table_tensor,
-                    positions_tensor=positions_tensor,
-                    context_counts_tensor=context_tensor,
-                    retained_key_cache=None,
-                    retained_value_cache=None,
-                    retained_append_spans=None,
-                    append_spans=append_spans,
-                    prefill_spans=prefill_spans,
-                    block_size=block_size,
-                    blocks=blocks,
-                    max_positions=capacity,
-                    full_attn_split_batch_rows=full_attn_split_batch_rows,
-                    full_attn_split_count=full_attn_split_count,
-                    full_attn_split_capacity_rows=full_attn_split_query_rows,
-                    full_attn_split_partial_row_bytes=(
-                        runner.q_width * full_attn_split_count * DType.FP32.itemsize
-                    ),
-                    full_attn_split_stat_row_bytes=(
-                        cfg.head_count * full_attn_split_count * DType.FP32.itemsize
-                    ),
-                    full_attn_split_root=None,
-                    full_attn_split_growth_buffers=(),
-                    moe_group_counts_zero=moe_group_counts_zero,
-                    moe_scatter_offsets_zero=moe_scatter_offsets_zero,
-                    moe_wmma_total_host=moe_wmma_total_host,
-                    moe_selected_host=np.empty((moe_top_k,), dtype=np.int64),
-                    moe_selected_rows_capacity=moe_selected_rows_capacity,
-                    moe_wmma_rows_capacity=moe_wmma_rows_capacity,
-                    buffers=tuple(owners),
-                    runtime_state_library=runtime_state_library,
-                    allocation_mode=allocation_mode,
-                    allocation_offsets=allocation_offsets,
-                    allocation_lifetimes=allocation_lifetimes,
-                    allocation_groups=allocation_groups,
-                    allocation_inplace_aliases=allocation_inplace_aliases,
-                    allocation_subranges=allocation_subranges,
-                    gdn_segment_capacity=segments,
-                    gdn_active_segments=1,
+                    continue
+                owner_name, offset, nbytes = view
+                owner = owner_buffers[owner_name]
+                fields[name] = DeviceBuffer(
+                    ptr=int(owner.ptr) + int(offset),
+                    nbytes=int(nbytes),
                 )
-            except BaseException:
-                for buffer in reversed(owners):
-                    free(buffer, runtime=runtime)
-                raise
+            copy_host_to_device(fields["block_table"], host_array_ptr(block_table_arr), runtime=runtime)
+            copy_host_to_device(fields["positions"], host_array_ptr(positions_arr), runtime=runtime)
+            copy_host_to_device(fields["context_counts"], host_array_ptr(context_arr), runtime=runtime)
+            copy_host_to_device(fields["cos_table"], host_array_ptr(cos_arr), runtime=runtime)
+            copy_host_to_device(fields["sin_table"], host_array_ptr(sin_arr), runtime=runtime)
+            copy_host_to_device(fields["cu_q"], host_array_ptr(cu_arr), runtime=runtime)
+            copy_host_to_device(fields["cu_k"], host_array_ptr(cu_arr), runtime=runtime)
+            copy_host_to_device(fields["atomic"], host_array_ptr(atomic_arr), runtime=runtime)
+            copy_host_to_device(fields["moe_router_counter"], host_array_ptr(atomic_arr), runtime=runtime)
+            gdn_state_indices_arr = np.arange(segments, dtype=np.int64)
+            copy_host_to_device(
+                fields["gdn_cu_seqlens"], host_array_ptr(cu_arr), cu_arr.nbytes, runtime=runtime
+            )
+            copy_host_to_device(
+                fields["gdn_state_indices"],
+                host_array_ptr(gdn_state_indices_arr),
+                gdn_state_indices_arr.nbytes,
+                runtime=runtime,
+            )
+            block_table_tensor = Tensor.from_handle(fields["block_table"].ptr, block_table_arr.shape, DType.INT32, device)
+            positions_tensor = Tensor.from_handle(fields["positions"].ptr, positions_arr.shape, DType.INT64, device)
+            context_tensor = Tensor.from_handle(fields["context_counts"].ptr, context_arr.shape, DType.INT64, device)
+            append_spans = KVLiveSpans.paged_uniform(
+                block_table=block_table_tensor,
+                live_counts=positions_tensor,
+                max_live_count=rows - 1,
+                storage_dtype=DType.BF16,
+                row_positions=positions_tensor,
+                span_role="prefill",
+            )
+            prefill_spans = KVLiveSpans.paged_uniform(
+                block_table=block_table_tensor,
+                live_counts=context_tensor,
+                max_live_count=rows,
+                storage_dtype=DType.BF16,
+                row_positions=positions_tensor,
+                span_role="prefill",
+            )
+            return cls(
+                **fields,
+                rows=rows,
+                backend=runner.backend,
+                gdn_effective_mode=gdn_mode,
+                gdn_mode_diagnostic=_gguf_gdn_prefill_scratch_diagnostic(),
+                block_table_tensor=block_table_tensor,
+                positions_tensor=positions_tensor,
+                context_counts_tensor=context_tensor,
+                retained_key_cache=None,
+                retained_value_cache=None,
+                retained_append_spans=None,
+                append_spans=append_spans,
+                prefill_spans=prefill_spans,
+                block_size=plan.block_size,
+                blocks=plan.blocks,
+                max_positions=plan.max_positions,
+                full_attn_split_batch_rows=plan.full_attn_split_batch_rows,
+                full_attn_split_count=plan.full_attn_split_count,
+                full_attn_split_capacity_rows=plan.full_attn_split_capacity_rows,
+                full_attn_split_partial_row_bytes=(
+                    plan.full_attn_split_partial_row_bytes
+                ),
+                full_attn_split_stat_row_bytes=plan.full_attn_split_stat_row_bytes,
+                full_attn_split_root=None,
+                full_attn_split_growth_buffers=(),
+                moe_group_counts_zero=moe_group_counts_zero,
+                moe_scatter_offsets_zero=moe_scatter_offsets_zero,
+                moe_wmma_total_host=moe_wmma_total_host,
+                moe_selected_host=np.empty((plan.moe_top_k,), dtype=np.int64),
+                moe_selected_rows_capacity=plan.moe_selected_rows_capacity,
+                moe_wmma_rows_capacity=plan.moe_wmma_rows_capacity,
+                buffers=tuple(owners),
+                runtime_state_library=runtime_state_library,
+                allocation_mode=plan.allocation_mode,
+                allocation_offsets=plan.allocation_offsets,
+                allocation_lifetimes=plan.allocation_lifetimes,
+                allocation_groups=plan.allocation_groups,
+                allocation_inplace_aliases=plan.allocation_inplace_aliases,
+                allocation_subranges=plan.allocation_subranges,
+                gdn_segment_capacity=segments,
+                gdn_active_segments=1,
+            )
         except BaseException:
+            # Single rollback path: every owner acquired above is released
+            # exactly once, in reverse order, and the original error propagates.
             for buffer in reversed(owners):
                 free(buffer, runtime=runtime)
             raise
@@ -34401,34 +33668,57 @@ class _GGUFFullAttentionPrefillScratch:
         return self.for_chunk(start=0, rows=rows, total_tokens=rows, runtime=runtime, stream=stream)
 
 
-class _GGUFSizingRuntime:
-    """Device stand-in that hands out disjoint fake addresses and counts bytes.
-
-    Lets the capacity model run a real allocator's sizing code without a GPU:
-    every ``malloc`` is recorded, and data movement is a no-op.
-    """
-
-    def __init__(self) -> None:
-        self._next_ptr = 0x1000_0000
-        self.allocated_bytes = 0
-
-    def malloc(self, nbytes: int) -> int:
-        ptr = self._next_ptr
-        self._next_ptr += ((int(nbytes) + 255) // 256) * 256 + 256
-        self.allocated_bytes += int(nbytes)
-        return ptr
-
-    def free(self, ptr: int) -> None:
-        return None
-
-    def __getattr__(self, name: str):
-        # memcpy/memset and their async forms: sizing never moves data.
-        if name.startswith(("memcpy", "memset", "stream_", "device_synchronize")):
-            return lambda *args, **kwargs: None
-        raise AttributeError(name)
-
-
-_GGUF_PREFILL_SCRATCH_SIZE_CACHE: dict[tuple, int] = {}
+def _gguf_prefill_scratch_plan(
+    runner: object,
+    *,
+    rows: int,
+    capacity: int,
+    segments: int = 1,
+    allocate_kv_cache: bool = False,
+    gdn_mode: str | None = None,
+):
+    """Resolve execution policies, then plan without an executor or device runtime."""
+    assert runner.weights is not None
+    weights = runner.weights
+    if gdn_mode is None:
+        backend = getattr(runner, "backend", None)
+        if isinstance(backend, str):
+            try:
+                gdn_mode = _gguf_gdn_prefill_session_mode(
+                    backend, weights=weights, cfg=weights.config
+                )
+            except ValueError:
+                # Unvalidated/exotic backends have no capability policy; keep
+                # the neutral marker so dispatch still resolves env-side.
+                gdn_mode = "auto"
+    disabled_fields = _gguf_prefill_scratch_liveness_disabled_fields(
+        runner, rows=rows, effective_mode=gdn_mode
+    )
+    return build_prefill_scratch_plan(
+        weights.config,
+        hidden_size=runner.hidden_size,
+        ffn_size=runner.ffn_size,
+        q_width=runner.q_width,
+        kv_width=runner.kv_width,
+        linear_qkv_width=runner.linear_qkv_width,
+        ssm_value_dim=runner.ssm_value_dim,
+        fp16_recurrent_state=bool(getattr(runner, "fp16_recurrent_state", False)),
+        rows=rows,
+        capacity=capacity,
+        segments=segments,
+        allocate_kv_cache=allocate_kv_cache,
+        normalized_qk_heads=_gguf_prefill_normalized_qk_heads(runner, gdn_mode=gdn_mode),
+        f16_policy=_gguf_t16_f16_rocblas_prefill_policy(runner),
+        disabled_fields=disabled_fields,
+        arena_grouping=(
+            _gguf_prefill_scratch_arena_grouping(runner.backend)
+            if disabled_fields is not None else "single"
+        ),
+        priority_min_live_stages=(
+            _gguf_prefill_scratch_priority_min_live_stages(runner, rows=rows)
+            if disabled_fields is not None else None
+        ),
+    )
 
 
 def _gguf_prefill_scratch_nbytes(
@@ -34438,46 +33728,17 @@ def _gguf_prefill_scratch_nbytes(
     capacity: int,
     segments: int = 1,
 ) -> int:
-    """Device bytes ``_GGUFFullAttentionPrefillScratch.allocate`` would take.
+    """Exact initial device-owner bytes from the real allocator's shared plan.
 
-    Measured by running the allocator against ``_GGUFSizingRuntime``. The
-    footprint is affine in ``capacity`` (block tables, rope tables and split
-    partials scale with it, everything else with ``rows``), so two sizing runs
-    give the exact line and capacity bisection never builds a rope table per
-    candidate.
+    Dynamic split-query growth is owned and counted separately by the workspace.
+    This adapter does not allocate buffers, upload metadata or build host arrays.
     """
-
-    rows = int(rows)
-    segments = max(1, int(segments))
-    capacity = max(rows, int(capacity))
-    low = max(rows, 1024)
-    high = low + 4096
-
-    def measure(at_capacity: int) -> int:
-        key = (id(runner), rows, int(at_capacity), segments)
-        cached = _GGUF_PREFILL_SCRATCH_SIZE_CACHE.get(key)
-        if cached is not None:
-            return cached
-        sizing = _GGUFSizingRuntime()
-        scratch = _GGUFFullAttentionPrefillScratch.allocate(
-            runner,
-            rows=rows,
-            capacity=int(at_capacity),
-            allocate_kv_cache=False,
-            segments=segments,
-            runtime=sizing,
-        )
-        # Balance the process-wide allocation accounting the fake buffers touched.
-        for buffer in reversed(tuple(scratch.buffers)):
-            free(buffer, runtime=sizing)
-        _GGUF_PREFILL_SCRATCH_SIZE_CACHE[key] = int(sizing.allocated_bytes)
-        return int(sizing.allocated_bytes)
-
-    base = measure(low)
-    if capacity <= low:
-        return base
-    slope_bytes = measure(high) - base
-    return base + (slope_bytes * (capacity - low) + (high - low) - 1) // (high - low)
+    return _gguf_prefill_scratch_plan(
+        runner,
+        rows=int(rows),
+        capacity=max(int(rows), int(capacity)),
+        segments=max(1, int(segments)),
+    ).total_nbytes
 
 
 def _gguf_packed_state_linear_bytes(runner: object, *, slot_count: int) -> int:

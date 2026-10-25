@@ -19,6 +19,7 @@ Paths in this document are repository-relative.
 | `hipengine/runtime/qwen35_gguf_runner.py:Qwen35GGUFFullStackRunner` | Loaded target weights, selected execution primitives and full-stack layer execution | Public request scheduling |
 | `hipengine/runtime/qwen35_gguf_runner.py:Qwen35GGUFResidentSession` | Request/session state, prefill/decode/verification orchestration, pool growth coordination and graph lifetime | Physical KV plane allocation formulas |
 | `hipengine/runtime/qwen35_gguf_planning.py` | Geometry/storage-policy scratch plan, resolved KV layout construction, resident byte breakdown and capacity search | Device allocation, loaded executors, environment selection or kernel dispatch |
+| `hipengine/runtime/qwen35_gguf_prefill_plan.py` | Prefill field sizes, owner order, lifetime placement and alias views from explicit geometry and resolved route policy | Host arrays, device allocation, environment lookup or kernel selection |
 | `hipengine/runtime/qwen35_gguf_kv.py` | Resolved KV layout validation, backing and plane views, logical/physical byte accounting, allocation and release | Runner/session construction, storage-policy selection, admission budgets, graph scheduling or kernel dispatch |
 | `hipengine/runtime/qwen35_gguf_nextn.py`, `hipengine/runtime/qwen35_gguf_mtp.py` | NextN draft execution and transactional speculative integration | Canonical target session ownership |
 | `hipengine/runtime/gguf_packed_decode_graph.py`, `hipengine/runtime/gguf_native_spec_cycle.py` | Packed decode graph replay and native speculative-cycle coordination | Public generator construction |
@@ -73,13 +74,26 @@ with every host-array field set to `None`; `materialize=True` builds each set of
 host metadata and rotary-position tables once for allocation. The ordered owner
 sizes, alignment, mirror threshold and byte-accounting rules are shared.
 
-The execution module retains real scratch allocation and route-specific sizing
-adapters. In particular, `_gguf_prefill_scratch_nbytes` still runs the existing
-prefill allocator against a fake runtime, and its result enters capacity planning
-through a callback. Extracting that prefill allocator's geometry and lifetime
-planning is separate work; this boundary does not claim all workspace sizing is
-independent of execution. Context-dependent layer selection and speculative
-workspace costs also enter as explicit caller-supplied callbacks.
+`hipengine/runtime/qwen35_gguf_prefill_plan.py` separately owns the prefill layout.
+Its immutable plan records ordered device owners, physical views, logical offsets,
+lifetimes and dense in-place aliases. Dedicated, single-arena and owner-slot
+layouts use the same plan for allocation and exact byte estimation. Disabled
+planes own no memory; dedicated metadata and optional KV caches remain separate
+owners. The planner neither materializes host arrays nor imports a device runtime.
+
+The execution module resolves route policy before planning, then allocates the
+owners and uploads metadata. One failure handler releases acquired owners once.
+`_gguf_prefill_scratch_nbytes` sums the shared plan rather than executing the
+allocator against fake memory or interpolating between capacities. Block tables
+and split buffers follow rounded block counts; rotary tables follow prefill rows.
+No object-identity cache can reuse a stale policy or geometry result. DMS head-major
+KV sizing also shares its admission/size helper with the real allocator.
+
+Serving capacity adapters resolve the same architecture, geometry and memory
+chunk policy as session construction before choosing prefill rows. The plan prices
+initial owners, not later split-query growth; workspaces track those additional
+owners separately. Context-dependent layer selection and speculative workspace
+costs still enter capacity search through caller-supplied callbacks.
 
 Existing imports from `qwen35_gguf_runner` are aliases to the planning definitions.
 Serving capacity consumers import the planning owner directly. Diagnostics that
@@ -91,16 +105,13 @@ the two modules must price and execute the same diagnostic layout.
 The following are candidates, not implemented modules or a mandate to move code
 by line count:
 
-1. **Prefill scratch planning:** replace the execution-backed sizing adapter with
-   an explicit plan shared by the prefill allocator and estimator, after defining
-   its route and lifetime inputs.
-2. **Resident state and transactions:** define ownership of canonical state,
+1. **Resident state and transactions:** define ownership of canonical state,
    provisional verification state, prefix snapshots and rollback journals before
    extracting the session's methods.
-3. **Layer execution:** isolate attention and feed-forward execution only after
+2. **Layer execution:** isolate attention and feed-forward execution only after
    defining their weight, scratch and selected-kernel inputs. Preserve registry
    selection rather than introducing backend-specific dispatch ladders.
-4. **Diagnostics:** separate one-layer probes, capture formatting and profiling
+3. **Diagnostics:** separate one-layer probes, capture formatting and profiling
    from production contracts without removing callers used by correctness gates.
 
 Do not replace one large class with mixins that all read and mutate the same
@@ -133,6 +144,15 @@ and invalid policies. `tests/test_unit_qwen35_gguf_planning_integration.py` veri
 that allocation and estimation use the same planner and that planning has no
 direct execution/device-allocation dependency. Existing capacity tests compare
 planned sizes with the actual allocator using fake device buffers.
+
+`tests/test_unit_qwen35_gguf_prefill_plan.py` covers the pure prefill layout;
+`tests/test_unit_qwen35_gguf_prefill_plan_integration.py` checks exact estimator
+bytes at block and route boundaries, resolved chunk policies, policy changes and
+absence of size-only host/device materialization. The allocation-failure tests in
+`tests/test_unit_qwen35_gguf_prefill_scratch_cleanup.py` require each acquired
+owner to be released once after allocation or upload failure across all layouts.
+Existing prefill liveness and packed-workspace tests protect aliases, metadata
+and stable workspace ownership.
 
 Most of these tests use fake runtime allocations; the GPU node has an explicit
 availability guard. Public real-model generation remains a separate integration

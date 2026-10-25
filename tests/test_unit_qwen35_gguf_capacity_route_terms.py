@@ -67,10 +67,9 @@ def _real_allocation_bytes(monkeypatch, runner, *, rows, capacity, segments=1):
     ("rows", "capacity", "segments"),
     [(1024, 1024, 1), (1024, 3584, 1), (1024, 32_768, 4), (128, 32_768, 1), (128, 1024, 1)],
 )
-def test_prefill_scratch_dry_run_matches_the_allocator(monkeypatch, rows, capacity, segments):
-    """The dry run is the allocator's own arithmetic, including its capacity line."""
+def test_prefill_scratch_plan_matches_the_allocator(monkeypatch, rows, capacity, segments):
+    """Allocation and estimation share the same exact block-rounded layout."""
 
-    gguf_runner._GGUF_PREFILL_SCRATCH_SIZE_CACHE.clear()
     runner = _dense_27b_runner()
     expected = _real_allocation_bytes(
         monkeypatch, runner, rows=rows, capacity=capacity, segments=segments
@@ -78,8 +77,7 @@ def test_prefill_scratch_dry_run_matches_the_allocator(monkeypatch, rows, capaci
     measured = gguf_runner._gguf_prefill_scratch_nbytes(
         runner, rows=rows, capacity=capacity, segments=segments
     )
-    # The capacity line is interpolated; block rounding keeps it within a page.
-    assert abs(measured - expected) <= 64 * 1024
+    assert measured == expected
 
 
 def test_packed_state_linear_bytes_match_the_state_allocator() -> None:
@@ -294,7 +292,6 @@ def test_bf16_mtp_prices_verify_rows_and_scales_with_width(monkeypatch) -> None:
 
 
 def test_prefill_workspace_counts_bulk_and_packed_scratch(monkeypatch) -> None:
-    gguf_runner._GGUF_PREFILL_SCRATCH_SIZE_CACHE.clear()
     server = _route_terms(monkeypatch, storage="bf16", capacity=4, mtp=False)
     direct = _route_terms(monkeypatch, storage="bf16", capacity=4, mtp=False, server_pool=False)
     runner = _dense_27b_runner()
@@ -478,7 +475,7 @@ def test_dms_compact_sizing_prices_codec_and_bounded_normalization(
     # Force either the prefill phase (one device layer) or the restored-store
     # phase (all layers) to dominate. These phases must not be summed.
     monkeypatch.setattr(gguf_runner, "_gguf_prefill_scratch_nbytes", lambda *a, **kw: bulk_bytes)
-    monkeypatch.setattr(gguf_runner, "_try_allocate_gguf_aotriton_head_major_kv_scratch", lambda **kw: None)
+    monkeypatch.setattr(gguf_runner, "_gguf_aotriton_head_major_kv_scratch_nbytes", lambda **kw: 0)
     generator = _route_generator(monkeypatch)
     runner = _dense_27b_runner()
     speculative = lambda n: 123
@@ -563,7 +560,7 @@ def test_dms_sizing_loads_mtp_draft_before_reading_free_memory(monkeypatch, dms)
 def test_dms_exact_budget_store_is_priced_by_retained_rows(monkeypatch, positions):
     """Outputs are clamped to the store, so it holds the context's retained rows."""
     monkeypatch.setattr(gguf_runner, "_gguf_prefill_scratch_nbytes", lambda *a, **kw: 0)
-    monkeypatch.setattr(gguf_runner, "_try_allocate_gguf_aotriton_head_major_kv_scratch", lambda **kw: None)
+    monkeypatch.setattr(gguf_runner, "_gguf_aotriton_head_major_kv_scratch_nbytes", lambda **kw: 0)
     generator = _route_generator(monkeypatch)
     generator._prepared_kv_signature = ("int8_per_token_head", "uniform", "fp32", "per_token_head")
     runner = _dense_27b_runner()

@@ -1201,10 +1201,13 @@ layout, backing, byte accounting and allocation/release live in
 `hipengine/runtime/qwen35_gguf_kv.py`, which consumes model configuration rather than an
 executor. Shared scratch sizing, resident byte breakdown and capacity search live
 in `hipengine/runtime/qwen35_gguf_planning.py`; real allocation and size-only
-estimation consume one plan. Session code retains policy, admission, growth
-publication and route-specific workspace sizing callbacks.
+estimation consume one plan. Prefill sizes, lifetime placement and alias views live
+in `hipengine/runtime/qwen35_gguf_prefill_plan.py`; its explicit geometry and
+resolved-policy inputs serve both allocation and exact initial workspace pricing.
+Session code retains policy, admission and growth publication; serving adapters
+resolve session chunk policy before supplying route-specific sizing callbacks.
 The [runtime structure reference](reference/QWEN-GGUF-RUNTIME.md) describes these
-boundaries and the remaining prefill-scratch/session/execution separation.
+boundaries and the remaining session/execution separation.
 
 ### Backend Plugin
 

@@ -104,7 +104,7 @@ from hipengine.speculative.accounting import (
     record_speculative_plan,
     speculative_output_accounting,
 )
-from hipengine.runtime.prefill import PrefillConfig
+from hipengine.runtime.prefill import PrefillConfig, resolve_prefill_config_for_sequence
 from hipengine.runtime.memory_admission import MemoryAdmissionRefused
 from hipengine.runtime.qwen35_gguf_planning import estimate_qwen35_gguf_kv_capacity
 from hipengine.runtime.qwen35_gguf_runner import (
@@ -352,6 +352,34 @@ _GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY = 4
 # verify owner (R24/R32 rows); narrower servers keep the exact T16 route and
 # never touch it, so it is not loaded for them.
 _GGUF_C8_Q5_RAW_SIDECAR_MIN_REQUESTS = 8
+
+
+def _capacity_prefill_rows_resolver(runner):
+    """Use the session's resolved chunk policy for each candidate context."""
+    from hipengine.runtime.qwen35_gguf_runner import _gguf_prefill_chunk_sizes_for
+
+    total_memory_bytes = 0
+    runtime = getattr(runner, "runtime", None)
+    if runtime is not None:
+        try:
+            _free_bytes, total_memory_bytes = runtime.mem_get_info()
+        except Exception:
+            total_memory_bytes = 0
+    geometry_chunks = _gguf_prefill_chunk_sizes_for(runner.backend, runner.weights)
+    probe = object.__new__(Qwen35GGUFResidentSession)
+    probe.__dict__.update(runner=runner, prefill_chunk_size=0)
+
+    def rows(max_positions: int) -> int:
+        probe.prefill_config, _tuning = resolve_prefill_config_for_sequence(
+            PrefillConfig(),
+            max_sequence_length=int(max_positions),
+            total_memory_bytes=int(total_memory_bytes),
+            target_arch=getattr(runner, "target_arch", None),
+            geometry_chunk_sizes=geometry_chunks,
+        )
+        return int(probe._prefill_scratch_rows(int(max_positions)))
+
+    return rows
 
 
 def _dms_exact_budget_retained_rows(tokens: int, *, window: int, ratio: int) -> int:
@@ -2484,11 +2512,10 @@ class Qwen35GGUFBringupGenerator:
         Do not assume a typical output length or threshold-mode compression.
         """
         from hipengine.runtime.qwen35_gguf_runner import (
-            _GGUFSizingRuntime,
+            _gguf_aotriton_head_major_kv_scratch_nbytes,
             _gguf_bulk_prefill_hidden_plane_count,
             _gguf_prefill_hidden_buffer_count,
             _gguf_prefill_scratch_nbytes,
-            _try_allocate_gguf_aotriton_head_major_kv_scratch,
         )
 
         cfg = runner.weights.config
@@ -2500,13 +2527,12 @@ class Qwen35GGUFBringupGenerator:
         slot_bytes = 2 * dim + 13 if signature[0] == "int8_per_token_head" else 4 * dim + 5
         budget = int(getattr(self, "speculative_candidate_budget", None)
                      or self.speculative_candidate_budget_default()) if mtp_sized else 0
-        probe = object.__new__(Qwen35GGUFResidentSession)
-        probe.__dict__.update(runner=runner, prefill_config=None, prefill_chunk_size=0)
+        prefill_rows = _capacity_prefill_rows_resolver(runner)
         retention = self._dms_exact_budget_retention()
 
         def workspace(positions):
             n = int(positions)
-            rows = int(probe._prefill_scratch_rows(n))
+            rows = prefill_rows(n)
             planes = _gguf_bulk_prefill_hidden_plane_count(
                 plan_mode=None, dms_prefill_mode="layer_outer",
                 geometry_plane_count=_gguf_prefill_hidden_buffer_count(runner, rows=rows),
@@ -2531,20 +2557,12 @@ class Qwen35GGUFBringupGenerator:
             # shared across layers, not candidate-width scratch per layer.
             split = 4 * queries * ((per_head + 255) // 256) * (dim + 2)
             norm = 2 * min(n, 4096) * hidden if mtp_sized else 0
-            sizing = _GGUFSizingRuntime()
-            head_major = _try_allocate_gguf_aotriton_head_major_kv_scratch(
+            head_major_bytes = _gguf_aotriton_head_major_kv_scratch_nbytes(
                 backend=runner.backend, capacity_tokens=n,
-                kv_width=int(runner.kv_width), runtime=sizing,
+                kv_width=int(runner.kv_width),
             )
-            # The sizing runtime allocates no device memory, but the common
-            # helpers still record its fake buffers. Balance them before the
-            # next sizing run can reuse the same synthetic addresses.
-            if head_major is not None:
-                from hipengine.core.memory import free
-                for buffer in reversed(head_major):
-                    free(buffer, runtime=sizing)
             bulk = (int(_gguf_prefill_scratch_nbytes(runner, rows=rows, capacity=n))
-                    + n * (planes * hidden * 2 + 8) + oracle + sizing.allocated_bytes)
+                    + n * (planes * hidden * 2 + 8) + oracle + head_major_bytes)
             # Each completed compact layer is host-staged during pass two.
             # The complete device store is restored only after bulk/oracle
             # release, so these are separate peaks, not additive lifetimes.
@@ -2765,7 +2783,7 @@ class Qwen35GGUFBringupGenerator:
         """Price what the serving route allocates after the free-memory reading.
 
         Every term is computed from the allocators' own arithmetic: the bulk
-        and packed prefill scratch by a dry run of their allocator, the packed
+        and packed prefill scratch from their shared allocation plan, the packed
         linear state and verify state rows from geometry, the INT8 prefill
         transient from the lifetime planner, and the draft sessions from the
         resident scratch plan. Explicit transient env overrides keep their
@@ -2787,11 +2805,7 @@ class Qwen35GGUFBringupGenerator:
         cfg = shared_runner.weights.config
         kv_storage = DType.parse(storage)
         capacity = max(1, int(serving_capacity))
-        probe = object.__new__(Qwen35GGUFResidentSession)
-        probe.__dict__.update(runner=shared_runner, prefill_config=None, prefill_chunk_size=0)
-
-        def bulk_rows(max_positions: int) -> int:
-            return int(probe._prefill_scratch_rows(int(max_positions)))
+        bulk_rows = _capacity_prefill_rows_resolver(shared_runner)
 
         def packed_scratch(max_positions: int) -> int:
             # Packed execution scratch; its position capacity follows the
@@ -2926,29 +2940,23 @@ class Qwen35GGUFBringupGenerator:
             )
             from hipengine.runtime.qwen35_gguf_nextn import _NEXTN_BATCH_PREFILL_SCRATCH_ROWS
 
-            # One cached view per target runner keeps the sizing cache keyed by
-            # a live object rather than a recycled id.
-            views = self.__dict__.setdefault("_sizing_draft_runner_views", {})
-            draft_runner = views.get(id(shared_runner))
-            if draft_runner is None or draft_runner.target is not shared_runner:
-                draft_runner = views[id(shared_runner)] = SimpleNamespace(
-                    target=shared_runner,
-                    weights=SimpleNamespace(
-                        config=draft_cfg,
-                        geometry=None,
-                        file_type_name=None,
-                    ),
-                    backend=shared_runner.backend,
-                    hidden_size=shared_runner.hidden_size,
-                    ffn_size=shared_runner.ffn_size,
-                    q_width=shared_runner.q_width,
-                    kv_width=shared_runner.kv_width,
-                    linear_qkv_width=shared_runner.linear_qkv_width,
-                    ssm_value_dim=shared_runner.ssm_value_dim,
-                    fp16_recurrent_state=bool(
-                        getattr(shared_runner, "fp16_recurrent_state", False)
-                    ),
-                )
+            draft_runner = SimpleNamespace(
+                weights=SimpleNamespace(
+                    config=draft_cfg,
+                    geometry=None,
+                    file_type_name=None,
+                ),
+                backend=shared_runner.backend,
+                hidden_size=shared_runner.hidden_size,
+                ffn_size=shared_runner.ffn_size,
+                q_width=shared_runner.q_width,
+                kv_width=shared_runner.kv_width,
+                linear_qkv_width=shared_runner.linear_qkv_width,
+                ssm_value_dim=shared_runner.ssm_value_dim,
+                fp16_recurrent_state=bool(
+                    getattr(shared_runner, "fp16_recurrent_state", False)
+                ),
+            )
             provider_shapes = sorted({1, width})
 
             def speculative(max_positions: int) -> int:
