@@ -1,4 +1,9 @@
-"""Counterbalanced same-residency candidate versus current production."""
+"""Counterbalanced same-residency candidate versus current production.
+
+Chunk comparisons time the production arm through one additional prefill-only
+owner, so no donor decoder or donor KV cache is allocated. `--workspace-check-only`
+still builds and executes an independent full donor as the numerical reference.
+"""
 
 import argparse
 import fcntl
@@ -38,6 +43,36 @@ SHARED_DECODE_SAFE_FLAGS = frozenset(
     )
 )
 
+# Chunk size the compared arms are timed at. The runner's base owner keeps the
+# larger production chunk; the comparison arm borrows this one.
+COMPARISON_CHUNK = 1024
+
+# Prefill-only owners whose extra allocation must be admitted before preparing
+# another prefill owner. Same tuple the owned-workspace check uses.
+PREFILL_OWNERS = (
+    "gdn_prefill_scratch", "qsa_prefill_scratch", "ple_prefill_scratch",
+    "qsa_prefill_metadata", "_prefill_buffers",
+)
+
+# Total device components admitted for an independent full decoder/KV owner.
+DECODER_OWNERS = ("scratch_bytes", "kv_bytes", "index_bytes", "runtime_state_bytes")
+
+PREFILL_ONLY_OWNER = "prefill_only_owner"
+FULL_DONOR_REFERENCE = "full_donor_reference"
+
+OWNERSHIP = {
+    PREFILL_ONLY_OWNER: (
+        "Separate correctly sized prefill owners; same active KV/recurrent/decode "
+        "owners and graphs. Shared maximum-size PLE staging. No donor decoder or "
+        "donor KV cache is allocated: only prefill scratch and prefill inputs."
+    ),
+    FULL_DONOR_REFERENCE: (
+        "Validation-only: an independent full donor runner is executed as the "
+        "numerical reference; the active runner then borrows that donor's prefill "
+        "buffers with its own decode state."
+    ),
+}
+
 
 def validate_shared_graphs(environments):
     # These switches affect prefill or uncaptured QSA attention, not the
@@ -53,6 +88,111 @@ def round_order(case_index, arms, repetition):
         order.reverse()
     offset = repetition % len(order)
     return order[offset:] + order[:offset]
+
+
+def owner_mode(reference):
+    """A full decoder/KV owner is only needed where the owner is executed."""
+    return FULL_DONOR_REFERENCE if reference else PREFILL_ONLY_OWNER
+
+
+def prefill_owner_bytes(config, *, context_tokens, chunk_size):
+    """Device bytes one additional prefill-only owner must be admitted for."""
+    from hipengine.loading.qwen4_exp_scratch import qwen4_exp_scratch_breakdown
+
+    plan = qwen4_exp_scratch_breakdown(
+        config, context_tokens=context_tokens, prefill_chunk_size=chunk_size)
+    return sum(plan[name] for name in PREFILL_OWNERS)
+
+
+def donor_owner_bytes(admission_plan):
+    """Device bytes the independent full decoder/KV reference owner adds."""
+    return sum(admission_plan[key] for key in DECODER_OWNERS)
+
+
+def admitted_owner_bytes(config, *, reference, context_tokens, chunk_size, admission_plan):
+    """Admission bound for the owner this run prepares.
+
+    Timing comparisons admit the prefill-only set. The validation reference is
+    executed, so it admits the full decoder/KV owner it actually allocates.
+    """
+    if reference:
+        return donor_owner_bytes(admission_plan)
+    return prefill_owner_bytes(
+        config, context_tokens=context_tokens, chunk_size=chunk_size)
+
+
+def require_reserve(free_bytes, admitted_bytes, reserve_bytes, *, mode):
+    if free_bytes < admitted_bytes + reserve_bytes:
+        raise MemoryError(f"{mode} would consume the declared reserve")
+
+
+def prepare_prefill_owner(runner, *, chunk_size, context_tokens, reserve_bytes):
+    """Prepare one prefill-only owner under an exact device budget.
+
+    The admitted bound and the observed allocation are the same prefill-only
+    set, so the extra owner cannot hide a decoder/KV allocation.
+    """
+    from hipengine.core.memory import memory_stats
+    from scripts.qwen4exp_chunk_memory_probe import prepare_lazy_group_risk
+
+    bound = admitted_owner_bytes(
+        runner.config, reference=False, context_tokens=context_tokens,
+        chunk_size=chunk_size, admission_plan=None)
+    free_before, _ = runner.runtime.mem_get_info()
+    require_reserve(free_before, bound, reserve_bytes, mode=PREFILL_ONLY_OWNER)
+    baseline = memory_stats()["current_allocated_bytes"]
+    owner = runner._allocate_extra_prefill_workspace(chunk_size)
+    try:
+        prepare_lazy_group_risk(owner)
+        observed = memory_stats()["current_allocated_bytes"] - baseline
+        if observed != bound:
+            raise ValueError(
+                f"prefill-only owner allocated {observed} bytes, admitted {bound}")
+        free_after, _ = runner.runtime.mem_get_info()
+        if free_after < reserve_bytes:
+            raise MemoryError(
+                "prefill-only owner preparation consumed the declared reserve")
+    except BaseException:
+        try:
+            if owner in runner._prefill_workspaces:
+                runner._prefill_workspaces.remove(owner)
+        finally:
+            owner.close()
+        raise
+    return owner, dict(
+        owner_mode=PREFILL_ONLY_OWNER, free_before_owner=free_before,
+        admitted_owner_bytes=bound, observed_owner_bytes=observed,
+        free_after_setup=free_after, reserve_bytes=reserve_bytes)
+
+
+def prepare_reference_owner(runner, *, chunk_size, allocation_plan, reserve_bytes):
+    """Prepare the independent full decoder/KV owner used as the reference."""
+    from hipengine.runtime.qwen4_exp_runner import Qwen4ExpGGUFResidentModelRunner
+    from scripts.qwen4exp_chunk_memory_probe import prepare_lazy_group_risk
+
+    bound = admitted_owner_bytes(
+        runner.config, reference=True, context_tokens=runner.max_sequence_length,
+        chunk_size=chunk_size, admission_plan=allocation_plan)
+    free_before, _ = runner.runtime.mem_get_info()
+    require_reserve(free_before, bound, reserve_bytes, mode=FULL_DONOR_REFERENCE)
+    donor = Qwen4ExpGGUFResidentModelRunner(
+        runner.resident, max_sequence_length=runner.max_sequence_length,
+        prefill_chunk_size=chunk_size, backend=runner.backend, runtime=runner.runtime)
+    try:
+        if not np.array_equal(runner.attention_states[0].block_host,
+                              donor.attention_states[0].block_host):
+            raise ValueError("donor block indices differ from active KV layout")
+        prepare_lazy_group_risk(donor)
+        free_after, _ = runner.runtime.mem_get_info()
+        if free_after < reserve_bytes:
+            raise MemoryError("donor workspace preparation consumed the declared reserve")
+    except BaseException:
+        donor.close()
+        raise
+    return donor, dict(
+        owner_mode=FULL_DONOR_REFERENCE, free_before_owner=free_before,
+        admitted_owner_bytes=bound, observed_owner_bytes=None,
+        free_after_setup=free_after, reserve_bytes=reserve_bytes)
 
 
 def main():
@@ -113,8 +253,8 @@ def main():
                       host=host, model=model,
                       fixture_sha256=digest, samples=[], performance_claim=False,
                       candidates=args.candidate,
-                      protocol=dict(pairs=args.pairs, warmups=1, chunk=1024, kv="BF16",
-                                    shared_decode_graphs=args.shared_decode_graphs))
+                      protocol=dict(pairs=args.pairs, warmups=1, chunk=COMPARISON_CHUNK,
+                                    kv="BF16", shared_decode_graphs=args.shared_decode_graphs))
         generator, profile, _ = _make_generator(args, "production")
         runner = generator.runner
         donor = None
@@ -170,51 +310,42 @@ def main():
 
         try:
             if args.candidate_chunk_size is not None:
-                from hipengine.runtime.qwen4_exp_runner import Qwen4ExpGGUFResidentModelRunner
                 from scripts.qwen4exp_chunk_memory_probe import prepare_lazy_group_risk
 
                 plan = allocation["admission"]["plan"]
                 prepare_lazy_group_risk(runner)
-                extra_bound = sum(plan[key] for key in (
-                    "scratch_bytes", "kv_bytes", "index_bytes", "runtime_state_bytes"))
-                free_before_donor, _ = runner.runtime.mem_get_info()
-                if free_before_donor < extra_bound + plan["reserve_bytes"]:
-                    raise MemoryError("donor workspace would consume the declared reserve")
-                donor = Qwen4ExpGGUFResidentModelRunner(
-                    runner.resident, max_sequence_length=runner.max_sequence_length,
-                    prefill_chunk_size=1024, backend=runner.backend, runtime=runner.runtime)
-                if not np.array_equal(runner.attention_states[0].block_host,
-                                      donor.attention_states[0].block_host):
-                    raise ValueError("donor block indices differ from active KV layout")
-                prepare_lazy_group_risk(donor)
-                workspaces = {"before": capture_workspace(donor),
+                mode = owner_mode(args.workspace_check_only)
+                if args.workspace_check_only:
+                    owner, guard = prepare_reference_owner(
+                        runner, chunk_size=COMPARISON_CHUNK,
+                        allocation_plan=plan, reserve_bytes=plan["reserve_bytes"])
+                    donor = owner
+                else:
+                    owner, guard = prepare_prefill_owner(
+                        runner, chunk_size=COMPARISON_CHUNK,
+                        context_tokens=args.max_sequence_length,
+                        reserve_bytes=plan["reserve_bytes"])
+                workspaces = {"before": capture_workspace(owner),
                               args.candidate[0]: capture_workspace(runner)}
                 report["allocation_evidence"] = allocation
                 report["workspaces"] = {arm: workspace_description(workspace)
                                         for arm, workspace in workspaces.items()}
                 report["prepared_memory"] = memory_stats()
-                free_after_setup, _ = runner.runtime.mem_get_info()
-                if free_after_setup < plan["reserve_bytes"]:
-                    raise MemoryError("workspace setup consumed the declared reserve")
-                report["workspace_memory_guard"] = dict(
-                    free_before_donor=free_before_donor, extra_runner_bound=extra_bound,
-                    free_after_setup=free_after_setup, reserve_bytes=plan["reserve_bytes"])
+                report["workspace_memory_guard"] = guard
                 report["protocol"].update(
                     chunk_by_arm={arm: value["chunk_size"] for arm, value in report["workspaces"].items()},
-                    workspace_ownership="Separate correctly sized prefill owners; same active "
-                    "KV/recurrent/decode owners and graphs. Shared maximum-size PLE staging. "
-                    "Donor non-prefill allocations stay live but are not executed.",
+                    workspace_ownership=OWNERSHIP[mode],
                 )
                 if args.workspace_check_only:
                     case = next(case for case in fixture["cases"] if case["id"] == "code-p4096")
                     with observe_prefill_chunks(
-                        donor, tokens=case["prompt_tokens"], size=1024,
+                        donor, tokens=case["prompt_tokens"], size=COMPARISON_CHUNK,
                     ) as native_chunks:
                         reference = _strict_trajectory(donor, case["prompt_token_ids"], 4)
                     reference_state = _state_summary(donor)
                     with use_workspace(runner, workspaces["before"]):
                         with observe_prefill_chunks(
-                            runner, tokens=case["prompt_tokens"], size=1024,
+                            runner, tokens=case["prompt_tokens"], size=COMPARISON_CHUNK,
                         ) as borrowed_chunks:
                             actual = _candidate_trajectory(
                                 runner, case["prompt_token_ids"],
@@ -231,9 +362,6 @@ def main():
                         reference_profile="production",
                         state_exact=True, native_chunks=native_chunks,
                         borrowed_chunks=borrowed_chunks)
-                    report["protocol"]["workspace_ownership"] = (
-                        "Validation-only: donor executed as independent reference; "
-                        "active runner then borrowed donor prefill buffers with its own decode state.")
                     report["status"] = "workspace_check_passed"
                     return
             for index, case in enumerate(fixture["cases"]):

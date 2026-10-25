@@ -475,28 +475,28 @@
       "start_line": 438,
       "end_line": 570,
       "sha256": "b7e23c019c701271202cbef6c82f53d24b93f8e2c90ff98a9cbaccfe217c5ba2",
-      "status": "partial-selector-fixed",
-      "evidence": ["Production selector removed; script-local diagnostic preserved with new deterministic tests. Parent focused bundle:40 passed; real production gfx1151 HTTP request executes512 prompt tokens and generates4 tokens on qwen4exp_full_model_ar_batch. Worklog:worklog/entries/20261025T203732.621669Z-lhl-qwen4exp-prefill-selector-retirement-b553b2.md. Remaining donor-plumbing subitem is not silently closed; inspect its current callers before retiring the whole section."],
+      "status": "resolved",
+      "evidence": ["Selector removed in 3a7235318. Timing-only donor replaced by prefill-only owner; independent decoder retained only for executed reference validation. Focused40 tests, full CPU unit tier, and real gfx1151 production logits/state parity at512/1031 prompt tokens passed; allocation lifecycle returned to zero. Worklog:worklog/entries/20261025T205203.077962Z-cleanup-refactor-r0020-donor-b59da2.md. Historical measurements remain source-pinned; no new performance claim."],
       "subitems": [
         {
           "line": 440,
           "text": "- `Qwen4ExpPrefillWorkspace` owns prefill scratch and input buffers without",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 443,
           "text": "- `_allocate_extra_prefill_workspace` prepares an inactive, runner-owned",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 446,
           "text": "- The GPU owned-workspace gate passes with exact frozen-reference state",
-          "status": "pending"
+          "status": "fixed"
         },
         {
           "line": 453,
           "text": "- **`20260929T`: the shape policy this selector exists to provide is measured to be",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 465,
@@ -506,32 +506,32 @@
         {
           "line": 486,
           "text": "- **Parked 2026-09-15 (deliberate, not abandoned).** Automatic selection stays",
-          "status": "pending"
+          "status": "obsolete"
         },
         {
           "line": 496,
           "text": "  - **Resume condition met; premises partly falsified (2026-09-29).** One of the",
-          "status": "pending"
+          "status": "obsolete"
         },
         {
           "line": 504,
           "text": "    - **The short-request regression does not reproduce.** A 512-token request is",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 511,
           "text": "    - **The 2.32-3.94% magnitude is correct for 1024 -> 4096** (we measure",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 525,
           "text": "  - **The chunk decision landed, and it makes the selector unnecessary rather",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 551,
           "text": "  - **The capacity question is not the 4096 lever, and the tick bound is (2026-10-03).** Owner",
-          "status": "pending"
+          "status": "not-debt"
         }
       ]
     },

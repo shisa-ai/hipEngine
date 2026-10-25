@@ -422,18 +422,21 @@ upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
 
 ## Prefill-Only Workspace Ownership
 
-Current cleanup status (2026-10-25, R0020): the production prepared-workspace
-selector and its tests are removed. The same-owner measurement script now owns
-its selection instrumentation. Extra-workspace allocation, ownership, cleanup,
-and original staging-capacity coverage remain. The public production HTTP
-prefill check passes after removal.
+Current cleanup status (2026-10-25, R0020): complete. The production
+prepared-workspace selector is removed; the same-owner diagnostic owns its
+selection instrumentation. `scripts/qwen4exp_prefill_restore_ab.py` now uses a
+prefill-only owner for timing comparisons. Its `--workspace-check-only` mode
+keeps an independent full decoder because that mode executes the decoder as
+its numerical reference, not merely as a scratch donor.
 
-Remaining item: determine whether the benchmark donor plumbing described below
-still has callers and replace it only where the owned-workspace helper covers
-its state and lifetime contract. This does not require restoring the selector.
+Extra-workspace ownership, cleanup, reserve checks, and original staging
+capacity remain covered. The replacement passed real-model logits/state parity
+and allocation-lifecycle checks. No new timing comparison is claimed; historical
+benchmark commands and results remain source-pinned. See
+`worklog/entries/20261025T205203.077962Z-cleanup-refactor-r0020-donor-b59da2.md`.
 
-The following is historical context; statements about the private selector
-being present, parked, or awaiting enablement no longer describe current code.
+The following is historical context, not open cleanup: statements about the
+private selector or the timing path's full donor no longer describe current code.
 
 - `Qwen4ExpPrefillWorkspace` owns prefill scratch and input buffers without
   another decoder/KV allocation. The ordinary runner still allocates one
