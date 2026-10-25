@@ -1859,31 +1859,6 @@ int8-KV artifacts under `benchmarks/results/` record the pre-change id
 (`4b0e936f…` for the gfx1100 direct-c4 contract); they are frozen measurements
 and are not rewritten.
 
-## Packed workspace eager reservation is bounded — RESOLVED
-
-`packed_verify_workspace_lease_pages` reserves four 256-token pages per serving
-slot, matching the existing 1,024-token packed context floor. Longer realized
-contexts or wider physical layouts use private KV charged against the same pool
-budget. They never overwrite the pinned lease or another request's pages.
-
-The capacity estimator reports `private_workspace_bytes` separately and prices
-both the eager lease and the full private fallback when the requested context
-exceeds the floor. Bounding startup reservation therefore does not assume that
-long-context workspace is free. Private buffers and their budget charges follow
-the packed state's existing growth and close lifecycle.
-
-## Capacity estimates include serving-capacity workspace leases — RESOLVED
-
-`qwen35_gguf_resident_breakdown` and `estimate_qwen35_gguf_kv_capacity` accept
-`workspace_lease_slots`, independently of `max_batch_size`. The generator prices
-elastic request KV at one request and the eager workspace lease at serving
-capacity. Auto-context selections are cached by capacity and allocation mode,
-so a single-request selection cannot be reused for a wider pinned lease.
-
-Regression coverage compares estimator pages with the allocator's lease helper
-at capacities 1, 4, and 8 and contexts below, above, and unrelated to the packed
-context floor. Private growth and eager reservation are priced separately.
-
 ## Wide MTP groups run without a prompt provider, and the over-width demotion is inert (found 2026-09-19) — RESOLVED
 
 Resolved in three steps. (1) The `(8, 3)` cell left

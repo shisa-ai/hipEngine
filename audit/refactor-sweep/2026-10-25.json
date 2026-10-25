@@ -1502,8 +1502,11 @@
       "start_line": 1884,
       "end_line": 1896,
       "sha256": "6ff2b3a21ddbc27aeeb178a361088f5efcde471cf4f711b2f3a25ba0a88024db",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_runner.py:packed_verify_workspace_lease_pages bounds eager reservation to the packed context floor; hipengine/runtime/qwen35_gguf_planning.py:qwen35_gguf_resident_breakdown prices private growth separately.",
+        "uv run pytest tests/test_unit_qwen35_gguf_capacity.py tests/test_unit_gguf_packed_workspace_stability.py -q -o addopts='': 107 passed. Existing implementation verified; no production changes."
+      ],
       "subitems": []
     },
     {
@@ -1512,8 +1515,11 @@
       "start_line": 1897,
       "end_line": 1908,
       "sha256": "c1ac5f9816f716b27207f1df978cdcb78492c8928934c46e3c5073d2e783cb6f",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_planning.py passes workspace_lease_slots through the capacity estimator independently of request KV slots. hipengine/generation/qwen35_gguf.py prices serving capacity and keys automatic context selection by capacity and allocation mode.",
+        "uv run pytest tests/test_unit_qwen35_gguf_capacity.py tests/test_unit_gguf_packed_workspace_stability.py -q -o addopts='': 107 passed, including independent workspace-slot and automatic-context capacity regressions."
+      ],
       "subitems": []
     },
     {
