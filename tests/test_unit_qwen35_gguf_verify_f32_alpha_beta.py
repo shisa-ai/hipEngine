@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from hipengine.runtime import qwen35_gguf_runner as qgr
+from hipengine.runtime import qwen35_gguf_layer_attn as layer_attn
 
 
 class _Layer:
@@ -56,6 +57,7 @@ def test_linear_attention_alpha_beta_f32_uses_dp4a_when_available(
 
     monkeypatch.setattr(qgr, "_try_launch_dense_q8_pair_dp4a_f32", dp4a_pair)
     monkeypatch.setattr(qgr, "launch_gguf_linear", lambda *args, **kwargs: pytest.fail("fallback should not run"))
+    monkeypatch.setattr(layer_attn, "launch_gguf_linear", qgr.launch_gguf_linear)
 
     route = _runner()._run_linear_attention_alpha_beta_rows(
         _Layer(),
@@ -93,8 +95,10 @@ def test_linear_attention_alpha_beta_f32_projection_outputs_cast_mirrors(
     monkeypatch.setattr(qgr, "_try_launch_dense_q8_pair_dp4a_f32_out", dp4a_pair)
     monkeypatch.setattr(qgr, "_gguf_linear_supports_f32_activation_f32_output", lambda *args, **kwargs: False)
     monkeypatch.setattr(qgr, "f32_to_bf16", cast)
+    monkeypatch.setattr(layer_attn, "f32_to_bf16", qgr.f32_to_bf16)
     monkeypatch.setattr(qgr, "_try_launch_dense_q8_pair_dp4a_f32", lambda *args, **kwargs: pytest.fail("old route"))
     monkeypatch.setattr(qgr, "launch_gguf_linear", lambda *args, **kwargs: pytest.fail("fallback should not run"))
+    monkeypatch.setattr(layer_attn, "launch_gguf_linear", qgr.launch_gguf_linear)
 
     route = _runner()._run_linear_attention_alpha_beta_rows(
         _Layer(),
@@ -131,7 +135,9 @@ def test_linear_attention_alpha_beta_f32_projection_outputs_use_dense_f32_when_a
         lambda *args, **kwargs: pytest.fail("dense-F32 route should win"),
     )
     monkeypatch.setattr(qgr, "launch_gguf_linear", linear)
+    monkeypatch.setattr(layer_attn, "launch_gguf_linear", qgr.launch_gguf_linear)
     monkeypatch.setattr(qgr, "f32_to_bf16", cast)
+    monkeypatch.setattr(layer_attn, "f32_to_bf16", qgr.f32_to_bf16)
 
     route = _runner()._run_linear_attention_alpha_beta_rows(
         _Layer(),
@@ -173,6 +179,7 @@ def test_linear_attention_alpha_beta_f32_falls_back_to_f32_singletons(
         calls.append(("linear", args, kwargs))
 
     monkeypatch.setattr(qgr, "launch_gguf_linear", linear)
+    monkeypatch.setattr(layer_attn, "launch_gguf_linear", qgr.launch_gguf_linear)
 
     route = _runner()._run_linear_attention_alpha_beta_rows(
         _Layer(),
@@ -207,6 +214,7 @@ def test_linear_attention_alpha_beta_uses_bf16_mirror_without_f32_input(
         calls.append(("linear", args, kwargs))
 
     monkeypatch.setattr(qgr, "launch_gguf_linear", linear)
+    monkeypatch.setattr(layer_attn, "launch_gguf_linear", qgr.launch_gguf_linear)
 
     route = _runner()._run_linear_attention_alpha_beta_rows(
         _Layer(),

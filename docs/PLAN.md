@@ -1195,8 +1195,13 @@ resolved backend supplies the JIT target architecture.
 
 ### Qwen hybrid GGUF runtime ownership
 
-The `qwen35`/`qwen35moe` architecture family keeps layer execution and resident
-session orchestration in `hipengine/runtime/qwen35_gguf_runner.py`. Physical KV
+The `qwen35`/`qwen35moe` architecture family keeps full-stack composition and resident
+session orchestration in `hipengine/runtime/qwen35_gguf_runner.py`. Scalar attention
+and shared row feed-forward execution live in `qwen35_gguf_layer_attn.py` and
+`qwen35_gguf_layer_ffn.py` under the same runtime directory. Their inputs are resolved
+layer weights, configuration, geometry, scratch and selected operations, not a
+runner or session. Registry policy and bulk attention orchestration stay in the
+runner. Physical KV
 layout, backing, byte accounting and allocation/release live in
 `hipengine/runtime/qwen35_gguf_kv.py`, which consumes model configuration rather than an
 executor. Shared scratch sizing, resident byte breakdown and capacity search live
@@ -1212,7 +1217,7 @@ snapshots and arena copy cleanup live in `hipengine/runtime/qwen35_gguf_prefix_s
 Existing speculative journals retain cycle ordering. Session adapters retain
 kernel orchestration, graph synchronization and KV/cursor publication.
 The [runtime structure reference](reference/QWEN-GGUF-RUNTIME.md) describes these
-boundaries and the remaining layer-execution/diagnostics separation.
+boundaries and the remaining diagnostics separation.
 
 ### Backend Plugin
 

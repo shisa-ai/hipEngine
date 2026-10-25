@@ -18,6 +18,7 @@ from hipengine.core.memory import (
 )
 from hipengine.core.tensor import Tensor
 
+from hipengine.runtime import qwen35_gguf_layer_attn as layer_attn
 from hipengine.runtime import gguf_native_spec_cycle as native_cycle_mod
 from hipengine.runtime.gguf_native_spec_cycle import (
     NativeSpecTargetGraphUnsupportedError,
@@ -1843,6 +1844,7 @@ def test_staged_full_attention_batches_shared_cache_only_with_exact_owner(
         calls.append(("linear", weight.name, x_ptr, out_ptr, kwargs["rows"]))
 
     monkeypatch.setattr(qgr, "launch_gguf_linear", linear)
+    monkeypatch.setattr(layer_attn, "launch_gguf_linear", qgr.launch_gguf_linear)
     monkeypatch.setattr(
         qgr,
         "launch_gguf_q4_t16_sidecar_decode",
@@ -1856,11 +1858,13 @@ def test_staged_full_attention_batches_shared_cache_only_with_exact_owner(
             ("split", q, query, gate, rows)
         ),
     )
+    monkeypatch.setattr(layer_attn, "qwen35_split_qgate_bf16", qgr.qwen35_split_qgate_bf16)
     monkeypatch.setattr(
         qgr,
         "bf16_to_f32",
         lambda src, dst, count, **kwargs: calls.append(("cast", src, dst, count)),
     )
+    monkeypatch.setattr(layer_attn, "bf16_to_f32", qgr.bf16_to_f32)
     monkeypatch.setattr(
         qgr,
         "gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight",
@@ -1875,6 +1879,7 @@ def test_staged_full_attention_batches_shared_cache_only_with_exact_owner(
             ("write", key, value, key_cache, value_cache, spans.span_role)
         ),
     )
+    monkeypatch.setattr(layer_attn, "qwen35_write_paged_kv_mixed_value_bf16_spans", qgr.qwen35_write_paged_kv_mixed_value_bf16_spans)
     monkeypatch.setattr(
         qgr,
         "qwen35_paged_full_attn_decode_context_bf16_spans",
@@ -1882,6 +1887,7 @@ def test_staged_full_attention_batches_shared_cache_only_with_exact_owner(
             ("attn", query, key_cache, value_cache, context, spans.span_role, limit)
         ),
     )
+    monkeypatch.setattr(layer_attn, "qwen35_paged_full_attn_decode_context_bf16_spans", qgr.qwen35_paged_full_attn_decode_context_bf16_spans)
     monkeypatch.setattr(
         qgr,
         "qwen35_full_attn_gate_mul_bf16",
@@ -1889,6 +1895,7 @@ def test_staged_full_attention_batches_shared_cache_only_with_exact_owner(
             ("gate", context, gate, gated, width)
         ),
     )
+    monkeypatch.setattr(layer_attn, "qwen35_full_attn_gate_mul_bf16", qgr.qwen35_full_attn_gate_mul_bf16)
 
     scratch = SimpleNamespace(
         norm=SimpleNamespace(ptr=0x1000),
@@ -2288,6 +2295,7 @@ def _staged_full_attention_fixture(
             ("linear", weight.name, x_ptr, out_ptr, kwargs["rows"])
         ),
     )
+    monkeypatch.setattr(layer_attn, "launch_gguf_linear", qgr.launch_gguf_linear)
     monkeypatch.setattr(
         qgr,
         "launch_gguf_q4_t16_sidecar_decode",
@@ -2301,11 +2309,13 @@ def _staged_full_attention_fixture(
             ("split", q, query, gate, rows)
         ),
     )
+    monkeypatch.setattr(layer_attn, "qwen35_split_qgate_bf16", qgr.qwen35_split_qgate_bf16)
     monkeypatch.setattr(
         qgr,
         "bf16_to_f32",
         lambda src, dst, count, **kwargs: calls.append(("cast", src, dst, count)),
     )
+    monkeypatch.setattr(layer_attn, "bf16_to_f32", qgr.bf16_to_f32)
     monkeypatch.setattr(
         qgr,
         "gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight",
@@ -2320,6 +2330,7 @@ def _staged_full_attention_fixture(
             ("write", key, value, key_cache, value_cache, spans.span_role)
         ),
     )
+    monkeypatch.setattr(layer_attn, "qwen35_write_paged_kv_mixed_value_bf16_spans", qgr.qwen35_write_paged_kv_mixed_value_bf16_spans)
     monkeypatch.setattr(
         qgr,
         "qwen35_paged_full_attn_decode_context_bf16_spans",
@@ -2327,6 +2338,7 @@ def _staged_full_attention_fixture(
             ("attn", query, key_cache, value_cache, context, spans.span_role, limit)
         ),
     )
+    monkeypatch.setattr(layer_attn, "qwen35_paged_full_attn_decode_context_bf16_spans", qgr.qwen35_paged_full_attn_decode_context_bf16_spans)
     monkeypatch.setattr(
         qgr,
         "qwen35_full_attn_gate_mul_bf16",
@@ -2334,6 +2346,7 @@ def _staged_full_attention_fixture(
             ("gate", context, gate, gated, width)
         ),
     )
+    monkeypatch.setattr(layer_attn, "qwen35_full_attn_gate_mul_bf16", qgr.qwen35_full_attn_gate_mul_bf16)
 
     scratch = SimpleNamespace(
         norm=SimpleNamespace(ptr=0x1000),

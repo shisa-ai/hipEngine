@@ -160,6 +160,94 @@ def test_role_windows_map_hip_launch_correlation_to_innermost_role(tmp_path: Pat
     assert summary[-1]["name"] == "unattributed"
 
 
+def test_role_markers_follow_extracted_moe_functions_and_restore(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from hipengine.runtime import qwen35_gguf_layer_ffn as ffn
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFFullStackRunner
+    from scripts.gguf_decode_rocprof import _DecodeRoleMarkerPatches
+
+    events = []
+    marker = SimpleNamespace(
+        push=lambda name: events.append(("push", name)),
+        pop=lambda: events.append(("pop",)),
+    )
+
+    def selected(*args, **kwargs):
+        events.append(("selected",))
+        return 17
+
+    def moe(*args, **kwargs):
+        return ffn.run_post_attention_moe_c1_unfused_selected_ffn()
+
+    monkeypatch.setattr(ffn, "run_post_attention_moe_c1", moe)
+    monkeypatch.setattr(ffn, "run_post_attention_moe_c1_unfused_selected_ffn", selected)
+    session = SimpleNamespace(runner=object.__new__(Qwen35GGUFFullStackRunner))
+    patches = _DecodeRoleMarkerPatches(session, marker)
+    try:
+        patches.install()
+        assert ffn.run_post_attention_moe_c1() == 17
+        assert events == [
+            ("push", f"{ROLE_MARKER_PREFIX}moe_router_combine"),
+            ("push", f"{ROLE_MARKER_PREFIX}selected_expert_other"),
+            ("selected",),
+            ("pop",),
+            ("pop",),
+        ]
+    finally:
+        patches.restore()
+    assert ffn.run_post_attention_moe_c1 is moe
+    assert ffn.run_post_attention_moe_c1_unfused_selected_ffn is selected
+
+
+def test_role_markers_support_historical_runner_owner(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFFullStackRunner
+    from scripts import gguf_decode_rocprof as profiler
+
+    events = []
+    marker = SimpleNamespace(push=events.append, pop=lambda: events.append("pop"))
+    monkeypatch.setattr(profiler.importlib.util, "find_spec", lambda name: None)
+    original = lambda self: 23
+    monkeypatch.setattr(Qwen35GGUFFullStackRunner, "_run_post_attention_moe_c1", original)
+    runner = object.__new__(Qwen35GGUFFullStackRunner)
+    patches = profiler._DecodeRoleMarkerPatches(SimpleNamespace(runner=runner), marker)
+    try:
+        patches.install()
+        assert runner._run_post_attention_moe_c1() == 23
+        assert events == [f"{ROLE_MARKER_PREFIX}moe_router_combine", "pop"]
+    finally:
+        patches.restore()
+    assert Qwen35GGUFFullStackRunner._run_post_attention_moe_c1 is original
+
+
+@pytest.mark.parametrize("owner_name", ["qwen35_gguf_runner", "qwen35_gguf_layer_attn"])
+@pytest.mark.parametrize("name,count", [("launch_gguf_linear", 1), ("launch_gguf_linear_pair", 2), ("launch_gguf_linear_triple", 3)])
+def test_projection_markers_follow_both_execution_owners(monkeypatch, owner_name, name, count) -> None:
+    import importlib
+    from types import SimpleNamespace
+
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFFullStackRunner
+    from scripts.gguf_decode_rocprof import _DecodeRoleMarkerPatches
+
+    owner = importlib.import_module(f"hipengine.runtime.{owner_name}")
+    events = []
+    original = lambda *args, **kwargs: events.append("launch")
+    monkeypatch.setattr(owner, name, original)
+    runner = object.__new__(Qwen35GGUFFullStackRunner)
+    marker = SimpleNamespace(push=events.append, pop=lambda: events.append("pop"))
+    patches = _DecodeRoleMarkerPatches(SimpleNamespace(runner=runner), marker)
+    try:
+        patches.install()
+        weight = SimpleNamespace(spec=SimpleNamespace(slot_path="layers.3.attn_q"))
+        getattr(owner, name)(*[weight] * count)
+        assert events == [f"{ROLE_MARKER_PREFIX}full_attention_qkv", "launch", "pop"]
+    finally:
+        patches.restore()
+    assert getattr(owner, name) is original
+
+
 def test_weight_role_separates_dense_projection_owners() -> None:
     class Source:
         name = "blk.3.attn_q.weight"

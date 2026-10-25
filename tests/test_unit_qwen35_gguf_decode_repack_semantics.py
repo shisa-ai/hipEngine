@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 
+from hipengine.runtime import qwen35_gguf_layer_attn as layer_attention
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFFullStackRunner
 
 
@@ -17,12 +18,15 @@ def test_p10_x1_decode_repack_does_not_change_linear_attention_math() -> None:
     implementation, not the math graph.
     """
 
-    source = inspect.getsource(Qwen35GGUFFullStackRunner._run_linear_attention_attn_only)
+    source = inspect.getsource(layer_attention.run_linear_attention_attn_only)
 
     assert "gguf_decode_repack_enabled" not in source
-    assert "scratch.recurrent_out.ptr" in source
+    assert "views.recurrent_out.ptr" in source
     assert "ssm_out_activation_dtype = GGUF_ACTIVATION_F32" in source
-    assert "output_cast = self._gdn_decode_output_cast_for_weight(ssm_out_weight)" in source
+    assert (
+        "output_cast = selectors.gdn_decode_output_cast_for_weight(ssm_out_weight)"
+        in source
+    )
     assert "activation_dtype=ssm_out_activation_dtype" in source
 
 
@@ -34,10 +38,10 @@ def test_p10_x1_decode_repack_does_not_switch_full_attention_math() -> None:
     enabled.
     """
 
-    source = inspect.getsource(Qwen35GGUFFullStackRunner._run_full_attention_attn_only)
+    source = inspect.getsource(layer_attention.run_full_attention_attn_only)
 
     assert "gguf_decode_repack_enabled" not in source
-    assert "_use_gguf_full_attention_split_decode" in source
+    assert "policy.use_full_attention_split_decode" in source
     assert "gguf_qwen35_head_rmsnorm_partial_rotary_position_key_bf16_f32_weight" not in source
 
 

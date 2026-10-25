@@ -54,6 +54,10 @@ import hipengine.runtime.qwen35_gguf_runner as runner_mod  # noqa: E402
 
 runner_mod.q4_t16_unequal_pair_prefill_session = _counting_session
 runner_mod.launch_gguf_linear_pair = _counting_launch
+# Scalar attention owns its imported pair launcher separately from bulk rows.
+import hipengine.runtime.qwen35_gguf_layer_attn as attention_mod  # noqa: E402
+
+attention_mod.launch_gguf_linear_pair = _counting_launch
 
 gate = os.environ.get("HE_UNEQUAL_DUAL_WMMA_MIN_ROWS")
 if gate:

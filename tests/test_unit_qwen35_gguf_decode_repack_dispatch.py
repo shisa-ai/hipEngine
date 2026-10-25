@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import numpy as np
 
 import hipengine.runtime.qwen35_gguf_runner as qwen_runtime
+import hipengine.runtime.qwen35_gguf_layer_attn as layer_attention
 from hipengine.core.dtype import DType
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFFullStackRunner
 
@@ -195,6 +196,20 @@ def _patch_full_attention_primitives(monkeypatch):
         raising=False,
     )
     monkeypatch.setattr(qwen_runtime, "qwen35_full_attn_gate_mul_bf16", record("attention_gate"))
+    # The decode full-attention body issues these from the layer module, so the
+    # execution owner is patched with the same recorders.
+    for name in (
+        "launch_gguf_linear_triple",
+        "launch_gguf_linear_pair",
+        "launch_gguf_linear",
+        "qwen35_split_qgate_bf16",
+        "bf16_to_f32",
+        "gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight",
+        "qwen35_write_paged_kv_mixed_value_bf16_spans",
+        "qwen35_paged_full_attn_decode_context_bf16_spans",
+        "qwen35_full_attn_gate_mul_bf16",
+    ):
+        monkeypatch.setattr(layer_attention, name, getattr(qwen_runtime, name))
     return calls
 
 

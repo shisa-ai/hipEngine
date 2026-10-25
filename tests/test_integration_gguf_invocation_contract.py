@@ -12,6 +12,7 @@ from hipengine.loading.qwen35_gguf_admission import (
     preflight_qwen35_gguf_artifact,
 )
 from hipengine.loading.gguf import GGMLQuantizationType
+from hipengine.runtime import qwen35_gguf_layer_attn as layer_attn
 
 
 def test_supplied_f32_raw_head_has_no_bf16_fallback():
@@ -183,6 +184,7 @@ def test_native_caller_supplies_mixed_gdn_operands_and_executes_cast(monkeypatch
     monkeypatch.setattr(runner, "gguf_rmsnorm_bf16_f32_weight", lambda *a, **kw: None)
     monkeypatch.setattr(runner, "dense_gemv_out_bf16", lambda *a, **kw: None)
     monkeypatch.setattr(runner, "launch_gguf_linear_pair", lambda *a, **kw: True)
+    monkeypatch.setattr(layer_attn, "launch_gguf_linear_pair", runner.launch_gguf_linear_pair)
     monkeypatch.setattr(runner, "qwen35_linear_attn_conv_decode_indexed_bf16", capture(CONV_DECODE))
     monkeypatch.setattr(runner, "_gdn_decode_segments_kernel", lambda fp16: capture(GDN_SEGMENTS))
     def cast(src, dst, count, **kw):
@@ -190,11 +192,13 @@ def test_native_caller_supplies_mixed_gdn_operands_and_executes_cast(monkeypatch
         assert count == 2 * model.config.ssm_inner_size
         calls.append("cast")
     monkeypatch.setattr(runner, "f32_to_bf16", cast)
+    monkeypatch.setattr(layer_attn, "f32_to_bf16", runner.f32_to_bf16)
     def linear(weight, x, out, **kw):
         assert weight is weights["ssm_out"]
         assert dtypes[x] == kw.get("activation_dtype", "bf16") == "bf16"
         assert calls[-1] == "cast"
     monkeypatch.setattr(runner, "launch_gguf_linear", linear)
+    monkeypatch.setattr(layer_attn, "launch_gguf_linear", runner.launch_gguf_linear)
     session = NS(weights=resident, runtime=object(), backend="hip_gfx1100",
                  fp16_recurrent_state=False, hidden_size=256, vocab_size=64, linear_qkv_width=192,
                  ssm_value_dim=32, _cast_library=lambda: object(),
@@ -295,7 +299,9 @@ def test_real_f32_alpha_beta_caller_executes_recorded_output_adapter(monkeypatch
     launches, casts = [], []
     monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS", "1")
     monkeypatch.setattr(runner, "launch_gguf_linear", lambda *a, **kw: launches.append((a, kw)))
+    monkeypatch.setattr(layer_attn, "launch_gguf_linear", runner.launch_gguf_linear)
     monkeypatch.setattr(runner, "f32_to_bf16", lambda *a, **kw: casts.append(a))
+    monkeypatch.setattr(layer_attn, "f32_to_bf16", runner.f32_to_bf16)
     self = NS(weights=NS(config=model.config), hidden_size=256, _cast_library=lambda: "fake")
     result = runner.Qwen35GGUFFullStackRunner._run_linear_attention_alpha_beta_rows(
         self, NS(weight=lambda slot: weights[slot]), 31, 32, scratch, rows=1, stream=0, runtime="fake")

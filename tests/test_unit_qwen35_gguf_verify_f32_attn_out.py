@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from hipengine.runtime import qwen35_gguf_runner as qgr
+from hipengine.runtime import qwen35_gguf_layer_ffn as layer_ffn
 
 
 class _Layer:
@@ -50,7 +51,7 @@ def test_post_attention_f32_attn_out_uses_f32_add_norm_when_flagged(
     def add_norm_f32_f32(*args, **kwargs):
         calls.append(("add_norm_f32_f32", args, kwargs))
 
-    def moe_rows(self, *args, **kwargs):
+    def moe_rows(*args, **kwargs):
         calls.append(("moe_rows", args, kwargs))
 
     monkeypatch.setattr(qgr, "gguf_add_rmsnorm_f32_f32_f32_weight", add_norm_f32_f32)
@@ -59,7 +60,7 @@ def test_post_attention_f32_attn_out_uses_f32_add_norm_when_flagged(
         "gguf_add_rmsnorm_f32_bf16_f32_weight",
         lambda *args, **kwargs: pytest.fail("BF16 add path should not run"),
     )
-    monkeypatch.setattr(qgr.Qwen35GGUFFullStackRunner, "_run_post_attention_moe_rows", moe_rows)
+    monkeypatch.setattr(layer_ffn, "run_post_attention_moe_rows", moe_rows)
 
     _runner()._run_post_attention_ffn_rows(
         0,
@@ -101,7 +102,7 @@ def test_post_attention_c1_moe_closes_device_stage_interval(
         recorder.mark(f"{prefix}_router")
         recorder.mark(f"{prefix}_combine")
 
-    monkeypatch.setattr(runner, "_run_post_attention_moe_c1", fake_moe)
+    monkeypatch.setattr(layer_ffn, "run_post_attention_moe_c1", fake_moe)
     recorder = SimpleNamespace(mark=lambda name: marks.append(name))
 
     runner._run_post_attention_ffn_rows(
@@ -131,7 +132,7 @@ def test_post_attention_f32_attn_out_falls_back_without_flag(
     def add_norm_f32_bf16(*args, **kwargs):
         calls.append(("add_norm_f32_bf16", args, kwargs))
 
-    def moe_rows(self, *args, **kwargs):
+    def moe_rows(*args, **kwargs):
         calls.append(("moe_rows", args, kwargs))
 
     monkeypatch.setattr(
@@ -140,7 +141,7 @@ def test_post_attention_f32_attn_out_falls_back_without_flag(
         lambda *args, **kwargs: pytest.fail("F32 add path requires flag"),
     )
     monkeypatch.setattr(qgr, "gguf_add_rmsnorm_f32_bf16_f32_weight", add_norm_f32_bf16)
-    monkeypatch.setattr(qgr.Qwen35GGUFFullStackRunner, "_run_post_attention_moe_rows", moe_rows)
+    monkeypatch.setattr(layer_ffn, "run_post_attention_moe_rows", moe_rows)
 
     _runner()._run_post_attention_ffn_rows(
         0,

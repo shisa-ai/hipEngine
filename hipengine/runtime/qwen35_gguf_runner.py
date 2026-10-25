@@ -470,6 +470,8 @@ from hipengine.runtime.prefill_flight_recorder import (
     FlightRecorderPhase,
     PrefillFlightRecorder,
 )
+from hipengine.runtime import qwen35_gguf_layer_attn as _layer_attn
+from hipengine.runtime import qwen35_gguf_layer_ffn as _layer_ffn
 
 # ---------------------------------------------------------------------------
 # DFlash2 target-tap capture
@@ -481,11 +483,277 @@ from hipengine.runtime.prefill_flight_recorder import (
 DFLASH2_TAP_LAYER_IDS: tuple[int, ...] = (5, 19, 33, 47, 61)
 DFLASH2_TAP_DEPTHS: tuple[int, ...] = tuple(layer + 1 for layer in DFLASH2_TAP_LAYER_IDS)
 
+# ---------------------------------------------------------------------------
+# Layer execution adapters
+# ---------------------------------------------------------------------------
+# One layer's attention half runs in
+# :mod:`hipengine.runtime.qwen35_gguf_layer_attn` and its feed-forward half in
+# :mod:`hipengine.runtime.qwen35_gguf_layer_ffn`. The helpers below are the only
+# place this runner's shape is translated into those components' explicit input
+# records; the methods that call them own no layer arithmetic.
+#
+# Selected-operation tables are rebuilt per call so policy and profiler patches
+# stay visible. Attention's direct kernel launches belong to its layer module;
+# the FFN adapter supplies this module's kernel references explicitly.
 
-# This seam's public spelling for the shared prompt-priming contract. The
-# contract lives in :mod:`hipengine.speculative.prompt_prime` so a
-# generation-side sink can name it without importing this runtime module.
-TargetHiddenChunkSink = PromptPrimeSink
+
+def _layer_runner_method(runner, method_name: str, *args, **kwargs):
+    """Call ``runner``'s method by name when the component calls it.
+
+    The components receive callables, but the runner's own helpers must stay as
+    lazy as the bodies were: a probe runner that never takes the branch must not
+    need the attribute, and an instance-level override must still win.
+    """
+
+    return getattr(runner, method_name)(*args, **kwargs)
+
+
+def _layer_attention_selectors(runner) -> _layer_attn.AttentionSelectors:
+    """The attention bodies' lazily resolved operations, bound to ``runner``."""
+
+    return _layer_attn.AttentionSelectors(
+        norm_residual_kernel=partial(_gguf_norm_residual_decode_kernel, runner),
+        cast_library=partial(_layer_runner_method, runner, "_cast_library"),
+        linear_supports_f32_activation=_gguf_linear_supports_f32_activation,
+        linear_supports_f32_activation_f32_output=(
+            _gguf_linear_supports_f32_activation_f32_output
+        ),
+        try_launch_dense_q8_pair_dp4a_f32=_try_launch_dense_q8_pair_dp4a_f32,
+        try_launch_dense_q8_pair_dp4a_f32_out=_try_launch_dense_q8_pair_dp4a_f32_out,
+        try_launch_dense_f32_alpha_beta_conv_decode=(
+            _try_launch_dense_f32_alpha_beta_conv_decode
+        ),
+        gdn_decode_gate_kernel=_gdn_decode_gate_kernel,
+        gdn_decode_output_fusion_for_weight=partial(
+            _layer_runner_method, runner, "_gdn_decode_output_fusion_for_weight"
+        ),
+        gdn_decode_output_cast_for_weight=partial(
+            _layer_runner_method, runner, "_gdn_decode_output_cast_for_weight"
+        ),
+        paged_attn_decode_library=partial(
+            _layer_runner_method, runner, "_paged_attn_decode_library"
+        ),
+        paged_kv_write_library=partial(
+            _layer_runner_method, runner, "_paged_kv_write_library"
+        ),
+        full_attn_qk_postprocess_fn=partial(
+            _layer_runner_method, runner, "_full_attn_qk_postprocess_fn"
+        ),
+        full_attn_decode_short_batch_fn=partial(
+            _layer_runner_method, runner, "_full_attn_decode_short_batch_fn"
+        ),
+        int8_kv_append_write_fn=_gguf_int8_kv_append_write_fn,
+        int8_kv_decode_gate_fn=_gguf_int8_kv_decode_gate_fn,
+    )
+
+
+def _layer_attention_policy() -> _layer_attn.AttentionPolicy:
+    """Environment and backend-policy predicates the attention bodies read."""
+
+    return _layer_attn.AttentionPolicy(
+        verify_f32_attention_norm=_gguf_verify_f32_attention_norm_enabled,
+        verify_f32_linear_projections=_gguf_verify_f32_linear_projections_enabled,
+        verify_f32_alpha_beta=_gguf_verify_f32_alpha_beta_enabled,
+        use_short_full_attention_split_decode=(
+            _use_gguf_short_full_attention_split_decode
+        ),
+        use_full_attention_split_decode=_use_gguf_full_attention_split_decode,
+        # Resolved per call: the split-gate owner is a module global that probes
+        # and tests republish between calls.
+        full_attention_split_gate_fn=lambda *args, **kwargs: (
+            _gguf_full_attention_split_gate_bf16_fn(*args, **kwargs)
+        ),
+    )
+
+
+def _layer_alpha_beta_views(scratch) -> _layer_attn.LinearAttentionViews:
+    """The alpha/beta projection leaf's buffers.
+
+    The leaf reads the alpha/beta pair and the q8_1 workspace owner alone, and
+    this caller has a layer and no layer id, so nothing else is read.
+    """
+
+    return _layer_attn.LinearAttentionViews(
+        linear_alpha=scratch.linear_alpha,
+        linear_beta=scratch.linear_beta,
+        linear_alpha_f32=getattr(scratch, "linear_alpha_f32", None),
+        linear_beta_f32=getattr(scratch, "linear_beta_f32", None),
+        # The q8_1 dp4a launchers take the scratch itself and read its workspace.
+        q8_1_workspace_owner=scratch,
+    )
+
+
+def _layer_linear_attention_views(
+    scratch,
+    layer_id: int,
+) -> _layer_attn.LinearAttentionViews:
+    """Linear-attention buffers and the layer's GDN state."""
+
+    return _layer_attn.LinearAttentionViews(
+        norm=scratch.norm,
+        norm_f32=getattr(scratch, "post_norm_f32", None),
+        linear_qkv=scratch.linear_qkv,
+        linear_z=scratch.linear_z,
+        linear_alpha=scratch.linear_alpha,
+        linear_beta=scratch.linear_beta,
+        linear_alpha_f32=getattr(scratch, "linear_alpha_f32", None),
+        linear_beta_f32=getattr(scratch, "linear_beta_f32", None),
+        conv_out=scratch.conv_out,
+        recurrent_out=scratch.recurrent_out,
+        recurrent_bf16=scratch.recurrent_bf16,
+        conv_state=scratch.layer_conv_states[layer_id],
+        recurrent_state=scratch.layer_recurrent_states[layer_id],
+        q8_1_workspace_owner=scratch,
+    )
+
+
+def _layer_full_attention_views(scratch, layer_id: int) -> _layer_attn.FullAttentionViews:
+    """Full-attention buffers, KV state and the layer's spans."""
+
+    bf16_mirror_cache = None
+    full_bf16_mirror_cache = getattr(scratch, "full_bf16_mirror_cache", None)
+    if full_bf16_mirror_cache is not None:
+        bf16_mirror_cache = full_bf16_mirror_cache(layer_id)
+    key_cache, value_cache = scratch.full_cache(layer_id)
+    return _layer_attn.FullAttentionViews(
+        norm=scratch.norm,
+        full_q=scratch.full_q,
+        full_k=scratch.full_k,
+        full_v=scratch.full_v,
+        full_query_raw=scratch.full_query_raw,
+        full_key_raw=scratch.full_key_raw,
+        full_query=scratch.full_query,
+        full_key=scratch.full_key,
+        full_gate=scratch.full_gate,
+        full_gated=scratch.full_gated,
+        full_attn_context=scratch.full_attn_context,
+        cos_table=scratch.cos_table,
+        sin_table=scratch.sin_table,
+        position_tensor=scratch.position_tensor,
+        max_positions=scratch.max_positions,
+        block_size=scratch.block_size,
+        kv_storage_dtype=scratch.kv_storage_dtype,
+        int8_kv_value_bf16=getattr(scratch, "int8_kv_value_bf16", False),
+        append_spans=scratch.append_spans,
+        decode_spans=scratch.decode_spans,
+        key_cache=key_cache,
+        value_cache=value_cache,
+        layer_append_spans=scratch.append_spans_for_layer(layer_id),
+        layer_decode_spans=scratch.decode_spans_for_layer(layer_id),
+        bf16_mirror_cache=bf16_mirror_cache,
+    )
+
+
+def _layer_ffn_geometry(runner) -> _layer_ffn.FfnGeometry:
+    """FFN widths. ``ffn_size`` and ``backend`` are read only by the paths that use them."""
+
+    return _layer_ffn.FfnGeometry(
+        hidden_size=runner.hidden_size,
+        backend=getattr(runner, "backend", None),
+        ffn_size=getattr(runner, "ffn_size", None),
+    )
+
+
+def _layer_ffn_kernels() -> _layer_ffn.FfnKernels:
+    """The FFN kernel table, read from this module's current globals."""
+
+    return _layer_ffn.FfnKernels(
+        **{
+            name: globals()[name]
+            for name in _layer_ffn.FfnKernels.__dataclass_fields__
+        }
+    )
+
+
+def _layer_dense_down_residual_fused(runner, **kwargs):
+    """Publish a missing decode-policy memo only when the FFN reaches its use."""
+
+    selected = _gguf_dense_down_residual_decode_fused(runner, **kwargs)
+    runner._dense_down_residual_decode_c1 = selected
+    return selected
+
+
+def _layer_ffn_ops(runner) -> _layer_ffn.FfnOps:
+    """The FFN helpers that still live here.
+
+    Seven took this runner as their first argument and two are runner methods;
+    the rest are module functions. The field name is the component's spelling,
+    so the mapping to this module's symbol is written out.
+    """
+
+    host_bound = {
+        "norm_residual_kernel": _gguf_norm_residual_decode_kernel,
+        "dense_pair_silu_variant": _gguf_dense_pair_silu_decode_variant,
+        "dense_down_residual_fused": _layer_dense_down_residual_fused,
+        "moe_c1_compact_gemv": _try_run_post_attention_moe_c1_compact_gemv,
+        "moe_c1_fused_ffn": _try_run_post_attention_moe_c1_fused_ffn,
+        "moe_rows_compact_wmma": _try_run_post_attention_moe_rows_compact_wmma,
+        "moe_rows_compact_gemv": _try_run_post_attention_moe_rows_compact_gemv,
+    }
+    method_bound = {
+        "rounded_next_rmsnorm": "_rounded_add_rmsnorm_fn",
+        "cast_library": "_cast_library",
+    }
+    module_function = {
+        "mark_sync_stage": "_mark_sync_stage",
+        "optional_q8_1_workspace_ptr": "_optional_q8_1_workspace_ptr",
+        "use_f32_selected_down": "_gguf_use_f32_selected_down",
+        "use_f32_shared_down": "_gguf_use_f32_shared_down",
+        "use_f32_selected_intermediate": "_gguf_use_f32_selected_intermediate",
+        "prefill_router_select_threads": "_gguf_prefill_router_select_threads",
+        "selected_gemv_requires_q8_1_input": "_selected_gemv_requires_q8_1_input",
+        "selected_pair_requires_q8_1_input": "_selected_pair_requires_q8_1_input",
+        "f32_moe_combine_out_fn": "_gguf_f32_moe_combine_out_fn",
+        "f32_moe_combine_batch_out_fn": "_gguf_f32_moe_combine_batch_out_fn",
+        "router_logits_f32_hidden": "_launch_qwen35_router_logits_f32_hidden",
+        "router_logits_bf16_hidden": "_launch_qwen35_router_logits_bf16_hidden",
+        "router_topk_split_shared_bf16_f32w": (
+            "_try_launch_qwen35_router_topk_split_shared_bf16_f32w"
+        ),
+        "shared_gate_up_from_f32_post_norm": (
+            "_try_launch_shared_gate_up_from_f32_post_norm"
+        ),
+        "gguf_linear_bf16_f32_output": "_try_launch_gguf_linear_bf16_f32_output",
+        "dense_q8_pair_dp4a": "_try_launch_dense_q8_pair_dp4a",
+        "dense_q8_pair_dp4a_f32": "_try_launch_dense_q8_pair_dp4a_f32",
+        "dense_q8_single_dp4a": "_try_launch_dense_q8_single_dp4a",
+        "selected_raw_moe_pair_silu": "_launch_selected_raw_gguf_moe_pair_silu",
+        "selected_raw_moe_dual": "_launch_selected_raw_gguf_moe_dual",
+        "selected_raw_moe_linear": "_launch_selected_raw_gguf_moe_linear",
+        "weighted_selected_raw_moe_linear": (
+            "_launch_weighted_selected_raw_gguf_moe_linear"
+        ),
+        "selected_expert_pack8_moe_pair": "_launch_selected_expert_pack8_moe_pair",
+        "selected_expert_pack8_moe_linear": "_launch_selected_expert_pack8_moe_linear",
+    }
+    fields: dict[str, object] = {}
+    for name in _layer_ffn.FfnOps.__dataclass_fields__:
+        host_fn = host_bound.get(name)
+        method_name = method_bound.get(name)
+        if host_fn is not None:
+            fields[name] = partial(host_fn, runner)
+        elif method_name is not None:
+            fields[name] = partial(_layer_runner_method, runner, method_name)
+        else:
+            fields[name] = globals()[module_function[name]]
+    return _layer_ffn.FfnOps(**fields)
+
+
+def _layer_ffn_flags() -> _layer_ffn.FfnFlags:
+    """The FFN env-gated predicates, each a thunk over the current environment."""
+
+    env_flags = {
+        "compact_moe_c1_enabled": (_GGUF_COMPACT_MOE_C1_ENV, False),
+        "fused_moe_ffn_enabled": (_GGUF_FUSED_MOE_FFN_ENV, False),
+    }
+    fields: dict[str, object] = {}
+    for name in _layer_ffn.FfnFlags.__dataclass_fields__:
+        env = env_flags.get(name)
+        if env is None:
+            fields[name] = globals()["_gguf_" + name]
+        else:
+            fields[name] = lambda env=env: _env_flag(env[0], env[1])
+    return _layer_ffn.FfnFlags(**fields)
 
 
 def _normalize_packed_target_hidden_for_sinks(
@@ -5430,56 +5698,20 @@ class Qwen35GGUFFullStackRunner:
         stream: int,
         runtime: HipRuntime,
     ) -> int | None:
-        if hidden_f32_ptr is None:
-            norm_kernel = _gguf_norm_residual_decode_kernel(
-                self,
-                layer="rmsnorm",
-                rows=rows,
-                hidden_size=self.hidden_size,
-            )
-            norm_kernel(
-                hidden_ptr,
-                weight_ptr,
-                out_ptr,
-                rows=rows,
-                hidden_size=self.hidden_size,
-                eps=eps,
-                stream=stream,
-                runtime=runtime,
-            )
-            return None
-        if _gguf_verify_f32_attention_norm_enabled() and out_f32_ptr is not None:
-            gguf_rmsnorm_f32_f32_weight_out_f32(
-                int(hidden_f32_ptr),
-                weight_ptr,
-                int(out_f32_ptr),
-                rows=rows,
-                hidden_size=self.hidden_size,
-                eps=eps,
-                stream=stream,
-                runtime=runtime,
-            )
-            f32_to_bf16(
-                int(out_f32_ptr),
-                out_ptr,
-                rows * self.hidden_size,
-                stream=stream,
-                library=self._cast_library(),
-                runtime=runtime,
-            )
-            return int(out_f32_ptr)
-        else:
-            gguf_rmsnorm_f32_f32_weight(
-                int(hidden_f32_ptr),
-                weight_ptr,
-                out_ptr,
-                rows=rows,
-                hidden_size=self.hidden_size,
-                eps=eps,
-                stream=stream,
-                runtime=runtime,
-            )
-            return None
+        return _layer_attn.run_attention_norm_rows(
+            hidden_ptr=hidden_ptr,
+            hidden_f32_ptr=hidden_f32_ptr,
+            weight_ptr=weight_ptr,
+            out_ptr=out_ptr,
+            out_f32_ptr=out_f32_ptr,
+            rows=rows,
+            eps=eps,
+            stream=stream,
+            runtime=runtime,
+            geometry=_layer_attn.AttentionGeometry(hidden_size=self.hidden_size),
+            selectors=_layer_attention_selectors(self),
+            policy=_layer_attention_policy(),
+        )
 
     def _run_linear_attention_alpha_beta_rows(
         self,
@@ -5492,190 +5724,19 @@ class Qwen35GGUFFullStackRunner:
         stream: int,
         runtime: HipRuntime,
     ) -> str:
-        cfg = self.weights.config
-        if (
-            norm_f32_ptr is not None
-            and _gguf_verify_f32_linear_projections_enabled()
-            and hasattr(scratch, "linear_alpha_f32")
-            and hasattr(scratch, "linear_beta_f32")
-        ):
-            if (
-                _gguf_linear_supports_f32_activation_f32_output(layer.weight("ssm_alpha"), rows=rows)
-                and _gguf_linear_supports_f32_activation_f32_output(layer.weight("ssm_beta"), rows=rows)
-            ):
-                launch_gguf_linear(
-                    layer.weight("ssm_alpha"),
-                    int(norm_f32_ptr),
-                    scratch.linear_alpha_f32.ptr,
-                    rows=rows,
-                    in_features=self.hidden_size,
-                    out_features=cfg.ssm_time_step_rank,
-                    activation_dtype=GGUF_ACTIVATION_F32,
-                    output_dtype=GGUF_OUTPUT_F32,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                launch_gguf_linear(
-                    layer.weight("ssm_beta"),
-                    int(norm_f32_ptr),
-                    scratch.linear_beta_f32.ptr,
-                    rows=rows,
-                    in_features=self.hidden_size,
-                    out_features=cfg.ssm_time_step_rank,
-                    activation_dtype=GGUF_ACTIVATION_F32,
-                    output_dtype=GGUF_OUTPUT_F32,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                cast_library = self._cast_library()
-                f32_to_bf16(
-                    scratch.linear_alpha_f32.ptr,
-                    scratch.linear_alpha.ptr,
-                    rows * cfg.ssm_time_step_rank,
-                    stream=stream,
-                    library=cast_library,
-                    runtime=runtime,
-                )
-                f32_to_bf16(
-                    scratch.linear_beta_f32.ptr,
-                    scratch.linear_beta.ptr,
-                    rows * cfg.ssm_time_step_rank,
-                    stream=stream,
-                    library=cast_library,
-                    runtime=runtime,
-                )
-                return "f32_singletons_f32_out"
-            if _try_launch_dense_q8_pair_dp4a_f32_out(
-                layer.weight("ssm_alpha"),
-                layer.weight("ssm_beta"),
-                int(norm_f32_ptr),
-                scratch.linear_alpha_f32.ptr,
-                scratch.linear_beta_f32.ptr,
-                scratch,
-                rows=rows,
-                in_features=self.hidden_size,
-                out_features_a=cfg.ssm_time_step_rank,
-                out_features_b=cfg.ssm_time_step_rank,
-                stream=stream,
-                runtime=runtime,
-            ):
-                cast_library = self._cast_library()
-                f32_to_bf16(
-                    scratch.linear_alpha_f32.ptr,
-                    scratch.linear_alpha.ptr,
-                    rows * cfg.ssm_time_step_rank,
-                    stream=stream,
-                    library=cast_library,
-                    runtime=runtime,
-                )
-                f32_to_bf16(
-                    scratch.linear_beta_f32.ptr,
-                    scratch.linear_beta.ptr,
-                    rows * cfg.ssm_time_step_rank,
-                    stream=stream,
-                    library=cast_library,
-                    runtime=runtime,
-                )
-                return "dense_q8_dp4a_f32_out"
-        if norm_f32_ptr is not None and _gguf_verify_f32_alpha_beta_enabled():
-            if _try_launch_dense_q8_pair_dp4a_f32(
-                layer.weight("ssm_alpha"),
-                layer.weight("ssm_beta"),
-                int(norm_f32_ptr),
-                scratch.linear_alpha.ptr,
-                scratch.linear_beta.ptr,
-                scratch,
-                rows=rows,
-                in_features=self.hidden_size,
-                out_features_a=cfg.ssm_time_step_rank,
-                out_features_b=cfg.ssm_time_step_rank,
-                stream=stream,
-                runtime=runtime,
-            ):
-                return "dense_q8_dp4a_f32"
-            if (
-                _gguf_linear_supports_f32_activation(layer.weight("ssm_alpha"))
-                and _gguf_linear_supports_f32_activation(layer.weight("ssm_beta"))
-            ):
-                launch_gguf_linear(
-                    layer.weight("ssm_alpha"),
-                    int(norm_f32_ptr),
-                    scratch.linear_alpha.ptr,
-                    rows=rows,
-                    in_features=self.hidden_size,
-                    out_features=cfg.ssm_time_step_rank,
-                    activation_dtype=GGUF_ACTIVATION_F32,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                launch_gguf_linear(
-                    layer.weight("ssm_beta"),
-                    int(norm_f32_ptr),
-                    scratch.linear_beta.ptr,
-                    rows=rows,
-                    in_features=self.hidden_size,
-                    out_features=cfg.ssm_time_step_rank,
-                    activation_dtype=GGUF_ACTIVATION_F32,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                return "f32_singletons"
-        if cfg.is_moe:
-            launch_gguf_linear(
-                layer.weight("ssm_alpha"),
-                norm_ptr,
-                scratch.linear_alpha.ptr,
-                rows=rows,
-                in_features=self.hidden_size,
-                out_features=cfg.ssm_time_step_rank,
-                stream=stream,
-                runtime=runtime,
-            )
-            launch_gguf_linear(
-                layer.weight("ssm_beta"),
-                norm_ptr,
-                scratch.linear_beta.ptr,
-                rows=rows,
-                in_features=self.hidden_size,
-                out_features=cfg.ssm_time_step_rank,
-                stream=stream,
-                runtime=runtime,
-            )
-            return "singletons"
-        if launch_gguf_linear_pair(
-            layer.weight("ssm_alpha"),
-            layer.weight("ssm_beta"),
+        return _layer_attn.run_linear_attention_alpha_beta_rows(
+            layer,
             norm_ptr,
-            scratch.linear_alpha.ptr,
-            scratch.linear_beta.ptr,
+            norm_f32_ptr,
+            _layer_alpha_beta_views(scratch),
+            cfg=self.weights.config,
+            geometry=_layer_attn.AttentionGeometry(hidden_size=self.hidden_size),
             rows=rows,
-            in_features=self.hidden_size,
-            out_features=cfg.ssm_time_step_rank,
             stream=stream,
             runtime=runtime,
-        ):
-            return "pair"
-        launch_gguf_linear(
-            layer.weight("ssm_alpha"),
-            norm_ptr,
-            scratch.linear_alpha.ptr,
-            rows=rows,
-            in_features=self.hidden_size,
-            out_features=cfg.ssm_time_step_rank,
-            stream=stream,
-            runtime=runtime,
+            selectors=_layer_attention_selectors(self),
+            policy=_layer_attention_policy(),
         )
-        launch_gguf_linear(
-            layer.weight("ssm_beta"),
-            norm_ptr,
-            scratch.linear_beta.ptr,
-            rows=rows,
-            in_features=self.hidden_size,
-            out_features=cfg.ssm_time_step_rank,
-            stream=stream,
-            runtime=runtime,
-        )
-        return "fallback"
 
     def _run_full_attention_decode_batch_layer_rows(
         self,
@@ -6183,186 +6244,29 @@ class Qwen35GGUFFullStackRunner:
         gpu_stage_recorder: _HipEventStageRecorder | None = None,
     ) -> None:
         assert self.weights is not None
-        layer = self.weights.layer(layer_id)
-        cfg = self.weights.config
-        runtime = self.runtime or get_hip_runtime()
-        conv_state = scratch.layer_conv_states[layer_id]
-        recurrent_state = scratch.layer_recurrent_states[layer_id]
-        if conv_state is None or recurrent_state is None:
-            raise ValueError(f"layer {layer_id} has no linear-attention state")
-        if input_norm_ptr is None:
-            attn_norm_f32_ptr = self._run_attention_norm_rows(
-                hidden_ptr=hidden_ptr,
-                hidden_f32_ptr=hidden_f32_ptr,
-                weight_ptr=layer.weight("attn_norm").allocation().tensor.ptr,
-                out_ptr=scratch.norm.ptr,
-                out_f32_ptr=(scratch.post_norm_f32.ptr if hasattr(scratch, "post_norm_f32") else None),
-                rows=1,
-                eps=cfg.rms_norm_eps,
-                stream=stream,
-                runtime=runtime,
-            )
-        else:
-            if int(input_norm_ptr) != int(scratch.norm.ptr):
-                raise ValueError("prefused linear-attention input norm must use scratch.norm")
-            attn_norm_f32_ptr = None
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_norm")
-        pair_fused = launch_gguf_linear_pair(
-            layer.weight("attn_qkv"),
-            layer.weight("attn_gate"),
-            scratch.norm.ptr,
-            scratch.linear_qkv.ptr,
-            scratch.linear_z.ptr,
-            rows=1,
-            in_features=self.hidden_size,
-            out_features=self.linear_qkv_width,
-            out_features_b=cfg.ssm_inner_size,
-            stream=stream,
-            runtime=runtime,
-        )
-        if not pair_fused:
-            launch_gguf_linear(
-                layer.weight("attn_qkv"),
-                scratch.norm.ptr,
-                scratch.linear_qkv.ptr,
-                rows=1,
-                in_features=self.hidden_size,
-                out_features=self.linear_qkv_width,
-                stream=stream,
-                runtime=runtime,
-            )
-            launch_gguf_linear(
-                layer.weight("attn_gate"),
-                scratch.norm.ptr,
-                scratch.linear_z.ptr,
-                rows=1,
-                in_features=self.hidden_size,
-                out_features=cfg.ssm_inner_size,
-                stream=stream,
-                runtime=runtime,
-            )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_qkv_gate")
-        linear_alpha_ptr = scratch.linear_alpha.ptr
-        linear_beta_ptr = scratch.linear_beta.ptr
-        alpha_beta_conv_fused = (
-            attn_norm_f32_ptr is None
-            and _try_launch_dense_f32_alpha_beta_conv_decode(
-                layer.weight("ssm_alpha"),
-                layer.weight("ssm_beta"),
-                scratch.norm.ptr,
-                linear_alpha_ptr,
-                linear_beta_ptr,
-                scratch.linear_qkv.ptr,
-                conv_state.ptr,
-                layer.weight("ssm_conv1d").allocation().tensor.ptr,
-                scratch.conv_out.ptr,
-                rows=1,
-                in_features=self.hidden_size,
-                out_features=cfg.ssm_time_step_rank,
-                channels=self.linear_qkv_width,
-                kernel_size=cfg.ssm_conv_kernel,
-                backend=self.backend,
-                stream=stream,
-                runtime=runtime,
-            )
-        )
-        if not alpha_beta_conv_fused:
-            self._run_linear_attention_alpha_beta_rows(
-                layer,
-                scratch.norm.ptr,
-                attn_norm_f32_ptr,
-                scratch,
-                rows=1,
-                stream=stream,
-                runtime=runtime,
-            )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_alpha_beta")
-        if not alpha_beta_conv_fused:
-            qwen35_linear_attn_conv_decode_bf16(
-                scratch.linear_qkv.ptr,
-                conv_state.ptr,
-                layer.weight("ssm_conv1d").allocation().tensor.ptr,
-                scratch.conv_out.ptr,
-                self.linear_qkv_width,
-                cfg.ssm_conv_kernel,
-                stream=stream,
-                runtime=runtime,
-            )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_conv")
-        ssm_out_weight = layer.weight("ssm_out")
-        gdn_output_fusion = self._gdn_decode_output_fusion_for_weight(
-            ssm_out_weight
-        )
-        gdn_args = (
-            scratch.conv_out.ptr,
-            scratch.linear_z.ptr,
-            linear_alpha_ptr,
-            linear_beta_ptr,
-            layer.weight("ssm_dt_bias").allocation().tensor.ptr,
-            layer.weight("ssm_a").allocation().tensor.ptr,
-            layer.weight("ssm_norm").allocation().tensor.ptr,
-            recurrent_state.ptr,
-            scratch.recurrent_out.ptr,
-        )
-        if gdn_output_fusion is None:
-            _gdn_decode_gate_kernel(self.fp16_recurrent_state)(
-                *gdn_args,
-                cfg.rms_norm_eps,
-                cfg.ssm_group_count,
-                cfg.ssm_time_step_rank,
-                cfg.ssm_state_size,
-                self.ssm_value_dim,
-                stream=stream,
-                runtime=runtime,
-            )
-        else:
-            gdn_output_fusion(
-                *gdn_args,
-                scratch.recurrent_bf16.ptr,
-                cfg.rms_norm_eps,
-                cfg.ssm_group_count,
-                cfg.ssm_time_step_rank,
-                cfg.ssm_state_size,
-                self.ssm_value_dim,
-                stream=stream,
-                runtime=runtime,
-            )
-        ssm_out_input_ptr = scratch.recurrent_out.ptr
-        ssm_out_activation_dtype = GGUF_ACTIVATION_F32
-        output_cast = self._gdn_decode_output_cast_for_weight(ssm_out_weight)
-        if gdn_output_fusion is not None:
-            ssm_out_input_ptr = scratch.recurrent_bf16.ptr
-            ssm_out_activation_dtype = GGUF_ACTIVATION_BF16
-        elif output_cast is not None:
-            output_cast(
-                scratch.recurrent_out.ptr,
-                scratch.recurrent_bf16.ptr,
-                cfg.ssm_inner_size,
-                stream=stream,
-                library=self._cast_library(),
-                runtime=runtime,
-            )
-            ssm_out_input_ptr = scratch.recurrent_bf16.ptr
-            ssm_out_activation_dtype = GGUF_ACTIVATION_BF16
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_gdn")
-        launch_gguf_linear(
-            ssm_out_weight,
-            ssm_out_input_ptr,
+        _layer_attn.run_linear_attention_attn_only(
+            layer_id,
+            self.weights.layer(layer_id),
+            hidden_ptr,
             attn_out_ptr,
-            rows=1,
-            in_features=cfg.ssm_inner_size,
-            out_features=self.hidden_size,
-            activation_dtype=ssm_out_activation_dtype,
+            _layer_linear_attention_views(scratch, layer_id),
+            cfg=self.weights.config,
+            geometry=_layer_attn.AttentionGeometry(
+                hidden_size=self.hidden_size,
+                linear_qkv_width=self.linear_qkv_width,
+                ssm_value_dim=self.ssm_value_dim,
+                fp16_recurrent_state=self.fp16_recurrent_state,
+            ),
+            backend=self.backend,
+            runtime=self.runtime or get_hip_runtime(),
+            selectors=_layer_attention_selectors(self),
+            policy=_layer_attention_policy(),
+            hidden_f32_ptr=hidden_f32_ptr,
+            input_norm_ptr=input_norm_ptr,
             stream=stream,
-            runtime=runtime,
+            stage_prefix=stage_prefix,
+            gpu_stage_recorder=gpu_stage_recorder,
         )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_ssm_out")
 
     def _deferred_linear_state_snapshot_producers_available(self) -> bool:
         """Require every producer needed before omitting the initial copy."""
@@ -9429,6 +9333,9 @@ class Qwen35GGUFFullStackRunner:
     ) -> None:
         dms_owner = self.__dict__.get("_dms_decode_owner")
         if dms_owner is not None:
+            # The DMS session owns this layer's attention outright. Dispatching
+            # here, before the ordinary views exist, keeps the override reading
+            # exactly the arguments it always read.
             return dms_owner._run_external_dms_full_attention(
                 layer_id=layer_id,
                 hidden_ptr=hidden_ptr,
@@ -9442,425 +9349,37 @@ class Qwen35GGUFFullStackRunner:
                 gpu_stage_recorder=gpu_stage_recorder,
             )
         assert self.weights is not None
-        layer = self.weights.layer(layer_id)
-        cfg = self.weights.config
         runtime = self.runtime or get_hip_runtime()
-        cast_library = self._cast_library()
-        kv_write_library = self._paged_kv_write_library()
-        if int(scratch.position_host[0]) != int(position):
-            scratch.set_full_attention_position(position, runtime)
-        if input_norm_ptr is None:
-            self._run_attention_norm_rows(
-                hidden_ptr=hidden_ptr,
-                hidden_f32_ptr=hidden_f32_ptr,
-                weight_ptr=layer.weight("attn_norm").allocation().tensor.ptr,
-                out_ptr=scratch.norm.ptr,
-                rows=1,
-                eps=cfg.rms_norm_eps,
-                stream=stream,
-                runtime=runtime,
-            )
-        elif int(input_norm_ptr) != int(scratch.norm.ptr):
-            raise ValueError("prefused full-attention input norm must use scratch.norm")
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_norm")
-        qkv_complete = False
-        if not kv_write_only:
-            qkv_complete = launch_gguf_linear_triple(
-                layer.weight("attn_q"),
-                layer.weight("attn_k"),
-                layer.weight("attn_v"),
-                scratch.norm.ptr,
-                scratch.full_q.ptr,
-                scratch.full_k.ptr,
-                scratch.full_v.ptr,
-                rows=1,
-                in_features=self.hidden_size,
-                out_features=2 * self.q_width,
-                out_features_b=self.kv_width,
-                out_features_c=self.kv_width,
-                stream=stream,
-                runtime=runtime,
-            )
-        if not qkv_complete:
-            if not kv_write_only:
-                launch_gguf_linear(
-                    layer.weight("attn_q"),
-                    scratch.norm.ptr,
-                    scratch.full_q.ptr,
-                    rows=1,
-                    in_features=self.hidden_size,
-                    out_features=2 * self.q_width,
-                    stream=stream,
-                    runtime=runtime,
-                )
-            if not launch_gguf_linear_pair(
-                layer.weight("attn_k"),
-                layer.weight("attn_v"),
-                scratch.norm.ptr,
-                scratch.full_k.ptr,
-                scratch.full_v.ptr,
-                rows=1,
-                in_features=self.hidden_size,
-                out_features=self.kv_width,
-                stream=stream,
-                runtime=runtime,
-            ):
-                launch_gguf_linear(
-                    layer.weight("attn_k"),
-                    scratch.norm.ptr,
-                    scratch.full_k.ptr,
-                    rows=1,
-                    in_features=self.hidden_size,
-                    out_features=self.kv_width,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                launch_gguf_linear(
-                    layer.weight("attn_v"),
-                    scratch.norm.ptr,
-                    scratch.full_v.ptr,
-                    rows=1,
-                    in_features=self.hidden_size,
-                    out_features=self.kv_width,
-                    stream=stream,
-                    runtime=runtime,
-                )
-        qk_postprocess = self._full_attn_qk_postprocess_fn()
-        if qk_postprocess is None:
-            qwen35_split_qgate_bf16(
-                scratch.full_q.ptr,
-                scratch.full_query_raw.ptr,
-                scratch.full_gate.ptr,
-                1,
-                cfg.head_count,
-                cfg.key_length,
-                stream=stream,
-                runtime=runtime,
-            )
-            bf16_to_f32(
-                scratch.full_k.ptr,
-                scratch.full_key_raw.ptr,
-                self.kv_width,
-                stream=stream,
-                library=cast_library,
-                runtime=runtime,
-            )
-            gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight(
-                scratch.full_query_raw.ptr,
-                scratch.full_key_raw.ptr,
-                layer.weight("attn_q_norm").allocation().tensor.ptr,
-                layer.weight("attn_k_norm").allocation().tensor.ptr,
-                scratch.cos_table.ptr,
-                scratch.sin_table.ptr,
-                scratch.position_tensor.ptr,
-                scratch.full_query.ptr,
-                scratch.full_key.ptr,
-                cfg.rms_norm_eps,
-                cfg.head_count,
-                cfg.head_count_kv,
-                cfg.key_length,
-                cfg.rope_dimension_count,
-                scratch.max_positions,
-                stream=stream,
-                runtime=runtime,
-            )
-        else:
-            qk_postprocess(
-                scratch.full_q.ptr,
-                scratch.full_k.ptr,
-                layer.weight("attn_q_norm").allocation().tensor.ptr,
-                layer.weight("attn_k_norm").allocation().tensor.ptr,
-                scratch.cos_table.ptr,
-                scratch.sin_table.ptr,
-                scratch.position_tensor.ptr,
-                scratch.full_query.ptr,
-                scratch.full_key.ptr,
-                scratch.full_gate.ptr,
-                cfg.rms_norm_eps,
-                cfg.head_count,
-                cfg.head_count_kv,
-                cfg.key_length,
-                cfg.rope_dimension_count,
-                scratch.max_positions,
-                stream=stream,
-                runtime=runtime,
-            )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_qkv_head_norm_rope")
-        key_cache, value_cache = scratch.full_cache(layer_id)
-        append_spans = scratch.append_spans_for_layer(layer_id)
-        decode_spans = scratch.decode_spans_for_layer(layer_id)
-        paged_attn_library = self._paged_attn_decode_library()
-        bf16_mirror_cache = None
-        full_bf16_mirror_cache = getattr(scratch, "full_bf16_mirror_cache", None)
-        if full_bf16_mirror_cache is not None:
-            bf16_mirror_cache = full_bf16_mirror_cache(layer_id)
-        layer_uses_int8_kv = scratch.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD and append_spans.scale_metadata is not None
-        if layer_uses_int8_kv:
-            metadata = append_spans.scale_metadata
-            bf16_to_f32(
-                scratch.full_v.ptr,
-                scratch.full_key_raw.ptr,
-                self.kv_width,
-                stream=stream,
-                library=cast_library,
-                runtime=runtime,
-            )
-            if getattr(scratch, "int8_kv_value_bf16", False):
-                qwen35_write_paged_kv_int8_key_bf16_value_spans(
-                    scratch.full_key.ptr,
-                    scratch.full_key_raw.ptr,
-                    key_cache.ptr,
-                    value_cache.ptr,
-                    metadata.k_scale.ptr,
-                    append_spans,
-                    scratch.block_size,
-                    cfg.head_count_kv,
-                    cfg.key_length,
-                    stream=stream,
-                    library=kv_write_library,
-                    runtime=runtime,
-                )
-            else:
-                int8_append_write_fn = _gguf_int8_kv_append_write_fn(metadata)
-                int8_append_write_fn(
-                    scratch.full_key.ptr,
-                    scratch.full_key_raw.ptr,
-                    key_cache.ptr,
-                    value_cache.ptr,
-                    metadata.k_scale.ptr,
-                    metadata.v_scale.ptr,
-                    append_spans,
-                    scratch.block_size,
-                    cfg.head_count_kv,
-                    cfg.key_length,
-                    stream=stream,
-                    library=kv_write_library,
-                    runtime=runtime,
-                )
-            if bf16_mirror_cache is not None:
-                mirror_key_cache, mirror_value_cache = bf16_mirror_cache
-                qwen35_write_paged_kv_mixed_value_bf16_spans(
-                    scratch.full_key.ptr,
-                    scratch.full_v.ptr,
-                    mirror_key_cache.ptr,
-                    mirror_value_cache.ptr,
-                    scratch.append_spans,
-                    scratch.block_size,
-                    cfg.head_count_kv,
-                    cfg.key_length,
-                    stream=stream,
-                    library=kv_write_library,
-                    runtime=runtime,
-                )
-        else:
-            qwen35_write_paged_kv_mixed_value_bf16_spans(
-                scratch.full_key.ptr,
-                scratch.full_v.ptr,
-                key_cache.ptr,
-                value_cache.ptr,
-                append_spans,
-                scratch.block_size,
-                cfg.head_count_kv,
-                cfg.key_length,
-                stream=stream,
-                library=kv_write_library,
-                runtime=runtime,
-            )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_kv_write")
-        if kv_write_only:
-            return
-        active_context = int(position) + 1
-        attention_context_cap = active_context if attention_max_context_len is None else int(attention_max_context_len)
-        if attention_context_cap < active_context:
-            raise ValueError("attention_max_context_len must cover the current decode position")
-        if attention_context_cap > int(scratch.max_positions):
-            raise ValueError("attention_max_context_len exceeds GGUF resident cache capacity")
-        if layer_uses_int8_kv and bf16_mirror_cache is None:
-            metadata = decode_spans.scale_metadata
-            if metadata is None:
-                raise RuntimeError("GGUF INT8 full-attention decode requires scale metadata")
-            chunk_size = int(scratch.block_size)
-            num_splits = min(
-                int(scratch.full_attn_split_count),
-                max(1, (attention_context_cap + chunk_size - 1) // chunk_size),
-            )
-            _ensure_full_attn_split_rows(scratch, 1, runtime=runtime)
-            if getattr(scratch, "int8_kv_value_bf16", False):
-                qwen35_paged_attn_decode_int8_key_bf16_value_gqa_splitk_gate_bf16_spans(
-                    scratch.full_query.ptr,
-                    key_cache.ptr,
-                    value_cache.ptr,
-                    metadata.k_scale.ptr,
-                    scratch.full_gate.ptr,
-                    scratch.full_gated.ptr,
-                    scratch.full_attn_split_partial.ptr,
-                    scratch.full_attn_split_m.ptr,
-                    scratch.full_attn_split_l.ptr,
-                    decode_spans,
-                    chunk_size,
-                    num_splits,
-                    scratch.block_size,
-                    cfg.head_count,
-                    cfg.head_count_kv,
-                    cfg.key_length,
-                    cfg.key_length,
-                    1,
-                    cfg.key_length ** -0.5,
-                    stream=stream,
-                    library=paged_attn_library,
-                    runtime=runtime,
-                )
-            else:
-                int8_decode_gate_fn = _gguf_int8_kv_decode_gate_fn(metadata)
-                int8_decode_gate_fn(
-                    scratch.full_query.ptr,
-                    key_cache.ptr,
-                    value_cache.ptr,
-                    metadata.k_scale.ptr,
-                    metadata.v_scale.ptr,
-                    scratch.full_gate.ptr,
-                    scratch.full_gated.ptr,
-                    scratch.full_attn_split_partial.ptr,
-                    scratch.full_attn_split_m.ptr,
-                    scratch.full_attn_split_l.ptr,
-                    decode_spans,
-                    chunk_size,
-                    num_splits,
-                    scratch.block_size,
-                    cfg.head_count,
-                    cfg.head_count_kv,
-                    cfg.key_length,
-                    cfg.key_length,
-                    1,
-                    cfg.key_length ** -0.5,
-                    stream=stream,
-                    library=paged_attn_library,
-                    runtime=runtime,
-                )
-        else:
-            if bf16_mirror_cache is not None:
-                key_cache, value_cache = bf16_mirror_cache
-                decode_spans = scratch.decode_spans
-            use_short_split = (
-                bf16_mirror_cache is None
-                and _use_gguf_short_full_attention_split_decode(
-                    cfg,
-                    backend=self.backend,
-                    block_size=scratch.block_size,
-                    active_context=attention_context_cap,
-                )
-            )
-            if use_short_split or _use_gguf_full_attention_split_decode(
-                attention_context_cap
-            ):
-                chunk_size = int(scratch.block_size)
-                num_splits = min(
-                    int(scratch.full_attn_split_count),
-                    max(1, (attention_context_cap + chunk_size - 1) // chunk_size),
-                )
-                _ensure_full_attn_split_rows(scratch, 1, runtime=runtime)
-                split_gate_fn = _gguf_full_attention_split_gate_bf16_fn(
-                    cfg,
-                    backend=self.backend,
-                    block_size=scratch.block_size,
-                    num_splits=num_splits,
-                    active_context=attention_context_cap,
-                )
-                split_gate_fn(
-                    scratch.full_query.ptr,
-                    key_cache.ptr,
-                    value_cache.ptr,
-                    scratch.full_gate.ptr,
-                    scratch.full_gated.ptr,
-                    scratch.full_attn_split_partial.ptr,
-                    scratch.full_attn_split_m.ptr,
-                    scratch.full_attn_split_l.ptr,
-                    decode_spans,
-                    chunk_size,
-                    num_splits,
-                    scratch.block_size,
-                    cfg.head_count,
-                    cfg.head_count_kv,
-                    cfg.key_length,
-                    cfg.key_length,
-                    1,
-                    cfg.key_length ** -0.5,
-                    stream=stream,
-                    library=paged_attn_library,
-                    runtime=runtime,
-                )
-            else:
-                short_batch_max_context = max(
-                    0,
-                    int(
-                        backend_package_capability(
-                            self.backend,
-                            "GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT",
-                            0,
-                        )
-                    ),
-                )
-                if 0 < attention_context_cap <= short_batch_max_context:
-                    self._full_attn_decode_short_batch_fn(decode_spans)(
-                        scratch.full_query.ptr,
-                        key_cache.ptr,
-                        value_cache.ptr,
-                        scratch.full_attn_context.ptr,
-                        decode_spans,
-                        1,
-                        attention_context_cap,
-                        scratch.block_size,
-                        cfg.head_count,
-                        cfg.head_count_kv,
-                        cfg.key_length,
-                        cfg.key_length ** -0.5,
-                        stream=stream,
-                        library=paged_attn_library,
-                        runtime=runtime,
-                    )
-                else:
-                    qwen35_paged_full_attn_decode_context_bf16_spans(
-                        scratch.full_query.ptr,
-                        key_cache.ptr,
-                        value_cache.ptr,
-                        scratch.full_attn_context.ptr,
-                        decode_spans,
-                        attention_context_cap,
-                        scratch.block_size,
-                        cfg.head_count,
-                        cfg.head_count_kv,
-                        cfg.key_length,
-                        cfg.key_length ** -0.5,
-                        stream=stream,
-                        library=paged_attn_library,
-                        runtime=runtime,
-                    )
-                qwen35_full_attn_gate_mul_bf16(
-                    scratch.full_attn_context.ptr,
-                    scratch.full_gate.ptr,
-                    scratch.full_gated.ptr,
-                    self.q_width,
-                    stream=stream,
-                    library=paged_attn_library,
-                    runtime=runtime,
-                )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_core_gate")
-        launch_gguf_linear(
-            layer.weight("attn_output"),
-            scratch.full_gated.ptr,
+        _layer_attn.run_full_attention_attn_only(
+            layer_id,
+            self.weights.layer(layer_id),
+            hidden_ptr,
             attn_out_ptr,
-            rows=1,
-            in_features=self.q_width,
-            out_features=self.hidden_size,
-            stream=stream,
+            _layer_full_attention_views(scratch, layer_id),
+            scratch,
+            cfg=self.weights.config,
+            geometry=_layer_attn.AttentionGeometry(
+                hidden_size=self.hidden_size,
+                q_width=self.q_width,
+                kv_width=self.kv_width,
+            ),
+            backend=self.backend,
             runtime=runtime,
+            selectors=_layer_attention_selectors(self),
+            policy=_layer_attention_policy(),
+            ensure_full_attn_split_rows=lambda rows: _ensure_full_attn_split_rows(
+                scratch, rows, runtime=runtime
+            ),
+            external_dms_full_attention=None,
+            position=position,
+            hidden_f32_ptr=hidden_f32_ptr,
+            input_norm_ptr=input_norm_ptr,
+            stream=stream,
+            attention_max_context_len=attention_max_context_len,
+            stage_prefix=stage_prefix,
+            gpu_stage_recorder=gpu_stage_recorder,
+            kv_write_only=kv_write_only,
         )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_output")
 
     def _run_full_attention_output_rows(
         self,
@@ -9967,368 +9486,46 @@ class Qwen35GGUFFullStackRunner:
     ) -> None:
         """``force_bulk_rows`` keeps a one-row PREFILL on the bulk schedule.
 
-        The ``rows == 1`` specialisations below exist for decode, where a single
-        row is the natural shape. A prefill chunk that happens to contain one
-        row is a different thing: taking the decode schedule makes a chunk's
-        arithmetic depend on how the prompt was split, so prefilling N tokens as
-        one call and as ``N-1 + 1`` calls disagree. That breaks the contract a
-        prefix-cache hit owes a miss. Prefill callers therefore pass True;
-        decode callers keep the specialised route.
+        The ``rows == 1`` specialisations exist for decode, where a single row is
+        the natural shape. A prefill chunk that happens to contain one row is a
+        different thing: taking the decode schedule makes a chunk's arithmetic
+        depend on how the prompt was split, so prefilling N tokens as one call and
+        as ``N-1 + 1`` calls disagree. That breaks the contract a prefix-cache hit
+        owes a miss. Prefill callers therefore pass True; decode leaves it False.
         """
 
         assert self.weights is not None
-        layer = self.weights.layer(layer_id)
-        runtime = self.runtime or get_hip_runtime()
-        sync_stages = bool(sync_stage_timings and stage_timings is not None)
-        t_stage = time.perf_counter() if sync_stages else 0.0
-        f32_residual = hidden_f32_ptr is not None or out_f32_ptr is not None
-        if (next_norm_weight_ptr is None) != (next_norm_out_ptr is None):
-            raise ValueError("next norm weight and output pointers must be provided together")
-        post_norm_f32_ptr: int | None = None
-        if f32_residual:
-            if hidden_f32_ptr is None or out_f32_ptr is None:
-                raise ValueError("hidden_f32_ptr and out_f32_ptr must be provided together")
-            post_attention_norm_ptr = layer.weight("post_attention_norm").allocation().tensor.ptr
-            if attn_out_f32_ptr is not None and _gguf_verify_f32_attn_out_enabled():
-                gguf_add_rmsnorm_f32_f32_f32_weight(
-                    int(hidden_f32_ptr),
-                    int(attn_out_f32_ptr),
-                    post_attention_norm_ptr,
-                    scratch.post_norm.ptr,
-                    int(out_f32_ptr),
-                    rows=rows,
-                    hidden_size=self.hidden_size,
-                    eps=self.weights.config.rms_norm_eps,
-                    stream=stream,
-                    runtime=runtime,
-                )
-            else:
-                gguf_add_rmsnorm_f32_bf16_f32_weight(
-                    int(hidden_f32_ptr),
-                    attn_out_ptr,
-                    post_attention_norm_ptr,
-                    scratch.post_norm.ptr,
-                    int(out_f32_ptr),
-                    rows=rows,
-                    hidden_size=self.hidden_size,
-                    eps=self.weights.config.rms_norm_eps,
-                    stream=stream,
-                    runtime=runtime,
-                )
-            if _gguf_verify_f32_post_norm_enabled():
-                if not hasattr(scratch, "post_norm_f32"):
-                    raise ValueError("scratch is missing post_norm_f32 for verifier F32 post-norm diagnostic")
-                gguf_rmsnorm_f32_f32_weight_out_f32(
-                    int(out_f32_ptr),
-                    post_attention_norm_ptr,
-                    scratch.post_norm_f32.ptr,
-                    rows=rows,
-                    hidden_size=self.hidden_size,
-                    eps=self.weights.config.rms_norm_eps,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                post_norm_f32_ptr = scratch.post_norm_f32.ptr
-        else:
-            add_norm_kernel = _gguf_norm_residual_decode_kernel(
-                self,
-                layer="add_rmsnorm",
-                rows=rows,
-                hidden_size=self.hidden_size,
-            )
-            add_norm_kernel(
-                hidden_ptr,
-                attn_out_ptr,
-                layer.weight("post_attention_norm").allocation().tensor.ptr,
-                scratch.post_norm.ptr,
-                scratch.residual.ptr,
-                rows=rows,
-                hidden_size=self.hidden_size,
-                eps=self.weights.config.rms_norm_eps,
-                stream=stream,
-                runtime=runtime,
-            )
-        t_stage = _mark_sync_stage(
-            runtime,
-            stage_timings,
-            sync_stages,
-            f"{stage_prefix}_post_norm_residual",
-            t_stage,
-        )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_post_norm_residual")
-        if self.weights.config.is_moe:
-            # MoE has no bulk rows==1 schedule (`_run_post_attention_moe_rows`
-            # refuses rows <= 1), so force_bulk_rows cannot redirect it. A
-            # one-row MoE prefill is avoided upstream instead: the prefix-cache
-            # admission never leaves a single-token suffix.
-            if rows == 1:
-                self._run_post_attention_moe_c1(
-                    layer_id,
-                    out_ptr,
-                    scratch,
-                    stream=stream,
-                    residual_f32_ptr=out_f32_ptr if f32_residual else None,
-                    out_f32_ptr=out_f32_ptr if f32_residual else None,
-                    post_norm_f32_ptr=post_norm_f32_ptr,
-                    next_norm_weight_ptr=next_norm_weight_ptr,
-                    next_norm_out_ptr=next_norm_out_ptr,
-                    gpu_stage_recorder=gpu_stage_recorder,
-                    stage_prefix=f"{stage_prefix}_moe",
-                )
-            else:
-                self._run_post_attention_moe_rows(
-                    layer_id,
-                    out_ptr,
-                    scratch,
-                    rows=rows,
-                    stream=stream,
-                    expert_sidecar=expert_sidecar,
-                    residual_f32_ptr=out_f32_ptr if f32_residual else None,
-                    out_f32_ptr=out_f32_ptr if f32_residual else None,
-                    post_norm_f32_ptr=post_norm_f32_ptr,
-                    stage_timings=stage_timings,
-                    sync_stage_timings=sync_stage_timings,
-                    stage_prefix=f"{stage_prefix}_moe",
-                    gpu_stage_recorder=gpu_stage_recorder,
-                )
-            return
-        if next_norm_weight_ptr is not None and f32_residual:
-            raise ValueError("dense next RMSNorm fusion requires a BF16 residual")
-        rounded_next_rms_fn = (
-            self._rounded_add_rmsnorm_fn(rows=rows)
-            if next_norm_weight_ptr is not None and rows <= 8
-            else None
-        )
-        dense_decode_variant = (
-            None
-            if force_bulk_rows
-            # A registered decode variant swaps the fused gate/up SiLU onto the
-            # GEMV decode schedule, which is a different arithmetic route than
-            # the GEMM the same tokens take inside a wider prefill chunk.
-            else _gguf_dense_pair_silu_decode_variant(
-                self,
-                rows=rows,
-                in_features=self.hidden_size,
-                out_features=self.ffn_size,
-            )
-        )
-        dense_q8_1_workspace_ptr = _optional_q8_1_workspace_ptr(
+        _layer_ffn.run_post_attention_ffn_rows(
+            self.weights.layer(layer_id),
+            self.weights.config,
+            _layer_ffn_geometry(self),
+            _layer_ffn_kernels(),
+            _layer_ffn_ops(self),
+            _layer_ffn_flags(),
+            layer_id,
+            hidden_ptr,
+            attn_out_ptr,
+            out_ptr,
             scratch,
-            rows,
-            self.hidden_size,
-            enabled=(
-                dense_decode_variant
-                in {
-                    "dense_dual_q8_1x2_dp4a_bf16_bf16_out",
-                    "dense_dual_q8_1x2_split_weight_dp4a_bf16_bf16_out",
-                    "dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out",
-                }
-            ),
-            planes=2,
-        )
-        dense_silu_fused = (
-            rows > 1 or dense_decode_variant is not None
-        ) and launch_gguf_linear_pair_silu(
-            layer.weight("ffn_gate"),
-            layer.weight("ffn_up"),
-            scratch.post_norm.ptr,
-            scratch.ffn_intermediate.ptr,
             rows=rows,
-            in_features=self.hidden_size,
-            out_features=self.ffn_size,
-            stream=stream,
-            runtime=runtime,
-            use_gemv_decode=(True if dense_decode_variant is not None else None),
-            registered_decode_variant=dense_decode_variant,
-            layer_id=layer_id,
-            q8_1_workspace_ptr=dense_q8_1_workspace_ptr,
-            pair_workspace_ptr=scratch.ffn_gate_up.ptr,
-            pair_workspace_nbytes=int(
-                getattr(scratch.ffn_gate_up, "nbytes", 0)
+            dense_down_residual_decode_c1=getattr(
+                self, "_dense_down_residual_decode_c1", None
             ),
+            runtime=self.runtime,
+            next_norm_weight_ptr=next_norm_weight_ptr,
+            next_norm_out_ptr=next_norm_out_ptr,
+            stream=stream,
+            expert_sidecar=expert_sidecar,
+            expert_pack8_library=getattr(self, "_expert_pack8_library", None),
+            hidden_f32_ptr=hidden_f32_ptr,
+            out_f32_ptr=out_f32_ptr,
+            attn_out_f32_ptr=attn_out_f32_ptr,
+            stage_timings=stage_timings,
+            sync_stage_timings=sync_stage_timings,
+            stage_prefix=stage_prefix,
+            gpu_stage_recorder=gpu_stage_recorder,
+            force_bulk_rows=force_bulk_rows,
         )
-        if not dense_silu_fused:
-            if not launch_gguf_linear_pair(
-                layer.weight("ffn_gate"),
-                layer.weight("ffn_up"),
-                scratch.post_norm.ptr,
-                scratch.ffn_gate_up.ptr,
-                scratch.ffn_gate_up.ptr + self.ffn_size * rows * 2,
-                rows=rows,
-                in_features=self.hidden_size,
-                out_features=self.ffn_size,
-                stream=stream,
-                runtime=runtime,
-            ):
-                launch_gguf_linear(
-                    layer.weight("ffn_gate"),
-                    scratch.post_norm.ptr,
-                    scratch.ffn_gate_up.ptr,
-                    rows=rows,
-                    in_features=self.hidden_size,
-                    out_features=self.ffn_size,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                launch_gguf_linear(
-                    layer.weight("ffn_up"),
-                    scratch.post_norm.ptr,
-                    scratch.ffn_gate_up.ptr + self.ffn_size * rows * 2,
-                    rows=rows,
-                    in_features=self.hidden_size,
-                    out_features=self.ffn_size,
-                    stream=stream,
-                    runtime=runtime,
-                )
-        t_stage = _mark_sync_stage(
-            runtime,
-            stage_timings,
-            sync_stages,
-            f"{stage_prefix}_gate_up",
-            t_stage,
-        )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_gate_up")
-        if not dense_silu_fused:
-            silu_mul_separate_out_bf16(
-                scratch.ffn_gate_up.ptr,
-                scratch.ffn_gate_up.ptr + self.ffn_size * rows * 2,
-                scratch.ffn_intermediate.ptr,
-                rows=rows,
-                features=self.ffn_size,
-                stream=stream,
-                runtime=runtime,
-            )
-        t_stage = _mark_sync_stage(
-            runtime,
-            stage_timings,
-            sync_stages,
-            f"{stage_prefix}_silu",
-            t_stage,
-        )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_silu")
-        dense_down_decode_c1 = getattr(
-            self, "_dense_down_residual_decode_c1", None
-        )
-        if dense_down_decode_c1 is None:
-            # Compatibility/probe runners constructed without __post_init__
-            # resolve once here; resident production runners precompute this.
-            dense_down_decode_c1 = _gguf_dense_down_residual_decode_fused(
-                self,
-                rows=1,
-                in_features=self.ffn_size,
-                out_features=self.hidden_size,
-            )
-            self._dense_down_residual_decode_c1 = dense_down_decode_c1
-        dense_down_decode_fused = (
-            rows == 1 and not force_bulk_rows and bool(dense_down_decode_c1)
-        )
-        down_residual_fused = (
-            not f32_residual
-            and (
-                (next_norm_weight_ptr is None and rows > 1)
-                or (rounded_next_rms_fn is None and rows == 1)
-            )
-            and launch_gguf_linear_residual(
-                layer.weight("ffn_down"),
-                scratch.ffn_intermediate.ptr,
-                scratch.residual.ptr,
-                out_ptr,
-                rows,
-                self.ffn_size,
-                self.hidden_size,
-                stream=stream,
-                runtime=runtime,
-                registered_decode=dense_down_decode_fused,
-            )
-        )
-        if down_residual_fused and next_norm_weight_ptr is not None:
-            # E6c: the composite replaced residual = add(residual, down);
-            # the trailing next-input RMSNorm stays exactly the launch the
-            # unfused else-branch ran after that add.
-            gguf_rmsnorm_bf16_f32_weight(
-                out_ptr,
-                int(next_norm_weight_ptr),
-                int(next_norm_out_ptr),
-                rows=rows,
-                hidden_size=self.hidden_size,
-                eps=self.weights.config.rms_norm_eps,
-                stream=stream,
-                runtime=runtime,
-            )
-        if not down_residual_fused:
-            launch_gguf_linear(
-                layer.weight("ffn_down"),
-                scratch.ffn_intermediate.ptr,
-                scratch.ffn_down.ptr,
-                rows=rows,
-                in_features=self.ffn_size,
-                out_features=self.hidden_size,
-                stream=stream,
-                runtime=runtime,
-            )
-            if f32_residual:
-                count = rows * self.hidden_size
-                gguf_f32_bf16_add_out_f32(
-                    int(out_f32_ptr),
-                    scratch.ffn_down.ptr,
-                    int(out_f32_ptr),
-                    count,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                f32_to_bf16(
-                    int(out_f32_ptr),
-                    out_ptr,
-                    count,
-                    stream=stream,
-                    library=self._cast_library(),
-                    runtime=runtime,
-                )
-            elif rounded_next_rms_fn is not None:
-                rounded_next_rms_fn(
-                    scratch.residual.ptr,
-                    scratch.ffn_down.ptr,
-                    int(next_norm_weight_ptr),
-                    int(next_norm_out_ptr),
-                    out_ptr,
-                    rows,
-                    self.hidden_size,
-                    self.weights.config.rms_norm_eps,
-                    stream=stream,
-                    runtime=runtime,
-                )
-            else:
-                gguf_bf16_add(
-                    scratch.residual.ptr,
-                    scratch.ffn_down.ptr,
-                    out_ptr,
-                    rows * self.hidden_size,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                if next_norm_weight_ptr is not None:
-                    gguf_rmsnorm_bf16_f32_weight(
-                        out_ptr,
-                        int(next_norm_weight_ptr),
-                        int(next_norm_out_ptr),
-                        rows=rows,
-                        hidden_size=self.hidden_size,
-                        eps=self.weights.config.rms_norm_eps,
-                        stream=stream,
-                        runtime=runtime,
-                    )
-        _mark_sync_stage(
-            runtime,
-            stage_timings,
-            sync_stages,
-            f"{stage_prefix}_down_residual",
-            t_stage,
-        )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_down_residual")
 
     def _run_post_attention_moe_c1(
         self,
@@ -10346,395 +9543,25 @@ class Qwen35GGUFFullStackRunner:
         stage_prefix: str = "decode_ffn_moe",
     ) -> None:
         assert self.weights is not None
-        cfg = self.weights.config
-        if (next_norm_weight_ptr is None) != (next_norm_out_ptr is None):
-            raise ValueError("next norm weight and output pointers must be provided together")
-        if not cfg.is_moe:
-            raise ValueError("MoE path requires qwen35moe GGUF config")
-        layer = self.weights.layer(layer_id)
-        runtime = self.runtime or get_hip_runtime()
-        top_k = int(cfg.expert_used_count)
-        if top_k <= 0:
-            raise ValueError("qwen35moe GGUF expert_used_count must be positive")
-        if top_k > scratch.moe_selected_host.shape[0]:
-            raise ValueError("qwen35moe scratch top-k capacity is too small")
-
-        # llama.cpp keeps the qwen35moe router and shared-gate tensors in F32.
-        # Compute expert logits and the adjacent shared-gate logit separately via
-        # the registry-resolved router adapter so GGUF F32 weights do not get
-        # silently contracted to BF16 on the correctness-first decode path.
-        router_f32_ptr = (
-            post_norm_f32_ptr
-            if post_norm_f32_ptr is not None and _gguf_verify_f32_post_norm_router_enabled()
-            else None
-        )
-        selected_f32_ptr = (
-            post_norm_f32_ptr
-            if post_norm_f32_ptr is not None and _gguf_verify_f32_post_norm_selected_q8_enabled()
-            else None
-        )
-        shared_f32_ptr = (
-            post_norm_f32_ptr
-            if post_norm_f32_ptr is not None and _gguf_verify_f32_post_norm_shared_q8_enabled()
-            else None
-        )
-        router_fn = (
-            _launch_qwen35_router_logits_f32_hidden
-            if router_f32_ptr is not None
-            else _launch_qwen35_router_logits_bf16_hidden
-        )
-        router_hidden_ptr = int(router_f32_ptr) if router_f32_ptr is not None else scratch.post_norm.ptr
-        router_fused = (
-            router_f32_ptr is None
-            and _gguf_router_f32w_coop_enabled()
-            and _try_launch_qwen35_router_topk_split_shared_bf16_f32w(
-                router_hidden_ptr,
-                layer.weight("ffn_gate_inp"),
-                layer.weight("ffn_gate_inp_shexp"),
-                scratch.moe_router_logits.ptr,
-                scratch.moe_selected_experts.ptr,
-                scratch.moe_routing_weights.ptr,
-                scratch.moe_router_counter.ptr,
-                hidden_size=self.hidden_size,
-                num_experts=cfg.expert_count,
-                top_k=top_k,
-                persistent_counter=_gguf_router_f32w_persistent_counter_enabled(),
-                stream=stream,
-                runtime=runtime,
-            )
-        )
-        if not router_fused:
-            router_fn(
-                router_hidden_ptr,
-                layer.weight("ffn_gate_inp"),
-                scratch.moe_router_logits.ptr,
-                1,
-                self.hidden_size,
-                cfg.expert_count,
-                stream=stream,
-                runtime=runtime,
-            )
-            router_fn(
-                router_hidden_ptr,
-                layer.weight("ffn_gate_inp_shexp"),
-                scratch.moe_router_logits.ptr + cfg.expert_count * DType.FP32.itemsize,
-                1,
-                self.hidden_size,
-                1,
-                stream=stream,
-                runtime=runtime,
-            )
-            qwen35_router_select(
-                scratch.moe_router_logits.ptr,
-                scratch.moe_selected_experts.ptr,
-                scratch.moe_routing_weights.ptr,
-                1,
-                cfg.expert_count,
-                cfg.expert_count,
-                top_k,
-                threads=256,
-                stream=stream,
-                runtime=runtime,
-            )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_router")
-
-        gate_weight = layer.weight("ffn_gate_exps")
-        up_weight = layer.weight("ffn_up_exps")
-        down_weight = layer.weight("ffn_down_exps")
-        f32_residual = residual_f32_ptr is not None or out_f32_ptr is not None
-        if f32_residual and (residual_f32_ptr is None or out_f32_ptr is None):
-            raise ValueError("residual_f32_ptr and out_f32_ptr must be provided together")
-
-        compact_moe = bool(
-            not f32_residual
-            and _env_flag(_GGUF_COMPACT_MOE_C1_ENV, False)
-            and _try_run_post_attention_moe_c1_compact_gemv(
-                self,
-                layer,
-                gate_weight,
-                up_weight,
-                down_weight,
-                out_ptr,
-                scratch,
-                top_k=top_k,
-                next_norm_weight_ptr=next_norm_weight_ptr,
-                next_norm_out_ptr=next_norm_out_ptr,
-                stream=stream,
-                runtime=runtime,
-            )
-        )
-        if compact_moe:
-            if gpu_stage_recorder is not None:
-                gpu_stage_recorder.mark(f"{stage_prefix}_compact")
-            return
-        selected_rows = top_k
-        selected_down_is_f32 = False
-        expert_down_weighted = False
-        prefer_f32_selected_down = _gguf_use_f32_selected_down(down_weight, scratch, f32_residual)
-        if not (
-            (not prefer_f32_selected_down)
-            and _env_flag(_GGUF_FUSED_MOE_FFN_ENV, False)
-            and _try_run_post_attention_moe_c1_fused_ffn(
-                self,
-                layer,
-                gate_weight,
-                up_weight,
-                down_weight,
-                scratch,
-                top_k=top_k,
-                stream=stream,
-                runtime=runtime,
-            )
-        ):
-            selected_down_is_f32, expert_down_weighted = self._run_post_attention_moe_c1_unfused_selected_ffn(
-                gate_weight,
-                up_weight,
-                down_weight,
-                scratch,
-                selected_rows=selected_rows,
-                post_norm_f32_ptr=selected_f32_ptr,
-                prefer_f32_selected_down=prefer_f32_selected_down,
-                stream=stream,
-                runtime=runtime,
-            )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_selected")
-
-        if _try_launch_shared_gate_up_from_f32_post_norm(
-            layer.weight("ffn_gate_shexp"),
-            layer.weight("ffn_up_shexp"),
-            shared_f32_ptr,
-            scratch.moe_shared_gate.ptr,
-            scratch.moe_shared_up.ptr,
-            rows=1,
-            hidden_size=self.hidden_size,
-            shared_ffn=cfg.expert_shared_feed_forward_length,
+        _layer_ffn.run_post_attention_moe_c1(
+            self.weights.layer(layer_id),
+            self.weights.config,
+            _layer_ffn_geometry(self),
+            _layer_ffn_kernels(),
+            _layer_ffn_ops(self),
+            _layer_ffn_flags(),
+            out_ptr,
+            scratch,
+            runtime=self.runtime,
             stream=stream,
-            runtime=runtime,
-        ):
-            silu_mul_separate_out_bf16(
-                scratch.moe_shared_gate.ptr,
-                scratch.moe_shared_up.ptr,
-                scratch.moe_shared_intermediate.ptr,
-                rows=1,
-                features=cfg.expert_shared_feed_forward_length,
-                stream=stream,
-                runtime=runtime,
-            )
-        elif launch_gguf_linear_pair_concat(
-            layer.weight("ffn_gate_shexp"),
-            layer.weight("ffn_up_shexp"),
-            scratch.post_norm.ptr,
-            scratch.ffn_gate_up.ptr,
-            rows=1,
-            in_features=self.hidden_size,
-            out_features=cfg.expert_shared_feed_forward_length,
-            stream=stream,
-            runtime=runtime,
-        ):
-            silu_mul_dual_out_bf16(
-                scratch.ffn_gate_up.ptr,
-                scratch.moe_shared_intermediate.ptr,
-                rows=1,
-                features=cfg.expert_shared_feed_forward_length,
-                stream=stream,
-                runtime=runtime,
-            )
-        else:
-            if not launch_gguf_linear_pair(
-                layer.weight("ffn_gate_shexp"),
-                layer.weight("ffn_up_shexp"),
-                scratch.post_norm.ptr,
-                scratch.moe_shared_gate.ptr,
-                scratch.moe_shared_up.ptr,
-                rows=1,
-                in_features=self.hidden_size,
-                out_features=cfg.expert_shared_feed_forward_length,
-                stream=stream,
-                runtime=runtime,
-            ):
-                launch_gguf_linear(
-                    layer.weight("ffn_gate_shexp"),
-                    scratch.post_norm.ptr,
-                    scratch.moe_shared_gate.ptr,
-                    rows=1,
-                    in_features=self.hidden_size,
-                    out_features=cfg.expert_shared_feed_forward_length,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                launch_gguf_linear(
-                    layer.weight("ffn_up_shexp"),
-                    scratch.post_norm.ptr,
-                    scratch.moe_shared_up.ptr,
-                    rows=1,
-                    in_features=self.hidden_size,
-                    out_features=cfg.expert_shared_feed_forward_length,
-                    stream=stream,
-                    runtime=runtime,
-                )
-            silu_mul_separate_out_bf16(
-                scratch.moe_shared_gate.ptr,
-                scratch.moe_shared_up.ptr,
-                scratch.moe_shared_intermediate.ptr,
-                rows=1,
-                features=cfg.expert_shared_feed_forward_length,
-                stream=stream,
-                runtime=runtime,
-            )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_shared_gate_up")
-        shared_down_is_f32 = False
-        if (
-            _gguf_use_f32_shared_down(scratch, f32_residual, selected_down_is_f32)
-            and _try_launch_gguf_linear_bf16_f32_output(
-                layer.weight("ffn_down_shexp"),
-                scratch.moe_shared_intermediate.ptr,
-                scratch.moe_shared_out_f32.ptr,
-                rows=1,
-                in_features=cfg.expert_shared_feed_forward_length,
-                out_features=self.hidden_size,
-                stream=stream,
-                runtime=runtime,
-            )
-        ):
-            f32_to_bf16(
-                scratch.moe_shared_out_f32.ptr,
-                scratch.moe_shared_out.ptr,
-                self.hidden_size,
-                stream=stream,
-                library=self._cast_library(),
-                runtime=runtime,
-            )
-            shared_down_is_f32 = True
-        else:
-            launch_gguf_linear(
-                layer.weight("ffn_down_shexp"),
-                scratch.moe_shared_intermediate.ptr,
-                scratch.moe_shared_out.ptr,
-                rows=1,
-                in_features=cfg.expert_shared_feed_forward_length,
-                out_features=self.hidden_size,
-                stream=stream,
-                runtime=runtime,
-            )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_shared_down")
-        if f32_residual:
-            if selected_down_is_f32 and shared_down_is_f32:
-                weighted_sum_f32_shared_f32_gate_combine_residual_out_f32_accum_f32w(
-                    scratch.moe_down_out_f32.ptr,
-                    scratch.moe_routing_weights.ptr,
-                    scratch.moe_shared_out_f32.ptr,
-                    scratch.moe_router_logits.ptr + cfg.expert_count * 4,
-                    int(residual_f32_ptr),
-                    int(out_f32_ptr),
-                    top_k,
-                    self.hidden_size,
-                    stream=stream,
-                    runtime=runtime,
-                )
-            elif selected_down_is_f32:
-                weighted_sum_f32_shared_gate_combine_residual_out_f32_accum_f32w(
-                    scratch.moe_down_out_f32.ptr,
-                    scratch.moe_routing_weights.ptr,
-                    scratch.moe_shared_out.ptr,
-                    scratch.moe_router_logits.ptr + cfg.expert_count * 4,
-                    int(residual_f32_ptr),
-                    int(out_f32_ptr),
-                    top_k,
-                    self.hidden_size,
-                    stream=stream,
-                    runtime=runtime,
-                )
-            else:
-                _gguf_f32_moe_combine_out_fn()(
-                    scratch.moe_down_out.ptr,
-                    scratch.moe_routing_weights.ptr,
-                    scratch.moe_shared_out.ptr,
-                    scratch.moe_router_logits.ptr + cfg.expert_count * 4,
-                    int(residual_f32_ptr),
-                    int(out_f32_ptr),
-                    top_k,
-                    self.hidden_size,
-                    stream=stream,
-                    runtime=runtime,
-                )
-            f32_to_bf16(
-                int(out_f32_ptr),
-                out_ptr,
-                self.hidden_size,
-                stream=stream,
-                library=self._cast_library(),
-                runtime=runtime,
-            )
-            if next_norm_weight_ptr is not None:
-                gguf_rmsnorm_bf16_f32_weight(
-                    out_ptr,
-                    next_norm_weight_ptr,
-                    next_norm_out_ptr,
-                    rows=1,
-                    hidden_size=self.hidden_size,
-                    eps=cfg.rms_norm_eps,
-                    stream=stream,
-                    runtime=runtime,
-                )
-        else:
-            if expert_down_weighted:
-                if next_norm_weight_ptr is None:
-                    shared_gate_combine_residual_out_bf16(
-                        scratch.moe_down_out.ptr,
-                        scratch.moe_shared_out.ptr,
-                        scratch.moe_router_logits.ptr + cfg.expert_count * 4,
-                        scratch.residual.ptr,
-                        out_ptr,
-                        self.hidden_size,
-                        stream=stream,
-                        runtime=runtime,
-                    )
-                else:
-                    shared_gate_combine_residual_rmsnorm_gguf_bf16_out(
-                        scratch.moe_down_out.ptr,
-                        scratch.moe_shared_out.ptr,
-                        scratch.moe_router_logits.ptr + cfg.expert_count * 4,
-                        scratch.residual.ptr,
-                        next_norm_weight_ptr,
-                        next_norm_out_ptr,
-                        out_ptr,
-                        1,
-                        self.hidden_size,
-                        1,
-                        eps=cfg.rms_norm_eps,
-                        stream=stream,
-                        runtime=runtime,
-                    )
-            else:
-                weighted_sum_shared_gate_combine_residual_out_bf16_f32w(
-                    scratch.moe_down_out.ptr,
-                    scratch.moe_routing_weights.ptr,
-                    scratch.moe_shared_out.ptr,
-                    scratch.moe_router_logits.ptr + cfg.expert_count * 4,
-                    scratch.residual.ptr,
-                    out_ptr,
-                    top_k,
-                    self.hidden_size,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                if next_norm_weight_ptr is not None:
-                    gguf_rmsnorm_bf16_f32_weight(
-                        out_ptr,
-                        next_norm_weight_ptr,
-                        next_norm_out_ptr,
-                        rows=1,
-                        hidden_size=self.hidden_size,
-                        eps=cfg.rms_norm_eps,
-                        stream=stream,
-                        runtime=runtime,
-                    )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_combine")
+            residual_f32_ptr=residual_f32_ptr,
+            out_f32_ptr=out_f32_ptr,
+            post_norm_f32_ptr=post_norm_f32_ptr,
+            next_norm_weight_ptr=next_norm_weight_ptr,
+            next_norm_out_ptr=next_norm_out_ptr,
+            gpu_stage_recorder=gpu_stage_recorder,
+            stage_prefix=stage_prefix,
+        )
 
     def _run_post_attention_moe_c1_unfused_selected_ffn(
         self,
@@ -10749,131 +9576,22 @@ class Qwen35GGUFFullStackRunner:
         stream: int,
         runtime: HipRuntime,
     ) -> tuple[bool, bool]:
-        """Unfused selected-expert FFN: gate_up GEMV -> silu*mul -> down GEMV into
-        ``scratch.moe_down_out``. Numerically-equivalent fallback for the fused B1
-        megakernel (architectural invariant), and the default rows==1 path."""
-        cfg = self.weights.config
-        gate_rows_nbytes = selected_rows * cfg.expert_feed_forward_length * DType.BF16.itemsize
-        f32_selected_intermediate = _gguf_use_f32_selected_intermediate(
+        return _layer_ffn.run_post_attention_moe_c1_unfused_selected_ffn(
+            self.weights.config,
+            _layer_ffn_geometry(self),
+            _layer_ffn_kernels(),
+            _layer_ffn_ops(self),
+            _layer_ffn_flags(),
+            gate_weight,
+            up_weight,
+            down_weight,
             scratch,
-            bool(prefer_f32_selected_down),
+            selected_rows=selected_rows,
+            post_norm_f32_ptr=post_norm_f32_ptr,
+            prefer_f32_selected_down=prefer_f32_selected_down,
+            stream=stream,
+            runtime=runtime,
         )
-        gate_call, down_call = selected_ffn_modes(
-            gate_weight.spec.quant_key, up_weight.spec.quant_key, down_weight.spec.quant_key,
-            allow_legacy_silu=True, f32_gate=post_norm_f32_ptr is not None,
-            f32_intermediate=f32_selected_intermediate, f32_down=prefer_f32_selected_down,
-        )
-        expert_silu_ready = False
-        if gate_call == "dual_silu":
-            expert_silu_ready = _launch_selected_raw_gguf_moe_pair_silu(
-                gate_weight,
-                up_weight,
-                scratch.post_norm.ptr,
-                scratch.moe_selected_experts.ptr,
-                scratch.ffn_intermediate.ptr,
-                x_rows=1,
-                rows=selected_rows,
-                num_experts=cfg.expert_count,
-                in_features=self.hidden_size,
-                out_features=cfg.expert_feed_forward_length,
-                stream=stream,
-                runtime=runtime,
-            )
-        if not expert_silu_ready:
-            q8_1_workspace_ptr = _optional_q8_1_workspace_ptr(
-                scratch,
-                1,
-                self.hidden_size,
-                enabled=(
-                    _gguf_q4k_selected_dual_dp4a_enabled()
-                    or _gguf_t16_selected_dp4a_enabled()
-                    or _gguf_raw_selected_dp4a_enabled()
-                    or _selected_pair_requires_q8_1_input(gate_weight, up_weight)
-                ),
-            )
-            _launch_selected_raw_gguf_moe_dual(
-                gate_weight, up_weight, scratch.post_norm.ptr,
-                scratch.moe_selected_experts.ptr, scratch.ffn_gate_up.ptr,
-                scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                x_rows=1, rows=selected_rows, num_experts=cfg.expert_count,
-                in_features=self.hidden_size, out_features=cfg.expert_feed_forward_length,
-                q8_1_workspace_ptr=q8_1_workspace_ptr, x_f32_ptr=post_norm_f32_ptr,
-                stream=stream, runtime=runtime,
-            )
-            if f32_selected_intermediate:
-                silu_mul_separate_out_f32(
-                    scratch.ffn_gate_up.ptr,
-                    scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                    scratch.ffn_intermediate_f32.ptr,
-                    rows=selected_rows,
-                    features=cfg.expert_feed_forward_length,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                f32_to_bf16(
-                    scratch.ffn_intermediate_f32.ptr,
-                    scratch.ffn_intermediate.ptr,
-                    selected_rows * cfg.expert_feed_forward_length,
-                    stream=stream,
-                    library=self._cast_library(),
-                    runtime=runtime,
-                )
-            else:
-                silu_mul_separate_out_bf16(
-                    scratch.ffn_gate_up.ptr,
-                    scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                    scratch.ffn_intermediate.ptr,
-                    rows=selected_rows,
-                    features=cfg.expert_feed_forward_length,
-                    stream=stream,
-                    runtime=runtime,
-                )
-        f32_selected_down = bool(prefer_f32_selected_down)
-        expert_down_weighted = False
-        if down_call == "weighted_down":
-            expert_down_weighted = _launch_weighted_selected_raw_gguf_moe_linear(
-                down_weight,
-                scratch.ffn_intermediate.ptr,
-                scratch.moe_selected_experts.ptr,
-                scratch.moe_routing_weights.ptr,
-                scratch.moe_down_out.ptr,
-                tokens=1,
-                top_k=selected_rows,
-                num_experts=cfg.expert_count,
-                in_features=cfg.expert_feed_forward_length,
-                out_features=self.hidden_size,
-                backend=self.backend,
-                stream=stream,
-                runtime=runtime,
-            )
-        if not expert_down_weighted:
-            _launch_selected_raw_gguf_moe_linear(
-                down_weight,
-                scratch.ffn_intermediate.ptr,
-                scratch.moe_selected_experts.ptr,
-                scratch.moe_down_out_f32.ptr if f32_selected_down else scratch.moe_down_out.ptr,
-                x_rows=selected_rows,
-                rows=selected_rows,
-                num_experts=cfg.expert_count,
-                in_features=cfg.expert_feed_forward_length,
-                out_features=self.hidden_size,
-                q8_1_workspace_ptr=_optional_q8_1_workspace_ptr(
-                    scratch,
-                    selected_rows,
-                    cfg.expert_feed_forward_length,
-                    enabled=(
-                        _gguf_t16_selected_dp4a_enabled()
-                        or _gguf_raw_selected_dp4a_enabled()
-                        or _selected_gemv_requires_q8_1_input(down_weight)
-                    ),
-                ),
-                x_f32_ptr=scratch.ffn_intermediate_f32.ptr if f32_selected_intermediate else None,
-                prefer_f32_out=f32_selected_down,
-                backend=self.backend,
-                stream=stream,
-                runtime=runtime,
-            )
-        return f32_selected_down, expert_down_weighted
 
     def _run_post_attention_moe_rows(
         self,
@@ -10893,652 +9611,28 @@ class Qwen35GGUFFullStackRunner:
         gpu_stage_recorder: _HipEventStageRecorder | None = None,
     ) -> None:
         assert self.weights is not None
-        cfg = self.weights.config
-        if not cfg.is_moe:
-            raise ValueError("MoE path requires qwen35moe GGUF config")
-        if rows <= 1:
-            raise ValueError("bulk MoE rows path requires rows > 1")
-        if not hasattr(scratch, "moe_shared_gate_logits"):
-            raise ValueError("qwen35moe bulk MoE scratch is missing shared-gate logits")
-        layer = self.weights.layer(layer_id)
-        runtime = self.runtime or get_hip_runtime()
-        sync_stages = bool(sync_stage_timings and stage_timings is not None)
-        t_stage = time.perf_counter() if sync_stages else 0.0
-        top_k = int(cfg.expert_used_count)
-        if top_k <= 0:
-            raise ValueError("qwen35moe GGUF expert_used_count must be positive")
-        selected_rows = rows * top_k
-        f32_residual = residual_f32_ptr is not None or out_f32_ptr is not None
-        if f32_residual and (residual_f32_ptr is None or out_f32_ptr is None):
-            raise ValueError("residual_f32_ptr and out_f32_ptr must be provided together")
-
-        router_f32_ptr = (
-            post_norm_f32_ptr
-            if post_norm_f32_ptr is not None and _gguf_verify_f32_post_norm_router_enabled()
-            else None
-        )
-        selected_f32_ptr = (
-            post_norm_f32_ptr
-            if post_norm_f32_ptr is not None and _gguf_verify_f32_post_norm_selected_q8_enabled()
-            else None
-        )
-        shared_f32_ptr = (
-            post_norm_f32_ptr
-            if post_norm_f32_ptr is not None and _gguf_verify_f32_post_norm_shared_q8_enabled()
-            else None
-        )
-        router_fn = (
-            _launch_qwen35_router_logits_f32_hidden
-            if router_f32_ptr is not None
-            else _launch_qwen35_router_logits_bf16_hidden
-        )
-        router_hidden_ptr = int(router_f32_ptr) if router_f32_ptr is not None else scratch.post_norm.ptr
-        router_fn(
-            router_hidden_ptr,
-            layer.weight("ffn_gate_inp"),
-            scratch.moe_router_logits.ptr,
-            rows,
-            self.hidden_size,
-            cfg.expert_count,
-            stream=stream,
-            runtime=runtime,
-        )
-        router_fn(
-            router_hidden_ptr,
-            layer.weight("ffn_gate_inp_shexp"),
-            scratch.moe_shared_gate_logits.ptr,
-            rows,
-            self.hidden_size,
-            1,
-            stream=stream,
-            runtime=runtime,
-        )
-        qwen35_router_select(
-            scratch.moe_router_logits.ptr,
-            scratch.moe_selected_experts.ptr,
-            scratch.moe_routing_weights.ptr,
-            rows,
-            cfg.expert_count,
-            cfg.expert_count,
-            top_k,
-            threads=_gguf_prefill_router_select_threads(self.backend),
-            stream=stream,
-            runtime=runtime,
-        )
-        t_stage = _mark_sync_stage(
-            runtime,
-            stage_timings,
-            sync_stages,
-            f"{stage_prefix}_router",
-            t_stage,
-        )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_router")
-
-        gate_weight = layer.weight("ffn_gate_exps")
-        up_weight = layer.weight("ffn_up_exps")
-        down_weight = layer.weight("ffn_down_exps")
-        prefer_f32_selected_down = (
-            False
-            if expert_sidecar is not None
-            else _gguf_use_f32_selected_down(down_weight, scratch, f32_residual)
-        )
-        f32_selected_intermediate = _gguf_use_f32_selected_intermediate(
-            scratch,
-            prefer_f32_selected_down,
-        )
-        if (not f32_residual) and _try_run_post_attention_moe_rows_compact_wmma(
-            self,
-            layer,
-            gate_weight,
-            up_weight,
-            down_weight,
+        _layer_ffn.run_post_attention_moe_rows(
+            self.weights.layer(layer_id),
+            self.weights.config,
+            _layer_ffn_geometry(self),
+            _layer_ffn_kernels(),
+            _layer_ffn_ops(self),
+            _layer_ffn_flags(),
             out_ptr,
             scratch,
             rows=rows,
-            selected_rows=selected_rows,
-            top_k=top_k,
+            runtime=self.runtime,
             stream=stream,
-            runtime=runtime,
+            expert_sidecar=expert_sidecar,
+            expert_pack8_library=getattr(self, "_expert_pack8_library", None),
+            residual_f32_ptr=residual_f32_ptr,
+            out_f32_ptr=out_f32_ptr,
+            post_norm_f32_ptr=post_norm_f32_ptr,
+            stage_timings=stage_timings,
+            sync_stage_timings=sync_stage_timings,
+            stage_prefix=stage_prefix,
             gpu_stage_recorder=gpu_stage_recorder,
-            stage_prefix=f"{stage_prefix}_compact_wmma",
-        ):
-            _mark_sync_stage(
-                runtime,
-                stage_timings,
-                sync_stages,
-                f"{stage_prefix}_compact_wmma",
-                t_stage,
-            )
-            return
-        if (
-            (not f32_residual)
-            and _gguf_row_compact_gemv_enabled()
-            and _try_run_post_attention_moe_rows_compact_gemv(
-                self,
-                layer,
-                gate_weight,
-                up_weight,
-                down_weight,
-                out_ptr,
-                scratch,
-                rows=rows,
-                selected_rows=selected_rows,
-                top_k=top_k,
-                stream=stream,
-                runtime=runtime,
-            )
-        ):
-            _mark_sync_stage(
-                runtime,
-                stage_timings,
-                sync_stages,
-                f"{stage_prefix}_compact_gemv",
-                t_stage,
-            )
-            if gpu_stage_recorder is not None:
-                gpu_stage_recorder.mark(f"{stage_prefix}_compact_gemv")
-            return
-        gate_rows_nbytes = selected_rows * cfg.expert_feed_forward_length * DType.BF16.itemsize
-        expert_silu_ready = False
-        if expert_sidecar is not None and _launch_selected_expert_pack8_moe_pair(
-            expert_sidecar.tensor("ffn_gate_exps"),
-            expert_sidecar.tensor("ffn_up_exps"),
-            scratch.post_norm.ptr,
-            scratch.moe_selected_experts.ptr,
-            scratch.ffn_gate_up.ptr,
-            scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-            backend=self.backend,
-            x_rows=rows,
-            rows=selected_rows,
-            num_experts=cfg.expert_count,
-            in_features=self.hidden_size,
-            out_features=cfg.expert_feed_forward_length,
-            stream=stream,
-            runtime=runtime,
-            library=getattr(self, "_expert_pack8_library", None),
-        ):
-            pass
-        elif expert_sidecar is not None:
-            _launch_selected_expert_pack8_moe_linear(
-                expert_sidecar.tensor("ffn_gate_exps"),
-                scratch.post_norm.ptr,
-                scratch.moe_selected_experts.ptr,
-                scratch.ffn_gate_up.ptr,
-                backend=self.backend,
-                x_rows=rows,
-                rows=selected_rows,
-                num_experts=cfg.expert_count,
-                in_features=self.hidden_size,
-                out_features=cfg.expert_feed_forward_length,
-                stream=stream,
-                runtime=runtime,
-                library=getattr(self, "_expert_pack8_library", None),
-            )
-            _launch_selected_expert_pack8_moe_linear(
-                expert_sidecar.tensor("ffn_up_exps"),
-                scratch.post_norm.ptr,
-                scratch.moe_selected_experts.ptr,
-                scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                backend=self.backend,
-                x_rows=rows,
-                rows=selected_rows,
-                num_experts=cfg.expert_count,
-                in_features=self.hidden_size,
-                out_features=cfg.expert_feed_forward_length,
-                stream=stream,
-                runtime=runtime,
-                library=getattr(self, "_expert_pack8_library", None),
-            )
-        elif selected_ffn_modes(
-            gate_weight.spec.quant_key, up_weight.spec.quant_key, down_weight.spec.quant_key,
-            allow_legacy_silu=False,
-        )[0] == "dual_silu" and _launch_selected_raw_gguf_moe_pair_silu(
-            gate_weight,
-            up_weight,
-            scratch.post_norm.ptr,
-            scratch.moe_selected_experts.ptr,
-            scratch.ffn_intermediate.ptr,
-            x_rows=rows,
-            rows=selected_rows,
-            num_experts=cfg.expert_count,
-            in_features=self.hidden_size,
-            out_features=cfg.expert_feed_forward_length,
-            stream=stream,
-            runtime=runtime,
-            allow_legacy=False,
-        ):
-            expert_silu_ready = True
-        else:
-            # The Q4T16 dual+SiLU fusion is decode-only for now.  In rows>1
-            # bulk prefill the extra exp/rounding work in the GEMV accumulator
-            # did not pay for the removed SiLU launch, so keep the split path.
-            q8_1_workspace_ptr = _optional_q8_1_workspace_ptr(
-                scratch,
-                rows,
-                self.hidden_size,
-                enabled=(
-                    _gguf_q4k_selected_dual_dp4a_enabled()
-                    or _gguf_t16_selected_dp4a_enabled()
-                    or _gguf_raw_selected_dp4a_enabled()
-                    or _selected_pair_requires_q8_1_input(gate_weight, up_weight)
-                ),
-            )
-            _launch_selected_raw_gguf_moe_dual(
-                gate_weight, up_weight, scratch.post_norm.ptr,
-                scratch.moe_selected_experts.ptr, scratch.ffn_gate_up.ptr,
-                scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                x_rows=rows, rows=selected_rows, num_experts=cfg.expert_count,
-                in_features=self.hidden_size, out_features=cfg.expert_feed_forward_length,
-                q8_1_workspace_ptr=q8_1_workspace_ptr, x_f32_ptr=selected_f32_ptr,
-                stream=stream, runtime=runtime, stage_timings=stage_timings,
-                sync_stage_timings=sync_stages, stage_prefix=f"{stage_prefix}_expert_gate_up",
-            )
-        t_stage = _mark_sync_stage(
-            runtime,
-            stage_timings,
-            sync_stages,
-            f"{stage_prefix}_expert_gate_up",
-            t_stage,
         )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_expert_gate_up")
-        if not expert_silu_ready:
-            if f32_selected_intermediate:
-                silu_mul_separate_out_f32(
-                    scratch.ffn_gate_up.ptr,
-                    scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                    scratch.ffn_intermediate_f32.ptr,
-                    rows=selected_rows,
-                    features=cfg.expert_feed_forward_length,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                f32_to_bf16(
-                    scratch.ffn_intermediate_f32.ptr,
-                    scratch.ffn_intermediate.ptr,
-                    selected_rows * cfg.expert_feed_forward_length,
-                    stream=stream,
-                    library=self._cast_library(),
-                    runtime=runtime,
-                )
-            else:
-                silu_mul_separate_out_bf16(
-                    scratch.ffn_gate_up.ptr,
-                    scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                    scratch.ffn_intermediate.ptr,
-                    rows=selected_rows,
-                    features=cfg.expert_feed_forward_length,
-                    stream=stream,
-                    runtime=runtime,
-                )
-            t_stage = _mark_sync_stage(
-                runtime,
-                stage_timings,
-                sync_stages,
-                f"{stage_prefix}_expert_silu",
-                t_stage,
-            )
-            if gpu_stage_recorder is not None:
-                gpu_stage_recorder.mark(f"{stage_prefix}_expert_silu")
-        selected_down_is_f32 = False
-        expert_down_weighted = False
-        if expert_sidecar is not None:
-            _launch_selected_expert_pack8_moe_linear(
-                expert_sidecar.tensor("ffn_down_exps"),
-                scratch.ffn_intermediate.ptr,
-                scratch.moe_selected_experts.ptr,
-                scratch.moe_down_out.ptr,
-                backend=self.backend,
-                x_rows=selected_rows,
-                rows=selected_rows,
-                num_experts=cfg.expert_count,
-                in_features=cfg.expert_feed_forward_length,
-                out_features=self.hidden_size,
-                stream=stream,
-                runtime=runtime,
-                library=getattr(self, "_expert_pack8_library", None),
-            )
-        else:
-            selected_down_is_f32 = prefer_f32_selected_down
-            if selected_ffn_modes(
-                gate_weight.spec.quant_key, up_weight.spec.quant_key, down_weight.spec.quant_key,
-                allow_legacy_silu=False, f32_down=selected_down_is_f32,
-                weighted_down=not f32_residual,
-            )[1] == "weighted_down":
-                expert_down_weighted = _launch_weighted_selected_raw_gguf_moe_linear(
-                    down_weight,
-                    scratch.ffn_intermediate.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.moe_routing_weights.ptr,
-                    scratch.moe_down_out.ptr,
-                    tokens=rows,
-                    top_k=top_k,
-                    num_experts=cfg.expert_count,
-                    in_features=cfg.expert_feed_forward_length,
-                    out_features=self.hidden_size,
-                    stream=stream,
-                    runtime=runtime,
-                )
-            if not expert_down_weighted:
-                _launch_selected_raw_gguf_moe_linear(
-                    down_weight,
-                    scratch.ffn_intermediate.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.moe_down_out_f32.ptr if selected_down_is_f32 else scratch.moe_down_out.ptr,
-                    x_rows=selected_rows,
-                    rows=selected_rows,
-                    num_experts=cfg.expert_count,
-                    in_features=cfg.expert_feed_forward_length,
-                    out_features=self.hidden_size,
-                    q8_1_workspace_ptr=_optional_q8_1_workspace_ptr(
-                        scratch,
-                        selected_rows,
-                        cfg.expert_feed_forward_length,
-                        enabled=(
-                            _gguf_t16_selected_dp4a_enabled()
-                            or _gguf_raw_selected_dp4a_enabled()
-                            or _selected_gemv_requires_q8_1_input(down_weight)
-                        ),
-                    ),
-                    x_f32_ptr=scratch.ffn_intermediate_f32.ptr if f32_selected_intermediate else None,
-                    prefer_f32_out=selected_down_is_f32,
-                    backend=self.backend,
-                    stream=stream,
-                    runtime=runtime,
-                    stage_timings=stage_timings,
-                    sync_stage_timings=sync_stages,
-                    stage_prefix=f"{stage_prefix}_expert_down",
-                )
-        t_stage = _mark_sync_stage(
-            runtime,
-            stage_timings,
-            sync_stages,
-            f"{stage_prefix}_expert_down",
-            t_stage,
-        )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_expert_down")
-
-        shared_q8_dp4a_enabled = _gguf_dense_q8_dp4a_shared_enabled()
-        if shared_q8_dp4a_enabled and shared_f32_ptr is not None:
-            shared_gate_up_dp4a = _try_launch_dense_q8_pair_dp4a_f32(
-                layer.weight("ffn_gate_shexp"),
-                layer.weight("ffn_up_shexp"),
-                int(shared_f32_ptr),
-                scratch.moe_shared_gate.ptr,
-                scratch.moe_shared_up.ptr,
-                scratch,
-                rows=rows,
-                in_features=self.hidden_size,
-                out_features_a=cfg.expert_shared_feed_forward_length,
-                out_features_b=cfg.expert_shared_feed_forward_length,
-                stream=stream,
-                runtime=runtime,
-            )
-        else:
-            shared_gate_up_dp4a = shared_q8_dp4a_enabled and _try_launch_dense_q8_pair_dp4a(
-                layer.weight("ffn_gate_shexp"),
-                layer.weight("ffn_up_shexp"),
-                scratch.post_norm.ptr,
-                scratch.moe_shared_gate.ptr,
-                scratch.moe_shared_up.ptr,
-                scratch,
-                rows=rows,
-                in_features=self.hidden_size,
-                out_features_a=cfg.expert_shared_feed_forward_length,
-                out_features_b=cfg.expert_shared_feed_forward_length,
-                stream=stream,
-                runtime=runtime,
-            )
-        if shared_gate_up_dp4a:
-            silu_mul_separate_out_bf16(
-                scratch.moe_shared_gate.ptr,
-                scratch.moe_shared_up.ptr,
-                scratch.moe_shared_intermediate.ptr,
-                rows=rows,
-                features=cfg.expert_shared_feed_forward_length,
-                stream=stream,
-                runtime=runtime,
-            )
-        elif _try_launch_shared_gate_up_from_f32_post_norm(
-            layer.weight("ffn_gate_shexp"),
-            layer.weight("ffn_up_shexp"),
-            shared_f32_ptr,
-            scratch.moe_shared_gate.ptr,
-            scratch.moe_shared_up.ptr,
-            rows=rows,
-            hidden_size=self.hidden_size,
-            shared_ffn=cfg.expert_shared_feed_forward_length,
-            stream=stream,
-            runtime=runtime,
-        ):
-            silu_mul_separate_out_bf16(
-                scratch.moe_shared_gate.ptr,
-                scratch.moe_shared_up.ptr,
-                scratch.moe_shared_intermediate.ptr,
-                rows=rows,
-                features=cfg.expert_shared_feed_forward_length,
-                stream=stream,
-                runtime=runtime,
-            )
-        elif launch_gguf_linear_pair_concat(
-            layer.weight("ffn_gate_shexp"),
-            layer.weight("ffn_up_shexp"),
-            scratch.post_norm.ptr,
-            scratch.ffn_gate_up.ptr,
-            rows=rows,
-            in_features=self.hidden_size,
-            out_features=cfg.expert_shared_feed_forward_length,
-            stream=stream,
-            runtime=runtime,
-        ):
-            silu_mul_dual_out_bf16(
-                scratch.ffn_gate_up.ptr,
-                scratch.moe_shared_intermediate.ptr,
-                rows=rows,
-                features=cfg.expert_shared_feed_forward_length,
-                stream=stream,
-                runtime=runtime,
-            )
-        else:
-            if not launch_gguf_linear_pair(
-                layer.weight("ffn_gate_shexp"),
-                layer.weight("ffn_up_shexp"),
-                scratch.post_norm.ptr,
-                scratch.moe_shared_gate.ptr,
-                scratch.moe_shared_up.ptr,
-                rows=rows,
-                in_features=self.hidden_size,
-                out_features=cfg.expert_shared_feed_forward_length,
-                stream=stream,
-                runtime=runtime,
-            ):
-                launch_gguf_linear(
-                    layer.weight("ffn_gate_shexp"),
-                    scratch.post_norm.ptr,
-                    scratch.moe_shared_gate.ptr,
-                    rows=rows,
-                    in_features=self.hidden_size,
-                    out_features=cfg.expert_shared_feed_forward_length,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                launch_gguf_linear(
-                    layer.weight("ffn_up_shexp"),
-                    scratch.post_norm.ptr,
-                    scratch.moe_shared_up.ptr,
-                    rows=rows,
-                    in_features=self.hidden_size,
-                    out_features=cfg.expert_shared_feed_forward_length,
-                    stream=stream,
-                    runtime=runtime,
-                )
-            silu_mul_separate_out_bf16(
-                scratch.moe_shared_gate.ptr,
-                scratch.moe_shared_up.ptr,
-                scratch.moe_shared_intermediate.ptr,
-                rows=rows,
-                features=cfg.expert_shared_feed_forward_length,
-                stream=stream,
-                runtime=runtime,
-            )
-        t_stage = _mark_sync_stage(
-            runtime,
-            stage_timings,
-            sync_stages,
-            f"{stage_prefix}_shared_gate_up_silu",
-            t_stage,
-        )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_shared_gate_up_silu")
-        shared_down_is_f32 = False
-        if (
-            _gguf_use_f32_shared_down(scratch, f32_residual, selected_down_is_f32)
-            and _try_launch_gguf_linear_bf16_f32_output(
-                layer.weight("ffn_down_shexp"),
-                scratch.moe_shared_intermediate.ptr,
-                scratch.moe_shared_out_f32.ptr,
-                rows=rows,
-                in_features=cfg.expert_shared_feed_forward_length,
-                out_features=self.hidden_size,
-                stream=stream,
-                runtime=runtime,
-            )
-        ):
-            f32_to_bf16(
-                scratch.moe_shared_out_f32.ptr,
-                scratch.moe_shared_out.ptr,
-                rows * self.hidden_size,
-                stream=stream,
-                library=self._cast_library(),
-                runtime=runtime,
-            )
-            shared_down_is_f32 = True
-        elif not (
-            shared_q8_dp4a_enabled and _try_launch_dense_q8_single_dp4a(
-                layer.weight("ffn_down_shexp"),
-                scratch.moe_shared_intermediate.ptr,
-                scratch.moe_shared_out.ptr,
-                scratch,
-                rows=rows,
-                in_features=cfg.expert_shared_feed_forward_length,
-                out_features=self.hidden_size,
-                stream=stream,
-                runtime=runtime,
-            )
-        ):
-            launch_gguf_linear(
-                layer.weight("ffn_down_shexp"),
-                scratch.moe_shared_intermediate.ptr,
-                scratch.moe_shared_out.ptr,
-                rows=rows,
-                in_features=cfg.expert_shared_feed_forward_length,
-                out_features=self.hidden_size,
-                stream=stream,
-                runtime=runtime,
-            )
-        t_stage = _mark_sync_stage(
-            runtime,
-            stage_timings,
-            sync_stages,
-            f"{stage_prefix}_shared_down",
-            t_stage,
-        )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_shared_down")
-        if f32_residual:
-            if selected_down_is_f32 and shared_down_is_f32:
-                weighted_sum_f32_shared_f32_gate_combine_residual_batch_out_f32_accum_f32w(
-                    scratch.moe_down_out_f32.ptr,
-                    scratch.moe_routing_weights.ptr,
-                    scratch.moe_shared_out_f32.ptr,
-                    scratch.moe_shared_gate_logits.ptr,
-                    int(residual_f32_ptr),
-                    int(out_f32_ptr),
-                    rows,
-                    top_k,
-                    self.hidden_size,
-                    1,
-                    stream=stream,
-                    runtime=runtime,
-                )
-            elif selected_down_is_f32:
-                weighted_sum_f32_shared_gate_combine_residual_batch_out_f32_accum_f32w(
-                    scratch.moe_down_out_f32.ptr,
-                    scratch.moe_routing_weights.ptr,
-                    scratch.moe_shared_out.ptr,
-                    scratch.moe_shared_gate_logits.ptr,
-                    int(residual_f32_ptr),
-                    int(out_f32_ptr),
-                    rows,
-                    top_k,
-                    self.hidden_size,
-                    1,
-                    stream=stream,
-                    runtime=runtime,
-                )
-            else:
-                _gguf_f32_moe_combine_batch_out_fn()(
-                    scratch.moe_down_out.ptr,
-                    scratch.moe_routing_weights.ptr,
-                    scratch.moe_shared_out.ptr,
-                    scratch.moe_shared_gate_logits.ptr,
-                    int(residual_f32_ptr),
-                    int(out_f32_ptr),
-                    rows,
-                    top_k,
-                    self.hidden_size,
-                    1,
-                    stream=stream,
-                    runtime=runtime,
-                )
-            f32_to_bf16(
-                int(out_f32_ptr),
-                out_ptr,
-                rows * self.hidden_size,
-                stream=stream,
-                library=self._cast_library(),
-                runtime=runtime,
-            )
-        else:
-            if expert_down_weighted:
-                shared_gate_combine_residual_batch_out_bf16(
-                    scratch.moe_down_out.ptr,
-                    scratch.moe_shared_out.ptr,
-                    scratch.moe_shared_gate_logits.ptr,
-                    scratch.residual.ptr,
-                    out_ptr,
-                    rows,
-                    self.hidden_size,
-                    1,
-                    stream=stream,
-                    runtime=runtime,
-                )
-            else:
-                weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w(
-                    scratch.moe_down_out.ptr,
-                    scratch.moe_routing_weights.ptr,
-                    scratch.moe_shared_out.ptr,
-                    scratch.moe_shared_gate_logits.ptr,
-                    scratch.residual.ptr,
-                    out_ptr,
-                    rows,
-                    top_k,
-                    self.hidden_size,
-                    1,
-                    stream=stream,
-                    runtime=runtime,
-                )
-        _mark_sync_stage(
-            runtime,
-            stage_timings,
-            sync_stages,
-            f"{stage_prefix}_combine_residual",
-            t_stage,
-        )
-        if gpu_stage_recorder is not None:
-            gpu_stage_recorder.mark(f"{stage_prefix}_combine_residual")
 
     def allocate_scratch(
         self,

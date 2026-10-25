@@ -1,6 +1,6 @@
 ---
 status: current
-owns: Qwen hybrid GGUF runtime module responsibilities, KV and resident-state storage, scratch/capacity planning boundaries, and remaining execution/diagnostics separation.
+owns: Qwen hybrid GGUF runtime module responsibilities, layer execution inputs, KV and resident-state storage, scratch/capacity planning, and remaining diagnostics separation.
 ---
 # Qwen hybrid GGUF runtime structure
 
@@ -18,6 +18,8 @@ Paths in this document are repository-relative.
 | `hipengine/generation/qwen35_gguf.py` | Public generator configuration, resident model adapter, request admission and serving assets | Individual kernel arithmetic |
 | `hipengine/runtime/qwen35_gguf_runner.py:Qwen35GGUFFullStackRunner` | Loaded target weights, selected execution primitives and full-stack layer execution | Public request scheduling |
 | `hipengine/runtime/qwen35_gguf_runner.py:Qwen35GGUFResidentSession` | Request/session state, prefill/decode/verification orchestration, pool growth coordination and graph lifetime | Physical KV plane allocation formulas |
+| `hipengine/runtime/qwen35_gguf_layer_attn.py` | Scalar linear/full attention and shared norm/alpha-beta leaves over explicit weights, geometry, views and selected operations | Request admission, registry policy, graph lifetime or bulk attention orchestration |
+| `hipengine/runtime/qwen35_gguf_layer_ffn.py` | Dense and MoE feed-forward execution for scalar and bulk rows over explicit weights, scratch and selected operations | Session state, speculative acceptance or kernel-selection policy |
 | `hipengine/runtime/qwen35_gguf_planning.py` | Geometry/storage-policy scratch plan, resolved KV layout construction, resident byte breakdown and capacity search | Device allocation, loaded executors, environment selection or kernel dispatch |
 | `hipengine/runtime/qwen35_gguf_prefill_plan.py` | Prefill field sizes, owner order, lifetime placement and alias views from explicit geometry and resolved route policy | Host arrays, device allocation, environment lookup or kernel selection |
 | `hipengine/runtime/qwen35_gguf_state.py` | Canonical root/slot bindings, provisional verifier buffers and reusable rollback storage | Layer execution, graph ordering or speculative cycle decisions |
@@ -143,16 +145,37 @@ publication and graph lifetime. Prefix clone publishes its cursor only after
 required deferred-state flushing succeeds. The numerical copy order and existing
 speculative journal interfaces are unchanged.
 
+## Layer execution inputs
+
+`qwen35_gguf_layer_attn.py` owns scalar linear and full attention, including the
+shared attention-norm and alpha/beta projection leaves. `qwen35_gguf_layer_ffn.py`
+owns the feed-forward schedule used by scalar decode, bulk prefill and verifier
+rows. Dense, scalar MoE and multi-row MoE keep their separate execution schedules.
+
+The functions receive resolved layer weights, model configuration, geometry,
+scratch or per-layer views, runtime, and selected operations. They do not receive
+a runner or resident session. Lazy selectors preserve library and variant
+resolution at the point of use; the runner retains registry policy and its caches.
+Existing runner methods delegate to these functions rather than keeping a second
+copy of their arithmetic.
+
+Full-attention position updates and split-workspace growth remain explicit
+operations over borrowed session scratch. DMS-owned attention is selected before
+ordinary full-attention views are built. The session still owns that DMS route,
+KV publication and graph lifetime. Bulk attention and layer composition remain in
+the runner; moving the shared feed-forward half does not move those schedules.
+
+Profiler markers for nested MoE calls wrap the execution module's functions.
+The runner's outer attention methods remain the scalar attention marker boundary.
+Instrumentation must patch the owner that actually executes, not assume that an
+internal call passes through a compatibility method.
+
 ## Remaining separation
 
-The following are candidates, not implemented modules or a mandate to move code
-by line count:
-
-1. **Layer execution:** isolate attention and feed-forward execution only after
-   defining their weight, scratch and selected-kernel inputs. Preserve registry
-   selection rather than introducing backend-specific dispatch ladders.
-2. **Diagnostics:** separate one-layer probes, capture formatting and profiling
-   from production contracts without removing callers used by correctness gates.
+One-layer probes, capture formatting and profiling still share the runner module
+with production contracts. Separating diagnostics must preserve callers used by
+correctness gates. Bulk attention orchestration is also still in the runner;
+its distinct schedules are not folded into the scalar attention module.
 
 Do not replace one large class with mixins that all read and mutate the same
 implicit attributes. A module boundary is useful when its inputs, lifetime and
@@ -200,6 +223,14 @@ checks canonical borrowing, rollback replacement, active capture leases and clon
 publication failure. `tests/test_unit_qwen35_gguf_prefix_state.py` covers arena
 capture, reuse, copy failures, synchronization failure and delayed cleanup.
 Existing prefix, packed-workspace and MTP tests exercise their integrated consumers.
+
+`tests/test_unit_qwen35_gguf_layer_execution.py` checks the independent execution
+boundary, launch order and arguments, minimal leaf inputs, branch-dependent
+selectors, split-buffer growth and DMS override. Existing dispatch, mixed-precision
+and selected-expert tests exercise the runner adapters. Projection-level probes
+patch the attention module's launch symbols; FFN selected-operation tables retain
+the runner's launch symbols. `tests/test_unit_gguf_decode_rocprof.py` checks marker
+ownership and restoration for both current and historical execution owners.
 
 Most of these tests use fake runtime allocations; the GPU node has an explicit
 availability guard. Public real-model generation remains a separate integration

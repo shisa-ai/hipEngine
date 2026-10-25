@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from hipengine.runtime import qwen35_gguf_runner as qgr
+from hipengine.runtime import qwen35_gguf_layer_attn as layer_attn
 
 
 def _runner() -> qgr.Qwen35GGUFFullStackRunner:
@@ -32,12 +33,15 @@ def test_attention_norm_f32_diagnostic_materializes_f32_and_bf16_mirror(
         calls.append(("f32_to_bf16", args, kwargs))
 
     monkeypatch.setattr(qgr, "gguf_rmsnorm_f32_f32_weight_out_f32", rmsnorm_out_f32)
+    monkeypatch.setattr(layer_attn, "gguf_rmsnorm_f32_f32_weight_out_f32", qgr.gguf_rmsnorm_f32_f32_weight_out_f32)
     monkeypatch.setattr(
         qgr,
         "gguf_rmsnorm_f32_f32_weight",
         lambda *args, **kwargs: pytest.fail("BF16-only F32 RMSNorm should not run"),
     )
+    monkeypatch.setattr(layer_attn, "gguf_rmsnorm_f32_f32_weight", qgr.gguf_rmsnorm_f32_f32_weight)
     monkeypatch.setattr(qgr, "f32_to_bf16", cast_f32_to_bf16)
+    monkeypatch.setattr(layer_attn, "f32_to_bf16", qgr.f32_to_bf16)
 
     out_f32_ptr = _runner()._run_attention_norm_rows(
         hidden_ptr=100,
@@ -76,8 +80,11 @@ def test_attention_norm_f32_diagnostic_falls_back_without_f32_output(
         "gguf_rmsnorm_f32_f32_weight_out_f32",
         lambda *args, **kwargs: pytest.fail("F32 output requires out_f32_ptr"),
     )
+    monkeypatch.setattr(layer_attn, "gguf_rmsnorm_f32_f32_weight_out_f32", qgr.gguf_rmsnorm_f32_f32_weight_out_f32)
     monkeypatch.setattr(qgr, "gguf_rmsnorm_f32_f32_weight", rmsnorm_bf16_out)
+    monkeypatch.setattr(layer_attn, "gguf_rmsnorm_f32_f32_weight", qgr.gguf_rmsnorm_f32_f32_weight)
     monkeypatch.setattr(qgr, "f32_to_bf16", lambda *args, **kwargs: pytest.fail("cast should not run"))
+    monkeypatch.setattr(layer_attn, "f32_to_bf16", qgr.f32_to_bf16)
 
     out_f32_ptr = _runner()._run_attention_norm_rows(
         hidden_ptr=100,

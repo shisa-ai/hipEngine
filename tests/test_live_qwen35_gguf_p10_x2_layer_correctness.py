@@ -25,7 +25,8 @@ import numpy as np
 import pytest
 from pathlib import Path
 
-from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession, Qwen35GGUFFullStackRunner
+from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+from hipengine.runtime import qwen35_gguf_layer_ffn as layer_ffn
 from hipengine.core.memory import host_array_ptr
 from hipengine.core.hip import HipMemcpyKind
 import hipengine.runtime.qwen35_gguf_runner as qgr
@@ -65,162 +66,45 @@ def test_p10_x2_layer0_wmma_vs_gemv_prefill_correctness(
     runner = session.runner
     hidden_size = runner.hidden_size
 
-    ref_experts = None
-    ref_out = None
-
-    original_run_post_attention_moe_rows = Qwen35GGUFFullStackRunner._run_post_attention_moe_rows
-
-    def intercept_ref(
-        self,
-        layer_id,
-        out_ptr,
-        scratch,
-        *,
-        rows,
-        stream=0,
-        expert_sidecar=None,
-        **kwargs,
-    ):
-        nonlocal ref_experts, ref_out
-        # Run original reference (GEMV)
-        original_run_post_attention_moe_rows(
-            self,
-            layer_id,
-            out_ptr,
-            scratch,
-            rows=rows,
-            stream=stream,
-            expert_sidecar=expert_sidecar,
-            **kwargs,
-        )
-        self.runtime.device_synchronize()
-
-        # Capture selected experts
-        ref_experts = np.zeros((rows, 2), dtype=np.int32)
-        self.runtime.memcpy(host_array_ptr(ref_experts), scratch.moe_selected_experts.ptr, ref_experts.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
-
-        # Capture ffn_down output
-        ref_out = np.zeros((rows, hidden_size), dtype=np.uint16)
-        self.runtime.memcpy(host_array_ptr(ref_out), out_ptr, ref_out.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
-
-    # 1. Run Layer 0 with WMMA disabled (Reference)
-    monkeypatch.setattr(qgr, "gguf_wmma_prefill_enabled", lambda enabled=None: False)
-    monkeypatch.setattr(Qwen35GGUFFullStackRunner, "_run_post_attention_moe_rows", intercept_ref)
-
-    session.reset()
-    # We only need to run Layer 0; intercept_ref will populate the nonlocal variables
-    # Let's run prefill. To prevent executing other layers and keep it fast, we can let it run or raise an exception to abort early.
-    # Since we want to compare Layer 0, we can just intercept on Layer 0 and then raise an exception to exit early.
+    original_run_post_attention_moe_rows = layer_ffn.run_post_attention_moe_rows
+    layer0 = runner.weights.layer(0)
 
     class Layer0DoneException(Exception):
         pass
 
-    def intercept_layer0_only(
-        self,
-        layer_id,
-        out_ptr,
-        scratch,
-        *,
-        rows,
-        stream=0,
-        expert_sidecar=None,
-        **kwargs,
-    ):
-        if layer_id == 0:
-            intercept_ref(
-                self,
-                layer_id,
-                out_ptr,
-                scratch,
-                rows=rows,
-                stream=stream,
-                expert_sidecar=expert_sidecar,
-                **kwargs,
-            )
-            raise Layer0DoneException()
-        else:
+    def capture_layer0(wmma_enabled):
+        captured = []
+
+        def intercept(
+            layer, config, geometry, kernels, ops, flags, out_ptr, scratch,
+            *, rows, runtime, **kwargs,
+        ):
             original_run_post_attention_moe_rows(
-                self,
-                layer_id,
-                out_ptr,
-                scratch,
-                rows=rows,
-                stream=stream,
-                expert_sidecar=expert_sidecar,
-                **kwargs,
+                layer, config, geometry, kernels, ops, flags, out_ptr, scratch,
+                rows=rows, runtime=runtime, **kwargs,
             )
+            if layer is layer0:
+                runtime.device_synchronize()
+                experts = np.zeros((rows, config.expert_used_count), dtype=np.int32)
+                runtime.memcpy(host_array_ptr(experts), scratch.moe_selected_experts.ptr, experts.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+                output = np.zeros((rows, hidden_size), dtype=np.uint16)
+                runtime.memcpy(host_array_ptr(output), out_ptr, output.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+                captured.append((experts, output))
+                raise Layer0DoneException()
 
-    monkeypatch.setattr(Qwen35GGUFFullStackRunner, "_run_post_attention_moe_rows", intercept_layer0_only)
+        monkeypatch.setattr(qgr, "gguf_wmma_prefill_enabled", lambda enabled=None: wmma_enabled)
+        monkeypatch.setattr(layer_ffn, "run_post_attention_moe_rows", intercept)
+        session.reset()
+        with pytest.raises(Layer0DoneException):
+            session.prefill(prompt_tokens)
+        assert len(captured) == 1
+        experts, output = captured[0]
+        assert output.shape == (rows, hidden_size)
+        return experts, output
 
-    try:
-        session.prefill(prompt_tokens)
-    except Layer0DoneException:
-        pass
-
-    assert ref_experts is not None
-    assert ref_out is not None
-
-    cand_experts = None
-    cand_out = None
-
-    def intercept_cand(
-        self,
-        layer_id,
-        out_ptr,
-        scratch,
-        *,
-        rows,
-        stream=0,
-        expert_sidecar=None,
-        **kwargs,
-    ):
-        nonlocal cand_experts, cand_out
-        if layer_id == 0:
-            # Run original candidate (WMMA)
-            original_run_post_attention_moe_rows(
-                self,
-                layer_id,
-                out_ptr,
-                scratch,
-                rows=rows,
-                stream=stream,
-                expert_sidecar=expert_sidecar,
-                **kwargs,
-            )
-            self.runtime.device_synchronize()
-
-            # Capture selected experts
-            cand_experts = np.zeros((rows, 2), dtype=np.int32)
-            self.runtime.memcpy(host_array_ptr(cand_experts), scratch.moe_selected_experts.ptr, cand_experts.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
-
-            # Capture ffn_down output
-            cand_out = np.zeros((rows, hidden_size), dtype=np.uint16)
-            self.runtime.memcpy(host_array_ptr(cand_out), out_ptr, cand_out.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
-            raise Layer0DoneException()
-        else:
-            original_run_post_attention_moe_rows(
-                self,
-                layer_id,
-                out_ptr,
-                scratch,
-                rows=rows,
-                stream=stream,
-                expert_sidecar=expert_sidecar,
-                **kwargs,
-            )
-
-    # 2. Run Layer 0 with WMMA enabled (Candidate)
-    monkeypatch.setattr(qgr, "gguf_wmma_prefill_enabled", lambda enabled=None: True)
-    monkeypatch.setattr(Qwen35GGUFFullStackRunner, "_run_post_attention_moe_rows", intercept_cand)
-
-    session.reset()
-    try:
-        session.prefill(prompt_tokens)
-    except Layer0DoneException:
-        pass
-
-    assert cand_experts is not None
-    assert cand_out is not None
+    # Compare the same layer before any later-layer routing divergence.
+    ref_experts, ref_out = capture_layer0(False)
+    cand_experts, cand_out = capture_layer0(True)
 
     # Assert 1: Expert selection agreement is 100.0%
     np.testing.assert_array_equal(ref_experts, cand_experts)

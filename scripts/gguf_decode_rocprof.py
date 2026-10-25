@@ -23,6 +23,7 @@ import csv
 import ctypes
 import functools
 import hashlib
+import importlib.util
 import inspect
 import json
 import math
@@ -136,14 +137,23 @@ class _DecodeRoleMarkerPatches:
             "_run_full_attention_attn_only",
             lambda _args, _kwargs: "full_attention_core",
         )
+        # Historical --source-root revisions own these bodies on the runner.
+        # Current nested calls use the standalone functions, bypassing the
+        # runner's compatibility methods. Patch only the executing owner.
+        if importlib.util.find_spec("hipengine.runtime.qwen35_gguf_layer_ffn") is None:
+            moe_owner, prefix = runner_type, "_"
+        else:
+            from hipengine.runtime import qwen35_gguf_layer_ffn
+
+            moe_owner, prefix = qwen35_gguf_layer_ffn, ""
         self._patch(
-            runner_type,
-            "_run_post_attention_moe_c1",
+            moe_owner,
+            f"{prefix}run_post_attention_moe_c1",
             lambda _args, _kwargs: "moe_router_combine",
         )
         self._patch(
-            runner_type,
-            "_run_post_attention_moe_c1_unfused_selected_ffn",
+            moe_owner,
+            f"{prefix}run_post_attention_moe_c1_unfused_selected_ffn",
             lambda _args, _kwargs: "selected_expert_other",
         )
         self._patch(
@@ -152,17 +162,23 @@ class _DecodeRoleMarkerPatches:
             lambda _args, _kwargs: "lm_head",
         )
 
+        projection_owners = [module]
+        if importlib.util.find_spec("hipengine.runtime.qwen35_gguf_layer_attn") is not None:
+            from hipengine.runtime import qwen35_gguf_layer_attn
+
+            projection_owners.append(qwen35_gguf_layer_attn)
         for name, count in (
             ("launch_gguf_linear", 1),
             ("launch_gguf_linear_pair", 2),
             ("launch_gguf_linear_pair_concat", 2),
             ("launch_gguf_linear_triple", 3),
         ):
-            self._patch(
-                module,
-                name,
-                lambda args, _kwargs, count=count: _combined_weight_role(args[:count]),
-            )
+            for owner in projection_owners:
+                self._patch(
+                    owner,
+                    name,
+                    lambda args, _kwargs, count=count: _combined_weight_role(args[:count]),
+                )
         for name in (
             "_launch_selected_raw_gguf_moe_pair_silu",
             "_launch_selected_raw_gguf_moe_pair",
