@@ -1,16 +1,26 @@
 #!/usr/bin/env python3
-"""RT-1 blocker (a): short and long requests through the selection path on the SAME owners.
+"""RT-1 blocker (a): short and long requests through the selection rule on the SAME owners.
 
-`docs/REFACTOR.md` records the requirements for enabling automatic prefill-workspace
-selection. Three are now cleared by measurement (numerical qualification at the new chunk,
-arithmetic neutrality, and the short-request loss). The specific remaining measurement is:
+`audit/refactor-sweep/2026-10-25.json` R0020 records the prepared-prefill selector
+retirement. Its evidence is preserved in
+`benchmarks/results/2026-09-29-qwen4exp-rt1-same-owner-selection/`: one runner, two
+prepared owners, short/long requests served by the expected owners, and the decisive
+selector-on/off comparison. Three earlier qualification items were cleared by
+measurement: numerical qualification at the new chunk, arithmetic neutrality, and the
+short-request loss. The specific measurement this script produced was:
 
     "measure short/long requests on the same prepared owners"
 
-Every measurement so far, including RT-1's and RT-3's, used **one process per arm**, so the
-selection path itself has never been exercised end-to-end on a prepared pair. This script
-does that: it prepares a 1024 owner and a 4096 owner in one runner, configures the selector,
+Every measurement before it, including RT-1's and RT-3's, used **one process per arm**, so
+the selection rule had never been exercised end-to-end on a prepared pair. This script
+does that: it prepares a 1024 owner and a 4096 owner in one runner, selects between them,
 and then runs a short (p512) and a long (p4096) prompt through the same runner.
+
+The production selector was retired: the shape policy it existed to provide measured no
+benefit (`audit/refactor-sweep/2026-10-25.json` R0020). The same smallest-fitting-owner
+rule now lives here as script-local instrumentation, borrowing a prepared owner with the
+benchmark-only `use_workspace` helper, so the preserved evidence stays reproducible
+without a production route.
 
 The selection rule is smallest-owner-that-fits:
 
@@ -25,6 +35,7 @@ Diagnostic only. No runtime default changes, no promotion.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -46,7 +57,7 @@ from scripts.qwen4exp_canonical_ar_bench import (  # noqa: E402
     load_fixture,
 )
 from scripts.qwen4exp_chunk_memory_probe import prepare_lazy_group_risk  # noqa: E402
-from scripts.qwen4exp_chunk_workspace import capture_workspace  # noqa: E402
+from scripts.qwen4exp_chunk_workspace import capture_workspace, use_workspace  # noqa: E402
 from scripts.qwen4exp_framework_family_refresh import model_identity  # noqa: E402
 from scripts.qwen4exp_layer2_profile_gate import _make_generator  # noqa: E402
 
@@ -57,8 +68,31 @@ PREFILL_OWNERS = (
     "qsa_prefill_metadata", "_prefill_buffers",
 )
 RESERVE_BYTES = 4 << 30
-# Which owner served a request, recorded by the selector itself.
+# Which owner served a request, recorded inside the borrowed-owner prefill.
 SERVED: list[int] = []
+# Script-local replacement for the retired production selector: prepared owners,
+# smallest first. Empty means the request runs on the runner's base owner.
+SELECTION: list = []
+
+
+def configure_selection(workspaces) -> None:
+    """Install the smallest-fitting-owner rule over prepared owners."""
+    SELECTION.clear()
+    if workspaces is not None:
+        SELECTION.extend(sorted(workspaces, key=lambda item: item.prefill_chunk_size))
+
+
+@contextmanager
+def selected_workspace(runner, token_count):
+    """Borrow the smallest prepared owner that fits, else the largest."""
+    if not SELECTION:
+        yield
+        return
+    selected = next(
+        (item for item in SELECTION if token_count <= item.prefill_chunk_size),
+        SELECTION[-1])
+    with use_workspace(runner, capture_workspace(selected)):
+        yield
 
 
 def memory_stats() -> dict:
@@ -71,7 +105,7 @@ def memory_stats() -> dict:
 
 
 def install_owner_probe(runner) -> None:
-    """Record which owner's chunk size served each prefill, from inside the selector."""
+    """Record which owner's chunk size served each prefill, from inside the borrow."""
 
     original = runner._prefill_chunked_impl
 
@@ -94,7 +128,8 @@ def timed(runner, prompt, *, steps, repeats):
     for _ in range(repeats):
         runner.reset()
         start = time.perf_counter()
-        result = runner.prefill(prompt)
+        with selected_workspace(runner, len(prompt)):
+            result = runner.prefill(prompt)
         logits = result.logits.copy()
         token = int(result.token_id)
         for _ in range(steps):
@@ -147,8 +182,10 @@ def main() -> int:
         "performance_claim": False,
         "promotion_claim": False,
         "purpose": (
-            "RT-1 blocker (a) from docs/REFACTOR.md: measure short/long requests on the "
-            "SAME prepared owners, exercising the selection path end-to-end."
+            "RT-1 blocker (a), preserved by audit/refactor-sweep/2026-10-25.json R0020: "
+            "measure short/long requests on the SAME prepared owners. The production "
+            "selector is retired; the same smallest-fitting-owner rule runs as "
+            "script-local instrumentation."
         ),
         "source": _git_metadata(ROOT),
         "host": _host_metadata(),
@@ -161,8 +198,9 @@ def main() -> int:
         "steps": args.steps,
         "repeats": args.repeats,
         "limits": (
-            "One model, one quant, one host, one execution profile. Diagnostic: the "
-            "selector is enabled only inside this process; no runtime default changes."
+            "One model, one quant, one host, one execution profile. Diagnostic: owner "
+            "selection is script-local and exists only inside this process; no runtime "
+            "default changes."
         ),
     }
 
@@ -191,14 +229,14 @@ def main() -> int:
         }
         report["owner_count"] = len(runner._prefill_workspaces)
 
-        # Enable the selector over the two prepared owners. This is the wiring that
-        # production does not do; doing it here is the point of the measurement.
-        runner._configure_prefill_workspace_selection(
-            [base_owner, extra_owner], reserve_bytes=RESERVE_BYTES)
-        report["selection_enabled"] = runner._prefill_workspace_selection is not None
+        # Enable the script-local selection rule over the two prepared owners. This is
+        # the wiring that production no longer does; doing it here is the point of the
+        # measurement.
+        configure_selection([base_owner, extra_owner])
+        report["selection_enabled"] = bool(SELECTION)
         report["selection_choices"] = [
             int(item.prefill_chunk_size)
-            for item in (runner._prefill_workspace_selection or ())
+            for item in SELECTION
         ]
 
         install_owner_probe(runner)
@@ -235,10 +273,10 @@ def main() -> int:
             case["selection_correct"] for case in report["cases"])
 
         # The decisive comparison: the SAME short prompt on the SAME prepared owners with
-        # the selector turned off, so it is forced onto the large base owner. This isolates
+        # selection turned off, so it is forced onto the large base owner. This isolates
         # what the shape policy buys a short request, which is the property the policy
         # exists to preserve.
-        runner._configure_prefill_workspace_selection(None, reserve_bytes=RESERVE_BYTES)
+        configure_selection(None)
         report["selector_disabled"] = True
         for _ in range(max(args.warmups, 3)):
             SERVED.clear()

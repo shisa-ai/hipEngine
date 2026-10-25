@@ -422,6 +422,19 @@ upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
 
 ## Prefill-Only Workspace Ownership
 
+Current cleanup status (2026-10-25, R0020): the production prepared-workspace
+selector and its tests are removed. The same-owner measurement script now owns
+its selection instrumentation. Extra-workspace allocation, ownership, cleanup,
+and original staging-capacity coverage remain. The public production HTTP
+prefill check passes after removal.
+
+Remaining item: determine whether the benchmark donor plumbing described below
+still has callers and replace it only where the owned-workspace helper covers
+its state and lifetime contract. This does not require restoring the selector.
+
+The following is historical context; statements about the private selector
+being present, parked, or awaiting enablement no longer describe current code.
+
 - `Qwen4ExpPrefillWorkspace` owns prefill scratch and input buffers without
   another decoder/KV allocation. The ordinary runner still allocates one
   workspace in the original order; dispatch and default chunk are unchanged.

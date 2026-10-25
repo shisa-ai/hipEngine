@@ -475,8 +475,8 @@
       "start_line": 438,
       "end_line": 570,
       "sha256": "b7e23c019c701271202cbef6c82f53d24b93f8e2c90ff98a9cbaccfe217c5ba2",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-selector-fixed",
+      "evidence": ["Production selector removed; script-local diagnostic preserved with new deterministic tests. Parent focused bundle:40 passed; real production gfx1151 HTTP request executes512 prompt tokens and generates4 tokens on qwen4exp_full_model_ar_batch. Worklog:worklog/entries/20261025T203732.621669Z-lhl-qwen4exp-prefill-selector-retirement-b553b2.md. Remaining donor-plumbing subitem is not silently closed; inspect its current callers before retiring the whole section."],
       "subitems": [
         {
           "line": 440,
@@ -501,7 +501,7 @@
         {
           "line": 465,
           "text": "- `_configure_prefill_workspace_selection` is a private, default-disabled",
-          "status": "pending"
+          "status": "fixed"
         },
         {
           "line": 486,

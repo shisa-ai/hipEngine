@@ -10,6 +10,7 @@ from hipengine.runtime.gguf_linear import (
     wide_f16_activation_workspace,
 )
 from scripts.qwen4exp_allocation_census import simulated_runner
+from scripts.qwen4exp_chunk_workspace import capture_workspace, use_workspace
 from tests.test_unit_qwen4exp_scratch_plan import config
 
 
@@ -109,10 +110,9 @@ def test_real_prefill_call_site_binds_and_restores_on_failure(enabled, monkeypat
             assert wide_f16_activation_workspace() == outer
         assert len(calls) == 1
 
-def test_selected_smaller_workspace_keeps_original_staging_capacity(enabled, monkeypatch):
+def test_borrowed_smaller_workspace_keeps_original_staging_capacity(enabled, monkeypatch):
     with simulated_runner(config(), context=256, chunk=32) as (runner, runtime):
         small = runner._allocate_extra_prefill_workspace(16)
-        runner._configure_prefill_workspace_selection([small], reserve_bytes=0)
         monkeypatch.setattr(runner, "reset", lambda: None)
         def chunk(tokens, **kwargs):
             from hipengine.loading.qwen4_exp_scratch import qwen4_exp_wide_f16_activation_nbytes
@@ -121,8 +121,9 @@ def test_selected_smaller_workspace_keeps_original_staging_capacity(enabled, mon
                 runner.config, context_tokens=256, prefill_chunk_size=32)
             raise RuntimeError("stop before head")
         monkeypatch.setattr(runner, "_prefill_chunk", chunk)
-        with pytest.raises(RuntimeError, match="stop before head"):
-            runner.prefill_chunked([1])
+        with use_workspace(runner, capture_workspace(small)):
+            with pytest.raises(RuntimeError, match="stop before head"):
+                runner.prefill_chunked([1])
         assert runner.prefill_chunk_size == 32
         assert wide_f16_activation_workspace() is None
 

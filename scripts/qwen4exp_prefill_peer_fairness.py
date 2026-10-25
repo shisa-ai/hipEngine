@@ -144,9 +144,8 @@ def _install_chunk_override(chunk: int) -> None:
     workspace is allocated in ``__init__``.  Patching only the session forces a
     4096-token chunk against a 1024-row PLE staging ring and fails with "PLE row
     request exceeds staging capacity"; patching the generator keeps them
-    consistent.  A post-construction assignment cannot work, because
-    ``_configure_prefill_workspace_selection`` rejects any extra workspace larger
-    than the base one allocated at construction time.
+    consistent. A post-construction chunk assignment does not resize the base
+    owner's PLE staging allocation.
 
     The generator patch alone is **not** sufficient.  ``LLM`` reaches the
     generator through the registry factory, which sets
