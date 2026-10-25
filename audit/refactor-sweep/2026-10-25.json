@@ -1353,8 +1353,11 @@
       "start_line": 1453,
       "end_line": 1474,
       "sha256": "ff93cbffd02c99a4fa52ca1f091da7c8e2f4ef132865a39ae313e25798320eb7",
-      "status": "pending",
-      "evidence": [],
+      "status": "obsolete-removed",
+      "evidence": [
+        "hipengine/runtime/gemma4_assistant.py:1331 calls gemma4_gelu_tanh_mul_split_bf16 on separately projected gate/up buffers in the batched assistant FFN. The wrapper is live; deleting it would break that path.",
+        "tests/test_unit_gemma4_assistant_batch_forward.py:424 intercepts the split wrapper in numerical batch-forward coverage. Production code is unchanged; only the obsolete deletion instruction is removed."
+      ],
       "subitems": []
     },
     {
