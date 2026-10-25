@@ -77,8 +77,6 @@ def _fake_runner_session(
     session.__dict__.update(
         runner=_fake_dense_qwen36_runner(),
         runtime=SimpleNamespace(),
-        scratch=SimpleNamespace(max_positions=1_024, block_size=256),
-        _device_kv_allocation=None,
         _int8_prefill_oracle_buffers={},
         _int8_prefill_oracle_per_layer=bool(per_layer),
         # Live workspace storage: the row capacity these planes report is what
@@ -99,6 +97,8 @@ def _fake_runner_session(
             )
         ),
     )
+    session.scratch = SimpleNamespace(max_positions=1_024, block_size=256)
+    session._device_kv_allocation = None
     return session
 
 

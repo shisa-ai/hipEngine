@@ -56,12 +56,12 @@ def _layer_outer_session(monkeypatch, *, capacity: int = 73_728):
     session.__dict__.update(
         runner=_fake_dense_qwen36_runner(),
         runtime=SimpleNamespace(),
-        scratch=SimpleNamespace(max_positions=capacity),
         backend="hip_gfx1100",
         dms_prefill_mode="layer_outer",
         _dms_prefill_oracle_pair=None,
         _dms_layer_outer_pack=None,
     )
+    session.scratch = SimpleNamespace(max_positions=capacity)
     return session
 
 

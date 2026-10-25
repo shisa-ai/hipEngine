@@ -104,17 +104,17 @@ def _fixture(monkeypatch, *, selector: str, blocks: tuple[int, ...], start: int,
     monkeypatch.setattr(gguf, "copy_host_to_device", upload)
     session = object.__new__(gguf.Qwen35GGUFResidentSession)
     session.__dict__.update(
-        scratch=state,
         runtime=SimpleNamespace(),
         kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
         int8_kv_value_bf16=False,
         dms_prefill_mode="off",
-        _position=start,
-        _device_kv_allocation=SimpleNamespace(block_ids=blocks, chunk_start_block_id=0),
         _int8_prefill_retained_block_table=None,
         _int8_prefill_lifetime_plan=SimpleNamespace(mode="layer_outer_shared_oracle"),
         _int8_prefill_oracle_cache_for_layer=lambda layer, **_kwargs: oracle_pair,
     )
+    session.scratch = state
+    session._position = start
+    session._device_kv_allocation = SimpleNamespace(block_ids=blocks, chunk_start_block_id=0)
     return SimpleNamespace(
         session=session, state=state, scratch=scratch, metadata=metadata,
         retained=retained, oracle=oracle_pair, mirror=mirror_pair,

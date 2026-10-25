@@ -905,7 +905,6 @@ def test_real_ensure_upgrades_unleased_for_plane_consumers(monkeypatch) -> None:
     owner.__dict__.update(
         runner=_allocator_fake_runner(),
         runtime=SimpleNamespace(memset=lambda ptr, value, nbytes: None),
-        scratch=SimpleNamespace(max_positions=1024),
         _packed_verify_state=None,
         _packed_verify_scratch=None,
         _workspace_kv_pool=pool,
@@ -915,6 +914,7 @@ def test_real_ensure_upgrades_unleased_for_plane_consumers(monkeypatch) -> None:
         _packed_decode_state_dirty=False,
         _invalidate_live_packed_decode_graphs=lambda: None,
     )
+    owner.scratch = SimpleNamespace(max_positions=1024)
 
     def fake_free(**kwargs):
         # Mirror the real free: clear the cached state so the growth path

@@ -1,6 +1,6 @@
 ---
 status: current
-owns: Qwen hybrid GGUF runtime module responsibilities, KV storage and scratch/capacity planning boundaries, and remaining execution/session separation.
+owns: Qwen hybrid GGUF runtime module responsibilities, KV and resident-state storage, scratch/capacity planning boundaries, and remaining execution/diagnostics separation.
 ---
 # Qwen hybrid GGUF runtime structure
 
@@ -20,6 +20,8 @@ Paths in this document are repository-relative.
 | `hipengine/runtime/qwen35_gguf_runner.py:Qwen35GGUFResidentSession` | Request/session state, prefill/decode/verification orchestration, pool growth coordination and graph lifetime | Physical KV plane allocation formulas |
 | `hipengine/runtime/qwen35_gguf_planning.py` | Geometry/storage-policy scratch plan, resolved KV layout construction, resident byte breakdown and capacity search | Device allocation, loaded executors, environment selection or kernel dispatch |
 | `hipengine/runtime/qwen35_gguf_prefill_plan.py` | Prefill field sizes, owner order, lifetime placement and alias views from explicit geometry and resolved route policy | Host arrays, device allocation, environment lookup or kernel selection |
+| `hipengine/runtime/qwen35_gguf_state.py` | Canonical root/slot bindings, provisional verifier buffers and reusable rollback storage | Layer execution, graph ordering or speculative cycle decisions |
+| `hipengine/runtime/qwen35_gguf_prefix_state.py` | Cache-owned prefix snapshots, arena recycling and copy-failure cleanup | Boundary admission, KV leases or request scheduling |
 | `hipengine/runtime/qwen35_gguf_kv.py` | Resolved KV layout validation, backing and plane views, logical/physical byte accounting, allocation and release | Runner/session construction, storage-policy selection, admission budgets, graph scheduling or kernel dispatch |
 | `hipengine/runtime/qwen35_gguf_nextn.py`, `hipengine/runtime/qwen35_gguf_mtp.py` | NextN draft execution and transactional speculative integration | Canonical target session ownership |
 | `hipengine/runtime/gguf_packed_decode_graph.py`, `hipengine/runtime/gguf_native_spec_cycle.py` | Packed decode graph replay and native speculative-cycle coordination | Public generator construction |
@@ -100,18 +102,56 @@ Serving capacity consumers import the planning owner directly. Diagnostics that
 patch the private mirror threshold must patch both execution policy and planning;
 the two modules must price and execute the same diagnostic layout.
 
+## Resident state and transaction storage
+
+`qwen35_gguf_state.py` separates storage lifetime from session orchestration:
+
+- `CanonicalResidentState` holds the scratch owner, active scratch view, cursor
+  and KV binding. Only the root releases scratch owners; a resident slot borrows
+  its scratch and has an independent cursor and KV lease. KV pools retain
+  physical backing ownership.
+- `VerifyBlockStorage` and `LinearStateStorage` own provisional verifier rows
+  and producer initial-state snapshots. Growth allocates a complete replacement
+  before publication and old-owner release. Allocation failure releases partial
+  replacements and preserves the previous buffers and capacity.
+- `LinearRollbackStorage` owns reusable device backups over an explicit borrowed
+  `CanonicalLinearState`. It does not decide acceptance or create another journal:
+  existing speculative transactions still order capture, commit and restore.
+  Active producer captures prevent initial-state buffer replacement or release.
+  Verifier construction releases its journal if later setup fails. Session close
+  checks root and slot capture leases before mutating resources, so an invalid
+  close order leaves the owners intact for a correctly ordered retry.
+
+Session properties preserve existing field names as accessors into these owners,
+not duplicate values. Slot construction creates separate local storage and never
+inherits the root's prefix arena pool. Root and slot teardown use the same local
+verifier cleanup; packed-workspace state remains deliberately shared across slots.
+Graph invalidation and synchronization precede publication of packed-workspace
+replacements and release of their old buffers.
+
+`qwen35_gguf_prefix_state.py` owns snapshot allocation and copying. Capture takes
+explicit per-layer buffers, KV identity metadata and a pool, not a session. The
+session checks the current boundary, available continuation capacity, KV coverage
+and dirty packed state before calling it. The cache owns each returned snapshot;
+closing it returns its arena to the pool or frees it if the pool has closed.
+Failed asynchronous copies must retire before their arena can be reused. If
+synchronization fails, the pool holds the arena separately until a successful
+close retry. Slot teardown cannot close a root's pool.
+
+Session code still owns kernel launches, cursor-device updates, KV bind/unbind
+publication and graph lifetime. Prefix clone publishes its cursor only after
+required deferred-state flushing succeeds. The numerical copy order and existing
+speculative journal interfaces are unchanged.
+
 ## Remaining separation
 
 The following are candidates, not implemented modules or a mandate to move code
 by line count:
 
-1. **Resident state and transactions:** define ownership of canonical state,
-   provisional verification state, prefix snapshots and rollback journals before
-   extracting the session's methods.
-2. **Layer execution:** isolate attention and feed-forward execution only after
+1. **Layer execution:** isolate attention and feed-forward execution only after
    defining their weight, scratch and selected-kernel inputs. Preserve registry
    selection rather than introducing backend-specific dispatch ladders.
-3. **Diagnostics:** separate one-layer probes, capture formatting and profiling
+2. **Diagnostics:** separate one-layer probes, capture formatting and profiling
    from production contracts without removing callers used by correctness gates.
 
 Do not replace one large class with mixins that all read and mutate the same
@@ -153,6 +193,13 @@ absence of size-only host/device materialization. The allocation-failure tests i
 owner to be released once after allocation or upload failure across all layouts.
 Existing prefill liveness and packed-workspace tests protect aliases, metadata
 and stable workspace ownership.
+
+`tests/test_unit_qwen35_gguf_state_ownership.py` injects first, middle and last
+allocation failures into real session methods. `tests/test_unit_qwen35_gguf_state_storage.py`
+checks canonical borrowing, rollback replacement, active capture leases and clone
+publication failure. `tests/test_unit_qwen35_gguf_prefix_state.py` covers arena
+capture, reuse, copy failures, synchronization failure and delayed cleanup.
+Existing prefix, packed-workspace and MTP tests exercise their integrated consumers.
 
 Most of these tests use fake runtime allocations; the GPU node has an explicit
 availability guard. Public real-model generation remains a separate integration

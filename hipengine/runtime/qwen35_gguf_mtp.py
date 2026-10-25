@@ -1359,30 +1359,34 @@ class Qwen35GGUFTransactionalVerifier:
             producer_capture_initial_state=initial_state_only,
             initial_state_only=initial_state_only,
         )
-        if getattr(target, "_dms_backend", None) is not None:
-            # A compact-DMS row keeps its KV in the store, not in the resident
-            # span planes this journal snapshots, so the store's own
-            # transaction has to carry the KV side of the cycle.
-            self.journal = _DMSStoreJournal(
-                target=target,
-                resident=self.journal,
-                max_rows=self.max_candidate_budget + 1,
+        try:
+            if getattr(target, "_dms_backend", None) is not None:
+                # Compact DMS owns KV outside the resident span planes.
+                self.journal = _DMSStoreJournal(
+                    target=target,
+                    resident=self.journal,
+                    max_rows=self.max_candidate_budget + 1,
+                )
+            self._primary_journal = self.journal
+            self._serial_journal: _StateJournal | None = None
+            self._buckets: dict[object, Qwen35GGUFVerifyGraphBucket] = {}
+            self._prepared: Qwen35GGUFPreparedVerify | None = None
+            self._accept_kernel = resolve(
+                backend=self.backend,
+                layer="dflash_accept_chain",
+                quant=self.quant,
+                variant="i32",
             )
-        self._primary_journal = self.journal
-        self._serial_journal: _StateJournal | None = None
-        self._buckets: dict[object, Qwen35GGUFVerifyGraphBucket] = {}
-        self._prepared: Qwen35GGUFPreparedVerify | None = None
-        self._accept_kernel = resolve(
-            backend=self.backend,
-            layer="dflash_accept_chain",
-            quant=self.quant,
-            variant="i32",
-        )
-        self._accept_library = build_dflash_accept(
-            load=True,
-            compiler_version=target.compiler_version,
-            require_cached=target.require_cached_build,
-        )
+            self._accept_library = build_dflash_accept(
+                load=True,
+                compiler_version=target.compiler_version,
+                require_cached=target.require_cached_build,
+            )
+        except BaseException:
+            # Construction failure leaves no verifier for the caller to close.
+            # Release its journal, including borrowed producer-state captures.
+            self.journal.close()
+            raise
         self.last_device_proposal_fallback_reason: str | None = None
         self.closed = False
 

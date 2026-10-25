@@ -42,10 +42,10 @@ def _fake_session(monkeypatch, *, capacity: int = 73_728):
 
     monkeypatch.setattr(gguf_runner, "free", tracking_free)
     session = object.__new__(Qwen35GGUFResidentSession)
+    session.scratch = SimpleNamespace(max_positions=capacity)
     session.__dict__.update(
         runner=_fake_dense_qwen36_runner(),
         runtime=SimpleNamespace(),
-        scratch=SimpleNamespace(max_positions=capacity),
         backend="hip_gfx1100",
         use_expert_sidecar=False,
         _runtime_state_library=None,

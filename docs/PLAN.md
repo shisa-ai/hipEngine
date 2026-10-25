@@ -1206,8 +1206,13 @@ in `hipengine/runtime/qwen35_gguf_prefill_plan.py`; its explicit geometry and
 resolved-policy inputs serve both allocation and exact initial workspace pricing.
 Session code retains policy, admission and growth publication; serving adapters
 resolve session chunk policy before supplying route-specific sizing callbacks.
+Canonical root/slot bindings, provisional verifier storage and reusable rollback
+buffers live in `hipengine/runtime/qwen35_gguf_state.py`; cache-owned prefix
+snapshots and arena copy cleanup live in `hipengine/runtime/qwen35_gguf_prefix_state.py`.
+Existing speculative journals retain cycle ordering. Session adapters retain
+kernel orchestration, graph synchronization and KV/cursor publication.
 The [runtime structure reference](reference/QWEN-GGUF-RUNTIME.md) describes these
-boundaries and the remaining session/execution separation.
+boundaries and the remaining layer-execution/diagnostics separation.
 
 ### Backend Plugin
 

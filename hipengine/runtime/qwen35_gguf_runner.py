@@ -66,6 +66,12 @@ from hipengine.runtime.qwen35_gguf_prefill_plan import (
     _prefill_scratch_lifetimes_overlap as _prefill_scratch_lifetimes_overlap,
     build_prefill_scratch_plan,
 )
+from hipengine.runtime.qwen35_gguf_prefix_state import (
+    Qwen35GGUFPrefixStateSnapshot, _GGUFPrefixSnapshotArenaPool,
+)
+from hipengine.runtime.qwen35_gguf_state import (
+    ResidentStateStorage, StateMemory, resident_state_field,
+)
 from hipengine.runtime.qwen35_gguf_planning import (
     Qwen35GGUFKVCapacityEstimate,
     Qwen35GGUFResidentBreakdown,
@@ -2087,18 +2093,11 @@ class _GGUFPackedARAttentionWorkspace:
             raise RuntimeError("GGUF packed AR attention requires materialized weights")
         num_splits = (max_context_len + chunk_size - 1) // chunk_size
         num_q_heads = int(runner.weights.config.head_count)
-        partial_out = malloc(
+        partial_out, partial_m, partial_l = StateMemory(runtime, malloc, free).allocate_all((
             rows * int(runner.q_width) * num_splits * DType.FP32.itemsize,
-            runtime=runtime,
-        )
-        partial_m = malloc(
             rows * num_q_heads * num_splits * DType.FP32.itemsize,
-            runtime=runtime,
-        )
-        partial_l = malloc(
             rows * num_q_heads * num_splits * DType.FP32.itemsize,
-            runtime=runtime,
-        )
+        ))
         return cls(
             rows=rows,
             chunk_size=chunk_size,
@@ -15577,116 +15576,6 @@ def _gguf_device_kv_copy_segments(
     return tuple(segments)
 
 
-class _GGUFPrefixSnapshotArenaPool:
-    """Recycle whole snapshot arenas so a steady-state capture is memcpy-only.
-
-    A capture used to ``malloc`` one buffer per GDN conv and recurrent state -
-    ~54 allocations on a 27-GDN-layer model - plus a device sync, and paid that
-    on every eligible turn whether or not the snapshot was ever reused. The
-    state geometry is identical for every snapshot of a given model, so the
-    arena from an evicted snapshot fits the next capture exactly. Retaining a
-    few makes the common capture zero-allocation; the cost was never the
-    copying.
-    """
-
-    def __init__(self, runtime: HipRuntime, *, max_retained: int = 4) -> None:
-        self.runtime = runtime
-        self.max_retained = max(0, int(max_retained))
-        self._free: dict[int, list[DeviceMemoryArena]] = {}
-        self.acquires = 0
-        self.arena_allocations = 0
-        self.closed = False
-
-    def acquire(self, nbytes: int) -> DeviceMemoryArena:
-        if self.closed:
-            raise RuntimeError("prefix snapshot arena pool is closed")
-        capacity = max(1, int(nbytes))
-        self.acquires += 1
-        bucket = self._free.get(capacity)
-        if bucket:
-            arena = bucket.pop()
-            arena.rewind()
-            return arena
-        self.arena_allocations += 1
-        return DeviceMemoryArena.create(capacity, runtime=self.runtime)
-
-    def release(self, arena: DeviceMemoryArena) -> None:
-        """Take an arena back, or free it when the retention budget is full."""
-
-        if self.closed or arena.closed:
-            if not arena.closed:
-                arena.close()
-            return
-        bucket = self._free.setdefault(int(arena.capacity_bytes), [])
-        if len(bucket) >= self.max_retained:
-            arena.close()
-            return
-        arena.rewind()
-        bucket.append(arena)
-
-    def close(self) -> None:
-        if self.closed:
-            return
-        self.closed = True
-        for bucket in self._free.values():
-            for arena in bucket:
-                arena.close()
-        self._free.clear()
-
-    def stats(self) -> dict[str, int]:
-        return {
-            "acquires": int(self.acquires),
-            "arena_allocations": int(self.arena_allocations),
-            "retained_arenas": int(sum(len(b) for b in self._free.values())),
-        }
-
-
-@dataclass
-class Qwen35GGUFPrefixStateSnapshot:
-    """Cache-owned device snapshot for one exact GGUF hybrid-state boundary."""
-
-    runtime: HipRuntime
-    runner: object
-    kv_storage_dtype: DType
-    kv_storage_layout: str
-    position: int
-    block_ids: tuple[int, ...]
-    backing: object
-    layer_conv_states: tuple[DeviceBuffer | None, ...]
-    layer_recurrent_states: tuple[DeviceBuffer | None, ...]
-    closed: bool = False
-    # When the state came from one pooled arena, the views are non-owning and
-    # the arena is returned to the pool on close instead of freed per buffer.
-    arena: DeviceMemoryArena | None = None
-    arena_pool: "_GGUFPrefixSnapshotArenaPool | None" = None
-
-    @property
-    def nbytes(self) -> int:
-        return sum(
-            int(buffer.nbytes)
-            for buffer in (*self.layer_conv_states, *self.layer_recurrent_states)
-            if buffer is not None
-        )
-
-    def close(self) -> None:
-        if self.closed:
-            return
-        if self.arena is not None:
-            # Arena-backed: the per-layer buffers are views into one owning
-            # allocation, so freeing them individually would be a double free.
-            if self.arena_pool is not None:
-                self.arena_pool.release(self.arena)
-            else:
-                self.arena.close()
-        else:
-            for buffer in reversed(
-                (*self.layer_conv_states, *self.layer_recurrent_states)
-            ):
-                if buffer is not None:
-                    free(buffer, runtime=self.runtime)
-        self.closed = True
-
-
 def _normalize_external_dms_prefill_mode(value: str) -> str:
     mode = str(value).strip().lower()
     if mode not in {"dense_pool", "layer_outer"}:
@@ -15975,9 +15864,9 @@ class Qwen35GGUFResidentSession:
     dms_prefill_mode: str = "dense_pool"
     dms_backend_factory: Callable | None = None
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
-    scratch: object | None = field(default=None, init=False)
-    _target_scratch_owner: object | None = field(default=None, init=False)
-    _target_layout: Qwen35GGUFResidentTargetLayout | None = field(default=None, init=False)
+    scratch = resident_state_field("canonical", "scratch")
+    _target_scratch_owner = resident_state_field("canonical", "scratch_owner")
+    _target_layout = resident_state_field("canonical", "layout")
     _owns_runner: bool = field(default=True, init=False)
     _token_buf: object | None = field(default=None, init=False)
     _hidden_a: object | None = field(default=None, init=False)
@@ -15991,11 +15880,11 @@ class Qwen35GGUFResidentSession:
     _lm_block_indices: object | None = field(default=None, init=False)
     _lm_out_index: object | None = field(default=None, init=False)
     _lm_out_value: object | None = field(default=None, init=False)
-    _verify_hidden_seed_buf: object | None = field(default=None, init=False)
-    _verify_token_ids_i64: object | None = field(default=None, init=False)
-    _verify_token_counter_i64: object | None = field(default=None, init=False)
-    _verify_block_rows_capacity: int = field(default=0, init=False)
-    _verify_hidden_seed_rows_populated: int = field(default=0, init=False)
+    _verify_hidden_seed_buf = resident_state_field("block", "hidden_seed")
+    _verify_token_ids_i64 = resident_state_field("block", "token_ids")
+    _verify_token_counter_i64 = resident_state_field("block", "token_counter")
+    _verify_block_rows_capacity = resident_state_field("block", "rows")
+    _verify_hidden_seed_rows_populated = resident_state_field("block", "populated")
     _verify_logits_buf: object | None = field(default=None, init=False)
     _verify_lm_block_values: object | None = field(default=None, init=False)
     _verify_lm_block_indices_i32: object | None = field(default=None, init=False)
@@ -16003,15 +15892,15 @@ class Qwen35GGUFResidentSession:
     _verify_lm_out_values: object | None = field(default=None, init=False)
     _verify_lm_q8_1: object | None = field(default=None, init=False)
     _verify_lm_rows_capacity: int = field(default=0, init=False)
-    _verify_hidden_f32_a: object | None = field(default=None, init=False)
-    _verify_hidden_f32_b: object | None = field(default=None, init=False)
-    _verify_conv_out_f32: object | None = field(default=None, init=False)
-    _verify_linear_conv_state_rows: tuple[object | None, ...] = field(default=(), init=False)
-    _verify_linear_recurrent_state_rows: tuple[object | None, ...] = field(default=(), init=False)
-    _verify_linear_state_rows_capacity: int = field(default=0, init=False)
-    _verify_linear_conv_initial_snapshots: tuple[object | None, ...] = field(default=(), init=False)
-    _verify_linear_recurrent_initial_snapshots: tuple[object | None, ...] = field(default=(), init=False)
-    _verify_linear_initial_snapshot_users: int = field(default=0, init=False)
+    _verify_hidden_f32_a = resident_state_field("block", "hidden_a")
+    _verify_hidden_f32_b = resident_state_field("block", "hidden_b")
+    _verify_conv_out_f32 = resident_state_field("block", "conv_out")
+    _verify_linear_conv_state_rows = resident_state_field("linear_rows", "conv")
+    _verify_linear_recurrent_state_rows = resident_state_field("linear_rows", "recurrent")
+    _verify_linear_state_rows_capacity = resident_state_field("linear_rows", "rows")
+    _verify_linear_conv_initial_snapshots = resident_state_field("initial", "conv")
+    _verify_linear_recurrent_initial_snapshots = resident_state_field("initial", "recurrent")
+    _verify_linear_initial_snapshot_users = resident_state_field("initial", "users")
     _verify_linear_state_src_conv_table_buf: object | None = field(default=None, init=False)
     _verify_linear_state_src_recurrent_table_buf: object | None = field(default=None, init=False)
     _verify_linear_state_dst_conv_table_buf: object | None = field(default=None, init=False)
@@ -16031,6 +15920,14 @@ class Qwen35GGUFResidentSession:
     # views observe the same allocations, geometry, and deferred-scatter
     # dirtiness (see the serving-load stability contracts in
     # tests/test_unit_gguf_packed_workspace_stability.py).
+
+    def _state_storage(self) -> ResidentStateStorage:
+        # Lazy construction also supports diagnostic sessions made with __new__.
+        state = self.__dict__.get("_resident_state_storage")
+        if state is None:
+            state = ResidentStateStorage()
+            self.__dict__["_resident_state_storage"] = state
+        return state
 
     def _packed_workspace_state(self) -> _PackedWorkspaceState:
         state = self.__dict__.get("_packed_ws_state")
@@ -16176,7 +16073,7 @@ class Qwen35GGUFResidentSession:
     _int8_prefill_oracle_observed_peak_owners: int = field(default=0, init=False)
     _int8_prefill_retained_block_table: DeviceBuffer | None = field(default=None, init=False)
     _int8_prefill_lifetime_plan: _GGUFInt8PrefillLifetimePlan | None = field(default=None, init=False)
-    _linear_state_snapshot_backups: tuple[object, ...] = field(default=(), init=False)
+    _linear_state_snapshot_backups = resident_state_field("rollback", "buffers")
     _runtime_state_library: object | None = field(default=None, init=False)
     _lm_head_library: object | None = field(default=None, init=False)
     _native_sampler_workspace: NativeSamplerWorkspace | None = field(
@@ -16212,7 +16109,7 @@ class Qwen35GGUFResidentSession:
     _token_host: np.ndarray = field(default_factory=lambda: np.empty((1,), dtype=np.int64), init=False)
     _logits_host: np.ndarray | None = field(default=None, init=False)
     _buffers: tuple[object, ...] = field(default=(), init=False)
-    _position: int = field(default=0, init=False)
+    _position = resident_state_field("canonical", "position")
     _last_target_hidden_ptr: int = field(default=0, init=False)
     _reset_current_slot_only: bool = field(default=False, init=False)
     _hidden_seed_fp32_populated: bool = field(default=False, init=False)
@@ -16265,11 +16162,9 @@ class Qwen35GGUFResidentSession:
     _native_spec_b6_target_graph_n2: object | None = field(default=None, init=False, repr=False)
     _native_spec_b7_target_graph_n2: object | None = field(default=None, init=False, repr=False)
     _native_spec_selected_hidden_bf16: object | None = field(default=None, init=False, repr=False)
-    _device_kv_pool: DeviceChunkedKVPool | GlobalDeviceKVPool | None = field(
-        default=None, init=False, repr=False
-    )
+    _device_kv_pool = resident_state_field("canonical", "kv_pool")
     _workspace_kv_pool: GlobalDeviceKVPool | None = field(default=None, init=False, repr=False)
-    _device_kv_allocation: DeviceKVPoolAllocation | None = field(default=None, init=False, repr=False)
+    _device_kv_allocation = resident_state_field("canonical", "kv_allocation")
     _device_kv_layout: Qwen35GGUFKVChunkLayout | None = field(default=None, init=False, repr=False)
     _device_kv_graph_handles: dict[int, object] = field(default_factory=dict, init=False, repr=False)
     _dms_source: object | None = field(default=None, init=False, repr=False)
@@ -17790,6 +17685,10 @@ class Qwen35GGUFResidentSession:
                 f"resident slot view {index} outside [1, {int(owner.slot_count)})"
             )
         view = copy(self)
+        view.__dict__["_resident_state_storage"] = ResidentStateStorage()
+        view._state_storage().canonical.owns_scratch = False
+        # A prefix arena pool belongs to one session, never to a shallow copy.
+        view.__dict__.pop("_gguf_prefix_snapshot_arena_pool", None)
         view.max_batch_size = 1
         view.scratch = owner.for_slot(index)
         view._target_scratch_owner = owner
@@ -18147,82 +18046,19 @@ class Qwen35GGUFResidentSession:
         if len(block_ids) != prefix_pages:
             raise ValueError("GGUF prefix snapshot allocation does not cover its boundary")
 
-        runtime = self.runtime or get_hip_runtime()
-        conv_backups: list[DeviceBuffer | None] = []
-        recurrent_backups: list[DeviceBuffer | None] = []
-        allocated: list[DeviceBuffer] = []
-        # One pooled arena backs every per-layer view: the old path issued two
-        # mallocs per GDN layer (~54 on a 27-layer model) on every eligible
-        # turn, reused or not. Views are carved with the arena's own alignment,
-        # so sizing must account for it rather than summing raw byte counts.
-        pool = self._prefix_snapshot_arena_pool()
-        arena_capacity = 0
-        for conv_state, recurrent_state in zip(
-            self.scratch.layer_conv_states,
-            self.scratch.layer_recurrent_states,
-            strict=True,
-        ):
-            if conv_state is None or recurrent_state is None:
-                continue
-            for nbytes in (int(conv_state.nbytes), int(recurrent_state.nbytes)):
-                arena_capacity += ((nbytes + 4095) // 4096) * 4096
-        arena = pool.acquire(max(4096, arena_capacity))
-        try:
-            for layer_id, (conv_state, recurrent_state) in enumerate(
-                zip(
-                    self.scratch.layer_conv_states,
-                    self.scratch.layer_recurrent_states,
-                    strict=True,
-                )
-            ):
-                if (conv_state is None) != (recurrent_state is None):
-                    raise ValueError(
-                        f"GGUF prefix snapshot partial linear state at layer {layer_id}"
-                    )
-                if conv_state is None:
-                    conv_backups.append(None)
-                    recurrent_backups.append(None)
-                    continue
-                assert recurrent_state is not None
-                conv_backup = arena.allocate(int(conv_state.nbytes))
-                recurrent_backup = arena.allocate(int(recurrent_state.nbytes))
-                conv_backups.append(conv_backup)
-                recurrent_backups.append(recurrent_backup)
-                runtime.memcpy_async(
-                    conv_backup.ptr,
-                    conv_state.ptr,
-                    conv_state.nbytes,
-                    HipMemcpyKind.DEVICE_TO_DEVICE,
-                    int(stream),
-                )
-                runtime.memcpy_async(
-                    recurrent_backup.ptr,
-                    recurrent_state.ptr,
-                    recurrent_state.nbytes,
-                    HipMemcpyKind.DEVICE_TO_DEVICE,
-                    int(stream),
-                )
-            if stream:
-                runtime.stream_synchronize(int(stream))
-            else:
-                runtime.device_synchronize()
-        except Exception:
-            for buffer in reversed(allocated):
-                free(buffer, runtime=runtime)
-            pool.release(arena)
-            raise
-        return Qwen35GGUFPrefixStateSnapshot(
-            runtime=runtime,
+        linear = self._state_storage().canonical.linear()
+        return Qwen35GGUFPrefixStateSnapshot.capture(
+            runtime=self.runtime or get_hip_runtime(),
             runner=self.runner,
             kv_storage_dtype=self.kv_storage_dtype,
             kv_storage_layout=self.kv_storage_layout,
             position=boundary,
             block_ids=block_ids,
             backing=allocation.backing,
-            layer_conv_states=tuple(conv_backups),
-            layer_recurrent_states=tuple(recurrent_backups),
-            arena=arena,
-            arena_pool=pool,
+            layer_conv_states=linear.conv,
+            layer_recurrent_states=linear.recurrent,
+            arena_pool=self._prefix_snapshot_arena_pool(),
+            stream=stream,
         )
 
     def _prefix_snapshot_arena_pool(self) -> "_GGUFPrefixSnapshotArenaPool":
@@ -18663,8 +18499,6 @@ class Qwen35GGUFResidentSession:
         return copied_bytes
 
     def _commit_prefix_state_clone(self, boundary: int, *, stream: int) -> None:
-        self._set_full_attention_position_device(int(boundary), stream=int(stream))
-        self._position = int(boundary)
         # Slot-local clone must not discard owner-wide deferred packed decode
         # state that other in-flight rows still need: scatter it back to the
         # recorded sessions first, then clear the shared bookkeeping.
@@ -18674,6 +18508,8 @@ class Qwen35GGUFResidentSession:
                     "GGUF slot state clone could not flush deferred packed"
                     " decode state owned by other resident rows"
                 )
+        self._set_full_attention_position_device(int(boundary), stream=int(stream))
+        self._position = int(boundary)
         self._hidden_seed_fp32_populated = False
         self._last_pre_output_norm_hidden = None
         self._last_layer_output_hidden = {}
@@ -20137,31 +19973,11 @@ class Qwen35GGUFResidentSession:
         verifier path and is independent of the model math we want to measure.
         """
 
-        if self.scratch is None:
-            raise RuntimeError("GGUF resident session is closed")
-        runtime = self.runtime or get_hip_runtime()
-        states: list[DeviceBuffer] = []
-        for conv_state, recurrent_state in zip(
-            self.scratch.layer_conv_states,
-            self.scratch.layer_recurrent_states,
-            strict=True,
-        ):
-            for state in (conv_state, recurrent_state):
-                if state is not None:
-                    states.append(state)
-        backups = list(self._linear_state_snapshot_backups)
-        if len(backups) != len(states) or any(
-            int(backup.nbytes) != int(state.nbytes)
-            for state, backup in zip(states, backups, strict=False)
-        ):
-            for backup in reversed(backups):
-                free(backup, runtime=runtime)
-            backups = [malloc(state.nbytes, runtime=runtime) for state in states]
-            self._linear_state_snapshot_backups = tuple(backups)
-        snapshot = list(zip(states, backups, strict=True))
-        for state, backup in snapshot:
-            runtime.memcpy(backup.ptr, state.ptr, state.nbytes, HipMemcpyKind.DEVICE_TO_DEVICE)
-        return snapshot
+        state = self._state_storage()
+        return state.rollback.capture(
+            state.canonical.linear(),
+            StateMemory(self.runtime or get_hip_runtime(), malloc, free),
+        )
 
     def _restore_linear_state_snapshot(
         self,
@@ -20172,8 +19988,7 @@ class Qwen35GGUFResidentSession:
         if self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
         runtime = self.runtime or get_hip_runtime()
-        for state, backup in snapshot:
-            runtime.memcpy(state.ptr, backup.ptr, state.nbytes, HipMemcpyKind.DEVICE_TO_DEVICE)
+        self._state_storage().rollback.restore(snapshot, runtime)
         self._position = int(position)
         self.scratch.position_host[0] = int(position)
         self.scratch.context_host[0] = int(position) + 1
@@ -28327,81 +28142,25 @@ class Qwen35GGUFResidentSession:
         )
 
     def _ensure_verify_block_buffers(self, rows: int, *, runtime: HipRuntime) -> None:
-        rows = int(rows)
-        if rows <= 0:
-            raise ValueError("verify block rows must be positive")
-        if rows <= int(self._verify_block_rows_capacity):
-            return
-        for buffer in (
-            self._verify_token_counter_i64,
-            self._verify_token_ids_i64,
-            self._verify_hidden_seed_buf,
-            self._verify_hidden_f32_a,
-            self._verify_hidden_f32_b,
-            self._verify_conv_out_f32,
-        ):
-            if buffer is not None:
-                free(buffer, runtime=runtime)
         if self.runner is None:
             raise RuntimeError("GGUF resident session is closed")
-        self._verify_hidden_seed_buf = malloc(
-            rows * self.runner.hidden_size * DType.FP32.itemsize,
-            runtime=runtime,
+        self._state_storage().block.ensure(
+            rows=rows, hidden_size=self.runner.hidden_size,
+            qkv_width=int(getattr(self.runner, "linear_qkv_width", 0)),
+            memory=StateMemory(runtime, malloc, free),
         )
-        self._verify_hidden_f32_a = malloc(
-            rows * self.runner.hidden_size * DType.FP32.itemsize,
-            runtime=runtime,
-        )
-        self._verify_hidden_f32_b = malloc(
-            rows * self.runner.hidden_size * DType.FP32.itemsize,
-            runtime=runtime,
-        )
-        qkv_width = int(getattr(self.runner, "linear_qkv_width", 0))
-        self._verify_conv_out_f32 = (
-            malloc(rows * qkv_width * DType.FP32.itemsize, runtime=runtime)
-            if qkv_width > 0 else None
-        )
-        self._verify_token_ids_i64 = malloc(rows * DType.INT64.itemsize, runtime=runtime)
-        self._verify_token_counter_i64 = malloc(DType.INT64.itemsize, runtime=runtime)
-        self._verify_block_rows_capacity = rows
-        self._verify_hidden_seed_rows_populated = 0
 
     def _free_verify_linear_state_row_buffers(self, *, runtime: HipRuntime) -> None:
-        for buffer in (
-            *self._verify_linear_recurrent_state_rows,
-            *self._verify_linear_conv_state_rows,
-        ):
-            if buffer is not None:
-                free(buffer, runtime=runtime)
-        self._verify_linear_conv_state_rows = ()
-        self._verify_linear_recurrent_state_rows = ()
-        self._verify_linear_state_rows_capacity = 0
+        self._state_storage().linear_rows.close(StateMemory(runtime, malloc, free))
 
     def _ensure_verify_linear_state_row_buffers(self, rows: int, *, runtime: HipRuntime) -> None:
-        rows = int(rows)
-        if rows <= 0:
-            raise ValueError("verify linear-state rows must be positive")
-        if rows <= int(self._verify_linear_state_rows_capacity):
-            return
-        self._free_verify_linear_state_row_buffers(runtime=runtime)
         if self.runner is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
-        conv_rows: list[object | None] = []
-        recurrent_rows: list[object | None] = []
-        for conv_state, recurrent_state in zip(
-            self.scratch.layer_conv_states,
-            self.scratch.layer_recurrent_states,
-            strict=True,
-        ):
-            if conv_state is None or recurrent_state is None:
-                conv_rows.append(None)
-                recurrent_rows.append(None)
-                continue
-            conv_rows.append(malloc(rows * int(conv_state.nbytes), runtime=runtime))
-            recurrent_rows.append(malloc(rows * int(recurrent_state.nbytes), runtime=runtime))
-        self._verify_linear_conv_state_rows = tuple(conv_rows)
-        self._verify_linear_recurrent_state_rows = tuple(recurrent_rows)
-        self._verify_linear_state_rows_capacity = rows
+        state = self._state_storage()
+        state.linear_rows.ensure(
+            state.canonical.linear(), rows=rows,
+            memory=StateMemory(runtime, malloc, free),
+        )
 
     def _verify_linear_state_row_pair(self, layer_id: int) -> tuple[object, object] | None:
         if (
@@ -28420,15 +28179,7 @@ class Qwen35GGUFResidentSession:
         *,
         runtime: HipRuntime,
     ) -> None:
-        for buffer in (
-            *self._verify_linear_recurrent_initial_snapshots,
-            *self._verify_linear_conv_initial_snapshots,
-        ):
-            if buffer is not None:
-                free(buffer, runtime=runtime)
-        self._verify_linear_conv_initial_snapshots = ()
-        self._verify_linear_recurrent_initial_snapshots = ()
-        self._verify_linear_initial_snapshot_users = 0
+        self._state_storage().initial.close(StateMemory(runtime, malloc, free))
 
     def _ensure_verify_linear_initial_snapshot_buffers(
         self,
@@ -28437,71 +28188,10 @@ class Qwen35GGUFResidentSession:
     ) -> None:
         if self.runner is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
-        conv_states = tuple(self.scratch.layer_conv_states)
-        recurrent_states = tuple(self.scratch.layer_recurrent_states)
-        ready = (
-            len(self._verify_linear_conv_initial_snapshots) == len(conv_states)
-            and len(self._verify_linear_recurrent_initial_snapshots)
-            == len(recurrent_states)
-            and all(
-                snapshot is None
-                if state is None
-                else snapshot is not None
-                and int(snapshot.nbytes) == int(state.nbytes)
-                for state, snapshot in zip(
-                    conv_states,
-                    self._verify_linear_conv_initial_snapshots,
-                    strict=True,
-                )
-            )
-            and all(
-                snapshot is None
-                if state is None
-                else snapshot is not None
-                and int(snapshot.nbytes) == int(state.nbytes)
-                for state, snapshot in zip(
-                    recurrent_states,
-                    self._verify_linear_recurrent_initial_snapshots,
-                    strict=True,
-                )
-            )
-        )
-        if ready:
-            return
-        if self._verify_linear_initial_snapshot_users:
-            raise RuntimeError("cannot replace an active initial-state snapshot binding")
-        self._free_verify_linear_initial_snapshot_buffers(runtime=runtime)
-        allocated: list[object] = []
-        conv_snapshots: list[object | None] = []
-        recurrent_snapshots: list[object | None] = []
-        try:
-            for conv_state, recurrent_state in zip(
-                conv_states,
-                recurrent_states,
-                strict=True,
-            ):
-                if conv_state is None or recurrent_state is None:
-                    if conv_state is not None or recurrent_state is not None:
-                        raise RuntimeError("linear-attention state families are not paired")
-                    conv_snapshots.append(None)
-                    recurrent_snapshots.append(None)
-                    continue
-                conv_snapshot = malloc(int(conv_state.nbytes), runtime=runtime)
-                allocated.append(conv_snapshot)
-                recurrent_snapshot = malloc(
-                    int(recurrent_state.nbytes),
-                    runtime=runtime,
-                )
-                allocated.append(recurrent_snapshot)
-                conv_snapshots.append(conv_snapshot)
-                recurrent_snapshots.append(recurrent_snapshot)
-        except BaseException:
-            for buffer in reversed(allocated):
-                free(buffer, runtime=runtime)
-            raise
-        self._verify_linear_conv_initial_snapshots = tuple(conv_snapshots)
-        self._verify_linear_recurrent_initial_snapshots = tuple(
-            recurrent_snapshots
+        state = self._state_storage()
+        state.initial.ensure(
+            state.canonical.linear(), rows=1, exact=True,
+            memory=StateMemory(runtime, malloc, free),
         )
 
     def _verify_linear_initial_snapshot_pair(
@@ -28687,20 +28377,25 @@ class Qwen35GGUFResidentSession:
             or int(workspace.rows) < rows
             or int(workspace.num_splits) < required_splits
         ):
-            if workspace is not None:
-                self._invalidate_live_packed_decode_graphs()
-                synchronize = getattr(runtime, "device_synchronize", None)
-                if callable(synchronize):
-                    synchronize()
-                for buffer in reversed(workspace.buffers):
-                    free(buffer, runtime=runtime)
-            workspace = _GGUFPackedARAttentionWorkspace.allocate(
+            replacement = _GGUFPackedARAttentionWorkspace.allocate(
                 self.runner,
                 rows=rows,
                 max_context_len=max_context_len,
                 runtime=runtime,
             )
+            try:
+                if workspace is not None:
+                    self._invalidate_live_packed_decode_graphs()
+                    synchronize = getattr(runtime, "device_synchronize", None)
+                    if callable(synchronize):
+                        synchronize()
+            except BaseException:
+                StateMemory(runtime, malloc, free).free_all(replacement.buffers)
+                raise
+            previous, workspace = workspace, replacement
             self._packed_ar_attention_workspace = workspace
+            if previous is not None:
+                StateMemory(runtime, malloc, free).free_all(previous.buffers)
         return workspace
 
     def _invalidate_live_packed_decode_graphs(self) -> int:
@@ -32317,39 +32012,31 @@ class Qwen35GGUFResidentSession:
         self._decode_graph_submission_contexts.clear()
         return proofs
 
-    def _close_resident_slot_view_buffers(self, *, runtime: HipRuntime) -> None:
-        """Release allocations grown by one lightweight resident slot view."""
+    def _check_state_capture_released(self) -> None:
+        if self._verify_linear_initial_snapshot_users:
+            raise RuntimeError("cannot free an active initial-state snapshot binding")
 
-        if getattr(self, "_resident_batch_owner", None) is None:
-            raise RuntimeError("resident slot-view cleanup requires a batch owner")
-        pool = self.__dict__.pop("_gguf_prefix_snapshot_arena_pool", None)
+    def _close_prefix_snapshot_pool(self) -> None:
+        pool = self.__dict__.get("_gguf_prefix_snapshot_arena_pool")
         if pool is not None:
             pool.close()
-        self._release_gapped_prefill_buffers(runtime=runtime)
-        for buffer in (
-            self._verify_lm_out_values,
-            self._verify_lm_out_indices_i32,
-            self._verify_lm_block_indices_i32,
-            self._verify_lm_block_values,
-            self._verify_lm_q8_1,
-            self._verify_logits_buf,
-            self._verify_token_counter_i64,
-            self._verify_token_ids_i64,
-            self._verify_hidden_seed_buf,
-            self._verify_hidden_f32_a,
-            self._verify_hidden_f32_b,
-            self._verify_conv_out_f32,
-        ):
-            if buffer is not None:
-                free(buffer, runtime=runtime)
-        self._verify_hidden_seed_buf = None
-        self._verify_hidden_f32_a = None
-        self._verify_hidden_f32_b = None
-        self._verify_conv_out_f32 = None
-        self._verify_token_ids_i64 = None
-        self._verify_token_counter_i64 = None
-        self._verify_block_rows_capacity = 0
-        self._verify_hidden_seed_rows_populated = 0
+            self.__dict__.pop("_gguf_prefix_snapshot_arena_pool", None)
+
+    def _close_verify_state_buffers(self, *, runtime: HipRuntime) -> None:
+        state = self._state_storage()
+        memory = StateMemory(runtime, malloc, free)
+        # Producer captures must be released by their journal before teardown.
+        if state.initial.users:
+            raise RuntimeError("cannot free an active initial-state snapshot binding")
+        state.rollback.close(memory)
+        state.initial.close(memory)
+        state.linear_rows.close(memory)
+        state.block.close(memory)
+        memory.free_all((
+            self._verify_logits_buf, self._verify_lm_q8_1,
+            self._verify_lm_block_values, self._verify_lm_block_indices_i32,
+            self._verify_lm_out_indices_i32, self._verify_lm_out_values,
+        ))
         self._verify_lm_out_values = None
         self._verify_lm_out_indices_i32 = None
         self._verify_lm_block_indices_i32 = None
@@ -32357,8 +32044,16 @@ class Qwen35GGUFResidentSession:
         self._verify_lm_q8_1 = None
         self._verify_logits_buf = None
         self._verify_lm_rows_capacity = 0
-        self._free_verify_linear_state_row_buffers(runtime=runtime)
-        self._free_verify_linear_initial_snapshot_buffers(runtime=runtime)
+
+    def _close_resident_slot_view_buffers(self, *, runtime: HipRuntime) -> None:
+        """Release allocations grown by one lightweight resident slot view."""
+
+        if getattr(self, "_resident_batch_owner", None) is None:
+            raise RuntimeError("resident slot-view cleanup requires a batch owner")
+        self._check_state_capture_released()
+        self._close_prefix_snapshot_pool()
+        self._release_gapped_prefill_buffers(runtime=runtime)
+        self._close_verify_state_buffers(runtime=runtime)
         for buffer in reversed(self._buffers):
             if buffer is not None:
                 free(buffer, runtime=runtime)
@@ -32383,11 +32078,16 @@ class Qwen35GGUFResidentSession:
 
     def close(self) -> None:
         runtime = self.runtime or get_hip_runtime()
-        pool = self.__dict__.pop("_gguf_prefix_snapshot_arena_pool", None)
-        if pool is not None:
-            pool.close()
-        for view in reversed(tuple(self.__dict__.pop("_resident_slot_views", ()))):
+        # Refuse an invalid close order before mutating any live resource. The
+        # journal must release its borrowed producer buffers before its target.
+        self._check_state_capture_released()
+        views = tuple(self.__dict__.get("_resident_slot_views", ()))
+        for view in views:
+            view._check_state_capture_released()
+        self._close_prefix_snapshot_pool()
+        for view in reversed(views):
             view._close_resident_slot_view_buffers(runtime=runtime)
+        self.__dict__.pop("_resident_slot_views", None)
         recorder = self._prefill_flight_recorder
         if recorder is not None:
             # Never unmap the GPU-visible cursor until all queued markers retire.
@@ -32448,39 +32148,7 @@ class Qwen35GGUFResidentSession:
         if native_sampler is not None:
             native_sampler.close()
             self._native_sampler_workspace = None
-        for buffer in (
-            self._verify_lm_out_values,
-            self._verify_lm_out_indices_i32,
-            self._verify_lm_block_indices_i32,
-            self._verify_lm_block_values,
-            self._verify_lm_q8_1,
-            self._verify_logits_buf,
-            self._verify_token_counter_i64,
-            self._verify_token_ids_i64,
-            self._verify_hidden_seed_buf,
-            self._verify_hidden_f32_a,
-            self._verify_hidden_f32_b,
-            self._verify_conv_out_f32,
-        ):
-            if buffer is not None:
-                free(buffer, runtime=runtime)
-        self._verify_hidden_seed_buf = None
-        self._verify_hidden_f32_a = None
-        self._verify_hidden_f32_b = None
-        self._verify_conv_out_f32 = None
-        self._verify_token_ids_i64 = None
-        self._verify_token_counter_i64 = None
-        self._verify_block_rows_capacity = 0
-        self._verify_hidden_seed_rows_populated = 0
-        self._verify_lm_out_values = None
-        self._verify_lm_out_indices_i32 = None
-        self._verify_lm_block_indices_i32 = None
-        self._verify_lm_block_values = None
-        self._verify_lm_q8_1 = None
-        self._verify_logits_buf = None
-        self._verify_lm_rows_capacity = 0
-        self._free_verify_linear_state_row_buffers(runtime=runtime)
-        self._free_verify_linear_initial_snapshot_buffers(runtime=runtime)
+        self._close_verify_state_buffers(runtime=runtime)
         self._free_packed_verify_workspace(runtime=runtime)
         self._dms_layer_outer_pack = None
         self._release_dms_prefill_oracle()
@@ -32504,16 +32172,10 @@ class Qwen35GGUFResidentSession:
         self._iq_dense_mmq_buf = None
         self._q6_integer_mmq_library = None
         self._native_spec_selected_hidden_bf16 = None
-        for buffer in reversed(self._linear_state_snapshot_backups):
-            if buffer is not None:
-                free(buffer, runtime=runtime)
-        self._linear_state_snapshot_backups = ()
-        if self._target_scratch_owner is not None:
-            for buffer in reversed(self._target_scratch_owner.buffers):
-                free(buffer, runtime=runtime)
-            self._target_scratch_owner = None
-            self.scratch = None
-        self._target_layout = None
+        state = self._state_storage()
+        memory = StateMemory(runtime, malloc, free)
+        state.rollback.close(memory)
+        state.canonical.close_scratch(memory)
         if self.runner is not None and self._owns_runner:
             self.runner.close()
         self.runner = None

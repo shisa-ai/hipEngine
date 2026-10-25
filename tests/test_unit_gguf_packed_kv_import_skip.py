@@ -75,13 +75,11 @@ def _sync_fixture(monkeypatch: pytest.MonkeyPatch):
         ),
     )
     session = object.__new__(Qwen35GGUFResidentSession)
-    session.__dict__.update(
-        _position=256,
-        scratch=SimpleNamespace(
-            layer_conv_states=(None, DeviceBuffer(ptr=0x400000, nbytes=64)),
-            layer_recurrent_states=(None, DeviceBuffer(ptr=0x500000, nbytes=64)),
-        ),
+    session.scratch = SimpleNamespace(
+        layer_conv_states=(None, DeviceBuffer(ptr=0x400000, nbytes=64)),
+        layer_recurrent_states=(None, DeviceBuffer(ptr=0x500000, nbytes=64)),
     )
+    session._position = 256
     layout = _build_gguf_packed_verify_layout(
         (_GGUFPackedVerifySlotBlock(
             input_token_ids=tuple(range(8)), start_position=256

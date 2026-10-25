@@ -183,13 +183,11 @@ def test_packed_decode_reuse_is_batch_scoped_not_per_slot(
         monkeypatch
     )
     other = object.__new__(Qwen35GGUFResidentSession)
-    other.__dict__.update(
-        _position=1024,
-        scratch=SimpleNamespace(
-            layer_conv_states=(None, DeviceBuffer(ptr=0x800000, nbytes=64)),
-            layer_recurrent_states=(None, DeviceBuffer(ptr=0x900000, nbytes=64)),
-        ),
+    other.scratch = SimpleNamespace(
+        layer_conv_states=(None, DeviceBuffer(ptr=0x800000, nbytes=64)),
+        layer_recurrent_states=(None, DeviceBuffer(ptr=0x900000, nbytes=64)),
     )
+    other._position = 1024
     layout = gguf_runner._build_gguf_packed_verify_layout(
         (
             gguf_runner._GGUFPackedVerifySlotBlock(
@@ -221,13 +219,11 @@ def test_packed_decode_reuse_is_batch_scoped_not_per_slot(
 
     # Slot 1 is now occupied by a different session at the same position.
     replacement = object.__new__(Qwen35GGUFResidentSession)
-    replacement.__dict__.update(
-        _position=1024,
-        scratch=SimpleNamespace(
-            layer_conv_states=(None, DeviceBuffer(ptr=0xC00000, nbytes=64)),
-            layer_recurrent_states=(None, DeviceBuffer(ptr=0xD00000, nbytes=64)),
-        ),
+    replacement.scratch = SimpleNamespace(
+        layer_conv_states=(None, DeviceBuffer(ptr=0xC00000, nbytes=64)),
+        layer_recurrent_states=(None, DeviceBuffer(ptr=0xD00000, nbytes=64)),
     )
+    replacement._position = 1024
 
     imported = owner._sync_packed_decode_initial_state(
         (session, replacement), layout, packed_state,

@@ -278,13 +278,6 @@ def _resumable_owner(
             ),
             free=lambda ptr: None,
         ),
-        scratch=SimpleNamespace(
-            max_positions=1024,
-            cos_table=SimpleNamespace(ptr=0x4000),
-            sin_table=SimpleNamespace(ptr=0x5000),
-        ),
-        position=0,
-        _device_kv_allocation=None,
         _int8_prefill_oracle_buffers={},
         _int8_prefill_oracle_per_layer=True,
         # A live workspace at the plan's declared capacity: hidden planes cover
@@ -311,6 +304,12 @@ def _resumable_owner(
         use_gemv_decode=False,
         _release_int8_prefill_oracle_buffers=lambda: None,
     )
+    owner.scratch = SimpleNamespace(
+        max_positions=1024,
+        cos_table=SimpleNamespace(ptr=0x4000),
+        sin_table=SimpleNamespace(ptr=0x5000),
+    )
+    owner._device_kv_allocation = None
     return owner
 
 
@@ -1223,6 +1222,12 @@ def _bare_view(owner: Qwen35GGUFResidentSession) -> Qwen35GGUFResidentSession:
 
     view = object.__new__(Qwen35GGUFResidentSession)
     view.__dict__.update(owner.__dict__)
+    # Property-backed state is not carried by the instance dict: give the view
+    # its own storage and copy the owner's scratch/cursor explicitly, as the
+    # pre-property dict copy did.
+    view.__dict__.pop("_resident_state_storage", None)
+    view.scratch = owner.scratch
+    view._position = owner._position
     view.last_packed_prefill_plan = {}
     return view
 

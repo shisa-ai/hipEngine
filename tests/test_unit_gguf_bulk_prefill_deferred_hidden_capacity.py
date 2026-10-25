@@ -76,7 +76,6 @@ def _fake_session(
     session.__dict__.update(
         runner=runner,
         runtime=SimpleNamespace(),
-        scratch=SimpleNamespace(max_positions=capacity),
         backend="hip_gfx1100",
         use_expert_sidecar=False,
         dms_prefill_mode="dense_pool",
@@ -99,6 +98,7 @@ def _fake_session(
         _bulk_prefill_scratch=None,
         _prefill_flight_recorder=None,
     )
+    session.scratch = SimpleNamespace(max_positions=capacity)
     session.__dict__.update(overrides)
     session._prefill_scratch_rows = lambda capacity: chunk_rows  # noqa: ARG001
     return session, freed, allocations
@@ -319,7 +319,6 @@ def test_growth_rebinds_every_borrowed_slot_view(monkeypatch) -> None:
     view.__dict__.update(
         runner=owner.runner,
         runtime=owner.runtime,
-        scratch=SimpleNamespace(max_positions=CAPACITY),
         _resident_batch_owner=owner,
         _buffers=(),
         _prefill_token_buf=owner._prefill_token_buf,
@@ -327,6 +326,7 @@ def test_growth_rebinds_every_borrowed_slot_view(monkeypatch) -> None:
         _prefill_hidden_b=owner._prefill_hidden_b,
         _bulk_prefill_scratch=owner._bulk_prefill_scratch,
     )
+    view.scratch = SimpleNamespace(max_positions=CAPACITY)
     owner._resident_slot_views = [view]
 
     # Growth requested through the borrower resolves to the owner.
