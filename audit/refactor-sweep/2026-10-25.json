@@ -935,18 +935,21 @@
       "start_line": 993,
       "end_line": 1002,
       "sha256": "5f05065a0ec2f776c041e249a4e8e3a3adb53436602d8831996e3cec76985d9f",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "hipengine/runtime/qwen4_exp_runner.py:_ensure_qwen4_exp_moe_backend caches stable registry generations without reading HIPENGINE_QWEN4_EXP_MOE_BACKEND_CACHE. No runtime reader remains.",
+        "uv run pytest tests/test_unit_qwen4exp_backend_refresh.py -q -o addopts='': 6 passed, covering mutation, independent backends, failed refresh, retired flag and real-registry restoration. Historical measurements remain at benchmarks/results/2026-09-14-journey-backend-cache/."
+      ],
       "subitems": [
         {
           "line": 995,
           "text": "- Stable-generation MoE backend caching is unconditional after its exact",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 998,
           "text": "- Prefill and every measured complete request improve; 4K decode is 1.36%",
-          "status": "pending"
+          "status": "historical-removed"
         }
       ]
     },

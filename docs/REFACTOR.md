@@ -919,16 +919,6 @@ upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
   under the DPP rollback checkpoint condition, not by treating all named
   siblings as one failed candidate.
 
-## MoE Backend Refresh Cache
-
-- Stable-generation MoE backend caching is unconditional after its exact
-  72-sample model A/B. The experiment flag and candidate selector are removed.
-  Registry mutation and failed-refresh behavior remain covered.
-- Prefill and every measured complete request improve; 4K decode is 1.36%
-  lower. This is not a decode-speed claim or a measured benefit at arbitrary
-  output lengths. Evidence:
-  `benchmarks/results/2026-09-14-journey-backend-cache/`.
-
 ## MoE Decode warp256 GEMV Pair - REMOVED 2026-09-30
 
 > 2026-10-14: the two kernels this section retained are selected again for
