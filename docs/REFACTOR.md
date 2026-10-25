@@ -672,71 +672,101 @@ The following records the investigation before removal, not open selector work.
 
 ## Qualified Chunk Tradeoffs
 
-- The explicit2048 path passes canonical numerics, active4K tasks,
-  full-payload boundary/reuse and detailed/deferred-inspection c2 gates.
-  Evidence: `benchmarks/results/2026-09-14-journey-chunk-admission/`.
-- Keep1024 as the global default:2048 improves4K PP/TG2.32%/1.22% but
-  lowers512/1K PP0.34%/0.18%; short complete requests include small losses.
-- Automatic selection needs a shape-dependent workspace policy preserving
-  the smaller owner's short costs, with allocation and lifetime gates.
-  Do not simply average the short losses away. The existing explicit
-  factory/benchmark setting remains available; no new runtime flag is added.
-- Chunk4096 accounting is repaired by the chunk/context-derived mandatory
-  footprint; native-c2 allocation matches the estimate with reserve unchanged.
-  See `benchmarks/results/2026-09-15-chunk4096-accounting/`.
-  Chunk4096 canonical780-row, full-payload boundary, active-task and
-  detailed/deferred c2 gates pass. Its matched4K PP/TG improves3.94%/1.11%,
-  but short complete-request changes include-0.31%; it is explicit, not the
-  global default. Do not claim a direct2048/4096 comparison from separate runs.
-- The lever's MoE half is model-only and was over-projected: the recorded
-  1.0 s + 0.6 s scaled the engine's four-launch per-layer times by the tile
-  ratio 2801/4480, but the packet measures the 40960-row launch directly at
-  45.39 + 27.31 ms per layer against the projected 57.7 ms. Packet-consistent
-  saving is 0.95-1.07 s, so the lever is about 1.3 s with the measured 325 ms
-  dense half, not 1.7-1.9 s. Re-measure on the current composition before
-  ranking it. The chunk and activation-hoist estimates may overlap; measure
-  the combined path rather than assuming either independence or complete
-  overlap.
+Cleanup status (2026-10-25, R0022): no open cleanup. The tradeoff and selection
+instructions this section used to carry were superseded on 2026-10-04 by the
+prefill capacity guard, so production no longer defaults to a fixed 1024 chunk.
+`_bind_default_chunk` in `hipengine/generation/qwen4_exp_profiles.py` binds the
+guard's `admitted_prefill_chunk_size`, and the guard in
+`hipengine/generation/qwen4_exp_gguf.py` takes the largest rung of
+`_AUTO_PREFILL_CHUNK_LADDER = (4096, 2048, 1024)` whose admission still yields
+the requested context. Guard ownership, its revert lever and its removal
+condition are in "Prefill chunk capacity guard"; they are not repeated here.
+
+- An explicit `prefill_chunk_size` is passed through and bound verbatim, and the
+  guard runs only when the chunk is unset, so 2048 and 4096 remain reachable per
+  construction. The 2048 path passed canonical numerics, active4K tasks,
+  full-payload boundary/reuse and the detailed/deferred-inspection c2 gates
+  (`benchmarks/results/2026-09-14-journey-chunk-admission/`); 4096 passed the
+  780-row, full-payload boundary, active-task and c2 gates after the
+  chunk/context-derived scratch accounting repair
+  (`benchmarks/results/2026-09-15-chunk4096-accounting/`).
+- The 2048 and 4096 rates in those packets come from separate runs against
+  separate baselines, so they are not a controlled 2048-versus-4096 comparison
+  and no difference between the two can be claimed from them. The production
+  promotion measurement and its bit-identical token ids are in
+  `benchmarks/results/2026-10-04-qwen4exp-prefill-chunk-4096/`.
+- Shape-dependent chunk selection, as distinct from the device-dependent
+  admission that shipped, remains a product decision rather than recorded
+  cleanup. No runtime flag exists for it; the explicit factory setting is the
+  available lever.
+- Historical: the routed-MoE half of the chunk lever, including the correction
+  of its projection, is recorded in `benchmarks/README.md` and
+  `benchmarks/results/2026-09-22-moe-main-kernel-cost/`.
 
 ## Withdrawn Routes That Stay Bound In The Production Plan
 
-- **`20260930T` AUDIT: seven withdrawn routes are still bound `"1" if production`
-  and are held off only by `PRODUCTION_ARITHMETIC_RECOVERY_FLAGS`.** The sweep
-  in `hipengine/generation/qwen4_exp_profiles.py` zeroes every flag in that list
-  for the `gguf_ud_q4_k_xl` production profile, and a flag is re-admitted only by
-  moving it into `PRODUCTION_Q8_QSA_RESTORED_FLAGS` (which is how DE-1 promoted
-  `Q4_DP4A64`). So a binding plus a recovery-list entry means "the plan says on,
-  the sweep says off". The seven, with their ledger rows and reopen conditions:
+Cleanup status (2026-10-25, R0023): the rule below stands; the membership and the
+re-admission paths are the current ones. `PRODUCTION_ARITHMETIC_RECOVERY_FLAGS`
+in `hipengine/generation/qwen4_exp_profiles.py` holds 14 flags, and the sweep
+that zeroes them runs for the `gguf_ud_q4_k_xl` quant, whose production and fast
+plans share this binder. A binding plus a sweep entry means "the plan says on,
+the sweep says off".
 
-  | Flag(s) | Ledger | Withdrawn for | Reopen condition |
-  | --- | --- | --- | --- |
-  | `GDN_COLWARPS_PREFILL`, `GDN_PEER_PREFILL` | 627 | perf, inside run-to-run spread | a complete-owner mechanism |
-  | `GR_IU8`, `GR_IU8_DOWN` | 593 | accuracy (mean KL 1.40e-3 / 1.31e-3) | a structurally different mechanism |
-  | `Q4_IU8_PREFILL` | 555 | perf, `code-p4096` disabled-family sweep | new tiling, packing, fusion or repair work |
-  | `Q8_MMQ_PREFILL` | 529 | failed canonical depth | operand localization showing which role carries it |
-  | `QSA_FLASH_PREFILL` | 610 | part of the failed recovery composition | - |
+Three paths re-open a swept flag, or keep a flag out of the sweep entirely:
 
-- **These are correctly left bound, and that is the point of the entry.** Each is
+- `PRODUCTION_Q8_QSA_RESTORED_FLAGS` is applied immediately after the sweep and
+  restores `Q8_0_SELECTED_WMMA_DOWN`, `QSA_H256_WAVE_PREFILL`, `QSA_HEAD_PAIR`,
+  `QSA_ORDERED_DECODE` and `QSA_ORDERED_DECODE_V2`.
+- `_F16_ROUTE_SELECTORS` is applied after both passes, so the F16 composition
+  restores `GR_WIDE` on the same plan.
+- `GDN_COLWARPS_PREFILL` is bound `"1" if production` and is deliberately absent
+  from the sweep, because the 2026-10-08 tiled16 admission passed the layer2
+  envelope on the UD lane.
+
+Eight flags stay held off there, with their recorded withdrawal reason and
+reopen condition:
+
+| Flag(s) | Withdrawn for | Reopen condition |
+| --- | --- | --- |
+| `PRODUCTION_MOE_PREFILL`, `Q4_IU8_PREFILL` | perf in the disabled-family sweep, then rejected on the task gate (15/18) | a mechanism that fixes the three divergent prompts; a faster tiling does not clear it |
+| `GR_IU8` | accuracy (mean KL 1.40e-3) | a correction whose prefill-boundary KL is below ~5e-9 |
+| `GR_IU8_DOWN` | accuracy (mean KL 1.31e-3) | a further ~2x prefill-KL reduction |
+| `Q8_MMQ_PREFILL` | failed canonical depth | operand localization showing which role carries it |
+| `GDN_PEER_PREFILL` | perf, inside run-to-run spread | a complete-owner mechanism |
+| `Q4_DP4A64` | isolated long-context decode discrepancy | both decode gates named in "2026-08-29 Qwen4Exp late-layer production prefill" |
+| `QSA_FLASH_PREFILL` | part of the failed recovery composition | none recorded |
+
+`tests/test_unit_qwen4exp_arithmetic_recovery.py` pins the sweep membership and
+the post-sweep value of every flag, and
+`tests/test_unit_qwen4_exp_profiles.py::test_production_binder_publishes_the_f16_routes_and_strict_retracts_them`
+pins the F16 re-admission. These tests cover binder behavior, not the prose here.
+
+- **These bindings are records of intent, not debt.** Each held-off route was
   withdrawn *pending a named reopen condition*, so keeping the binding records
-  the plan the recovery overrode and makes re-admission a one-line move with a
-  gate run attached. Removing the bindings would erase that record.
+  the plan the recovery overrode and makes re-admission a sweep edit plus a gate
+  run. Removing the bindings would erase that record.
 - **The failure mode to guard, learned from `Q8_IU8_WMM` (`20260930T`):** when a
   route is **rejected** rather than withdrawn-with-a-condition, the binding stops
   being a record of intent and becomes a contradiction. That route was rejected
   by role isolation (14 of 17 roles claim and all 14 fail the canonical envelope),
   yet still read `"1" if production`, so narrowing the sweep would have silently
-  re-enabled arithmetic the project had already ruled out. Its removal is in
-  `docs/REFACTOR.md` under "Non-GR Q8 Diagnostic Scope" and worklog
+  re-enabled arithmetic the project had already ruled out. The route and its flag
+  are removed; the evidence is
+  `benchmarks/results/2026-09-30-q8-iu8-role-isolation/` and worklog
   `20260930T092825`.
 - **Rule that follows:** when a route's reopen condition is *discharged
   negatively* - the condition was met or its scope exhausted and the route still
   fails - remove the production binding in the same unit. A route that fails the
   task gate or the canonical envelope should never be one sweep edit from live.
-- **Not audited here:** whether any of the seven would pass the current
-  production envelope if re-admitted. `production_moe_restore` (`20260930T`)
-  tested exactly that for `PRODUCTION_MOE_PREFILL` and found the envelope passes
-  while the task gate fails 15/18, so a passing envelope is not evidence of
-  admission.
+- **No re-admission is claimed here.** A passing numerical envelope is not
+  admission: the `production_moe_restore` candidate, which binds
+  `PRODUCTION_MOE_PREFILL` together with `Q4_IU8_PREFILL`, passes every category
+  and still fails the task gate, so the recorded disposition corrects its reopen
+  condition rather than re-admitting it
+  (`benchmarks/results/2026-09-30-qwen4exp-moe-restore-rejection/`). The
+  2026-10-04 disabled-selector ranking likewise concluded that none of its arms
+  can be re-admitted on its evidence
+  (`benchmarks/results/2026-10-04-qwen4exp-disabled-selector-ranking/`).
 
 ## Isolated GR-Up IU8
 

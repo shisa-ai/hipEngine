@@ -592,33 +592,35 @@
       "start_line": 663,
       "end_line": 690,
       "sha256": "6ab8c7b0dba39bc3d32477fe5102463574421f7cf5d56e8ac5edbc00bfb9d9b4",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Current capacity guard and binder precedence verified against implementation. Documentation corrected; worklog:worklog/entries/20261025T211104.838592Z-lhl-cleanup-refactor-r0022-r0023-ledger-2ab9f2.md."
+      ],
       "subitems": [
         {
           "line": 665,
           "text": "- The explicit2048 path passes canonical numerics, active4K tasks,",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 668,
           "text": "- Keep1024 as the global default:2048 improves4K PP/TG2.32%/1.22% but",
-          "status": "pending"
+          "status": "obsolete"
         },
         {
           "line": 670,
           "text": "- Automatic selection needs a shape-dependent workspace policy preserving",
-          "status": "pending"
+          "status": "obsolete"
         },
         {
           "line": 674,
           "text": "- Chunk4096 accounting is repaired by the chunk/context-derived mandatory",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 681,
           "text": "- The lever's MoE half is model-only and was over-projected: the recorded",
-          "status": "pending"
+          "status": "not-debt"
         }
       ]
     },
@@ -628,23 +630,25 @@
       "start_line": 691,
       "end_line": 730,
       "sha256": "9e604eb42b6a0b0b74b89ffeb3fa944a62d22e2cfdfbaed39dc22181f14e1902",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-description-fixed",
+      "evidence": [
+        "Current capacity guard and binder precedence verified against implementation. Documentation corrected; worklog:worklog/entries/20261025T211104.838592Z-lhl-cleanup-refactor-r0022-r0023-ledger-2ab9f2.md. Remaining: reconcile generic negative-discharge rule with the MoE rejection packet corrected reopen condition."
+      ],
       "subitems": [
         {
           "line": 693,
           "text": "- **`20260930T` AUDIT: seven withdrawn routes are still bound `\"1\" if production`",
-          "status": "pending"
+          "status": "fixed"
         },
         {
           "line": 709,
           "text": "- **These are correctly left bound, and that is the point of the entry.** Each is",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 713,
           "text": "- **The failure mode to guard, learned from `Q8_IU8_WMM` (`20260930T`):** when a",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 721,
@@ -654,7 +658,7 @@
         {
           "line": 725,
           "text": "- **Not audited here:** whether any of the seven would pass the current",
-          "status": "pending"
+          "status": "not-debt"
         }
       ]
     },
