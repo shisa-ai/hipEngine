@@ -368,7 +368,7 @@ class LLM:
         from hipengine.kvcache.dms_serving import resolve_dms_serving_options
 
         dms_metadata_path, max_active_requests, prefix_cache = resolve_dms_serving_options(
-            dms_metadata_path, max_active_requests, prefix_cache
+            dms_metadata_path, max_active_requests, prefix_cache, dms=dms
         )
         self.dms_metadata_path = dms_metadata_path
         if dms is not None:

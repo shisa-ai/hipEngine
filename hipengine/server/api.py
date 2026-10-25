@@ -460,7 +460,7 @@ class ServerConfig:
         from hipengine.kvcache.dms_serving import resolve_dms_serving_options
 
         path, capacity, prefix = resolve_dms_serving_options(
-            self.dms_metadata_path, self.max_active_requests, self.prefix_cache
+            self.dms_metadata_path, self.max_active_requests, self.prefix_cache, dms=self.dms
         )
         object.__setattr__(self, "dms_metadata_path", path)
         object.__setattr__(self, "max_active_requests", capacity)
@@ -7829,7 +7829,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             },
             "prefix_cache": prefix_cache,
             "dms": {
-                "requested_metadata_path": config.dms_metadata_path,
+                "requested_metadata_path": (
+                    config.dms.metadata_path if config.dms is not None else config.dms_metadata_path
+                ),
                 "policy": _nested_mapping(_nested_mapping(live_snapshot, "runner"), "model_runner").get("dms"),
             },
             "graph_cache": {

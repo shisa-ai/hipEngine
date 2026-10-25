@@ -6,8 +6,12 @@ def resolve_dms_serving_options(
     metadata_path: str | None,
     max_active_requests: int | None,
     prefix_cache: str | None,
+    *,
+    dms: object | None = None,
 ) -> tuple[str | None, int | None, str | None]:
     """Resolve singleton defaults and reject unsupported ownership contracts."""
+    if dms is not None and metadata_path is not None:
+        raise ValueError("dms and dms_metadata_path are mutually exclusive")
     if metadata_path is None:
         return None, max_active_requests, prefix_cache
     path = str(metadata_path).strip()

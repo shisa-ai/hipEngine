@@ -402,6 +402,17 @@ or running the candidate that the packet must evaluate.
 
 ## Architecture
 
+Start with [Architecture and subsystem boundaries](ARCHITECTURE.md) for the
+production ownership map and navigation. The four-axis kernel registry selects
+implementations; generation, KV/retention, speculative transactions and resource
+lifetime are separate subsystem boundaries. This plan remains the source of
+architectural invariants and roadmap decisions.
+
+Qwen dense KV and both compact-DMS selections share request validation, session
+acquisition and lease retirement. Their supported compositions remain distinct;
+[KV/DMS integration](reference/KV-DMS-INTEGRATION.md) names the actual production
+consumers and the generic backend adapters that are not universal entry points.
+
 ### Layer Diagram
 
 ```

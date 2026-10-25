@@ -86,6 +86,7 @@ Do not drift these casually. They define what hipEngine is.
 | Path | Purpose |
 | --- | --- |
 | `docs/README.md` | Generated index of the docs tree, with each document's status and what it owns. Start here when you do not know which document you need. |
+| `docs/ARCHITECTURE.md` | Start here for subsystem ownership, production request/resource lifetimes, and how they differ from kernel registry axes. Links to KV/DMS, speculative and model-runtime boundaries. |
 | `docs/PLAN.md` | Architecture, phase roadmap, LoC budgets, extensibility design. |
 | `docs/HOWTO-README.md` | **Rules for editing the root `README.md`** — what belongs on the product page, the duplication and caveat patterns that have damaged it, and the self-check to run before committing a README change. |
 | `docs/OPTIMIZATION.md` | **Rules for kernel work, performance claims, and benchmark rows** — evidence fields, anti-gaming, correctness gates, promotion, lineage, profiling. Scoped: it does not govern product behavior. |

@@ -208,7 +208,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--dms-metadata-path",
-        help="DMS sidecar metadata for online eviction; uses one resident request and complete-prompt caching",
+        help="DMS sidecar for singleton compact BF16/INT8 KV, DMS-owned prefix caching, and compatible MTP providers; do not combine with --dms-metadata",
     )
     parser.add_argument(
         "--kv-scale-dtype",

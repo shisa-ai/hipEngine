@@ -13,12 +13,22 @@ Every document carries front-matter declaring its `status` and what it `owns`:
 Project-wide ground rules live in [`../AGENTS.md`](../AGENTS.md), which every
 session reads. Start there, then come here for the document your task touches.
 
+## Architecture: start here
+
+[Architecture and subsystem boundaries](ARCHITECTURE.md) maps production owners,
+request/resource lifetimes and the kernel registry key. Use it to find the
+boundary for a change; [PLAN.md](PLAN.md) remains the source of architectural
+invariants and roadmap decisions. For cache work, follow
+[KV/DMS integration](reference/KV-DMS-INTEGRATION.md); for speculative work, follow
+the [shared consumer map](reference/SHARED-SPECULATIVE-OPTIMIZATION.md#source-backed-consumer-matrix).
+
 ## Top level
 
 <!-- BEGIN GENERATED: top -->
 | Document | Status | Owns |
 | --- | --- | --- |
 | [`API.md`](API.md) | current | OpenAI-compatible server usage, endpoint support, request/response semantics, and current limitations. |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | current | Architecture navigation, production subsystem ownership, dependency boundaries, and the distinction between kernel selection and request lifecycle. |
 | [`BENCHMARK.md`](BENCHMARK.md) | **normative** | Benchmark protocols, baselines to beat, required evidence fields, correctness thresholds, and artifact/rollup format. |
 | [`CROSS-ENGINE-PROTOCOL.md`](CROSS-ENGINE-PROTOCOL.md) | **normative** | The protocol every cross-engine comparison on this host follows: fixtures, settings, and what a comparable row must record. |
 | [`ENVS.md`](ENVS.md) | current | Complete environment-variable reference and the recommended profiles for normal use, ROCm setup, and profiling. |
@@ -54,7 +64,7 @@ session reads. Start there, then come here for the document your task touches.
 <!-- BEGIN GENERATED: sections -->
 | Directory | Contents | Files |
 | --- | --- | --- |
-| [`reference/`](reference/) | Current subsystem contracts. Read the one your task touches. | 45 |
+| [`reference/`](reference/) | Current subsystem contracts. Read the one your task touches. | 46 |
 | [`campaigns/`](campaigns/) | Bounded model/hardware campaigns. Mostly closed; kept as evidence. | 75 |
 | [`model-cards/`](model-cards/) | Per-model support status, quality, and integration notes. | 12 |
 | [`archive/`](archive/) | Superseded documents, closed proposals, and frozen history. | 25 |

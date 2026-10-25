@@ -1785,9 +1785,11 @@ class Qwen35GGUFBringupGenerator:
             # Reuse one layer's BF16 prefill pair instead of allocating the
             # full dense source. The second pass also streams NextN hidden
             # rows, so this preserves the MTP-capable serving adapter.
+            typed = getattr(self, "dms_config", None)
             return {"dms_metadata_path": self.dms_metadata_path,
                     "dms_backend_factory": factories[storage],
-                    "dms_prefill_mode": "layer_outer"}
+                    "dms_prefill_mode": "layer_outer" if typed is None else typed.prefill_mode,
+                    **({} if typed is None else {"dms_decision_mode": typed.decision_mode})}
         if signature in {None, ("bf16", "uniform", "fp16", "per_token_head")}:
             return {}
         return {
@@ -2099,6 +2101,7 @@ class Qwen35GGUFBringupGenerator:
             self.dms_metadata_path = config
             self.dms_config = None
         else:
+            self.dms_metadata_path = config.metadata_path
             self.dms_config = config
 
     @_target_arch_scoped
@@ -2529,10 +2532,17 @@ class Qwen35GGUFBringupGenerator:
             split = 4 * queries * ((per_head + 255) // 256) * (dim + 2)
             norm = 2 * min(n, 4096) * hidden if mtp_sized else 0
             sizing = _GGUFSizingRuntime()
-            _try_allocate_gguf_aotriton_head_major_kv_scratch(
+            head_major = _try_allocate_gguf_aotriton_head_major_kv_scratch(
                 backend=runner.backend, capacity_tokens=n,
                 kv_width=int(runner.kv_width), runtime=sizing,
             )
+            # The sizing runtime allocates no device memory, but the common
+            # helpers still record its fake buffers. Balance them before the
+            # next sizing run can reuse the same synthetic addresses.
+            if head_major is not None:
+                from hipengine.core.memory import free
+                for buffer in reversed(head_major):
+                    free(buffer, runtime=sizing)
             bulk = (int(_gguf_prefill_scratch_nbytes(runner, rows=rows, capacity=n))
                     + n * (planes * hidden * 2 + 8) + oracle + sizing.allocated_bytes)
             # Each completed compact layer is host-staged during pass two.
@@ -7519,9 +7529,12 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             if callable(audit)
             and getattr(session, "device_kv_allocation", None) is not None
         ]
+        dms_policy = copy.deepcopy(getattr(self.generator, "_dms_serving_policy", None))
+        if dms_policy is not None:
+            dms_policy["prefix_cache"] = self._prefix_cache_mode
         return {
             "model_runner": {
-                "dms": copy.deepcopy(getattr(self.generator, "_dms_serving_policy", None)),
+                "dms": dms_policy,
                 "capacity": int(self.capacity),
                 "max_active_requests": int(self.capacity),
                 "max_context_tokens": getattr(
@@ -8084,6 +8097,23 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
 
         pool = self._kv_pool
         if pool is None:
+            if getattr(self.generator, "dms_metadata_path", None) is not None:
+                row = self._row(request.request_id)
+                if row.lease is not None or row.kv_allocation is not None:
+                    raise RuntimeError(f"request_id {row.request_id} already has admission resources")
+                if int(row.request.max_tokens) <= 0:
+                    return
+                if not self._available:
+                    with hip_target_arch_environment(self.generator.target_arch):
+                        self._reserve_sessions()
+                session = self._available[-1].session
+                positions = len(row.prompt_ids) + max(0, int(row.request.max_tokens) - 1)
+                if positions > int(session.scratch.max_positions):
+                    raise ValueError(
+                        f"GGUF request requires {positions} KV positions but resident capacity is {session.scratch.max_positions}"
+                    )
+                session.dms_max_new_tokens = max(1, int(row.request.max_tokens))
+                row.lease = self._acquire_lease()
             return
         row = self._row(request.request_id)
         if row.lease is not None or row.kv_allocation is not None:
@@ -9523,7 +9553,15 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         # Invalid request shapes belong to submission, not the driver's tick.
         # Validate the whole cohort before publishing any row. Busy leases still
         # declare the same physical context bound when no slot is available.
-        if self._kv_pool is not None and int(request.max_tokens) > 0:
+        compact_dms = getattr(self.generator, "dms_metadata_path", None) is not None
+        if compact_dms and int(request.max_tokens) > 0:
+            # Compact prefill captures layer decisions through the bulk route;
+            # its convolution implementation requires a full kernel-width prompt.
+            cfg = getattr(getattr(self._shared_runner, "weights", None), "config", None)
+            minimum = int(getattr(cfg, "ssm_conv_kernel", 1))
+            if any(len(prompt) < minimum for prompt in prompts):
+                raise ValueError(f"DMS bulk prefill requires at least {minimum} tokens")
+        if int(request.max_tokens) > 0 and (self._kv_pool is not None or compact_dms):
             leases = [*self._available, *(
                 row.lease for row in self._rows.values() if row.lease is not None
             )]
@@ -10521,13 +10559,30 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             return
         session = lease.session
         self._close_c1_decode_graph(row)
+        self._retire_request_session(row)
+
+    def _close_request_session(self, row: _GGUFResidentLoopRow) -> None:
+        """Retire request-private storage; reset cannot restore compact state."""
+
+        lease = row.lease
+        if lease is None:
+            return
+        if row.kv_allocation is not None:
+            raise RuntimeError("request-private session cannot own a dense pool allocation")
+        lease.session.close()
+        if self._resident_batch_owner is lease.session:
+            self._resident_batch_owner = None
+            self._resident_batch_owner_pool_key = None
+        row.lease = None
+
+    def _retire_request_session(self, row: _GGUFResidentLoopRow) -> None:
+        """Return a reusable dense lease or close a request-private DMS owner."""
+
+        session = row.lease.session
         if getattr(getattr(self, "generator", None), "dms_metadata_path", None) is not None:
             # Dense prefill planes were freed by compaction. A reset cannot
             # recreate those planes or erase the compact allocator's history.
-            session.close()
-            self._resident_batch_owner = None
-            self._resident_batch_owner_pool_key = None
-            row.lease = None
+            self._close_request_session(row)
             return
         graph_handles = tuple(
             handle
@@ -10561,7 +10616,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             if released is not row.kv_allocation:
                 raise RuntimeError("GGUF pool released a different request allocation")
             row.kv_allocation = None
-        self._available.append(lease)
+        self._available.append(row.lease)
         row.lease = None
         self._sample_kv_hip_memory()
 
