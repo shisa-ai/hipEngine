@@ -1,0 +1,1472 @@
+{
+  "schema": 1,
+  "kind": "refactor-sweep-triage",
+  "source": "docs/REFACTOR.md",
+  "inventory": "audit/refactor-sweep/2026-10-25.json",
+  "inventory_base_commit": "cfe1987b41ba99d22a8caa4a0bf8c3b9a4bc710e",
+  "inventory_source_sha256": "26e5585b1381f2c1a234ce389d75d2540499de24914550a9e7db51276baaa422",
+  "current_head": "ebfa07b4f",
+  "current_worktree_sha256": "704d7762ab57c755a93eba4156a5c9a1bdf3e8cb3ca6206f38afe1b84673316b",
+  "current_line_offset": -220,
+  "scope": "R0081-R0100",
+  "generated_at": "2026-10-25",
+  "line_reference_note": "inventory_lines are the stable IDs from audit/refactor-sweep/2026-10-25.json (base_commit above). current_lines were the same sections at current_head. docs/REFACTOR.md moved twice while this triage was written (two closed-cleanup commits retired sections before R0081), so current_lines are advisory only: re-anchor by heading text.",
+  "method": [
+    "Read every section and subitem at the inventory line range, then re-read the cited implementation, tests, scripts, docs, and benchmark artifacts at HEAD.",
+    "Executed CPU-only checks where a claim could be settled by running code: the speculative serving resolver (17 rows, three named cells), the MTP accounting fold, the INT8 decode-graph storage predicate, and the YuE2 distribution definition identity.",
+    "Grepped for removed candidate symbols, flags, registry entries, and remaining consumers of the fields a cleanup would delete.",
+    "Did not run GPU kernels or benchmark suites. Performance and correctness statements below are artifact-backed, not re-measured."
+  ],
+  "summary": {
+    "counts": {
+      "actionable": 9,
+      "decision": 1,
+      "resolved": 4,
+      "obsolete": 6,
+      "blocked": 0,
+      "total": 20
+    },
+    "deferred_ids": [
+      "R0083"
+    ],
+    "no_blocked_entries": true,
+    "highest_value_findings": [
+      "R0087: hipengine/generation/yue2.py defines `distribution` twice (478 and 535). The second definition shadows the first, so the window-coordinate commit e7ce1d2fd left its new definition dead. Executed check: inspect.getsource(yue2.distribution) reports line 535.",
+      "R0081: the `specdec2_mtp2` block is not yet the single source of truth. hipengine/server/api.py:18594 `_mtp_accepted_rejected_counts` reads timing['mtp_accepted_draft_tokens'] first and never falls back to the block; nineteen test files and seven scripts read the same scalars.",
+      "R0088: `_decode_graph_storage_admitted` (qwen35_gguf_runner.py:16715) gates every non-BF16 dtype on HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH, so the unconditional tail4_hadamard_group32 admission in `_decode_graph_kv_layout_admitted` (gguf_decode_graph.py:83) is unreachable from the session path. Executed check: tail4 is False with the env unset.",
+      "R0082: the third row named in the ledger (`qwen36-dense-q4km-gfx1100-natural100-bf16-c2-k2-d24`) no longer exists. Two rows remain to prune, and the qwen36-dense strict row is shadowed by a later automatic row, not an earlier one.",
+      "R0084: hipengine/generation/qwen36_gguf_gfx1100_profiles.py registers both dense qwen3_5_gguf and MoE qwen3_5_moe_gguf (145/184), so the proposed `qwen35_dense_gfx1100_profiles.py` name would misdescribe half the module.",
+      "R0086: the ledger's `_wmma_attention` branch is the geometry guard, not the env gate. Dropping it would make non-production geometry raise instead of falling back to the scalar kernel; remove only the environment read."
+    ],
+    "preserved_strict_paths": [
+      "YuE2 scalar nar_attention_f32 kernel (registered strict fallback and bit-exact oracle)",
+      "YuE2 full-vocabulary `distribution` and `distribution_windowed` (one arithmetic body, `_distribution_slice`)",
+      "chunk-outer packed prefill executor (permanent decline path for sinks, hidden seeds, capture, non-zero positions)",
+      "QSA strict pair/single-head variants (bisection) and the `strict_h256_head_quad_rows_spans` production leaf",
+      "prepacked 128 MMQ chain and the raw token64 production kernel",
+      "raw-address `copy_host_to_device` API for callers that genuinely manage a pointer",
+      "INT8 KV eager decode step (registered fallback for any non-admitted layout)"
+    ],
+    "work_units": [
+      "1. R0087 delete the shadowed duplicate definition (isolated, one file).",
+      "2. R0084 split/rename the three profile modules (three files + registration + script/test imports).",
+      "3. R0086 remove the YuE2 attention env flag, keep the geometry guard (one file + ENVS + test).",
+      "4. R0085 remove the packed layer-outer env flag and guard, keep the chunk-outer decline path (runner + probe + ENVS + test).",
+      "5. R0088 promote INT8 KV C1 decode graph to the pm4 transport, delete the env flag (decode graph + runner + ENVS + tests).",
+      "6. R0081 collapse the AR attribution path and delete the duplicated timing scalars, including the block-first fix in api.py and the harness migration (accounting + runner + api + scripts + tests).",
+      "7. R0082 prune the two shadowed serving rows and their test docstrings (models/qwen35.py + capability tests).",
+      "8. R0089 extend the AST upload guard and migrate the remaining array callers (tests + touched runners).",
+      "9. R0092 correct the ENVS production-binding row (docs only).",
+      "10. R0083 lead decision on the Q4 ASR production path (gate command named below).",
+      "11. Delete the resolved/obsolete sections R0090, R0091, R0093-R0100 after the above land."
+    ]
+  },
+  "entries": [
+    {
+      "id": "R0081",
+      "title": "MTP output attribution: two AR-in-plan paths and a duplicated telemetry write (found 2026-09-17)",
+      "inventory_lines": [
+        2494,
+        2517
+      ],
+      "current_lines": [
+        2274,
+        2297
+      ],
+      "disposition": "actionable",
+      "confidence": "high",
+      "verdict": "Accurate and still live. The depth-0 visible-token path and the AR-only step path both add to `ar_output_tokens_in_cycles` through two attributes, and the per-request counters are still published as `mtp_*` timing scalars in addition to the `specdec2_mtp2` block. The block is not yet the single source of truth: `_mtp_accepted_rejected_counts` reads the scalars first and has no block fallback, and nineteen test files plus seven scripts read the scalars.",
+      "executed_evidence": [
+        "Built a row, called record_speculative_outputs(visible_count=1) and record_autoregressive_step(emitted_tokens=1): ar_output_tokens_in_cycles=2 from mtp2_ar_output_tokens=1 plus mtp2_ar_step_output_tokens=1, ar_step_reason_counts preserved as {ar_cycle:1, k0_ar:1}.",
+        "Grepped consumers: seven scripts read timing['mtp_cycles_count'|'mtp_generated_draft_tokens'|'mtp_accepted_draft_tokens']; 19 test files do too, including tests/test_integration_server_api.py, test_integration_server_controlled_speculation.py, test_integration_server_sampled_speculation.py, test_live_mtp_http_surface.py, and the int8 server-gate tests."
+      ],
+      "anchors": [
+        {
+          "path": "hipengine/speculative/accounting.py",
+          "line": 189,
+          "fact": "record_speculative_outputs attributes the depth-0 visible tokens to AR_OUTPUT and calls record_autoregressive_step(emitted_tokens=0) at 258 so the same tokens are not counted twice."
+        },
+        {
+          "path": "hipengine/speculative/accounting.py",
+          "line": 320,
+          "fact": "record_autoregressive_step accumulates AR_STEP_OUTPUT_ATTRIBUTE for the AR-only K0 path."
+        },
+        {
+          "path": "hipengine/speculative/accounting.py",
+          "line": 589,
+          "fact": "ar_output_tokens_in_cycles sums AR_OUTPUT_ATTRIBUTE and AR_STEP_OUTPUT_ATTRIBUTE."
+        },
+        {
+          "path": "hipengine/generation/qwen35_gguf.py",
+          "line": 12898,
+          "fact": "streaming chunk updates timing with accounting_timing_fields(...)."
+        },
+        {
+          "path": "hipengine/generation/qwen35_gguf.py",
+          "line": 13023,
+          "fact": "blocking path repeats the same timing update."
+        },
+        {
+          "path": "hipengine/generation/qwen35_gguf.py",
+          "line": 8806,
+          "fact": "speculative_output_accounting(row) builds the authoritative diagnostics block."
+        },
+        {
+          "path": "hipengine/server/api.py",
+          "line": 18594,
+          "fact": "_mtp_accepted_rejected_counts reads timing['mtp_accepted_draft_tokens'] first and does not read the specdec2_mtp2 block."
+        },
+        {
+          "path": "hipengine/server/api.py",
+          "line": 18847,
+          "fact": "_mtp_usage treats the block as authoritative and the timing scalars as fallback."
+        },
+        {
+          "path": "hipengine/server/api.py",
+          "line": 18951,
+          "fact": "the response output_accounting block is built here."
+        },
+        {
+          "path": "tests/test_unit_mtp_output_accounting.py",
+          "line": 93,
+          "fact": "pins accounting_timing_fields == the six mtp_* scalars."
+        },
+        {
+          "path": "scripts/mtp-bench.py",
+          "line": 793,
+          "fact": "falls back to timing['mtp_generated_draft_tokens'] / ['mtp_accepted_draft_tokens']."
+        },
+        {
+          "path": "scripts/int8_mtp_server_gate.py",
+          "line": 81,
+          "fact": "reads timing['mtp_cycles_count']."
+        }
+      ],
+      "nested": [
+        {
+          "line": 2496,
+          "item": "Resolved 2026-09-17: a request no longer reports `used: true` as if it were engaged.",
+          "disposition": "resolved",
+          "note": "Confirmed: the engaged flag is derived from cycles/accepted/generated, not the route claim."
+        },
+        {
+          "line": 2502,
+          "item": "Autoregressive tokens emitted under the speculative plan follow two paths; collapse them so one path owns the counter.",
+          "disposition": "actionable",
+          "note": "Both paths are live. Fold AR_STEP_OUTPUT into AR_OUTPUT and keep the reason-count fold, which is independent of the token counter."
+        },
+        {
+          "line": 2507,
+          "item": "AR-in-plan tokens are summed into `ar_output_tokens_in_cycles`; collapse the two paths.",
+          "disposition": "actionable",
+          "note": "Same change as 2502."
+        },
+        {
+          "line": 2511,
+          "item": "The per-request execution counters are published twice, as the `diagnostics.specdec2_mtp2` block and as `mtp_*` timing scalars.",
+          "disposition": "actionable",
+          "note": "Still true. The block is authoritative in _mtp_usage but not in _mtp_accepted_rejected_counts, so the scalars cannot be deleted before that read is fixed."
+        }
+      ],
+      "smallest_fix": "One unit in three parts. (1) Delete AR_STEP_OUTPUT_ATTRIBUTE accumulation from record_autoregressive_step and make ar_output_tokens_in_cycles read AR_OUTPUT_ATTRIBUTE only; have the AR-only K0 caller attribute through record_speculative_outputs-equivalent logic so the reason counts still fold. (2) Delete accounting_timing_fields and its two call sites in qwen35_gguf.py. (3) Before (2), make _mtp_accepted_rejected_counts read the specdec2_mtp2 block first, and migrate the seven scripts and nineteen test files to the block.",
+      "required_checks": [
+        "uv run pytest tests/test_unit_mtp_output_accounting.py tests/test_unit_mtp_cycle_accounting.py tests/test_unit_gguf_mtp_api_gate.py tests/test_integration_server_api.py tests/test_integration_server_controlled_speculation.py tests/test_integration_server_sampled_speculation.py",
+        "uv run pytest tests/test_unit_gguf_mtp_bench_metrics.py tests/test_integration_mtp_bench_tool.py tests/test_unit_gguf_mtp_c1c8_server_bench.py",
+        "One real LLM.generate() with speculative_mtp: confirm diagnostics.specdec2_mtp2 and response.output_accounting still carry cycles/accepted/generated, and that usage.completion_tokens_details.accepted_prediction_tokens is unchanged."
+      ],
+      "residual_risk": "The timing map is part of the hipEngine response extension, not the OpenAI schema. Dropping mtp_* keys is a visible shape change for any external consumer; the block remains. If the lead wants the scalars kept for compatibility, this entry becomes a permanent duplicate and should be rewritten as such instead.",
+      "refactor_action": "rewrite then delete"
+    },
+    {
+      "id": "R0082",
+      "title": "Speculative-MTP serving evidence rows (shape-axis removal, 2026-09-17)",
+      "inventory_lines": [
+        2518,
+        2540
+      ],
+      "current_lines": [
+        2298,
+        2320
+      ],
+      "disposition": "actionable",
+      "confidence": "high",
+      "verdict": "Mostly accurate but stale in one named row. Admission is physical only and the resolver is a declaration lookup. Of the three rows the ledger names, the natural100 row no longer exists; two remain shadowed. The qwen36-dense strict row is shadowed by a later automatic row, not an earlier one, and all three qwen36-dense rows are identity-unbound and therefore inert regardless.",
+      "executed_evidence": [
+        "Qwen35GGUFModel().speculative_mtp_serving_evidence returns 17 rows. Row 2 (context128, automatic_eligible=False) shares a cell with rows 0 and 1 (automatic_eligible=True). Row 13 (qwen36-dense strict c2, automatic_eligible=False) shares a cell with row 14 (automatic_eligible=True). No natural100 row is present.",
+        "Rows 12-14 carry artifact_execution_fingerprint=None, so none of them can admit; the c2 cell runs on the implementation declaration."
+      ],
+      "anchors": [
+        {
+          "path": "hipengine/models/qwen35.py",
+          "line": 303,
+          "fact": "the context128 row that must be pruned."
+        },
+        {
+          "path": "hipengine/models/qwen35.py",
+          "line": 809,
+          "fact": "speculative_mtp_serving_evidence is the dense plugin's row tuple."
+        },
+        {
+          "path": "hipengine/models/qwen35.py",
+          "line": 472,
+          "fact": "four sampled rows are derived from the c1 production row."
+        },
+        {
+          "path": "hipengine/models/qwen35.py",
+          "line": 810,
+          "fact": "row order is qwen38 + qwen36-dense + UD, appended deliberately."
+        },
+        {
+          "path": "hipengine/speculative/serving.py",
+          "line": 807,
+          "fact": "the resolver prefers an automatic_eligible row and otherwise keeps declaration order; no shape axis is read."
+        },
+        {
+          "path": "docs/EXECUTION-PROFILES.md",
+          "line": 397,
+          "fact": "section 2.9: capability admits; retained evidence selects and promotes."
+        },
+        {
+          "path": "docs/EXECUTION-PROFILES.md",
+          "line": 452,
+          "fact": "selection prefers the strongest retained measurement; ties keep declaration order."
+        },
+        {
+          "path": "tests/test_unit_speculative_mtp_serving_capability.py",
+          "line": 140,
+          "fact": "documents that the context128 row is shadowed by the natural25 row."
+        },
+        {
+          "path": "tests/test_unit_speculative_mtp_serving_capability.py",
+          "line": 674,
+          "fact": "the qwen36-dense c2 cell resolves to the automatic production row."
+        }
+      ],
+      "nested": [
+        {
+          "line": 2520,
+          "item": "Serving admission is physical only; the three rows describe a physical cell an earlier-declared row already owns.",
+          "disposition": "resolved",
+          "note": "Admission is physical. The shadowing is real for the two surviving rows, but the qwen36-dense strict row is shadowed by a later automatic row, and the natural100 row was already removed."
+        },
+        {
+          "line": 2529,
+          "item": "Retained shape-axis inputs in scripts/gguf_mtp_c1c8_server_bench.py::_diagnostic_plan and scripts/qwen38_packet5_k4_watchdog_probe.py must not become admission axes.",
+          "disposition": "obsolete",
+          "note": "Verified: the resolver key has no shape axis, _diagnostic_plan uses width/depth/sampling/memory only, and the watchdog probe injects a diagnostic row. This is a standing warning, not remaining work."
+        },
+        {
+          "line": 2535,
+          "item": "Prune the three rows that now describe an owned physical cell.",
+          "disposition": "actionable",
+          "note": "Prune two: qwen38-q4km-gfx1151-production-bf16-c1-b3-context128 and qwen36-dense-q4km-gfx1100-strict-bf16-c2-k2-d24. The natural100 row is already absent."
+        }
+      ],
+      "smallest_fix": "Delete the context128 row and the qwen36-dense strict c2 row from hipengine/models/qwen35.py. Update the test docstring at tests/test_unit_speculative_mtp_serving_capability.py:140 (it says two rows describe the cell) and keep the assertion. If the strict-row test exists only to prove the tie-break, construct a local shadowed row instead of relying on the pruned literal. Then delete this section.",
+      "required_checks": [
+        "uv run pytest tests/test_unit_speculative_mtp_serving_capability.py tests/test_unit_speculative_mtp_serving.py",
+        "python3 -c \"from hipengine.models.qwen35 import Qwen35GGUFModel; print(len(Qwen35GGUFModel().speculative_mtp_serving_evidence))\" to confirm 15 rows and no duplicate evidence_key."
+      ],
+      "residual_risk": "The qwen36-dense rows remain identity-unbound. Pruning the strict row does not make the remaining two select; the clearing action for that evidence gap is python3 scripts/gguf_execution_identity.py <artifact.gguf> on the host that holds the artifact, not a new gate.",
+      "refactor_action": "rewrite then delete"
+    },
+    {
+      "id": "R0083",
+      "title": "VibeVoice ASR prefill and legacy dense attention",
+      "inventory_lines": [
+        2541,
+        2570
+      ],
+      "current_lines": [
+        2321,
+        2350
+      ],
+      "disposition": "decision",
+      "confidence": "medium",
+      "verdict": "The scratch-arena item is resolved. The remaining live item is a product decision: whether the Q4_K_M batched prefill becomes the ASR production path. The Q4 route is a standalone generator with no callers, so it is not reachable from hipengine.LLM.generate() today; the 200-clip WER artifact already compares it favorably, but the logits-parity gate the ledger asks for has not been run. The Q5_K and conv-tail items are capability/kernel notes, not cleanup debt.",
+      "executed_evidence": [
+        "Grepped callers: VibeVoiceASRQ4Generator (generation/vibevoice_asr_q4.py:12) has no reference outside its module; the registered VibeVoiceASRGenerator always loads the HF bf16 VibevoiceQwen2Runtime.",
+        "Read benchmarks/results/2026-09-14-gfx1151-vibevoice-asr-200clip-comparative.json: hip_q4_km_wer 2.011% over 200 clips vs hip_bf16 2.097% and torch_bf16 2.808%; mean 3.477 s/clip vs 4.707 s/clip bf16."
+      ],
+      "anchors": [
+        {
+          "path": "hipengine/kernels/hip_gfx1100/vibevoice/q4.py",
+          "line": 203,
+          "fact": "q4_prefill is the batched Q4_K/Q6_K prefill."
+        },
+        {
+          "path": "hipengine/kernels/hip_gfx1100/vibevoice/encoder.py",
+          "line": 303,
+          "fact": "vv_prefill_attention_f32 remains as the parent-comparison wrapper."
+        },
+        {
+          "path": "hipengine/runtime/vibevoice_qwen2_q4.py",
+          "line": 36,
+          "fact": "VibevoiceQwen2Q4Runtime takes prefill_variant/frontend_variant constructor arguments; no profile plan owns the choice."
+        },
+        {
+          "path": "hipengine/generation/vibevoice_asr_q4.py",
+          "line": 12,
+          "fact": "VibeVoiceASRQ4Generator is not referenced by the loader or the LLM entry point."
+        },
+        {
+          "path": "hipengine/generation/vibevoice_asr.py",
+          "line": 34,
+          "fact": "the registered ASR generator loads the bf16 Qwen2 runtime."
+        },
+        {
+          "path": "scripts/vibevoice_asr_wer_full.py",
+          "line": 1,
+          "fact": "--lanes torch hip hipq4 is the existing comparison harness."
+        },
+        {
+          "path": "scripts/vibevoice_asr_compare_logits.py",
+          "line": 1,
+          "fact": "the logits-parity harness the production gate would use."
+        }
+      ],
+      "nested": [
+        {
+          "line": 2543,
+          "item": "Promote the Q4 batched prefill once its prefill output matches the production path on a production-profile numerical gate.",
+          "disposition": "decision",
+          "note": "Product call: which ASR path is production. Gate command: python3 scripts/vibevoice_asr_compare_logits.py on the Q4_K_M artifact at the production profile; the WER artifact above is supporting evidence, not the gate."
+        },
+        {
+          "line": 2550,
+          "item": "The batched prefill route wires only Q4_K and Q6_K; Q5_K has no WMMA prefill.",
+          "disposition": "obsolete",
+          "note": "Capability record, not debt. A Q5_K artifact runs the scalar prefill, which is a correct registered path."
+        },
+        {
+          "line": 2554,
+          "item": "q4_prefill allocates ~19 scratch buffers per call; hoist them into the runner.",
+          "disposition": "resolved",
+          "note": "The per-call arena is in place; the 2026-09-14 scratch artifact records the reduction."
+        },
+        {
+          "line": 2558,
+          "item": "prefill_variant/frontend_variant expose arithmetic candidates; remove the standalone selection plumbing when profile construction owns it.",
+          "disposition": "actionable",
+          "note": "Not done. Depends on the promotion above: once a profile plan owns the selection, delete the constructor arguments."
+        },
+        {
+          "line": 2563,
+          "item": "The old raw vv_prefill_attention_f32 wrapper remains for parent comparison.",
+          "disposition": "actionable",
+          "note": "Remove with the promotion, after the parity gate retires the wrapper's oracle role."
+        },
+        {
+          "line": 2567,
+          "item": "Convolution tails use owned host snapshots at chunk boundaries; a phase-unrolled kernel is the fix.",
+          "disposition": "obsolete",
+          "note": "New kernel work, not cleanup. Record it in docs/KERNELS.md if it is to be pursued."
+        }
+      ],
+      "smallest_fix": "Lead decision, then one of two paths. (a) Promote: run scripts/vibevoice_asr_compare_logits.py on the Q4_K_M artifact; if it matches, make VibeVoiceASRGenerator select the Q4 runtime for Q4 artifacts, delete the constructor variant arguments and the raw wrapper, and update docs. (b) Do not promote: delete the promotion, variant-plumbing, and wrapper subitems; keep the scratch result and move the Q5_K/conv notes to docs/KERNELS.md.",
+      "required_checks": [
+        "python3 scripts/vibevoice_asr_compare_logits.py (Q4_K_M artifact, production profile)",
+        "uv run pytest tests/test_gpu_vibevoice_qwen2_runner.py tests/test_unit_vibevoice_asr_q4.py (if present)",
+        "One real request through the ASR generator (or scripts/vibevoice_asr_wer_full.py --lanes hipq4) confirming the intended route ran."
+      ],
+      "clearing_dependency": "The Q4_K_M ASR artifact and a GPU host are required for the logits gate; the artifact is not in the repository.",
+      "residual_risk": "The 200-clip WER is end-to-end quality, not prefill logits parity. Treating it as the gate would weaken the arithmetic contract the ledger names.",
+      "refactor_action": "rewrite"
+    },
+    {
+      "id": "R0084",
+      "title": "Dense Qwen35 execution-profile module names (architecture-scope rename)",
+      "inventory_lines": [
+        2571,
+        2592
+      ],
+      "current_lines": [
+        2351,
+        2372
+      ],
+      "disposition": "actionable",
+      "confidence": "high",
+      "verdict": "The stale-name finding is correct: qwen36_gguf_profiles.py registers the gfx1151 MoE plugin and qwen38_gguf_profiles.py registers the gfx1151 dense plugin. The proposed gfx1100 name is wrong, however: qwen36_gguf_gfx1100_profiles.py registers both dense qwen3_5_gguf and MoE qwen3_5_moe_gguf. The rename needs a split or a family name.",
+      "executed_evidence": [
+        "Read the constants: QWEN36_GGUF_MODEL='qwen3_5_moe_gguf' (qwen36_gguf_profiles.py:49), QWEN38_GGUF_MODEL='qwen3_5_gguf' (qwen38_gguf_profiles.py:24), and qwen36_gguf_gfx1100_profiles.py:145/184 registering qwen3_5_gguf and qwen3_5_moe_gguf.",
+        "Grepped registrations in hipengine/generation/__init__.py:184-185."
+      ],
+      "anchors": [
+        {
+          "path": "hipengine/generation/qwen36_gguf_profiles.py",
+          "line": 49,
+          "fact": "registers the MoE model on gfx1151."
+        },
+        {
+          "path": "hipengine/generation/qwen38_gguf_profiles.py",
+          "line": 24,
+          "fact": "registers the dense model on gfx1151."
+        },
+        {
+          "path": "hipengine/generation/qwen36_gguf_gfx1100_profiles.py",
+          "line": 145,
+          "fact": "registers dense qwen3_5_gguf on gfx1100."
+        },
+        {
+          "path": "hipengine/generation/qwen36_gguf_gfx1100_profiles.py",
+          "line": 184,
+          "fact": "also registers MoE qwen3_5_moe_gguf on gfx1100."
+        },
+        {
+          "path": "hipengine/generation/__init__.py",
+          "line": 184,
+          "fact": "the registration entry points that must follow the rename."
+        },
+        {
+          "path": "scripts/qwen4exp_q8_wave_scale_screen.py",
+          "line": 1,
+          "fact": "not involved; no script imports these profile modules by name except the registration."
+        }
+      ],
+      "nested": [
+        {
+          "line": 2573,
+          "item": "Three profile modules are named after models but register architecture-scoped profiles.",
+          "disposition": "resolved",
+          "note": "Confirmed by the model constants and registration calls."
+        },
+        {
+          "line": 2583,
+          "item": "Rename to qwen35_dense_gfx1100_profiles.py, qwen35_dense_gfx1151_profiles.py, qwen36_moe_gfx1151_profiles.py.",
+          "disposition": "actionable",
+          "note": "The gfx1100 name is wrong: the module registers dense and MoE. Split it into qwen35_dense_gfx1100_profiles.py + qwen36_moe_gfx1100_profiles.py, or name it qwen35_family_gfx1100_profiles.py."
+        },
+        {
+          "line": 2589,
+          "item": "See the transfer audit section K.",
+          "disposition": "resolved",
+          "note": "The archive document exists and states the same finding."
+        }
+      ],
+      "smallest_fix": "Rename qwen38_gguf_profiles.py to qwen35_dense_gfx1151_profiles.py and qwen36_gguf_profiles.py to qwen36_moe_gfx1151_profiles.py; split qwen36_gguf_gfx1100_profiles.py into dense and MoE modules (or rename it qwen35_family_gfx1100_profiles.py), updating hipengine/generation/__init__.py:167-185 and any test imports. Then delete this section.",
+      "required_checks": [
+        "uv run pytest tests/test_unit_execution_profiles.py tests/test_unit_qwen4_exp_profiles.py tests/test_unit_qwen35_gguf_decode_graph.py",
+        "python3 -c \"import hipengine.generation; print(sorted(hipengine.execution_profiles.registered_runtime_profile_keys()))\" before and after to confirm the same keys.",
+        "python3 scripts/docs/check_all.py"
+      ],
+      "residual_risk": "A pure rename touches no arithmetic, but it is a cross-file churn; land it as its own commit with the key-set check above.",
+      "refactor_action": "rewrite then delete"
+    },
+    {
+      "id": "R0085",
+      "title": "`HIPENGINE_GGUF_PACKED_LAYER_OUTER` (promoted to default ON 2026-09-11)",
+      "inventory_lines": [
+        2593,
+        2607
+      ],
+      "current_lines": [
+        2373,
+        2387
+      ],
+      "disposition": "actionable",
+      "confidence": "high",
+      "verdict": "The promotion record is accurate. The removal condition is mis-stated: the chunk-outer executor is the permanent decline path, not a rollback lever, so 'once the chunk-outer executor has no remaining rollback or bisection value' can never be met. What can go is the flag, the helper, and the `if enabled` guard; the layer-outer attempt already returns NotImplementedError and the caller falls through to chunk-outer.",
+      "executed_evidence": [
+        "Read the guard at qwen35_gguf_runner.py:22511 and the fallback at 22542-22545: the caller catches NotImplementedError and runs the chunk-outer loop, so the dispatch branch is the guard, not the executor.",
+        "The layer-outer docstring at 22687-22695 states the serving-only scope and that everything else falls back to chunk-outer.",
+        "scripts/gguf_p6e_cancel_refill_proof.py uses the flag as a negative control; tests/test_unit_gguf_p6e_cancel_refill_proof.py:326-339 asserts the probe fails with the flag off."
+      ],
+      "anchors": [
+        {
+          "path": "hipengine/runtime/qwen35_gguf_runner.py",
+          "line": 1699,
+          "fact": "_gguf_packed_layer_outer_enabled reads the env, default on."
+        },
+        {
+          "path": "hipengine/runtime/qwen35_gguf_runner.py",
+          "line": 22517,
+          "fact": "the guard that dispatches to the layer-outer attempt."
+        },
+        {
+          "path": "hipengine/runtime/qwen35_gguf_runner.py",
+          "line": 22543,
+          "fact": "except NotImplementedError falls through to the chunk-outer loop."
+        },
+        {
+          "path": "hipengine/runtime/qwen35_gguf_runner.py",
+          "line": 22687,
+          "fact": "the layer-outer scope: greedy samples, no seeds, no sinks, no capture."
+        },
+        {
+          "path": "hipengine/generation/qwen35_gguf.py",
+          "line": 11828,
+          "fact": "the resumable layer-outer path also declines rather than falling back."
+        },
+        {
+          "path": "scripts/gguf_p6e_cancel_refill_proof.py",
+          "line": 86,
+          "fact": "uses HIPENGINE_GGUF_PACKED_LAYER_OUTER as the negative-control arm."
+        },
+        {
+          "path": "docs/ENVS.md",
+          "line": 384,
+          "fact": "documents the flag as a rollback opt-out."
+        }
+      ],
+      "nested": [
+        {
+          "line": 2595,
+          "item": "Promotion evidence: wall parity within 1.5% at 1,024-8,192 rows, identical IDs, 0.438 GiB less peak, zero server fallbacks.",
+          "disposition": "resolved",
+          "note": "Artifacts exist at benchmarks/results/2026-09-11-w7900-p3-promotion-*."
+        },
+        {
+          "line": 2602,
+          "item": "Removal condition: once the chunk-outer executor has no remaining rollback or bisection value, delete the flag, the helper, and the chunk-outer dispatch branch together.",
+          "disposition": "actionable",
+          "note": "Restate the condition as the flag's rollback value. Delete the flag/helper/guard; keep the executor and its decline tests. Replace the P6e negative control with a decline shape (a sink or hidden-seed request) so the probe still proves the gate can fail."
+        }
+      ],
+      "smallest_fix": "Delete HIPENGINE_GGUF_PACKED_LAYER_OUTER, _gguf_packed_layer_outer_enabled, and the guard at 22511 (keep the try/except and the chunk-outer loop). Update the P6e probe to force a decline by shape instead of the env, drop the ENVS row, and update tests/test_unit_gguf_p6e_cancel_refill_proof.py. Then delete this section.",
+      "required_checks": [
+        "uv run pytest tests/test_unit_gguf_p6e_cancel_refill_proof.py tests/test_unit_qwen35_gguf_runner.py tests/test_unit_gguf_packed_verify_layout.py",
+        "uv run pytest tests/test_unit_qwen35_gguf_decode_graph.py",
+        "python3 audit/audit.py check (flag removal must not add untriaged debt)"
+      ],
+      "residual_risk": "Removing the flag removes the operator's only rollback to chunk-outer for a promoted default. No observed failure or regression is recorded, and the default has held since 2026-09-11. If the lead wants the lever kept, the correct action is to rewrite the entry as a permanent rollback record rather than leave an unsatisfiable removal condition.",
+      "refactor_action": "rewrite then delete"
+    },
+    {
+      "id": "R0086",
+      "title": "`HIPENGINE_YUE2_NAR_ATTENTION` (scalar fallback for the tensor-core attention)",
+      "inventory_lines": [
+        2608,
+        2628
+      ],
+      "current_lines": [
+        2388,
+        2408
+      ],
+      "disposition": "actionable",
+      "confidence": "high",
+      "verdict": "Accurate and the soak condition is met (promoted 2026-09-17, no solver regression recorded). One instruction is wrong: the `_wmma_attention` branch is the geometry guard, not the env gate. Removing the branch would make a non-production geometry raise instead of falling back to the scalar kernel. Remove only the environment read.",
+      "executed_evidence": [
+        "Read hipengine/runtime/yue2_nar.py:341-346: _wmma_attention = env != 'scalar' and head_dim == 128 and heads == 16 and kv_heads == 8.",
+        "tests/test_unit_yue2_nar_kernels.py:218 pins the kernel's rejection of a geometry it does not implement; the runtime's scalar fallback is what keeps the class usable for other geometries."
+      ],
+      "anchors": [
+        {
+          "path": "hipengine/runtime/yue2_nar.py",
+          "line": 342,
+          "fact": "the env + geometry selection expression."
+        },
+        {
+          "path": "hipengine/runtime/yue2_nar.py",
+          "line": 748,
+          "fact": "the attention ternary that consumes _wmma_attention."
+        },
+        {
+          "path": "hipengine/kernels/hip_gfx1100/yue2/nar.py",
+          "line": 149,
+          "fact": "nar_attention_f32 (149) and nar_attention_wmma (183) are the two registered kernels."
+        },
+        {
+          "path": "docs/ENVS.md",
+          "line": 790,
+          "fact": "documents the flag."
+        },
+        {
+          "path": "tests/test_unit_yue2_nar_kernels.py",
+          "line": 218,
+          "fact": "the kernel rejects non-production geometry."
+        },
+        {
+          "path": "benchmarks/CHANGELOG.md",
+          "line": 54,
+          "fact": "records the gfx1100 qualification and the 54.76 s -> 32.22 s solve."
+        }
+      ],
+      "nested": [
+        {
+          "line": 2610,
+          "item": "nar_wmma became the default for the production geometry after the M4 gates; 54.76 s -> 32.22 s.",
+          "disposition": "resolved",
+          "note": "Artifact-backed and still the default."
+        },
+        {
+          "line": 2616,
+          "item": "HIPENGINE_YUE2_NAR_ATTENTION=scalar selects nar_attention_f32, the bit-exact oracle.",
+          "disposition": "resolved",
+          "note": "The scalar kernel remains registered and bit-exact; only the env selection goes."
+        },
+        {
+          "line": 2623,
+          "item": "Removal condition: drop the environment flag and the `_wmma_attention` branch, keep the scalar kernel registered but unreachable by default.",
+          "disposition": "actionable",
+          "note": "Drop the environment read only. Keep the geometry guard and the ternary, so non-production geometry still runs the scalar kernel."
+        }
+      ],
+      "smallest_fix": "Delete the env read from yue2_nar.py:341-346, leaving the geometry guard; update the comment and docs/ENVS.md:790; add a runtime-level test that a non-production geometry selects the scalar kernel and the production geometry selects WMMA. Then delete this section.",
+      "required_checks": [
+        "uv run pytest tests/test_unit_yue2_nar_kernels.py tests/test_unit_yue2_session.py",
+        "uv run pytest tests/test_unit_yue2_protocol.py",
+        "python3 scripts/docs/check_all.py"
+      ],
+      "residual_risk": "The env flag is also the fastest bisection point for a solver regression. Removing it leaves the scalar kernel callable only through direct code or the geometry guard; the oracle test still covers bit-exactness.",
+      "refactor_action": "rewrite then delete"
+    },
+    {
+      "id": "R0087",
+      "title": "YuE2 AR full-vocabulary head route (gate-only, keep)",
+      "inventory_lines": [
+        2629,
+        2653
+      ],
+      "current_lines": [
+        2409,
+        2433
+      ],
+      "disposition": "actionable",
+      "confidence": "high",
+      "verdict": "The stated design is correct: full-row and windowed sampling share `_distribution_slice`. The implementation does not match it: `distribution` is defined twice, and the second definition shadows the first. The window-coordinate commit added the new definition above the old one, so the new docstring and body are dead. Executed check: yue2.distribution resolves to line 535.",
+      "executed_evidence": [
+        "inspect.getsource(yue2.distribution) reports line 535 and both definitions call _distribution_slice.",
+        "git blame: line 478 is from e7ce1d2fd (window coordinates); line 535 is the original 734fbd40f definition."
+      ],
+      "anchors": [
+        {
+          "path": "hipengine/generation/yue2.py",
+          "line": 478,
+          "fact": "the newer definition, dead because the later one shadows it."
+        },
+        {
+          "path": "hipengine/generation/yue2.py",
+          "line": 501,
+          "fact": "distribution_windowed is the live windowed entry point."
+        },
+        {
+          "path": "hipengine/generation/yue2.py",
+          "line": 535,
+          "fact": "the live definition that shadows 478."
+        },
+        {
+          "path": "hipengine/generation/yue2.py",
+          "line": 371,
+          "fact": "phase_window is the row window the session passes."
+        },
+        {
+          "path": "hipengine/runtime/yue2_ar.py",
+          "line": 509,
+          "fact": "Yue2ArRuntime.logits projects the window and returns a full-vocabulary row."
+        },
+        {
+          "path": "scripts/yue2_ar_replay.py",
+          "line": 1,
+          "fact": "the full-vocabulary replay gate that keeps domain=None."
+        },
+        {
+          "path": "tests/test_unit_yue2_protocol.py",
+          "line": 635,
+          "fact": "pins the distribution/distribution_windowed equivalence."
+        }
+      ],
+      "nested": [
+        {
+          "line": 2631,
+          "item": "The session passes a window and samples through distribution_windowed; the unwindowed call is reached only by the replay matrix and harnesses.",
+          "disposition": "resolved",
+          "note": "Confirmed by the session loop and the replay script."
+        },
+        {
+          "line": 2639,
+          "item": "Keep domain=None: the reference rows are full-vocabulary and the AR replay gate would lose its oracle.",
+          "disposition": "resolved",
+          "note": "Correct; no removal."
+        },
+        {
+          "line": 2645,
+          "item": "distribution and distribution_windowed are one arithmetic body, _distribution_slice; nothing to keep in step.",
+          "disposition": "actionable",
+          "note": "True of the intended code, false of the file: two definitions exist and the wrong one is live. Delete 535-553."
+        },
+        {
+          "line": 2651,
+          "item": "Removal condition: none.",
+          "disposition": "resolved",
+          "note": "Keep the route."
+        }
+      ],
+      "smallest_fix": "Delete the shadowed definition at hipengine/generation/yue2.py:535-553, keeping the first definition (478-497) whose docstring documents the windowed contract. Then delete this section; the route itself stays.",
+      "required_checks": [
+        "uv run pytest tests/test_unit_yue2_protocol.py tests/test_unit_yue2_session.py",
+        "python3 -c \"import inspect, hipengine.generation.yue2 as y; print(inspect.getsourcelines(y.distribution)[1])\" to confirm a single definition."
+      ],
+      "residual_risk": "None beyond the dedupe. If a future edit changes the first definition, it now takes effect; that is the intended behavior.",
+      "refactor_action": "delete after dedupe"
+    },
+    {
+      "id": "R0088",
+      "title": "`HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` (INT8 KV C1 decode graph)",
+      "inventory_lines": [
+        2654,
+        2691
+      ],
+      "current_lines": [
+        2434,
+        2471
+      ],
+      "disposition": "actionable",
+      "confidence": "high",
+      "verdict": "Accurate. The env default is 0, INT8 admission requires it, and the pm4 floor is 128 for dense gfx1100. The ledger's promotion condition is satisfied by the recorded artifacts (128-token five-pair reversed-order set; +6.84% at 128, +9.52% at 64; pm4 vs hipgraph A/B). One inconsistency: `_decode_graph_storage_admitted` gates every non-BF16 dtype on the env, so the unconditional tail4_hadamard_group32 admission in `_decode_graph_kv_layout_admitted` is unreachable from the session path.",
+      "executed_evidence": [
+        "Ran the predicate on a fake session: env unset -> uniform/per_token_head False, block16 False, tail4 False; env=1 -> uniform/per_token_head True, block16 False, tail4 True.",
+        "Read the 128-token artifacts (eager/replay, rep2/rep3, rev1/rev2) and the 64/32-token pair set under benchmarks/results/2026-09-11-w7900-ikv-c2-c1-decode-graph-int8-*."
+      ],
+      "anchors": [
+        {
+          "path": "hipengine/runtime/gguf_decode_graph.py",
+          "line": 55,
+          "fact": "_gguf_int8_kv_decode_graph_enabled reads the env, default 0."
+        },
+        {
+          "path": "hipengine/runtime/gguf_decode_graph.py",
+          "line": 83,
+          "fact": "_decode_graph_kv_layout_admitted admits tail4 unconditionally and uniform/per_token_head only with the env."
+        },
+        {
+          "path": "hipengine/runtime/gguf_decode_graph.py",
+          "line": 385,
+          "fact": "the capture path checks the layout helper directly."
+        },
+        {
+          "path": "hipengine/runtime/qwen35_gguf_runner.py",
+          "line": 16715,
+          "fact": "_decode_graph_storage_admitted requires the env for every non-BF16 dtype."
+        },
+        {
+          "path": "hipengine/runtime/qwen35_gguf_runner.py",
+          "line": 16768,
+          "fact": "_resolve_decode_graph_min_replay_steps returns the backend capability (128 dense gfx1100)."
+        },
+        {
+          "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+          "line": 175,
+          "fact": "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS base floor is 24."
+        },
+        {
+          "path": "hipengine/kernels/hip_gfx1100/__init__.py",
+          "line": 195,
+          "fact": "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES dense c1 is pm4 with min_replay_steps_by_physical_rows {1: 128}."
+        },
+        {
+          "path": "hipengine/kernels/hip_gfx1151/__init__.py",
+          "line": 1538,
+          "fact": "the packed floor policy is dense c2 Q4_K_M: 23; there is no gfx1100 packed row."
+        },
+        {
+          "path": "tests/test_unit_qwen35_gguf_decode_graph.py",
+          "line": 583,
+          "fact": "pins INT8 rejection unless the env is set."
+        },
+        {
+          "path": "tests/test_unit_qwen35_gguf_decode_graph.py",
+          "line": 611,
+          "fact": "pins the layout admission split."
+        },
+        {
+          "path": "docs/ENVS.md",
+          "line": 386,
+          "fact": "documents the env flag."
+        }
+      ],
+      "nested": [
+        {
+          "line": 2656,
+          "item": "Admitted 2026-09-11 so the INT8 KV C1 decode graph could be measured.",
+          "disposition": "resolved",
+          "note": "Accurate history."
+        },
+        {
+          "line": 2663,
+          "item": "Measured +6.84% at 128 and +9.52% at 64 tokens on 27B Q4_K_M, full 10-prompt suite, exact trajectories, no correctness or crash failure.",
+          "disposition": "resolved",
+          "note": "Artifacts present."
+        },
+        {
+          "line": 2668,
+          "item": "Removal condition: promote once the sign reproduces on a second prompt set and a pm4-vs-hipgraph A/B shows pm4 wins in the INT8 arm; then remove the env flag.",
+          "disposition": "actionable",
+          "note": "The five-pair reversed-order 128-token set is the second prompt set, and the 2026-09-11 A/B records the transport comparison. Remove the env read; keep the layout admission and the eager fallback."
+        }
+      ],
+      "smallest_fix": "Change _decode_graph_storage_admitted to delegate to _decode_graph_kv_layout_admitted without the env conjunction; remove the env branch from _decode_graph_kv_layout_admitted (keeping the uniform/per_token_head and tail4 acceptance); delete HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH from docs/ENVS.md; update the two tests to expect admission on the pm4 transport and rejection for an unadmitted layout. Then delete this section.",
+      "required_checks": [
+        "uv run pytest tests/test_unit_qwen35_gguf_decode_graph.py tests/test_unit_gguf_decode_graph.py",
+        "uv run pytest tests/test_unit_qwen35_gguf_runner.py",
+        "One INT8 KV C1 request at 128+ generated tokens through LLM.generate(): confirm the graph route engaged and output is bit-identical to the eager arm on the same prompt."
+      ],
+      "residual_risk": "This changes a production default (graphs on for INT8 KV C1). The graph replays the same kernels, so arithmetic is unchanged, but the resident loop's ownership path is different; the exact-trajectory artifacts are the evidence. Keep the eager step registered.",
+      "refactor_action": "rewrite then delete"
+    },
+    {
+      "id": "R0089",
+      "title": "Host-to-device source ownership",
+      "inventory_lines": [
+        2692,
+        2717
+      ],
+      "current_lines": [
+        2472,
+        2497
+      ],
+      "disposition": "actionable",
+      "confidence": "medium",
+      "verdict": "Accurate. The owning API exists and the reviewed callers use it, but the remaining named-local callers still use the raw pointer API, and the AST guards are explicitly partial. The entry's removal condition ('when array upload callers consistently use the owning API') is not met, and there is a concrete guard improvement available.",
+      "executed_evidence": [
+        "hipengine/kernels/hip_gfx1100/speculative/mtp_nextn.py has 36 copy_host_to_device( calls; host_buffer_ptr appears 10 times across hipengine/.",
+        "tests/test_unit_host_array_upload.py:14-20 parametrizes ten reviewed modules for the temporary-owner guard."
+      ],
+      "anchors": [
+        {
+          "path": "hipengine/core/memory.py",
+          "line": 232,
+          "fact": "host_buffer_ptr is the raw-address helper."
+        },
+        {
+          "path": "hipengine/kernels/hip_gfx1100/speculative/mtp_nextn.py",
+          "line": 1,
+          "fact": "36 copy_host_to_device call sites, the largest remaining named-local caller."
+        },
+        {
+          "path": "tests/test_unit_host_array_upload.py",
+          "line": 14,
+          "fact": "the AST guard's reviewed-module list."
+        },
+        {
+          "path": "tests/test_gpu_host_array_upload.py",
+          "line": 1,
+          "fact": "real-copy coverage."
+        },
+        {
+          "path": "tests/test_gpu_h2d_source_lifetime.py",
+          "line": 1,
+          "fact": "source-reuse coverage."
+        }
+      ],
+      "nested": [
+        {
+          "line": 2694,
+          "item": "copy_host_array_to_device retains a contiguous source and checks both bounds.",
+          "disposition": "resolved",
+          "note": "Implemented and tested."
+        },
+        {
+          "line": 2700,
+          "item": "The reviewed temporary-array uploads use the owning API.",
+          "disposition": "resolved",
+          "note": "Confirmed by the AST guard."
+        },
+        {
+          "line": 2705,
+          "item": "Named-local array uploads still use the raw-address API; migrate when touching those paths; remove the entry when callers consistently use the owning API.",
+          "disposition": "actionable",
+          "note": "Extend the AST guard to flag inline array.ctypes.data / np.ascontiguousarray(...).ctypes.data passed directly to copy_host_to_device in the reviewed modules, migrate any hits, then delete the entry."
+        },
+        {
+          "line": 2712,
+          "item": "_copy_array_to_tensor-style helpers may carry defensive device_synchronize calls; a future async API needs its own contract.",
+          "disposition": "obsolete",
+          "note": "A design note, not cleanup. Keep it in the helper docstring."
+        }
+      ],
+      "smallest_fix": "Extend tests/test_unit_host_array_upload.py's AST guard to reject inline temporary pointer expressions at copy_host_to_device call sites in the ten reviewed modules; migrate the hits it finds; then delete this section.",
+      "required_checks": [
+        "uv run pytest tests/test_unit_host_array_upload.py tests/test_gpu_host_array_upload.py tests/test_gpu_h2d_source_lifetime.py",
+        "python3 audit/audit.py check"
+      ],
+      "residual_risk": "An AST guard cannot prove arbitrary pointer lifetimes; it only pins the reviewed shapes. Say so in the test docstring.",
+      "refactor_action": "rewrite then delete"
+    },
+    {
+      "id": "R0090",
+      "title": "Qwen4Exp Q8 expanded F32 cache: removed",
+      "inventory_lines": [
+        2718,
+        2726
+      ],
+      "current_lines": [
+        2498,
+        2506
+      ],
+      "disposition": "resolved",
+      "confidence": "high",
+      "verdict": "No production path, wrapper, or registry entry remains, and the recipe artifact is present. The rejection is a closed record with no cleanup left.",
+      "executed_evidence": [
+        "Grepped hipengine/ for f32_cache / early_publish / wave_publish / coltile8_rowbatch4_f32_cache: no candidate symbols.",
+        "Read benchmarks/results/2026-09-07-framework-qwen4exp-q8-f32-cache-rejected.json."
+      ],
+      "anchors": [
+        {
+          "path": "benchmarks/results/2026-09-07-framework-qwen4exp-q8-f32-cache-rejected.json",
+          "line": 1,
+          "fact": "the rejection artifact."
+        },
+        {
+          "path": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.py",
+          "line": 716,
+          "fact": "the retained prepacked 128 chain, unrelated to the removed f32 sidecar."
+        }
+      ],
+      "nested": [
+        {
+          "line": 2720,
+          "item": "Exact sidecar loses 0.161x attention-gate and 0.787x/0.782x shared-down.",
+          "disposition": "resolved",
+          "note": "Artifact-backed."
+        },
+        {
+          "line": 2723,
+          "item": "No production path, wrapper, or registry entry retained; do not repeat unchanged.",
+          "disposition": "resolved",
+          "note": "Verified absent."
+        }
+      ],
+      "smallest_fix": "Delete the section. The artifact and the kernel inventory carry the record.",
+      "required_checks": [
+        "python3 scripts/docs/check_all.py"
+      ],
+      "residual_risk": "None.",
+      "refactor_action": "delete"
+    },
+    {
+      "id": "R0091",
+      "title": "Qwen4Exp Q8 early wave publication: removed",
+      "inventory_lines": [
+        2727,
+        2735
+      ],
+      "current_lines": [
+        2507,
+        2515
+      ],
+      "disposition": "resolved",
+      "confidence": "high",
+      "verdict": "The candidate and its flag are absent; the rejection artifact is present. No cleanup remains.",
+      "executed_evidence": [
+        "Grepped hipengine/ for early_publish / wave_publish: no candidate symbols.",
+        "Read benchmarks/results/2026-09-07-framework-qwen4exp-q8-early-publication-rejected.json."
+      ],
+      "anchors": [
+        {
+          "path": "benchmarks/results/2026-09-07-framework-qwen4exp-q8-early-publication-rejected.json",
+          "line": 1,
+          "fact": "the rejection artifact."
+        }
+      ],
+      "nested": [
+        {
+          "line": 2729,
+          "item": "Immediate publication lowers VGPR 72->64 but loses 0.651-0.910x.",
+          "disposition": "resolved",
+          "note": "Artifact-backed."
+        },
+        {
+          "line": 2732,
+          "item": "Candidate removed; no runtime flag or registry debt remains.",
+          "disposition": "resolved",
+          "note": "Verified absent."
+        }
+      ],
+      "smallest_fix": "Delete the section.",
+      "required_checks": [
+        "python3 scripts/docs/check_all.py"
+      ],
+      "residual_risk": "None.",
+      "refactor_action": "delete"
+    },
+    {
+      "id": "R0092",
+      "title": "H256 QSA four-head production",
+      "inventory_lines": [
+        2736,
+        2750
+      ],
+      "current_lines": [
+        2516,
+        2530
+      ],
+      "disposition": "actionable",
+      "confidence": "high",
+      "verdict": "The production binding is live and accurate. The last subitem is stale: the profile plans now own the head grouping (the production binder writes `quad` at construction), so there is no temporary mode chain to remove. The one wrong fact is docs/ENVS.md:893, which still reports default `0` for the production path.",
+      "executed_evidence": [
+        "Read qwen4_exp_profiles.py:1105: the production plan sets HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR='quad'; the strict plan sets '0'.",
+        "Read qwen4_exp_runner.py:2728: mode 'quad' selects strict_h256_head_quad_rows_spans for 24q/2kv at page256; invalid values leave the key unchanged."
+      ],
+      "anchors": [
+        {
+          "path": "hipengine/generation/qwen4_exp_profiles.py",
+          "line": 1105,
+          "fact": "the production plan binds quad; strict binds 0."
+        },
+        {
+          "path": "hipengine/runtime/qwen4_exp_runner.py",
+          "line": 2728,
+          "fact": "the mode chain selects the quad leaf only for the production geometry."
+        },
+        {
+          "path": "docs/ENVS.md",
+          "line": 893,
+          "fact": "the row still says default 0 and does not mention the production binding."
+        },
+        {
+          "path": "hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.py",
+          "line": 889,
+          "fact": "the quad kernel requires page256 and GQA ratio divisible by 4; the wrapper is at 922."
+        }
+      ],
+      "nested": [
+        {
+          "line": 2738,
+          "item": "strict_h256_head_quad_rows_spans shares K/V across four heads; production mode is Hq24/Hkv2-only; invalid values fail closed.",
+          "disposition": "resolved",
+          "note": "Accurate."
+        },
+        {
+          "line": 2742,
+          "item": "Synthetic 1.033x/1.063x leaf ratios; 23 tests.",
+          "disposition": "resolved",
+          "note": "Artifact-backed."
+        },
+        {
+          "line": 2744,
+          "item": "Full state/KV gate, six cases, 72 exact trajectories, PP +3.571%, TG -3.531%.",
+          "disposition": "resolved",
+          "note": "Artifact-backed."
+        },
+        {
+          "line": 2747,
+          "item": "Production binds quad, strict 0. Pair1/single-head0 retained for bisection; remove temporary mode chain when profile plans own head grouping.",
+          "disposition": "actionable",
+          "note": "The plans own it now; the chain is the production selector, not temporary plumbing. Correct the ENVS row and drop the removal instruction."
+        }
+      ],
+      "smallest_fix": "Update docs/ENVS.md:893 to state that the strict profile binds 0 and the production profile binds quad, and that 1 selects the two-head bisection leaf. Rewrite the last ledger subitem to drop the mode-chain removal instruction. Then delete the section once the doc matches.",
+      "required_checks": [
+        "python3 scripts/docs/check_all.py",
+        "uv run pytest tests/test_unit_qwen4exp_profiles.py tests/test_unit_qwen4exp_qsa_head_pair.py (or the existing QSA head-pair test file)"
+      ],
+      "residual_risk": "None; docs only.",
+      "refactor_action": "rewrite then delete"
+    },
+    {
+      "id": "R0093",
+      "title": "GDN full-layer diagnostic graph cache",
+      "inventory_lines": [
+        2751,
+        2760
+      ],
+      "current_lines": [
+        2531,
+        2540
+      ],
+      "disposition": "obsolete",
+      "confidence": "high",
+      "verdict": "An accurate keep-note about a diagnostic probe. The probe exists, is c1-only, charges setup, and shows no win. There is no cleanup action; the guidance belongs in the probe docstring and the worklog, not the refactor ledger.",
+      "executed_evidence": [
+        "Read scripts/qwen4exp_gdn_decode_graph_probe.py: diagnostic-only, single-row geometry guard, no runtime integration.",
+        "tests/test_unit_qwen4exp_gdn_decode_graph_probe.py covers mutable_regions."
+      ],
+      "anchors": [
+        {
+          "path": "scripts/qwen4exp_gdn_decode_graph_probe.py",
+          "line": 1,
+          "fact": "diagnostic-only docstring."
+        },
+        {
+          "path": "tests/test_unit_qwen4exp_gdn_decode_graph_probe.py",
+          "line": 1,
+          "fact": "the probe's unit coverage."
+        }
+      ],
+      "nested": [
+        {
+          "line": 2753,
+          "item": "The probe is single-runner/c1 diagnostic only and charges setup.",
+          "disposition": "resolved",
+          "note": "Accurate."
+        },
+        {
+          "line": 2756,
+          "item": "Warm graph ~1.049 s/16 steps vs eager ~1.046-1.047 s.",
+          "disposition": "resolved",
+          "note": "Artifact-backed."
+        },
+        {
+          "line": 2758,
+          "item": "Keep the probe for lifecycle/reference evidence; do not generalize.",
+          "disposition": "obsolete",
+          "note": "Keep note, not cleanup."
+        }
+      ],
+      "smallest_fix": "Delete the section; the probe docstring already says diagnostic-only.",
+      "required_checks": [
+        "python3 scripts/docs/check_all.py"
+      ],
+      "residual_risk": "None.",
+      "refactor_action": "delete"
+    },
+    {
+      "id": "R0094",
+      "title": "QSA CPU-active transition diagnostic",
+      "inventory_lines": [
+        2761,
+        2767
+      ],
+      "current_lines": [
+        2541,
+        2547
+      ],
+      "disposition": "obsolete",
+      "confidence": "high",
+      "verdict": "An accurate diagnostic keep-note with no cleanup action. The cost accounting it requires is in the probe report.",
+      "executed_evidence": [
+        "Read the probe/report path for the transition-active accounting; the ledger's 'never export decode-only' guidance is a reporting rule, not debt."
+      ],
+      "anchors": [
+        {
+          "path": "scripts/qwen4exp_qsa_decode_flag_probe.py",
+          "line": 1,
+          "fact": "the diagnostic probe."
+        }
+      ],
+      "nested": [
+        {
+          "line": 2765,
+          "item": "Diagnostic remains explicitly cost-accounted; never export decode-only.",
+          "disposition": "obsolete",
+          "note": "Reporting rule, not cleanup."
+        }
+      ],
+      "smallest_fix": "Delete the section.",
+      "required_checks": [
+        "python3 scripts/docs/check_all.py"
+      ],
+      "residual_risk": "None.",
+      "refactor_action": "delete"
+    },
+    {
+      "id": "R0095",
+      "title": "QSA requested CPU minimum diagnostic",
+      "inventory_lines": [
+        2768,
+        2775
+      ],
+      "current_lines": [
+        2548,
+        2555
+      ],
+      "disposition": "obsolete",
+      "confidence": "high",
+      "verdict": "An accurate diagnostic keep-note with no cleanup action. The helper restores on failure and the requested floor is never labeled achieved.",
+      "executed_evidence": [
+        "Read the diagnostic helper's restore path and report fields; the ledger's statement matches."
+      ],
+      "anchors": [
+        {
+          "path": "scripts/qwen4exp_qsa_decode_flag_probe.py",
+          "line": 1,
+          "fact": "the diagnostic helper."
+        }
+      ],
+      "nested": [
+        {
+          "line": 2770,
+          "item": "Policy17 floor 2->4 GHz accepted but early feedback stayed ~600 MHz.",
+          "disposition": "resolved",
+          "note": "Recorded result."
+        },
+        {
+          "line": 2773,
+          "item": "The helper restores on failure; the requested floor is never labeled achieved.",
+          "disposition": "obsolete",
+          "note": "Keep note, not cleanup."
+        }
+      ],
+      "smallest_fix": "Delete the section.",
+      "required_checks": [
+        "python3 scripts/docs/check_all.py"
+      ],
+      "residual_risk": "None.",
+      "refactor_action": "delete"
+    },
+    {
+      "id": "R0096",
+      "title": "QSA MWAITX request diagnostic",
+      "inventory_lines": [
+        2776,
+        2782
+      ],
+      "current_lines": [
+        2556,
+        2562
+      ],
+      "disposition": "obsolete",
+      "confidence": "high",
+      "verdict": "An accurate diagnostic keep-note with no cleanup action. The probe records loaded HIP/HSA hashes and the requested wait environment.",
+      "executed_evidence": [
+        "Read the probe's environment capture; the ledger's statement matches."
+      ],
+      "anchors": [
+        {
+          "path": "scripts/qwen4exp_qsa_decode_flag_probe.py",
+          "line": 1,
+          "fact": "the probe records HIP/HSA hashes and wait env."
+        }
+      ],
+      "nested": [
+        {
+          "line": 2778,
+          "item": "HSA_ENABLE_MWAITX=1 does not eliminate early decode recovery.",
+          "disposition": "resolved",
+          "note": "Recorded result."
+        },
+        {
+          "line": 2780,
+          "item": "Probe now records loaded HIP/HSA hashes and requested wait environment.",
+          "disposition": "obsolete",
+          "note": "Keep note, not cleanup."
+        }
+      ],
+      "smallest_fix": "Delete the section.",
+      "required_checks": [
+        "python3 scripts/docs/check_all.py"
+      ],
+      "residual_risk": "None.",
+      "refactor_action": "delete"
+    },
+    {
+      "id": "R0097",
+      "title": "QSA transition HIP scheduling diagnostic",
+      "inventory_lines": [
+        2783,
+        2791
+      ],
+      "current_lines": [
+        2563,
+        2571
+      ],
+      "disposition": "obsolete",
+      "confidence": "high",
+      "verdict": "An accurate diagnostic keep-note, except the last subitem: 'Paired-head QSA remains default-off pending transition decision' is false. The production profile binds `quad` (R0092). Retire the section; R0092 carries the production-binding record.",
+      "executed_evidence": [
+        "Read qwen4_exp_profiles.py:1105: production binds quad.",
+        "The HIP flag observation (spin1 already; 1->1 is not a change) matches the probe."
+      ],
+      "anchors": [
+        {
+          "path": "hipengine/generation/qwen4_exp_profiles.py",
+          "line": 1105,
+          "fact": "production binds quad, so paired-head QSA is not default-off."
+        },
+        {
+          "path": "scripts/qwen4exp_qsa_decode_flag_probe.py",
+          "line": 1,
+          "fact": "the HIP-flag diagnostic."
+        }
+      ],
+      "nested": [
+        {
+          "line": 2785,
+          "item": "Initial HIP flags already spin1; explicit 1->1 did not constitute a change.",
+          "disposition": "resolved",
+          "note": "Recorded result."
+        },
+        {
+          "line": 2787,
+          "item": "No production HIP flag override added; the diagnostic helper preserves the original environment.",
+          "disposition": "obsolete",
+          "note": "Keep note, not cleanup."
+        },
+        {
+          "line": 2789,
+          "item": "Paired-head QSA remains default-off pending transition decision; do not reopen.",
+          "disposition": "obsolete",
+          "note": "Stale: quad is the production binding (R0092)."
+        }
+      ],
+      "smallest_fix": "Delete the section; R0092's rewrite records the production binding.",
+      "required_checks": [
+        "python3 scripts/docs/check_all.py"
+      ],
+      "residual_risk": "None.",
+      "refactor_action": "delete"
+    },
+    {
+      "id": "R0098",
+      "title": "Qwen4Exp H256 QSA head-pair candidate",
+      "inventory_lines": [
+        2792,
+        2825
+      ],
+      "current_lines": [
+        2572,
+        2605
+      ],
+      "disposition": "obsolete",
+      "confidence": "high",
+      "verdict": "Stale. The two-head candidate was superseded by the four-head production leaf (R0092). The item's 'Default-off HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR=1 replaces only page256...' no longer describes the flag: production binds `quad`, and `1` selects the two-head bisection leaf. The staged-trajectory caution was resolved by the quad promotion.",
+      "executed_evidence": [
+        "Read qwen4_exp_profiles.py:1105 and qwen4_exp_runner.py:2728: production binds quad; 1 selects the pair leaf; invalid values fail closed.",
+        "Read the R0092 production artifact records (six cases, 72 exact trajectories, PP +3.571%, TG -3.531%)."
+      ],
+      "anchors": [
+        {
+          "path": "hipengine/generation/qwen4_exp_profiles.py",
+          "line": 1105,
+          "fact": "production binds quad, not pair."
+        },
+        {
+          "path": "hipengine/runtime/qwen4_exp_runner.py",
+          "line": 2728,
+          "fact": "1 selects strict_h256_head_pair_rows_spans; quad selects the four-head leaf."
+        },
+        {
+          "path": "hipengine/generation/qwen4_exp_profiles.py",
+          "line": 161,
+          "fact": "the flag is part of the production restoration set."
+        }
+      ],
+      "nested": [
+        {
+          "line": 2794,
+          "item": "Kernel-only strict_h256_head_pair_rows_spans: two heads/wave.",
+          "disposition": "resolved",
+          "note": "Kernel exists and is retained for bisection."
+        },
+        {
+          "line": 2796,
+          "item": "Synthetic 2.544x/2.610x vs single-head.",
+          "disposition": "resolved",
+          "note": "Artifact-backed."
+        },
+        {
+          "line": 2798,
+          "item": "Default-off HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR=1 replaces only page256...",
+          "disposition": "obsolete",
+          "note": "False now: production binds quad; 1 is the pair bisection leaf."
+        },
+        {
+          "line": 2802,
+          "item": "Staged 72 trajectories exact, PP +3.560%, TG -6.526%; keep default-off until the loss is localized.",
+          "disposition": "obsolete",
+          "note": "Superseded by the quad promotion; the pair leaf stays for bisection."
+        }
+      ],
+      "smallest_fix": "Delete the section. R0092 owns the production-binding record and the pair leaf's bisection role.",
+      "required_checks": [
+        "python3 scripts/docs/check_all.py"
+      ],
+      "residual_risk": "None; the kernel and the pair leaf stay.",
+      "refactor_action": "delete"
+    },
+    {
+      "id": "R0099",
+      "title": "Qwen4Exp raw-vector square64: removed",
+      "inventory_lines": [
+        2826,
+        2832
+      ],
+      "current_lines": [
+        2606,
+        2612
+      ],
+      "disposition": "resolved",
+      "confidence": "high",
+      "verdict": "No square64 candidate or flag remains; the promoted 128x64 path is intact. The record is closed.",
+      "executed_evidence": [
+        "Grepped hipengine/ for square64: no hits.",
+        "Read the mmq prefill module: the 128 chain remains."
+      ],
+      "anchors": [
+        {
+          "path": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.py",
+          "line": 289,
+          "fact": "the promoted 128 prefill kernel."
+        }
+      ],
+      "nested": [
+        {
+          "line": 2828,
+          "item": "64x64 vector staging loses to promoted 128x64 on actual Q8 weights.",
+          "disposition": "resolved",
+          "note": "Artifact-backed."
+        },
+        {
+          "line": 2830,
+          "item": "Candidate removed; not the historical zbook scalar-staging comparison.",
+          "disposition": "resolved",
+          "note": "Verified absent."
+        }
+      ],
+      "smallest_fix": "Delete the section.",
+      "required_checks": [
+        "python3 scripts/docs/check_all.py"
+      ],
+      "residual_risk": "None.",
+      "refactor_action": "delete"
+    },
+    {
+      "id": "R0100",
+      "title": "Qwen4Exp prepacked MMQ token64: removed",
+      "inventory_lines": [
+        2833,
+        2839
+      ],
+      "current_lines": [
+        2613,
+        2619
+      ],
+      "disposition": "resolved",
+      "confidence": "high",
+      "verdict": "No prepacked token64 candidate remains; prepacked 128 and raw token64 are separate and intact.",
+      "executed_evidence": [
+        "Grepped hipengine/ for prepacked_token64 / token64 prepacked: no hits.",
+        "Read gguf_q8_0_mmq_prefill.py: prepacked 128 symbols exist; no token64 prepacked symbol."
+      ],
+      "anchors": [
+        {
+          "path": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.py",
+          "line": 716,
+          "fact": "prepacked 128 chain remains."
+        },
+        {
+          "path": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.py",
+          "line": 786,
+          "fact": "raw token64 remains a separate production kernel."
+        }
+      ],
+      "nested": [
+        {
+          "line": 2835,
+          "item": "Independent prepacked qkv/SSM screen loses 0.931-0.969x.",
+          "disposition": "resolved",
+          "note": "Artifact-backed."
+        },
+        {
+          "line": 2837,
+          "item": "Promoted raw-Q token64 is separate and unchanged.",
+          "disposition": "resolved",
+          "note": "Verified present."
+        }
+      ],
+      "smallest_fix": "Delete the section.",
+      "required_checks": [
+        "python3 scripts/docs/check_all.py"
+      ],
+      "residual_risk": "None.",
+      "refactor_action": "delete"
+    }
+  ],
+  "deferred": [
+    {
+      "id": "R0083",
+      "reason": "Product decision: whether the Q4_K_M batched prefill becomes the ASR production path, which also decides whether the constructor variant plumbing and the raw wrapper are removed. The route is not on the public surface today.",
+      "clearing_action": "Run scripts/vibevoice_asr_compare_logits.py on the Q4_K_M artifact at the production profile; if it matches, wire VibeVoiceASRGenerator to the Q4 runtime for Q4 artifacts and remove the variant arguments and wrapper; otherwise delete the promotion subitems."
+    }
+  ]
+}
