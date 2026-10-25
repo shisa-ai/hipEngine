@@ -2257,28 +2257,28 @@
       "start_line": 2629,
       "end_line": 2653,
       "sha256": "ff597f700c4f6136730fd336f04881750a150cf20d0068270f621dee752127f4",
-      "status": "pending",
-      "evidence": [],
+      "status": "fixed-removed",
+      "evidence": ["Removed the identical shadowing distribution definition; kept full-vocabulary oracle and windowed sampler paths. These shared-body reference paths are not debt. Worklog: worklog/entries/20261025T133422.267347Z-cleanup-refactor-r0087-fda71a.md. Protocol and shadowed-definition tests:107 passed."],
       "subitems": [
         {
           "line": 2631,
           "text": "- `Yue2ArRuntime.logits(branch, domain=...)` projects only a phase's window",
-          "status": "pending"
+          "status": "not-debt-removed"
         },
         {
           "line": 2639,
           "text": "- That is why this route stays: the reference rows are full-vocabulary, so a",
-          "status": "pending"
+          "status": "not-debt-removed"
         },
         {
           "line": 2645,
           "text": "- The same split exists one level up in the sampler: `distribution` (full row) and",
-          "status": "pending"
+          "status": "fixed-removed"
         },
         {
           "line": 2651,
           "text": "- Removal condition: none. Revisit only if the oracle fixtures gain windowed rows",
-          "status": "pending"
+          "status": "not-debt-removed"
         }
       ]
     },

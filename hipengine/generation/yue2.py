@@ -532,26 +532,6 @@ def distribution_windowed(
     return PhaseScores(values=scores, offset=low)
 
 
-def distribution(
-    logits: np.ndarray,
-    sampling: Sampling,
-    history,
-    step: int,
-    phase: str,
-    legacy_off: bool = False,
-) -> np.ndarray:
-    """Reference sampling order. ``logits`` is a 1-D BF16-valued score row.
-
-    ``legacy_off`` reproduces the historical ``off`` arithmetic (BF16 scores and
-    at least three surviving top-p candidates). The production path uses FP32
-    scores for every mode and retains at least one candidate.
-    """
-    row = np.asarray(logits, dtype=np.float32).reshape(-1)
-    return _distribution_slice(
-        row, sampling, history, step, phase, 0, row.shape[0], row.shape[0], legacy_off
-    )
-
-
 def _round_bf16(values: np.ndarray) -> np.ndarray:
     """Round-to-nearest-even BF16 (matches a BF16 tensor's stored values)."""
     return bf16(values)

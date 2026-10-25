@@ -2406,31 +2406,6 @@ integration; the preservation commit `0f3bd43dc` keeps their history.
   default, and keep `test_attention_matches_the_parent_kernel_bit_for_bit` as
   the oracle's coverage.
 
-## YuE2 AR full-vocabulary head route (gate-only, keep)
-
-- `Yue2ArRuntime.logits(branch, domain=...)` projects only a phase's window
-  (`hipengine.generation.yue2.phase_window`: 32 769 rows for `semantic`, 151 849
-  for `abc`) and returns a full-vocabulary row that is `-inf` outside it, which is
-  exactly what `distribution` masks. The session loop always passes a window and
-  then samples through `distribution_windowed`, so the unwindowed call is now
-  reached only by the replay matrix (`scripts/yue2_ar_replay.py`), the
-  matched-timing harnesses and the paired-head check, all of which score
-  full-vocabulary rows against the pinned upstream oracle.
-- That is why this route stays: the reference rows are full-vocabulary, so a
-  windowed row cannot be compared against them and the AR replay gate would lose
-  its oracle. Do not remove `domain=None` as dead code; it is the diagnostic path
-  the numerical gate depends on. Both routes share one kernel
-  (`dense_gemv_bf16_f32_out_rowtile2`) and differ only in the weight offset and
-  `out_features`, so there is no second implementation to keep in sync.
-- The same split exists one level up in the sampler: `distribution` (full row) and
-  `distribution_windowed` (window slice plus its token offset) are one arithmetic
-  body, `_distribution_slice`, called with `(0, n)` or with a phase window. The
-  full-row call is not a fallback that can be retired -- it is the shape the
-  equivalence tests compare against -- but it is also no longer a second
-  implementation, so there is nothing to keep in step.
-- Removal condition: none. Revisit only if the oracle fixtures gain windowed rows
-  or a future profile retires the full-vocabulary replay gate.
-
 ## `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` (INT8 KV C1 decode graph)
 
 - Admitted 2026-09-11 so the INT8 KV C1 decode graph could be measured instead
