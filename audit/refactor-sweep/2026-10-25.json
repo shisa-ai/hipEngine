@@ -164,23 +164,23 @@
       "start_line": 202,
       "end_line": 216,
       "sha256": "94f0668ae20a73009be7ea7de96c71881896bddb8bc1e6d006410bbd4460c714",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["hipengine/server/api.py integrates _LiteralStopStream and _iterate_with_literal_stops into chat and completion streams, including terminal metadata. The buffered-only premise is stale. Unit literal/stream stop tests, integration literal stop tests and test_text_stop_not_matching_standalone_tokenization_never_leaks pass: 48 tests. Existing regression coverage is preserved."],
       "subitems": [
         {
           "line": 204,
           "text": "- Completion and chat requests with nonempty stop strings use buffered SSE.",
-          "status": "pending"
+          "status": "obsolete-removed"
         },
         {
           "line": 209,
           "text": "- Remove the buffered routing condition only after an incremental text filter",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 214,
           "text": "- Regression: `test_text_stop_not_matching_standalone_tokenization_never_leaks`",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

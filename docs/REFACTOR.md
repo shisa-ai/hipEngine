@@ -199,21 +199,6 @@ upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
 - Regression gates: `tests/test_unit_qwen4exp_{gdn,conv,ple}_indexed_decode.py`
   and `tests/test_gpu_qwen4exp_{gdn,conv,ple}_indexed_decode.py`.
 
-## Text-level stop safety in HTTP streaming
-
-- Completion and chat requests with nonempty stop strings use buffered SSE.
-  Standalone BPE tokenization of a stop need not match the generated token
-  sequence. Token-level backend matching alone cannot prevent text leakage;
-  the old live path published text before its final `_apply_stop` check and
-  discarded canonical accounting when that check found a match.
-- Remove the buffered routing condition only after an incremental text filter
-  withholds possible stop prefixes across chunks, handles overlapping stops and
-  Unicode boundaries, and preserves canonical IDs/usage and terminal metadata.
-  Cover both AR and MTP, chat/completions, cancellation and no-logprob streams.
-  This is part of PS7, not a claim of incremental stop-safe streaming.
-- Regression: `test_text_stop_not_matching_standalone_tokenization_never_leaks`
-  in `tests/test_integration_server_controlled_speculation.py`.
-
 ## Flash-Next staged MTP physical width and controls
 
 - `Qwen4ExpServingMTP` uses exclusive target/draft pool owners and reversible
