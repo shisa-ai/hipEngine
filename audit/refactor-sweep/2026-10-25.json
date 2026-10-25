@@ -714,28 +714,28 @@
       "start_line": 802,
       "end_line": 823,
       "sha256": "ef62f10b035a184e3aa2848cb515af6bbb8c12d69c0f94c64baaa435e1cf5f4c",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Removal ada8de3f9 remains effective: GR_IU8_UP_VARIANT and GR_IU8_DOWN_VARIANT selectors and correction implementations are absent. Historical rejection and localization records remain in benchmarks/results/2026-09-15-journey-gr-corrections/ and benchmarks/results/2026-09-22-gr-drift-localization/. All subitems describe completed removal or preserved historical evidence; no new arithmetic change."],
       "subitems": [
         {
           "line": 804,
           "text": "- P4-up and compensated-down specializations, wrappers, registry entries,",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 807,
           "text": "- P4-up: meanKL0.001614,p950.007593,max0.068096,top1770/780.",
-          "status": "pending"
+          "status": "historical-removed"
         },
         {
           "line": 810,
           "text": "- Preserve evidence at `benchmarks/results/2026-09-15-journey-gr-corrections/`.",
-          "status": "pending"
+          "status": "historical-removed"
         },
         {
           "line": 814,
           "text": "- Boundary localization (2026-09-22, `benchmarks/results/2026-09-22-gr-drift-localization/`)",
-          "status": "pending"
+          "status": "historical-removed"
         }
       ]
     },
@@ -1185,13 +1185,13 @@
       "start_line": 1239,
       "end_line": 1245,
       "sha256": "c27c09912c524f7fdd336247c5828f7ab41b0acf769922ba4f2771fd056b17f9",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Removal bd77845e0 remains effective: Q8_DOWN_RESIDUAL_WEIGHT and the residual-weight prototype are absent. Historical evidence remains in benchmarks/results/2026-09-14-journey-progress/; original strict and WMMA implementations are unchanged."],
       "subitems": [
         {
           "line": 1241,
           "text": "- Full594-row numerical gate fails top1 at587/594 and prefill-last mean",
-          "status": "pending"
+          "status": "historical-removed"
         }
       ]
     },

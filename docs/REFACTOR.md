@@ -728,28 +728,6 @@ upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
   while the task gate fails 15/18, so a passing envelope is not evidence of
   admission.
 
-## Removed GR Corrections
-
-- P4-up and compensated-down specializations, wrappers, registry entries,
-  runtime selectors and candidate-only tests are removed after independent
-  780-row production failures. The existing strict paths remain unchanged.
-- P4-up: meanKL0.001614,p950.007593,max0.068096,top1770/780.
-  Compensated-down: mean0.001316,p950.006668,max0.050293,top1769/780.
-  Both improved sampled FP64 projection MSE but failed the model envelope.
-- Preserve evidence at `benchmarks/results/2026-09-15-journey-gr-corrections/`.
-  Do not repeat these unchanged variants or silently grandfather their
-  operand results as model admission. Parent-order tiling and other
-  structurally different optimizations remain separate candidates.
-- Boundary localization (2026-09-22, `benchmarks/results/2026-09-22-gr-drift-localization/`)
-  explains the failure and re-targets any future correction: the gate is a
-  cliff at a prefill-boundary logits KL of ~5e-9 (passing dense wide 4.41e-9,
-  failing compensated 8.48e-9), so above it the amplified decode KL is nearly
-  independent of the perturbation. FP64 MSE is an unreliable proxy - the
-  compensated correction improved the prefill KL 5.1x with no gate movement,
-  and the fourth plane improved FP64 MSE 1.76-4.60x while its prefill KL got
-  1.15x *worse*. Screen any new correction with one prefill per arm
-  (`scripts/qwen4exp_gr_iu8_logits_probe.py`) before spending a 780-row run.
-
 ## Isolated GR-Up IU8
 
 - The unchanged `GR_IU8` restoration independently fails the780-row
@@ -1154,13 +1132,6 @@ upload work: width 1 48.9 ms (c1 runner 45.6 ms), width 2 62.6 ms, width 4
   `Q8_IU8_WMM` (1.388x) is closed independently. The artifact's 2026-09-30
   correction already says the savings are "the difference between the recovery
   profile and the production profile", which is the same warning.
-
-## Journey Q8 Residual-Weight Candidate: Removed
-
-- Full594-row numerical gate fails top1 at587/594 and prefill-last mean
-  KL0.001256 despite improved maxKL0.019447. Extra plane/export/wrapper/
-  flag and candidate tests are removed; original WMMA and strict fallbacks
-  remain. Candidate is reproducible at f4e3d08fa/7ca725140, not current HEAD.
 
 ## Journey Multi-Column GDN
 
