@@ -1,6 +1,6 @@
 ---
 status: current
-owns: Qwen hybrid GGUF runtime module responsibilities, layer execution inputs, KV and resident-state storage, scratch/capacity planning, and remaining diagnostics separation.
+owns: Qwen hybrid GGUF runtime module responsibilities, layer execution inputs, diagnostic capture and timing, KV and resident-state storage, and scratch/capacity planning.
 ---
 # Qwen hybrid GGUF runtime structure
 
@@ -20,6 +20,10 @@ Paths in this document are repository-relative.
 | `hipengine/runtime/qwen35_gguf_runner.py:Qwen35GGUFResidentSession` | Request/session state, prefill/decode/verification orchestration, pool growth coordination and graph lifetime | Physical KV plane allocation formulas |
 | `hipengine/runtime/qwen35_gguf_layer_attn.py` | Scalar linear/full attention and shared norm/alpha-beta leaves over explicit weights, geometry, views and selected operations | Request admission, registry policy, graph lifetime or bulk attention orchestration |
 | `hipengine/runtime/qwen35_gguf_layer_ffn.py` | Dense and MoE feed-forward execution for scalar and bulk rows over explicit weights, scratch and selected operations | Session state, speculative acceptance or kernel-selection policy |
+| `hipengine/runtime/qwen35_gguf_capture.py` | Host diagnostic snapshots, summary schemas and selected-buffer readback | Token setup, layer execution, session mutation or synchronization |
+| `hipengine/runtime/qwen35_gguf_timing.py` | Stage timing accumulation, event handles and wall-clock marker storage | Choosing interval boundaries or scheduling production work |
+| `hipengine/runtime/qwen35_gguf_probe.py` | Standalone one-layer projection diagnostic and its temporary resources | Full-model generation or resident-session ownership |
+| `hipengine/runtime/qwen35_gguf_results.py` | Shared next-token result contract | Probe execution or device resources |
 | `hipengine/runtime/qwen35_gguf_planning.py` | Geometry/storage-policy scratch plan, resolved KV layout construction, resident byte breakdown and capacity search | Device allocation, loaded executors, environment selection or kernel dispatch |
 | `hipengine/runtime/qwen35_gguf_prefill_plan.py` | Prefill field sizes, owner order, lifetime placement and alias views from explicit geometry and resolved route policy | Host arrays, device allocation, environment lookup or kernel selection |
 | `hipengine/runtime/qwen35_gguf_state.py` | Canonical root/slot bindings, provisional verifier buffers and reusable rollback storage | Layer execution, graph ordering or speculative cycle decisions |
@@ -29,8 +33,8 @@ Paths in this document are repository-relative.
 | `hipengine/runtime/gguf_packed_decode_graph.py`, `hipengine/runtime/gguf_native_spec_cycle.py` | Packed decode graph replay and native speculative-cycle coordination | Public generator construction |
 
 The `qwen35_gguf_runner.py` filename describes only part of its contents. It still
-contains session orchestration, scratch allocation, result contracts, hidden-state
-capture and diagnostics as well as the full-stack executor. Its module description
+contains session orchestration, scratch allocation, result contracts and
+stateful capture setup as well as the full-stack executor. Its module description
 now identifies production execution and session orchestration rather than
 bring-up probes. Keeping the import path avoids a repository-wide rename before
 these responsibilities have separate owners.
@@ -170,16 +174,41 @@ The runner's outer attention methods remain the scalar attention marker boundary
 Instrumentation must patch the owner that actually executes, not assume that an
 internal call passes through a compatibility method.
 
-## Remaining separation
+## Diagnostics and timing
 
-One-layer probes, capture formatting and profiling still share the runner module
-with production contracts. Separating diagnostics must preserve callers used by
-correctness gates. Bulk attention orchestration is also still in the runner;
-its distinct schedules are not folded into the scalar attention module.
+`qwen35_gguf_capture.py` owns diagnostic snapshots, their summary dictionaries and
+host readback over explicit configuration, dimensions, pointers, scratch and copy
+operations. It does not import the runner, launch kernels or mutate a session.
+Session capture methods retain input validation, embedding and position setup,
+preceding-layer execution, state mutation and stream synchronization. Only then do
+they delegate buffer copying and report construction. Router tracing still captures
+its input before each layer executes and captures its output afterward.
 
-Do not replace one large class with mixins that all read and mutate the same
-implicit attributes. A module boundary is useful when its inputs, lifetime and
-failure responsibilities can be stated independently.
+`qwen35_gguf_timing.py` owns event and device wall-clock recorder resources. The
+production caller still places each marker and decides when to resolve timings.
+Disabled recorders do not allocate or synchronize. Event timing and wall-clock
+timing remain separate measurements; aliases and negative-event accounting retain
+their existing meanings. Diagnostic tools patch the timing module's primitives,
+not the runner's allocator, when intercepting recorder storage.
+
+`qwen35_gguf_probe.py` owns the standalone partial projection probe, including its
+weight and temporary-buffer lifetime. It is not a full attention layer or a
+production generation route. It declares no expert-call intents when loading its
+projection-only selection, so MoE artifacts do not require unused expert partners.
+`qwen35_gguf_results.py` owns the next-token result
+shared by the probe and full-model execution. Legacy runner imports are aliases,
+not duplicate implementations. Source-audit tools inspect both the session's
+reader binding and the capture module before reporting the host-copy dtype. A
+copied runner source must include the matching capture module beside it; the
+source audit raises an error if that required source is missing.
+
+## Scope of the remaining runner
+
+Bulk attention orchestration and full-stack composition remain in the runner;
+their distinct schedules are not folded into scalar attention. Session mutation,
+graph capture/replay, production hidden-seed sinks and diagnostic execution setup
+remain beside the state they control. These are not replaced with a diagnostic
+proxy or mixins that share implicit session attributes.
 
 ## Validation targets
 
@@ -231,6 +260,12 @@ and selected-expert tests exercise the runner adapters. Projection-level probes
 patch the attention module's launch symbols; FFN selected-operation tables retain
 the runner's launch symbols. `tests/test_unit_gguf_decode_rocprof.py` checks marker
 ownership and restoration for both current and historical execution owners.
+
+`tests/test_unit_qwen35_gguf_capture.py` checks readback order, shapes, precision,
+optional dense/MoE and linear/full-attention inputs, type aliases and source-audit
+bindings. Existing hidden-seed and capture-script tests protect session mutation,
+preceding-layer setup and artifact schemas. Timing and probe unit tests use fake
+runtime operations to check resource failure paths without requiring a GPU.
 
 Most of these tests use fake runtime allocations; the GPU node has an explicit
 availability guard. Public real-model generation remains a separate integration

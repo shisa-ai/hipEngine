@@ -91,7 +91,8 @@ def build_capture_path_audit(
     capture = read_json(capture_path)
     tap_compare = read_json(tap_compare_path)
     layer_sweep = read_json(layer_sweep_path)
-    source_audit = audit_runner_source(runner_text)
+    capture_text = read_capture_source(runner_path, runner_text)
+    source_audit = audit_runner_source(runner_text, capture_text=capture_text)
     precision = audit_precision_contractions_for_layers(model_path, layers=tuple(layers))
     evidence = summarize_mismatch_evidence(
         capture=capture,
@@ -120,7 +121,38 @@ def build_capture_path_audit(
     }
 
 
-def audit_runner_source(text: str) -> dict[str, Any]:
+def read_capture_source(runner_path: Path, runner_text: str) -> str:
+    """Read the paired source from the same revision as a delegated runner."""
+
+    if "_diagnostic_capture.read_attention_layer(" not in runner_text:
+        return ""
+    capture_owner = runner_path.with_name("qwen35_gguf_capture.py")
+    if not capture_owner.is_file():
+        raise ValueError(
+            f"capture source is required for delegated runner {runner_path}: "
+            f"place the matching revision at {capture_owner}"
+        )
+    return capture_owner.read_text()
+
+
+def capture_reader_uses_bf16(text: str, capture_text: str = "") -> bool:
+    """Follow the explicit reader binding, without importing runtime code."""
+
+    capture_body = extract_function_body(text, "capture_attention_layer")
+    if "hidden_in_f32=_copy_bf16_ptr_to_host_f32" in capture_body:
+        return "target_src_ptr" in capture_body
+    reader_body = extract_function_body(capture_text, "read_attention_layer")
+    return all((
+        "_diagnostic_capture.read_attention_layer(" in capture_body,
+        "target_src_ptr=target_src_ptr" in capture_body,
+        "readers=_diagnostic_readers()" in capture_body,
+        "bf16=_copy_bf16_ptr_to_host_f32" in extract_function_body(text, "_diagnostic_readers"),
+        "hidden_in_f32=readers.bf16(" in reader_body,
+        "target_src_ptr, hidden_size, runtime=runtime" in reader_body,
+    ))
+
+
+def audit_runner_source(text: str, *, capture_text: str = "") -> dict[str, Any]:
     capture_body = extract_function_body(text, "capture_attention_layer")
     set_token_body = extract_function_body(text, "_set_token_id_device")
     embedding_body = extract_function_body(text, "_set_token_embedding_from_ptr")
@@ -133,8 +165,7 @@ def audit_runner_source(text: str) -> dict[str, Any]:
         "capture_uses_hidden_a_after_embedding": "src = self._hidden_a" in capture_body,
         "capture_replays_preceding_layers": "for prev_layer_id" in capture_body,
         "capture_full_attention_passes_position": "position=position" in capture_body,
-        "capture_hidden_tap_copies_target_src_ptr": "target_src_ptr" in capture_body
-        and "hidden_in_f32=_copy_bf16_ptr_to_host_f32" in capture_body,
+        "capture_hidden_tap_copies_target_src_ptr": capture_reader_uses_bf16(text, capture_text),
         "hidden_tap_dtype": "bf16_to_host_f32",
     }
     facts["capture_sets_embedding"] = all(
@@ -152,6 +183,7 @@ def audit_runner_source(text: str) -> dict[str, Any]:
             "capture_src_hidden_a": find_line(text, "src = self._hidden_a"),
             "preceding_layer_loop": find_line(text, "for prev_layer_id, prev_layer_type"),
             "hidden_in_copy": find_line(text, "hidden_in_f32=_copy_bf16_ptr_to_host_f32"),
+            "capture_reader_hidden_in_copy": find_line(capture_text, "hidden_in_f32=readers.bf16("),
             "set_token_embedding": find_line(text, "def _set_token_embedding_from_ptr"),
             "launch_gguf_embedding": find_line(text, "launch_gguf_embedding("),
         },

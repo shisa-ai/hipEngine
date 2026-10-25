@@ -2301,19 +2301,21 @@ def test_wall_clock_stage_recorder_converts_ticks_and_closes(
     freed: list[DeviceBuffer] = []
     ticks = np.asarray([100, 112, 150], dtype=np.uint64)
 
-    monkeypatch.setattr(gguf_runner, "malloc", lambda nbytes, **_: buffer)
-    monkeypatch.setattr(gguf_runner, "free", lambda item, **_: freed.append(item))
+    from hipengine.runtime import qwen35_gguf_timing as timing
+
+    monkeypatch.setattr(timing, "malloc", lambda nbytes, **_: buffer)
+    monkeypatch.setattr(timing, "free", lambda item, **_: freed.append(item))
     monkeypatch.setattr(
-        gguf_runner,
+        timing,
         "wall_clock_mark_u64",
         lambda ptr, index, **kwargs: launches.append((int(ptr), int(index), int(kwargs["stream"]))),
     )
-    monkeypatch.setattr(gguf_runner, "wall_clock_rate_khz", lambda **_: 2)
+    monkeypatch.setattr(timing, "wall_clock_rate_khz", lambda **_: 2)
 
     def fake_copy(host_ptr: int, _buffer: DeviceBuffer, *, nbytes: int, **_kwargs) -> None:
         ctypes.memmove(host_ptr, ticks.ctypes.data, nbytes)
 
-    monkeypatch.setattr(gguf_runner, "copy_device_to_host", fake_copy)
+    monkeypatch.setattr(timing, "copy_device_to_host", fake_copy)
 
     recorder = _HipWallClockStageRecorder(runtime, enabled=True, stream=9, capacity=4)
     recorder.start()

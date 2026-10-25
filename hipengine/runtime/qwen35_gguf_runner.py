@@ -56,6 +56,20 @@ from hipengine.core.virtual_memory import (
 )
 from hipengine.core.rocblas import Rocblas
 from hipengine.dispatch.kv import resolve_paged_attn_decode
+from hipengine.runtime import qwen35_gguf_capture as _diagnostic_capture
+from hipengine.runtime.qwen35_gguf_capture import (
+    Qwen35GGUFLinearAttentionBoundaryCapture,
+    Qwen35GGUFLinearAttentionLayerCapture,
+    Qwen35GGUFRouterTraceLayerCapture,
+)
+from hipengine.runtime.qwen35_gguf_timing import (
+    _HipEventStageRecorder,
+    _HipWallClockStageRecorder,
+    _add_sync_stage_timing,
+    _mark_sync_stage,
+)
+from hipengine.runtime.qwen35_gguf_probe import Qwen35GGUFOneLayerProbe
+from hipengine.runtime.qwen35_gguf_results import Qwen35GGUFNextTokenProbeResult
 from hipengine.runtime.qwen35_gguf_prefill_plan import (
     _GGUF_PREFILL_SCRATCH_ARENA_GROUPINGS,
     _GGUF_PREFILL_SCRATCH_COMPACT_DISABLED_FIELDS,
@@ -223,8 +237,6 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     record_i64_scalar_indexed,
     set_decode_position_i64,
     set_i64_scalar,
-    wall_clock_mark_u64,
-    wall_clock_rate_khz,
 )
 from hipengine.kvcache import (
     DeviceChunkedKVPool,
@@ -884,177 +896,6 @@ class DFlash2HiddenCaptureTargets:
 # ---
 
 
-def _add_sync_stage_timing(
-    timings: dict[str, float] | None,
-    name: str,
-    ms: float,
-) -> None:
-    if timings is None:
-        return
-    if ms < 0.0:
-        raise RuntimeError(f"negative GGUF sync stage timing for {name}: {ms}")
-    timings[name] = timings.get(name, 0.0) + float(ms)
-
-
-def _mark_sync_stage(
-    runtime: HipRuntime,
-    timings: dict[str, float] | None,
-    enabled: bool,
-    name: str,
-    t0: float,
-) -> float:
-    if not enabled or timings is None:
-        return t0
-    runtime.device_synchronize()
-    _add_sync_stage_timing(timings, name, (time.perf_counter() - t0) * 1000)
-    return time.perf_counter()
-
-
-class _HipEventStageRecorder:
-    """HIP-event stage timing for queued work without per-stage synchronizes."""
-
-    def __init__(self, runtime: HipRuntime, *, enabled: bool, stream: int = 0) -> None:
-        self.runtime = runtime
-        self.enabled = bool(enabled)
-        self.stream = int(stream)
-        self._last_event: int | None = None
-        self._events: list[int] = []
-        self._intervals: list[tuple[tuple[str, ...], int, int]] = []
-
-    def start(self) -> None:
-        if not self.enabled:
-            return
-        self._last_event = self._new_event()
-        self.runtime.event_record(self._last_event, self.stream)
-
-    def mark(self, name: str, *aliases: str) -> None:
-        if not self.enabled:
-            return
-        if self._last_event is None:
-            self.start()
-        assert self._last_event is not None
-        event = self._new_event()
-        self.runtime.event_record(event, self.stream)
-        names = (str(name), *(str(alias) for alias in aliases))
-        self._intervals.append((names, self._last_event, event))
-        self._last_event = event
-
-    def resolve_into(self, timings: dict[str, float] | None) -> None:
-        if not self.enabled:
-            return
-        try:
-            for names, start, stop in self._intervals:
-                self.runtime.event_synchronize(stop)
-                ms = self.runtime.event_elapsed_time_ms(start, stop)
-                if ms < 0.0:
-                    _add_sync_stage_timing(timings, f"{names[0]}_negative_event_elapsed", -ms)
-                    _add_sync_stage_timing(timings, "packed_verify_gpu_negative_event_elapsed", -ms)
-                    ms = 0.0
-                for name in names:
-                    _add_sync_stage_timing(timings, name, ms)
-        finally:
-            self.close()
-
-    def close(self) -> None:
-        while self._events:
-            self.runtime.event_destroy(self._events.pop())
-        self._last_event = None
-        self._intervals.clear()
-
-    def _new_event(self) -> int:
-        event = self.runtime.event_create()
-        self._events.append(event)
-        return event
-
-
-class _HipWallClockStageRecorder:
-    """Record same-stream stage boundaries with the device steady wall clock."""
-
-    def __init__(
-        self,
-        runtime: HipRuntime,
-        *,
-        enabled: bool,
-        stream: int = 0,
-        library: object | None = None,
-        capacity: int = 4096,
-    ) -> None:
-        if capacity < 2:
-            raise ValueError("wall-clock stage recorder capacity must be at least two")
-        self.runtime = runtime
-        self.enabled = bool(enabled)
-        self.stream = int(stream)
-        self.library = library
-        self.capacity = int(capacity)
-        self._buffer: DeviceBuffer | None = None
-        self._intervals: list[tuple[tuple[str, ...], int, int]] = []
-        self._count = 0
-        self._closed = False
-        if self.enabled:
-            self._buffer = malloc(self.capacity * np.dtype(np.uint64).itemsize, runtime=runtime)
-
-    def _record_boundary(self) -> int:
-        if self._buffer is None:
-            raise RuntimeError("wall-clock stage recorder buffer is unavailable")
-        if self._count >= self.capacity:
-            raise RuntimeError(f"wall-clock stage recorder exceeded capacity {self.capacity}")
-        index = self._count
-        wall_clock_mark_u64(
-            self._buffer.ptr,
-            index,
-            stream=self.stream,
-            library=self.library,
-            runtime=self.runtime,
-        )
-        self._count += 1
-        return index
-
-    def start(self) -> None:
-        if self.enabled:
-            self._record_boundary()
-
-    def mark(self, name: str, *aliases: str) -> None:
-        if not self.enabled:
-            return
-        if self._count == 0:
-            raise RuntimeError("stage recorder must be started before marking")
-        start_index = self._count - 1
-        stop_index = self._record_boundary()
-        names = (str(name), *(str(alias) for alias in aliases))
-        self._intervals.append((names, start_index, stop_index))
-
-    def resolve_into(self, timings: dict[str, float]) -> None:
-        if not self.enabled or self._buffer is None:
-            return
-        ticks = np.empty(self._count, dtype=np.uint64)
-        copy_device_to_host(
-            host_array_ptr(ticks),
-            self._buffer,
-            nbytes=int(ticks.nbytes),
-            runtime=self.runtime,
-        )
-        rate_khz = wall_clock_rate_khz(library=self.library, runtime=self.runtime)
-        for names, start_index, stop_index in self._intervals:
-            elapsed_ticks = int(ticks[stop_index]) - int(ticks[start_index])
-            if elapsed_ticks < 0:
-                raise RuntimeError(
-                    "device wall clock moved backwards between stage markers "
-                    f"{start_index} and {stop_index}"
-                )
-            elapsed_ms = float(elapsed_ticks) / float(rate_khz)
-            for name in names:
-                timings[name] = timings.get(name, 0.0) + elapsed_ms
-
-    def close(self) -> None:
-        if self._closed:
-            return
-        if self._buffer is not None:
-            free(self._buffer, runtime=self.runtime)
-            self._buffer = None
-        self._intervals.clear()
-        self._closed = True
-
-
 @dataclass(frozen=True)
 class Qwen35GGUFResidentTargetLayout:
     """Batch-shaped resident storage contract for GGUF target rows."""
@@ -1124,13 +965,6 @@ class Qwen35GGUFTargetRowsResult:
         for hidden in self.layer_hidden_bits.values():
             if hidden.ndim != 2 or hidden.shape[0] != rows or hidden.dtype != np.uint16:
                 raise ValueError("target-row layer captures must be row-aligned uint16 arrays")
-
-
-@dataclass(frozen=True)
-class Qwen35GGUFNextTokenProbeResult:
-    token_id: int
-    logit: float
-    logits: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -2837,245 +2671,12 @@ class _GGUFPackedTargetState:
         return self.full_kv_scale_metadata[int(layer_id)]
 
 
-@dataclass(frozen=True)
-class Qwen35GGUFLinearAttentionBoundaryCapture:
-    """Host-visible diagnostic snapshot for one GGUF linear-attention boundary."""
-
-    layer_id: int
-    token_id: int
-    position: int
-    hidden_size: int
-    ssm_time_step_rank: int
-    linear_qkv_width: int
-    ssm_inner_size: int
-    attn_norm_f32: np.ndarray
-    linear_qkv_f32: np.ndarray
-    linear_z_f32: np.ndarray
-    ssm_alpha_f32: np.ndarray
-    ssm_beta_f32: np.ndarray
-    conv_out_f32: np.ndarray
-    recurrent_out_f32: np.ndarray
-    recurrent_bf16_f32: np.ndarray
-    attn_out_f32: np.ndarray
-
-    def as_summary_dict(self) -> dict[str, object]:
-        return {
-            "layer_id": int(self.layer_id),
-            "token_id": int(self.token_id),
-            "position": int(self.position),
-            "hidden_size": int(self.hidden_size),
-            "ssm_time_step_rank": int(self.ssm_time_step_rank),
-            "linear_qkv_width": int(self.linear_qkv_width),
-            "ssm_inner_size": int(self.ssm_inner_size),
-            "attn_norm_shape": list(self.attn_norm_f32.shape),
-            "linear_qkv_shape": list(self.linear_qkv_f32.shape),
-            "linear_z_shape": list(self.linear_z_f32.shape),
-            "ssm_alpha_shape": list(self.ssm_alpha_f32.shape),
-            "ssm_beta_shape": list(self.ssm_beta_f32.shape),
-            "conv_out_shape": list(self.conv_out_f32.shape),
-            "recurrent_out_shape": list(self.recurrent_out_f32.shape),
-            "recurrent_bf16_shape": list(self.recurrent_bf16_f32.shape),
-            "attn_out_shape": list(self.attn_out_f32.shape),
-            "finite": bool(
-                np.all(np.isfinite(self.attn_norm_f32))
-                and np.all(np.isfinite(self.linear_qkv_f32))
-                and np.all(np.isfinite(self.linear_z_f32))
-                and np.all(np.isfinite(self.ssm_alpha_f32))
-                and np.all(np.isfinite(self.ssm_beta_f32))
-                and np.all(np.isfinite(self.conv_out_f32))
-                and np.all(np.isfinite(self.recurrent_out_f32))
-                and np.all(np.isfinite(self.recurrent_bf16_f32))
-                and np.all(np.isfinite(self.attn_out_f32))
-            ),
-        }
-
-
-@dataclass(frozen=True)
-class Qwen35GGUFLinearAttentionLayerCapture:
-    """Host-visible diagnostic snapshot for a full attention layer."""
-
-    layer_id: int
-    layer_type: str
-    token_id: int
-    position: int
-    hidden_size: int
-    is_moe: bool
-    top_k: int
-    preceding_layer_count: int
-    hidden_in_f32: np.ndarray
-    attn_norm_f32: np.ndarray
-    attn_out_f32: np.ndarray
-    post_norm_f32: np.ndarray
-    residual_f32: np.ndarray
-    ffn_or_moe_down_f32: np.ndarray
-    layer_out_f32: np.ndarray
-    moe_router_logits_f32: np.ndarray | None = None
-    moe_selected_intermediate_f32: np.ndarray | None = None
-    moe_shared_intermediate_f32: np.ndarray | None = None
-    moe_shared_out_f32: np.ndarray | None = None
-    moe_routing_weights_f32: np.ndarray | None = None
-    moe_shared_gate_f32: np.ndarray | None = None
-    moe_selected_experts_i64: np.ndarray | None = None
-    linear_qkv_f32: np.ndarray | None = None
-    linear_z_f32: np.ndarray | None = None
-    ssm_alpha_f32: np.ndarray | None = None
-    ssm_beta_f32: np.ndarray | None = None
-    conv_out_f32: np.ndarray | None = None
-    recurrent_out_f32: np.ndarray | None = None
-    recurrent_bf16_f32: np.ndarray | None = None
-    post_norm_source: str = "bf16_scratch.post_norm"
-
-    def as_summary_dict(self) -> dict[str, object]:
-        optional_finite = True
-        optional_arrays = (
-            self.moe_router_logits_f32,
-            self.moe_selected_intermediate_f32,
-            self.moe_shared_intermediate_f32,
-            self.moe_shared_out_f32,
-            self.moe_routing_weights_f32,
-            self.moe_shared_gate_f32,
-            self.linear_qkv_f32,
-            self.linear_z_f32,
-            self.ssm_alpha_f32,
-            self.ssm_beta_f32,
-            self.conv_out_f32,
-            self.recurrent_out_f32,
-            self.recurrent_bf16_f32,
-        )
-        for array in optional_arrays:
-            if array is not None:
-                optional_finite = optional_finite and bool(np.all(np.isfinite(array)))
-        return {
-            "layer_id": int(self.layer_id),
-            "layer_type": str(self.layer_type),
-            "token_id": int(self.token_id),
-            "position": int(self.position),
-            "hidden_size": int(self.hidden_size),
-            "is_moe": bool(self.is_moe),
-            "top_k": int(self.top_k),
-            "preceding_layer_count": int(self.preceding_layer_count),
-            "hidden_in_shape": list(self.hidden_in_f32.shape),
-            "attn_norm_shape": list(self.attn_norm_f32.shape),
-            "attn_out_shape": list(self.attn_out_f32.shape),
-            "post_norm_shape": list(self.post_norm_f32.shape),
-            "post_norm_source": str(self.post_norm_source),
-            "residual_shape": list(self.residual_f32.shape),
-            "ffn_or_moe_down_shape": list(self.ffn_or_moe_down_f32.shape),
-            "moe_router_logits_shape": (
-                None
-                if self.moe_router_logits_f32 is None
-                else list(self.moe_router_logits_f32.shape)
-            ),
-            "moe_selected_intermediate_shape": (
-                None
-                if self.moe_selected_intermediate_f32 is None
-                else list(self.moe_selected_intermediate_f32.shape)
-            ),
-            "moe_shared_intermediate_shape": (
-                None
-                if self.moe_shared_intermediate_f32 is None
-                else list(self.moe_shared_intermediate_f32.shape)
-            ),
-            "moe_shared_out_shape": (
-                None
-                if self.moe_shared_out_f32 is None
-                else list(self.moe_shared_out_f32.shape)
-            ),
-            "moe_routing_weights_shape": (
-                None
-                if self.moe_routing_weights_f32 is None
-                else list(self.moe_routing_weights_f32.shape)
-            ),
-            "moe_shared_gate_shape": (
-                None
-                if self.moe_shared_gate_f32 is None
-                else list(self.moe_shared_gate_f32.shape)
-            ),
-            "moe_selected_experts_shape": (
-                None
-                if self.moe_selected_experts_i64 is None
-                else list(self.moe_selected_experts_i64.shape)
-            ),
-            "linear_qkv_shape": (
-                None if self.linear_qkv_f32 is None else list(self.linear_qkv_f32.shape)
-            ),
-            "linear_z_shape": (
-                None if self.linear_z_f32 is None else list(self.linear_z_f32.shape)
-            ),
-            "ssm_alpha_shape": (
-                None if self.ssm_alpha_f32 is None else list(self.ssm_alpha_f32.shape)
-            ),
-            "ssm_beta_shape": (
-                None if self.ssm_beta_f32 is None else list(self.ssm_beta_f32.shape)
-            ),
-            "conv_out_shape": (
-                None if self.conv_out_f32 is None else list(self.conv_out_f32.shape)
-            ),
-            "recurrent_out_shape": (
-                None
-                if self.recurrent_out_f32 is None
-                else list(self.recurrent_out_f32.shape)
-            ),
-            "recurrent_bf16_shape": (
-                None
-                if self.recurrent_bf16_f32 is None
-                else list(self.recurrent_bf16_f32.shape)
-            ),
-            "layer_out_shape": list(self.layer_out_f32.shape),
-            "finite": bool(
-                np.all(np.isfinite(self.hidden_in_f32))
-                and np.all(np.isfinite(self.attn_norm_f32))
-                and np.all(np.isfinite(self.attn_out_f32))
-                and np.all(np.isfinite(self.post_norm_f32))
-                and np.all(np.isfinite(self.residual_f32))
-                and np.all(np.isfinite(self.ffn_or_moe_down_f32))
-                and np.all(np.isfinite(self.layer_out_f32))
-                and optional_finite
-            ),
-        }
-
-
-@dataclass(frozen=True)
-class Qwen35GGUFRouterTraceLayerCapture:
-    """Host-visible router snapshot for one decoded target layer."""
-
-    layer_id: int
-    layer_type: str
-    token_id: int
-    position: int
-    hidden_size: int
-    expert_count: int
-    top_k: int
-    hidden_in_f32: np.ndarray
-    layer_out_f32: np.ndarray
-    moe_router_logits_f32: np.ndarray
-    moe_routing_weights_f32: np.ndarray
-    moe_shared_gate_f32: np.ndarray
-    moe_selected_experts_i64: np.ndarray
-
-    def as_summary_dict(self) -> dict[str, object]:
-        return {
-            "layer_id": int(self.layer_id),
-            "layer_type": str(self.layer_type),
-            "token_id": int(self.token_id),
-            "position": int(self.position),
-            "hidden_size": int(self.hidden_size),
-            "expert_count": int(self.expert_count),
-            "top_k": int(self.top_k),
-            "hidden_in_shape": list(self.hidden_in_f32.shape),
-            "layer_out_shape": list(self.layer_out_f32.shape),
-            "moe_router_logits_shape": list(self.moe_router_logits_f32.shape),
-            "moe_routing_weights_shape": list(self.moe_routing_weights_f32.shape),
-            "moe_shared_gate_shape": list(self.moe_shared_gate_f32.shape),
-            "moe_selected_experts_shape": list(self.moe_selected_experts_i64.shape),
-            "finite": bool(
-                np.all(np.isfinite(self.hidden_in_f32))
-                and np.all(np.isfinite(self.layer_out_f32))
-                and np.all(np.isfinite(self.moe_router_logits_f32))
-                and np.all(np.isfinite(self.moe_routing_weights_f32))
-                and np.all(np.isfinite(self.moe_shared_gate_f32))
-            ),
-        }
+def _diagnostic_readers() -> _diagnostic_capture.CaptureReaders:
+    return _diagnostic_capture.CaptureReaders(
+        bf16=_copy_bf16_ptr_to_host_f32,
+        f32=_copy_f32_ptr_to_host,
+        i64=_copy_i64_ptr_to_host,
+    )
 
 
 def _launch_qwen35_router_logits_bf16_hidden(
@@ -3247,173 +2848,6 @@ class _DeviceExpertLayerSidecar:
     def free(self, *, runtime: HipRuntime) -> None:
         for tensor in reversed(tuple(self.tensors.values())):
             tensor.free(runtime=runtime)
-
-
-@dataclass
-class Qwen35GGUFOneLayerProbe:
-    """Minimal resident GGUF one-layer projection probe.
-
-    This is not yet the full Qwen3.5 layer. It is the first live runtime wiring
-    that starts from a Q6_K token embedding, applies the layer RMSNorm, then
-    launches GGUF linear projections through the registry adapter to produce a
-    hidden-size BF16 output. The full layer runner will replace this probe once
-    conv/SSM/attention/residual/MLP are wired.
-    """
-
-    model_path: str | Path
-    layer_id: int = 0
-    runtime: HipRuntime | None = None
-    weights: Qwen35GGUFResidentWeights | None = field(default=None, init=False)
-
-    def __post_init__(self) -> None:
-        self.runtime = self.runtime or get_hip_runtime()
-        selected = (
-            "root.token_embedding",
-            "root.lm_head",
-            f"layers.{self.layer_id}.attn_norm",
-            f"layers.{self.layer_id}.attn_gate",
-            f"layers.{self.layer_id}.ssm_out",
-        )
-        self.weights = materialize_qwen35_gguf_weights(
-            self.model_path,
-            selected_slots=selected,
-            runtime=self.runtime,
-        )
-        if self.weights.config.layer_types[self.layer_id] != LINEAR_ATTENTION:
-            raise ValueError(f"layer {self.layer_id} is not a linear_attention layer")
-
-    @property
-    def hidden_size(self) -> int:
-        assert self.weights is not None
-        return self.weights.config.hidden_size
-
-    @property
-    def ssm_inner_size(self) -> int:
-        assert self.weights is not None
-        return self.weights.config.ssm_inner_size
-
-    @property
-    def vocab_size(self) -> int:
-        assert self.weights is not None
-        return self.weights.config.vocab_size
-
-    def run_token(self, token_id: int) -> np.ndarray:
-        """Run the one-layer projection probe and return BF16 bits on host."""
-
-        assert self.weights is not None
-        runtime = self.runtime or get_hip_runtime()
-        token_ids = np.asarray([int(token_id)], dtype=np.int64)
-        out_bits = np.empty((1, self.hidden_size), dtype=np.uint16)
-        buffers = []
-        try:
-            token_buf = malloc(token_ids.nbytes, runtime=runtime)
-            hidden_buf = malloc(out_bits.nbytes, runtime=runtime)
-            norm_buf = malloc(out_bits.nbytes, runtime=runtime)
-            gate_buf = malloc(2 * self.ssm_inner_size, runtime=runtime)
-            out_buf = malloc(out_bits.nbytes, runtime=runtime)
-            buffers.extend((token_buf, hidden_buf, norm_buf, gate_buf, out_buf))
-            copy_host_to_device(token_buf, host_array_ptr(token_ids), runtime=runtime)
-
-            launch_gguf_embedding(
-                self.weights.root("token_embedding"),
-                token_buf.ptr,
-                hidden_buf.ptr,
-                rows=1,
-                hidden_size=self.hidden_size,
-                vocab_size=self.vocab_size,
-                runtime=runtime,
-            )
-            gguf_rmsnorm_bf16_f32_weight(
-                hidden_buf.ptr,
-                self.weights.layer(self.layer_id).weight("attn_norm").allocation().tensor.ptr,
-                norm_buf.ptr,
-                rows=1,
-                hidden_size=self.hidden_size,
-                eps=self.weights.config.rms_norm_eps,
-                runtime=runtime,
-            )
-            launch_gguf_linear(
-                self.weights.layer(self.layer_id).weight("attn_gate"),
-                norm_buf.ptr,
-                gate_buf.ptr,
-                rows=1,
-                in_features=self.hidden_size,
-                out_features=self.ssm_inner_size,
-                runtime=runtime,
-            )
-            launch_gguf_linear(
-                self.weights.layer(self.layer_id).weight("ssm_out"),
-                gate_buf.ptr,
-                out_buf.ptr,
-                rows=1,
-                in_features=self.ssm_inner_size,
-                out_features=self.hidden_size,
-                runtime=runtime,
-            )
-            runtime.device_synchronize()
-            copy_device_to_host(host_array_ptr(out_bits), out_buf, runtime=runtime)
-        finally:
-            for buffer in reversed(buffers):
-                free(buffer, runtime=runtime)
-        return out_bits
-
-    def run_token_f32(self, token_id: int) -> np.ndarray:
-        return bf16_to_float32(self.run_token(token_id))
-
-    def logits_from_hidden_bits(self, hidden_bits: np.ndarray) -> np.ndarray:
-        """Run the tied Q6_K lm-head and return FP32 logits on host."""
-
-        assert self.weights is not None
-        runtime = self.runtime or get_hip_runtime()
-        hidden = np.ascontiguousarray(hidden_bits, dtype=np.uint16)
-        if hidden.shape != (1, self.hidden_size):
-            raise ValueError(f"hidden_bits must have shape (1, {self.hidden_size})")
-        logits = np.empty((1, self.vocab_size), dtype=np.float32)
-        buffers = []
-        try:
-            hidden_buf = malloc(hidden.nbytes, runtime=runtime)
-            logits_buf = malloc(logits.nbytes, runtime=runtime)
-            buffers.extend((hidden_buf, logits_buf))
-            copy_host_to_device(hidden_buf, host_array_ptr(hidden), runtime=runtime)
-            launch_gguf_linear(
-                self.weights.root("lm_head"),
-                hidden_buf.ptr,
-                logits_buf.ptr,
-                rows=1,
-                in_features=self.hidden_size,
-                out_features=self.vocab_size,
-                output_dtype=GGUF_OUTPUT_F32,
-                runtime=runtime,
-            )
-            runtime.device_synchronize()
-            copy_device_to_host(host_array_ptr(logits), logits_buf, runtime=runtime)
-        finally:
-            for buffer in reversed(buffers):
-                free(buffer, runtime=runtime)
-        return logits
-
-    def sample_next_token(self, token_id: int) -> Qwen35GGUFNextTokenProbeResult:
-        logits = self.logits_from_hidden_bits(self.run_token(token_id))
-        if not np.all(np.isfinite(logits)):
-            raise FloatingPointError("GGUF lm-head logits contain NaN or Inf")
-        flat = logits.reshape(-1)
-        next_id = int(np.argmax(flat))
-        return Qwen35GGUFNextTokenProbeResult(
-            token_id=next_id,
-            logit=float(flat[next_id]),
-            logits=logits,
-        )
-
-    def close(self) -> None:
-        if self.weights is not None:
-            self.weights.free(runtime=self.runtime)
-            self.weights = None
-
-    def __enter__(self) -> "Qwen35GGUFOneLayerProbe":
-        return self
-
-    def __exit__(self, exc_type, exc, tb) -> None:
-        self.close()
 
 
 _GGUF_SHORT_C1_ATTN_THREADS_ENV = "HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS"
@@ -25505,45 +24939,16 @@ class Qwen35GGUFResidentSession:
         else:
             runtime.device_synchronize()
 
-        cfg = self.runner.weights.config
-        rank = int(cfg.ssm_time_step_rank)
-        hidden_size = int(self.runner.hidden_size)
-        linear_qkv_width = int(self.runner.linear_qkv_width)
-        ssm_inner_size = int(cfg.ssm_inner_size)
-        alpha_ptr = int(self.scratch.linear_alpha.ptr)
-        beta_ptr = int(self.scratch.linear_beta.ptr)
-
-        return Qwen35GGUFLinearAttentionBoundaryCapture(
-            layer_id=int(layer_id),
-            token_id=int(token_id),
-            position=int(position),
-            hidden_size=hidden_size,
-            ssm_time_step_rank=rank,
-            linear_qkv_width=linear_qkv_width,
-            ssm_inner_size=ssm_inner_size,
-            attn_norm_f32=_copy_bf16_ptr_to_host_f32(
-                int(self.scratch.norm.ptr), hidden_size, runtime=runtime
-            ),
-            linear_qkv_f32=_copy_bf16_ptr_to_host_f32(
-                int(self.scratch.linear_qkv.ptr), linear_qkv_width, runtime=runtime
-            ),
-            linear_z_f32=_copy_bf16_ptr_to_host_f32(
-                int(self.scratch.linear_z.ptr), ssm_inner_size, runtime=runtime
-            ),
-            ssm_alpha_f32=_copy_bf16_ptr_to_host_f32(alpha_ptr, rank, runtime=runtime),
-            ssm_beta_f32=_copy_bf16_ptr_to_host_f32(beta_ptr, rank, runtime=runtime),
-            conv_out_f32=_copy_f32_ptr_to_host(
-                int(self.scratch.conv_out.ptr), linear_qkv_width, runtime=runtime
-            ),
-            recurrent_out_f32=_copy_f32_ptr_to_host(
-                int(self.scratch.recurrent_out.ptr), ssm_inner_size, runtime=runtime
-            ),
-            recurrent_bf16_f32=_copy_bf16_ptr_to_host_f32(
-                int(self.scratch.recurrent_bf16.ptr), ssm_inner_size, runtime=runtime
-            ),
-            attn_out_f32=_copy_bf16_ptr_to_host_f32(
-                int(self.scratch.attn_out.ptr), hidden_size, runtime=runtime
-            ),
+        return _diagnostic_capture.read_linear_attention_boundary(
+            cfg=self.runner.weights.config,
+            hidden_size=int(self.runner.hidden_size),
+            linear_qkv_width=int(self.runner.linear_qkv_width),
+            scratch=self.scratch,
+            layer_id=layer_id,
+            token_id=token_id,
+            position=position,
+            runtime=runtime,
+            readers=_diagnostic_readers(),
         )
 
     def capture_attention_layer(
@@ -25628,142 +25033,22 @@ class Qwen35GGUFResidentSession:
         else:
             runtime.device_synchronize()
 
-        cfg = self.runner.weights.config
-        hidden_size = int(self.runner.hidden_size)
-        top_k = int(cfg.expert_used_count) if cfg.is_moe else 1
-        down_ptr = int(
-            self.scratch.moe_down_out.ptr if cfg.is_moe else self.scratch.ffn_down.ptr
-        )
-        down_elements = hidden_size * top_k if cfg.is_moe else hidden_size
-        moe_shared_out = None
-        moe_routing_weights = None
-        moe_shared_gate = None
-        moe_selected_experts = None
-        moe_router_logits = None
-        moe_selected_intermediate = None
-        moe_shared_intermediate = None
-        linear_qkv = None
-        linear_z = None
-        ssm_alpha = None
-        ssm_beta = None
-        conv_out = None
-        recurrent_out = None
-        recurrent_bf16 = None
-        if layer_type == LINEAR_ATTENTION:
-            linear_qkv_width = int(self.runner.linear_qkv_width)
-            ssm_inner_size = int(cfg.ssm_inner_size)
-            ssm_time_step_rank = int(cfg.ssm_time_step_rank)
-            linear_qkv = _copy_bf16_ptr_to_host_f32(
-                int(self.scratch.linear_qkv.ptr),
-                linear_qkv_width,
-                runtime=runtime,
-            )
-            linear_z = _copy_bf16_ptr_to_host_f32(
-                int(self.scratch.linear_z.ptr),
-                ssm_inner_size,
-                runtime=runtime,
-            )
-            ssm_alpha = _copy_bf16_ptr_to_host_f32(
-                int(self.scratch.linear_alpha.ptr),
-                ssm_time_step_rank,
-                runtime=runtime,
-            )
-            ssm_beta = _copy_bf16_ptr_to_host_f32(
-                int(self.scratch.linear_beta.ptr),
-                ssm_time_step_rank,
-                runtime=runtime,
-            )
-            conv_out = _copy_f32_ptr_to_host(
-                int(self.scratch.conv_out.ptr),
-                linear_qkv_width,
-                runtime=runtime,
-            )
-            recurrent_out = _copy_f32_ptr_to_host(
-                int(self.scratch.recurrent_out.ptr),
-                ssm_inner_size,
-                runtime=runtime,
-            )
-            recurrent_bf16 = _copy_bf16_ptr_to_host_f32(
-                int(self.scratch.recurrent_bf16.ptr),
-                ssm_inner_size,
-                runtime=runtime,
-            )
-        if cfg.is_moe:
-            moe_router_logits = _copy_f32_ptr_to_host(
-                int(self.scratch.moe_router_logits.ptr),
-                int(cfg.expert_count),
-                runtime=runtime,
-            )
-            moe_selected_intermediate = _copy_bf16_ptr_to_host_f32(
-                int(self.scratch.ffn_intermediate.ptr),
-                top_k * int(cfg.expert_feed_forward_length),
-                runtime=runtime,
-            )
-            moe_shared_intermediate = _copy_bf16_ptr_to_host_f32(
-                int(self.scratch.moe_shared_intermediate.ptr),
-                int(cfg.expert_shared_feed_forward_length),
-                runtime=runtime,
-            )
-            moe_shared_out = _copy_bf16_ptr_to_host_f32(
-                int(self.scratch.moe_shared_out.ptr), hidden_size, runtime=runtime
-            )
-            moe_routing_weights = _copy_f32_ptr_to_host(
-                int(self.scratch.moe_routing_weights.ptr), top_k, runtime=runtime
-            )
-            shared_gate_ptr = (
-                int(self.scratch.moe_router_logits.ptr)
-                + int(cfg.expert_count) * DType.FP32.itemsize
-            )
-            moe_shared_gate = _copy_f32_ptr_to_host(shared_gate_ptr, 1, runtime=runtime)
-            moe_selected_experts = _copy_i64_ptr_to_host(
-                int(self.scratch.moe_selected_experts.ptr), top_k, runtime=runtime
-            )
-
-        return Qwen35GGUFLinearAttentionLayerCapture(
-            layer_id=int(layer_id),
+        return _diagnostic_capture.read_attention_layer(
+            cfg=self.runner.weights.config,
+            hidden_size=int(self.runner.hidden_size),
+            linear_qkv_width=(
+                int(self.runner.linear_qkv_width) if layer_type == LINEAR_ATTENTION else 0
+            ),
+            scratch=self.scratch,
+            layer_id=layer_id,
             layer_type=layer_type,
-            token_id=int(token_id),
-            position=int(position),
-            hidden_size=hidden_size,
-            is_moe=bool(cfg.is_moe),
-            top_k=top_k,
-            preceding_layer_count=int(layer_id) if run_preceding_layers else 0,
-            hidden_in_f32=_copy_bf16_ptr_to_host_f32(
-                target_src_ptr, hidden_size, runtime=runtime
-            ),
-            attn_norm_f32=_copy_bf16_ptr_to_host_f32(
-                int(self.scratch.norm.ptr), hidden_size, runtime=runtime
-            ),
-            attn_out_f32=_copy_bf16_ptr_to_host_f32(
-                int(self.scratch.attn_out.ptr), hidden_size, runtime=runtime
-            ),
-            post_norm_f32=_copy_bf16_ptr_to_host_f32(
-                int(self.scratch.post_norm.ptr), hidden_size, runtime=runtime
-            ),
-            post_norm_source="bf16_scratch.post_norm",
-            residual_f32=_copy_bf16_ptr_to_host_f32(
-                int(self.scratch.residual.ptr), hidden_size, runtime=runtime
-            ),
-            ffn_or_moe_down_f32=_copy_bf16_ptr_to_host_f32(
-                down_ptr, down_elements, runtime=runtime
-            ),
-            layer_out_f32=_copy_bf16_ptr_to_host_f32(
-                target_dst_ptr, hidden_size, runtime=runtime
-            ),
-            moe_router_logits_f32=moe_router_logits,
-            moe_selected_intermediate_f32=moe_selected_intermediate,
-            moe_shared_intermediate_f32=moe_shared_intermediate,
-            moe_shared_out_f32=moe_shared_out,
-            moe_routing_weights_f32=moe_routing_weights,
-            moe_shared_gate_f32=moe_shared_gate,
-            moe_selected_experts_i64=moe_selected_experts,
-            linear_qkv_f32=linear_qkv,
-            linear_z_f32=linear_z,
-            ssm_alpha_f32=ssm_alpha,
-            ssm_beta_f32=ssm_beta,
-            conv_out_f32=conv_out,
-            recurrent_out_f32=recurrent_out,
-            recurrent_bf16_f32=recurrent_bf16,
+            token_id=token_id,
+            position=position,
+            run_preceding_layers=run_preceding_layers,
+            target_src_ptr=target_src_ptr,
+            target_dst_ptr=target_dst_ptr,
+            runtime=runtime,
+            readers=_diagnostic_readers(),
         )
 
     def capture_attention_router_trace(
@@ -25830,43 +25115,20 @@ class Qwen35GGUFResidentSession:
                 runtime.stream_synchronize(stream)
             else:
                 runtime.device_synchronize()
-            shared_gate_ptr = (
-                int(self.scratch.moe_router_logits.ptr)
-                + expert_count * DType.FP32.itemsize
-            )
             captures.append(
-                Qwen35GGUFRouterTraceLayerCapture(
-                    layer_id=int(layer_id),
-                    layer_type=str(layer_type),
-                    token_id=int(token_id),
-                    position=int(position),
+                _diagnostic_capture.read_router_trace_layer(
+                    layer_id=layer_id,
+                    layer_type=layer_type,
+                    token_id=token_id,
+                    position=position,
                     hidden_size=hidden_size,
                     expert_count=expert_count,
                     top_k=top_k,
-                    hidden_in_f32=np.ascontiguousarray(hidden_in, dtype=np.float32),
-                    layer_out_f32=_copy_bf16_ptr_to_host_f32(
-                        int(dst.ptr), hidden_size, runtime=runtime
-                    ),
-                    moe_router_logits_f32=_copy_f32_ptr_to_host(
-                        int(self.scratch.moe_router_logits.ptr),
-                        expert_count,
-                        runtime=runtime,
-                    ),
-                    moe_routing_weights_f32=_copy_f32_ptr_to_host(
-                        int(self.scratch.moe_routing_weights.ptr),
-                        top_k,
-                        runtime=runtime,
-                    ),
-                    moe_shared_gate_f32=_copy_f32_ptr_to_host(
-                        shared_gate_ptr,
-                        1,
-                        runtime=runtime,
-                    ),
-                    moe_selected_experts_i64=_copy_i64_ptr_to_host(
-                        int(self.scratch.moe_selected_experts.ptr),
-                        top_k,
-                        runtime=runtime,
-                    ),
+                    hidden_in=hidden_in,
+                    target_dst_ptr=int(dst.ptr),
+                    scratch=self.scratch,
+                    runtime=runtime,
+                    readers=_diagnostic_readers(),
                 )
             )
             src, dst = dst, src

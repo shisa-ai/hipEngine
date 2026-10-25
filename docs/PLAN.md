@@ -1216,8 +1216,14 @@ buffers live in `hipengine/runtime/qwen35_gguf_state.py`; cache-owned prefix
 snapshots and arena copy cleanup live in `hipengine/runtime/qwen35_gguf_prefix_state.py`.
 Existing speculative journals retain cycle ordering. Session adapters retain
 kernel orchestration, graph synchronization and KV/cursor publication.
-The [runtime structure reference](reference/QWEN-GGUF-RUNTIME.md) describes these
-boundaries and the remaining diagnostics separation.
+Diagnostic snapshots and host readback live in `qwen35_gguf_capture.py`; timing
+resources live in `qwen35_gguf_timing.py`; the standalone projection probe lives in
+`qwen35_gguf_probe.py`. Stateful capture setup and profiling interval placement
+remain with execution. The shared next-token result lives in `qwen35_gguf_results.py`
+independently of the probe; the runner still re-exports the probe for import
+compatibility. The
+[runtime structure reference](reference/QWEN-GGUF-RUNTIME.md) describes these
+boundaries and the orchestration that remains in the runner.
 
 ### Backend Plugin
 

@@ -14,6 +14,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from scripts.gguf_capture_path_audit import capture_reader_uses_bf16, read_capture_source
+
 DEFAULT_RUNNER = Path("hipengine/runtime/qwen35_gguf_runner.py")
 DEFAULT_DOC = Path("docs/reference/MTP-gguf.md")
 DEFAULT_TOKEN_AUDIT = Path(
@@ -79,7 +81,8 @@ def build_hidden_precision_decision_artifact(
     doc_text = doc_path.read_text()
     token_audit = read_json(token_audit_path)
     earliest = read_json(earliest_path)
-    runner_abi = audit_runner_hidden_precision(runner_text)
+    capture_text = read_capture_source(runner_path, runner_text)
+    runner_abi = audit_runner_hidden_precision(runner_text, capture_text=capture_text)
     doc_contract = audit_doc_hidden_seed_contract(doc_text)
     numeric = summarize_numeric_evidence(token_audit=token_audit, earliest=earliest)
     decision = decide_precision_path(
@@ -108,7 +111,7 @@ def build_hidden_precision_decision_artifact(
     }
 
 
-def audit_runner_hidden_precision(text: str) -> dict[str, Any]:
+def audit_runner_hidden_precision(text: str, *, capture_text: str = "") -> dict[str, Any]:
     current_seed_body = extract_function_body(
         text,
         "qwen35_gguf_current_hidden_seed_contract",
@@ -150,7 +153,10 @@ def audit_runner_hidden_precision(text: str) -> dict[str, Any]:
         "run_prompt_hidden_returns_uint16_bits": "dtype=np.uint16" in text,
         "session_embedding_writes_hidden_a_bf16_buffer": "launch_gguf_embedding" in text
         and "self._hidden_a.ptr" in text,
-        "capture_hidden_in_uses_bf16_copy": "hidden_in_f32=_copy_bf16_ptr_to_host_f32" in text,
+        "capture_hidden_in_uses_bf16_copy": (
+            "hidden_in_f32=_copy_bf16_ptr_to_host_f32" in text
+            or capture_reader_uses_bf16(text, capture_text)
+        ),
         "logits_api_expects_hidden_bits_uint16": "hidden_bits" in text
         and "np.ascontiguousarray(hidden_bits, dtype=np.uint16)" in text,
     }
@@ -170,6 +176,7 @@ def audit_runner_hidden_precision(text: str) -> dict[str, Any]:
             "fp32_hidden_seed_dtype": find_line(text, "dtype=DType.FP32"),
             "session_hidden_bytes": find_line(text, "hidden_bytes = self.runner.hidden_size * 2"),
             "session_embedding_launch": find_line(text, "launch_gguf_embedding("),
+            "capture_reader_hidden_in_bf16_copy": find_line(capture_text, "hidden_in_f32=readers.bf16("),
             "capture_hidden_in_bf16_copy": find_line(
                 text,
                 "hidden_in_f32=_copy_bf16_ptr_to_host_f32",
