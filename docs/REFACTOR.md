@@ -571,6 +571,15 @@ private selector or the timing path's full donor no longer describe current code
 
 ## GR Staged-F32 Selector (HC-1)
 
+Cleanup status (2026-10-25, R0021): the whole-route gate rejected this candidate
+with `measurement_valid: true`. The GR selector, runtime dispatch branch,
+`production_gr_up_staged` candidate, and recovery sensitivity arm are removed.
+The shared wrapper and its direct kernel tests remain because the separate
+dense staged-F32 registration uses that implementation. The strict GR fallback
+is unchanged. Historical gate commands require their source-pinned revision.
+
+The following records the investigation before removal, not open selector work.
+
 - `HIPENGINE_QWEN4_EXP_GR_STAGED` selects
   `coltile2_branch4_rowbatch4_staged_f32` for the GR up projection
   (`linear+gr_gated_mean`). The tile keeps the `dense_wide256` tiling and LDS

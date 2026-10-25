@@ -832,7 +832,6 @@ use.
 | `HIPENGINE_QWEN4_EXP_GR_NORM_F16_PUBLISH` | profile-selected | GR norm publishes an F16 copy for the following projections. |
 | `HIPENGINE_QWEN4_EXP_GR_NORM_INJECT` | `1` | The scale-only norm launch also computes the inject logits (bit-identical); `0` keeps them separate. |
 | `HIPENGINE_QWEN4_EXP_GR_SCALE_ONLY` | `1` | Scale-only GR read for Q8_0 up projections; `0` is the rollback. |
-| `HIPENGINE_QWEN4_EXP_GR_STAGED` | unset | Selects the staged-F32 GR read variant (changes summation order; not selected by default). |
 | `HIPENGINE_QWEN4_EXP_GR_WIDE` | unset (F16 route sets `1`) | Hyper-connection up projection on the F16 wide route. |
 | `HIPENGINE_QWEN4_EXP_GR_WRITE_NORM` | `1` | Fused GR write plus next norm for chunks of at least 1,024 rows (bit-identical); `0` rolls back. |
 | `HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE` | profile-selected | Q8_0 dense-wide prefill route master switch. |
@@ -853,6 +852,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_T16_RESIDENT_SLOTS` | all three roles | Comma-separated roles (`expert_gate`, `expert_up`, `expert_down`) made T16-resident. |
 | `HIPENGINE_QWEN4_EXP_RISK_DIAGNOSTICS` | unset | Records iu8 risk/repair counts; synchronizes the stream, diagnostics only. |
 | `HIPENGINE_QWEN4_EXP_PREBINDER_CONFLICT` | unset | Policy for a caller-set route variable that conflicts with the profile binder. |
+| `HIPENGINE_QWEN4_EXP_GR_STAGED` | retired | No longer read. Regression tests ensure the rejected GR staged-F32 selector cannot be restored; the separate dense staged route remains registered. |
 | `HIPENGINE_QWEN4_EXP_MOE_BACKEND_CACHE` | retired | No longer read; tests assert that setting it does not disable the backend registration cache. |
 | `HIPENGINE_QWEN4_EXP_Q8_IU8_WMM` | retired | No longer read. Regression tests ensure it cannot restore the rejected generic dense Q8 IU8 WMMA route; the independent GR kernel remains registered. |
 

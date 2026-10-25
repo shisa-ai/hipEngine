@@ -11,10 +11,12 @@ arithmetic difference from the exact chain is the summation order.
 
 Registered as ``coltile2_branch4_rowbatch4_staged_f32`` under
 ``linear+gr_gated_mean`` so the four-axis registry knows the variant and
-``is_registered`` can gate it, but **default-off and not selected unless
-``HIPENGINE_QWEN4_EXP_GR_STAGED`` is set** - the route changes arithmetic
-(summation order) relative to the fused exact parent and has not crossed the GR
-prefill-boundary KL screen.
+``is_registered`` can gate it, but **no runtime route selects it**: its
+whole-route production gate rejected it
+(``benchmarks/results/2026-09-29-qwen4exp-hc1-gr-staged-gate/``), so the selector
+and its dispatch branch were removed. The wrapper is retained because
+``register_gfx1151_kernels`` registers the *dense* staged-f32 key from it, and
+``tests/test_gpu_qwen4exp_gr_staged_f32.py`` calls it directly.
 """
 
 from __future__ import annotations
@@ -138,10 +140,11 @@ GR_STAGED_F32_VARIANT = "coltile2_branch4_rowbatch4_staged_f32"
 def register_gr_staged_f32_kernel(*, replace: bool = True) -> None:
     """Register the staged-f32 GR-up variant under ``linear+gr_gated_mean``.
 
-    Registration is separate from selection: the runtime chooses this variant
-    only behind its own default-off env gate. Registering it here (rather than
-    in ``gguf_k_gemv``) keeps the dependency pointing from the prototype module
-    to the registry instead of the reverse.
+    Registration is separate from selection: no runtime route selects this
+    variant, and the key is kept so the retained prototype's identity stays
+    inspectable rather than vanishing with the rejected dispatch branch.
+    Registering it here (rather than in ``gguf_k_gemv``) keeps the dependency
+    pointing from the prototype module to the registry instead of the reverse.
     """
 
     from hipengine.kernels.registry import KernelKey, register

@@ -541,48 +541,48 @@
       "start_line": 571,
       "end_line": 662,
       "sha256": "378ab75db7f98329b931869cbbcc172e4a4fd55254ff957c53d8604c98d94723",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Rejected GR selector/runtime branch/candidate removed; shared dense kernel and strict fallback preserved.32 focused tests, CPU unit suite, real gfx1151 production HTTP request, docs/audit/smokes pass. Worklog:worklog/entries/20261025T210403.832338Z-cleanup-refactor-r0021-c04ab8.md. Historical gate findings preserved; missing evidence for independent GR candidates is not a removal requirement."],
       "subitems": [
         {
           "line": 573,
           "text": "- `HIPENGINE_QWEN4_EXP_GR_STAGED` selects",
-          "status": "pending"
+          "status": "fixed"
         },
         {
           "line": 582,
           "text": "- **Default-off, and it must stay off until the production gate passes.** The",
-          "status": "pending"
+          "status": "obsolete"
         },
         {
           "line": 587,
           "text": "- **Concrete blocker, not \"needs more evidence\":** the gate cannot be run for",
-          "status": "pending"
+          "status": "obsolete"
         },
         {
           "line": 596,
           "text": "- Related but distinct: the *dense linear* staged tile",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 604,
           "text": "- **Disposition:** keep the selector and its unit test while the layer-scoped",
-          "status": "pending"
+          "status": "fixed"
         },
         {
           "line": 607,
           "text": "- **`20260929T`: the blocker above is specific to the LAYER-SCOPED gate and does",
-          "status": "pending"
+          "status": "obsolete"
         },
         {
           "line": 620,
           "text": "- **Registration trap, recorded because it silently turns a gate into a control:**  the GR staged variant is registered only by the module-level",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 640,
           "text": "- **`20260929T`: the layer2 gate's DEFAULT prompt suites cannot engage any GR",
-          "status": "pending"
+          "status": "not-debt"
         }
       ]
     },
