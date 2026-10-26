@@ -3811,7 +3811,7 @@
       "end_line": 3462,
       "sha256": "d063636a210e6defb8c9f1b27d6b59905bb3f95907085818357f30a080396a92",
       "status": "pending",
-      "evidence": [],
+      "evidence": ["Corrected obsolete rejected-only claim: text provider defaults MTP_COMPACT_PROPOSAL on and mixed serving passes compact_output=True directly. Replaced undefined replay-window trigger with explicit remaining rollback cleanup and validation requirements; no runtime change. Old selector is removed, successor environment rollback remains open."],
       "subitems": [
         {
           "line": 3452,

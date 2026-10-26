@@ -2981,16 +2981,21 @@ should be removed or collapsed.
 
 ## 2026-09-02 Qwen4Exp P11 compact draft output — selector closed
 
-- The public `HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT` selector and resident-hidden
-  provider branch were removed after target-verifier/device-transaction work
-  failed to eliminate category loss. One-packet output reached only 1.0103x
-  aggregate with two category regressions; resident target-hidden D2D reached
-  1.0091x with the same failure. The public route is again unambiguous full
-  output plus serial exact target verification. The explicit runner-level
-  `compact_output=True` argument remains only as a focused oracle/profiling leaf
-  for the recorded rejected mechanisms; it is not selected by public generation.
-  Remove that leaf too when the P11 replay window expires or a replacement
-  device-owned proposal boundary supersedes its tests.
+The old `HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT` selector is removed, but
+`compact_output=True` is not a rejected-only diagnostic leaf: public text MTP
+uses it by default through `HIPENGINE_QWEN4_EXP_MTP_COMPACT_PROPOSAL=1`, and
+mixed resident serving passes it directly. The target still scores the full
+vocabulary and owns output decisions.
+
+Remaining cleanup: remove the process-environment compact-proposal rollback
+from the text provider and use the same explicit proposal contract as mixed
+serving. Preserve the runner's full-output interface for callers that need its
+logits. The clearing checks are proposal token/hidden-state parity, cancellation
+and replay ownership, and a public MTP request that confirms compact proposals
+actually ran. Use `tests/test_unit_qwen4_exp_mtp_stages.py`,
+`tests/test_unit_qwen4_exp_resident_serving.py` and
+`tests/test_live_qwen4_exp_mtp_runner.py`; the historical P11 replay-window
+phrase is not a removal condition.
 
 ## 2026-09-02 Qwen4Exp P9 load drop-behind
 
