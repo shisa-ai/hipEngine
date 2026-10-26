@@ -26,6 +26,12 @@ QWEN35_GGUF_MTP_NEXTN_UPLOAD_MODULES = (
     "runtime/qwen35_gguf_mtp",
 )
 
+MAPLE_UPLOAD_MODULES = (
+    "runtime/maple",
+    "runtime/maple_graph",
+    "runtime/maple_cuda",
+)
+
 
 @pytest.mark.parametrize("module", [
     "runtime/evie", "runtime/timesfm_decode", "runtime/timesfm3_decode",
@@ -51,6 +57,10 @@ def _is_array_pointer_expression(node):
     if isinstance(node, ast.Call):
         if isinstance(node.func, ast.Name) and node.func.id == "host_array_ptr":
             return True
+        if isinstance(node.func, ast.Name) and node.func.id == "int":
+            return bool(node.args) and _is_array_pointer_expression(node.args[0])
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "addressof":
+            return bool(node.args) and _is_array_pointer_expression(node.args[0])
         return (
             isinstance(node.func, ast.Attribute)
             and node.func.attr in {"data_as", "ctypes"}
@@ -88,6 +98,48 @@ def test_qwen4exp_auxiliary_uploads_use_the_owning_helper(module):
         if source is not None and _is_array_pointer_expression(source):
             hazards.append(node.lineno)
     assert not hazards, f"{path.name}: use copy_host_array_to_device at lines {hazards}"
+
+
+@pytest.mark.parametrize("module", MAPLE_UPLOAD_MODULES)
+def test_maple_synchronous_array_uploads_use_the_owning_helper(module):
+    """No synchronous array upload may erase its source owner.
+
+    This is a bounded syntax guard over the Maple runtime modules, not a proof
+    of arbitrary pointer lifetimes. Asynchronous uploads, raw pointer uploads,
+    and D2H/D2D copies are outside this guard.
+    """
+    path = Path(__file__).parents[1] / "hipengine" / f"{module}.py"
+    tree = ast.parse(path.read_text())
+    hazards = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Name) and node.func.id == "copy_host_to_device":
+            source = (
+                node.args[1]
+                if len(node.args) > 1
+                else next((kw.value for kw in node.keywords if kw.arg == "host_ptr"), None)
+            )
+            if source is not None and _is_array_pointer_expression(source):
+                hazards.append((node.lineno, "copy_host_to_device"))
+            continue
+        if not (isinstance(node.func, ast.Attribute) and node.func.attr == "memcpy"):
+            continue
+        kind = (
+            node.args[3]
+            if len(node.args) > 3
+            else next((kw.value for kw in node.keywords if kw.arg == "kind"), None)
+        )
+        if not (isinstance(kind, ast.Attribute) and kind.attr == "HOST_TO_DEVICE"):
+            continue
+        source = (
+            node.args[1]
+            if len(node.args) > 1
+            else next((kw.value for kw in node.keywords if kw.arg == "src"), None)
+        )
+        if source is not None and _is_array_pointer_expression(source):
+            hazards.append((node.lineno, "runtime.memcpy"))
+    assert not hazards, f"{path.name}: use copy_host_array_to_device at {hazards}"
 
 
 @pytest.mark.parametrize("module", QWEN35_GGUF_MTP_NEXTN_UPLOAD_MODULES)

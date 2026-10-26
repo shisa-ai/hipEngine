@@ -117,16 +117,28 @@ def test_maple_batch_span_reset_copies_to_request_offsets(monkeypatch) -> None:
     span_owner.evict_host = np.zeros(8, dtype=np.bool_)
     span_owner.live_host = np.ones(2, dtype=np.int64)
     span_owner.row_host = np.ones(2, dtype=np.int64)
-    calls: list[tuple[int, int]] = []
+    calls: list[tuple[int, int, tuple[object, ...], object]] = []
 
-    def fake_copy(buffer, host_ptr, nbytes=None, *, runtime=None):
-        del host_ptr, runtime
-        calls.append((buffer.ptr, buffer.nbytes if nbytes is None else nbytes))
+    def fake_copy(buffer, array, nbytes=None, *, runtime=None):
+        count = int(array.nbytes if nbytes is None else nbytes)
+        calls.append(
+            (
+                buffer.ptr,
+                count,
+                tuple(np.asarray(array).reshape(-1).tolist()),
+                runtime,
+            )
+        )
 
-    monkeypatch.setattr(maple_runtime, "copy_host_to_device", fake_copy)
+    monkeypatch.setattr(maple_runtime, "copy_host_array_to_device", fake_copy)
     span_owner.reset_request(1)
 
-    assert calls == [(132, 32), (204, 4), (308, 8), (408, 8)]
+    assert calls == [
+        (132, 32, (-1, -1, -1, -1), span_owner.runtime),
+        (204, 4, (True, True, True, True), span_owner.runtime),
+        (308, 8, (0,), span_owner.runtime),
+        (408, 8, (-1,), span_owner.runtime),
+    ]
     assert np.all(span_owner.token_host[4:8] == -1)
     assert np.all(span_owner.evict_host[4:8])
     assert span_owner.live_host[1] == 0
@@ -330,7 +342,9 @@ def test_maple_prefill_native_samples_only_the_final_row(monkeypatch) -> None:
     monkeypatch.setattr(
         maple_runtime, "maple_kv_span_update_batched", lambda *a, **k: None
     )
-    monkeypatch.setattr(maple_runtime, "copy_host_to_device", lambda *a, **k: None)
+    monkeypatch.setattr(
+        maple_runtime, "copy_host_array_to_device", lambda *a, **k: None
+    )
     monkeypatch.setattr(
         maple_runtime,
         "maple_affine4_embed_batched_bf16",

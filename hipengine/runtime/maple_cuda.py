@@ -10,7 +10,7 @@ from hipengine.core.cuda import CudaRuntime, get_cuda_runtime
 from hipengine.core.device import Device
 from hipengine.core.memory import (
     copy_device_to_host,
-    copy_host_to_device,
+    copy_host_array_to_device,
     host_array_ptr,
 )
 from hipengine.kernels.backends import (
@@ -572,9 +572,9 @@ class MapleCudaRunner(MapleRunner):
                     runtime=self.runtime,
                 )
             ids_array = np.asarray(ids, dtype=np.int64)
-            copy_host_to_device(
+            copy_host_array_to_device(
                 pf.token_ids,
-                host_array_ptr(ids_array),
+                ids_array,
                 nbytes=ids_array.nbytes,
                 runtime=self.runtime,
             )

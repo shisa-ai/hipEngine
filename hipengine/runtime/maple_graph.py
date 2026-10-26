@@ -36,6 +36,7 @@ from typing import Callable, Hashable
 import numpy as np
 
 from hipengine.core.hip import HipMemcpyKind, HipRuntime
+from hipengine.core.memory import DeviceBuffer, copy_host_array_to_device
 
 # hipStreamCaptureModeRelaxed — matches MoeGraphCache / the HIP graph tests.
 _CAPTURE_MODE_RELAXED = 2
@@ -155,11 +156,12 @@ class MapleGraphCache:
             # restore the fresh capture input before recording the graph so it
             # captures a correct computation.
             for input_ptr, snapshot in input_snapshots:
-                rt.memcpy(
-                    input_ptr,
-                    int(snapshot.ctypes.data),
-                    int(snapshot.nbytes),
-                    HipMemcpyKind.HOST_TO_DEVICE,
+                nbytes = int(snapshot.nbytes)
+                copy_host_array_to_device(
+                    DeviceBuffer(input_ptr, nbytes),
+                    snapshot,
+                    nbytes,
+                    runtime=rt,
                 )
             rt.stream_begin_capture(cap, _CAPTURE_MODE_RELAXED)
             eager(cap)
@@ -180,25 +182,26 @@ class MapleGraphCache:
         #    reference. Ordinary replays receive a freshly produced embed
         #    output and current spans.
         for input_ptr, snapshot in input_snapshots:
-            rt.memcpy(
-                input_ptr,
-                int(snapshot.ctypes.data),
-                int(snapshot.nbytes),
-                HipMemcpyKind.HOST_TO_DEVICE,
+            nbytes = int(snapshot.nbytes)
+            copy_host_array_to_device(
+                DeviceBuffer(input_ptr, nbytes),
+                snapshot,
+                nbytes,
+                runtime=rt,
             )
         zero_idx = np.zeros(8, dtype=np.uint8)
         zero_val = np.zeros(4, dtype=np.uint8)
-        rt.memcpy(
-            index_ptr,
-            int(zero_idx.ctypes.data),
+        copy_host_array_to_device(
+            DeviceBuffer(index_ptr, 8),
+            zero_idx,
             8,
-            HipMemcpyKind.HOST_TO_DEVICE,
+            runtime=rt,
         )
-        rt.memcpy(
-            value_ptr,
-            int(zero_val.ctypes.data),
+        copy_host_array_to_device(
+            DeviceBuffer(value_ptr, 4),
+            zero_val,
             4,
-            HipMemcpyKind.HOST_TO_DEVICE,
+            runtime=rt,
         )
         rt.graph_launch(graph_exec, cap)
         self._sync(cap)
@@ -219,11 +222,12 @@ class MapleGraphCache:
         # this step reflects a clean, correct execution (the capture-stream
         # validation runs were for checking only).
         for input_ptr, snapshot in input_snapshots:
-            rt.memcpy(
-                input_ptr,
-                int(snapshot.ctypes.data),
-                int(snapshot.nbytes),
-                HipMemcpyKind.HOST_TO_DEVICE,
+            nbytes = int(snapshot.nbytes)
+            copy_host_array_to_device(
+                DeviceBuffer(input_ptr, nbytes),
+                snapshot,
+                nbytes,
+                runtime=rt,
             )
         eager(stream)
         self._sync(stream)

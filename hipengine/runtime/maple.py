@@ -15,7 +15,7 @@ from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
-    copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -293,9 +293,9 @@ class _BufferOwner:
     def put(self, array: np.ndarray) -> DeviceBuffer:
         host = np.ascontiguousarray(array)
         buffer = self.allocate(host.nbytes)
-        copy_host_to_device(
+        copy_host_array_to_device(
             buffer,
-            host_array_ptr(host),
+            host,
             runtime=self.runtime,
         )
         return buffer
@@ -354,9 +354,9 @@ class MapleSpanOwner:
             (self.evict_mask, self._evict_host),
             (self.row_positions, self._row_host),
         ):
-            copy_host_to_device(
+            copy_host_array_to_device(
                 buffer,
-                host_array_ptr(host),
+                host,
                 runtime=self.owner.runtime,
             )
 
@@ -484,15 +484,15 @@ class MapleBatchSpanOwner:
             self.evict_host[slot] = False
             self.live_host[request] = min(position + 1, self.per_request_capacity)
             self.row_host[request] = position
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self._view(self.token_positions, slot * 8, 8),
-                host_array_ptr(self.token_host[slot : slot + 1]),
+                self.token_host[slot : slot + 1],
                 nbytes=8,
                 runtime=self.runtime,
             )
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self._view(self.evict_mask, slot, 1),
-                host_array_ptr(self.evict_host[slot : slot + 1]),
+                self.evict_host[slot : slot + 1],
                 nbytes=1,
                 runtime=self.runtime,
             )
@@ -500,7 +500,7 @@ class MapleBatchSpanOwner:
             (self.live_counts, self.live_host),
             (self.row_positions, self.row_host),
         ):
-            copy_host_to_device(buffer, host_array_ptr(host), runtime=self.runtime)
+            copy_host_array_to_device(buffer, host, runtime=self.runtime)
 
     def reset(self) -> None:
         self.live_host.fill(0)
@@ -513,7 +513,7 @@ class MapleBatchSpanOwner:
             (self.evict_mask, self.evict_host),
             (self.row_positions, self.row_host),
         ):
-            copy_host_to_device(buffer, host_array_ptr(host), runtime=self.runtime)
+            copy_host_array_to_device(buffer, host, runtime=self.runtime)
 
     def reset_request(self, request: int) -> None:
         if not 0 <= request < self.batch_size:
@@ -543,9 +543,9 @@ class MapleBatchSpanOwner:
             ),
         )
         for buffer, host in copies:
-            copy_host_to_device(
+            copy_host_array_to_device(
                 buffer,
-                host_array_ptr(host),
+                host,
                 nbytes=host.nbytes,
                 runtime=self.runtime,
             )
@@ -1135,9 +1135,9 @@ class MapleRunner:
                     runtime=self.runtime,
                 )
             ids_arr = np.asarray(ids, dtype=np.int64)
-            copy_host_to_device(
+            copy_host_array_to_device(
                 pf.token_ids,
-                host_array_ptr(ids_arr),
+                ids_arr,
                 nbytes=ids_arr.nbytes,
                 runtime=self.runtime,
             )
@@ -1869,8 +1869,8 @@ class MapleBatchRunner:
             span_owner.publish(self._requests, active)
 
         ids_arr = np.asarray(ids, dtype=np.int64)
-        copy_host_to_device(
-            b.token_ids, host_array_ptr(ids_arr), runtime=self.runtime
+        copy_host_array_to_device(
+            b.token_ids, ids_arr, runtime=self.runtime
         )
         maple_affine4_embed_batched_bf16(
             self.weights.embeddings.weight.ptr,

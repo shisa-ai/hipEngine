@@ -2909,6 +2909,8 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   and main-runner uploads use the owning helper as well, including offset
   QSA row-array copies. Qwen35 NextN/MTP runtime uploads also retain their
   arrays, with explicit prefix lengths and checkpoint cursor sizes unchanged.
+  Maple runtime span, token and graph snapshot uploads use the owning helper,
+  including the CUDA prefill caller.
 - Remaining cleanup: named-local array uploads still use the raw-address
   `copy_host_to_device` API in other paths. Named locals are safe through a
   synchronous copy, but future edits must not replace them with temporary
