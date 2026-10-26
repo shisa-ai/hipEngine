@@ -2967,24 +2967,6 @@ The following records the superseded implementation, not current behavior:
   each helper's device ordering contract. A future asynchronous upload API must
   define a separate source-lifetime contract.
 
-## Qwen4Exp Q8 expanded F32 cache: removed
-
-- Exact dequantized row-major sidecar with unchanged coltile8/row4
-  loses0.161x on attention-gate512/1024 and0.787x/0.782x shared-down.
-  Gate sidecar60MiB plus~14.8ms setup;80 exact pairs,11 tests.
-- Resources unchanged72 VGPR/512B LDS/scratch0. No production path,
-  wrapper or registry entry retained;do not repeat unchanged.
-  Recipe:`benchmarks/results/2026-09-07-framework-qwen4exp-q8-f32-cache-rejected.json`.
-
-## Qwen4Exp Q8 early wave publication: removed
-
-- Publishing each accumulator immediately after its shuffle tree instead
-  of bulk publication lowers VGPR72->64 but loses on actual Q8 attention
-  gate and shared-down weights at512/1024 rows (0.651-0.910x).
-- Eighty exact pairs,ten tests,512B LDS/scratch0 both;candidate removed.
-  No runtime flag or registry debt remains. Do not repeat unchanged.
-  Recipe: `benchmarks/results/2026-09-07-framework-qwen4exp-q8-early-publication-rejected.json`.
-
 ## H256 QSA four-head production
 
 - `strict_h256_head_quad_rows_spans` shares K/V across four heads,
@@ -3074,20 +3056,6 @@ The following records the superseded implementation, not current behavior:
   restored. Pinning alone is not a mitigation. HIP wait-policy experiment
   remains a source-informed lead,not a production default.
   Do not assume all QSA cost shrinks by the kernel ratio.
-
-## Qwen4Exp raw-vector square64: removed
-
-- Framework vector-staging64x64 loses to promoted128x64 on actual Q
-  projections at512/1024 rows (0.959-0.985x). VGPR160/scratch0 both.
-- Candidate removed;not the historical zbook scalar-staging comparison.
-  Do not repeat this current-host combination unchanged.
-
-## Qwen4Exp prepacked MMQ token64: removed
-
-- Independent prepacked qkv/SSM screen loses0.931-0.969x despite
-  VGPR144->112,scratch0. Candidate removed;prepacked128 remains.
-- Promoted raw-Q token64 is separate and unchanged. Do not expand its
-  scope to prepacked weights based on raw-only evidence.
 
 ## Qwen4Exp raw MMQ token64 production
 

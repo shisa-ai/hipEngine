@@ -2437,18 +2437,20 @@
       "start_line": 2718,
       "end_line": 2726,
       "sha256": "25b794410e887353ca2d008c6373e88aeba7882a084ead66ea2e8cba371a9aad",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "Verified removed candidate symbols absent from hipengine at a733a1618; prepacked128 and raw token64 registry entries remain. Removed closed ledger section; original record preserved by inventory base_commit and audit/refactor-sweep/2026-10-25-R0081-R0100.json. Historical artifacts unchanged."
+      ],
       "subitems": [
         {
           "line": 2720,
           "text": "- Exact dequantized row-major sidecar with unchanged coltile8/row4",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 2723,
           "text": "- Resources unchanged72 VGPR/512B LDS/scratch0. No production path,",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
@@ -2458,18 +2460,20 @@
       "start_line": 2727,
       "end_line": 2735,
       "sha256": "cb517445a89c9d52aeec671e8205ed38c756131492da95b2690c94aefa8ee8b9",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "Verified removed candidate symbols absent from hipengine at a733a1618; prepacked128 and raw token64 registry entries remain. Removed closed ledger section; original record preserved by inventory base_commit and audit/refactor-sweep/2026-10-25-R0081-R0100.json. Historical artifacts unchanged."
+      ],
       "subitems": [
         {
           "line": 2729,
           "text": "- Publishing each accumulator immediately after its shuffle tree instead",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 2732,
           "text": "- Eighty exact pairs,ten tests,512B LDS/scratch0 both;candidate removed.",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
@@ -2651,18 +2655,20 @@
       "start_line": 2826,
       "end_line": 2832,
       "sha256": "38fc70aedc5cf737fc7da38103be681b5d7a25a8cadf45b9b350a19fedae5a5e",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "Verified removed candidate symbols absent from hipengine at a733a1618; prepacked128 and raw token64 registry entries remain. Removed closed ledger section; original record preserved by inventory base_commit and audit/refactor-sweep/2026-10-25-R0081-R0100.json. Historical artifacts unchanged."
+      ],
       "subitems": [
         {
           "line": 2828,
           "text": "- Framework vector-staging64x64 loses to promoted128x64 on actual Q",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 2830,
           "text": "- Candidate removed;not the historical zbook scalar-staging comparison.",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
@@ -2672,18 +2678,20 @@
       "start_line": 2833,
       "end_line": 2839,
       "sha256": "c3173af035ee25012ac010492b7efafbc54752c7c56cf85eb210034950f21295",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "Verified removed candidate symbols absent from hipengine at a733a1618; prepacked128 and raw token64 registry entries remain. Removed closed ledger section; original record preserved by inventory base_commit and audit/refactor-sweep/2026-10-25-R0081-R0100.json. Historical artifacts unchanged."
+      ],
       "subitems": [
         {
           "line": 2835,
           "text": "- Independent prepacked qkv/SSM screen loses0.931-0.969x despite",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 2837,
           "text": "- Promoted raw-Q token64 is separate and unchanged. Do not expand its",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
