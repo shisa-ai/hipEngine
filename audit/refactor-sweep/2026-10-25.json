@@ -1135,43 +1135,45 @@
       "start_line": 1165,
       "end_line": 1212,
       "sha256": "303da31fd0dcafcf506572806cd381a87b96735201b076b4a86776a815685f7c",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Current recovery and GDN ownership verified; script-local diagnostics and source-pinned family harness retained under their existing conditions. Worklog:worklog/entries/20261026T032555.749495Z-cleanup-refactor-r0036-r0040-gdn-recovery-0c185f.md. No runtime/default change."
+      ],
       "subitems": [
         {
           "line": 1167,
           "text": "- The September14 recovery selected conservative arithmetic while",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1172,
           "text": "- Conservative recovery matches strict on594 natural-prompt rows and780",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1175,
           "text": "- The subsequent Q8/QSA restoration above supersedes those portions of the",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1180,
           "text": "- The existing GDN/DPP suffix was retested over corrected Q8/QSA production:",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1185,
           "text": "- DPP itself is exact relative to its tiled parent and is not removed.",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1188,
           "text": "- Diagnostic layer/shape hooks live only in scripts and must clear both",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1191,
           "text": "- **Per-selector cost is now measured, and it does not match the recovery's",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
@@ -1181,23 +1183,25 @@
       "start_line": 1213,
       "end_line": 1238,
       "sha256": "09964978423483cd720fcc60f16f9f944553a48d64c393f26d296e60a0bed7f3",
-      "status": "pending",
-      "evidence": [],
+      "status": "not-debt-retained",
+      "evidence": [
+        "Current recovery and GDN ownership verified; script-local diagnostics and source-pinned family harness retained under their existing conditions. Worklog:worklog/entries/20261026T032555.749495Z-cleanup-refactor-r0036-r0040-gdn-recovery-0c185f.md. No runtime/default change."
+      ],
       "subitems": [
         {
           "line": 1215,
           "text": "- **Two harnesses answer the same question and only one was ever run.**",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 1222,
           "text": "- The ranking harness is the one now used, because it records the per-arm",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 1231,
           "text": "- **The 2026-09-16 ranking must not be read as an opportunity list.** Its",
-          "status": "pending"
+          "status": "not-debt"
         }
       ]
     },
@@ -1223,13 +1227,15 @@
       "start_line": 1246,
       "end_line": 1286,
       "sha256": "06547af481457e64e9507aeb23406900a7585acc06b0045850c4dd8c99c1c279",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Current recovery and GDN ownership verified; script-local diagnostics and source-pinned family harness retained under their existing conditions. Worklog:worklog/entries/20261026T032555.749495Z-cleanup-refactor-r0036-r0040-gdn-recovery-0c185f.md. No runtime/default change."
+      ],
       "subitems": [
         {
           "line": 1248,
           "text": "- `qwen4_exp_gdn_multi` / `HIPENGINE_QWEN4_GDN_MULTI_COLUMN` and registry",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
@@ -1239,13 +1245,15 @@
       "start_line": 1287,
       "end_line": 1296,
       "sha256": "fe1d0ff1dd6c6e51b953067e5586f24a0a04cd91ba95cb19b09c78c079911a17",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Current recovery and GDN ownership verified; script-local diagnostics and source-pinned family harness retained under their existing conditions. Worklog:worklog/entries/20261026T032555.749495Z-cleanup-refactor-r0036-r0040-gdn-recovery-0c185f.md. No runtime/default change."
+      ],
       "subitems": [
         {
           "line": 1289,
           "text": "- The `qwen4_exp_gdn_dpp` build family and gfx1151",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },

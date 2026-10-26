@@ -1192,6 +1192,17 @@ condition stand. The reader-removal decision belongs to R0029 above, not here.
 
 ## UD-Q4_K_XL Arithmetic Recovery (2026-09-14)
 
+Cleanup status (2026-10-26, R0036): the actionable request in this section is
+done, and what remains is a closed historical record.
+`docs/EXECUTION-PROFILES.md` §2.13 now describes the `gguf_ud_q4_k_xl` F16 route
+composition, the 2026-10-14 composition gate and the quarantined `gguf_q4_k_m`
+plan, so its product-policy framing is current at HEAD. Statements below that
+were false at HEAD are corrected in place: selectors have been re-admitted
+since the recovery, tiled GDN is no longer disabled, the hook-removal
+obligation is discharged, and the recovery-cost record moved out of §2.13. The
+binder is unchanged; the held-off set and each reopen condition live in
+"Withdrawn Routes That Stay Bound In The Production Plan" above.
+
 - The September14 recovery selected conservative arithmetic while
   retaining the exact grouped/iu8-repair, register-state GDN, wave-reduction
   and mapping-only PLE owners. The prior composition fails the current
@@ -1201,21 +1212,32 @@ condition stand. The reader-removal decision belongs to R0029 above, not here.
   canonical512/1K/4K rows, with repeatability, state and teardown gates.
   This is a measured recovery, not proof that every disabled family is faulty.
 - The subsequent Q8/QSA restoration above supersedes those portions of the
-  rollback. Approximate MoE/GR/dense-Q8, tiled-GDN and DP4A remain
-  registered for independent experiments. Re-enable only with a complete
-  same-suite numerical/task/depth gate and accurate manifest. No production
-  override is added to bypass the recovery binder.
+  rollback. The families still off at HEAD are approximate MoE prefill, Q4 iu8
+  prefill, Q8 MMQ prefill, the GR iu8 up/down pair, GDN peer prefill, Q4 DP4A64
+  and QSA flash prefill. Two further families were reopened after the recovery
+  and are not rollback debt: tiled GDN through the 2026-10-08 column-warp
+  admission, which the 2026-10-14 composition binds to the row-split
+  recurrence, and `GR_WIDE` through the composition itself. Re-enable a
+  still-off family only with a complete same-suite numerical/task/depth gate
+  and accurate manifest. No production override is added to bypass the
+  recovery binder.
 - The existing GDN/DPP suffix was retested over corrected Q8/QSA production:
   short/depth numerics pass, but a complete Japanese explanation introduces
   a material verification-parallelism error under the predeclared task rule.
   See `benchmarks/results/2026-09-15-journey-gdn-restoration/`. Keep that
   composition off; this is not proof that all GDN variants are faulty.
 - DPP itself is exact relative to its tiled parent and is not removed.
-  Its suffix is inactive while tiled GDN is disabled. Requalify that complete
-  composition before restoring it; do not infer DPP caused the failure.
-- Diagnostic layer/shape hooks live only in scripts and must clear both
-  graph and host dispatch caches. Remove the temporary hooks after the
-  remaining arithmetic families have been independently qualified.
+  Its suffix is inactive: the recovery pass replaces the tiled GDN owner and
+  the 2026-10-14 composition binds the row-split recurrence instead.
+  Requalify that complete composition before restoring it; do not infer DPP
+  caused the failure.
+- Diagnostic layer/shape hooks live only in scripts. The three that remain
+  clear both graph caches between arms - `scripts/qwen4exp_journey_localize.py`
+  (`clear_arm_graphs`), `scripts/qwen4exp_conservative_cost.py` and
+  `scripts/qwen4exp_prefill_restore_ab.py` - and the last two also clear the
+  host dispatch cache. No production hook exists. These are the harnesses that
+  reproduce the recovery evidence, so they stay; a new diagnostic must clear
+  both cache layers or it measures a warm incumbent.
 - **Per-selector cost is now measured, and it does not match the recovery's
   headline cost (2026-10-04).**
   `benchmarks/results/2026-10-04-qwen4exp-disabled-selector-ranking/` ran the
@@ -1227,18 +1249,34 @@ condition stand. The reader-removal decision belongs to R0029 above, not here.
   (`Q8_MMQ_PREFILL` -0.539 s, `PRODUCTION_MOE_PREFILL` -0.550 s,
   `Q4_IU8_PREFILL` -2.822 s). **Enabling all of them at once is worth +1.7%.**
   The recorded recovery cost is `-40.94/-41.89/-54.53%` prefill
-  (`docs/EXECUTION-PROFILES.md` §2.13). The two are not the same measurement
-  (§2.13 is weighted p512/p1024/p4096 on the `gguf_q4_k_m` profile; this is one
-  case under post-binder overrides on the UD profile), so the discrepancy is
+  (`benchmarks/results/2026-09-14-q8-prefill-numerics/README.md`, its "Recovery
+  Cost" table; §2.13 no longer carries it). The two are not the same
+  measurement (the cost packet is weighted p512/p1024/p4096 against the
+  unrecovered UD composition in one residency; this is one case under
+  post-binder overrides on the recovered UD plan), so the discrepancy is
   **unresolved**, but the recovery baseline itself improved 1.52x since the
   2026-09-16 sweep (23.648 s -> 15.544 s) and the recovery profile's own
-  optimization appears to have closed most of the gap. **Re-derive §2.13 at
-  HEAD before treating its product-policy framing as current.** No selector is
-  re-admitted: the three material wins are all blocked on numerics (see the
-  GR sections above), and the remaining six are losses or noise. The reachable
-  value is the wide tile's bit-exact retile, not a re-admission.
+  optimization appears to have closed most of the gap. §2.13 has since been
+  re-derived at HEAD. Of the three material wins, `GR_WIDE` is now admitted by
+  the 2026-10-14 composition and the GR iu8 pair stays off on its own repair
+  condition; the other six arms were losses or inside run-to-run noise, and the
+  GDN column-warp family was later admitted on the 2026-10-08 gate rather than
+  on this ranking, while QSA flash prefill remains held off. The wide tile's
+  bit-exact retile is still the lever that does not depend on re-admitting
+  arithmetic.
 
 ## Disabled-Selector Sweep Harness Duplication (2026-10-04)
+
+Cleanup status (2026-10-26, R0037): the duplication is real and both harnesses
+are still present. The removal condition below is unmet, and the choice it
+describes is a record-retention decision rather than an engineering blocker:
+both 2026-09-16 artifacts still name
+`scripts/qwen4exp_disabled_family_sweep.py` as their driver, so it remains their
+reproduction path and stays. The arm sets drifted since this section was
+written: the family sweep's `Q8_IU8_WMM` arm went with the rejected generic
+dense Q8 iu8-WMMA route (`e108d110f`), and the arms the ranking harness lacks
+are `Q8_DENSE_WIDE_16_47`, the three `Q8_WMMA_LAYERS_*` scopes, `Q4_DP4A64` and
+a no-op override control. Nothing here changes a production route.
 
 - **Two harnesses answer the same question and only one was ever run.**
   `scripts/qwen4exp_disabled_family_sweep.py` produced the 2026-09-16
@@ -1249,13 +1287,11 @@ condition stand. The reader-removal decision belongs to R0029 above, not here.
   (`qwen4exp_profile_gap_window` children vs a `ranking.json` roll-up).
 - The ranking harness is the one now used, because it records the per-arm
   `effective_route` and `effective_route_missing_keys` and writes a roll-up
-  report; the family sweep writes per-arm JSON only. **Remove the family sweep
-  once its 2026-09-16 artifacts are no longer the cited evidence for anything**,
-  or fold its extra arms (`Q8_IU8_WMM`, `Q4_DP4A64`, `Q8_WMMA_LAYERS_*`) into
-  the ranking harness. Do not delete it while
-  `benchmarks/results/2026-09-16-disabled-family-recoverable-time/README.md`
-  and `2026-09-16-q8-wmma-layers-recoverable-time/README.md` still cite it as
-  their driver.
+  report; the family sweep writes per-arm JSON only. Retain the family sweep
+  while the two 2026-09-16 packets depend on it. Remove it only after those
+  packets are no longer cited or a replacement harness covers its extra arms
+  and reproduction contract. Do not edit historical driver rows: they record
+  what ran.
 - **The 2026-09-16 ranking must not be read as an opportunity list.** Its
   fallback was 23.648 s against 15.544 s today, and its ordering inverted:
   `Q8_MMQ_PREFILL` 1.203x -> **0.9665x**, `Q4_IU8_PREFILL` 0.997x ->
@@ -1266,54 +1302,70 @@ condition stand. The reader-removal decision belongs to R0029 above, not here.
 
 ## Journey Multi-Column GDN
 
+Cleanup status (2026-10-26, R0039): the multi-column route is a registered
+fallback, not the production default, and no removal follows from that. The
+`gguf_ud_q4_k_xl` production binder names `qwen4exp_gdn_rowsplit_prefill` in
+`HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT` (`_F16_ROUTE_BINDER_ENV`, applied
+after the recovery sweep), and the runner resolves that variant inside the open
+column-warp gate. The non-recovery selection table still declares
+`qwen4exp_gdn_tiled16_multi_prefill` for the 27-47 window, but the recovery pass
+replaces the GDN rows with the wave-norm narrow/wide owners, and `gguf_q4_k_m`
+production is quarantined to strict, which closes the gate: multi does not
+dispatch in a running production profile. Multi and DPP both stay registered in
+`hipengine/kernels/hip_gfx1151/__init__.py`. Do not remove the multi-column
+path: no numerical or performance gate rejected it.
+
 - `qwen4_exp_gdn_multi` / `HIPENGINE_QWEN4_GDN_MULTI_COLUMN` and registry
-  `qwen4exp_gdn_tiled16_multi_prefill` are numerical candidates, not defaults.
-  Full profile gate owns promotion. Both tiled routes are inactive in the
-  recovered UD production profile; remove the multi-column
-  path if the numerical or operation-complete performance gate rejects it.
-
-  **RESOLVED (`20260930T`): the path is now the PRODUCTION DEFAULT, so it is no longer removal
-  debt.** Measured 1.34x-1.68x faster than the DPP route it replaces across 512/1024/2048/4096
-  tokens at Hk16/Hv48/Dk=Dv=128 on gfx1151, at NMSE ~1.8e-14 (fp32 round-off), with the
-  production numerical gates passing. It supersedes the DPP route as the production GDN prefill
-  selection; the DPP route stays registered as the strict fallback. **What remains on this
-  entry is the opposite question** - whether to remove the now-inactive DPP route, not the
-  multi-column one. See `benchmarks/results/2026-09-30-qwen4exp-gdn-multicolumn-ab/`.
-
-  The earlier correction is kept below because it is why the removal never fired.
-
-  **CORRECTION (`20260930T`): the "gate rejected it" premise was a misattribution, so the
-  removal is not yet justified.** The rejection was read from the ledger's section-7 row,
-  which combined `R01` (tiled/DPP) and `R02` (multi-column) under `R01`'s evidence entry.
-  `benchmarks/results/2026-09-15-journey-gdn-multi-restoration/README.md` shows `R02`
-  **passing** the full 594-row short gate (593/594 top-1) and the canonical depth gate at
-  every declared limit (mean KL 8.92215e-05, max 4.4548289e-03, top-1 777/780), and states
-  that it **does not reproduce** the single-column Japanese error that blocked `R01`. Its
-  own finding is a different prompt (`heldout_general_en_quant`) that the artifact scopes as
-  "not proof of worse expected quality or a GDN kernel defect". **The removal stays pending
-  the numerical or operation-complete performance gate actually rejecting this variant** -
-  that gate has not been recorded as having run against `R02`.
-
-  Historical old-stack594-row scope failures remain evidence, but are not
-  the current blocker. Over corrected Q8/QSA production, short594 and
-  canonical780-row numerical gates pass. The complete quantization task
-  introduces a materially misleading native-INT8 support explanation;
-  the current per-prompt task rule does not admit this composition.
-  See `benchmarks/results/2026-09-15-journey-gdn-multi-restoration/task-review.json`.
-  One Japanese-plan pair remains truncated; no extension or timing is
-  spent after the separate task finding. This is not a numerical rejection
-  or proof of worse expected quality. Do not rerun the unchanged composition
-  or promote it merely because its numerical envelope passes.
+  `qwen4exp_gdn_tiled16_multi_prefill` became the production default on
+  `20260930T`: measured 1.34x-1.68x faster than the DPP route it replaced
+  across 512/1024/2048/4096 tokens at Hk16/Hv48/Dk=Dv=128 on gfx1151, at NMSE
+  ~1.8e-14 (fp32 round-off), with the production numerical gates passing. It
+  superseded the DPP route as the production GDN prefill selection; DPP stayed
+  registered for bisection and gate arms, and the serial strict owner remains
+  the strict fallback. The 2026-10-14 composition superseded this selection
+  without rejecting the route. Evidence:
+  `benchmarks/results/2026-09-30-qwen4exp-gdn-multicolumn-ab/`.
+- The earlier "gate rejected it" premise was a misattribution, which is why the
+  removal never fired. The rejection was read from the ledger's section-7 row,
+  which combined `R01` (tiled/DPP) and `R02` (multi-column) under `R01`'s
+  evidence entry.
+  `benchmarks/results/2026-09-15-journey-gdn-multi-restoration/README.md` shows
+  `R02` passing the full 594-row short gate (593/594 top-1) and the canonical
+  depth gate at every declared limit (mean KL 8.92215e-05, max 4.4548289e-03,
+  top-1 777/780), and states that it does not reproduce the single-column
+  Japanese error that blocked `R01`. Its own finding is a different prompt
+  (`heldout_general_en_quant`) that the artifact scopes as "not proof of worse
+  expected quality or a GDN kernel defect".
+- Historical old-stack 594-row scope failures remain evidence, but are not the
+  current blocker. Over corrected Q8/QSA production, short 594-row and canonical
+  780-row numerical gates pass. The complete quantization task introduces a
+  materially misleading native-INT8 support explanation; the current
+  per-prompt task rule does not admit this composition. See
+  `benchmarks/results/2026-09-15-journey-gdn-multi-restoration/task-review.json`.
+  One Japanese-plan pair remains truncated; no extension or timing is spent
+  after the separate task finding. This is not a numerical rejection or proof
+  of worse expected quality. Do not rerun the unchanged composition or promote
+  it merely because its numerical envelope passes.
 
 ## Journey GDN DPP Experiment
 
+Cleanup status (2026-10-26, R0040): the DPP key is registered and unselected,
+and no runtime cleanup remains. The active `gguf_ud_q4_k_xl` production GDN
+owner is `qwen4exp_gdn_rowsplit_prefill`;
+`qwen4exp_gdn_tiled16_dpp_prefill` is in the recovery pass's inactive set and
+stays registered (`hipengine/kernels/hip_gfx1151/__init__.py`) as the layer2
+gate's `gdn_isolated` arm and a bisection incumbent. The only interception left
+is the diagnostic `scripts/qwen4exp_gdn_multicolumn_route_probe.py`, which
+wraps the selection predicate to count dispatches and reproduces the
+multi-column engagement evidence, so it stays.
+`HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT` is profile-owned and
+`HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL=0` is the opt-out.
+
 - The `qwen4_exp_gdn_dpp` build family and gfx1151
   `qwen4exp_gdn_tiled16_dpp_prefill` key passed the previous
-  UD-Q4_K_XL suffix full72-sample exact A/B. The suffix is now inactive
-  under arithmetic recovery, without rejecting DPP itself. Ordinary tile16
-  and serial strict keys remain registered. `HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT`
-  is profile-owned; remove temporary experiment harness interception once
-  final campaign ablations finish. Keep the ordinary key for strict/bisection.
+  UD-Q4_K_XL suffix full 72-sample exact A/B. The suffix is inactive without
+  rejecting DPP itself. Ordinary tile16 and serial strict keys remain
+  registered; keep them for strict/bisection.
 
 ## Qwen4Exp PLE Mapping Advice (2026-09-14 JST)
 
