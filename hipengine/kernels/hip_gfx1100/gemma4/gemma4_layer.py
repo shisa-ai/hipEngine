@@ -968,14 +968,15 @@ def _select_exact_decode_attention(
             num_kv_heads=int(num_kv_heads),
         )
         and not gemma4_attention_resident_overflows(head_dim=int(head_dim), keys=int(keys))
-        and flash_decode_short_row(keys=int(keys), head_dim=int(head_dim))
+        and flash_decode_short_row(keys=int(keys))
     ):
         # The short-row arm of the same preference, for either packing: below
-        # the split policy's 1024 keys the native launch is the single class
-        # kernel, whose serial key walk the key-sliced route overtakes from
-        # ``FLASH_DECODE_PREFERRED_MIN_KEYS`` keys. From 1024 keys the native launch
-        # already asks for flash, so this changes nothing there. A sliding
-        # layer has not started trimming at these counts (``key_begin == 0``).
+        # the dimension partition's 1024-key threshold the native launch is the
+        # single class kernel, whose serial key walk the key-sliced route
+        # overtakes from ``FLASH_DECODE_PREFERRED_MIN_KEYS`` keys. From 1024 keys
+        # the native launch already asks for flash, so this changes nothing
+        # there. A sliding layer has not started trimming at these counts
+        # (``key_begin == 0``).
         flash = _resolve_decode_attention_launcher(
             backend=resolved_backend, variant=flash_variant
         )

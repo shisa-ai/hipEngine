@@ -79,9 +79,9 @@ CLOSE_MARGIN = 0.05
 # Rows per block when forming the full-vocabulary denominator.
 _MARGIN_CHUNK = 64
 
-# The shipped decode_slices, captured on first use by force_slices so an
-# override can be undone inside one process.
-_ORIGINAL_DECODE_SLICES: Any = None
+# The shipped decode split route, captured on first use by force_decode_split
+# so an override can be undone inside one process.
+_ORIGINAL_DECODE_SPLIT: Any = None
 
 # Likewise the WMMA full-layer walk's key-division rule.
 _ORIGINAL_WMMA_FULL_PLAN: Any = None
@@ -338,8 +338,8 @@ def wmma_full_split_summary(splits: list[dict[str, int]]) -> dict[str, Any]:
 
 def route_summary(routes: list[dict[str, int]]) -> dict[str, Any]:
     # The split family is the multi-slice partials-plus-combine route: the
-    # incumbent split (selection 2) and flash-decoding (selection 3, the
-    # negative-slices split request) both exercise it.
+    # incumbent dimension partition (selection 2) and flash-decoding
+    # (selection 3, the explicit key-slice request) both exercise it.
     split = [row for row in routes if row["selection"] == 2]
     flash = [row for row in routes if row["selection"] == 3]
     family = split + flash
@@ -429,13 +429,14 @@ def capture_chain(
     scoring starts and are not themselves scored. That is what makes the chain
     exercise the decode path the model actually serves. Without it every row
     runs at key counts ``1..len(ids)-1``, which at a 1024-token prompt stops one
-    key below the decode split's 1024-key entry threshold: the split never runs,
-    and the gate reports ``kl_max`` of exactly 0.0 because it is comparing the
-    single-kernel path with itself. Measured directly - 30 ``decode_slices``
-    calls per forward, one per layer, keys ``[1]`` at position 0 through ``[5]``
-    at position 4, all returning 1 slice - and the 2026-09-25 split gate result
-    was this artifact. With a prefill, scoring starts at key count
-    ``prefill + 1`` and every row above the threshold engages the split.
+    key below the decode split's 1024-key entry threshold: the partition never
+    runs, and the gate reports ``kl_max`` of exactly 0.0 because it is comparing
+    the single-kernel path with itself. Measured directly - 30 decode split
+    policy calls per forward, one per layer, keys ``[1]`` at position 0 through
+    ``[5]`` at position 4, every one keeping the single kernel - and the
+    2026-09-25 split gate result was this artifact. With a prefill, scoring
+    starts at key count ``prefill + 1`` and every row above the threshold
+    engages the partition.
     """
 
     ids = [int(t) for t in prompt_ids]
@@ -461,40 +462,44 @@ def capture_chain(
     return np.stack(rows)
 
 
-def force_slices(slices: int | None) -> None:
-    """Pin the strict decode split's slice count for one capture or gate arm.
+def force_decode_split(slices: int | None) -> None:
+    """Pin the strict decode route for one capture or gate arm.
 
     A harness override, not a product control: nothing in the engine reads it.
-    It exists so a baseline can be frozen at the slice count it actually shipped
-    with, and so the strict arm - 1, which selects the single-kernel path - can
-    be captured on the same tree as the split arms. An arm captured this way
-    records the value in its manifest, and ``gate`` refuses to compare two arms
+    It exists so a baseline can be frozen at the route it actually shipped with,
+    and so the strict arm - 1, which selects the single-kernel path - can be
+    captured on the same tree as the partition arms. An arm captured this way
+    records the request in its manifest, and ``gate`` refuses to compare two arms
     whose chain geometry differs.
 
-    ``None`` restores the shipped policy, so the override is reversible within
-    one process rather than only per-invocation. This is
-    ``gemma4_attention.decode_slices``; the WMMA full-layer walk's key division
-    is a separate policy with its own pin, :func:`force_wmma_full_slices`.
+    The request is the same ``--slices`` value the campaign's recorded commands
+    use: ``1`` forces the single-kernel oracle and any value above one forces
+    the dimension partition. The number above one no longer sizes anything --
+    the partition's grid is the head width's -- so it is the route, not a count,
+    that the pin selects. ``None`` restores the shipped policy, so the override
+    is reversible within one process rather than only per-invocation. This is
+    ``gemma4_attention.decode_split_engages``; the WMMA full-layer walk's key
+    division is a separate policy with its own pin,
+    :func:`force_wmma_full_slices`.
     """
 
     from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention
 
-    global _ORIGINAL_DECODE_SLICES
-    if _ORIGINAL_DECODE_SLICES is None:
-        _ORIGINAL_DECODE_SLICES = gemma4_attention.decode_slices
+    global _ORIGINAL_DECODE_SPLIT
+    if _ORIGINAL_DECODE_SPLIT is None:
+        _ORIGINAL_DECODE_SPLIT = gemma4_attention.decode_split_engages
     if slices is None:
-        gemma4_attention.decode_slices = _ORIGINAL_DECODE_SLICES
+        gemma4_attention.decode_split_engages = _ORIGINAL_DECODE_SPLIT
         return
-    gemma4_attention.decode_slices = (
-        lambda keys, head_dim: 1 if slices <= 1 else int(slices)
-    )
+    engage = int(slices) > 1
+    gemma4_attention.decode_split_engages = lambda *, keys: engage
 
 
 def force_wmma_full_slices(slices: int | None) -> None:
     """Pin the WMMA full-layer walk's key division for one gate arm.
 
     Also a harness override and also unread by the engine. It is separate from
-    :func:`force_slices` because the two splits are reached by different
+    :func:`force_decode_split` because the two splits are reached by different
     geometries: above the strict decode kernel's key bound the full layers run
     the WMMA kernel and take this split, while the sliding layers keep the
     strict decode kernel and its value pass at every length. Pinning both at
@@ -676,7 +681,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "--slices",
             type=int,
             default=None,
-            help="pin decode_slices for this arm (1 = strict single-kernel path)",
+            help="pin the strict decode route for this arm (1 = strict "
+            "single-kernel path, above one = dimension partition)",
         )
         p.add_argument(
             "--wmma-full-shape",
@@ -730,7 +736,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "capture":
         started = time.time()
-        force_slices(args.slices)
+        force_decode_split(args.slices)
         force_wmma_full_slices(args.wmma_full_slices)
         force_wmma_full_shape(args.wmma_full_shape)
         runner, prompt_ids, loading, chain_kind = _load_chain(
@@ -745,7 +751,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         finally:
             runner.close()
-            force_slices(None)
+            force_decode_split(None)
             force_wmma_full_slices(None)
             force_wmma_full_shape(None)
         provenance = _provenance(args.artifact, loading)
@@ -792,7 +798,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     baseline, base_ids, base_provenance = load_capture(args.baseline)
-    force_slices(args.slices)
+    force_decode_split(args.slices)
     force_wmma_full_slices(args.wmma_full_slices)
     force_wmma_full_shape(args.wmma_full_shape)
     runner, prompt_ids, loading, chain_kind = _load_chain(
@@ -801,7 +807,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if [int(x) for x in base_ids] != [int(x) for x in prompt_ids]:
         runner.close()
-        force_slices(None)
+        force_decode_split(None)
         force_wmma_full_slices(None)
         force_wmma_full_shape(None)
         raise SystemExit(
@@ -813,7 +819,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if base_kind != chain_kind:
         runner.close()
-        force_slices(None)
+        force_decode_split(None)
         force_wmma_full_slices(None)
         force_wmma_full_shape(None)
         raise SystemExit(
@@ -822,7 +828,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if int(base_provenance.get("prefill", 0)) != int(args.prefill):
         runner.close()
-        force_slices(None)
+        force_decode_split(None)
         force_wmma_full_slices(None)
         force_wmma_full_shape(None)
         raise SystemExit(
@@ -839,7 +845,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     finally:
         runner.close()
-        force_slices(None)
+        force_decode_split(None)
         force_wmma_full_slices(None)
         force_wmma_full_shape(None)
     verdict = evaluate(baseline, candidate)

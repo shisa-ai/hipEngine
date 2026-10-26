@@ -24,9 +24,10 @@ read from ``attention.decode_selection`` after the wrapped call returns. That
 reading is per-call: the wrapped function is the single funnel for decode
 symbols and the launcher writes the counter on every branch it can take. The two
 disagree by design below the bound -- ``launcher._launch_prefill`` admits flash
-whenever the shape is admitted and ``decode_slices`` asks for more than one
-slice, without any plan selection, so a short-context decode launch reports
-``exact`` for the resolution and the flash kernel for the selection.
+whenever the shape is admitted and ``decode_split_engages`` asks for the
+dimension partition, without any plan selection, so a short-context decode
+launch reports ``exact`` for the resolution and the flash kernel for the
+selection.
 """
 from __future__ import annotations
 

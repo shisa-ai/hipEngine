@@ -426,6 +426,13 @@ __global__ void gemma4_attention_prefill_kernel(
   }
 }
 
+// Decode route request. The value names the kernel family to run; no count
+// selects it. A route that needs a count carries it separately: the flash
+// key-slice request travels in ``flash_slices``.
+constexpr int kGemma4DecodeRouteStrict = 0;  // single-kernel oracle
+constexpr int kGemma4DecodeRouteSplit = 1;   // two-pass dimension partition
+constexpr int kGemma4DecodeRouteFlash = 2;   // key-sliced flash + combine
+
 // Defined below; the prefill launcher routes multi-token blocks into it.
 template <typename scalar_t>
 int launch_gemma4_attention_decode(
@@ -441,8 +448,9 @@ int launch_gemma4_attention_decode(
     float scale,
     hipStream_t stream,
     int64_t keys,
-    float* split_workspace,
-    int split_slices,
+    float* workspace,
+    int route,
+    int flash_slices,
     const int* live_extent);
 
 template <typename scalar_t>
@@ -485,7 +493,8 @@ int launch_gemma4_attention_prefill(
   if (tokens > 1) {
     const int batched_rc = launch_gemma4_attention_decode<scalar_t>(
         query, key, value, keep_mask, out, tokens, num_heads, num_kv_heads,
-        head_dim, scale, stream, keys, nullptr, 0, nullptr);
+        head_dim, scale, stream, keys, nullptr, kGemma4DecodeRouteStrict, 0,
+        nullptr);
     if (batched_rc >= 0) {
       return batched_rc;
     }
@@ -1263,13 +1272,12 @@ inline int& gemma4_decode_selection() {
 }
 
 // Workspace contains phase-one weights and a (denominator, row max) header.
-// head_dim and slices remain in the sizing ABI for existing callers.
+// The dimension partition's grid is derived from the head width at launch, so
+// the size depends on neither the head width nor a partition count.
 size_t gemma4_decode_split_workspace_bytes(
     int64_t tokens,
     int64_t num_heads,
-    int64_t head_dim,
-    int64_t keys,
-    int slices) {
+    int64_t keys) {
   const size_t weights = static_cast<size_t>(tokens) * num_heads * keys;
   const size_t header = static_cast<size_t>(tokens) * num_heads * 2;
   return (weights + header) * sizeof(float);
@@ -1289,14 +1297,13 @@ int gemma4_decode_split_launch(
     int64_t tokens,
     int64_t keys,
     hipStream_t stream,
-    float* workspace,
-    int slices) {
+    float* workspace) {
   constexpr int kKeysPerTile = 2;
   constexpr unsigned int kThreads = 512;
   const size_t shared_bytes =
       (static_cast<size_t>(keys) + 256 * (kThreads / kGemma4ReduceThreads) +
        kThreads / 32) * sizeof(float);
-  if (shared_bytes > 64 * 1024 || workspace == nullptr || slices < 2) {
+  if (shared_bytes > 64 * 1024 || workspace == nullptr) {
     return -1;
   }
   float* weights = workspace;
@@ -2068,8 +2075,9 @@ int launch_gemma4_attention_decode(
     float scale,
     hipStream_t stream,
     int64_t keys,
-    float* split_workspace,
-    int split_slices,
+    float* workspace,
+    int route,
+    int flash_slices,
     const int* live_extent) {
   if (tokens <= 0 || keys <= 0 || num_heads <= 0 || num_kv_heads <= 0 || head_dim <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
@@ -2077,24 +2085,30 @@ int launch_gemma4_attention_decode(
   if (num_heads % num_kv_heads != 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  int effective_slices = split_slices;
-  if (split_slices < 0 && split_workspace != nullptr) {
+  if (route != kGemma4DecodeRouteStrict && route != kGemma4DecodeRouteSplit &&
+      route != kGemma4DecodeRouteFlash) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (route == kGemma4DecodeRouteFlash) {
     // The flash request is tried first, whatever the row length. Python admits
     // the shape and this launcher re-checks it; the request is the caller's
     // decision, so it is honoured before the resident bound below -- that bound
     // describes the class kernel's owned global logits, which the flash kernel
     // does not use. Any rejection falls through to the incumbent chain on the
-    // same workspace, which the caller sized as max(split, flash), so a long
-    // row that the slice geometry cannot serve lands on the class kernel
-    // exactly as it did before.
-    const int flash_rc = gemma4_decode_flash_launch<scalar_t>(
-        query, key, value, keep_mask, out, num_heads, num_kv_heads, head_dim,
-        scale, tokens, keys, stream, split_workspace, -split_slices, live_extent);
-    if (flash_rc >= 0) {
-      gemma4_decode_selection() = 3;  // flash-decoding
-      return flash_rc;
+    // same workspace, which the caller sized as max(split, flash): a request
+    // carrying a slice count names the dimension partition as that chain, and
+    // anything else keeps the single-kernel route.
+    const bool partitioned = workspace != nullptr && flash_slices >= 2;
+    if (partitioned) {
+      const int flash_rc = gemma4_decode_flash_launch<scalar_t>(
+          query, key, value, keep_mask, out, num_heads, num_kv_heads, head_dim,
+          scale, tokens, keys, stream, workspace, flash_slices, live_extent);
+      if (flash_rc >= 0) {
+        gemma4_decode_selection() = 3;  // flash-decoding
+        return flash_rc;
+      }
     }
-    effective_slices = -split_slices;
+    route = partitioned ? kGemma4DecodeRouteSplit : kGemma4DecodeRouteStrict;
   }
   // Long rows use the strict class arithmetic with global logits, not an
   // oversized LDS launch or a changed softmax. Match Python's resident bound
@@ -2104,9 +2118,9 @@ int launch_gemma4_attention_decode(
   if ((head_dim == 256 || head_dim == 512) && resident_bytes > 64 * 1024) {
     const int rc = head_dim == 256
         ? gemma4_decode_class_launch<scalar_t, 1, true>(query, key, value, keep_mask, out,
-              num_heads, num_kv_heads, head_dim, scale, tokens, keys, stream, split_workspace)
+              num_heads, num_kv_heads, head_dim, scale, tokens, keys, stream, workspace)
         : gemma4_decode_class_launch<scalar_t, 2, true>(query, key, value, keep_mask, out,
-              num_heads, num_kv_heads, head_dim, scale, tokens, keys, stream, split_workspace);
+              num_heads, num_kv_heads, head_dim, scale, tokens, keys, stream, workspace);
     gemma4_decode_selection() = 4;
     return rc;
   }
@@ -2121,16 +2135,14 @@ int launch_gemma4_attention_decode(
   // 421 us (head_dim 256) and 665 us (head_dim 512) against the block kernel's
   // 652-700 and 1186 us at keys=1024. Any other geometry uses the block kernel.
   if (head_dim == 256 || head_dim == 512) {
-    if (effective_slices > 1 && split_workspace != nullptr) {
+    if (route == kGemma4DecodeRouteSplit && workspace != nullptr) {
       const int split_rc = head_dim == 256
           ? gemma4_decode_split_launch<scalar_t, 1>(query, key, value, keep_mask, out, num_heads,
-                num_kv_heads, head_dim, scale, tokens, keys, stream, split_workspace,
-                effective_slices)
+                num_kv_heads, head_dim, scale, tokens, keys, stream, workspace)
           : gemma4_decode_split_launch<scalar_t, 2>(query, key, value, keep_mask, out, num_heads,
-                num_kv_heads, head_dim, scale, tokens, keys, stream, split_workspace,
-                effective_slices);
+                num_kv_heads, head_dim, scale, tokens, keys, stream, workspace);
       if (split_rc >= 0) {
-        gemma4_decode_selection() = 2;  // key-class, two-phase split
+        gemma4_decode_selection() = 2;  // key-class, two-phase dimension partition
         return split_rc;
       }
     }
@@ -2241,11 +2253,15 @@ extern "C" int hipengine_gemma4_attention_prefill_f32(
 // arithmetic as the prefill kernel above, two barriers per block instead of
 // ~2 * keys — see gemma4_attention_decode_kernel.
 //
-// ``split_workspace`` is the two-phase split's scratch (see
-// gemma4_decode_split_workspace_bytes) and ``split_slices`` its slice count;
-// passing ``split_slices <= 1`` or a null workspace selects the single-kernel
-// path. The caller owns the allocation because it is reused across steps and
-// must outlive the in-flight stream.
+// ``workspace`` is the route's scratch (see
+// gemma4_decode_split_workspace_bytes and
+// hipengine_gemma4_decode_flash_workspace_bytes); ``route`` names the kernel
+// family to run -- ``kGemma4DecodeRouteStrict`` (single-kernel oracle),
+// ``kGemma4DecodeRouteSplit`` (dimension partition) or
+// ``kGemma4DecodeRouteFlash`` (key-sliced flash, whose count is
+// ``flash_slices``). A null workspace keeps the single-kernel route for the
+// two partitioned requests. The caller owns the allocation because it is
+// reused across steps and must outlive the in-flight stream.
 // Which decode kernel the launcher last selected, exported so a caller can
 // confirm the intended path actually ran rather than inferring it from
 // timings: 0 = block kernel, 1 = key-class single kernel, 2 = key-class
@@ -2260,10 +2276,8 @@ extern "C" int hipengine_gemma4_decode_selection(void) {
 extern "C" size_t hipengine_gemma4_decode_split_workspace_bytes(
     int64_t tokens,
     int64_t num_heads,
-    int64_t head_dim,
-    int64_t keys,
-    int slices) {
-  return gemma4_decode_split_workspace_bytes(tokens, num_heads, head_dim, keys, slices);
+    int64_t keys) {
+  return gemma4_decode_split_workspace_bytes(tokens, num_heads, keys);
 }
 
 // Workspace sizing for flash-decoding, same single-definition rule. The
@@ -2343,12 +2357,13 @@ extern "C" int hipengine_gemma4_attention_decode_bf16(
     float scale,
     hipStream_t stream,
     int64_t keys,
-    float* split_workspace,
-    int split_slices,
+    float* workspace,
+    int route,
+    int flash_slices,
     const int* live_extent) {
   return launch_gemma4_attention_decode<uint16_t>(
       query, key, value, keep_mask, out, tokens, num_heads, num_kv_heads, head_dim, scale,
-      stream, keys, split_workspace, split_slices, live_extent);
+      stream, keys, workspace, route, flash_slices, live_extent);
 }
 
 extern "C" int hipengine_gemma4_attention_decode_f32(
@@ -2364,10 +2379,11 @@ extern "C" int hipengine_gemma4_attention_decode_f32(
     float scale,
     hipStream_t stream,
     int64_t keys,
-    float* split_workspace,
-    int split_slices,
+    float* workspace,
+    int route,
+    int flash_slices,
     const int* live_extent) {
   return launch_gemma4_attention_decode<float>(
       query, key, value, keep_mask, out, tokens, num_heads, num_kv_heads, head_dim, scale,
-      stream, keys, split_workspace, split_slices, live_extent);
+      stream, keys, workspace, route, flash_slices, live_extent);
 }

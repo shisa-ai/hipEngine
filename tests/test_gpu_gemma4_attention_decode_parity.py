@@ -165,7 +165,7 @@ def attention_library():
 
 
 def _raw_launch(library, symbol, buffers, *, tokens, keys, num_heads, num_kv_heads,
-                head_dim, scale, split_workspace=0, split_slices=1, live_extent=0,
+                head_dim, scale, workspace=0, route=0, flash_slices=0, live_extent=0,
                 stream=0):
     from hipengine.core.ctypes_cache import signed_kernel_fn
     from hipengine.core.hip import HIP_SUCCESS
@@ -189,15 +189,16 @@ def _raw_launch(library, symbol, buffers, *, tokens, keys, num_heads, num_kv_hea
         keys,
     ]
     if decode:
-        # split_slices <= 1 keeps the single-kernel path; the pointer is only
-        # dereferenced when the split actually runs. The live-extent slot is
-        # the flash route's optional device pair; null keeps the scalar
-        # partitioning these parity tests pin.
-        args += [ctypes.c_void_p(split_workspace), ctypes.c_int(split_slices),
-                 ctypes.c_void_p(live_extent)]
+        # ``route`` names the kernel family (0 = single-kernel oracle,
+        # 1 = dimension partition, 2 = flash with ``flash_slices``); the
+        # workspace pointer is only dereferenced by the partitioned routes. The
+        # live-extent slot is the flash route's optional device pair; null keeps
+        # the scalar partitioning these parity tests pin.
+        args += [ctypes.c_void_p(workspace), ctypes.c_int(route),
+                 ctypes.c_int(flash_slices), ctypes.c_void_p(live_extent)]
     else:
         # Prefill's tail is (window, row_offset) instead of decode's
-        # (split_workspace, split_slices, live_extent). window 0 makes
+        # (workspace, route, flash_slices, live_extent). window 0 makes
         # first_kept 0, so the prefill symbol visits every key exactly as
         # decode's keep_mask does -- which is the parity these tests assert.
         args += [0, 0]
@@ -428,8 +429,8 @@ def test_decode_variant_selection_is_by_geometry(attention_library, head_dim, ex
 
 
 def _split_ab(library, *, dtype, num_heads, num_kv_heads, head_dim, keys, mask_mode,
-              seed=20260925, split_slices=None, poison=False):
-    """Run the incumbent single-kernel path and the split on identical inputs."""
+              seed=20260925, poison=False):
+    """Run the incumbent single-kernel path and the dimension partition on one input."""
 
     from hipengine.core.memory import (
         copy_device_to_host,
@@ -441,12 +442,10 @@ def _split_ab(library, *, dtype, num_heads, num_kv_heads, head_dim, keys, mask_m
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
         _SYMBOL_DECODE_BF16,
         _SYMBOL_DECODE_F32,
-        decode_slices,
+        DECODE_ROUTE_SPLIT,
+        DECODE_ROUTE_STRICT,
         split_workspace_bytes,
     )
-
-    slices = decode_slices(keys, head_dim) if split_slices is None else split_slices
-    assert slices > 1, "shape is below the split's context threshold"
 
     rng = np.random.default_rng(seed)
     storage = np.float32 if dtype == "f32" else np.uint16
@@ -487,12 +486,10 @@ def _split_ab(library, *, dtype, num_heads, num_kv_heads, head_dim, keys, mask_m
             if array is not out_single and array is not out_split:
                 copy_host_to_device(buffer, host_array_ptr(array), array.nbytes)
 
-        _raw_launch(library, symbol, buffers[:5], split_slices=1, **shape)
+        _raw_launch(library, symbol, buffers[:5], route=DECODE_ROUTE_STRICT, **shape)
         copy_device_to_host(host_array_ptr(out_single), buffers[4], out_single.nbytes)
 
-        workspace = malloc(
-            split_workspace_bytes(1, num_heads, head_dim, keys, slices, library=library)
-        )
+        workspace = malloc(split_workspace_bytes(1, num_heads, keys, library=library))
         if poison:
             sentinel = np.full(workspace.nbytes // 4, np.nan, dtype=np.float32)
             copy_host_to_device(workspace, host_array_ptr(sentinel), sentinel.nbytes)
@@ -500,8 +497,8 @@ def _split_ab(library, *, dtype, num_heads, num_kv_heads, head_dim, keys, mask_m
             library,
             symbol,
             [buffers[0], buffers[1], buffers[2], buffers[3], buffers[5]],
-            split_workspace=workspace.ptr,
-            split_slices=slices,
+            workspace=workspace.ptr,
+            route=DECODE_ROUTE_SPLIT,
             **shape,
         )
         copy_device_to_host(host_array_ptr(out_split), buffers[5], out_split.nbytes)
@@ -511,7 +508,7 @@ def _split_ab(library, *, dtype, num_heads, num_kv_heads, head_dim, keys, mask_m
                 return array
             return (array.astype(np.uint32) << 16).view(np.float32)
 
-        return as_float(out_single), as_float(out_split), slices
+        return as_float(out_single), as_float(out_split)
     finally:
         if workspace is not None:
             free(workspace)
@@ -519,19 +516,23 @@ def _split_ab(library, *, dtype, num_heads, num_kv_heads, head_dim, keys, mask_m
             free(buffer)
 
 
-@pytest.mark.parametrize("head_dim", [256, 512])
-@pytest.mark.parametrize("slices", [2, 4, 32])
-def test_dimension_workspace_has_no_key_slice_partials(attention_library, head_dim, slices):
+@pytest.mark.parametrize("tokens,num_heads,keys", [(1, 4, 1057), (2, 1, 17), (1, 16, 8192)])
+def test_split_workspace_is_weights_plus_header(attention_library, tokens, num_heads, keys):
+    """The partition's scratch depends on neither head width nor a slice count."""
+
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import split_workspace_bytes
-    assert split_workspace_bytes(1, 4, head_dim, 1057, slices, library=attention_library) == 4 * (1057 + 2) * 4
+    assert (
+        split_workspace_bytes(tokens, num_heads, keys, library=attention_library)
+        == tokens * num_heads * (keys + 2) * 4
+    )
 
 
-@pytest.mark.parametrize("head_dim,keys,slices", [(256, 1057, 4), (512, 2055, 8), (256, 17, 32), (256, 1023, 2), (512, 1025, 4), (512, 777, 2)])
+@pytest.mark.parametrize("head_dim,keys", [(256, 1057), (512, 2055), (256, 17), (256, 1023), (512, 1025), (512, 777)])
 @pytest.mark.parametrize("dtype", ["f32", "bf16"])
-def test_dimension_partition_preserves_single_accumulation(attention_library, head_dim, keys, slices, dtype):
-    reference, candidate, _ = _split_ab(
+def test_dimension_partition_preserves_single_accumulation(attention_library, head_dim, keys, dtype):
+    reference, candidate = _split_ab(
         attention_library, dtype=dtype, num_heads=4, num_kv_heads=2,
-        head_dim=head_dim, keys=keys, mask_mode="holes", split_slices=slices,
+        head_dim=head_dim, keys=keys, mask_mode="holes",
         poison=True,
     )
     np.testing.assert_array_equal(candidate, reference)
@@ -543,7 +544,7 @@ def test_dimension_partition_preserves_single_accumulation(attention_library, he
 def test_split_matches_single_kernel_within_float_precision(
     attention_library, num_heads, num_kv_heads, head_dim, keys
 ):
-    reference, candidate, slices = _split_ab(
+    reference, candidate = _split_ab(
         attention_library,
         dtype="f32",
         num_heads=num_heads,
@@ -552,7 +553,6 @@ def test_split_matches_single_kernel_within_float_precision(
         keys=keys,
         mask_mode="holes",
     )
-    assert slices == decode_slices_for(keys, head_dim)
     np.testing.assert_allclose(candidate, reference, rtol=1e-4, atol=1e-4, equal_nan=True)
 
 
@@ -562,7 +562,7 @@ def test_split_bf16_matches_single_kernel_exactly(
 ):
     """Dimension partitioning preserves the single-kernel accumulation order."""
 
-    reference, candidate, _ = _split_ab(
+    reference, candidate = _split_ab(
         attention_library,
         dtype="bf16",
         num_heads=num_heads,
@@ -576,18 +576,13 @@ def test_split_bf16_matches_single_kernel_exactly(
 
 @pytest.mark.parametrize("dtype", ["f32", "bf16"])
 @pytest.mark.parametrize("head_dim", [256, 512])
-@pytest.mark.parametrize("keys,slices", [(1, 4), (5, 4), (17, 8)])
-def test_short_dimension_pass_ignores_poisoned_workspace(attention_library, dtype, head_dim, keys, slices):
-    reference, candidate, _ = _split_ab(
+@pytest.mark.parametrize("keys", [1, 5, 17])
+def test_short_dimension_pass_ignores_poisoned_workspace(attention_library, dtype, head_dim, keys):
+    """The route is explicit, so a short row still runs the partition."""
+
+    reference, candidate = _split_ab(
         attention_library, dtype=dtype, num_heads=2, num_kv_heads=1,
-        head_dim=head_dim, keys=keys, mask_mode="keep",
-        split_slices=slices, poison=True,
+        head_dim=head_dim, keys=keys, mask_mode="keep", poison=True,
     )
     assert np.isfinite(candidate).all()
     np.testing.assert_allclose(candidate, reference, rtol=1e-2, atol=1e-3)
-
-
-def decode_slices_for(keys, head_dim):
-    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import decode_slices
-
-    return decode_slices(keys, head_dim)

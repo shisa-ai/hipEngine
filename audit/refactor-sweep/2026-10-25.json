@@ -1507,9 +1507,9 @@
       "start_line": 1638,
       "end_line": 1662,
       "sha256": "8d3b4e8921a0181c8416c26365d99c7ef19dccc91909ab5648cff8423877b59a",
-      "status": "partial-description-fixed",
+      "status": "resolved",
       "evidence": [
-        "Raw plain attention bounds/grid safety fixed and legacy dead tiled kernel removed, live tiled preserved. GPU parity/bounds,CPU suite,public strict route pass. MMQ reachable; signed slice ABI migration remains separate R0056 work. Worklog:worklog/entries/20261026T055840.001224Z-lhl-r0053-r0056-refactor-audit-15f1df.md."
+        "Explicit strict/split/flash route ABI replaces signed slice count; flash count separate, graph/workspace and all tracked callers migrated. CPU/GPU decode flash graph staged parity and public flash/dimension request checks pass. Worklog:worklog/entries/20261026T062604.686543Z-lhl-r0056-gemma-decode-route-abi-415a9d.md."
       ],
       "subitems": []
     },

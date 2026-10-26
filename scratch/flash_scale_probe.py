@@ -27,6 +27,8 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
+    DECODE_ROUTE_FLASH,
+    DECODE_ROUTE_STRICT,
     _SYMBOL_DECODE_F32,
     build_gemma4_attention,
     flash_slices,
@@ -73,7 +75,9 @@ def ab(library, *, keys, scale, mask_mode, seed=20260930, **geom):
             buffers.append(buffer)
             if array is not out_single and array is not out_flash:
                 copy_host_to_device(buffer, host_array_ptr(array), array.nbytes)
-        _raw_launch(library, _SYMBOL_DECODE_F32, buffers[:5], split_slices=1, **shape)
+        _raw_launch(
+            library, _SYMBOL_DECODE_F32, buffers[:5], route=DECODE_ROUTE_STRICT, **shape
+        )
         copy_device_to_host(host_array_ptr(out_single), buffers[4], out_single.nbytes)
         workspace = malloc(
             flash_workspace_bytes(1, num_heads, head_dim, slices, library=library)
@@ -81,7 +85,8 @@ def ab(library, *, keys, scale, mask_mode, seed=20260930, **geom):
         _raw_launch(
             library, _SYMBOL_DECODE_F32,
             [buffers[0], buffers[1], buffers[2], buffers[3], buffers[5]],
-            split_workspace=workspace.ptr, split_slices=-slices, **shape,
+            workspace=workspace.ptr, route=DECODE_ROUTE_FLASH,
+            flash_slices=slices, **shape,
         )
         copy_device_to_host(host_array_ptr(out_flash), buffers[5], out_flash.nbytes)
         return out_single, out_flash, slices

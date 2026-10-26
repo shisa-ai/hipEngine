@@ -1200,6 +1200,10 @@ capability rewrite selects it only for a matching owned operand. The original
 `t16` ABI remains unchanged for weights without that sidecar. No global
 pointer-to-sidecar lookup participates in dispatch.
 
+Gemma attention's decode launch ABI names strict single-kernel, dimension-pass,
+and flash routes explicitly. Flash key-slice count is a separate operand, not
+a signed route selector; graph workspace reservation uses the same route policy.
+
 ### Qwen hybrid GGUF runtime ownership
 
 The `qwen35`/`qwen35moe` architecture family keeps full-stack composition and resident

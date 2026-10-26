@@ -186,7 +186,7 @@ def test_layer_scratch_owns_and_closes_attention_scratch():
 @pytest.mark.parametrize("launch_error", [False, True])
 def test_wrapper_without_owner_releases_temporary_even_on_launch_error(monkeypatch, launch_error):
     runtime = Runtime()
-    monkeypatch.setattr(attention, "decode_slices", lambda keys, head_dim: 4)
+    monkeypatch.setattr(attention, "decode_split_engages", lambda *, keys: True)
     monkeypatch.setattr(attention, "split_workspace_bytes", lambda *args, **kw: 128)
 
     def launch(*args):
@@ -219,7 +219,7 @@ def test_large_context_uses_owned_global_logits(monkeypatch, tokens, head_dim, k
     def launch(*args):
         calls.append(args)
         assert runtime.live, "global logits require owned scratch even without split"
-        assert args[-2].value != 0
+        assert args[-4].value, "owned global logits need the workspace"
         return 0
 
     monkeypatch.setattr(attention, "signed_kernel_fn", lambda lib, symbol, *args: (

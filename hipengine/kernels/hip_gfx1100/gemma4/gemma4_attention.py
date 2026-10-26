@@ -71,12 +71,23 @@ _ARGTYPES_COMMON = (
 )
 
 # Prefill adds the sliding walk's window and this block's start in the mask's
-# column frame; decode adds the two-phase split's scratch pointer, the slice
-# count, and the flash route's optional live-extent slot (a device int32 pair
-# [delta, live]; null keeps the launched scalar partitioning byte-for-byte).
-# The tails are independent, so they cannot share one base.
+# column frame; decode adds the route's scratch pointer, the route selection,
+# the flash key-slice request count, and the flash route's optional live-extent
+# slot (a device int32 pair [delta, live]; null keeps the launched scalar
+# partitioning byte-for-byte). The tails are independent, so they cannot share
+# one base.
 _ARGTYPES_PREFILL = _ARGTYPES_COMMON + (ctypes.c_int64, ctypes.c_int64)
-_ARGTYPES_DECODE = _ARGTYPES_COMMON + (ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p)
+_ARGTYPES_DECODE = _ARGTYPES_COMMON + (
+    ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_void_p,
+)
+
+# Decode route request values, mirroring the kernel's own enum. The route names
+# the kernel family to run; no count selects it. A route that needs a count
+# carries it separately: the flash key-slice request travels in the decode
+# ABI's ``flash_slices`` argument.
+DECODE_ROUTE_STRICT = 0  # single-kernel oracle
+DECODE_ROUTE_SPLIT = 1   # two-pass dimension partition
+DECODE_ROUTE_FLASH = 2   # key-sliced flash with its combine pass
 
 _DECODE_SYMBOLS = (_SYMBOL_DECODE_BF16, _SYMBOL_DECODE_F32)
 _SYMBOL_SPLIT_WORKSPACE_BYTES = "hipengine_gemma4_decode_split_workspace_bytes"
@@ -355,28 +366,29 @@ class Gemma4AttentionScratch:
         self._closed = True
 
 
-def decode_slices(keys: int, head_dim: int) -> int:
-    """Return the legacy split-policy value used by the launch ABI.
+#: Key count from which a decode step takes the two-pass dimension partition.
+#: The split's fixed cost needs 1024 keys to be paid back (a 512-key context
+#: measured 3.0% slower split than unsplit) and above that it is the incumbent
+#: route. This is the whole selection policy now: the partition's grid is the
+#: head width's, so no count is chosen here.
+DECODE_SPLIT_MIN_KEYS = 1024
 
-    One selects the single kernel; values greater than one select separate
-    weight and value passes. The value pass partitions output dimensions, not
-    keys, and preserves ascending-key accumulation. The exact value above one
-    no longer controls its grid. Keep the existing selection policy while
-    callers migrate away from the key-slice terminology.
+
+def decode_split_engages(*, keys: int) -> bool:
+    """Whether a decode step at ``keys`` takes the dimension partition.
+
+    One route decision for the launcher and for the decode-graph capture's
+    workspace reservation, which must agree on the route a launch will take.
+    The partition count is derived at launch from the head width
+    (``(head_dim + 31) // 32`` blocks per head), so nothing here sizes it.
     """
 
-    if keys < 1024:
-        return 1
-    if head_dim <= 256:
-        return 4
-    slices = 1
-    while slices < 4 and keys > slices * 512:
-        slices <<= 1
-    return slices
+    return int(keys) >= DECODE_SPLIT_MIN_KEYS
 
 
 #: Key count from which a decode step that *prefers* flash takes it. Without
-#: the preference the route starts where the split policy does (1024 keys).
+#: the preference the route starts where the dimension partition does (1024
+#: keys).
 #: The single kernel walks its keys serially per head, so a step's attention
 #: time grows with the key count until the key-sliced route takes over;
 #: measured on a W7900 (Gemma 4 26B-A4B, 2026-10-12) the two cross near 192
@@ -394,28 +406,28 @@ FLASH_DECODE_PREFERRED_MIN_KEYS = 256
 FLASH_MULTI_ROW_MAX_TOKENS = 16
 
 
-def flash_decode_engages(*, keys: int, head_dim: int, prefer_flash: bool) -> bool:
+def flash_decode_engages(*, keys: int, prefer_flash: bool) -> bool:
     """Whether an admitted one-token decode asks for the flash route at ``keys``.
 
     One expression for the launcher and for the decode-graph capture's
     workspace reservation, which must agree on the route a launch will take.
     """
 
-    if decode_slices(keys, head_dim) > 1:
+    if decode_split_engages(keys=keys):
         return True
     return bool(prefer_flash) and int(keys) >= FLASH_DECODE_PREFERRED_MIN_KEYS
 
 
-def flash_decode_short_row(*, keys: int, head_dim: int) -> bool:
+def flash_decode_short_row(*, keys: int) -> bool:
     """Whether ``keys`` is a row only the flash *preference* moves to flash.
 
-    Below the split policy's count and at or past the preferred entry: the band
+    Below the partition threshold and at or past the preferred entry: the band
     where a plan that selects the flash decode variant changes the route, and
     one that does not keeps the single class kernel.
     """
 
     return (
-        decode_slices(keys, head_dim) == 1
+        not decode_split_engages(keys=keys)
         and int(keys) >= FLASH_DECODE_PREFERRED_MIN_KEYS
     )
 
@@ -445,9 +457,9 @@ def flash_slices(keys: int) -> int:
     """KV slices the flash-decoding route asks for.
 
     Single source of truth: the host wrapper trusts this count through the
-    negative-slices request and lays its partials out from it, so a mismatch
-    would be memory corruption rather than a slow path -- the unit battery
-    pins the values. One slice per ~32 keys keeps the block count at the
+    flash route's key-slice argument and lays its partials out from it, so a
+    mismatch would be memory corruption rather than a slow path -- the unit
+    battery pins the values. One slice per ~32 keys keeps the block count at the
     occupancy target (256 blocks at the 1024 entry threshold) while the cap
     bounds the per-block LDS logits at context maximum.
 
@@ -550,10 +562,10 @@ def flash_request_slices(
     """Slice count a flash request for this shape carries, or ``0`` if none can.
 
     The single definition of the count. It is what the launcher passes as the
-    negative-slices request, what the workspace is sized from, and what the
-    decode-graph capture reserves before it starts recording -- three callers
-    that must agree, because the partial layout is derived from this number and
-    a disagreement is memory corruption rather than a slow path.
+    flash route's key-slice count, what the workspace is sized from, and what
+    the decode-graph capture reserves before it starts recording -- three
+    callers that must agree, because the partial layout is derived from this
+    number and a disagreement is memory corruption rather than a slow path.
 
     ``flash_slices`` is the occupancy-target count and ``flash_min_slices`` is
     the smallest count whose per-block LDS fits; the request is the larger, so
@@ -623,19 +635,19 @@ def flash_workspace_bytes(
 
 
 def split_workspace_bytes(
-    tokens: int, num_heads: int, head_dim: int, keys: int, slices: int, *,
+    tokens: int, num_heads: int, keys: int, *,
     library: ctypes.CDLL | None = None,
 ) -> int:
-    """Bytes of scratch the split needs, from the kernel's own definition."""
+    """Bytes of scratch the dimension partition needs, from the kernel's own definition."""
 
     library = library or build_gemma4_attention(load=True)
     fn = signed_kernel_fn(
         library,
         _SYMBOL_SPLIT_WORKSPACE_BYTES,
-        (ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int),
+        (ctypes.c_int64, ctypes.c_int64, ctypes.c_int64),
         ctypes.c_size_t,
     )
-    return int(fn(int(tokens), int(num_heads), int(head_dim), int(keys), int(slices)))
+    return int(fn(int(tokens), int(num_heads), int(keys)))
 
 
 def plan_gemma4_attention_build(
@@ -947,7 +959,7 @@ def _launch_prefill(
             tokens=tokens, head_dim=head_dim, num_heads=num_heads,
             num_kv_heads=num_kv_heads, max_tokens=FLASH_MULTI_ROW_MAX_TOKENS,
         )
-        and flash_decode_engages(keys=key_count, head_dim=head_dim, prefer_flash=True)
+        and flash_decode_engages(keys=key_count, prefer_flash=True)
     )
     if multi_row_flash:
         symbol = (
@@ -988,27 +1000,27 @@ def _launch_prefill(
     library = library or build_gemma4_attention(load=True)
     runtime = runtime or get_hip_runtime()
     if symbol in _DECODE_SYMBOLS:
-        # Two-phase split: phase 1 is this same kernel stopping after pass 2 and
-        # writing its weights, phase 2 accumulates the weighted V sum over a
-        # slice of the key range, and a combine sums the slices. Selected by
-        # context length, because the kernel's parallelism is structurally low
-        # (grid = tokens * num_heads is 16 blocks on a 96-CU GPU).
-        # Flash-decoding (D2) replaces the split for either geometry when
-        # admitted: a negative slice count is the flash request, and the
+        # Dimension partition: phase 1 is this same kernel stopping after pass 2
+        # and writing its weights, phase 2 accumulates the weighted V sum over
+        # its share of the output dimensions, and the two are disjoint. Selected
+        # by context length, because the kernel's parallelism is structurally
+        # low (grid = tokens * num_heads is 16 blocks on a 96-CU GPU).
+        # Flash-decoding (D2) replaces it for either geometry when admitted: the
+        # request names the flash route and carries its key-slice count, and the
         # workspace is sized for whichever route is larger so a host-side
         # rejection can fall through to the incumbent chain without
         # reallocating.
         #
         # ``prefer_flash`` is what lets a long *global* row make the request.
-        # That row used to force ``slices = 1`` because the resident-logit bound
-        # is what makes the class kernel the only route above it -- but the
-        # bound describes the class kernel's owned logits, and the flash kernel
-        # does not use them: it walks a key slice through the same warp tree
-        # with its own partials. The preference is not implied by the geometry,
-        # because the strict and batch-invariant profiles must keep the exact
-        # staged chain; a production plan selects the flash variant explicitly.
-        # A rejection still falls back to the class kernel on the same
-        # workspace, which the caller sized as max(split, flash).
+        # That row used to keep the strict route because the resident-logit
+        # bound is what makes the class kernel the only route above it -- but
+        # the bound describes the class kernel's owned logits, and the flash
+        # kernel does not use them: it walks a key slice through the same warp
+        # tree with its own partials. The preference is not implied by the
+        # geometry, because the strict and batch-invariant profiles must keep
+        # the exact staged chain; a production plan selects the flash variant
+        # explicitly. A rejection still falls back to the class kernel on the
+        # same workspace, which the caller sized as max(split, flash).
         admitted = flash_admits(
             tokens=tokens,
             head_dim=head_dim,
@@ -1018,13 +1030,8 @@ def _launch_prefill(
         )
         flash = (
             admitted
-            and flash_decode_engages(
-                keys=key_count, head_dim=head_dim, prefer_flash=prefer_flash
-            )
+            and flash_decode_engages(keys=key_count, prefer_flash=prefer_flash)
             and (prefer_flash or not global_logits)
-        )
-        slices = (
-            1 if global_logits and not flash else decode_slices(key_count, head_dim)
         )
         # The request carries the count the shape actually needs, not the
         # occupancy-target policy value: the global packing's per-block LDS is
@@ -1045,7 +1052,17 @@ def _launch_prefill(
             else 0
         )
         flash = flash and request_slices > 0
-        request = -request_slices if flash else slices
+        # The route is named, not encoded in a count: the single-kernel oracle
+        # keeps the resident bound's owned-scratch class kernel, the dimension
+        # partition is entered at the split threshold, and flash is the explicit
+        # key-slice request with its count alongside it.
+        route = (
+            DECODE_ROUTE_FLASH
+            if flash
+            else DECODE_ROUTE_STRICT
+            if global_logits or not decode_split_engages(keys=key_count)
+            else DECODE_ROUTE_SPLIT
+        )
         # A whole-step graph capture cannot bake the live key count into the
         # flash partitioning (it changes every position within a bucket), so
         # the session registers a per-geometry device slot holding
@@ -1058,13 +1075,13 @@ def _launch_prefill(
         if flash and _capture_live_slots is not None:
             live_extent = _capture_live_slots.get((head_dim, num_kv_heads))
         workspace = 0
-        needs_workspace = slices > 1 or global_logits or flash
+        needs_workspace = route != DECODE_ROUTE_STRICT or global_logits
         temporary = Gemma4AttentionScratch() if needs_workspace and scratch is None else None
         owner = scratch if scratch is not None else temporary
         try:
             if needs_workspace:
                 need = split_workspace_bytes(
-                    tokens, num_heads, head_dim, key_count, slices, library=library
+                    tokens, num_heads, key_count, library=library
                 )
                 if flash:
                     need = max(
@@ -1093,7 +1110,8 @@ def _launch_prefill(
                 stream,
                 key_count,
                 ctypes.c_void_p(workspace),
-                ctypes.c_int(request),
+                ctypes.c_int(route),
+                ctypes.c_int(request_slices if flash else 0),
                 ctypes.c_void_p(live_extent),
             )
             _check_launch(runtime, err)

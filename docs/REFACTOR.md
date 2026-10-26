@@ -1885,48 +1885,76 @@ restoration of this one.
 
 ## Gemma attention legacy slice-count ABI (2026-09-26)
 
-Cleanup status (2026-10-26, R0056): keep for now; the ABI is still consumed, and
-the slice count has a second, live meaning this entry did not record.
+Cleanup status (2026-10-26, R0056): **removed.** The signed count is gone from
+the decode ABI. The route is named, and the flash key-slice count travels in its
+own argument.
 
 The two-pass decode attention in
 `hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip` partitions output
-dimensions and preserves the single-kernel key accumulation order. The
-`decode_slices` helper in
-`hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:358` and the native
-`split_slices` argument of `launch_gemma4_attention_decode` (`:2204`) keep their
-existing values for compatibility with callers and diagnostic scripts: one
-selects the single kernel, values above one select the dimension pass, and the
-legacy two-pass key-slice and combine kernels are gone. The value above one no
-longer sizes a key-slice grid.
+dimensions and preserves the single-kernel key accumulation order. The legacy
+two-pass key-slice and combine kernels were already gone; what remained was the
+count that selected between the surviving routes. The decode entry points now
+take `(workspace, route, flash_slices, live_extent)`:
 
-A **negative** `split_slices` is now the flash-decoding request: the launcher
-takes `split_slices < 0` as "try the flash key-sliced route" and re-enters it as
-`-split_slices` (`gemma4_attention.hip:2213-2229`), and the Python launcher
-sends `request = -request_slices if flash else slices`
-(`gemma4_attention.py:1048`), where `flash_request_slices` derives the key-slice
-count. Those flash key-slice and combine kernels
-(`gemma4_attention_decode_flash_kernel`, `..._flash_combine_kernel`) are live
-and are not the removed legacy pair. `gemma4_decode_split_workspace_bytes`
-(`:1399`) still accepts `head_dim` and `slices` that no longer affect its
-result.
+- `kGemma4DecodeRouteStrict = 0` — the single-kernel oracle, including the
+  resident-bound owned-scratch class kernel and the block fallback.
+- `kGemma4DecodeRouteSplit = 1` — the two-pass dimension partition.
+- `kGemma4DecodeRouteFlash = 2` — the key-sliced flash route with its combine.
 
-Callers still passing a slice count, and the surface a replacement must cover:
-`hipengine/runtime/gemma4_decode_graph.py:584,672` (capture workspace reservation
-and `decode_slices`), the launch site itself (`gemma4_attention.py:1027,1048`),
-`scripts/gemma4_teacher_forced_gate.py` (`force_slices`, `--slices`),
-`tests/test_gpu_gemma4_attention_decode_parity.py`,
-`tests/test_unit_gemma4_attention_scratch.py:189`, and the scratch probes
-`scratch/flash_scale_probe.py:76,84` and
-`scratch/gemma4_flash_slice_sweep.py:75`.
+The host mirrors those values as `DECODE_ROUTE_{STRICT,SPLIT,FLASH}`
+(`gemma4_attention.py`). `flash_slices` is the flash request's key-slice count
+and is zero on every other route; `flash_request_slices` still derives it, and
+those flash key-slice and combine kernels
+(`gemma4_attention_decode_flash_kernel`, `..._flash_combine_kernel`) are live.
 
-Removal condition: replace the signed count with an explicit route selection
-that names the single-kernel oracle, the two-pass dimension partition, and the
-flash key-slice request, keeping the split entry threshold and the strict oracle
-route; migrate every caller above; then drop `decode_slices`, the `split_slices`
-argument, and the unused `gemma4_decode_split_workspace_bytes` parameters. Do
-not delete the negative-value flash request as if it were the legacy key-slice
-ABI: it is the live route. The guard is the Gemma unit/GPU suite plus one public
-`LLM.generate()` request that reaches the flash and the dimension-pass routes.
+Behavior is unchanged. The dimension partition is still entered at 1024 keys
+(`DECODE_SPLIT_MIN_KEYS`, `decode_split_engages(keys=...)`), and its grid is
+still the head width's (`(head_dim + 31) / 32` blocks per head), which is why
+the count that used to be 2 or 4 never sized it — including the 2026-09-26
+narrow-head 4-slice rule, which was already inert at the ABI. Flash still
+engages at the partition threshold, or from `FLASH_DECODE_PREFERRED_MIN_KEYS`
+(256) under a plan that prefers it. A rejected flash launch still falls through
+to the partition on the same workspace, which the host sizes as
+`max(split, flash)`; a request with no servable count falls through to the
+route the shape would otherwise take. The whole-step graph capture reserves the
+same expression before it starts recording (`gemma4_decode_graph.py`).
+`gemma4_decode_split_workspace_bytes` / `split_workspace_bytes` lost the
+`head_dim` and `slices` parameters that never affected the result; it is
+`(tokens, num_heads, keys)`.
+
+The partition is therefore a capability fallback rather than the shipped decode
+route: both Gemma 4 geometries are flash packings, so at 1024 keys and above a
+one-token decode takes flash (as it did before this change), and the partition
+serves a geometry outside the ratio-2/ratio-8 packings — GQA ratio 4 at
+`head_dim` 512, for instance. The multi-token prefill launcher is unaffected: it
+enters the decode launcher with the strict route and a null workspace, which is
+the bit-identical class kernel. No public `LLM.generate()` on the 26B-A4B
+artifact selects the partition; its arithmetic guard is the GPU parity
+battery's explicit route request.
+
+Callers migrated with the ABI: the launch site itself
+(`gemma4_attention.py`), the capture reservation
+(`hipengine/runtime/gemma4_decode_graph.py`),
+`scripts/gemma4_teacher_forced_gate.py` (`--slices` still selects the arm:
+`1` = strict oracle, above one = partition), the decode bench and public route
+probe, `tests/test_gpu_gemma4_attention_decode_parity.py`,
+`tests/test_gpu_gemma4_flash_decode.py`, and the Gemma unit battery. The two
+tracked diagnostic probes `scratch/flash_scale_probe.py` and
+`scratch/gemma4_flash_slice_sweep.py` are migrated with them:
+`route=DECODE_ROUTE_STRICT` on the single-kernel reference and
+`route=DECODE_ROUTE_FLASH, flash_slices=slices` on the flash arm.
+
+Guard: `tests/test_unit_gemma4_decode_route_abi.py` pins the argument tail, the
+route values, the count's separation, and every workspace reservation; it also
+compares the `.hip` export parameter lists against the host argtypes, and fails
+if a tracked raw caller still passes the removed argument names;
+`tests/test_unit_gemma4_attention_routing.py` pins the partition threshold and
+asserts `decode_slices` does not come back; the Gemma unit battery and the two
+GPU parity batteries keep their original assertions, including the partition's
+bit-equality cases and the non-admitted-geometry fall-through. One public
+`LLM.generate()` request past 1024 keys is the parent's device check that a real
+request takes the flash route.
+
 ## gfx1151 compact attention wave producer — NUMERICAL CONTROL FAILURE
 
 The gfx1151 BF16 compact attention build selects the existing generic grouped

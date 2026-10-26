@@ -573,15 +573,13 @@ class Gemma4DecodeGraphSession:
 
         # Reserve workspace on the capture stream for the selected route. The
         # owner is shared across layers, but each stream has its own allocation;
-        # warming eager decode on another stream cannot prepare this one.
-        # Split sizes are not monotonic in the key count, and staged attention
-        # needs global scores even below the split threshold.
+        # warming eager decode on another stream cannot prepare this one. A
+        # staged request needs global scores even below the partition threshold.
         from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
             DECODE_ATTENTION_FLASH,
             DECODE_ATTENTION_FLASH_LONG,
             PREFILL_ATTENTION_STAGED,
             build_gemma4_attention,
-            decode_slices,
             flash_admits,
             flash_decode_engages,
             flash_long_row_slices,
@@ -669,30 +667,26 @@ class Gemma4DecodeGraphSession:
                         staged_workspace_bytes(1, attention.num_heads, keys),
                         stream=self._stream, runtime=runtime,
                     )
-            slices = decode_slices(keys, attention.head_dim)
             # The same expression the launcher uses: a plan that prefers flash
-            # takes it on a short row too, below the split policy's count.
+            # takes it on a short row too, below the split threshold.
             if flash_decode_engages(
-                keys=keys, head_dim=attention.head_dim,
+                keys=keys,
                 prefer_flash=decode_route
                 in (DECODE_ATTENTION_FLASH, DECODE_ATTENTION_FLASH_LONG),
             ):
                 need = split_workspace_bytes(
                     1,
                     attention.num_heads,
-                    attention.head_dim,
                     keys,
-                    slices,
                     library=library,
                 )
-                # The launched route may be flash-decoding (negative slices),
-                # whose partials need more than the split's weights buffer;
-                # size for whichever the admission can pick, exactly as
-                # _launch_prefill does. The count is the launcher's own
-                # :func:`flash_request_slices`, not the occupancy-target policy
-                # value: for the global packing the two differ, and a capture
-                # that reserved the smaller one would have the launch allocate
-                # its workspace inside the capture.
+                # The launched route may be flash-decoding, whose partials need
+                # more than the split's weights buffer; size for whichever the
+                # admission can pick, exactly as _launch_prefill does. The count
+                # is the launcher's own :func:`flash_request_slices`, not the
+                # occupancy-target policy value: for the global packing the two
+                # differ, and a capture that reserved the smaller one would have
+                # the launch allocate its workspace inside the capture.
                 if flash_admits(
                     tokens=1,
                     head_dim=attention.head_dim,

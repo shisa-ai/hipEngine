@@ -76,7 +76,7 @@ def test_capability_surface_and_slice_formula(attention_library):
     """RED surface: admission, slice policy, and workspace sizing exist.
 
     The slice formula is Python's (the single source of truth the host
-    wrapper trusts through the negative-slices request), so it is pinned
+    wrapper trusts through the flash route's key-slice argument), so it is pinned
     here: 32 at the 1024 entry threshold, capped at 64, never below 4.
     """
     flash_admits, flash_slices, flash_workspace_bytes = _capability_surface()
@@ -183,8 +183,8 @@ def test_non_admitted_geometry_keeps_incumbent_routing(
         gemma4_attention_decode_variant,
     )
 
-    # A negative-slices flash request the host does not admit must fall
-    # through to the incumbent split, never silently to a third behaviour.
+    # An explicit flash request the host does not admit must fall through to
+    # the incumbent partition, never silently to a third behaviour.
     assert gemma4_attention_decode_variant(attention_library) == "split"
     assert slices >= 2
 
@@ -195,9 +195,8 @@ def test_production_wrapper_selects_flash_for_admitted_decode(attention_library,
     step -- must take the flash route for the admitted sliding geometry.
 
     The raw-ABI selection the other tests pin is not the route a request
-    takes; this runs the wrapper's own admission (workspace sizing, negative
-    slices request) and introspects the launcher's selection after a real
-    launch.
+    takes; this runs the wrapper's own admission (workspace sizing, key-slice
+    request) and introspects the launcher's selection after a real launch.
     """
     from hipengine.core.memory import (
         copy_host_to_device,
@@ -272,6 +271,8 @@ def _flash_ab(
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
         _SYMBOL_DECODE_BF16,
         _SYMBOL_DECODE_F32,
+        DECODE_ROUTE_FLASH,
+        DECODE_ROUTE_STRICT,
         flash_slices,
         flash_workspace_bytes,
     )
@@ -322,7 +323,7 @@ def _flash_ab(
             if array is not out_single and array is not out_flash:
                 copy_host_to_device(buffer, host_array_ptr(array), array.nbytes)
 
-        _raw_launch(library, symbol, buffers[:5], split_slices=1, **shape)
+        _raw_launch(library, symbol, buffers[:5], route=DECODE_ROUTE_STRICT, **shape)
         copy_device_to_host(host_array_ptr(out_single), buffers[4], out_single.nbytes)
 
         workspace = malloc(flash_workspace_bytes(1, num_heads, head_dim, slices, library=library))
@@ -333,8 +334,9 @@ def _flash_ab(
             library,
             symbol,
             [buffers[0], buffers[1], buffers[2], buffers[3], buffers[5]],
-            split_workspace=workspace.ptr,
-            split_slices=-slices,
+            workspace=workspace.ptr,
+            route=DECODE_ROUTE_FLASH,
+            flash_slices=slices,
             **shape,
         )
         copy_device_to_host(host_array_ptr(out_flash), buffers[5], out_flash.nbytes)
@@ -369,6 +371,7 @@ def test_flash_live_extent_slot_matches_scalar_partitioning(
     )
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
         _SYMBOL_DECODE_F32,
+        DECODE_ROUTE_FLASH,
         flash_slices,
         flash_workspace_bytes,
     )
@@ -412,8 +415,9 @@ def test_flash_live_extent_slot_matches_scalar_partitioning(
             attention_library, _SYMBOL_DECODE_F32, buffers[:5],
             tokens=1, keys=keys, num_heads=num_heads, num_kv_heads=num_kv_heads,
             head_dim=head_dim, scale=1.0,
-            split_workspace=workspace_live.ptr,
-            split_slices=-flash_slices(keys),
+            workspace=workspace_live.ptr,
+            route=DECODE_ROUTE_FLASH,
+            flash_slices=flash_slices(keys),
         )
         copy_device_to_host(host_array_ptr(out_live), buffers[4], out_live.nbytes)
         free(workspace_live)
@@ -437,8 +441,9 @@ def test_flash_live_extent_slot_matches_scalar_partitioning(
             attention_library, _SYMBOL_DECODE_F32, frozen_buffers,
             tokens=1, keys=extent, num_heads=num_heads, num_kv_heads=num_kv_heads,
             head_dim=head_dim, scale=1.0,
-            split_workspace=workspace_frozen.ptr,
-            split_slices=-frozen_slices,
+            workspace=workspace_frozen.ptr,
+            route=DECODE_ROUTE_FLASH,
+            flash_slices=frozen_slices,
             live_extent=slot.ptr,
         )
         copy_device_to_host(host_array_ptr(out_slot), frozen_buffers[4], out_slot.nbytes)
@@ -565,6 +570,7 @@ def test_a_multi_token_launch_agrees_with_each_tokens_own_launch(attention_libra
     from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
         _SYMBOL_DECODE_BF16,
+        DECODE_ROUTE_FLASH,
         flash_slices,
         flash_workspace_bytes,
     )
@@ -589,7 +595,8 @@ def test_a_multi_token_launch_agrees_with_each_tokens_own_launch(attention_libra
         for buffer, array in zip(buffers[:4], (query, key, value, mask)):
             copy_host_to_device(buffer, host_array_ptr(array), array.nbytes)
         _raw_launch(attention_library, _SYMBOL_DECODE_BF16, buffers[:5], tokens=tokens,
-                    split_workspace=workspace.ptr, split_slices=-slices, **shape)
+                    workspace=workspace.ptr, route=DECODE_ROUTE_FLASH,
+                    flash_slices=slices, **shape)
         for t in range(tokens):
             offset = [
                 SimpleNamespace(ptr=buffers[0].ptr + t * row_q), buffers[1], buffers[2],
@@ -597,7 +604,8 @@ def test_a_multi_token_launch_agrees_with_each_tokens_own_launch(attention_libra
                 SimpleNamespace(ptr=buffers[5].ptr + t * row_q),
             ]
             _raw_launch(attention_library, _SYMBOL_DECODE_BF16, offset, tokens=1,
-                        split_workspace=workspace.ptr, split_slices=-slices, **shape)
+                        workspace=workspace.ptr, route=DECODE_ROUTE_FLASH,
+                        flash_slices=slices, **shape)
         copy_device_to_host(host_array_ptr(out_block), buffers[4], out_block.nbytes)
         copy_device_to_host(host_array_ptr(out_rows), buffers[5], out_rows.nbytes)
     finally:

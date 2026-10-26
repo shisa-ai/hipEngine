@@ -868,7 +868,7 @@ def _run_graph_preparation(monkeypatch: pytest.MonkeyPatch, position: int, *, va
     monkeypatch.setattr(attention, "malloc", allocate)
     monkeypatch.setattr(attention, "build_gemma4_attention", lambda **kwargs: object())
     monkeypatch.setattr(
-        attention, "split_workspace_bytes", lambda t, h, d, k, s, **kw: t * h * k * 4
+        attention, "split_workspace_bytes", lambda t, h, k, **kw: t * h * k * 4
     )
     monkeypatch.setattr(
         attention, "flash_workspace_bytes", lambda t, h, d, s, **kw: t * h * d * s * 4
@@ -989,7 +989,7 @@ def test_flash_engages_from_the_preferred_entry_only_with_the_preference(
 ) -> None:
     from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import flash_decode_engages
 
-    assert flash_decode_engages(keys=keys, head_dim=256, prefer_flash=prefer) is expected
+    assert flash_decode_engages(keys=keys, prefer_flash=prefer) is expected
 
 
 @pytest.mark.parametrize("geometry", [SLIDING, {**GLOBAL, "keys": 512}], ids=["sliding", "global"])

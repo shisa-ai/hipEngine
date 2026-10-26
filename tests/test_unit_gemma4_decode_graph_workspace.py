@@ -50,7 +50,7 @@ def test_capture_reserves_selected_workspace_before_recording(monkeypatch, posit
                               free=lambda *a, **kw: None)
     monkeypatch.setattr(attention, "malloc", allocate)
     monkeypatch.setattr(attention, "build_gemma4_attention", lambda **kwargs: object())
-    monkeypatch.setattr(attention, "split_workspace_bytes", lambda t, h, d, k, s, **kw: t * h * k * 4)
+    monkeypatch.setattr(attention, "split_workspace_bytes", lambda t, h, k, **kw: t * h * k * 4)
     monkeypatch.setattr(attention, "flash_workspace_bytes", lambda t, h, d, s, **kw: t * h * d * s * 4)
     # The reservation must ask the launcher's own count rather than re-derive
     # one: the global packing's count is not the occupancy target, and a
@@ -103,8 +103,7 @@ def test_capture_reserves_selected_workspace_before_recording(monkeypatch, posit
             # flash partials at the launcher's count. A staged capture falls
             # through to it as well, because the launch it records still goes
             # through the same native call site.
-            slices = attention.decode_slices(keys, geometry.head_dim)
-            if slices > 1:
+            if attention.decode_split_engages(keys=keys):
                 need = max(need, geometry.num_heads * keys * 4)
                 if attention.flash_admits(
                     tokens=1, head_dim=geometry.head_dim, num_heads=geometry.num_heads,

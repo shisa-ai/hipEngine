@@ -17,7 +17,7 @@ from scripts.gemma4_teacher_forced_gate import (
     MARGIN_BANDS,
     THRESHOLDS,
     capture_chain,
-    force_slices,
+    force_decode_split,
     evaluate,
     margin_report,
     row_kl_divergence,
@@ -270,41 +270,46 @@ class TestCaptureChain:
             with pytest.raises(ValueError, match="prefill"):
                 capture_chain(runner, [1, 2, 3, 4], prefill=bad)
 
-    def test_force_slices_matches_the_shipped_signature(self) -> None:
-        """The patch must accept what the callers pass.
+    def test_force_decode_split_matches_the_shipped_signature(self) -> None:
+        """The patch must accept what the launchers pass.
 
-        The launchers call ``decode_slices(keys, head_dim)``. A one-argument
-        patch satisfies a test that calls it with one argument and then fails
-        every real launch with a TypeError - which is exactly what happened, and
-        what this test now pins.
+        The launchers call ``decode_split_engages(keys=...)``. A patch with a
+        different signature satisfies a test that calls it the same wrong way
+        and then fails every real launch with a TypeError - which is exactly
+        what happened once, and what this test now pins.
         """
 
         from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention
 
-        original = gemma4_attention.decode_slices
+        original = gemma4_attention.decode_split_engages
         try:
-            force_slices(2)
-            # Two positional arguments, as the real callers use.
-            assert gemma4_attention.decode_slices(8192, 256) == 2
-            assert gemma4_attention.decode_slices(512, 256) == 2
-            force_slices(1)
-            assert gemma4_attention.decode_slices(8192, 512) == 1
+            force_decode_split(2)
+            # The keyword the real callers use.
+            assert gemma4_attention.decode_split_engages(keys=8192) is True
+            assert gemma4_attention.decode_split_engages(keys=512) is True
+            force_decode_split(1)
+            assert gemma4_attention.decode_split_engages(keys=8192) is False
         finally:
-            gemma4_attention.decode_slices = original
+            gemma4_attention.decode_split_engages = original
 
-    def test_force_slices_pins_the_policy_and_one_selects_the_strict_path(self) -> None:
+    def test_force_decode_split_pins_the_route_and_one_selects_the_strict_path(
+        self,
+    ) -> None:
         from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_attention
 
-        original = gemma4_attention.decode_slices
+        original = gemma4_attention.decode_split_engages
         try:
-            force_slices(1)
-            assert gemma4_attention.decode_slices(8192, 256) == 1
-            force_slices(4)
-            assert gemma4_attention.decode_slices(8192, 256) == 4
-            force_slices(None)
-            assert gemma4_attention.decode_slices is original
+            force_decode_split(1)
+            assert gemma4_attention.decode_split_engages(keys=8192) is False
+            force_decode_split(4)
+            assert gemma4_attention.decode_split_engages(keys=8192) is True
+            force_decode_split(None)
+            assert gemma4_attention.decode_split_engages is original
+            # The shipped threshold is back in force.
+            assert gemma4_attention.decode_split_engages(keys=1023) is False
+            assert gemma4_attention.decode_split_engages(keys=1024) is True
         finally:
-            gemma4_attention.decode_slices = original
+            gemma4_attention.decode_split_engages = original
 
 # --- the full-layer WMMA observation is scoped to plans that can reach it ----
 
