@@ -62,7 +62,7 @@ def _install_fake_device(monkeypatch):
         return buffer
 
     monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
-    monkeypatch.setattr(gguf_runner, "copy_host_to_device", lambda *args, **kwargs: None)
+    monkeypatch.setattr(gguf_runner, "copy_host_array_to_device", lambda *args, **kwargs: None)
     return allocations
 
 
@@ -143,7 +143,7 @@ def test_dense_qwen36_decode_scratch_owner_denial_falls_back(monkeypatch) -> Non
         return buffer
 
     monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
-    monkeypatch.setattr(gguf_runner, "copy_host_to_device", lambda *args, **kwargs: None)
+    monkeypatch.setattr(gguf_runner, "copy_host_array_to_device", lambda *args, **kwargs: None)
 
     scratch = gguf_runner._FullStackScratch.allocate(
         _fake_dense_qwen36_runner(),

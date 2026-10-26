@@ -63,7 +63,7 @@ def test_native_graph_replays_dynamic_tokens_without_requalification(monkeypatch
     monkeypatch.setattr(execution, "resident_snapshot",
                         lambda *a, **kw: pytest.fail("graph scanned resident"))
     ptrs = []
-    monkeypatch.setattr(runtime, "copy_host_to_device",
+    monkeypatch.setattr(runtime, "copy_host_array_to_device",
                         lambda buf, *a, **kw: ptrs.append(("h2d", buf.ptr)))
     def readback(host_ptr, buffer, nbytes, **kwargs):
         assert host_ptr == session._native_token_ids_host.ctypes.data

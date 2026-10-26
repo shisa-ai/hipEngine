@@ -462,13 +462,10 @@ def test_gguf_fused_linear_state_pair_copy_batches_and_caches_tables(monkeypatch
     monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
     monkeypatch.setattr(
         gguf_runner,
-        "copy_host_to_device",
-        lambda buffer, host_ptr, nbytes, *, runtime: uploads.append((int(buffer.ptr), int(nbytes))),
-    )
-    monkeypatch.setattr(
-        gguf_runner,
         "copy_host_array_to_device",
-        lambda buffer, array, nbytes, *, runtime: uploads.append((int(buffer.ptr), int(nbytes))),
+        lambda buffer, array, nbytes=None, *, runtime: uploads.append(
+            (int(buffer.ptr), int(array.nbytes if nbytes is None else nbytes))
+        ),
     )
     monkeypatch.setattr(gguf_runner, "build_dflash_commit", lambda **kwargs: object())
     monkeypatch.setattr(
@@ -1120,12 +1117,12 @@ def test_gguf_prefill_scratch_uploads_packed_verify_layout(monkeypatch) -> None:
         next_ptr += max(8, int(nbytes) + 8)
         return DeviceBuffer(ptr=ptr, nbytes=int(nbytes))
 
-    def fake_copy_host_to_device(buffer, host_ptr, nbytes=None, *, runtime):
-        count = int(buffer.nbytes if nbytes is None else nbytes)
-        copies[int(buffer.ptr)] = ctypes.string_at(int(host_ptr), count)
+    def fake_copy_host_array_to_device(buffer, array, nbytes=None, *, runtime):
+        count = int(array.nbytes if nbytes is None else nbytes)
+        copies[int(buffer.ptr)] = np.ascontiguousarray(array).tobytes()[:count]
 
     monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
-    monkeypatch.setattr(gguf_runner, "copy_host_to_device", fake_copy_host_to_device)
+    monkeypatch.setattr(gguf_runner, "copy_host_array_to_device", fake_copy_host_array_to_device)
 
     cfg = SimpleNamespace(
         expert_used_count=2,

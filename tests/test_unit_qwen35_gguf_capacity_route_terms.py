@@ -51,7 +51,7 @@ def _real_allocation_bytes(monkeypatch, runner, *, rows, capacity, segments=1):
 
     with monkeypatch.context() as patch:
         patch.setattr(gguf_runner, "malloc", fake_malloc)
-        patch.setattr(gguf_runner, "copy_host_to_device", lambda *a, **k: None)
+        patch.setattr(gguf_runner, "copy_host_array_to_device", lambda *a, **k: None)
         gguf_runner._GGUFFullAttentionPrefillScratch.allocate(
             runner,
             rows=rows,

@@ -96,13 +96,12 @@ def test_gguf_device_kv_binding_uses_full_backing_and_logical_block_table(monkey
     )
     copied_tables: list[np.ndarray] = []
 
-    def capture_table(buffer, host_ptr, nbytes, *, runtime) -> None:
+    def capture_table(buffer, array, nbytes=None, *, runtime) -> None:
         del runtime
         assert buffer.ptr == 0x300000
-        values = (ctypes.c_int32 * (int(nbytes) // 4)).from_address(int(host_ptr))
-        copied_tables.append(np.ctypeslib.as_array(values).copy())
+        copied_tables.append(np.asarray(array, dtype=np.int32).copy())
 
-    monkeypatch.setattr(gguf_runner, "copy_host_to_device", capture_table)
+    monkeypatch.setattr(gguf_runner, "copy_host_array_to_device", capture_table)
     session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
     session.defer_kv_allocation = True
     session.kv_storage_dtype = DType.BF16
@@ -220,11 +219,9 @@ def test_gguf_device_kv_binding_binds_and_unbinds_int8_scale_backing(monkeypatch
     copied_tables: list[np.ndarray] = []
     monkeypatch.setattr(
         gguf_runner,
-        "copy_host_to_device",
-        lambda _buffer, host_ptr, nbytes, **_kwargs: copied_tables.append(
-            np.ctypeslib.as_array(
-                (ctypes.c_int32 * (int(nbytes) // 4)).from_address(int(host_ptr))
-            ).copy()
+        "copy_host_array_to_device",
+        lambda _buffer, array, nbytes=None, **_kwargs: copied_tables.append(
+            np.asarray(array, dtype=np.int32).copy()
         ),
     )
     session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
@@ -522,7 +519,7 @@ def test_gguf_device_kv_binding_rejects_policy_mismatch_before_table_copy(monkey
     session._device_kv_allocation = None
     monkeypatch.setattr(
         gguf_runner,
-        "copy_host_to_device",
+        "copy_host_array_to_device",
         lambda *args, **kwargs: pytest.fail("policy mismatch touched the device block table"),
     )
 

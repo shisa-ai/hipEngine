@@ -77,10 +77,10 @@ class _RecordingDevice:
     def free(self, buffer: DeviceBuffer, *, runtime: object) -> None:
         self.frees.append(int(buffer.ptr))
 
-    def copy_host_to_device(
+    def copy_host_array_to_device(
         self,
         buffer: DeviceBuffer,
-        host_ptr: int,
+        _array: object,
         nbytes: int | None = None,
         *,
         runtime: object,
@@ -96,7 +96,7 @@ def _install_recording_device(
 ) -> None:
     monkeypatch.setattr(gguf_runner, "malloc", device.malloc)
     monkeypatch.setattr(gguf_runner, "free", device.free)
-    monkeypatch.setattr(gguf_runner, "copy_host_to_device", device.copy_host_to_device)
+    monkeypatch.setattr(gguf_runner, "copy_host_array_to_device", device.copy_host_array_to_device)
 
 
 def _allocate(monkeypatch: pytest.MonkeyPatch, layout: str, device: _RecordingDevice):

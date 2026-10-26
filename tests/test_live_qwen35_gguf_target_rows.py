@@ -78,9 +78,9 @@ def test_packed_target_stages_device_candidates_without_host_materialization(
     )
     monkeypatch.setattr(
         runner_mod,
-        "copy_host_to_device",
-        lambda destination, source, nbytes, *, runtime: calls.append(
-            ("roots", destination.ptr, int(nbytes))
+        "copy_host_array_to_device",
+        lambda destination, array, nbytes=None, *, runtime: calls.append(
+            ("roots", destination.ptr, int(array.nbytes if nbytes is None else nbytes))
         ),
     )
     monkeypatch.setattr(

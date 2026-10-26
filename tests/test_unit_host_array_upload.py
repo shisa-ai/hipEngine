@@ -32,6 +32,10 @@ MAPLE_UPLOAD_MODULES = (
     "runtime/maple_cuda",
 )
 
+QWEN35_GGUF_RUNNER_UPLOAD_MODULES = (
+    "runtime/qwen35_gguf_runner",
+)
+
 
 @pytest.mark.parametrize("module", [
     "runtime/evie", "runtime/timesfm_decode", "runtime/timesfm3_decode",
@@ -107,6 +111,48 @@ def test_maple_synchronous_array_uploads_use_the_owning_helper(module):
     This is a bounded syntax guard over the Maple runtime modules, not a proof
     of arbitrary pointer lifetimes. Asynchronous uploads, raw pointer uploads,
     and D2H/D2D copies are outside this guard.
+    """
+    path = Path(__file__).parents[1] / "hipengine" / f"{module}.py"
+    tree = ast.parse(path.read_text())
+    hazards = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Name) and node.func.id == "copy_host_to_device":
+            source = (
+                node.args[1]
+                if len(node.args) > 1
+                else next((kw.value for kw in node.keywords if kw.arg == "host_ptr"), None)
+            )
+            if source is not None and _is_array_pointer_expression(source):
+                hazards.append((node.lineno, "copy_host_to_device"))
+            continue
+        if not (isinstance(node.func, ast.Attribute) and node.func.attr == "memcpy"):
+            continue
+        kind = (
+            node.args[3]
+            if len(node.args) > 3
+            else next((kw.value for kw in node.keywords if kw.arg == "kind"), None)
+        )
+        if not (isinstance(kind, ast.Attribute) and kind.attr == "HOST_TO_DEVICE"):
+            continue
+        source = (
+            node.args[1]
+            if len(node.args) > 1
+            else next((kw.value for kw in node.keywords if kw.arg == "src"), None)
+        )
+        if source is not None and _is_array_pointer_expression(source):
+            hazards.append((node.lineno, "runtime.memcpy"))
+    assert not hazards, f"{path.name}: use copy_host_array_to_device at {hazards}"
+
+
+@pytest.mark.parametrize("module", QWEN35_GGUF_RUNNER_UPLOAD_MODULES)
+def test_qwen35_gguf_runner_synchronous_array_uploads_use_the_owning_helper(module):
+    """No synchronous array upload may erase its source owner.
+
+    This is a bounded syntax guard over ``qwen35_gguf_runner``, not a proof of
+    arbitrary pointer lifetimes. Asynchronous uploads, raw pointer uploads, and
+    D2H/D2D copies are outside this guard.
     """
     path = Path(__file__).parents[1] / "hipengine" / f"{module}.py"
     tree = ast.parse(path.read_text())
@@ -377,3 +423,121 @@ def test_evie_pointer_cache_uploads_only_new_content(monkeypatch):
     assert runner._dev_ptr_array([123, 456]) == a
     assert runner._dev_ptr_array([456, 123]) != a
     assert uploads == [[123, 456], [456, 123]]
+
+
+def test_qwen35_gguf_runner_packed_verify_token_upload_uses_owning_array(monkeypatch):
+    from hipengine.runtime import qwen35_gguf_runner as runner_mod
+
+    calls = []
+
+    def upload(buffer, array, nbytes=None, *, runtime):
+        calls.append((buffer, array, nbytes, runtime))
+
+    monkeypatch.setattr(runner_mod, "copy_host_array_to_device", upload)
+    layout = SimpleNamespace(
+        input_token_ids=np.asarray([11, 12, 13], dtype=np.int64),
+        slot_count=1,
+    )
+    destination = memory.DeviceBuffer(0x5000, 64)
+    runtime = object()
+
+    runner_mod._stage_gguf_packed_verify_token_ids(
+        layout,
+        [{}],
+        destination,
+        runtime=runtime,
+        stream=0,
+        runtime_state_library=object(),
+    )
+
+    assert len(calls) == 1
+    buffer, array, nbytes, call_runtime = calls[0]
+    assert (buffer.ptr, buffer.nbytes, nbytes, call_runtime) == (
+        0x5000,
+        24,
+        24,
+        runtime,
+    )
+    assert array.flags.c_contiguous
+    assert array.tolist() == [11, 12, 13]
+
+
+def test_qwen35_gguf_runner_full_attention_position_uploads_owning_arrays(monkeypatch):
+    from hipengine.runtime import qwen35_gguf_runner as runner_mod
+
+    calls = []
+
+    def upload(buffer, array, nbytes=None, *, runtime):
+        calls.append((buffer, array, nbytes, runtime))
+
+    monkeypatch.setattr(runner_mod, "copy_host_array_to_device", upload)
+    session = object.__new__(runner_mod._FullStackScratch)
+    object.__setattr__(session, "max_positions", 16)
+    object.__setattr__(session, "position_host", np.zeros(1, dtype=np.int64))
+    object.__setattr__(session, "context_host", np.zeros(1, dtype=np.int64))
+    object.__setattr__(session, "position_buf", memory.DeviceBuffer(0x6000, 8))
+    object.__setattr__(session, "context_buf", memory.DeviceBuffer(0x7000, 8))
+    runtime = object()
+
+    session.set_full_attention_position(7, runtime)
+
+    assert [call[0].ptr for call in calls] == [0x6000, 0x7000]
+    assert [call[1] for call in calls] == [session.position_host, session.context_host]
+    assert [call[2] for call in calls] == [None, None]
+    assert all(call[3] is runtime for call in calls)
+    assert session.position_host[0] == 7
+    assert session.context_host[0] == 8
+
+
+def test_qwen35_gguf_runner_sidecar_upload_owns_contiguous_copy(monkeypatch):
+    from hipengine.runtime import qwen35_gguf_runner as runner_mod
+
+    calls = []
+
+    def upload(buffer, array, nbytes=None, *, runtime):
+        calls.append((buffer, array, nbytes, runtime))
+
+    monkeypatch.setattr(
+        runner_mod,
+        "malloc",
+        lambda nbytes, *, runtime: memory.DeviceBuffer(0x8000, int(nbytes)),
+    )
+    monkeypatch.setattr(runner_mod, "copy_host_array_to_device", upload)
+    runtime = object()
+    source = np.arange(8, dtype=np.int32)[::2]
+
+    buffer = runner_mod._copy_sidecar_array_to_device(source, runtime=runtime)
+
+    assert (buffer.ptr, buffer.nbytes) == (0x8000, 16)
+    assert len(calls) == 1
+    call_buffer, array, nbytes, call_runtime = calls[0]
+    assert call_buffer is buffer
+    assert nbytes is None
+    assert call_runtime is runtime
+    assert array.flags.c_contiguous
+    assert array.tolist() == [0, 2, 4, 6]
+
+
+def test_qwen35_gguf_runner_zero_upload_keeps_destination_count(monkeypatch):
+    from hipengine.runtime import qwen35_gguf_runner as runner_mod
+
+    calls = []
+
+    def upload(buffer, array, nbytes=None, *, runtime):
+        calls.append((buffer, array, nbytes, runtime))
+
+    monkeypatch.setattr(runner_mod, "copy_host_array_to_device", upload)
+    runtime = SimpleNamespace(
+        memset=lambda *args, **kwargs: pytest.fail("mismatched zero template used memset")
+    )
+    buffer = memory.DeviceBuffer(0x9000, 16)
+    zeros = np.zeros(8, dtype=np.int32)
+
+    runner_mod._zero(runtime, buffer, zeros, stream=0)
+
+    assert len(calls) == 1
+    call_buffer, array, nbytes, call_runtime = calls[0]
+    assert call_buffer is buffer
+    assert array is zeros
+    assert nbytes == 16
+    assert call_runtime is runtime

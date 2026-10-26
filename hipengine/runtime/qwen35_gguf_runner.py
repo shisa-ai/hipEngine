@@ -41,7 +41,6 @@ from hipengine.core.memory import (
     DeviceBuffer,
     DeviceMemoryArena,
     copy_device_to_host,
-    copy_host_to_device,
     copy_host_array_to_device,
     free,
     host_array_ptr,
@@ -1952,9 +1951,9 @@ def _stage_gguf_packed_verify_token_ids(
     token_ids = np.ascontiguousarray(layout.input_token_ids, dtype=np.int64)
     if destination.nbytes < token_ids.nbytes:
         raise ValueError("packed verifier token destination is too small")
-    copy_host_to_device(
+    copy_host_array_to_device(
         DeviceBuffer(destination.ptr, token_ids.nbytes),
-        host_array_ptr(token_ids),
+        token_ids,
         token_ids.nbytes,
         runtime=runtime,
     )
@@ -4258,7 +4257,7 @@ class Qwen35GGUFFullStackRunner:
             for position, token_id in enumerate(token_ids):
                 scratch.set_full_attention_position(position, runtime)
                 token_arr[0] = int(token_id)
-                copy_host_to_device(token_buf, host_array_ptr(token_arr), runtime=runtime)
+                copy_host_array_to_device(token_buf, token_arr, runtime=runtime)
                 launch_gguf_embedding(
                     self.weights.root("token_embedding"),
                     token_buf.ptr,
@@ -4339,7 +4338,7 @@ class Qwen35GGUFFullStackRunner:
             hidden_buf = malloc(hidden.nbytes, runtime=runtime)
             logits_buf = malloc(logits.nbytes, runtime=runtime)
             buffers.extend((hidden_buf, logits_buf))
-            copy_host_to_device(hidden_buf, host_array_ptr(hidden), runtime=runtime)
+            copy_host_array_to_device(hidden_buf, hidden, runtime=runtime)
             launch_gguf_linear(
                 self.weights.root("lm_head"),
                 hidden_buf.ptr,
@@ -4411,7 +4410,7 @@ class Qwen35GGUFFullStackRunner:
             hidden_buf = malloc(hidden.nbytes, runtime=runtime)
             out_buf = malloc(output.nbytes, runtime=runtime)
             buffers.extend((hidden_buf, out_buf))
-            copy_host_to_device(hidden_buf, host_array_ptr(hidden), runtime=runtime)
+            copy_host_array_to_device(hidden_buf, hidden, runtime=runtime)
             if use_aotriton:
                 prefill_scratch = _GGUFFullAttentionPrefillScratch.allocate(self, rows=rows, runtime=runtime)
                 buffers.extend(prefill_scratch.buffers)
@@ -12997,9 +12996,9 @@ def _gguf_gapped_slot_block_table(
             _gguf_gapped_slot_block_table_rows(session, rows=rows)
         )
         buffer = malloc(table_host.nbytes, runtime=runtime)
-        copy_host_to_device(
+        copy_host_array_to_device(
             buffer,
-            host_array_ptr(table_host),
+            table_host,
             table_host.nbytes,
             runtime=runtime,
         )
@@ -13190,7 +13189,7 @@ class _ExternalDMSDevicePrefillCollector:
             layer_major = np.ascontiguousarray(
                 self._diagnostic_injection.eviction_mask.transpose(1, 0, 2), dtype=np.uint8
             )
-            copy_host_to_device(self._decisions, host_array_ptr(layer_major), layer_major.nbytes, runtime=runtime)
+            copy_host_array_to_device(self._decisions, layer_major, layer_major.nbytes, runtime=runtime)
         self._next = np.zeros(source.config.num_layers, dtype=np.int32)
         self._finalized_layers: dict[int, np.ndarray] = {}
         self._closed = False
@@ -13278,9 +13277,9 @@ class _ExternalDMSDevicePrefillCollector:
                 target_compression_ratio=self.source.config.target_compression_ratio,
             )[:, 0, :])
             raw = np.ascontiguousarray(decisions, dtype=np.uint8)
-            copy_host_to_device(
+            copy_host_array_to_device(
                 DeviceBuffer(self._decisions.ptr + offset, raw.nbytes),
-                host_array_ptr(raw), raw.nbytes, runtime=self._runtime,
+                raw, raw.nbytes, runtime=self._runtime,
             )
         else:
             raw = np.empty(shape, dtype=np.uint8)
@@ -14127,15 +14126,15 @@ class Qwen35GGUFResidentSession:
         native_state_indices = np.arange(self.max_batch_size, dtype=np.int64)
         self._native_cu_seqlens_buf = malloc(native_cu.nbytes, runtime=runtime)
         self._native_state_indices_buf = malloc(native_state_indices.nbytes, runtime=runtime)
-        copy_host_to_device(
+        copy_host_array_to_device(
             self._native_cu_seqlens_buf,
-            host_array_ptr(native_cu),
+            native_cu,
             native_cu.nbytes,
             runtime=runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self._native_state_indices_buf,
-            host_array_ptr(native_state_indices),
+            native_state_indices,
             native_state_indices.nbytes,
             runtime=runtime,
         )
@@ -15529,9 +15528,9 @@ class Qwen35GGUFResidentSession:
             ],
             dtype=np.int32,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.scratch.block_table,
-            host_array_ptr(local_block_table),
+            local_block_table,
             local_block_table.nbytes,
             runtime=self.runtime or get_hip_runtime(),
         )
@@ -16091,9 +16090,9 @@ class Qwen35GGUFResidentSession:
             full_kv_scale_metadata=empty,
         )
         block_table = np.zeros(self.scratch.block_table_tensor.shape, dtype=np.int32)
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.scratch.block_table,
-            host_array_ptr(block_table),
+            block_table,
             block_table.nbytes,
             runtime=self.runtime or get_hip_runtime(),
         )
@@ -16415,9 +16414,9 @@ class Qwen35GGUFResidentSession:
                 # by the handler below instead of leaking the just-allocated
                 # buffer.
                 pointer_tables[role] = table
-                copy_host_to_device(
+                copy_host_array_to_device(
                     table,
-                    host_array_ptr(host),
+                    host,
                     host.nbytes,
                     runtime=runtime,
                 )
@@ -16427,9 +16426,9 @@ class Qwen35GGUFResidentSession:
                 dtype=np.uint64,
             ).view(np.uint8)
             descriptor = malloc(descriptor_host.nbytes, runtime=runtime)
-            copy_host_to_device(
+            copy_host_array_to_device(
                 descriptor,
-                host_array_ptr(descriptor_host),
+                descriptor_host,
                 descriptor_host.nbytes,
                 runtime=runtime,
             )
@@ -16507,8 +16506,8 @@ class Qwen35GGUFResidentSession:
                     # Publish before uploading so the handler frees this table
                     # when the transfer fails.
                     new_tables[role] = table
-                    copy_host_to_device(
-                        table, host_array_ptr(host), host.nbytes, runtime=runtime
+                    copy_host_array_to_device(
+                        table, host, host.nbytes, runtime=runtime
                     )
             except BaseException:
                 for table in reversed(tuple(new_tables.values())):
@@ -16523,9 +16522,9 @@ class Qwen35GGUFResidentSession:
                 dtype=np.uint64,
             ).view(np.uint8)
             assert descriptor is not None
-            copy_host_to_device(
+            copy_host_array_to_device(
                 descriptor,
-                host_array_ptr(descriptor_host),
+                descriptor_host,
                 descriptor_host.nbytes,
                 runtime=runtime,
             )
@@ -16552,8 +16551,8 @@ class Qwen35GGUFResidentSession:
                     # Publish before uploading so the handler frees this table
                     # when the transfer fails.
                     retained[role] = table
-                    copy_host_to_device(
-                        table, host_array_ptr(host), host.nbytes, runtime=runtime
+                    copy_host_array_to_device(
+                        table, host, host.nbytes, runtime=runtime
                     )
             except BaseException:
                 for table in reversed(tuple(retained.values())):
@@ -17957,7 +17956,7 @@ class Qwen35GGUFResidentSession:
                 cache=self._host_token_embedding_cache,
             )
             nbytes = int(hidden.nbytes)
-            copy_host_to_device(DeviceBuffer(int(out_ptr), nbytes), host_array_ptr(hidden), nbytes, runtime=runtime)
+            copy_host_array_to_device(DeviceBuffer(int(out_ptr), nbytes), hidden, nbytes, runtime=runtime)
             return
         if self.host_token_embedding_enabled and mapped_weight is None:
             self._device_token_embedding_weight(reason="non_default_stream")
@@ -17974,9 +17973,9 @@ class Qwen35GGUFResidentSession:
                 stream,
             )
         else:
-            copy_host_to_device(
+            copy_host_array_to_device(
                 token_ids_device,
-                host_array_ptr(token_arr),
+                token_arr,
                 int(token_arr.nbytes),
                 runtime=runtime,
             )
@@ -18157,9 +18156,9 @@ class Qwen35GGUFResidentSession:
                 free(table, runtime=runtime)
             table = malloc(table_host.nbytes, runtime=runtime)
             self._int8_prefill_retained_block_table = table
-        copy_host_to_device(
+        copy_host_array_to_device(
             table,
-            host_array_ptr(table_host),
+            table_host,
             table_host.nbytes,
             runtime=runtime,
         )
@@ -19997,9 +19996,9 @@ class Qwen35GGUFResidentSession:
             hidden_size=self.runner.hidden_size,
             vocab_size=self.runner.vocab_size,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self._verify_hidden_f32_a,
-            host_array_ptr(rows_f32),
+            rows_f32,
             rows_f32.nbytes,
             runtime=runtime,
         )
@@ -20752,8 +20751,8 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF verifier token buffers are closed")
         if not _enqueue_only:
             zero_index = np.zeros((1,), dtype=np.int64)
-            copy_host_to_device(token_counter_buf, host_array_ptr(zero_index), zero_index.nbytes, runtime=runtime)
-            copy_host_to_device(self._prefill_token_buf, host_array_ptr(tokens), tokens.nbytes, runtime=runtime)
+            copy_host_array_to_device(token_counter_buf, zero_index, zero_index.nbytes, runtime=runtime)
+            copy_host_array_to_device(self._prefill_token_buf, tokens, tokens.nbytes, runtime=runtime)
         input_token_ids_ptr = (
             self._prefill_token_buf.ptr
             if _pre_staged_token_ids_ptr is None
@@ -21512,9 +21511,9 @@ class Qwen35GGUFResidentSession:
         local_blocks = np.arange(blocks, dtype=np.int32)
         block_rows = int(self._bulk_prefill_scratch.rows)
         block_table = np.tile(local_blocks, (block_rows, 1))
-        copy_host_to_device(
+        copy_host_array_to_device(
             self._bulk_prefill_scratch.block_table,
-            host_array_ptr(block_table),
+            block_table,
             block_table.nbytes,
             runtime=runtime,
         )
@@ -23189,12 +23188,12 @@ class Qwen35GGUFResidentSession:
             token_array = np.ascontiguousarray(
                 layout.input_token_ids, dtype=np.int64
             )
-            copy_host_to_device(
+            copy_host_array_to_device(
                 DeviceBuffer(
                     self._prefill_token_buf.ptr + entry["base"] * token_itemsize,
                     token_array.nbytes,
                 ),
-                host_array_ptr(token_array),
+                token_array,
                 token_array.nbytes,
                 runtime=runtime,
             )
@@ -23921,7 +23920,7 @@ class Qwen35GGUFResidentSession:
                 runtime=runtime,
             )
         token_array = np.ascontiguousarray(layout.input_token_ids, dtype=np.int64)
-        copy_host_to_device(self._prefill_token_buf, host_array_ptr(token_array), token_array.nbytes, runtime=runtime)
+        copy_host_array_to_device(self._prefill_token_buf, token_array, token_array.nbytes, runtime=runtime)
 
         launch_gguf_embedding(
             self._device_token_embedding_weight(reason="packed_ar_prefill"),
@@ -25007,7 +25006,7 @@ class Qwen35GGUFResidentSession:
             retained_decode_kernel=retained_decode_kernel,
         )
         token_array = np.ascontiguousarray(layout.input_token_ids, dtype=np.int64)
-        copy_host_to_device(self._prefill_token_buf, host_array_ptr(token_array), token_array.nbytes, runtime=runtime)
+        copy_host_array_to_device(self._prefill_token_buf, token_array, token_array.nbytes, runtime=runtime)
 
         linear_state_owner = (
             packed_state if direct_linear_state is None else direct_linear_state[1]
@@ -26756,17 +26755,17 @@ class Qwen35GGUFResidentSession:
             ),
         ):
             if not np.array_equal(host, cached):
-                copy_host_to_device(device, host_array_ptr(host), host.nbytes, runtime=runtime)
+                copy_host_array_to_device(device, host, host.nbytes, runtime=runtime)
                 np.copyto(cached, host)
-        copy_host_to_device(
+        copy_host_array_to_device(
             self._verify_linear_state_dst_conv_table_buf,
-            host_array_ptr(self._verify_linear_state_dst_conv_host),
+            self._verify_linear_state_dst_conv_host,
             self._verify_linear_state_dst_conv_host.nbytes,
             runtime=runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self._verify_linear_state_dst_recurrent_table_buf,
-            host_array_ptr(self._verify_linear_state_dst_recurrent_host),
+            self._verify_linear_state_dst_recurrent_host,
             self._verify_linear_state_dst_recurrent_host.nbytes,
             runtime=runtime,
         )
@@ -27013,9 +27012,9 @@ class Qwen35GGUFResidentSession:
                 self._verify_linear_state_dst_conv_host[:] = np.asarray(conv_dests, dtype=np.uint64)
                 self._verify_linear_state_dst_recurrent_host[:] = np.asarray(recurrent_dests, dtype=np.uint64)
                 if not np.array_equal(self._verify_linear_state_src_conv_host, self._verify_linear_state_src_conv_cached):
-                    copy_host_to_device(
+                    copy_host_array_to_device(
                         self._verify_linear_state_src_conv_table_buf,
-                        host_array_ptr(self._verify_linear_state_src_conv_host),
+                        self._verify_linear_state_src_conv_host,
                         self._verify_linear_state_src_conv_host.nbytes,
                         runtime=runtime,
                     )
@@ -27024,30 +27023,30 @@ class Qwen35GGUFResidentSession:
                     self._verify_linear_state_src_recurrent_host,
                     self._verify_linear_state_src_recurrent_cached,
                 ):
-                    copy_host_to_device(
+                    copy_host_array_to_device(
                         self._verify_linear_state_src_recurrent_table_buf,
-                        host_array_ptr(self._verify_linear_state_src_recurrent_host),
+                        self._verify_linear_state_src_recurrent_host,
                         self._verify_linear_state_src_recurrent_host.nbytes,
                         runtime=runtime,
                     )
                     np.copyto(self._verify_linear_state_src_recurrent_cached, self._verify_linear_state_src_recurrent_host)
-                copy_host_to_device(
+                copy_host_array_to_device(
                     self._verify_linear_state_dst_conv_table_buf,
-                    host_array_ptr(self._verify_linear_state_dst_conv_host),
+                    self._verify_linear_state_dst_conv_host,
                     self._verify_linear_state_dst_conv_host.nbytes,
                     runtime=runtime,
                 )
-                copy_host_to_device(
+                copy_host_array_to_device(
                     self._verify_linear_state_dst_recurrent_table_buf,
-                    host_array_ptr(self._verify_linear_state_dst_recurrent_host),
+                    self._verify_linear_state_dst_recurrent_host,
                     self._verify_linear_state_dst_recurrent_host.nbytes,
                     runtime=runtime,
                 )
                 assert self._verify_linear_state_commit_row_i32_buf is not None
                 commit_row = np.asarray([0], dtype=np.int32)
-                copy_host_to_device(
+                copy_host_array_to_device(
                     self._verify_linear_state_commit_row_i32_buf,
-                    host_array_ptr(commit_row),
+                    commit_row,
                     commit_row.nbytes,
                     runtime=runtime,
                 )
@@ -27616,15 +27615,15 @@ class Qwen35GGUFResidentSession:
         self._verify_linear_state_recurrent_row_nbytes = recurrent_row_nbytes
         self._verify_linear_state_layer_count = n_layers
         self._buffers = (*self._buffers, *new_buffers)
-        copy_host_to_device(
+        copy_host_array_to_device(
             self._verify_linear_state_dst_conv_table_buf,
-            host_array_ptr(self._verify_linear_state_dst_conv_host),
+            self._verify_linear_state_dst_conv_host,
             self._verify_linear_state_dst_conv_host.nbytes,
             runtime=runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self._verify_linear_state_dst_recurrent_table_buf,
-            host_array_ptr(self._verify_linear_state_dst_recurrent_host),
+            self._verify_linear_state_dst_recurrent_host,
             self._verify_linear_state_dst_recurrent_host.nbytes,
             runtime=runtime,
         )
@@ -27723,9 +27722,9 @@ class Qwen35GGUFResidentSession:
             self._verify_linear_state_src_conv_host,
             self._verify_linear_state_src_conv_cached,
         ):
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self._verify_linear_state_src_conv_table_buf,
-                host_array_ptr(self._verify_linear_state_src_conv_host),
+                self._verify_linear_state_src_conv_host,
                 self._verify_linear_state_src_conv_host.nbytes,
                 runtime=runtime,
             )
@@ -27737,9 +27736,9 @@ class Qwen35GGUFResidentSession:
             self._verify_linear_state_src_recurrent_host,
             self._verify_linear_state_src_recurrent_cached,
         ):
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self._verify_linear_state_src_recurrent_table_buf,
-                host_array_ptr(self._verify_linear_state_src_recurrent_host),
+                self._verify_linear_state_src_recurrent_host,
                 self._verify_linear_state_src_recurrent_host.nbytes,
                 runtime=runtime,
             )
@@ -28504,15 +28503,15 @@ class Qwen35GGUFResidentSession:
             self._verify_linear_state_recurrent_row_nbytes = recurrent_row_nbytes
             self._verify_linear_state_layer_count = n_layers
             self._buffers = (*self._buffers, *new_buffers)
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self._verify_linear_state_dst_conv_table_buf,
-                host_array_ptr(self._verify_linear_state_dst_conv_host),
+                self._verify_linear_state_dst_conv_host,
                 self._verify_linear_state_dst_conv_host.nbytes,
                 runtime=runtime,
             )
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self._verify_linear_state_dst_recurrent_table_buf,
-                host_array_ptr(self._verify_linear_state_dst_recurrent_host),
+                self._verify_linear_state_dst_recurrent_host,
                 self._verify_linear_state_dst_recurrent_host.nbytes,
                 runtime=runtime,
             )
@@ -28524,9 +28523,9 @@ class Qwen35GGUFResidentSession:
         self._verify_linear_state_src_conv_host[:] = np.asarray(conv_sources, dtype=np.uint64)
         self._verify_linear_state_src_recurrent_host[:] = np.asarray(recurrent_sources, dtype=np.uint64)
         if not np.array_equal(self._verify_linear_state_src_conv_host, self._verify_linear_state_src_conv_cached):
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self._verify_linear_state_src_conv_table_buf,
-                host_array_ptr(self._verify_linear_state_src_conv_host),
+                self._verify_linear_state_src_conv_host,
                 self._verify_linear_state_src_conv_host.nbytes,
                 runtime=runtime,
             )
@@ -28535,9 +28534,9 @@ class Qwen35GGUFResidentSession:
             self._verify_linear_state_src_recurrent_host,
             self._verify_linear_state_src_recurrent_cached,
         ):
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self._verify_linear_state_src_recurrent_table_buf,
-                host_array_ptr(self._verify_linear_state_src_recurrent_host),
+                self._verify_linear_state_src_recurrent_host,
                 self._verify_linear_state_src_recurrent_host.nbytes,
                 runtime=runtime,
             )
@@ -28565,9 +28564,9 @@ class Qwen35GGUFResidentSession:
         if self._fused_linear_state_commit_enabled() and self._ensure_verify_linear_state_commit_tables(runtime=runtime):
             assert self._verify_linear_state_commit_row_i32_buf is not None
             commit_row = np.asarray([row_index], dtype=np.int32)
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self._verify_linear_state_commit_row_i32_buf,
-                host_array_ptr(commit_row),
+                commit_row,
                 commit_row.nbytes,
                 runtime=runtime,
             )
@@ -30669,22 +30668,22 @@ class _GGUFFullAttentionPrefillScratch:
                     ptr=int(owner.ptr) + int(offset),
                     nbytes=int(nbytes),
                 )
-            copy_host_to_device(fields["block_table"], host_array_ptr(block_table_arr), runtime=runtime)
-            copy_host_to_device(fields["positions"], host_array_ptr(positions_arr), runtime=runtime)
-            copy_host_to_device(fields["context_counts"], host_array_ptr(context_arr), runtime=runtime)
-            copy_host_to_device(fields["cos_table"], host_array_ptr(cos_arr), runtime=runtime)
-            copy_host_to_device(fields["sin_table"], host_array_ptr(sin_arr), runtime=runtime)
-            copy_host_to_device(fields["cu_q"], host_array_ptr(cu_arr), runtime=runtime)
-            copy_host_to_device(fields["cu_k"], host_array_ptr(cu_arr), runtime=runtime)
-            copy_host_to_device(fields["atomic"], host_array_ptr(atomic_arr), runtime=runtime)
-            copy_host_to_device(fields["moe_router_counter"], host_array_ptr(atomic_arr), runtime=runtime)
+            copy_host_array_to_device(fields["block_table"], block_table_arr, runtime=runtime)
+            copy_host_array_to_device(fields["positions"], positions_arr, runtime=runtime)
+            copy_host_array_to_device(fields["context_counts"], context_arr, runtime=runtime)
+            copy_host_array_to_device(fields["cos_table"], cos_arr, runtime=runtime)
+            copy_host_array_to_device(fields["sin_table"], sin_arr, runtime=runtime)
+            copy_host_array_to_device(fields["cu_q"], cu_arr, runtime=runtime)
+            copy_host_array_to_device(fields["cu_k"], cu_arr, runtime=runtime)
+            copy_host_array_to_device(fields["atomic"], atomic_arr, runtime=runtime)
+            copy_host_array_to_device(fields["moe_router_counter"], atomic_arr, runtime=runtime)
             gdn_state_indices_arr = np.arange(segments, dtype=np.int64)
-            copy_host_to_device(
-                fields["gdn_cu_seqlens"], host_array_ptr(cu_arr), cu_arr.nbytes, runtime=runtime
+            copy_host_array_to_device(
+                fields["gdn_cu_seqlens"], cu_arr, cu_arr.nbytes, runtime=runtime
             )
-            copy_host_to_device(
+            copy_host_array_to_device(
                 fields["gdn_state_indices"],
-                host_array_ptr(gdn_state_indices_arr),
+                gdn_state_indices_arr,
                 gdn_state_indices_arr.nbytes,
                 runtime=runtime,
             )
@@ -30835,16 +30834,16 @@ class _GGUFFullAttentionPrefillScratch:
             cu_q_arr = np.asarray([0, rows], dtype=np.int32)
             cu_k_arr = np.asarray([0, start + rows], dtype=np.int32)
             atomic_arr = np.asarray([0], dtype=np.int32)
-            copy_host_to_device(self.cu_q, host_array_ptr(cu_q_arr), cu_q_arr.nbytes, runtime=runtime)
-            copy_host_to_device(self.cu_k, host_array_ptr(cu_k_arr), cu_k_arr.nbytes, runtime=runtime)
-            copy_host_to_device(self.atomic, host_array_ptr(atomic_arr), atomic_arr.nbytes, runtime=runtime)
-            copy_host_to_device(
-                self.gdn_cu_seqlens, host_array_ptr(cu_q_arr), cu_q_arr.nbytes, runtime=runtime
+            copy_host_array_to_device(self.cu_q, cu_q_arr, cu_q_arr.nbytes, runtime=runtime)
+            copy_host_array_to_device(self.cu_k, cu_k_arr, cu_k_arr.nbytes, runtime=runtime)
+            copy_host_array_to_device(self.atomic, atomic_arr, atomic_arr.nbytes, runtime=runtime)
+            copy_host_array_to_device(
+                self.gdn_cu_seqlens, cu_q_arr, cu_q_arr.nbytes, runtime=runtime
             )
             positions_arr = np.arange(start, start + rows, dtype=np.int64)
             context_arr = positions_arr + np.int64(1)
-            copy_host_to_device(self.positions, host_array_ptr(positions_arr), positions_arr.nbytes, runtime=runtime)
-            copy_host_to_device(self.context_counts, host_array_ptr(context_arr), context_arr.nbytes, runtime=runtime)
+            copy_host_array_to_device(self.positions, positions_arr, positions_arr.nbytes, runtime=runtime)
+            copy_host_array_to_device(self.context_counts, context_arr, context_arr.nbytes, runtime=runtime)
 
         block_table = Tensor.from_handle(
             self.block_table.ptr,
@@ -30946,21 +30945,21 @@ class _GGUFFullAttentionPrefillScratch:
             atomic_arr = np.asarray([0], dtype=np.int32)
             cu_q_arr = np.asarray([0, rows], dtype=np.int32)
             cu_k_arr = np.asarray([0, int(layout.max_live_count)], dtype=np.int32)
-            copy_host_to_device(self.block_table, host_array_ptr(layout.block_table), layout.block_table.nbytes, runtime=runtime)
-            copy_host_to_device(self.positions, host_array_ptr(layout.row_positions), layout.row_positions.nbytes, runtime=runtime)
-            copy_host_to_device(self.context_counts, host_array_ptr(layout.live_counts), layout.live_counts.nbytes, runtime=runtime)
-            copy_host_to_device(self.cu_q, host_array_ptr(cu_q_arr), cu_q_arr.nbytes, runtime=runtime)
-            copy_host_to_device(self.cu_k, host_array_ptr(cu_k_arr), cu_k_arr.nbytes, runtime=runtime)
-            copy_host_to_device(self.atomic, host_array_ptr(atomic_arr), atomic_arr.nbytes, runtime=runtime)
-            copy_host_to_device(
+            copy_host_array_to_device(self.block_table, layout.block_table, layout.block_table.nbytes, runtime=runtime)
+            copy_host_array_to_device(self.positions, layout.row_positions, layout.row_positions.nbytes, runtime=runtime)
+            copy_host_array_to_device(self.context_counts, layout.live_counts, layout.live_counts.nbytes, runtime=runtime)
+            copy_host_array_to_device(self.cu_q, cu_q_arr, cu_q_arr.nbytes, runtime=runtime)
+            copy_host_array_to_device(self.cu_k, cu_k_arr, cu_k_arr.nbytes, runtime=runtime)
+            copy_host_array_to_device(self.atomic, atomic_arr, atomic_arr.nbytes, runtime=runtime)
+            copy_host_array_to_device(
                 self.gdn_cu_seqlens,
-                host_array_ptr(layout.cu_seqlens),
+                layout.cu_seqlens,
                 layout.cu_seqlens.nbytes,
                 runtime=runtime,
             )
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self.gdn_state_indices,
-                host_array_ptr(layout.state_indices),
+                layout.state_indices,
                 layout.state_indices.nbytes,
                 runtime=runtime,
             )
@@ -31409,11 +31408,11 @@ class _FullStackScratch:
         context_buf = buf(context_host.nbytes)
         cos_table_buf = buf(cos_arr.nbytes)
         sin_table_buf = buf(sin_arr.nbytes)
-        copy_host_to_device(block_table, host_array_ptr(block_table_arr), runtime=runtime)
-        copy_host_to_device(position_buf, host_array_ptr(position_host), runtime=runtime)
-        copy_host_to_device(context_buf, host_array_ptr(context_host), runtime=runtime)
-        copy_host_to_device(cos_table_buf, host_array_ptr(cos_arr), runtime=runtime)
-        copy_host_to_device(sin_table_buf, host_array_ptr(sin_arr), runtime=runtime)
+        copy_host_array_to_device(block_table, block_table_arr, runtime=runtime)
+        copy_host_array_to_device(position_buf, position_host, runtime=runtime)
+        copy_host_array_to_device(context_buf, context_host, runtime=runtime)
+        copy_host_array_to_device(cos_table_buf, cos_arr, runtime=runtime)
+        copy_host_array_to_device(sin_table_buf, sin_arr, runtime=runtime)
         block_table_tensor = Tensor.from_handle(block_table.ptr, block_table_arr.shape, DType.INT32, device)
         position_tensor = Tensor.from_handle(position_buf.ptr, position_host.shape, DType.INT64, device)
         context_tensor = Tensor.from_handle(context_buf.ptr, context_host.shape, DType.INT64, device)
@@ -31435,9 +31434,9 @@ class _FullStackScratch:
         moe_group_counts_zero = np.zeros((moe_experts,), dtype=np.int32)
         moe_scatter_offsets_zero = np.zeros((moe_experts,), dtype=np.int32)
         router_counter_zero = np.zeros((1,), dtype=np.int32)
-        copy_host_to_device(
+        copy_host_array_to_device(
             fields["moe_router_counter"],
-            host_array_ptr(router_counter_zero),
+            router_counter_zero,
             router_counter_zero.nbytes,
             runtime=runtime,
         )
@@ -31710,8 +31709,8 @@ class _FullStackScratch:
             raise ValueError(f"GGUF resident full-attention position {position} exceeds cache capacity {self.max_positions}")
         self.position_host[0] = int(position)
         self.context_host[0] = int(position) + 1
-        copy_host_to_device(self.position_buf, host_array_ptr(self.position_host), runtime=runtime)
-        copy_host_to_device(self.context_buf, host_array_ptr(self.context_host), runtime=runtime)
+        copy_host_array_to_device(self.position_buf, self.position_host, runtime=runtime)
+        copy_host_array_to_device(self.context_buf, self.context_host, runtime=runtime)
 
     def set_full_attention_positions(
         self,
@@ -31725,8 +31724,8 @@ class _FullStackScratch:
             raise ValueError("resident target positions exceed cache capacity")
         self.position_host[:] = values
         self.context_host[:] = values + np.int64(1)
-        copy_host_to_device(self.position_buf, host_array_ptr(self.position_host), runtime=runtime)
-        copy_host_to_device(self.context_buf, host_array_ptr(self.context_host), runtime=runtime)
+        copy_host_array_to_device(self.position_buf, self.position_host, runtime=runtime)
+        copy_host_array_to_device(self.context_buf, self.context_host, runtime=runtime)
 
     def zero_states(self, runtime: HipRuntime, *, stream: int = 0, set_position: bool = True) -> None:
         # conv_zero/recurrent_zero are immutable np.zeros templates constructed
@@ -33274,7 +33273,7 @@ def _resolve_gguf_gdn_prefill_plan(
 def _copy_sidecar_array_to_device(array: np.ndarray, *, runtime: HipRuntime) -> DeviceBuffer:
     contiguous = np.ascontiguousarray(array)
     buffer = malloc(contiguous.nbytes, runtime=runtime)
-    copy_host_to_device(buffer, host_array_ptr(contiguous), runtime=runtime)
+    copy_host_array_to_device(buffer, contiguous, runtime=runtime)
     return buffer
 
 
@@ -35349,7 +35348,7 @@ def _zero(runtime: HipRuntime, buffer, zeros: np.ndarray, *, stream: int = 0) ->
         else:
             runtime.memset(buffer.ptr, 0, buffer.nbytes)
         return
-    copy_host_to_device(buffer, host_array_ptr(zeros), runtime=runtime)
+    copy_host_array_to_device(buffer, zeros, buffer.nbytes, runtime=runtime)
 
 
 
@@ -35388,9 +35387,9 @@ class Qwen35GGUFNativeRowsGraph:
             raise ValueError("native row graph replay exceeds captured context bound")
         runtime = self.session.runtime or get_hip_runtime()
         token_host = np.asarray(tokens, dtype=np.int64)
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.session._token_buf,
-            host_array_ptr(token_host),
+            token_host,
             token_host.nbytes,
             runtime=runtime,
         )

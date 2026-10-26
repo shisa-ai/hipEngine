@@ -557,6 +557,7 @@ def test_planner_source_has_no_device_or_array_dependencies() -> None:
         "malloc(",
         "DeviceBuffer",
         "copy_host_to_device",
+        "copy_host_array_to_device",
         "torch",
         "backend_package_capability",
     ):
@@ -617,7 +618,7 @@ def test_plan_owner_order_and_views_match_the_allocator(
         return buffer
 
     monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
-    monkeypatch.setattr(gguf_runner, "copy_host_to_device", lambda *args, **kwargs: None)
+    monkeypatch.setattr(gguf_runner, "copy_host_array_to_device", lambda *args, **kwargs: None)
     scratch = gguf_runner._GGUFFullAttentionPrefillScratch.allocate(
         runner,
         rows=rows,

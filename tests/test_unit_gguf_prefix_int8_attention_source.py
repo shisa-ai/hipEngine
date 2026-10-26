@@ -97,11 +97,13 @@ def _fixture(monkeypatch, *, selector: str, blocks: tuple[int, ...], start: int,
         allocations.append(array)
         return _buffer(array)
 
-    def upload(buffer, host_ptr, nbytes, *, runtime):
-        ctypes.memmove(buffer.ptr, host_ptr, nbytes)
+    def upload(buffer, array, nbytes=None, *, runtime):
+        count = int(array.nbytes) if nbytes is None else int(nbytes)
+        contiguous = np.ascontiguousarray(array)
+        ctypes.memmove(buffer.ptr, contiguous.ctypes.data, count)
 
     monkeypatch.setattr(gguf, "malloc", malloc)
-    monkeypatch.setattr(gguf, "copy_host_to_device", upload)
+    monkeypatch.setattr(gguf, "copy_host_array_to_device", upload)
     session = object.__new__(gguf.Qwen35GGUFResidentSession)
     session.__dict__.update(
         runtime=SimpleNamespace(),

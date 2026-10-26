@@ -86,9 +86,10 @@ def test_gguf_verify_linear_state_commit_uses_fused_chunked_kernel(monkeypatch) 
         allocated.append(buf)
         return buf
 
-    def fake_copy_host_to_device(buffer, host_ptr, nbytes, *, runtime):
-        _ = host_ptr, runtime
-        h2d_calls.append((int(buffer.ptr), int(nbytes)))
+    def fake_copy_host_array_to_device(buffer, _array, nbytes=None, *, runtime):
+        _ = runtime
+        count = int(_array.nbytes if nbytes is None else nbytes)
+        h2d_calls.append((int(buffer.ptr), count))
 
     def fake_chunked(*args, **kwargs):
         commit_calls.append((args, kwargs))
@@ -96,7 +97,7 @@ def test_gguf_verify_linear_state_commit_uses_fused_chunked_kernel(monkeypatch) 
     monkeypatch.delenv("HIPENGINE_FUSED_LINEAR_STATE_COMMIT", raising=False)
     monkeypatch.delenv("HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED", raising=False)
     monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
-    monkeypatch.setattr(gguf_runner, "copy_host_to_device", fake_copy_host_to_device)
+    monkeypatch.setattr(gguf_runner, "copy_host_array_to_device", fake_copy_host_array_to_device)
     monkeypatch.setattr(gguf_runner, "linear_state_pair_commit_chunked_i32", fake_chunked)
     monkeypatch.setattr(gguf_runner, "linear_state_pair_commit_i32", lambda *args, **kwargs: None)
     monkeypatch.setattr(

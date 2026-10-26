@@ -114,7 +114,7 @@ def _install_fake_device(monkeypatch):
         return buffer
 
     monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
-    monkeypatch.setattr(gguf_runner, "copy_host_to_device", lambda *args, **kwargs: None)
+    monkeypatch.setattr(gguf_runner, "copy_host_array_to_device", lambda *args, **kwargs: None)
     return allocations
 
 

@@ -73,6 +73,12 @@ class _FakeDevice:
         data[offset:offset + count] = ctypes.string_at(int(host_ptr), count)
         self.copies.append(("h2d", count))
 
+    def copy_host_array_to_device(self, buffer, array, nbytes=None, *, runtime=None):  # noqa: ARG002
+        count = int(array.nbytes) if nbytes is None else int(nbytes)
+        data, offset = self._region(buffer.ptr, count)
+        data[offset:offset + count] = np.ascontiguousarray(array).tobytes()[:count]
+        self.copies.append(("h2d", count))
+
     def copy_device_to_host(self, host_ptr, buffer, nbytes=None, *, runtime=None):  # noqa: ARG002
         count = buffer.nbytes if nbytes is None else int(nbytes)
         data, offset = self._region(buffer.ptr, count)
@@ -214,7 +220,7 @@ class _Harness:
         self.projector = _FakeSidecarProjector(self.device, self.weights, self.bias)
         monkeypatch.setattr(gguf_runner, "malloc", self.device.malloc)
         monkeypatch.setattr(gguf_runner, "free", self.device.free)
-        monkeypatch.setattr(gguf_runner, "copy_host_to_device", self.device.copy_host_to_device)
+        monkeypatch.setattr(gguf_runner, "copy_host_array_to_device", self.device.copy_host_array_to_device)
         monkeypatch.setattr(gguf_runner, "copy_device_to_host", self.device.copy_device_to_host)
         # Prefix seeding writes through the cache module's own copy bindings.
         monkeypatch.setattr(dms_prefill_cache, "copy_host_to_device", self.device.copy_host_to_device)

@@ -8,7 +8,6 @@ table transfers; no GPU is touched.
 
 from __future__ import annotations
 
-import ctypes
 from types import SimpleNamespace
 
 import numpy as np
@@ -79,8 +78,9 @@ class _FakeDeviceAllocator:
     def free(self, buffer, **kwargs):
         self.live.remove(buffer.ptr)
 
-    def upload(self, buffer, host, nbytes, **kwargs):
-        self.uploaded[buffer.ptr] = ctypes.string_at(host, nbytes)
+    def upload(self, buffer, array, nbytes=None, **kwargs):
+        count = int(array.nbytes if nbytes is None else nbytes)
+        self.uploaded[buffer.ptr] = np.ascontiguousarray(array).tobytes()[:count]
 
 
 def _session(
@@ -94,7 +94,7 @@ def _session(
     monkeypatch.setattr(runner, "free", allocator.free)
     monkeypatch.setattr(gguf_kv, "malloc", allocator.malloc)
     monkeypatch.setattr(gguf_kv, "free", allocator.free)
-    monkeypatch.setattr(runner, "copy_host_to_device", allocator.upload)
+    monkeypatch.setattr(runner, "copy_host_array_to_device", allocator.upload)
     session = object.__new__(runner.Qwen35GGUFResidentSession)
     session.defer_kv_allocation = True
     session.runner = _allocator_fake_runner()
@@ -402,7 +402,7 @@ def test_growth_table_upload_failure_rolls_back_commit_and_tables(
     library = FakeSessionVmmLibrary()
     session, allocator = _session(monkeypatch, library=library)
     pool = session.create_global_device_kv_pool(page_capacity=4, generation=1)
-    real_upload = runner.copy_host_to_device
+    real_upload = runner.copy_host_array_to_device
     try:
         baseline_pages = pool.current_pages
         baseline_committed = _committed_snapshot(pool)
@@ -412,10 +412,10 @@ def test_growth_table_upload_failure_rolls_back_commit_and_tables(
         def failing_upload(*args, **kwargs):
             raise RuntimeError("pointer table upload failed")
 
-        monkeypatch.setattr(runner, "copy_host_to_device", failing_upload)
+        monkeypatch.setattr(runner, "copy_host_array_to_device", failing_upload)
         with pytest.raises(RuntimeError, match="pointer table upload failed"):
             pool.grow(1)
-        monkeypatch.setattr(runner, "copy_host_to_device", real_upload)
+        monkeypatch.setattr(runner, "copy_host_array_to_device", real_upload)
 
         assert pool.current_pages == baseline_pages
         assert _committed_snapshot(pool) == baseline_committed
@@ -432,7 +432,7 @@ def test_growth_descriptor_upload_failure_rolls_back_commit_and_tables(
     library = FakeSessionVmmLibrary()
     session, allocator = _session(monkeypatch, library=library)
     pool = session.create_global_device_kv_pool(page_capacity=4, generation=1)
-    real_upload = runner.copy_host_to_device
+    real_upload = runner.copy_host_array_to_device
     descriptor_pointer = pool.global_pool.storage_view().metadata_descriptor_ptr
     try:
         baseline_pages = pool.current_pages
@@ -444,10 +444,10 @@ def test_growth_descriptor_upload_failure_rolls_back_commit_and_tables(
                 raise RuntimeError("descriptor upload failed")
             return real_upload(buffer, host, nbytes, **kwargs)
 
-        monkeypatch.setattr(runner, "copy_host_to_device", failing_upload)
+        monkeypatch.setattr(runner, "copy_host_array_to_device", failing_upload)
         with pytest.raises(RuntimeError, match="descriptor upload failed"):
             pool.grow(1)
-        monkeypatch.setattr(runner, "copy_host_to_device", real_upload)
+        monkeypatch.setattr(runner, "copy_host_array_to_device", real_upload)
 
         assert pool.current_pages == baseline_pages
         assert _committed_snapshot(pool) == baseline_committed
@@ -633,7 +633,7 @@ def test_vmm_shrink_restores_the_commit_when_table_upload_fails(
     library = FakeSessionVmmLibrary()
     session, allocator = _session(monkeypatch, library=library)
     pool = session.create_global_device_kv_pool(page_capacity=4, generation=1)
-    real_upload = runner.copy_host_to_device
+    real_upload = runner.copy_host_array_to_device
     try:
         pool._max_pages = 12
         pool._growth_chunk_pages = 1
@@ -645,10 +645,10 @@ def test_vmm_shrink_restores_the_commit_when_table_upload_fails(
         def failing_upload(*args, **kwargs):
             raise RuntimeError("retained table upload failed")
 
-        monkeypatch.setattr(runner, "copy_host_to_device", failing_upload)
+        monkeypatch.setattr(runner, "copy_host_array_to_device", failing_upload)
         with pytest.raises(RuntimeError, match="retained table upload failed"):
             pool.shrink_idle(now_seconds=1.0)
-        monkeypatch.setattr(runner, "copy_host_to_device", real_upload)
+        monkeypatch.setattr(runner, "copy_host_array_to_device", real_upload)
 
         assert pool.current_pages == 8
         assert _committed_snapshot(pool) == baseline_committed

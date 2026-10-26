@@ -411,8 +411,9 @@ def test_bulk_prefill_capture_populates_all_prompt_hidden_rows(monkeypatch: pyte
             calls.append(("scratch", int(start), int(rows), int(total_tokens), runtime, int(stream)))
             return SimpleNamespace(norm=SimpleNamespace(ptr=0x7000))
 
-    def fake_copy_host_to_device(buf, host_ptr, nbytes, *, runtime) -> None:
-        calls.append(("copy_host_to_device", int(buf.ptr), int(nbytes), runtime))
+    def fake_copy_host_array_to_device(buf, _array, nbytes=None, *, runtime) -> None:
+        count = int(_array.nbytes if nbytes is None else nbytes)
+        calls.append(("copy_host_array_to_device", int(buf.ptr), count, runtime))
 
     def fake_embedding(weight, token_ptr, out_ptr, **kwargs: object) -> None:
         calls.append(
@@ -453,7 +454,7 @@ def test_bulk_prefill_capture_populates_all_prompt_hidden_rows(monkeypatch: pyte
     def fake_set_decode_position_i64(position_buf, context_buf, position, **kwargs: object) -> None:
         calls.append(("set_decode_position", int(position_buf), int(context_buf), int(position)))
 
-    monkeypatch.setattr(gguf_runner, "copy_host_to_device", fake_copy_host_to_device)
+    monkeypatch.setattr(gguf_runner, "copy_host_array_to_device", fake_copy_host_array_to_device)
     monkeypatch.setattr(gguf_runner, "launch_gguf_embedding", fake_embedding)
     monkeypatch.setattr(gguf_runner, "gguf_rmsnorm_bf16_f32_weight", fake_bf16)
     monkeypatch.setattr(gguf_runner, "gguf_rmsnorm_bf16_f32_weight_out_f32", fake_f32)
@@ -563,8 +564,9 @@ def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: py
             calls.append(("scratch", int(start), int(rows), int(total_tokens), runtime, int(stream)))
             return SimpleNamespace(norm=SimpleNamespace(ptr=0x7000))
 
-    def fake_copy_host_to_device(buf, host_ptr, nbytes, *, runtime) -> None:
-        calls.append(("copy_host_to_device", int(buf.ptr), int(nbytes), runtime))
+    def fake_copy_host_array_to_device(buf, _array, nbytes=None, *, runtime) -> None:
+        count = int(_array.nbytes if nbytes is None else nbytes)
+        calls.append(("copy_host_array_to_device", int(buf.ptr), count, runtime))
 
     def fake_embedding(weight, token_ptr, out_ptr, **kwargs: object) -> None:
         calls.append(("embedding", int(token_ptr), int(out_ptr), int(kwargs["rows"])))
@@ -572,7 +574,7 @@ def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: py
     def fake_set_decode_position_i64(position_buf, context_buf, position, **kwargs: object) -> None:
         calls.append(("set_decode_position", int(position_buf), int(context_buf), int(position)))
 
-    monkeypatch.setattr(gguf_runner, "copy_host_to_device", fake_copy_host_to_device)
+    monkeypatch.setattr(gguf_runner, "copy_host_array_to_device", fake_copy_host_array_to_device)
     monkeypatch.setattr(gguf_runner, "launch_gguf_embedding", fake_embedding)
     monkeypatch.setattr(gguf_runner, "set_decode_position_i64", fake_set_decode_position_i64)
 

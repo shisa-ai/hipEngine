@@ -1,5 +1,4 @@
 """Exercise runtime pointer-table publication across repeated KV pool growth."""
-import ctypes
 from types import SimpleNamespace
 
 import numpy as np
@@ -29,14 +28,15 @@ def test_runtime_growth_preserves_every_previous_device_page_pointer(monkeypatch
     def free(buffer, **kwargs):
         live.remove(buffer.ptr)
 
-    def upload(buffer, host, nbytes, **kwargs):
-        uploaded[buffer.ptr] = ctypes.string_at(host, nbytes)
+    def upload(buffer, array, nbytes=None, **kwargs):
+        count = int(array.nbytes if nbytes is None else nbytes)
+        uploaded[buffer.ptr] = np.ascontiguousarray(array).tobytes()[:count]
 
     monkeypatch.setattr(runner, 'malloc', malloc)
     monkeypatch.setattr(runner, 'free', free)
     monkeypatch.setattr(gguf_kv, 'malloc', malloc)
     monkeypatch.setattr(gguf_kv, 'free', free)
-    monkeypatch.setattr(runner, 'copy_host_to_device', upload)
+    monkeypatch.setattr(runner, 'copy_host_array_to_device', upload)
     session = object.__new__(runner.Qwen35GGUFResidentSession)
     session.defer_kv_allocation = True
     session.runner = _allocator_fake_runner()
@@ -128,14 +128,15 @@ def _chunk_provider_pool(monkeypatch):
     def free(buffer, **kwargs):
         live.remove(buffer.ptr)
 
-    def upload(buffer, host, nbytes, **kwargs):
-        uploaded[buffer.ptr] = ctypes.string_at(host, nbytes)
+    def upload(buffer, array, nbytes=None, **kwargs):
+        count = int(array.nbytes if nbytes is None else nbytes)
+        uploaded[buffer.ptr] = np.ascontiguousarray(array).tobytes()[:count]
 
     monkeypatch.setattr(runner, 'malloc', malloc)
     monkeypatch.setattr(runner, 'free', free)
     monkeypatch.setattr(gguf_kv, 'malloc', malloc)
     monkeypatch.setattr(gguf_kv, 'free', free)
-    monkeypatch.setattr(runner, 'copy_host_to_device', upload)
+    monkeypatch.setattr(runner, 'copy_host_array_to_device', upload)
     session = object.__new__(runner.Qwen35GGUFResidentSession)
     session.defer_kv_allocation = True
     session.runner = _allocator_fake_runner()

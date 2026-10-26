@@ -32,7 +32,7 @@ def test_prefill_estimator_does_not_allocate_upload_or_build_host_metadata(monke
         raise AssertionError('size-only planning must not materialize scratch')
 
     monkeypatch.setattr(runtime, 'malloc', forbidden)
-    monkeypatch.setattr(runtime, 'copy_host_to_device', forbidden)
+    monkeypatch.setattr(runtime, 'copy_host_array_to_device', forbidden)
     monkeypatch.setattr(runtime, '_rope_tables', forbidden)
     monkeypatch.setattr(runtime.np, 'zeros', forbidden)
     monkeypatch.setattr(runtime.np, 'empty', forbidden)
