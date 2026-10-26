@@ -422,8 +422,7 @@ def _upload_dense_metadata(
     whole prefill pass pays it once rather than once per projection.
     """
 
-    from hipengine.core.memory import host_array_ptr
-    from hipengine.core.runtime import MemcpyKind
+    from hipengine.core.memory import DeviceBuffer, copy_host_array_to_device
 
     metadata = build_iq_source_mmq128_metadata([int(rows)])
     base = workspace.metadata_ptr()
@@ -443,8 +442,11 @@ def _upload_dense_metadata(
         nbytes = int(payload.nbytes)
         if nbytes > _METADATA_NBYTES:
             raise ValueError("dense IQ MMQ metadata exceeds its workspace tail")
-        (runtime or get_hip_runtime()).memcpy(
-            base, host_array_ptr(payload), nbytes, MemcpyKind.HOST_TO_DEVICE
+        # ``metadata_ptr`` is the raw tail address, so hand the helper a
+        # non-owning view of that tail: it keeps the payload alive and bounds
+        # the copy by the same tail size the offset arithmetic already uses.
+        copy_host_array_to_device(
+            DeviceBuffer(base, _METADATA_NBYTES), payload, nbytes, runtime=runtime
         )
         workspace._uploaded_rows = int(rows)
     return compact_ptr, mmq_start_ptr, tile_ptr, int(metadata.mmq_total_rows)

@@ -402,10 +402,10 @@ class Gemma4ExpertScratch:
             # instead of paying a kernel launch on every prefill.
             import numpy as np
 
-            from hipengine.core.memory import copy_host_to_device, host_array_ptr
+            from hipengine.core.memory import copy_host_array_to_device
 
             iota = np.arange(self.total_lanes, dtype=np.int64)
-            copy_host_to_device(buf, host_array_ptr(iota))
+            copy_host_array_to_device(buf, iota)
         return buf
 
     def free(self) -> None:

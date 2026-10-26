@@ -219,11 +219,7 @@ def q4_prefill(runner, hidden_rows, rows, start):
     """
     from numbers import Integral
 
-    from hipengine.core.memory import (
-        copy_host_array_to_device,
-        copy_host_to_device,
-        host_array_ptr,
-    )
+    from hipengine.core.memory import copy_host_array_to_device
 
     spec = runner.spec
     hidden = spec.hidden_size
@@ -411,7 +407,9 @@ def q4_prefill(runner, hidden_rows, rows, start):
             hidden_rows.ptr, down_bf16.ptr, runner._ones_hidden.ptr, hidden_rows.ptr,
             rows * hidden, hidden, library=runner.library, runtime=runtime)
     runner._ctx_len_host[0] = start + rows
-    copy_host_to_device(runner._ctx_len, host_array_ptr(runner._ctx_len_host))
+    copy_host_array_to_device(
+        runner._ctx_len, runner._ctx_len_host, runner._ctx_len.nbytes
+    )
 
 
 LINEAR_VARIANTS = (
