@@ -2483,28 +2483,30 @@
       "start_line": 2736,
       "end_line": 2750,
       "sha256": "d53c3662dbd1c694107bec21843b2ae19e8e0df21c284df13f3f4c0e51d11a02",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "Profile plans own head grouping: production quad, strict 0; two-head diagnostic and geometry guard preserved. Corrected ENVS default and removed obsolete mode-chain removal instruction.31 profile/route tests passed; docs and audit gates passed."
+      ],
       "subitems": [
         {
           "line": 2738,
           "text": "- `strict_h256_head_quad_rows_spans` shares K/V across four heads,",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 2742,
           "text": "- Synthetic512/1024 leaf ratios1.033x/1.063x versus two-head candidate;",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 2744,
           "text": "- Full state/KV gate passes six cases including all4 p4096 categories,",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 2747,
           "text": "- Production bindsquad,strict0. CPU recovery penalty persists and is",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

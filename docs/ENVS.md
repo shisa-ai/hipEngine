@@ -885,7 +885,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_QSA_WAVE32` | `1` | Uses the wave32 QSA paged sparse-attention decode kernel for head_dim 128. |
 | `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE` | `0` | Opt-in ordered sparse-attention decode route for head_dim 256. |
 | `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2` | `0` | Second-generation ordered decode route (requires the v1 flag and `0 < selected_count <= 4096`). |
-| `HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR` | `0` | Head-pairing for the strict H256 page256 wave prefill: `1`/`quad` pairs query heads (24q/2kv shapes). |
+| `HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR` | profile-bound: production `quad`, strict `0` | H256 page256 wave prefill for 24 query / 2 KV heads: `quad` selects four-head grouping, `1` selects the two-head diagnostic variant, and `0` keeps the single-head variant. |
 | `HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL` | `page256` under production | Selects the `strict_h256_page256_wave_rows_spans` prefill variant; otherwise `strict_h256_wave_rows_spans`. |
 | `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` | production profile | Uses the flash sparse-attention prefill owner for dense rows with head_dim 256, gated by the `HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS` layer list. |
 | `HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL` | production profile | Uses the sigmoid register GDN recurrence prefill kernel for rows>=2 and the (16, 48, 128) head geometry. |
