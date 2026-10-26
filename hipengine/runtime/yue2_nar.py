@@ -33,7 +33,6 @@ Rounding contract, from the pinned upstream ``yue2/nar.py`` and
 from __future__ import annotations
 
 import math
-import os
 from dataclasses import dataclass, field
 from numbers import Integral
 from typing import Iterable, Sequence
@@ -283,6 +282,29 @@ def validate_chunk_context(chunk: AcousticChunk, max_position_embeddings: int) -
 #: is what keeps a full-context chunk inside a few hundred megabytes.
 _TILE_ROWS = 2048
 
+#: The tensor-core attention's fixed head geometry, mirroring ``nar_wmma.hip``
+#: (``Q_HEADS``, ``KV_HEADS``, ``HEAD_DIM``). The device entry point rejects any
+#: other shape rather than computing something wrong.
+_WMMA_ATTENTION_Q_HEADS = 16
+_WMMA_ATTENTION_KV_HEADS = 8
+_WMMA_ATTENTION_HEAD_DIM = 128
+
+
+def wmma_attention_supported(num_q_heads: int, num_kv_heads: int, head_dim: int) -> bool:
+    """Whether the tensor-core NAR attention implements this head geometry.
+
+    Selection is a geometry guard, not a policy switch. The tensor-core kernel
+    changes arithmetic by design (f16 WMMA operands, f16 output accumulator), so
+    the strict scalar ``nar_attention_f32`` kernel stays registered as the parent
+    oracle, and it is what every geometry outside this shape runs.
+    """
+
+    return (
+        int(head_dim) == _WMMA_ATTENTION_HEAD_DIM
+        and int(num_q_heads) == _WMMA_ATTENTION_Q_HEADS
+        and int(num_kv_heads) == _WMMA_ATTENTION_KV_HEADS
+    )
+
 
 class Yue2NarRuntime:
     """Flow-matching (NAR) runner over a resident :class:`Yue2ArRuntime`.
@@ -337,14 +359,9 @@ class Yue2NarRuntime:
         self._scale = 1.0 / float(np.sqrt(head_dim))
         #: The tensor-core attention implements the production head geometry
         #: (16 query heads over 8 key/value heads at head_dim 128). It changes
-        #: arithmetic, so the scalar kernel stays as the strict fallback and
-        #: ``HIPENGINE_YUE2_NAR_ATTENTION=scalar`` selects it.
-        self._wmma_attention = (
-            os.environ.get("HIPENGINE_YUE2_NAR_ATTENTION", "wmma").lower() != "scalar"
-            and head_dim == 128
-            and heads == 16
-            and kv_heads == 8
-        )
+        #: arithmetic, so the strict scalar kernel stays registered as the parent
+        #: oracle and runs for every other geometry.
+        self._wmma_attention = wmma_attention_supported(heads, kv_heads, head_dim)
 
         def keep(buffer: DeviceBuffer) -> DeviceBuffer:
             self._buffers.append(buffer)
@@ -637,6 +654,18 @@ class Yue2NarRuntime:
         )
         kernels.f32_to_bf16(self._time_f32.ptr, self._time_bf16.ptr, hidden, stream=0, runtime=self.runtime)
 
+    def _attention_kernel(self):
+        """The attention wrapper this model's head geometry selects.
+
+        The tensor-core kernel is used only for the geometry it implements.
+        Every other geometry runs the strict scalar kernel, which stays
+        registered as the bit-exact parent oracle.
+        """
+
+        if self._wmma_attention:
+            return nar_kernels.nar_attention_wmma
+        return nar_kernels.nar_attention_f32
+
     def _velocity(self, state: DeviceBuffer, raw_t: float, out: DeviceBuffer) -> None:
         """Evaluate the flow-matching velocity at ``state`` into ``out``.
 
@@ -745,11 +774,7 @@ class Yue2NarRuntime:
                     self._rope_positions.ptr + start * 8, self._q_out.ptr, 0,
                     count, self._heads, 0, self._head_dim, runtime=self.runtime,
                 )
-                attention = (
-                    nar_kernels.nar_attention_wmma
-                    if self._wmma_attention
-                    else nar_kernels.nar_attention_f32
-                )
+                attention = self._attention_kernel()
                 attention(
                     self._q_out.ptr, self._nar_k.ptr, self._nar_v.ptr, ar_k.ptr, ar_v.ptr,
                     self._attn_f32.ptr, count, self._visible, self._heads, self._kv_heads,

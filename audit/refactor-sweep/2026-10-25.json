@@ -2333,23 +2333,23 @@
       "start_line": 2608,
       "end_line": 2628,
       "sha256": "e83bc623f81e922a45381c755caacc1439b5a0449adb556fa2909cd4d7baf4cf",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-flag-retired",
+      "evidence": ["Removed environment rollback after release-cycle condition; geometry predicate and runtime dispatch preserve unsupported-shape scalar fallback and registered parent oracle. CPU bundle, constructor tests and GPU NAR gates passed. Full-model checkpoint unavailable. worklog/entries/20261026T173737.421794Z-cleanup-refactor-r0086-c42e6a.md."],
       "subitems": [
         {
           "line": 2610,
           "text": "- `nar_wmma.hip` became the default attention for the production head geometry",
-          "status": "pending"
+          "status": "resolved-flag-retired"
         },
         {
           "line": 2616,
           "text": "- `HIPENGINE_YUE2_NAR_ATTENTION=scalar` selects `nar_attention_f32`, which stays",
-          "status": "pending"
+          "status": "resolved-flag-retired"
         },
         {
           "line": 2623,
           "text": "- Removal condition: once the tensor-core path has held through a release cycle",
-          "status": "pending"
+          "status": "resolved-flag-retired"
         }
       ]
     },

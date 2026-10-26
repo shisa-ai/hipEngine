@@ -86,8 +86,10 @@ def main() -> int:
     # --- stage instrumentation ----------------------------------------------------
     attention_calls: list[tuple[int, int]] = []
     gemm_calls: list[tuple[int, int, int]] = []
-    attention_name = "nar_attention_wmma" if nar._wmma_attention else "nar_attention_f32"
-    attention = getattr(nar_kernels, attention_name)
+    # Ask the runtime which kernel it dispatches to, so the timing labels cannot
+    # drift from the selection rule.
+    attention = nar._attention_kernel()
+    attention_name = attention.__name__
 
     def timed_attention(q, nk, nv, ak, av, out, rows, keys, heads, kv_heads, head_dim, scale, **kw):
         attention_calls.append((rows, keys))

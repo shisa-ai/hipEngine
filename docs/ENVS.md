@@ -779,12 +779,6 @@ hidden-bisect harnesses. Leave everything except the documented defaults unset.
 | `HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_FENCE` | false | Inserts a sync fence at the sampler suffix boundary. |
 | `HIPENGINE_QWEN35_BATCH_SAMPLE_SUFFIX_KERNEL_FENCE` | false | Inserts a kernel-scope fence at the sampler suffix boundary. |
 
-## YuE2 variables
-
-| Variable | Default | Values / notes |
-| --- | --- | --- |
-| `HIPENGINE_YUE2_NAR_ATTENTION` | `wmma` | Attention kernel for the YuE2 acoustic solver at its production head geometry (16 query heads over 8 key/value heads at head_dim 128). `wmma` is the tensor-core `nar_wmma.hip` kernel; `scalar` selects the strict FP32 `nar_attention_f32`, which is bit-exact against the recorded parent kernel and is the solver's debugging oracle and bisection point. The tensor-core path changes arithmetic by design and is held to the production profile gates instead. Removal condition in [`REFACTOR.md`](REFACTOR.md). |
-
 ## Qwen4 experimental variables
 
 These select kernel routes inside the Qwen4Exp GGUF runner. The registered
@@ -1167,6 +1161,9 @@ harnesses read them but do not own them.
 ## Names that are not environment variables
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_YUE2_NAR_ATTENTION` is retired and appears only in regression
+  tests. Attention selection uses kernel geometry; setting it has no effect.
 
 - `-D` preprocessor macros inside kernel and micro-benchmark builds
   (`HIPENGINE_DENSE_WIDE_EXPORT`, `HIPENGINE_DENSE_WIDE_EXPORT_BF16`,
