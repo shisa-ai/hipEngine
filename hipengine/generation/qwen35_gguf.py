@@ -995,7 +995,12 @@ def _trace_mtp2_resolution(reason: str) -> None:
 
 
 def _gguf_mtp_server_candidate_budget() -> int:
-    """Return the dense MTP candidate budget for server serving (default 3)."""
+    """Return the configured dense MTP fallback depth (default 3).
+
+    The loaded owner's published candidate budget is authoritative. This value
+    only seeds ``speculative_candidate_budget_default`` when no evidence row
+    describes the resident cell, or when a generator runs without an owner.
+    """
 
     raw = os.environ.get(_GGUF_MTP_SERVER_CANDIDATE_BUDGET_ENV, "")
     if raw is None or str(raw).strip() == "":
@@ -2523,8 +2528,7 @@ class Qwen35GGUFBringupGenerator:
         signature = (getattr(self, "_prepared_kv_signature", None)
                      or getattr(self, "_pending_sizing_kv_signature", None) or ("bf16",))
         slot_bytes = 2 * dim + 13 if signature[0] == "int8_per_token_head" else 4 * dim + 5
-        budget = int(getattr(self, "speculative_candidate_budget", None)
-                     or self.speculative_candidate_budget_default()) if mtp_sized else 0
+        budget = self._mtp_candidate_budget() if mtp_sized else 0
         prefill_rows = _capacity_prefill_rows_resolver(runner)
         retention = self._dms_exact_budget_retention()
 
@@ -2917,10 +2921,7 @@ class Qwen35GGUFBringupGenerator:
         speculative = None
         if mtp_sized:
             per_verify_row = _gguf_packed_state_linear_bytes(shared_runner, slot_count=1)
-            budget = int(
-                getattr(self, "speculative_candidate_budget", None)
-                or self.speculative_candidate_budget_default()
-            )
+            budget = self._mtp_candidate_budget()
             width = 1
             for physical in (2, 8):
                 if physical <= capacity:
@@ -3838,7 +3839,7 @@ class Qwen35GGUFBringupGenerator:
         return resolver(key=key)
 
     def speculative_candidate_budget_default(self) -> int:
-        """Depth this generator's MTP path uses when unpinned."""
+        """Fallback depth when no loaded owner publishes a candidate budget."""
 
         budget = int(_gguf_mtp_server_candidate_budget())
         declarations = tuple(
@@ -3854,6 +3855,20 @@ class Qwen35GGUFBringupGenerator:
             and declaration.kv_storage == "bf16"
         ]
         return min(budget, max(offered, default=budget))
+
+    def _mtp_candidate_budget(self) -> int:
+        """Depth this resident owner serves MTP with.
+
+        ``LLM`` publishes the resolved depth on the loaded owner. A generator
+        driven without that owner falls back to its own capability-bounded
+        default. Reading the environment here instead would let the fallback
+        replace an explicit or evidence-resolved depth.
+        """
+
+        budget = getattr(self, "speculative_candidate_budget", None)
+        if budget is None:
+            budget = self.speculative_candidate_budget_default()
+        return int(budget)
 
     def generate(self, request: GenerationRequest) -> list[str]:
         outputs = self.generate_detailed(request)
@@ -4674,7 +4689,7 @@ class Qwen35GGUFBringupGenerator:
         stop_request = _request_with_tokenizer_eos(request, self.tokenizer)
         eos_token_id = getattr(stop_request, "eos_token_id", None)
         stop_token_ids = tuple(getattr(stop_request, "stop_token_ids", ()) or ())
-        candidate_budget = _gguf_mtp_server_candidate_budget()
+        candidate_budget = self._mtp_candidate_budget()
         target_verify_mode = _gguf_mtp_server_target_verify_mode()
         with self._resident_session_scope(
             shared_runner=shared_runner,

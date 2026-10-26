@@ -250,6 +250,72 @@ def test_dense_public_mtp_route_uses_transactional_provider_and_recycles_owner(
     assert mtp["target_verify_batching"] == "single_slot_transactional_native"
 
 
+def test_dense_public_mtp_route_serves_the_published_candidate_budget(
+    monkeypatch,
+) -> None:
+    """An explicit or evidence depth is not replaced by the generator fallback."""
+
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_VERIFY_MODE", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", "3")
+    calls: list[tuple] = []
+    config = SimpleNamespace(
+        ignored_block_ids=(64,),
+        is_moe=False,
+        architecture="qwen35",
+    )
+
+    class FakeDecoder:
+        def __init__(self, target, provider, **kwargs):
+            calls.append(("decoder_init", kwargs))
+
+        def generate(self, prompt_ids, **kwargs):
+            return SimpleNamespace(
+                token_ids=(1, 2, 3),
+                cycle_records=(),
+                prefill_seconds=0.0,
+                decode_seconds=0.0,
+                proposal_seconds=0.0,
+                verify_seconds=0.0,
+            )
+
+        def close(self):
+            return None
+
+    provider = SimpleNamespace(release_request=lambda request_id: None)
+
+    @contextmanager
+    def session_scope(**kwargs):
+        yield SimpleNamespace(
+            require_cached_build=True,
+            target_layout=SimpleNamespace(max_sequence_length=256),
+        ), False
+
+    generator = _generator()
+    generator._prepared_max_sequence_length = 64
+    generator._shared_runner = SimpleNamespace()
+    generator._resident_session_scope = session_scope
+    generator._acquire_dense_mtp_draft_provider = lambda *args, **kwargs: (
+        provider,
+        None,
+        False,
+    )
+    generator._release_mtp_draft_runner = lambda key, draft: None
+    generator.speculative_candidate_budget = 5
+    monkeypatch.setattr(
+        "hipengine.runtime.qwen35_gguf_mtp.Qwen35GGUFMTPDecodeSession",
+        FakeDecoder,
+    )
+
+    generator._generate_dense_speculative_mtp_detailed(
+        _request(prompts=("long",), max_tokens=3),
+        config=config,
+    )
+
+    decoder_init = next(call for call in calls if call[0] == "decoder_init")
+    assert decoder_init[1]["candidate_budget"] == 5
+    assert generator.last_batch_generation["speculative_mtp"]["draft_n_max"] == 5
+
+
 def test_gguf_generator_close_releases_pooled_children_before_shared_weights() -> None:
     events: list[str] = []
 

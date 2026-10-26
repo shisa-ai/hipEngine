@@ -2152,23 +2152,25 @@
       "start_line": 2472,
       "end_line": 2493,
       "sha256": "54a8a73cc5b38fb365c3ba8fb43549519b7721868fcc09f7f4aecd5961e2db0f",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-owner-publication",
+      "evidence": [
+        "Fixed leaf budget publication and dense consumer precedence; CPU and public gfx1151 checks pass. Direct generator fallback migration and provider-declared pre-load default remain. worklog/entries/20261026T093718.344649Z-cleanup-refactor-r0080-3a41ab.md."
+      ],
       "subitems": [
         {
           "line": 2474,
           "text": "- Resolved 2026-09-17: an omitted `--speculative-candidate-budget`",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2483,
           "text": "- Remaining debt: the two budget knobs stay separate. The server surface",
-          "status": "pending"
+          "status": "partial-owner-publication"
         },
         {
           "line": 2489,
           "text": "- Remaining debt: `_candidate_budget_resolution` keeps a three-source ladder",
-          "status": "pending"
+          "status": "partial-owner-publication"
         }
       ]
     },

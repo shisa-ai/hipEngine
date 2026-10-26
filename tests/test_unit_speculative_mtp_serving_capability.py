@@ -772,6 +772,23 @@ def test_moe_default_depth_uses_capability_not_automatic_policy(monkeypatch, bac
     assert Qwen35GGUFBringupGenerator.speculative_candidate_budget_default(generator) == 2
 
 
+@pytest.mark.parametrize(("published", "expected"), ((5, 5), (None, 2)))
+def test_serving_budget_prefers_the_published_owner_depth(
+    monkeypatch, published, expected
+) -> None:
+    """An explicit or evidence-resolved depth outranks the generator fallback."""
+
+    from hipengine.generation import qwen35_gguf as module
+
+    monkeypatch.setattr(module, "_gguf_mtp_server_candidate_budget", lambda: 2)
+    generator = SimpleNamespace(
+        speculative_candidate_budget=published,
+        speculative_candidate_budget_default=lambda: 2,
+    )
+
+    assert Qwen35GGUFBringupGenerator._mtp_candidate_budget(generator) == expected
+
+
 def test_gfx1151_moe_automatic_ar_keeps_explicit_mtp_capability():
     from hipengine.server.api import _serving_plan_route_decision
 
@@ -1391,6 +1408,37 @@ def test_budget_resolution_reports_requested_resolved_and_source() -> None:
         "candidate_budget": 3,
         "candidate_budget_source": "model_plugin_evidence",
     }
+
+
+@pytest.mark.parametrize("already_resolved", (False, True))
+def test_published_budget_reaches_the_wrapped_resident_generator(already_resolved) -> None:
+    """The service wrapper forwards reads, but the consumer is the inner owner."""
+
+    from hipengine.generation.engine_loop import (
+        EngineLoopConfig,
+        SubmitPollTextGenerator,
+    )
+
+    class Generator:
+        def generate(self, request):
+            return list(request.prompts)
+
+        def max_qualified_speculative_candidate_budget(self, **kwargs):
+            return 3
+
+    inner = Generator()
+    wrapper = SubmitPollTextGenerator(
+        inner, config=EngineLoopConfig(max_active_requests=1)
+    )
+    llm = _budget_resolution_llm(wrapper)
+    if already_resolved:
+        llm.speculative_candidate_budget = 3
+        llm.speculative_candidate_budget_source = "model_plugin_evidence"
+
+    llm._publish_candidate_budget(wrapper)
+
+    assert inner.speculative_candidate_budget == 3
+    assert llm.speculative_candidate_budget_resolution["candidate_budget"] == 3
 
 
 # ---------------------------------------------------------------------------

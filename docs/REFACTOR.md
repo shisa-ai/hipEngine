@@ -2757,12 +2757,16 @@ The following records the superseded implementation, not current behavior:
   unchanged and an unservable one is warned about instead of silently
   rewritten. See `docs/ENVS.md` and
   `worklog/entries/20260917T113608.088508Z-lhl-mtp-candidate-budget-capability-f876c3.md`.
-- Remaining debt: the two budget knobs stay separate. The server surface
-  (`--speculative-candidate-budget`) and the generator surface
-  (`HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET`, default 3) describe the same dense MTP
-  depth; the generator value is now only a fallback when no evidence row
-  describes the cell. Collapse them into one capability-owned setting once the
-  adapter budget is always published by the loaded owner.
+- Fixed 2026-10-26: `LLM` publishes the resolved depth through service wrappers
+  to the resident generator, including when the depth was resolved before the
+  owner was constructed. Dense C1 generation and workspace sizing consume that
+  published value rather than rereading the fallback environment variable.
+  `HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET` remains the direct-generator fallback;
+  it cannot replace a published explicit or model-resolved depth.
+- Remaining cleanup: consolidate the fallback configuration once direct
+  generator callers migrate to an owner-published budget. Preserve their
+  explicit settings during that migration; deleting the variable alone would
+  silently change diagnostic and harness requests.
 - Remaining debt: `_candidate_budget_resolution` keeps a three-source ladder
   (explicit / engine-resolved / provider-declared). Once every generator
   publishes a resolution, the provider branch is only needed for pre-load

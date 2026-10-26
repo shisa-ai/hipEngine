@@ -52,6 +52,27 @@ def _declare_serving_capacity(generator: Any, max_active_requests: int | None) -
         declare(None if max_active_requests is None else int(max_active_requests))
 
 
+def _candidate_budget_owner(generator: Any) -> Any:
+    """Return the loaded generator that consumes the candidate depth.
+
+    ``LLM`` holds a service wrapper whose ``inner`` chain ends at the resident
+    generator. Reads forward through that chain, but a write to the wrapper
+    would leave the consumer reading its own fallback.
+    """
+
+    owner = generator
+    seen: set[int] = set()
+    while id(owner) not in seen:
+        seen.add(id(owner))
+        inner = getattr(owner, "inner", None)
+        if inner is None or inner is owner:
+            break
+        if not (hasattr(inner, "generate") or hasattr(inner, "inner")):
+            break
+        owner = inner
+    return owner
+
+
 def _factory_capacity_kwargs(factory, *, max_sequence_length, resident_capacity, vision_max_scratch_bytes=None, prefill_max_scratch_bytes=None, vision_max_seconds=None):
     """Forward configured limits only to factories that explicitly declare them."""
     try:
@@ -937,12 +958,14 @@ class LLM:
         """
 
         owner = generator if generator is not None else self._get_text_generator()
+        target = _candidate_budget_owner(owner)
         if self.speculative_candidate_budget_requested is not None:
-            owner.speculative_candidate_budget = int(
+            target.speculative_candidate_budget = int(
                 self.speculative_candidate_budget_requested
             )
             return
         if self.speculative_candidate_budget is not None:
+            target.speculative_candidate_budget = int(self.speculative_candidate_budget)
             return
         if self.speculative_provider is None and callable(
             getattr(owner, "max_qualified_speculative_candidate_budget", None)
@@ -953,7 +976,7 @@ class LLM:
         self.speculative_candidate_budget = budget
         self.speculative_candidate_budget_source = source
         if budget is not None:
-            owner.speculative_candidate_budget = int(budget)
+            target.speculative_candidate_budget = int(budget)
 
     @property
     def speculative_candidate_budget_resolution(self) -> dict[str, Any]:
