@@ -179,7 +179,6 @@ __all__ = [
     "certificate_covers_artifact",
     "certificate_matches_artifact_identity",
     "preflight_qwen35_gguf_artifact",
-    "qwen35_gguf_native_row_binding_errors",
     "qwen35_gguf_planned_weight_digest",
     "qwen35_gguf_planned_weight_record",
     "resolve_qwen35_gguf_artifact_preset",
@@ -2776,64 +2775,6 @@ def preflight_qwen35_gguf_artifact(
             operation_scope_refusals=tuple(operation_scope_refusals),
         ),
     )
-
-
-def qwen35_gguf_native_row_binding_errors(resident_weights: object) -> tuple[str, ...]:
-    """Return every linear-attention alpha/beta resident that is not a valid
-    BF16-pointer owner for ``ar_decode_native_rows``.
-
-    The native multirow route (``Qwen35GGUFResidentSession.step_rows_native``
-    and ``capture_native_rows_graph``) passes ``allocation('raw')`` for
-    ``ssm_alpha``/``ssm_beta`` straight into ``dense_gemv_out_bf16``, whose
-    weight ABI is a ``uint16_t*`` BF16 pointer.  Only a dense-BF16 resident
-    with a real BF16 ``raw`` allocation satisfies that contract.  Raw-GGUF
-    bytes (raw Q8_0), sole-T16 residents without any raw allocation, and
-    dense-F32 residents (uncontracted plain alpha/beta) would be read as the
-    wrong byte stream.  This check is pure host metadata over the actual
-    resident records, with no device work. This legacy diagnostic is NOT
-    execution authorization: native entries consume the complete F4 contract
-    through ``authorize_native_execution``, including embedding/head/MoE and
-    actual physical ownership. Known native routes are requested before
-    allocation through the session's ``execution_routes``.
-    """
-
-    config = getattr(resident_weights, "config", None)
-    layers = tuple(getattr(resident_weights, "layers", ()) or ())
-    layer_types = tuple(getattr(config, "layer_types", ()) or ())
-    errors: list[str] = []
-    for layer_id, layer_type in enumerate(layer_types):
-        if layer_type != LINEAR_ATTENTION or layer_id >= len(layers):
-            continue
-        layer = layers[layer_id]
-        for slot in ("ssm_alpha", "ssm_beta"):
-            weight = getattr(layer, "weights", {}).get(slot)
-            if weight is None:
-                errors.append(
-                    f"layers.{layer_id}.{slot}: resident layer has no {slot!r} weight record"
-                )
-                continue
-            layout = getattr(getattr(weight, "spec", None), "layout", None)
-            try:
-                allocation = weight.allocation("raw")
-            except KeyError:
-                allocation = None
-            tensor_dtype = getattr(getattr(allocation, "tensor", None), "dtype", None)
-            if layout == LAYOUT_DENSE_BF16 and allocation is not None and tensor_dtype == DType.BF16:
-                continue
-            if allocation is None:
-                detail = "no 'raw' allocation exists (a sole-T16 resident cannot resolve the BF16-pointer owner at all)"
-            elif layout != LAYOUT_DENSE_BF16:
-                detail = (
-                    f"resident layout {layout!r} is not a dense-BF16 owner; its 'raw' "
-                    "bytes would be read as BF16 bits by dense_gemv_out_bf16"
-                )
-            else:
-                detail = f"'raw' allocation dtype {tensor_dtype!r} is not BF16"
-            errors.append(
-                f"layers.{layer_id}.{slot}: ar_decode_native_rows requires a dense-BF16 "
-                f"alpha/beta resident (BF16-pointer owner); {detail}"
-            )
-    return tuple(errors)
 
 
 def _model_map_from_info(info) -> Qwen35GGUFModelMap:

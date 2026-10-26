@@ -3737,7 +3737,8 @@
         {
           "line": 3407,
           "text": "- `qwen35_gguf_native_row_binding_errors` is now a legacy alpha/beta diagnostic,",
-          "status": "pending"
+          "status": "resolved-removed",
+          "evidence": ["Removed unused function/export; migrated raw-Q8, dense-F32, sole-T16, missing-record and wrong-dtype coverage to authoritative execution reports with always-running CPU fixtures. See worklog/entries/20261026T222549.230606Z-cleanup-refactor-r0138-native-diagnostic-12a5fc.md."]
         },
         {
           "line": 3410,

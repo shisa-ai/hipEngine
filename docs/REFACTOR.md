@@ -2940,9 +2940,6 @@ should be removed or collapsed.
   per-layer full-model validation; add narrow invalidation at an actual public
   reconfiguration API if one is introduced. No GPU timing claim accompanies
   this host-only cleanup.
-- `qwen35_gguf_native_row_binding_errors` is now a legacy alpha/beta diagnostic,
-  not the execution guard. Remove its export when diagnostic callers/tests
-  migrate to full execution-contract reports; never restore it as authority.
 - Host/deferred embedding and optional expert-sidecar native adapters have no
   complete pre-allocation contract. Keep those route refusals until the actual
   registered/executed adapter and every resident/physical owner are represented
