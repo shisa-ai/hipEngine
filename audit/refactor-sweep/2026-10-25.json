@@ -3494,33 +3494,33 @@
       "start_line": 3214,
       "end_line": 3226,
       "sha256": "1023830e9b901321312dcaff49f85ffe27c2c2219e6001891676a5c724b6d5fb",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": ["Reviewed all five Policy bullets against AGENTS.md: arithmetic promotion retains profile gates; temporary rollback flags need removal conditions; registered strict unfused fallback chains are architectural requirements. This section defines ledger policy, not an unfinished implementation item. Retain it; its evidence requirements do not override lead product decisions or gate implemented capabilities."],
       "subitems": [
         {
           "line": 3216,
           "text": "- Exact, same-suite non-regressive performance wins should become defaults.",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 3217,
           "text": "- Production-profile T1/T2 wins may become profile defaults only after exact",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 3220,
           "text": "- Keep opt-out flags only while they are useful for rollback, bisection, or a",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 3222,
           "text": "- When a flag is left in place, record the removal trigger here.",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 3223,
           "text": "- Do not remove registered strict unfused fallbacks required by `AGENTS.md` and",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
