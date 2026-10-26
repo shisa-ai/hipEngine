@@ -2996,11 +2996,15 @@ should be removed or collapsed.
 
 - `HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE=1` adds the omitted
   K2560/N6144 GDN attention-gate shape to the existing guarded F32 Q8 MMQ
-  policy. It wins p508 and passes numerical scopes but is production-rejected:
-  candidate state repeat 1 differs from repeats 2–3 on the first prompt. Both
-  strict and named production bind it off. Remove the flag after MMQ warmup/
-  correction state is localized or at P3 cleanup; never promote by ignoring the
-  first same-schedule run. Exact raw-Q8 coltile8/rowbatch4 remains fallback.
+  policy. The original state-repeat failure was fixed; the later complete
+  correctness packet passed. The subsequent five-pair comparison was rejected
+  for noisy performance, not state divergence. Both strict and named production
+  bind this scope off. Revisit the selector only with stabilized five-pair
+  evidence, or consolidate it into an operation-complete dense/GR owner; remove
+  the separate selector when that owner replaces it. Exact raw-Q8
+  coltile8/rowbatch4 remains fallback. See
+  `worklog/entries/20260901T220425.712695Z-lhl-qwen4exp-p3-q8-mmq-attn-gate-current-blocked-4fa414.md`
+  and `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-fivepair-rejected.json`.
 
 ## 2026-08-29 Qwen4Exp late-layer production prefill
 
