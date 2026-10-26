@@ -1360,8 +1360,10 @@
       "start_line": 1391,
       "end_line": 1408,
       "sha256": "28f578f3b961498343839769eed85a1aad74a3bf5afa3e33399c92b5731ef84d",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Rollback selector and obsolete harness arm removed after recorded release/evidence condition. Exact pinned and decline fallback preserved. Focused/full CPU,36 public parity rows and down_t16 route engagement pass. Worklog:worklog/entries/20261026T043520.018655Z-cleanup-refactor-r0046-1153da.md."
+      ],
       "subitems": []
     },
     {

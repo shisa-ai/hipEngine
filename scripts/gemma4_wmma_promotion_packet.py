@@ -48,7 +48,6 @@ from scripts.gemma4_teacher_forced_gate import row_kl_divergence
 # candidate arm "1", on a single shared runner.
 _LEVER_KINDS = {
     "router": "HIPENGINE_GEMMA4_ROUTER_SGEMM",
-    "down_wmma": "HIPENGINE_GEMMA4_MOE_DOWN_WMMA",
 }
 
 # The binding bars, per EXECUTION-PROFILES section 2.11 (2026-10-07 lead decision):
@@ -131,11 +130,10 @@ def main() -> int:
     parser.add_argument("--candidate-kind",
                         choices=("wmma", "flash_shallow", *sorted(_LEVER_KINDS)),
                         default="wmma",
-                        help="router / down_wmma: both arms on the default attention, "
+                        help="router: both arms on the default attention, "
                              "differing only in one env lever (strict=0, candidate=1): "
                              "HIPENGINE_GEMMA4_ROUTER_SGEMM (tile vs SGEMM full-block "
-                             "tier) or HIPENGINE_GEMMA4_MOE_DOWN_WMMA (exact grouped "
-                             "expert down vs the WMMA owner). flash_shallow: both "
+                             "tier). flash_shallow: both "
                              "arms on the production runner, differing only in "
                              "FLASH_DECODE_PREFERRED_MIN_KEYS (strict: never below "
                              "the split policy's 1024 keys; candidate: the shipped "

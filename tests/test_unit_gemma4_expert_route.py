@@ -839,23 +839,20 @@ def test_the_expert_block_counts_the_ladder_route_when_the_mmq_leaves_decline(
 
 
 @pytest.mark.parametrize(
-    ("mode", "lever", "lanes", "expected_down"),
+    ("mode", "lanes", "expected_down"),
     [
         # The unpinned default with at least 16 lanes per expert: WMMA down.
-        ("auto", None, 64, "down_wmma"),
-        ("auto", "1", 64, "down_wmma"),
-        # The lever restores the ladder's exact grouped owner.
-        ("auto", "0", 64, "grouped_prefill"),
-        # A pinned exact mode never takes it, whatever the lever says.
-        ("grouped", "1", 64, "grouped_prefill"),
+        ("auto", 64, "down_wmma"),
+        # A pinned exact mode keeps the owner it names.
+        ("grouped", 64, "grouped_prefill"),
         # Too few lanes for a tile plan: the ladder serves the block.
-        ("auto", None, 8, "grouped_prefill"),
+        ("auto", 8, "grouped_prefill"),
     ],
 )
 def test_the_unpinned_default_runs_the_down_through_wmma(
-    monkeypatch: pytest.MonkeyPatch, mode, lever, lanes, expected_down,
+    monkeypatch: pytest.MonkeyPatch, mode, lanes, expected_down,
 ) -> None:
-    """The default down projection is the WMMA owner behind its own lever."""
+    """The unpinned default's down projection is the grouped WMMA owner."""
 
     import hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts as experts
 
@@ -888,10 +885,6 @@ def test_the_unpinned_default_runs_the_down_through_wmma(
     monkeypatch.setattr(experts, "gemma4_project_experts_wmma", wmma_down)
     monkeypatch.setattr(experts, "gemma4_project_experts_rows", lambda *a, **k: "grouped_prefill")
     monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_PREFILL", mode)
-    if lever is None:
-        monkeypatch.delenv("HIPENGINE_GEMMA4_MOE_DOWN_WMMA", raising=False)
-    else:
-        monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_DOWN_WMMA", lever)
 
     scratch = _AccountingScratch(
         tokens=lanes, top_k=1, hidden_size=256, intermediate=64, num_experts=4

@@ -187,8 +187,8 @@ _MMQ32 = "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
 _GROUPED_DUAL = "selected_dual_grouped_rowbatch8_out4_amortized_bf16_bf16_out"
 # The unpinned default's Q5_1 expert down owner: the grouped WMMA kernel, which
 # the route runs through its bit-identical Q5_1T16 tile form when the tensor
-# carries the tiles. ``HIPENGINE_GEMMA4_MOE_DOWN_WMMA=0`` restores the exact
-# staged grouped owner the default ran before.
+# carries the tiles. The exact staged grouped owner it replaced is still the
+# pinned ``grouped`` mode's owner.
 _GROUPED_DOWN_PRODUCTION = "selected_grouped_wmma_prefill_compact_bf16_bf16_out"
 # The T16-converted gate_up scope's exact owner (registered at moe_linear;
 # the dense-key ``selected_gemv`` chain lands on the same function).

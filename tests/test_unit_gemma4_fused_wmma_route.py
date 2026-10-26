@@ -21,22 +21,16 @@ def test_fused_wmma_capability_and_geometry(monkeypatch, rows):
     assert experts._fused_wmma_owner(10, rows * 8, 2816, 704, 128) is None
 
 
-@pytest.mark.parametrize(
-    ("lever", "down"), [(None, "wmma_down"), ("1", "wmma_down"), ("0", "exact_down")]
-)
+@pytest.mark.parametrize("down", ["wmma_down", "exact_down"])
 def test_forward_uses_fused_gate_up_and_the_selected_down_on_the_requested_stream(
-    monkeypatch, lever, down,
+    monkeypatch, down,
 ):
     """The fused gate/up shares its tile plan with the default WMMA down.
 
-    ``HIPENGINE_GEMMA4_MOE_DOWN_WMMA=0`` restores the exact ladder down, which
-    must then run without the WMMA owner being touched.
+    A WMMA owner that declines the down weight leaves the exact ladder owner,
+    which must then run without the WMMA owner being touched.
     """
 
-    if lever is None:
-        monkeypatch.delenv("HIPENGINE_GEMMA4_MOE_DOWN_WMMA", raising=False)
-    else:
-        monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_DOWN_WMMA", lever)
     events = []
     buffers = {}
     def buffer(name):
@@ -66,7 +60,7 @@ def test_forward_uses_fused_gate_up_and_the_selected_down_on_the_requested_strea
     monkeypatch.setattr(experts, "_gemma4_project_experts_down_wmma_t16", lambda *a, **k: False)
     monkeypatch.setattr(
         experts, "gemma4_project_experts_wmma",
-        record("wmma_down", True) if down == "wmma_down" else forbidden,
+        record("wmma_down", True) if down == "wmma_down" else lambda *a, **k: False,
     )
     monkeypatch.setattr(
         experts, "gemma4_project_experts_rows",

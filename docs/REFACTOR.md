@@ -1479,21 +1479,37 @@ gfx1151 retain their respective two-wave and four-wave wrapper policies.
 
 ## Gemma 4 expert down WMMA rollback lever (added 2026-10-10)
 
-`HIPENGINE_GEMMA4_MOE_DOWN_WMMA` (default on) makes the unpinned Gemma 4 MoE
-prefill run the expert down projection through the grouped WMMA owner, in its
-Q5_1T16 tile form where the tensor carries the tiles, in
-`gemma4_experts_forward_bf16`
-(`hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py`). `0` restores the
-exact grouped owner; a pinned `HIPENGINE_GEMMA4_MOE_PREFILL` mode is unaffected.
-The exact staged owner it replaces was 60% of W7900 prefill kernel time. The
-route reads BF16 activations and reassociates against the exact owner, so it is
-a production-profile route gated under the section 2.11 envelope; it is not the
-int8 MMQ down, whose lever and failure record are separate.
+Cleanup status (2026-10-26, R0046): removed. `HIPENGINE_GEMMA4_MOE_DOWN_WMMA`
+and its reader are gone, and the unpinned Gemma 4 MoE prefill takes the grouped
+WMMA down owner unconditionally -- `down_wmma = gate_up_wmma or use_mmq or not
+pinned` in `gemma4_experts_forward_bf16`
+(`hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py`).
 
-Removal condition: once a llama.cpp-paired W7900 ladder carries the route's
-numbers and one release cycle passes without a rollback, delete the env check
-and this entry together. The exact grouped owner stays as the strict plan's
-owner and the pinned `grouped` mode.
+The owner is the grouped WMMA down projection, in its Q5_1T16 tile form where
+the tensor carries the tiles. It reads BF16 activations and reassociates
+against the exact grouped owner, so it is a production-profile route gated under
+the section 2.11 envelope; it is not the int8 MMQ down, whose lever and failure
+record are separate. Every owner the `0` arm reached is still reachable
+unchanged: a pinned `HIPENGINE_GEMMA4_MOE_PREFILL=grouped` (or `selected`) mode
+runs the exact grouped owner, and a call whose WMMA tile plan is empty -- fewer
+than 16 lanes per expert, or a down weight the WMMA owner declines -- falls
+through the same chain to `gemma4_project_experts_rows`.
+
+Both halves of the removal condition are on file. The numbers are in
+`benchmarks/results/2026-10-10-gemma4-gfx1100-expert-down-wmma-promotion.json`
+(section 2.11 packet, 18 cases / 1,134 rows, all bars passing; public prefill
+1253.2 -> 3164.7 tok/s at 512 with generated ids equal at every length), and a
+llama.cpp-paired W7900 production-profile ladder that includes the route is
+`benchmarks/results/2026-10-15-gemma4-gfx1100-llamacpp-latest-comparison.json`
+(back-to-back per length, prompt ids sha-equal). The route shipped in `v0.8.0`
+and survived `v0.8.1`, `v0.8.2`, and `v0.8.3` with no recorded rollback.
+
+Removing the lever also removed the only *isolated* strict arm for this
+candidate: `HIPENGINE_GEMMA4_MOE_PREFILL=grouped` gives the exact down owner but
+also changes gate/up routing, so it measures a different candidate. The packet
+above is recorded; re-running its strict arm needs the source revision it was
+measured at, not the current tree. That is the cost of the deletion, not a
+reason to keep a lever whose condition was met.
 
 ## Staged PV singleton unroll rollback lever (added 2026-10-09)
 
