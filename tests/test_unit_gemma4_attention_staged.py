@@ -16,6 +16,8 @@ than about a shared implementation.
 from __future__ import annotations
 
 import inspect
+import re
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -616,6 +618,41 @@ def test_plan_describe_names_the_decomposition():
     assert "pv_grid=1x2x64" in singleton_described
     assert "pv=singleton(32t,2r,16s)" in singleton_described
     assert f"lds={singleton.lds_bytes}B" in singleton_described
+
+
+# --- the shipped singleton PV width ------------------------------------------
+
+STAGED_HIP_SOURCE = (
+    Path(__file__).resolve().parents[1]
+    / "hipengine"
+    / "kernels"
+    / "hip_gfx1100"
+    / "gemma4"
+    / "gemma4_attention_staged.hip"
+)
+
+
+def test_the_singleton_launcher_instantiates_one_width_and_reads_no_environment():
+    """The decode launch's in-flight V window is a constant, not an env read.
+
+    The width stays a template parameter because the kernel body's ascending-key
+    chain is written in terms of it, but only the shipped width may be
+    instantiated, and the host launcher takes no environment input: the
+    per-launch selector that used to sit here was read on every decode step of a
+    latency-bound walk, and its 8/16/32 arms were bit-identical, so it carried no
+    numerical control worth keeping.
+    """
+
+    source = STAGED_HIP_SOURCE.read_text(encoding="utf-8")
+    assert "PV_UNROLL" not in source
+    assert "getenv" not in source, "the staged attention launcher must not read the environment"
+    assert "atoi(" not in source
+    # Every instantiation of the singleton launch, across its whole file.
+    widths = re.findall(r"launch_singleton_pv<[^<>]*?,\s*(\d+)\s*>", source)
+    assert widths == ["32"]
+    # ...and the parameter it is passed to is still part of the kernel contract.
+    assert "bool kExactRows, int kPvUnroll>" in source
+    assert "int kPvUnrollV>" in source
 
 
 # --- workspace ownership ----------------------------------------------------

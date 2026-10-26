@@ -1142,38 +1142,17 @@ int launch_gemma4_attention_staged_pv_singleton_rows(
   const dim3 grid(static_cast<unsigned int>(tokens),
                   static_cast<unsigned int>(num_kv_heads),
                   static_cast<unsigned int>(row_groups * dim_slices));
-  // The in-flight V window width. 32 keys per window measured 0.74x
-  // (sliding, head_dim 256) and 0.66x (global, head_dim 512) of the
-  // shipped width-8 walk at 262144 keys, bit-identical on both
-  // geometries -- the per-thread dependent chain is latency-exposed and
-  // the wider window hides it. HIPENGINE_GEMMA4_PV_UNROLL pins 8/16/32
-  // for A/B without a rebuild.
-  int pv_unroll = 32;
-  {
-    const char* env = getenv("HIPENGINE_GEMMA4_PV_UNROLL");
-    if (env) {
-      const int parsed = atoi(env);
-      if (parsed == 8 || parsed == 16 || parsed == 32) {
-        pv_unroll = parsed;
-      }
-    }
-  }
-  const int unroll = pv_unroll;
-  hipError_t err;
-  if (unroll == 16) {
-    err = launch_singleton_pv<scalar_t, kResidentRows, kExactRows, 16>(
-        grid, shared_bytes, stream, weights, denominator, value, out,
-        num_heads, num_kv_heads, head_dim, keys, window, row_offset);
-  } else if (unroll == 32) {
-    err = launch_singleton_pv<scalar_t, kResidentRows, kExactRows, 32>(
-        grid, shared_bytes, stream, weights, denominator, value, out,
-        num_heads, num_kv_heads, head_dim, keys, window, row_offset);
-  } else {
-    err = launch_singleton_pv<scalar_t, kResidentRows, kExactRows, 8>(
-        grid, shared_bytes, stream, weights, denominator, value, out,
-        num_heads, num_kv_heads, head_dim, keys, window, row_offset);
-  }
-  return static_cast<int>(err);
+  // The in-flight V window width, fixed at 32 keys. 32 keys per window
+  // measured 0.74x (sliding, head_dim 256) and 0.66x (global, head_dim 512)
+  // of the prior width-8 walk at 262144 keys, bit-identical on both
+  // geometries -- the per-thread dependent chain is latency-exposed and the
+  // wider window hides it. The width stays a template parameter because the
+  // kernel body's arithmetic is written in terms of it; only the shipped
+  // width is instantiated.
+  return static_cast<int>(
+      launch_singleton_pv<scalar_t, kResidentRows, kExactRows, 32>(
+          grid, shared_bytes, stream, weights, denominator, value, out,
+          num_heads, num_kv_heads, head_dim, keys, window, row_offset));
 }
 
 // The single-token PV launch. `rows_per_head == 1` leaves no second row to pair

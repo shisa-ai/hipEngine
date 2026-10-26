@@ -1372,8 +1372,10 @@
       "start_line": 1409,
       "end_line": 1421,
       "sha256": "4d41c8fdc8d6202f6b39d98ee363f17f7e67a7859b11686b7b686899efe49a91",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Host unroll selector retired; width32 body unchanged. CPU checks, staged/deep/sliding GPU parity through262144 keys and public baseline-identical request pass. Worklog:worklog/entries/20261026T045251.789938Z-cleanup-refactor-r0047-89c5cc.md."
+      ],
       "subitems": []
     },
     {

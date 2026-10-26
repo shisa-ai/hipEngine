@@ -1513,16 +1513,44 @@ reason to keep a lever whose condition was met.
 
 ## Staged PV singleton unroll rollback lever (added 2026-10-09)
 
-`HIPENGINE_GEMMA4_PV_UNROLL` (default 32) pins the staged singleton P*V
-decode walk's in-flight V window; `8` restores the prior width. The chain
-per (row, dimension) is one ascending-key FMA sequence at every width, so
-either side is bit-identical -- the lever exists to A/B the widths and to
-roll back if the wider window regresses on an unmeasured shape.
+Cleanup status (2026-10-26, R0047): removed. `HIPENGINE_GEMMA4_PV_UNROLL` and
+its `getenv`/`atoi` reader are gone, and
+`launch_gemma4_attention_staged_pv_singleton_rows`
+(`hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention_staged.hip`) launches
+the staged singleton P*V decode walk at a fixed 32-key in-flight V window. The
+`kPvUnrollV` template parameter stays -- the kernel body's arithmetic is written
+in terms of it -- so what the removal took out is the 8- and 16-wide
+instantiations and the per-launch environment read, not the width contract.
 
-Removal condition: once the restored-state 262015 decode record and the
-paired ladder carry the width-32 numbers and one release cycle passes
-without a rollback, fold the selection to the constant and delete this
-entry together with the env read.
+The arithmetic is unchanged, so no execution-profile gate applies. For each
+(row, dimension) the accumulator is one FP32 FMA per live key in ascending key
+order at every width, with zero weights skipped; the width only changes how many
+V loads a thread keeps in flight. The staged decomposition's strict fallback is
+untouched: a shape whose staged plan declines -- a grid or workspace limit, or a
+head geometry the score tree does not implement -- still runs
+`gemma4_attention_prefill_bf16`, and the staged kernel stays bit-identical to it
+on the shapes it serves.
+
+Both halves of the removal condition are on file. The restored-state 262015
+decode record is
+`benchmarks/results/2026-10-09-gemma4-gfx1151-256ki-paired.json`: its
+`execution_profile` names "PV singleton width 32", decode is 10.209 tok/s
+against llama.cpp's 7.211 (1.416x) at the same depth, and its restored greedy
+ids equal the mint-time decode 128/128. The paired width ladder is the table in
+the immutable entry
+`worklog/entries/20261009T054652.959669Z-lhl-gemma4-pv-unroll32-77ada1.md`
+(interleaved 8/16/32, both head geometries, arms bit-identical at every point;
+width 32 measured 0.74x the width-8 walk time on the sliding geometry and 0.66x
+on the global one at 262144 keys). That table is the record: the leaf A/B JSON
+it came from lived under `/tmp` and is no longer present, and the ladder was
+never filed under `benchmarks/results/`. The lever is present in `v0.8.0`
+(2026-10-20) through `v0.8.3` (2026-10-24) -- four tagged releases -- with no
+recorded rollback: no test, script, profile, or worklog sets it.
+
+Nothing isolated is lost with the lever. The arms were bit-identical, so it had
+no strict-arm role to preserve, and reconstructing a width-8 or width-16 arm
+needs the revision that introduced the widths (`6e1c5cd2e`, 2026-10-09), not a
+lever in the current tree.
 
 ## Router full-block SGEMM rollback lever (added 2026-10-08)
 
