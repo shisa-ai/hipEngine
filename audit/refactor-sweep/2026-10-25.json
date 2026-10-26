@@ -1324,8 +1324,9 @@
       "start_line": 1338,
       "end_line": 1353,
       "sha256": "2452e2e5f4ef681b9b81e4f76fcb6efe4d5f375d000cdcfb79575618a14ec881",
-      "status": "resolved",
+      "status": "resolved-removed",
       "evidence": [
+        "Removed completed draft-law narrative from active ledger after confirming removed setting/CLI names remain absent; original measured evidence and implementation worklog preserved below.",
         "Verified PLE retention, Q4 arm removal and registry test-baseline resolution. Gemma draft-law comparison completed; switch removed, sampled and greedy public probes pass with sampled token IDs unchanged. Worklog:worklog/entries/20261026T033350.946305Z-cleanup-refactor-r0041-r0044-dispositions-cd7bdd.md; evidence:benchmarks/results/2026-10-26-gemma4-draft-law-cleanup.json."
       ],
       "subitems": []

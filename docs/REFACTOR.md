@@ -1389,22 +1389,6 @@ below are unstarted hypotheses, not cleanup debt.
   rows per block needs the row-tile limit extended and makes the epilogue
   union 64 KiB. Measure residency or test a register-local-SiLU epilogue.
 
-## `Gemma4MTPTextProvider.draft_sampling` keeps a most-likely-token draft arm (open 2026-10-13)
-
-Cleanup status (2026-10-26): removed; the heading identifies the historical item.
-R0043's comparison condition is met. On gfx1151, the full category suite plus
-heldouts at temperature 1.0, top-k 64, top-p 0.95, budget 2 and 64 output tokens
-favored sampled drafts in aggregate. Both arms passed the probe's correctness
-checks; category results were mixed, not a universal non-inferiority result.
-The counts, model/host provenance and commands are recorded in
-`benchmarks/results/2026-10-26-gemma4-draft-law-cleanup.json`.
-
-`Gemma4MTPTextProvider.draft_sampling` and the probe's `--draft-law` option are
-removed. Non-greedy requests always draw drafts from the assistant distribution;
-greedy requests still propose its point mass without spending a draft RNG draw.
-The exact speculative acceptance rule and effective `draft_law` telemetry remain.
-Historical two-law comparison commands require the pre-removal revision.
-
 ## gfx1100 has no kernel-registration refresh hook (found 2026-10-12)
 
 Cleanup status (2026-10-26, R0044): resolved by the test baseline, not by a
