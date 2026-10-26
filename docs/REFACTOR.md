@@ -2585,22 +2585,6 @@ the allocation repair. The observations and proposal below are historical.
   Fixing that is the real prize - it would make every hit pay and let the
   retained working set grow.
 
-## Prefix benchmark arms use separate processes (resolved 2026-10-26)
-
-`scripts/prefix_cache_multiturn_bench.py` runs each engine load in a separate
-subprocess and merges the arm artifacts in plan order. Server repetitions each
-load an engine; in-process repetitions of a single mode reuse one engine.
-Multi-load runs require `--json`, preserve relative invocation paths, and stop
-on a failed child or missing artifact. Each child replaces its own prior output
-before execution so an old artifact cannot satisfy a successful-exit check.
-
-The old `--allow-multi-mode` option is accepted with a retirement notice but
-cannot enable same-process reloads. This removes the harness path that exposed
-the recorded second-cache-engine GPU fault; it does not claim to diagnose or
-repair the underlying runtime reload fault. CPU tests cover real subprocess
-launches, ordering, merging, stale output, relative paths and failure status
-in `tests/test_unit_prefix_cache_multiturn_bench.py`.
-
 ## Shared-prefix suffix prefill runs one token at a time (found 2026-09-18, resolved 2026-09-18)
 
 - `_prefill_native_chunk` has two routes for a chunk: a batched call through

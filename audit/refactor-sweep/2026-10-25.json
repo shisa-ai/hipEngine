@@ -1989,8 +1989,9 @@
       "start_line": 2304,
       "end_line": 2322,
       "sha256": "7169cd23f4656d1ef9ec244da86d0990e1e9b35c0e226e2254b0e19b9e691072",
-      "status": "resolved",
+      "status": "resolved-removed",
       "evidence": [
+        "Removed completed harness narrative from active ledger after checking _run_arm_subprocesses and retired option handling. This closes the harness exposure, not the separate underlying runtime reload fault; original evidence follows.",
         "Subprocess isolation, stale artifact and relative path repairs verified by45 focused CPU tests; docs/audit pass. worklog/entries/20261026T081543.029280Z-cleanup-refactor-r0075-805260.md."
       ],
       "subitems": [
