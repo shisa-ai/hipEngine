@@ -87,7 +87,6 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL",
         "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM",
         "HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT",
-        "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR",
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256",
         "HIPENGINE_QWEN4_EXP_ROUTED_F16",
         "HIPENGINE_QWEN4_EXP_GR_WIDE",
@@ -335,7 +334,8 @@ def test_historical_q4km_binder_structure_not_qualification(
     fake_runner = SimpleNamespace(
         configure_mmq_prefill_resources=lambda: configure_calls.append(True)
     )
-    production.binder(SimpleNamespace(runner=fake_runner), production)
+    production_generator = SimpleNamespace(runner=fake_runner)
+    production.binder(production_generator, production)
     assert configure_calls == [True]
     assert os.environ[PRODUCTION_MOE_PREFILL_ENV] == "1"
     assert os.environ["HIPENGINE_GGUF_WMMA_PREFILL"] == "0"
@@ -363,7 +363,9 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"] == "1"
     assert fake_runner.dense_mmq_token64_enabled is True
-    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR"] == "quad"
+    assert production_generator.qsa_prefill_head_mode == "quad"
+    assert fake_runner.qsa_prefill_head_mode == "quad"
+    assert "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR" not in os.environ
     raw_q = _selection_map(production)[("linear","prefill_rows_ge512_k2560_n12288_raw_q")]
     assert raw_q["selected_variant"] == "mmq128_token64_q8_1_d4x3_guarded_f32_f32_out"
     assert raw_q["strict_fallback_variant"] == "coltile8_rowbatch4_f32_f32_out"
@@ -487,7 +489,8 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR"] == "0"
+    assert strict_generator.qsa_prefill_head_mode == "parent"
+    assert "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR" not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS"] == ""
@@ -751,21 +754,112 @@ def test_dp2_pair_binding_reaches_a_runner_built_after_the_bind():
     generator = SimpleNamespace(runner=None)
     production.binder(generator, production)
     assert generator.dense_f16_pair_enabled is True
+    assert generator.qsa_prefill_head_mode == "quad"
     late = _inherit_lane_decisions(generator, SimpleNamespace())
     assert late.dense_f16_pair_enabled is True
     assert late.dense_mmq_token64_enabled is True
+    assert late.qsa_prefill_head_mode == "quad"
 
     strict = _resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl")
     strict.binder(generator, strict)
     assert generator.dense_f16_pair_enabled is False
+    assert generator.qsa_prefill_head_mode == "parent"
     strict_late = _inherit_lane_decisions(generator, SimpleNamespace())
     assert strict_late.dense_f16_pair_enabled is False
     assert strict_late.dense_mmq_token64_enabled is False
+    assert strict_late.qsa_prefill_head_mode == "parent"
 
     # An unbound generator keeps the parent route for anything cloned from it.
     unbound = _inherit_lane_decisions(SimpleNamespace(), SimpleNamespace())
     assert unbound.dense_f16_pair_enabled is False
     assert unbound.dense_mmq_token64_enabled is False
+    assert unbound.qsa_prefill_head_mode == "parent"
+
+
+@pytest.mark.parametrize("profile,quant,expected", [
+    # Production lanes publish the four-head fallback grouping, and the fast
+    # route shares this binder.
+    (ExecutionProfile.PRODUCTION, "gguf_ud_q4_k_xl", "quad"),
+    (ExecutionProfile.FAST, "gguf_ud_q4_k_xl", "quad"),
+    # This plan falls back to the strict binder, whose selections keep the
+    # single-head parent.
+    (ExecutionProfile.PRODUCTION, "gguf_q4_k_m", "parent"),
+    (ExecutionProfile.STRICT, "gguf_ud_q4_k_xl", "parent"),
+    (ExecutionProfile.BATCH_INVARIANT, "gguf_ud_q4_k_xl", "parent"),
+])
+def test_qsa_prefill_head_mode_follows_the_binder_scope(profile, quant, expected):
+    """The binder publishes the retired switch's own scope, not a manifest row.
+
+    The resolved manifest names the WMMA owner for this scope, so deriving the
+    mode from it would publish ``parent`` on the lane that publishes ``quad``.
+    """
+
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    resolved = _resolve(profile, quant=quant)
+    runner = SimpleNamespace()
+    generator = SimpleNamespace(runner=runner)
+    resolved.binder(generator, resolved)
+    assert generator.qsa_prefill_head_mode == expected
+    assert runner.qsa_prefill_head_mode == expected
+    assert "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR" not in os.environ
+
+
+def test_non_ud_production_bind_keeps_the_original_publication():
+    """The retired switch published quad for every production bind.
+
+    The arithmetic-recovery sweep that clears the flag is guarded by the UD
+    quant and the restoration pass republishes the same value for it, so a
+    production bind whose plan names another quant also published quad. Pinning
+    the non-UD production scope here keeps a future narrowing to "UD only" a
+    deliberate decision instead of a silent widening or regression.
+    """
+
+    import dataclasses
+
+    from hipengine.generation.qwen4_exp_profiles import _production_binder
+
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    resolved = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
+    assert resolved.manifest["quant"] == "gguf_ud_q4_k_xl"
+    non_ud = dataclasses.replace(
+        resolved, manifest={**resolved.manifest, "quant": "gguf_q4_k_m"})
+    for plan in (resolved, non_ud):
+        runner = SimpleNamespace()
+        generator = SimpleNamespace(runner=runner)
+        _production_binder(generator, plan)
+        assert generator.qsa_prefill_head_mode == "quad"
+        assert runner.qsa_prefill_head_mode == "quad"
+        assert "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR" not in os.environ
+
+
+def test_no_plan_declares_the_diagnostic_pair_leaf():
+    """The four-head leaf is declared; ``pair`` is diagnostic-only.
+
+    The UD lane's resolved manifest names the WMMA owner for the same scope, so
+    this checks the selection sets rather than the resolved row. ``pair`` must
+    stay undeclared: publishing it would silently change what production
+    measures.
+    """
+
+    from hipengine.generation.qwen4_exp_profiles import (
+        _production_selections,
+        _strict_selections,
+    )
+
+    declared = {
+        selection.selected_variant
+        for selections in (
+            _production_selections(),
+            _production_selections(recovery=True),
+            _strict_selections(),
+            _strict_selections(recovery=True),
+        )
+        for selection in selections
+    }
+    assert "strict_h256_head_quad_rows_spans" in declared
+    assert "strict_h256_head_pair_rows_spans" not in declared
 
 
 @pytest.mark.parametrize("profile,quant,enabled", [

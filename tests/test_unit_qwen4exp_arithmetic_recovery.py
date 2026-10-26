@@ -34,6 +34,9 @@ def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
     expected = {**PRODUCTION_Q8_QSA_RESTORED_FLAGS, "GR_WIDE": "1"}
     for flag in PRODUCTION_ARITHMETIC_RECOVERY_FLAGS:
         assert os.environ["HIPENGINE_QWEN4_EXP_" + flag] == expected.get(flag, "0")
+    # The QSA prefill head leaf is request-local state now, so the recovery
+    # pass must not write a process-wide switch for it.
+    assert "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR" not in os.environ
     for flag in ("Q4_IU8_EXACT", "Q51_IU8_EXACT", "GDN_REGISTER_PREFILL",
                  "GDN_WAVE_NORM", "FORKB_GROUPED_DOWN"):
         assert os.environ["HIPENGINE_QWEN4_EXP_" + flag] == "1"

@@ -62,13 +62,15 @@ def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.envi
             else "f32_hidden_token_tile4_dense_exact"
         )
         return
+    if package in {"qsa-head-pair", "qsa-head-quad"}:
+        # Request-local on the runner; ``route_scope`` binds the arm around the
+        # measured prefill and restores the profile's decision on exit.
+        return
     if package == "chunk1024":
         apply_chunk_mode(runner,"after" if enabled=="1" else "before",
                          allocated_chunk_size=1024)
     else:
         environment[flag] = "page256" if package=="qsa-h256-page256" and enabled=="1" else enabled
-        if package=="qsa-head-quad" and enabled=="1":
-            environment[flag]="quad"
 
 
 def main():
@@ -134,7 +136,8 @@ def main():
     if args.route_package in {"gdn-wave-norm", "gdn-narrow"}:
         flag = "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"
     if args.route_package in {"qsa-head-pair","qsa-head-quad"}:
-        flag="HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR"
+        # Request-local on the runner; no env key names this leaf.
+        flag=""
     if args.route_package == "q4-pair":
         flag = "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"
     if args.route_package == "q4-iu8-exact":
@@ -385,6 +388,11 @@ def main():
             os.environ[flag] = "0"
         if args.route_package in {"q5k-row4", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "gr-iu8", "gr-iu8-down", "q8-wmma-down"}:
             assert os.environ[flag] == "1", "production must select the retained route without an override"
+        if args.route_package in {"qsa-head-pair", "qsa-head-quad"}:
+            # The leaf is runner state, so its production default is asserted
+            # through the runner rather than through a binder-set env key.
+            assert generator.runner.qsa_prefill_head_mode == "quad", (
+                "production must publish the four-head fallback grouping")
         if args.route_package == "q8-dpp-reduction":
             # The DPP leaf's flag is read with a "1" default rather than bound by
             # the profile, so its production default is asserted through the
@@ -426,7 +434,10 @@ def main():
                 start_mapped=mapped_calls[0]
                 start_qsa_calls = qsa_calls[0]
                 natural_start = len(natural_router.captures) if natural_router is not None else 0
-                with route_scope(args.route_package, "after" if enabled == "1" else "before"):
+                with route_scope(
+                    args.route_package, "after" if enabled == "1" else "before",
+                    generator.runner,
+                ):
                     first = generator.runner.prefill(case["prompt_token_ids"])
                 prefill_invoked = calls[0] - start_calls
                 logits = first.logits.copy()

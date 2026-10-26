@@ -144,9 +144,12 @@ PRODUCTION_ARITHMETIC_RECOVERY_FLAGS = (
     "PRODUCTION_MOE_PREFILL", "Q4_IU8_PREFILL", "Q8_0_SELECTED_WMMA_DOWN",
     "Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN",
     "GDN_PEER_PREFILL", "Q4_DP4A64",
-    "QSA_H256_WAVE_PREFILL", "QSA_HEAD_PAIR", "QSA_FLASH_PREFILL",
+    "QSA_H256_WAVE_PREFILL", "QSA_FLASH_PREFILL",
     "QSA_ORDERED_DECODE", "QSA_ORDERED_DECODE_V2", "GR_WIDE",
 )
+# The QSA prefill head grouping is request-local runner state published from
+# the plan's own selection below, so it is not an environment flag the
+# arithmetic-recovery or restoration passes can rewrite.
 _ARITHMETIC_RECOVERY_EVIDENCE = (
     "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json"
 )
@@ -158,7 +161,6 @@ PRODUCTION_Q8_QSA_RESTORED_FLAGS = {
     "Q8_0_SELECTED_WMMA_DOWN": "1",
     "Q8_DOWN_VARIANT": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
     "QSA_H256_WAVE_PREFILL": "page256",
-    "QSA_HEAD_PAIR": "quad",
     "QSA_ORDERED_DECODE": "1",
     "QSA_ORDERED_DECODE_V2": "1",
 }
@@ -1029,6 +1031,19 @@ def _bind(
     # may remap the raw-vec4 parent, strict and batch-invariant may not. It is
     # request-local state on the owning runner, never a process-wide switch.
     dense_mmq_token64_enabled = bool(production)
+    # H256 prefill head grouping for the scalar sparse-prefill rows owner, as
+    # request-local state on the owning runner rather than a process-wide
+    # switch. Same condition the retired switch published: the production
+    # binder's lanes group four heads, and every plan that falls back to the
+    # strict binder - Q4_K_M, strict and batch-invariant - keeps the parent.
+    # The dispatch-time selector still guards the leaf on the page256 wave
+    # variant and Hq24/Hkv2. Note this is the fallback selection, not the owner
+    # that runs: the production profiles also bind
+    # HIPENGINE_QWEN4_EXP_QSA_WMMA=1, and the mixer launches the head-grouped
+    # rows owner only when WMMA attention does not own the chunk. The resolved
+    # manifest names that WMMA owner for the same scope, which is why this value
+    # follows the binder rather than the manifest row.
+    qsa_prefill_head_mode = "quad" if production else "parent"
     for key, value in {
         "HIPENGINE_GGUF_WMMA_PREFILL": "0",
         # Publish the router producer the manifest declares, so the runner's
@@ -1125,7 +1140,6 @@ def _bind(
             ) if production else _GDN_WIDE_VARIANT
         ),
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256" if production else "0",
-        "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR": "quad" if production else "0",
         # ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
         # routing on layers 27-47.
         "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL": "0",
@@ -1286,10 +1300,12 @@ def _bind(
     # parent route.
     generator.dense_f16_pair_enabled = dp2_pair_enabled
     generator.dense_mmq_token64_enabled = dense_mmq_token64_enabled
+    generator.qsa_prefill_head_mode = qsa_prefill_head_mode
     runner = getattr(generator, "runner", None)
     if runner is not None:
         runner.dense_f16_pair_enabled = dp2_pair_enabled
         runner.dense_mmq_token64_enabled = dense_mmq_token64_enabled
+        runner.qsa_prefill_head_mode = qsa_prefill_head_mode
     if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl":
         _apply_profile_env(
             {

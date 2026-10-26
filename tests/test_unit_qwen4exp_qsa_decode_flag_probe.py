@@ -13,9 +13,9 @@ def test_reject_unbalanced(pairs):
 
 
 def test_prefill_isolation_keeps_decode_off():
-    assert phase_flags(True,0)==("0","0")
-    assert phase_flags(True,1)==("1","0")
-    assert phase_flags(False,1)==("0","1")
+    assert phase_flags(True,0)==("parent","parent")
+    assert phase_flags(True,1)==("pair","parent")
+    assert phase_flags(False,1)==("parent","pair")
 
 
 def test_markers_distinguish_warmup_and_measured_arms():

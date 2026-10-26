@@ -2659,28 +2659,28 @@
       "start_line": 2792,
       "end_line": 2825,
       "sha256": "9b38e1ddd5d0a5008c165315ef3819f6cfff6ce59b2a41900443853f04ea8999",
-      "status": "partial-current-consumers-recorded",
-      "evidence": ["Replaced stale kernel-only/default-off narrative with verified live batch head-pair and profile-bound UD prefill head-quad consumers. Preserved kernels, parent fallback and diagnostic mode. Concrete remaining request-local profile transport cleanup named; docs/audit gates pass."],
+      "status": "resolved-runner-local",
+      "evidence": ["Retired environment mode in favor of explicit runner/layer/mixer state; binder scope and batch shape owner unchanged. GPU12 checks and public scalar quad/pair launches pass, default WMMA route preserved. Broad CPU plus focused stale-count repair and harness restoration checks pass. worklog/entries/20261026T193351.792518Z-cleanup-refactor-r0098-987ff8.md.", "Replaced stale kernel-only/default-off narrative with verified live batch head-pair and profile-bound UD prefill head-quad consumers. Preserved kernels, parent fallback and diagnostic mode. Concrete remaining request-local profile transport cleanup named; docs/audit gates pass."],
       "subitems": [
         {
           "line": 2794,
           "text": "- Kernel-only `strict_h256_head_pair_rows_spans`:two heads/wave,",
-          "status": "pending"
+          "status": "resolved-runner-local"
         },
         {
           "line": 2796,
           "text": "- Synthetic selected2051 attention at512/1024 rows wins2.544x/2.610x;",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 2798,
           "text": "- Default-off `HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR=1` replaces only",
-          "status": "pending"
+          "status": "resolved-runner-local"
         },
         {
           "line": 2802,
           "text": "- Staged72 trajectories exact,p4096 PP+3.560% but TG-6.526%;",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         }
       ]
     },

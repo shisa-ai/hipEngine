@@ -1,49 +1,332 @@
+"""QSA prefill head-mode harness controls.
+
+The head leaf is request-local runner state for the scalar sparse-prefill rows
+owner, so an A/B arm selects it through a scoped control rather than a
+process-wide environment variable. These tests pin that the campaign/state-gate
+helpers write no environment and that the scope restores whatever the profile
+published.
+"""
+
+from types import SimpleNamespace
+
 import pytest
-from hipengine.kernels.registry import KernelKey
-from hipengine.runtime import qwen4_exp_runner as runner
-from scripts.qwen4exp_halo_box_campaign_ab import _apply_mode
 
 
-def test_parent_and_geometry(monkeypatch):
-    key=KernelKey("hip_gfx1151","qsa_sparse_attention","bf16_kv",
-                  "strict_h256_page256_wave_rows_spans")
-    select=runner._qwen4_exp_qsa_head_pair_key
-    monkeypatch.setattr(runner,"is_registered",lambda key:True)
-    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR",raising=False)
-    assert select(key,query_heads=24,kv_heads=2)==key
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR","1")
-    assert select(key,query_heads=24,kv_heads=2).variant=="strict_h256_head_pair_rows_spans"
-    assert select(key,query_heads=6,kv_heads=2)==key
-    other=KernelKey(key.backend,key.layer,key.quant,"strict_h256_wave_rows_spans")
-    assert select(other,query_heads=24,kv_heads=2)==other
-    monkeypatch.setattr(runner,"is_registered",lambda key:False)
-    assert select(key,query_heads=24,kv_heads=2)==key
+def _runner(mode: str = "quad") -> SimpleNamespace:
+    return SimpleNamespace(qsa_prefill_head_mode=mode)
 
 
-@pytest.mark.parametrize("mode,value",[("before","0"),("after","1")])
-def test_one_flag(mode,value):
-    env={"other":"keep"}
-    _apply_mode(mode,route_package="qsa-head-pair",environment=env)
-    assert env=={"other":"keep","HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR":value}
+@pytest.mark.parametrize("package", ["qsa-head-pair", "qsa-head-quad"])
+@pytest.mark.parametrize("mode", ["before", "after"])
+def test_apply_mode_leaves_the_environment_alone(package, mode):
+    from scripts.qwen4exp_halo_box_campaign_ab import _apply_mode
+
+    env = {"other": "keep"}
+    _apply_mode(mode, route_package=package, environment=env)
+    assert env == {"other": "keep"}
 
 
-def test_quad_mode_explicit_and_parent_only(monkeypatch):
-    key=KernelKey("hip_gfx1151","qsa_sparse_attention","bf16_kv",
-                  "strict_h256_page256_wave_rows_spans")
-    monkeypatch.setattr(runner,"is_registered",lambda key:True)
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR","quad")
-    assert runner._qwen4_exp_qsa_head_pair_key(key,query_heads=24,kv_heads=2).variant=="strict_h256_head_quad_rows_spans"
-    assert runner._qwen4_exp_qsa_head_pair_key(key,query_heads=12,kv_heads=2)==key
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR","invalid")
-    assert runner._qwen4_exp_qsa_head_pair_key(key,query_heads=24,kv_heads=2)==key
+@pytest.mark.parametrize(
+    "package,mode,expected",
+    [
+        ("qsa-head-pair", "after", "pair"),
+        ("qsa-head-pair", "before", "parent"),
+        ("qsa-head-quad", "after", "quad"),
+        ("qsa-head-quad", "before", "parent"),
+    ],
+)
+def test_route_scope_selects_and_restores_the_runner_mode(package, mode, expected):
+    from scripts.qwen4exp_halo_box_campaign_ab import route_scope
+
+    owned = _runner("quad")
+    with route_scope(package, mode, owned):
+        assert owned.qsa_prefill_head_mode == expected
+    assert owned.qsa_prefill_head_mode == "quad"
 
 
-def test_quad_harness_modes():
+def test_route_scope_leaves_non_head_packages_untouched():
+    from scripts.qwen4exp_halo_box_campaign_ab import route_scope
+
+    owned = _runner("quad")
+    with route_scope("qsa-h256-page256", "after", owned):
+        assert owned.qsa_prefill_head_mode == "quad"
+    with route_scope("qsa-h256-page256", "after", None):
+        pass
+    assert owned.qsa_prefill_head_mode == "quad"
+
+
+@pytest.mark.parametrize("package", ["qsa-head-pair", "qsa-head-quad"])
+def test_route_scope_rejects_a_head_arm_without_its_runner(package):
+    """Binding nothing would measure the parent and report it as the head arm."""
+
+    from scripts.qwen4exp_halo_box_campaign_ab import route_scope
+
+    with pytest.raises(ValueError, match="needs the owning runner"):
+        route_scope(package, "after", None)
+    with pytest.raises(ValueError, match="needs the owning runner"):
+        route_scope(package, "before", None)
+
+
+def test_route_scope_rejects_an_invalid_mode():
+    from scripts.qwen4exp_halo_box_campaign_ab import route_scope
+
+    with pytest.raises(ValueError):
+        with route_scope("qsa-head-quad", "sideways", _runner("quad")):
+            pass
+
+
+@pytest.mark.parametrize("package", ["qsa-head-pair", "qsa-head-quad"])
+@pytest.mark.parametrize("enabled", ["0", "1"])
+def test_state_gate_leaves_the_head_arm_to_the_scoped_control(package, enabled):
+    """The gate binds no env key and no runner field of its own."""
+
     from scripts.qwen4exp_row4_state_gate import apply_state_gate_mode
-    for enabled in ("0","1"):
-        env={}
-        _apply_mode("after" if enabled=="1" else "before",route_package="qsa-head-quad",environment=env)
-        assert env=={"HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR":"quad" if enabled=="1" else "0"}
-        other={}
-        apply_state_gate_mode(None,"qsa-head-quad",enabled,"flag",environment=other)
-        assert other["flag"]==("quad" if enabled=="1" else "0")
+
+    owned = _runner("quad")
+    env: dict[str, str] = {}
+    apply_state_gate_mode(owned, package, enabled, "unused", environment=env)
+    assert env == {}
+    assert owned.qsa_prefill_head_mode == "quad"
+
+
+def test_state_gate_hands_the_runner_to_the_scoped_control():
+    """A gate that forgot the runner would silently measure the parent."""
+
+    import ast
+    import inspect
+
+    from scripts import qwen4exp_row4_state_gate
+
+    calls = [
+        node
+        for node in ast.walk(ast.parse(inspect.getsource(qwen4exp_row4_state_gate.main)))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "route_scope"
+    ]
+    assert calls, "the gate no longer uses the scoped control"
+    for call in calls:
+        assert len(call.args) == 3, "route_scope needs the arm's runner"
+        runner_arg = call.args[2]
+        assert isinstance(runner_arg, ast.Attribute) and runner_arg.attr == "runner"
+
+
+def test_r2e_ablation_binds_the_runner_mode():
+    """The route ablation keeps a runner-scoped arm instead of an env clear."""
+
+    from scripts.qwen4exp_r2e_route_ablation import ROUTES, RUNNER_ROUTE_MODES
+
+    assert RUNNER_ROUTE_MODES == {"qsa_h256_quad": "parent"}
+    assert "qsa_h256_quad" not in ROUTES
+    for envs, _ in ROUTES.values():
+        assert "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR" not in envs
+
+
+def test_restore_harness_keeps_the_arm_mode_out_of_the_environment():
+    from scripts.qwen4exp_layer2_profile_gate import CANDIDATES
+    from scripts.qwen4exp_prefill_restore_ab import SHARED_DECODE_SAFE_FLAGS
+
+    assert "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR" not in SHARED_DECODE_SAFE_FLAGS
+    candidate = CANDIDATES["q8_blockscale_guarded_quad"]
+    assert candidate.qsa_prefill_head_mode == "quad"
+    assert "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR" not in candidate.environment
+
+
+def test_layer2_gate_binds_a_declared_arm_mode_on_the_candidate_runner():
+    """A declared mode that the gate never binds would measure the base profile."""
+
+    import ast
+    import inspect
+
+    from scripts import qwen4exp_layer2_profile_gate
+
+    tree = ast.parse(inspect.getsource(qwen4exp_layer2_profile_gate.run))
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "qsa_prefill_head_mode"
+    ]
+    assert calls, "the gate no longer binds the arm's head mode"
+    assert any(
+        isinstance(argument, ast.Attribute) and argument.attr == "runner"
+        for call in calls for argument in call.args
+    )
+    # It must be entered on the stack that unwinds with the measured rows.
+    assert any(
+        isinstance(node, ast.Attribute) and node.attr == "enter_context"
+        for node in ast.walk(tree)
+    )
+
+
+WMMA_ENV = "HIPENGINE_QWEN4_EXP_QSA_WMMA"
+
+
+def test_probe_head_arm_disables_and_restores_wmma():
+    """A head arm must not measure the WMMA kernel it never launches."""
+
+    from scripts.qwen4exp_qsa_decode_flag_probe import (
+        QSA_WMMA_ENV, restore_scalar_head_measurement, scalar_head_measurement)
+
+    assert QSA_WMMA_ENV == WMMA_ENV
+    env = {WMMA_ENV: "1"}
+    record = scalar_head_measurement(True, environment=env)
+    assert env[WMMA_ENV] == "0"
+    assert record["previous"] == "1"
+    assert record["arms"] == "both" and record["measured"] is True
+    restore_scalar_head_measurement(record, environment=env)
+    assert env[WMMA_ENV] == "1"
+
+    unset: dict[str, str] = {}
+    record = scalar_head_measurement(True, environment=unset)
+    assert unset[WMMA_ENV] == "0"
+    restore_scalar_head_measurement(record, environment=unset)
+    assert WMMA_ENV not in unset
+
+    # The decode-phase arms never reach the head leaf, so they leave WMMA alone.
+    untouched = {WMMA_ENV: "1"}
+    assert scalar_head_measurement(False, environment=untouched) is None
+    assert untouched[WMMA_ENV] == "1"
+
+
+def test_halo_head_route_disables_and_restores_wmma():
+    from scripts.qwen4exp_halo_box_campaign_ab import (
+        head_route_configuration, restore_route_configuration)
+
+    for package in ("qsa-head-pair", "qsa-head-quad"):
+        env = {WMMA_ENV: "1"}
+        record = head_route_configuration(package, environment=env)
+        assert env[WMMA_ENV] == "0"
+        assert record["previous"] == "1" and record["arms"] == "both"
+        restore_route_configuration(record, environment=env)
+        assert env[WMMA_ENV] == "1"
+
+        unset: dict[str, str] = {}
+        record = head_route_configuration(package, environment=unset)
+        assert unset[WMMA_ENV] == "0"
+        restore_route_configuration(record, environment=unset)
+        assert WMMA_ENV not in unset
+
+    # Every other package keeps the profile's WMMA decision.
+    env = {WMMA_ENV: "1"}
+    assert head_route_configuration("qsa-h256-page256", environment=env) is None
+    assert env[WMMA_ENV] == "1"
+
+
+def test_r2e_counts_launches_instead_of_reading_the_field():
+    from scripts.qwen4exp_r2e_route_ablation import (
+        QSA_HEAD_VARIANTS, QSA_SCALAR_PARENT_VARIANT, count_scalar_launches,
+        restore_scalar_launches)
+
+    launched: list[str] = []
+
+    def fake_resolve(**kwargs):
+        return lambda *a, **kw: launched.append(kwargs["variant"])
+
+    module = SimpleNamespace(resolve=fake_resolve)
+    counts = {"head": 0, "parent": 0}
+    original = count_scalar_launches(counts, module=module)
+
+    module.resolve(backend="b", layer="qsa_sparse_attention", quant="bf16_kv",
+                   variant=QSA_SCALAR_PARENT_VARIANT)()
+    for variant in QSA_HEAD_VARIANTS:
+        module.resolve(backend="b", layer="qsa_sparse_attention", quant="bf16_kv",
+                       variant=variant)()
+    # Other layers are not wrapped, and resolving without calling is not a launch.
+    module.resolve(backend="b", layer="linear", quant="q", variant="v")()
+    module.resolve(backend="b", layer="qsa_sparse_attention", quant="bf16_kv",
+                   variant="strict_h256_head_quad_rows_spans")
+
+    assert counts == {"head": 2, "parent": 1}
+    assert launched.count(QSA_SCALAR_PARENT_VARIANT) == 1
+    restore_scalar_launches(original, module=module)
+    assert module.resolve is fake_resolve
+
+
+def test_r2e_head_route_reports_launches_and_restores_wmma():
+    import ast
+    import inspect
+
+    from scripts import qwen4exp_r2e_route_ablation as ablation
+
+    source = inspect.getsource(ablation.main)
+    tree = ast.parse(source)
+    names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+    assert "count_scalar_launches" in names
+    assert "head_route_configuration" in names
+    assert "head_engagement" in {
+        node.value for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+    # The field check stays a configuration assert, not the engagement claim.
+    assert "engagement lost: qsa_prefill_head_mode" not in source
+    assert "configuration lost: qsa_prefill_head_mode" in source
+    # Both the override and the counter are restored on any failure below.
+    assert "restore_route_configuration" in names
+    assert "restore_scalar_launches" in names
+
+
+def _restored_from_finally(source, apply_name, restore_name):
+    """Whether ``restore_name`` runs in a finally covering ``apply_name``."""
+
+    import ast
+
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Try) or not node.finalbody:
+            continue
+        final = {
+            child.id for block in node.finalbody
+            for child in ast.walk(block) if isinstance(child, ast.Name)}
+        body = {
+            child.id for block in node.body
+            for child in ast.walk(block) if isinstance(child, ast.Name)}
+        if restore_name in final and apply_name in body:
+            return True
+    return False
+
+
+def test_halo_restores_the_wmma_override_in_its_finally():
+    import inspect
+
+    from scripts import qwen4exp_halo_box_campaign_ab as halo
+
+    assert _restored_from_finally(
+        inspect.getsource(halo.main),
+        "head_route_configuration", "restore_route_configuration")
+
+
+def test_probe_restores_the_wmma_override_in_its_finally():
+    import inspect
+
+    from scripts import qwen4exp_qsa_decode_flag_probe as probe
+
+    assert _restored_from_finally(
+        inspect.getsource(probe.main),
+        "scalar_head_measurement", "restore_scalar_head_measurement")
+
+
+def test_probe_and_halo_record_the_wmma_override():
+    import ast
+    import inspect
+
+    from scripts import qwen4exp_halo_box_campaign_ab, qwen4exp_qsa_decode_flag_probe
+
+    for module, attribute in (
+        (qwen4exp_qsa_decode_flag_probe, "qsa_wmma"),
+        (qwen4exp_halo_box_campaign_ab, "qsa_wmma"),
+    ):
+        constants = {
+            node.value for node in ast.walk(ast.parse(inspect.getsource(module.main)))
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        }
+        assert attribute in constants, module.__name__
+
+
+def test_state_gate_still_writes_environment_flags_for_env_owned_packages():
+    from scripts.qwen4exp_row4_state_gate import apply_state_gate_mode
+
+    owned = _runner("quad")
+    env: dict[str, str] = {}
+    apply_state_gate_mode(owned, "qsa-h256-page256", "1", "WAVE", environment=env)
+    assert env == {"WAVE": "page256"}
+    assert owned.qsa_prefill_head_mode == "quad"

@@ -45,6 +45,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from hipengine.benchmark.execution_profiles import EvaluationThresholds
+from hipengine.runtime.qwen4_exp_runner import qsa_prefill_head_mode
 from scripts.execution_profile_gdn_calibration import (
     PromptCalibrationCapture,
     build_candidate_quality,
@@ -90,6 +91,10 @@ class CandidateSpec:
     direct_dispatch_reference: tuple[str, str] | None = None
     dispatch_shape_positions: tuple[int, ...] | None = None
     quant: str | None = None
+    # Explicit H256 prefill head grouping for this arm. ``None`` keeps whatever
+    # the base profile published; the gate binds a non-None value with
+    # ``qsa_prefill_head_mode`` around the measured rows and restores it after.
+    qsa_prefill_head_mode: str | None = None
 
     @property
     def requires_dispatch_count(self) -> bool:
@@ -100,9 +105,11 @@ CONSERVATIVE_ARITHMETIC_FLAGS = (
     "PRODUCTION_MOE_PREFILL", "Q4_IU8_PREFILL", "Q8_0_SELECTED_WMMA_DOWN",
     "Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN",
     "GDN_PEER_PREFILL", "GDN_COLWARPS_PREFILL", "Q4_DP4A64",
-    "QSA_H256_WAVE_PREFILL", "QSA_HEAD_PAIR", "QSA_FLASH_PREFILL",
+    "QSA_H256_WAVE_PREFILL", "QSA_FLASH_PREFILL",
     "QSA_ORDERED_DECODE", "QSA_ORDERED_DECODE_V2", "GR_WIDE",
 )
+# The QSA prefill head grouping is request-local runner state, so this gate
+# arms it through CandidateSpec.qsa_prefill_head_mode, not an env switch.
 
 _F16_ROUTES_OFF = {
     "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
@@ -742,8 +749,8 @@ CANDIDATES["q8_blockscale_guarded_quad"] = replace(
     CANDIDATES["q8_blockscale_guarded"], name="q8_blockscale_guarded_quad",
     scenario_id="qwen4exp-q8-blockscale-guarded-qsa-quad",
     environment={**CANDIDATES["q8_blockscale_guarded"].environment,
-                 "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256",
-                 "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR": "quad"},
+                 "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256"},
+    qsa_prefill_head_mode="quad",
 )
 CANDIDATES["q8_blockscale_guarded_restore"] = replace(
     CANDIDATES["q8_blockscale_guarded_quad"], name="q8_blockscale_guarded_restore",
@@ -1639,6 +1646,11 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         print(json.dumps({"t16_populate": t16_hook}), flush=True)
     bound_environment: dict[str, str | None] = {}
     dispatch_stack = ExitStack()
+    if candidate_spec.qsa_prefill_head_mode is not None:
+        # Request-local state, so the arm is bound around the measured rows and
+        # the profile's own decision comes back when the stack unwinds.
+        dispatch_stack.enter_context(qsa_prefill_head_mode(
+            candidate_generator.runner, candidate_spec.qsa_prefill_head_mode))
     counter = {"calls": 0, "shapes": {}}
     batch_evidence = None
     batch_runs: dict[str, list[tuple[Mapping[str, Any], ...]]] = {}

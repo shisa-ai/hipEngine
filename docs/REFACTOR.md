@@ -687,8 +687,9 @@ the sweep says off".
 Three paths re-open a swept flag, or keep a flag out of the sweep entirely:
 
 - `PRODUCTION_Q8_QSA_RESTORED_FLAGS` is applied immediately after the sweep and
-  restores `Q8_0_SELECTED_WMMA_DOWN`, `QSA_H256_WAVE_PREFILL`, `QSA_HEAD_PAIR`,
-  `QSA_ORDERED_DECODE` and `QSA_ORDERED_DECODE_V2`.
+  restores `Q8_0_SELECTED_WMMA_DOWN`, `QSA_H256_WAVE_PREFILL`,
+  `QSA_ORDERED_DECODE` and `QSA_ORDERED_DECODE_V2`. Prefill head grouping
+  is published separately as runner-local state by the resolved profile binder.
 - `_F16_ROUTE_SELECTORS` is applied after both passes, so the F16 composition
   restores `GR_WIDE` on the same plan.
 - `GDN_COLWARPS_PREFILL` is bound `"1" if production` and is deliberately absent
@@ -2741,28 +2742,6 @@ the allocation repair. The observations and proposal below are historical.
 - Convolution tails currently use owned host snapshots at chunk boundaries.
   Replace these with device-resident tails only after the same whole/chunk,
   60-second transition, recording-reset and post-join-noise tests pass.
-
-## Qwen4Exp H256 QSA head-pair candidate
-
-The H256/page256 head-pair kernel is a live batch/mixed-attention owner for
-an even GQA ratio in `hipengine/runtime/qwen4_exp_batch_qsa.py`. It is not a
-kernel-only candidate. Production UD prefill selects the head-quad variant
-through the profile binder's recovery/restore sequence; other production
-quants and strict profiles retain their declared parent selections.
-
-`HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR=1` remains a two-head prefill diagnostic;
-`quad` selects the four-head prefill variant. The production prefill mapping
-and grid investigation are recorded in
-`benchmarks/results/2026-09-27-qsa-prefill-grid-resolution/README.md`.
-Do not remove the pair kernel with the diagnostic mode: batch attention uses
-it independently of this environment setting.
-
-Remaining cleanup: replace the prefill environment mode with request-local
-profile selection, preserving the registered parent fallback, UD-only quad
-scope and shape checks. Migrate diagnostic harnesses to explicit scoped
-selection, then remove the reader and binder publication together. Validate
-`tests/test_unit_qwen4exp_qsa_head_pair_route.py`, profile tests and real
-batch/prefill attention paths; batch head-pair selection must stay independent.
 
 ## Qwen4Exp GDN checked-index production leaf
 

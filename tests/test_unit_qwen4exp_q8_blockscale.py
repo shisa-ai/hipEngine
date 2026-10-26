@@ -42,14 +42,16 @@ def test_guarded_wrapper_rejects_short_queue_before_build(monkeypatch):
 
 
 def test_quad_restoration_does_not_restore_other_approximate_routes():
-    env = CANDIDATES["q8_blockscale_guarded_quad"].environment
+    candidate = CANDIDATES["q8_blockscale_guarded_quad"]
+    env = candidate.environment
     assert env["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "page256"
-    assert env["HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR"] == "quad"
+    # The head leaf is request-local runner state, so the candidate declares it
+    # instead of publishing a process-wide switch.
+    assert candidate.qsa_prefill_head_mode == "quad"
     assert set(env) == {
         "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN",
         "HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT",
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL",
-        "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR",
     }
 
 

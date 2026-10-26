@@ -2722,14 +2722,49 @@ def run_qwen4_exp_dense_qsa_token_mixer(
     return scratch.output
 
 
-def _qwen4_exp_qsa_head_pair_key(key: KernelKey, *, query_heads: int, kv_heads: int) -> KernelKey:
-    mode=os.environ.get("HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR","0")
-    if (key.variant!="strict_h256_page256_wave_rows_spans"
-            or query_heads!=24 or kv_heads!=2
-            or mode not in {"1","quad"}):
+# H256 prefill head grouping for the *scalar* sparse-prefill rows owner. The
+# execution profile publishes the decision to the owning runner ("quad" on
+# production lanes); "pair" exists only for explicit diagnostics and is never
+# published. An unbound runner, an unknown value, or a shape the leaf does not
+# cover keeps the single-head parent. This leaf is resolved here and launched
+# only where WMMA attention does not own the chunk: the production profiles also
+# bind HIPENGINE_QWEN4_EXP_QSA_WMMA=1, so on those lanes the grouping is the
+# fallback selection rather than the kernel that runs.
+_QSA_HEAD_VARIANTS = {
+    "pair": "strict_h256_head_pair_rows_spans",
+    "quad": "strict_h256_head_quad_rows_spans",
+}
+_QSA_HEAD_PARENT = "parent"
+
+
+@contextlib.contextmanager
+def qsa_prefill_head_mode(runner: Any, mode: str | None = None):
+    """Bind an explicit head mode for a diagnostic arm.
+
+    The request's own decision is published on the runner by the profile binder;
+    a harness runs outside that request, so it selects its arm here and the
+    scope puts the published value back on exit. ``None`` leaves it in force.
+    """
+
+    prior = getattr(runner, "qsa_prefill_head_mode", _QSA_HEAD_PARENT)
+    if mode is not None:
+        runner.qsa_prefill_head_mode = str(mode)
+    try:
+        yield prior
+    finally:
+        runner.qsa_prefill_head_mode = prior
+
+
+def _qwen4_exp_qsa_prefill_head_key(
+    key: KernelKey, *, query_heads: int, kv_heads: int, mode: str | None
+) -> KernelKey:
+    if (key.variant != "strict_h256_page256_wave_rows_spans"
+            or query_heads != 24 or kv_heads != 2):
         return key
-    candidate=KernelKey(key.backend,key.layer,key.quant,
-                       "strict_h256_head_quad_rows_spans" if mode=="quad" else "strict_h256_head_pair_rows_spans")
+    variant = _QSA_HEAD_VARIANTS.get(str(mode))
+    if variant is None:
+        return key
+    candidate = KernelKey(key.backend, key.layer, key.quant, variant)
     return candidate if is_registered(candidate) else key
 
 
@@ -2776,11 +2811,19 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
     index_rotary_dim: int,
     rope_positions_ptr: int | None = None,
     cache_only: bool = False,
+    head_mode: str | None = _QSA_HEAD_PARENT,
     eps: float = 1e-6,
     stream: int = 0,
     runtime: HipRuntime | None = None,
 ) -> DeviceBuffer | None:
-    """Append a contiguous QSA chunk, optionally omitting unused attention."""
+    """Append a contiguous QSA chunk, optionally omitting unused attention.
+
+    ``head_mode`` is the owning runner's H256 prefill head grouping decision
+    for the scalar rows owner (see :func:`qsa_prefill_head_mode`). It selects
+    the fallback leaf: when ``qsa_wmma`` owns the chunk the grouping is resolved
+    but that owner is not launched. It is ignored by the ``cache_only`` path,
+    which returns before any attention dispatch.
+    """
 
     count = int(rows)
     start = int(start_position)
@@ -3217,10 +3260,10 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
             head_dim=head_dim, rows=sparse_rows, backend=backend,
             block_size=attention_state.block_size,
         ):
-            sparse_key=_qwen4_exp_qsa_head_pair_key(
+            sparse_key=_qwen4_exp_qsa_prefill_head_key(
                 KernelKey(backend,"qsa_sparse_attention","bf16_kv",
                           qwen4_exp_qsa_h256_wave_prefill_variant()),
-                query_heads=query_heads,kv_heads=kv_heads)
+                query_heads=query_heads,kv_heads=kv_heads,mode=head_mode)
             sparse_attention_rows = resolve(
                 backend=sparse_key.backend,layer=sparse_key.layer,
                 quant=sparse_key.quant,variant=sparse_key.variant)
@@ -6666,12 +6709,18 @@ def run_qwen4_exp_qsa_prefill_layer(
     experts: int,
     top_k: int,
     rope_positions_ptr: int | None = None,
+    head_mode: str | None = _QSA_HEAD_PARENT,
     stream: int = 0,
     runtime: HipRuntime | None = None,
     pending_write: tuple[int, int, int, bool] | None = None,
     defer_write: list | None = None,
 ) -> DeviceBuffer:
     """Execute one complete Qwen4Exp QSA+MoE prompt chunk.
+
+    ``head_mode`` is the owning runner's H256 prefill head grouping decision for
+    the scalar rows owner and is forwarded unchanged to the token mixer, which
+    resolves that leaf but launches it only when WMMA attention does not own the
+    chunk.
 
     ``pending_write`` is the previous layer's deferred residual write (its
     output is ``residual_ptr``). With ``defer_write`` this layer's own final
@@ -6718,6 +6767,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         index_dim=index_dim,
         index_rotary_dim=index_rotary_dim,
         rope_positions_ptr=rope_positions_ptr,
+        head_mode=head_mode,
         stream=stream,
         runtime=active_runtime,
     )
@@ -7728,6 +7778,10 @@ class Qwen4ExpGGUFResidentModelRunner:
     # Same shape for the Q8 raw-MMQ dense leg: the profile publishes whether the
     # token64 owner may replace the raw-vec4 parent for this runner's prefill.
     dense_mmq_token64_enabled: bool = False
+    # H256 QSA prefill head grouping, published from the plan's own selection
+    # ("quad" on the UD lane). "pair" is diagnostic-only and never published; an
+    # unbound runner keeps the single-head parent.
+    qsa_prefill_head_mode: str = "parent"
 
     def __init__(
         self,
@@ -9322,6 +9376,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     index_dim=cfg.indexer_key_length,
                     index_rotary_dim=cfg.rope_dimension_count,
                     rope_positions_ptr=rope_positions_ptr,
+                    head_mode=self.qsa_prefill_head_mode,
                     ffn=cfg.expert_feed_forward_length,
                     experts=cfg.expert_count,
                     top_k=cfg.expert_used_count,

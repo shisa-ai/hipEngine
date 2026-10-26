@@ -14,12 +14,16 @@ def test_default_restores_guarded_q8_and_qualified_qsa_paths(monkeypatch):
     profile = resolve_runtime_profile(
         model="qwen4_exp_gguf", backend="hip_gfx1151",
         quant="gguf_ud_q4_k_xl", profile=ExecutionProfile.PRODUCTION)
-    profile.binder(SimpleNamespace(), profile)
+    generator = SimpleNamespace()
+    profile.binder(generator, profile)
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT"] == (
         "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out")
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "page256"
-    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR"] == "quad"
+    # The four-head prefill leaf is request-local runner state, not an env
+    # switch: the binder publishes the plan's own selection.
+    assert generator.qsa_prefill_head_mode == "quad"
+    assert "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR" not in os.environ
     for flag in ("Q8_MMQ_PREFILL", "QSA_FLASH_PREFILL", "GR_IU8", "GR_IU8_DOWN"):
         assert os.environ["HIPENGINE_QWEN4_EXP_" + flag] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "0"

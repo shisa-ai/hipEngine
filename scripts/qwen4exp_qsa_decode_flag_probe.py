@@ -19,7 +19,41 @@ from scripts.qwen4exp_framework_family_refresh import check_host,model_identity
 from hipengine.kernels.registry import KernelKey,resolve,register
 from hipengine.core.memory import memory_stats
 
-FLAG="HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR"
+# The H256 prefill head leaf is request-local runner state, so the probe binds
+# ``runner.qsa_prefill_head_mode`` instead of a process-wide env key.
+from hipengine.runtime.qwen4_exp_runner import qsa_prefill_head_mode
+
+QSA_WMMA_ENV="HIPENGINE_QWEN4_EXP_QSA_WMMA"
+
+
+def scalar_head_measurement(vary_prefill,*,environment=os.environ):
+    """Disable WMMA so the head-grouped scalar leaf can launch.
+
+    Production binds ``QSA_WMMA=1`` and the mixer launches the grouped rows
+    owner only when WMMA attention does not own the chunk, so a head arm that
+    leaves WMMA on measures the WMMA kernel and counts zero head launches. The
+    override covers both arms and the returned record restores it.
+    """
+
+    if not vary_prefill:
+        return None
+    previous=environment.get(QSA_WMMA_ENV)
+    environment[QSA_WMMA_ENV]="0"
+    return dict(environment=QSA_WMMA_ENV,value="0",previous=previous,
+        arms="both",measured=True,
+        reason=("head grouping is the scalar fallback; QSA_WMMA=1 would launch "
+                "the WMMA owner instead and the counted head leaf would never "
+                "engage"))
+
+
+def restore_scalar_head_measurement(record,*,environment=os.environ):
+    if record is None:
+        return
+    previous=record["previous"]
+    if previous is None:
+        environment.pop(record["environment"],None)
+    else:
+        environment[record["environment"]]=previous
 
 def cpu_counters():
     usage=resource.getrusage(resource.RUSAGE_THREAD)
@@ -56,9 +90,12 @@ def orders(pairs):
     return [(0,1) if i%2==0 else (1,0) for i in range(pairs)]
 
 def phase_flags(vary_prefill, arm):
+    """Head mode for (prefill phase, decode phase) of one arm."""
+
     if arm not in (0,1):
         raise ValueError("invalid arm")
-    return (str(arm),"0") if vary_prefill else ("0",str(arm))
+    leaf = "pair" if arm else "parent"
+    return (leaf,"parent") if vary_prefill else ("parent",leaf)
 
 def active_transition(milliseconds, clock=time.perf_counter):
     """Diagnostic busy interval; caller must charge its full wall time."""
@@ -175,7 +212,8 @@ def main():
         report.update(transition_active_ms=a.transition_active_ms,
             protocol="Both arms fresh candidate-prefill,decode flag0;arm0 direct transition,arm1 bounded CPU-active interval. Charge interval in transition_plus_decode and request totals.",
             limits="Diagnostic busy work is not production code. Lower decode time alone is not a win; all added transition wall must be counted. No power-efficiency claim.")
-    previous=os.environ.get(FLAG)
+    previous_mode=runner.qsa_prefill_head_mode
+    wmma_record=None
     from scripts.qwen4exp_thread_affinity import ThreadAffinity
     affinity=ThreadAffinity(a.pin_cpu)
     from scripts.qwen4exp_cpu_floor import CpuFloor
@@ -199,9 +237,14 @@ def main():
         if a.cpu_accounting:
             gc.callbacks.append(on_gc)
         register(key,counted,replace=True)
+        wmma_record=scalar_head_measurement(a.vary_prefill)
+        report["qsa_wmma"]=wmma_record or dict(
+            environment=QSA_WMMA_ENV,value=os.environ.get(QSA_WMMA_ENV),
+            measured=False,
+            reason="decode-phase arms only; the head leaf is prefill-only")
         for name in a.case_id or ("code-p4096","mixed_ja_en-p4096"):
             case=next(c for c in fixture["cases"] if c["id"]==name)
-            os.environ[FLAG]="0"
+            runner.qsa_prefill_head_mode="parent"
             if not a.vary_prefill:
                 root=runner.prefill(case["prompt_token_ids"])
                 snapshot=runner.snapshot()
@@ -210,23 +253,23 @@ def main():
             for pair,order in enumerate([(0,1),*schedule]):
                 for arm in order:
                     before=telemetry()
-                    prefill_flag,decode_flag=phase_flags(a.vary_prefill,arm)
+                    prefill_mode,decode_mode=phase_flags(a.vary_prefill,arm)
                     if a.transition_active_ms is not None:
-                        prefill_flag,decode_flag="1","0"
+                        prefill_mode,decode_mode="pair","parent"
                     prefill_seconds=None
                     if a.vary_prefill:
-                        os.environ[FLAG]=prefill_flag
                         start_calls=calls[0]
-                        start=time.perf_counter()
-                        root=runner.prefill(case["prompt_token_ids"],capture_logits=False,
-                                            capture_target_hidden=False)
-                        runner.runtime.device_synchronize()
-                        prefill_seconds=time.perf_counter()-start
-                        if calls[0]-start_calls!=(24 if prefill_flag=="1" else 0):
+                        with qsa_prefill_head_mode(runner,prefill_mode):
+                            start=time.perf_counter()
+                            root=runner.prefill(case["prompt_token_ids"],capture_logits=False,
+                                                capture_target_hidden=False)
+                            runner.runtime.device_synchronize()
+                            prefill_seconds=time.perf_counter()-start
+                        if calls[0]-start_calls!=(24 if prefill_mode=="pair" else 0):
                             raise AssertionError("prefill engagement mismatch")
                     else:
                         runner.restore(snapshot)
-                    os.environ[FLAG]=decode_flag
+                    runner.qsa_prefill_head_mode=decode_mode
                     initial_calls=calls[0]
                     token=root.token_id
                     tokens=[]
@@ -298,10 +341,8 @@ def main():
             if on_gc in gc.callbacks:
                 gc.callbacks.remove(on_gc)
             register(key,original,replace=True)
-            if previous is None:
-                os.environ.pop(FLAG,None)
-            else:
-                os.environ[FLAG]=previous
+            restore_scalar_head_measurement(wmma_record)
+            runner.qsa_prefill_head_mode=previous_mode
             generator.close()
         finally:
             try:

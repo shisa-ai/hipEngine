@@ -27,6 +27,7 @@ from scripts.qwen4exp_conservative_cost import summarize_cost
 from scripts.qwen4exp_layer2_profile_gate import (
     _make_generator, _state_summary, _strict_trajectory, _candidate_trajectory, CANDIDATES,
 )
+from hipengine.runtime.qwen4_exp_runner import qsa_prefill_head_mode
 from scripts.qwen4exp_journey_localize import set_flags
 from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
 from scripts.qwen4exp_chunk_workspace import capture_workspace, use_workspace, workspace_description
@@ -38,7 +39,7 @@ from scripts.qwen4exp_q8_repair_depth_gate import (
 SHARED_DECODE_SAFE_FLAGS = frozenset(
     "HIPENGINE_QWEN4_EXP_" + flag for flag in (
         "Q8_0_SELECTED_WMMA_DOWN", "Q8_DOWN_VARIANT",
-        "QSA_H256_WAVE_PREFILL", "QSA_HEAD_PAIR",
+        "QSA_H256_WAVE_PREFILL",
         "QSA_ORDERED_DECODE", "QSA_ORDERED_DECODE_V2",
     )
 )
@@ -264,6 +265,12 @@ def main():
         arm_envs = {"before": previous}
         arm_envs.update({name: {**previous, **env} for name, env in candidate_envs.items()})
         report["arm_overrides"] = arm_envs
+        # The QSA prefill head grouping is request-local runner state, so an arm
+        # that declares one is bound by scope rather than by an env key.
+        arm_head_modes = {name: CANDIDATES[name].qsa_prefill_head_mode
+                          for name in args.candidate}
+        report["arm_head_modes"] = {
+            name: mode for name, mode in arm_head_modes.items() if mode is not None}
         original_step = runner.step
         last = {}
         names = ("moe_graph_cache", "layer_graph_cache")
@@ -290,7 +297,11 @@ def main():
             if os.environ.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL") == "1":
                 runner.configure_mmq_prefill_resources()
             workspace = workspaces.get(arm)
-            with use_workspace(runner, workspace) if workspace is not None else nullcontext():
+            with (
+                qsa_prefill_head_mode(runner, arm_head_modes.get(arm)),
+                use_workspace(runner, workspace)
+                if workspace is not None else nullcontext(),
+            ):
                 with observe_prefill_chunks(
                     runner, tokens=case["prompt_tokens"], size=runner.prefill_chunk_size,
                 ) as chunks:
