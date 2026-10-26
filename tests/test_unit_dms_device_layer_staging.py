@@ -86,11 +86,11 @@ class _FakeDevice:
         if self.copy_count[kind] == self.fail_copy_at[kind]:
             raise RuntimeError(f"fake {kind} copy failed")
 
-    def copy_host_to_device(self, buffer, host_ptr, nbytes=None, *, runtime=None):
+    def copy_host_array_to_device(self, buffer, array, nbytes=None, *, runtime=None):
         del runtime
-        count = buffer.nbytes if nbytes is None else int(nbytes)
+        count = array.nbytes if nbytes is None else int(nbytes)
         self._check_copy("host_to_device")
-        ctypes.memmove(self._addr(int(buffer.ptr)), host_ptr, count)
+        ctypes.memmove(self._addr(int(buffer.ptr)), array.ctypes.data, count)
 
     def copy_device_to_host(self, host_ptr, buffer, nbytes=None, *, runtime=None):
         del runtime
@@ -134,7 +134,7 @@ def _store(
     fake = _FakeDevice()
     monkeypatch.setattr(device, "malloc", fake.malloc)
     monkeypatch.setattr(device, "free", fake.free)
-    monkeypatch.setattr(device, "copy_host_to_device", fake.copy_host_to_device)
+    monkeypatch.setattr(device, "copy_host_array_to_device", fake.copy_host_array_to_device)
     monkeypatch.setattr(device, "copy_device_to_host", fake.copy_device_to_host)
     store = device.DMSDevicePayloadStore.__new__(device.DMSDevicePayloadStore)
     store.codec = codec

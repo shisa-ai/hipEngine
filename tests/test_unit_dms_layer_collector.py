@@ -223,7 +223,7 @@ class _Harness:
         monkeypatch.setattr(gguf_runner, "copy_host_array_to_device", self.device.copy_host_array_to_device)
         monkeypatch.setattr(gguf_runner, "copy_device_to_host", self.device.copy_device_to_host)
         # Prefix seeding writes through the cache module's own copy bindings.
-        monkeypatch.setattr(dms_prefill_cache, "copy_host_to_device", self.device.copy_host_to_device)
+        monkeypatch.setattr(dms_prefill_cache, "copy_host_array_to_device", self.device.copy_host_array_to_device)
         monkeypatch.setattr(dms_prefill_cache, "copy_device_to_host", self.device.copy_device_to_host)
         monkeypatch.setattr(
             dms_device_module,

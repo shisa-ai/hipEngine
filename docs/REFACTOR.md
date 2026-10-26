@@ -2915,7 +2915,9 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   Moonshine HIP/CUDA decoder, encoder and batch uploads use the owning helper,
   including cross-cache row offsets and real-sample audio lengths. Evie and
   TimesFM decode named-local uploads also use the owning helper, preserving
-  explicit copy lengths into padded allocations.
+  explicit copy lengths into padded allocations. DMS payload-store, recurrent
+  prefix and cold-prefill cache uploads retain their arrays, preserving restore
+  offsets, explicit byte counts and copy order.
 - Remaining cleanup: named-local array uploads still use the raw-address
   `copy_host_to_device` API in other paths. Named locals are safe through a
   synchronous copy, but future edits must not replace them with temporary

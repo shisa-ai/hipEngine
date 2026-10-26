@@ -55,6 +55,12 @@ EVIE_TIMESFM_NAMED_LOCAL_UPLOAD_MODULES = (
     "runtime/timesfm3_decode",
 )
 
+DMS_SYNCHRONOUS_ARRAY_UPLOAD_MODULES = (
+    "kvcache/dms_device",
+    "runtime/dms_prefix",
+    "runtime/dms_prefill_cache",
+)
+
 
 @pytest.mark.parametrize("module", [
     "runtime/evie", "runtime/timesfm_decode", "runtime/timesfm3_decode",
@@ -312,6 +318,48 @@ def test_evie_timesfm_named_local_uploads_use_the_owning_helper(module):
     sufficient for lifetime but still uses the pointer-only API. This guard
     pins the owning-helper migration for that named-local form, including
     direct ``runtime.memcpy(..., HOST_TO_DEVICE)`` calls.
+    """
+    path = Path(__file__).parents[1] / "hipengine" / f"{module}.py"
+    tree = ast.parse(path.read_text())
+    hazards = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Name) and node.func.id == "copy_host_to_device":
+            source = (
+                node.args[1]
+                if len(node.args) > 1
+                else next((kw.value for kw in node.keywords if kw.arg == "host_ptr"), None)
+            )
+            if source is not None and _is_named_host_array_pointer(source):
+                hazards.append((node.lineno, "copy_host_to_device"))
+            continue
+        if not (isinstance(node.func, ast.Attribute) and node.func.attr == "memcpy"):
+            continue
+        kind = (
+            node.args[3]
+            if len(node.args) > 3
+            else next((kw.value for kw in node.keywords if kw.arg == "kind"), None)
+        )
+        if not (isinstance(kind, ast.Attribute) and kind.attr == "HOST_TO_DEVICE"):
+            continue
+        source = (
+            node.args[1]
+            if len(node.args) > 1
+            else next((kw.value for kw in node.keywords if kw.arg == "src"), None)
+        )
+        if source is not None and _is_named_host_array_pointer(source):
+            hazards.append((node.lineno, "runtime.memcpy"))
+    assert not hazards, f"{path.name}: use copy_host_array_to_device at {hazards}"
+
+
+@pytest.mark.parametrize("module", DMS_SYNCHRONOUS_ARRAY_UPLOAD_MODULES)
+def test_dms_synchronous_array_uploads_use_the_owning_helper(module):
+    """Named-local DMS H2D arrays must retain their owner through the copy.
+
+    This is a bounded syntax guard over the DMS device, prefix, and prefill
+    cache modules, not a proof of arbitrary pointer lifetimes. Asynchronous
+    uploads, raw pointer uploads, and D2H/D2D copies are outside this guard.
     """
     path = Path(__file__).parents[1] / "hipengine" / f"{module}.py"
     tree = ast.parse(path.read_text())
@@ -1004,3 +1052,331 @@ def test_qwen35_gguf_runner_zero_upload_keeps_destination_count(monkeypatch):
     assert array is zeros
     assert nbytes == 16
     assert call_runtime is runtime
+
+
+def test_dms_device_upload_uses_owning_contiguous_array(monkeypatch):
+    from hipengine.kvcache import dms_device as mod
+
+    uploads = []
+    legacy = []
+
+    def upload(buffer, array, nbytes=None, *, runtime=None):
+        uploads.append((buffer, array, nbytes, runtime))
+
+    def old_upload(*args, **kwargs):
+        legacy.append((args, kwargs))
+
+    monkeypatch.setattr(mod, "copy_host_array_to_device", upload, raising=False)
+    monkeypatch.setattr(mod, "copy_host_to_device", old_upload, raising=False)
+    buffer = memory.DeviceBuffer(0x1000, 16)
+    store = object.__new__(mod.DMSDevicePayloadStore)
+    store._stg = {"pack_k": buffer}
+    source = np.arange(8, dtype=np.int32)[::2]
+
+    store._upload("pack_k", source)
+
+    assert legacy == []
+    assert len(uploads) == 1
+    call_buffer, array, nbytes, call_runtime = uploads[0]
+    assert call_buffer is buffer
+    assert array.flags.c_contiguous
+    assert array.tolist() == [0, 2, 4, 6]
+    assert nbytes == 16
+    assert call_runtime is None
+
+
+def test_dms_device_configure_layer_uploads_owning_metadata(monkeypatch):
+    from hipengine.kvcache import dms_device as mod
+
+    uploads = []
+    legacy = []
+
+    def upload(buffer, array, nbytes=None, *, runtime=None):
+        uploads.append((buffer, array, nbytes, runtime))
+
+    def old_upload(*args, **kwargs):
+        legacy.append((args, kwargs))
+
+    monkeypatch.setattr(mod, "copy_host_array_to_device", upload, raising=False)
+    monkeypatch.setattr(mod, "copy_host_to_device", old_upload, raising=False)
+    store = object.__new__(mod.DMSDevicePayloadStore)
+    store._closed = False
+    store._layers = 1
+    store._heads = 2
+    store._base_meta = [memory.DeviceBuffer(0x2000, 8)]
+    store._capacity_meta = [memory.DeviceBuffer(0x3000, 8)]
+    store._live_meta = [memory.DeviceBuffer(0x4000, 8)]
+    store._ensure_layer = lambda layer: None
+
+    store.configure_layer(
+        0,
+        base=np.array([1, 2], dtype=np.int32),
+        capacity=np.array([3, 4], dtype=np.int32),
+        live=np.array([5, 6], dtype=np.int32),
+    )
+
+    assert legacy == []
+    assert [(call[0].ptr, call[2], call[3]) for call in uploads] == [
+        (0x2000, 8, None),
+        (0x3000, 8, None),
+        (0x4000, 8, None),
+    ]
+    assert [call[1].tolist() for call in uploads] == [[1, 2], [3, 4], [5, 6]]
+
+
+def test_dms_device_bind_row_spans_uploads_owning_rows(monkeypatch):
+    from hipengine.kvcache import dms_device as mod
+
+    uploads = []
+    legacy = []
+
+    def upload(buffer, array, nbytes=None, *, runtime=None):
+        uploads.append((buffer, array, nbytes, runtime))
+
+    def old_upload(*args, **kwargs):
+        legacy.append((args, kwargs))
+
+    monkeypatch.setattr(mod, "copy_host_array_to_device", upload, raising=False)
+    monkeypatch.setattr(mod, "copy_host_to_device", old_upload, raising=False)
+    store = object.__new__(mod.DMSDevicePayloadStore)
+    store._closed = False
+    store._layers = 1
+    store._heads = 2
+    store._max_rows = 2
+    store._rows_capacity = 2
+    store._rows_base = [memory.DeviceBuffer(0x5000, 16)]
+    store._rows_live = [memory.DeviceBuffer(0x6000, 16)]
+    store._ensure_layer = lambda layer: None
+
+    pointers = store.bind_row_spans(
+        0,
+        base=np.array([[1, 2], [3, 4]], dtype=np.int32),
+        live=np.array([[5, 6], [7, 8]], dtype=np.int32),
+    )
+
+    assert pointers == (0x5000, 0x6000)
+    assert legacy == []
+    assert [(call[0].ptr, call[2], call[3]) for call in uploads] == [
+        (0x5000, 16, None),
+        (0x6000, 16, None),
+    ]
+    assert [call[1].tolist() for call in uploads] == [
+        [[1, 2], [3, 4]],
+        [[5, 6], [7, 8]],
+    ]
+
+
+def test_dms_device_restore_uploads_owning_planes_with_offsets(monkeypatch):
+    from hipengine.kvcache import dms_device as mod
+
+    uploads = []
+    legacy = []
+
+    def upload(buffer, array, nbytes=None, *, runtime=None):
+        uploads.append((buffer, array, nbytes, runtime))
+
+    def old_upload(*args, **kwargs):
+        legacy.append((args, kwargs))
+
+    monkeypatch.setattr(mod, "copy_host_array_to_device", upload, raising=False)
+    monkeypatch.setattr(mod, "copy_host_to_device", old_upload, raising=False)
+    store = object.__new__(mod.DMSDevicePayloadStore)
+    store._closed = False
+    store._layers = 1
+    store._heads = 1
+    store._slots = 4
+    store._dim = 2
+    store._payload_dtype = np.dtype(np.uint16)
+    store._k_scales = []
+    store._v_scales = []
+    store._k_slot = [memory.DeviceBuffer(0x7000, 16)]
+    store._v_slot = [memory.DeviceBuffer(0x8000, 16)]
+    store._positions = [memory.DeviceBuffer(0x9000, 16)]
+    store._slot_evict = [memory.DeviceBuffer(0xA000, 4)]
+    store._live_meta = [memory.DeviceBuffer(0xB000, 4)]
+    store._ensure_layer = lambda layer: None
+    snapshot = mod.DMSDevicePayloadSnapshot(
+        extents=(
+            mod.DMSDeviceExtentSnapshot(
+                layer=0,
+                head=0,
+                start=2,
+                length=1,
+                k_bits=np.array([[1, 2]], dtype=np.uint16),
+                v_bits=np.array([[3, 4]], dtype=np.uint16),
+                positions=np.array([5], dtype=np.int32),
+                evict=np.array([1], dtype=np.uint8),
+            ),
+        ),
+        live_counts=np.array([[4]], dtype=np.int32),
+    )
+
+    store.restore(snapshot)
+
+    assert legacy == []
+    assert [
+        (call[0].ptr, call[0].nbytes, call[2], call[3]) for call in uploads
+    ] == [
+        (0x7008, 4, 4, None),
+        (0x8008, 4, 4, None),
+        (0x9008, 4, 4, None),
+        (0xA002, 1, 1, None),
+        (0xB000, 4, 4, None),
+    ]
+    assert [call[1].reshape(-1).tolist() for call in uploads] == [
+        [1, 2],
+        [3, 4],
+        [5],
+        [1],
+        [4],
+    ]
+
+
+def test_dms_prefix_restore_recurrent_prefix_uploads_owning_arrays(monkeypatch):
+    from hipengine.runtime import dms_prefix as mod
+
+    uploads = []
+    legacy = []
+
+    def upload(buffer, array, nbytes=None, *, runtime=None):
+        uploads.append((buffer, array, nbytes, runtime))
+
+    def old_upload(*args, **kwargs):
+        legacy.append((args, kwargs))
+
+    monkeypatch.setattr(mod, "copy_host_array_to_device", upload, raising=False)
+    monkeypatch.setattr(mod, "copy_host_to_device", old_upload, raising=False)
+    conv = memory.DeviceBuffer(0x1000, 8)
+    recurrent = memory.DeviceBuffer(0x2000, 8)
+    session = SimpleNamespace(
+        scratch=SimpleNamespace(
+            layer_conv_states=[conv],
+            layer_recurrent_states=[recurrent],
+        )
+    )
+    first = np.arange(2, dtype=np.int32)
+    second = np.arange(2, dtype=np.int32) + 2
+    snapshot = SimpleNamespace(recurrent_and_logits=(first, second))
+
+    mod.restore_recurrent_prefix(session, snapshot)
+
+    assert legacy == []
+    assert [(call[0].ptr, call[2], call[3]) for call in uploads] == [
+        (0x1000, 8, None),
+        (0x2000, 8, None),
+    ]
+    assert [call[1].tolist() for call in uploads] == [[0, 1], [2, 3]]
+
+
+def test_dms_prefix_restore_prompt_uploads_owning_arrays_after_restore(monkeypatch):
+    from hipengine.runtime import dms_prefix as mod
+
+    calls = []
+    legacy = []
+
+    def upload(buffer, array, nbytes=None, *, runtime=None):
+        calls.append(("upload", buffer, array, nbytes, runtime))
+
+    def old_upload(*args, **kwargs):
+        legacy.append((args, kwargs))
+
+    def restore_prefix(backend, layer, compact):
+        calls.append(("restore_prefix", backend, layer, compact))
+
+    monkeypatch.setattr(mod, "copy_host_array_to_device", upload, raising=False)
+    monkeypatch.setattr(mod, "copy_host_to_device", old_upload, raising=False)
+    monkeypatch.setattr(mod, "restore_prefix", restore_prefix)
+    conv = memory.DeviceBuffer(0x3000, 8)
+    recurrent = memory.DeviceBuffer(0x4000, 8)
+    first = np.arange(2, dtype=np.int32)
+    second = np.arange(2, dtype=np.int32) + 2
+
+    class Backend:
+        def estimate(self, request, none, detail):
+            return 1
+
+        def reserve(self, nbytes):
+            calls.append(("reserve", nbytes))
+
+        def close(self):
+            pass
+
+    backend = Backend()
+    compact = SimpleNamespace(live_counts=np.array([1], dtype=np.int32))
+    snapshot = SimpleNamespace(
+        matches=lambda session, tokens, sampled: True,
+        tokens=(1, 2),
+        sampled=False,
+        compact=compact,
+        recurrent_and_logits=(first, second),
+        result=SimpleNamespace(value=7),
+    )
+    session = SimpleNamespace(
+        scratch=SimpleNamespace(
+            max_positions=8,
+            layer_conv_states=[conv],
+            layer_recurrent_states=[recurrent],
+        ),
+        position=0,
+        _dms_backend=None,
+        _dms_source=SimpleNamespace(
+            config=SimpleNamespace(num_kv_heads=1, num_layers=1)
+        ),
+        dms_max_new_tokens=2,
+        dms_backend_factory=lambda **kwargs: backend,
+        _dms_dense_prefill_pool=None,
+        runner=SimpleNamespace(),
+        backend=object(),
+    )
+
+    result = mod.restore_prompt(session, snapshot)
+
+    assert result.value == 7
+    assert legacy == []
+    assert [call[0] for call in calls] == [
+        "reserve",
+        "restore_prefix",
+        "upload",
+        "upload",
+    ]
+    assert [(call[1].ptr, call[3], call[4]) for call in calls[2:]] == [
+        (0x3000, 8, None),
+        (0x4000, 8, None),
+    ]
+    assert [call[2].tolist() for call in calls[2:]] == [[0, 1], [2, 3]]
+    assert session._position == 2
+    assert session._dms_backend is backend
+    assert session.runner.__dict__["_dms_decode_owner"] is session
+
+
+def test_dms_prefill_cache_write_prefix_uploads_owning_array(monkeypatch):
+    from hipengine.runtime import dms_prefill_cache as mod
+
+    uploads = []
+    legacy = []
+
+    def upload(buffer, array, nbytes=None, *, runtime=None):
+        uploads.append((buffer, array, nbytes, runtime))
+
+    def old_upload(*args, **kwargs):
+        legacy.append((args, kwargs))
+
+    monkeypatch.setattr(mod, "copy_host_array_to_device", upload, raising=False)
+    monkeypatch.setattr(mod, "copy_host_to_device", old_upload, raising=False)
+    buffer = memory.DeviceBuffer(0x5000, 32)
+    data = np.arange(8, dtype=np.uint8)
+
+    mod.write_prefix(buffer, data)
+
+    assert legacy == []
+    assert len(uploads) == 1
+    call_buffer, array, nbytes, call_runtime = uploads[0]
+    assert (call_buffer.ptr, call_buffer.nbytes) == (0x5000, 8)
+    assert array is data
+    assert nbytes == 8
+    assert call_runtime is None
+
+    with pytest.raises(ValueError):
+        mod.write_prefix(buffer, np.zeros(33, dtype=np.uint8))
+    assert len(uploads) == 1
+    assert legacy == []

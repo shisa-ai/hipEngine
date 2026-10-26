@@ -35,8 +35,8 @@ def test_snapshot_owned_ranges_and_restore(monkeypatch, dtype, starts, groups):
         reads.append((src.ptr, size))
         ctypes.memmove(dst, src.ptr, size)
     monkeypatch.setattr(device, 'copy_device_to_host', read)
-    monkeypatch.setattr(device, 'copy_host_to_device',
-                        lambda dst, src, size: ctypes.memmove(dst.ptr, src, size))
+    monkeypatch.setattr(device, 'copy_host_array_to_device',
+                        lambda dst, src, size=None, **kwargs: ctypes.memmove(dst.ptr, src.ctypes.data, src.nbytes if size is None else size))
     originals = {name: array.copy() for name, array in arrays.items()}
     snapshot = store.snapshot(np.array([starts]), np.array([[2, 2, 2]]))
     planes = 6 if dtype == np.int8 else 4

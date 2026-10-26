@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, host_array_ptr
+from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_array_to_device, host_array_ptr
 
 
 def read_prefix(buffer, nbytes):
@@ -23,7 +23,7 @@ def read_prefix(buffer, nbytes):
 def write_prefix(buffer, data):
     if data.nbytes > buffer.nbytes:
         raise ValueError("DMS cold prefix exceeds destination buffer")
-    copy_host_to_device(DeviceBuffer(buffer.ptr, data.nbytes), host_array_ptr(data), data.nbytes)
+    copy_host_array_to_device(DeviceBuffer(buffer.ptr, data.nbytes), data, data.nbytes)
 
 
 @dataclass(frozen=True)

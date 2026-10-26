@@ -10,7 +10,7 @@ import copy
 
 import numpy as np
 
-from hipengine.core.memory import copy_device_to_host, copy_host_to_device, host_array_ptr
+from hipengine.core.memory import copy_device_to_host, copy_host_array_to_device, host_array_ptr
 from hipengine.kvcache.dms import create_dms_bf16_backend
 from hipengine.kvcache.dms_prefix import DMSPrefixSnapshot, capture_prefix, restore_prefix
 
@@ -187,7 +187,7 @@ def restore_recurrent_prefix(session, snapshot):
     for buffer, data in zip(buffers, snapshot.recurrent_and_logits[:len(buffers)], strict=True):
         if buffer.nbytes != data.nbytes:
             raise ValueError("DMS prefix recurrent buffer geometry mismatch")
-        copy_host_to_device(buffer, host_array_ptr(data), data.nbytes)
+        copy_host_array_to_device(buffer, data, data.nbytes)
 
 
 def restore_prompt(session, snapshot):
@@ -216,7 +216,7 @@ def restore_prompt(session, snapshot):
         }))
         restore_prefix(backend, 0, snapshot.compact)
         for buffer, data in zip(buffers, snapshot.recurrent_and_logits, strict=True):
-            copy_host_to_device(buffer, host_array_ptr(data), data.nbytes)
+            copy_host_array_to_device(buffer, data, data.nbytes)
         pool = session._dms_dense_prefill_pool
         if pool is not None:
             allocation = session.unbind_device_kv_allocation()

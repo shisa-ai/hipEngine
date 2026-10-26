@@ -20,7 +20,7 @@ import numpy as np
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
-    copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -192,15 +192,15 @@ class DMSExternalLinearDeviceProjector:
             self._buffers.append(self._weight)
             self._bias = malloc(bias.nbytes, runtime=self._runtime)
             self._buffers.append(self._bias)
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self._weight,
-                host_array_ptr(weight),
+                weight,
                 weight.nbytes,
                 runtime=self._runtime,
             )
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self._bias,
-                host_array_ptr(bias),
+                bias,
                 bias.nbytes,
                 runtime=self._runtime,
             )
@@ -609,8 +609,8 @@ class DMSDevicePayloadStore:
             }
             for name, buffer in restored.items():
                 values = np.ascontiguousarray(getattr(staged, name))
-                copy_host_to_device(
-                    buffer, host_array_ptr(values), int(values.nbytes)
+                copy_host_array_to_device(
+                    buffer, values, int(values.nbytes)
                 )
         except BaseException:
             self._buffers = [
@@ -659,7 +659,7 @@ class DMSDevicePayloadStore:
 
     def _upload(self, name: str, array: np.ndarray) -> None:
         array = np.ascontiguousarray(array)
-        copy_host_to_device(self._stg[name], host_array_ptr(array), array.nbytes)
+        copy_host_array_to_device(self._stg[name], array, array.nbytes)
 
     def configure_layer(
         self,
@@ -679,8 +679,8 @@ class DMSDevicePayloadStore:
         base_values = np.ascontiguousarray(base, dtype=np.int32)
         if base_values.shape != (self._heads,) or np.any(base_values < 0):
             raise ValueError("DMS device extent bases must be [kv_heads]")
-        copy_host_to_device(
-            self._base_meta[layer], host_array_ptr(base_values), base_values.nbytes
+        copy_host_array_to_device(
+            self._base_meta[layer], base_values, base_values.nbytes
         )
         if capacity is not None:
             capacity_values = np.ascontiguousarray(capacity, dtype=np.int32)
@@ -688,18 +688,18 @@ class DMSDevicePayloadStore:
                 capacity_values <= 0
             ):
                 raise ValueError("DMS device extent capacities must be [kv_heads]")
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self._capacity_meta[layer],
-                host_array_ptr(capacity_values),
+                capacity_values,
                 capacity_values.nbytes,
             )
         if live is not None:
             live_values = np.ascontiguousarray(live, dtype=np.int32)
             if live_values.shape != (self._heads,) or np.any(live_values < 0):
                 raise ValueError("DMS device live metadata must be [kv_heads]")
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self._live_meta[layer],
-                host_array_ptr(live_values),
+                live_values,
                 live_values.nbytes,
             )
 
@@ -1037,11 +1037,11 @@ class DMSDevicePayloadStore:
         if np.any(base_values < 0) or np.any(live_values < 0):
             raise ValueError("DMS multi-row extents must be non-negative")
         self._ensure_row_planes(rows)
-        copy_host_to_device(
-            self._rows_base[layer], host_array_ptr(base_values), base_values.nbytes
+        copy_host_array_to_device(
+            self._rows_base[layer], base_values, base_values.nbytes
         )
-        copy_host_to_device(
-            self._rows_live[layer], host_array_ptr(live_values), live_values.nbytes
+        copy_host_array_to_device(
+            self._rows_live[layer], live_values, live_values.nbytes
         )
         return int(self._rows_base[layer].ptr), int(self._rows_live[layer].ptr)
 
@@ -1148,8 +1148,8 @@ class DMSDevicePayloadStore:
         if live_values.shape != base_values.shape:
             raise ValueError("DMS multi-row extents must be matching [rows, kv_heads]")
         self._ensure_row_stage(rows)
-        copy_host_to_device(
-            self._rows_q, host_array_ptr(q_values), q_values.nbytes
+        copy_host_array_to_device(
+            self._rows_q, q_values, q_values.nbytes
         )
         base_ptr, live_ptr = self.bind_row_spans(
             layer, base=base_values, live=live_values
@@ -1478,9 +1478,9 @@ class DMSDevicePayloadStore:
         # Validate every extent before mutating any device bytes.
         for array, destination, byte_offset in all_planes:
             contiguous = np.ascontiguousarray(array)
-            copy_host_to_device(
+            copy_host_array_to_device(
                 DeviceBuffer(destination.ptr + byte_offset, contiguous.nbytes),
-                host_array_ptr(contiguous),
+                contiguous,
                 contiguous.nbytes,
             )
 
@@ -1701,8 +1701,8 @@ class DMSDevicePayloadStore:
             # leave every payload byte as the append left it.
             for layer in range(self._layers):
                 values = np.ascontiguousarray(published[layer])
-                copy_host_to_device(
-                    self._live_meta[layer], host_array_ptr(values), values.nbytes
+                copy_host_array_to_device(
+                    self._live_meta[layer], values, values.nbytes
                 )
             return
         suffix_rows = horizon - accepted
