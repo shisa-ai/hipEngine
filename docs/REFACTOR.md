@@ -2617,24 +2617,21 @@ the allocation repair. The observations and proposal below are historical.
   Fixing that is the real prize - it would make every hit pay and let the
   retained working set grow.
 
-## One-process multi-arm prefix A/B is unsafe (found 2026-09-18)
+## Prefix benchmark arms use separate processes (resolved 2026-10-26)
 
-- `scripts/prefix_cache_multiturn_bench.py --allow-multi-mode` loads several
-  arms in one process with per-arm teardown. A third arm (a second `radix` arm)
-  faulted the GPU at lane `fixture-small_repo`:
-  `HSA_STATUS_ERROR_EXCEPTION` followed by `Memory access fault by GPU node-1 ...
-  Reason: Page not present or supervisor privilege`. Two arms (`off`, then
-  `radix`) complete normally with GTT back to 173 MiB after teardown, so the
-  fault needs a second cache-enabled engine in the same process.
-- Removal scope: the `--allow-multi-mode` flag and the per-arm teardown path,
-  once either the underlying reuse-after-close defect is fixed or the harness
-  always runs one arm per process (`--merge` already supports that, and the
-  2026-09-18 served A/B used it).
-- Until then the served A/B runs one arm per process and merges the artifacts;
-  the flag keeps the fault in its help text so the next caller is warned.
-- Not yet diagnosed: whether the fault is stale device pointers from a closed
-  prefix-cache engine or allocator fragmentation across two 64 GiB loads. A
-  minimal reproduction (two `radix` arms, one lane) is the first step.
+`scripts/prefix_cache_multiturn_bench.py` runs each engine load in a separate
+subprocess and merges the arm artifacts in plan order. Server repetitions each
+load an engine; in-process repetitions of a single mode reuse one engine.
+Multi-load runs require `--json`, preserve relative invocation paths, and stop
+on a failed child or missing artifact. Each child replaces its own prior output
+before execution so an old artifact cannot satisfy a successful-exit check.
+
+The old `--allow-multi-mode` option is accepted with a retirement notice but
+cannot enable same-process reloads. This removes the harness path that exposed
+the recorded second-cache-engine GPU fault; it does not claim to diagnose or
+repair the underlying runtime reload fault. CPU tests cover real subprocess
+launches, ordering, merging, stale output, relative paths and failure status
+in `tests/test_unit_prefix_cache_multiturn_bench.py`.
 
 ## Shared-prefix suffix prefill runs one token at a time (found 2026-09-18, resolved 2026-09-18)
 

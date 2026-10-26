@@ -1987,28 +1987,30 @@
       "start_line": 2304,
       "end_line": 2322,
       "sha256": "7169cd23f4656d1ef9ec244da86d0990e1e9b35c0e226e2254b0e19b9e691072",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Subprocess isolation, stale artifact and relative path repairs verified by45 focused CPU tests; docs/audit pass. worklog/entries/20261026T081543.029280Z-cleanup-refactor-r0075-805260.md."
+      ],
       "subitems": [
         {
           "line": 2306,
           "text": "- `scripts/prefix_cache_multiturn_bench.py --allow-multi-mode` loads several",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2313,
           "text": "- Removal scope: the `--allow-multi-mode` flag and the per-arm teardown path,",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2317,
           "text": "- Until then the served A/B runs one arm per process and merges the artifacts;",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2319,
           "text": "- Not yet diagnosed: whether the fault is stale device pointers from a closed",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },

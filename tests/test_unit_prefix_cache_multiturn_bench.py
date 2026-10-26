@@ -2,14 +2,19 @@
 
 Covers the serving-transport contract: per-turn prefix telemetry differenced
 from the server's aggregate counters, TTFT attribution over SSE, warmup
-separation, and alternating A/B arm order. The GPU path is exercised by the
-script itself; these tests pin the measurement plumbing with a stub engine.
+separation, alternating A/B arm order, and multi-arm subprocess orchestration
+with merge and failure propagation. The GPU path is exercised by the script
+itself; these tests pin the measurement plumbing with a stub engine and a stub
+arm subprocess, so no model is loaded.
 """
 
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import time
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -320,15 +325,17 @@ def test_server_transport_parser_defaults_to_inprocess() -> None:
     assert args.transport == "inprocess"
     assert args.arm_order == "sequential"
     assert args.warmup_turns == 1
-    assert args.allow_multi_mode is False
-    server = parser.parse_args(
-        ["--transport", "server", "--arm-order", "alternating", "--allow-multi-mode"]
-    )
+    server = parser.parse_args(["--transport", "server", "--arm-order", "alternating"])
     assert server.transport == "server"
     assert server.arm_order == "alternating"
-    assert server.allow_multi_mode is True
     with pytest.raises(SystemExit):
         parser.parse_args(["--transport", "bogus"])
+    # The one-process multi-arm escape hatch is gone: it faulted the GPU.
+    assert not any(
+        "--allow-multi-mode" in action.option_strings for action in parser._actions
+    )
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--allow-multi-mode"])
 
 
 def test_server_prefix_counters_survive_a_missing_health_block() -> None:
@@ -748,3 +755,743 @@ def test_artifact_prefix_telemetry_is_json_serializable() -> None:
 
     payload = json.dumps({key: value for key, value in record.items() if key != "text"})
     assert json.loads(payload)["prefix"]["mode"] == "radix"
+
+
+# ---------------------------------------------------------------------------
+# Multi-arm subprocess orchestration
+# ---------------------------------------------------------------------------
+#
+# A second prefix-cache engine in one process faulted the GPU on 2026-09-18
+# (docs/REFACTOR.md), so a run with more than one arm must execute one arm per
+# subprocess and merge the artifacts. These tests replace the child process with
+# a writer so orchestration, merge, and failure propagation are deterministic
+# and load no model.
+
+
+def _write_arm_artifact(
+    path: Any,
+    *,
+    mode: str,
+    wall_ms: float,
+    transport: str = "server",
+) -> None:
+    """Write the one-arm artifact shape ``_merge_arm_artifacts`` consumes."""
+
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        json.dumps(
+            {
+                "created_at": target.name,
+                "hardware": {"label": "test"},
+                "model": {"path": "m"},
+                "repo": {"revision": "r"},
+                "protocol": {
+                    "transport": transport,
+                    "modes": [mode],
+                    "repetitions": 1,
+                    "arm_order": "sequential",
+                    "arms": [{"repetition": 0, "mode": mode}],
+                },
+                "modes": {
+                    mode: {
+                        "repetitions": [
+                            {
+                                "repetition": 0,
+                                "mode": mode,
+                                "summary": {
+                                    "wall_ms": wall_ms,
+                                    "hits": 0,
+                                    "lookups": 0,
+                                    "reused_tokens": 0,
+                                    "output_tokens_per_second": 10.0,
+                                    "fallback_reasons": {},
+                                    "by_kind": {},
+                                    "ttft_ms": {"median": wall_ms / 10.0},
+                                },
+                            }
+                        ]
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _fake_arm_spawn(
+    calls: list[list[str]],
+    *,
+    wall_ms: dict[str, float],
+    returncode: int = 0,
+    write_artifact: bool = True,
+) -> Any:
+    """A stand-in child that records its command and writes its arm artifact."""
+
+    def spawn(command: Any) -> Any:
+        argv = [str(token) for token in command]
+        calls.append(argv)
+        from scripts.prefix_cache_multiturn_bench import build_parser
+
+        child = build_parser().parse_args(argv[2:])
+        if write_artifact:
+            mode = child.modes[0]
+            _write_arm_artifact(
+                child.json, mode=mode, wall_ms=wall_ms[mode], transport=child.transport
+            )
+        return subprocess.CompletedProcess(args=argv, returncode=returncode)
+
+    return spawn
+
+
+def _multi_arm_args(
+    tmp_path: Any,
+    *,
+    repetitions: int = 2,
+    arm_order: str = "alternating",
+    extra: tuple[str, ...] = (),
+) -> Any:
+    from scripts.prefix_cache_multiturn_bench import build_parser
+
+    return build_parser().parse_args(
+        [
+            "--transport",
+            "server",
+            "--modes",
+            "off",
+            "radix",
+            "--repetitions",
+            str(repetitions),
+            "--arm-order",
+            arm_order,
+            "--json",
+            str(Path(tmp_path) / "ab.json"),
+            *extra,
+        ]
+    )
+
+
+def test_multi_arm_run_executes_one_subprocess_per_arm(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    from scripts.prefix_cache_multiturn_bench import (
+        _arm_plan,
+        _run_arm_subprocesses,
+        build_parser,
+    )
+
+    args = _multi_arm_args(tmp_path)
+    arms = _arm_plan(args.modes, repetitions=args.repetitions, arm_order=args.arm_order)
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        "scripts.prefix_cache_multiturn_bench._spawn_arm",
+        _fake_arm_spawn(calls, wall_ms={"off": 100.0, "radix": 110.0}),
+    )
+
+    merged = _run_arm_subprocesses(args, output={}, arms=arms)
+
+    # A mirrored plan: off, radix, radix, off, one child each.
+    assert arms == [(0, "off"), (0, "radix"), (1, "radix"), (1, "off")]
+    assert len(calls) == 4
+    child_repetitions: list[int] = []
+    for command in calls:
+        child = build_parser().parse_args(command[2:])
+        assert len(child.modes) == 1
+        assert child.repetitions == 1
+        assert child.arm_order == "sequential"
+        assert child.transport == "server"
+        child_repetitions.append(child.arm_repetition)
+    # Each arm keeps its plan repetition, so the lane order a repetition calls
+    # for is preserved across process boundaries.
+    assert child_repetitions == [repetition for repetition, _mode in arms]
+    artifacts = [Path(command[-1]) for command in calls]
+    assert len(set(artifacts)) == 4
+    assert all(path.parent == Path(tmp_path) / "ab-arms" for path in artifacts)
+    assert artifacts[0].name == "arm00-off.json"
+    assert artifacts[1].name == "arm01-radix.json"
+
+    # The merge keeps one repetition per mode and pairs by plan position.
+    assert len(merged["modes"]["off"]["repetitions"]) == 2
+    assert len(merged["modes"]["radix"]["repetitions"]) == 2
+    assert merged["comparison"]["repetition_0"]["wall_delta_percent"] == pytest.approx(
+        10.0
+    )
+    assert merged["comparison"]["repetition_1"]["wall_delta_percent"] == pytest.approx(
+        10.0
+    )
+    assert merged["protocol"]["repetitions"] == 2
+    assert merged["protocol"]["arm_isolation"] == "one subprocess per arm"
+    assert merged["protocol"]["arms"] == [
+        {"repetition": repetition, "mode": mode} for repetition, mode in arms
+    ]
+    assert len(merged["protocol"]["merged_from"]) == 4
+    assert merged["protocol"]["merged_from"][0]["path"] == str(artifacts[0])
+
+
+def test_arm_child_command_forwards_measured_options(tmp_path: Any) -> None:
+    from scripts.prefix_cache_multiturn_bench import _arm_child_command, build_parser
+
+    parent = build_parser().parse_args(
+        [
+            "--model",
+            "/models/x.gguf",
+            "--backend",
+            "hip_gfx1100",
+            "--quant",
+            "gguf_q4_k_m",
+            "--transport",
+            "server",
+            "--lane-kinds",
+            "code",
+            "--turn-limit",
+            "3",
+            "--warmup-turns",
+            "0",
+            "--agentic-workloads",
+            "small_repo",
+            "growing_history",
+            "--modes",
+            "off",
+            "radix",
+            "--repetitions",
+            "2",
+            "--arm-order",
+            "alternating",
+            "--merge",
+            "a.json",
+            "b.json",
+            "--baseline-artifact",
+            "base.json",
+            "--dump-sse",
+            "d.sse",
+            "--json",
+            "out.json",
+        ]
+    )
+    artifact = Path(tmp_path) / "arm.json"
+    dump = Path(tmp_path) / "arm.sse"
+
+    command = _arm_child_command(
+        parent, mode="radix", repetition=1, artifact_path=artifact, dump_path=dump
+    )
+
+    assert command[0] == sys.executable
+    assert command[1].endswith("prefix_cache_multiturn_bench.py")
+    assert "--allow-multi-mode" not in command
+    child = build_parser().parse_args(command[2:])
+    # Arm selection is the parent's; everything measured is forwarded.
+    assert child.modes == ["radix"]
+    assert child.repetitions == 1
+    assert child.arm_order == "sequential"
+    assert child.arm_repetition == 1
+    assert child.json == artifact
+    assert child.dump_sse == dump
+    assert child.merge is None
+    assert child.baseline_artifact is None
+    assert child.transport == "server"
+    assert child.model == Path("/models/x.gguf")
+    assert child.backend == "hip_gfx1100"
+    assert child.quant == "gguf_q4_k_m"
+    assert child.lane_kinds == "code"
+    assert child.turn_limit == 3
+    assert child.warmup_turns == 0
+    assert child.agentic_workloads == ["small_repo", "growing_history"]
+
+
+def test_multi_arm_run_requires_an_output_path(tmp_path: Any) -> None:
+    from scripts.prefix_cache_multiturn_bench import _arm_plan, build_parser, _run_arm_subprocesses
+
+    args = build_parser().parse_args(
+        ["--transport", "server", "--modes", "off", "radix"]
+    )
+    arms = _arm_plan(args.modes, repetitions=args.repetitions, arm_order=args.arm_order)
+
+    with pytest.raises(SystemExit, match="--json"):
+        _run_arm_subprocesses(args, output={}, arms=arms)
+
+
+def test_failed_arm_propagates_the_child_exit_status(
+    tmp_path: Any, monkeypatch: Any, capsys: Any
+) -> None:
+    from scripts.prefix_cache_multiturn_bench import _arm_plan, _run_arm_subprocesses
+
+    args = _multi_arm_args(tmp_path, repetitions=1, arm_order="sequential")
+    arms = _arm_plan(["off", "radix"], repetitions=1, arm_order="sequential")
+    calls: list[list[str]] = []
+
+    def spawn(command: Any) -> Any:
+        argv = [str(token) for token in command]
+        calls.append(argv)
+        from scripts.prefix_cache_multiturn_bench import build_parser
+
+        child = build_parser().parse_args(argv[2:])
+        if child.modes == ["off"]:
+            _write_arm_artifact(child.json, mode="off", wall_ms=100.0)
+            return subprocess.CompletedProcess(args=argv, returncode=0)
+        return subprocess.CompletedProcess(args=argv, returncode=7)
+
+    monkeypatch.setattr("scripts.prefix_cache_multiturn_bench._spawn_arm", spawn)
+
+    with pytest.raises(SystemExit) as exit_info:
+        _run_arm_subprocesses(args, output={}, arms=arms)
+
+    assert exit_info.value.code == 7
+    assert len(calls) == 2
+    stderr = capsys.readouterr().err
+    assert "mode=radix" in stderr
+    assert "exit status 7" in stderr
+    assert "stopping before the merge" in stderr
+    assert not (Path(tmp_path) / "ab.json").exists()
+
+
+def test_arm_that_writes_no_artifact_is_an_error(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    from scripts.prefix_cache_multiturn_bench import _arm_plan, _run_arm_subprocesses
+
+    args = _multi_arm_args(tmp_path, repetitions=1, arm_order="sequential")
+    arms = _arm_plan(["off", "radix"], repetitions=1, arm_order="sequential")
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        "scripts.prefix_cache_multiturn_bench._spawn_arm",
+        _fake_arm_spawn(calls, wall_ms={"off": 100.0}, write_artifact=False),
+    )
+
+    with pytest.raises(SystemExit, match="wrote no artifact"):
+        _run_arm_subprocesses(args, output={}, arms=arms)
+
+    assert len(calls) == 1
+
+
+def test_dump_sse_is_concatenated_in_arm_order(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    from scripts.prefix_cache_multiturn_bench import _arm_plan, _run_arm_subprocesses
+
+    dump = Path(tmp_path) / "dump.sse"
+    args = _multi_arm_args(
+        tmp_path,
+        repetitions=1,
+        arm_order="sequential",
+        extra=("--dump-sse", str(dump)),
+    )
+    arms = _arm_plan(["off", "radix"], repetitions=1, arm_order="sequential")
+    calls: list[list[str]] = []
+
+    def spawn(command: Any) -> Any:
+        argv = [str(token) for token in command]
+        calls.append(argv)
+        from scripts.prefix_cache_multiturn_bench import build_parser
+
+        child = build_parser().parse_args(argv[2:])
+        mode = child.modes[0]
+        _write_arm_artifact(child.json, mode=mode, wall_ms=100.0)
+        assert child.dump_sse is not None
+        Path(child.dump_sse).write_text(f"data: {mode}\n", encoding="utf-8")
+        return subprocess.CompletedProcess(args=argv, returncode=0)
+
+    monkeypatch.setattr("scripts.prefix_cache_multiturn_bench._spawn_arm", spawn)
+
+    _run_arm_subprocesses(args, output={}, arms=arms)
+
+    assert len(calls) == 2
+    text = dump.read_text(encoding="utf-8")
+    assert text.index("### arm r0 mode=off") < text.index("### arm r0 mode=radix")
+    assert "data: off" in text
+    assert "data: radix" in text
+
+
+def test_isolation_is_required_for_every_additional_arm_load() -> None:
+    from scripts.prefix_cache_multiturn_bench import _arm_plan, _needs_isolated_arms
+
+    def plan(modes: list[str], repetitions: int, arm_order: str = "sequential") -> Any:
+        return _arm_plan(modes, repetitions=repetitions, arm_order=arm_order)
+
+    # The server transport loads once per arm, so a second repetition is a
+    # second engine load in the same process.
+    assert _needs_isolated_arms(
+        transport="server", arms=plan(["radix"], 2), modes=["radix"]
+    )
+    # One arm in one process is the unchanged single-arm path.
+    assert not _needs_isolated_arms(
+        transport="server", arms=plan(["off"], 1), modes=["off"]
+    )
+    # The in-process transport loads once per mode and repeats inside that load.
+    assert not _needs_isolated_arms(
+        transport="inprocess", arms=plan(["radix"], 3), modes=["radix"]
+    )
+    assert _needs_isolated_arms(
+        transport="inprocess", arms=plan(["off", "radix"], 1), modes=["off", "radix"]
+    )
+
+
+def test_run_dispatches_a_multi_arm_plan_to_subprocesses(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    import scripts.prefix_cache_multiturn_bench as harness
+
+    model = Path(tmp_path) / "m.gguf"
+    model.write_text("stub", encoding="utf-8")
+    monkeypatch.setattr(harness, "_repo_state", lambda: {"revision": "r"})
+    monkeypatch.setattr(
+        harness, "collect_artifact_provenance", lambda **_kwargs: {}
+    )
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        harness,
+        "_spawn_arm",
+        _fake_arm_spawn(calls, wall_ms={"off": 100.0, "radix": 110.0}),
+    )
+
+    args = harness.build_parser().parse_args(
+        [
+            "--model",
+            str(model),
+            "--transport",
+            "server",
+            "--modes",
+            "off",
+            "radix",
+            "--json",
+            str(Path(tmp_path) / "ab.json"),
+        ]
+    )
+    result = harness.run(args)
+
+    assert len(calls) == 2
+    assert result["protocol"]["arm_isolation"] == "one subprocess per arm"
+    assert sorted(result["modes"]) == ["off", "radix"]
+    assert result["comparison"]["repetition_0"]["wall_delta_percent"] == pytest.approx(
+        10.0
+    )
+
+
+def test_run_keeps_a_single_arm_in_this_process(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    import scripts.prefix_cache_multiturn_bench as harness
+
+    model = Path(tmp_path) / "m.gguf"
+    model.write_text("stub", encoding="utf-8")
+    monkeypatch.setattr(harness, "_repo_state", lambda: {"revision": "r"})
+    monkeypatch.setattr(
+        harness, "collect_artifact_provenance", lambda **_kwargs: {}
+    )
+    recorded: dict[str, Any] = {}
+
+    def fake_arm(
+        args: Any,
+        *,
+        output: Any,
+        model_path: Any,
+        quant: str,
+        mode: str,
+        repetition: int,
+    ) -> None:
+        recorded.update(
+            {"mode": mode, "repetition": repetition, "quant": quant, "output": output}
+        )
+
+    def no_spawn(command: Any) -> Any:  # pragma: no cover - must not be reached
+        raise AssertionError("a single arm must not spawn a subprocess")
+
+    monkeypatch.setattr(harness, "_run_server_arm", fake_arm)
+    monkeypatch.setattr(harness, "_spawn_arm", no_spawn)
+
+    args = harness.build_parser().parse_args(
+        ["--model", str(model), "--transport", "server", "--modes", "radix"]
+    )
+    result = harness.run(args)
+
+    assert recorded["mode"] == "radix"
+    assert recorded["repetition"] == 0
+    assert result["comparison"] == {}
+
+
+def test_retired_allow_multi_mode_flag_is_ignored_with_a_note(capsys: Any) -> None:
+    from scripts.prefix_cache_multiturn_bench import _strip_retired_flags
+
+    argv = ["--transport", "server", "--modes", "off", "radix"]
+    assert _strip_retired_flags([*argv, "--allow-multi-mode"]) == argv
+    assert "retired" in capsys.readouterr().err
+
+
+def test_plan_repetitions_pins_one_arm_slot() -> None:
+    from scripts.prefix_cache_multiturn_bench import _plan_repetitions, build_parser
+
+    parser = build_parser()
+    assert _plan_repetitions(parser.parse_args(["--repetitions", "3"])) == [0, 1, 2]
+    assert _plan_repetitions(
+        parser.parse_args(["--repetitions", "1", "--arm-repetition", "1"])
+    ) == [1]
+
+
+def test_arm_repetition_reaches_the_single_arm_measurement(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """The child's plan slot decides the lane order, not its process-local 0."""
+
+    import scripts.prefix_cache_multiturn_bench as harness
+
+    model = Path(tmp_path) / "m.gguf"
+    model.write_text("stub", encoding="utf-8")
+    monkeypatch.setattr(harness, "_repo_state", lambda: {"revision": "r"})
+    monkeypatch.setattr(harness, "collect_artifact_provenance", lambda **_kwargs: {})
+    recorded: dict[str, Any] = {}
+
+    def fake_arm(
+        args: Any,
+        *,
+        output: Any,
+        model_path: Any,
+        quant: str,
+        mode: str,
+        repetition: int,
+    ) -> None:
+        recorded.update({"mode": mode, "repetition": repetition})
+
+    monkeypatch.setattr(harness, "_run_server_arm", fake_arm)
+    args = harness.build_parser().parse_args(
+        [
+            "--model",
+            str(model),
+            "--transport",
+            "server",
+            "--modes",
+            "radix",
+            "--repetitions",
+            "1",
+            "--arm-repetition",
+            "1",
+        ]
+    )
+
+    harness.run(args)
+
+    assert recorded == {"mode": "radix", "repetition": 1}
+
+
+_STUB_ARM_SCRIPT_TEMPLATE = '''
+import argparse
+import json
+import os
+from pathlib import Path
+
+LOG = __LOG__
+EXIT_CODE = __EXIT_CODE__
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--json", type=Path)
+parser.add_argument("--modes", nargs="*", default=[])
+parser.add_argument("--dump-sse", type=Path, default=None)
+args, _unknown = parser.parse_known_args()
+mode = args.modes[0] if args.modes else "?"
+
+if LOG:
+    with open(LOG, "a", encoding="utf-8") as handle:
+        handle.write(os.getcwd() + "\\t" + mode + "\\n")
+if args.dump_sse is not None:
+    args.dump_sse.parent.mkdir(parents=True, exist_ok=True)
+    args.dump_sse.write_text("data: " + mode + "\\n", encoding="utf-8")
+if EXIT_CODE:
+    raise SystemExit(EXIT_CODE)
+args.json.parent.mkdir(parents=True, exist_ok=True)
+args.json.write_text(json.dumps({
+    "created_at": args.json.name,
+    "hardware": {"label": "test"},
+    "model": {"path": "m"},
+    "repo": {"revision": "r"},
+    "protocol": {"transport": "server", "modes": [mode]},
+    "modes": {mode: {"repetitions": [{
+        "repetition": 0,
+        "mode": mode,
+        "summary": {
+            "wall_ms": 100.0,
+            "hits": 0,
+            "lookups": 0,
+            "reused_tokens": 0,
+            "output_tokens_per_second": 10.0,
+            "fallback_reasons": {},
+            "by_kind": {},
+            "ttft_ms": {"median": 10.0},
+        },
+    }]}},
+}), encoding="utf-8")
+'''
+
+
+def _stub_arm_script(
+    tmp_path: Any, *, log: Any = None, exit_code: int = 0
+) -> Path:
+    """Write a stand-in child with this test's behaviour baked into the source.
+
+    Each test gets its own copy, so the stub needs no environment variables and
+    no arguments beyond the ones the harness forwards.
+    """
+
+    source = _STUB_ARM_SCRIPT_TEMPLATE.replace(
+        "__LOG__", repr(None if log is None else str(log))
+    ).replace("__EXIT_CODE__", str(int(exit_code)))
+    script = Path(tmp_path) / "stub_arm_child.py"
+    script.write_text(source, encoding="utf-8")
+    return script
+
+
+def test_real_subprocess_arms_are_launched_and_merged(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Exercise ``_spawn_arm`` itself, not a replaced runner."""
+
+    import scripts.prefix_cache_multiturn_bench as harness
+
+    log = Path(tmp_path) / "arms.log"
+    monkeypatch.setattr(harness, "_SCRIPT_PATH", _stub_arm_script(tmp_path, log=log))
+
+    args = _multi_arm_args(tmp_path, repetitions=1, arm_order="sequential")
+    arms = harness._arm_plan(["off", "radix"], repetitions=1, arm_order="sequential")
+
+    merged = harness._run_arm_subprocesses(args, output={}, arms=arms)
+
+    logged = [
+        line.split("\t")[1]
+        for line in log.read_text(encoding="utf-8").splitlines()
+    ]
+    assert logged == ["off", "radix"]
+    assert sorted(merged["modes"]) == ["off", "radix"]
+    assert merged["protocol"]["arm_isolation"] == "one subprocess per arm"
+    assert "repetition_0" in merged["comparison"]
+
+
+def test_real_subprocess_arm_failure_propagates_its_status(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    import scripts.prefix_cache_multiturn_bench as harness
+
+    monkeypatch.setattr(
+        harness, "_SCRIPT_PATH", _stub_arm_script(tmp_path, exit_code=3)
+    )
+
+    args = _multi_arm_args(tmp_path, repetitions=1, arm_order="sequential")
+    arms = harness._arm_plan(["off", "radix"], repetitions=1, arm_order="sequential")
+
+    with pytest.raises(SystemExit) as exit_info:
+        harness._run_arm_subprocesses(args, output={}, arms=arms)
+
+    assert exit_info.value.code == 3
+
+
+def test_preexisting_arm_artifact_is_not_merged_when_the_child_writes_nothing(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """A leftover from an earlier run must not satisfy the exists() check."""
+
+    from scripts.prefix_cache_multiturn_bench import (
+        _arm_artifact_path,
+        _arm_plan,
+        _run_arm_subprocesses,
+    )
+
+    args = _multi_arm_args(tmp_path, repetitions=1, arm_order="sequential")
+    arms = _arm_plan(["off", "radix"], repetitions=1, arm_order="sequential")
+    stale = _arm_artifact_path(Path(tmp_path) / "ab.json", index=0, mode="off")
+    _write_arm_artifact(stale, mode="off", wall_ms=999.0)
+
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        "scripts.prefix_cache_multiturn_bench._spawn_arm",
+        _fake_arm_spawn(calls, wall_ms={"off": 100.0}, write_artifact=False),
+    )
+
+    with pytest.raises(SystemExit, match="wrote no artifact"):
+        _run_arm_subprocesses(args, output={}, arms=arms)
+
+    assert len(calls) == 1
+    assert not stale.exists()
+
+
+def test_preexisting_arm_artifact_is_replaced_by_this_runs_output(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    from scripts.prefix_cache_multiturn_bench import (
+        _arm_artifact_path,
+        _arm_plan,
+        _run_arm_subprocesses,
+    )
+
+    args = _multi_arm_args(tmp_path, repetitions=1, arm_order="sequential")
+    arms = _arm_plan(["off", "radix"], repetitions=1, arm_order="sequential")
+    stale = _arm_artifact_path(Path(tmp_path) / "ab.json", index=0, mode="off")
+    _write_arm_artifact(stale, mode="off", wall_ms=999.0)
+
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        "scripts.prefix_cache_multiturn_bench._spawn_arm",
+        _fake_arm_spawn(calls, wall_ms={"off": 100.0, "radix": 110.0}),
+    )
+
+    merged = _run_arm_subprocesses(args, output={}, arms=arms)
+
+    assert merged["modes"]["off"]["repetitions"][0]["summary"]["wall_ms"] == 100.0
+    assert merged["comparison"]["repetition_0"]["wall_delta_percent"] == pytest.approx(
+        10.0
+    )
+
+
+def test_arms_run_in_the_invocation_directory(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    """Relative paths must resolve where the caller stood, not at the repo root."""
+
+    import scripts.prefix_cache_multiturn_bench as harness
+
+    log = Path(tmp_path) / "arms.log"
+    monkeypatch.setattr(harness, "_SCRIPT_PATH", _stub_arm_script(tmp_path, log=log))
+    monkeypatch.chdir(tmp_path)
+
+    args = harness.build_parser().parse_args(
+        [
+            "--transport",
+            "server",
+            "--modes",
+            "off",
+            "radix",
+            "--repetitions",
+            "1",
+            "--arm-order",
+            "sequential",
+            "--json",
+            "ab.json",
+        ]
+    )
+    arms = harness._arm_plan(["off", "radix"], repetitions=1, arm_order="sequential")
+
+    merged = harness._run_arm_subprocesses(args, output={}, arms=arms)
+
+    child_cwds = [
+        Path(line.split("\t")[0]).resolve()
+        for line in log.read_text(encoding="utf-8").splitlines()
+    ]
+    assert child_cwds == [Path(tmp_path).resolve(), Path(tmp_path).resolve()]
+    assert (tmp_path / "ab-arms" / "arm00-off.json").exists()
+    assert (tmp_path / "ab-arms" / "arm01-radix.json").exists()
+    assert merged["protocol"]["merged_from"][0]["path"] == "ab-arms/arm00-off.json"
+    assert sorted(merged["modes"]) == ["off", "radix"]
+
+
+def test_invalid_repetition_counts_are_rejected(tmp_path: Any) -> None:
+    import scripts.prefix_cache_multiturn_bench as harness
+
+    model = Path(tmp_path) / "m.gguf"
+    model.write_text("stub", encoding="utf-8")
+    parser = harness.build_parser()
+
+    for count in ("0", "-2"):
+        args = parser.parse_args(["--model", str(model), "--repetitions", count])
+        with pytest.raises(SystemExit, match="at least 1"):
+            harness.run(args)
+
+    args = parser.parse_args(
+        ["--model", str(model), "--repetitions", "1", "--arm-repetition", "-1"]
+    )
+    with pytest.raises(SystemExit, match="zero or greater"):
+        harness.run(args)

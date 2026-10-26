@@ -32,6 +32,14 @@ telemetry (hit, matched/reused tokens, source, fallback reason).
 
 This harness runs in process.  It measures the resident loop and scheduler, not
 an HTTP socket.
+
+One arm is one prefix-cache mode at one repetition.  A run that needs more
+than one engine load - a second mode, or (on the server transport) a second
+repetition - executes each arm in its own subprocess and merges the artifacts
+through the same path as ``--merge``: a second prefix-cache engine in one
+process faulted the GPU (see ``docs/REFACTOR.md``), so this harness never tears
+an engine down to load another one in the same process.  In-process repetitions
+of a single mode stay in one process, because they reuse one loaded engine.
 """
 
 from __future__ import annotations
@@ -42,7 +50,9 @@ import gc
 import json
 import os
 import platform
+import re
 import statistics
+import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass, field
@@ -862,8 +872,6 @@ def _summarize_mode(results: Sequence[LaneResult]) -> dict[str, Any]:
 
 
 def _repo_state() -> dict[str, Any]:
-    import subprocess
-
     revision = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=REPO_ROOT,
@@ -994,20 +1002,22 @@ def _arm_plan(
     return arms
 
 
-def _run_server_arms(
+def _run_server_arm(
     args: argparse.Namespace,
     *,
     output: dict[str, Any],
     model_path: Path,
     quant: str,
-    modes: Sequence[str],
+    mode: str,
+    repetition: int,
 ) -> None:
-    """A/B the modes through the live OpenAI-compatible server.
+    """Measure one arm through the live OpenAI-compatible server.
 
-    Each arm owns a fresh engine: the model is loaded, driven over HTTP, then
-    torn down before the next arm loads. Arms are ordered so the mode order
-    alternates across repetitions, which cancels host drift between the two
-    sides of the A/B.
+    The arm owns its engine: the model is loaded, driven over HTTP, then torn
+    down. It is the only engine this process loads, because a second
+    prefix-cache engine in one process faulted the GPU on 2026-09-18
+    (``docs/REFACTOR.md``); ``run`` sends every larger arm plan to
+    :func:`_run_arm_subprocesses` instead.
     """
 
     from fastapi.testclient import TestClient
@@ -1017,126 +1027,118 @@ def _run_server_arms(
         dump_path.parent.mkdir(parents=True, exist_ok=True)
         dump_path.write_text("", encoding="utf-8")
 
-    arms = _arm_plan(
-        modes,
-        repetitions=int(args.repetitions),
-        arm_order=str(args.arm_order),
-    )
-    output["protocol"]["arms"] = [
-        {"repetition": repetition, "mode": mode} for repetition, mode in arms
-    ]
+    output["protocol"]["arms"] = [{"repetition": repetition, "mode": mode}]
     output["protocol"]["warmup_turns"] = int(args.warmup_turns)
     output["protocol"]["arm_order"] = str(args.arm_order)
 
-    for repetition, mode in arms:
-        print(
-            f"=== arm r{repetition} mode={mode}: loading {model_path.name}",
-            flush=True,
-        )
-        gtt_before_load = _gtt_used_bytes()
-        llm = LLM(
-            str(model_path),
+    print(
+        f"=== arm r{repetition} mode={mode}: loading {model_path.name}",
+        flush=True,
+    )
+    gtt_before_load = _gtt_used_bytes()
+    llm = LLM(
+        str(model_path),
+        backend=str(args.backend),
+        quant=quant,
+        prefix_cache=mode,
+        max_active_requests=int(args.max_active_requests),
+        max_sequence_length=int(args.max_sequence_length),
+    )
+    engine = llm
+    lanes = _build_lanes(args, llm)
+    lane_ids = sorted(lanes)
+    app = create_app(
+        ServerConfig(
+            model=str(model_path),
             backend=str(args.backend),
             quant=quant,
-            prefix_cache=mode,
+            served_model_name=model_path.name,
+            eager_load=False,
+            max_context_tokens=int(args.max_sequence_length),
             max_active_requests=int(args.max_active_requests),
-            max_sequence_length=int(args.max_sequence_length),
-        )
-        engine = llm
-        lanes = _build_lanes(args, llm)
-        lane_ids = sorted(lanes)
-        app = create_app(
-            ServerConfig(
-                model=str(model_path),
-                backend=str(args.backend),
-                quant=quant,
-                served_model_name=model_path.name,
-                eager_load=False,
-                max_context_tokens=int(args.max_sequence_length),
-                max_active_requests=int(args.max_active_requests),
-                prefix_cache=mode,
-                stream_queue_max_chunks=int(args.code_tokens) + 8,
-            ),
+            prefix_cache=mode,
+            stream_queue_max_chunks=int(args.code_tokens) + 8,
+        ),
+        llm=llm,
+    )
+
+    def server_turn(
+        *,
+        messages: Sequence[Mapping[str, Any]],
+        tools: Sequence[Mapping[str, Any]] | None,
+        max_tokens: int,
+    ) -> dict[str, Any]:
+        sink: list[str] | None = [] if dump_path is not None else None
+        record = _run_turn_server(
+            client,
             llm=llm,
+            engine=engine,
+            messages=messages,
+            tools=tools,
+            max_tokens=max_tokens,
+            sse_sink=sink,
         )
-
-        def server_turn(
-            *,
-            messages: Sequence[Mapping[str, Any]],
-            tools: Sequence[Mapping[str, Any]] | None,
-            max_tokens: int,
-        ) -> dict[str, Any]:
-            sink: list[str] | None = [] if dump_path is not None else None
-            record = _run_turn_server(
-                client,
-                llm=llm,
-                engine=engine,
-                messages=messages,
-                tools=tools,
-                max_tokens=max_tokens,
-                sse_sink=sink,
-            )
-            if dump_path is not None and sink is not None:
-                with dump_path.open("a", encoding="utf-8") as handle:
-                    handle.write(
-                        "### turn prompt_tokens=%s status=%s ttft_ms=%s\n"
-                        % (
-                            record["prompt_tokens"],
-                            record["http_status"],
-                            record["ttft_ms"],
-                        )
+        if dump_path is not None and sink is not None:
+            with dump_path.open("a", encoding="utf-8") as handle:
+                handle.write(
+                    "### turn prompt_tokens=%s status=%s ttft_ms=%s\n"
+                    % (
+                        record["prompt_tokens"],
+                        record["http_status"],
+                        record["ttft_ms"],
                     )
-                    handle.write("\n".join(sink) + "\n")
-            return record
+                )
+                handle.write("\n".join(sink) + "\n")
+        return record
 
-        arm: dict[str, Any] = {
-            "repetition": repetition,
-            "mode": mode,
-            "gtt_bytes_before_load": gtt_before_load,
+    arm: dict[str, Any] = {
+        "repetition": repetition,
+        "mode": mode,
+        "gtt_bytes_before_load": gtt_before_load,
+    }
+    with TestClient(app) as client:
+        health = client.get("/health")
+        arm["health_status"] = int(health.status_code)
+        arm["prefix_cache_mode_reported"] = _server_prefix_counters(client).get(
+            "mode"
+        )
+        warmup = _run_warmup(server_turn, turns=int(args.warmup_turns))
+        arm["warmup"] = {
+            "turns": [
+                {key: value for key, value in record.items() if key != "text"}
+                for record in warmup
+            ],
+            "summary": _summarize_mode(
+                [LaneResult(lane_id="warmup", lane_kind="warmup", turns=warmup)]
+            )
+            if warmup
+            else {},
         }
-        with TestClient(app) as client:
-            health = client.get("/health")
-            arm["health_status"] = int(health.status_code)
-            arm["prefix_cache_mode_reported"] = _server_prefix_counters(client).get(
-                "mode"
+        ordered = _lane_order(lane_ids, repetition)
+        results: list[LaneResult] = []
+        for lane_id in ordered:
+            print(
+                f"    [server {mode} r{repetition}] lane {lane_id}",
+                flush=True,
             )
-            warmup = _run_warmup(server_turn, turns=int(args.warmup_turns))
-            arm["warmup"] = {
-                "turns": [
-                    {key: value for key, value in record.items() if key != "text"}
-                    for record in warmup
-                ],
-                "summary": _summarize_mode(
-                    [LaneResult(lane_id="warmup", lane_kind="warmup", turns=warmup)]
+            results.append(
+                _run_lane(
+                    llm,
+                    engine=engine,
+                    lane_id=lane_id,
+                    lane=lanes[lane_id],
+                    turn_limit=args.turn_limit,
+                    run_turn=server_turn,
                 )
-                if warmup
-                else {},
-            }
-            ordered = _lane_order(lane_ids, repetition)
-            results: list[LaneResult] = []
-            for lane_id in ordered:
-                print(
-                    f"    [server {mode} r{repetition}] lane {lane_id}",
-                    flush=True,
-                )
-                results.append(
-                    _run_lane(
-                        llm,
-                        engine=engine,
-                        lane_id=lane_id,
-                        lane=lanes[lane_id],
-                        turn_limit=args.turn_limit,
-                        run_turn=server_turn,
-                    )
-                )
-            arm["live_loop_snapshot"] = llm.live_loop_snapshot()
-            arm.update(_repetition_record(repetition, ordered, results))
-        llm.close()
-        del llm
-        gc.collect()
-        arm["gtt_bytes_after_teardown"] = _gtt_used_bytes()
-        mode_entry = output["modes"].setdefault(mode, {"repetitions": []})
-        mode_entry["repetitions"].append(arm)
+            )
+        arm["live_loop_snapshot"] = llm.live_loop_snapshot()
+        arm.update(_repetition_record(repetition, ordered, results))
+    llm.close()
+    del llm
+    gc.collect()
+    arm["gtt_bytes_after_teardown"] = _gtt_used_bytes()
+    mode_entry = output["modes"].setdefault(mode, {"repetitions": []})
+    mode_entry["repetitions"].append(arm)
 
 
 def _merge_arm_artifacts(
@@ -1194,6 +1196,255 @@ def _merge_arm_artifacts(
     return output
 
 
+# Options the parent owns: an arm always gets one mode, one repetition, its own
+# artifact, and no merge/baseline. The parent rebuilds the A/B after merging.
+_CHILD_OWNED_DESTS = frozenset(
+    {
+        "modes",
+        "repetitions",
+        "arm_order",
+        "arm_repetition",
+        "json",
+        "merge",
+        "baseline_artifact",
+        "dump_sse",
+    }
+)
+
+_SCRIPT_PATH = Path(__file__).resolve()
+
+
+def _arm_artifact_path(output_json: Path, *, index: int, mode: str) -> Path:
+    """Per-arm artifact beside the merged one, so ``merged_from`` stays valid."""
+
+    base = Path(output_json)
+    safe_mode = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(mode)).strip("_.") or "arm"
+    return base.parent / f"{base.stem}-arms" / f"arm{index:02d}-{safe_mode}.json"
+
+
+def _arm_dump_path(output_json: Path, *, index: int, mode: str) -> Path:
+    return _arm_artifact_path(output_json, index=index, mode=mode).with_suffix(".sse")
+
+
+def _arm_child_command(
+    args: argparse.Namespace,
+    *,
+    mode: str,
+    repetition: int,
+    artifact_path: Path,
+    dump_path: Path | None = None,
+) -> list[str]:
+    """Build the command line for one arm's child process.
+
+    Every measured option is forwarded, so the child measures the protocol the
+    parent was asked for. Only arm selection changes: one mode, one repetition,
+    its plan slot (which selects the lane order), its own artifact, no merge and
+    no baseline (the parent compares after merging), and no arm order (the
+    parent owns the plan). ``--dump-sse`` is redirected per arm and concatenated
+    by the parent, because each child truncates the dump file it is given.
+    """
+
+    command = [sys.executable, str(_SCRIPT_PATH)]
+    for action in build_parser()._actions:
+        if not action.option_strings or action.dest in _CHILD_OWNED_DESTS:
+            continue
+        value = getattr(args, action.dest, None)
+        if value is None:
+            continue
+        if action.nargs == 0:
+            if bool(value):
+                command.append(action.option_strings[0])
+            continue
+        if isinstance(value, (list, tuple)):
+            if not value:
+                continue
+            command.append(action.option_strings[0])
+            command.extend(str(item) for item in value)
+            continue
+        command.extend([action.option_strings[0], str(value)])
+    command.extend(
+        [
+            "--modes",
+            str(mode),
+            "--repetitions",
+            "1",
+            "--arm-order",
+            "sequential",
+            "--arm-repetition",
+            str(repetition),
+            "--json",
+            str(artifact_path),
+        ]
+    )
+    if dump_path is not None:
+        command.extend(["--dump-sse", str(dump_path)])
+    return command
+
+
+def _spawn_arm(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+    """Run one arm to completion, streaming its output to this process.
+
+    The child inherits this process's working directory, so every relative path
+    the parent forwarded (model, fixtures, ``--json``, ``--dump-sse``) resolves
+    exactly as it did for the parent.
+    """
+
+    return subprocess.run(
+        list(command),
+        text=True,
+        check=False,
+    )
+
+
+def _invalidate_owned_artifact(path: Path) -> None:
+    """Remove an artifact this run is about to write.
+
+    Per-arm paths are deterministic so ``merged_from`` stays readable across
+    runs. A stale file from an earlier run would otherwise satisfy the
+    post-child ``exists()`` check and merge output this run never produced.
+    """
+
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def _needs_isolated_arms(
+    *,
+    transport: str,
+    arms: Sequence[tuple[int, str]],
+    modes: Sequence[str],
+) -> bool:
+    """Whether the requested run needs one subprocess per arm.
+
+    The server transport loads a fresh engine for every arm, so each repetition
+    is another load; the in-process transport loads once per mode and repeats
+    inside that load, so only a second mode needs its own process.
+    """
+
+    if len(modes) > 1:
+        return True
+    return transport == "server" and len(arms) > 1
+
+
+def _plan_repetitions(args: argparse.Namespace) -> list[int]:
+    """Repetition indices this process runs; one arm per process pins one."""
+
+    if args.arm_repetition is not None:
+        return [int(args.arm_repetition)]
+    return list(range(int(args.repetitions)))
+
+
+def _require_output_path(args: argparse.Namespace) -> Path:
+    if args.json is None:
+        raise SystemExit(
+            "a multi-arm run needs --json: each arm writes its own artifact "
+            "beside it and the merged A/B artifact goes there too"
+        )
+    return Path(args.json)
+
+
+def _run_arm_subprocesses(
+    args: argparse.Namespace,
+    *,
+    output: dict[str, Any],
+    arms: Sequence[tuple[int, str]],
+) -> dict[str, Any]:
+    """Measure every arm in its own process, then merge the artifacts.
+
+    Loading a second prefix-cache engine in one process faulted the GPU on
+    2026-09-18 (``docs/REFACTOR.md``), so arms are never measured back to back
+    in this process. Arms run in plan order, which keeps a mirrored
+    ``alternating`` run drift-cancelling, and the merge renumbers each mode's
+    repetitions by position exactly as ``--merge`` does.
+    """
+
+    output_json = _require_output_path(args)
+    if not arms:
+        raise SystemExit("no arms to run: --repetitions must be at least 1")
+    dump_path = Path(args.dump_sse) if args.dump_sse else None
+    if dump_path is not None:
+        dump_path.parent.mkdir(parents=True, exist_ok=True)
+        dump_path.write_text("", encoding="utf-8")
+
+    artifacts: list[Path] = []
+    print(
+        f"=== {len(arms)} arm(s), one subprocess each: "
+        + ", ".join(f"r{repetition}:{mode}" for repetition, mode in arms),
+        flush=True,
+    )
+    for index, (repetition, mode) in enumerate(arms):
+        artifact_path = _arm_artifact_path(output_json, index=index, mode=mode)
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        child_dump = (
+            None
+            if dump_path is None
+            else _arm_dump_path(output_json, index=index, mode=mode)
+        )
+        command = _arm_child_command(
+            args,
+            mode=mode,
+            repetition=repetition,
+            artifact_path=artifact_path,
+            dump_path=child_dump,
+        )
+        print(
+            f"=== arm {index + 1}/{len(arms)} mode={mode} r{repetition}: "
+            f"subprocess -> {artifact_path}",
+            flush=True,
+        )
+        # This run owns these paths; a leftover from an earlier run must not be
+        # mistaken for this arm's output.
+        _invalidate_owned_artifact(artifact_path)
+        if child_dump is not None:
+            _invalidate_owned_artifact(child_dump)
+        try:
+            completed = _spawn_arm(command)
+        except OSError as error:
+            raise SystemExit(
+                f"could not start arm {index + 1}/{len(arms)} mode={mode}: {error}"
+            ) from error
+        if child_dump is not None and child_dump.exists():
+            with dump_path.open("a", encoding="utf-8") as handle:
+                handle.write(f"### arm r{repetition} mode={mode}\n")
+                handle.write(child_dump.read_text(encoding="utf-8"))
+        if completed.returncode != 0:
+            print(
+                f"arm {index + 1}/{len(arms)} mode={mode} r{repetition} failed "
+                f"with exit status {completed.returncode}; stopping before the "
+                f"merge (arm artifacts in {artifact_path.parent})",
+                file=sys.stderr,
+                flush=True,
+            )
+            raise SystemExit(
+                completed.returncode if completed.returncode > 0 else 1
+            )
+        if not artifact_path.exists():
+            raise SystemExit(
+                f"arm {index + 1}/{len(arms)} mode={mode} r{repetition} exited "
+                f"0 but wrote no artifact at {artifact_path}; refusing to merge "
+                "an incomplete run"
+            )
+        artifacts.append(artifact_path)
+
+    merged = _merge_arm_artifacts(artifacts, output=output)
+    # The child that ran last may hold a stale baseline; the parent owns the
+    # comparison it was asked for.
+    merged["comparison"] = _compare(
+        merged["modes"], baseline_artifact=args.baseline_artifact
+    )
+    merged["protocol"]["arms"] = [
+        {"repetition": repetition, "mode": mode} for repetition, mode in arms
+    ]
+    merged["protocol"]["arm_isolation"] = "one subprocess per arm"
+    print(
+        f"merged {len(artifacts)} arm artifacts from {artifacts[0].parent}",
+        flush=True,
+    )
+    return merged
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     model_path = Path(args.model)
     if not model_path.exists():
@@ -1201,22 +1452,30 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     quant = str(args.quant)
     modes = [str(mode) for mode in args.modes]
     transport = str(args.transport)
-    if transport == "inprocess" and len(modes) != 1:
+    if not modes:
+        raise SystemExit("--modes needs at least one mode to measure")
+    if int(args.repetitions) < 1:
         raise SystemExit(
-            "run exactly one mode per process: this model needs ~64 GiB of "
-            "unified memory, so loading two modes in one process thrashes the "
-            "host. Invoke once with --modes off and once with --modes radix, "
-            "then pass the first artifact as --baseline-artifact."
+            "--repetitions must be at least 1: one arm is one repetition, so "
+            "zero would measure nothing"
         )
-    if transport == "server" and len(modes) != 1 and not args.allow_multi_mode:
-        raise SystemExit(
-            "server transport loads one arm at a time, but two modes in one "
-            "process still risks a leak across arms; pass --allow-multi-mode "
-            "to A/B in one process with per-arm teardown (check the recorded "
-            "gtt_bytes_after_teardown), or run one mode per process."
-        )
+    if args.arm_repetition is not None and int(args.arm_repetition) < 0:
+        raise SystemExit("--arm-repetition must be zero or greater")
     if str(args.arm_order) == "alternating" and len(modes) < 2:
         raise SystemExit("--arm-order alternating needs two modes to alternate")
+    arms = _arm_plan(
+        modes,
+        repetitions=int(args.repetitions),
+        arm_order=str(args.arm_order),
+    )
+    # A merge run owns its own --json error below.
+    isolated = (
+        _needs_isolated_arms(transport=transport, arms=arms, modes=modes)
+        and not args.merge
+    )
+    if isolated:
+        # Fail before loading anything if the arms have nowhere to land.
+        _require_output_path(args)
     output: dict[str, Any] = {
         "schema": 1,
         "kind": "gguf_prefix_cache_multiturn_bench",
@@ -1289,13 +1548,23 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         print("merged " + ", ".join(str(path) for path in args.merge), flush=True)
         return merged
 
+    if isolated:
+        return _run_arm_subprocesses(args, output=output, arms=arms)
+
     if transport == "server":
-        _run_server_arms(
+        repetition = (
+            int(args.arm_repetition)
+            if args.arm_repetition is not None
+            else arms[0][0]
+        )
+        mode = arms[0][1]
+        _run_server_arm(
             args,
             output=output,
             model_path=model_path,
             quant=quant,
-            modes=modes,
+            mode=mode,
+            repetition=repetition,
         )
         output["comparison"] = _compare(
             output["modes"],
@@ -1303,6 +1572,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         return output
 
+    # Only reachable with a single mode: every larger plan takes the subprocess
+    # path above, so this process loads at most one engine.
     for mode in modes:
         print(f"=== mode {mode}: loading {model_path.name}", flush=True)
         llm = LLM(
@@ -1334,7 +1605,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         lanes = _build_lanes(args, llm)
         lane_ids = sorted(lanes)
         repetitions: list[dict[str, Any]] = []
-        for repetition in range(int(args.repetitions)):
+        for repetition in _plan_repetitions(args):
             ordered = _lane_order(lane_ids, repetition)
             results: list[LaneResult] = []
             for lane_id in ordered:
@@ -1475,14 +1746,33 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("all", "sharegpt", "code", "session"),
         default="all",
     )
-    parser.add_argument("--modes", nargs="*", default=["off"])
+    parser.add_argument(
+        "--modes",
+        nargs="*",
+        default=["off"],
+        help=(
+            "prefix-cache modes to measure. One arm is one mode at one "
+            "repetition; a run that needs more than one engine load executes "
+            "each arm in its own subprocess and merges the artifacts, because "
+            "a second prefix-cache engine in one process faults the GPU"
+        ),
+    )
     parser.add_argument(
         "--baseline-artifact",
         type=Path,
         default=None,
         help="artifact from the other mode; adds a paired comparison block",
     )
-    parser.add_argument("--repetitions", type=int, default=1)
+    parser.add_argument(
+        "--repetitions",
+        type=int,
+        default=1,
+        help=(
+            "measured repetitions per mode (at least 1). On the server "
+            "transport each repetition is another engine load, so a multi-arm "
+            "plan runs one repetition per subprocess"
+        ),
+    )
     parser.add_argument(
         "--transport",
         choices=("inprocess", "server"),
@@ -1502,22 +1792,23 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--arm-repetition",
+        type=int,
+        default=None,
+        help=(
+            "internal: the plan repetition this process measures, so an arm "
+            "keeps the lane order its position in the plan calls for. The "
+            "multi-arm orchestrator pairs it with --repetitions 1; on its own "
+            "it runs just that repetition"
+        ),
+    )
+    parser.add_argument(
         "--warmup-turns",
         type=int,
         default=1,
         help=(
             "unmeasured turns driven before each arm's lanes (a short ready "
             "turn plus turns of an unrelated warmup conversation)"
-        ),
-    )
-    parser.add_argument(
-        "--allow-multi-mode",
-        action="store_true",
-        help=(
-            "server transport only: permit several modes in one process, "
-            "tearing the engine down between arms. A second radix arm in one "
-            "process faulted the GPU on 2026-09-18; prefer one arm per "
-            "process and --merge."
         ),
     )
     parser.add_argument(
@@ -1550,8 +1841,30 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+_RETIRED_FLAGS: dict[str, str] = {
+    "--allow-multi-mode": (
+        "note: --allow-multi-mode is retired and ignored; a run with more than "
+        "one arm now executes one subprocess per arm and merges the artifacts"
+    ),
+}
+
+
+def _strip_retired_flags(argv: Sequence[str]) -> list[str]:
+    """Drop retired flags with a note, so old commands keep working safely."""
+
+    kept: list[str] = []
+    for token in argv:
+        message = _RETIRED_FLAGS.get(token)
+        if message is None:
+            kept.append(token)
+        else:
+            print(message, file=sys.stderr, flush=True)
+    return kept
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    raw = list(sys.argv[1:] if argv is None else argv)
+    args = build_parser().parse_args(_strip_retired_flags(raw))
     output = run(args)
     text = json.dumps(output, indent=1, default=str)
     if args.json:
