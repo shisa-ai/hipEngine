@@ -2659,8 +2659,8 @@
       "start_line": 2792,
       "end_line": 2825,
       "sha256": "9b38e1ddd5d0a5008c165315ef3819f6cfff6ce59b2a41900443853f04ea8999",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-current-consumers-recorded",
+      "evidence": ["Replaced stale kernel-only/default-off narrative with verified live batch head-pair and profile-bound UD prefill head-quad consumers. Preserved kernels, parent fallback and diagnostic mode. Concrete remaining request-local profile transport cleanup named; docs/audit gates pass."],
       "subitems": [
         {
           "line": 2794,

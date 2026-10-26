@@ -2744,37 +2744,25 @@ the allocation repair. The observations and proposal below are historical.
 
 ## Qwen4Exp H256 QSA head-pair candidate
 
-- Kernel-only `strict_h256_head_pair_rows_spans`:two heads/wave,
-  page256/even GQA ratio,shared K/V loads with exact independent states.
-- Synthetic selected2051 attention at512/1024 rows wins2.544x/2.610x;
-  VGPR40->72,no LDS/scratch. No runtime flag.
-- Default-off `HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR=1` replaces only
-  page256 Hq24/Hkv2 prefill parent;dense/decode unchanged.
-  Eight full-logit/state/KV cases pass,including all four p4096 categories,
-  24 sparse calls each and zero decode. Both binders0.
-- Staged72 trajectories exact,p4096 PP+3.560% but TG-6.526%;
-  two long-request means regress. Keep default-off until decode/phase
-  interference is localized;no favorable full-suite rerun.
-  Fixed parent-root16-step flag-only probe is near-neutral (wall+0.055%/
-  +0.019%),exact state and zero candidate calls;candidate-prefill effect
-  now reproduces~0.45s extra early decode with decode flag held0.
-  Last16 steps converge;trace early kernel/host gaps before promotion.
-  Trace now shows identical29440 kernel count and981.8->976.1ms GPU
-  busy,while wall1203.1->1569.3ms. CPU execution/scheduling between
-  submissions is next;profiling changes queue ring,so no causal clock claim.
-  Unprofiled CPU accounting now tracks wall penalty (thread1.165->1.563s),
-  with zero GC/major faults. Decode-window instructions/cycles are next;
-  hardware counter access confirmed.
-  Measured user-mode instructions~3.91B/cycles~1.74B remain nearly
-  unchanged while CPU time rises. Effective CPU rate/frequency is next;
-  no large extra-work or proven thermal explanation yet.
-  CPUFreq sampling now shows candidate near600MHz for initial decode
-  versus parent~1.5GHz,then both~5.1GHz. Controlled policy/affinity
-  isolation next;do not silently change host clocks or hide transition cost.
-  CPU17-only calling-thread isolation reproduces the penalty;affinity
-  restored. Pinning alone is not a mitigation. HIP wait-policy experiment
-  remains a source-informed lead,not a production default.
-  Do not assume all QSA cost shrinks by the kernel ratio.
+The H256/page256 head-pair kernel is a live batch/mixed-attention owner for
+an even GQA ratio in `hipengine/runtime/qwen4_exp_batch_qsa.py`. It is not a
+kernel-only candidate. Production UD prefill selects the head-quad variant
+through the profile binder's recovery/restore sequence; other production
+quants and strict profiles retain their declared parent selections.
+
+`HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR=1` remains a two-head prefill diagnostic;
+`quad` selects the four-head prefill variant. The production prefill mapping
+and grid investigation are recorded in
+`benchmarks/results/2026-09-27-qsa-prefill-grid-resolution/README.md`.
+Do not remove the pair kernel with the diagnostic mode: batch attention uses
+it independently of this environment setting.
+
+Remaining cleanup: replace the prefill environment mode with request-local
+profile selection, preserving the registered parent fallback, UD-only quad
+scope and shape checks. Migrate diagnostic harnesses to explicit scoped
+selection, then remove the reader and binder publication together. Validate
+`tests/test_unit_qwen4exp_qsa_head_pair_route.py`, profile tests and real
+batch/prefill attention paths; batch head-pair selection must stay independent.
 
 ## Qwen4Exp raw MMQ token64 production
 
