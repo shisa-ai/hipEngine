@@ -27,7 +27,7 @@ from hipengine.core.ctypes_cache import signed_kernel_fn
 from hipengine.core.hip import HIP_SUCCESS, HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     copy_device_to_host,
-    copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -620,8 +620,10 @@ def qwen35_gguf_mtp_eh_proj_f32(
 ) -> np.ndarray:
     """Numpy-in/out wrapper matching ``cpu_reference.qwen35_gguf_mtp_eh_proj``.
 
-    M6: supports Q8_0 for eh_proj weight. When qtype is None/F32, uses fused F32
-    GEMV; when Q8_0, splits to concat + q8_0_gemv.
+    With ``eh_proj_qtype`` None/F32 the fused F32 kernel consumes the two
+    RMSNorm outputs directly. Q8_0 and Q6_K instead concat them on the device
+    into ``[rows, 2*hidden]`` and run the quantized GEMV: Q8_0 on the f32
+    concat, Q6_K on an fp16 cast of it, matching that kernel's input ABI.
     """
 
     hidden_arr = np.ascontiguousarray(hidden_seed, dtype=np.float32)
@@ -661,8 +663,8 @@ def qwen35_gguf_mtp_eh_proj_f32(
         weight_dev = _cached_upload("eh_proj_weight", weight, runtime=runtime)
         hnorm_dev = _cached_upload("eh_proj_hnorm", hnorm, runtime=runtime)
         enorm_dev = _cached_upload("eh_proj_enorm", enorm, runtime=runtime)
-        copy_host_to_device(embed_dev, host_array_ptr(embed_arr), runtime=runtime)
-        copy_host_to_device(hidden_dev, host_array_ptr(hidden_arr), runtime=runtime)
+        copy_host_array_to_device(embed_dev, embed_arr, embed_dev.nbytes, runtime=runtime)
+        copy_host_array_to_device(hidden_dev, hidden_arr, hidden_dev.nbytes, runtime=runtime)
         # h_norm = rmsnorm(hidden, hnorm); e_norm = rmsnorm(embed, enorm)
         mtp_rmsnorm_f32(embed_dev.ptr, enorm_dev.ptr, e_norm_dev.ptr, rows, hidden, eps=eps,
                         library=_mtp_lib, runtime=runtime)
@@ -672,30 +674,59 @@ def qwen35_gguf_mtp_eh_proj_f32(
             mtp_eh_proj_f32(e_norm_dev.ptr, h_norm_dev.ptr, weight_dev.ptr, out_dev.ptr,
                             rows, hidden, runtime=runtime)
         else:
-            # M6: Device-side concat — avoid host download/upload round-trip.
-            concat_dev = malloc(rows * hidden * 2 * 4, runtime=runtime); buffers.append(concat_dev)
-            # Copy e_norm_dev to first half, h_norm_dev to second half
-            import ctypes as _ct
-            runtime.memcpy(concat_dev.ptr, e_norm_dev.ptr, rows * hidden * 4, 0)  # D2D
-            runtime.memcpy(concat_dev.ptr + rows * hidden * 4, h_norm_dev.ptr, rows * hidden * 4, 0)  # D2D
+            # Device-side concat, row-interleaved: both quantized GEMVs read
+            # ``[rows, 2*hidden]`` where row r is ``[e_norm[r], h_norm[r]]``.
+            # Copying each whole array once would instead produce
+            # ``[2*rows, hidden]``, which the kernel misreads for rows > 1.
+            # Staging stays on the device: no host download and re-upload.
+            if eh_proj_qtype not in (
+                GGMLQuantizationType.Q8_0,
+                GGMLQuantizationType.Q6_K,
+            ):
+                raise NotImplementedError(
+                    f"eh_proj_qtype={eh_proj_qtype.name} not supported"
+                )
+            concat_dev = malloc(rows * hidden * 2 * 4, runtime=runtime)
+            buffers.append(concat_dev)
+            half_row_nbytes = hidden * 4
+            concat_row_nbytes = hidden * 2 * 4
+            for row in range(rows):
+                dst = concat_dev.ptr + row * concat_row_nbytes
+                src = row * half_row_nbytes
+                runtime.memcpy(
+                    dst, e_norm_dev.ptr + src, half_row_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                )
+                runtime.memcpy(
+                    dst + half_row_nbytes, h_norm_dev.ptr + src, half_row_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                )
             if eh_proj_qtype == GGMLQuantizationType.Q8_0:
                 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
                     gguf_q8_0_gemv_f32_f32_out as _hip_q8_0,
                 )
                 _hip_q8_0(concat_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, hidden * 2,
                           hidden, library=_eh_k_gemv_lib, runtime=runtime)
-            elif eh_proj_qtype == GGMLQuantizationType.Q6_K:
+            else:
+                # This wrapper already routed Q6_K through the pack8 kernel's
+                # FP16-input ABI; keep that route and feed it a device-side
+                # cast of the f32 concat instead of a host round trip. The
+                # staging buffer stays in ``buffers`` so a launch failure still
+                # frees it.
+                from hipengine.kernels.hip_gfx1100.convert.cast import (
+                    f32_to_fp16 as _f32_to_fp16,
+                )
                 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
                     gguf_q6_k_pack8_gemv_decode_fp16_f32_out as _hip_q6_k_eh,
                 )
-                concat_fp16 = concat.astype(np.float16)
-                concat_fp16_dev = malloc(concat_fp16.nbytes, runtime=runtime)
-                copy_host_to_device(concat_fp16_dev, host_array_ptr(concat_fp16), runtime=runtime)
+                concat_fp16_dev = malloc(rows * hidden * 2 * 2, runtime=runtime)
+                buffers.append(concat_fp16_dev)
+                _f32_to_fp16(
+                    concat_dev.ptr, concat_fp16_dev.ptr, rows * hidden * 2,
+                    stream=0, runtime=runtime,
+                )
                 _hip_q6_k_eh(concat_fp16_dev.ptr, weight_dev.ptr, out_dev.ptr, rows,
                              hidden * 2, hidden, runtime=runtime)
-                free(concat_fp16_dev, runtime=runtime)
-            else:
-                raise NotImplementedError(f"eh_proj_qtype={eh_proj_qtype.name} not supported")
         runtime.device_synchronize()
         out = np.empty((rows, hidden), dtype=np.float32)
         copy_device_to_host(host_array_ptr(out), out_dev, runtime=runtime)
@@ -843,7 +874,7 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
             copy_device_to_host(host_array_ptr(x_f32), x_dev, x_f32.nbytes, runtime=runtime)
             x_fp16 = x_f32.astype(np.float16)
             x_fp16_dev = malloc(x_fp16.nbytes, runtime=runtime)
-            copy_host_to_device(x_fp16_dev, host_array_ptr(x_fp16), runtime=runtime)
+            copy_host_array_to_device(x_fp16_dev, x_fp16, x_fp16_dev.nbytes, runtime=runtime)
             _hip_q6_k_attn(x_fp16_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, in_features,
                            out_features, runtime=runtime)
             free(x_fp16_dev, runtime=runtime)
@@ -936,7 +967,7 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
         from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import build_gguf_k_gemv as _build_k_gemv
         _attn_q4_k_lib = _build_q4_k(load=True)
         _attn_k_gemv_lib = _build_k_gemv(load=True)
-        copy_host_to_device(hidden_dev, host_array_ptr(x), runtime=runtime)
+        copy_host_array_to_device(hidden_dev, x, hidden_dev.nbytes, runtime=runtime)
         mtp_rmsnorm_f32(hidden_dev.ptr, attn_norm_dev.ptr, normed_dev.ptr, tokens, hidden_size,
                         eps=eps, library=_attn_mtp_lib, runtime=runtime)
 
@@ -952,8 +983,8 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
             if apply_rope:
                 cos_dev = malloc(cos_arr.nbytes, runtime=runtime); buffers.append(cos_dev)
                 sin_dev = malloc(sin_arr.nbytes, runtime=runtime); buffers.append(sin_dev)
-                copy_host_to_device(cos_dev, host_array_ptr(cos_arr), runtime=runtime)
-                copy_host_to_device(sin_dev, host_array_ptr(sin_arr), runtime=runtime)
+                copy_host_array_to_device(cos_dev, cos_arr, cos_dev.nbytes, runtime=runtime)
+                copy_host_array_to_device(sin_dev, sin_arr, sin_dev.nbytes, runtime=runtime)
                 mtp_rope_f32(key_cur_dev.ptr, cos_dev.ptr, sin_dev.ptr, key_cur_dev.ptr,
                              tokens, kv_heads, qk_head_dim, rot_dim, half, runtime=runtime)
             value_cur_dev = malloc(tokens * kv_heads * value_head_dim * 4, runtime=runtime)
@@ -987,12 +1018,12 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
         copy_device_to_host(host_array_ptr(q_full_host), q_full_dev, runtime=runtime)
         query_host = np.ascontiguousarray(q_full_host[:, :, 0, :])
         gate_host = np.ascontiguousarray(q_full_host[:, :, 1, :])
-        copy_host_to_device(query_dev, host_array_ptr(query_host), runtime=runtime)
+        copy_host_array_to_device(query_dev, query_host, query_dev.nbytes, runtime=runtime)
         # per-head rmsnorm over qk_head_dim
         mtp_rmsnorm_f32(query_dev.ptr, q_norm_dev.ptr, query_dev.ptr, tokens * heads, qk_head_dim,
                         eps=eps, library=_attn_mtp_lib, runtime=runtime)
         gate_dev = malloc(gate_host.nbytes, runtime=runtime); buffers.append(gate_dev)
-        copy_host_to_device(gate_dev, host_array_ptr(gate_host), runtime=runtime)
+        copy_host_array_to_device(gate_dev, gate_host, gate_dev.nbytes, runtime=runtime)
 
         # key_cur = rmsnorm(normed @ wk.T, k_norm)  -> [tokens, kv_heads, qk_head_dim]
         key_cur_dev = malloc(tokens * kv_heads * qk_head_dim * 4, runtime=runtime)
@@ -1008,8 +1039,8 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
         if apply_rope:
             cos_dev = malloc(cos_arr.nbytes, runtime=runtime); buffers.append(cos_dev)
             sin_dev = malloc(sin_arr.nbytes, runtime=runtime); buffers.append(sin_dev)
-            copy_host_to_device(cos_dev, host_array_ptr(cos_arr), runtime=runtime)
-            copy_host_to_device(sin_dev, host_array_ptr(sin_arr), runtime=runtime)
+            copy_host_array_to_device(cos_dev, cos_arr, cos_dev.nbytes, runtime=runtime)
+            copy_host_array_to_device(sin_dev, sin_arr, sin_dev.nbytes, runtime=runtime)
             mtp_rope_f32(query_dev.ptr, cos_dev.ptr, sin_dev.ptr, query_dev.ptr,
                          tokens, heads, qk_head_dim, rot_dim, half, runtime=runtime)
             mtp_rope_f32(key_cur_dev.ptr, cos_dev.ptr, sin_dev.ptr, key_cur_dev.ptr,
@@ -1025,8 +1056,8 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
         # dense causal GQA: cache = current tokens (default path), cache_tokens = tokens
         pos_dev = malloc(pos.nbytes, runtime=runtime); buffers.append(pos_dev)
         ctx_dev = malloc(ctx.nbytes, runtime=runtime); buffers.append(ctx_dev)
-        copy_host_to_device(pos_dev, host_array_ptr(pos), runtime=runtime)
-        copy_host_to_device(ctx_dev, host_array_ptr(ctx), runtime=runtime)
+        copy_host_array_to_device(pos_dev, pos, pos_dev.nbytes, runtime=runtime)
+        copy_host_array_to_device(ctx_dev, ctx, ctx_dev.nbytes, runtime=runtime)
         attn_dev = malloc(tokens * heads * value_head_dim * 4, runtime=runtime)
         buffers.append(attn_dev)
         if use_paged:
@@ -1035,11 +1066,11 @@ def qwen35_gguf_mtp_attention_sublayer_f32(
             bt_dev = malloc(bt.nbytes, runtime=runtime); buffers.append(bt_dev)
             lc_dev = malloc(lc.nbytes, runtime=runtime); buffers.append(lc_dev)
             tp_dev = malloc(tp.nbytes, runtime=runtime); buffers.append(tp_dev)
-            copy_host_to_device(kc_dev, host_array_ptr(key_cache), runtime=runtime)
-            copy_host_to_device(vc_dev, host_array_ptr(value_cache), runtime=runtime)
-            copy_host_to_device(bt_dev, host_array_ptr(bt), runtime=runtime)
-            copy_host_to_device(lc_dev, host_array_ptr(lc), runtime=runtime)
-            copy_host_to_device(tp_dev, host_array_ptr(tp), runtime=runtime)
+            copy_host_array_to_device(kc_dev, key_cache, kc_dev.nbytes, runtime=runtime)
+            copy_host_array_to_device(vc_dev, value_cache, vc_dev.nbytes, runtime=runtime)
+            copy_host_array_to_device(bt_dev, bt, bt_dev.nbytes, runtime=runtime)
+            copy_host_array_to_device(lc_dev, lc, lc_dev.nbytes, runtime=runtime)
+            copy_host_array_to_device(tp_dev, tp, tp_dev.nbytes, runtime=runtime)
             mtp_paged_attn_f32(
                 query_dev.ptr, kc_dev.ptr, vc_dev.ptr, bt_dev.ptr, lc_dev.ptr, tp_dev.ptr,
                 attn_dev.ptr, tokens, heads, kv_heads, qk_head_dim, value_head_dim,
@@ -1136,7 +1167,7 @@ def qwen35_gguf_mtp_moe_routing_f32(
         x_dev = malloc(x.nbytes, runtime=runtime); buffers.append(x_dev)
         router_dev = _cached_upload("ffn_router", router, runtime=runtime)
         logits_dev = malloc(tokens * experts * 4, runtime=runtime); buffers.append(logits_dev)
-        copy_host_to_device(x_dev, host_array_ptr(x), runtime=runtime)
+        copy_host_array_to_device(x_dev, x, x_dev.nbytes, runtime=runtime)
         _route_lib = build_mtp_nextn(load=True)
         mtp_linear_f32(x_dev.ptr, router_dev.ptr, logits_dev.ptr, tokens, hidden_size, experts,
                        library=_route_lib, runtime=runtime)
@@ -1243,7 +1274,7 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
             copy_device_to_host(host_array_ptr(x_f32), x_dev, x_f32.nbytes, runtime=runtime)
             x_fp16 = x_f32.astype(np.float16)
             x_fp16_dev = malloc(x_fp16.nbytes, runtime=runtime)
-            copy_host_to_device(x_fp16_dev, host_array_ptr(x_fp16), runtime=runtime)
+            copy_host_array_to_device(x_fp16_dev, x_fp16, x_fp16_dev.nbytes, runtime=runtime)
             _hip_q6_k(x_fp16_dev.ptr, weight_dev.ptr, out_dev.ptr, rows, in_features,
                       out_features, library=_q4_k_lib, runtime=runtime)
             free(x_fp16_dev, runtime=runtime)
@@ -1284,7 +1315,7 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
             copy_device_to_host(host_array_ptr(x_f32), x_dev, x_f32.nbytes, runtime=runtime)
             x_fp16 = x_f32.astype(np.float16)
             x_fp16_dev = malloc(x_fp16.nbytes, runtime=runtime)
-            copy_host_to_device(x_fp16_dev, host_array_ptr(x_fp16), runtime=runtime)
+            copy_host_array_to_device(x_fp16_dev, x_fp16, x_fp16_dev.nbytes, runtime=runtime)
             _hip_q6_k(x_fp16_dev.ptr, weight_ptr, out_dev.ptr, rows, in_features,
                       out_features, runtime=runtime)
             free(x_fp16_dev, runtime=runtime)
@@ -1340,8 +1371,8 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
         normed_dev = malloc(x.nbytes, runtime=runtime); buffers.append(normed_dev)
         x_dev = malloc(x.nbytes, runtime=runtime); buffers.append(x_dev)
         norm_dev = malloc(norm_weight.nbytes, runtime=runtime); buffers.append(norm_dev)
-        copy_host_to_device(x_dev, host_array_ptr(x), runtime=runtime)
-        copy_host_to_device(norm_dev, host_array_ptr(norm_weight), runtime=runtime)
+        copy_host_array_to_device(x_dev, x, x_dev.nbytes, runtime=runtime)
+        copy_host_array_to_device(norm_dev, norm_weight, norm_dev.nbytes, runtime=runtime)
         mtp_rmsnorm_f32(x_dev.ptr, norm_dev.ptr, normed_dev.ptr, tokens, hidden_size, eps=eps,
                         library=_mtp_lib, runtime=runtime)
 
@@ -1362,7 +1393,7 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
         buffers.append(selected_out_dev)
         # zero-init
         zero = np.zeros((tokens, hidden_size), dtype=np.float32)
-        copy_host_to_device(selected_out_dev, host_array_ptr(zero), runtime=runtime)
+        copy_host_array_to_device(selected_out_dev, zero, selected_out_dev.nbytes, runtime=runtime)
 
         # M6: Pre-load GEMV libraries to avoid 61ms rebuild check per call.
         from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import build_gguf_q4_k_gemv
@@ -1405,12 +1436,12 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
             # M6: Batch gate+up GEMVs using selected_dual kernel (1 launch for all experts)
             if gate_qtype == GGMLQuantizationType.Q4_K and up_qtype == GGMLQuantizationType.Q4_K:
                 # Convert F32 input to BF16 on GPU (reuses pre-allocated buffers)
-                copy_host_to_device(xt_dev, host_array_ptr(xt), runtime=runtime)
+                copy_host_array_to_device(xt_dev, xt, xt_dev.nbytes, runtime=runtime)
                 _f32_to_bf16_device(xt_dev.ptr, xt_bf16_dev.ptr, xt.size, library=_cast_lib, runtime=runtime)
 
                 # Selected experts for this token
                 sel = np.ascontiguousarray(selected_experts[t, :top_k].astype(np.int64))
-                copy_host_to_device(sel_dev, host_array_ptr(sel), runtime=runtime)
+                copy_host_array_to_device(sel_dev, sel, sel_dev.nbytes, runtime=runtime)
 
                 # Single kernel launch for all gate+up GEMVs
                 _dual_gemv(
@@ -1446,7 +1477,7 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
                                 hidden_size, library=_mtp_lib, runtime=runtime)
             else:
                 # Fallback: per-expert loop for non-Q4_K quant types
-                copy_host_to_device(xt_dev, host_array_ptr(xt), runtime=runtime)
+                copy_host_array_to_device(xt_dev, xt, xt_dev.nbytes, runtime=runtime)
                 gate_out = malloc(inter_dim * 4, runtime=runtime); buffers.append(gate_out)
                 up_out = malloc(inter_dim * 4, runtime=runtime); buffers.append(up_out)
                 for k in range(top_k):
@@ -1488,14 +1519,14 @@ def qwen35_gguf_mtp_ffn_sublayer_f32(
         # shared_gate_logit = normed @ gate_vec  -> [tokens, 1]
         gv_dev = malloc(gate_vec.nbytes, runtime=runtime); buffers.append(gv_dev)
         sgl_dev = malloc(tokens * 1 * 4, runtime=runtime); buffers.append(sgl_dev)
-        copy_host_to_device(gv_dev, host_array_ptr(gate_vec), runtime=runtime)
+        copy_host_array_to_device(gv_dev, gate_vec, gv_dev.nbytes, runtime=runtime)
         mtp_linear_f32(normed_dev.ptr, gv_dev.ptr, sgl_dev.ptr, tokens, hidden_size, 1,
                        library=_mtp_lib, runtime=runtime)
         sgl_host = np.empty((tokens, 1), dtype=np.float32)
         copy_device_to_host(host_array_ptr(sgl_host), sgl_dev, runtime=runtime)
         sigmoid_vec = (1.0 / (1.0 + np.exp(-sgl_host))).astype(np.float32).reshape(tokens)
         sig_dev = malloc(tokens * 4, runtime=runtime); buffers.append(sig_dev)
-        copy_host_to_device(sig_dev, host_array_ptr(sigmoid_vec), runtime=runtime)
+        copy_host_array_to_device(sig_dev, sigmoid_vec, sig_dev.nbytes, runtime=runtime)
         gated_shared = malloc(tokens * hidden_size * 4, runtime=runtime)
         buffers.append(gated_shared)
         mtp_row_scale_f32(sig_dev.ptr, s_out.ptr, gated_shared.ptr, tokens, hidden_size,
@@ -1569,7 +1600,7 @@ def qwen35_gguf_mtp_shared_head_logits_f32(
         norm_dev = _cached_upload("shared_head_norm", norm_weight, runtime=runtime)
         normed_dev = malloc(hidden.nbytes, runtime=runtime); buffers.append(normed_dev)
         out_dev = malloc(rows * vocab * 4, runtime=runtime); buffers.append(out_dev)
-        copy_host_to_device(hidden_dev, host_array_ptr(hidden), runtime=runtime)
+        copy_host_array_to_device(hidden_dev, hidden, hidden_dev.nbytes, runtime=runtime)
         mtp_rmsnorm_f32(hidden_dev.ptr, norm_dev.ptr, normed_dev.ptr, rows, hidden_size, eps=eps,
                         library=_sh_lib, runtime=runtime)
         head_dev = None  # set per-quant-type below
@@ -1763,8 +1794,8 @@ def qwen35_gguf_mtp_q8_0_gemv_f32(
         x_dev = malloc(x_arr.nbytes, runtime=runtime); buffers.append(x_dev)
         qw_dev = malloc(qw_arr.nbytes, runtime=runtime); buffers.append(qw_dev)
         out_dev = malloc(rows * out_features * 4, runtime=runtime); buffers.append(out_dev)
-        copy_host_to_device(x_dev, host_array_ptr(x_arr), runtime=runtime)
-        copy_host_to_device(qw_dev, host_array_ptr(qw_arr), runtime=runtime)
+        copy_host_array_to_device(x_dev, x_arr, x_dev.nbytes, runtime=runtime)
+        copy_host_array_to_device(qw_dev, qw_arr, qw_dev.nbytes, runtime=runtime)
         _hip_q8_0(x_dev.ptr, qw_dev.ptr, out_dev.ptr, rows=rows,
                   in_features=in_features, out_features=out_features)
         runtime.device_synchronize()
@@ -1806,8 +1837,8 @@ def qwen35_gguf_mtp_q4_k_gemv_f32(
         x_dev = malloc(x_arr.nbytes, runtime=runtime); buffers.append(x_dev)
         qw_dev = malloc(qw_arr.nbytes, runtime=runtime); buffers.append(qw_dev)
         out_dev = malloc(rows * out_features * 4, runtime=runtime); buffers.append(out_dev)
-        copy_host_to_device(x_dev, host_array_ptr(x_arr), runtime=runtime)
-        copy_host_to_device(qw_dev, host_array_ptr(qw_arr), runtime=runtime)
+        copy_host_array_to_device(x_dev, x_arr, x_dev.nbytes, runtime=runtime)
+        copy_host_array_to_device(qw_dev, qw_arr, qw_dev.nbytes, runtime=runtime)
         _hip_q4_k_gemv(
             x_dev.ptr, qw_dev.ptr, out_dev.ptr,
             rows=rows, in_features=in_features, out_features=out_features,
@@ -1851,8 +1882,8 @@ def qwen35_gguf_mtp_q5_k_gemv_f32(
         x_dev = malloc(x_arr.nbytes, runtime=runtime); buffers.append(x_dev)
         qw_dev = malloc(qw_arr.nbytes, runtime=runtime); buffers.append(qw_dev)
         out_dev = malloc(rows * out_features * 4, runtime=runtime); buffers.append(out_dev)
-        copy_host_to_device(x_dev, host_array_ptr(x_arr), runtime=runtime)
-        copy_host_to_device(qw_dev, host_array_ptr(qw_arr), runtime=runtime)
+        copy_host_array_to_device(x_dev, x_arr, x_dev.nbytes, runtime=runtime)
+        copy_host_array_to_device(qw_dev, qw_arr, qw_dev.nbytes, runtime=runtime)
         _hip_q5_k_gemv(
             x_dev.ptr, qw_dev.ptr, out_dev.ptr,
             rows=rows, in_features=in_features, out_features=out_features,

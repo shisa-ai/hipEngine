@@ -2903,6 +2903,9 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   over exact destination views, preserving replay order and row offsets.
   Gemma expert identity maps, dense IQ metadata and VibeVoice Q4 context
   publication also use owning uploads with their original copy bounds.
+  NextN kernel host wrappers retain synchronous upload sources as well.
+  Quantized projection concatenates normalized inputs row by row; Q6_K keeps
+  its FP16-input projection and converts the concatenated device buffer.
 - Remaining cleanup: named-local array uploads still use the raw-address
   `copy_host_to_device` API in other paths. Named locals are safe through a
   synchronous copy, but future edits must not replace them with temporary
