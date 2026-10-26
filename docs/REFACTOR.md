@@ -2906,16 +2906,6 @@ should be removed or collapsed.
   never replace its explicit unqualified status with fabricated passing scores.
   Production INT8 construction continues to require artifact qualification.
 
-## 2026-09-07 DMS INT8 device correctness path — open
-
-- `dms_compact_int8.hip` uses ordered row-by-row pack and append compaction
-  with exact INT8 byte/scale moves. It is a correctness implementation, not
-  a tuned serving path; no model quality or speed claim follows from it.
-- Replace serialized row movement with a race-free tiled implementation after
-  the same codec, overflow, above-window, snapshot, and model gates pass.
-  Keep the CPU-reference oracle and BF16 fallback. Do not re-quantize moved
-  payloads or detach their scales from token positions.
-
 ## 2026-09-09 W4A16 IQ prefill — registered, unrouted
 
 **State.** `gguf_iq_wmma_prefill.hip` implements a W4A16 prefill route for all

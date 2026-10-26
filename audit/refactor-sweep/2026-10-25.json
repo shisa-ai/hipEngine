@@ -3623,18 +3623,18 @@
       "start_line": 3295,
       "end_line": 3304,
       "sha256": "0a5225033ef4065ebb7f49c3916db220be3fb75e2521130caaed7afcf3b3fc0c",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Append movement already uses chunked scans and shared-memory tile staging. Verified source against worklog/entries/20261018T120817.976900Z-lhl-dms-append-compaction-race-6fa3d4.md and its regression evidence; removed obsolete ledger section. Pack still quantizes rows in order; this closure concerns compaction movement, not a new pack optimization. Separate ring-head redesign entry remains open."],
       "subitems": [
         {
           "line": 3297,
           "text": "- `dms_compact_int8.hip` uses ordered row-by-row pack and append compaction",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 3300,
           "text": "- Replace serialized row movement with a race-free tiled implementation after",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
