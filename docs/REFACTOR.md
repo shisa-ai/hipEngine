@@ -2891,6 +2891,8 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   offsets, explicit byte counts and copy order. GGUF decode/packed graph capture,
   native speculative metadata and native sampler arrays also use the owning
   helper; graph record-index copies preserve the destination-sized byte count.
+  Gemma and Qwen vision uploads retain their arrays as well, preserving input,
+  position and learned-embedding copy sizes and runtime selection.
 - Remaining cleanup: named-local array uploads still use the raw-address
   `copy_host_to_device` API in other paths. Named locals are safe through a
   synchronous copy, but future edits must not replace them with temporary

@@ -1819,3 +1819,204 @@ def test_gguf_packed_decode_graph_capture_uploads_owning_inputs_in_order(
     assert mask_array.dtype == np.uint8
     assert mask_array.tolist() == [1, 1]
     assert zero.tolist() == [0]
+
+
+VISION_RUNTIME_SYNCHRONOUS_ARRAY_UPLOAD_MODULES = (
+    "runtime/gemma4_vision",
+    "runtime/qwen4_exp_vision",
+)
+
+
+@pytest.mark.parametrize("module", VISION_RUNTIME_SYNCHRONOUS_ARRAY_UPLOAD_MODULES)
+def test_vision_runtime_synchronous_array_uploads_use_the_owning_helper(module):
+    """Vision H2D arrays must retain their owner through the copy.
+
+    This is a bounded syntax guard over the Gemma 4 and Qwen4Exp vision
+    runtime modules, not a proof of arbitrary pointer lifetimes. Asynchronous
+    uploads, raw pointer uploads, and D2H/D2D copies are outside this guard.
+    """
+    path = Path(__file__).parents[1] / "hipengine" / f"{module}.py"
+    tree = ast.parse(path.read_text())
+    hazards = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Name) and node.func.id == "copy_host_to_device":
+            source = (
+                node.args[1]
+                if len(node.args) > 1
+                else next((kw.value for kw in node.keywords if kw.arg == "host_ptr"), None)
+            )
+            if source is not None and _is_array_pointer_expression(source):
+                hazards.append((node.lineno, "copy_host_to_device"))
+            continue
+        if not (isinstance(node.func, ast.Attribute) and node.func.attr == "memcpy"):
+            continue
+        kind = (
+            node.args[3]
+            if len(node.args) > 3
+            else next((kw.value for kw in node.keywords if kw.arg == "kind"), None)
+        )
+        if not (isinstance(kind, ast.Attribute) and kind.attr == "HOST_TO_DEVICE"):
+            continue
+        source = (
+            node.args[1]
+            if len(node.args) > 1
+            else next((kw.value for kw in node.keywords if kw.arg == "src"), None)
+        )
+        if source is not None and _is_array_pointer_expression(source):
+            hazards.append((node.lineno, "runtime.memcpy"))
+    assert not hazards, f"{path.name}: use copy_host_array_to_device at {hazards}"
+
+
+def test_gemma4_vision_upload_uses_owning_contiguous_array(monkeypatch):
+    from hipengine.runtime import gemma4_vision as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    mallocs = _fake_malloc(monkeypatch, mod)
+    runner = object.__new__(mod.Gemma4VisionRunner)
+    runner._owned = []
+    source = np.arange(8, dtype=np.float32)[::2]
+
+    buffer = runner._upload(source)
+
+    assert runner._owned == [buffer]
+    assert legacy == []
+    assert len(uploads) == 1
+    call_buffer, array, nbytes, call_runtime = uploads[0]
+    assert call_buffer is buffer is mallocs[0]
+    assert array.flags.c_contiguous
+    assert array.tolist() == [0.0, 2.0, 4.0, 6.0]
+    assert nbytes == 16
+    assert call_runtime is None
+
+
+class _StopVisionForward(Exception):
+    """Sentinel raised by the stubbed BLAS to bound a vision forward."""
+
+
+def _fake_gemma4_vision_runner():
+    from hipengine.runtime import gemma4_vision as mod
+
+    runner = object.__new__(mod.Gemma4VisionRunner)
+    runner.closed = False
+    runner.config = SimpleNamespace(
+        hidden_size=4,
+        intermediate_size=8,
+        heads=2,
+        head_dim=2,
+        spatial_merge_size=1,
+        patch_size=2,
+        block_count=1,
+        output_size=4,
+        norm_epsilon=1e-6,
+    )
+    # Real checkpoints store one lookup table per spatial axis:
+    # v.position_embd.weight is [2, position_table_size, hidden].
+    runner.positions = np.arange(2 * 8 * 4, dtype=np.float32).reshape(2, 8, 4)
+    runner._weights = {
+        "v.patch_embd.weight": memory.DeviceBuffer(0x9000, 16),
+    }
+    runner.ops = {}
+    runner.blas = SimpleNamespace(
+        sgemm_rowmajor_nt=lambda *args, **kwargs: (_ for _ in ()).throw(
+            _StopVisionForward()
+        )
+    )
+    return runner
+
+
+def test_gemma4_vision_forward_alloc_uploads_owning_arrays(monkeypatch):
+    from hipengine.runtime import gemma4_vision as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    mallocs = _fake_malloc(monkeypatch, mod)
+    monkeypatch.setattr(mod, "free", lambda *args, **kwargs: None)
+    runner = _fake_gemma4_vision_runner()
+    patches = np.arange(48, dtype=np.float32).reshape(4, 12) / 48.0
+    positions = np.asarray(
+        [[0, 0], [1, 0], [0, 1], [1, 1]], dtype=np.int32
+    )
+
+    with pytest.raises(_StopVisionForward):
+        runner.forward(patches, positions, (2, 2))
+
+    assert legacy == []
+    assert [(call[0].ptr, call[2], call[3]) for call in uploads] == [
+        (mallocs[0].ptr, 192, None),
+        (mallocs[1].ptr, 32, None),
+        # Learned position rows are [rows, hidden], so the copy covers the whole
+        # destination allocation for valid checkpoint geometry.
+        (mallocs[2].ptr, 64, None),
+    ]
+    assert mallocs[2].nbytes == 64
+    patch_array, position_array, learned_array = (call[1] for call in uploads)
+    np.testing.assert_array_equal(patch_array, np.ascontiguousarray(2.0 * patches - 1.0))
+    np.testing.assert_array_equal(position_array, positions)
+    expected_learned = runner.positions[0, positions[:, 0]] + runner.positions[1, positions[:, 1]]
+    np.testing.assert_array_equal(learned_array, expected_learned)
+
+
+def test_qwen4_exp_vision_encode_pair_uploads_owning_arrays_in_order(monkeypatch):
+    from hipengine.runtime import qwen4_exp_vision as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    for name in (
+        "qwen4_exp_vision_layernorm_f32",
+        "qwen4_exp_vision_attention_f32",
+        "qwen4_exp_vision_add_bias_residual_f32",
+        "qwen4_exp_vision_bias_gelu_tanh_f32",
+        "launch_gguf_linear",
+    ):
+        monkeypatch.setattr(mod, name, lambda *args, **kwargs: None)
+    monkeypatch.setattr(mod, "copy_device_to_host", lambda *args, **kwargs: None)
+    runtime = SimpleNamespace(
+        memcpy=lambda *args, **kwargs: None,
+        device_synchronize=lambda: None,
+    )
+
+    def buffer(ptr, nbytes):
+        return memory.DeviceBuffer(ptr, nbytes)
+
+    runner = object.__new__(mod.Qwen4ExpVisionRunner)
+    runner.closed = False
+    runner.runtime = runtime
+    runner.config = SimpleNamespace(norm_epsilon=1e-6)
+    runner._buffers = {
+        "initial": buffer(0x1000, 8 * 1152 * 4),
+        "norm": buffer(0x1100, 8 * 1152 * 4),
+        "qkv": buffer(0x1200, 8 * 3 * 1152 * 4),
+        "attention": buffer(0x1300, 8 * 1152 * 4),
+        "projected": buffer(0x1400, 8 * 1152 * 4),
+        "ff1": buffer(0x1500, 8 * 4304 * 4),
+        "gelu": buffer(0x1600, 8 * 4304 * 4),
+        "ff2": buffer(0x1700, 8 * 1152 * 4),
+        "pos_h": buffer(0x1800, 8 * 4),
+        "pos_w": buffer(0x1900, 8 * 4),
+        "merge_input": buffer(0x1A00, 8 * 1152 * 4),
+        "merge_hidden": buffer(0x1B00, 2 * 4 * 1152 * 4),
+        "merge_output": buffer(0x1C00, 2 * 2560 * 4),
+    }
+    runner._p = lambda name: 0x8000
+    runner._w = lambda name: SimpleNamespace(name=name)
+    initial = np.arange(8 * 1152, dtype=np.float32).reshape(8, 1152)
+    pos_h = np.arange(8, dtype=np.int32)
+    pos_w = np.arange(8, dtype=np.int32)[::-1].copy()
+    runner.preprocess_temporal_pair = lambda *args, **kwargs: (
+        initial,
+        pos_h,
+        pos_w,
+        (2, 4),
+    )
+
+    features = runner._encode_pair(object(), None, modality="image")
+
+    assert legacy == []
+    assert [(call[0].ptr, call[2], call[3]) for call in uploads] == [
+        (0x1000, initial.nbytes, runtime),
+        (0x1800, pos_h.nbytes, runtime),
+        (0x1900, pos_w.nbytes, runtime),
+    ]
+    assert [call[1] for call in uploads] == [initial, pos_h, pos_w]
+    assert features.grid_thw == (1, 2, 4)
+    assert features.embeddings.shape == (2, 2560)

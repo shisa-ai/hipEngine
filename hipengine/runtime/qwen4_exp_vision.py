@@ -10,7 +10,7 @@ from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
-    copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -228,16 +228,16 @@ class Qwen4ExpVisionRunner:
         )
         rows = int(initial.shape[0])
         merged_rows = rows // 4
-        copy_host_to_device(
-            self._buffers["initial"], host_array_ptr(initial), initial.nbytes,
+        copy_host_array_to_device(
+            self._buffers["initial"], initial, initial.nbytes,
             runtime=self.runtime,
         )
-        copy_host_to_device(
-            self._buffers["pos_h"], host_array_ptr(pos_h), pos_h.nbytes,
+        copy_host_array_to_device(
+            self._buffers["pos_h"], pos_h, pos_h.nbytes,
             runtime=self.runtime,
         )
-        copy_host_to_device(
-            self._buffers["pos_w"], host_array_ptr(pos_w), pos_w.nbytes,
+        copy_host_array_to_device(
+            self._buffers["pos_w"], pos_w, pos_w.nbytes,
             runtime=self.runtime,
         )
         current = self._buffers["initial"]

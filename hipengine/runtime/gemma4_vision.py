@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 from hipengine.core.memory import (
-    malloc, free, copy_host_to_device, copy_device_to_host, host_array_ptr,
+    malloc, free, copy_host_array_to_device, copy_device_to_host, host_array_ptr,
 )
 from hipengine.core.rocblas import Rocblas
 from hipengine.kernels.registry import resolve
@@ -56,7 +56,7 @@ class Gemma4VisionRunner:
         value = np.ascontiguousarray(array)
         buffer = malloc(value.nbytes)
         self._owned.append(buffer)
-        copy_host_to_device(buffer, host_array_ptr(value), value.nbytes)
+        copy_host_array_to_device(buffer, value, value.nbytes)
         return buffer
 
     def close(self):
@@ -103,7 +103,7 @@ class Gemma4VisionRunner:
             buffers.append(buffer)
             if value is not None:
                 a = np.ascontiguousarray(value, dtype=dtype)
-                copy_host_to_device(buffer, host_array_ptr(a), a.nbytes)
+                copy_host_array_to_device(buffer, a, a.nbytes)
             return buffer.ptr
 
         def weight(name):
