@@ -404,6 +404,32 @@ def test_mtp_reproduces_the_autoregressive_route_under_min_tokens(min_tokens):
     assert _tokens(mtp_output) == _tokens(ar_output)
 
 
+def test_an_early_model_eos_reports_the_same_cause_on_both_routes():
+    """Both Gemma 4 routes name a model end-of-generation stop the same way.
+
+    The token is the model's own end-of-generation id, so both routes report
+    ``reason="stop"`` with that id in ``eos_token_id`` and keep the emitted run
+    intact. The speculative service must preserve this cause rather than
+    relabel one route as ``"eos"``; that is pinned at the service boundary in
+    ``test_integration_engine_service_speculative_finish.py``.
+    """
+
+    target = _Target({_FIRST + 1: _EOS})
+    request = _request(max_tokens=8)
+    ar_output, _runner = _run_ar(request, target)
+    mtp_output, _runner, _provider = _run_mtp(request, target)
+
+    assert _tokens(mtp_output) == _tokens(ar_output) == [_gen(0), _EOS]
+    assert mtp_output.text == ar_output.text
+    assert mtp_output.finish_details.reason == ar_output.finish_details.reason == "stop"
+    assert (
+        mtp_output.finish_details.eos_token_id
+        == ar_output.finish_details.eos_token_id
+        == _EOS
+    )
+    assert mtp_output.finish_details.stop_sequence == ar_output.finish_details.stop_sequence == ()
+
+
 # --- multi-token stop sequences -----------------------------------------
 
 

@@ -1426,6 +1426,19 @@ class EngineService:
             )
             if tail.finish_reason is None or (tail.finish_reason == "length" and semantic_finish):
                 return output
+            # A provider may name a model end-of-generation token as its own
+            # terminal cause: Gemma 4 reports such a stop as "stop" with the
+            # token in ``eos_token_id``, and its plain route is not normalized
+            # here at all. The trim calling the same token "eos" is not new
+            # evidence about the cause, so keep the provider's label rather
+            # than make the MTP route disagree with the plain route.
+            if (
+                tail.finish_reason == "eos"
+                and details is not None
+                and details.reason == "stop"
+                and details.eos_token_id is not None
+            ):
+                return output
         text = output.text
         if tail.token_ids != tuple(token_ids):
             detokenize = getattr(self._driver, "detokenize", None)
