@@ -2542,23 +2542,23 @@
       "start_line": 2751,
       "end_line": 2760,
       "sha256": "cd00d275c141896761098faf0961a526603744c6a405b5268920af6b68376267",
-      "status": "pending",
-      "evidence": [],
+      "status": "not-debt-removed",
+      "evidence": ["Diagnostic-only script retained; no production integration or cleanup obligation. Removed ledger history; evidence in worklog/entries/20261026T165206.648077Z-cleanup-refactor-r0093-r0097-be4d2e.md."],
       "subitems": [
         {
           "line": 2753,
           "text": "- `scripts/qwen4exp_gdn_decode_graph_probe.py` is single-runner/c1",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 2756,
           "text": "- Real advancing code/mixed trajectories exact,but warm graph~1.049s/",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 2758,
           "text": "- No default flag or runtime integration justified. Keep probe for",
-          "status": "pending"
+          "status": "not-debt"
         }
       ]
     },
@@ -2568,13 +2568,13 @@
       "start_line": 2761,
       "end_line": 2767,
       "sha256": "1c2873b4b6c51c348b85394f2530a28e3a86b98d4fc3b4fcd434d7f55585e9e5",
-      "status": "pending",
-      "evidence": [],
+      "status": "not-debt-removed",
+      "evidence": ["Finished diagnostic with no production warm-up policy. Removed ledger history; evidence in worklog/entries/20261026T165206.648077Z-cleanup-refactor-r0093-r0097-be4d2e.md."],
       "subitems": [
         {
           "line": 2765,
           "text": "- Diagnostic remains explicitly cost-accounted;never export decode-only",
-          "status": "pending"
+          "status": "not-debt"
         }
       ]
     },
@@ -2584,18 +2584,18 @@
       "start_line": 2768,
       "end_line": 2775,
       "sha256": "b0488f24fe8c991f7bff3ef244b0c0addf0ed283b495c82c3cb4be31bf91eef7",
-      "status": "pending",
-      "evidence": [],
+      "status": "not-debt-removed",
+      "evidence": ["CPU floor helper remains diagnostic-only with restoration tests, not production policy. Evidence in worklog/entries/20261026T165206.648077Z-cleanup-refactor-r0093-r0097-be4d2e.md."],
       "subitems": [
         {
           "line": 2770,
           "text": "- Policy17 floor2->4GHz accepted but early feedback remained~600MHz",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 2773,
           "text": "- Diagnostic helper restores on failure;requested floor is never labeled",
-          "status": "pending"
+          "status": "not-debt"
         }
       ]
     },
@@ -2605,18 +2605,18 @@
       "start_line": 2776,
       "end_line": 2782,
       "sha256": "294f664fd15ce06a3ae1bba4a77664f11d8a1381b48e5314282dedd00350de96",
-      "status": "pending",
-      "evidence": [],
+      "status": "not-debt-removed",
+      "evidence": ["Finished diagnostic; runtime identity reporting remains in probe, no production override added. Evidence in worklog/entries/20261026T165206.648077Z-cleanup-refactor-r0093-r0097-be4d2e.md."],
       "subitems": [
         {
           "line": 2778,
           "text": "- HSA_ENABLE_MWAITX=1 request does not eliminate early decode recovery",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 2780,
           "text": "- Probe now records loaded HIP/HSA hashes and requested wait environment.",
-          "status": "pending"
+          "status": "not-debt"
         }
       ]
     },
@@ -2626,23 +2626,23 @@
       "start_line": 2783,
       "end_line": 2791,
       "sha256": "eaef46c75bd2f224ec7ec91e4d0a42d73f3e7b6f213e351f2c28a380734b7cf6",
-      "status": "pending",
-      "evidence": [],
+      "status": "not-debt-removed",
+      "evidence": ["HIP wait policy is diagnostic-only. Removed obsolete paired-head default claim with historical section; live QSA mode-chain cleanup remains R0098. Evidence in worklog/entries/20261026T165206.648077Z-cleanup-refactor-r0093-r0097-be4d2e.md."],
       "subitems": [
         {
           "line": 2785,
           "text": "- Initial HIP flags already spin1;explicit1->1 did not constitute a change.",
-          "status": "pending"
+          "status": "historical"
         },
         {
           "line": 2787,
           "text": "- No production HIP flag override added. Diagnostic helper preserves",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 2789,
           "text": "- Paired-head QSA remains default-off pending transition decision;do not",
-          "status": "pending"
+          "status": "obsolete-claim-removed"
         }
       ]
     },

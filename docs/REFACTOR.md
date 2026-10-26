@@ -2910,47 +2910,6 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   each helper's device ordering contract. A future asynchronous upload API must
   define a separate source-lifetime contract.
 
-## GDN full-layer diagnostic graph cache
-
-- `scripts/qwen4exp_gdn_decode_graph_probe.py` is single-runner/c1
-  diagnostic only,not a production graph owner. It snapshots state for
-  first-use validation and charges setup in first graph arm.
-- Real advancing code/mixed trajectories exact,but warm graph~1.049s/
-  16 steps is effectively equal to eager~1.046-1.047s.
-- No default flag or runtime integration justified. Keep probe for
-  lifecycle/reference evidence;do not generalize keying/lifetimes to serving.
-
-## QSA CPU-active transition diagnostic
-
--100ms busy interval improves decode-only timer but not charged total:
-  direct8.948s versus interval+decode8.961s. No production warm-up added.
-- Diagnostic remains explicitly cost-accounted;never export decode-only
-  gain as request speedup or tune delay to benchmark inputs.
-
-## QSA requested CPU minimum diagnostic
-
-- Policy17 floor2->4GHz accepted but early feedback remained~600MHz
-  after candidate prefill;transition penalty unchanged. Original2GHz and
-  calling-thread affinity restored. No production floor override.
-- Diagnostic helper restores on failure;requested floor is never labeled
-  an effective hardware clock lock.
-
-## QSA MWAITX request diagnostic
-
-- HSA_ENABLE_MWAITX=1 request does not eliminate early decode recovery
-  penalty;installed-runtime path engagement not proven. No production override.
-- Probe now records loaded HIP/HSA hashes and requested wait environment.
-  Do not claim env readback proves the instruction path ran.
-
-## QSA transition HIP scheduling diagnostic
-
-- Initial HIP flags already spin1;explicit1->1 did not constitute a change.
-  Yield1->2 accepted before model allocation but transition penalty persists.
-- No production HIP flag override added. Diagnostic helper preserves
-  nonscheduling flags and fails readback mismatch;disposable process scope.
-- Paired-head QSA remains default-off pending transition decision;do not
-  repeat generic spin/yield as an assumed fix without new wait-path evidence.
-
 ## Qwen4Exp H256 QSA head-pair candidate
 
 - Kernel-only `strict_h256_head_pair_rows_spans`:two heads/wave,
