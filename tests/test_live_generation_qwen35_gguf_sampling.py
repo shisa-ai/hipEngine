@@ -162,6 +162,7 @@ def test_dense_public_mtp_route_uses_transactional_provider_and_recycles_owner(
     monkeypatch,
 ) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_MTP_VERIFY_MODE", raising=False)
+    monkeypatch.delenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", raising=False)
     calls: list[tuple] = []
     config = SimpleNamespace(
@@ -256,7 +257,8 @@ def test_dense_public_mtp_route_serves_the_published_candidate_budget(
     """An explicit or evidence depth is not replaced by the generator fallback."""
 
     monkeypatch.delenv("HIPENGINE_GGUF_MTP_VERIFY_MODE", raising=False)
-    monkeypatch.setenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", "3")
+    monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "3")
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", raising=False)
     calls: list[tuple] = []
     config = SimpleNamespace(
         ignored_block_ids=(64,),
@@ -669,19 +671,58 @@ def test_gguf_mtp_server_target_verify_mode_defaults_to_native(monkeypatch) -> N
     assert qwen35_gguf._gguf_mtp_server_target_verify_mode() == "native"
 
 
-def test_gguf_mtp_server_candidate_budget_defaults_to_three(monkeypatch) -> None:
+def test_gguf_mtp_server_candidate_budget_uses_one_shared_setting(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", raising=False)
     assert qwen35_gguf._gguf_mtp_server_candidate_budget() == 3
 
+    monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "2")
+    assert qwen35_gguf._gguf_mtp_server_candidate_budget() == 2
+
+    # The old generator-local name remains a compatibility alias.
+    monkeypatch.delenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET")
     monkeypatch.setenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", "2")
     assert qwen35_gguf._gguf_mtp_server_candidate_budget() == 2
 
-    # Out-of-range / non-numeric values fall back to the default.
-    monkeypatch.setenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", "9")
-    assert qwen35_gguf._gguf_mtp_server_candidate_budget() == 3
-    monkeypatch.setenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", "abc")
-    assert qwen35_gguf._gguf_mtp_server_candidate_budget() == 3
+    # Agreement is accepted; disagreement is a configuration error, not a
+    # silent precedence choice.
+    monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "2")
+    assert qwen35_gguf._gguf_mtp_server_candidate_budget() == 2
+    monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "4")
+    with pytest.raises(ValueError, match="conflicts"):
+        qwen35_gguf._gguf_mtp_server_candidate_budget()
 
+    # Explicit invalid or out-of-range values fail loudly instead of being
+    # replaced by the default or clamped to the adapter's offered depth.
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET")
+    monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "abc")
+    with pytest.raises(ValueError, match="positive integer"):
+        qwen35_gguf._gguf_mtp_server_candidate_budget()
+    monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "9")
+    with pytest.raises(ValueError, match="at most"):
+        qwen35_gguf._gguf_mtp_server_candidate_budget()
+
+
+def test_speculative_candidate_budget_default_preserves_explicit_depth(monkeypatch) -> None:
+    monkeypatch.delenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", raising=False)
+    generator = _generator()
+    generator.model_plugin = SimpleNamespace(
+        speculative_mtp_serving_implementations=(
+            SimpleNamespace(
+                backends=(("hip_gfx1100", "gfx1100"),),
+                kv_storage="bf16",
+                max_candidate_count=2,
+            ),
+        )
+    )
+    assert generator.speculative_candidate_budget_default() == 2
+
+    monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "4")
+    # The adapter offers two candidates, but the operator explicitly pinned
+    # four. Preserve the request; the executing path decides whether it is
+    # admissible instead of silently lowering it here.
+    assert generator.speculative_candidate_budget_default() == 4
 
 
 def test_gguf_decode_graph_default_on_with_opt_out(monkeypatch) -> None:

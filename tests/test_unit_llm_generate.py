@@ -111,6 +111,8 @@ def test_llm_generate_dispatches_through_generation_registry(monkeypatch) -> Non
     import hipengine.loading as loading
     import hipengine.models as models
 
+    monkeypatch.delenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", raising=False)
     calls = {}
 
     class FakeGenerator:
@@ -170,6 +172,46 @@ def test_llm_generate_dispatches_through_generation_registry(monkeypatch) -> Non
         top_p=1.0,
         ignore_eos=False,
     )
+
+
+def test_llm_treats_the_shared_candidate_budget_setting_as_explicit(
+    monkeypatch,
+) -> None:
+    import pytest
+
+    monkeypatch.delenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", raising=False)
+
+    llm = LLM("/tmp/fake-model", backend="fake_backend", quant="fake_quant")
+    assert llm.speculative_candidate_budget is None
+    assert llm.speculative_candidate_budget_source == "pending"
+
+    monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "4")
+    llm = LLM("/tmp/fake-model", backend="fake_backend", quant="fake_quant")
+    assert llm.speculative_candidate_budget == 4
+    assert llm.speculative_candidate_budget_requested == 4
+    assert llm.speculative_candidate_budget_source == "explicit"
+
+    class FakeGenerator:
+        def max_qualified_speculative_candidate_budget(self, **kwargs):
+            raise AssertionError("automatic evidence must not replace explicit intent")
+
+    assert llm._resolve_candidate_budget(FakeGenerator()) == (4, "explicit")
+    owner = SimpleNamespace()
+    llm._publish_candidate_budget(owner)
+    assert owner.speculative_candidate_budget == 4
+
+    # The legacy generator-local name reaches the same explicit branch.
+    monkeypatch.delenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET")
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", "3")
+    llm = LLM("/tmp/fake-model", backend="fake_backend", quant="fake_quant")
+    assert llm.speculative_candidate_budget == 3
+    assert llm.speculative_candidate_budget_source == "explicit"
+
+    # Disagreement is reported, not silently resolved by precedence.
+    monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "4")
+    with pytest.raises(ValueError, match="conflicts"):
+        LLM("/tmp/fake-model", backend="fake_backend", quant="fake_quant")
 
 
 def test_llm_caps_resident_capacity_to_registered_plain_ar_width(monkeypatch) -> None:

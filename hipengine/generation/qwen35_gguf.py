@@ -24,6 +24,7 @@ from typing import Any, ClassVar, Iterator, Mapping, Sequence
 import numpy as np
 
 from hipengine.benchmark.provenance import collect_model_identity, detect_device_name
+from hipengine.speculative.candidate_budget import resolve_explicit_candidate_budget_env
 from hipengine.speculative.delegation import StagedAdapterDelegation
 import hipengine.generation.qwen35_gguf_mtp2 as _qwen35_gguf_mtp2_module
 from hipengine.core.dtype import DType
@@ -618,7 +619,6 @@ _GGUF_MTP_SERVER_STREAM_DRAFT_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT"
 _GGUF_MTP_SERVER_STREAM_VERIFY_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY"
 _GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER_ENV = "HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER"
 _GGUF_MTP_SERVER_VERIFY_MODE_ENV = "HIPENGINE_GGUF_MTP_VERIFY_MODE"
-_GGUF_MTP_SERVER_CANDIDATE_BUDGET_ENV = "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"
 # Provider prefix checkpoints: one entry per captured prefix, each holding a
 # copy of that prefix's provider KV and recurrent state. Bounded capture keeps
 # MTP usable after a target radix hit; zero remains the memory/bisection rollback.
@@ -994,24 +994,35 @@ def _trace_mtp2_resolution(reason: str) -> None:
         print(f"[mtp2-resolve] {reason}", file=sys.stderr, flush=True)
 
 
+def _gguf_mtp_explicit_candidate_budget() -> int | None:
+    """Return an explicit dense MTP depth from either supported setting name."""
+
+    budget = resolve_explicit_candidate_budget_env()
+    if budget is None:
+        return None
+    maximum = int(_qwen35_gguf_mtp2_module.MTP2_MAX_CANDIDATE_DEPTH)
+    if budget > maximum:
+        raise ValueError(
+            "explicit speculative candidate budget must be at most "
+            f"{maximum}, got {budget}"
+        )
+    return int(budget)
+
+
 def _gguf_mtp_server_candidate_budget() -> int:
-    """Return the configured dense MTP fallback depth (default 3).
+    """Return the configured dense MTP depth (default 3).
 
     The loaded owner's published candidate budget is authoritative. This value
     only seeds ``speculative_candidate_budget_default`` when no evidence row
     describes the resident cell, or when a generator runs without an owner.
+    An explicit setting is returned unchanged rather than clamped to the
+    adapter's offered depth, so a direct caller's request is preserved.
     """
 
-    raw = os.environ.get(_GGUF_MTP_SERVER_CANDIDATE_BUDGET_ENV, "")
-    if raw is None or str(raw).strip() == "":
+    explicit = _gguf_mtp_explicit_candidate_budget()
+    if explicit is None:
         return _GGUF_MTP_SERVER_DEFAULT_CANDIDATE_BUDGET
-    try:
-        budget = int(str(raw).strip())
-    except ValueError:
-        return _GGUF_MTP_SERVER_DEFAULT_CANDIDATE_BUDGET
-    if not 1 <= budget <= _qwen35_gguf_mtp2_module.MTP2_MAX_CANDIDATE_DEPTH:
-        return _GGUF_MTP_SERVER_DEFAULT_CANDIDATE_BUDGET
-    return budget
+    return explicit
 
 
 def _gguf_mtp2_prefix_checkpoint_entries() -> int:
@@ -3841,7 +3852,13 @@ class Qwen35GGUFBringupGenerator:
     def speculative_candidate_budget_default(self) -> int:
         """Fallback depth when no loaded owner publishes a candidate budget."""
 
-        budget = int(_gguf_mtp_server_candidate_budget())
+        explicit = _gguf_mtp_explicit_candidate_budget()
+        if explicit is not None:
+            # An operator-pinned depth is not a capability default. Keep it
+            # intact so the serving admission or the decoder reports whether
+            # this cell can execute it, rather than silently lowering it.
+            return explicit
+        budget = int(_GGUF_MTP_SERVER_DEFAULT_CANDIDATE_BUDGET)
         declarations = tuple(
             getattr(self.model_plugin, "speculative_mtp_serving_implementations", ())
             or ()
@@ -9205,6 +9222,10 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             factory = resolve_gguf_mtp2_adapter(adapter_key)
         except KeyError:
             return None
+        # A configuration or construction failure is not a cached capability
+        # miss. A later request must retry validation rather than silently
+        # falling back after the first error.
+        self._mtp2_adapter_resolved = False
         quant_resolver = getattr(self.generator, "_kv_weight_quant_key", None)
         quant = (
             str(quant_resolver())
@@ -9221,16 +9242,24 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                 _gguf_mtp_server_candidate_budget,
             )
             budget = resolve_budget()
+        budget = int(budget)
+        maximum = int(_qwen35_gguf_mtp2_module.MTP2_MAX_CANDIDATE_DEPTH)
+        if not 1 <= budget <= maximum:
+            # An explicit depth outside the implementation's hard bound is a
+            # configuration error, not a reason to silently lower the request.
+            raise ValueError(
+                "speculative candidate budget must be between 1 and "
+                f"{maximum}, got {budget}"
+            )
         self._mtp2_adapter = factory(
             self,
             enabled=True,
             target_verify_mode=_gguf_mtp_server_target_verify_mode(),
-            candidate_budget=min(
-                _qwen35_gguf_mtp2_module.MTP2_MAX_CANDIDATE_DEPTH, int(budget),
-            ),
+            candidate_budget=budget,
             quant=quant,
         )
         self._configure_mtp2_prefix_checkpoint_capture(self._mtp2_adapter)
+        self._mtp2_adapter_resolved = True
         return self._mtp2_adapter
 
     def _configure_mtp2_prefix_checkpoint_capture(self, adapter: Any) -> None:

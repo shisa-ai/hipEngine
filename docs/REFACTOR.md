@@ -2712,12 +2712,14 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   to the resident generator, including when the depth was resolved before the
   owner was constructed. Dense C1 generation and workspace sizing consume that
   published value rather than rereading the fallback environment variable.
-  `HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET` remains the direct-generator fallback;
-  it cannot replace a published explicit or model-resolved depth.
-- Remaining cleanup: consolidate the fallback configuration once direct
-  generator callers migrate to an owner-published budget. Preserve their
-  explicit settings during that migration; deleting the variable alone would
-  silently change diagnostic and harness requests.
+  The shared resolver now reads `HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET` for
+  both serving and direct generators. Explicit values precede automatic
+  defaults; malformed, conflicting or unsupported values fail loudly.
+- `HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET` remains a compatibility alias because
+  external direct-generator callers used the documented setting. It is not a
+  second fallback: both names must agree when set together. Live repository
+  scripts use the canonical name. Remove the alias only with an explicit API
+  deprecation; deleting it silently would change existing callers' requests.
 - Resolved 2026-10-26: provider registrations declare their candidate budget.
   Server pre-load reporting and `LLM` use the same registry accessor. Explicit
   and engine-resolved depths take precedence. A declaration that varies by

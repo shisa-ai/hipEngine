@@ -15,6 +15,7 @@ from hipengine.kvcache import (
 from hipengine.kvcache.dms_config import DMSConfig
 from hipengine.server.api import ServerConfig, create_app
 from hipengine.server.log_style import COLOR_MODES, build_log_config
+from hipengine.speculative.candidate_budget import resolve_explicit_candidate_budget_env
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -43,6 +44,15 @@ def _env_positive_int(name: str) -> int | None:
     if raw is None or raw == "":
         return None
     return _positive_int(raw)
+
+
+def _candidate_budget_env() -> int | None:
+    """Read the shared candidate-depth setting and its compatibility alias."""
+
+    try:
+        return resolve_explicit_candidate_budget_env()
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def _nonnegative_int(value: str) -> int:
@@ -98,8 +108,34 @@ def _env_speculative_mtp_thinking(name: str, default: str = "hint") -> str:
     return mode.strip().lower().replace("-", "_")
 
 
+class _CandidateBudgetParser(argparse.ArgumentParser):
+    """Resolve the candidate-depth env only when the flag was omitted.
+
+    ``argparse`` evaluates an argument's ``default`` while building the parser,
+    before it knows whether the flag was supplied.  Resolving the environment
+    there makes an explicit CLI value unable to override an unusable env.  Do
+    it after parsing instead, but keep ``build_parser().parse_args(...)``
+    behavior for callers that rely on the environment as the omitted default.
+    """
+
+    def parse_known_args(
+        self,
+        args: Sequence[str] | None = None,
+        namespace: argparse.Namespace | None = None,
+    ) -> tuple[argparse.Namespace, list[str]]:
+        parsed, extras = super().parse_known_args(args, namespace)
+        if parsed.speculative_candidate_budget is None:
+            try:
+                parsed.speculative_candidate_budget = _candidate_budget_env()
+            except argparse.ArgumentTypeError as exc:
+                self.error(str(exc))
+        return parsed, extras
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the hipEngine OpenAI-compatible server")
+    parser = _CandidateBudgetParser(
+        description="Run the hipEngine OpenAI-compatible server"
+    )
     parser.add_argument("--model", required=True, help="Path or model id served by hipEngine")
     parser.add_argument(
         "--backend",
@@ -369,11 +405,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--speculative-candidate-budget",
         type=_positive_int,
-        default=_env_positive_int("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET"),
+        default=None,
         help=(
-            "Candidate depth for the speculative owner; omit to resolve it from "
-            "the loaded model's serving evidence "
-            "(env HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET)"
+            "Candidate depth for the speculative owner. When omitted, use "
+            "the environment setting or resolve from the loaded model's "
+            "serving evidence (env HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET; "
+            "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET is accepted as a legacy "
+            "alias). An explicit value bypasses those settings."
         ),
     )
     parser.add_argument(

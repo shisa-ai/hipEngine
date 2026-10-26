@@ -983,6 +983,26 @@ def test_unregistered_model_plugin_mtp2_adapter_fails_closed() -> None:
     assert runner._mtp2_adapter_resolved is True
 
 
+def test_resident_runner_rejects_explicit_budget_above_mtp2_max() -> None:
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._mtp2_adapter = None
+    runner._mtp2_adapter_resolved = False
+    runner.capacity = 1
+    runner.generator = SimpleNamespace(
+        backend="hip_gfx1100",
+        supports_speculative_mtp=True,
+        model_plugin=SimpleNamespace(
+            speculative_mtp2_adapter="dense_nextn",
+            default_quant="gguf_q4_k_m",
+        ),
+        speculative_candidate_budget=8,
+    )
+
+    for _ in range(2):
+        with pytest.raises(ValueError, match="between 1 and 7"):
+            runner._resolved_mtp2_adapter()
+
+
 def test_resident_runner_resolves_model_plugin_mtp2_adapter_without_model_branch() -> None:
     key = "test_moe_nextn"
     calls = []

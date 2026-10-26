@@ -850,7 +850,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     os.environ["HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"] = "0"
     os.environ["HIPENGINE_GGUF_FP16_RECURRENT_STATE"] = "0"
     os.environ["HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"] = "1"
-    os.environ["HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"] = str(args.budget)
+    os.environ["HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET"] = str(args.budget)
 
     info = scan_gguf(model)
     tokenizer = Qwen35GGUFTokenizer.from_gguf_info(info)

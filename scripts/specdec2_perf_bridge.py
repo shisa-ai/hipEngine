@@ -1318,7 +1318,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         with _temporary_environment(environment):
             for budget in args.budgets:
                 budget_started = time.perf_counter()
-                os.environ["HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"] = str(int(budget))
+                os.environ["HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET"] = str(int(budget))
                 llm = LLM(
                     str(Path(args.model).resolve()),
                     backend=str(platform_config["backend"]),

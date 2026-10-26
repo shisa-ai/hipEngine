@@ -1026,7 +1026,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     if resident_capacity < max(widths):
         raise ValueError("resident capacity cannot be smaller than a measured width")
-    budget_env = "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"
+    budget_env = "HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET"
     existing_budget = os.environ.get(budget_env)
     if existing_budget is not None and int(existing_budget) != int(args.candidate_budget):
         raise ValueError(

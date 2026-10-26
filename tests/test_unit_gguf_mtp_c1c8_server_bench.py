@@ -72,6 +72,7 @@ def test_mtp_c1c8_parser_defaults_to_production_profile() -> None:
 def test_default_profile_arm_reaches_llm_without_a_selector(monkeypatch):
     args = build_parser().parse_args(
         ("--execution-profile", "default", "--output", "/tmp/out.json"))
+    monkeypatch.delenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", raising=False)
     monkeypatch.setattr(server_bench.subprocess, "check_output", lambda *a, **k: "")
     captured = []

@@ -372,24 +372,93 @@ def test_server_cli_omits_candidate_budget_without_flag_or_env(monkeypatch) -> N
     """An omitted budget reaches the engine as omitted, not as a constant."""
 
     monkeypatch.delenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", raising=False)
 
     args = build_parser().parse_args(["--model", "target"])
 
     assert args.speculative_candidate_budget is None
 
 
-def test_server_cli_rejects_an_unusable_candidate_budget(monkeypatch) -> None:
+def test_server_cli_reads_canonical_candidate_budget_env(monkeypatch) -> None:
+    """The canonical name remains the omitted-flag default."""
+
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", raising=False)
+    monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "2")
+
+    args = build_parser().parse_args(["--model", "target"])
+
+    assert args.speculative_candidate_budget == 2
+
+
+def test_server_cli_rejects_an_unusable_candidate_budget(monkeypatch, capsys) -> None:
     """A zero depth is rejected loudly instead of silently rewritten."""
 
     monkeypatch.delenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", raising=False)
     with pytest.raises(SystemExit):
         build_parser().parse_args(
             ["--model", "target", "--speculative-candidate-budget", "0"]
         )
 
     monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "0")
-    with pytest.raises(Exception, match="value must be >= 1"):
-        build_parser()
+    parser = build_parser()  # env is not read until the flag is known omitted
+    with pytest.raises(SystemExit) as excinfo:
+        parser.parse_args(["--model", "target"])
+    assert excinfo.value.code == 2
+    assert "value must be >= 1" in capsys.readouterr().err
+
+
+def test_server_cli_reads_the_legacy_candidate_budget_alias(monkeypatch) -> None:
+    """The generator-local name remains a working compatibility alias."""
+
+    monkeypatch.delenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", raising=False)
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", "3")
+
+    args = build_parser().parse_args(["--model", "target"])
+
+    assert args.speculative_candidate_budget == 3
+
+
+def test_server_cli_rejects_conflicting_candidate_budget_aliases(
+    monkeypatch, capsys
+) -> None:
+    """Two explicit names that disagree are an error when the flag is omitted."""
+
+    monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "4")
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", "3")
+
+    parser = build_parser()  # construction does not resolve env
+    with pytest.raises(SystemExit) as excinfo:
+        parser.parse_args(["--model", "target"])
+    assert excinfo.value.code == 2
+    assert "conflicts" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "env",
+    [
+        {"HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET": "not-an-int"},
+        {"HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET": "not-an-int"},
+        {
+            "HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET": "2",
+            "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET": "3",
+        },
+    ],
+    ids=("malformed-canonical", "malformed-alias", "conflicting-names"),
+)
+def test_server_cli_explicit_budget_bypasses_unusable_env(monkeypatch, env) -> None:
+    """An explicit CLI depth wins over an unusable env, as the constructor does."""
+
+    monkeypatch.delenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+    args = build_parser().parse_args(
+        ["--model", "target", "--speculative-candidate-budget", "2"]
+    )
+
+    assert args.speculative_candidate_budget == 2
 
 
 def test_capabilities_report_resolved_candidate_budget() -> None:
@@ -454,6 +523,7 @@ def test_server_cli_accepts_speculative_provider_owner(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_SPECULATIVE_PROVIDER", "dflash")
     monkeypatch.setenv("HIPENGINE_DRAFT_MODEL", "/models/env-drafter")
     monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "4")
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", raising=False)
 
     env_args = build_parser().parse_args(["--model", "target"])
     cli_args = build_parser().parse_args(

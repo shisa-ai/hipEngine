@@ -212,7 +212,7 @@ def _run_direct_probe(args: argparse.Namespace) -> int:
 
     from hipengine.llm import LLM, SamplingParams
 
-    os.environ["HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"] = str(int(args.budget))
+    os.environ["HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET"] = str(int(args.budget))
     llm = LLM(
         str(args.model),
         backend="hip_gfx1100",
@@ -508,7 +508,7 @@ def main() -> int:
     # Floor at 3: the in-process server validates the certified production
     # policy table (which contains depth-3 cells) against this bound, so it
     # must never sit below the table's max depth. The requested budget flows
-    # to the server independently via HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET.
+    # to the server independently via HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET.
     patched = _patch_depth_bound(max(int(args.budget), 3))
     evidence_key = _inject_k4_evidence_row(args.width, args.budget)
 

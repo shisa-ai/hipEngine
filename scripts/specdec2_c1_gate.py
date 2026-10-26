@@ -96,7 +96,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
         Qwen35GGUFNextNDraftProvider.release_request = release_with_fingerprint
 
-    os.environ["HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"] = str(args.budget)
+    os.environ["HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET"] = str(args.budget)
     if not args.allow_fp16_state:
         os.environ["HIPENGINE_GGUF_FP16_RECURRENT_STATE"] = "0"
     model = args.model.resolve()

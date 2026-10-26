@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from hipengine.kvcache.dms_config import DMSConfig
+from hipengine.speculative.candidate_budget import resolve_explicit_candidate_budget_env
 from hipengine.speculative.registry import resolve_speculative_provider_candidate_budget
 from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
 
@@ -431,7 +432,11 @@ class LLM:
         if provider is not None and drafter is None:
             raise ValueError("speculative_provider requires draft_model")
         if speculative_candidate_budget is None:
-            candidate_budget = None
+            # The canonical environment setting is an explicit operator intent,
+            # not a fallback for automatic evidence to replace. The server CLI
+            # passes the same value as a constructor argument; direct LLM
+            # callers that set only the environment reach the same branch here.
+            candidate_budget = resolve_explicit_candidate_budget_env()
         else:
             candidate_budget = int(speculative_candidate_budget)
             if candidate_budget <= 0:

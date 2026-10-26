@@ -108,7 +108,7 @@ def _run_group(service: Any, request: GenerationRequest, concurrency: int, *, mt
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     prompts = load_prompt_suite(args.prompts.resolve())
-    os.environ["HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"] = str(int(args.budget))
+    os.environ["HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET"] = str(int(args.budget))
     os.environ["HIPENGINE_GGUF_FP16_RECURRENT_STATE"] = "0"
     llm = LLM(
         str(args.model.resolve()),
