@@ -2758,25 +2758,6 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   Replace these with device-resident tails only after the same whole/chunk,
   60-second transition, recording-reset and post-join-noise tests pass.
 
-## Dense Qwen35 execution-profile module names (architecture-scope rename)
-
-- Completed: architecture-scoped registrations now live in
-  `hipengine/generation/qwen35_dense_gfx1100_profiles.py`,
-  `hipengine/generation/qwen35_dense_gfx1151_profiles.py`,
-  `hipengine/generation/qwen35_moe_gfx1100_profiles.py`, and
-  `hipengine/generation/qwen35_moe_gfx1151_profiles.py`.
-- The former gfx1100 module contained both dense and MoE registrations. They
-  now have separate modules; the MoE module reuses the dense module's binder
-  helpers and environment constants. Registered keys, variant selections and
-  binder environment names are unchanged. Live imports and tests use the new
-  paths; historical evidence retains its original paths.
-- These internal modules have no documented external import contract, so no
-  duplicate compatibility modules were added. Registration function names
-  remain unchanged to avoid unrelated symbol churn.
-- See `docs/archive/20260909-GFX1151-GFX1100-TRANSFER-AUDIT.md` section K for the
-  identity ruling and for the gfx1100-versus-gfx1151 plan A/B that decides which
-  composition each backend keeps.
-
 ## `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` (INT8 KV C1 decode graph)
 
 - Admitted 2026-09-11 so the INT8 KV C1 decode graph could be measured instead

@@ -2284,8 +2284,9 @@
       "start_line": 2571,
       "end_line": 2592,
       "sha256": "1198b60e36ea1e4d87c21be6b43ca0205e3d36fe3b2656cab0ea3258b9d77dee",
-      "status": "resolved-renamed",
+      "status": "resolved-renamed-removed",
       "evidence": [
+        "Completed rename narrative removed from active ledger after verifying all four architecture/backend profile modules and live imports in generation/__init__.py; original implementation evidence follows.",
         "Architecture/backend module names now cover dense and MoE gfx1100/gfx1151 separately; gfx1100 MoE reuses shared binder helpers. Live imports migrated, plan snapshots byte-identical; CPU bundle bg152 and docs/audit pass. worklog/entries/20261026T105225.538580Z-cleanup-refactor-r0084-profiles-59ce20.md."
       ],
       "subitems": [
