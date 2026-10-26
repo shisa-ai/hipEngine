@@ -17047,23 +17047,17 @@ class Qwen35GGUFResidentSession:
     def _decode_graph_storage_admitted(self) -> bool:
         """True when this session's KV storage may use the decode graph.
 
-        BF16 is always admitted. INT8 storage is admitted only when
-        ``HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH`` is on, and then only for the
-        layouts ``gguf_decode_graph._decode_graph_kv_layout_admitted`` accepts,
-        so the resolver cannot admit a layout the capture path would reject.
+        Delegates to ``gguf_decode_graph._decode_graph_kv_layout_admitted`` so
+        the eligibility resolver and the capture path share one predicate: BF16
+        and the declared ``tail4_hadamard_group32`` INT8 layout are admitted by
+        default, the ``uniform``/``per_token_head`` INT8 layout needs
+        ``HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH``, and every other layout or
+        granularity stays eager.
         """
 
-        if self.kv_storage_dtype == DType.BF16:
-            return True
-        from hipengine.runtime.gguf_decode_graph import (
-            _decode_graph_kv_layout_admitted,
-            _gguf_int8_kv_decode_graph_enabled,
-        )
+        from hipengine.runtime.gguf_decode_graph import _decode_graph_kv_layout_admitted
 
-        return bool(
-            _gguf_int8_kv_decode_graph_enabled()
-            and _decode_graph_kv_layout_admitted(self)
-        )
+        return bool(_decode_graph_kv_layout_admitted(self))
 
     def packed_decode_graph_min_replay_steps(
         self,
@@ -17100,13 +17094,13 @@ class Qwen35GGUFResidentSession:
     def _resolve_decode_graph_min_replay_steps(self) -> int | None:
         """Resolve backend graph capability once after resident initialization.
 
-        BF16 KV is admitted unconditionally. Non-BF16 storage stays eager by
-        default because this resolver was introduced as a conservative scope
-        restriction ("keep eager for unmeasured shapes");
-        ``HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH=1`` admits the INT8 layouts the
-        capture path itself accepts, so the C1 decode graph can be measured on
-        the INT8 KV route instead of assumed unusable. The eager step remains
-        the registered fallback.
+        BF16 KV and the declared ``tail4_hadamard_group32`` INT8 layout are
+        admitted unconditionally. The ``uniform``/``per_token_head`` INT8
+        production layout stays eager by default because this resolver was
+        introduced as a conservative scope restriction ("keep eager for
+        unmeasured shapes"); ``HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH=1`` admits
+        it, so the C1 decode graph can be measured on the INT8 KV route instead
+        of assumed unusable. The eager step remains the registered fallback.
         """
 
         if (

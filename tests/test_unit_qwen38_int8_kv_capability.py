@@ -3,7 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
+from hipengine.core.dtype import DType
+from hipengine.generation.qwen35_gguf import Qwen35GGUFBringupGenerator
 from hipengine.models.kv_capabilities import (
     KVCapabilityKey,
     ModelArtifactIdentity,
@@ -507,3 +510,190 @@ def test_missing_model_artifact_identity_is_unverified(tmp_path: Path) -> None:
     assert identity.sha256 is None
     assert identity.size_bytes is None
     assert "FileNotFoundError" in str(identity.error)
+
+
+def test_tail4_hadamard_layout_is_declared_as_an_implemented_contract() -> None:
+    """The hybrid tail-four layout is a kernel contract, not a measured artifact.
+
+    ``LLM(kv_storage="tail4_hadamard_group32")`` resolves the layout through
+    ``kvcache.resolve_kv_policy``, but capability admission declared only the
+    uniform INT8 contract, so an implemented layout was refused by name before
+    any weights loaded. The declaration names the axes the runtime selects:
+    FP16 Hadamard-group32 scales on the four INT8 tail layers, BF16 on the
+    prefix full-attention layers, and one row per decode step (the hybrid stack
+    has no packed batch leaf).
+    """
+
+    plugin = Qwen35GGUFModel()
+    unseen = ModelArtifactIdentity(
+        path="/models/gguf/never-measured.gguf",
+        size_bytes=None,
+        sha256=None,
+        content_verified=False,
+    )
+    for backend, target_arch in (
+        ("hip_gfx1100", "gfx1100"),
+        ("hip_gfx1151", "gfx1151"),
+    ):
+        resolution = plugin.resolve_kv_capability(
+            key=KVCapabilityKey(
+                artifact_sha256=None,
+                artifact_size_bytes=None,
+                backend=backend,
+                target_arch=target_arch,
+                weight_quant="gguf_q4_k_m",
+                kv_storage="int8_per_token_head",
+                storage_layout="tail4_hadamard_group32",
+                scale_dtype="fp16",
+                scale_granularity="hadamard_group32",
+            ),
+            artifact=unseen,
+        )
+
+        payload = resolution.as_dict()
+        assert payload["status"] == "unmeasured", backend
+        assert payload["runtime_action"] == "admit", backend
+        assert payload["effective_kv_storage"] == "int8_per_token_head", backend
+        assert payload["promotion_eligible"] is False, backend
+        assert payload["declaration"]["storage_layout"] == "tail4_hadamard_group32", backend
+        assert payload["declaration"]["scale_dtype"] == "fp16", backend
+        assert payload["declaration"]["scale_granularity"] == "hadamard_group32", backend
+        assert payload["declaration"]["max_direct_rows"] == 1, backend
+        assert payload["declaration"]["decode_batch_variant"] is None, backend
+        assert payload["declaration"]["persistent_bf16_mirror"] is False, backend
+        assert payload["evidence"] is None, backend
+
+
+def _public_kv_generator(tmp_path: Path, *, backend: str) -> Qwen35GGUFBringupGenerator:
+    """Minimal generator shape the public KV policy resolution reads."""
+
+    model = tmp_path / f"Qwen3.8-27B-UD-Q4_K_M-{backend}.gguf"
+    model.write_bytes(b"GGUF-fake-artifact")
+    generator = Qwen35GGUFBringupGenerator.__new__(Qwen35GGUFBringupGenerator)
+    generator.model_path = model
+    generator.weight_index = SimpleNamespace(path=model, file_type_name="MOSTLY_Q4_K_M")
+    generator.model_plugin = Qwen35GGUFModel()
+    generator.backend = backend
+    generator.dms_metadata_path = None
+    generator._kv_artifact_identity = None
+    generator._kv_capability_resolution = None
+    return generator
+
+
+def test_public_tail4_request_resolves_instead_of_refusing_the_layout(
+    tmp_path: Path,
+) -> None:
+    """The public ``kv_storage`` name is a layout and must resolve as one.
+
+    The LLM constructor publishes ``(storage, scale_dtype, granularity)`` with
+    the fp16 default, so this is the request the eager model-load prepare makes.
+    Admission keyed only the uniform contract, and the resolver then raised
+    ``explicit kv_storage='int8_per_token_head' cannot run`` before loading.
+    """
+
+    for backend in ("hip_gfx1151", "hip_gfx1100"):
+        generator = _public_kv_generator(tmp_path, backend=backend)
+        # This is the pair the LLM constructor publishes before ``prepare``.
+        generator.request_kv_policy_hint = (
+            "tail4_hadamard_group32",
+            "fp16",
+            "per_token_head",
+        )
+        generator._prepare_kv_policy(None)
+
+        assert generator._prepared_kv_signature == (
+            "int8_per_token_head",
+            "tail4_hadamard_group32",
+            "fp16",
+            "hadamard_group32",
+        ), backend
+        policy = generator._prepared_kv_policy
+        assert policy.storage_layout == "tail4_hadamard_group32", backend
+        assert policy.storage_dtype == DType.INT8_PER_TOKEN_HEAD, backend
+        assert policy.quantized_tail_layers == 4, backend
+        assert policy.scale_granularity == "hadamard_group32", backend
+        assert generator._prepared_kv_scale_dtype == "fp16", backend
+
+        resolution = generator._kv_capability_resolution
+        assert resolution is not None, backend
+        assert resolution.runtime_action == "admit", backend
+        assert resolution.status == "unmeasured", backend
+        assert resolution.max_direct_rows == 1, backend
+        assert resolution.decode_batch_variant is None, backend
+        assert resolution.evidence is None, backend
+        # Admission is the declaration, not a measurement of this file.
+        assert resolution.artifact.content_verified is True, backend
+
+
+def test_gfx1151_tail4_recorded_quality_rejection_stays_scoped() -> None:
+    """A blanket declaration must not erase the measurement that failed.
+
+    The 2026-08-15 run measured the hybrid layout on the standard Q4_K_M
+    execution identity and rejected it at 512/8 (top-1 0.889 on
+    ``general_en_explain``). That run already used the BF16-oracle prefill
+    bridge; the later shared-oracle lifetime change moves where the transient
+    oracle lives, not the INT8 tail decode arithmetic, so the result still
+    describes the contract. The row is scoped to the execution identity that
+    measured it, so a different artifact on the same contract still resolves
+    ``unmeasured`` and runs.
+    """
+
+    plugin = Qwen35GGUFModel()
+    recorded = plugin.resolve_kv_capability(
+        key=KVCapabilityKey(
+            artifact_sha256=_REJECT_SHA256,
+            artifact_size_bytes=17_106_775_008,
+            artifact_execution_fingerprint=_PLAIN_FINGERPRINT,
+            backend="hip_gfx1151",
+            target_arch="gfx1151",
+            weight_quant="gguf_q4_k_m",
+            kv_storage="int8_per_token_head",
+            storage_layout="tail4_hadamard_group32",
+            scale_dtype="fp16",
+            scale_granularity="hadamard_group32",
+        ),
+        artifact=_artifact(sha256=_REJECT_SHA256, size_bytes=17_106_775_008),
+    )
+
+    payload = recorded.as_dict()
+    assert payload["status"] == "rejected"
+    assert payload["runtime_action"] == "fallback_bf16"
+    assert payload["promotion_eligible"] is False
+    assert payload["evidence"]["quality_artifact"].endswith(
+        "2026-08-15-gfx1151-qwen38-27b-int8-kv-quality-rejected.json"
+    )
+    assert "0.889" in payload["reason"]
+
+    different_identity = plugin.resolve_kv_capability(
+        key=KVCapabilityKey(
+            # The UD-Q4_K_M build's execution identity as recorded by the
+            # gfx1100 MTP evidence row: a different tensor table from the
+            # standard Q4_K_M build above.
+            artifact_sha256=(
+                "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482"
+            ),
+            artifact_size_bytes=16_464_440_224,
+            artifact_execution_fingerprint=(
+                "93fe11b8ac0f4696567cc123f2c08ea4bc7fcf615ed985d4fb11742df404f3ca"
+            ),
+            backend="hip_gfx1151",
+            target_arch="gfx1151",
+            weight_quant="gguf_q4_k_m",
+            kv_storage="int8_per_token_head",
+            storage_layout="tail4_hadamard_group32",
+            scale_dtype="fp16",
+            scale_granularity="hadamard_group32",
+        ),
+        artifact=ModelArtifactIdentity(
+            path="/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+            size_bytes=16_464_440_224,
+            sha256=(
+                "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482"
+            ),
+            content_verified=True,
+        ),
+    )
+
+    assert different_identity.status == "unmeasured"
+    assert different_identity.runtime_action == "admit"
+    assert different_identity.evidence is None

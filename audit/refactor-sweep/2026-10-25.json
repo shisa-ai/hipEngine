@@ -2390,8 +2390,8 @@
       "start_line": 2654,
       "end_line": 2691,
       "sha256": "691e8c8f1631cd31bc84f4964fb4825ccfc9ae9df0bbd80c69d585995590c9c2",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-tail4-admission-repaired",
+      "evidence": ["Unified session/capture storage admission, resolved layout names in automatic capacity planning and declared implemented tail-four capability with scoped recorded failure. Public tail-four graph capture/replay, Hadamard GPU tests and CPU bundles pass. Uniform-layout flag and horizon policy remain open. worklog/entries/20261026T174511.632228Z-cleanup-refactor-r0088-admission-039ee3.md."],
       "subitems": [
         {
           "line": 2656,

@@ -61,10 +61,9 @@ def _gguf_int8_kv_decode_graph_enabled() -> bool:
     The C1 decode graph is admitted for BF16 KV and for the
     ``tail4_hadamard_group32`` INT8 layout. The IKV-C2 production default
     (``int8_per_token_head`` storage, ``uniform`` layout, ``per_token_head``
-    fp32 scales) is not admitted, and the resident loop's eligibility resolver
-    rejects every non-BF16 KV storage dtype, so this route has always decoded
-    eagerly. That gate was introduced as a conservative scope restriction
-    ("keep eager for unmeasured shapes") rather than from a measured
+    fp32 scales) is not admitted unless this flag is set, so this route has
+    always decoded eagerly. That gate was introduced as a conservative scope
+    restriction ("keep eager for unmeasured shapes") rather than from a measured
     capture-safety limit, so this flag exists to measure the INT8 route in the
     graph instead of assuming it cannot work.
 

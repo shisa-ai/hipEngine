@@ -438,6 +438,39 @@ _QWEN38_GGUF_KV_CAPABILITY_DECLARATIONS = tuple(
         ("hip_gfx1100", "gfx1100"),
         ("hip_gfx1151", "gfx1151"),
     )
+) + tuple(
+    # The tail-four layout is a storage layout, not a second storage dtype:
+    # the prefix full-attention layers keep BF16 and the last four store
+    # Hadamard-group32 INT8 K/V with FP16 scales. Both backends alias the same
+    # registered write/append, prompt-write, BF16-oracle prefill bridge and
+    # split-K decode chain, so the contract is declared for each of them. A
+    # hybrid stack has no packed batch leaf (one packed batch cannot run the
+    # BF16 and INT8 full-attention leaves together), so decode admits one row
+    # per step and ``max_serial_resident_rows`` covers the resident slots
+    # served serially.
+    KVCapabilityDeclaration(
+        backend=backend,
+        target_arch=target_arch,
+        kv_storage="int8_per_token_head",
+        storage_layout="tail4_hadamard_group32",
+        scale_dtype="fp16",
+        scale_granularity="hadamard_group32",
+        max_direct_rows=1,
+        max_serial_resident_rows=4,
+        persistent_bf16_mirror=False,
+        decode_batch_variant=None,
+        reason=(
+            "registered Hadamard-group32 INT8 KV append/prompt write and "
+            "split-K decode; prefill runs through the shared BF16 attention-"
+            "oracle bridge that also writes the packed INT8 retained cache "
+            "(the no-oracle direct Hadamard prefill is not this owner), and "
+            "decode runs one row per step with no persistent BF16 mirror"
+        ),
+    )
+    for backend, target_arch in (
+        ("hip_gfx1100", "gfx1100"),
+        ("hip_gfx1151", "gfx1151"),
+    )
 )
 
 
@@ -502,6 +535,45 @@ _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE = (
         reason=(
             "complete 1K/8 transfer rejected: minimum-prompt top-1 agreement "
             "0.7778 is below the 0.90 gate"
+        ),
+        max_direct_rows=0,
+        max_serial_resident_rows=0,
+        persistent_bf16_mirror=False,
+    ),
+    # The tail-four declaration admits on implementation, but the same
+    # 2026-08-15 run also measured the hybrid layout on this execution
+    # identity: 512/8 rejected at top-1 0.889. The prefill owner at that time
+    # was already the BF16-oracle bridge (layer-local oracles landed
+    # 2026-06-24); the later shared-oracle lifetime change moves where the
+    # transient oracle lives and does not alter the INT8 tail decode
+    # arithmetic, so the recorded rejection still describes this contract. It
+    # stays scoped to the execution identity that measured it: a different
+    # artifact on the same contract resolves ``unmeasured`` and runs.
+    KVCapabilityEvidence(
+        key=KVCapabilityKey(
+            artifact_sha256="7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+            artifact_size_bytes=17_106_775_008,
+            artifact_execution_fingerprint=(
+                "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+            ),
+            backend="hip_gfx1151",
+            target_arch="gfx1151",
+            weight_quant="gguf_q4_k_m",
+            kv_storage="int8_per_token_head",
+            storage_layout="tail4_hadamard_group32",
+            scale_dtype="fp16",
+            scale_granularity="hadamard_group32",
+        ),
+        decision="rejected",
+        scope="native_no_mirror_quality",
+        quality_artifact=(
+            "benchmarks/results/"
+            "2026-08-15-gfx1151-qwen38-27b-int8-kv-quality-rejected.json"
+        ),
+        reason=(
+            "512/8 rejected: minimum-prompt top-1 agreement 0.889 on "
+            "general_en_explain is below the 0.90 gate (mean/max KL "
+            "1.7e-5/1.6e-4), and later shapes were not run"
         ),
         max_direct_rows=0,
         max_serial_resident_rows=0,

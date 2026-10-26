@@ -643,6 +643,163 @@ def test_decode_graph_eligibility_still_rejects_unadmitted_int8_layout(
     assert session._resolve_decode_graph_min_replay_steps() is None
 
 
+def _graph_storage_session(
+    storage: DType = DType.BF16,
+    *,
+    layout: str = "uniform",
+    granularity: str = "per_token_head",
+) -> Qwen35GGUFResidentSession:
+    """Build the minimum session shape the graph eligibility resolver reads."""
+
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.backend = "auto"
+    session.runner = SimpleNamespace(
+        backend="hip_gfx1100",
+        weights=SimpleNamespace(
+            weights=[SimpleNamespace(spec=SimpleNamespace(quant_key="gguf_q4_k_m_t16_v1"))]
+        ),
+    )
+    session.scratch = SimpleNamespace()
+    session.host_token_embedding_enabled = False
+    session.use_gemv_decode = True
+    session.kv_storage_dtype = storage
+    session.kv_storage_layout = layout
+    session.kv_scale_granularity = granularity
+    return session
+
+
+# label, storage, layout, granularity, flag, admitted
+_GRAPH_STORAGE_MATRIX = [
+    ("bf16-flag-unset", DType.BF16, "uniform", "per_token_head", None, True),
+    ("bf16-flag-off", DType.BF16, "uniform", "per_token_head", "0", True),
+    ("bf16-flag-on", DType.BF16, "uniform", "per_token_head", "1", True),
+    (
+        "tail4-flag-unset",
+        DType.INT8_PER_TOKEN_HEAD,
+        "tail4_hadamard_group32",
+        "hadamard_group32",
+        None,
+        True,
+    ),
+    (
+        "tail4-flag-off",
+        DType.INT8_PER_TOKEN_HEAD,
+        "tail4_hadamard_group32",
+        "hadamard_group32",
+        "0",
+        True,
+    ),
+    (
+        "tail4-flag-on",
+        DType.INT8_PER_TOKEN_HEAD,
+        "tail4_hadamard_group32",
+        "hadamard_group32",
+        "1",
+        True,
+    ),
+    (
+        "uniform-per-token-head-flag-unset",
+        DType.INT8_PER_TOKEN_HEAD,
+        "uniform",
+        "per_token_head",
+        None,
+        False,
+    ),
+    (
+        "uniform-per-token-head-flag-off",
+        DType.INT8_PER_TOKEN_HEAD,
+        "uniform",
+        "per_token_head",
+        "0",
+        False,
+    ),
+    (
+        "uniform-per-token-head-flag-on",
+        DType.INT8_PER_TOKEN_HEAD,
+        "uniform",
+        "per_token_head",
+        "1",
+        True,
+    ),
+    (
+        "uniform-block16-flag-on",
+        DType.INT8_PER_TOKEN_HEAD,
+        "uniform",
+        "block16",
+        "1",
+        False,
+    ),
+    (
+        "uniform-hadamard-group32-flag-on",
+        DType.INT8_PER_TOKEN_HEAD,
+        "uniform",
+        "hadamard_group32",
+        "1",
+        False,
+    ),
+    (
+        "tail4-block16-flag-on",
+        DType.INT8_PER_TOKEN_HEAD,
+        "tail4_hadamard_group32",
+        "block16",
+        "1",
+        False,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "label,storage,layout,granularity,flag,admitted",
+    _GRAPH_STORAGE_MATRIX,
+    ids=[case[0] for case in _GRAPH_STORAGE_MATRIX],
+)
+def test_decode_graph_storage_admission_matrix(
+    monkeypatch: pytest.MonkeyPatch,
+    label: str,
+    storage: DType,
+    layout: str,
+    granularity: str,
+    flag: str | None,
+    admitted: bool,
+) -> None:
+    """Storage admission and the capture-path layout check are one predicate."""
+
+    monkeypatch.setattr(
+        gguf_runner, "backend_package_capability", lambda backend, name, default=None: 128
+    )
+    monkeypatch.delenv("HIPENGINE_GGUF_MOE_GRAPH", raising=False)
+    if flag is None:
+        monkeypatch.delenv("HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH", flag)
+
+    session = _graph_storage_session(storage, layout=layout, granularity=granularity)
+
+    assert session._decode_graph_storage_admitted() is admitted, label
+    assert _decode_graph_kv_layout_admitted(session) is admitted, label
+    expected_minimum = 128 if admitted else None
+    assert session._resolve_decode_graph_min_replay_steps() == expected_minimum, label
+
+
+def test_decode_graph_storage_admission_delegates_to_the_shared_predicate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The resolver must not reimplement the capture path's admission rule."""
+
+    import hipengine.runtime.gguf_decode_graph as graph_module
+
+    monkeypatch.delenv("HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH", raising=False)
+    session = _graph_storage_session(
+        DType.INT8_PER_TOKEN_HEAD,
+        layout="uniform",
+        granularity="per_token_head",
+    )
+    assert session._decode_graph_storage_admitted() is False
+
+    monkeypatch.setattr(graph_module, "_decode_graph_kv_layout_admitted", lambda _session: True)
+    assert session._decode_graph_storage_admitted() is True
+
+
 def test_packed_decode_graph_minimum_uses_model_width_policy(monkeypatch) -> None:
     identity = (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M")
 

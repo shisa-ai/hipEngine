@@ -400,6 +400,57 @@ def test_automatic_capacity_honours_a_pinned_context(monkeypatch) -> None:
     assert tight.automatic_serving_capacity(config, max_sequence_length=200_000) == 1
 
 
+@pytest.mark.parametrize(
+    "hint,expected",
+    [
+        (
+            ("tail4_hadamard_group32", "fp32", "per_token_head"),
+            ("int8_per_token_head", "tail4_hadamard_group32", "fp32", "hadamard_group32"),
+        ),
+        (
+            ("int8_per_token_head", "fp32", "per_token_head"),
+            ("int8_per_token_head", "uniform", "fp32", "per_token_head"),
+        ),
+        (("auto", "fp16", "per_token_head"), ("bf16", "uniform", "fp16", "per_token_head")),
+    ],
+    ids=["tail4-layout", "int8-uniform", "auto-bf16"],
+)
+def test_automatic_capacity_resolves_the_published_kv_hint(
+    monkeypatch: pytest.MonkeyPatch,
+    hint: tuple[str, str, str],
+    expected: tuple[str, str, str, str],
+) -> None:
+    """Sizing accepts every storage name the server publishes.
+
+    ``kv_storage`` names a layout as well as a dtype. ``tail4_hadamard_group32``
+    resolves fine at load time, but sizing parsed the raw hint with
+    ``DType.parse`` and failed the whole public load before any weights were
+    read. Sizing now resolves the hint through the same policy resolver that
+    produces the locked signature, and must choose the same capacity the locked
+    signature would.
+    """
+
+    config = SimpleNamespace(speculative_mtp_serving="off", prefix_cache="off")
+    generator = _capacity_generator(monkeypatch, free_gib=30.0)
+    generator._prepared_kv_signature = expected
+    locked_capacity = generator.automatic_serving_capacity(config)
+
+    generator._prepared_kv_signature = None
+    generator.request_kv_policy_hint = hint
+    observed: list[tuple[str, str, str, str] | None] = []
+    estimate = generator._resident_capacity_estimate
+
+    def capture(*args, **kwargs):
+        observed.append(generator._pending_sizing_kv_signature)
+        return estimate(*args, **kwargs)
+
+    monkeypatch.setattr(generator, "_resident_capacity_estimate", capture)
+
+    assert generator.automatic_serving_capacity(config) == locked_capacity
+    assert observed and observed[0] == expected
+    assert getattr(generator, "_pending_sizing_kv_signature", None) is None
+
+
 def test_refused_packed_decode_workspace_falls_back_to_row_decode() -> None:
     """A pool refusal for the packed decode workspace must not fail requests.
 

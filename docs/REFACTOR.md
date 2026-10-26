@@ -2809,6 +2809,10 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   `tail4_hadamard_group32`), so the IKV-C2 production layout
   (`int8_per_token_head` + uniform + `per_token_head` FP32 scales) always decoded
   eagerly.
+- Session eligibility now shares the capture predicate: BF16 and the declared
+  `tail4_hadamard_group32` layout are admitted without this flag. Uniform
+  `int8_per_token_head` with `per_token_head` scales still uses the flag.
+  Capacity planning resolves layout names through the KV policy resolver.
 - Measured on the W7900, 27B `Q4_K_M`, full 10-prompt mtp-bench category suite,
   128 decode tokens: numerically exact (10/10 prompts, all 129 generated tokens
   sha256-identical to eager) and non-regressive but small, -0.53% decode wall
@@ -2828,9 +2832,10 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   exactly where `GGUF_DECODE_GRAPH_SUBMISSION_POLICIES` already selects `pm4`
   (>=128 replay steps for this geometry at one row).
   To promote: add an INT8-specific capture-aware floor near 128 steps, or admit
-  the graph only when the resolved submission transport is `pm4`. The design
-  constraint is that the decode horizon is unknown at admission time, so a fixed
-  floor is the available lever. Then re-measure at 128 steps and promote to
+  the graph only when the resolved submission transport is `pm4`. The generation
+  capture sites know the remaining output-token budget and already compare it
+  with their capture floor; the remaining work is to apply the storage-specific
+  policy consistently there. Then re-measure at 128 steps and promote to
   default, keeping `=0` as rollback. If no floor mechanism is wanted, delete the
   flag and the INT8 admission with it, since a default-on graph at a floor of 24
   would regress every 24-127-step generation.

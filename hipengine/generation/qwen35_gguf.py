@@ -2724,12 +2724,20 @@ class Qwen35GGUFBringupGenerator:
         pending_signature = None
         if getattr(self, "_prepared_kv_signature", None) is None and hint:
             # Size against the KV policy the server published without locking it.
+            # ``kv_storage`` names a layout as well as a dtype, so resolve it
+            # through the policy resolver that produces the locked signature
+            # instead of parsing the raw name as a storage dtype.
             storage, scale_dtype, granularity = (str(part) for part in tuple(hint)[:3])
+            resolved = resolve_kv_policy(
+                storage,
+                scale_dtype=scale_dtype,
+                scale_granularity=granularity,
+            )
             pending_signature = (
-                str(DType.parse(storage).value) if storage != "auto" else "bf16",
-                "uniform",
-                scale_dtype,
-                granularity,
+                resolved.storage_dtype.value,
+                resolved.storage_layout,
+                resolved.scale_dtype.value,
+                resolved.scale_granularity,
             )
         cfg = shared_runner.weights.config
         model_max = int(getattr(cfg, "context_length", 0) or 0) or None
