@@ -2777,21 +2777,6 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   identity ruling and for the gfx1100-versus-gfx1151 plan A/B that decides which
   composition each backend keeps.
 
-## `HIPENGINE_GGUF_PACKED_LAYER_OUTER` (promoted to default ON 2026-09-11)
-
-- The layer-outer packed AR prefill executor became the default after its packet
-  gates closed and the same-host promotion A/B passed: wall parity within a 1.5%
-  noise floor at 1,024/2,048/4,096/8,192 rows with identical generated IDs, and
-  0.438 GiB less tracked peak at every multi-chunk length. The server route
-  engages the resumable layer-outer prefill with zero fallbacks. Artifacts:
-  `benchmarks/results/2026-09-11-w7900-p3-promotion-ab-{chunkouter,layerouter}-{1024,2048,4096,8192}.json`
-  and `benchmarks/results/2026-09-11-w7900-p3-promotion-server-c1-{off,on}.json`.
-- `=0` selects the corrected chunk-outer executor. Removal condition: once the
-  chunk-outer executor has no remaining rollback or bisection value, delete the
-  flag, the `_gguf_packed_layer_outer_enabled` helper, and the chunk-outer
-  dispatch branch together, and keep the chunk-outer tests only as the decline
-  coverage the layer-outer path needs.
-
 ## `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` (INT8 KV C1 decode graph)
 
 - Admitted 2026-09-11 so the INT8 KV C1 decode graph could be measured instead
@@ -12542,3 +12527,24 @@ qualification. **Clearing action:** the lead selects the default memory/reuse
 trade-off; update the count default, its tests and user-facing configuration
 reference together, then validate interleaved conversations and memory pressure.
 No change to the default is made by this cleanup.
+
+### R0085 — Layer-outer prefill rollback control
+
+`HIPENGINE_GGUF_PACKED_LAYER_OUTER` defaults on. Its off value still selects
+chunk-outer prefill and is an explicit control in
+`scripts/gguf_p6e_cancel_refill_proof.py`. Chunk-outer execution also handles
+real declines, including prefix boundaries and unavailable resumable owners;
+removing the rollback control must not remove those paths.
+
+**Decision needed:** retire the production rollback control, or keep it for
+operational bisection. **Clearing action:** if retired, remove the environment
+reader and its dispatch condition, migrate the service proof's explicit
+control to its test harness, update CLI/configuration documentation, and run
+`tests/test_unit_gguf_packed_layer_outer_prefill.py`,
+`tests/test_unit_gguf_resumable_layer_outer_prefill.py` and
+`tests/test_unit_gguf_p6e_cancel_refill_proof.py`, preserving decline coverage.
+The existing promotion artifacts are
+`benchmarks/results/2026-09-11-w7900-p3-promotion-ab-{chunkouter,layerouter}-{1024,2048,4096,8192}.json`
+and `benchmarks/results/2026-09-11-w7900-p3-promotion-server-c1-{off,on}.json`.
+The harness catalogue's stale default-off and failing-proof statements are
+corrected; this cleanup does not change runtime selection.

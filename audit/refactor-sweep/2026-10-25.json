@@ -2312,18 +2312,18 @@
       "start_line": 2593,
       "end_line": 2607,
       "sha256": "8a35ef4111a56ff987f02d36a884d513dc179ff738d9e1996cf6a250cd40bbdf",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-lead-decision",
+      "evidence": ["Moved to bottom deferred decisions with explicit retirement scope and clearing tests. Flag remains operational rollback and service-proof control; chunk-outer has real decline uses. Corrected harness stale default-off/failing claims against passing artifact, preserving skipped native-sampling caveat. Focused tests/docs/audit pass. worklog/entries/20261026T181013.745278Z-cleanup-refactor-r0085-fc00c9.md."],
       "subitems": [
         {
           "line": 2595,
           "text": "- The layer-outer packed AR prefill executor became the default after its packet",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 2602,
           "text": "- `=0` selects the corrected chunk-outer executor. Removal condition: once the",
-          "status": "pending"
+          "status": "deferred-lead-decision"
         }
       ]
     },
