@@ -30,7 +30,9 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     q8_mmq_vec4_expected_calls,q8_mmq_raw_vector_expected_calls,q8_mapped_down_expected_calls,
     q8_bundle_call_in_scope,apply_chunk_mode,validate_chunk_coverage,q8_down_register_expected_calls,
     gdn_wave_norm_expected_calls,mmq_token64_expected_calls,gr_dpp_expected_calls,
-    router_dpp_expected_calls,route_scope,GDN_COLWARPS_ENV)
+    router_dpp_expected_calls,route_scope,GDN_COLWARPS_ENV,
+    Q51_IU8_EXACT_ENV,Q51_PAIR2_PREEMPTING_ENV,Q51_PAIR2_GATE_ENV,
+    q51_pair2_control_record)
 
 
 def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.environ):
@@ -53,6 +55,10 @@ def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.envi
     if package in {"gdn-narrow", "gdn-wave-norm"}:
         # Request-local on the runner; ``route_scope`` binds the arm around the
         # measured prefill and restores the profile's decision on exit.
+        return
+    if package == "q51-row-publish":
+        # Request-local on the runner, like the GDN serial owner; the arm also
+        # closes the exact iu8 Q5_1 down that would preempt the pair2 chain.
         return
     if package == "router-dpp":
         environment[flag] = (
@@ -184,7 +190,8 @@ def main():
     if args.route_package == "q51-register-cache":
         flag = "HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE"
     if args.route_package == "q51-row-publish":
-        flag = "HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH"
+        # Request-local on the runner; no env key names this selection.
+        flag = ""
     from hipengine.kernels.registry import KernelKey, register, resolve
     key = (KernelKey("hip_gfx1151", "linear", "gguf_q5_k",
                      "selected_grouped_row4_gemv_bf16_bf16_out")
@@ -439,6 +446,31 @@ def main():
                     "production binds the row-split tiled recurrence on every "
                     "GDN layer, so the counted serial leaf only launches with "
                     "the tiled branch closed"),
+            }
+        if args.route_package == "q51-row-publish":
+            # The plan publishes the row-publish selection on the runner, but
+            # the routed F16 WMMA down (and, behind it, the exact iu8 down and
+            # the grouped-WMMA/MoE/MMQ/T16 owners) preempts the whole pair2
+            # chain this arm counts, so both arms close them and the record
+            # separates the forced value from what it replaced.
+            assert generator.runner.q51_row_publish is True, (
+                "production must publish the row-publish selection")
+            assert os.environ.get(Q51_IU8_EXACT_ENV, "") not in {"", "0"}, (
+                "production must bind the preempting exact Q5_1 down")
+            assert os.environ.get("HIPENGINE_QWEN4_EXP_ROUTED_F16", "") not in {"", "0"}, (
+                "production must bind the preempting routed F16 down")
+            assert os.environ.get(Q51_PAIR2_GATE_ENV, "") not in {"", "0"}, (
+                "the pair2 chain's own gate must be on")
+            report["selection_control"] = {
+                "runner_field": "q51_row_publish",
+                "before": False, "after": True,
+                "scope": "per measured run; restored on exit",
+                **q51_pair2_control_record(),
+                "reason": (
+                    "the routed F16 WMMA down is the production owner of this "
+                    "scope and, behind it, the exact iu8, grouped-WMMA/"
+                    "grouped-MoE, MMQ and T16 owners also preempt the pair2 "
+                    "chain the arm counts; both arms close all of them"),
             }
         if args.route_package == "q8-dpp-reduction":
             # The DPP leaf's flag is read with a "1" default rather than bound by

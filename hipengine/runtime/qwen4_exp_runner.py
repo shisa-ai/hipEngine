@@ -4002,6 +4002,35 @@ def gdn_prefill_variant(runner: Any, variant: str | None | object = _GDN_PREFILL
         runner.gdn_prefill_variant = prior
 
 
+# Q5_1 row-publish selection. The production plan declares the row-publish
+# owner for the rows>=512 K640 grouped Q5_1 down scope; the binder publishes
+# that decision to the owning runner, and the dispatch-time selector keeps its
+# rows/K640/parent-variant/registration guards. It is request-local state, so a
+# diagnostic arm binds it on the runner it measures instead of writing a
+# process-wide switch.
+_Q51_ROW_PUBLISH_UNSET = object()
+
+
+@contextlib.contextmanager
+def q51_row_publish(runner: Any, enabled: bool | object = _Q51_ROW_PUBLISH_UNSET):
+    """Bind the Q5_1 row-publish selection for a diagnostic arm.
+
+    ``True`` selects the row-publish sibling inside its rows>=512 K640 scope and
+    ``False`` keeps the register-cache parent; leaving ``enabled`` unset keeps
+    whatever the plan published. The binding is a mutable runner field, so it
+    stays in force for as long as the scope is open and the published value is
+    restored on exit, including on an exception.
+    """
+
+    prior = getattr(runner, "q51_row_publish", False)
+    if enabled is not _Q51_ROW_PUBLISH_UNSET:
+        runner.q51_row_publish = bool(enabled)
+    try:
+        yield prior
+    finally:
+        runner.q51_row_publish = prior
+
+
 def _qwen4_exp_gdn_prefill_key(
     key: KernelKey, *, rows: int = 0, num_k_heads: int = 0,
     num_v_heads: int = 0, head_dim: int = 0, variant: str | None = None,
@@ -4021,10 +4050,23 @@ def _qwen4_exp_gdn_prefill_key(
     return wide if is_registered(wide) else key
 
 
-def _qwen4_exp_q51_row_publish_key(key: KernelKey, *, rows: int, in_features: int) -> KernelKey:
+def _qwen4_exp_q51_row_publish_key(
+    key: KernelKey, *, rows: int, in_features: int, published: bool = False,
+) -> KernelKey:
+    """Select the Q5_1 row-publish sibling of the register-cache prefill owner.
+
+    ``published`` is the owning runner's plan-published decision (see
+    :func:`q51_row_publish`), not a process-wide switch: the production plan
+    declares the row-publish owner for the rows>=512 K640 scope, and every plan
+    that keeps the register-cache parent publishes ``False``. The guards stay
+    dispatch-time - rows, in_features, the register-cache parent variant, and a
+    registry that must actually carry the leaf - so an unbound runner or a
+    missing registration keeps the parent.
+    """
+
     if (rows < 512 or in_features != 640
             or key.variant != "selected_grouped_prefill_pair2_register_cache_bf16_bf16_out"
-            or os.environ.get("HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH", "0") != "1"):
+            or not published):
         return key
     candidate = KernelKey(key.backend, key.layer, key.quant,
                          "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out")
@@ -4912,8 +4954,14 @@ def run_qwen4_exp_moe(
     runtime: HipRuntime | None = None,
     graph_cache: MoeGraphCache | None = None,
     graph_key: object | None = None,
+    q51_row_publish: bool = False,
 ) -> Qwen4ExpMoEDeviceResult:
-    """Run normalized softmax top-k routed experts plus gated shared expert."""
+    """Run normalized softmax top-k routed experts plus gated shared expert.
+
+    ``q51_row_publish`` is the owning runner's plan-published Q5_1 row-publish
+    decision (see :func:`q51_row_publish`); it only selects inside the grouped
+    pair2 chain's rows>=512 K640 scope and never on decode.
+    """
 
     if scratch.closed:
         raise RuntimeError("Qwen4Exp MoE scratch is closed")
@@ -4938,6 +4986,7 @@ def run_qwen4_exp_moe(
                 top_k=top_k,
                 stream=graph_stream,
                 runtime=active_runtime,
+                q51_row_publish=q51_row_publish,
             )
 
         graph_cache.run(
@@ -6031,7 +6080,8 @@ def run_qwen4_exp_moe(
                     grouped_q5_key = _qwen4_exp_q51_register_cache_key(
                         grouped_q5_key, rows=rows, in_features=ffn)
                     grouped_q5_key = _qwen4_exp_q51_row_publish_key(
-                        grouped_q5_key, rows=rows, in_features=ffn)
+                        grouped_q5_key, rows=rows, in_features=ffn,
+                        published=q51_row_publish)
                     grouped_q5_down = resolve(
                         backend=grouped_q5_key.backend, layer=grouped_q5_key.layer,
                         quant=grouped_q5_key.quant, variant=grouped_q5_key.variant)
@@ -6648,6 +6698,7 @@ def run_qwen4_exp_dense_qsa_layer(
     moe_graph_cache: MoeGraphCache | None = None,
     moe_graph_key: object | None = None,
     cache_only: bool = False,
+    q51_row_publish: bool = False,
 ) -> DeviceBuffer | None:
     """Execute a QSA+MoE layer, or only its independent cache-state writes."""
 
@@ -6709,6 +6760,7 @@ def run_qwen4_exp_dense_qsa_layer(
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=active_runtime,
         graph_cache=moe_graph_cache, graph_key=moe_graph_key,
+        q51_row_publish=q51_row_publish,
     )
     qwen4_exp_gr_write_bf16_bf16(
         scratch.after_attention.ptr,
@@ -6749,6 +6801,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     runtime: HipRuntime | None = None,
     pending_write: tuple[int, int, int, bool] | None = None,
     defer_write: list | None = None,
+    q51_row_publish: bool = False,
 ) -> DeviceBuffer:
     """Execute one complete Qwen4Exp QSA+MoE prompt chunk.
 
@@ -6756,6 +6809,10 @@ def run_qwen4_exp_qsa_prefill_layer(
     the scalar rows owner and is forwarded unchanged to the token mixer, which
     resolves that leaf but launches it only when WMMA attention does not own the
     chunk.
+
+    ``q51_row_publish`` is the owning runner's plan-published Q5_1 row-publish
+    decision, forwarded to the MoE down dispatch; it only selects inside the
+    grouped pair2 chain's rows>=512 K640 scope.
 
     ``pending_write`` is the previous layer's deferred residual write (its
     output is ``residual_ptr``). With ``defer_write`` this layer's own final
@@ -6846,6 +6903,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         top_k=top_k,
         stream=stream,
         runtime=active_runtime,
+        q51_row_publish=q51_row_publish,
     )
     if not _qwen4_exp_gr_defer_write(
         defer_write, rows, scratch.after_attention.ptr, moe.output.ptr,
@@ -6892,12 +6950,16 @@ def run_qwen4_exp_gdn_layer(
     pending_write: tuple[int, int, int, bool] | None = None,
     defer_write: list | None = None,
     prefill_variant: str | None = None,
+    q51_row_publish: bool = False,
 ) -> DeviceBuffer:
     """Execute one complete strict Qwen4Exp GDN+MoE physical layer.
 
     ``prefill_variant`` is the owning runner's GDN serial-prefill owner (see
     :func:`gdn_prefill_variant`): it selects the narrow/wide wave-norm leaf for
     multi-row chunks and leaves the register parent and decode untouched.
+
+    ``q51_row_publish`` is the owning runner's plan-published Q5_1 row-publish
+    decision, forwarded to the MoE down dispatch.
 
     ``pending_write`` / ``defer_write`` as for the QSA prefill layer; only
     multi-row (uncaptured) chunks use them.
@@ -7050,6 +7112,7 @@ def run_qwen4_exp_gdn_layer(
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=active_runtime,
         graph_cache=moe_graph_cache, graph_key=moe_graph_key,
+        q51_row_publish=q51_row_publish,
     )
     if layer_graph is not None:
         def _segment_epilogue(graph_stream: int) -> None:
@@ -7835,6 +7898,11 @@ class Qwen4ExpGGUFResidentModelRunner:
     # wave-norm leaf where that admission applies, and None (the register
     # parent) everywhere else. A diagnostic scope may outrank it.
     gdn_prefill_variant: str | None = None
+    # Q5_1 row-publish selection, published by the profile binder from the plan's
+    # own rows>=512 K640 row: True where that plan declares the row-publish
+    # sibling of the register-cache prefill owner, False on every plan that
+    # keeps the parent. A diagnostic scope may outrank it.
+    q51_row_publish: bool = False
 
     def __init__(
         self,
@@ -9076,6 +9144,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                             "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS", ""
                         ),
                     ),
+                    q51_row_publish=self.q51_row_publish,
                 ).ptr
             else:
                 binding = self.qsa_bindings[layer]
@@ -9110,6 +9179,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                             "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS", ""
                         ),
                     ),
+                    q51_row_publish=self.q51_row_publish,
                 ).ptr
         if capture_target_hidden:
             self.runtime.memcpy(
@@ -9406,6 +9476,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     pending_write=pending_write,
                     defer_write=deferred,
                     prefill_variant=self.gdn_prefill_variant,
+                    q51_row_publish=self.q51_row_publish,
                 ).ptr
             else:
                 binding = self.qsa_bindings[layer]
@@ -9431,6 +9502,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     index_rotary_dim=cfg.rope_dimension_count,
                     rope_positions_ptr=rope_positions_ptr,
                     head_mode=self.qsa_prefill_head_mode,
+                    q51_row_publish=self.q51_row_publish,
                     ffn=cfg.expert_feed_forward_length,
                     experts=cfg.expert_count,
                     top_k=cfg.expert_used_count,

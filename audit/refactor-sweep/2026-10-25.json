@@ -2991,23 +2991,23 @@
       "start_line": 2973,
       "end_line": 2985,
       "sha256": "1bbed0cdfe57107becad49e6517a86f9405c52b9d484e8fb731f6196ca46fdb6",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-runner-local",
+      "evidence": ["Row-publication decision now runner-owned and explicitly threaded through QSA/GDN/MoE, preserving original production fallback despite newer routed-F16 manifest. CPU bundle, focused binder/forwarding/harness tests, GPU parity and public pair2 fallback launch passed. Default routed-F16 unchanged. worklog/entries/20261026T201059.263459Z-cleanup-refactor-r0110-f4f4c2.md."],
       "subitems": [
         {
           "line": 2975,
           "text": "- Production-bound `HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH=1` selects",
-          "status": "pending"
+          "status": "resolved-runner-local"
         },
         {
           "line": 2979,
           "text": "- Synthetic routing512/1024 wins1.413x/1.523x; captured mixed512 wins1.498x.",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 2983,
           "text": "- Strict binds0. Keep register-cache parent for bisection; remove temporary",
-          "status": "pending"
+          "status": "resolved-runner-local"
         }
       ]
     },

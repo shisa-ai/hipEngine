@@ -376,6 +376,74 @@ def restore_route_configuration(record, *, environment=os.environ):
 #: Route packages whose counted leaf is the serial GDN recurrence.
 GDN_SERIAL_ROUTE_PACKAGES = frozenset({"gdn-narrow", "gdn-wave-norm"})
 GDN_COLWARPS_ENV = "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"
+#: Owners that preempt the grouped pair2 Q5_1 down chain - and with it the
+#: row-publish selection - on the shipped lane: the routed F16 WMMA down (the
+#: actual production owner), the exact iu8-risk+repair down, grouped WMMA,
+#: grouped MoE prefill, the ds4 MMQ suffix and the T16 expert-major down. A
+#: row-publish arm holds every one of them off for both
+#: arms; the profile's own values come back on exit.
+Q51_PAIR2_PREEMPTING_ENV = (
+    "HIPENGINE_QWEN4_EXP_ROUTED_F16",
+    "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT",
+    "HIPENGINE_QWEN4_EXP_Q5_1_WMMA",
+    "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
+    "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL",
+    "HIPENGINE_QWEN4_EXP_T16_DOWN",
+)
+#: The pair2 chain's own gate. It must stay on for the counted leaf to run, so
+#: the arm records it instead of forcing it.
+Q51_PAIR2_GATE_ENV = "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN"
+#: Kept for callers that name the single exact owner.
+Q51_IU8_EXACT_ENV = Q51_PAIR2_PREEMPTING_ENV[1]
+
+
+def q51_pair2_control_record(*, environment=os.environ):
+    """The recorded control: the value both arms force, and what it replaced.
+
+    The forced value is what the scope writes, not what the environment held
+    before it, so a reader cannot mistake the production binding for the arm's
+    own state. The previous values are recorded beside it.
+    """
+
+    return {
+        "preempting_owners_closed": {
+            key: "0" for key in Q51_PAIR2_PREEMPTING_ENV
+        },
+        "preempting_owners_previous": {
+            key: environment.get(key) for key in Q51_PAIR2_PREEMPTING_ENV
+        },
+        "pair2_gate": {Q51_PAIR2_GATE_ENV: environment.get(Q51_PAIR2_GATE_ENV)},
+    }
+
+
+@contextlib.contextmanager
+def q51_pair2_scope(*, environment=os.environ):
+    """Close the owners that preempt the grouped pair2 Q5_1 down chain.
+
+    The row-publish selection only exists inside that chain, so an arm that
+    leaves any preemptor open counts zero launches and measures the other
+    owner. Every key is read per dispatch, so closing them after construction
+    takes effect; all prior values (including absent keys) come back on exit.
+    The pair2 chain's own gate is not one of the preemptors and must already be
+    on: without it the chain is skipped entirely, so the scope fails loudly
+    rather than reporting an engagement it cannot produce.
+    """
+
+    if environment.get(Q51_PAIR2_GATE_ENV, "") in {"", "0", "false", "False"}:
+        raise ValueError(
+            f"{Q51_PAIR2_GATE_ENV} must be on for the grouped pair2 Q5_1 down "
+            "chain; without it the counted row-publish leaf cannot launch")
+    previous = {key: environment.get(key) for key in Q51_PAIR2_PREEMPTING_ENV}
+    for key in Q51_PAIR2_PREEMPTING_ENV:
+        environment[key] = "0"
+    try:
+        yield previous
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                environment.pop(key, None)
+            else:
+                environment[key] = value
 
 
 @contextlib.contextmanager
@@ -483,6 +551,24 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         # arms so the counted serial leaf is the one that runs.
         return _combined_scope(
             gdn_serial_scope(environment=environment), variant)
+    if route_package == "q51-row-publish":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            # Binding nothing would measure whatever the plan published and
+            # report it as the arm, so the diagnostic must name its runner.
+            raise ValueError(
+                f"{route_package} needs the owning runner; binding no selection "
+                "would measure the plan's own Q5_1 down owner")
+        from hipengine.runtime.qwen4_exp_runner import q51_row_publish
+
+        # The routed F16 WMMA down, the exact iu8 down and the grouped-WMMA/
+        # grouped-MoE/MMQ/T16 owners all preempt the pair2 chain the arm counts,
+        # so both arms close them and the profile's own values come back on
+        # exit. ``Q51_PAIR2_GATE_ENV`` must stay on and is recorded, not forced.
+        return _combined_scope(
+            q51_pair2_scope(environment=environment),
+            q51_row_publish(runner, mode == "after"))
     return contextlib.nullcontext()
 
 
@@ -589,7 +675,8 @@ def _apply_mode(
         if route_package == "q51-register-cache":
             flag = "HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE"
         if route_package == "q51-row-publish":
-            flag = "HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH"
+            # Request-local on the runner; ``route_scope`` binds the arm.
+            return
         environment[flag] = "1" if mode == "after" else "0"
         if route_package == "q8-mmq-planes2":
             environment["HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES"] = (
@@ -1197,6 +1284,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         artifact["arms"] = {
             "before": {"q51_down": "selected_grouped_prefill_pair2_register_cache_bf16_bf16_out"},
             "after": {"q51_down": "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out"}}
+        artifact["selection_control"] = {
+            "runner_field": "q51_row_publish",
+            "before": False,
+            "after": True,
+            "scope": "per measured run; restored on exit",
+            **q51_pair2_control_record(),
+            "reason": (
+                "the routed F16 WMMA down is the production owner of this "
+                "scope and, behind it, the exact iu8, grouped-WMMA/grouped-MoE, "
+                "MMQ and T16 owners also preempt the pair2 chain the arm "
+                "counts; both arms close all of them so the counted leaf "
+                "engages, and the pair2 gate is recorded because it must stay "
+                "on"),
+        }
 
     def sample(mode, case, repetition):
         narrow_enabled[0] = mode == "after"

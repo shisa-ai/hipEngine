@@ -83,7 +83,6 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE",
-        "HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL",
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256",
         "HIPENGINE_QWEN4_EXP_ROUTED_F16",
@@ -333,6 +332,9 @@ def test_historical_q4km_binder_structure_not_qualification(
         configure_mmq_prefill_resources=lambda: configure_calls.append(True)
     )
     production_generator = SimpleNamespace(runner=fake_runner)
+    # A leftover value for the retired process switch may neither select the
+    # leaf nor be overwritten by the binder.
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH", "0")
     production.binder(production_generator, production)
     assert configure_calls == [True]
     assert os.environ[PRODUCTION_MOE_PREFILL_ENV] == "1"
@@ -400,7 +402,12 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH"] == "1"
+    # The Q5_1 row-publish selection is request-local runner state published
+    # from the plan's own rows>=512 K640 row, so the binder writes no
+    # process-wide switch for it.
+    assert production_generator.q51_row_publish is True
+    assert fake_runner.q51_row_publish is True
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH"] == "0"
     selected = _selection_map(production)
     assert selected[("moe_linear", "prefill_rows_ge2_lt64_exact_grouped_q4_gate_up")]["selected_variant"] == (
         "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out")
@@ -494,6 +501,7 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE"] == "0"
+    assert strict_generator.q51_row_publish is False
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"] == "0"
@@ -529,6 +537,53 @@ def test_ud_q4_decode_binding_matches_the_manifest_after_numerical_repair(profil
         assert os.environ["HIPENGINE_QWEN4_EXP_ROUTED_F16"] == "1"
         assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"] == "1"
         assert os.environ["HIPENGINE_QWEN4_EXP_QSA_WMMA"] == "1"
+        # The Q5_1 row-publish publication is the fallback selection for its
+        # scope, not the owner that runs: the routed F16 WMMA down owns it, the
+        # exact iu8 down sits behind it, and the pair2 chain's own gate is on.
+        # A diagnostic arm closes the first two for the counted leaf to launch.
+        assert os.environ["HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT"] == "1"
+        assert os.environ["HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN"] == "1"
+
+
+def test_shipped_ud_plan_publishes_the_production_row_publish_fallback() -> None:
+    """The row-publish publication must not narrow to the manifest row.
+
+    The shipped F16 plan replaced the Q5_1 row-publish row with the newer
+    routed F16 owner, so the row no longer names the fallback. The retired
+    switch was bound production-only, so the effective fallback publication
+    stays True on a production plan; otherwise the pair2 chain's row-publish
+    sibling is unreachable and the arm measures the register-cache parent.
+    """
+
+    from hipengine.kernels.registry import KernelKey
+    from hipengine.runtime import qwen4_exp_runner as runner
+
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    resolved = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
+    generator = resolved.construct_generator(lambda: SimpleNamespace())
+    row = next(
+        selection for selection in resolved.manifest["selections"]
+        if selection["layer"] == "moe_linear"
+        and selection["scope"]
+        == "prefill_rows_ge512_k640_exact_grouped_q5_1_down"
+    )
+    assert row["selected_variant"] == "selected_routed_f16_wmma_prefill_bf16_bf16_out"
+    assert generator.q51_row_publish is True
+    # Through the runtime pair2 selector that publication is the row-publish
+    # sibling of the register-cache owner.
+    parent = KernelKey(
+        "hip_gfx1151", "moe_linear", "gguf_q5_1",
+        "selected_grouped_prefill_pair2_register_cache_bf16_bf16_out")
+    assert runner._qwen4_exp_q51_row_publish_key(
+        parent, rows=1024, in_features=640,
+        published=generator.q51_row_publish,
+    ).variant == "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out"
+    # And a c1 runner cloned from that generator carries the same decision.
+    from hipengine.generation.qwen4_exp_gguf import _inherit_lane_decisions
+
+    clone = _inherit_lane_decisions(generator, SimpleNamespace())
+    assert clone.q51_row_publish is True
 
 
 def test_qwen4_exp_profiles_cover_both_registered_quant_names() -> None:
