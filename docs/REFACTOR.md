@@ -2481,12 +2481,10 @@ the allocation repair. The observations and proposal below are historical.
 
 ## Strict prefix gate cannot bind a batched candidate (found 2026-09-19, fixed 2026-09-20)
 
-- **Resolved.** `scripts/gguf_prefix_reuse_gate.py` builds its reference by
-  consuming the suffix through serial `session.step` calls, then compared GDN
-  state bytes (`initial_state_exact` / `final_state_exact`). Only a serial
-  candidate could satisfy that, so the gate reported `failed` for the batched
-  reused-suffix route on every arm while `output_exact`, `trajectory_exact`,
-  top-1 and the lifecycle checks all passed.
+- **Resolved.** The original `scripts/gguf_prefix_reuse_gate.py` reference
+  consumed the suffix through serial `session.step` calls and compared GDN
+  state bytes. That comparison conflated cache fidelity with the arithmetic
+  difference between serial and batched schedules.
 - The gate now binds the comparison that reproduces the production shape
   (`scheduler_chunk_diagnostic`: `prefill_batch_native` over the prefix and then
   the suffix) through `gate_passed` / `_PRODUCTION_GATE_TERMS`. The serial,
@@ -2495,19 +2493,18 @@ the allocation repair. The observations and proposal below are historical.
   numerical envelope binding against the teacher-forced reference. The
   localization and its evidence are in
   `worklog/entries/20260920T033547.660457Z-lhl-dense27b-oracle-suffix-shape-localized-5e052a.md`.
-- Batched-versus-serial GDN state differs by ~5e-3 relative L2 at
-  `start_position == 0` as well, so this is a property of batched prefill, not
-  of reuse. The serial fallback (`HIPENGINE_GGUF_PREFIX_BATCHED_SUFFIX=0`) still
-  passes the gate outright; the batched route is additionally covered by
-  HIT == MISS bit-equality.
+- Batched-versus-serial differences also occur without cache reuse. The current
+  gate compares independent private batched-prefix/batched-suffix recomputation
+  with the reused route; serial-suffix results remain diagnostic. A serial
+  fallback is not guaranteed to pass the current same-schedule state gate.
 - The gate now accepts `--prompt-file` / `--prompt-category` so its numerical
   checks can run on real tokenized suite text; its default repeated-token-id
   prompt produces degenerate logits that make KL unrepresentative.
-- Removal scope: done, apart from the open accuracy question. Whether the
-  production route's token or the single-call routes' token is closer to the
-  truth needs a higher-precision reference, and the Japanese `kl_mean` 0.68112127
-  is still measured against the serial reference, so the gate continues to flag
-  it. Rebase the numerical reference once that reference exists.
+- Removal scope: complete for the gate. Cross-schedule accuracy remains the
+  separate open question in the split-prefill entry above. Historical Japanese
+  serial-reference KL is not a failure of the current same-schedule gate.
+  `tests/test_unit_gguf_prefix_reuse_gate.py` pins binding terms separately from
+  diagnostic comparisons; no numerical threshold is relaxed by this correction.
 
 ## Grown KV pool could not serve an allocation spanning two chunks (found and fixed 2026-09-19)
 

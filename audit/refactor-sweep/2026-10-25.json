@@ -1852,33 +1852,35 @@
       "start_line": 2175,
       "end_line": 2204,
       "sha256": "9c0c53351f75d702ed3fe021d62ca827852b90574e10760e13627cde1ee7f462",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "Current same-schedule gate and binding-term regressions verified; corrected stale serial fallback and Japanese serial-KL claims in docs/REFACTOR.md. Cross-schedule accuracy remains R0071, not a prefix fidelity gate failure."
+      ],
       "subitems": [
         {
           "line": 2177,
           "text": "- **Resolved.** `scripts/gguf_prefix_reuse_gate.py` builds its reference by",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 2183,
           "text": "- The gate now binds the comparison that reproduces the production shape",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 2191,
           "text": "- Batched-versus-serial GDN state differs by ~5e-3 relative L2 at",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 2196,
           "text": "- The gate now accepts `--prompt-file` / `--prompt-category` so its numerical",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 2199,
           "text": "- Removal scope: done, apart from the open accuracy question. Whether the",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
