@@ -3967,22 +3967,57 @@ def _qwen4_exp_q51_register_cache_key(key: KernelKey, *, rows: int, in_features:
     return candidate if is_registered(candidate) else key
 
 
-def _qwen4_exp_gdn_wave_norm_key(
+# GDN serial-prefill norm/gate owner. The execution profile publishes the
+# decision to the owning runner: the narrow checked-index leaf inside its
+# Hk16/Hv48/D128 2..4096-row bounds, the wide wave-norm leaf wherever the
+# wave-norm admission applies, and ``None`` (the register parent) everywhere
+# else. An unbound runner, an unknown value, or a leaf the registry does not
+# carry keeps the parent, and rows outside the narrow bound still select the
+# wide leaf. Diagnostic arms bind the value on the runner they measure, so
+# neither arm writes a process-wide switch.
+GDN_PREFILL_PARENT_VARIANT = "qwen4exp_sigmoid_register_prefill"
+GDN_PREFILL_WIDE_VARIANT = "qwen4exp_sigmoid_wave_norm_prefill"
+GDN_PREFILL_NARROW_VARIANT = "qwen4exp_sigmoid_wave_norm_narrow_prefill"
+_GDN_PREFILL_UNSET = object()
+
+
+@contextlib.contextmanager
+def gdn_prefill_variant(runner: Any, variant: str | None | object = _GDN_PREFILL_UNSET):
+    """Bind an explicit serial-prefill owner for a diagnostic arm.
+
+    ``None`` selects the register parent and a wide/narrow name selects that
+    leaf; leaving ``variant`` unset keeps whatever the profile published. The
+    binding is a mutable runner field, so it stays in force for as long as the
+    scope is open - a prefill that suspends between layer yields keeps the arm
+    bound - and the published value is restored on exit, including on an
+    exception.
+    """
+
+    prior = getattr(runner, "gdn_prefill_variant", None)
+    if variant is not _GDN_PREFILL_UNSET:
+        runner.gdn_prefill_variant = variant
+    try:
+        yield prior
+    finally:
+        runner.gdn_prefill_variant = prior
+
+
+def _qwen4_exp_gdn_prefill_key(
     key: KernelKey, *, rows: int = 0, num_k_heads: int = 0,
-    num_v_heads: int = 0, head_dim: int = 0,
+    num_v_heads: int = 0, head_dim: int = 0, variant: str | None = None,
 ) -> KernelKey:
-    if (key.variant != "qwen4exp_sigmoid_register_prefill"
-            or os.environ.get("HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM", "0") != "1"):
+    if key.variant != GDN_PREFILL_PARENT_VARIANT:
         return key
-    wide = KernelKey(key.backend, key.layer, key.quant,
-                     "qwen4exp_sigmoid_wave_norm_prefill")
-    if (2 <= rows <= 4096 and (num_k_heads, num_v_heads, head_dim) == (16, 48, 128)
-            and os.environ.get("HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT", "")
-                == "qwen4exp_sigmoid_wave_norm_narrow_prefill"):
+    variant = str(variant or "")
+    if variant not in (GDN_PREFILL_WIDE_VARIANT, GDN_PREFILL_NARROW_VARIANT):
+        return key
+    if (variant == GDN_PREFILL_NARROW_VARIANT and 2 <= rows <= 4096
+            and (num_k_heads, num_v_heads, head_dim) == (16, 48, 128)):
         narrow = KernelKey(key.backend, key.layer, key.quant,
-                           "qwen4exp_sigmoid_wave_norm_narrow_prefill")
+                           GDN_PREFILL_NARROW_VARIANT)
         if is_registered(narrow):
             return narrow
+    wide = KernelKey(key.backend, key.layer, key.quant, GDN_PREFILL_WIDE_VARIANT)
     return wide if is_registered(wide) else key
 
 
@@ -6856,8 +6891,13 @@ def run_qwen4_exp_gdn_layer(
     layer_graph_key: object | None = None,
     pending_write: tuple[int, int, int, bool] | None = None,
     defer_write: list | None = None,
+    prefill_variant: str | None = None,
 ) -> DeviceBuffer:
     """Execute one complete strict Qwen4Exp GDN+MoE physical layer.
+
+    ``prefill_variant`` is the owning runner's GDN serial-prefill owner (see
+    :func:`gdn_prefill_variant`): it selects the narrow/wide wave-norm leaf for
+    multi-row chunks and leaves the register parent and decode untouched.
 
     ``pending_write`` / ``defer_write`` as for the QSA prefill layer; only
     multi-row (uncaptured) chunks use them.
@@ -6944,6 +6984,7 @@ def run_qwen4_exp_gdn_layer(
         rows=rows, hidden=hidden,
         num_k_heads=num_k_heads, num_v_heads=num_v_heads, head_dim=head_dim,
         conv_kernel=conv_kernel, stream=stream, runtime=active_runtime,
+        prefill_variant=prefill_variant,
     )
     if layer_graph is not None:
         def _segment_gr_write_ffn_read(graph_stream: int) -> None:
@@ -7217,8 +7258,14 @@ def run_qwen4_exp_gdn_token_mixer(
     conv_kernel: int,
     stream: int = 0,
     runtime: HipRuntime | None = None,
+    prefill_variant: str | None = None,
 ) -> DeviceBuffer:
-    """Execute strict Qwen4Exp GDN projections, Conv, recurrence, and output."""
+    """Execute strict Qwen4Exp GDN projections, Conv, recurrence, and output.
+
+    ``prefill_variant`` is the owning runner's GDN serial-prefill owner (see
+    :func:`gdn_prefill_variant`); it selects the narrow/wide wave-norm leaf for
+    multi-row chunks and leaves the register parent and decode untouched.
+    """
 
     if scratch.closed:
         raise RuntimeError("Qwen4Exp GDN scratch is closed")
@@ -7484,11 +7531,12 @@ def run_qwen4_exp_gdn_token_mixer(
                 backend=backend, rows=rows, num_k_heads=num_k_heads,
                 num_v_heads=num_v_heads, head_dim=head_dim,
             ):
-                serial_key = _qwen4_exp_gdn_wave_norm_key(
+                serial_key = _qwen4_exp_gdn_prefill_key(
                     KernelKey(backend, "gdn_recurrence_norm_gate", "f32_state",
-                              "qwen4exp_sigmoid_register_prefill"),
+                              GDN_PREFILL_PARENT_VARIANT),
                     rows=rows, num_k_heads=num_k_heads,
                     num_v_heads=num_v_heads, head_dim=head_dim,
+                    variant=prefill_variant,
                 )
                 serial_prefill = resolve(
                     backend=serial_key.backend, layer=serial_key.layer,
@@ -7782,6 +7830,11 @@ class Qwen4ExpGGUFResidentModelRunner:
     # ("quad" on the UD lane). "pair" is diagnostic-only and never published; an
     # unbound runner keeps the single-head parent.
     qsa_prefill_head_mode: str = "parent"
+    # GDN serial-prefill owner, published by the profile binder from the plan's
+    # own selection: the narrow checked-index leaf on the UD lane, the wide
+    # wave-norm leaf where that admission applies, and None (the register
+    # parent) everywhere else. A diagnostic scope may outrank it.
+    gdn_prefill_variant: str | None = None
 
     def __init__(
         self,
@@ -9352,6 +9405,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     runtime=self.runtime,
                     pending_write=pending_write,
                     defer_write=deferred,
+                    prefill_variant=self.gdn_prefill_variant,
                 ).ptr
             else:
                 binding = self.qsa_bindings[layer]

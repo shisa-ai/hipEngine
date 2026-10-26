@@ -30,7 +30,7 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     q8_mmq_vec4_expected_calls,q8_mmq_raw_vector_expected_calls,q8_mapped_down_expected_calls,
     q8_bundle_call_in_scope,apply_chunk_mode,validate_chunk_coverage,q8_down_register_expected_calls,
     gdn_wave_norm_expected_calls,mmq_token64_expected_calls,gr_dpp_expected_calls,
-    router_dpp_expected_calls,route_scope)
+    router_dpp_expected_calls,route_scope,GDN_COLWARPS_ENV)
 
 
 def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.environ):
@@ -50,11 +50,9 @@ def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.envi
         from scripts.qwen4exp_dense_wide_padded_gate_support import PARENT
         environment[DENSE_WIDE_TAIL_VARIANT_ENV] = PARENT
         return
-    if package == "gdn-narrow":
-        # Both arms retain the wave-norm admission; the diagnostic registry hook
-        # chooses narrow vs wide indexing without mutating profile arithmetic.
-        environment[flag] = "1"
-        environment["HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT"] = "qwen4exp_sigmoid_wave_norm_prefill"
+    if package in {"gdn-narrow", "gdn-wave-norm"}:
+        # Request-local on the runner; ``route_scope`` binds the arm around the
+        # measured prefill and restores the profile's decision on exit.
         return
     if package == "router-dpp":
         environment[flag] = (
@@ -134,7 +132,8 @@ def main():
     if args.route_package == "gdn-register":
         flag = "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"
     if args.route_package in {"gdn-wave-norm", "gdn-narrow"}:
-        flag = "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"
+        # Request-local on the runner; no env key names this leaf.
+        flag = ""
     if args.route_package in {"qsa-head-pair","qsa-head-quad"}:
         # Request-local on the runner; no env key names this leaf.
         flag=""
@@ -286,10 +285,25 @@ def main():
     mapped_calls=[0]
     narrow_enabled = [False]
     narrow_candidate = None
+    gdn_narrow_key = None
+    gdn_narrow_original = None
     if args.route_package == "gdn-narrow":
         from scripts.qwen4exp_gdn_narrow_gate_support import expected_calls, validate_call
-        narrow_candidate = resolve(backend=key.backend, layer=key.layer, quant=key.quant,
-                                   variant="qwen4exp_sigmoid_wave_norm_narrow_prefill")
+        gdn_narrow_key = KernelKey(key.backend, key.layer, key.quant,
+                                   "qwen4exp_sigmoid_wave_norm_narrow_prefill")
+        gdn_narrow_original = resolve(backend=gdn_narrow_key.backend,
+                                      layer=gdn_narrow_key.layer,
+                                      quant=gdn_narrow_key.quant,
+                                      variant=gdn_narrow_key.variant)
+
+        def counted_narrow(*a, **kw):
+            validate_call(a, max_rows=generator.runner.prefill_chunk_size)
+            calls[0] += 1
+            return gdn_narrow_original(*a, **kw)
+
+        # The arm selects the leaf through the runner's published variant, so
+        # engagement is counted on the kernel that actually ran.
+        register(gdn_narrow_key, counted_narrow, replace=True)
     if args.route_package == "dense-wide-padded":
         from scripts.qwen4exp_dense_wide_padded_gate_support import (
             CANDIDATE, call_in_scope, expected_calls as tail_expected_calls,
@@ -307,6 +321,11 @@ def main():
             if narrow_enabled[0] and call_in_scope(a):
                 calls[0] += 1
                 return narrow_candidate(*a, **kw)
+            return original(*a, **kw)
+        if args.route_package == "gdn-narrow":
+            # The wide arm is the parent control; validate its admission shape
+            # and let the narrow key's wrapper own the engagement count.
+            validate_call(a, max_rows=generator.runner.prefill_chunk_size)
             return original(*a, **kw)
         if narrow_candidate is not None:
             validate_call(a, max_rows=generator.runner.prefill_chunk_size)
@@ -373,6 +392,12 @@ def main():
             "manifest_scope": "named profile; diagnostic arms override only the named leaf",
             "runtime_default_changed": False,
         }
+    if gdn_narrow_key is not None:
+        report["diagnostic_runner_variant"] = {
+            "parent": key.variant, "candidate": gdn_narrow_key.variant,
+            "manifest_scope": "named profile; diagnostic arms override only the named leaf",
+            "runtime_default_changed": False,
+        }
     if args.route_package=="chunk1024":
         report["chunk_protocol"] = {
             "allocated_chunk_size":1024,"active_sequence":[512,1024,512],
@@ -393,6 +418,28 @@ def main():
             # through the runner rather than through a binder-set env key.
             assert generator.runner.qsa_prefill_head_mode == "quad", (
                 "production must publish the four-head fallback grouping")
+        if args.route_package in {"gdn-wave-norm", "gdn-narrow"}:
+            # Same for the GDN serial owner: production publishes the plan's own
+            # narrow selection on the runner.
+            assert generator.runner.gdn_prefill_variant == (
+                "qwen4exp_sigmoid_wave_norm_narrow_prefill"), (
+                "production must publish the narrow GDN serial owner")
+            # The counted serial leaf is the tiled branch's fallback, so the
+            # premise of every serial-arm count is that production binds the
+            # tiled branch open. ``route_scope`` closes it per measured run.
+            assert os.environ.get(GDN_COLWARPS_ENV, "") not in {"", "0"}, (
+                "production must bind the tiled GDN branch before a serial arm")
+            report["serial_route_control"] = {
+                "environment": GDN_COLWARPS_ENV,
+                "value": "0",
+                "arms": "both",
+                "scope": "per measured run; restored on exit",
+                "production_value": os.environ[GDN_COLWARPS_ENV],
+                "reason": (
+                    "production binds the row-split tiled recurrence on every "
+                    "GDN layer, so the counted serial leaf only launches with "
+                    "the tiled branch closed"),
+            }
         if args.route_package == "q8-dpp-reduction":
             # The DPP leaf's flag is read with a "1" default rather than bound by
             # the profile, so its production default is asserted through the
@@ -422,7 +469,9 @@ def main():
                 continue
             baseline = None
             summaries = []
-            enabled_sequence = ("0", "1", "1", "1", "0") if narrow_candidate is not None else ("0", "1", "0")
+            enabled_sequence = (("0", "1", "1", "1", "0")
+                                if narrow_candidate is not None or gdn_narrow_key is not None
+                                else ("0", "1", "0"))
             for enabled in enabled_sequence:
                 narrow_enabled[0] = enabled == "1"
                 apply_state_gate_mode(generator.runner,args.route_package,enabled,flag)
@@ -443,7 +492,8 @@ def main():
                 logits = first.logits.copy()
                 token = int(first.token_id)
                 prefill_state = (_state_summary(generator.runner)
-                                 if narrow_candidate is not None else None)
+                                 if narrow_candidate is not None or gdn_narrow_key is not None
+                                 else None)
                 step_logits = []
                 step_seconds = []
                 for _ in range(args.decode_steps):
@@ -619,16 +669,18 @@ def main():
             generator.runner._prefill_chunk = original_chunk
             generator.runner.prefill_chunk_size = 1024
         else:
-            if args.route_package != "dense-wide-padded":
+            if args.route_package not in {"dense-wide-padded", "gdn-wave-norm", "gdn-narrow"}:
                 os.environ[flag] = ("f32_hidden_token_tile4_dense_exact"
                                     if args.route_package == "router-dpp" else "1")
             register(key, original, replace=True)
+        if gdn_narrow_original is not None:
+            register(gdn_narrow_key, gdn_narrow_original, replace=True)
         if qsa_original is not None:
             register(qsa_key, qsa_original, replace=True)
             os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] = "page256"
         generator.close()
         report["memory_after_close"] = memory_stats()
-        if narrow_candidate is not None:
+        if narrow_candidate is not None or gdn_narrow_key is not None:
             stats = report["memory_after_close"]
             report["lifecycle_passed"] = stats["active_allocations"] == 0 and stats["current_allocated_bytes"] == 0
             if not report["lifecycle_passed"]:

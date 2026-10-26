@@ -4,24 +4,38 @@ from scripts.qwen4exp_halo_box_campaign_ab import _apply_mode, build_parser
 from scripts.qwen4exp_row4_state_gate import apply_state_gate_mode
 from scripts.qwen4exp_gdn_narrow_gate_support import expected_calls, validate_call
 
+WIDE = "qwen4exp_sigmoid_wave_norm_prefill"
+NARROW = "qwen4exp_sigmoid_wave_norm_narrow_prefill"
+
 
 @pytest.mark.parametrize("enabled", ["0", "1"])
-def test_narrow_state_gate_keeps_parent_wave_norm_admission(enabled):
+def test_narrow_state_gate_leaves_the_environment_alone(enabled):
+    # Both arms select the leaf through the runner's published variant, so the
+    # gate must not write a process-wide switch for either arm.
     environment = {"unrelated": "kept"}
     apply_state_gate_mode(None, "gdn-narrow", enabled,
                           "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM", environment=environment)
-    assert environment == {
-        "unrelated": "kept", "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM": "1",
-        "HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT": "qwen4exp_sigmoid_wave_norm_prefill",
-    }
+    assert environment == {"unrelated": "kept"}
     other = {"unrelated": "kept"}
     _apply_mode("after" if enabled == "1" else "before", route_package="gdn-narrow",
                 environment=other)
-    assert other == environment
+    assert other == {"unrelated": "kept"}
     assert build_parser().parse_args([
         "--model-root", "/unused", "--output", "/unused.json",
         "--route-package", "gdn-narrow", "--prefill-chunk-size", "4096",
     ]).route_package == "gdn-narrow"
+
+
+@pytest.mark.parametrize("enabled", ["0", "1"])
+def test_wave_norm_state_gate_leaves_the_environment_alone(enabled):
+    environment = {"unrelated": "kept"}
+    apply_state_gate_mode(None, "gdn-wave-norm", enabled,
+                          "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM", environment=environment)
+    assert environment == {"unrelated": "kept"}
+    other = {"unrelated": "kept"}
+    _apply_mode("after" if enabled == "1" else "before", route_package="gdn-wave-norm",
+                environment=other)
+    assert other == {"unrelated": "kept"}
 
 
 def test_narrow_ab_mode_rejects_unknown():

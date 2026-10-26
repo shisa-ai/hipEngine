@@ -193,6 +193,10 @@ def test_gdn_isolation_changes_only_gdn_over_strict() -> None:
     assert candidate.environment["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"] == (
         ",".join(map(str, range(27, 48)))
     )
+    # The wave-norm admission is request-local runner state, so the arm names
+    # the leaf explicitly instead of carrying a process-wide switch.
+    assert "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM" not in candidate.environment
+    assert candidate.gdn_prefill_variant == "qwen4exp_sigmoid_wave_norm_prefill"
     assert candidate.candidate_key[-1] == "qwen4exp_gdn_tiled16_dpp_prefill"
 
 

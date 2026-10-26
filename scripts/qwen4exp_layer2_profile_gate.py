@@ -45,7 +45,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from hipengine.benchmark.execution_profiles import EvaluationThresholds
-from hipengine.runtime.qwen4_exp_runner import qsa_prefill_head_mode
+from hipengine.runtime.qwen4_exp_runner import (
+    gdn_prefill_variant, qsa_prefill_head_mode,
+)
 from scripts.execution_profile_gdn_calibration import (
     PromptCalibrationCapture,
     build_candidate_quality,
@@ -95,6 +97,10 @@ class CandidateSpec:
     # the base profile published; the gate binds a non-None value with
     # ``qsa_prefill_head_mode`` around the measured rows and restores it after.
     qsa_prefill_head_mode: str | None = None
+    # Explicit GDN serial-prefill owner for this arm, same protocol. ``None``
+    # keeps the base profile's published variant (the register parent on a
+    # strict base); a wide/narrow name binds that leaf for the measured rows.
+    gdn_prefill_variant: str | None = None
 
     @property
     def requires_dispatch_count(self) -> bool:
@@ -566,7 +572,6 @@ CANDIDATES = {
         mechanism="current GDN suffix over strict non-GDN arithmetic",
         environment={
             "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": "1",
-            "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM": "1",
             "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL": "1",
             "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS": ",".join(map(str, range(35, 48))),
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
@@ -576,6 +581,7 @@ CANDIDATES = {
         },
         base_profile="strict",
         scenario_id="qwen4exp-ud-q4-k-xl-gdn-isolated",
+        gdn_prefill_variant="qwen4exp_sigmoid_wave_norm_prefill",
         candidate_key=("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
                        "qwen4exp_gdn_tiled16_dpp_prefill"),
         fallback_key=("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
@@ -1651,6 +1657,11 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         # the profile's own decision comes back when the stack unwinds.
         dispatch_stack.enter_context(qsa_prefill_head_mode(
             candidate_generator.runner, candidate_spec.qsa_prefill_head_mode))
+    if candidate_spec.gdn_prefill_variant is not None:
+        # Same for the GDN serial owner: the arm names its leaf explicitly and
+        # the base profile's published variant is restored on exit.
+        dispatch_stack.enter_context(gdn_prefill_variant(
+            candidate_generator.runner, candidate_spec.gdn_prefill_variant))
     counter = {"calls": 0, "shapes": {}}
     batch_evidence = None
     batch_runs: dict[str, list[tuple[Mapping[str, Any], ...]]] = {}

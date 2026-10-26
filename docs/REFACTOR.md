@@ -679,7 +679,7 @@ condition are in "Prefill chunk capacity guard"; they are not repeated here.
 Cleanup status (2026-10-25, R0023): membership and binding precedence are
 corrected below. No runtime cleanup remains in this section; individual routes
 keep their recorded repair or removal conditions. `PRODUCTION_ARITHMETIC_RECOVERY_FLAGS`
-in `hipengine/generation/qwen4_exp_profiles.py` holds 14 flags, and the sweep
+in `hipengine/generation/qwen4_exp_profiles.py` holds 13 flags, and the sweep
 that zeroes them runs for the `gguf_ud_q4_k_xl` quant, whose production and fast
 plans share this binder. A binding plus a sweep entry means "the plan says on,
 the sweep says off".
@@ -2742,40 +2742,6 @@ the allocation repair. The observations and proposal below are historical.
 - Convolution tails currently use owned host snapshots at chunk boundaries.
   Replace these with device-resident tails only after the same whole/chunk,
   60-second transition, recording-reset and post-join-noise tests pass.
-
-## Qwen4Exp GDN checked-index production leaf
-
-- `qwen4exp_sigmoid_wave_norm_narrow_prefill` is the gfx1151 UD production
-  serial owner only at Hk16/Hv48/D128, 2–4096 rows. Raw Python/int64 ABI
-  element bounds remain mandatory. Other quant/strict/shape scopes unchanged.
-- `HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT` is a temporary parent rollback:
-  set `qwen4exp_sigmoid_wave_norm_prefill` before plan registration/generator
-  construction. The resolved manifest and binder publish the same variant.
-  Retain the wide key for outside-bound fallback and bisection; remove the
-  rollback env after the next qualified GDN change or release window.
-- Exact natural owner saving is 1.027–1.044x, with all 20 full-state/KV cases
-  and 72 engine trajectories exact. Engine weighted prefill improves
-  +0.149%/+0.303%/+0.227%; one prefill case -0.008%, three request cases
-  slower. Retain the owner saving, not an all-case request/decode claim.
-- Diagnostic owner/state/A/B interception pins the wide parent after binding
-  so it cannot become a null comparison after promotion. Remove those hooks
-  when the qualification harness uses native named plans per arm.
-  Evidence: `benchmarks/results/2026-10-06-qwen4exp-gdn-narrow-index/README.md`.
-
-## Qwen4Exp GDN wave-tail normalization production
-
-- Kernel-only `qwen4exp_sigmoid_wave_norm_prefill`: original serial
-  recurrence, exact128-element normalization tree with wave-local tail.
-- Hk16/Hv48/D128 at512/1024 tokens wins1.042x/1.040x; private scratch
-  rises24->36B. Whole-prefill contribution expected small,not measured.
-- Production-bound `HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM=1` replaces only the
-  serial-register parent;21-layer prefix, tiled suffix unchanged.
-  Five chunk1024 full-state/KV cases exact,21/84 calls,zero decode.
-  Full72 trajectories exact but model timing mixed/nearzero
-  (+0.010%/+0.139%/-0.044% PP). Actual-model owner probe saves~19ms
-  at p4096 across all categories,378 calls exact/all paired means faster.
-- Strict binds0. Retain parent opt-out for bisection; remove flag chain when
-  profile plans own selection. No headline throughput speedup claim.
 
 ## Qwen4Exp Q5_1 per-row partial publication production
 

@@ -1037,6 +1037,7 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
         getattr(generator, "dense_mmq_token64_enabled", False))
     runner.qsa_prefill_head_mode = str(
         getattr(generator, "qsa_prefill_head_mode", "parent"))
+    runner.gdn_prefill_variant = getattr(generator, "gdn_prefill_variant", None)
     return runner
 
 

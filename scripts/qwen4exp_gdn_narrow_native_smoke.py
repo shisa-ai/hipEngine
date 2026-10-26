@@ -52,10 +52,12 @@ def main():
     from scripts.gguf_mtp_bench import build_chat_prompt
     from scripts.qwen4exp_gdn_narrow_gate_support import validate_call, expected_calls
 
-    env = "HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT"
-    wide = "qwen4exp_sigmoid_wave_norm_prefill"
-    narrow = "qwen4exp_sigmoid_wave_norm_narrow_prefill"
-    os.environ.pop(env, None)
+    from hipengine.runtime.qwen4_exp_runner import (
+        GDN_PREFILL_NARROW_VARIANT, GDN_PREFILL_WIDE_VARIANT, gdn_prefill_variant,
+    )
+
+    wide = GDN_PREFILL_WIDE_VARIANT
+    narrow = GDN_PREFILL_NARROW_VARIANT
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
     profiles = {p: resolve_runtime_profile(model="qwen4_exp_gguf", backend="hip_gfx1151",
@@ -70,13 +72,32 @@ def main():
         kv_dtype="BF16", prefill_chunk_size=4096, max_sequence_length=4352, decode_steps=16, cases=[])
     generator = None
     originals = {}
+    colwarps_env = "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"
+    colwarps_previous = None
+    colwarps_bound = False
     try:
         index = load_gguf_index(discover_gguf_files(args.model_root)[0])
         generator = resolved.construct_generator(lambda: Qwen4ExpGGUFTextGenerator(
             model_path=args.model_root, weight_index=index, model_plugin=resolve_model(index.architecture or ""),
             backend="hip_gfx1151", max_sequence_length=4352, prefill_chunk_size=4096))
-        assert os.environ[env] == narrow
-        report["native_binder_value"] = os.environ[env]
+        assert generator.runner.gdn_prefill_variant == narrow
+        report["native_binder_value"] = generator.runner.gdn_prefill_variant
+        # Production binds the row-split tiled recurrence on every GDN layer, so
+        # the serial leaf this smoke counts only launches with the tiled branch
+        # closed. The key is read per dispatch; the profile's own value comes
+        # back in ``finally``.
+        colwarps_previous = os.environ.get(colwarps_env)
+        os.environ[colwarps_env] = "0"
+        colwarps_bound = True
+        report["serial_route_control"] = {
+            "environment": colwarps_env, "value": "0",
+            "previous": colwarps_previous, "arms": "all",
+            "scope": "whole measurement; restored on exit",
+            "reason": (
+                "production binds the row-split tiled recurrence on every GDN "
+                "layer, so the counted serial leaf only launches with the "
+                "tiled branch closed"),
+        }
         counts = {wide: 0, narrow: 0}
         for variant in (wide, narrow):
             key = KernelKey("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state", variant)
@@ -96,45 +117,46 @@ def main():
         for case in cases:
             captures = []
             for mode in ("native", "parent", "native", "parent"):
-                # The first native arm uses untouched binder output; later
-                # arms restore exactly that named value after parent comparison.
-                if mode == "parent":
-                    os.environ[env] = wide
-                elif os.environ[env] != narrow:
-                    os.environ[env] = report["native_binder_value"]
-                before = dict(counts)
-                first = generator.runner.prefill(case["prompt_token_ids"])
-                prefill_state = _state_summary(generator.runner)
-                logits, token = [first.logits.copy()], int(first.token_id)
-                ids = [token]
-                prefill_calls = {k: counts[k] - before[k] for k in counts}
-                for _ in range(16):
-                    step = generator.runner.step(token)
-                    token = int(step.token_id)
-                    ids.append(token)
-                    logits.append(step.logits.copy())
-                generator.runner.runtime.device_synchronize()
-                state = _state_summary(generator.runner)
-                kv_hash = hashlib.sha256()
-                for attention in generator.runner.attention_states:
-                    for buffer in (attention.key_cache, attention.value_cache):
-                        raw = np.empty(buffer.nbytes, dtype=np.uint8)
-                        copy_device_to_host(host_array_ptr(raw), buffer, runtime=generator.runner.runtime)
-                        kv_hash.update(raw)
-                state["full_kv_sha256"] = kv_hash.hexdigest()
-                total_calls = {k: counts[k] - before[k] for k in counts}
-                expected = expected_calls(case["prompt_tokens"], 4096)
-                assert prefill_calls == total_calls, "GDN prefill selected in decode"
-                assert total_calls == {wide: expected if mode == "parent" else 0, narrow: expected if mode == "native" else 0}, total_calls
-                stack = np.stack(logits)
-                assert np.isfinite(stack).all()
-                capture = dict(mode=mode, prefill_calls=prefill_calls, decode_calls=0,
-                    logits_sha256=hashlib.sha256(stack.tobytes()).hexdigest(), prefill_state=prefill_state,
-                    state=state, output_token_ids=ids)
-                if captures:
-                    for k in ("logits_sha256", "prefill_state", "state", "output_token_ids"):
-                        assert capture[k] == captures[0][k], (case["id"], mode, k)
-                captures.append(capture)
+                # The first native arm uses untouched binder output; later arms
+                # restore exactly that published value after the parent
+                # comparison. The arm is request-local runner state, never a
+                # process-wide switch.
+                with gdn_prefill_variant(
+                        generator.runner,
+                        wide if mode == "parent" else report["native_binder_value"]):
+                    before = dict(counts)
+                    first = generator.runner.prefill(case["prompt_token_ids"])
+                    prefill_state = _state_summary(generator.runner)
+                    logits, token = [first.logits.copy()], int(first.token_id)
+                    ids = [token]
+                    prefill_calls = {k: counts[k] - before[k] for k in counts}
+                    for _ in range(16):
+                        step = generator.runner.step(token)
+                        token = int(step.token_id)
+                        ids.append(token)
+                        logits.append(step.logits.copy())
+                    generator.runner.runtime.device_synchronize()
+                    state = _state_summary(generator.runner)
+                    kv_hash = hashlib.sha256()
+                    for attention in generator.runner.attention_states:
+                        for buffer in (attention.key_cache, attention.value_cache):
+                            raw = np.empty(buffer.nbytes, dtype=np.uint8)
+                            copy_device_to_host(host_array_ptr(raw), buffer, runtime=generator.runner.runtime)
+                            kv_hash.update(raw)
+                    state["full_kv_sha256"] = kv_hash.hexdigest()
+                    total_calls = {k: counts[k] - before[k] for k in counts}
+                    expected = expected_calls(case["prompt_tokens"], 4096)
+                    assert prefill_calls == total_calls, "GDN prefill selected in decode"
+                    assert total_calls == {wide: expected if mode == "parent" else 0, narrow: expected if mode == "native" else 0}, total_calls
+                    stack = np.stack(logits)
+                    assert np.isfinite(stack).all()
+                    capture = dict(mode=mode, prefill_calls=prefill_calls, decode_calls=0,
+                        logits_sha256=hashlib.sha256(stack.tobytes()).hexdigest(), prefill_state=prefill_state,
+                        state=state, output_token_ids=ids)
+                    if captures:
+                        for k in ("logits_sha256", "prefill_state", "state", "output_token_ids"):
+                            assert capture[k] == captures[0][k], (case["id"], mode, k)
+                    captures.append(capture)
             report["cases"].append(dict(case_id=case["id"], category=case["category"], prompt_tokens=case["prompt_tokens"], runs=captures, exact=True))
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(json.dumps(report, indent=2) + "\n")
@@ -143,6 +165,11 @@ def main():
     finally:
         for key, fn in originals.items():
             register(key, fn, replace=True)
+        if colwarps_bound:
+            if colwarps_previous is None:
+                os.environ.pop(colwarps_env, None)
+            else:
+                os.environ[colwarps_env] = colwarps_previous
         if generator is not None:
             generator.close()
         report["memory_after_close"] = memory_stats()

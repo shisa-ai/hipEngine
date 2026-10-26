@@ -1,5 +1,6 @@
 """Pair GDN owners on identical model-produced inputs; not throughput timing."""
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -25,6 +26,53 @@ def validate_geometry(args):
 
 def pair_order(index):
     return (0,1) if index % 2 == 0 else (1,0)
+
+
+@contextlib.contextmanager
+def serial_probe_scope(runner, *, narrow_index, environment=os.environ):
+    """Bind the probe's serial arm, and close the profile's tiled GDN branch.
+
+    Both are undone on exit, including when setup after this point fails. The
+    serial leaf is the tiled branch's fallback: production binds the row-split
+    recurrence on every GDN layer, so a probe that leaves the branch open
+    intercepts nothing. The key is read per dispatch, so closing it after
+    construction takes effect. Building this scope changes nothing; only
+    entering it does.
+    """
+
+    from hipengine.runtime.qwen4_exp_runner import (
+        GDN_PREFILL_NARROW_VARIANT, GDN_PREFILL_WIDE_VARIANT, gdn_prefill_variant,
+    )
+
+    env = "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"
+    previous = environment.get(env)
+    environment[env] = "0"
+    try:
+        with contextlib.ExitStack() as stack:
+            if narrow_index:
+                stack.enter_context(gdn_prefill_variant(
+                    runner, GDN_PREFILL_WIDE_VARIANT))
+                key = KernelKey("hip_gfx1151", "gdn_recurrence_norm_gate",
+                                "f32_state", GDN_PREFILL_WIDE_VARIANT)
+                candidate_variant = GDN_PREFILL_NARROW_VARIANT
+            else:
+                stack.enter_context(gdn_prefill_variant(runner, None))
+                key = KernelKey("hip_gfx1151", "gdn_recurrence_norm_gate",
+                                "f32_state", "qwen4exp_sigmoid_register_prefill")
+                candidate_variant = GDN_PREFILL_WIDE_VARIANT
+            yield key, candidate_variant, {
+                "environment": env, "value": "0", "previous": previous,
+                "arms": "both", "scope": "whole measurement; restored on exit",
+                "reason": (
+                    "production binds the row-split tiled recurrence on every "
+                    "GDN layer, so the counted serial leaf only launches with "
+                    "the tiled branch closed"),
+            }
+    finally:
+        if previous is None:
+            environment.pop(env, None)
+        else:
+            environment[env] = previous
 
 
 def main():
@@ -54,92 +102,93 @@ def main():
         model_path=args.model_root,weight_index=index,model_plugin=gate.resolve_model(index.architecture or ""),
         backend="hip_gfx1151",max_sequence_length=4352,prefill_chunk_size=args.prefill_chunk_size))
     runtime=generator.runner.runtime
+    published = generator.runner.gdn_prefill_variant
     # Intercept only the selected leaf; the current UD arithmetic recovery uses
     # wave-norm on all 36 GDN layers, unlike the historical 21-layer prefix.
-    if args.narrow_index:
-        # Pin the intercepted parent after binding, including on promoted trees.
-        os.environ["HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT"]="qwen4exp_sigmoid_wave_norm_prefill"
-        from scripts.qwen4exp_gdn_narrow_gate_support import validate_call, expected_calls
-        key=KernelKey("hip_gfx1151","gdn_recurrence_norm_gate","f32_state","qwen4exp_sigmoid_wave_norm_prefill")
-        candidate_variant="qwen4exp_sigmoid_wave_norm_narrow_prefill"
-    else:
-        os.environ["HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"]="0"
-        key=KernelKey("hip_gfx1151","gdn_recurrence_norm_gate","f32_state","qwen4exp_sigmoid_register_prefill")
-        candidate_variant="qwen4exp_sigmoid_wave_norm_prefill"
-    parent=resolve(backend=key.backend,layer=key.layer,quant=key.quant,variant=key.variant)
-    candidate=resolve(backend=key.backend,layer=key.layer,quant=key.quant,variant=candidate_variant)
-    saved=malloc(48*128*128*4,runtime=runtime)
-    start,stop=runtime.event_create(),runtime.event_create()
-    report=dict(source=gate._git_metadata(ROOT),host=gate._host_metadata(),model_identity=identity,
-        command=sys.argv,fixture_sha256=digest,chunk_size=args.prefill_chunk_size,cases=[],status="running",
-        parent_variant=key.variant,candidate_variant=candidate_variant,
-        manifest_sha256=profile.manifest_sha256,
-        manifest_scope="named profile; diagnostic parent/candidate hook overrides GDN selection",
-        protocol="Every serial call: restore starting state outside timing,1 warmup pair+2 measured counterbalanced pairs; compare complete output/state hashes after every pair. Only HIP-event kernel intervals timed.",
-        performance_claim=False)
-    captures=[]
-
-    def hooked(*a,**kw):
-        if args.narrow_index:
-            validate_call(a, max_rows=args.prefill_chunk_size)
-        else:
-            validate_geometry(a)
-        if int(kw.get("stream",0))!=0:
-            raise ValueError("owner probe only supports default stream")
-        runtime.device_synchronize()
-        runtime.memcpy(saved.ptr,a[7],saved.nbytes,3)
-        samples=[[],[]]
-        for rep in range(3):
-            hashes={}
-            for arm in pair_order(rep+len(captures)):
-                runtime.memcpy(a[7],saved.ptr,saved.nbytes,3)
-                runtime.device_synchronize()
-                runtime.event_record(start)
-                (parent if arm==0 else candidate)(*a,**kw)
-                runtime.event_record(stop)
-                runtime.event_synchronize(stop)
-                if rep:
-                    samples[arm].append(runtime.event_elapsed_time_ms(start,stop))
-                h=hashlib.sha256()
-                for ptr,shape in ((a[7],(48,128,128)),(a[8],(a[9],48,128))):
-                    data=_download(SimpleNamespace(ptr=ptr,nbytes=int(np.prod(shape))*4),
-                                   shape,np.float32,runtime)
-                    if not np.isfinite(data).all():
-                        raise AssertionError("nonfinite model GDN output/state")
-                    h.update(data.tobytes())
-                hashes[arm]=h.hexdigest()
-            if hashes[0]!=hashes[1]:
-                raise AssertionError("GDN model-input output/state mismatch")
-        captures.append(dict(tokens=a[9],samples_ms=samples,exact=True))
-
+    # The intercepted parent is pinned on the runner after binding, including on
+    # promoted trees, so the dispatch resolves the slot this probe replaces.
+    from scripts.qwen4exp_gdn_narrow_gate_support import validate_call, expected_calls
+    report = None
     try:
-        register(key,hooked,replace=True)
-        for case in cases:
-            captures.clear()
-            token=generator.runner.prefill(case["prompt_token_ids"])
-            expected=(expected_calls(case["prompt_tokens"],args.prefill_chunk_size)
-                      if args.narrow_index else
-                      gate.gdn_wave_norm_expected_calls(case["prompt_tokens"],args.prefill_chunk_size))
-            if len(captures)!=expected:
-                raise AssertionError((case["id"],len(captures),expected))
-            totals=[sum(statistics.mean(c["samples_ms"][i]) for c in captures) for i in (0,1)]
-            report["cases"].append(dict(id=case["id"],calls=len(captures),first_token=token.token_id,
-                parent_ms=totals[0],candidate_ms=totals[1],speedup=totals[0]/totals[1],
-                captures=list(captures)))
-            print(case["id"],totals,totals[0]/totals[1],flush=True)
-        report["status"]="passed"
-    except Exception as error:
-        report["status"]="failed"
-        report["error"]=repr(error)
-        raise
+        with serial_probe_scope(
+                generator.runner, narrow_index=args.narrow_index) as (
+                    key, candidate_variant, control):
+            parent=resolve(backend=key.backend,layer=key.layer,quant=key.quant,variant=key.variant)
+            candidate=resolve(backend=key.backend,layer=key.layer,quant=key.quant,variant=candidate_variant)
+            saved=malloc(48*128*128*4,runtime=runtime)
+            start,stop=runtime.event_create(),runtime.event_create()
+            report=dict(source=gate._git_metadata(ROOT),host=gate._host_metadata(),model_identity=identity,
+                command=sys.argv,fixture_sha256=digest,chunk_size=args.prefill_chunk_size,cases=[],status="running",
+                parent_variant=key.variant,candidate_variant=candidate_variant,
+                profile_published_variant=published,
+                serial_route_control=control,
+                manifest_sha256=profile.manifest_sha256,
+                manifest_scope="named profile; diagnostic parent/candidate hook overrides GDN selection",
+                protocol="Every serial call: restore starting state outside timing,1 warmup pair+2 measured counterbalanced pairs; compare complete output/state hashes after every pair. Only HIP-event kernel intervals timed.",
+                performance_claim=False)
+            captures=[]
+
+            def hooked(*a,**kw):
+                if args.narrow_index:
+                    validate_call(a, max_rows=args.prefill_chunk_size)
+                else:
+                    validate_geometry(a)
+                if int(kw.get("stream",0))!=0:
+                    raise ValueError("owner probe only supports default stream")
+                runtime.device_synchronize()
+                runtime.memcpy(saved.ptr,a[7],saved.nbytes,3)
+                samples=[[],[]]
+                for rep in range(3):
+                    hashes={}
+                    for arm in pair_order(rep+len(captures)):
+                        runtime.memcpy(a[7],saved.ptr,saved.nbytes,3)
+                        runtime.device_synchronize()
+                        runtime.event_record(start)
+                        (parent if arm==0 else candidate)(*a,**kw)
+                        runtime.event_record(stop)
+                        runtime.event_synchronize(stop)
+                        if rep:
+                            samples[arm].append(runtime.event_elapsed_time_ms(start,stop))
+                        h=hashlib.sha256()
+                        for ptr,shape in ((a[7],(48,128,128)),(a[8],(a[9],48,128))):
+                            data=_download(SimpleNamespace(ptr=ptr,nbytes=int(np.prod(shape))*4),
+                                           shape,np.float32,runtime)
+                            if not np.isfinite(data).all():
+                                raise AssertionError("nonfinite model GDN output/state")
+                            h.update(data.tobytes())
+                        hashes[arm]=h.hexdigest()
+                    if hashes[0]!=hashes[1]:
+                        raise AssertionError("GDN model-input output/state mismatch")
+                captures.append(dict(tokens=a[9],samples_ms=samples,exact=True))
+
+            try:
+                register(key,hooked,replace=True)
+                for case in cases:
+                    captures.clear()
+                    token=generator.runner.prefill(case["prompt_token_ids"])
+                    expected=expected_calls(case["prompt_tokens"],args.prefill_chunk_size)
+                    if len(captures)!=expected:
+                        raise AssertionError((case["id"],len(captures),expected))
+                    totals=[sum(statistics.mean(c["samples_ms"][i]) for c in captures) for i in (0,1)]
+                    report["cases"].append(dict(id=case["id"],calls=len(captures),first_token=token.token_id,
+                        parent_ms=totals[0],candidate_ms=totals[1],speedup=totals[0]/totals[1],
+                        captures=list(captures)))
+                    print(case["id"],totals,totals[0]/totals[1],flush=True)
+                report["status"]="passed"
+            except Exception as error:
+                report["status"]="failed"
+                report["error"]=repr(error)
+                raise
+            finally:
+                register(key,parent,replace=True)
+                runtime.event_destroy(start)
+                runtime.event_destroy(stop)
+                free(saved,runtime=runtime)
     finally:
-        register(key,parent,replace=True)
-        runtime.event_destroy(start)
-        runtime.event_destroy(stop)
-        free(saved,runtime=runtime)
         generator.close()
-        report["memory_after_close"]=memory_stats()
-        args.output.write_text(json.dumps(report,indent=2)+"\n")
+        if report is not None:
+            report["memory_after_close"]=memory_stats()
+            args.output.write_text(json.dumps(report,indent=2)+"\n")
 
 
 if __name__=="__main__":

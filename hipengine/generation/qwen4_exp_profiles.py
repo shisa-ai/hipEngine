@@ -15,6 +15,7 @@ from hipengine.execution_profiles import (
     VariantSelection,
     register_runtime_profile_plan,
     registered_runtime_profile_keys,
+    resolve_runtime_profile,
 )
 
 from hipengine.runtime.gguf_linear import (
@@ -240,7 +241,6 @@ def _selected_router_producer_variant(*, recovery: bool = False) -> str:
     return requested
 
 
-_GDN_PREFILL_VARIANT_ENV = "HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT"
 _GDN_WIDE_VARIANT = "qwen4exp_sigmoid_wave_norm_prefill"
 _GDN_NARROW_VARIANT = "qwen4exp_sigmoid_wave_norm_narrow_prefill"
 _GDN_NARROW_SCOPE = "prefill_rows_2_4096_serial_gdn_hk16_hv48_d128"
@@ -249,13 +249,21 @@ _GDN_NARROW_EVIDENCE = (
 )
 
 
-def _selected_gdn_prefill_variant() -> str:
-    """Resolve the UD production plan, including explicit parent rollback."""
+def _selected_gdn_prefill_variant(requested: str | None = None) -> str:
+    """Resolve the UD production plan's serial owner, including an explicit rollback.
 
-    requested = os.environ.get(_GDN_PREFILL_VARIANT_ENV, "").strip() or _GDN_NARROW_VARIANT
-    if requested not in (_GDN_WIDE_VARIANT, _GDN_NARROW_VARIANT):
-        raise ValueError(f"{_GDN_PREFILL_VARIANT_ENV} must name the wide or narrow wave-norm variant")
-    return requested
+    ``requested`` is a named, scoped plan-construction argument: the plan is
+    registered with it and the binder republishes the resulting manifest row as
+    request-local runner state. No process-wide switch selects this leaf.
+    """
+
+    value = str(requested or "").strip() or _GDN_NARROW_VARIANT
+    if value not in (_GDN_WIDE_VARIANT, _GDN_NARROW_VARIANT):
+        raise ValueError(
+            "gdn_prefill_variant must name the wide or narrow wave-norm "
+            f"variant; got {value!r}"
+        )
+    return value
 
 
 _DENSE_WIDE_TAIL_PARENT = "dense_wide256_f16in_f32_f32_out"
@@ -553,7 +561,9 @@ def _recovery_gdn_scopes(
     return tuple(result)
 
 
-def _production_selections(*, recovery: bool = False) -> tuple[VariantSelection, ...]:
+def _production_selections(
+    *, recovery: bool = False, gdn_prefill_variant: str | None = None,
+) -> tuple[VariantSelection, ...]:
     selections = (
         _selection(
             "gdn_recurrence_norm_gate", "prefill_rows_ge16_hk16_hv32_48_d128_layers27_47",
@@ -822,7 +832,7 @@ def _production_selections(*, recovery: bool = False) -> tuple[VariantSelection,
         "strict_h256_head_quad_rows_spans", "strict_ordered_three_pass_spans",
         "strict_ordered_three_pass_v2_spans",
     }
-    gdn_variant = _selected_gdn_prefill_variant()
+    gdn_variant = _selected_gdn_prefill_variant(gdn_prefill_variant)
     selections = _recovery_gdn_scopes(
         selections, variant=gdn_variant,
         evidence=_GDN_NARROW_EVIDENCE if gdn_variant == _GDN_NARROW_VARIANT else None,
@@ -871,7 +881,9 @@ def last_prebinder_conflicts() -> dict[str, tuple[str, str]]:
     return dict(_last_prebinder_conflicts)
 
 
-def _f16_route_selections() -> tuple[VariantSelection, ...]:
+def _f16_route_selections(
+    *, gdn_prefill_variant: str | None = None,
+) -> tuple[VariantSelection, ...]:
     """The arithmetic-recovery plan with the F16-operand route overrides."""
 
     result = []
@@ -880,7 +892,9 @@ def _f16_route_selections() -> tuple[VariantSelection, ...]:
     # rollback and is kept; the binder's own published value is not.
     requested = os.environ.get(_ROUTER_VARIANT_ENV, "").strip()
     router_named = bool(requested) and _binder_written.get(_ROUTER_VARIANT_ENV) != requested
-    for selection in _production_selections(recovery=True):
+    for selection in _production_selections(
+        recovery=True, gdn_prefill_variant=gdn_prefill_variant,
+    ):
         key = (selection.layer, selection.scope, selection.registry_quant)
         variant = _F16_ROUTE_SCOPES.get(key)
         if (
@@ -1044,6 +1058,24 @@ def _bind(
     # manifest names that WMMA owner for the same scope, which is why this value
     # follows the binder rather than the manifest row.
     qsa_prefill_head_mode = "quad" if production else "parent"
+    # GDN serial-prefill owner, published as request-local state on the owning
+    # runner rather than a process-wide switch. The production binder publishes
+    # the manifest row the plan already declares for the checked-index scope -
+    # the narrow leaf on the UD lane, the wide leaf on a rolled-back or
+    # non-recovered plan - and the strict binder (which every plan that falls
+    # back to it runs) keeps the register parent. The dispatch-time selector
+    # still guards the narrow leaf on its Hk16/Hv48/D128 2..4096-row bounds and
+    # on the registry carrying it.
+    gdn_prefill_variant = (
+        next(
+            (row["selected_variant"] for row in resolved.manifest["selections"]
+             if row["layer"] == "gdn_recurrence_norm_gate"
+             and row["scope"] == _GDN_NARROW_SCOPE),
+            _GDN_WIDE_VARIANT,
+        )
+        if production
+        else None
+    )
     for key, value in {
         "HIPENGINE_GGUF_WMMA_PREFILL": "0",
         # Publish the router producer the manifest declares, so the runner's
@@ -1128,17 +1160,6 @@ def _bind(
         "HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM": "1" if production else "0",
-        # Plan registration captures explicit parent rollback. The binder
-        # publishes that same selection; strict and Q4_K_M stay wide-index.
-        _GDN_PREFILL_VARIANT_ENV: (
-            next(
-                (row["selected_variant"] for row in resolved.manifest["selections"]
-                 if row["layer"] == "gdn_recurrence_norm_gate"
-                 and row["scope"] == _GDN_NARROW_SCOPE),
-                _GDN_WIDE_VARIANT,
-            ) if production else _GDN_WIDE_VARIANT
-        ),
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256" if production else "0",
         # ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
         # routing on layers 27-47.
@@ -1301,11 +1322,13 @@ def _bind(
     generator.dense_f16_pair_enabled = dp2_pair_enabled
     generator.dense_mmq_token64_enabled = dense_mmq_token64_enabled
     generator.qsa_prefill_head_mode = qsa_prefill_head_mode
+    generator.gdn_prefill_variant = gdn_prefill_variant
     runner = getattr(generator, "runner", None)
     if runner is not None:
         runner.dense_f16_pair_enabled = dp2_pair_enabled
         runner.dense_mmq_token64_enabled = dense_mmq_token64_enabled
         runner.qsa_prefill_head_mode = qsa_prefill_head_mode
+        runner.gdn_prefill_variant = gdn_prefill_variant
     if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl":
         _apply_profile_env(
             {
@@ -1344,10 +1367,15 @@ def _production_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None
     _bind(generator, resolved, production=True)
 
 
-def _plan_selections(quant: str) -> tuple[VariantSelection, ...]:
+def _plan_selections(
+    quant: str, *, gdn_prefill_variant: str | None = None,
+) -> tuple[VariantSelection, ...]:
     if quant in F16_ROUTE_QUANTS:
-        return _f16_route_selections()
-    return _production_selections(recovery=quant == "gguf_ud_q4_k_xl")
+        return _f16_route_selections(gdn_prefill_variant=gdn_prefill_variant)
+    return _production_selections(
+        recovery=quant == "gguf_ud_q4_k_xl",
+        gdn_prefill_variant=gdn_prefill_variant,
+    )
 
 
 def _wanted_keys() -> set[RuntimeProfileKey]:
@@ -1362,10 +1390,54 @@ def _key(quant: str, profile: ExecutionProfile) -> RuntimeProfileKey:
     return RuntimeProfileKey(QWEN4_EXP_MODEL, QWEN4_EXP_BACKEND, quant, profile)
 
 
-def register_qwen4_exp_gfx1151_profiles() -> bool:
+def _registered_gdn_prefill_variant() -> str | None:
+    """The serial owner the registered UD production plan declares."""
+
+    resolved = resolve_runtime_profile(
+        model=QWEN4_EXP_MODEL, backend=QWEN4_EXP_BACKEND,
+        quant="gguf_ud_q4_k_xl", profile=ExecutionProfile.PRODUCTION,
+    )
+    return next(
+        (row["selected_variant"] for row in resolved.manifest["selections"]
+         if row["layer"] == "gdn_recurrence_norm_gate"
+         and row["scope"] == _GDN_NARROW_SCOPE),
+        None,
+    )
+
+
+def register_qwen4_exp_gfx1151_profiles(
+    *, gdn_prefill_variant: str | None = None,
+) -> bool:
+    """Register the Qwen4Exp gfx1151 plans.
+
+    ``gdn_prefill_variant`` is the named plan-construction control for the UD
+    serial GDN owner: ``None`` keeps the qualified narrow selection and an
+    explicit wide name registers the parent-rollback plan. It is registry
+    configuration, not a request-scoped override: the plan is fixed when it is
+    registered, the binder republishes that plan's row as request-local runner
+    state, and a later conflicting explicit request fails instead of silently
+    reusing the registered plan. A no-argument call stays idempotent.
+    """
+
+    # Validate an explicit request before the idempotent return, so a caller
+    # cannot get ``False`` back for a value that names no leaf, or a plan that
+    # contradicts the one it asked for.
+    requested = (
+        None if gdn_prefill_variant is None
+        else _selected_gdn_prefill_variant(gdn_prefill_variant)
+    )
     wanted = _wanted_keys()
     existing = set(registered_runtime_profile_keys())
     if wanted <= existing:
+        if requested is not None:
+            registered = _registered_gdn_prefill_variant()
+            if registered != requested:
+                raise RuntimeError(
+                    "the registered Qwen4Exp UD production plan selects "
+                    f"{registered!r}, not the requested {requested!r}; the plan "
+                    "is fixed at registration, so clear the registry (tests) "
+                    "or register in a new process"
+                )
         return False
     if existing & wanted:
         raise RuntimeError("Qwen4Exp gfx1151 profile registry is partially populated")
@@ -1390,7 +1462,9 @@ def register_qwen4_exp_gfx1151_profiles() -> bool:
             quant=quant,
             profile=ExecutionProfile.PRODUCTION,
             plan=RuntimeProfilePlan(
-                selections=_plan_selections(quant),
+                selections=_plan_selections(
+                    quant, gdn_prefill_variant=gdn_prefill_variant,
+                ),
                 kv_policy="paged_bf16_qsa_index_f32",
                 graph_policy="request_owned_exact_moe_graph_c1",
                 binder=_production_binder,
@@ -1408,7 +1482,9 @@ def register_qwen4_exp_gfx1151_profiles() -> bool:
             quant=quant,
             profile=ExecutionProfile.FAST,
             plan=RuntimeProfilePlan(
-                selections=_plan_selections(quant),
+                selections=_plan_selections(
+                    quant, gdn_prefill_variant=gdn_prefill_variant,
+                ),
                 kv_policy="paged_bf16_qsa_index_f32",
                 graph_policy="request_owned_exact_moe_graph_c1",
                 binder=_production_binder,

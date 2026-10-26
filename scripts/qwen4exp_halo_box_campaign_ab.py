@@ -283,9 +283,14 @@ def q8_down_register_expected_calls(tokens: int,chunk: int) -> int:
 
 
 def gdn_wave_norm_expected_calls(tokens: int, chunk: int) -> int:
-    # Layers0..26 exclude six QSA layers; later GDN layers use tiled prefill.
+    """Serial wave-norm calls: every GDN layer once per chunk of 2+ rows.
+
+    ``route_scope`` closes the tiled GDN branch for both arms of a serial-owner
+    package, so all 36 GDN layers dispatch the serial leaf; the 21-layer prefix
+    this counted before was the tiled branch's own window, not a serial arm.
+    """
     full, tail = divmod(tokens, chunk)
-    return 21 * (full * (chunk >= 2) + (tail >= 2))
+    return 36 * (full * (chunk >= 2) + (tail >= 2))
 
 def mmq_token64_expected_calls(tokens: int, chunk: int) -> int:
     full,tail=divmod(tokens,chunk)
@@ -368,18 +373,69 @@ def restore_route_configuration(record, *, environment=os.environ):
         environment[record["environment"]] = previous
 
 
-def route_scope(route_package: str, mode: str, runner: Any = None):
+#: Route packages whose counted leaf is the serial GDN recurrence.
+GDN_SERIAL_ROUTE_PACKAGES = frozenset({"gdn-narrow", "gdn-wave-norm"})
+GDN_COLWARPS_ENV = "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"
+
+
+@contextlib.contextmanager
+def gdn_serial_scope(*, environment=os.environ):
+    """Close the tiled GDN branch for the measured window of a serial arm.
+
+    Production binds ``GDN_COLWARPS_PREFILL=1`` with the row-split recurrence on
+    every GDN layer (``GDN_COLWARPS_LAYERS=0..47``), and that owner serves any
+    row count, so the serial wave-norm / narrow leaf these arms count never
+    launches while the tiled branch is open. Both arms close it; the profile's
+    own value comes back on exit. The key is read per dispatch, not cached at
+    construction, so closing it after the generator exists still takes effect.
+    """
+
+    previous = environment.get(GDN_COLWARPS_ENV)
+    environment[GDN_COLWARPS_ENV] = "0"
+    try:
+        yield
+    finally:
+        if previous is None:
+            environment.pop(GDN_COLWARPS_ENV, None)
+        else:
+            environment[GDN_COLWARPS_ENV] = previous
+
+
+@contextlib.contextmanager
+def _combined_scope(*scopes):
+    """Enter several diagnostic scopes together, and only when entered.
+
+    Building a scope must not change state: the campaign calls ``route_scope``
+    once per arm and enters it with ``with``, so an eagerly entered
+    ``ExitStack`` would leave the arm bound before the measured run starts and
+    would keep it bound if the caller never entered at all.
+    """
+
+    with contextlib.ExitStack() as stack:
+        for scope in scopes:
+            stack.enter_context(scope)
+        yield
+
+
+def route_scope(route_package: str, mode: str, runner: Any = None, *,
+                environment: MutableMapping[str, str] = os.environ):
     """The live control a route package needs around its measured run.
 
     Most packages are selected through profile-owned env keys, which
     ``_apply_mode`` binds before the run. A package whose route is request-local
     state on the runner (the Q8 token64 dense leg, the QSA prefill head
     grouping) is selected here instead, so neither arm writes a process-wide
-    switch and the profile's own decision comes back on exit.
+    switch and the profile's own decision comes back on exit. The serial GDN
+    arms are the exception that needs both: the leaf is runner state, but
+    whether it serves the chunk at all is the profile's tiled branch, so the
+    scope closes that branch for the measured window and restores it.
     """
 
     from hipengine.runtime.gguf_linear import q8_mmq_token64_diagnostic
-    from hipengine.runtime.qwen4_exp_runner import qsa_prefill_head_mode
+    from hipengine.runtime.qwen4_exp_runner import (
+        GDN_PREFILL_NARROW_VARIANT, GDN_PREFILL_WIDE_VARIANT, gdn_prefill_variant,
+        qsa_prefill_head_mode,
+    )
 
     if route_package == "mmq-token64":
         if mode not in {"before", "after"}:
@@ -401,6 +457,32 @@ def route_scope(route_package: str, mode: str, runner: Any = None):
             if mode == "after"
             else "parent",
         )
+    if route_package in {"gdn-narrow", "gdn-wave-norm"}:
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            # Binding nothing would measure the profile's own GDN owner and
+            # report it as the arm, so an explicit GDN diagnostic must name its
+            # runner. Non-GDN packages keep their env-owned scope.
+            raise ValueError(
+                f"{route_package} needs the owning runner; binding no variant "
+                "would measure the profile's own GDN owner")
+        if route_package == "gdn-narrow":
+            # Both arms retain the wave-norm admission; the variant names which
+            # index width runs.
+            variant = gdn_prefill_variant(
+                runner,
+                GDN_PREFILL_NARROW_VARIANT if mode == "after"
+                else GDN_PREFILL_WIDE_VARIANT,
+            )
+        else:
+            variant = gdn_prefill_variant(
+                runner, GDN_PREFILL_WIDE_VARIANT if mode == "after" else None)
+        # The variant is request-local runner state, but which owner serves the
+        # chunk is the profile's process-wide tiled branch. Close it for both
+        # arms so the counted serial leaf is the one that runs.
+        return _combined_scope(
+            gdn_serial_scope(environment=environment), variant)
     return contextlib.nullcontext()
 
 
@@ -428,9 +510,7 @@ def _apply_mode(
     if route_package == "gdn-narrow":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
-        environment["HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"] = "1"
-        # The diagnostic hook owns the two arms even after native promotion.
-        environment["HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT"] = "qwen4exp_sigmoid_wave_norm_prefill"
+        # Request-local on the runner; ``route_scope`` binds the arm.
         return
     if route_package == "router-dpp":
         if mode not in {"before", "after"}:
@@ -460,7 +540,8 @@ def _apply_mode(
         if route_package == "gdn-register":
             flag = "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"
         if route_package == "gdn-wave-norm":
-            flag = "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"
+            # Request-local on the runner; ``route_scope`` binds the arm.
+            return
         if route_package == "mmq-token64":
             # Request-local on the runner; ``route_scope`` binds the arm.
             return
@@ -734,30 +815,43 @@ def main(argv: Sequence[str] | None = None) -> int:
     row4_calls = [0]
     register_mapped_calls = [0]
     original_row4 = None
+    narrow_original = None
+    narrow_key = None
     narrow_enabled = [False]
     if args.route_package == "gdn-narrow":
         from hipengine.kernels.registry import KernelKey, register, resolve
         from scripts.qwen4exp_gdn_narrow_gate_support import expected_calls as gdn_narrow_expected_calls, validate_call
         row4_key = KernelKey("hip_gfx1151", "gdn_recurrence_norm_gate", "f32_state",
                              "qwen4exp_sigmoid_wave_norm_prefill")
+        narrow_key = KernelKey(row4_key.backend, row4_key.layer, row4_key.quant,
+                               "qwen4exp_sigmoid_wave_norm_narrow_prefill")
         original_row4 = resolve(backend=row4_key.backend, layer=row4_key.layer,
                                 quant=row4_key.quant, variant=row4_key.variant)
-        narrow_candidate = resolve(backend=row4_key.backend, layer=row4_key.layer,
-                                   quant=row4_key.quant,
-                                   variant="qwen4exp_sigmoid_wave_norm_narrow_prefill")
+        narrow_original = resolve(backend=narrow_key.backend, layer=narrow_key.layer,
+                                  quant=narrow_key.quant, variant=narrow_key.variant)
+
+        def counted_wide(*call_args, **call_kwargs):
+            validate_call(call_args, max_rows=args.prefill_chunk_size)
+            return original_row4(*call_args, **call_kwargs)
+
         def counted_narrow(*call_args, **call_kwargs):
             validate_call(call_args, max_rows=args.prefill_chunk_size)
-            if narrow_enabled[0]:
-                row4_calls[0] += 1
-                return narrow_candidate(*call_args, **call_kwargs)
-            return original_row4(*call_args, **call_kwargs)
-        register(row4_key, counted_narrow, replace=True)
+            row4_calls[0] += 1
+            return narrow_original(*call_args, **call_kwargs)
+
+        # The arm selects one leaf through the runner's published variant, so
+        # engagement is observed on the leaf that actually ran rather than
+        # substituted into the parent's registry slot.
+        register(row4_key, counted_wide, replace=True)
+        register(narrow_key, counted_narrow, replace=True)
         artifact["arms"] = {
             "before": {"gdn": row4_key.variant},
-            "after": {"gdn": "qwen4exp_sigmoid_wave_norm_narrow_prefill"},
+            "after": {"gdn": narrow_key.variant},
         }
-        artifact["diagnostic_registry_substitution"] = True
-        artifact["profile"]["scope"] = "named profile; diagnostic arms override its GDN selection"
+        artifact["diagnostic_registry_substitution"] = False
+        artifact["diagnostic_runner_variant"] = True
+        artifact["profile"]["scope"] = (
+            "named profile; diagnostic arms override its GDN selection on the runner")
     if args.route_package == "norm-f16-publish":
         from hipengine.kernels.registry import register, resolve
         from scripts.qwen4exp_norm_f16_gate_support import (
@@ -1088,6 +1182,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         artifact["arms"] = {
             "before":{"gdn":"qwen4exp_sigmoid_register_prefill"},
             "after":{"gdn":"qwen4exp_sigmoid_wave_norm_prefill"}}
+    if args.route_package in GDN_SERIAL_ROUTE_PACKAGES:
+        artifact["serial_route_control"] = {
+            "environment": GDN_COLWARPS_ENV,
+            "value": "0",
+            "arms": "both",
+            "scope": "per measured run; restored on exit",
+            "reason": (
+                "production binds the row-split tiled recurrence on every GDN "
+                "layer, so the counted serial leaf only launches with the "
+                "tiled branch closed"),
+        }
     if args.route_package == "q51-row-publish":
         artifact["arms"] = {
             "before": {"q51_down": "selected_grouped_prefill_pair2_register_cache_bf16_bf16_out"},
@@ -1330,6 +1435,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 os.environ["HIPENGINE_QWEN4_EXP_GR_IU8_DOWN"] = "0"
         elif original_row4 is not None:
             register(row4_key, original_row4, replace=True)
+        if narrow_original is not None:
+            register(narrow_key, narrow_original, replace=True)
         if args.route_package == "router-dpp":
             register(router_key, router_original, replace=True)
             _apply_mode("before", route_package=args.route_package)

@@ -85,8 +85,6 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE",
         "HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL",
-        "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM",
-        "HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT",
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256",
         "HIPENGINE_QWEN4_EXP_ROUTED_F16",
         "HIPENGINE_QWEN4_EXP_GR_WIDE",
@@ -361,7 +359,18 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert wave["strict_fallback_variant"] == "coltile8_rowbatch4_f32_f32_out"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"] == "1"
+    # The GDN serial owner is request-local runner state published from the
+    # plan's own selection, so the binder writes no process-wide switch for it.
+    # This historical Q4_K_M production plan carries the non-recovery wide
+    # serial scope, so it publishes the wide leaf (the shipped Q4_K_M plan fails
+    # its envelope and resolves through the strict binder, which publishes the
+    # parent instead).
+    assert production_generator.gdn_prefill_variant == (
+        "qwen4exp_sigmoid_wave_norm_prefill")
+    assert fake_runner.gdn_prefill_variant == (
+        "qwen4exp_sigmoid_wave_norm_prefill")
+    assert "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM" not in os.environ
+    assert "HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT" not in os.environ
     assert fake_runner.dense_mmq_token64_enabled is True
     assert production_generator.qsa_prefill_head_mode == "quad"
     assert fake_runner.qsa_prefill_head_mode == "quad"
@@ -488,7 +497,9 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"] == "0"
+    assert strict_generator.gdn_prefill_variant is None
+    assert "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM" not in os.environ
+    assert "HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT" not in os.environ
     assert strict_generator.qsa_prefill_head_mode == "parent"
     assert "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR" not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "0"

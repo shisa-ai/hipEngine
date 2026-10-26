@@ -808,7 +808,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_ROUTER_VARIANT` | profile-selected | Names the router-logit producer; UD production selects the F16 WMMA GEMM, with ordered DPP for small multirow widths and named rollback. Strict/Q4_K_M keep tile4. |
 | `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP` | unset (F16 route sets `1`) | Warp-per-expert routed gate/up decode owner (reduction order differs). |
 | `HIPENGINE_QWEN4_EXP_GDN_DECODE_ROWSPLIT` | unset (F16 route sets `1`) | Row-split GDN decode step. |
-| `HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT` | profile-selected | Names the GDN prefill norm/gate owner (wide or narrow wave-norm). |
+| `HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT` | retired | No longer read. Named profile registration selects the serial GDN variant; the binder publishes it to the owning runner. |
 | `HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT` | profile-selected | Replaces the multi-column tile-16 GDN prefill body (for example with the row-split recurrence). |
 | `HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM` | unset (F16 route sets `1`) | Multi-row FP32 indexer projections on the small-matrix F16 WMMA GEMM. |
 | `HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR` | retired | No longer read. Whether the dense-wide F16 projections share one activation is a request-local decision the execution profile publishes to the runner that owns the prefill; regression tests assert this switch cannot enable it. |
@@ -881,7 +881,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL` | `page256` under production | Selects the `strict_h256_page256_wave_rows_spans` prefill variant; otherwise `strict_h256_wave_rows_spans`. |
 | `HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL` | production profile | Uses the flash sparse-attention prefill owner for dense rows with head_dim 256, gated by the `HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS` layer list. |
 | `HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL` | production profile | Uses the sigmoid register GDN recurrence prefill kernel for rows>=2 and the (16, 48, 128) head geometry. |
-| `HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM` | production profile | Remaps the register GDN prefill to the wave-norm sibling variant when registered. |
+| `HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM` | retired | No longer read. Serial GDN prefill consumes runner-local profile selection with registered wide/register fallback. |
 | `HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL` | `1` | Uses the tile16 GDN recurrence prefill variant; `0` opts out to the columnwarp parent (the serial strict route stays registered below both). |
 | `HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL` | production profile | Uses the peer-wave GDN prefill variant for head_dim 128, gated by the `HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS` layer list. |
 | `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL` | production profile | Uses the columnwarp GDN prefill variant, gated by the `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS` layer list. |

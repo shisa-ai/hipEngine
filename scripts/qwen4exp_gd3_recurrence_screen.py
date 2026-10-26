@@ -63,9 +63,9 @@ ROUTES = {
     # measured in the drift screen and rejected there).
     "wy_chunked": gdn.qwen4_exp_gdn_prefill_wy_f32,
     # The route the UD-Q4_K_XL production lane actually dispatches: the
-    # arithmetic-recovery pass closes the column-warp gate, and
-    # GDN_REGISTER_PREFILL=1 + GDN_WAVE_NORM=1 then resolve the register
-    # owner to its wave-norm sibling (256 VGPR, same as register_state).
+    # arithmetic-recovery pass closes the column-warp gate, and the profile's
+    # published GDN variant then resolves the register owner to its wave-norm
+    # sibling (256 VGPR, same as register_state).
     "wave_norm": gdn.qwen4_exp_gdn_wave_norm_prefill_f32,
     # The non-UD lane's owner, built with -DHIPENGINE_QWEN4_GDN_DPP=1 and
     # -DHIPENGINE_QWEN4_GDN_MULTI_COLUMN=1 (warps_per_block=8, cols=8), so it
