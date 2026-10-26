@@ -41,8 +41,8 @@
       "start_line": 55,
       "end_line": 83,
       "sha256": "89bc8a35142d49c61409d9cefaf8bf4f41c3244f4f5d5958c78b80866b85b999",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Fix and regression remain in tests/test_gpu_qwen4exp_q4_iu8_j32_tile.py. Historical closure: worklog/entries/20261018T112200.379001Z-lhl-qwen4exp-risk-queue-oob-5211f3.md and worklog/entries/20261018T150728.247921Z-lhl-qwen38-full-suite-green-88ab2b.md. Removed completed incident from active ledger; no runtime changes."],
       "subitems": []
     },
     {

@@ -52,35 +52,6 @@ attention readers that walk `[base, base+live)`, and the store's snapshot
 bookkeeping, so it needs its own correctness gate against the host oracle in
 `tests/test_gpu_dms_append_decode_hip.py`.
 
-## Full-suite GPU abort: an out-of-bounds index write in one test (fixed)
-
-`uv run pytest --suite all` and `uv run pytest --suite gpu` both died with
-`Fatal Python error: Aborted` (SIGABRT, no Python traceback) after a long GPU
-run, at a different file each time, always inside `hipMemcpy` or `hipFree`. The
-cause was one test, not the kernels.
-
-`tests/test_gpu_qwen4exp_q4_iu8_j32_tile.py::test_j32_tile_survives_the_exact_repair_chain`
-seeded the risk counter with the count measured by a preceding launch and sized
-the index queue to that count. The prefill publishes its queue through
-`atomicAdd(risk_count, 1)`, so the counter is an append cursor: the launch
-appended a second full queue behind the seeded one and wrote past the end of the
-allocation. Measured on the test's own fixture, the kernel published 2,480
-entries into a buffer sized for 1,240 int32, i.e. 4,960 bytes past the end. That
-corrupted the heap silently whenever the trailing allocation was unused, and
-terminated the process at whichever `hipMemcpy`/`hipFree` consumed the corrupted
-metadata next — which is why the abort moved between files and never reproduced
-for the file on its own (25 consecutive standalone runs passed).
-
-The test now zeroes the counter and sizes the queue to the worst case
-(`compact_rows * out_features_total`), matching `_run_tile` and the production
-runner, which already memsets the counter before every launch. A new
-`test_risk_counter_accumulates_so_the_queue_must_start_zeroed` pins the append
-contract: two launches without a reset report `2 * first`, and a reset returns
-the original count. Keep that test when this entry is retired.
-
-Confirmed green on 2026-10-18: `uv run pytest --suite all` reports 16,359 passed,
-208 skipped, 4 xfailed in 41:25 with no abort.
-
 ## Cached-build tests key off a mutable /tmp compiler-version file
 
 `tests/test_gpu_qwen38_int8_batch_attention_gpu.py` and the other
