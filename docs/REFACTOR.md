@@ -2932,17 +2932,6 @@ should be removed or collapsed.
   device-side reproduction of the 1024-thread occupancy loss measured in
   `benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf5-gdn-w32-prefill-ab.json`.
 
-## 2026-09-02 Qwen4Exp P9 load drop-behind
-
-- `HIPENGINE_QWEN4_EXP_LOAD_DROP_BEHIND=1` is an explicit default-off one-shot
-  serving control. It applies file `DONTNEED` only after successful device
-  ownership of non-PLE tensors; lazy PLE and validation readers are excluded.
-  Keep it only while one-shot low-RSS deployment is a supported product mode.
-  Remove the flag and branch if that mode is dropped, or replace it with a named
-  loader policy if repeated-load evidence establishes a production contract.
-  Never make it a reload-heavy default: retained controls force 13.75-15.61 GB
-  of request reads and about 6.1K major faults after load.
-
 ## 2026-08-30 Qwen4Exp P1 device-driven grouped Q8_0 down
 
 - `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED=1` selects the new device-driven grouped
@@ -12037,3 +12026,21 @@ workspace/build plumbing, migrate the route-swap tests, then run
 fallbacks. If retained, record its diagnostic owner and close the cleanup.
 The recorded integer-MMQ numerical failure is in
 `benchmarks/results/2026-09-09-zbook-ud-production-gate-reference.json`.
+
+### 2026-09-02 Qwen4Exp P9 load drop-behind
+
+R0143 disposition: deferred product decision.
+
+`HIPENGINE_QWEN4_EXP_LOAD_DROP_BEHIND=1` is an explicit default-off one-shot
+serving control. It applies file `DONTNEED` only after successful device
+ownership of non-PLE tensors; lazy PLE and validation readers are excluded.
+The implementation and exclusion test pass; the ENVS description is corrected.
+
+**Decision needed:** keep one-shot low-RSS deployment as a supported mode or
+retire it. **Clearing action:** if kept, retain the explicit control (or replace
+it with a named loader policy) and close this cleanup. If retired, remove the
+flag and advice branch, update ENVS, and run
+`tests/test_live_qwen4_exp_materialize.py` with its copy-order/PLE-exclusion
+coverage. Do not turn it into a reload-heavy default: the original controls
+forced 13.75-15.61 GB of request reads and about 6.1K major faults after load.
+No loader behavior changes in this disposition.

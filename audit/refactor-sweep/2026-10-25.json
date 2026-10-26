@@ -3826,13 +3826,13 @@
       "start_line": 3463,
       "end_line": 3473,
       "sha256": "6946f8c2e2a9bc2ccf79c8c947513ee1ae76ec35330aaf619ca35311f95ec071",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Verified advice follows successful non-PLE device copies and excludes lazy PLE; targeted copy-order/exclusion test passes. ENVS correction committed5a08a3fc6. Moved remaining keep/retire one-shot low-RSS product decision to bottom of REFACTOR with clearing actions; loader unchanged."],
       "subitems": [
         {
           "line": 3465,
           "text": "- `HIPENGINE_QWEN4_EXP_LOAD_DROP_BEHIND=1` is an explicit default-off one-shot",
-          "status": "pending"
+          "status": "deferred"
         }
       ]
     },
