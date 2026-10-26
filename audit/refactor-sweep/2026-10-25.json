@@ -1567,8 +1567,10 @@
       "start_line": 1869,
       "end_line": 1883,
       "sha256": "059944775460ca77a336141329b021537c299480ce33e89c0b174c868719ef53",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Capability admission separated from evidence identity; provider-state refusal and zero-partition AR regressions pass. Worklog:worklog/entries/20261026T071736.963919Z-cleanup-refactor-r0061-r0064-328b17.md."
+      ],
       "subitems": []
     },
     {
@@ -1603,23 +1605,25 @@
       "start_line": 1909,
       "end_line": 1960,
       "sha256": "95dbdaa15a99fd4584c64f3ff107f5c3faa4f0c7ba4185660a6749646c4757a0",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Capability admission separated from evidence identity; provider-state refusal and zero-partition AR regressions pass. Worklog:worklog/entries/20261026T071736.963919Z-cleanup-refactor-r0061-r0064-328b17.md."
+      ],
       "subitems": [
         {
           "line": 1927,
           "text": "- `hipengine/kernels/hip_gfx1151/__init__.py` lists `(8, 3)` in",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1943,
           "text": "- `hipengine/generation/qwen35_gguf_mtp2.py` `partition_max_requests` returns 0",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1953,
           "text": "- Remove the wide cell by either failing the route closed when the prompt sink is",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },

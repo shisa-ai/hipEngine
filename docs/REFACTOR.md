@@ -2177,8 +2177,9 @@ because the artifact axis is the execution identity, not the SHA-256.
 ## MTP admission no longer reads the artifact's byte digest (2026-09-20)
 
 `SpeculativeMTPServingKey.artifact_sha256` and `artifact_size_bytes` are
-provenance fields now; admission compares
-`artifact_execution_fingerprint` (`hipengine/loading/gguf.py`). The two Qwen3.8
+provenance fields. Evidence matching uses `artifact_execution_fingerprint`
+(`hipengine/loading/gguf.py`), while execution admission uses implementation
+capabilities and does not require a matching evidence identity. The two Qwen3.8
 plain builds differ by 1,024 metadata bytes and share one identity, and the
 resident file's SHA-256 is no longer computed on the serving path because no
 row reads it.
