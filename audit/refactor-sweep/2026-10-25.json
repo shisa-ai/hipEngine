@@ -2051,23 +2051,25 @@
       "start_line": 2353,
       "end_line": 2386,
       "sha256": "fd990a47259d73e47ae747258acb7561ccf144c0b86a7908031d3361afbaf973",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "Runtime screening flag and server override removed; explicit intent follows declared capability, automatic policy preserved. CPU/server/public validation in worklog/entries/20261026T090655.553954Z-cleanup-refactor-r0077-8e7b36.md."
+      ],
       "subitems": [
         {
           "line": 2355,
           "text": "- `HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS` previously reached only the resident",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 2366,
           "text": "- Removal scope is now larger than the 2026-09-06 entry below:",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 2375,
           "text": "- Keep the invariant while it lives: screening never applies to automatic",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
@@ -11437,8 +11439,10 @@
       "start_line": 9286,
       "end_line": 9310,
       "sha256": "a9d1723d1b3b7c1cbca7ed587c6a03e06ef1dcffe223b311df4d099e9ba3a070",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "Runtime screening flag and server override removed; explicit intent follows declared capability, automatic policy preserved. CPU/server/public validation in worklog/entries/20261026T090655.553954Z-cleanup-refactor-r0077-8e7b36.md."
+      ],
       "subitems": []
     },
     {

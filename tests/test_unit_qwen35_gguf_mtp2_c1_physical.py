@@ -99,9 +99,8 @@ def _wide_eligibility(rid: int, *, rows: int) -> SpeculativeMTPStaticEligibility
 
 
 @pytest.mark.parametrize('capacity', [2, 8])
-def test_explicit_c1_ownership_survives_wider_admission(monkeypatch, capacity):
+def test_explicit_c1_ownership_survives_wider_admission(capacity):
     # Separate C1 ownership permission must not narrow the request's C2 bound.
-    monkeypatch.setenv('HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS', '1')
     eligibility = replace(_wide_eligibility(7, rows=2), packed_c1_target=True)
     adapter = _adapter(backend='hip_gfx1100', capacity=capacity, rid=7,
                        eligibility=eligibility)
@@ -111,24 +110,30 @@ def test_explicit_c1_ownership_survives_wider_admission(monkeypatch, capacity):
     assert eligibility.max_realized_group_rows == 2
 
 
-def test_wider_c1_permission_does_not_bypass_backend_capability(monkeypatch):
-    monkeypatch.setenv('HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS', '1')
+def test_wider_c1_permission_does_not_bypass_backend_capability():
     eligibility = replace(_wide_eligibility(7, rows=2), packed_c1_target=True)
     adapter = _adapter(backend='hip_gfx1151', capacity=8, rid=7, eligibility=eligibility)
     assert not adapter._physical_c1_request(7)
 
 
-def test_wider_c1_permission_does_not_bypass_width_depth_policy(monkeypatch):
-    monkeypatch.delenv('HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS', raising=False)
+def test_wider_c1_permission_needs_a_declared_cell():
+    # A bare eligibility row is not a capability declaration: an unlisted C1
+    # cell still needs the implementation key that says the kernels run it.
     eligibility = replace(_wide_eligibility(7, rows=2), packed_c1_target=True)
     adapter = _adapter(backend='hip_gfx1100', capacity=8, rid=7, eligibility=eligibility)
     adapter.physical_width_depths = ((2, 3),)
     assert not adapter._physical_c1_request(7)
 
+    declared = replace(
+        eligibility,
+        implementation_key='gguf_dense_bf16_gfx1100_group_native_chain',
+    )
+    adapter._static_eligibility_by_request[7] = declared
+    assert adapter._physical_c1_request(7)
+
 
 @pytest.mark.parametrize('backend', ['hip_gfx1100', 'hip_gfx1151'])
-def test_wider_admission_alone_does_not_qualify_native_c1(monkeypatch, backend):
-    monkeypatch.setenv('HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS', '1')
+def test_wider_admission_alone_does_not_qualify_native_c1(backend):
     adapter = _adapter(backend=backend, capacity=8, rid=7,
                        eligibility=_wide_eligibility(7, rows=2))
     assert not adapter._physical_c1_request(7)
@@ -150,13 +155,8 @@ def _adapter(*, backend: str, capacity: int, rid: int, eligibility) -> Qwen35GGU
     return adapter
 
 
-@pytest.mark.parametrize("screening", [False, True])
 @pytest.mark.parametrize("invalid", ["missing", "singleton", "depth"])
-def test_claims_recheck_each_requests_safety_envelope(monkeypatch, screening, invalid) -> None:
-    if screening:
-        monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
-    else:
-        monkeypatch.delenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", raising=False)
+def test_claims_recheck_each_requests_safety_envelope(invalid) -> None:
     adapter = _adapter(
         backend="hip_gfx1100", capacity=8, rid=7,
         eligibility=_wide_eligibility(7, rows=2),

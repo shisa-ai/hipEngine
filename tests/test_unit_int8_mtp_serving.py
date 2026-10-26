@@ -138,6 +138,49 @@ def test_int8_automatic_width_bound_follows_the_storage_not_the_singleton_declar
     assert (2, deeper_eligibility.max_candidate_count) not in policy
 
 
+def test_explicit_evidence_admission_takes_the_declared_group_width():
+    """A measured singleton row must not cap an explicit request's group width.
+
+    The gfx1151 BF16 capacity-4 C1 row measured one row, so an explicit
+    singleton request that the row admits carried `max_realized_group_rows=1`.
+    That bound describes the width the *measurement* covered, and it is what an
+    automatic request may form; an explicit request asks whether the kernels
+    execute the group, and this backend's declaration covers four rows. Keeping
+    the measured bound on an explicit request resolved a due width-2 group to
+    zero and fell to AR even though `(2, 3)` is a listed physical cell. Depth
+    and the row's evidence attribution stay untouched: only the width bound is
+    capability-derived.
+    """
+
+    explicit = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
+        key=_key(kv_storage="bf16"), request_mode="explicit"
+    )
+    assert explicit.admitted
+    assert explicit.evidence_key == (
+        "qwen38-q4km-gfx1151-strict-bf16-cap4-realized-c1-b3"
+    )
+    eligibility = SpeculativeMTPStaticEligibility.from_mapping(
+        explicit.as_dict()["static_eligibility"]
+    )
+    assert eligibility.max_realized_group_rows == 4
+    assert eligibility.max_candidate_count == 3
+    assert eligibility.evidence_key == explicit.evidence_key
+    assert eligibility.evidence_fingerprint is not None
+    assert eligibility.automatic_eligible is True
+
+    automatic = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
+        key=_key(kv_storage="bf16")
+    )
+    automatic_eligibility = SpeculativeMTPStaticEligibility.from_mapping(
+        automatic.as_dict()["static_eligibility"]
+    )
+    assert automatic.evidence_key == explicit.evidence_key
+    # Automatic policy stays with the measured width; only an explicit request
+    # may form the wider group the declaration covers.
+    assert automatic_eligibility.max_realized_group_rows == 1
+    assert automatic_eligibility.max_candidate_count == 3
+
+
 @pytest.mark.parametrize("rows", [2, 4])
 def test_dense_int8_mtp_admits_the_packed_group_its_verifier_implements(rows):
     """A packed INT8 group is admitted and its verifier runs rows>1.

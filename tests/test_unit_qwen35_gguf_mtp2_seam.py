@@ -48,6 +48,8 @@ from hipengine.speculative import (
     resolve_staged_speculative_runner,
 )
 from hipengine.speculative.ngram_mod import NgramModConfig, RequestLocalNgramMod
+from hipengine.speculative.policy import plan_speculative_requests
+from hipengine.speculative.serving import SpeculativeMTPServingKey
 from hipengine.speculative.accounting import speculative_output_accounting
 
 
@@ -642,15 +644,22 @@ def test_physical_width_depth_policy_gates_capability_and_claims() -> None:
     ) is False
 
 
-def _gfx1100_screening_owner(*, capacity: int = 8) -> SimpleNamespace:
-    return SimpleNamespace(
-        generator=SimpleNamespace(
-            backend="hip_gfx1100",
-            execution_profile="production",
-        ),
-        capacity=capacity,
-        _shared_runner=None,
-        _row=lambda rid: SimpleNamespace(
+def _capability_owner(
+    *,
+    capacity: int = 8,
+    automatic: bool = False,
+    backend: str = "hip_gfx1100",
+    automatic_by_request: dict[int, bool] | None = None,
+) -> SimpleNamespace:
+    """Resident owner whose rows carry the request's own speculation intent."""
+
+    intent = dict(automatic_by_request or {})
+
+    def _row(rid: int) -> SimpleNamespace:
+        return SimpleNamespace(
+            request=SimpleNamespace(
+                speculative_mtp_automatic=intent.get(int(rid), automatic)
+            ),
             native_greedy=True,
             first_token_emitted=True,
             lease=SimpleNamespace(
@@ -661,183 +670,302 @@ def _gfx1100_screening_owner(*, capacity: int = 8) -> SimpleNamespace:
                 )
             ),
             slot=SimpleNamespace(),
-        ),
-    )
-
-
-def _explicit_only_eligibility(rid: int, *, rows: int = 8, depth: int = 3) -> SpeculativeMTPStaticEligibility:
-    return SpeculativeMTPStaticEligibility(
-        state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
-        reason="screening_test_explicit_only_row",
-        max_candidate_count=depth,
-        max_realized_group_rows=rows,
-        automatic_eligible=False,
-        strict_fallback_key="gguf_target_ar",
-        evidence_key=f"test-screening-{rid}",
-        evidence_fingerprint=f"sha256:test-screening-{rid}",
-    )
-
-
-def test_screening_unqualified_cells_default_off_keeps_policy_closed(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Without the screening env, an explicit-only unqualified cell stays K0."""
-
-    monkeypatch.delenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", raising=False)
-    adapter = Qwen35GGUFMTP2Adapter(
-        _gfx1100_screening_owner(),
-        enabled=True,
-        target_verify_mode="packed",
-        candidate_budget=3,
-    )
-    ids = (11, 12, 13, 14, 15)
-    adapter._static_eligibility_by_request = {
-        rid: _explicit_only_eligibility(rid) for rid in ids
-    }
-
-    assert adapter._physical_width_depth_admitted_for_group(5, 3, ids) is False
-    assert adapter._last_screening_cell is None
-
-
-def test_screening_unqualified_cells_admits_explicit_only_group(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The screening env opens unlisted cells only for explicit-only rows."""
-
-    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
-    adapter = Qwen35GGUFMTP2Adapter(
-        _gfx1100_screening_owner(),
-        enabled=True,
-        target_verify_mode="packed",
-        candidate_budget=3,
-    )
-    ids = tuple(range(1, 6))
-    adapter._intents = {rid: 3 for rid in ids}
-    adapter._static_eligibility_by_request = {
-        rid: _explicit_only_eligibility(rid) for rid in ids
-    }
-    adapter._prompt_hidden_rows = {rid: object() for rid in ids}
-    adapter._states = {}
-    adapter._disabled_requests = set()
-    adapter._active_claims = None
-
-    assert adapter._physical_width_depth_admitted_for_group(5, 3, ids) is True
-    assert adapter._last_screening_cell == {
-        "width": 5,
-        "depth": 3,
-        "request_ids": list(ids),
-    }
-    semantics = tuple(
-        SpeculativeRequestSemantics(rid, "greedy", "verify_chain", 32, 25)
-        for rid in ids
-    )
-    capability = adapter.capability(semantics)
-    assert capability is not None
-    # Depth-3 listed cells exist at widths 1, 2, and 8 (C2/K3 qualified by
-    # the Packet 6 grid + retained reproduction), so the listed derivation
-    # still owns the tuple; the screening group does not extend it.
-    assert capability.proposal_widths == (1, 2, 8)
-    assert adapter.claims_fit(
-        SimpleNamespace(
-            request_ids=ids,
-            speculative_request_ids=ids,
-            candidate_counts=(3,) * len(ids),
         )
-    ) is True
+
+    return SimpleNamespace(
+        generator=SimpleNamespace(
+            backend=backend,
+            execution_profile="production",
+        ),
+        capacity=capacity,
+        _shared_runner=None,
+        _row=_row,
+    )
 
 
-def test_screening_depth_without_listed_cell_keeps_nonempty_proposal_widths(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A K1 screening group at C2 must still expose its proposal width.
+def _declaration_eligibility(
+    rid: int,
+    *,
+    rows: int = 8,
+    depth: int = 3,
+    automatic: bool = True,
+    implementation: str = "gguf_dense_bf16_gfx1100_group_native_chain",
+) -> SpeculativeMTPStaticEligibility:
+    """The static eligibility an implementation declaration resolves to.
 
-    The gfx1100 production policy lists no depth-1 cell, so the listed
-    proposal-width derivation is empty; the server rejects empty widths and
-    the C2/K1 screening measurement 400s without this fallback.
+    ``automatic`` is the declaration's own eligibility flag, not the request
+    intent: a declaration is automatic-eligible in both request modes, which is
+    why admission reads the row's request for intent instead.
     """
 
-    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    return SpeculativeMTPStaticEligibility(
+        state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+        reason="capability_test_declaration",
+        max_candidate_count=depth,
+        max_realized_group_rows=rows,
+        automatic_eligible=automatic,
+        strict_fallback_key="gguf_target_ar",
+        implementation_key=implementation,
+    )
+
+
+def _capability_adapter(
+    request_ids: tuple[int, ...],
+    *,
+    capacity: int = 8,
+    depth: int = 3,
+    automatic: bool = False,
+    automatic_by_request: dict[int, bool] | None = None,
+    declaration_depth: int | None = None,
+    rows: int = 8,
+    backend: str = "hip_gfx1100",
+) -> Qwen35GGUFMTP2Adapter:
     adapter = Qwen35GGUFMTP2Adapter(
-        _gfx1100_screening_owner(capacity=2),
+        _capability_owner(
+            capacity=capacity,
+            automatic=automatic,
+            backend=backend,
+            automatic_by_request=automatic_by_request,
+        ),
         enabled=True,
         target_verify_mode="packed",
-        candidate_budget=1,
+        candidate_budget=depth,
     )
-    ids = (41, 42)
-    adapter._intents = {rid: 1 for rid in ids}
+    adapter._intents = {rid: depth for rid in request_ids}
     adapter._static_eligibility_by_request = {
-        rid: _explicit_only_eligibility(rid, rows=8, depth=1) for rid in ids
+        rid: _declaration_eligibility(
+            rid,
+            rows=rows,
+            depth=depth if declaration_depth is None else declaration_depth,
+        )
+        for rid in request_ids
     }
+    adapter._prompt_hidden_rows = {rid: object() for rid in request_ids}
+    adapter._states = {}
+    adapter._disabled_requests = set()
+    adapter._active_claims = None
+    return adapter
+
+
+def _claims_plan(request_ids: tuple[int, ...], depth: int) -> SimpleNamespace:
+    return SimpleNamespace(
+        request_ids=request_ids,
+        speculative_request_ids=request_ids,
+        candidate_counts=(depth,) * len(request_ids),
+    )
+
+
+def _semantics(
+    request_ids: tuple[int, ...],
+) -> tuple[SpeculativeRequestSemantics, ...]:
+    return tuple(
+        SpeculativeRequestSemantics(rid, "greedy", "verify_chain", 32, 25)
+        for rid in request_ids
+    )
+
+
+def test_explicit_request_admits_an_unlisted_cell_on_capability() -> None:
+    """C3/K2 is absent from the gfx1100 table; an explicit request runs it.
+
+    The declaration the serving plan resolved covers eight rows at K3, so the
+    cell is implemented. The listed table is the automatic performance policy,
+    not the capability bound, so it must not refuse an explicit request.
+    """
+
+    ids = (1, 2, 3)
+    adapter = _capability_adapter(ids, depth=2)
+
+    assert adapter._physical_width_depth_admitted_for_group(3, 2, ids) is True
+    assert adapter.claims_fit(_claims_plan(ids, 2)) is True
+
+    # K1 at width two is also unlisted; its proposal width must not be empty.
+    k1_ids = (4, 5)
+    k1 = _capability_adapter(k1_ids, depth=1)
+    assert k1._physical_width_depth_admitted_for_group(2, 1, k1_ids) is True
+    k1_capability = k1.capability(_semantics(k1_ids))
+    assert k1_capability is not None
+    assert k1_capability.proposal_widths == (2,)
+
+
+def test_automatic_intent_stays_inside_the_listed_policy() -> None:
+    """The same unlisted cell stays K0 when the server selected MTP itself."""
+
+    ids = (1, 2, 3)
+    adapter = _capability_adapter(ids, depth=2, automatic=True)
+
+    assert adapter._physical_width_depth_admitted_for_group(3, 2, ids) is False
+    assert adapter._physical_width_depth_admitted_for_group(2, 2, ids[:2]) is True
+    assert adapter.capability(_semantics(ids)) is None
+    assert adapter.claims_fit(_claims_plan(ids, 2)) is False
+
+
+def test_listed_cell_stays_admitted_for_both_intents() -> None:
+    """Capability admission does not narrow the listed automatic policy."""
+
+    ids = (1, 2)
+    for automatic in (False, True):
+        adapter = _capability_adapter(ids, depth=2, automatic=automatic)
+        assert (
+            adapter._physical_width_depth_admitted_for_group(2, 2, ids) is True
+        )
+        assert adapter.claims_fit(_claims_plan(ids, 2)) is True
+
+
+def test_intent_comes_from_the_request_not_from_automatic_eligibility() -> None:
+    """Both directions of the old proxy are wrong and both are pinned here."""
+
+    explicit_ids = (1, 2, 3)
+    explicit = _capability_adapter(explicit_ids, depth=2)
+    # The declaration is automatic-eligible in production; that flag must not
+    # stop an explicit request from running the cell.
+    assert (
+        explicit._static_eligibility(explicit_ids[0]).automatic_eligible is True
+    )
+    assert (
+        explicit._physical_width_depth_admitted_for_group(3, 2, explicit_ids)
+        is True
+    )
+
+    automatic_ids = (1, 2, 3)
+    automatic = _capability_adapter(automatic_ids, depth=2, automatic=True)
+    # An explicit-only row's flag must not grant automatic intent either.
+    automatic._static_eligibility_by_request = {
+        rid: _declaration_eligibility(rid, depth=2, automatic=False)
+        for rid in automatic_ids
+    }
+    assert (
+        automatic._physical_width_depth_admitted_for_group(3, 2, automatic_ids)
+        is False
+    )
+
+
+def test_one_automatic_row_keeps_the_group_on_the_listed_policy() -> None:
+    """A mixed group cannot ride an explicit row's capability admission."""
+
+    ids = (1, 2, 3)
+    adapter = _capability_adapter(ids, depth=2, automatic_by_request={3: True})
+
+    assert adapter._physical_width_depth_admitted_for_group(3, 2, ids) is False
+
+
+def test_explicit_cell_wider_than_resident_capacity_is_refused() -> None:
+    """The owner's capacity bounds the widest group it may assemble."""
+
+    ids = (1, 2, 3)
+    adapter = _capability_adapter(ids, depth=2, capacity=2)
+
+    assert adapter._physical_width_depth_admitted_for_group(3, 2, ids) is False
+    assert adapter._physical_width_depth_admitted_for_group(2, 2, ids[:2]) is True
+
+
+def test_explicit_depth_above_the_declaration_is_refused() -> None:
+    """Group depth stops at the declaration's K3; the singleton chain keeps K7."""
+
+    ids = (1, 2)
+    adapter = _capability_adapter(ids, depth=4, declaration_depth=3)
+    assert adapter._physical_width_depth_admitted_for_group(2, 4, ids) is False
+
+    singleton = _capability_adapter((9,), depth=7, declaration_depth=7, rows=8)
+    assert singleton._physical_width_depth_admitted_for_group(1, 7, (9,)) is True
+    assert singleton._physical_width_depth_admitted_for_group(1, 8, (9,)) is False
+
+
+def test_backend_declared_width_limit_still_refuses_wider_groups() -> None:
+    """gfx1151 declares four rows, so a five-row explicit group is refused."""
+
+    ids = (1, 2, 3, 4, 5)
+    adapter = _capability_adapter(ids, depth=3, backend="hip_gfx1151")
+
+    assert adapter._physical_width_depth_admitted_for_group(4, 3, ids[:4]) is True
+    assert adapter._physical_width_depth_admitted_for_group(5, 3, ids) is False
+
+
+def test_capability_admission_requires_static_eligibility() -> None:
+    """A row with no resolved serving plan cannot widen itself into a cell."""
+
+    ids = (1, 2, 3)
+    adapter = _capability_adapter(ids, depth=2)
+    adapter._static_eligibility_by_request = {}
+
+    assert adapter._physical_width_depth_admitted_for_group(3, 2, ids) is False
+
+
+def test_explicit_group_proposal_widths_are_one_physical_group() -> None:
+    """A five-row explicit group must not silently decompose into 2+2+1."""
+
+    ids = (1, 2, 3, 4, 5)
+    adapter = _capability_adapter(ids, depth=3)
+    capability = adapter.capability(_semantics(ids))
+    assert capability is not None
+    assert capability.proposal_widths == (1, 2, 5, 8)
+
+    plan = plan_speculative_requests(
+        capability,
+        _semantics(ids),
+        resident_slots=(0, 1, 2, 3, 4),
+        desired_candidate_counts=(3, 3, 3, 3, 3),
+        operation_id="capability-test",
+        cycle_id=1,
+        context_bucket_size=64,
+    )
+    assert plan.candidate_counts == (3, 3, 3, 3, 3)
+    assert plan.proposal_widths == (5,)
+
+
+def test_explicit_group_width_follows_the_declaration_not_a_measured_singleton():
+    """An explicit C2 on gfx1151 must not fall to AR on a one-row evidence row.
+
+    The capacity-4 BF16 C1 row measured a singleton, and reading that measured
+    width as the request's group bound made `partition_max_requests` resolve a
+    due width-2 group to zero, which the engine loop serves as one AR batch.
+    The declaration covers four rows and `(2, 3)` is a listed gfx1151 cell, so
+    the explicit group runs once the bound follows the declaration.
+    """
+
+    decision = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
+        key=SpeculativeMTPServingKey(
+            artifact_sha256=None,
+            artifact_size_bytes=None,
+            content_verified=True,
+            artifact_execution_fingerprint=(
+                "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
+            ),
+            backend="hip_gfx1151",
+            target_arch="gfx1151",
+            weight_quant="gguf_q4_k_m",
+            kv_storage="bf16",
+            kv_layout="uniform",
+            realized_group_rows=1,
+            resident_capacity=4,
+            candidate_budget=3,
+            sampling_mode="greedy_fast",
+            memory_fit=True,
+            kv_scale_dtype=None,
+            kv_scale_granularity=None,
+        ),
+        request_mode="explicit",
+    )
+    eligibility = SpeculativeMTPStaticEligibility.from_mapping(
+        decision.as_dict()["static_eligibility"]
+    )
+    owner = _capability_owner(capacity=4, backend="hip_gfx1151")
+    adapter = Qwen35GGUFMTP2Adapter(
+        owner,
+        enabled=True,
+        target_verify_mode="packed",
+        candidate_budget=3,
+    )
+    ids = (1, 2)
+    adapter._intents = {rid: 3 for rid in ids}
+    adapter._static_eligibility_by_request = {rid: eligibility for rid in ids}
     adapter._prompt_hidden_rows = {rid: object() for rid in ids}
     adapter._states = {}
     adapter._disabled_requests = set()
     adapter._active_claims = None
 
-    semantics = tuple(
-        SpeculativeRequestSemantics(rid, "greedy", "verify_chain", 32, 25)
-        for rid in ids
-    )
-    capability = adapter.capability(semantics)
-    assert capability is not None
-    # The capability advertises the eligibility bound; the executed per-request
-    # K comes from the plan. The K1 cell itself must fit and the proposal
-    # width tuple must be non-empty (the server rejects empty widths).
-    assert capability.proposal_widths == (2,)
-    assert adapter.claims_fit(
-        SimpleNamespace(
-            request_ids=ids,
-            speculative_request_ids=ids,
-            candidate_counts=(1, 1),
-        )
-    ) is True
-
-
-def test_screening_unqualified_cells_never_widen_automatic_rows(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Qwen3.6/gfx1151 automatic policy cannot inherit screening cells."""
-
-    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
-    adapter = Qwen35GGUFMTP2Adapter(
-        _gfx1100_screening_owner(),
-        enabled=True,
-        target_verify_mode="packed",
-        candidate_budget=3,
-    )
-    ids = (21, 22, 23, 24, 25)
-    adapter._static_eligibility_by_request = {
-        rid: SpeculativeMTPStaticEligibility(
-            state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
-            reason="automatic_qualified_row",
-            max_candidate_count=3,
-            max_realized_group_rows=8,
-            automatic_eligible=True,
-            strict_fallback_key="gguf_target_ar",
-            evidence_key=f"test-automatic-{rid}",
-            evidence_fingerprint=f"sha256:test-automatic-{rid}",
-        )
-        for rid in ids
-    }
-
-    assert adapter._physical_width_depth_admitted_for_group(5, 3, ids) is False
-    assert adapter._last_screening_cell is None
-
-
-def test_screening_unqualified_cells_require_static_eligibility(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A request without a serving-evidence row cannot screen a cell open."""
-
-    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
-    adapter = Qwen35GGUFMTP2Adapter(
-        _gfx1100_screening_owner(capacity=2),
-        enabled=True,
-        target_verify_mode="packed",
-        candidate_budget=3,
-    )
-
-    assert adapter._physical_width_depth_admitted_for_group(2, 4, (31, 32)) is False
-    assert adapter._last_screening_cell is None
+    assert adapter.partition_max_requests(ids) > 0
+    assert adapter.capability(_semantics(ids)) is not None
+    assert adapter.claims_fit(_claims_plan(ids, 3)) is True
 
 
 def test_unregistered_model_plugin_mtp2_adapter_fails_closed() -> None:

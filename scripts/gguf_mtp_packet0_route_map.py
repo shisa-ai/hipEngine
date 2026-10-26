@@ -138,7 +138,6 @@ def _route_map_for_cell(cell: Mapping[str, Any]) -> dict[str, Any]:
         )
         if isinstance(physical_width.get("last_partition"), Mapping)
         else None,
-        "screening_cell": (physical_width.get("last_screening_cell") or None),
         "cycle_workspace_shape": (adapter.get("cycle_workspace") or {}).get("shape")
         if isinstance(adapter.get("cycle_workspace"), Mapping)
         else None,
@@ -241,9 +240,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                     row["recoverable_failures"] for row in rows
                 ),
                 "k0_catchups_total": sum(row["k0_catchups"] for row in rows),
-                "screening_cells": [
-                    row["screening_cell"] for row in rows if row["screening_cell"]
-                ],
                 "cycle_workspace_shape": rows[0]["cycle_workspace_shape"],
                 "graph": rows[0]["graph"],
             }

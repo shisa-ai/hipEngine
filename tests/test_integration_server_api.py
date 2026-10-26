@@ -55,7 +55,9 @@ from hipengine.speculative import (
     SpeculativeMTPStaticEligibility,
     SpeculativeMTPStaticState,
 )
+from hipengine.models.qwen35 import Qwen35GGUFModel
 from hipengine.speculative.policy import DEFAULT_AUTO_DEPTH_POLICY
+from hipengine.speculative.serving import SpeculativeMTPServingKey
 from hipengine.server.api import (
     ChatCompletionRequest,
     CompletionRequest,
@@ -86,14 +88,13 @@ from hipengine.server.api import (
     _realized_model_serving_plan,
     _resolve_realized_generation_route,
     _sampling_for_realized_generation_route,
+    _sampling_key,
     _serving_plan_route_decision,
     _ServerMetrics,
     _log_pretty_startup_summary,
     _startup_memory_summary,
     _mtp_accepted_rejected_counts,
     _mtp_response_summary,
-    _mtp_screening_static_eligibility,
-    _MTP_SCREENING_REASONS,
 )
 
 
@@ -599,136 +600,84 @@ class ArtifactScopedSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
         )
 
 
-class UnqualifiedBudgetSpeculativeMTPFakeLLM(ArtifactScopedSpeculativeMTPFakeLLM):
-    """Admits nothing: the candidate-budget axis is unqualified everywhere.
+class DeclaredCellSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
+    """Resolves plans through the real Qwen3.8 dense capability declarations.
 
-    Used to prove the explicit screening override, which must reach an
-    unqualified physical cell without widening automatic intent.
+    The server layer only decides whether typed intent survives; whether a cell
+    is executable is the model plugin's answer. Driving these tests through the
+    real declaration keeps them honest about which cells the kernels implement.
     """
 
-    @staticmethod
-    def _plan(**kwargs: Any) -> dict[str, Any]:
-        plan = ArtifactScopedSpeculativeMTPFakeLLM._plan(**kwargs)
-        plan["key"]["candidate_budget"] = 4
-        plan["admitted"] = False
-        plan["selected_candidate_count"] = 0
-        sampling_ok = kwargs["sampling_mode"] == "greedy_fast"
-        # Shape-accurate: the live resolver reports every failed axis with the
-        # first one in declaration order as the summary reason, and the budget
-        # axis precedes the sampling axis. A non-greedy request that is also
-        # over the qualified depth therefore reports the *screenable* budget
-        # reason while the sampling boundary is one of its failed axes.
-        plan["failed_axes"] = (
-            ["candidate_budget_not_qualified"]
-            if sampling_ok
-            else [
-                "candidate_budget_not_qualified",
-                "sampling_mode_unmeasured",
-            ]
+    backend = "hip_gfx1100"
+    target_arch = "gfx1100"
+    resident_capacity = 8
+
+    def resolve_speculative_mtp_serving_plan(
+        self,
+        *,
+        realized_group_rows: int,
+        sampling_mode: str,
+        kv_storage: str = "auto",
+        memory_fit: bool = True,
+        request_mode: str = "automatic",
+    ):
+        key = SpeculativeMTPServingKey(
+            artifact_sha256=None,
+            artifact_size_bytes=None,
+            content_verified=False,
+            backend=self.backend,
+            target_arch=self.target_arch,
+            weight_quant="gguf_q4_k_m",
+            kv_storage="bf16" if str(kv_storage) == "auto" else str(kv_storage),
+            kv_layout="uniform",
+            realized_group_rows=int(realized_group_rows),
+            resident_capacity=int(self.resident_capacity),
+            candidate_budget=int(self.speculative_candidate_budget or 3),
+            sampling_mode=str(sampling_mode),
+            memory_fit=bool(memory_fit),
+            kv_scale_dtype=None,
+            kv_scale_granularity=None,
+            artifact_execution_fingerprint=None,
         )
-        plan["reason"] = plan["failed_axes"][0]
-        plan["plan_fingerprint"] = "sha256:" + "9" * 64
-        return plan
-
-
-class QualifiedServingPlanFakeLLM(ArtifactScopedSpeculativeMTPFakeLLM):
-    """Admits C1 greedy, and emits a decision payload shaped like the real one.
-
-    The shared fake returns a bare mapping, while the live resolver returns
-    ``SpeculativeMTPServingDecision.as_dict()``, which always carries
-    ``static_eligibility``. Qualified-cell invariance needs that field to be
-    present or the plan layer cannot grant typed intent at all.
-    """
-
-    @staticmethod
-    def _plan(**kwargs: Any) -> dict[str, Any]:
-        plan = ArtifactScopedSpeculativeMTPFakeLLM._plan(**kwargs)
-        admitted = bool(plan["admitted"])
-        plan["key"]["candidate_budget"] = 3
-        plan["static_eligibility"] = {
-            "state": "speculative_capable" if admitted else "permanent_ar",
-            "eligible": admitted,
-            "reason": plan["reason"],
-            "max_candidate_count": 3 if admitted else 0,
-            "max_realized_group_rows": 1 if admitted else 0,
-            "automatic_eligible": False,
-            "strict_fallback_key": "gguf_target_ar",
-            "evidence_key": "fake-qwen38-q4km-c1-b3",
-            "evidence_fingerprint": "sha256:" + "c" * 64,
-            "evidence_artifacts": ["benchmarks/results/fake-qwen38-q4km-s0.json"],
-        }
-        return plan
-
-
-def test_realized_re_resolution_keeps_screening_closed_on_a_structural_rejection(
-    monkeypatch,
-) -> None:
-    """A wider realized group that fails memory fit must not carry screening in.
-
-    Reproduced finding: the request-time plan is rejected on a screenable axis
-    and carries a screening eligibility; the realized re-resolution then fails
-    the same screenable axis *and* the memory-fit axis. Carrying the
-    request-time intent forward unconditionally would authorize a cell the
-    realized group does not fit, so the carry-forward has to read the realized
-    plan's own failed set rather than its summary reason.
-    """
-
-    class RealizedMemoryMissFakeLLM(UnqualifiedBudgetSpeculativeMTPFakeLLM):
-        @staticmethod
-        def _plan(**kwargs: Any) -> dict[str, Any]:
-            plan = UnqualifiedBudgetSpeculativeMTPFakeLLM._plan(**kwargs)
-            if int(kwargs["realized_group_rows"]) > 1:
-                plan["failed_axes"] = [
-                    "candidate_budget_not_qualified",
-                    "insufficient_memory",
-                ]
-            else:
-                plan["failed_axes"] = ["candidate_budget_not_qualified"]
-            return plan
-
-    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
-    fake = RealizedMemoryMissFakeLLM()
-    config = ServerConfig(
-        model="fake-path",
-        served_model_name="fake-model",
-        speculative_mtp_serving="opt_in",
-    )
-    sampling = SamplingParams(max_tokens=25)
-    route, plan = _generation_route_for_request(
-        config,
-        CompletionRequest(
-            model="fake-model", prompt="one", max_tokens=25, speculative_mtp=True
-        ),
-        engine=fake,
-        sampling=sampling,
-        prompts=("one",),
-    )
-    assert plan is not None and plan["screening"] is True
-
-    # The singleton realized group still screens: its only failed axis is
-    # screenable, which is the control for the case below.
-    singleton = _realized_model_serving_plan(fake, ("one",), sampling, plan)
-    assert singleton is not None
-    assert singleton["screening"] is True
-
-    wider = _realized_model_serving_plan(fake, ("one", "two"), sampling, plan)
-    assert wider is not None
-    assert wider["admitted"] is False
-    assert wider.get("screening") is None
-    assert wider.get("static_intent_allowed") is None
-    assert wider.get("qualification") is None
-    # The realized rejection is still reported in full, so the caller can see
-    # why the screening intent was refused.
-    assert wider["reason"] == "candidate_budget_not_qualified"
-    assert "insufficient_memory" in wider["failed_axes"]
-
-    with pytest.raises(OpenAIHTTPError, match="candidate_budget_not_qualified"):
-        _resolve_realized_generation_route(
-            route,
-            group_rows=2,
-            sampling=sampling,
-            precomputed_decision=wider,
+        return Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
+            key=key,
+            request_mode=str(request_mode),
         )
+
+
+class DefaultMTPDeclaredCellFakeLLM(DeclaredCellSpeculativeMTPFakeLLM):
+    """The same declaration-backed plans, with automatic MTP advertised.
+
+    A real artifact answers `speculative_mtp_serving_capability` through the
+    model plugin's declaration, which is automatic-eligible, so an `enabled`
+    server routes an implicit request to the MTP batch route. Reproducing that
+    answer is what makes the two intents eligible to coalesce, which is the
+    grouping question these tests ask.
+    """
+
+    @property
+    def speculative_mtp_serving_capability(self):
+        return Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
+            key=SpeculativeMTPServingKey(
+                artifact_sha256=None,
+                artifact_size_bytes=None,
+                content_verified=False,
+                backend=self.backend,
+                target_arch=self.target_arch,
+                weight_quant="gguf_q4_k_m",
+                kv_storage="bf16",
+                kv_layout="uniform",
+                realized_group_rows=1,
+                resident_capacity=int(self.resident_capacity),
+                candidate_budget=int(self.speculative_candidate_budget or 3),
+                sampling_mode="greedy_fast",
+                memory_fit=True,
+                kv_scale_dtype=None,
+                kv_scale_granularity=None,
+                artifact_execution_fingerprint=None,
+            ),
+            request_mode="automatic",
+        ).as_dict()
 
 
 class PromotedArtifactScopedSpeculativeMTPFakeLLM(
@@ -7700,241 +7649,55 @@ def test_explicit_c1_plan_drops_intent_when_rejection_is_not_a_width_miss() -> N
         )
 
 
-def test_screening_override_keeps_explicit_intent_for_an_unqualified_cell(
-    monkeypatch,
-) -> None:
-    """An explicit request may screen an unqualified cell; default stays closed."""
+def test_explicit_unlisted_cell_resolves_through_the_declaration() -> None:
+    """C3/K2 is absent from the gfx1100 table and still executes on request.
 
-    fake = UnqualifiedBudgetSpeculativeMTPFakeLLM()
+    The server no longer manufactures a screening eligibility for a rejected
+    plan: the model plugin's declaration admits the cell, so typed intent comes
+    from the ordinary plan and the response carries no screening marker.
+    """
+
+    fake = DeclaredCellSpeculativeMTPFakeLLM()
     config = ServerConfig(
         model="fake-path",
         served_model_name="fake-model",
         speculative_mtp_serving="opt_in",
     )
     sampling = SamplingParams(max_tokens=25)
-    request = CompletionRequest(
-        model="fake-model", prompt="one", max_tokens=25, speculative_mtp=True
-    )
-
-    monkeypatch.delenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", raising=False)
-    with pytest.raises(OpenAIHTTPError, match="candidate_budget_not_qualified"):
-        _generation_route_for_request(
-            config,
-            request,
-            engine=fake,
-            sampling=sampling,
-            prompts=("one",),
-        )
-
-    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    prompts = ("one", "two", "three")
     route, plan = _generation_route_for_request(
         config,
-        request,
+        CompletionRequest(
+            model="fake-model", prompt="one", max_tokens=25, speculative_mtp=True
+        ),
         engine=fake,
         sampling=sampling,
-        prompts=("one",),
+        prompts=prompts,
     )
+
     assert route == _SPECULATIVE_MTP_BATCH_ROUTE
     assert plan is not None
-    assert plan["admitted"] is False
-    assert plan["screening"] is True
-    assert plan["qualification"] == "explicit_screening_unqualified_cell"
-    assert plan["unqualified_reason"] == "candidate_budget_not_qualified"
+    assert plan["admitted"] is True
+    assert plan["admission_basis"] == "implementation"
+    assert plan["implementation_key"] == (
+        "gguf_dense_bf16_gfx1100_group_native_chain"
+    )
     assert plan["static_intent_allowed"] is True
-    eligibility = SpeculativeMTPStaticEligibility.from_mapping(
-        plan["static_eligibility"]
-    )
-    assert eligibility.eligible is True
-    assert eligibility.automatic_eligible is False
-    assert eligibility.max_candidate_count == 4
-    assert eligibility.max_realized_group_rows >= 1
-
-
-def test_screening_override_never_widens_automatic_intent(monkeypatch) -> None:
-    """Automatic intent stays fail-closed with the screening switch on."""
-
-    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
-    fake = UnqualifiedBudgetSpeculativeMTPFakeLLM()
-    config = ServerConfig(
-        model="fake-path",
-        served_model_name="fake-model",
-        speculative_mtp_serving="auto",
-    )
-    sampling = SamplingParams(max_tokens=25)
-    request = CompletionRequest(model="fake-model", prompt="one", max_tokens=25)
-
-    route, plan = _generation_route_for_request(
-        config,
-        request,
-        engine=fake,
-        sampling=sampling,
-        prompts=("one",),
-    )
-    assert route == _SPECULATIVE_MTP_AUTO_ROUTE
-    assert plan is not None
-    assert plan["admitted"] is False
-    assert plan["static_intent_allowed"] is False
-    assert plan.get("screening") is None
-    realized_route, realized = _resolve_realized_generation_route(
-        route,
-        group_rows=1,
-        sampling=sampling,
-        precomputed_decision=plan,
-    )
-    assert realized_route == _SPECULATIVE_MTP_DEFAULT_ROUTE
-    assert realized is not None
-    assert realized.get("screening") is None
-
-
-def test_screening_override_refuses_a_sampling_mode_rejection(monkeypatch) -> None:
-    """Sampling semantics are a correctness boundary, not an unmeasured cell.
-
-    The summary reason here is the screenable budget axis, because the budget
-    axis precedes the sampling axis and the resolver reports only the first
-    failed one. Reading that reason alone would admit the request; the
-    boundary has to be read from the failed axes.
-    """
-
-    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
-    fake = UnqualifiedBudgetSpeculativeMTPFakeLLM()
-    config = ServerConfig(
-        model="fake-path",
-        served_model_name="fake-model",
-        speculative_mtp_serving="opt_in",
-    )
-    sampling = SamplingParams(max_tokens=25, temperature=0.4)
-    request = CompletionRequest(
-        model="fake-model",
-        prompt="one",
-        max_tokens=25,
-        temperature=0.4,
-        speculative_mtp=True,
-    )
-
-    with pytest.raises(OpenAIHTTPError, match="temperature"):
-        _generation_route_for_request(
-            config,
-            request,
-            engine=fake,
-            sampling=sampling,
-            prompts=("one",),
-        )
-    plan = fake._plan(realized_group_rows=1, sampling_mode="sampled", kv_storage="bf16", memory_fit=True)
-    assert plan["reason"] == "candidate_budget_not_qualified"
-    assert "sampling_mode_unmeasured" in plan["failed_axes"]
-    assert _mtp_screening_static_eligibility(plan, physical_max_rows=4) is None
-
-
-def test_realized_re_resolution_carries_screening_intent(monkeypatch) -> None:
-    """The queue's realized re-resolution must not drop screening intent.
-
-    It re-runs the same evidence resolver, which rejects the unqualified cell
-    again; without the carry-forward the batch falls to K0 before the resident
-    owner can screen it.
-    """
-
-    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
-    fake = UnqualifiedBudgetSpeculativeMTPFakeLLM()
-    config = ServerConfig(
-        model="fake-path",
-        served_model_name="fake-model",
-        speculative_mtp_serving="opt_in",
-    )
-    sampling = SamplingParams(max_tokens=25)
-    route, plan = _generation_route_for_request(
-        config,
-        CompletionRequest(
-            model="fake-model", prompt="one", max_tokens=25, speculative_mtp=True
-        ),
-        engine=fake,
-        sampling=sampling,
-        prompts=("one",),
-    )
-    assert plan is not None and plan["screening"] is True
-
-    realized = _realized_model_serving_plan(fake, ("one",), sampling, plan)
-    assert realized is not None
-    assert realized["admitted"] is False
-    assert realized["screening"] is True
-    assert realized["qualification"] == "explicit_screening_unqualified_cell"
-    assert realized["unqualified_reason"] == "candidate_budget_not_qualified"
-    assert realized["static_intent_allowed"] is True
+    assert "screening" not in plan
+    assert "qualification" not in plan
 
     realized_route, decision = _resolve_realized_generation_route(
         route,
-        group_rows=1,
-        sampling=sampling,
-        precomputed_decision=realized,
-    )
-    assert realized_route == _SPECULATIVE_MTP_BATCH_ROUTE
-    assert decision is not None
-    assert decision["static_intent_allowed"] is True
-    assert decision["k0_class"] == "not_k0"
-
-
-def test_realized_re_resolution_keeps_automatic_intent_closed(monkeypatch) -> None:
-    """A qualified automatic plan stays unmarked and unqualified ones stay K0."""
-
-    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
-    fake = UnqualifiedBudgetSpeculativeMTPFakeLLM()
-    plan = {
-        "plan_fingerprint": "sha256:" + "7" * 64,
-        "key": {"realized_group_rows": 1, "sampling_mode": "greedy_fast"},
-        "admitted": False,
-        "reason": "candidate_budget_not_qualified",
-        "static_eligibility": {
-            "state": "permanent_ar",
-            "eligible": False,
-            "reason": "candidate_budget_not_qualified",
-            "max_candidate_count": 0,
-            "max_realized_group_rows": 0,
-            "automatic_eligible": False,
-            "strict_fallback_key": "gguf_target_ar",
-        },
-    }
-    realized = _realized_model_serving_plan(
-        fake, ("one",), SamplingParams(max_tokens=25), plan
-    )
-    assert realized is not None
-    assert realized.get("screening") is None
-    assert realized.get("static_intent_allowed") is None
-    assert realized.get("static_eligibility") is None
-
-
-def test_screening_response_metadata_marks_the_unqualified_cell(monkeypatch) -> None:
-    """A screening rate must not be readable as a qualified route."""
-
-    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
-    fake = UnqualifiedBudgetSpeculativeMTPFakeLLM()
-    config = ServerConfig(
-        model="fake-path",
-        served_model_name="fake-model",
-        speculative_mtp_serving="opt_in",
-    )
-    sampling = SamplingParams(max_tokens=25)
-    route, plan = _generation_route_for_request(
-        config,
-        CompletionRequest(
-            model="fake-model", prompt="one", max_tokens=25, speculative_mtp=True
-        ),
-        engine=fake,
-        sampling=sampling,
-        prompts=("one",),
-    )
-    realized_route, decision = _resolve_realized_generation_route(
-        route,
-        group_rows=1,
+        group_rows=len(prompts),
         sampling=sampling,
         precomputed_decision=plan,
     )
     assert realized_route == _SPECULATIVE_MTP_BATCH_ROUTE
     assert decision is not None
-    assert decision["screening"] is True
-    assert decision["reason"] == "unqualified_cell_deferred_to_resident_owner"
-    assert decision["qualification"] == "explicit_screening_unqualified_cell"
-    assert decision["unqualified_reason"] == "candidate_budget_not_qualified"
-    assert decision["static_intent_allowed"] is True
     assert decision["k0_class"] == "not_k0"
+    assert decision["static_intent_allowed"] is True
+    assert "screening" not in decision
+    assert "qualification" not in decision
 
     summary = _mtp_response_summary(
         realized_route,
@@ -7942,259 +7705,166 @@ def test_screening_response_metadata_marks_the_unqualified_cell(monkeypatch) -> 
         route_decision=decision,
         thinking_policy="hint",
     )
-    assert summary["qualification"] == "explicit_screening_unqualified_cell"
-    assert summary["unqualified"] is True
-    assert summary["unqualified_reason"] == "candidate_budget_not_qualified"
-    assert summary["selection_reason"] == (
-        "unqualified_cell_deferred_to_resident_owner"
-    )
-    assert summary["requested_route"] == _SPECULATIVE_MTP_BATCH_ROUTE
-
-
-def test_screening_switch_leaves_a_qualified_cell_unchanged(monkeypatch) -> None:
-    """Invariance guard: a qualified cell keeps its evidence-backed plan."""
-
-    for screening in (None, "1"):
-        if screening is None:
-            monkeypatch.delenv(
-                "HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", raising=False
-            )
-        else:
-            monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", screening)
-        fake = QualifiedServingPlanFakeLLM()
-        config = ServerConfig(
-            model="fake-path",
-            served_model_name="fake-model",
-            speculative_mtp_serving="opt_in",
-        )
-        sampling = SamplingParams(max_tokens=25)
-        route, plan = _generation_route_for_request(
-            config,
-            CompletionRequest(
-                model="fake-model", prompt="one", max_tokens=25, speculative_mtp=True
-            ),
-            engine=fake,
-            sampling=sampling,
-            prompts=("one",),
-        )
-        assert route == _SPECULATIVE_MTP_BATCH_ROUTE
-        assert plan is not None
-        assert plan["admitted"] is True
-        assert plan.get("screening") is None
-        assert plan["static_intent_allowed"] is True
-        eligibility = SpeculativeMTPStaticEligibility.from_mapping(
-            plan["static_eligibility"]
-        )
-        assert eligibility.eligible is True
-        assert eligibility.evidence_key == "fake-qwen38-q4km-c1-b3"
-        assert eligibility.max_candidate_count == 3
-        realized_route, decision = _resolve_realized_generation_route(
-            route,
-            group_rows=1,
-            sampling=sampling,
-            precomputed_decision=plan,
-        )
-        assert realized_route == _SPECULATIVE_MTP_BATCH_ROUTE
-        assert decision is not None
-        assert decision["selected_candidate_count"] == 3
-        summary = _mtp_response_summary(
-            realized_route,
-            None,
-            route_decision=decision,
-            thinking_policy="hint",
-        )
-        assert "qualification" not in summary
-        assert "unqualified" not in summary
-
-
-def test_screening_switch_does_not_admit_an_enabled_default_request(
-    monkeypatch,
-) -> None:
-    """Invariance guard: the server default stays fail-closed with screening on."""
-
-    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
-    fake = UnqualifiedBudgetSpeculativeMTPFakeLLM()
-    config = ServerConfig(
-        model="fake-path",
-        served_model_name="fake-model",
-        speculative_mtp_serving="enabled",
-    )
-    sampling = SamplingParams(max_tokens=25)
-    route, plan = _generation_route_for_request(
-        config,
-        CompletionRequest(model="fake-model", prompt="one", max_tokens=25),
-        engine=fake,
-        sampling=sampling,
-        prompts=("one",),
-    )
-    assert route != _SPECULATIVE_MTP_BATCH_ROUTE
-    assert plan is not None
-    assert plan["admitted"] is False
-    assert plan.get("screening") is None
-    assert plan["static_intent_allowed"] is False
-    realized_route, realized = _resolve_realized_generation_route(
-        route,
-        group_rows=1,
-        sampling=sampling,
-        precomputed_decision=plan,
-    )
-    assert realized_route == _SPECULATIVE_MTP_DEFAULT_ROUTE
-    assert realized is not None
-    assert realized.get("screening") is None
-    summary = _mtp_response_summary(
-        realized_route,
-        None,
-        route_decision=realized,
-        thinking_policy="hint",
-    )
     assert "qualification" not in summary
     assert "unqualified" not in summary
 
 
-def test_screening_switch_ignores_an_explicit_opt_out(monkeypatch) -> None:
-    """`speculative_mtp: false` stays AR even with screening on."""
+def test_explicit_capability_miss_names_the_axis_and_never_screens() -> None:
+    """A group wider than the declaration is refused, not admitted by override."""
 
-    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
-    fake = UnqualifiedBudgetSpeculativeMTPFakeLLM()
+    fake = DeclaredCellSpeculativeMTPFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        speculative_mtp_serving="opt_in",
+    )
+    sampling = SamplingParams(max_tokens=25)
+    prompts = tuple(str(index) for index in range(9))
+
+    with pytest.raises(OpenAIHTTPError, match="dense_group_above_offered_width"):
+        _generation_route_for_request(
+            config,
+            CompletionRequest(
+                model="fake-model",
+                prompt="one",
+                max_tokens=25,
+                speculative_mtp=True,
+            ),
+            engine=fake,
+            sampling=sampling,
+            prompts=prompts,
+        )
+
+
+@pytest.mark.parametrize("arrival", ["explicit", "automatic"])
+def test_enabled_mode_intent_never_shares_a_batch_group(arrival: str) -> None:
+    """An explicit and an automatic request must not coalesce in `enabled` mode.
+
+    The batcher applies one route decision -- and therefore one MTP intent -- to
+    every row of a group, so a group holding both intents would either widen
+    automatic policy onto an unlisted cell or withhold an explicit request's
+    declared cell. Reproduced finding: both requests route `speculative_mtp`,
+    their plan fingerprints match because the fingerprint excludes
+    `request_mode`, and their sampling keys match, so arrival order alone
+    decided which intent the whole group ran.
+    """
+
+    fake = DefaultMTPDeclaredCellFakeLLM()
     config = ServerConfig(
         model="fake-path",
         served_model_name="fake-model",
         speculative_mtp_serving="enabled",
     )
-    route, plan = _generation_route_for_request(
-        config,
-        CompletionRequest(
-            model="fake-model", prompt="one", max_tokens=25, speculative_mtp=False
+    sampling = SamplingParams(max_tokens=25)
+    requests = {
+        "explicit": CompletionRequest(
+            model="fake-model", prompt="explicit", max_tokens=25, speculative_mtp=True
         ),
+        "automatic": CompletionRequest(
+            model="fake-model", prompt="automatic", max_tokens=25
+        ),
+    }
+    built = {}
+    for label, request in requests.items():
+        route, plan = _generation_route_for_request(
+            config,
+            request,
+            engine=fake,
+            sampling=sampling,
+            prompts=(request.prompt,),
+        )
+        assert route == _SPECULATIVE_MTP_BATCH_ROUTE
+        assert plan is not None
+        built[label] = _QueuedGeneration(
+            prompts=(request.prompt,),
+            sampling=sampling,
+            route=route,
+            route_decision=plan,
+        )
+
+    first = built[arrival]
+    second = built["automatic" if arrival == "explicit" else "explicit"]
+    # Both are interchangeable on every key the batcher used before intent:
+    # same route, same plan payload (the fingerprint omits request_mode), same
+    # sampling.
+    assert first.route_decision["plan_fingerprint"] == second.route_decision[
+        "plan_fingerprint"
+    ]
+    assert _sampling_key(
+        first.sampling, include_cancellation_token=False
+    ) == _sampling_key(second.sampling, include_cancellation_token=False)
+    assert first.route_decision["request_mode"] != second.route_decision[
+        "request_mode"
+    ]
+
+    batcher = _GenerationBatcher(engine_factory=lambda: fake, batch_window_seconds=0.0)
+    assert batcher._group_key(first) != batcher._group_key(second)
+
+    # The partition is intent, not request identity: a second automatic request
+    # still coalesces with the automatic one.
+    peer_route, peer_plan = _generation_route_for_request(
+        config,
+        CompletionRequest(model="fake-model", prompt="peer", max_tokens=25),
         engine=fake,
-        sampling=SamplingParams(max_tokens=25),
-        prompts=("one",),
+        sampling=sampling,
+        prompts=("peer",),
     )
-    assert route == _SPECULATIVE_MTP_DEFAULT_ROUTE
-    assert plan is None
-    assert fake.plan_calls == []
+    peer = _QueuedGeneration(
+        prompts=("peer",),
+        sampling=sampling,
+        route=peer_route,
+        route_decision=peer_plan,
+    )
+    assert batcher._group_key(peer) == batcher._group_key(built["automatic"])
+
+    # Each request's own decision is what its own group runs.
+    for item in (first, second):
+        realized = _realized_model_serving_plan(
+            fake, item.prompts, item.sampling, item.route_decision
+        )
+        _, decision = _resolve_realized_generation_route(
+            item.route,
+            group_rows=len(item.prompts),
+            sampling=item.sampling,
+            precomputed_decision=realized,
+        )
+        group_sampling = _sampling_for_realized_generation_route(
+            item.sampling, decision
+        )
+        assert group_sampling.speculative_mtp_automatic is (
+            item.route_decision["request_mode"] == "automatic"
+        )
 
 
-def test_screening_override_applies_in_the_default_auto_mode(monkeypatch) -> None:
-    """An explicit request screens even when the server mode is the default auto."""
+class OverDeclaredDepthSpeculativeMTPFakeLLM(DeclaredCellSpeculativeMTPFakeLLM):
+    """Requests K4 while the model declaration covers K3."""
 
-    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
-    fake = UnqualifiedBudgetSpeculativeMTPFakeLLM()
+    speculative_candidate_budget = 4
+
+
+def test_explicit_depth_above_the_declaration_is_a_capability_refusal() -> None:
+    """K4 is a declared-shape miss, so no override may admit it."""
+
+    fake = OverDeclaredDepthSpeculativeMTPFakeLLM()
     config = ServerConfig(
         model="fake-path",
         served_model_name="fake-model",
-        speculative_mtp_serving="auto",
+        speculative_mtp_serving="opt_in",
     )
-    sampling = SamplingParams(max_tokens=25)
-    route, plan = _generation_route_for_request(
-        config,
-        CompletionRequest(
-            model="fake-model", prompt="one", max_tokens=25, speculative_mtp=True
-        ),
-        engine=fake,
-        sampling=sampling,
-        prompts=("one",),
-    )
-    assert route == _SPECULATIVE_MTP_BATCH_ROUTE
-    assert plan is not None
-    assert plan["screening"] is True
-    assert plan["qualification"] == "explicit_screening_unqualified_cell"
-    assert plan["static_intent_allowed"] is True
 
-
-def test_mtp_screening_helper_refuses_plans_it_cannot_authorize() -> None:
-    """The helper is fail-closed on malformed plans and correctness reasons."""
-
-    assert "sampling_mode_not_qualified" not in _MTP_SCREENING_REASONS
-    assert "artifact_identity_unverified" not in _MTP_SCREENING_REASONS
-    assert "insufficient_memory" not in _MTP_SCREENING_REASONS
-    assert "candidate_budget_not_qualified" in _MTP_SCREENING_REASONS
-
-    assert _mtp_screening_static_eligibility({}, physical_max_rows=4) is None
-    assert (
-        _mtp_screening_static_eligibility(
-            {
-                "reason": "sampling_mode_not_qualified",
-                "key": {"candidate_budget": 3},
-            },
-            physical_max_rows=4,
+    with pytest.raises(OpenAIHTTPError, match="mtp_candidate_depth_unsupported"):
+        _generation_route_for_request(
+            config,
+            CompletionRequest(
+                model="fake-model",
+                prompt="one",
+                max_tokens=25,
+                speculative_mtp=True,
+            ),
+            engine=fake,
+            sampling=SamplingParams(max_tokens=25),
+            prompts=("one", "two"),
         )
-        is None
-    )
-    assert (
-        _mtp_screening_static_eligibility(
-            {"reason": "candidate_budget_not_qualified", "key": {}},
-            physical_max_rows=4,
-        )
-        is None
-    )
-    payload = _mtp_screening_static_eligibility(
-        {
-            "reason": "candidate_budget_not_qualified",
-            "key": {"candidate_budget": 3},
-            "plan_fingerprint": "sha256:" + "5" * 64,
-        },
-        physical_max_rows=4,
-    )
-    assert payload is not None
-    eligibility = SpeculativeMTPStaticEligibility.from_mapping(payload)
-    assert eligibility.eligible is True
-    assert eligibility.automatic_eligible is False
-    assert eligibility.max_candidate_count == 3
-    assert eligibility.max_realized_group_rows == 4
-    assert eligibility.evidence_key == "explicit_screening_unqualified_cell"
-
-
-def test_screening_override_reads_every_failed_axis_not_the_summary_reason() -> None:
-    """A screenable summary reason must not admit a structural failure.
-
-    Reproduced finding: the resolver reports only its first failed
-    qualification axis, so ``candidate_budget=4`` with ``memory_fit=False``
-    reports ``candidate_budget_not_qualified`` - a screenable axis - while the
-    cell does not fit in memory at all. The helper must read the whole failed
-    set, because memory fit and sampling semantics are correctness boundaries
-    that no operator override may cross.
-    """
-
-    screenable = {
-        "reason": "candidate_budget_not_qualified",
-        "key": {"candidate_budget": 3},
-        "plan_fingerprint": "sha256:" + "6" * 64,
-    }
-    assert _mtp_screening_static_eligibility(screenable, physical_max_rows=4) is not None
-
-    for structural in (
-        "insufficient_memory",
-        "sampling_mode_unmeasured",
-    ):
-        plan = dict(screenable)
-        plan["failed_axes"] = ["candidate_budget_not_qualified", structural]
-        assert (
-            _mtp_screening_static_eligibility(plan, physical_max_rows=4) is None
-        ), structural
-
-    unverified = dict(screenable)
-    unverified["failed_axes"] = ["artifact_identity_unverified"]
-    assert _mtp_screening_static_eligibility(unverified, physical_max_rows=4) is not None
-
-    # A plan whose failed set is entirely screenable still screens.
-    only_screenable = dict(screenable)
-    only_screenable["failed_axes"] = [
-        "candidate_budget_not_qualified",
-        "resident_capacity_not_qualified",
-    ]
-    assert (
-        _mtp_screening_static_eligibility(only_screenable, physical_max_rows=4)
-        is not None
-    )
-
-    # An empty failed set is not a structural rejection.
-    empty_axes = dict(screenable)
-    empty_axes["failed_axes"] = []
-    assert (
-        _mtp_screening_static_eligibility(empty_axes, physical_max_rows=4)
-        is not None
-    )
 
 
 def test_automatic_route_rejects_any_explicit_only_realized_plan() -> None:

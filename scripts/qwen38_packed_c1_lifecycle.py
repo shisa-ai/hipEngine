@@ -226,7 +226,6 @@ def main() -> None:
     from hipengine.generation import qwen35_gguf_mtp2 as mtp2
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
-    os.environ['HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS'] = '1'
     install_lifecycle_evidence(args.capacity, range(1, 9) if args.wide_refill else (1, 2), budget=args.budget)
     traces = []
     paired_ready = None

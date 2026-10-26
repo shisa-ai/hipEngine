@@ -971,6 +971,53 @@ class Qwen35GGUFModel:
             default=0,
         )
 
+    def _widest_declared_group_rows(self, key: SpeculativeMTPServingKey) -> int:
+        """Widest group this backend declares executable for the key's storage.
+
+        Automatic policy reads only the automatic-eligible declarations, because
+        a measured cell is the automatic scope. An explicit request asks the
+        runnability question instead, so every declaration for the storage and
+        backend counts.
+        """
+
+        return max(
+            (
+                int(declaration.max_group_rows)
+                for declaration in self.speculative_mtp_serving_implementations
+                if declaration.kv_storage == key.kv_storage
+                and (key.backend, key.target_arch) in declaration.backends
+            ),
+            default=0,
+        )
+
+    def _explicit_static_width(
+        self,
+        decision: SpeculativeMTPServingDecision,
+        *,
+        key: SpeculativeMTPServingKey,
+        request_mode: str,
+    ) -> SpeculativeMTPServingDecision:
+        """Let an explicit request's group width follow the declaration.
+
+        A retained row records the width its measurement covered, and that is
+        the width an automatic request may form. An explicit request asks
+        whether the kernels execute the group, so its width bound is the widest
+        group this storage's declarations cover; otherwise a measured singleton
+        row resolved every wider due group containing the request to zero and
+        the group fell to AR on a measurement rather than a capability. Depth
+        and the row's evidence attribution are untouched: the resolved depth
+        stays the qualified one, and `evidence_key`/`evidence_fingerprint` keep
+        naming the row that describes the cell. A packed one-row target keeps
+        its measured width, because its ownership is the C1 shape itself.
+        """
+
+        if str(request_mode) != "explicit" or decision.packed_c1_target:
+            return decision
+        declared = self._widest_declared_group_rows(key)
+        if declared <= int(decision.static_max_realized_group_rows or 0):
+            return decision
+        return replace(decision, static_max_realized_group_rows=declared)
+
     def resolve_speculative_mtp_serving_plan(
         self,
         *,
@@ -984,6 +1031,11 @@ class Qwen35GGUFModel:
         the implementation declaration admits it in every request mode: a
         missing measurement never withholds a path the kernels support, and only
         a capability gap or a recorded bad cell keeps it off.
+
+        An admitted explicit request keeps the row's depth and attribution but
+        takes its group width from the declaration (see
+        ``_explicit_static_width``), so a measured singleton row cannot refuse
+        the wider group the kernels execute.
         """
 
         evidence_decision = resolve_speculative_mtp_serving_plan(
@@ -992,7 +1044,11 @@ class Qwen35GGUFModel:
             request_mode=request_mode,
         )
         if evidence_decision.admitted:
-            return evidence_decision
+            return self._explicit_static_width(
+                evidence_decision,
+                key=key,
+                request_mode=request_mode,
+            )
         implementation = self._speculative_mtp_serving_implementation(key)
         if implementation is not None:
             decision = implementation.resolve(key, request_mode=request_mode)

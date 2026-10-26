@@ -80,11 +80,9 @@ def _inject_k4_evidence_row(width: int, budget: int, *, capacity: int | None = N
             base = row
             break
     if base is None:
-        # Canonical serving evidence exists only for widths 1/2/8. Off-width
-        # screening cells (Packet 6 grid) clone the C8 production row and
-        # override the realized width; the clone keeps automatic_eligible=False
-        # so the screening contract (HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS)
-        # stays the only admission route.
+        # Off-width diagnostic cells clone the C8 evidence row for attribution.
+        # Evidence does not override implementation capability limits; the
+        # retired screening environment variable cannot widen admission.
         for row in models_mod._QWEN38_Q4KM_MTP_SERVING_EVIDENCE:
             if (
                 row.backend == "hip_gfx1100"
@@ -513,7 +511,6 @@ def main() -> int:
     # to the server independently via HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET.
     patched = _patch_depth_bound(max(int(args.budget), 3))
     evidence_key = _inject_k4_evidence_row(args.width, args.budget)
-    os.environ["HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS"] = "1"
 
     print("[probe] patched:", ", ".join(patched), flush=True)
     print(f"[probe] injected diagnostic evidence row: {evidence_key}", flush=True)

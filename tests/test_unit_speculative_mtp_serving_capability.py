@@ -452,8 +452,8 @@ def test_qwen38_candidate_plan_fails_closed_on_every_unqualified_axis(
     assert decision.reason == reason
     assert decision.strict_fallback_key == "gguf_target_ar"
     # The summary reason is the first failed axis; the full set is what a
-    # screening decision has to read, because the first axis can be screenable
-    # while a later one is not.
+    # caller has to read, because the first axis can be a physical-qualification
+    # miss while a later one is a correctness boundary.
     assert decision.failed_axes == (reason,)
     assert decision.structural_rejection == (
         reason if reason in STRUCTURAL_REJECTION_AXES else None
@@ -476,10 +476,9 @@ def test_rejection_reports_every_failed_axis_not_just_the_summary_reason() -> No
 
     Reproduced finding: with real model evidence, ``candidate_budget=4`` (over
     the row's qualified depth) plus ``memory_fit=False`` reported
-    ``candidate_budget_unmeasured`` as its reason, which is a screenable
-    axis, so the screening helper granted override eligibility for a cell that
-    did not fit in memory at all. Memory fit is a correctness boundary and must
-    stay blocked for every request.
+    ``candidate_budget_unmeasured`` as its reason, a physical-qualification
+    axis, which hid a cell that did not fit in memory at all. Memory fit is a
+    correctness boundary and must stay visible in the failed set.
     """
 
     decision = resolve_speculative_mtp_serving_plan(
@@ -532,15 +531,17 @@ def test_rejection_reports_every_failed_axis_not_just_the_summary_reason() -> No
     )
 
 
-def test_screening_switch_does_not_widen_model_plugin_evidence(monkeypatch) -> None:
-    """Screening is a serving-layer decision, never an evidence widening.
+@pytest.mark.parametrize("request_mode", ["automatic", "explicit"])
+def test_resolver_fails_closed_on_every_unqualified_axis_in_both_request_modes(
+    request_mode: str,
+) -> None:
+    """Admission never depends on the request mode.
 
-    The resolver keeps failing closed on every unqualified axis even with the
-    operator screening switch on; only the serving layer may turn that into an
-    explicit, marked screening admission.
+    An explicit request is admitted by a model declaration or refused with a
+    named axis. It cannot widen the resolver's own fail-closed checks, and no
+    operator switch exists to widen them either.
     """
 
-    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
     for changes, reason in (
         ({"candidate_budget": 4}, "candidate_budget_unmeasured"),
         ({"sampling_mode": "processed_argmax"}, "sampling_mode_unmeasured"),
@@ -548,7 +549,7 @@ def test_screening_switch_does_not_widen_model_plugin_evidence(monkeypatch) -> N
         ({"realized_group_rows": 2}, "physical_group_unmeasured"),
     ):
         decision = resolve_speculative_mtp_serving_plan(
-            (_evidence(),), key=_key(**changes)
+            (_evidence(),), key=_key(**changes), request_mode=request_mode
         )
         assert decision.admitted is False, reason
         assert decision.selected_route == "default", reason

@@ -2663,7 +2663,22 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
 - The invariant stands while the loop lives: a reused row's prefix pages are
   shared with another request, so no fallback may write them.
 
-## Screening override now spans the plan layer (extended 2026-09-17)
+## Explicit MTP capability admission replaces screening (resolved 2026-10-26)
+
+The screening switch and server override machinery are removed. Explicit
+requests use declared implementation bounds; automatic requests retain the
+backend's performance policy. Request intent is included in HTTP grouping so
+one client's selection cannot be copied to another. Explicit evidence-backed
+singletons take their group-width bound from the declaration, except where a
+packed one-row target requires singleton ownership. Evidence attribution stays
+separate from execution capability.
+
+The adapter includes an admitted explicit group's actual width in its proposal
+widths. Storage, sampling, resident capacity and declared depth limits still
+apply. The retired environment variable cannot bypass them. Diagnostic scripts
+no longer set it or consume its removed telemetry.
+
+The following records the superseded implementation, not current behavior:
 
 - `HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS` previously reached only the resident
   owner's width/depth admission (`_physical_width_depth_admitted_for_group`).
@@ -4066,9 +4081,9 @@ these quants than the shared DS4 plane, which would likely recover the mean.
   N=2/8 slots/transitions, numerical/task, lifecycle and repeated-economics
   gates pass. Then register exact evidence keys; do not restore old rows by
   copying their legacy-target measurements.
-- `HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS` remains a test-only admission aid,
-  not public safety evidence. Remove it and the runtime row-injection probe
-  after the matrix is qualified or the campaign is explicitly stopped.
+- The screening environment variable was removed in the R0077 cleanup above.
+  Runtime row-injection probes remain diagnostic tools, not public capability
+  declarations or evidence of the packed target's behavior.
 - Consolidate the duplicated implementation-depth tuples and B1-B7 graph-cache
   fields after lifecycle coverage proves the cleanup. Shared capacity is not
   permission to widen Qwen3.6/gfx1151 public evidence.
@@ -9523,7 +9538,11 @@ run justifies each:
   messages into one user block. Merge when multi-tool transcripts show
   degraded behavior.
 
-## 2026-09-06 HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS — screening-only env
+## 2026-09-06 screening override — removed 2026-10-26
+
+The switch, runtime screening branch and response markers were removed by
+R0077. See "Explicit MTP capability admission replaces screening" above.
+The following describes the superseded diagnostic contract:
 
 `HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS=1` lets `Qwen35GGUFMTP2Adapter`
 admit width/depth cells outside the backend's listed

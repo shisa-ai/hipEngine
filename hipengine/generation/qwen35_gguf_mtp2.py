@@ -140,15 +140,6 @@ _EXACT_TARGET_ROWS_ENV = "HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS"
 _Q6_MIXED_TARGET_ROWTILES_ENV = (
     "HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES"
 )
-# Screening-only admission for explicitly unqualified width/depth cells
-# (Qwen3.8 gfx1100 better-MTP campaign Packet 0). Default off; scoped to
-# static eligibility rows that are NOT automatic_eligible so no automatic
-# model policy can widen. The serving layer reads the same switch through
-# ``unqualified_mtp_screening_enabled`` to keep typed intent for an explicit
-# request that no evidence row admits, so the resident owner can screen it
-# instead of the request falling to pre-mutation K0. Remove with the campaign's
-# screening harness (docs/REFACTOR.md).
-MTP2_SCREEN_UNQUALIFIED_CELLS_ENV = "HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS"
 # The adapter no longer carries a fixed MTP context window. Prompt context is not
 # an admission axis (docs/EXECUTION-PROFILES.md section 2.9): gating on it
 # silently disables an already-qualified path, and the 1,023 sentinel existed
@@ -204,18 +195,6 @@ def _env_enabled(name: str, default: bool = False) -> bool:
     if raw is None:
         return bool(default)
     return str(raw).strip().lower() in {"1", "true", "yes", "on"}
-
-
-def unqualified_mtp_screening_enabled() -> bool:
-    """Return whether explicit screening of unqualified MTP cells is enabled.
-
-    This is an operator override for tuning campaigns. It never widens
-    automatic model policy: every screening admission still requires a group
-    whose requests all carry non-automatic static eligibility, and the serving
-    layer marks the resulting response metadata as unqualified.
-    """
-
-    return _env_enabled(MTP2_SCREEN_UNQUALIFIED_CELLS_ENV)
 
 
 def _positive_env(name: str, default: int) -> int:
@@ -1083,7 +1062,6 @@ class Qwen35GGUFMTP2Adapter:
             padded_frontier_rows,
         )
         self._last_partition_contract: dict[str, Any] = {}
-        self._last_screening_cell: dict[str, Any] | None = None
         self._intents: dict[int, int] = {}
         # The planner's resolved sampling mode per request. The adapter's
         # own route probe reads the row's request, which is not the resolved
@@ -1132,19 +1110,10 @@ class Qwen35GGUFMTP2Adapter:
         self._cycle_workspace_shape: tuple[int, int] | None = None
         validate_staged_target_adapter(self)
 
-    def _physical_width_depth_policy(self) -> tuple[tuple[int, int], ...]:
-        """Return policy cells that fit this adapter's resident capacity."""
+    def _physical_request_capacity(self) -> int:
+        """Return the widest physical group this owner may form."""
 
-        cells = getattr(self, "physical_width_depths", None)
-        if cells is None:
-            try:
-                cells = _physical_width_depths(self.generator)
-            except (AttributeError, RuntimeError, ValueError):
-                # Partially constructed test doubles retain the certified
-                # C1-C4 cells; real adapters fail closed in __init__.
-                cells = _MTP2_CERTIFIED_WIDTH_DEPTHS
-            self.physical_width_depths = tuple(cells)
-        capacity = min(
+        return min(
             max(
                 1,
                 int(getattr(self.owner, "capacity", _MTP2_MAX_PHYSICAL_REQUESTS)),
@@ -1157,6 +1126,20 @@ class Qwen35GGUFMTP2Adapter:
                 )
             ),
         )
+
+    def _physical_width_depth_policy(self) -> tuple[tuple[int, int], ...]:
+        """Return policy cells that fit this adapter's resident capacity."""
+
+        cells = getattr(self, "physical_width_depths", None)
+        if cells is None:
+            try:
+                cells = _physical_width_depths(self.generator)
+            except (AttributeError, RuntimeError, ValueError):
+                # Partially constructed test doubles retain the certified
+                # C1-C4 cells; real adapters fail closed in __init__.
+                cells = _MTP2_CERTIFIED_WIDTH_DEPTHS
+            self.physical_width_depths = tuple(cells)
+        capacity = self._physical_request_capacity()
         return tuple(
             (int(width), int(depth))
             for width, depth in cells
@@ -1166,23 +1149,100 @@ class Qwen35GGUFMTP2Adapter:
     def _physical_width_depth_admitted(self, width: int, depth: int) -> bool:
         return (int(width), int(depth)) in self._physical_width_depth_policy()
 
+    def _explicit_group_intent(self, request_ids: Sequence[int]) -> bool:
+        """Whether every row in this group explicitly asked for speculation.
+
+        ``automatic_eligible`` describes which policy may select a cell, not
+        which intent created the group: an implementation declaration is
+        automatic-eligible in both request modes, so it cannot tell an
+        operator's explicit request from an automatic selection. The request's
+        own flag is that intent, and both the server route decision and
+        ``LLM.generate()`` carry it to the row. A row whose request is
+        unavailable counts as automatic, so a partial test double cannot widen
+        policy.
+        """
+
+        row_for = getattr(getattr(self, "owner", None), "_row", None)
+        if not callable(row_for):
+            return False
+        ids = tuple(int(value) for value in request_ids)
+        if not ids:
+            return False
+        for rid in ids:
+            try:
+                row = row_for(rid)
+            except (KeyError, AttributeError, TypeError):
+                return False
+            request = getattr(row, "request", None)
+            if request is None or bool(
+                getattr(request, "speculative_mtp_automatic", True)
+            ):
+                return False
+        return True
+
+    def _capability_width_depth_admitted(
+        self,
+        width: int,
+        depth: int,
+        request_ids: Sequence[int],
+    ) -> bool:
+        """Whether the declared bounds and structural limits execute this cell.
+
+        This is the runnability question for an explicit request, not a
+        performance one. Width is bounded by this adapter's structural limit and
+        the widest group its resident capacity may assemble, and per request by
+        the group bound the serving plan resolved: the declaration's row count
+        for an explicit request, the measured row for automatic policy. Depth is
+        bounded per request by the resolved static eligibility, which is the
+        multi-row declaration's K3 for a group cell and the singleton chain's K7
+        at width one. A listed policy cell is admitted before any of this, so
+        automatic selection never depends on the capability path.
+        """
+
+        width = int(width)
+        depth = int(depth)
+        ids = tuple(int(value) for value in request_ids)
+        if not ids or len(ids) != width:
+            return False
+        if not 1 <= width <= _MTP2_MAX_PHYSICAL_REQUESTS:
+            return False
+        if not 1 <= depth <= _MTP2_MAX_CANDIDATE_DEPTH:
+            return False
+        bound = min(_MTP2_MAX_PHYSICAL_REQUESTS, self._physical_request_capacity())
+        if bound <= 0 or width > bound:
+            return False
+        for rid in ids:
+            eligibility = self._static_eligibility(rid)
+            if eligibility is None or not eligibility.eligible:
+                return False
+            if depth > int(eligibility.max_candidate_count):
+                return False
+            if width > int(eligibility.max_realized_group_rows):
+                return False
+        return True
+
     def _physical_width_depth_admitted_for_group(
         self,
         width: int,
         depth: int,
         request_ids: Sequence[int],
     ) -> bool:
-        """Admit a listed policy cell, or an explicit-only screening cell.
+        """Admit a listed policy cell, or an explicitly requested cell.
 
-        The listed policy stays authoritative. The screening path exists only
-        so the better-MTP campaign can measure explicitly unqualified cells;
-        it refuses every request whose static eligibility is missing or
-        automatic_eligible, so automatic model policy cannot widen.
+        The listed table is the automatic performance policy: it records which
+        cells are worth offering at each width, and automatic selection stays
+        inside it. An explicit request asks a different question -- can the
+        kernels execute this cell? -- so it is admitted from the declaration's
+        own depth and row bounds, the adapter's structural limits, and resident
+        capacity. Every request in the group must carry that explicit intent;
+        one automatic row keeps the whole group on the listed table.
         """
 
         if self._physical_width_depth_admitted(width, depth):
             return True
         ids = tuple(int(value) for value in request_ids)
+        if not ids:
+            return False
         if len(ids) == int(width) == 1:
             eligibility = self._static_eligibility(ids[0])
             if (
@@ -1193,26 +1253,9 @@ class Qwen35GGUFMTP2Adapter:
                 and int(width) <= eligibility.max_realized_group_rows
             ):
                 return True
-        if not unqualified_mtp_screening_enabled():
+        if not self._explicit_group_intent(ids):
             return False
-        if not ids:
-            return False
-        eligibilities = tuple(self._static_eligibility(rid) for rid in ids)
-        if any(
-            row is None or not row.eligible or row.automatic_eligible
-            for row in eligibilities
-        ):
-            return False
-        if not 1 <= int(depth) <= _MTP2_MAX_CANDIDATE_DEPTH:
-            return False
-        if not 1 <= int(width) <= _MTP2_MAX_PHYSICAL_REQUESTS:
-            return False
-        self._last_screening_cell = {
-            "width": int(width),
-            "depth": int(depth),
-            "request_ids": list(ids),
-        }
-        return True
+        return self._capability_width_depth_admitted(int(width), int(depth), ids)
 
     def _max_physical_requests(self) -> int:
         """Return the largest listed width that fits resident capacity."""
@@ -1290,7 +1333,7 @@ class Qwen35GGUFMTP2Adapter:
         """True when this request runs the packed one-row physical route.
 
         Requires explicit C1 target ownership in static evidence, a listed
-        (1, K) policy cell or an explicit-only screening cell, and the package
+        (1, K) policy cell or an implementation-declared cell, and the package
         capability. Wider request bounds are preserved when a peer retires.
         Existing Qwen3.6 and gfx1151 evidence retains the legacy singleton.
         """
@@ -2955,20 +2998,18 @@ class Qwen35GGUFMTP2Adapter:
             for width in (1, 2, 4, 8)
             if (width, max_candidate_count) in self._physical_width_depth_policy()
         ]
-        if listed_proposal_widths:
-            proposal_widths = tuple(listed_proposal_widths)
-        else:
-            # Screening-only groups have no listed cell at this depth; the
-            # realized due group is the one admissible proposal width.
-            proposal_widths = (
-                (group_width,)
-                if self._physical_width_depth_admitted_for_group(
-                    group_width,
-                    max_candidate_count,
-                    [item.request_id for item in semantics],
-                )
-                else ()
-            )
+        # The realized due group is one physical group. The listed widths are a
+        # ceiling list that ``_physical_groups`` decomposes against, so an
+        # admitted cell the table does not list has to name its own width or
+        # the group would silently split into narrower passes.
+        proposal_widths = set(listed_proposal_widths)
+        if self._physical_width_depth_admitted_for_group(
+            group_width,
+            max_candidate_count,
+            [item.request_id for item in semantics],
+        ):
+            proposal_widths.add(int(group_width))
+        proposal_widths = tuple(sorted(proposal_widths))
         return SpeculativeCapability(
             capability_key=(
                 f"gguf_mtp2_c{max_requests}:{self.generator.backend}:{self.quant}:"
@@ -3084,7 +3125,7 @@ class Qwen35GGUFMTP2Adapter:
         realized_depth = max(candidate_counts, default=self.candidate_budget)
         counts = candidate_counts or (self.candidate_budget,) * len(request_ids)
         # A listed performance cell does not widen any request's safety row.
-        # Recheck at the final claims boundary, including screening requests.
+        # Recheck at the final claims boundary, including explicit cells.
         if len(counts) != len(request_ids) or any(
             (row := self._static_eligibility(rid)) is None
             or not row.eligible
@@ -3356,9 +3397,6 @@ class Qwen35GGUFMTP2Adapter:
             ),
             "last_partition": dict(
                 getattr(self, "_last_partition_contract", {})
-            ),
-            "last_screening_cell": dict(
-                getattr(self, "_last_screening_cell", None) or {}
             ),
         }
 
@@ -7431,7 +7469,5 @@ class Qwen35GGUFMTP2Adapter:
 __all__ = [
     "C1ShadowOwnershipError",
     "C1ShadowSessionLifecycle",
-    "MTP2_SCREEN_UNQUALIFIED_CELLS_ENV",
     "Qwen35GGUFMTP2Adapter",
-    "unqualified_mtp_screening_enabled",
 ]
