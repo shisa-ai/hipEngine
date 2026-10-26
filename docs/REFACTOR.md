@@ -2806,9 +2806,12 @@ the allocation repair. The observations and proposal below are historical.
 ## Qwen4Exp prepacked Q8 MMQ admission
 
 - Separate prepacked registry candidate retains an exact raw-Q8 fallback.
-  Production-bound `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK=1` prepares runner-owned
-  sidecars for measured GDN QKV/SSM shapes and exposes them only through the
-  bounded prefill MMQ session. Five full logits/state/KV cases and lifecycle
+  Production binds `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK=1`, but sidecar
+  preparation also requires the prefill MMQ library. Arithmetic recovery keeps
+  `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL=0`, so the shipped recovery path allocates
+  no prepacked sidecars. When prefill MMQ is enabled, runner-owned sidecars for
+  GDN QKV/SSM shapes are exposed only through the bounded prefill MMQ session.
+  The historical enabled-path five full logits/state/KV cases and lifecycle
   pass; full12-case72-trajectory timing improves every prefill case. Strict
   binds0. Retain rollback through the next owner refresh and one release
   window; then remove redundant positive experiment selection.
@@ -2817,7 +2820,9 @@ the allocation repair. The observations and proposal below are historical.
   for admission and used by runtime; do not import tests from runtime. Raw weights remain necessary
   for decode and risk repair, so account for the full additional sidecar.
 - Keep the measured mixed512 request-wall regression0.14% and1.67GiB additional
-  memory explicit under the prefill-first retention decision. GR remains excluded
+  memory explicit for the enabled prepacked path under the prefill-first
+  retention decision; that sidecar cost is not paid while prefill MMQ is off.
+  GR remains excluded
   until an independent positive complete-chain/model gate.
 
 This file tracks cleanup work that should happen after the fast/correct path is
