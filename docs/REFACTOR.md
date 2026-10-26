@@ -2269,7 +2269,11 @@ integration; the preservation commit `0f3bd43dc` keeps their history.
   measuring the checkpoint against a decode-speed suffix would attribute the
   suffix's cost to the checkpoint.
 
-## `prefix_reuse_k0` prompt-sink refusal (found 2026-09-18)
+## `prefix_reuse_k0` prompt-sink refusal (found 2026-09-18) — RESOLVED
+
+Capture and restore now supply provider state for usable prefix hits. The
+observations below describe the original refusal; the remaining label identifies
+a missing or unusable checkpoint, not an unconditional refusal of prefix hits.
 
 - `hipengine/generation/qwen35_gguf_mtp2.py` `_open_prompt_streaming_sinks`
   returns `None` as soon as any row in the group has `prefix_reused_tokens > 0`
@@ -2339,7 +2343,17 @@ integration; the preservation commit `0f3bd43dc` keeps their history.
   recommendation for >=24 GB hosts is documented in benchmarks/README.md.
   Flip the code default to the wide set only after both are measured.
 
-## Prefix eligibility floor excludes short multi-turn traffic (found 2026-09-18)
+## Prefix eligibility floor excludes short multi-turn traffic (found 2026-09-18) — NOT A LOOKUP DEFECT
+
+The resident cache stores complete 256-token pages and requires an unmatched
+suffix token. A prompt of at most 256 tokens therefore cannot produce a usable
+hit. The current check does not exclude a 400-token prompt with a 256-token
+prefix: that prompt reaches the trie lookup. Boundary coverage in
+`tests/test_unit_gguf_prefix_cache_runner.py::test_prefix_fallback_reasons_are_counted_per_reason`
+checks short prompts, both sides of the page boundary, and a 400-token prompt.
+Supporting sub-page reuse would require a different cache/state ownership
+contract, not removal of this early check. The historical proposal below
+misidentified that capability limit as a lookup-cost policy.
 
 - `_prefix_source_for` returns `prompt_too_short` for `len(row.prompt_ids) <= 256`
   before any lookup. Every ShareGPT conversation in the serving suite is under

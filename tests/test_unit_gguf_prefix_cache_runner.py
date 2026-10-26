@@ -1531,7 +1531,8 @@ def test_reuse_chain_deepens_across_three_turns() -> None:
     runner.close()
 
 
-def test_prefix_fallback_reasons_are_counted_per_reason() -> None:
+@pytest.mark.parametrize("prompt_tokens", [100, 255, 256, 257, 400])
+def test_prefix_fallback_reasons_are_counted_per_reason(prompt_tokens: int) -> None:
     """The served harness can only see counters, so each reason needs one."""
 
     owner = _FakePrefixOwner()
@@ -1546,14 +1547,17 @@ def test_prefix_fallback_reasons_are_counted_per_reason() -> None:
             prefix_cache="radix",
         )
     )
-    short = tuple(range(1, 101))
+    short = tuple(range(1, prompt_tokens + 1))
     request = _request(short, max_tokens=2, forced_token_id=811)
     runner.register_batch((50,), request, prompt_rows=(short,))
     runner.reserve_admission(SimpleNamespace(request_id=50))
     row = runner._rows[50]
-    assert row.prefix_fallback_reason == "prompt_too_short"
+    # A reusable full block needs at least one unmatched suffix token.
+    expected = "prompt_too_short" if prompt_tokens <= 256 else "miss"
+    assert row.prefix_fallback_reason == expected
+    assert row.prefix_lookup is (prompt_tokens > 256)
     assert runner._prefix_cache_observability()["fallback_reasons"] == {
-        "prompt_too_short": 1
+        expected: 1
     }
 
     runner.rollback_admission(SimpleNamespace(request_id=50))

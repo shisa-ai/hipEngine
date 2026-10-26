@@ -1633,18 +1633,20 @@
       "start_line": 1961,
       "end_line": 1987,
       "sha256": "d73edd388884021f3dd19e93b72cc8835e1f61a56972c4f62144276507d01b2f",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Batched suffix implementation and regressions pass. Worklog:worklog/entries/20261026T072331.940185Z-cleanup-refactor-r0065-r0068-f5b579.md."
+      ],
       "subitems": [
         {
           "line": 1971,
           "text": "- `hipengine/generation/qwen35_gguf.py` `_prefill_native_chunk` and",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1983,
           "text": "- The branch also has to go before MTP can be admitted on a hit: it is the same",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
@@ -1654,23 +1656,25 @@
       "start_line": 1988,
       "end_line": 2009,
       "sha256": "abec13f24314285aad14f34d034e38511ae83a8ae5ff4e1f51df48f6be3e1dc7",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Checkpoint capture/restore and missing-checkpoint refusal regressions pass. Worklog:worklog/entries/20261026T072331.940185Z-cleanup-refactor-r0065-r0068-f5b579.md."
+      ],
       "subitems": [
         {
           "line": 1990,
           "text": "- `hipengine/generation/qwen35_gguf_mtp2.py` `_open_prompt_streaming_sinks`",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1998,
           "text": "- Remove it by supplying the provider's missing state instead of refusing: batch",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2004,
           "text": "- Capture (2026-09-19) and the restore (2026-09-20) are both in place, so the",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
@@ -1680,33 +1684,35 @@
       "start_line": 2010,
       "end_line": 2057,
       "sha256": "590f957d27e9cce7f546cb11ccbb9b8db29504890eb9eab270442e651e156184",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-budget-policy",
+      "evidence": [
+        "Separate retained/transient eviction regressions pass; retention-budget policy still open. Worklog:worklog/entries/20261026T072331.940185Z-cleanup-refactor-r0065-r0068-f5b579.md."
+      ],
       "subitems": [
         {
           "line": 2012,
           "text": "- `_capture_prefix_snapshot` trims with `while len(self._prefix_state_snapshots) >",
-          "status": "pending"
+          "status": "partial-budget-policy"
         },
         {
           "line": 2021,
           "text": "- Measured consequence on gfx1151 (41 served turns per arm, one arm per process):",
-          "status": "pending"
+          "status": "partial-budget-policy"
         },
         {
           "line": 2028,
           "text": "- Fix direction: make the trim prefer unretained entries and never evict a",
-          "status": "pending"
+          "status": "partial-budget-policy"
         },
         {
           "line": 2033,
           "text": "- Fixed 2026-09-18: transient and retained entries are now trimmed by separate",
-          "status": "pending"
+          "status": "partial-budget-policy"
         },
         {
           "line": 2038,
           "text": "- The retained count defaults to the pre-fix effective budget",
-          "status": "pending"
+          "status": "partial-budget-policy"
         }
       ]
     },
@@ -1716,18 +1722,20 @@
       "start_line": 2058,
       "end_line": 2070,
       "sha256": "32686d114258035b5182b892d3bd8e39a5e83b2a4bf5666975c91bc91dbcad0c",
-      "status": "pending",
-      "evidence": [],
+      "status": "not-debt",
+      "evidence": [
+        "Full-page plus suffix requirement verified at 100/255/256/257/400 tokens; 400 reaches lookup. No sub-page reuse implementation exists. Worklog:worklog/entries/20261026T072331.940185Z-cleanup-refactor-r0065-r0068-f5b579.md."
+      ],
       "subitems": [
         {
           "line": 2060,
           "text": "- `_prefix_source_for` returns `prompt_too_short` for `len(row.prompt_ids) <= 256`",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 2065,
           "text": "- Fix direction: separate the floor from the block size. A lookup can match zero",
-          "status": "pending"
+          "status": "not-debt"
         }
       ]
     },
