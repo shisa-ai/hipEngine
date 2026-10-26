@@ -35,10 +35,10 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     gdn_wave_norm_expected_calls,mmq_token64_expected_calls,gr_dpp_expected_calls,
     router_dpp_expected_calls,route_scope,GDN_COLWARPS_ENV,
     Q51_IU8_EXACT_ENV,Q51_PAIR2_PREEMPTING_ENV,Q51_PAIR2_GATE_ENV,
-    Q51_PAIR_PREFILL_ENV,Q51_FOLD128_ENV,
+    Q51_PAIR_PREFILL_ENV,Q51_FOLD128_FIELD,Q51_FOLD_PAIR_FIELD,
     q51_pair2_control_record,q51_register_cache_control_record,
     Q8_DOWN_CHAIN_GATES,q8_down_control_record,Q8_MAPPED_DOWN_MAP_GATE,
-    Q8_DOWN_FORKB_ENV,Q8_DOWN_ROW4_ENV,
+    Q8_DOWN_FORKB_ENV,Q8_DOWN_ROW4_FIELD,Q8_DOWN_BUNDLE_FIELD,
     q8_mapped_down_control_record,
     q51_fold_control_record,q8_down_ladder_control_record,
     MMQ_VECTOR_ROUTE_PACKAGES,mmq_token64_control_record,mmq_vector_control_record)
@@ -78,6 +78,11 @@ def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.envi
         # Request-local on the runner, like the GDN serial owner; the arm also
         # closes the exact iu8 Q5_1 down that would preempt the pair2 chain.
         return
+    if package in {"q51-fold128", "q51-fold-pair", "q8-down-row4",
+                   "q8-down-bundle"}:
+        # Request-local on the runner; ``route_scope`` binds the rung around
+        # the measured prefill and restores the plan's published value.
+        return
     if package == "q8-down-register":
         # Request-local on the runner; ``route_scope`` binds the arm around the
         # measured prefill and closes the owners that preempt both Q8_0
@@ -106,6 +111,10 @@ def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.envi
         apply_chunk_mode(runner,"after" if enabled=="1" else "before",
                          allocated_chunk_size=1024)
     else:
+        # Every package that reaches this branch owns a binder-set process key;
+        # a request-local package returns above, so an empty name here would be
+        # a wiring bug rather than a missing key.
+        assert flag, f"{package} has no process key to bind"
         environment[flag] = "page256" if package=="qsa-h256-page256" and enabled=="1" else enabled
 
 
@@ -235,20 +244,17 @@ def main():
         # Request-local on the runner; no env key names this selection. The
         # arm admits the MMQ parent it rides through ``route_scope``.
         flag = ""
-    if args.route_package == "q8-down-row4":
-        flag = "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"
-    if args.route_package == "q51-fold128":
-        flag = "HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"
-    if args.route_package == "q8-down-bundle":
-        flag = "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"
+    if args.route_package in {"q8-down-row4", "q51-fold128", "q8-down-bundle",
+                             "q51-fold-pair"}:
+        # Request-local on the runner; no env key names this selection.
+        # ``route_scope`` binds the rung around the measured prefill.
+        flag = ""
     if args.route_package == "q8-mapped-down":
         # Request-local on the runner; no env key names this selection.
         flag = ""
     if args.route_package=="q8-down-register":
         # Request-local on the runner; no env key names this selection.
         flag=""
-    if args.route_package == "q51-fold-pair":
-        flag = "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"
     if args.route_package == "q51-register-cache":
         # Request-local on the runner; no env key names this selection.
         flag = ""
@@ -514,7 +520,11 @@ def main():
             report["sidecar_bytes"] = generator.runner._q8_mmq_weight_sidecars.nbytes
             report["sidecar_count"] = len(generator.runner._q8_mmq_weight_sidecars.mapping)
             os.environ[flag] = "0"
-        if args.route_package in {"q5k-row4", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "gr-iu8", "gr-iu8-down", "q8-wmma-down"}:
+        if args.route_package in {"q5k-row4", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "gr-iu8", "gr-iu8-down", "q8-wmma-down"}:
+            # These packages still own a binder-set process key. The Q5_1 fold
+            # and Q8_0 row4/bundle rungs are runner state, so their premise is
+            # the plan's own publication, asserted in their blocks below.
+            assert flag, "a process-keyed route package must name its key"
             assert os.environ[flag] == "1", "production must select the retained route without an override"
         if args.route_package in {"qsa-head-pair", "qsa-head-quad"}:
             # The leaf is runner state, so its production default is asserted
@@ -612,30 +622,30 @@ def main():
                 "mapped_owner_runner_field": generator.runner.q8_mapped_down,
             }
         if args.route_package in {"q51-fold128", "q51-fold-pair"}:
-            # The leaf is env-owned; ``route_scope`` closes the pair2
-            # preemptors, pins the ladder rung this arm does not count (or
-            # requires the parent it rides) and binds the published
-            # register-cache/row-publish siblings off. The record separates
-            # every forced value from what it replaced.
+            # The rung is request-local runner state; ``route_scope`` closes
+            # the pair2 preemptors, binds the ladder rung this arm does not
+            # count off (or requires the parent it rides) and binds the
+            # published register-cache/row-publish siblings off. The record
+            # separates every bound value from the plan's published one.
             assert os.environ.get(Q51_PAIR_PREFILL_ENV, "") not in {"", "0"}, (
                 "production must bind the grouped pair2 Q5_1 selection")
             assert os.environ.get(Q51_PAIR2_GATE_ENV, "") not in {"", "0"}, (
                 "the pair2 chain's own gate must be on")
             if args.route_package == "q51-fold-pair":
-                assert os.environ.get(Q51_FOLD128_ENV, "") not in {"", "0"}, (
-                    "production must bind the fold128 parent this arm rides")
+                assert getattr(generator.runner, Q51_FOLD128_FIELD, False), (
+                    "production must publish the fold128 parent this arm rides")
             report["selection_control"] = q51_fold_control_record(
                 args.route_package, generator.runner)
         if args.route_package in {"q8-down-row4", "q8-down-bundle"}:
-            # The leaf is env-owned; ``route_scope`` closes the owners that
-            # preempt the sorted chain, pins the rung this arm does not count
-            # (or requires the parent it rides) and binds the published
-            # register decision off.
+            # The rung is request-local runner state; ``route_scope`` closes
+            # the owners that preempt the sorted chain, binds the rung this arm
+            # does not count off (or requires the parent it rides) and binds
+            # the published register decision off.
             assert os.environ.get(Q8_DOWN_FORKB_ENV, "") not in {"", "0"}, (
                 "production must bind the grouped Q8_0 down chain")
             if args.route_package == "q8-down-bundle":
-                assert os.environ.get(Q8_DOWN_ROW4_ENV, "") not in {"", "0"}, (
-                    "production must bind the row4 parent this arm rides")
+                assert getattr(generator.runner, Q8_DOWN_ROW4_FIELD, False), (
+                    "production must publish the row4 parent this arm rides")
             report["selection_control"] = q8_down_ladder_control_record(
                 args.route_package, generator.runner)
         if args.route_package in MMQ_VECTOR_ROUTE_PACKAGES:
@@ -960,11 +970,16 @@ def main():
             generator.runner._prefill_chunk = original_chunk
             generator.runner.prefill_chunk_size = 1024
         else:
-            if args.route_package not in {
+            # A request-local package names no process key, so there is nothing
+            # to restore; ``flag`` is checked before the set so an empty name can
+            # never reach the environment and fail the cleanup of a run that
+            # otherwise passed.
+            if flag and args.route_package not in {
                 "dense-wide-padded", "gdn-wave-norm", "gdn-narrow",
                 "q51-row-publish", "q51-register-cache", "q8-down-register",
                 "q8-mapped-down", "q8-mmq-raw-vector", "q8-mmq-vec4",
-                "mmq-token64",
+                "mmq-token64", "q51-fold128", "q51-fold-pair",
+                "q8-down-row4", "q8-down-bundle",
             }:
                 os.environ[flag] = ("f32_hidden_token_tile4_dense_exact"
                                     if args.route_package == "router-dpp" else "1")

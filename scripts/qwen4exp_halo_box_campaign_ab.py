@@ -602,10 +602,12 @@ Q51_IU8_EXACT_ENV = Q51_PAIR2_PREEMPTING_ENV[1]
 #: is the pair2 leaf at all, so a fold arm requires it and records it rather
 #: than forcing it: with the gate off neither fold can launch.
 Q51_PAIR_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"
-#: The two fold rungs. ``fold_pair`` replaces ``fold128`` on its rows>=512
-#: scope, so each arm pins or requires the other rung.
-Q51_FOLD128_ENV = "HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"
-Q51_FOLD_PAIR_ENV = "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"
+#: The two fold rungs are request-local runner state
+#: (``runner.q51_fold128_prefill`` / ``runner.q51_fold_pair_prefill``), so no
+#: process key names them. ``fold_pair`` replaces ``fold128`` on its rows>=512
+#: scope, so each arm pins or requires the other rung on the runner it measures.
+Q51_FOLD128_FIELD = "q51_fold128_prefill"
+Q51_FOLD_PAIR_FIELD = "q51_fold_pair_prefill"
 
 #: The ordered-decode route the v2 leaf rides. The leaf is request-local runner
 #: state now, but this v1 switch still decides whether any ordered decode runs,
@@ -636,26 +638,49 @@ def q51_pair2_control_record(*, environment=os.environ):
     }
 
 
+def require_published_ladder(runner, fields, *, route_package):
+    """Refuse an arm whose counted leaf's parent rung is not published.
+
+    The ladder rungs are request-local runner state. A leaf below them can only
+    be reached through its parent's variant, so an arm that rides one has to
+    find that parent published on the runner it measures; binding nothing would
+    measure the parent and report it as the arm.
+    """
+
+    missing = [field for field in fields if not getattr(runner, field, False)]
+    if missing:
+        raise ValueError(
+            f"{route_package} needs the plan to publish "
+            f"{', '.join('runner.' + field for field in missing)}; without its "
+            "parent rung the counted leaf cannot launch")
+
+
 @contextlib.contextmanager
-def q51_fold_scope(route_package, *, environment=os.environ):
+def q51_fold_scope(route_package, mode, runner, *, environment=os.environ):
     """Isolate one fold rung inside the grouped pair2 Q5_1 down chain.
 
     The two folds are a ladder: ``fold_pair`` replaces ``fold128`` on its
     rows>=512 scope, and the published register-cache/row-publish siblings
-    replace ``fold_pair`` in turn (the caller binds those runner fields). An arm
-    that counts ``fold128`` therefore holds ``fold_pair`` off in both arms; an
-    arm that counts ``fold_pair`` requires its ``fold128`` parent, because the
-    fold-pair selector keeps the parent when it is not selected and the arm
-    would count zero launches. The pair2 selection gate is a prerequisite in
-    both cases and is recorded, never forced. Every key is read per dispatch, so
-    the pin takes effect after construction, and every prior value - including
-    an absent key - comes back on exit.
+    replace ``fold_pair`` in turn (the caller binds those runner fields). Both
+    rungs are request-local runner state, so an arm binds its own rung on the
+    runner it measures - ``after`` selects it, ``before`` keeps the parent - and
+    the plan's own values come back on exit. An arm that counts ``fold128`` also
+    holds ``fold_pair`` off in both arms; an arm that counts ``fold_pair``
+    requires its published ``fold128`` parent, because the fold-pair selector
+    keeps the parent when it is not selected and the arm would count zero
+    launches. The pair2 selection gate is still a process key and is recorded,
+    never forced.
     """
 
+    from hipengine.runtime.qwen4_exp_runner import (
+        q51_fold128_prefill, q51_fold_pair_prefill)
+
+    if mode not in {"before", "after"}:
+        raise ValueError(f"invalid campaign A/B mode {mode!r}")
     if route_package == "q51-fold128":
-        pinned, required = Q51_FOLD_PAIR_ENV, ()
+        pinned = Q51_FOLD_PAIR_FIELD
     elif route_package == "q51-fold-pair":
-        pinned, required = None, (Q51_FOLD128_ENV,)
+        pinned = None
     else:
         raise ValueError(
             f"not a Q5_1 fold route package: {route_package!r}")
@@ -665,52 +690,53 @@ def q51_fold_scope(route_package, *, environment=os.environ):
             f"{Q51_PAIR_PREFILL_ENV} must be on for the grouped pair2 Q5_1 "
             "down chain; without it the parent variant is never the pair2 "
             "leaf and neither fold can launch")
-    for key in required:
-        if environment.get(key, "") in closed:
-            raise ValueError(
-                f"{key} must be on for the {route_package} arm; without its "
-                "parent rung the counted leaf cannot launch")
-    prior = None if pinned is None else environment.get(pinned)
-    if pinned is not None:
-        environment[pinned] = "0"
-    try:
-        yield prior
-    finally:
-        if pinned is not None:
-            if prior is None:
-                environment.pop(pinned, None)
-            else:
-                environment[pinned] = prior
+    if pinned is None and not getattr(runner, Q51_FOLD128_FIELD, False):
+        raise ValueError(
+            f"runner.{Q51_FOLD128_FIELD} must be on for the {route_package} "
+            "arm; without its parent rung the counted leaf cannot launch")
+    enabled = mode == "after"
+    if pinned is None:
+        with q51_fold_pair_prefill(runner, enabled):
+            yield getattr(runner, Q51_FOLD128_FIELD, None)
+        return
+    with contextlib.ExitStack() as scope:
+        scope.enter_context(q51_fold128_prefill(runner, enabled))
+        scope.enter_context(q51_fold_pair_prefill(runner, False))
+        yield getattr(runner, Q51_FOLD_PAIR_FIELD, None)
 
 
 def q51_fold_control_record(route_package, runner=None, *, environment=os.environ):
     """The recorded control for a Q5_1 fold arm.
 
-    The leaf itself is env-owned, so the record carries what the arm holds
-    fixed around it: the ladder rung it does not count (forced, with the value
-    it replaced) or the parent rung it rides (required, recorded as found), the
-    pair2 selection and chain gates, and the two runner-local siblings that
-    would replace the leaf.
+    The leaf is request-local runner state, so the record carries what the arm
+    holds fixed around it: the ladder rung it does not count (bound off, with
+    the plan's published value beside it) or the parent rung it rides (required,
+    recorded as found), the pair2 selection gate and chain gates, and the two
+    runner-local siblings that would replace the leaf.
     """
 
     if route_package == "q51-fold128":
         rung = {
-            "held_off": Q51_FOLD_PAIR_ENV,
-            "forced": "0",
-            "previous": environment.get(Q51_FOLD_PAIR_ENV),
+            "held_off": Q51_FOLD_PAIR_FIELD,
+            "bound_value": False,
+            "published_value": (
+                None if runner is None
+                else getattr(runner, Q51_FOLD_PAIR_FIELD, None)),
         }
     elif route_package == "q51-fold-pair":
         rung = {
-            "prerequisite": Q51_FOLD128_ENV,
-            "value": environment.get(Q51_FOLD128_ENV),
+            "prerequisite": Q51_FOLD128_FIELD,
+            "published_value": (
+                None if runner is None
+                else getattr(runner, Q51_FOLD128_FIELD, None)),
         }
     else:
         raise ValueError(
             f"not a Q5_1 fold route package: {route_package!r}")
     return {
-        "environment": (
-            Q51_FOLD128_ENV if route_package == "q51-fold128"
-            else Q51_FOLD_PAIR_ENV),
+        "runner_field": (
+            Q51_FOLD128_FIELD if route_package == "q51-fold128"
+            else Q51_FOLD_PAIR_FIELD),
         "rung": rung,
         "prerequisite": {
             Q51_PAIR_PREFILL_ENV: environment.get(Q51_PAIR_PREFILL_ENV),
@@ -883,20 +909,18 @@ Q8_DOWN_PREEMPTING_ENV = (
 )
 #: The sorted chain's own gate and its two ladder rungs. ``bundle`` replaces
 #: ``row4`` on its rows>=512 scope, so a row4 arm pins bundle off and a bundle
-#: arm requires row4.
+#: arm requires row4. Both rungs are request-local runner state
+#: (``runner.q8_down_row4_prefill`` / ``runner.q8_down_bundle_prefill``).
 Q8_DOWN_FORKB_ENV = "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN"
-Q8_DOWN_ROW4_ENV = "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"
-Q8_DOWN_BUNDLE_ENV = "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"
+Q8_DOWN_ROW4_FIELD = "q8_down_row4_prefill"
+Q8_DOWN_BUNDLE_FIELD = "q8_down_bundle_prefill"
 #: The chains' own gates. They must stay on for the counted leaf to run, so the
-#: arm records them instead of forcing them: ``FORKB_GROUPED_DOWN`` and the
-#: row4/bundle gates carry the sorted path. The token-major mapped path's own
-#: admission is the runner's ``q8_mapped_down`` decision, recorded in the mapped
-#: arm's control, not an env key.
-Q8_DOWN_CHAIN_GATES = (
-    Q8_DOWN_FORKB_ENV,
-    Q8_DOWN_ROW4_ENV,
-    Q8_DOWN_BUNDLE_ENV,
-)
+#: arm records them instead of forcing them: ``FORKB_GROUPED_DOWN`` carries the
+#: sorted path, and the row4/bundle rungs it gates are runner fields recorded in
+#: the ladder's control. The token-major mapped path's own admission is the
+#: runner's ``q8_mapped_down`` decision, recorded in the mapped arm's control,
+#: not an env key.
+Q8_DOWN_CHAIN_GATES = (Q8_DOWN_FORKB_ENV,)
 #: The token-major mapped path's own prerequisite: the grouped row4 gate/up map
 #: this invocation builds. The arm fails loudly without it instead of measuring
 #: a neutral A/B.
@@ -969,74 +993,81 @@ def q8_down_scope(*, environment=os.environ, gates=Q8_DOWN_CHAIN_GATES):
 
 
 @contextlib.contextmanager
-def q8_down_ladder_scope(route_package, *, environment=os.environ):
+def q8_down_ladder_scope(route_package, mode, runner, *, environment=os.environ):
     """Isolate one rung of the sorted grouped Q8_0 down ladder.
 
     ``bundle`` replaces ``row4`` on its rows>=512 scope, and the published
     register decision replaces ``bundle`` in turn (the caller binds that runner
-    field off). The row4 arm therefore holds bundle off in both arms; the bundle
-    arm requires its row4 parent, because the bundle selector keeps the parent
-    when it is not selected and the arm would count zero launches. The chain's
-    ``FORKB_GROUPED_DOWN`` gate is required by :func:`q8_down_scope`; the rung
-    an arm does not count is not a prerequisite. Every prior value - including
-    an absent key - comes back on exit.
+    field off). Both rungs are request-local runner state, so an arm binds its
+    own rung on the runner it measures - ``after`` selects it, ``before`` keeps
+    the parent - and the plan's own values come back on exit. The row4 arm also
+    holds bundle off in both arms; the bundle arm requires its published row4
+    parent, because the bundle selector keeps the parent when it is not selected
+    and the arm would count zero launches. The chain's ``FORKB_GROUPED_DOWN``
+    gate is still a process key, required by :func:`q8_down_scope`.
     """
 
+    from hipengine.runtime.qwen4_exp_runner import q8_down_bundle_prefill
+
+    if mode not in {"before", "after"}:
+        raise ValueError(f"invalid campaign A/B mode {mode!r}")
     if route_package == "q8-down-row4":
-        pinned, required = Q8_DOWN_BUNDLE_ENV, ()
+        pinned = Q8_DOWN_BUNDLE_FIELD
     elif route_package == "q8-down-bundle":
-        pinned, required = None, (Q8_DOWN_ROW4_ENV,)
+        pinned = None
     else:
         raise ValueError(
             f"not a sorted Q8_0 down ladder package: {route_package!r}")
-    closed = {"", "0", "false", "False"}
-    for key in required:
-        if environment.get(key, "") in closed:
-            raise ValueError(
-                f"{key} must be on for the {route_package} arm; without its "
-                "parent rung the counted leaf cannot launch")
-    prior = None if pinned is None else environment.get(pinned)
-    if pinned is not None:
-        environment[pinned] = "0"
-    try:
-        yield prior
-    finally:
-        if pinned is not None:
-            if prior is None:
-                environment.pop(pinned, None)
-            else:
-                environment[pinned] = prior
+    if pinned is None and not getattr(runner, Q8_DOWN_ROW4_FIELD, False):
+        raise ValueError(
+            f"runner.{Q8_DOWN_ROW4_FIELD} must be on for the {route_package} "
+            "arm; without its parent rung the counted leaf cannot launch")
+    enabled = mode == "after"
+    if pinned is None:
+        with q8_down_bundle_prefill(runner, enabled):
+            yield getattr(runner, Q8_DOWN_ROW4_FIELD, None)
+        return
+    from hipengine.runtime.qwen4_exp_runner import q8_down_row4_prefill
+
+    with contextlib.ExitStack() as scope:
+        scope.enter_context(q8_down_row4_prefill(runner, enabled))
+        scope.enter_context(q8_down_bundle_prefill(runner, False))
+        yield getattr(runner, Q8_DOWN_BUNDLE_FIELD, None)
 
 
 def q8_down_ladder_control_record(route_package, runner=None, *,
                                   environment=os.environ):
     """The recorded control for a row4 or bundle arm.
 
-    The leaf itself is env-owned, so the record carries what the arm holds
-    fixed around it: the ladder rung it does not count (forced, with the value
-    it replaced) or the parent rung it rides (required, recorded as found), the
-    chain gates, and the published register decision that would replace the
-    leaf.
+    The leaf is request-local runner state, so the record carries what the arm
+    holds fixed around it: the ladder rung it does not count (bound off, with
+    the plan's published value beside it) or the parent rung it rides (required,
+    recorded as found), the chain gate, and the published register decision that
+    would replace the leaf.
     """
 
     if route_package == "q8-down-row4":
         rung = {
-            "held_off": Q8_DOWN_BUNDLE_ENV,
-            "forced": "0",
-            "previous": environment.get(Q8_DOWN_BUNDLE_ENV),
+            "held_off": Q8_DOWN_BUNDLE_FIELD,
+            "bound_value": False,
+            "published_value": (
+                None if runner is None
+                else getattr(runner, Q8_DOWN_BUNDLE_FIELD, None)),
         }
     elif route_package == "q8-down-bundle":
         rung = {
-            "prerequisite": Q8_DOWN_ROW4_ENV,
-            "value": environment.get(Q8_DOWN_ROW4_ENV),
+            "prerequisite": Q8_DOWN_ROW4_FIELD,
+            "published_value": (
+                None if runner is None
+                else getattr(runner, Q8_DOWN_ROW4_FIELD, None)),
         }
     else:
         raise ValueError(
             f"not a sorted Q8_0 down ladder package: {route_package!r}")
     return {
-        "environment": (
-            Q8_DOWN_ROW4_ENV if route_package == "q8-down-row4"
-            else Q8_DOWN_BUNDLE_ENV),
+        "runner_field": (
+            Q8_DOWN_ROW4_FIELD if route_package == "q8-down-row4"
+            else Q8_DOWN_BUNDLE_FIELD),
         "rung": rung,
         "scope": "per measured run; restored on exit",
         **q8_down_control_record(environment=environment),
@@ -1434,6 +1465,11 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         from hipengine.runtime.qwen4_exp_runner import (
             q51_register_cache, q51_row_publish)
 
+        # The register-cache leaf sits below both fold rungs, which are runner
+        # state now: without them published the counted leaf cannot launch.
+        require_published_ladder(
+            runner, (Q51_FOLD128_FIELD, Q51_FOLD_PAIR_FIELD),
+            route_package=route_package)
         # The same owners that preempt the pair2 chain preempt this leaf, and
         # the downstream row-publish sibling replaces it outright, so both arms
         # close the preemptors and hold that sibling off; the profile's own
@@ -1454,6 +1490,11 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
                 "would measure the plan's own Q5_1 down owner")
         from hipengine.runtime.qwen4_exp_runner import q51_row_publish
 
+        # The row-publish leaf sits below both fold rungs and the register-cache
+        # sibling, all runner state now.
+        require_published_ladder(
+            runner, (Q51_FOLD128_FIELD, Q51_FOLD_PAIR_FIELD),
+            route_package=route_package)
         # The routed F16 WMMA down, the exact iu8 down and the grouped-WMMA/
         # grouped-MoE/MMQ/T16 owners all preempt the pair2 chain the arm counts,
         # so both arms close them and the profile's own values come back on
@@ -1472,6 +1513,11 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
                 "would measure the plan's own Q8_0 down owner")
         from hipengine.runtime.qwen4_exp_runner import q8_down_register
 
+        # The register leaf sits below both Q8_0 ladder rungs, which are runner
+        # state now: without them published the counted leaf cannot launch.
+        require_published_ladder(
+            runner, (Q8_DOWN_ROW4_FIELD, Q8_DOWN_BUNDLE_FIELD),
+            route_package=route_package)
         # The routed F16 WMMA down and the Q8_0 WMMA down preempt the two chains
         # the arm counts, so both arms close them and the profile's own values
         # come back on exit. The chains' own gates must stay on and are
@@ -1520,7 +1566,8 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         # exit and the gates are recorded, not forced.
         return _combined_scope(
             q51_pair2_scope(environment=environment),
-            q51_fold_scope(route_package, environment=environment),
+            q51_fold_scope(route_package, mode, runner,
+                           environment=environment),
             q51_register_cache(runner, False),
             q51_row_publish(runner, False))
     if route_package in {"q8-down-row4", "q8-down-bundle"}:
@@ -1543,7 +1590,8 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         # so both arms bind it off. Every forced value comes back on exit.
         return _combined_scope(
             q8_down_scope(environment=environment, gates=(Q8_DOWN_FORKB_ENV,)),
-            q8_down_ladder_scope(route_package, environment=environment),
+            q8_down_ladder_scope(route_package, mode, runner,
+                                 environment=environment),
             q8_down_register(runner, False))
     return contextlib.nullcontext()
 
@@ -1638,20 +1686,17 @@ def _apply_mode(
             flag = "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"
         if route_package == "q8-mmq-prepack":
             flag = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"
-        if route_package == "q8-down-row4":
-            flag = "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"
-        if route_package == "q51-fold128":
-            flag = "HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"
-        if route_package == "q8-down-bundle":
-            flag = "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"
+        if route_package in {"q8-down-row4", "q51-fold128", "q8-down-bundle",
+                             "q51-fold-pair"}:
+            # Request-local on the runner; ``route_scope`` binds the rung
+            # around the measured prefill and restores the plan's value.
+            return
         if route_package == "q8-mapped-down":
             # Request-local on the runner; ``route_scope`` binds the arm.
             return
         if route_package == "q8-down-register":
             # Request-local on the runner; ``route_scope`` binds the arm.
             return
-        if route_package == "q51-fold-pair":
-            flag = "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"
         if route_package == "q51-register-cache":
             # Request-local on the runner; ``route_scope`` binds the arm, closes
             # the preemptors and holds the downstream row-publish sibling off.

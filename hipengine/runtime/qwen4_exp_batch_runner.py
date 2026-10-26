@@ -412,6 +412,10 @@ def run_qwen4_exp_batch_gdn_layer(
     runtime: HipRuntime | None = None,
     graph_cache: MoeGraphCache | None = None,
     graph_key: Hashable | None = None,
+    q51_fold128_prefill: bool = False,
+    q51_fold_pair_prefill: bool = False,
+    q8_down_row4_prefill: bool = False,
+    q8_down_bundle_prefill: bool = False,
 ) -> DeviceBuffer:
     """Execute one complete N-row GDN+MoE layer over request-owned state slots.
 
@@ -491,6 +495,10 @@ def run_qwen4_exp_batch_gdn_layer(
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
             ffn=ffn, experts=experts, top_k=top_k,
             stream=segment_stream, runtime=active_runtime,
+            q51_fold128_prefill=q51_fold128_prefill,
+            q51_fold_pair_prefill=q51_fold_pair_prefill,
+            q8_down_row4_prefill=q8_down_row4_prefill,
+            q8_down_bundle_prefill=q8_down_bundle_prefill,
         )
 
     _run_segment(
@@ -589,8 +597,19 @@ def _run_layer_ffn(
     top_k: int,
     stream: int,
     runtime: HipRuntime,
+    q51_fold128_prefill: bool = False,
+    q51_fold_pair_prefill: bool = False,
+    q8_down_row4_prefill: bool = False,
+    q8_down_bundle_prefill: bool = False,
 ) -> None:
-    """GR write after the mixer, FFN GR read, MoE, and the final GR write."""
+    """GR write after the mixer, FFN GR read, MoE, and the final GR write.
+
+    The four expert-down ladder decisions are the owning runner's
+    plan-published selections, forwarded to the MoE dispatch unchanged. A batch
+    tops out at ``QWEN4_EXP_MAX_BATCH_ROWS`` rows, so only the fold128 rung's
+    rows>=64 scope is reachable from here; the rows>=512 rungs are carried for
+    uniformity and stay on their parents.
+    """
 
     attention_inject = scratch.attention_gr.inject_logits
     qwen4_exp_gr_write_bf16_f32(
@@ -620,6 +639,10 @@ def _run_layer_ffn(
         scratch=scratch.moe,
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=runtime,
+        q51_fold128_prefill=q51_fold128_prefill,
+        q51_fold_pair_prefill=q51_fold_pair_prefill,
+        q8_down_row4_prefill=q8_down_row4_prefill,
+        q8_down_bundle_prefill=q8_down_bundle_prefill,
     )
     qwen4_exp_gr_write_bf16_bf16(
         scratch.after_attention.ptr,
@@ -663,6 +686,10 @@ def run_qwen4_exp_batch_qsa_layer(
     runtime: HipRuntime | None = None,
     graph_cache: MoeGraphCache | None = None,
     graph_key: Hashable | None = None,
+    q51_fold128_prefill: bool = False,
+    q51_fold_pair_prefill: bool = False,
+    q8_down_row4_prefill: bool = False,
+    q8_down_bundle_prefill: bool = False,
 ) -> DeviceBuffer:
     """Execute one complete N-row QSA+MoE layer over request-owned slots.
 
@@ -742,6 +769,10 @@ def run_qwen4_exp_batch_qsa_layer(
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
             ffn=ffn, experts=experts, top_k=top_k,
             stream=segment_stream, runtime=active_runtime,
+            q51_fold128_prefill=q51_fold128_prefill,
+            q51_fold_pair_prefill=q51_fold_pair_prefill,
+            q8_down_row4_prefill=q8_down_row4_prefill,
+            q8_down_bundle_prefill=q8_down_bundle_prefill,
         )
 
     _run_segment(
@@ -804,6 +835,17 @@ class Qwen4ExpGGUFBatchRunner:
     # and prepared speculative chains, so serving may route a speculative batch
     # row here. Owners that do not declare it keep the c1 MTP path.
     supports_mixed_target = True
+
+    # The expert-down ladder rungs are the owning runner's plan-published
+    # decisions. They are class defaults so an owner built without the binder's
+    # publish keeps every parent, exactly like an unbound c1 runner. A batch
+    # tops out at ``QWEN4_EXP_MAX_BATCH_ROWS`` rows, so only the fold128 rung's
+    # rows>=64 scope is reachable here; the rows>=512 rungs are carried for
+    # uniformity and stay on their parents.
+    q51_fold128_prefill: bool = False
+    q51_fold_pair_prefill: bool = False
+    q8_down_row4_prefill: bool = False
+    q8_down_bundle_prefill: bool = False
 
     def __init__(
         self,
@@ -1688,6 +1730,23 @@ class Qwen4ExpGGUFBatchRunner:
 
     # -- decode step ------------------------------------------------------
 
+    def _expert_down_policy(self) -> tuple[bool, bool, bool, bool]:
+        """The expert-down rungs a captured layer segment depends on.
+
+        The MoE runs eager inside the layer's captured ``post_mixer`` segment,
+        so the expert-down selectors resolve at capture time and their launches
+        are baked into the graph. Every capture key therefore carries these four
+        plan-published decisions: a runner whose selection changes captures a
+        new segment instead of replaying one built under the old selection.
+        """
+
+        return (
+            bool(self.q51_fold128_prefill),
+            bool(self.q51_fold_pair_prefill),
+            bool(self.q8_down_row4_prefill),
+            bool(self.q8_down_bundle_prefill),
+        )
+
     def step(
         self,
         token_ids: Sequence[int],
@@ -1947,7 +2006,11 @@ class Qwen4ExpGGUFBatchRunner:
                     top_k=cfg.expert_used_count,
                     runtime=self.runtime,
                     graph_cache=self._graphs,
-                    graph_key=(layer, rows),
+                    graph_key=(layer, rows) + self._expert_down_policy(),
+                    q51_fold128_prefill=self.q51_fold128_prefill,
+                    q51_fold_pair_prefill=self.q51_fold_pair_prefill,
+                    q8_down_row4_prefill=self.q8_down_row4_prefill,
+                    q8_down_bundle_prefill=self.q8_down_bundle_prefill,
                 ).ptr
             else:
                 qsa_binding = self.qsa_bindings[layer]
@@ -1975,7 +2038,11 @@ class Qwen4ExpGGUFBatchRunner:
                     top_k=cfg.expert_used_count,
                     runtime=self.runtime,
                     graph_cache=self._graphs,
-                    graph_key=(layer, rows),
+                    graph_key=(layer, rows) + self._expert_down_policy(),
+                    q51_fold128_prefill=self.q51_fold128_prefill,
+                    q51_fold_pair_prefill=self.q51_fold_pair_prefill,
+                    q8_down_row4_prefill=self.q8_down_row4_prefill,
+                    q8_down_bundle_prefill=self.q8_down_bundle_prefill,
                 ).ptr
         head_norm_ptr = self.resident.weight(
             "root.head_hc_norm"

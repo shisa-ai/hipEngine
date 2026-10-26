@@ -642,7 +642,7 @@ def make_qwen4_exp_ar_batch_runner(
             "this generator was built with an external runner"
         )
     runner = generator.runner
-    return Qwen4ExpGGUFBatchRunner(
+    batch = Qwen4ExpGGUFBatchRunner(
         resident,
         state_slots=int(state_slots),
         max_positions=int(
@@ -653,6 +653,18 @@ def make_qwen4_exp_ar_batch_runner(
         runtime=getattr(runner, "runtime", None),
         pool_blocks="auto",
     )
+    # The expert-down ladder rungs are request-local on the owning runner, so a
+    # batch owner that never receives them would keep the parents on a
+    # rows>=64 pass. Only fold128 is reachable at the batch row cap.
+    batch.q51_fold128_prefill = bool(
+        getattr(generator, "q51_fold128_prefill", False))
+    batch.q51_fold_pair_prefill = bool(
+        getattr(generator, "q51_fold_pair_prefill", False))
+    batch.q8_down_row4_prefill = bool(
+        getattr(generator, "q8_down_row4_prefill", False))
+    batch.q8_down_bundle_prefill = bool(
+        getattr(generator, "q8_down_bundle_prefill", False))
+    return batch
 
 
 __all__ = [

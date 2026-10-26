@@ -916,16 +916,12 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT` | `0` | Default-off exact iu8-risk+repair selected Q5_K gate/up route (the layer-2 Q5_K layer). |
 | `HIPENGINE_QWEN4_EXP_Q5_K_IU8_RISK_MULT` | `16.0` | Risk multiplier for the Q5_K iu8 route; 16.0 keeps the route bit-identical to the strict parent in practice. |
 | `HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL` | production profile | Selected grouped pair2 prefill for Q5_1 (rows>=64). |
-| `HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL` | production profile | Fold128 sibling of the Q5_1 pair2 prefill (rows>=64). |
-| `HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL` | production profile | Fold-pair sibling of the Q5_1 fold128 prefill (rows>=512). |
 | `HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE` | retired | No longer read. The owning runner carries the register-cache fallback decision, with rows>=512, K640 and folded-pair parent guards unchanged. |
 | `HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH` | retired | No longer read. The owning runner carries the profile's row-publication decision; the register-cache parent and shape guards remain. |
 | `HIPENGINE_QWEN4_EXP_Q51_IU8_RISK_MULT` | `16.0` | Risk multiplier for the Q5_1 iu8 route. |
 | `HIPENGINE_QWEN4_EXP_Q4_TILE_M` / `HIPENGINE_QWEN4_EXP_Q4_TILE_N` | `16` / `16` (production pins 64/16 at rows>=512) | WMMA tile override for the Q4_K iu8 prefill build. |
 | `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED` | unset | Grouped compact prefill for Q8_0 expert down weights. |
 | `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA` | unset | Grouped WMMA prefill owner for Q8_0 experts (reads `expert_start` on device via a fixed worker grid). |
-| `HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL` | production profile | Row4 GEMV down-projection variant (rows>=512). |
-| `HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL` | production profile | Bundle GEMV down-projection variant (rows>=512). |
 | `HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN` | retired | No longer read. The owning runner carries the mapped-down decision; admission still requires a map built by the current invocation and rows>=512. |
 | `HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER` | retired | No longer read. The owning runner carries the register-down fallback decision; the rows>=512, K640 and bundle-parent guards remain. |
 | `HIPENGINE_QWEN4_EXP_FUSED_COMBINE` | unset | Opt-in fused PF-4 lever-2 combine; default stays unfused after the whole-model A/B measured a loss. |

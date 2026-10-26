@@ -2,10 +2,10 @@
 
 Each package is one rung of a ladder: the fold-pair and bundle rungs replace
 their parents on the same rows>=512 scope, and the published register/row-publish
-siblings replace them in turn. An arm that leaves any of those in place counts
-the other owner and reports it as its own, so the scope must pin the rung it does
-not count off, require the parent it rides, bind the runner-local siblings off,
-and restore every one of them on exit.
+siblings replace them in turn. Every rung is request-local runner state now, so
+an arm binds the rung it counts, holds the rung it does not count off, requires
+the parent it rides, binds the runner-local siblings off, and restores every one
+of them on exit.
 """
 
 from types import SimpleNamespace
@@ -15,16 +15,16 @@ import pytest
 from hipengine.kernels.registry import KernelKey
 from hipengine.runtime import qwen4_exp_runner as runner_module
 from scripts.qwen4exp_halo_box_campaign_ab import (
-    Q51_FOLD128_ENV,
-    Q51_FOLD_PAIR_ENV,
+    Q51_FOLD128_FIELD,
+    Q51_FOLD_PAIR_FIELD,
     Q51_PAIR2_GATE_ENV,
     Q51_PAIR2_PREEMPTING_ENV,
     Q51_PAIR_PREFILL_ENV,
-    Q8_DOWN_BUNDLE_ENV,
+    Q8_DOWN_BUNDLE_FIELD,
     Q8_DOWN_CHAIN_GATES,
     Q8_DOWN_FORKB_ENV,
     Q8_DOWN_PREEMPTING_ENV,
-    Q8_DOWN_ROW4_ENV,
+    Q8_DOWN_ROW4_FIELD,
     QSA_ORDERED_DECODE_ENV,
     QSA_ORDERED_V2_FUSED_ENV,
     ROW4_ENGAGEMENT_EXEMPT,
@@ -43,20 +43,16 @@ FOLD_PAIR = "selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out"
 ROW4 = "selected_grouped_row4_gemv_bf16_bf16_out"
 BUNDLE = "selected_grouped_row4_bundle_gemv_bf16_bf16_out"
 REGISTER = "selected_grouped_row4_register_gemv_bf16_bf16_out"
+ROW_PUBLISH = "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out"
 GROUPED = "selected_grouped_gemv_bf16_bf16_out"
 
-
 def _production_env():
-    """The shipped lane's bindings for both ladders, as a mutable mapping."""
+    """The shipped lane's process bindings around both ladders."""
 
     env = {
         Q51_PAIR2_GATE_ENV: "1",
         Q51_PAIR_PREFILL_ENV: "1",
-        Q51_FOLD128_ENV: "1",
-        Q51_FOLD_PAIR_ENV: "1",
         Q8_DOWN_FORKB_ENV: "1",
-        Q8_DOWN_ROW4_ENV: "1",
-        Q8_DOWN_BUNDLE_ENV: "1",
     }
     env.update({key: "1" for key in Q51_PAIR2_PREEMPTING_ENV})
     env.update({key: "1" for key in Q8_DOWN_PREEMPTING_ENV})
@@ -67,15 +63,20 @@ def _published_runner():
     """A runner carrying the values the production binder publishes."""
 
     return SimpleNamespace(
-        q51_register_cache=True, q51_row_publish=True, q8_down_register=True)
+        q51_fold128_prefill=True, q51_fold_pair_prefill=True,
+        q51_register_cache=True, q51_row_publish=True,
+        q8_down_row4_prefill=True, q8_down_bundle_prefill=True,
+        q8_down_register=True)
 
 
 def _q51_leaf(owner):
     """The dispatch chain the grouped Q5_1 down runs, in source order."""
 
     key = KernelKey("hip_gfx1151", "moe_linear", "gguf_q5_1", PAIR2)
-    key = runner_module._qwen4_exp_q51_fold128_key(key, rows=1024)
-    key = runner_module._qwen4_exp_q51_fold_pair_key(key, rows=1024)
+    key = runner_module._qwen4_exp_q51_fold128_key(
+        key, rows=1024, published=owner.q51_fold128_prefill)
+    key = runner_module._qwen4_exp_q51_fold_pair_key(
+        key, rows=1024, published=owner.q51_fold_pair_prefill)
     key = runner_module._qwen4_exp_q51_register_cache_key(
         key, rows=1024, in_features=640,
         published=owner.q51_register_cache)
@@ -88,8 +89,10 @@ def _q8_leaf(owner):
     """The dispatch chain the sorted grouped Q8_0 down runs, in source order."""
 
     key = KernelKey("hip_gfx1151", "linear", "gguf_q8_0", GROUPED)
-    key = runner_module._qwen4_exp_q8_down_row4_key(key, rows=1024)
-    key = runner_module._qwen4_exp_q8_down_bundle_key(key, rows=1024)
+    key = runner_module._qwen4_exp_q8_down_row4_key(
+        key, rows=1024, published=owner.q8_down_row4_prefill)
+    key = runner_module._qwen4_exp_q8_down_bundle_key(
+        key, rows=1024, published=owner.q8_down_bundle_prefill)
     key = runner_module._qwen4_exp_q8_down_register_key(
         key, rows=1024, in_features=640,
         published=owner.q8_down_register)
@@ -103,7 +106,11 @@ def registered(monkeypatch):
 
 @pytest.fixture
 def shipped_lane(monkeypatch):
-    """Publish the shipped bindings into the process env the selectors read."""
+    """Publish the process keys the two ladders still depend on.
+
+    The rungs are runner state now; what remains a process key is each chain's
+    own selection gate.
+    """
 
     for key, value in _production_env().items():
         monkeypatch.setenv(key, value)
@@ -126,27 +133,26 @@ def shipped_lane(monkeypatch):
     ],
 )
 def test_arm_selects_exactly_the_leaf_it_declares(
-        registered, shipped_lane, monkeypatch, package, mode, expected):
-    # ``_apply_mode`` is what the campaign calls before the measured run; the
-    # scope is what has to make that binding reach the counted leaf.
-    _apply_mode(mode, route_package=package)
+        registered, shipped_lane, package, mode, expected):
     owner = _published_runner()
     leaf = _q51_leaf if package.startswith("q51-") else _q8_leaf
     with route_scope(package, mode, owner):
         assert leaf(owner) == expected
+    # The plan's own values come back on exit: with every rung and sibling
+    # published, each chain lands on its published leaf again.
+    assert leaf(owner) == (ROW_PUBLISH if package.startswith("q51-")
+                           else REGISTER)
 
 
 def test_row4_arm_counts_row4_not_bundle_or_register(registered, shipped_lane):
-    # Production binds both downstream rungs on; without the closure the after
-    # arm launches bundle (or register) and reports it as row4.
-    _apply_mode("after", route_package="q8-down-row4")
+    # Production publishes both downstream rungs on; without the closure the
+    # after arm launches bundle (or register) and reports it as row4.
     owner = _published_runner()
     with route_scope("q8-down-row4", "after", owner):
         assert _q8_leaf(owner) == ROW4
 
 
 def test_fold128_arm_counts_fold128_not_fold_pair(registered, shipped_lane):
-    _apply_mode("after", route_package="q51-fold128")
     owner = _published_runner()
     with route_scope("q51-fold128", "after", owner):
         assert _q51_leaf(owner) == FOLD128
@@ -167,6 +173,8 @@ def test_fold_arm_restores_env_and_runner_state(package):
         assert owner.q51_register_cache is False
         assert owner.q51_row_publish is False
     assert env == before
+    assert owner.q51_fold128_prefill is True
+    assert owner.q51_fold_pair_prefill is True
     assert owner.q51_register_cache is True
     assert owner.q51_row_publish is True
 
@@ -181,24 +189,19 @@ def test_q8_ladder_arm_restores_env_and_runner_state(package):
         assert env[Q8_DOWN_FORKB_ENV] == "1"
         assert owner.q8_down_register is False
     assert env == before
+    assert owner.q8_down_row4_prefill is True
+    assert owner.q8_down_bundle_prefill is True
     assert owner.q8_down_register is True
 
 
-def test_absent_keys_come_back_absent():
-    env = {Q51_PAIR2_GATE_ENV: "1", Q51_PAIR_PREFILL_ENV: "1"}
-    env.update({key: "1" for key in Q51_PAIR2_PREEMPTING_ENV})
-    env.pop(Q51_FOLD_PAIR_ENV, None)
-    owner = _published_runner()
+def test_a_runner_without_the_field_comes_back_unpublished():
+    # An unbound runner (no attribute yet) keeps the parent after the scope.
+    owner = SimpleNamespace()
+    env = _production_env()
     with route_scope("q51-fold128", "after", owner, environment=env):
-        assert env[Q51_FOLD_PAIR_ENV] == "0"
-    assert Q51_FOLD_PAIR_ENV not in env
-
-    env = {Q8_DOWN_FORKB_ENV: "1", Q8_DOWN_ROW4_ENV: "1"}
-    env.update({key: "1" for key in Q8_DOWN_PREEMPTING_ENV})
-    env.pop(Q8_DOWN_BUNDLE_ENV, None)
-    with route_scope("q8-down-row4", "after", owner, environment=env):
-        assert env[Q8_DOWN_BUNDLE_ENV] == "0"
-    assert Q8_DOWN_BUNDLE_ENV not in env
+        assert owner.q51_fold128_prefill is True
+    assert owner.q51_fold128_prefill is False
+    assert owner.q51_fold_pair_prefill is False
 
 
 def test_scope_restores_after_an_exception():
@@ -208,66 +211,70 @@ def test_scope_restores_after_an_exception():
         with route_scope("q8-down-row4", "after", owner, environment=env):
             raise RuntimeError("arm failed")
     assert env == _production_env()
+    assert owner.q8_down_row4_prefill is True
+    assert owner.q8_down_bundle_prefill is True
     assert owner.q8_down_register is True
 
 
 @pytest.mark.parametrize(
-    "package,gate",
-    [("q51-fold-pair", Q51_FOLD128_ENV),
-     ("q8-down-bundle", Q8_DOWN_ROW4_ENV)])
+    "package,field",
+    [("q51-fold-pair", Q51_FOLD128_FIELD),
+     ("q8-down-bundle", Q8_DOWN_ROW4_FIELD)])
 def test_a_late_prerequisite_failure_unwinds_the_earlier_bindings(
-        package, gate):
+        package, field):
     # The preemptors close and the runner siblings bind before the rung check
     # runs; a missing parent must still leave the caller's state untouched.
     env = _production_env()
-    env[gate] = "0"
     before = dict(env)
     owner = _published_runner()
-    with pytest.raises(ValueError, match=gate):
+    setattr(owner, field, False)
+    with pytest.raises(ValueError, match=field):
         with route_scope(package, "after", owner, environment=env):
             pass
     assert env == before
     assert owner.q51_register_cache is True
     assert owner.q51_row_publish is True
     assert owner.q8_down_register is True
+    assert getattr(owner, field) is False
 
 
 def test_building_the_scope_changes_nothing_until_entered():
     env = _production_env()
     owner = _published_runner()
     scope = route_scope("q51-fold128", "after", owner, environment=env)
-    assert env[Q51_FOLD_PAIR_ENV] == "1"
+    assert owner.q51_fold_pair_prefill is True
     assert owner.q51_row_publish is True
     with scope:
-        assert env[Q51_FOLD_PAIR_ENV] == "0"
-    assert env[Q51_FOLD_PAIR_ENV] == "1"
+        assert owner.q51_fold_pair_prefill is False
+    assert owner.q51_fold_pair_prefill is True
 
 
 # --- prerequisites fail loudly instead of measuring another owner -----------
 
 
-def test_fold_pair_arm_requires_its_fold128_parent():
-    for missing in (None, "", "0", "false", "False"):
-        env = _production_env()
+def test_fold_pair_arm_requires_its_published_fold128_parent():
+    for missing in (False, None):
+        owner = _published_runner()
         if missing is None:
-            env.pop(Q51_FOLD128_ENV)
+            del owner.q51_fold128_prefill
         else:
-            env[Q51_FOLD128_ENV] = missing
-        before = dict(env)
-        with pytest.raises(ValueError, match=Q51_FOLD128_ENV):
-            with q51_fold_scope("q51-fold-pair", environment=env):
+            owner.q51_fold128_prefill = missing
+        with pytest.raises(ValueError, match=Q51_FOLD128_FIELD):
+            with q51_fold_scope("q51-fold-pair", "after", owner,
+                                environment=_production_env()):
                 pass
-        assert env == before
 
 
-def test_fold128_arm_does_not_require_its_own_switch():
+def test_fold128_arm_does_not_require_its_own_rung():
     # The before arm is the parent control, so its own rung is legitimately off.
-    env = _production_env()
-    env[Q51_FOLD128_ENV] = "0"
-    with q51_fold_scope("q51-fold128", environment=env):
-        assert env[Q51_FOLD128_ENV] == "0"
-        assert env[Q51_FOLD_PAIR_ENV] == "0"
-    assert env[Q51_FOLD_PAIR_ENV] == "1"
+    owner = _published_runner()
+    owner.q51_fold128_prefill = False
+    with q51_fold_scope("q51-fold128", "after", owner,
+                        environment=_production_env()):
+        assert owner.q51_fold128_prefill is True
+        assert owner.q51_fold_pair_prefill is False
+    assert owner.q51_fold128_prefill is False
+    assert owner.q51_fold_pair_prefill is True
 
 
 @pytest.mark.parametrize("package", ["q51-fold128", "q51-fold-pair"])
@@ -279,7 +286,8 @@ def test_fold_arm_requires_the_pair2_selection_gate(package, gate):
     else:
         env[Q51_PAIR_PREFILL_ENV] = gate
     with pytest.raises(ValueError, match=Q51_PAIR_PREFILL_ENV):
-        with q51_fold_scope(package, environment=env):
+        with q51_fold_scope(package, "after", _published_runner(),
+                            environment=env):
             pass
 
 
@@ -294,29 +302,29 @@ def test_fold_arm_requires_the_pair2_chain_gate(package):
     assert owner.q51_row_publish is True
 
 
-def test_bundle_arm_requires_its_row4_parent():
-    for missing in (None, "", "0", "false", "False"):
-        env = _production_env()
+def test_bundle_arm_requires_its_published_row4_parent():
+    for missing in (False, None):
+        owner = _published_runner()
         if missing is None:
-            env.pop(Q8_DOWN_ROW4_ENV)
+            del owner.q8_down_row4_prefill
         else:
-            env[Q8_DOWN_ROW4_ENV] = missing
-        before = dict(env)
-        with pytest.raises(ValueError, match=Q8_DOWN_ROW4_ENV):
-            with q8_down_ladder_scope("q8-down-bundle", environment=env):
+            owner.q8_down_row4_prefill = missing
+        with pytest.raises(ValueError, match=Q8_DOWN_ROW4_FIELD):
+            with q8_down_ladder_scope("q8-down-bundle", "after", owner,
+                                      environment=_production_env()):
                 pass
-        assert env == before
 
 
-def test_row4_arm_does_not_require_bundle_or_its_own_switch():
-    # The row4 arm pins bundle off; the generic chain-gate check would refuse it.
-    env = _production_env()
-    env[Q8_DOWN_ROW4_ENV] = "0"
-    env[Q8_DOWN_BUNDLE_ENV] = "1"
-    with q8_down_ladder_scope("q8-down-row4", environment=env):
-        assert env[Q8_DOWN_BUNDLE_ENV] == "0"
-        assert env[Q8_DOWN_ROW4_ENV] == "0"
-    assert env[Q8_DOWN_BUNDLE_ENV] == "1"
+def test_row4_arm_does_not_require_bundle_or_its_own_rung():
+    # The row4 arm holds bundle off; the generic chain-gate check would refuse it.
+    owner = _published_runner()
+    owner.q8_down_row4_prefill = False
+    with q8_down_ladder_scope("q8-down-row4", "after", owner,
+                              environment=_production_env()):
+        assert owner.q8_down_bundle_prefill is False
+        assert owner.q8_down_row4_prefill is True
+    assert owner.q8_down_bundle_prefill is True
+    assert owner.q8_down_row4_prefill is False
 
 
 @pytest.mark.parametrize("package", ["q8-down-row4", "q8-down-bundle"])
@@ -333,8 +341,8 @@ def test_q8_ladder_arm_requires_the_forkb_chain_gate(package):
 @pytest.mark.parametrize(
     "package", ["q51-fold128", "q51-fold-pair", "q8-down-row4", "q8-down-bundle"])
 def test_arm_requires_the_owning_runner(package):
-    # The downstream siblings are runner state; without the runner the arm
-    # cannot hold them off and would measure whatever the plan published.
+    # The rungs are runner state; without the runner the arm cannot bind them
+    # and would measure whatever the plan published.
     with pytest.raises(ValueError, match="needs the owning runner"):
         route_scope(package, "after")
 
@@ -347,18 +355,48 @@ def test_arm_rejects_an_unknown_mode(package):
 
 
 def test_ladder_scopes_reject_a_foreign_package():
+    owner = _published_runner()
+    env = _production_env()
     with pytest.raises(ValueError, match="not a Q5_1 fold route package"):
-        with q51_fold_scope("q8-down-row4"):
+        with q51_fold_scope("q8-down-row4", "after", owner, environment=env):
             pass
     with pytest.raises(ValueError, match="not a sorted Q8_0 down ladder package"):
-        with q8_down_ladder_scope("q51-fold128"):
+        with q8_down_ladder_scope("q51-fold128", "after", owner,
+                                  environment=env):
             pass
 
 
-# --- the artifact records what the arm forced and what it replaced ----------
+# --- the register arms require the rungs below them -------------------------
 
 
-def test_fold_control_record_separates_forced_and_previous_values():
+@pytest.mark.parametrize(
+    "package,fields",
+    [
+        ("q51-register-cache", (Q51_FOLD128_FIELD, Q51_FOLD_PAIR_FIELD)),
+        ("q51-row-publish", (Q51_FOLD128_FIELD, Q51_FOLD_PAIR_FIELD)),
+        ("q8-down-register", (Q8_DOWN_ROW4_FIELD, Q8_DOWN_BUNDLE_FIELD)),
+    ],
+)
+@pytest.mark.parametrize("missing", [0, 1])
+def test_a_downstream_arm_requires_its_published_ladder(
+        registered, package, fields, missing):
+    env = _production_env()
+    before = dict(env)
+    owner = _published_runner()
+    setattr(owner, fields[missing], False)
+    with pytest.raises(ValueError, match=fields[missing]):
+        with route_scope(package, "after", owner, environment=env):
+            pass
+    assert env == before
+    assert owner.q51_register_cache is True
+    assert owner.q51_row_publish is True
+    assert owner.q8_down_register is True
+
+
+# --- the artifact records what the arm bound and what it replaced -----------
+
+
+def test_fold_control_record_separates_bound_and_published_values():
     env = _production_env()
     record = q51_fold_control_record(
         "q51-fold128", _published_runner(), environment=env)
@@ -366,10 +404,11 @@ def test_fold_control_record_separates_forced_and_previous_values():
         key: "0" for key in Q51_PAIR2_PREEMPTING_ENV}
     assert record["preempting_owners_previous"] == {
         key: "1" for key in Q51_PAIR2_PREEMPTING_ENV}
+    assert record["runner_field"] == Q51_FOLD128_FIELD
     assert record["rung"] == {
-        "held_off": Q51_FOLD_PAIR_ENV,
-        "forced": "0",
-        "previous": "1",
+        "held_off": Q51_FOLD_PAIR_FIELD,
+        "bound_value": False,
+        "published_value": True,
     }
     assert record["prerequisite"][Q51_PAIR_PREFILL_ENV] == "1"
     assert record["pair2_gate"] == {Q51_PAIR2_GATE_ENV: "1"}
@@ -385,11 +424,13 @@ def test_fold_pair_control_record_names_its_parent():
     env = _production_env()
     record = q51_fold_control_record(
         "q51-fold-pair", _published_runner(), environment=env)
-    assert record["rung"] == {"prerequisite": Q51_FOLD128_ENV, "value": "1"}
+    assert record["runner_field"] == Q51_FOLD_PAIR_FIELD
+    assert record["rung"] == {
+        "prerequisite": Q51_FOLD128_FIELD, "published_value": True}
     assert "held_off" not in record["rung"]
 
 
-def test_q8_ladder_control_record_separates_forced_and_previous_values():
+def test_q8_ladder_control_record_separates_bound_and_published_values():
     env = _production_env()
     record = q8_down_ladder_control_record(
         "q8-down-row4", _published_runner(), environment=env)
@@ -397,10 +438,11 @@ def test_q8_ladder_control_record_separates_forced_and_previous_values():
         key: "0" for key in Q8_DOWN_PREEMPTING_ENV}
     assert record["preempting_owners_previous"] == {
         key: "1" for key in Q8_DOWN_PREEMPTING_ENV}
+    assert record["runner_field"] == Q8_DOWN_ROW4_FIELD
     assert record["rung"] == {
-        "held_off": Q8_DOWN_BUNDLE_ENV,
-        "forced": "0",
-        "previous": "1",
+        "held_off": Q8_DOWN_BUNDLE_FIELD,
+        "bound_value": False,
+        "published_value": True,
     }
     assert record["chain_gates"] == {key: "1" for key in Q8_DOWN_CHAIN_GATES}
     assert record["downstream_siblings"]["q8_down_register"] == {
@@ -411,7 +453,9 @@ def test_q8_ladder_control_record_separates_forced_and_previous_values():
 def test_q8_bundle_control_record_names_its_parent():
     record = q8_down_ladder_control_record(
         "q8-down-bundle", _published_runner(), environment=_production_env())
-    assert record["rung"] == {"prerequisite": Q8_DOWN_ROW4_ENV, "value": "1"}
+    assert record["runner_field"] == Q8_DOWN_BUNDLE_FIELD
+    assert record["rung"] == {
+        "prerequisite": Q8_DOWN_ROW4_FIELD, "published_value": True}
     assert "held_off" not in record["rung"]
 
 
@@ -419,19 +463,12 @@ def test_q8_bundle_control_record_names_its_parent():
 
 
 @pytest.mark.parametrize(
-    "package,flag",
-    [
-        ("q51-fold128", Q51_FOLD128_ENV),
-        ("q51-fold-pair", Q51_FOLD_PAIR_ENV),
-        ("q8-down-row4", Q8_DOWN_ROW4_ENV),
-        ("q8-down-bundle", Q8_DOWN_BUNDLE_ENV),
-    ],
-)
-def test_campaign_arm_writes_only_its_own_switch(package, flag):
-    for mode, expected in (("before", "0"), ("after", "1")):
-        env = {"other": "keep"}
-        _apply_mode(mode, route_package=package, environment=env)
-        assert env == {flag: expected, "other": "keep"}, (mode, env)
+    "package", ["q51-fold128", "q51-fold-pair", "q8-down-row4", "q8-down-bundle"])
+@pytest.mark.parametrize("mode", ["before", "after"])
+def test_campaign_arm_writes_no_process_key(package, mode):
+    env = {"other": "keep"}
+    _apply_mode(mode, route_package=package, environment=env)
+    assert env == {"other": "keep"}, (mode, env)
 
 
 @pytest.mark.parametrize(
@@ -443,24 +480,17 @@ def test_campaign_validates_engagement_for_the_four(package):
 
 
 @pytest.mark.parametrize(
-    "package,flag",
-    [
-        ("q51-fold128", Q51_FOLD128_ENV),
-        ("q51-fold-pair", Q51_FOLD_PAIR_ENV),
-        ("q8-down-row4", Q8_DOWN_ROW4_ENV),
-        ("q8-down-bundle", Q8_DOWN_BUNDLE_ENV),
-    ],
-)
-def test_state_gate_leaves_the_isolation_to_the_shared_scope(package, flag):
-    # The state gate binds the arm's own switch and enters the same scope; if it
-    # also wrote the rung it does not count, the scope's restore would fight it.
+    "package", ["q51-fold128", "q51-fold-pair", "q8-down-row4", "q8-down-bundle"])
+def test_state_gate_leaves_the_isolation_to_the_shared_scope(package):
+    # The gate binds nothing itself: ``route_scope`` owns the rung binding and
+    # the restore, so a gate that also wrote a key would fight it.
     from scripts.qwen4exp_row4_state_gate import apply_state_gate_mode
 
     for enabled in ("0", "1"):
         env = {}
         apply_state_gate_mode(
-            SimpleNamespace(), package, enabled, flag, environment=env)
-        assert env == {flag: enabled}
+            SimpleNamespace(), package, enabled, "", environment=env)
+        assert env == {}
 
 
 # --- the state gate's arm lifecycle -----------------------------------------
@@ -492,6 +522,10 @@ def test_a_failed_measured_run_releases_the_arm_control(package, enabled):
     assert env == before
     assert (owner.q51_register_cache, owner.q51_row_publish) == (True, True)
     assert owner.q8_down_register is True
+    assert (owner.q51_fold128_prefill, owner.q51_fold_pair_prefill) == (
+        True, True)
+    assert (owner.q8_down_row4_prefill, owner.q8_down_bundle_prefill) == (
+        True, True)
 
 
 def test_the_prefill_only_lifetime_still_releases_at_the_prefill():
@@ -502,10 +536,12 @@ def test_the_prefill_only_lifetime_still_releases_at_the_prefill():
     env = _production_env()
     owner = _published_runner()
     with arm_control("q8-down-row4", "1", owner, environment=env) as scope:
-        assert env[Q8_DOWN_BUNDLE_ENV] == "0"
+        assert owner.q8_down_bundle_prefill is False
         assert owner.q8_down_register is False
         scope.close()
         assert env == _production_env()
+        assert owner.q8_down_row4_prefill is True
+        assert owner.q8_down_bundle_prefill is True
         assert owner.q8_down_register is True
 
 

@@ -1066,6 +1066,22 @@ def _bind(
     # production plan, the v1 parent on the strict binder that every plan
     # falling back to it runs.
     qsa_ordered_decode_v2 = bool(production)
+    # Q5_1 fold128 sibling of the grouped pair2 prefill owner, published as
+    # request-local state on the owning runner rather than a process-wide
+    # switch. It is the parent of the folded-pair, register-cache and
+    # row-publish siblings, so it publishes the value the retired switch bound,
+    # production-only, for every production plan. The dispatch-time selector
+    # still guards the leaf on rows, the pair2 parent variant and the registry
+    # carrying it, and the strict binder (which every plan that falls back to it
+    # runs) publishes False.
+    q51_fold128_prefill = bool(production)
+    # Q5_1 folded-pair sibling of the fold128 prefill owner, published as
+    # request-local state on the owning runner rather than a process-wide
+    # switch. The fold128 rung it replaces publishes alongside it, so a plan
+    # that publishes folded-pair also publishes its parent. The dispatch-time
+    # selector still guards the leaf on rows, the fold128 parent variant and the
+    # registry carrying it, and the strict binder publishes False.
+    q51_fold_pair_prefill = bool(production)
     # Q5_1 register-cache fallback sibling of the folded-pair grouped prefill
     # owner, published as request-local state on the owning runner rather than a
     # process-wide switch. It is the fallback selection for its scope, not the
@@ -1094,6 +1110,20 @@ def _bind(
     # it, and the strict binder (which every plan that falls back to it runs)
     # publishes False.
     q51_row_publish = bool(production)
+    # Q8_0 down row4 sibling of the sorted grouped expert-down owner, published
+    # as request-local state on the owning runner rather than a process-wide
+    # switch. It is the parent of the bundle and register siblings, so it
+    # publishes the value the retired switch bound, production-only, for every
+    # production plan. The dispatch-time selector still guards the leaf on rows,
+    # the sorted parent variant and the registry carrying it, and the strict
+    # binder publishes False.
+    q8_down_row4_prefill = bool(production)
+    # Q8_0 down bundle sibling of the row4 expert-down owner, published as
+    # request-local state on the owning runner rather than a process-wide
+    # switch. The row4 rung it replaces publishes alongside it. The dispatch-time
+    # selector still guards the leaf on rows, the row4 parent variant and the
+    # registry carrying it, and the strict binder publishes False.
+    q8_down_bundle_prefill = bool(production)
     # Q8_0 down register sibling of the row4 bundle expert-down owner, published
     # as request-local state on the owning runner rather than a process-wide
     # switch. It is the fallback selection for its scope, not the owner that
@@ -1208,11 +1238,11 @@ def _bind(
             else "0"
         ),
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL": "1" if production else "0",
+        # The four expert-down ladder rungs are request-local runner state now
+        # (see ``q51_fold128_prefill`` and its siblings below), so no process
+        # key names them. ``HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL`` stays: it
+        # still decides whether the pair2 parent variant exists at all.
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256" if production else "0",
         # ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
@@ -1379,8 +1409,12 @@ def _bind(
     generator.qsa_prefill_head_mode = qsa_prefill_head_mode
     generator.qsa_ordered_decode_v2 = qsa_ordered_decode_v2
     generator.gdn_prefill_variant = gdn_prefill_variant
+    generator.q51_fold128_prefill = q51_fold128_prefill
+    generator.q51_fold_pair_prefill = q51_fold_pair_prefill
     generator.q51_register_cache = q51_register_cache
     generator.q51_row_publish = q51_row_publish
+    generator.q8_down_row4_prefill = q8_down_row4_prefill
+    generator.q8_down_bundle_prefill = q8_down_bundle_prefill
     generator.q8_down_register = q8_down_register
     generator.q8_mapped_down = q8_mapped_down
     runner = getattr(generator, "runner", None)
@@ -1392,8 +1426,12 @@ def _bind(
         runner.qsa_prefill_head_mode = qsa_prefill_head_mode
         runner.qsa_ordered_decode_v2 = qsa_ordered_decode_v2
         runner.gdn_prefill_variant = gdn_prefill_variant
+        runner.q51_fold128_prefill = q51_fold128_prefill
+        runner.q51_fold_pair_prefill = q51_fold_pair_prefill
         runner.q51_register_cache = q51_register_cache
         runner.q51_row_publish = q51_row_publish
+        runner.q8_down_row4_prefill = q8_down_row4_prefill
+        runner.q8_down_bundle_prefill = q8_down_bundle_prefill
         runner.q8_down_register = q8_down_register
         runner.q8_mapped_down = q8_mapped_down
     if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl":

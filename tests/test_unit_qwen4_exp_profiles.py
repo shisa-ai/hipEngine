@@ -73,13 +73,9 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE",
         "HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK",
-        "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL",
-        "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN",
         "HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER",
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL",
-        "HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL",
-        "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL",
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256",
         "HIPENGINE_QWEN4_EXP_ROUTED_F16",
@@ -393,8 +389,12 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert large_pair["selected_variant"] == "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out"
     assert large_pair["strict_fallback_variant"] == pair["strict_fallback_variant"]
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "page256"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"] == "1"
+    # The Q8_0 down ladder rungs are request-local runner state published from
+    # the binder's own fallback policy, so no process key carries them.
+    assert production_generator.q8_down_row4_prefill is True
+    assert fake_runner.q8_down_row4_prefill is True
+    assert production_generator.q8_down_bundle_prefill is True
+    assert fake_runner.q8_down_bundle_prefill is True
     # The token-major mapped Q8_0 down owner is request-local runner state
     # published from the binder's own fallback policy, so the binder writes no
     # process-wide switch for it.
@@ -410,8 +410,11 @@ def test_historical_q4km_binder_structure_not_qualification(
     mapped = _selection_map(production)[("linear","prefill_rows_ge512_token_major_mapped_q8_down")]
     assert mapped["selected_variant"] == "selected_grouped_row4_register_gemv_bf16_bf16_out"
     assert mapped["strict_fallback_variant"] == "selected_gemv_bf16_bf16_out"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"] == "1"
+    # The Q5_1 fold ladder rungs are request-local runner state too.
+    assert production_generator.q51_fold128_prefill is True
+    assert fake_runner.q51_fold128_prefill is True
+    assert production_generator.q51_fold_pair_prefill is True
+    assert fake_runner.q51_fold_pair_prefill is True
     # The Q5_1 register-cache fallback is request-local runner state published
     # from the binder's own fallback policy, so the binder writes no
     # process-wide switch for it.
@@ -510,14 +513,14 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"] == "0"
+    assert strict_generator.q8_down_row4_prefill is False
+    assert strict_generator.q8_down_bundle_prefill is False
     assert "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN" not in os.environ
     assert strict_generator.q8_mapped_down is False
     assert "HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER" not in os.environ
     assert strict_generator.q8_down_register is False
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"] == "0"
+    assert strict_generator.q51_fold128_prefill is False
+    assert strict_generator.q51_fold_pair_prefill is False
     assert "HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE" not in os.environ
     assert strict_generator.q51_register_cache is False
     assert strict_generator.q51_row_publish is False

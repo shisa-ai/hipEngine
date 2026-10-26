@@ -363,6 +363,14 @@ class Qwen4ExpMixedTargetPass:
                     branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
                     low_rank=cfg.residual_low_rank, ffn=cfg.expert_feed_forward_length,
                     experts=cfg.expert_count, top_k=cfg.expert_used_count, stream=0, runtime=self.runtime,
+                    q51_fold128_prefill=getattr(
+                        batch, "q51_fold128_prefill", False),
+                    q51_fold_pair_prefill=getattr(
+                        batch, "q51_fold_pair_prefill", False),
+                    q8_down_row4_prefill=getattr(
+                        batch, "q8_down_row4_prefill", False),
+                    q8_down_bundle_prefill=getattr(
+                        batch, "q8_down_bundle_prefill", False),
                 )
                 residual = scratch.output
             head = run_qwen4_exp_gr_read(

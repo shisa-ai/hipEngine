@@ -186,7 +186,10 @@ def test_state_gate_arm_writes_no_process_switch():
 
 @pytest.mark.parametrize("mode,expected", [("before", False), ("after", True)])
 def test_route_scope_binds_the_runner_selection(mode, expected):
-    owner = SimpleNamespace(q51_register_cache=None, q51_row_publish=True)
+    # The register-cache leaf rides both fold rungs, which are runner state.
+    owner = SimpleNamespace(q51_register_cache=None, q51_row_publish=True,
+                            q51_fold128_prefill=True,
+                            q51_fold_pair_prefill=True)
     env = _env()
     with route_scope("q51-register-cache", mode, owner, environment=env):
         assert owner.q51_register_cache is expected
@@ -203,7 +206,9 @@ def test_route_scope_holds_the_downstream_row_publish_off_in_both_arms(mode):
     # The row-publish sibling replaces the register-cache leaf the arm counts,
     # so an arm that leaves the plan's row-publish decision in force measures
     # the other kernel.
-    owner = SimpleNamespace(q51_register_cache=False, q51_row_publish=True)
+    owner = SimpleNamespace(q51_register_cache=False, q51_row_publish=True,
+                            q51_fold128_prefill=True,
+                            q51_fold_pair_prefill=True)
     env = _env()
     with route_scope("q51-register-cache", mode, owner, environment=env):
         assert owner.q51_row_publish is False
@@ -217,7 +222,9 @@ def test_route_scope_holds_the_downstream_row_publish_off_in_both_arms(mode):
 
 
 def test_route_scope_restores_every_decision_after_an_exception():
-    owner = SimpleNamespace(q51_register_cache=True, q51_row_publish=True)
+    owner = SimpleNamespace(q51_register_cache=True, q51_row_publish=True,
+                            q51_fold128_prefill=True,
+                            q51_fold_pair_prefill=True)
     env = _env()
     with pytest.raises(RuntimeError, match="measured run failed"):
         with route_scope("q51-register-cache", "before", owner, environment=env):
@@ -233,7 +240,9 @@ def test_route_scope_rejects_the_arm_without_its_runner():
 
 
 def test_route_scope_fails_loudly_without_the_chain_gate():
-    owner = SimpleNamespace(q51_register_cache=False, q51_row_publish=True)
+    owner = SimpleNamespace(q51_register_cache=False, q51_row_publish=True,
+                            q51_fold128_prefill=True,
+                            q51_fold_pair_prefill=True)
     env = {key: "1" for key in Q51_PAIR2_PREEMPTING_ENV}
     with pytest.raises(ValueError, match=Q51_PAIR2_GATE_ENV):
         with route_scope("q51-register-cache", "after", owner, environment=env):
@@ -245,7 +254,9 @@ def test_route_scope_fails_loudly_without_the_chain_gate():
 
 
 def test_building_a_q51_register_cache_scope_binds_nothing():
-    owner = SimpleNamespace(q51_register_cache=True, q51_row_publish=True)
+    owner = SimpleNamespace(q51_register_cache=True, q51_row_publish=True,
+                            q51_fold128_prefill=True,
+                            q51_fold_pair_prefill=True)
     env = _env()
     scope = route_scope("q51-register-cache", "after", owner, environment=env)
     assert all(env[key] == "1" for key in Q51_PAIR2_PREEMPTING_ENV)
@@ -261,7 +272,9 @@ def test_building_a_q51_register_cache_scope_binds_nothing():
 
 def test_control_record_names_the_field_the_preemptors_and_the_pin():
     env = _env()
-    owner = SimpleNamespace(q51_register_cache=True, q51_row_publish=True)
+    owner = SimpleNamespace(q51_register_cache=True, q51_row_publish=True,
+                            q51_fold128_prefill=True,
+                            q51_fold_pair_prefill=True)
     record = q51_register_cache_control_record(owner, environment=env)
     assert record["runner_field"] == "q51_register_cache"
     assert record["before"] is False and record["after"] is True

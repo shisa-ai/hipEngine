@@ -2727,53 +2727,6 @@ the allocation repair. The observations and proposal below are historical.
   Replace these with device-resident tails only after the same whole/chunk,
   60-second transition, recording-reset and post-join-noise tests pass.
 
-## Qwen4Exp folded Q5_1 pair-reduction rollback
-
-- `selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out` shares barrier
-  stages across folded outputs. Production
-  `HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL` applies only after fold128
-  selection and rows>=512;production binds1,strict0 after full model/A-B gates.
-- Admit only measured rows>=512;64-row timing has an adverse order stratum.
-  Keep sequential fold128 for smaller chunks and rollback.
-- Full-model invocation/logits/state/KV plus12-case A/B pass. Remove the
-  opt-out after the next qualified Q5 down change or a release window;
-  keep sequential fold128 small-row/rollback and the strict fallback.
-
-## Qwen4Exp Q8 down bundled reduction rollback
-
-- Production `selected_grouped_row4_bundle_gemv_bf16_bf16_out` preserves
-  row4 arithmetic and bundles publication.
-  `HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL` only after existing row4
-  selection, rows>=512; production binds1,strict0 after full model/A-B gates.
-- Remove the bundle opt-out after the next qualified Q8-down change or a
-  release window; keep row4 rollback, row1 small-chunk owner and strict
-  selected-GEMV fallback until then.
-
-## Qwen4Exp Q5_1 fold128 rollback
-
-- `selected_grouped_prefill_pair2_fold128_bf16_bf16_out` halves reduction
-  scratch with exact arithmetic. Production
-  `HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL` selects it only after existing
-  pair2 prefill selection and rows>=64; production binds1, strict0.
-- Full model state/KV and12-case A/B now pass. Remove the opt-out after the
-  next qualified Q5 down change or a release window; retain pair2 rollback
-  and strict M1/fallback chains for bisection until then.
-- The existing Q5 screen now supports same-layer captured counts, still with
-  synthetic activations. Those micros do not replace model admission.
-
-## Qwen4Exp Q8 down row4 rollback
-
-- `selected_grouped_row4_gemv_bf16_bf16_out` passes invocation-checked model
-  gates and canonical12-case A/B and is production for rows>=512.
-- `HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL` selects row4 only inside the
-  existing grouped-Q8 path and for measured rows>=512. Production pins1,
-  strict0. Remove the opt-out after the next independently qualified Q8-down
-  improvement or a release window; keep row1 for smaller chunks and the
-  strict selected-GEMV fallback.
-- Diagnostic `scripts/qwen4exp_q8_down_row4_screen.py` labels borrowed routing
-  counts separately from weight identity; replace with whole-model evidence
-  before claiming production gains.
-
 ## Qwen4Exp tool grammar host path
 
 - Model-owned embedded-template/XML parsing replaces the generic JSON tool

@@ -3298,23 +3298,23 @@
       "start_line": 3114,
       "end_line": 3125,
       "sha256": "8e2e74dd915187736af127bea2c48ad3d5a7c85a4b92115b6be9b93f10077ccf",
-      "status": "pending",
-      "evidence": ["Diagnostic isolation/engagement repair tracked in worklog/entries/20261026T215428.150337Z-cleanup-refactor-r0123-r0126-harness-62dd22.md. Selector ownership/removal remains open."],
+      "status": "resolved-removed",
+      "evidence": ["Fold-pair selection is runner-owned; parent/row/registry guards and strict fallback remain. Public engagement, exact state gates, batch/mixed GPU and CPU checks pass. See worklog/entries/20261026T222059.700994Z-cleanup-refactor-r0123-r0126-policy-f144e3.md."],
       "subitems": [
         {
           "line": 3116,
           "text": "- `selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out` shares barrier",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 3120,
           "text": "- Admit only measured rows>=512;64-row timing has an adverse order stratum.",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 3122,
           "text": "- Full-model invocation/logits/state/KV plus12-case A/B pass. Remove the",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
@@ -3324,18 +3324,18 @@
       "start_line": 3126,
       "end_line": 3135,
       "sha256": "7232a9023e5a6326691e7ee96c33a2e4e7ccc59c0a3f886459c9d6919001b657",
-      "status": "pending",
-      "evidence": ["Diagnostic isolation/engagement repair tracked in worklog/entries/20261026T215428.150337Z-cleanup-refactor-r0123-r0126-harness-62dd22.md. Selector ownership/removal remains open."],
+      "status": "resolved-removed",
+      "evidence": ["Bundle selection is runner-owned; row4/row1/strict kernels remain. Public engagement, exact state gates, batch/mixed GPU and CPU checks pass. See worklog/entries/20261026T222059.700994Z-cleanup-refactor-r0123-r0126-policy-f144e3.md."],
       "subitems": [
         {
           "line": 3128,
           "text": "- Production `selected_grouped_row4_bundle_gemv_bf16_bf16_out` preserves",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 3132,
           "text": "- Remove the bundle opt-out after the next qualified Q8-down change or a",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
@@ -3345,23 +3345,23 @@
       "start_line": 3136,
       "end_line": 3147,
       "sha256": "d9be7cbd415d1bcc81b447213c96178c7d04e2ad3ff367184f53c5ba1c285859",
-      "status": "pending",
-      "evidence": ["Diagnostic isolation/engagement repair tracked in worklog/entries/20261026T215428.150337Z-cleanup-refactor-r0123-r0126-harness-62dd22.md. Selector ownership/removal remains open."],
+      "status": "resolved-removed",
+      "evidence": ["Fold128 selection is runner-owned; pair2 and strict fallbacks remain. Batch graph keys include policy. Synthetic screen limitations remain in harness; no new performance claim. Public engagement, exact state gates, GPU and CPU pass. See worklog/entries/20261026T222059.700994Z-cleanup-refactor-r0123-r0126-policy-f144e3.md."],
       "subitems": [
         {
           "line": 3138,
           "text": "- `selected_grouped_prefill_pair2_fold128_bf16_bf16_out` halves reduction",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 3142,
           "text": "- Full model state/KV and12-case A/B now pass. Remove the opt-out after the",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 3145,
           "text": "- The existing Q5 screen now supports same-layer captured counts, still with",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
@@ -3371,23 +3371,23 @@
       "start_line": 3148,
       "end_line": 3160,
       "sha256": "63d5719bfb5f7c01bd26a579e0bd022633bd48438ad24bd664a5da5317cc3e99",
-      "status": "pending",
-      "evidence": ["Diagnostic isolation/engagement repair tracked in worklog/entries/20261026T215428.150337Z-cleanup-refactor-r0123-r0126-harness-62dd22.md. Selector ownership/removal remains open."],
+      "status": "resolved-removed",
+      "evidence": ["Row4 selection is runner-owned; small-row/strict parents preserved and no kernel removed. Shipped routed-F16 preemptor unchanged; isolated public and exact state diagnostics confirm row4 engagement. Borrowed-count screen is not promoted to model evidence. See worklog/entries/20261026T222059.700994Z-cleanup-refactor-r0123-r0126-policy-f144e3.md."],
       "subitems": [
         {
           "line": 3150,
           "text": "- `selected_grouped_row4_gemv_bf16_bf16_out` passes invocation-checked model",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 3152,
           "text": "- `HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL` selects row4 only inside the",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 3157,
           "text": "- Diagnostic `scripts/qwen4exp_q8_down_row4_screen.py` labels borrowed routing",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },

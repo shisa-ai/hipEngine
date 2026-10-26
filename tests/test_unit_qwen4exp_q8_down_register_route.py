@@ -71,13 +71,12 @@ def test_sorted_and_mapped_paths_share_one_published_decision(monkeypatch):
     # mapped path builds the same bundle key from the mmap table. Both must
     # follow the one runner decision, in both directions.
     monkeypatch.setattr(runner, "is_registered", lambda key: True)
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL", "1")
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL", "1")
     sorted_key = runner._qwen4_exp_q8_down_bundle_key(
         runner._qwen4_exp_q8_down_row4_key(
             KernelKey("hip_gfx1151", "linear", "gguf_q8_0",
-                      "selected_grouped_gemv_bf16_bf16_out"), rows=1024),
-        rows=1024)
+                      "selected_grouped_gemv_bf16_bf16_out"), rows=1024,
+            published=True),
+        rows=1024, published=True)
     assert sorted_key.variant == BUNDLE
     mapped_key = runner._qwen4_exp_mapped_down_key(
         backend="hip_gfx1151", quant="gguf_q8_0", rows=1024, map_ready=True,
@@ -168,7 +167,10 @@ def test_campaign_arm_writes_no_process_switch():
 
 @pytest.mark.parametrize("mode,expected", [("before", False), ("after", True)])
 def test_route_scope_binds_the_runner_selection(mode, expected):
-    owner = SimpleNamespace(q8_down_register=None)
+    # The register leaf rides both Q8_0 ladder rungs, which are runner state.
+    owner = SimpleNamespace(q8_down_register=None,
+                            q8_down_row4_prefill=True,
+                            q8_down_bundle_prefill=True)
     env = {
         RETIRED_DOWN_REGISTER_ENV: "1",
         **{key: "1" for key in Q8_DOWN_CHAIN_GATES},
@@ -359,10 +361,10 @@ def test_q8_down_control_names_every_preemptor():
         "HIPENGINE_QWEN4_EXP_ROUTED_F16",
         "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN",
     )
+    # The ladder rungs are request-local runner state, so the only process key
+    # the chain needs is its own gate.
     assert Q8_DOWN_CHAIN_GATES == (
         "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN",
-        "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL",
-        "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL",
     )
     assert not set(Q8_DOWN_CHAIN_GATES) & set(Q8_DOWN_PREEMPTING_ENV)
 
@@ -376,7 +378,8 @@ def test_route_scope_leaves_the_preemptors_alone_for_other_packages():
 
 
 def test_building_a_q8_down_route_scope_binds_nothing():
-    owner = SimpleNamespace(q8_down_register=True)
+    owner = SimpleNamespace(q8_down_register=True, q8_down_row4_prefill=True,
+                            q8_down_bundle_prefill=True)
     env = {key: "1" for key in Q8_DOWN_PREEMPTING_ENV}
     env.update({key: "1" for key in Q8_DOWN_CHAIN_GATES})
     scope = route_scope("q8-down-register", "after", owner, environment=env)
@@ -408,7 +411,10 @@ def test_q8_down_scope_fails_loudly_without_a_chain_gate(gate, gate_key):
 
 @pytest.mark.parametrize("mode", ["before", "after"])
 def test_route_scope_fails_loudly_without_a_chain_gate(mode):
-    owner = SimpleNamespace(q8_down_register=None)
+    # The register leaf rides both Q8_0 ladder rungs, which are runner state.
+    owner = SimpleNamespace(q8_down_register=None,
+                            q8_down_row4_prefill=True,
+                            q8_down_bundle_prefill=True)
     env = {key: "1" for key in Q8_DOWN_PREEMPTING_ENV}
     with pytest.raises(ValueError, match=Q8_DOWN_CHAIN_GATES[0]):
         with route_scope("q8-down-register", mode, owner, environment=env):

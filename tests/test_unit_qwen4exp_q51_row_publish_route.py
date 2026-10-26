@@ -131,7 +131,9 @@ def test_campaign_arm_writes_no_process_switch():
 
 @pytest.mark.parametrize("mode,expected", [("before", False), ("after", True)])
 def test_route_scope_binds_the_runner_selection(mode, expected):
-    owner = SimpleNamespace(q51_row_publish=None)
+    # The row-publish leaf rides both fold rungs, which are runner state.
+    owner = SimpleNamespace(q51_row_publish=None, q51_fold128_prefill=True,
+                            q51_fold_pair_prefill=True)
     env = {
         RETIRED_ROW_PUBLISH_ENV: "1",
         Q51_PAIR2_GATE_ENV: "1",
@@ -344,6 +346,8 @@ def test_building_a_q51_route_scope_binds_nothing():
     owner = SimpleNamespace(q51_row_publish=True)
     env = {key: "1" for key in Q51_PAIR2_PREEMPTING_ENV}
     env[Q51_PAIR2_GATE_ENV] = "1"
+    owner.q51_fold128_prefill = True
+    owner.q51_fold_pair_prefill = True
     scope = route_scope("q51-row-publish", "after", owner, environment=env)
     assert all(env[key] == "1" for key in Q51_PAIR2_PREEMPTING_ENV)
     assert owner.q51_row_publish is True
@@ -369,7 +373,8 @@ def test_pair2_scope_fails_loudly_without_the_chain_gate(gate):
 
 @pytest.mark.parametrize("mode", ["before", "after"])
 def test_route_scope_fails_loudly_without_the_chain_gate(mode):
-    owner = SimpleNamespace(q51_row_publish=None)
+    owner = SimpleNamespace(q51_row_publish=None, q51_fold128_prefill=True,
+                            q51_fold_pair_prefill=True)
     env = {key: "1" for key in Q51_PAIR2_PREEMPTING_ENV}
     with pytest.raises(ValueError, match=Q51_PAIR2_GATE_ENV):
         with route_scope("q51-row-publish", mode, owner, environment=env):
