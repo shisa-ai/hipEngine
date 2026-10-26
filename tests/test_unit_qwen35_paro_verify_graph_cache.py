@@ -912,7 +912,7 @@ def test_paro_target_commit_tables_are_owned_by_the_graph_entry(monkeypatch) -> 
         return buffer
 
     monkeypatch.setattr(runner_module, "malloc", fake_malloc)
-    monkeypatch.setattr(runner_module, "copy_host_to_device", lambda *a, **k: None)
+    monkeypatch.setattr(runner_module, "copy_host_array_to_device", lambda *a, **k: None)
     monkeypatch.setattr(
         runner_module,
         "free",
@@ -1167,7 +1167,7 @@ def _detached_allocation_patches(monkeypatch, *, copy_error, free_error=None):
         freed.append(int(buffer.ptr))
 
     monkeypatch.setattr(runner_module, "malloc", fake_malloc)
-    monkeypatch.setattr(runner_module, "copy_host_to_device", fake_copy)
+    monkeypatch.setattr(runner_module, "copy_host_array_to_device", fake_copy)
     monkeypatch.setattr(runner_module, "free", fake_free)
     return allocated, freed
 
@@ -1240,7 +1240,7 @@ def test_paro_target_commit_tables_release_the_first_when_the_second_fails(
         return buffer
 
     monkeypatch.setattr(runner_module, "malloc", fake_malloc)
-    monkeypatch.setattr(runner_module, "copy_host_to_device", lambda *a, **k: None)
+    monkeypatch.setattr(runner_module, "copy_host_array_to_device", lambda *a, **k: None)
     monkeypatch.setattr(
         runner_module, "free", lambda buffer, runtime=None: freed.append(int(buffer.ptr))
     )
@@ -1284,7 +1284,7 @@ def test_paro_target_commit_tables_release_the_first_when_the_second_copy_fails(
             raise RuntimeError("second copy failed")
 
     monkeypatch.setattr(runner_module, "malloc", fake_malloc)
-    monkeypatch.setattr(runner_module, "copy_host_to_device", fake_copy)
+    monkeypatch.setattr(runner_module, "copy_host_array_to_device", fake_copy)
     monkeypatch.setattr(
         runner_module, "free", lambda buffer, runtime=None: freed.append(int(buffer.ptr))
     )

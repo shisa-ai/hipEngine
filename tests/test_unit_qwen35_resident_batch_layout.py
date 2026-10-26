@@ -141,8 +141,8 @@ def test_resident_slot_reset_clears_only_reclaimed_state_and_kv(
     metadata_copies: list[int] = []
     monkeypatch.setattr(
         runner_module,
-        "copy_host_to_device",
-        lambda buffer, host_ptr, nbytes, **kwargs: metadata_copies.append(int(buffer.ptr)),
+        "copy_host_array_to_device",
+        lambda buffer, array, nbytes=None, **kwargs: metadata_copies.append(int(buffer.ptr)),
     )
 
     session.reset_slots((1,))
@@ -1763,10 +1763,10 @@ def test_qwen35_resident_run_native_prefill_packed_layers_uses_per_segment_full_
     copies: list[tuple[int, int, int, int]] = []
     local_table_copies: list[tuple[int, int]] = []
 
-    def fake_copy_host_to_device(buffer, host_ptr, nbytes=None, *, runtime=None):
-        local_table_copies.append((int(buffer.ptr), int(buffer.nbytes if nbytes is None else nbytes)))
+    def fake_copy_host_array_to_device(buffer, array, nbytes=None, *, runtime=None):
+        local_table_copies.append((int(buffer.ptr), int(array.nbytes if nbytes is None else nbytes)))
 
-    monkeypatch.setattr(runner_module, "copy_host_to_device", fake_copy_host_to_device)
+    monkeypatch.setattr(runner_module, "copy_host_array_to_device", fake_copy_host_array_to_device)
     session._slot_full_cache = lambda layer_id, slot: (
         Tensor.from_handle(0x5000 + int(slot) * 0x100, (4, 256, 1, 2), DType.BF16, device),
         Tensor.from_handle(0x6000 + int(slot) * 0x100, (4, 256, 1, 2), DType.BF16, device),
@@ -1876,7 +1876,7 @@ def test_qwen35_resident_commit_packed_prefill_final_rows_updates_slots(monkeypa
             copies.append((int(dst), int(src), int(nbytes), int(stream)))
 
     session.runtime = FakeRuntime()
-    monkeypatch.setattr(runner_module, "copy_host_to_device", lambda *args, **kwargs: copies.append((0, 0, 0, -1)))
+    monkeypatch.setattr(runner_module, "copy_host_array_to_device", lambda *args, **kwargs: copies.append((0, 0, 0, -1)))
     sampled: list[int] = []
     session._sample_from_hidden = lambda hidden: sampled.append(hidden.ptr) or SimpleNamespace(token_id=hidden.ptr)
     slab = CompactPromptSlab.from_token_rows(
@@ -2562,12 +2562,8 @@ def test_qwen35_resident_batch_full_spans_maps_sparse_slots(monkeypatch) -> None
     session.buffers = []
     captured: list[np.ndarray] = []
 
-    def fake_host_array_ptr(array):
+    def fake_copy_host_array_to_device(buffer, array, nbytes=None, **kwargs):
         captured.append(np.asarray(array).copy())
-        return 0xDEADBEEF
-
-    def fake_copy_host_to_device(*args, **kwargs):
-        return None
 
     # The per-(rows, slots) block-table cache mallocs distinct append-relative
     # and decode-absolute buffers once per key (capture-safety: no per-step copy
@@ -2577,8 +2573,7 @@ def test_qwen35_resident_batch_full_spans_maps_sparse_slots(monkeypatch) -> None
     def fake_malloc(nbytes, *, runtime=None):
         return DeviceBuffer(next(allocated_ptrs), int(nbytes))
 
-    monkeypatch.setattr(runner_module, "host_array_ptr", fake_host_array_ptr)
-    monkeypatch.setattr(runner_module, "copy_host_to_device", fake_copy_host_to_device)
+    monkeypatch.setattr(runner_module, "copy_host_array_to_device", fake_copy_host_array_to_device)
     monkeypatch.setattr(runner_module, "malloc", fake_malloc)
 
     position_tensor, append_spans, decode_spans = session._batch_full_spans(
@@ -6773,7 +6768,7 @@ def _bulk_linear_commit_session() -> Qwen35ParoResidentSession:
 def test_qwen35_resident_bulk_linear_commit_uses_chunked_kernel_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
 
-    def fake_copy_host_to_device(*args, **kwargs):
+    def fake_copy_host_array_to_device(*args, **kwargs):
         calls.append(("h2d", args, kwargs))
 
     def fake_chunked(*args, **kwargs):
@@ -6783,7 +6778,7 @@ def test_qwen35_resident_bulk_linear_commit_uses_chunked_kernel_by_default(monke
         calls.append(("legacy", args, kwargs))
 
     monkeypatch.delenv("HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED", raising=False)
-    monkeypatch.setattr(runner_module, "copy_host_to_device", fake_copy_host_to_device)
+    monkeypatch.setattr(runner_module, "copy_host_array_to_device", fake_copy_host_array_to_device)
     monkeypatch.setattr(runner_module, "linear_state_pair_commit_chunked_i32", fake_chunked)
     monkeypatch.setattr(runner_module, "linear_state_pair_commit_i32", fake_legacy)
 
@@ -6801,7 +6796,7 @@ def test_qwen35_resident_bulk_linear_commit_can_use_legacy_kernel(monkeypatch: p
     calls: list[str] = []
 
     monkeypatch.setenv("HIPENGINE_LINEAR_STATE_COMMIT_CHUNKED", "0")
-    monkeypatch.setattr(runner_module, "copy_host_to_device", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner_module, "copy_host_array_to_device", lambda *args, **kwargs: None)
     monkeypatch.setattr(runner_module, "linear_state_pair_commit_chunked_i32", lambda *args, **kwargs: calls.append("chunked"))
     monkeypatch.setattr(runner_module, "linear_state_pair_commit_i32", lambda *args, **kwargs: calls.append("legacy"))
 

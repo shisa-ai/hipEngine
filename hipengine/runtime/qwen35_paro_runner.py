@@ -23,7 +23,6 @@ from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
     copy_host_array_to_device,
-    copy_host_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -1215,9 +1214,10 @@ class Qwen35ParoNextTokenRunner:
         allocations: list[DeviceTensorAllocation] = []
 
         def dev(array: np.ndarray) -> DeviceBuffer:
-            buf = malloc(array.nbytes, runtime=runtime)
+            contiguous = np.ascontiguousarray(array)
+            buf = malloc(contiguous.nbytes, runtime=runtime)
             buffers.append(buf)
-            copy_host_to_device(buf, host_array_ptr(array), runtime=runtime)
+            copy_host_array_to_device(buf, contiguous, runtime=runtime)
             return buf
 
         hidden_bits = float_array_to_bf16_bits(
@@ -2251,27 +2251,27 @@ class Qwen35ParoResidentSession:
         self.token_id_arr.fill(0)
         self.active_mask_arr.fill(0)
         self.active_mask_arr[0] = 1
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.position_buf,
-            host_array_ptr(self.position_arr),
+            self.position_arr,
             self.position_arr.nbytes,
             runtime=self.runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.context_buf,
-            host_array_ptr(self.context_arr),
+            self.context_arr,
             self.context_arr.nbytes,
             runtime=self.runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.token_id_buf,
-            host_array_ptr(self.token_id_arr),
+            self.token_id_arr,
             self.token_id_arr.nbytes,
             runtime=self.runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.active_mask_buf,
-            host_array_ptr(self.active_mask_arr),
+            self.active_mask_arr,
             self.active_mask_arr.nbytes,
             runtime=self.runtime,
         )
@@ -2361,9 +2361,9 @@ class Qwen35ParoResidentSession:
             (self.token_id_arr, self.token_id_buf),
             (self.active_mask_arr, self.active_mask_buf),
         ):
-            copy_host_to_device(
+            copy_host_array_to_device(
                 buffer,
-                host_array_ptr(host),
+                host,
                 host.nbytes,
                 runtime=self.runtime,
             )
@@ -2530,9 +2530,9 @@ class Qwen35ParoResidentSession:
             # produced tokens back.  Eager callers re-set positions each step,
             # so the device position/context counters are not self-advanced.
             token_arr = np.asarray(tokens, dtype=np.int64)
-            copy_host_to_device(
+            copy_host_array_to_device(
                 DeviceBuffer(self.batch_lm_out_index.ptr, rows * DType.INT64.itemsize),
-                host_array_ptr(token_arr),
+                token_arr,
                 token_arr.nbytes,
                 runtime=self.runtime,
             )
@@ -3146,7 +3146,7 @@ class Qwen35ParoResidentSession:
         else:
             token_buf = malloc(token_arr.nbytes, runtime=self.runtime)
             owns_token_buf = True
-        copy_host_to_device(token_buf, host_array_ptr(token_arr), token_arr.nbytes, runtime=self.runtime)
+        copy_host_array_to_device(token_buf, token_arr, token_arr.nbytes, runtime=self.runtime)
         minimize_prefill_workspace_overlap = self._should_minimize_prefill_workspace_overlap(len(tokens))
         try:
             if minimize_prefill_workspace_overlap:
@@ -3252,7 +3252,7 @@ class Qwen35ParoResidentSession:
         else:
             token_buf = malloc(token_arr.nbytes, runtime=self.runtime)
             owns_token_buf = True
-        copy_host_to_device(token_buf, host_array_ptr(token_arr), token_arr.nbytes, runtime=self.runtime)
+        copy_host_array_to_device(token_buf, token_arr, token_arr.nbytes, runtime=self.runtime)
         minimize_prefill_workspace_overlap = self._should_minimize_prefill_workspace_overlap(len(tokens))
         try:
             if minimize_prefill_workspace_overlap:
@@ -3370,7 +3370,7 @@ class Qwen35ParoResidentSession:
             generated_index_buf = malloc(DType.INT64.itemsize, runtime=self.runtime)
             self.runtime.memset(generated_buf.ptr, 0xFF, generated_buf.nbytes)
             zero = np.zeros((1,), dtype=np.int64)
-            copy_host_to_device(generated_index_buf, host_array_ptr(zero), runtime=self.runtime)
+            copy_host_array_to_device(generated_index_buf, zero, runtime=self.runtime)
         graph = 0
         stream = self.runtime.stream_create()
         try:
@@ -3701,9 +3701,9 @@ class Qwen35ParoResidentSession:
         if uniform and not bool(getattr(self, "_prefill_block_table_is_uniform", False)):
             dense_row = np.arange(self.blocks, dtype=np.int32)
             table = np.tile(dense_row, (capacity, 1))
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self.prefill_block_table_buf,
-                host_array_ptr(table),
+                table,
                 table.nbytes,
                 runtime=self.runtime,
             )
@@ -3736,9 +3736,9 @@ class Qwen35ParoResidentSession:
 
     def _prepare_prefill_context_counts(self, rows: int, *, stream: int = 0) -> None:
         counts = np.full((rows,), int(rows), dtype=np.int64)
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.prefill_context_count_buf,
-            host_array_ptr(counts),
+            counts,
             counts.nbytes,
             runtime=self.runtime,
         )
@@ -4015,14 +4015,14 @@ class Qwen35ParoResidentSession:
 
     def _prefill_single_cu_seqlens(self, tokens: int) -> Tensor:
         arr = np.asarray([0, int(tokens)], dtype=np.int32)
-        copy_host_to_device(self.prefill_single_cu_buf, host_array_ptr(arr), arr.nbytes, runtime=self.runtime)
+        copy_host_array_to_device(self.prefill_single_cu_buf, arr, arr.nbytes, runtime=self.runtime)
         return self.prefill_single_cu
 
     def _prefill_single_cu_seqlens_pair(self, query_tokens: int, key_tokens: int) -> tuple[Tensor, Tensor]:
         q_arr = np.asarray([0, int(query_tokens)], dtype=np.int32)
         k_arr = np.asarray([0, int(key_tokens)], dtype=np.int32)
-        copy_host_to_device(self.prefill_single_cu_buf, host_array_ptr(q_arr), q_arr.nbytes, runtime=self.runtime)
-        copy_host_to_device(self.prefill_single_cu_k_buf, host_array_ptr(k_arr), k_arr.nbytes, runtime=self.runtime)
+        copy_host_array_to_device(self.prefill_single_cu_buf, q_arr, q_arr.nbytes, runtime=self.runtime)
+        copy_host_array_to_device(self.prefill_single_cu_k_buf, k_arr, k_arr.nbytes, runtime=self.runtime)
         return self.prefill_single_cu, self.prefill_single_cu_k
 
     @staticmethod
@@ -4229,10 +4229,10 @@ class Qwen35ParoResidentSession:
         context_arr = np.asarray(slab.context_counts, dtype=np.int64)
         block_table_arr = np.asarray(physical_tables, dtype=np.int32)
         self._ensure_prefill_block_table_capacity(slab.rows, uniform=False)
-        copy_host_to_device(self.prefill_token_id_buf, host_array_ptr(token_arr), token_arr.nbytes, runtime=self.runtime)
-        copy_host_to_device(self.prefill_position_buf, host_array_ptr(position_arr), position_arr.nbytes, runtime=self.runtime)
-        copy_host_to_device(self.prefill_context_count_buf, host_array_ptr(context_arr), context_arr.nbytes, runtime=self.runtime)
-        copy_host_to_device(self.prefill_block_table_buf, host_array_ptr(block_table_arr), block_table_arr.nbytes, runtime=self.runtime)
+        copy_host_array_to_device(self.prefill_token_id_buf, token_arr, token_arr.nbytes, runtime=self.runtime)
+        copy_host_array_to_device(self.prefill_position_buf, position_arr, position_arr.nbytes, runtime=self.runtime)
+        copy_host_array_to_device(self.prefill_context_count_buf, context_arr, context_arr.nbytes, runtime=self.runtime)
+        copy_host_array_to_device(self.prefill_block_table_buf, block_table_arr, block_table_arr.nbytes, runtime=self.runtime)
         self._prefill_block_table_is_uniform = False
         self._prefill_block_table_owner = "packed"
         # Prefill overwrote the shared block-table buffer; force the decode
@@ -4244,7 +4244,7 @@ class Qwen35ParoResidentSession:
             contiguous = np.ascontiguousarray(array)
             buffer = malloc(contiguous.nbytes, runtime=self.runtime)
             temp_buffers.append(buffer)
-            copy_host_to_device(buffer, host_array_ptr(contiguous), contiguous.nbytes, runtime=self.runtime)
+            copy_host_array_to_device(buffer, contiguous, contiguous.nbytes, runtime=self.runtime)
             return Tensor.from_handle(buffer.ptr, contiguous.shape, dtype, self.device)
 
         cu_q = temp_tensor(np.asarray(slab.cu_seqlens_q, dtype=np.int32), DType.INT32)
@@ -4401,10 +4401,10 @@ class Qwen35ParoResidentSession:
             self.context_arr[slot] = context
             if hasattr(self, "active_mask_arr"):
                 self.active_mask_arr[slot] = 1
-        copy_host_to_device(self.position_buf, host_array_ptr(self.position_arr), self.position_arr.nbytes, runtime=self.runtime)
-        copy_host_to_device(self.context_buf, host_array_ptr(self.context_arr), self.context_arr.nbytes, runtime=self.runtime)
+        copy_host_array_to_device(self.position_buf, self.position_arr, self.position_arr.nbytes, runtime=self.runtime)
+        copy_host_array_to_device(self.context_buf, self.context_arr, self.context_arr.nbytes, runtime=self.runtime)
         if hasattr(self, "active_mask_arr") and hasattr(self, "active_mask_buf"):
-            copy_host_to_device(self.active_mask_buf, host_array_ptr(self.active_mask_arr), self.active_mask_arr.nbytes, runtime=self.runtime)
+            copy_host_array_to_device(self.active_mask_buf, self.active_mask_arr, self.active_mask_arr.nbytes, runtime=self.runtime)
         if not sample:
             self.runtime.stream_synchronize(stream)
             return tuple(None for _ in slot_ids)
@@ -5696,9 +5696,9 @@ class Qwen35ParoResidentSession:
                         local_block_table = np.asarray(slab.block_tables[start:end], dtype=np.int32)
                         local_block_table = np.ascontiguousarray(local_block_table)
                         self._ensure_prefill_block_table_capacity(segment_rows, uniform=False)
-                        copy_host_to_device(
+                        copy_host_array_to_device(
                             DeviceBuffer(self.prefill_block_table_buf.ptr, local_block_table.nbytes),
-                            host_array_ptr(local_block_table),
+                            local_block_table,
                             local_block_table.nbytes,
                             runtime=self.runtime,
                         )
@@ -5991,8 +5991,8 @@ class Qwen35ParoResidentSession:
             cu_buf = malloc(int(cu_arr.nbytes), runtime=self.runtime)
             state_buf = malloc(int(state_arr.nbytes), runtime=self.runtime)
             self.buffers.extend((cu_buf, state_buf))
-            copy_host_to_device(cu_buf, host_array_ptr(cu_arr), cu_arr.nbytes, runtime=self.runtime)
-            copy_host_to_device(state_buf, host_array_ptr(state_arr), state_arr.nbytes, runtime=self.runtime)
+            copy_host_array_to_device(cu_buf, cu_arr, cu_arr.nbytes, runtime=self.runtime)
+            copy_host_array_to_device(state_buf, state_arr, state_arr.nbytes, runtime=self.runtime)
             entry = {
                 "cu_buf": cu_buf,
                 "state_buf": state_buf,
@@ -6050,15 +6050,15 @@ class Qwen35ParoResidentSession:
             append_block_buf = malloc(int(append_block_rows.nbytes), runtime=self.runtime)
             decode_block_buf = malloc(int(decode_block_rows.nbytes), runtime=self.runtime)
             self.buffers.extend((append_block_buf, decode_block_buf))
-            copy_host_to_device(
+            copy_host_array_to_device(
                 append_block_buf,
-                host_array_ptr(append_block_rows),
+                append_block_rows,
                 append_block_rows.nbytes,
                 runtime=self.runtime,
             )
-            copy_host_to_device(
+            copy_host_array_to_device(
                 decode_block_buf,
-                host_array_ptr(decode_block_rows),
+                decode_block_rows,
                 decode_block_rows.nbytes,
                 runtime=self.runtime,
             )
@@ -8967,7 +8967,7 @@ class Qwen35ParoResidentSession:
             self._batch_token_id_scratch = token_buf
         row_buf = None
         try:
-            copy_host_to_device(token_buf, host_array_ptr(token_arr), token_arr.nbytes, runtime=self.runtime)
+            copy_host_array_to_device(token_buf, token_arr, token_arr.nbytes, runtime=self.runtime)
             set_i64_vector(
                 self.token_id_buf.ptr,
                 token_buf.ptr,
@@ -8984,7 +8984,7 @@ class Qwen35ParoResidentSession:
                 if row_arr.min() < 0 or row_arr.max() >= len(tokens):
                     raise ValueError("row_map entries must reference token_ids")
                 row_buf = malloc(row_arr.nbytes, runtime=self.runtime)
-                copy_host_to_device(row_buf, host_array_ptr(row_arr), runtime=self.runtime)
+                copy_host_array_to_device(row_buf, row_arr, runtime=self.runtime)
             embedding_lookup_batch_mapped_fp16_i64(
                 self.embedding.tensor.ptr,
                 self.token_id_buf.ptr,
@@ -9102,11 +9102,11 @@ class Qwen35ParoResidentSession:
             self._batch_position_scratch = pos_buf
         mask_buf = None
         try:
-            copy_host_to_device(pos_buf, host_array_ptr(pos_arr), pos_arr.nbytes, runtime=self.runtime)
+            copy_host_array_to_device(pos_buf, pos_arr, pos_arr.nbytes, runtime=self.runtime)
             if mask is not None:
                 mask_arr = np.asarray(mask, dtype=np.uint8)
                 mask_buf = malloc(mask_arr.nbytes, runtime=self.runtime)
-                copy_host_to_device(mask_buf, host_array_ptr(mask_arr), runtime=self.runtime)
+                copy_host_array_to_device(mask_buf, mask_arr, runtime=self.runtime)
             set_decode_positions_i64(
                 self.position_buf.ptr,
                 self.context_buf.ptr,
@@ -10925,7 +10925,7 @@ class Qwen35ParoResidentSession:
     def _native_sampler_upload(self, name: str, array: np.ndarray) -> DeviceBuffer:
         host = np.ascontiguousarray(array)
         buffer = self._native_sampler_buffer(name, int(host.nbytes))
-        copy_host_to_device(buffer, host_array_ptr(host), int(host.nbytes), runtime=self.runtime)
+        copy_host_array_to_device(buffer, host, int(host.nbytes), runtime=self.runtime)
         return buffer
 
     def _native_sampler_cached_scalar(self, cache_key: tuple[Any, ...], value: Any, dtype: Any) -> DeviceBuffer:
@@ -10941,7 +10941,7 @@ class Qwen35ParoResidentSession:
             host = np.ascontiguousarray(np.asarray([scalar], dtype=np_dtype))
             buffer = malloc(max(int(host.nbytes), 4), runtime=self.runtime)
             self.buffers.append(buffer)
-            copy_host_to_device(buffer, host_array_ptr(host), int(host.nbytes), runtime=self.runtime)
+            copy_host_array_to_device(buffer, host, int(host.nbytes), runtime=self.runtime)
             cache[key] = buffer
         return buffer
 
@@ -10961,7 +10961,7 @@ class Qwen35ParoResidentSession:
         if not isinstance(buffer, DeviceBuffer) or int(buffer.nbytes) < int(host.nbytes):
             buffer = malloc(max(int(host.nbytes), 4), runtime=self.runtime)
             self.buffers.append(buffer)
-            copy_host_to_device(buffer, host_array_ptr(host), int(host.nbytes), runtime=self.runtime)
+            copy_host_array_to_device(buffer, host, int(host.nbytes), runtime=self.runtime)
             cache[key] = buffer
         return buffer
 
@@ -10986,8 +10986,8 @@ class Qwen35ParoResidentSession:
         )
         index_host = np.array([sample.token_id], dtype=np.int64)
         value_host = np.array([sample.logit], dtype=np.float32)
-        copy_host_to_device(self.lm_out_index, host_array_ptr(index_host), runtime=self.runtime)
-        copy_host_to_device(self.lm_out_value, host_array_ptr(value_host), runtime=self.runtime)
+        copy_host_array_to_device(self.lm_out_index, index_host, runtime=self.runtime)
+        copy_host_array_to_device(self.lm_out_value, value_host, runtime=self.runtime)
         token_id = int(sample.token_id)
         token_text = (
             _decode_token_for_constraint(self.tokenizer, token_id)
@@ -11018,9 +11018,10 @@ class Qwen35ParoResidentSession:
         )
 
     def _dev(self, array: np.ndarray) -> DeviceBuffer:
-        buf = malloc(array.nbytes, runtime=self.runtime)
+        contiguous = np.ascontiguousarray(array)
+        buf = malloc(contiguous.nbytes, runtime=self.runtime)
         self.buffers.append(buf)
-        copy_host_to_device(buf, host_array_ptr(array), runtime=self.runtime)
+        copy_host_array_to_device(buf, contiguous, runtime=self.runtime)
         return buf
 
     def _dev_detached(self, array: np.ndarray) -> DeviceBuffer:
@@ -11038,9 +11039,10 @@ class Qwen35ParoResidentSession:
         would strand the buffer with no path back to it.
         """
 
-        buf = malloc(array.nbytes, runtime=self.runtime)
+        contiguous = np.ascontiguousarray(array)
+        buf = malloc(contiguous.nbytes, runtime=self.runtime)
         try:
-            copy_host_to_device(buf, host_array_ptr(array), runtime=self.runtime)
+            copy_host_array_to_device(buf, contiguous, runtime=self.runtime)
         except BaseException as error:  # noqa: BLE001 - own the allocation
             for failure in self._release_partial_buffer(buf):
                 error.add_note(
@@ -14005,12 +14007,12 @@ class Qwen35ParoResidentSession:
             self.verify_tree_committed_count = 0
         for buffer, array in copies:
             contiguous = np.ascontiguousarray(array)
-            copy_host_to_device(buffer, host_array_ptr(contiguous), contiguous.nbytes, runtime=self.runtime)
+            copy_host_array_to_device(buffer, contiguous, contiguous.nbytes, runtime=self.runtime)
         if packed_dynamic_metadata is not None:
             contiguous = np.ascontiguousarray(packed_dynamic_metadata)
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self.verify_dynamic_metadata_i64,
-                host_array_ptr(contiguous),
+                contiguous,
                 contiguous.nbytes,
                 runtime=self.runtime,
             )
@@ -14694,17 +14696,17 @@ class Qwen35ParoResidentSession:
                 conv_host[idx] = np.uint64(scratch.tree_conv_state.ptr)
                 rec_host[idx] = np.uint64(scratch.tree_recurrent_state.ptr)
             if not np.array_equal(conv_host, conv_cached):
-                copy_host_to_device(
+                copy_host_array_to_device(
                     self.linear_state_src_conv_table_buf,
-                    host_array_ptr(conv_host),
+                    conv_host,
                     conv_host.nbytes,
                     runtime=self.runtime,
                 )
                 np.copyto(conv_cached, conv_host)
             if not np.array_equal(rec_host, rec_cached):
-                copy_host_to_device(
+                copy_host_array_to_device(
                     self.linear_state_src_recurrent_table_buf,
-                    host_array_ptr(rec_host),
+                    rec_host,
                     rec_host.nbytes,
                     runtime=self.runtime,
                 )
@@ -15175,9 +15177,9 @@ class Qwen35ParoBatchDecodeGraph:
         tokens = np.asarray([int(token) for token in token_ids], dtype=np.int64)
         if tokens.size != self.rows:
             raise ValueError("seed token count must match rows")
-        copy_host_to_device(
+        copy_host_array_to_device(
             DeviceBuffer(self.session.batch_lm_out_index.ptr, self.rows * DType.INT64.itemsize),
-            host_array_ptr(tokens),
+            tokens,
             tokens.nbytes,
             runtime=self.session.runtime,
         )
@@ -15327,7 +15329,7 @@ def _decode_token(model: Path, token_id: int) -> str:
 
 
 def _copy_zero(runtime: HipRuntime, buffer: DeviceBuffer, zeros: np.ndarray) -> None:
-    copy_host_to_device(buffer, host_array_ptr(zeros), runtime=runtime)
+    copy_host_array_to_device(buffer, zeros, buffer.nbytes, runtime=runtime)
 
 
 def _rope_tables(*, max_positions: int, rotary_dim: int, base: float) -> tuple[np.ndarray, np.ndarray]:
