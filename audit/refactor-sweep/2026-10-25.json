@@ -12008,37 +12008,37 @@
         {
           "line": 9960,
           "text": "| Argument | Allocates? | Result |",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 9961,
           "text": "| --- | --- | --- |",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 9962,
           "text": "| named local array | n/a | ok |",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 9963,
           "text": "| `np.full(n, ...)`, n = 1.31M uint16 (2.6 MB) | yes | **segfault** |",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 9964,
           "text": "| `np.ascontiguousarray(named_contiguous)` | no, returns the same object | ok |",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 9965,
           "text": "| `np.ascontiguousarray(named_strided_view)` | yes | **segfault** |",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 9966,
           "text": "| `np.asarray([0], dtype=np.int32)` | yes, 4 bytes | ok by luck |",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 9982,
