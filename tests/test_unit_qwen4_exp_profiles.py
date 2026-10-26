@@ -39,9 +39,9 @@ from hipengine.runtime.qwen4_exp_runner import (
     _qwen4_exp_production_moe_prefill_enabled,
 )
 
-# DP-2's shared-cast loan. The profile binder publishes it; the gfx1151 pair
+# DP-2's shared-cast loan is a request-local runner decision. The gfx1151 pair
 # policy still owns which rows, layers and ordered pairs may use it.
-DP2_PAIR_ENV = linear.WIDE_F16_PAIR_ENV
+DP2_PAIR_ENV = "HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR"
 
 
 @pytest.fixture(autouse=True)
@@ -700,14 +700,14 @@ def _dp2_weight(role: str, ptr: int, n: int, *, layer: int = 24):
     )
 
 
-def _dp2_pair_admitted(monkeypatch, *, layer: int = 24, rows: int = 4096,
+def _dp2_pair_admitted(monkeypatch, decision: bool, *, layer: int = 24, rows: int = 4096,
                        pair=("attn_qkv", "attn_gate", _DP2_NA, _DP2_NB)) -> bool:
     """Open the scope the runner opens around one ordered projection pair."""
 
     monkeypatch.setattr(linear, "_wide_f16_consumer_key", lambda *a, **kw: _DP2_KEY)
     weight_a = _dp2_weight(pair[0], 5 << 32, pair[2], layer=layer)
     weight_b = _dp2_weight(pair[1], 6 << 32, pair[3], layer=layer)
-    with linear.wide_f16_activation_session(
+    with linear.wide_f16_pair_session(decision), linear.wide_f16_activation_session(
         workspace_ptr=1 << 32, workspace_nbytes=4096 * _DP2_K * 2,
     ):
         with linear.wide_f16_activation_pair(
@@ -719,11 +719,11 @@ def _dp2_pair_admitted(monkeypatch, *, layer: int = 24, rows: int = 4096,
 
 
 @pytest.mark.parametrize("profile,quant,enabled", [
-    (ExecutionProfile.PRODUCTION, "gguf_ud_q4_k_xl", "1"),
-    (ExecutionProfile.STRICT, "gguf_ud_q4_k_xl", "0"),
-    (ExecutionProfile.BATCH_INVARIANT, "gguf_ud_q4_k_xl", "0"),
-    (ExecutionProfile.PRODUCTION, "gguf_q4_k_m", "0"),
-    (ExecutionProfile.FAST, "gguf_ud_q4_k_xl", "0"),
+    (ExecutionProfile.PRODUCTION, "gguf_ud_q4_k_xl", True),
+    (ExecutionProfile.STRICT, "gguf_ud_q4_k_xl", False),
+    (ExecutionProfile.BATCH_INVARIANT, "gguf_ud_q4_k_xl", False),
+    (ExecutionProfile.PRODUCTION, "gguf_q4_k_m", False),
+    (ExecutionProfile.FAST, "gguf_ud_q4_k_xl", False),
 ])
 def test_dp2_pair_is_bound_only_for_ud_production(profile, quant, enabled):
     """The wide route's lane owns the loan; every other profile keeps parent."""
@@ -731,24 +731,57 @@ def test_dp2_pair_is_bound_only_for_ud_production(profile, quant, enabled):
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
     resolved = _resolve(profile, quant=quant)
-    resolved.binder(SimpleNamespace(runner=None), resolved)
-    assert os.environ[DP2_PAIR_ENV] == enabled
+    runner = SimpleNamespace()
+    generator = SimpleNamespace(runner=runner)
+    resolved.binder(generator, resolved)
+    assert runner.dense_f16_pair_enabled is enabled
+    assert generator.dense_f16_pair_enabled is enabled
+    # The decision is request-local: no process-wide switch may appear for it.
+    assert DP2_PAIR_ENV not in os.environ
 
 
-def test_dp2_pair_rebinding_cannot_leak_between_profiles_or_quants():
+def test_dp2_pair_binding_reaches_a_runner_built_after_the_bind():
+    """The generator carries the decision; late c1 runners inherit it."""
+
+    from hipengine.generation.qwen4_exp_gguf import _inherit_pair_lane
+
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
-    for profile, quant, enabled in (
-        (ExecutionProfile.PRODUCTION, "gguf_ud_q4_k_xl", "1"),
-        (ExecutionProfile.FAST, "gguf_ud_q4_k_xl", "0"),
-        (ExecutionProfile.PRODUCTION, "gguf_ud_q4_k_xl", "1"),
-        (ExecutionProfile.STRICT, "gguf_ud_q4_k_xl", "0"),
-        (ExecutionProfile.PRODUCTION, "gguf_q4_k_m", "0"),
-        (ExecutionProfile.PRODUCTION, "gguf_ud_q4_k_xl", "1"),
-    ):
-        resolved = _resolve(profile, quant=quant)
-        resolved.binder(SimpleNamespace(runner=None), resolved)
-        assert os.environ[DP2_PAIR_ENV] == enabled
+    production = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
+    generator = SimpleNamespace(runner=None)
+    production.binder(generator, production)
+    assert generator.dense_f16_pair_enabled is True
+    assert _inherit_pair_lane(generator, SimpleNamespace()).dense_f16_pair_enabled is True
+
+    strict = _resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl")
+    strict.binder(generator, strict)
+    assert generator.dense_f16_pair_enabled is False
+    assert _inherit_pair_lane(generator, SimpleNamespace()).dense_f16_pair_enabled is False
+
+    # An unbound generator keeps the parent route for anything cloned from it.
+    assert _inherit_pair_lane(
+        SimpleNamespace(), SimpleNamespace()).dense_f16_pair_enabled is False
+
+
+def test_dp2_pair_decision_is_owned_by_the_runner_it_was_bound_to():
+    """Interleaved binds must not overwrite another runner's decision."""
+
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    first, second = SimpleNamespace(), SimpleNamespace()
+    production = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
+    strict = _resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl")
+    production.binder(SimpleNamespace(runner=first), production)
+    strict.binder(SimpleNamespace(runner=second), strict)
+    assert first.dense_f16_pair_enabled is True
+    assert second.dense_f16_pair_enabled is False
+    # A later bind on the same runner retracts it; the other runner is untouched.
+    strict.binder(SimpleNamespace(runner=first), strict)
+    assert first.dense_f16_pair_enabled is False
+    assert second.dense_f16_pair_enabled is False
+    production.binder(SimpleNamespace(runner=second), production)
+    assert second.dense_f16_pair_enabled is True
+    assert DP2_PAIR_ENV not in os.environ
 
 
 def test_dp2_pair_binding_reaches_the_route_only_for_eligible_pairs(monkeypatch):
@@ -757,18 +790,24 @@ def test_dp2_pair_binding_reaches_the_route_only_for_eligible_pairs(monkeypatch)
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
     production = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
-    production.binder(SimpleNamespace(runner=None), production)
+    runner = SimpleNamespace()
+    production.binder(SimpleNamespace(runner=runner), production)
 
-    assert _dp2_pair_admitted(monkeypatch)
-    assert _dp2_pair_admitted(monkeypatch, layer=13)
-    assert _dp2_pair_admitted(monkeypatch, pair=("shared_gate", "shared_up", 640, 640))
-    assert not _dp2_pair_admitted(monkeypatch, layer=12)
-    assert not _dp2_pair_admitted(monkeypatch, rows=1024)
-    assert not _dp2_pair_admitted(monkeypatch, pair=("shared_gate", "shared_down", 640, 2560))
+    assert _dp2_pair_admitted(monkeypatch, runner.dense_f16_pair_enabled)
+    assert _dp2_pair_admitted(monkeypatch, runner.dense_f16_pair_enabled, layer=13)
+    assert _dp2_pair_admitted(
+        monkeypatch, runner.dense_f16_pair_enabled,
+        pair=("shared_gate", "shared_up", 640, 640))
+    assert not _dp2_pair_admitted(monkeypatch, runner.dense_f16_pair_enabled, layer=12)
+    assert not _dp2_pair_admitted(monkeypatch, runner.dense_f16_pair_enabled, rows=1024)
+    assert not _dp2_pair_admitted(
+        monkeypatch, runner.dense_f16_pair_enabled,
+        pair=("shared_gate", "shared_down", 640, 2560))
 
     strict = _resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl")
-    strict.binder(SimpleNamespace(runner=None), strict)
-    assert not _dp2_pair_admitted(monkeypatch)
+    strict_runner = SimpleNamespace()
+    strict.binder(SimpleNamespace(runner=strict_runner), strict)
+    assert not _dp2_pair_admitted(monkeypatch, strict_runner.dense_f16_pair_enabled)
 
 
 def test_the_shipped_default_routes_the_certified_window_to_the_wide_kernel() -> None:

@@ -2790,33 +2790,33 @@
       "start_line": 2860,
       "end_line": 2894,
       "sha256": "4e06265beebe4ffdd48100bb1f8a16ec117150d97c9642b75f83c163ded2eaf9",
-      "status": "partial-production-bound",
-      "evidence": ["Bound narrowed pair policy in UD production; mirror-served inputs decline unnecessary loans, no-mirror public configuration consumes both members. Repaired latent final-key probe mismatch. CPU broad run plus focused temporary-fixture repair,10 GPU ownership checks and public two-arm engagement pass. Environment publication cleanup remains. worklog/entries/20261026T184121.228376Z-cleanup-refactor-r0103-4407b8.md."],
+      "status": "resolved-runner-local",
+      "evidence": ["Retired process-wide pair flag; runner profile state and context-local scopes preserve narrowed policy and lazy runner inheritance. Full CPU, focused lifecycle/harness tests, GPU and public no-mirror engagement pass. QA-6 remains completed census evidence. worklog/entries/20261026T190419.491585Z-cleanup-refactor-r0103-local-4c1bb3.md.", "Bound narrowed pair policy in UD production; mirror-served inputs decline unnecessary loans, no-mirror public configuration consumes both members. Repaired latent final-key probe mismatch. CPU broad run plus focused temporary-fixture repair,10 GPU ownership checks and public two-arm engagement pass. Environment publication cleanup remains. worklog/entries/20261026T184121.228376Z-cleanup-refactor-r0103-4407b8.md."],
       "subitems": [
         {
           "line": 2862,
           "text": "- `HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR` is a temporary, default-off opt-in for",
-          "status": "pending"
+          "status": "resolved-runner-local"
         },
         {
           "line": 2867,
           "text": "- gfx1151 registry policy now admits only layers13\u201347, rows4096, and the",
-          "status": "pending"
+          "status": "resolved-runner-local"
         },
         {
           "line": 2876,
           "text": "- Native qualification passes 28 canonical/heldout cases, 168 arm runs and",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 2882,
           "text": "- QA-6 audit completes the memory/consumer census without implementing a",
-          "status": "pending"
+          "status": "not-debt-completed-census"
         },
         {
           "line": 2890,
           "text": "- **Remove or promote when:** a tracked-clean full-engine A/B qualifies the",
-          "status": "pending"
+          "status": "resolved-runner-local"
         }
       ]
     },

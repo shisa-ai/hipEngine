@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """Tracked-clean Qwen4Exp engine A/B for DP-2 F16 cast ownership.
 
-The parent arm disables ``HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR`` and the
-candidate arm enables it.  Both arms run in one Python process and one resident
-model, with one warmup per arm and three counterbalanced measured samples for
-the canonical 12-case fixture plus the eight category-heldout prompts at
-1024/4096 rows.  The candidate is admitted only by the runtime's bounded
-pair contract; this harness does not replace or bypass production consumers.
+The parent arm binds ``wide_f16_pair_diagnostic(False)`` and the candidate arm
+binds ``wide_f16_pair_diagnostic(True)``; the profile's own request-local
+decision is the default when neither arm is bound.  Both arms also run with
+``HIPENGINE_QWEN4_EXP_GR_F16_MIRROR=0``: the GR read's F16 mirror would serve
+both consumers, so the pair would stage nothing and every arm would measure the
+parent route.  Both arms run in one Python process and one resident model, with
+one warmup per arm and three counterbalanced measured samples for the canonical
+12-case fixture plus the eight category-heldout prompts at 1024/4096 rows.  The
+candidate is admitted only by the runtime's bounded pair contract; this harness
+does not replace or bypass production consumers.
 """
 from __future__ import annotations
 
@@ -25,6 +29,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts.qwen4exp_pair_harness_controls import (  # noqa: E402
+    producer_mirror_record,
+    restore_producer_mirror,
+    rollback_producer_mirror,
+)
 from scripts.qwen4exp_canonical_ar_bench import (  # noqa: E402
     DEFAULT_FIXTURE,
     _git_metadata,
@@ -36,7 +45,6 @@ from scripts.qwen4exp_canonical_ar_bench import (  # noqa: E402
     token_ids_sha256,
 )
 
-PAIR_ENV = "HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR"
 HELDOUTS = ROOT / "benchmarks" / "prompts" / "gdn-prefill-category-heldouts.jsonl"
 ARM_SEQUENCE = ("candidate", "parent", "parent", "candidate", "candidate", "parent")
 CATEGORIES = ("code", "general_en", "general_ja", "mixed_ja_en")
@@ -224,7 +232,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file.resolve())
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
     os.environ["HIPENGINE_HIP_ARCH"] = "gfx1151"
-    os.environ.pop(PAIR_ENV, None)
 
     from hipengine.benchmark.provenance import collect_artifact_provenance
     from hipengine.core.memory import memory_stats
@@ -240,6 +247,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
     from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
     from hipengine.models import resolve_model
+    from hipengine.runtime import gguf_linear as linear
     from hipengine.runtime import qwen4_exp_runner as runner_module
     from scripts.qwen4exp_framework_family_refresh import model_identity
 
@@ -320,8 +328,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             "candidate_admitted_rows": sorted(admitted_rows),
         },
         "arms": {
-            "parent": {"env": PAIR_ENV, "value": "0", "description": "ordinary two-cast parent route"},
-            "candidate": {"env": PAIR_ENV, "value": "1", "description": "bounded two-consumer F16 ownership route"},
+            "parent": {"control": "wide_f16_pair_diagnostic", "value": False,
+                       "description": "ordinary two-cast parent route"},
+            "candidate": {"control": "wide_f16_pair_diagnostic", "value": True,
+                          "description": "bounded two-consumer F16 ownership route"},
         },
         "samples": [],
         "warmups": [],
@@ -355,14 +365,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     def sample(case: Mapping[str, Any], mode: str, repetition: int) -> dict[str, Any]:
         if mode not in ("parent", "candidate"):
             raise ValueError(mode)
-        os.environ[PAIR_ENV] = "1" if mode == "candidate" else "0"
+        if runner_module._qwen4_exp_gr_f16_mirror_enabled():
+            raise AssertionError(
+                "the producer F16 mirror is enabled; it would serve both "
+                "consumers and the pair would stage no conversion")
         before = dict(counts)
-        row = _hipengine_case_sample(
-            generator.runner,
-            case=case,
-            repetition=repetition,
-            transitions=int(fixture["decode_transitions"]),
-        )
+        with linear.wide_f16_pair_diagnostic(mode == "candidate"):
+            row = _hipengine_case_sample(
+                generator.runner,
+                case=case,
+                repetition=repetition,
+                transitions=int(fixture["decode_transitions"]),
+            )
         delta = {key: counts[key] - before[key] for key in counts}
         expected = _expected_pairs(int(case["prompt_tokens"]), args.prefill_chunk_size)
         if mode == "candidate" and delta["pairs"] != expected:
@@ -372,7 +386,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         row.update({"mode": mode, "engagement": delta, "source": case.get("source", "canonical")})
         return row
 
+    prior_mirror = rollback_producer_mirror()
     try:
+        report["controls"] = {"producer_mirror": producer_mirror_record(prior_mirror)}
+        _write_json(args.output, report)
         with open("/tmp/hipengine-gfx1151-benchmark.lock", "a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             generator = resolved.construct_generator(factory)
@@ -426,9 +443,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         _write_json(args.output, report)
         raise
     finally:
-        os.environ[PAIR_ENV] = "0"
         runner_module.wide_f16_activation_pair = original_scope
         wide.f32_to_f16 = original_cast
+        restore_producer_mirror(prior_mirror)
         if generator is not None:
             generator.close()
         report["memory_after_close"] = memory_stats()

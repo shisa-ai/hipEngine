@@ -20,7 +20,6 @@ from hipengine.execution_profiles import (
 from hipengine.runtime.gguf_linear import (
     DENSE_WIDE_TAIL_VARIANT_ENV,
     NORM_F16_PUBLICATION_ENV,
-    WIDE_F16_PAIR_ENV,
 )
 
 QWEN4_EXP_MODEL = "qwen4_exp_gguf"
@@ -1013,12 +1012,12 @@ def _bind(
     # route. It selects no variant, so the manifest needs no new row: the wide
     # route and its F16-input sibling are already dispatch-time owners of the
     # lane this profile binds, and only the cast ownership between two launches
-    # changes. The switch therefore follows that lane - UD production, no strict
-    # fallback - while the gfx1151 `GGUF_DENSE_WIDE_F16_PAIR_POLICIES` entry
-    # keeps owning which rows, layers and ordered pairs may use it. Strict,
-    # fast, batch-invariant and Q4_K_M bind "0" and keep the parent, and every
-    # bind writes this key so a later one cannot inherit the lane it does not
-    # have.
+    # changes. The decision therefore follows that lane - UD production, no
+    # strict fallback - while the gfx1151 `GGUF_DENSE_WIDE_F16_PAIR_POLICIES`
+    # entry keeps owning which rows, layers and ordered pairs may use it.
+    # Strict, fast, batch-invariant and Q4_K_M publish False and keep the parent.
+    # It is request-local state on the runner, never a process-wide switch, and
+    # every bind publishes its own value so a later one cannot inherit a lane.
     dp2_pair_enabled = (
         production
         and resolved.profile is ExecutionProfile.PRODUCTION
@@ -1176,7 +1175,6 @@ def _bind(
                 for row in resolved.manifest["selections"]
             ) else "0"
         ),
-        WIDE_F16_PAIR_ENV: "1" if dp2_pair_enabled else "0",
         "HIPENGINE_GGUF_Q8_0_WMMA_TILE_M": "64",
         "HIPENGINE_GGUF_Q8_0_WMMA_TILE_N": "32",
         "HIPENGINE_QWEN4_EXP_Q4_TILE_M": "16",
@@ -1278,6 +1276,14 @@ def _bind(
     }.items():
         profile_env[key] = value
     _apply_profile_env(profile_env)
+    # Publish on the generator as the durable carrier and on the runner it has
+    # already built. A generator that builds its runner later still receives the
+    # decision, and any c1 runner it clones inherits it; an unbound one keeps the
+    # parent route.
+    generator.dense_f16_pair_enabled = dp2_pair_enabled
+    runner = getattr(generator, "runner", None)
+    if runner is not None:
+        runner.dense_f16_pair_enabled = dp2_pair_enabled
     if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl":
         _apply_profile_env(
             {

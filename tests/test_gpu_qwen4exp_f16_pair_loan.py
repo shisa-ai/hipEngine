@@ -63,14 +63,14 @@ def test_native_pair_nondefault_stream_exact_and_bounded(monkeypatch, rows, role
         snapshots = []
         with linear.raw_k_prefill_variant_session("coltile8"), linear.wide_f16_activation_session(
                 workspace_ptr=hd.ptr, workspace_nbytes=hd.nbytes):
-            for enabled in ("0", "1", "1", "0"):
-                monkeypatch.setenv(linear.WIDE_F16_PAIR_ENV, enabled)
+            for enabled in (False, True, True, False):
                 start = len(casts)
                 live = memory_stats()
-                runner._launch_qwen4_exp_dense_pair(*weights, xd.ptr, od[0].ptr, od[1].ptr,
-                    rows, k, *ns, stream=stream, runtime=runtime)
-                runtime.stream_synchronize(stream)
-                expected_casts = 1 if pair_admitted and enabled == "1" else 2
+                with linear.wide_f16_pair_diagnostic(enabled):
+                    runner._launch_qwen4_exp_dense_pair(*weights, xd.ptr, od[0].ptr, od[1].ptr,
+                        rows, k, *ns, stream=stream, runtime=runtime)
+                    runtime.stream_synchronize(stream)
+                expected_casts = 1 if pair_admitted and enabled else 2
                 assert len(casts) - start == expected_casts
                 assert all(c[2] == rows * k for c in casts[start:])
                 assert memory_stats()["current_allocated_bytes"] == live["current_allocated_bytes"]

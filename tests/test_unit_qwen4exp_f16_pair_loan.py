@@ -17,7 +17,6 @@ ROWS, K, NA, NB = 4096, 2560, 10240, 6144
 SOURCE = "dense_wide256_f32_f32_out"
 TARGET = "dense_wide256_f16in_f32_f32_out"
 KEY = KernelKey("hip_gfx1151", "linear", "gguf_q8_0", TARGET)
-ENV = "HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR"
 
 
 def weight(role, ptr, n, layer=24):
@@ -28,10 +27,12 @@ def weight(role, ptr, n, layer=24):
 
 
 @pytest.fixture
-def fake_pair(monkeypatch):
+def fake_pair(monkeypatch, request):
     casts, calls = [], []
     a, b = weight("attn_qkv", WA, NA), weight("attn_gate", WB, NB)
-    monkeypatch.setenv(ENV, "1")
+    pair_scope = linear.wide_f16_pair_session(True)
+    pair_scope.__enter__()
+    request.addfinalizer(lambda: pair_scope.__exit__(None, None, None))
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", ",".join(map(str, range(13, 48))))
     monkeypatch.setattr(linear, "_wide_f16_consumer_key", lambda *a, **kw: KEY)
@@ -181,12 +182,10 @@ def test_disabled_small_workspace_and_competing_key_keep_parent(fake_pair, monke
     for ptr, size in [(HALF, ROWS * K * 2 - 1)]:
         with p.session(ptr, size), p.pair() as loan:
             assert loan is None
-    monkeypatch.setenv(ENV, "0")
-    with p.session(), p.pair() as loan:
+    with linear.wide_f16_pair_session(False), p.session(), p.pair() as loan:
         assert loan is None
         assert p.launch() and p.launch(True)
         assert len(p.casts) == 2
-    monkeypatch.setenv(ENV, "1")
     monkeypatch.setattr(linear, "_wide_f16_consumer_key", lambda *a, **kw: None)
     with p.session(), p.pair() as loan:
         assert loan is None
@@ -277,12 +276,11 @@ def test_failed_consumer_launch_never_commits_or_restores_pair(fake_pair, monkey
 def test_native_dispatch_probe_and_backend_policy_admit_only_measured_pairs(monkeypatch):
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
     register_gfx1151_kernels(replace=True)
-    monkeypatch.setenv(ENV, "1")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", ",".join(map(str, range(13, 48))))
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS", raising=False)
     a, b = weight("attn_qkv", WA, NA), weight("attn_gate", WB, NB)
-    with linear.raw_k_prefill_variant_session("coltile8"), linear.wide_f16_activation_session(
+    with linear.wide_f16_pair_session(True), linear.raw_k_prefill_variant_session("coltile8"), linear.wide_f16_activation_session(
             workspace_ptr=HALF, workspace_nbytes=4096 * K * 2):
         for rows in (4096,):
             with linear.wide_f16_activation_pair(a, b, X, OA, OB, rows=rows,
@@ -302,7 +300,7 @@ def test_runner_pair_helper_preserves_dispatch_order_and_off_path(monkeypatch):
     from hipengine.runtime import qwen4_exp_runner as runner
     calls = []
     a, b = object(), object()
-    monkeypatch.setenv(ENV, "0")
+    assert not linear.wide_f16_pair_enabled()
     monkeypatch.setattr(runner, "wide_f16_activation_pair", lambda *a, **k: pytest.fail("off route opens scope"))
     monkeypatch.setattr(runner, "launch_gguf_linear", lambda *a, **k: calls.append((a, k)))
     runner._launch_qwen4_exp_dense_pair(a, b, X, OA, OB, ROWS, K, NA, NB, stream=7, runtime=RT)

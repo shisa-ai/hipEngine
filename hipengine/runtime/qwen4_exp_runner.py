@@ -196,7 +196,6 @@ from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple import (
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.runtime.gguf_linear import (
     GGUF_ACTIVATION_F32,
-    WIDE_F16_PAIR_ENV,
     _invalidate_wide_f16_publication,
     _q8_dense_wide_enabled,
     _wide_f16_consumer_key,
@@ -205,6 +204,8 @@ from hipengine.runtime.gguf_linear import (
     wide_f16_activation_publication,
     wide_f16_activation_session,
     wide_f16_activation_workspace,
+    wide_f16_pair_enabled,
+    wide_f16_pair_session,
     wide_f16_publication_keys,
     raw_k_prefill_rowbatch_session,
     raw_k_prefill_variant_session,
@@ -264,8 +265,7 @@ def _launch_qwen4_exp_dense_pair(
         wide_f16_activation_pair(weight_a, weight_b, x_ptr, out_a_ptr, out_b_ptr,
             rows=rows, in_features=in_features, out_features_a=out_features_a,
             out_features_b=out_features_b, stream=stream, runtime=runtime)
-        if rows > 1 and os.environ.get(WIDE_F16_PAIR_ENV, "0").strip().lower()
-            in {"1", "true", "yes", "on"}
+        if rows > 1 and wide_f16_pair_enabled()
         else contextlib.nullcontext()
     )
     with scope:
@@ -7720,6 +7720,11 @@ class Qwen4ExpPrefillWorkspace:
 class Qwen4ExpGGUFResidentModelRunner:
     """Strict c1 text runner for the complete 48-layer Qwen4Exp target."""
 
+    # The execution-profile binder publishes DP-2's lane decision here, per
+    # runner; an unbound runner keeps the parent route. This is the request's
+    # own decision, not the effective one: a diagnostic scope may outrank it.
+    dense_f16_pair_enabled: bool = False
+
     def __init__(
         self,
         resident: Qwen4ExpResidentWeights,
@@ -7955,7 +7960,8 @@ class Qwen4ExpGGUFResidentModelRunner:
         self._require_open()
         # Qualified against the production F32-input owner; retain an opt-out.
         if not _q8_dense_wide_enabled() or not wide_f16_activation_enabled(True):
-            return wide_f16_activation_session(False)
+            return self._wide_f16_pair_scopes(
+                wide_f16_activation_session(False), enabled=False)
         buffer = getattr(self, "_wide_f16_activation_buffer", None)
         if buffer is None:
             nbytes = qwen4_exp_wide_f16_activation_nbytes(
@@ -7964,8 +7970,23 @@ class Qwen4ExpGGUFResidentModelRunner:
             buffer = malloc(nbytes, runtime=self.runtime)
             self._buffers.append(buffer)
             self._wide_f16_activation_buffer = buffer
-        return wide_f16_activation_session(
-            workspace_ptr=buffer.ptr, workspace_nbytes=buffer.nbytes)
+        return self._wide_f16_pair_scopes(
+            wide_f16_activation_session(
+                workspace_ptr=buffer.ptr, workspace_nbytes=buffer.nbytes),
+            enabled=bool(self.dense_f16_pair_enabled),
+        )
+
+    @contextlib.contextmanager
+    def _wide_f16_pair_scopes(self, workspace_scope, *, enabled: bool):
+        """Bind this runner's pair decision around the workspace it owns.
+
+        Both scopes open on ``__enter__`` and unwind in reverse order, so a
+        context that is constructed and dropped leaves no workspace or pair
+        state behind, and an exception inside the body restores both.
+        """
+
+        with workspace_scope, wide_f16_pair_session(enabled):
+            yield
 
     def _allocate_extra_prefill_workspace(self, chunk_size):
         """Prepare an inactive owner; callers must admit its additional memory."""

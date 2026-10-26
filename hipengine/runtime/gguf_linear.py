@@ -559,8 +559,9 @@ def _launch_prefill_f16_staged(
 # B2 prefill F16-staging workspace: a launch whose activation does not fit runs
 # the f32-input owner instead, which costs the saving and never correctness.
 # The execution profile and the session own whether the hoist runs; there is no
-# process-wide override.
-WIDE_F16_PAIR_ENV = "HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR"
+# process-wide override. The pair loan is a request-local decision: the profile
+# publishes it to the runner that owns the prefill, that runner binds it for its
+# own launches, and only an explicit diagnostic scope can outrank it.
 NORM_F16_PUBLICATION_ENV = "HIPENGINE_QWEN4_EXP_GR_NORM_F16_PUBLISH"
 _WIDE_F16_ACTIVATION_SOURCE_SUFFIX = "_f32_f32_out"
 _WIDE_F16_ACTIVATION_TARGET_SUFFIX = "_f16in_f32_f32_out"
@@ -872,7 +873,7 @@ def wide_f16_activation_pair(
     # operand to both consumers, so the loan would share no conversion. Decline
     # it here instead of opening a scope that stages nothing; the pair still
     # serves every source that carries no image.
-    if (os.environ.get(WIDE_F16_PAIR_ENV, "0").strip().lower() not in {"1", "true", "yes", "on"}
+    if (not wide_f16_pair_enabled()
             or workspace is None or not wide_f16_activation_enabled()
             or workspace.nbytes < count * 2
             or lookup_f16_mirror(source_ptr, count)):
@@ -964,6 +965,61 @@ def wide_f16_activation_workspace() -> WideF16ActivationWorkspace | None:
     """Return the active caller-owned workspace, if one was supplied."""
 
     return _wide_f16_activation_workspace.get()
+
+
+_wide_f16_pair_session: ContextVar[bool] = ContextVar(
+    "gguf_wide_f16_pair_session", default=False,
+)
+_wide_f16_pair_control: ContextVar[bool | None] = ContextVar(
+    "gguf_wide_f16_pair_control", default=None,
+)
+
+
+def wide_f16_pair_enabled() -> bool:
+    """Whether this launch may loan its staging to the ordered pair.
+
+    The execution profile publishes the lane decision to the request that owns
+    the prefill, and that request binds it with :func:`wide_f16_pair_session`.
+    An unbound context is the parent route; a diagnostic scope may outrank the
+    decision so an A/B can still run both arms.
+    """
+
+    control = _wide_f16_pair_control.get()
+    return _wide_f16_pair_session.get() if control is None else bool(control)
+
+
+@contextlib.contextmanager
+def wide_f16_pair_session(enabled: bool = True) -> Iterator[None]:
+    """Bind the request's lane decision for the enclosed launches.
+
+    A nested scope replaces the enclosing one and restores it on exit, so an
+    explicit ``False`` keeps the parent route inside an enabled request.
+    """
+
+    token = _wide_f16_pair_session.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _wide_f16_pair_session.reset(token)
+
+
+@contextlib.contextmanager
+def wide_f16_pair_diagnostic(enabled: bool | None) -> Iterator[None]:
+    """Explicit scoped control for A/B harnesses; it outranks the lane decision.
+
+    A harness runs outside the request that binds its own decision inside, so
+    its control has to win there; nesting still restores the enclosing value.
+    ``None`` leaves the request's own decision in force.
+    """
+
+    if enabled is None:
+        yield
+        return
+    token = _wide_f16_pair_control.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _wide_f16_pair_control.reset(token)
 
 
 def wide_f16_activation_for(

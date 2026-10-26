@@ -8,6 +8,9 @@ from hipengine.runtime.gguf_linear import (
     wide_f16_activation_publication,
     wide_f16_activation_session,
     wide_f16_activation_workspace,
+    wide_f16_pair_diagnostic,
+    wide_f16_pair_enabled,
+    wide_f16_pair_session,
 )
 from scripts.qwen4exp_allocation_census import simulated_runner
 from scripts.qwen4exp_chunk_workspace import capture_workspace, use_workspace
@@ -86,6 +89,96 @@ def test_allocation_failure_does_not_publish_owner(enabled, monkeypatch):
                 pass
         assert wide_f16_activation_workspace() is None
         assert runtime.live == before
+
+
+def test_pair_scope_follows_the_runner_decision(enabled):
+    """The profile publishes to the runner; the runner binds its own launches."""
+
+    with simulated_runner(config(), context=256, chunk=16) as (runner, runtime):
+        assert runner.dense_f16_pair_enabled is False
+        with runner._wide_f16_activation_context():
+            assert not wide_f16_pair_enabled()
+        runner.dense_f16_pair_enabled = True
+        with runner._wide_f16_activation_context():
+            assert wide_f16_pair_enabled()
+            with wide_f16_pair_diagnostic(False):
+                assert not wide_f16_pair_enabled()
+            assert wide_f16_pair_enabled()
+        assert not wide_f16_pair_enabled()
+
+
+def test_constructing_the_context_binds_nothing_until_it_is_entered(enabled):
+    """A context that is built and dropped must not touch the enclosing state."""
+
+    with simulated_runner(config(), context=256, chunk=16) as (runner, runtime):
+        runner.dense_f16_pair_enabled = False
+        with wide_f16_activation_session(
+                workspace_ptr=11, workspace_nbytes=22), wide_f16_pair_session(True):
+            outer = wide_f16_activation_workspace()
+            pending = runner._wide_f16_activation_context()
+            assert wide_f16_activation_workspace() == outer
+            assert wide_f16_pair_enabled()
+        del pending
+        assert wide_f16_activation_workspace() is None
+        assert not wide_f16_pair_enabled()
+
+
+def test_disabled_context_binds_nothing_until_it_is_entered(enabled, monkeypatch):
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "0")
+    with simulated_runner(config(), context=256, chunk=16) as (runner, runtime):
+        before = dict(runtime.live)
+        with wide_f16_activation_session(
+                workspace_ptr=11, workspace_nbytes=22), wide_f16_pair_session(True):
+            outer = wide_f16_activation_workspace()
+            pending = runner._wide_f16_activation_context()
+            assert wide_f16_activation_workspace() == outer
+            assert wide_f16_pair_enabled()
+        del pending
+        assert runtime.live == before
+
+
+def test_an_exception_in_the_body_unwinds_workspace_and_pair(enabled):
+    with simulated_runner(config(), context=256, chunk=16) as (runner, runtime):
+        runner.dense_f16_pair_enabled = True
+        with wide_f16_activation_session(
+                workspace_ptr=11, workspace_nbytes=22), wide_f16_pair_session(False):
+            outer = wide_f16_activation_workspace()
+            with pytest.raises(RuntimeError, match="body failed"):
+                with runner._wide_f16_activation_context():
+                    owned = wide_f16_activation_workspace()
+                    assert owned is not None and owned != outer
+                    assert wide_f16_pair_enabled()
+                    raise RuntimeError("body failed")
+            assert wide_f16_activation_workspace() == outer
+            assert not wide_f16_pair_enabled()
+        assert wide_f16_activation_workspace() is None
+
+
+def test_disabled_context_binds_parent_even_when_the_runner_bound_the_loan(
+    enabled, monkeypatch,
+):
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "0")
+    with simulated_runner(config(), context=256, chunk=16) as (runner, runtime):
+        runner.dense_f16_pair_enabled = True
+        with runner._wide_f16_activation_context():
+            assert wide_f16_activation_workspace() is None
+            assert not wide_f16_pair_enabled()
+        assert not wide_f16_pair_enabled()
+
+
+def test_pair_scope_restores_on_a_failing_prefill(enabled, monkeypatch):
+    with simulated_runner(config(), context=256, chunk=32) as (runner, runtime):
+        runner.dense_f16_pair_enabled = True
+        monkeypatch.setattr(runner, "reset", lambda: None)
+
+        def chunk(tokens, **kwargs):
+            assert wide_f16_pair_enabled()
+            raise RuntimeError("stop before head")
+
+        monkeypatch.setattr(runner, "_prefill_chunk", chunk)
+        with pytest.raises(RuntimeError, match="stop before head"):
+            runner.prefill_chunked([1, 2, 3])
+        assert not wide_f16_pair_enabled()
 
 
 def test_real_prefill_call_site_binds_and_restores_on_failure(enabled, monkeypatch):

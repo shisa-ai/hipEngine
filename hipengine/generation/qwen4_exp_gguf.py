@@ -307,6 +307,10 @@ class Qwen4ExpGGUFTextGenerator:
         self._vision_runner = None
         self._speculative_provider = None
         self._resident_model_runner = None
+        # The execution-profile binder republishes this after construction; an
+        # unbound generator keeps the parent route, and every c1 runner cloned
+        # from it inherits the published decision.
+        self.dense_f16_pair_enabled = False
         self._lock = threading.RLock()
         self._closed = False
         if tokenizer is None:
@@ -1017,6 +1021,20 @@ class _Qwen4ExpServingRow:
         return self.sampling_state is not None or self.grammar is not None or bool(self.request.suppress_token_ids or self.request.logit_bias)
 
 
+def _inherit_pair_lane(generator: Any, runner: Any) -> Any:
+    """Give a c1 runner built after the profile bind the generator's decision.
+
+    The binder publishes to the generator and to the runner it already finds
+    there; the serving pool clones further c1 staging runners on demand, and
+    those would otherwise keep the parent route while the same lane serves the
+    loan.
+    """
+
+    runner.dense_f16_pair_enabled = bool(
+        getattr(generator, "dense_f16_pair_enabled", False))
+    return runner
+
+
 class Qwen4ExpResidentServingRunner(
     Qwen4ExpServingMixed, Qwen4ExpServingMTP, Qwen4ExpServingPrefix
 ):
@@ -1076,6 +1094,7 @@ class Qwen4ExpResidentServingRunner(
                 backend=self.generator.backend,
                 runtime=self.generator.runner.runtime,
             )
+            _inherit_pair_lane(self.generator, runner)
             self._all_runners.append(runner)
             self._available.append(runner)
         # MTP owners first: the batch pool is sized from what they leave.

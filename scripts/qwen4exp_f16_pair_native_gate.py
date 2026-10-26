@@ -3,7 +3,10 @@
 
 Heldouts are uniformly repeated/truncated to 1024/4096 rows for ownership and
 state coverage, not scored as task-quality inputs. Counters wrap native scopes;
-no diagnostic GEMM replaces a runtime consumer.
+no diagnostic GEMM replaces a runtime consumer. Both arms run with
+``HIPENGINE_QWEN4_EXP_GR_F16_MIRROR=0``: the GR read's F16 mirror would serve
+both consumers, so the pair would stage nothing and the candidate would count no
+engagement.
 """
 from __future__ import annotations
 
@@ -18,6 +21,12 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+from scripts.qwen4exp_pair_harness_controls import (  # noqa: E402
+    producer_mirror_record,
+    restore_producer_mirror,
+    rollback_producer_mirror,
+)
 
 
 def expected_pairs(tokens: int, chunk: int = 4096) -> int:
@@ -54,7 +63,6 @@ def main():
     from scripts.gguf_mtp_bench import build_chat_prompt
 
     check_host()
-    os.environ.pop(linear.WIDE_F16_PAIR_ENV, None)
     gate.register_gfx1151_kernels(replace=True)
     gate.register_qwen4_exp_gfx1151_profiles()
     production = gate.resolve_runtime_profile(model=gate.QWEN4_EXP_MODEL,
@@ -64,7 +72,7 @@ def main():
         host=gate._host_metadata(), source=gate._git_metadata(ROOT), model_identity=model_identity(args.model_root),
         script_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), fixture_sha256=digest,
         profile="production", manifest_sha256=production.manifest_sha256,
-        diagnostic_env=linear.WIDE_F16_PAIR_ENV, chunk4096=True, context4352=True,
+        diagnostic_control="wide_f16_pair_diagnostic", chunk4096=True, context4352=True,
         paired_repeats=args.paired_repeats, decode_steps=args.decode_steps, cases=[])
     report["hipengine_artifact_provenance"] = collect_artifact_provenance(
         repo_root=ROOT, configured_backend="hip_gfx1151", resolved_backend="hip_gfx1151",
@@ -104,7 +112,9 @@ def main():
 
     with open("/tmp/hipengine-gfx1151-benchmark.lock", "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        prior_mirror = rollback_producer_mirror()
         try:
+            report["controls"] = {"producer_mirror": producer_mirror_record(prior_mirror)}
             index = gate.load_gguf_index(gate.discover_gguf_files(args.model_root)[0])
             generator = production.construct_generator(lambda: gate.Qwen4ExpGGUFTextGenerator(
                 model_path=args.model_root, weight_index=index, model_plugin=gate.resolve_model(index.architecture or ""),
@@ -129,20 +139,24 @@ def main():
                 if set(args.case_id) - known:
                     raise ValueError(f"unknown cases: {sorted(set(args.case_id) - known)}")
                 cases = [c for c in cases if c["id"] in args.case_id]
+            if runner._qwen4_exp_gr_f16_mirror_enabled():
+                raise AssertionError(
+                    "the producer F16 mirror is enabled; it would serve both "
+                    "consumers and the pair would stage no conversion")
             for case in cases:
                 captures = []
                 modes = ("candidate", "parent", "parent", "candidate", "candidate", "parent")[:2 * args.paired_repeats]
                 for mode in modes:
-                    os.environ[linear.WIDE_F16_PAIR_ENV] = "1" if mode == "candidate" else "0"
-                    before = dict(counts)
-                    first = generator.runner.prefill(case["prompt_token_ids"])
-                    prefill = {k: counts[k] - before[k] for k in counts}
-                    state_before = _state_summary(generator.runner)
-                    logits, ids = [first.logits.copy()], [int(first.token_id)]
-                    for _ in range(args.decode_steps):
-                        step = generator.runner.step(ids[-1])
-                        ids.append(int(step.token_id)); logits.append(step.logits.copy())
-                    generator.runner.runtime.device_synchronize()
+                    with linear.wide_f16_pair_diagnostic(mode == "candidate"):
+                        before = dict(counts)
+                        first = generator.runner.prefill(case["prompt_token_ids"])
+                        prefill = {k: counts[k] - before[k] for k in counts}
+                        state_before = _state_summary(generator.runner)
+                        logits, ids = [first.logits.copy()], [int(first.token_id)]
+                        for _ in range(args.decode_steps):
+                            step = generator.runner.step(ids[-1])
+                            ids.append(int(step.token_id)); logits.append(step.logits.copy())
+                        generator.runner.runtime.device_synchronize()
                     state = _state_summary(generator.runner)
                     kv = hashlib.sha256()
                     for attention in generator.runner.attention_states:
@@ -180,6 +194,7 @@ def main():
         finally:
             runner.wide_f16_activation_pair = original_scope
             wide.f32_to_f16 = original_cast
+            restore_producer_mirror(prior_mirror)
             if generator is not None:
                 generator.close()
             report["memory_after_close"] = memory_stats()

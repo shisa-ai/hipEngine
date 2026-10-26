@@ -4,8 +4,11 @@
 The default prebound primitive replay excludes dispatch and native ownership.
 With --native-owner, the real runner pair helper charges scope admission,
 both normal dispatches, casts/GEMMs, scope exit, events and final device sync.
-Both modes validate native outputs and immutable inputs outside timing. Neither
-mode changes production defaults or introduces a persistent activation cache.
+Both modes validate native outputs and immutable inputs outside timing. Both
+arms run with ``HIPENGINE_QWEN4_EXP_GR_F16_MIRROR=0``: the GR read's F16 mirror
+would otherwise serve both consumers, so the replay would measure the producer's
+conversion instead of the pair's staging ownership. Neither mode changes
+production defaults or introduces a persistent activation cache.
 """
 from __future__ import annotations
 
@@ -125,6 +128,11 @@ def main():
     from hipengine.runtime import gguf_linear as linear, qwen4_exp_runner as runner
     from scripts import qwen4exp_row4_state_gate as gate
     from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
+    from scripts.qwen4exp_pair_harness_controls import (
+        producer_mirror_record,
+        restore_producer_mirror,
+        rollback_producer_mirror,
+    )
 
     check_host()
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file.resolve())
@@ -187,7 +195,6 @@ def main():
         def replay(left, right):
             nonlocal replaying
             replaying = True
-            prior_pair_env = os.environ.get(linear.WIDE_F16_PAIR_ENV)
             a, b = left[0], right[0]
             role = checked_pair(a, b)
             before = memory_stats()
@@ -231,13 +238,13 @@ def main():
                     order = (("two_casts", "one_cast") if (pair + len(captures)) % 2 == 0
                              else ("one_cast", "two_casts"))
                     for position, arm in enumerate(order):
-                        if args.native_owner:
-                            os.environ[linear.WIDE_F16_PAIR_ENV] = "1" if arm == "one_cast" else "0"
-                        wall, event = measure_operation(runtime, start, stop,
-                            lambda: replay_operation(arm, args.native_owner, cast,
-                                lambda: consumer(left, outs[0]),
-                                lambda: consumer(right, outs[1]), native),
-                            final_device_sync=args.native_owner)
+                        with linear.wide_f16_pair_diagnostic(
+                                arm == "one_cast" if args.native_owner else None):
+                            wall, event = measure_operation(runtime, start, stop,
+                                lambda: replay_operation(arm, args.native_owner, cast,
+                                    lambda: consumer(left, outs[0]),
+                                    lambda: consumer(right, outs[1]), native),
+                                final_device_sync=args.native_owner)
                         if pair:
                             samples[arm].append(dict(pair=pair, position=position,
                                 first_arm=order[0], wall_ms=wall, event_ms=event))
@@ -267,13 +274,17 @@ def main():
                         return original_cast(*args, **kwargs)
 
                     try:
+                        if runner._qwen4_exp_gr_f16_mirror_enabled():
+                            raise AssertionError(
+                                "the producer F16 mirror is enabled; the replay "
+                                "would measure it instead of the pair's staging")
                         runner.wide_f16_activation_pair, wide.f32_to_f16 = counted_scope, counted_cast
                         for arm in samples:
                             for field in counts:
                                 counts[field] = 0
-                            os.environ[linear.WIDE_F16_PAIR_ENV] = "1" if arm == "one_cast" else "0"
-                            native()
-                            runtime.device_synchronize()
+                            with linear.wide_f16_pair_diagnostic(arm == "one_cast"):
+                                native()
+                                runtime.device_synchronize()
                             expected = dict(pairs=1, accepted=2, casts=1) if arm == "one_cast" else dict(pairs=0, accepted=0, casts=2)
                             if counts != expected:
                                 raise AssertionError((arm, "native engagement", counts, expected))
@@ -303,10 +314,6 @@ def main():
                 print(a.layer, role, "one/two cast wall speedup", captures[-1]["wall_speedup"], flush=True)
             finally:
                 replaying = False
-                if prior_pair_env is None:
-                    os.environ.pop(linear.WIDE_F16_PAIR_ENV, None)
-                else:
-                    os.environ[linear.WIDE_F16_PAIR_ENV] = prior_pair_env
                 for allocation in reversed(allocations):
                     free(allocation, runtime=runtime)
             after = memory_stats()
@@ -349,7 +356,9 @@ def main():
                 replay(pending.pop(), info)
             return result
 
+        prior_mirror = rollback_producer_mirror()
         try:
+            report["controls"] = {"producer_mirror": producer_mirror_record(prior_mirror)}
             linear._launch_dense_wide_f16_staged = hooked
             for case in cases:
                 captures.clear(); pending.clear()
@@ -367,6 +376,7 @@ def main():
             raise
         finally:
             linear._launch_dense_wide_f16_staged = original
+            restore_producer_mirror(prior_mirror)
             runtime.event_destroy(start); runtime.event_destroy(stop)
             generator.close()
             report["memory_after_close"] = memory_stats()
