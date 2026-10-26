@@ -791,17 +791,14 @@ _MTP2_CERTIFIED_WIDTH_DEPTHS = tuple(
 )
 _MTP2_MAX_PHYSICAL_REQUESTS = 8
 # Single source of truth for speculative candidate depth. Every clamp, default,
-# and validator must derive from this; the limit was previously duplicated as a
-# validator constant, a hardcoded adapter clamp, and a getattr default.
+# and validator must derive from this name; the limit was previously duplicated
+# as a validator constant, a hardcoded adapter clamp, a getattr default, and a
+# private self-alias.
 #
-# Held at 3 because depth 4 does not complete. Raising it to 4 and qualifying a
-# K4 serving-evidence row on the W7900 (Qwen3.8-27B Q4_K_M, physical C8) made
-# the bench hang: two runs produced no prompt output and were killed at 20 and
-# 50 minutes, against roughly 4-5 minutes for the same shape at K3. The server
-# env has always accepted budgets 1-4, so this bound is what keeps a K4 request
-# from reaching that path.
+# This is the structural admission bound, not a declaration that every backend
+# supports every width/depth cell. Backend policy and the requested execution
+# profile determine which cells the adapter can use.
 MTP2_MAX_CANDIDATE_DEPTH = 7
-_MTP2_MAX_CANDIDATE_DEPTH = MTP2_MAX_CANDIDATE_DEPTH
 
 
 def _physical_width_depths(generator: Any) -> tuple[tuple[int, int], ...]:
@@ -837,8 +834,11 @@ def _physical_width_depths(generator: Any) -> tuple[tuple[int, int], ...]:
             ) from exc
         if not 1 <= width <= _MTP2_MAX_PHYSICAL_REQUESTS:
             raise RuntimeError("backend MTP2 physical widths must be within [1, 8]")
-        if not 1 <= depth <= _MTP2_MAX_CANDIDATE_DEPTH:
-            raise RuntimeError("backend MTP2 candidate depths must be within [1, 3]")
+        if not 1 <= depth <= MTP2_MAX_CANDIDATE_DEPTH:
+            raise RuntimeError(
+                "backend MTP2 candidate depths must be within "
+                f"[1, {MTP2_MAX_CANDIDATE_DEPTH}]"
+            )
         cells.add((width, depth))
     if not cells:
         raise RuntimeError("backend MTP2 physical width/depth policy must not be empty")
@@ -1023,10 +1023,10 @@ class Qwen35GGUFMTP2Adapter:
             "HIPENGINE_SPECDEC2_POST_REJECT_COOLDOWN"
         )
         self._post_reject_pending: set[int] = set()
-        if not 1 <= self.candidate_budget <= _MTP2_MAX_CANDIDATE_DEPTH:
+        if not 1 <= self.candidate_budget <= MTP2_MAX_CANDIDATE_DEPTH:
             raise ValueError(
                 "MTP2 candidate budget must be within "
-                f"[1, {_MTP2_MAX_CANDIDATE_DEPTH}]"
+                f"[1, {MTP2_MAX_CANDIDATE_DEPTH}]"
             )
         policy_max_requests = max(
             width for width, _depth in self.physical_width_depths
@@ -1206,7 +1206,7 @@ class Qwen35GGUFMTP2Adapter:
             return False
         if not 1 <= width <= _MTP2_MAX_PHYSICAL_REQUESTS:
             return False
-        if not 1 <= depth <= _MTP2_MAX_CANDIDATE_DEPTH:
+        if not 1 <= depth <= MTP2_MAX_CANDIDATE_DEPTH:
             return False
         bound = min(_MTP2_MAX_PHYSICAL_REQUESTS, self._physical_request_capacity())
         if bound <= 0 or width > bound:

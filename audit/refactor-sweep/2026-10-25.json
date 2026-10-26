@@ -4269,7 +4269,8 @@
         {
           "line": 3832,
           "text": "- Consolidate the duplicated implementation-depth tuples and B1-B7 graph-cache",
-          "status": "pending"
+          "status": "pending",
+          "evidence": ["Consolidated private/public MTP2 depth aliases onto MTP2_MAX_CANDIDATE_DEPTH with unchanged bound7; dynamic bound tests and CPU288 pass. Remaining graph-field consolidation still open. Worklog: worklog/entries/20261026T233233.859722Z-cleanup-refactor-r0164-depth-bound-ca1a20.md."]
         }
       ]
     },

@@ -3223,7 +3223,9 @@ should be removed or collapsed.
 - The screening environment variable was removed in the R0077 cleanup above.
   Runtime row-injection probes remain diagnostic tools, not public capability
   declarations or evidence of the packed target's behavior.
-- Consolidate the duplicated implementation-depth tuples and B1-B7 graph-cache
+- The MTP2 structural depth bound now has one public constant,
+  `MTP2_MAX_CANDIDATE_DEPTH`; its value remains seven and backend/profile cell
+  admission is unchanged. Consolidate any remaining duplicated B1-B7 graph-cache
   fields after lifecycle coverage proves the cleanup. Shared capacity is not
   permission to widen Qwen3.6/gfx1151 public evidence.
 

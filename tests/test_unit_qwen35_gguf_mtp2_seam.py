@@ -5484,12 +5484,15 @@ def test_mtp2_candidate_budget_admission_derives_from_declared_depth() -> None:
     The K4 server hang traced to a hardcoded ``{1, 2, 3}`` admission literal:
     lifting the declared depth constant did not lift admission, and the
     resulting ValueError escaped the batcher worker and orphaned queued
-    requests. Admission now derives from ``_MTP2_MAX_CANDIDATE_DEPTH``.
+    requests. Admission now derives from ``MTP2_MAX_CANDIDATE_DEPTH``, which is
+    the only name that owns the bound: the module previously kept a private
+    self-alias of the same value, and a second name reads as a second bound.
     """
 
     import hipengine.generation.qwen35_gguf_mtp2 as module
 
-    assert module._MTP2_MAX_CANDIDATE_DEPTH == 7
+    assert module.MTP2_MAX_CANDIDATE_DEPTH == 7
+    assert not hasattr(module, "_MTP2_MAX_CANDIDATE_DEPTH")
 
     # At the declared depth, budget 8 remains rejected.
     with pytest.raises(ValueError, match="candidate budget"):
@@ -5501,8 +5504,8 @@ def test_mtp2_candidate_budget_admission_derives_from_declared_depth() -> None:
         )
 
     # Lifting the declared depth lifts admission coherently.
-    original = module._MTP2_MAX_CANDIDATE_DEPTH
-    module._MTP2_MAX_CANDIDATE_DEPTH = 8
+    original = module.MTP2_MAX_CANDIDATE_DEPTH
+    module.MTP2_MAX_CANDIDATE_DEPTH = 8
     try:
         lifted = Qwen35GGUFMTP2Adapter(
             _width_bound_owner(profile="production", capacity=8),
@@ -5512,7 +5515,7 @@ def test_mtp2_candidate_budget_admission_derives_from_declared_depth() -> None:
         )
         assert lifted.candidate_budget == 8
     finally:
-        module._MTP2_MAX_CANDIDATE_DEPTH = original
+        module.MTP2_MAX_CANDIDATE_DEPTH = original
 
 
 def test_c8_frontier_padded_boundaries_follow_the_campaign_table() -> None:
