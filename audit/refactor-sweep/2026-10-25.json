@@ -12002,7 +12002,8 @@
         {
           "line": 9953,
           "text": "### `host_array_ptr(np.<factory>(...))` can pass a freed pointer",
-          "status": "pending"
+          "status": "resolved-by-R0089",
+          "evidence": "Owning synchronous helper and migrations completed in3c826a0f8 and linked R0089 units. Fresh AST census leaves only core owning helper and named ctypes upload. Remaining np.ascontiguousarray prefix slices in gemma4_int8_kv.py are async views of retained contiguous np.zeros arrays, not allocating temporary sources; no async contract changed."
         },
         {
           "line": 9960,
