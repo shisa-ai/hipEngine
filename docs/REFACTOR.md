@@ -2992,19 +2992,6 @@ should be removed or collapsed.
   `selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out`
   as the registered strict fallback.
 
-## 2026-08-31 Qwen4Exp P1 layer-2 grouped Q5_K
-
-- `HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL=1` now changes only the layer-2
-  Q5_K/Q5_K grouped-WMMA route under the stacked production composition; Q4_K
-  layers resolve through their independently owned exact/production paths. A
-  durable p508 trace and 20 category-balanced p512 pairs show a 4.21x layer-2
-  role contraction and about 5% complete-prefill win, but the complete profile
-  gate rejects it: prefill-last mean KL is 0.001179 > 0.001. Keep the flag
-  default-off and remove this candidate selector when a materially new exact/T1
-  Q5_K route gets its own selector or at campaign cleanup, whichever comes
-  first. Do not leave the ambiguous broad flag as a latent production route.
-  Retain the strict selected Q5_K gemv chain as fallback.
-
 ## 2026-08-31 Qwen4Exp P3 Q8 MMQ attention-gate scope
 
 - `HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE=1` adds the omitted
@@ -3154,9 +3141,8 @@ should be removed or collapsed.
 
 ## 2026-08-27 Qwen4Exp grouped prefill performance candidates
 
-- Qwen4Exp grouped Q4/Q5/Q8 MoE, Q4 tile, and Q8 tile candidates are
-  controlled by `HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL`,
-  `HIPENGINE_QWEN4_EXP_Q5_1_WMMA`,
+- Remaining Qwen4Exp grouped Q4/Q5/Q8 MoE, Q4 tile, and Q8 tile candidate
+  controls include `HIPENGINE_QWEN4_EXP_Q5_1_WMMA`,
   `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA`,
   `HIPENGINE_QWEN4_EXP_Q4_TILE_M/N`, and
   `HIPENGINE_GGUF_Q8_0_WMMA_TILE_M/N`. They raise warm repeated-token 512

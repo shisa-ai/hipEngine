@@ -328,11 +328,17 @@ def test_historical_q4km_binder_structure_not_qualification(
     # A leftover value for the retired process switch may neither select the
     # leaf nor be overwritten by the binder.
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH", "0")
+    # R0146: the grouped-MoE prefill switch is retired, so a leftover value is
+    # inert and the binder must not own it any more.
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "1")
     production.binder(production_generator, production)
     assert configure_calls == [True]
     assert os.environ[PRODUCTION_MOE_PREFILL_ENV] == "1"
     assert os.environ["HIPENGINE_GGUF_WMMA_PREFILL"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL"] == "1"
+    # The exact Q5_K layer-2 owner that replaced the rejected grouped candidate
+    # stays production-bound.
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"] == "0"

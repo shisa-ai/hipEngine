@@ -637,22 +637,6 @@ CANDIDATES = {
         candidate_key=None,
         fallback_key=None,
     ),
-    "layer2_grouped_q5k": CandidateSpec(
-        name="layer2_grouped_q5k_wmma",
-        classification="T2",
-        mechanism="layer-2 Q5_K/Q5_K compact f16-WMMA grouped prefill",
-        environment={"HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL": "1"},
-        base_profile="production",
-        scenario_id="qwen4exp-ud-q4-k-xl-layer2-grouped-q5k",
-        candidate_key=(
-            "hip_gfx1151", "moe_linear", "gguf_q5_k",
-            "selected_wmma_prefill_compact_bf16_bf16_out",
-        ),
-        fallback_key=(
-            "hip_gfx1151", "linear", "gguf_q5_k",
-            "selected_gemv_bf16_bf16_out",
-        ),
-    ),
     "device_argmax": CandidateSpec(
         name="device_argmax",
         classification="T0",
@@ -2061,7 +2045,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--candidate",
         choices=tuple(CANDIDATES),
-        default="layer2_grouped_q5k",
+        default="production_baseline",
     )
     parser.add_argument("--prompts", action="append", type=Path, default=None)
     parser.add_argument("--limit", type=int)

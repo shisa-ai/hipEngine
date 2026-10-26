@@ -3884,13 +3884,13 @@
       "start_line": 3523,
       "end_line": 3535,
       "sha256": "5fd063b22c64a8dd66f99294a55e4a39d59d6e9f867b9dd704dc16ee18a6ef33",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Replacement trigger met by Q5_K_IU8_EXACT. Removed superseded GROUPED_MOE_PREFILL environment arm, binder pin and rejected diagnostic candidate; strict kernels/new exact route remain. GPU275, CPU276 and public277 pass. See worklog/entries/20261026T224722.166170Z-cleanup-refactor-r0146-grouped-selector-4a4d0e.md."],
       "subitems": [
         {
           "line": 3525,
           "text": "- `HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL=1` now changes only the layer-2",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

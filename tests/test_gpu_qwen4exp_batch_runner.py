@@ -312,7 +312,6 @@ def _module_monkeypatch() -> pytest.MonkeyPatch:
     # single-request optimization these fixtures do not exercise.
     monkey.setenv("HIPENGINE_QWEN4_EXP_MOE_GRAPH", "0")
     monkey.setenv("HIPENGINE_QWEN4_EXP_LAYER_GRAPHS", "0")
-    monkey.delenv("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", raising=False)
     monkey.delenv("HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL", raising=False)
     return monkey
 

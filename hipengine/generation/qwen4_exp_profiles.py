@@ -1174,7 +1174,6 @@ def _bind(
             row["selected_variant"] for row in resolved.manifest["selections"]
             if row["layer"] == "router_logits"
         ),
-        "HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL": "0",
         "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "0",
         "HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA": "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1" if production else "0",

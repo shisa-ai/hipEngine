@@ -3,7 +3,7 @@
 
 This mirrors ``scripts/qwen4exp_canonical_ar_bench.py``'s ``hipengine`` mode
 but lets the caller force a candidate routing override (e.g.
-``HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL=1``) that the production profile
+``HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE=1``) that the production profile
 binder would otherwise reset to 0. It is a diagnostic candidate runner only —
 never a retained claim — used to measure whether a layer-2 routing change moves
 the p512 ledger before deciding whether the full production gate is worth it.
@@ -13,7 +13,7 @@ Usage:
       --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL \
       --fixture /tmp/qwen4exp_p512_fixture.json \
       --output /tmp/cand.json --warmups 1 --repetitions 1 \
-      --override HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL=1 \
+      --override HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE=1 \
       --compiler-version-file /tmp/hipengine-hipcc-version.txt
 """
 

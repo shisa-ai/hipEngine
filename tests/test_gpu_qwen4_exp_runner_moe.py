@@ -60,10 +60,12 @@ def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle(
     from hipengine.core.hip import get_hip_runtime
 
     runtime = get_hip_runtime()
-    if grouped_prefill:
-        monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "1")
-    else:
-        monkeypatch.delenv("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", raising=False)
+    # R0146 retired the grouped-MoE prefill switch; the grouped branch is now
+    # reached through the exact-grouped route predicates, so drive both paths
+    # with the supported exact-grouped control instead.
+    monkeypatch.setenv(
+        "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4", "1" if grouped_prefill else "0"
+    )
     rng = np.random.default_rng(510)
     hidden, ffn, experts, top_k = 256, 256, 4, 2
     mixed = rng.normal(0.0, 0.1, size=(rows, hidden)).astype(np.float32)
@@ -269,7 +271,7 @@ def test_qwen4_exp_runner_moe_q8_0_down_grouped_strict_fallback(
 
     runtime = get_hip_runtime()
     # Grouped prefill for rows>=16 with a Q4_K/Q4_K gate/up pair; Q8_0 down.
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4", "1")
     # Ensure neither opt-in Q8_0 grouped owner is active (the buggy case).
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED", raising=False)
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA", raising=False)

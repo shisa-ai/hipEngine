@@ -5654,11 +5654,7 @@ def run_qwen4_exp_moe(
     grouped_prefill = (
         routed_f16
         or exact_grouped_down or exact_grouped_q4_gate or q5_k_iu8_exact or (
-            (production_grouped_moe or (
-                rows >= 16
-                and os.environ.get("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "")
-                not in {"", "0", "false", "False"}
-            ))
+            production_grouped_moe
             and (
                 weights["expert_gate"].spec.quant_key,
                 weights["expert_up"].spec.quant_key,

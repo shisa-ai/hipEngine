@@ -74,7 +74,6 @@ def test_live_row4_matches_parent(monkeypatch):
     rows, hidden, ffn, experts, topk = 65, 256, 256, 8, 3
     allocations = []
     scratch = None
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "0")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL", "0")
     try:
         mixed = _upload(rng.normal(0, 0.1, (rows, hidden)).astype(np.float32), runtime, allocations)

@@ -309,7 +309,7 @@ def test_pf1_forkb_runner_default_matches_strict_flag_off(monkeypatch) -> None:
     register_qwen35_router_kernels(replace=True)
     register_gfx1151_kernels(replace=True)
     runtime = get_hip_runtime()
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "1")
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4", "1")
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED", raising=False)
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA", raising=False)
 

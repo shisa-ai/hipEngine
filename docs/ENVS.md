@@ -894,7 +894,7 @@ use.
 
 | Variable | Default | Values / notes |
 | --- | --- | --- |
-| `HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL` | unset (production sets `0`) | Admits the grouped MoE prefill session for rows>=16 with supported quant shapes. |
+| `HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL` | retired | No longer read. Grouped MoE admission follows the explicit routed, exact-grouped and production routes; the superseded grouped Q5_K experiment selector is removed. |
 | `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN` | `1` | Exact grouped down-projection for Q5_1 expert weights at rows>=2. |
 | `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4` | `1` | Exact grouped Q4_K gate/up route at rows>=2. |
 | `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL` | `1` | Extends the exact grouped Q4 route to all shapes (not only where the grouped-down route already applies). |

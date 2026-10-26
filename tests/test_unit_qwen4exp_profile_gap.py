@@ -25,11 +25,11 @@ def test_parse_overrides_accepts_hipengine_keys_and_equals_in_value() -> None:
 
     assert module._parse_overrides(
         [
-            "HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL=1",
+            "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE=1",
             "HIPENGINE_EXAMPLE=a=b",
         ]
     ) == {
-        "HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL": "1",
+        "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE": "1",
         "HIPENGINE_EXAMPLE": "a=b",
     }
 
@@ -56,7 +56,7 @@ def test_apply_post_binder_overrides_records_bound_and_effective_values(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _load_script()
-    key = "HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL"
+    key = "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"
     monkeypatch.delenv(key, raising=False)
 
     bound, effective = module._apply_post_binder_overrides({key: "1"})

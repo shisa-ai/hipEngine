@@ -357,6 +357,34 @@ def test_gr_staged_candidate_is_absent_after_its_gate_rejected_it() -> None:
         assert "HIPENGINE_QWEN4_EXP_GR_STAGED" not in spec.environment, name
 
 
+def test_layer2_grouped_q5k_candidate_is_absent_after_its_gate_rejected_it() -> None:
+    """R0146: the grouped-WMMA Q5_K candidate failed its complete profile gate.
+
+    ``benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p1-layer2-grouped-
+    profile-rejected.json`` records ``status: rejected_correctness_default_off``
+    with the binding ``prefill_last``/``prefill_to_c1`` mean KL 0.0011791
+    against a 0.001 limit, and its ``next`` is a new exact/T1 Q5_K dataflow -
+    now ``HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT``. The selector and its candidate
+    are removed rather than default-off: a surviving spec would bind a variable
+    the runner no longer reads and measure the recovery plan as the candidate.
+    """
+
+    module = _load_script()
+
+    assert "layer2_grouped_q5k" not in module.CANDIDATES
+    assert "layer2_grouped_q5k_wmma" not in {
+        spec.name for spec in module.CANDIDATES.values()
+    }
+    for name, spec in module.CANDIDATES.items():
+        assert "HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL" not in spec.environment, name
+    # A bare run must still qualify a retained candidate, never a retired one.
+    default = module.build_parser().parse_args(
+        ["--model-root", "/tmp", "--output", "/tmp/gate.json"]
+    ).candidate
+    assert default in module.CANDIDATES
+    assert default == "production_baseline"
+
+
 def test_f16_compact_down_candidate_pins_down_only_overrides() -> None:
     """MX-1's down half must be gated as a down-only change.
 
