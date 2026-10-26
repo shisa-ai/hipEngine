@@ -1445,8 +1445,10 @@
       "start_line": 1560,
       "end_line": 1576,
       "sha256": "4a5c09e5f33e1dde912139050de98454f20dac32a374939a546783305a52495b",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Raw plain attention bounds/grid safety fixed and legacy dead tiled kernel removed, live tiled preserved. GPU parity/bounds,CPU suite,public strict route pass. MMQ reachable; signed slice ABI migration remains separate R0056 work. Worklog:worklog/entries/20261026T055840.001224Z-lhl-r0053-r0056-refactor-audit-15f1df.md."
+      ],
       "subitems": []
     },
     {
@@ -1455,33 +1457,35 @@
       "start_line": 1577,
       "end_line": 1606,
       "sha256": "d250d907cf3ad389b4410812594d434beb3c9c26522908679fbf3e8c4409ffc0",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Raw plain attention bounds/grid safety fixed and legacy dead tiled kernel removed, live tiled preserved. GPU parity/bounds,CPU suite,public strict route pass. MMQ reachable; signed slice ABI migration remains separate R0056 work. Worklog:worklog/entries/20261026T055840.001224Z-lhl-r0053-r0056-refactor-audit-15f1df.md."
+      ],
       "subitems": [
         {
           "line": 1590,
           "text": "| tokens | head_dim | strict | tiled | ratio |",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1591,
           "text": "| ---: | ---: | ---: | ---: | ---: |",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1592,
           "text": "| 512 | 256 | 150.5 ms | 150.65 ms | 1.00 |",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1593,
           "text": "| 2048 | 256 | 46.72 ms | 67.21 ms | **1.44 (slower)** |",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1594,
           "text": "| 2048 | 512 | 88.83 ms | 95.52 ms | **1.075 (slower)** |",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
@@ -1491,8 +1495,10 @@
       "start_line": 1607,
       "end_line": 1637,
       "sha256": "d1689a424477784d5d4fba3451124835b9c50256d3cb4253204eb42b3911b195",
-      "status": "pending",
-      "evidence": [],
+      "status": "not-debt-retained",
+      "evidence": [
+        "Raw plain attention bounds/grid safety fixed and legacy dead tiled kernel removed, live tiled preserved. GPU parity/bounds,CPU suite,public strict route pass. MMQ reachable; signed slice ABI migration remains separate R0056 work. Worklog:worklog/entries/20261026T055840.001224Z-lhl-r0053-r0056-refactor-audit-15f1df.md."
+      ],
       "subitems": []
     },
     {
@@ -1501,8 +1507,10 @@
       "start_line": 1638,
       "end_line": 1662,
       "sha256": "8d3b4e8921a0181c8416c26365d99c7ef19dccc91909ab5648cff8423877b59a",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-description-fixed",
+      "evidence": [
+        "Raw plain attention bounds/grid safety fixed and legacy dead tiled kernel removed, live tiled preserved. GPU parity/bounds,CPU suite,public strict route pass. MMQ reachable; signed slice ABI migration remains separate R0056 work. Worklog:worklog/entries/20261026T055840.001224Z-lhl-r0053-r0056-refactor-audit-15f1df.md."
+      ],
       "subitems": []
     },
     {

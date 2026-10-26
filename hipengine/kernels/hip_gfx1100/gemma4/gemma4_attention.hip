@@ -155,16 +155,67 @@ __device__ __forceinline__ float gemma4_warp_key_logit(
 //   q_s      [head_dim]     the query row, loaded once
 //   logits_s [tokens]       per-key logits, written in pass 1 and reused
 //   partial  [blockDim]     reduction scratch
+// Saturating int64 addition and subtraction for the window bounds below.
+// `window`, `row_offset` and the row's own position are caller-supplied int64
+// values, so a sum or difference can leave the representable range before it is
+// clamped -- and a wrapped bound is what turns into a negative column index
+// rather than a clamped one. Mirrors the staged family's helpers.
+__device__ __forceinline__ int64_t gemma4_attn_sat_add(int64_t a, int64_t b) {
+  int64_t sum = 0;
+  if (__builtin_add_overflow(a, b, &sum)) {
+    return b > 0 ? INT64_MAX : INT64_MIN;
+  }
+  return sum;
+}
+
+__device__ __forceinline__ int64_t gemma4_attn_sat_sub(int64_t a, int64_t b) {
+  int64_t difference = 0;
+  if (__builtin_sub_overflow(a, b, &difference)) {
+    return b > 0 ? INT64_MIN : INT64_MAX;
+  }
+  return difference;
+}
+
 // The first column this row can keep. A sliding layer's mask zeroes every key
 // more than `window` positions behind the query, so a row's leading columns are
 // all zero and its walk can start at the first one that is not. `row_offset` is
 // this block's start in the mask's column frame, so the row's own position is
 // `row_offset + token`. `window == 0` means the caller makes no such promise
 // about the mask, and the walk starts at column 0.
-__device__ __forceinline__ int64_t gemma4_attn_first_kept(
-    int64_t window, int64_t row_offset, int64_t token) {
-  const int64_t first = row_offset + token - window + 1;
-  return (window > 0 && first > 0) ? first : 0;
+//
+// The bound saturates and is clamped to `[0, keys]`, so an extreme coordinate
+// cannot wrap into a negative column index. A value outside `[0, keys]` is
+// meaningless rather than merely large, and the launcher's LDS bound keeps the
+// final cast exact.
+__device__ __forceinline__ int gemma4_attn_first_kept(
+    int64_t window, int64_t row_offset, int64_t token, int64_t keys) {
+  if (window <= 0) {
+    return 0;
+  }
+  const int64_t first = gemma4_attn_sat_add(
+      gemma4_attn_sat_add(gemma4_attn_sat_sub(row_offset, window), token), 1);
+  if (first <= 0) {
+    return 0;
+  }
+  return first >= keys ? static_cast<int>(keys) : static_cast<int>(first);
+}
+
+// The last column this row can keep, clamped the same way. `window > 0`
+// promises the mask is zero above the row's own position as well as below its
+// window, so every column past it has weight zero and dropping it cannot change
+// a result. The two bounds are equal when the window and the key range do not
+// intersect; every pass treats that as an empty walk and writes NaN, the same
+// result an all-masked row produces.
+__device__ __forceinline__ int gemma4_attn_walk_end(
+    int64_t window, int64_t row_offset, int64_t token, int64_t keys) {
+  if (window <= 0) {
+    return static_cast<int>(keys);
+  }
+  const int64_t last = gemma4_attn_sat_add(gemma4_attn_sat_add(row_offset, token), 1);
+  if (last <= 0) {
+    return 0;
+  }
+  return last >= keys ? static_cast<int>(keys) : static_cast<int>(last);
 }
 
 // The first column at or after `from` that lane `lane` owns when the block
@@ -218,8 +269,10 @@ __global__ void gemma4_attention_prefill_kernel(
   // context this kernel can be launched with, and a 32-bit compare is one
   // scalar instruction where the 64-bit form is three. The 64-bit forms were
   // part of the 1,640 `s_cselect_b32`/`s_or_b32` instructions the strict
-  // kernel's SASS dump shows.
-  const int first_kept = static_cast<int>(gemma4_attn_first_kept(window, row_offset, token));
+  // kernel's SASS dump shows. The helpers saturate and clamp to `[0, keys]`
+  // before the cast, and the launcher bounds `keys` by the LDS budget, so the
+  // 32-bit form is exact for every launchable shape.
+  const int first_kept = gemma4_attn_first_kept(window, row_offset, token, keys);
   // The last column this row can keep. `window > 0` already promises the mask
   // is sliding-causal -- the same promise `gemma4_attn_first_kept` spends on
   // the leading run -- and a sliding-causal mask is zero above the row's own
@@ -238,9 +291,7 @@ __global__ void gemma4_attention_prefill_kernel(
   // not merely close. The tests that pass an arbitrary mask use `window == 0`,
   // which is the documented "caller makes no such promise" case and keeps the
   // full walk, so this cannot trim a column those shapes need.
-  const int walk_end = (window > 0 && row_offset + token + 1 < keys)
-                           ? static_cast<int>(row_offset + token + 1)
-                           : static_cast<int>(keys);
+  const int walk_end = gemma4_attn_walk_end(window, row_offset, token, keys);
 
   // Pass 1: logits and their running maximum. A masked-out key is -inf so it
   // contributes nothing to either the denominator or the numerator.
@@ -375,204 +426,6 @@ __global__ void gemma4_attention_prefill_kernel(
   }
 }
 
-// Tiled production variant of the prefill kernel.
-//
-// The strict kernel materialises one logit per key in shared memory, so its
-// shared footprint grows with the context and it makes four LDS accesses per
-// key visit (write the logit; read it for the max; write the weight back over
-// it; read the weight for the PV accumulation). This kernel keeps only one tile
-// of logits resident, which makes the footprint independent of context -- and
-// therefore the occupancy independent of context -- and lets the weight stay in
-// a register for the output element it multiplies, for two LDS accesses per key
-// visit.
-//
-// The price is that the row max is not known until the walk is over, so the
-// numerator and denominator must be rescaled as the max grows. That reassociates
-// the accumulation, which is why this is a registered production variant with a
-// tolerance gate rather than a replacement for the strict kernel, whose output
-// is bit-exact against decode.
-//
-// The per-key logit still comes from gemma4_warp_key_logit, so the logits
-// themselves are the same bits the strict kernel produces; only the softmax
-// accumulation differs.
-template <typename scalar_t, int kTile, int kDPerThread>
-__global__ void gemma4_attention_prefill_tiled_kernel(
-    const scalar_t* query,
-    const scalar_t* key,
-    const scalar_t* value,
-    const uint8_t* keep_mask,
-    scalar_t* out,
-    int64_t tokens,
-    int64_t num_heads,
-    int64_t num_kv_heads,
-    int64_t head_dim,
-    float scale,
-    int64_t keys,
-    int64_t window,
-    int64_t row_offset) {
-  extern __shared__ float shared[];
-  float* q_s = shared;
-  float* tile_s = q_s + head_dim;
-  float* partial = tile_s + kTile;
-
-  const int64_t token = static_cast<int64_t>(blockIdx.x) / num_heads;
-  const int64_t head = static_cast<int64_t>(blockIdx.x) - token * num_heads;
-  const int64_t kv_groups = num_heads / num_kv_heads;
-  const int64_t kv_head = head / kv_groups;
-
-  const scalar_t* q_row = query + (token * num_heads + head) * head_dim;
-  for (int64_t d = threadIdx.x; d < head_dim; d += blockDim.x) {
-    q_s[d] = gemma4_attn_to_float(q_row[d]);
-  }
-  __syncthreads();
-
-  const uint8_t* mask_row = keep_mask + token * keys;
-  const int64_t first_kept = gemma4_attn_first_kept(window, row_offset, token);
-
-  // Online softmax state. running_max and running_sum are per-thread partials
-  // that every thread updates with the same max, so the rescale is uniform.
-  float running_max = -INFINITY;
-  float running_sum = 0.0f;
-  float acc[kDPerThread];
-#pragma unroll
-  for (int t = 0; t < kDPerThread; ++t) {
-    acc[t] = 0.0f;
-  }
-
-  for (int64_t t0 = first_kept; t0 < keys; t0 += kTile) {
-    const int64_t tile = (keys - t0 < kTile) ? (keys - t0) : kTile;
-
-    // Phase 1: tile logits. One warp per key, the same mapping and the same
-    // reduction the strict kernel uses, so the logits are identical.
-    {
-      const int lane = static_cast<int>(threadIdx.x) & 31;
-      for (int64_t i = static_cast<int64_t>(threadIdx.x) >> 5; i < tile; i += 8) {
-        const int64_t j = t0 + i;
-        float logit = -INFINITY;
-        if (mask_row[j] != 0) {
-          const scalar_t* k_row = key + (j * num_kv_heads + kv_head) * head_dim;
-          logit = (head_dim == 512)
-                      ? gemma4_warp_key_logit<scalar_t, 16>(q_s, k_row, lane)
-                      : gemma4_warp_key_logit<scalar_t, 8>(q_s, k_row, lane);
-          logit *= scale;
-        }
-        if (lane == 0) {
-          tile_s[i] = logit;
-        }
-      }
-    }
-    __syncthreads();
-
-    // Phase 2: tile max. The first tile starts from -inf, so the rescale factor
-    // is guarded rather than computed: expf(-inf - -inf) is NaN.
-    float local_max = -INFINITY;
-    for (int64_t i = threadIdx.x; i < tile; i += blockDim.x) {
-      local_max = fmaxf(local_max, tile_s[i]);
-    }
-    const float tile_max = gemma4_attn_block_max(partial, local_max);
-    __syncthreads();
-
-    const float new_max = fmaxf(running_max, tile_max);
-    const float alpha = isfinite(running_max) ? expf(running_max - new_max) : 0.0f;
-    running_sum *= alpha;
-#pragma unroll
-    for (int t = 0; t < kDPerThread; ++t) {
-      acc[t] *= alpha;
-    }
-
-    // Phase 3a: weights, strided over the tile, written back over their logits.
-    // running_sum stays a strided PARTIAL -- the block sum at the end adds the
-    // per-thread partials, so accumulating the full tile here would count every
-    // weight once per thread.
-    for (int64_t i = threadIdx.x; i < tile; i += blockDim.x) {
-      const float weight = expf(tile_s[i] - new_max);
-      tile_s[i] = weight;
-      running_sum += weight;
-    }
-    __syncthreads();
-
-    // Phase 3b: the PV accumulation. EVERY thread visits EVERY key, because the
-    // output element a thread owns needs the weight of every key -- not the
-    // strided subset it happened to compute. Merging this into 3a would leave
-    // each output dimension summed over a different subset of keys.
-    for (int64_t i = 0; i < tile; ++i) {
-      const float weight = tile_s[i];
-      if (weight == 0.0f) {
-        continue;
-      }
-      const int64_t j = t0 + i;
-      const scalar_t* v_row = value + (j * num_kv_heads + kv_head) * head_dim;
-#pragma unroll
-      for (int t = 0; t < kDPerThread; ++t) {
-        const int64_t d = static_cast<int64_t>(threadIdx.x) + t * blockDim.x;
-        if (d < head_dim) {
-          acc[t] += weight * gemma4_attn_to_float(v_row[d]);
-        }
-      }
-    }
-    running_max = new_max;
-    __syncthreads();
-  }
-
-  const float denominator = gemma4_attn_block_sum(partial, running_sum);
-#pragma unroll
-  for (int t = 0; t < kDPerThread; ++t) {
-    const int64_t d = static_cast<int64_t>(threadIdx.x) + t * blockDim.x;
-    if (d < head_dim) {
-      out[(token * num_heads + head) * head_dim + d] =
-          gemma4_attn_to_scalar<scalar_t>(acc[t] / denominator);
-    }
-  }
-}
-
-template <typename scalar_t>
-int launch_gemma4_attention_prefill_tiled(
-    const scalar_t* query,
-    const scalar_t* key,
-    const scalar_t* value,
-    const uint8_t* keep_mask,
-    scalar_t* out,
-    int64_t tokens,
-    int64_t num_heads,
-    int64_t num_kv_heads,
-    int64_t head_dim,
-    float scale,
-    hipStream_t stream,
-    int64_t keys,
-    int64_t window,
-    int64_t row_offset) {
-  if (tokens <= 0 || keys <= 0 || num_heads <= 0 || num_kv_heads <= 0 || head_dim <= 0) {
-    return static_cast<int>(hipErrorInvalidValue);
-  }
-  if (num_heads % num_kv_heads != 0) {
-    return static_cast<int>(hipErrorInvalidValue);
-  }
-  if (head_dim != 256 && head_dim != 512) {
-    // The warp-per-key logit is specialised for these two widths.
-    return static_cast<int>(hipErrorInvalidValue);
-  }
-  constexpr int kTile = 1024;
-  const int threads = kGemma4AttentionMaxThreads;
-  const size_t shared_bytes =
-      static_cast<size_t>(head_dim + kTile + threads) * sizeof(float);
-  if (shared_bytes > 64 * 1024) {
-    return static_cast<int>(hipErrorInvalidValue);
-  }
-  const dim3 grid(static_cast<unsigned int>(tokens * num_heads));
-  const dim3 block(static_cast<unsigned int>(threads));
-  if (head_dim == 512) {
-    hipLaunchKernelGGL(
-        (gemma4_attention_prefill_tiled_kernel<scalar_t, kTile, 2>), grid, block,
-        shared_bytes, stream, query, key, value, keep_mask, out, tokens,
-        num_heads, num_kv_heads, head_dim, scale, keys, window, row_offset);
-  } else {
-    hipLaunchKernelGGL(
-        (gemma4_attention_prefill_tiled_kernel<scalar_t, kTile, 1>), grid, block,
-        shared_bytes, stream, query, key, value, keep_mask, out, tokens,
-        num_heads, num_kv_heads, head_dim, scale, keys, window, row_offset);
-  }
-  return static_cast<int>(hipGetLastError());
-}
 // Defined below; the prefill launcher routes multi-token blocks into it.
 template <typename scalar_t>
 int launch_gemma4_attention_decode(
@@ -614,6 +467,15 @@ int launch_gemma4_attention_prefill(
   if (num_heads % num_kv_heads != 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
+  // The grid is `tokens * num_heads` blocks on x. Validate the product before
+  // forming it: a caller-supplied pair can otherwise wrap the unsigned grid or
+  // the kernel's block decomposition. This is a representability check, not a
+  // shape policy -- every grid the device can launch still passes.
+  constexpr int64_t kMaxPrefillGridX = INT32_MAX;
+  if (tokens > kMaxPrefillGridX || num_heads > kMaxPrefillGridX ||
+      tokens > kMaxPrefillGridX / num_heads) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
   // Multi-token blocks use the same key-class / barrier-batched family the
   // decode step does. Its kernels are bit-identical to the block kernel below
   // (same logit trees, same pass-2 and pass-3 partitions) and were measured at
@@ -635,11 +497,17 @@ int launch_gemma4_attention_prefill(
   while (threads < head_dim && threads < kGemma4AttentionMaxThreads) {
     threads <<= 1;
   }
-  const size_t shared_bytes =
-      static_cast<size_t>(head_dim + keys + threads) * sizeof(float);
-  if (shared_bytes > 64 * 1024) {
+  // Bound each term before the sum so an extreme head_dim or keys cannot wrap
+  // the int64 addition; the LDS budget is the real constraint either way. The
+  // float count is the same 64 KiB ceiling the old size_t check applied.
+  constexpr int64_t kMaxPrefillSharedFloats =
+      (64 * 1024) / static_cast<int64_t>(sizeof(float));
+  if (head_dim > kMaxPrefillSharedFloats || keys > kMaxPrefillSharedFloats ||
+      head_dim + keys + threads > kMaxPrefillSharedFloats) {
     return static_cast<int>(hipErrorInvalidValue);
   }
+  const size_t shared_bytes =
+      static_cast<size_t>(head_dim + keys + threads) * sizeof(float);
   hipLaunchKernelGGL(
       gemma4_attention_prefill_kernel<scalar_t>,
       dim3(static_cast<unsigned int>(tokens * num_heads)),
@@ -2342,46 +2210,6 @@ extern "C" int hipengine_gemma4_attention_prefill_bf16(
     int64_t window,
     int64_t row_offset) {
   return launch_gemma4_attention_prefill<uint16_t>(
-      query, key, value, keep_mask, out, tokens, num_heads, num_kv_heads, head_dim, scale,
-      stream, keys, window, row_offset);
-}
-
-extern "C" int hipengine_gemma4_attention_prefill_tiled_bf16(
-    const uint16_t* query,
-    const uint16_t* key,
-    const uint16_t* value,
-    const uint8_t* keep_mask,
-    uint16_t* out,
-    int64_t tokens,
-    int64_t num_heads,
-    int64_t num_kv_heads,
-    int64_t head_dim,
-    float scale,
-    hipStream_t stream,
-    int64_t keys,
-    int64_t window,
-    int64_t row_offset) {
-  return launch_gemma4_attention_prefill_tiled<uint16_t>(
-      query, key, value, keep_mask, out, tokens, num_heads, num_kv_heads, head_dim, scale,
-      stream, keys, window, row_offset);
-}
-
-extern "C" int hipengine_gemma4_attention_prefill_tiled_f32(
-    const float* query,
-    const float* key,
-    const float* value,
-    const uint8_t* keep_mask,
-    float* out,
-    int64_t tokens,
-    int64_t num_heads,
-    int64_t num_kv_heads,
-    int64_t head_dim,
-    float scale,
-    hipStream_t stream,
-    int64_t keys,
-    int64_t window,
-    int64_t row_offset) {
-  return launch_gemma4_attention_prefill_tiled<float>(
       query, key, value, keep_mask, out, tokens, num_heads, num_kv_heads, head_dim, scale,
       stream, keys, window, row_offset);
 }

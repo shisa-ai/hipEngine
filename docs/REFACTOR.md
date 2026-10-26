@@ -1755,33 +1755,65 @@ with its own measurement, not a cleanup of this wrapper.
 
 ## Plain Gemma attention needs raw-coordinate boundary validation (found 2026-10-03)
 
-The strict plain family's `gemma4_attn_first_kept` and window walk-end calculations
-in `gemma4_attention.hip` narrow caller-supplied int64 coordinates to `int` without
-clamping them to the key range. Its launchers also lack complete grid/product
-validation. The staged repair adds overflow-safe clamping and host/device shape
-checks, but leaves the plain oracle's ordinary arithmetic and launch contract
-unchanged. This is a direct raw-launch boundary issue, not a measured regression
-on model-generated coordinates. A matching pre-repair staged reproducer caused
-a GPU queue memory fault; it was run in an isolated process.
+Cleanup status (2026-10-26, R0053): fixed. The plain prefill block kernel now
+computes `first_kept` and `walk_end` with saturating int64 arithmetic clamped to
+`[0, keys]` (`gemma4_attention.hip:163`, `:190`, `:209`, called at `:275` and
+`:294`), the same form the staged family uses. The launcher (`:449`) validates
+the `tokens * num_heads` grid product before forming it and bounds `head_dim`,
+`keys`, and their sum before the LDS comparison, so an extreme shape returns
+`hipErrorInvalidValue` before a launch instead of wrapping the unsigned grid or
+the int64 sum. No legal shape is refused: the LDS ceiling and the device grid
+limit are the ones the kernel already had, and the coordinate clamp only changes
+inputs outside `[0, keys]`.
 
-Removal condition: add plain host/device coordinate and grid/product validation
-with focused tiny-coordinate and invalid-shape regressions, then run
-`tests/test_gpu_gemma4_attention_staged.py` to confirm ordinary strict/staged
-parity still passes. Reject or clamp unrepresentable inputs before a launch;
-do not reproduce an unchecked device read merely to obtain a RED crash.
+The arithmetic is unchanged for legal inputs: for `window > 0` and
+`0 <= row_offset + token < keys`, `first_kept` is still
+`max(0, row_offset + token - window + 1)` and `walk_end` is still
+`min(row_offset + token + 1, keys)`; `window == 0` still keeps the full walk.
+The clamp replaces a wrapped 32-bit cast only at the edges. This remains a
+raw-launch boundary issue, not a measured regression on model-generated
+coordinates; the pre-repair staged reproducer that faulted the GPU queue is the
+RED evidence and is not re-run.
+
+Regression coverage: `tests/test_gpu_gemma4_attention_prefill_bounds.py` drives
+the raw `hipengine_gemma4_attention_prefill_f32` symbol (the one-token prefill
+path the Python wrapper routes to decode) with the staged family's huge positive
+and negative coordinates, asserts NaN for an empty clamped walk and the CPU
+oracle for a clamped non-empty one, and asserts `hipErrorInvalidValue` for an
+unrepresentable grid. The existing
+`tests/test_gpu_gemma4_attention_geometry.py` narrowed-walk test and
+`tests/test_gpu_gemma4_attention_staged.py` parity test remain the arithmetic
+checks; the parent runs the GPU half.
 
 ## Gemma prefill attention tiled variant is a dead route (found 2026-09-28)
 
-`gemma4_attention_prefill_tiled_kernel` is exported as
-`hipengine_gemma4_attention_prefill_tiled_{bf16,f32}` and has no Python wrapper.
-It was written to make the shared-memory footprint independent of context -- the
-strict kernel materialises one logit per key, so its shared array is
-`(head_dim + keys + 256) * 4` bytes and occupancy falls from 16 blocks per CU at
-512 keys to 3 at 4096 -- on the theory that this is what limits the strict
-kernel. It is not what limits it.
+Cleanup status (2026-10-26, R0054): removed. `gemma4_attention_prefill_tiled_kernel`,
+`launch_gemma4_attention_prefill_tiled`, and the two
+`hipengine_gemma4_attention_prefill_tiled_{bf16,f32}` exports are gone from
+`hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip`, and
+`scripts/gemma4_attention_prefill_tiled_ab.py` is deleted. The cross-reference
+in `gemma4_attention_prefill_wmma.hip` now names the removed route rather than a
+symbol that no longer exists.
 
-Measured with `scripts/gemma4_attention_prefill_tiled_ab.py`, both kernels
-driven through ctypes on the same device buffers, 5 iters and 2 warmups:
+The live tiled prefill route is a different kernel and was left untouched:
+`gemma4_attention_tiled.hip` / `gemma4_attention_tiled.py`
+(`hipengine_gemma4_attention_tiled_prefill_bf16`,
+`gemma4_attention_prefill_tiled` at `:175`), registered as `gemma4_tiled`
+(`gemma4_attention.py:1600`), selected by `_select_prefill_route`
+(`hipengine/kernels/hip_gfx1100/gemma4/gemma4_layer.py:837`) and launched at
+`:1569` for head_dim 512. It stays pinned by
+`tests/test_gpu_gemma4_attention_tiled_parity.py` and
+`tests/test_unit_gemma4_attention_prefill_routing.py:112`.
+
+The removed kernel was written to make the shared-memory footprint independent
+of context -- the strict kernel materialises one logit per key, so its shared
+array is `(head_dim + keys + 256) * 4` bytes and occupancy falls from 16 blocks
+per CU at 512 keys to 3 at 4096 -- on the theory that this is what limits the
+strict kernel. It is not what limits it.
+
+Measured with the since-deleted `scripts/gemma4_attention_prefill_tiled_ab.py`,
+both kernels driven through ctypes on the same device buffers, 5 iters and 2
+warmups:
 
 | tokens | head_dim | strict | tiled | ratio |
 | ---: | ---: | ---: | ---: | ---: |
@@ -1795,67 +1827,106 @@ diff 0. The two kernels are not two arithmetic contracts; they are one contract
 with two schedules, and the schedule that costs a 1.44x slowdown is the one
 whose only justification was the occupancy theory the measurement refutes.
 
-Removal condition: delete `gemma4_attention_prefill_tiled_kernel`,
-`launch_gemma4_attention_prefill_tiled`, and the two exported symbols, and drop
-`scripts/gemma4_attention_prefill_tiled_ab.py`. Nothing selects them, so there
-is no behaviour to preserve. Keep the strict kernel, which is both faster and
-the one the decode-parity contract is written against.
+Verification: the CPU routing and route-probe tests pass
+(`tests/test_unit_gemma4_attention_prefill_routing.py`,
+`tests/test_unit_gemma4_public_route_probe.py`). The parent's device build is
+the compile check that the two exports are gone, and its GPU
+`tests/test_gpu_gemma4_attention_tiled_parity.py` plus one public
+`LLM.generate()` at head_dim 512 confirm the live route still selects
+`gemma4_tiled`. The strict kernel stays: it is both faster than the removed
+schedule and the one the decode-parity contract is written against.
+
 ## Dense Q8 MMQ prefill branch is unreachable behind the WMMA rewrite (found 2026-09-26)
 
-The dense branch of `_q8_mmq_prefill_dispatch`
-(`hipengine/runtime/gguf_linear.py`) cannot fire for any shape whose policy admits
-it. `_wmma_prefill_dispatch` runs earlier in the chain and rewrites a raw Q8_0
-dispatch to `abi="wmma_raw"` / `variant="wmma_prefill_bf16_bf16_out"`, while the
-MMQ dispatch matches on `abi == "raw"` plus one of three unwrapped variant names,
-so it returns the dispatch unchanged. Instrumentation at the entry point confirmed
-680 admitted dispatches rejected on the key mismatch and none on policy.
+Current status (2026-10-26): the historical heading is incorrect. The branch is
+shadowed when WMMA claims the shape, but remains reachable otherwise.
 
-**This is not a bug to fix by reordering.** Making the branch fire was measured at
-29% slower (1054 against 1367 tok/s) although correct, and `kl_max` improved to
-0.000893 from 0.001341. The unreachability is the mechanism that keeps a slower
-route off the default path, so the ordering is load-bearing.
+Cleanup status (2026-10-26, R0055): keep, not debt. The dense branch of
+`_q8_mmq_prefill_dispatch` (`hipengine/runtime/gguf_linear.py:10209`) is
+reachable whenever the WMMA prefill opt-in is off, and it is the calibrated
+route for exactly that configuration; deleting it would remove a live fallback.
 
-Removal condition: delete the dense branch of `_q8_mmq_prefill_dispatch` (and the
-three unwrapped variant names it matches on) once no caller can reach it. That is
-already true today -- the WMMA rewrite runs first for every shape the branch's own
-policy admits, and the ordering is load-bearing -- so the branch is dead code whose
-only remaining effect is to look selectable. Removing it needs no replacement path:
-the WMMA route it loses to is the faster one. If the ordering is ever reversed,
-delete the branch instead of reviving it, and treat a faster dense Q8 MMQ leaf as a
-new candidate with its own measurement rather than as a restoration of this one.
+`_wmma_prefill_dispatch` (`:10892`) does run first in the chain (`:5024` before
+`:5105`) and rewrites a raw Q8_0 dispatch to `abi="wmma_raw"` /
+`variant="wmma_prefill_bf16_bf16_out"`, so under the default opt-in the MMQ
+branch returns the dispatch unchanged. But the opt-in is not unconditional:
+`_gemma4_block_wmma_session` (`hipengine/runtime/gemma4.py:1022`) leaves
+`use_wmma` false for a verification block and for any partial block when
+`HIPENGINE_GGUF_WMMA_PREFILL` is unset (`gemma4.py:2237`, `:2062`, `:2124`), and
+the env var is the documented rollback lever. In that configuration the rewrite
+is a no-op and the MMQ chain takes the shape. With `DEFAULT_PREFILL_BLOCK` at
+1024 (`gemma4.py:184`, `:1185`) and the policy's 512-row floor (`gemma4.py:1066`),
+a 512-row tail is the shipped case that reaches it.
 
-What is left to clean up is the appearance: the branch reads as a working route.
-Either delete the dense branch and its policy entries, or add the note at the
-match site explaining that the `wmma_raw` rewrite precedes it by design. Decide when
-someone next touches the Q8 MMQ policy. Removal condition: any edit to
-`_q8_mmq_prefill_dispatch`'s dense branch or to the Gemma4 `Q8MMQPrefillPolicy`
-shape table.
+The Gemma policy was calibrated against that exact owner, not the WMMA one
+(`gemma4.py:1034-1046`, "what a shape runs when WMMA prefill is off"), and
+`tests/test_unit_gguf_q8_mmq_prefill_ordering.py` pins both directions: `:93`
+holds a WMMA-claimed shape away from the chain, and `:118` holds the chain
+taking the shape when `use_wmma` is false. The 2026-09-26 instrumentation -- 680
+admitted dispatches rejected on the key mismatch, none on policy -- was a
+WMMA-on measurement, so it describes the shadow, not unreachability.
+
+**Do not reorder.** Making the branch fire ahead of the rewrite was measured 29%
+slower (1054 against 1367 tok/s) although correct, and `kl_max` improved to
+0.000893 from 0.001341; at 512 rows the chain is 1.44x slower than the WMMA
+owner (258.6 -> 373.2 ms, campaign iteration 154). The ordering keeps the
+slower route off the default path, and the guard test makes a reorder fail
+loudly.
+
+Removal condition: the branch goes only when its configuration does -- the exact
+owner is retired, or WMMA prefill becomes unconditional for every block (no
+partial/verification opt-out and no rollback lever). Then delete the dense
+branch, the three unwrapped variant names it matches on
+(`prefill_bf16_bf16_out`, `gemv_f32_f32_out`, `prefill_f32_f32_out`), and the
+Gemma `Q8MMQPrefillPolicy` table together, and update the ordering guard. Until
+then, keep it: it is the route the policy's numbers were measured against, and
+a faster dense Q8 MMQ leaf is a new candidate with its own measurement, not a
+restoration of this one.
 
 ## Gemma attention legacy slice-count ABI (2026-09-26)
 
-The default two-pass decode attention in
-`hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip` now partitions
-output dimensions and preserves the single-kernel key accumulation order. The
-`decode_slices` helper in
-`hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py` and the native
-`split_slices` argument of `launch_gemma4_attention_decode` keep their existing
-values for compatibility with callers and diagnostic scripts: one selects the
-single kernel, and values above one select the dimension pass. The value above
-one no longer sizes a key-slice grid, and the key-slice and combine kernels are
-gone. `gemma4_decode_split_workspace_bytes` still accepts `head_dim` and
-`slices` that no longer affect its result.
+Cleanup status (2026-10-26, R0056): keep for now; the ABI is still consumed, and
+the slice count has a second, live meaning this entry did not record.
 
-Remove `decode_slices`, the `split_slices` argument, and the unused
-`gemma4_decode_split_workspace_bytes` parameters when no caller or diagnostic
-script passes a slice count: `scripts/gemma4_teacher_forced_gate.py`
-(`force_slices`, `--slices`),
-`tests/test_gpu_gemma4_attention_decode_parity.py`, and
-`tests/test_unit_gemma4_attention_scratch.py` are the current callers to
-migrate to an explicit two-pass selection API. Remove it once the slice count is gone from the launch ABI and the Gemma
-unit/GPU guard plus one public `LLM.generate()` request pass. Clearing condition:
-the launch ABI carries an explicit two-pass selection instead of a slice count,
-keeping the existing split entry threshold and the strict single-kernel oracle
-route.
+The two-pass decode attention in
+`hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip` partitions output
+dimensions and preserves the single-kernel key accumulation order. The
+`decode_slices` helper in
+`hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:358` and the native
+`split_slices` argument of `launch_gemma4_attention_decode` (`:2204`) keep their
+existing values for compatibility with callers and diagnostic scripts: one
+selects the single kernel, values above one select the dimension pass, and the
+legacy two-pass key-slice and combine kernels are gone. The value above one no
+longer sizes a key-slice grid.
+
+A **negative** `split_slices` is now the flash-decoding request: the launcher
+takes `split_slices < 0` as "try the flash key-sliced route" and re-enters it as
+`-split_slices` (`gemma4_attention.hip:2213-2229`), and the Python launcher
+sends `request = -request_slices if flash else slices`
+(`gemma4_attention.py:1048`), where `flash_request_slices` derives the key-slice
+count. Those flash key-slice and combine kernels
+(`gemma4_attention_decode_flash_kernel`, `..._flash_combine_kernel`) are live
+and are not the removed legacy pair. `gemma4_decode_split_workspace_bytes`
+(`:1399`) still accepts `head_dim` and `slices` that no longer affect its
+result.
+
+Callers still passing a slice count, and the surface a replacement must cover:
+`hipengine/runtime/gemma4_decode_graph.py:584,672` (capture workspace reservation
+and `decode_slices`), the launch site itself (`gemma4_attention.py:1027,1048`),
+`scripts/gemma4_teacher_forced_gate.py` (`force_slices`, `--slices`),
+`tests/test_gpu_gemma4_attention_decode_parity.py`,
+`tests/test_unit_gemma4_attention_scratch.py:189`, and the scratch probes
+`scratch/flash_scale_probe.py:76,84` and
+`scratch/gemma4_flash_slice_sweep.py:75`.
+
+Removal condition: replace the signed count with an explicit route selection
+that names the single-kernel oracle, the two-pass dimension partition, and the
+flash key-slice request, keeping the split entry threshold and the strict oracle
+route; migrate every caller above; then drop `decode_slices`, the `split_slices`
+argument, and the unused `gemma4_decode_split_workspace_bytes` parameters. Do
+not delete the negative-value flash request as if it were the legacy key-slice
+ABI: it is the live route. The guard is the Gemma unit/GPU suite plus one public
+`LLM.generate()` request that reaches the flash and the dimension-pass routes.
 ## gfx1151 compact attention wave producer — NUMERICAL CONTROL FAILURE
 
 The gfx1151 BF16 compact attention build selects the existing generic grouped

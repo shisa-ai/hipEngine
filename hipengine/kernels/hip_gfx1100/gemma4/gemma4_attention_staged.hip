@@ -249,13 +249,11 @@ __device__ __forceinline__ int64_t gemma4_staged_sat_sub(int64_t a, int64_t b) {
 
 // The first column this row can keep and the last one it can, both intersected
 // with the columns that exist. They mirror the strict `gemma4_attn_first_kept`
-// and the strict block kernel's `walk_end`, with two differences that only
-// matter at the edges of int64: the arithmetic saturates instead of wrapping,
-// and the result is clamped to [0, keys] instead of being narrowed to an int.
-// A bound is a column index, so a value outside [0, keys] is meaningless rather
-// than merely large, and `keys <= kStagedMaxKeys` is what makes the final cast
-// exact. `window <= 0` is the caller's "no promise about the mask" case and
-// keeps the full walk.
+// and `gemma4_attn_walk_end`, which saturate and clamp to [0, keys] the same
+// way since 2026-10-26. A bound is a column index, so a value outside
+// [0, keys] is meaningless rather than merely large, and `keys <=
+// kStagedMaxKeys` is what makes the final cast exact. `window <= 0` is the
+// caller's "no promise about the mask" case and keeps the full walk.
 //
 // The two bounds are equal when the window and the key range do not intersect
 // (both 0, or both `keys`). Every stage treats that as an empty walk: the score

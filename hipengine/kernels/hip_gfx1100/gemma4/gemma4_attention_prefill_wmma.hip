@@ -14,10 +14,11 @@
 // tokens, 13.73x on the same row; the worklog entry for this unit carries the
 // comparison, the tolerance, and what is not claimed.
 //
-// This is NOT the refuted `gemma4_attention_prefill_tiled_kernel` route. That
-// variant kept the same execution unit (one warp per key, a scalar reduction)
-// and only changed when logits were materialised, and it measured slower than
-// the strict kernel at every size. The difference here is the execution unit.
+// This is not the refuted block-tiled prefill route, which was removed on
+// 2026-10-26 (see docs/REFACTOR.md). That variant kept the same execution unit
+// (one warp per key, a scalar reduction) and only changed when logits were
+// materialised, and it measured slower than the strict kernel at every size.
+// The difference here is the execution unit.
 //
 // Arithmetic lineage: the tile structure, the online-softmax K-batches, and the
 // WMMA fragment conventions follow `laguna_flash_attention_prefill.hip` (itself
