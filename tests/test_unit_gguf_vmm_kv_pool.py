@@ -16,6 +16,7 @@ import pytest
 
 from hipengine.core.memory import DeviceBuffer, memory_stats
 from hipengine.core.virtual_memory import VirtualMemoryBuffer
+from hipengine.kvcache.pool import KVStorageFault
 from hipengine.runtime import qwen35_gguf_kv as gguf_kv
 from hipengine.runtime import qwen35_gguf_runner as runner
 from hipengine.runtime.memory_admission import MemoryAdmissionRefused
@@ -514,3 +515,343 @@ def test_rollback_to_rejects_non_granular_and_forward_targets() -> None:
         buffer.rollback_to(8192)
     assert buffer.committed_bytes == 3 * 4096
     assert library.unmapped == []
+
+
+# ---------------------------------------------------------------------------
+# Idle reclamation of grown VMM capacity.
+# ---------------------------------------------------------------------------
+
+
+def _descriptor_values(allocator, pool) -> tuple[int, int]:
+    pointer = int(pool.global_pool.storage_view().metadata_descriptor_ptr)
+    raw = np.frombuffer(allocator.uploaded[pointer], dtype=np.uint64)
+    return (int(raw[0]), int(raw[1]))
+
+
+def test_vmm_shrink_unmaps_the_grown_commit_and_republishes_tables(
+    monkeypatch,
+) -> None:
+    library = FakeSessionVmmLibrary()
+    session, allocator = _session(monkeypatch, library=library)
+    pool = session.create_global_device_kv_pool(page_capacity=4, generation=1)
+    try:
+        initial_pages = pool.current_pages
+        initial_committed = _committed_snapshot(pool)
+        initial_live = set(allocator.live)
+        initial_generation = _descriptor_values(allocator, pool)[0]
+        pool._max_pages = 12
+        pool._growth_chunk_pages = 1
+        pool.allocate(1, 8)
+        assert pool.current_pages == 8
+        assert _committed_snapshot(pool) != initial_committed
+        assert _descriptor_values(allocator, pool)[1] == 8
+        pool.release(1)
+
+        released = pool.shrink_idle(now_seconds=1.0)
+
+        assert released == 4
+        assert pool.current_pages == initial_pages
+        # The physical commitment returns to the load-time floor and the arena
+        # base never moved.
+        assert _committed_snapshot(pool) == initial_committed
+        assert pool.backing.pages == initial_pages
+        assert pool.storage_view().planes[0].shape == (initial_pages,)
+        # The descriptor names the retained capacity at a newer generation.
+        generation, pages = _descriptor_values(allocator, pool)
+        assert pages == initial_pages
+        assert generation > initial_generation
+        # One table per plane, republished for the retained pages, and the
+        # tables for the grown capacity were freed rather than leaked.
+        assert len(allocator.live) == len(initial_live)
+        for role, pointer in pool.global_pool._pointer_table_pointers.items():
+            table = np.frombuffer(allocator.uploaded[pointer], dtype=np.uint64)
+            assert tuple(int(value) for value in table) == tuple(
+                pool.global_pool.page_pointer(role, page)
+                for page in range(initial_pages)
+            )
+        # Retained page pointers are unchanged, so no consumer rebinding is
+        # needed for the pages that remain.
+        assert pool.pointer_for(0) == pool.global_pool.page_pointer(
+            next(iter(pool.global_pool._pointer_table_pointers)), 0
+        )
+    finally:
+        pool.close()
+    assert allocator.live == set()
+    assert len(library.unmapped) == len(library.mapped)
+
+
+def test_vmm_shrink_rolls_back_the_commit_when_a_plane_cannot_unmap(
+    monkeypatch,
+) -> None:
+    library = FakeSessionVmmLibrary()
+    session, allocator = _session(monkeypatch, library=library)
+    pool = session.create_global_device_kv_pool(page_capacity=4, generation=1)
+    try:
+        initial_pages = pool.current_pages
+        initial_committed = _committed_snapshot(pool)
+        pool._max_pages = 12
+        pool._growth_chunk_pages = 1
+        pool.allocate(1, 8)
+        pool.release(1)
+        baseline_committed = _committed_snapshot(pool)
+        baseline_tables = dict(pool.global_pool._pointer_table_pointers)
+        real_unmap = library.hipMemUnmap.func
+        calls = {"n": 0}
+
+        def failing_unmap(ptr, size):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                return 2
+            return real_unmap(ptr, size)
+
+        library.hipMemUnmap.func = failing_unmap
+        try:
+            with pytest.raises(Exception):
+                pool.shrink_idle(now_seconds=1.0)
+        finally:
+            library.hipMemUnmap.func = real_unmap
+
+        # The plane that did unmap is committed again, so the arena is exactly
+        # where it was and the pool still owns every grown page.
+        assert pool.current_pages == 8
+        assert _committed_snapshot(pool) == baseline_committed
+        assert dict(pool.global_pool._pointer_table_pointers) == baseline_tables
+        assert pool.stats.shrink_events == 0
+
+        # The retry succeeds once the driver cooperates.
+        assert pool.shrink_idle(now_seconds=1.0) == 4
+        assert pool.current_pages == initial_pages
+        assert _committed_snapshot(pool) == initial_committed
+    finally:
+        pool.close()
+    assert allocator.live == set()
+
+
+def test_vmm_shrink_restores_the_commit_when_table_upload_fails(
+    monkeypatch,
+) -> None:
+    library = FakeSessionVmmLibrary()
+    session, allocator = _session(monkeypatch, library=library)
+    pool = session.create_global_device_kv_pool(page_capacity=4, generation=1)
+    real_upload = runner.copy_host_to_device
+    try:
+        pool._max_pages = 12
+        pool._growth_chunk_pages = 1
+        pool.allocate(1, 8)
+        pool.release(1)
+        baseline_committed = _committed_snapshot(pool)
+        baseline_live = set(allocator.live)
+
+        def failing_upload(*args, **kwargs):
+            raise RuntimeError("retained table upload failed")
+
+        monkeypatch.setattr(runner, "copy_host_to_device", failing_upload)
+        with pytest.raises(RuntimeError, match="retained table upload failed"):
+            pool.shrink_idle(now_seconds=1.0)
+        monkeypatch.setattr(runner, "copy_host_to_device", real_upload)
+
+        assert pool.current_pages == 8
+        assert _committed_snapshot(pool) == baseline_committed
+        # The table allocated for the failed upload is freed, not leaked.
+        assert allocator.live == baseline_live
+        assert pool.shrink_idle(now_seconds=1.0) == 4
+    finally:
+        pool.close()
+    assert allocator.live == set()
+
+
+def test_vmm_shrink_to_the_floor_can_grow_and_shrink_again(monkeypatch) -> None:
+    """The retained floor stays a legal rollback boundary across cycles."""
+
+    library = FakeSessionVmmLibrary()
+    session, allocator = _session(monkeypatch, library=library)
+    pool = session.create_global_device_kv_pool(page_capacity=4, generation=1)
+    try:
+        initial_pages = pool.current_pages
+        initial_committed = _committed_snapshot(pool)
+        baseline_live = len(allocator.live)
+        pool._max_pages = 12
+        pool._growth_chunk_pages = 1
+        for cycle in range(3):
+            pool.allocate(cycle + 1, 8)
+            assert pool.current_pages == 8
+            assert _committed_snapshot(pool) != initial_committed
+            pool.release(cycle + 1)
+
+            assert pool.shrink_idle(now_seconds=float(cycle + 1)) == 4
+            assert pool.current_pages == initial_pages
+            assert _committed_snapshot(pool) == initial_committed
+            assert pool.storage_view().planes[0].shape == (initial_pages,)
+            # No table pair leaks across a cycle.
+            assert len(allocator.live) == baseline_live
+    finally:
+        pool.close()
+    assert allocator.live == set()
+    assert len(library.unmapped) == len(library.mapped)
+
+
+def test_vmm_shrink_fails_closed_when_the_arena_cannot_be_restored(
+    monkeypatch,
+) -> None:
+    """A partially unmapped arena must never stay advertised as usable."""
+
+    library = FakeSessionVmmLibrary()
+    session, allocator = _session(monkeypatch, library=library)
+    pool = session.create_global_device_kv_pool(page_capacity=4, generation=1)
+    try:
+        initial_pages = pool.current_pages
+        pool._max_pages = 12
+        pool._growth_chunk_pages = 1
+        pool.allocate(1, 8)
+        pool.release(1)
+        baseline_tables = dict(pool.global_pool._pointer_table_pointers)
+        real_unmap = library.hipMemUnmap.func
+        real_create = library.hipMemCreate.func
+        state = {"unmap_calls": 0, "restore_window": False}
+
+        def failing_unmap(ptr, size):
+            state["unmap_calls"] += 1
+            if state["unmap_calls"] == 2:
+                # One plane is unmapped before the next one refuses, so the
+                # shrink has to restore the first.
+                state["restore_window"] = True
+                return 2
+            return real_unmap(ptr, size)
+
+        def failing_create(out_handle, size, prop, flags):
+            if state["restore_window"]:
+                return 2
+            return real_create(out_handle, size, prop, flags)
+
+        library.hipMemUnmap.func = failing_unmap
+        library.hipMemCreate.func = failing_create
+        try:
+            with pytest.raises(KVStorageFault, match="could not restore"):
+                pool.shrink_idle(now_seconds=1.0)
+        finally:
+            library.hipMemUnmap.func = real_unmap
+            library.hipMemCreate.func = real_create
+
+        # Part of the arena is unmapped while the ledger still advertises it, so
+        # the pool must refuse further admission rather than serve unbacked pages.
+        assert pool.current_pages == 8
+        assert dict(pool.global_pool._pointer_table_pointers) == baseline_tables
+        assert pool.stats.shrink_events == 0
+        with pytest.raises(RuntimeError, match="unusable"):
+            pool.allocate(2, 1)
+        with pytest.raises(RuntimeError, match="unusable"):
+            pool.grow(1)
+    finally:
+        pool.close()
+    assert allocator.live == set()
+    # The floor the pool would retry towards is intact; only the arena behind it
+    # is untrustworthy, which is why admission refuses.
+    assert pool.low_water_pages == initial_pages
+
+
+def test_vmm_failed_shrink_restore_keeps_intermediate_growth_boundaries(
+    monkeypatch,
+) -> None:
+    """Restoring after a partial rollback must rebuild every segment boundary.
+
+    ``commit_to`` appends one segment per call, so restoring straight to the old
+    total collapses the intermediate growth boundaries into a single segment
+    while ``committed_capacities`` keeps advertising them as legal shrink
+    targets. The next shrink to such a target would then fail.
+    """
+
+    library = FakeSessionVmmLibrary()
+    session, allocator = _session(monkeypatch, library=library)
+    pool = session.create_global_device_kv_pool(page_capacity=4, generation=1)
+    try:
+        pool._max_pages = 16
+        pool._growth_chunk_pages = 1
+        for _ in range(4):
+            pool.grow(1)
+        assert pool.current_pages == 8
+        baseline_committed = _committed_snapshot(pool)
+        pool.allocate(1, 8)
+        pool.release(1)
+
+        real_unmap = library.hipMemUnmap.func
+        calls = {"n": 0}
+
+        def failing_unmap(ptr, size):
+            calls["n"] += 1
+            # The first plane releases its four segments; the fifth call is the
+            # second plane's first segment, so the first plane has already
+            # rolled back to the floor when the failure lands.
+            if calls["n"] == 5:
+                return 2
+            return real_unmap(ptr, size)
+
+        library.hipMemUnmap.func = failing_unmap
+        try:
+            with pytest.raises(Exception):
+                pool.shrink_idle(now_seconds=1.0)
+        finally:
+            library.hipMemUnmap.func = real_unmap
+
+        # Every boundary is back, so the pool is exactly where it was.
+        assert pool.current_pages == 8
+        assert _committed_snapshot(pool) == baseline_committed
+        assert pool.stats.shrink_events == 0
+
+        # Holding page 4 makes 5 the free tail, which is an intermediate growth
+        # boundary rather than the floor.
+        pool.allocate(1, 5)
+        try:
+            assert pool.shrink_idle(now_seconds=2.0) == 3
+            assert pool.current_pages == 5
+            assert pool.storage_view().planes[0].shape == (5,)
+            assert _committed_snapshot(pool) != baseline_committed
+        finally:
+            pool.release(1)
+    finally:
+        pool.close()
+    assert allocator.live == set()
+    assert len(library.unmapped) == len(library.mapped)
+
+
+def test_vmm_adoption_failure_frees_the_prepared_tables_and_fails_closed(
+    monkeypatch,
+) -> None:
+    """A ledger retraction that fails after prepare leaves the pool unusable."""
+
+    library = FakeSessionVmmLibrary()
+    session, allocator = _session(monkeypatch, library=library)
+    pool = session.create_global_device_kv_pool(page_capacity=4, generation=1)
+    try:
+        pool._max_pages = 12
+        pool._growth_chunk_pages = 1
+        pool.allocate(1, 8)
+        pool.release(1)
+        real_truncate = pool.global_pool.truncate_pages
+
+        def failing_truncate(pages: int, *, pointer_table_pointers=None) -> int:
+            raise RuntimeError("ledger truncate failed")
+
+        pool.global_pool.truncate_pages = failing_truncate
+        try:
+            with pytest.raises(RuntimeError, match="ledger truncate failed"):
+                pool.shrink_idle(now_seconds=1.0)
+        finally:
+            pool.global_pool.truncate_pages = real_truncate
+
+        # Prepare unmapped the arena above the floor while the ledger still
+        # advertises all eight pages, so admission must refuse.
+        assert pool.current_pages == 8
+        assert pool.stats.shrink_events == 0
+        with pytest.raises(RuntimeError, match="unusable"):
+            pool.allocate(2, 1)
+        with pytest.raises(RuntimeError, match="unusable"):
+            pool.grow(1)
+    finally:
+        # Release anything a refusal assertion managed to allocate, so a
+        # regression reports the refusal rather than a close error.
+        for request_id in list(pool._request_allocations):
+            pool.release(request_id)
+        pool.close()
+    # The prepared pointer tables were freed rather than leaked; everything the
+    # pool still owns is released by close.
+    assert allocator.live == set()

@@ -2334,14 +2334,13 @@ a missing or unusable checkpoint, not an unconditional refusal of prefix hits.
   2026-09-19/20, and retained 16 has been the strongest configuration measured
   on every protocol since (14-lane campaign -18.4% wall vs -17.8% default on
   merged main; real-session replay lane -64.2% vs -44.1%, 30/32 hits, worklog
-  `20260919T202013.823662Z-lhl-agentic-session-replay-e8a2c9`). It stays
-  opt-in only because (a) the 16/1 GiB values are not derived from a measured
-  working-set distribution — re-derive them from a served lane trace before
-  claiming the retained budget is optimal — and (b) retention depth has not
-  been measured under concurrent multi-conversation load, where 16 slots
-  spread across conversations instead of down one chain. A host-sizing
-  recommendation for >=24 GB hosts is documented in benchmarks/README.md.
-  Flip the code default to the wide set only after both are measured.
+  `20260919T202013.823662Z-lhl-agentic-session-replay-e8a2c9`). The narrow count
+  limits retained state and pinned KV residency. The state-byte ceiling may
+  reduce the effective entry count, and it does not include retained KV pages.
+  Missing concurrent-load measurements do not gate execution of the wider set.
+  Changing the default memory/reuse trade-off is a product decision, not an
+  unfinished eviction repair; the remaining decision is listed below under
+  deferred work.
 
 ## Prefix eligibility floor excludes short multi-turn traffic (found 2026-09-18) — NOT A LOOKUP DEFECT
 
@@ -2366,7 +2365,17 @@ misidentified that capability limit as a lookup-cost policy.
   with "not worth a trie probe". Decide the floor from measured probe cost, not
   from `block_size_tokens`, and re-measure the ShareGPT lanes.
 
-## Prefix snapshot capture allocates and frees its buffers per capture (found 2026-09-18)
+## Prefix snapshot capture allocates and frees its buffers per capture (found 2026-09-18) — RESOLVED
+
+Snapshot capture now carves state views from one pooled arena, and snapshot
+close returns that arena to the session pool. The capture/close/capture reuse
+contract is covered by
+`tests/test_unit_qwen35_gguf_prefix_state.py::test_capture_reuses_the_pooled_arena_after_close`.
+The original repair is recorded in
+`worklog/entries/20260918T182703.072006Z-lhl-prefix-snapshot-arena-pool-f8942e.md`.
+Capture still synchronizes before publishing the snapshot: the serving caller
+does not supply an independent stream, so replacing that fence is not part of
+the allocation repair. The observations and proposal below are historical.
 
 - `capture_prefix_state_snapshot` allocates two device buffers per linear-state
   layer, copies the Conv/GDN state into them with `memcpy_async`, and calls
@@ -2542,15 +2551,24 @@ misidentified that capability limit as a lookup-cost policy.
   `MemoryError` rather than attempted. So the fault needs sustained pressure
   plus headroom. `kv_pool_high_water_pages` defaults to `None`, which is
   unbounded headroom; setting it bounds the pool and keeps the pool on the
-  eviction path. The pool never shrinks: `GlobalDeviceKVPool.shrink_idle` is a
-  stub returning 0, so grown capacity is held for the pool's lifetime.
+  eviction path. At the time of this finding, `GlobalDeviceKVPool.shrink_idle`
+  returned 0 and held grown capacity for the pool's lifetime; the resolution
+  below replaces that stub.
 - Reproduction: `scripts/prefix_cache_multiturn_bench.py` with
   `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS=16` on Qwen3.6-35B-A3B. That arm
   completes, and after the placement cost model below it measures **-11.0%
   wall** where it first measured +9.5%. The default retention is still better
   (-18.6%), so the wide set stays opt-in, but it is no longer harmful.
-- Removal scope: this entry, once `shrink_idle` returns grown capacity. It is a
-  stub returning 0, so a pool that grows stays grown for its lifetime.
+- **Resolved in the refactor sweep:** the global device pool now retracts free
+  trailing growth units after the configured idle grace period, preserving the
+  load-time capacity. Chunk and VMM providers publish retained pointer tables
+  before releasing superseded storage. Live leases, cache references, pins and
+  in-flight graph epochs block reclamation. Unrecoverable VMM restoration faults
+  stop further admission instead of advertising unmapped storage. Regression
+  coverage includes repeated grow/shrink cycles and provider failure paths in
+  `tests/test_unit_kvcache_global_device_pool.py`,
+  `tests/test_unit_gguf_global_pool_growth.py` and
+  `tests/test_unit_gguf_vmm_kv_pool.py`.
 
 ## Placement decides the prefill route, and the routes are far apart (found 2026-09-19)
 
@@ -12782,3 +12800,20 @@ the bucket guard, the fallback counter, and the env all go, and the graph
 covers the full decode range. The intermediate capture design notes
 (retarget cost, capture-amortized buckets) live in the module docstring
 and the 2026-10-09 worklog entry.
+
+## Deferred decisions from the refactor sweep
+
+### R0067 — Dense prefix retention budget
+
+The eviction repair is complete. Dense prefix retention defaults to
+`max(1, capacity)` snapshots, bounded separately by the state-byte ceiling;
+retained KV pages also consume memory outside that ceiling. Wider retention
+is implemented and explicitly selectable. DMS uses its own wider count and
+host-state budget.
+
+**Decision needed:** whether the dense default should favor a wider reuse
+working set at the cost of additional pinned memory. This is not blocked on
+qualification. **Clearing action:** the lead selects the default memory/reuse
+trade-off; update the count default, its tests and user-facing configuration
+reference together, then validate interleaved conversations and memory pressure.
+No change to the default is made by this cleanup.

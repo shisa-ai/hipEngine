@@ -1176,8 +1176,8 @@ def test_retained_prefixes_from_two_conversations_coexist(
     Served lanes interleave, so a conversation's next turn arrives after other
     conversations have captured and retained their own boundaries. A retained
     budget of one made every conversation miss its second hand-off. The wider
-    working set is opt-in (HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS) because it
-    is a measured regression until the shared-admission contiguity path lands.
+    working set is opt-in (HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS) and retains
+    additional state and KV pages within the configured memory limits.
     """
 
     monkeypatch.setenv(
@@ -1417,9 +1417,9 @@ def test_cancelled_request_drops_its_prefix_state_and_nothing_else() -> None:
 def test_retained_budget_defaults_to_the_pre_fix_effective_value() -> None:
     """The wider retained working set is opt-in, not the shipped default.
 
-    Enabling a 16-entry retained set today is a measured serving regression
-    (docs/REFACTOR.md), so the default stays at the pre-fix effective budget
-    max(1, capacity): at capacity 1 a second retained boundary evicts the first.
+    The count budget limits retained state and pinned KV residency. At the
+    default max(1, capacity), capacity 1 retains only one boundary, so a second
+    retained boundary evicts the first.
     """
 
     owner = _FakePrefixOwner()

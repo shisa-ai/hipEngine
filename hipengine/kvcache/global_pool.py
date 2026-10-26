@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import threading
 from collections import Counter
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -195,6 +197,23 @@ class GlobalKVPoolSet:
     def storage_view(self) -> KVStorageView:
         return self._storage_view
 
+    @contextmanager
+    def locked(self) -> Iterator[None]:
+        """Hold the ledger lock across a multi-step operation.
+
+        A caller that must decide a page range, act on the device, and then
+        commit the matching ledger change takes this lock so no other thread can
+        claim a page inside the range in between. The lock is reentrant, so the
+        ledger's own methods may be called from inside the block.
+
+        This is the ledger half of the pool's shrink contract: a page the caller
+        found free stays free until the caller either truncates it away or leaves
+        the block.
+        """
+
+        with self._lock:
+            yield
+
     def page_pointer(self, plane_role: str, page_id: int) -> int:
         try:
             return self._plane_page_pointers[str(plane_role)][int(page_id)]
@@ -241,23 +260,100 @@ class GlobalKVPoolSet:
             self._pages.extend(_Page(page_id) for page_id in range(start, start + added))
             self._free_page_ids.update(range(start, start + added))
             self.generation += 1
-            self._storage_view = KVStorageView(
-                layout_key=f"global-arbitrary-pages:g{self.generation}",
-                generation=self.generation,
-                planes=tuple(
-                    KVPlaneView(
-                        role=f"{role}.page_table",
-                        dtype="int64",
-                        ptr=self._pointer_table_pointers[role],
-                        shape=(len(self._pages),),
-                        strides=(1,),
+            self._publish_storage_view()
+
+    def free_tail_boundary(self, *, floor: int = 0) -> int:
+        """Lowest page id at or above ``floor`` whose pages and every page above are free.
+
+        Every page at or above the boundary is free and the page just below it is
+        not, so this is the whole reclaimable suffix: ``truncate_pages`` accepts
+        any target at or above it and nothing below it. ``page_capacity`` means no
+        page at or above ``floor`` is free, so nothing can be released.
+        """
+
+        lower = max(0, int(floor))
+        with self._lock:
+            boundary = len(self._pages)
+            for page_id in range(len(self._pages) - 1, lower - 1, -1):
+                if self._pages[page_id].state is not KVPageState.FREE:
+                    break
+                boundary = page_id
+            return boundary
+
+    def truncate_pages(
+        self,
+        pages: int,
+        *,
+        pointer_table_pointers: dict[str, int] | None = None,
+    ) -> int:
+        """Drop a trailing page range that no lease, cache reference, pin, growth
+        credit or graph epoch holds, and publish the smaller storage view.
+
+        The caller owns the device pointer-table update, exactly as for
+        :meth:`append_pages`: it must publish tables whose length matches the
+        retained capacity and pass their pointers here, because the previous
+        tables described the dropped pages and may be freed once no captured
+        graph can still reference them. Retained page ids keep their pointers.
+
+        Refuses a page that still has an owner, so a caller can only retract
+        storage that is provably unreferenced.
+        """
+
+        target = int(pages)
+        with self._lock:
+            if target <= 0:
+                raise ValueError("truncated page capacity must be positive")
+            if target > len(self._pages):
+                raise ValueError("truncated page capacity exceeds the global pool")
+            if target == len(self._pages):
+                return target
+            if pointer_table_pointers is not None:
+                roles = set(self._pointer_table_pointers)
+                if set(pointer_table_pointers) != roles:
+                    raise ValueError("retained pointer tables must match existing roles")
+                if any(int(pointer) <= 0 for pointer in pointer_table_pointers.values()):
+                    raise ValueError("retained pointer table pointers must be positive")
+            for page_id in range(target, len(self._pages)):
+                page = self._pages[page_id]
+                if page.state is not KVPageState.FREE:
+                    raise RuntimeError(
+                        f"KV page {page_id} is {page.state.value} and cannot be released"
                     )
+            del self._pages[target:]
+            self._free_page_ids = {
+                page_id for page_id in self._free_page_ids if page_id < target
+            }
+            for role in sorted(self._plane_page_pointers):
+                self._plane_page_pointers[role] = self._plane_page_pointers[role][:target]
+            if pointer_table_pointers is not None:
+                self._pointer_table_pointers = {
+                    role: int(pointer_table_pointers[role])
                     for role in sorted(self._plane_page_pointers)
-                ),
-                artifact_fingerprint=self.backend_fingerprint,
-                metadata_descriptor_ptr=self._storage_view.metadata_descriptor_ptr,
-                metadata_descriptor_bytes=self._storage_view.metadata_descriptor_bytes,
-            )
+                }
+            self.generation += 1
+            self._publish_storage_view()
+            return target
+
+    def _publish_storage_view(self) -> None:
+        """Republish the pointer-table view for the current page capacity."""
+
+        self._storage_view = KVStorageView(
+            layout_key=f"global-arbitrary-pages:g{self.generation}",
+            generation=self.generation,
+            planes=tuple(
+                KVPlaneView(
+                    role=f"{role}.page_table",
+                    dtype="int64",
+                    ptr=self._pointer_table_pointers[role],
+                    shape=(len(self._pages),),
+                    strides=(1,),
+                )
+                for role in sorted(self._plane_page_pointers)
+            ),
+            artifact_fingerprint=self.backend_fingerprint,
+            metadata_descriptor_ptr=self._storage_view.metadata_descriptor_ptr,
+            metadata_descriptor_bytes=self._storage_view.metadata_descriptor_bytes,
+        )
 
     def allocate(
         self,

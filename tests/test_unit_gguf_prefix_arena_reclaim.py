@@ -121,6 +121,47 @@ def test_prefix_arena_pool_retains_by_capacity_without_cross_bucketing() -> None
     assert _live_allocations() == baseline
 
 
+def test_prefix_arena_pool_reuses_an_unaligned_request_by_owner_capacity() -> None:
+    """An unaligned request must find the arena its own allocation produced.
+
+    Free lists are keyed by capacity, and ``DeviceMemoryArena`` rounds the owner
+    up to the arena alignment. Keying ``acquire`` on the raw request while
+    ``release`` stored the rounded owner made an unaligned capture miss its own
+    arena and allocate a fresh one on every turn - exactly the churn this pool
+    exists to remove.
+    """
+
+    runtime = _FakeRuntime()
+    baseline = _live_allocations()
+    pool = _GGUFPrefixSnapshotArenaPool(runtime, max_retained=4)
+
+    # Below one alignment unit, and one byte over it: both round to a larger
+    # owner, and the next capture asks for the same unaligned size again.
+    for request in (1000, 4097):
+        first = pool.acquire(request)
+        pool.release(first)
+        second = pool.acquire(request)
+        assert second is first, f"request {request} did not reuse its own arena"
+        pool.release(second)
+
+    assert pool.stats() == {
+        "acquires": 4,
+        "arena_allocations": 2,
+        "retained_arenas": 2,
+        "quarantined_arenas": 0,
+    }
+    assert _live_allocations() == baseline + 2
+
+    # A request that rounds to a different owner must not take either arena.
+    larger = pool.acquire(8193)
+    assert larger.capacity_bytes == 12288
+    assert pool.stats()["arena_allocations"] == 3
+
+    pool.release(larger)
+    pool.close()
+    assert _live_allocations() == baseline
+
+
 def test_prefix_arena_pool_release_after_close_frees_instead_of_retaining() -> None:
     """A late release must not resurrect ownership in a closed pool.
 

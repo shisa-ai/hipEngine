@@ -476,3 +476,88 @@ def test_dense_backend_plan_can_initialize_an_external_generic_ledger() -> None:
     ledger.commit(reservation, owner_id="external:2")
     ledger.release("external:2")
     ledger.assert_conserved()
+
+
+def test_global_pool_reports_the_free_tail_boundary_above_a_floor() -> None:
+    pool = _pool()  # five pages
+    assert pool.free_tail_boundary() == 0
+
+    pool.allocate("first", private_pages=2, growth_credit_pages=0)
+    # Pages 0 and 1 are leased, so the reclaimable suffix starts at page 2.
+    assert pool.free_tail_boundary() == 2
+    # The floor stops the scan: nothing at or above page 5 exists to reclaim.
+    assert pool.free_tail_boundary(floor=5) == 5
+
+    pool.release("first")
+    assert pool.free_tail_boundary() == 0
+    assert pool.free_tail_boundary(floor=3) == 3
+    pool.assert_conserved()
+
+
+def test_global_pool_truncate_refuses_pages_an_owner_still_holds() -> None:
+    pool = _pool()
+    held = pool.allocate("held", private_pages=5, growth_credit_pages=0)
+
+    # The last page of the lease sits in the range the caller wants to drop.
+    with pytest.raises(RuntimeError, match="cannot be released"):
+        pool.truncate_pages(4)
+
+    assert pool.page_capacity == 5
+    pool.release("held")
+    assert pool.truncate_pages(4) == 4
+    assert held.private_page_ids[-1] == 4
+    pool.assert_conserved()
+
+
+def test_global_pool_truncate_drops_a_free_tail_and_republishes_the_view() -> None:
+    pool = _pool()
+    generation = pool.generation
+
+    pool.truncate_pages(
+        3,
+        pointer_table_pointers={"k_payload": 0x700, "v_payload": 0x800},
+    )
+
+    assert pool.page_capacity == 3
+    assert pool.free_pages == 3
+    assert pool.generation == generation + 1
+    view = pool.storage_view()
+    assert view.planes[0].ptr == 0x700
+    assert view.planes[0].shape == (3,)
+    # Retained page ids keep their pointers; dropped ids are gone.
+    assert pool.page_pointer("k_payload", 2) == 0x9000
+    with pytest.raises(IndexError):
+        pool.page_pointer("k_payload", 3)
+    pool.assert_conserved()
+
+    # The pool still grows after a truncation.
+    pool.append_pages(
+        {"k_payload": (0x30000000, 0x30001000), "v_payload": (0x40000000, 0x40001000)},
+        {"k_payload": 0x22000000, "v_payload": 0x23000000},
+    )
+    assert pool.page_capacity == 5
+    assert pool.page_pointer("k_payload", 3) == 0x30000000
+    pool.assert_conserved()
+
+
+def test_global_pool_truncate_keeps_pinned_and_in_flight_tails() -> None:
+    pool = _pool()
+    lease = pool.allocate("session", private_pages=5, growth_credit_pages=0)
+    pages = lease.private_page_ids
+    pool.pin_session("session", pages)
+    pool.release("session")
+    assert pool.page(pages[-1]).state is KVPageState.PINNED_SESSION
+    with pytest.raises(RuntimeError, match="pinned_session"):
+        pool.truncate_pages(4)
+    pool.unpin_session(pages)
+
+    pool.allocate("graph", private_pages=5, growth_credit_pages=0)
+    pool.mark_in_flight("graph", (4,), epoch=3)
+    pool.release("graph")
+    assert pool.page(4).state is KVPageState.IN_FLIGHT
+    with pytest.raises(RuntimeError, match="in_flight"):
+        pool.truncate_pages(4)
+    pool.retire_epoch(3)
+    assert pool.truncate_pages(2) == 2
+    assert pool.page_capacity == 2
+    pool.assert_conserved()

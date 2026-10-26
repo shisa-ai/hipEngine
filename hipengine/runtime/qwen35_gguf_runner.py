@@ -245,6 +245,7 @@ from hipengine.kvcache import (
     GlobalDeviceKVPool,
     KVLiveSpans,
     KVScaleMetadata,
+    KVStorageFault,
 )
 from hipengine.kvcache.dms_capture import DMS_CAPTURE_INPUT_STAGE, DMSCaptureSink
 from hipengine.runtime.native_sampler import NativeSamplerWorkspace
@@ -16442,6 +16443,55 @@ class Qwen35GGUFResidentSession:
 
         closed = False
         descriptor_generation = int(pool_generation)
+        # Page capacities at which every plane arena is physically committed.
+        # `rollback_to` only accepts a mapped-segment boundary, so a shrink may
+        # only target a capacity the arena was actually committed to. Growth adds
+        # one; a shrink removes the ones it retracted.
+        committed_capacities: set[int] = (
+            {int(backing.pages)} if use_vmm else set()
+        )
+
+        def _restore_arena_commits(previous: dict[str, int]) -> None:
+            """Re-map every plane to its previous commitment, boundary by boundary.
+
+            ``commit_to`` appends exactly one segment from the current committed
+            size to the requested one, so restoring straight to the old total
+            would collapse every intermediate growth boundary into a single
+            segment. ``committed_capacities`` keeps advertising those boundaries
+            as legal shrink targets, and the next shrink to one of them would
+            then fail on a target that is no longer a mapped-segment offset.
+            Re-commit through each missing boundary in ascending order instead,
+            which rebuilds the segment list the arena had before the rollback.
+
+            Every plane is attempted even when an earlier one fails, so as much
+            physical memory as the runtime allows is restored before the first
+            failure propagates.
+            """
+
+            failure: BaseException | None = None
+            for role, owner in plane_owners.items():
+                target = int(previous[role])
+                boundaries = sorted(
+                    _qwen35_gguf_vmm_physical_bytes(
+                        capacity,
+                        plane_page_nbytes={role: int(plane_page_nbytes[role])},
+                        granularity=int(admission_granularity),
+                    )
+                    for capacity in committed_capacities
+                )
+                for boundary in boundaries:
+                    committed = int(owner.committed_bytes)
+                    if boundary <= committed:
+                        continue
+                    if boundary > target:
+                        break
+                    try:
+                        owner.commit_to(boundary)
+                    except BaseException as exc:  # pragma: no cover - defensive
+                        failure = failure or exc
+                        break
+            if failure is not None:  # pragma: no cover - defensive
+                raise failure
 
         def _upload_pointer_tables(
             appended: Mapping[str, tuple[int, ...]],
@@ -16479,6 +16529,37 @@ class Qwen35GGUFResidentSession:
                 descriptor_host.nbytes,
                 runtime=runtime,
             )
+
+        def _upload_retained_tables(page_capacity: int) -> dict[str, DeviceBuffer]:
+            """Build and upload one pointer table per plane for a retained capacity.
+
+            A shrink republishes tables that describe only the pages that remain,
+            because the previous tables also covered the pages whose storage is
+            about to be released. Retained page ids keep their pointers.
+            """
+
+            retained: dict[str, DeviceBuffer] = {}
+            try:
+                for role, pointers in plane_page_pointers.items():
+                    host = np.ascontiguousarray(
+                        pointers[: int(page_capacity)], dtype=np.uint64
+                    )
+                    if int(host.size) != int(page_capacity):
+                        raise RuntimeError(
+                            f"GGUF global KV plane {role} does not cover the retained capacity"
+                        )
+                    table = malloc(host.nbytes, runtime=runtime)
+                    # Publish before uploading so the handler frees this table
+                    # when the transfer fails.
+                    retained[role] = table
+                    copy_host_to_device(
+                        table, host_array_ptr(host), host.nbytes, runtime=runtime
+                    )
+            except BaseException:
+                for table in reversed(tuple(retained.values())):
+                    free(table, runtime=runtime)
+                raise
+            return retained
 
         def grow_storage_chunk(
             pages: int,
@@ -16629,6 +16710,7 @@ class Qwen35GGUFResidentSession:
             pointer_tables = new_tables
             descriptor_generation += 1
             backing = new_backing
+            committed_capacities.add(int(new_pages))
             for table in reversed(tuple(old_tables.values())):
                 free(table, runtime=runtime)
             return (
@@ -16638,6 +16720,246 @@ class Qwen35GGUFResidentSession:
             )
 
         grow_storage = grow_storage_vmm if use_vmm else grow_storage_chunk
+
+        def _synchronize_before_release() -> None:
+            """Drain the device before storage a captured graph may address is freed.
+
+            Growth already synchronizes for the same reason: a graph captured
+            against the previous pointer tables or the previous chunk can still
+            be executing when those bytes are released. The pool invalidates its
+            live graphs first, and this drains whatever was already in flight.
+            """
+
+            synchronize = getattr(runtime, "device_synchronize", None)
+            if callable(synchronize):
+                synchronize()
+
+        def _free_quietly(buffer: object, failures: list[BaseException]) -> None:
+            """Free one buffer, recording rather than swallowing a failure."""
+
+            try:
+                free(buffer, runtime=runtime)  # type: ignore[arg-type]
+            except BaseException as exc:  # noqa: BLE001 - reported by the caller
+                failures.append(exc)
+
+        def _raise_release_failures(what: str, failures: list[BaseException]) -> None:
+            """Report device frees that failed after the pool already retracted.
+
+            The pool is consistent at this point: its ledger names storage that is
+            still mapped. A failed free leaks that storage, so it is reported
+            rather than hidden, but it must not be mistaken for a corrupt pool.
+            """
+
+            if not failures:
+                return
+            raise RuntimeError(
+                f"GGUF global KV shrink retracted {what} but "
+                f"{len(failures)} device free(s) failed"
+            ) from failures[0]
+
+        # Both shrink providers are two-phase, because only the pool knows when
+        # the ledger has adopted the retained publication:
+        #
+        #   shrink_storage(target) -> (pointer_tables, root_backing, handle)
+        #       validate the target, publish the retained tables and descriptor,
+        #       free nothing. Fallible, and a failure leaves everything as it was.
+        #   release_storage(handle)
+        #       free the tables and chunks the pool no longer owns. Called after
+        #       the ledger and the pool's chunk bookkeeping were retracted, so a
+        #       failure can only leak device memory, never leave the ledger
+        #       pointing at freed storage.
+
+        def shrink_storage_chunk(
+            target_pages: int,
+        ) -> tuple[dict[str, int], object | None, object]:
+            """Publish retained tables for a chunk-confined pool; free nothing.
+
+            The handle is ``(target, new_tables, released_chunks,
+            next_descriptor_generation)``.
+            """
+
+            nonlocal descriptor_generation, pointer_tables
+            target = int(target_pages)
+            current = len(next(iter(plane_page_pointers.values())))
+            if target <= 0 or target >= current:
+                raise ValueError(
+                    "global KV shrink requires a positive target below the current capacity"
+                )
+            # The pool retracts whole growth units, so the released chunks are a
+            # suffix that begins exactly at the retained capacity.
+            released_chunks = [
+                chunk for chunk in backings if int(chunk.start_block_id) >= target
+            ]
+            if not released_chunks:
+                raise ValueError("global KV shrink target releases no storage chunk")
+            if int(released_chunks[0].start_block_id) != target:
+                raise ValueError(
+                    "global KV shrink target is not an allocated chunk boundary"
+                )
+            _synchronize_before_release()
+            new_tables = _upload_retained_tables(target)
+            next_generation = descriptor_generation + 1
+            try:
+                _upload_descriptor(next_generation, target)
+            except BaseException:
+                for table in reversed(tuple(new_tables.values())):
+                    free(table, runtime=runtime)
+                raise
+            return (
+                {role: int(table.ptr) for role, table in new_tables.items()},
+                None,
+                (target, new_tables, tuple(released_chunks), next_generation),
+            )
+
+        def release_storage_chunk(handle: object) -> None:
+            """Free the released chunks and the superseded pointer tables."""
+
+            nonlocal descriptor_generation, pointer_tables
+            target, new_tables, released_chunks, next_generation = handle
+            old_tables = pointer_tables
+            for role in sorted(plane_page_pointers):
+                plane_page_pointers[role] = plane_page_pointers[role][:target]
+            pointer_tables = new_tables
+            descriptor_generation = next_generation
+            # Stop tracking the released chunks before freeing them: a failed free
+            # leaks device memory, whereas a stale entry would double-free on
+            # close.
+            del backings[len(backings) - len(released_chunks) :]
+            failures: list[BaseException] = []
+            for table in reversed(tuple(old_tables.values())):
+                _free_quietly(table, failures)
+            for chunk in reversed(released_chunks):
+                try:
+                    _free_qwen35_gguf_kv_chunk(chunk, runtime=runtime)
+                except BaseException as exc:  # noqa: BLE001 - reported below
+                    failures.append(exc)
+            _raise_release_failures("its storage chunks", failures)
+
+        def shrink_storage_vmm(
+            target_pages: int,
+        ) -> tuple[dict[str, int], object, object]:
+            """Unmap physical memory above ``target_pages`` from the VMM arena.
+
+            The address reservation and every retained page pointer stay put, so
+            the arena base never moves. ``rollback_to`` only accepts a segment
+            boundary, and the segments are exactly the capacities the arena was
+            committed to, so the target must be one of those.
+
+            The unmap is the last fallible step, and nothing has been published
+            when it runs: the retained tables live in new buffers, the descriptor
+            still names the previous capacity, and the ledger is untouched. A
+            failure therefore restores the mapping and leaves the pool exactly as
+            it was. If the restore itself fails, part of the arena is unmapped
+            while the ledger still advertises it, so the provider reports a
+            :class:`KVStorageFault` and the pool fails closed.
+
+            The handle is ``(target, new_tables, new_backing,
+            next_descriptor_generation)``.
+            """
+
+            target = int(target_pages)
+            if target not in committed_capacities:
+                raise ValueError(
+                    "global KV VMM shrink target is not a committed arena boundary"
+                )
+            previous_commits = {
+                role: int(owner.committed_bytes)
+                for role, owner in plane_owners.items()
+            }
+            target_commits = {
+                role: _qwen35_gguf_vmm_physical_bytes(
+                    target,
+                    plane_page_nbytes={role: int(plane_page_nbytes[role])},
+                    granularity=int(admission_granularity),
+                )
+                for role in plane_owners
+            }
+            _synchronize_before_release()
+            new_tables = _upload_retained_tables(target)
+            try:
+                new_backing = _build_qwen35_gguf_kv_backing_from_plane_views(
+                    cfg=cfg,
+                    layout=layout,
+                    pages=target,
+                    start_block_id=0,
+                    plane_views={
+                        role: VmmPlaneBuffer(
+                            owner,
+                            offset=0,
+                            nbytes=target * plane_page_nbytes[role],
+                        )
+                        for role, owner in plane_owners.items()
+                    },
+                )
+            except BaseException:
+                for table in reversed(tuple(new_tables.values())):
+                    free(table, runtime=runtime)
+                raise
+            try:
+                for role, owner in plane_owners.items():
+                    owner.rollback_to(target_commits[role])
+                _upload_descriptor(descriptor_generation + 1, target)
+            except BaseException:
+                for table in reversed(tuple(new_tables.values())):
+                    free(table, runtime=runtime)
+                try:
+                    _restore_arena_commits(previous_commits)
+                except BaseException as restore_error:
+                    raise KVStorageFault(
+                        "GGUF VMM KV shrink unmapped part of the arena and could "
+                        "not restore it"
+                    ) from restore_error
+                raise
+            return (
+                {role: int(table.ptr) for role, table in new_tables.items()},
+                new_backing,
+                (target, new_tables, new_backing, descriptor_generation + 1),
+            )
+
+        def release_storage_vmm(handle: object) -> None:
+            """Adopt the retained arena publication and free the old tables."""
+
+            nonlocal backing, descriptor_generation, pointer_tables
+            target, new_tables, new_backing, next_generation = handle
+            old_tables = pointer_tables
+            for role in sorted(plane_page_pointers):
+                plane_page_pointers[role] = plane_page_pointers[role][:target]
+            pointer_tables = new_tables
+            descriptor_generation = next_generation
+            backing = new_backing
+            # The retained target stays a legal rollback boundary, so a pool that
+            # shrinks to its floor can grow and shrink to that floor again.
+            committed_capacities.difference_update(
+                {
+                    capacity
+                    for capacity in committed_capacities
+                    if capacity > target
+                }
+            )
+            failures: list[BaseException] = []
+            for table in reversed(tuple(old_tables.values())):
+                _free_quietly(table, failures)
+            _raise_release_failures("its arena commit", failures)
+
+        shrink_storage = shrink_storage_vmm if use_vmm else shrink_storage_chunk
+        release_storage = release_storage_vmm if use_vmm else release_storage_chunk
+
+        def abort_shrink(handle: object) -> None:
+            """Free the pointer tables a prepare published, and nothing else.
+
+            Both prepares publish the retained tables and free nothing, so when
+            the pool cannot adopt them the tables are the only unowned storage.
+            The prepare is never undone: the VMM provider has already unmapped
+            the arena, and the pool reports a storage fault instead of trying to
+            resume service. A failed free here leaks one small table on a pool
+            that is already unusable, so cleanup never raises over the failure
+            the caller is unwinding.
+            """
+
+            _target, new_tables, _published, _next_generation = handle
+            failures: list[BaseException] = []
+            for table in reversed(tuple(new_tables.values())):
+                _free_quietly(table, failures)
 
         def close_storage() -> None:
             nonlocal closed
@@ -16686,6 +17008,9 @@ class Qwen35GGUFResidentSession:
             metadata_descriptor_pointer=int(descriptor.ptr),
             close_storage=close_storage,
             grow_storage=grow_storage,
+            shrink_storage=shrink_storage,
+            release_storage=release_storage,
+            abort_shrink=abort_shrink,
             # `_resident_batch_owner` is only ever assigned onto the per-slot
             # views a resident batch owner creates, so a session that owns its
             # own pool never has the attribute at all. Every other reader in
@@ -16697,6 +17022,14 @@ class Qwen35GGUFResidentSession:
                 if (owner := getattr(self, "_resident_batch_owner", None)) is not None
                 else None
             ),
+            # A shrink frees the pointer tables those graphs captured, so it
+            # needs the same invalidation growth does.
+            before_shrink=lambda: (
+                owner._invalidate_live_packed_decode_graphs()
+                if (owner := getattr(self, "_resident_batch_owner", None)) is not None
+                else None
+            ),
+            idle_grace_seconds=float(getattr(self, "kv_pool_idle_grace_seconds", 0.0)),
             max_pages=max_pages,
             growth_chunk_pages=growth_chunk_pages,
             on_pressure=self._on_device_kv_pool_pressure,

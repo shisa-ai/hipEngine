@@ -1684,35 +1684,35 @@
       "start_line": 2010,
       "end_line": 2057,
       "sha256": "590f957d27e9cce7f546cb11ccbb9b8db29504890eb9eab270442e651e156184",
-      "status": "partial-budget-policy",
+      "status": "deferred-lead-decision",
       "evidence": [
-        "Separate retained/transient eviction regressions pass; retention-budget policy still open. Worklog:worklog/entries/20261026T072331.940185Z-cleanup-refactor-r0065-r0068-f5b579.md."
+        "Eviction fixed; default retention memory/reuse trade-off deferred at bottom of REFACTOR with clearing action. Worklog:worklog/entries/20261026T074503.428776Z-cleanup-refactor-prefix-storage-e52cff.md."
       ],
       "subitems": [
         {
           "line": 2012,
           "text": "- `_capture_prefix_snapshot` trims with `while len(self._prefix_state_snapshots) >",
-          "status": "partial-budget-policy"
+          "status": "resolved"
         },
         {
           "line": 2021,
           "text": "- Measured consequence on gfx1151 (41 served turns per arm, one arm per process):",
-          "status": "partial-budget-policy"
+          "status": "resolved"
         },
         {
           "line": 2028,
           "text": "- Fix direction: make the trim prefer unretained entries and never evict a",
-          "status": "partial-budget-policy"
+          "status": "resolved"
         },
         {
           "line": 2033,
           "text": "- Fixed 2026-09-18: transient and retained entries are now trimmed by separate",
-          "status": "partial-budget-policy"
+          "status": "resolved"
         },
         {
           "line": 2038,
           "text": "- The retained count defaults to the pre-fix effective budget",
-          "status": "partial-budget-policy"
+          "status": "deferred-lead-decision"
         }
       ]
     },
@@ -1745,23 +1745,25 @@
       "start_line": 2071,
       "end_line": 2088,
       "sha256": "e48655d068813df51d6bf7967680c68b41063765019b0a7eab4f713af74d4f35",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Arena pooling verified; unaligned bucket reuse fixed and tested. Stream fence retained for ownership. Worklog:worklog/entries/20261026T074503.428776Z-cleanup-refactor-prefix-storage-e52cff.md."
+      ],
       "subitems": [
         {
           "line": 2073,
           "text": "- `capture_prefix_state_snapshot` allocates two device buffers per linear-state",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2081,
           "text": "- Fix direction: hold the snapshot buffers in a per-session pool sized to the",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2086,
           "text": "- Evidence: `benchmarks/results/2026-09-18-gfx1151-prefix-cache-cost-attribution.json`",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
@@ -1771,28 +1773,30 @@
       "start_line": 2089,
       "end_line": 2126,
       "sha256": "4bbdade462acfdfb892ab79ac907576620dd773b7cccb8452aa40fa38e6fdbe8",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Batched suffix default and serial rollback already implemented; prefix runner regression bundle passes. Worklog:worklog/entries/20261026T074503.428776Z-cleanup-refactor-prefix-storage-e52cff.md."
+      ],
       "subitems": [
         {
           "line": 2091,
           "text": "- The greedy cumulative lanes prefill a reused row's suffix through",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2096,
           "text": "- **Corrected 2026-09-18 (same day): there is no cheap second route.**",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2104,
           "text": "- **Resolved 2026-09-18 (same day, later): the batched route exists and was",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2121,
           "text": "- Historical note: the mid-day correction (\"there is no cheap second route\")",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
@@ -1884,53 +1888,55 @@
       "start_line": 2205,
       "end_line": 2256,
       "sha256": "8c1662092c7bf2c7b20cf7105e4f98365891753c5dd0f3e64551f57456966c51",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Implemented idle whole-growth-unit release for chunk/VMM pools with failure and lifecycle regressions; full CPU bundle and concurrent public generate shrink/regrow pass. Worklog:worklog/entries/20261026T074503.428776Z-cleanup-refactor-prefix-storage-e52cff.md."
+      ],
       "subitems": [
         {
           "line": 2207,
           "text": "- The KV-pool growth path had never been exercised until a retained-snapshot",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2210,
           "text": "  * the `before_grow` / `on_pressure` callbacks dereferenced",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2215,
           "text": "  * `grow_storage` rebound `pointer_tables` without declaring it `nonlocal`,",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2218,
           "text": "  * bind-time validation checked `block_id - start_block_id < backing.pages`",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2225,
           "text": "  * the GPU memory fault in",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2236,
           "text": "  * a shared-prefix admission must place its suffix in the chunk that holds the",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2241,
           "text": "- Exposure: eviction runs before growth - `_ensure_free_pages` calls",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2249,
           "text": "- Reproduction: `scripts/prefix_cache_multiturn_bench.py` with",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2254,
           "text": "- Removal scope: this entry, once `shrink_idle` returns grown capacity. It is a",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },

@@ -403,11 +403,9 @@ def _gguf_serving_width_dense_flag_overrides(capacity_bound: int | None) -> dict
 # for a 35B-A3B checkpoint) plus its KV pages. Retained boundaries are the
 # cross-request working set: a conversation's next turn can only match a boundary
 # that survived every intervening request's captures. The default count budget is
-# the pre-fix effective value, max(1, capacity); a wider working set is opt-in
-# because enabling it today is a measured regression (docs/REFACTOR.md). The
-# 14-lane serving protocol needs 16 retained entries — one conversation's
-# boundary must survive 13 intervening captures — and the byte budget bounds the
-# state the wide set pins.
+# max(1, capacity), limiting both state clones and pinned KV residency. A wider
+# working set is explicitly selectable. The state-byte budget may further limit
+# its entry count; it does not include the retained KV pages.
 _PREFIX_RETAINED_STATE_BYTES_LIMIT = 1 << 30
 # DMS extension snapshots also own cold dense prompt KV, predictor planes and
 # trunk hidden rows. Give that host working set a separate, bounded budget;
@@ -7309,8 +7307,8 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         # Retained snapshots are the durable, cross-request working set; transient
         # ones are the current request's captures. They are trimmed separately so
         # a request's own capture can never evict the boundary that served it.
-        # The retained count defaults to the pre-fix effective budget; the wider
-        # working set is opt-in (docs/REFACTOR.md records the regression).
+        # The retained count limits pinned residency; users can select a wider
+        # working set within the independent state-byte budget.
         self._prefix_retained_limit = _gguf_prefix_retained_snapshot_limit(capacity)
         self._prefix_retained_state_bytes_limit = (
             _gguf_prefix_retained_state_bytes_limit()
@@ -7830,6 +7828,14 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                 serving_capacity=int(self.capacity),
             )
         setattr(factory_session, "kv_pool_execution_reserve_bytes", execution_reserve)
+        # The global pool releases a fully idle grown tail after the same grace
+        # period the legacy chunk pool uses; without it an idle barrier would
+        # retract storage a busy pool immediately needs again.
+        setattr(
+            factory_session,
+            "kv_pool_idle_grace_seconds",
+            float(config.kv_pool_idle_grace_seconds),
+        )
         initial_pages = int(config.kv_pool_initial_pages)
         self._kv_pool_memory_budget_mib = getattr(
             config, "kv_pool_memory_budget_mib", None

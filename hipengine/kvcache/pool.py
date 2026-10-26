@@ -403,6 +403,17 @@ class DeviceKVContiguityError(MemoryError):
     """
 
 
+class KVStorageFault(RuntimeError):
+    """Raised when released KV storage cannot be restored to a usable state.
+
+    A pool that retracts physical backing transactionally can be left holding
+    pages it already unmapped if the restore also fails. Such a pool must not
+    keep admitting requests: the pages it still advertises would not be backed by
+    device memory. Providers raise this so the pool can fail closed instead of
+    serving a write that faults or corrupts an unrelated allocation.
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class DeviceKVPoolStats:
     """Observable counters for callback-backed device KV chunks."""
@@ -965,6 +976,7 @@ __all__ = [
     "DeviceKVContiguityError",
     "DeviceKVPoolAllocation",
     "DeviceKVPoolStats",
+    "KVStorageFault",
     "KVPoolAllocation",
     "KVPoolChunk",
     "KVPoolCopyOnWriteFork",

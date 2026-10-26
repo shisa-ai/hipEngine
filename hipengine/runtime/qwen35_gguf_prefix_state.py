@@ -26,6 +26,21 @@ _ARENA_ALIGNMENT_BYTES = 4096
 _MIN_ARENA_BYTES = 4096
 
 
+def _pool_capacity(nbytes: int) -> int:
+    """Free-list key: the owner size ``acquire`` will allocate for a request.
+
+    ``DeviceMemoryArena`` rounds its owner up to the arena alignment, so a
+    request for an unaligned size must be rounded the same way before it is
+    used as a bucket key. Keying the lookup on the raw request while
+    ``release`` stored the rounded ``capacity_bytes`` meant an unaligned
+    capture never found its own arena and allocated a fresh one every time.
+    """
+
+    size = max(1, int(nbytes))
+    units = (size + _ARENA_ALIGNMENT_BYTES - 1) // _ARENA_ALIGNMENT_BYTES
+    return units * _ARENA_ALIGNMENT_BYTES
+
+
 class _GGUFPrefixSnapshotArenaPool:
     """Recycle whole snapshot arenas so a steady-state capture is memcpy-only.
 
@@ -53,7 +68,7 @@ class _GGUFPrefixSnapshotArenaPool:
     def acquire(self, nbytes: int) -> DeviceMemoryArena:
         if self.closed:
             raise RuntimeError("prefix snapshot arena pool is closed")
-        capacity = max(1, int(nbytes))
+        capacity = _pool_capacity(nbytes)
         self.acquires += 1
         bucket = self._free.get(capacity)
         if bucket:
@@ -61,10 +76,18 @@ class _GGUFPrefixSnapshotArenaPool:
             arena.rewind()
             return arena
         self.arena_allocations += 1
-        return DeviceMemoryArena.create(capacity, runtime=self.runtime)
+        # Allocate with the alignment the bucket key was computed from, so a
+        # released arena always lands back in the bucket its next request reads.
+        return DeviceMemoryArena.create(
+            capacity, runtime=self.runtime, alignment=_ARENA_ALIGNMENT_BYTES
+        )
 
     def release(self, arena: DeviceMemoryArena) -> None:
-        """Take an arena back, or free it when the retention budget is full."""
+        """Take an arena back, or free it when the retention budget is full.
+
+        The bucket is the arena's own rounded owner size, which is exactly what
+        ``acquire`` computes for a request of the same size.
+        """
 
         if any(held is arena for held, _stream in self._quarantine):
             raise RuntimeError("cannot release a quarantined prefix snapshot arena")

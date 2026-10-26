@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import threading
+
 import pytest
 
 from hipengine.kvcache.device_global import GlobalDeviceKVPool
-from hipengine.kvcache.pool import DeviceKVContiguityError
+from hipengine.kvcache.pool import DeviceKVContiguityError, KVStorageFault
 from hipengine.runtime.memory_admission import (
     ADMISSION_REFUSAL_CODE,
     MemoryAdmissionRefused,
@@ -645,3 +647,462 @@ def test_ensure_free_pages_caps_at_the_padded_physical_budget() -> None:
     assert grown == [2]
     assert pool.global_pool.page_capacity == 4
     pool.close()
+
+
+# ---------------------------------------------------------------------------
+# Idle reclamation of grown capacity.
+#
+# The pool retracts only a whole growth unit (one appended chunk, or one
+# committed arena segment) whose pages are all free in the ledger. Release is
+# two-phase: the provider publishes the retained pointer tables and returns a
+# handle without freeing anything, the pool retracts its ledger, and only then
+# does the provider free what the pool no longer owns. These tests drive that
+# policy with a host-side provider so the guards are checkable without a GPU.
+# ---------------------------------------------------------------------------
+
+
+class _FakeStorageProvider:
+    """Host-side stand-in for the runtime storage owner behind a global pool.
+
+    ``published`` is the capacity the provider advertises (plane pointers and
+    pointer tables); ``held`` is the physical capacity it still owns. Prepare
+    moves neither, so a test can show that the ledger was retracted before
+    anything was freed, and a failed free leaves ``held`` above ``published``,
+    which is exactly the leak the pool reports rather than hides.
+    """
+
+    def __init__(self, pages: int) -> None:
+        self.published = int(pages)
+        self.held = int(pages)
+        self.grown: list[int] = []
+        self.prepared: list[int] = []
+        self.shrunk: list[int] = []
+        self.failure: BaseException | None = None
+        self.release_failure: BaseException | None = None
+        self.table_serial = 0
+
+    def grow(self, pages: int, start: int):
+        assert start == self.published
+        self.published += int(pages)
+        self.held += int(pages)
+        self.grown.append(int(pages))
+        self.table_serial += 1
+        return (
+            {
+                role: tuple(
+                    0xD000 + (start + index) * 0x100 for index in range(int(pages))
+                )
+                for role in ("layer0.key", "layer0.value")
+            },
+            {
+                "layer0.key": 0xE000 + self.table_serial,
+                "layer0.value": 0xF000 + self.table_serial,
+            },
+            {"arena": self.published},
+        )
+
+    def shrink(self, target_pages: int):
+        """Prepare: publish retained tables for ``target_pages``, free nothing."""
+
+        if self.failure is not None:
+            raise self.failure
+        assert target_pages < self.published
+        self.prepared.append(int(target_pages))
+        self.table_serial += 1
+        return (
+            {
+                "layer0.key": 0xE000 + self.table_serial,
+                "layer0.value": 0xF000 + self.table_serial,
+            },
+            {"arena": int(target_pages)},
+            int(target_pages),
+        )
+
+    def release(self, handle) -> None:
+        """Release: adopt the retained publication, then free the rest."""
+
+        self.published = int(handle)
+        if self.release_failure is not None:
+            # Mirrors a device free failing after publication: the pool and the
+            # published capacity agree, and only the physical commitment leaks.
+            raise self.release_failure
+        self.held = int(handle)
+        self.shrunk.append(int(handle))
+
+
+def _shrinkable_pool(
+    *,
+    pages: int = 2,
+    growth: int = 2,
+    max_pages: int | None = 8,
+    contiguous_growth: bool = False,
+    shrink: bool = True,
+    abort=None,
+):
+    provider = _FakeStorageProvider(pages)
+    invalidated: list[int] = []
+    pool = GlobalDeviceKVPool(
+        page_bytes=128,
+        backend_fingerprint="artifact:gguf-test",
+        generation=3,
+        backing={"arena": pages},
+        plane_page_pointers={
+            "layer0.key": tuple(0x1000 + page * 0x100 for page in range(pages)),
+            "layer0.value": tuple(0x4000 + page * 0x100 for page in range(pages)),
+        },
+        pointer_table_pointers={"layer0.key": 0x8000, "layer0.value": 0x9000},
+        metadata_descriptor_pointer=0xA000,
+        close_storage=lambda: None,
+        grow_storage=provider.grow,
+        shrink_storage=provider.shrink if shrink else None,
+        release_storage=provider.release if shrink else None,
+        abort_shrink=abort,
+        before_shrink=lambda: invalidated.append(pool.current_pages),
+        max_pages=max_pages,
+        growth_chunk_pages=growth,
+        contiguous_growth=contiguous_growth,
+    )
+    return pool, provider, invalidated
+
+
+def test_shrink_idle_releases_a_free_grown_tail_chunk() -> None:
+    pool, provider, invalidated = _shrinkable_pool()
+    allocation = pool.allocate(1, 3)
+    assert provider.grown == [3]
+    assert pool.current_pages == 5
+    # The allocation landed in the appended chunk, which is the unit the shrink
+    # may retract once it is free.
+    assert allocation.chunk_start_block_id == 2
+    pool.release(1)
+    generation = pool.global_pool.generation
+
+    released = pool.shrink_idle(now_seconds=1.0)
+
+    assert released == 3
+    assert provider.prepared == [2]
+    assert provider.shrunk == [2]
+    assert provider.published == 2
+    assert provider.held == 2
+    assert pool.current_pages == 2
+    assert tuple(pool.chunks[0].block_ids) == (0, 1)
+    assert pool._chunks == [(0, 2, {"arena": 2})]
+    assert pool._release_points == [2]
+    assert pool.stats.shrink_events == 1
+    assert pool.stats.retired_pages == 3
+    assert pool.stats.retired_bytes == 3 * pool.page_bytes
+    # Graphs are invalidated before the provider publishes the retained tables.
+    assert invalidated == [5]
+    # The published view covers only the retained pages, at the new table.
+    view = pool.storage_view()
+    assert view.planes[0].shape == (2,)
+    assert view.planes[0].ptr == 0xE002
+    assert view.generation == generation + 1
+    pool.global_pool.assert_conserved()
+    pool.close()
+
+
+def test_shrink_idle_keeps_capacity_a_live_lease_still_uses() -> None:
+    pool, provider, _invalidated = _shrinkable_pool()
+    pool.allocate(1, 2)
+    live = pool.allocate(2, 2)
+    assert live.chunk_start_block_id == 2
+    assert pool.current_pages == 4
+
+    assert pool.shrink_idle(now_seconds=1.0) == 0
+    assert provider.prepared == []
+
+    pool.release(2)
+    assert pool.shrink_idle(now_seconds=1.0) == 2
+    assert provider.shrunk == [2]
+    assert pool.current_pages == 2
+    pool.release(1)
+    pool.close()
+
+
+def test_shrink_idle_keeps_a_pinned_or_cache_owned_tail() -> None:
+    pool, provider, _invalidated = _shrinkable_pool()
+    pool.allocate(1, 2)
+    tail = pool.allocate(2, 2)
+    pool.pin(tail.block_ids)
+    pool.retain_blocks(tail.block_ids)
+    pool.release(2)
+
+    # A graph pin and a cache-owned prefix both keep the pages, so the chunk
+    # that holds them cannot be retracted.
+    assert pool.shrink_idle(now_seconds=1.0) == 0
+    pool.unpin(tail.block_ids)
+    assert pool.shrink_idle(now_seconds=1.0) == 0
+    assert provider.prepared == []
+
+    pool.release_blocks(tail.block_ids)
+    assert pool.shrink_idle(now_seconds=1.0) == 2
+    assert provider.shrunk == [2]
+    pool.release(1)
+    pool.close()
+
+
+def test_shrink_idle_waits_for_an_in_flight_graph_epoch() -> None:
+    pool, provider, _invalidated = _shrinkable_pool()
+    pool.allocate(1, 2)
+    tail = pool.allocate(2, 2)
+    pool.global_pool.mark_in_flight("request:2", tail.block_ids, epoch=7)
+    pool.release(2)
+
+    # A replaying graph still reads those pages, so the ledger keeps them and the
+    # chunk stays allocated.
+    assert pool.shrink_idle(now_seconds=1.0) == 0
+    assert provider.prepared == []
+
+    pool.global_pool.retire_epoch(7)
+    assert pool.shrink_idle(now_seconds=1.0) == 2
+    assert provider.shrunk == [2]
+    pool.release(1)
+    pool.close()
+
+
+def test_shrink_idle_honours_the_idle_grace_period() -> None:
+    pool, provider, _invalidated = _shrinkable_pool()
+    pool.idle_grace_seconds = 30.0
+    pool.allocate(1, 3, now_seconds=100.0)
+    pool.release(1, now_seconds=110.0)
+
+    assert pool.shrink_idle(now_seconds=139.0) == 0
+    assert provider.prepared == []
+    assert pool.shrink_idle(now_seconds=140.0) == 3
+    assert provider.shrunk == [2]
+    pool.close()
+
+
+def test_shrink_idle_without_a_release_provider_keeps_grown_capacity() -> None:
+    pool, provider, _invalidated = _shrinkable_pool(shrink=False)
+    pool.allocate(1, 3)
+    pool.release(1)
+
+    # No provider means no way to retract physical backing, so the grown chunk
+    # stays allocated rather than the ledger forgetting it.
+    assert pool.shrink_idle(now_seconds=1.0) == 0
+    assert pool.current_pages == 5
+    assert provider.shrunk == []
+    pool.close()
+
+
+def test_shrink_idle_prepare_failure_leaves_the_pool_unchanged() -> None:
+    pool, provider, _invalidated = _shrinkable_pool()
+    pool.allocate(1, 3)
+    pool.release(1)
+    generation = pool.global_pool.generation
+    release_points = list(pool._release_points)
+    chunks = list(pool._chunks)
+    provider.failure = RuntimeError("unmap failed")
+
+    with pytest.raises(RuntimeError, match="unmap failed"):
+        pool.shrink_idle(now_seconds=1.0)
+
+    assert pool.current_pages == 5
+    assert provider.published == 5
+    assert provider.held == 5
+    assert pool.global_pool.generation == generation
+    assert pool._release_points == release_points
+    assert pool._chunks == chunks
+    assert pool.stats.shrink_events == 0
+
+    provider.failure = None
+    assert pool.shrink_idle(now_seconds=1.0) == 3
+    pool.close()
+
+
+def test_shrink_idle_release_failure_keeps_the_retracted_ledger() -> None:
+    """A free failure after retraction leaks storage; it cannot corrupt the pool."""
+
+    pool, provider, _invalidated = _shrinkable_pool()
+    pool.allocate(1, 3)
+    pool.release(1)
+    provider.release_failure = RuntimeError("hipFree failed")
+
+    with pytest.raises(RuntimeError, match="hipFree failed"):
+        pool.shrink_idle(now_seconds=1.0)
+
+    # The ledger already dropped the pages and publishes the retained tables, so
+    # nothing points at the storage the provider failed to free. The provider's
+    # physical commitment stays above its published capacity: a reported leak.
+    assert provider.prepared == [2]
+    assert provider.published == 2
+    assert provider.held == 5
+    assert pool.current_pages == 2
+    assert pool.stats.shrink_events == 1
+    assert pool.storage_view().planes[0].shape == (2,)
+    assert pool._chunks == [(0, 2, {"arena": 2})]
+    pool.global_pool.assert_conserved()
+    # The pool still serves the retained capacity, and a later growth works.
+    assert pool.allocate(2, 2).block_ids == (0, 1)
+    pool.release(2)
+    pool.grow(2)
+    assert pool.current_pages == 4
+    pool.close()
+
+
+def test_shrink_idle_fails_closed_when_the_provider_cannot_restore() -> None:
+    pool, provider, _invalidated = _shrinkable_pool()
+    pool.allocate(1, 3)
+    pool.release(1)
+
+    def unrestorable(target: int):
+        raise KVStorageFault("arena restore failed")
+
+    pool._shrink_storage = unrestorable
+    with pytest.raises(KVStorageFault, match="arena restore failed"):
+        pool.shrink_idle(now_seconds=1.0)
+
+    # The ledger still advertises pages the provider could not keep backed, so
+    # admission must fail closed instead of handing them out.
+    assert pool.current_pages == 5
+    assert provider.prepared == []
+    with pytest.raises(RuntimeError, match="unusable"):
+        pool.allocate(2, 1)
+    with pytest.raises(RuntimeError, match="unusable"):
+        pool.grow(1)
+    with pytest.raises(RuntimeError, match="unusable"):
+        pool.lease_workspace("packed", 1)
+    # Draining and closing still work.
+    pool.close()
+    with pytest.raises(RuntimeError, match="closed"):
+        pool.allocate(3, 1)
+
+
+def test_shrink_idle_holds_the_ledger_lock_against_direct_ledger_access() -> None:
+    """A direct ledger caller cannot claim a page inside the retracted range.
+
+    ``GlobalDeviceKVPool.global_pool`` is a public ledger, so the pool cannot
+    assume every caller goes through its own lock. The retraction therefore holds
+    the ledger lock from the free-tail test until the truncation, which is what
+    this test pins down.
+    """
+
+    pool, provider, _invalidated = _shrinkable_pool()
+    pool.allocate(1, 3)
+    pool.release(1)
+    attempting = threading.Event()
+    intruder_done = threading.Event()
+    intruder: list[object] = []
+
+    def direct_allocate() -> None:
+        attempting.set()
+        try:
+            intruder.append(
+                pool.global_pool.allocate(
+                    "intruder", private_pages=2, growth_credit_pages=0
+                )
+            )
+        finally:
+            intruder_done.set()
+
+    worker = threading.Thread(target=direct_allocate)
+
+    def prepare(target: int):
+        # Start the intruder once the shrink holds the ledger lock, so its
+        # allocation attempt cannot land before the free-tail test runs.
+        worker.start()
+        assert attempting.wait(5.0)
+        # The intruder is inside the ledger's allocate; it must be blocked on the
+        # lock the shrink holds, not served a page that is about to be dropped.
+        assert intruder_done.wait(0.2) is False
+        return provider.shrink(target)
+
+    pool._shrink_storage = prepare
+    try:
+        assert pool.shrink_idle(now_seconds=1.0) == 3
+    finally:
+        if worker.ident is not None:
+            worker.join(5.0)
+    assert not worker.is_alive()
+    assert pool.current_pages == 2
+    # The direct allocation was served after the retraction, from the retained
+    # capacity only, and the pool is consistent.
+    assert len(intruder) == 1
+    assert intruder[0].private_page_ids == (0, 1)
+    pool.global_pool.release("intruder")
+    pool.global_pool.assert_conserved()
+    pool.close()
+
+
+def test_shrink_idle_retracts_a_merged_arena_and_grows_again() -> None:
+    pool, provider, _invalidated = _shrinkable_pool(contiguous_growth=True)
+    allocation = pool.allocate(1, 3)
+    assert pool.current_pages == 4
+    assert allocation.chunk_start_block_id == 0
+    pool.release(1)
+
+    assert pool.shrink_idle(now_seconds=1.0) == 2
+    assert pool.backing == {"arena": 2}
+    assert pool._chunks == [(0, 2, {"arena": 2})]
+    assert pool._release_points == [2]
+
+    # A later request grows again from the retained floor instead of reusing a
+    # stale release point.
+    again = pool.allocate(2, 3)
+    assert pool.current_pages == 4
+    assert pool._release_points == [2, 4]
+    assert again.chunk_start_block_id == 0
+    pool.release(2)
+    assert pool.shrink_idle(now_seconds=2.0) == 2
+    assert provider.shrunk == [2, 2]
+    pool.close()
+
+
+def test_shrink_idle_stops_at_the_load_time_floor() -> None:
+    pool, provider, _invalidated = _shrinkable_pool()
+    pool.allocate(1, 3)
+    pool.release(1)
+    assert pool.shrink_idle(now_seconds=1.0) == 3
+    assert pool.shrink_idle(now_seconds=2.0) == 0
+    assert pool.current_pages == 2
+    assert pool.low_water_pages == 2
+    assert provider.shrunk == [2]
+    pool.close()
+
+
+def test_shrink_idle_adoption_failure_fails_closed_and_aborts_the_prepare() -> None:
+    """A retraction the pool cannot adopt must not leave the pool serving pages."""
+
+    aborted: list[object] = []
+    pool, provider, _invalidated = _shrinkable_pool(
+        abort=lambda handle: aborted.append(handle)
+    )
+    pool.allocate(1, 3)
+    pool.release(1)
+    real_truncate = pool.global_pool.truncate_pages
+
+    def failing_truncate(pages: int, *, pointer_table_pointers=None) -> int:
+        raise RuntimeError("ledger truncate failed")
+
+    pool.global_pool.truncate_pages = failing_truncate
+    try:
+        with pytest.raises(RuntimeError, match="ledger truncate failed"):
+            pool.shrink_idle(now_seconds=1.0)
+    finally:
+        pool.global_pool.truncate_pages = real_truncate
+
+    # Prepare already published the retained tables and, for a VMM provider,
+    # unmapped the arena above the target. The ledger still advertises all five
+    # pages, so admission must refuse rather than serve unbacked pages.
+    assert len(aborted) == 1
+    assert pool.current_pages == 5
+    assert pool.stats.shrink_events == 0
+    assert pool.stats.retired_pages == 0
+    with pytest.raises(RuntimeError, match="unusable"):
+        pool.allocate(2, 1)
+    with pytest.raises(RuntimeError, match="unusable"):
+        pool.grow(1)
+    with pytest.raises(RuntimeError, match="unusable"):
+        pool.lease_workspace("packed", 1)
+    # The provider never reached its release phase, so nothing was freed.
+    assert provider.prepared == [2]
+    assert provider.shrunk == []
+    assert provider.published == 5
+    # Release anything a refusal assertion managed to allocate, so a regression
+    # reports the refusal rather than a close error.
+    for request_id in list(pool._request_allocations):
+        pool.release(request_id)
+    pool.close()
+    with pytest.raises(RuntimeError, match="closed"):
+        pool.allocate(3, 1)

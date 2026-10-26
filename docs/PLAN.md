@@ -296,7 +296,13 @@ backend = KVBackendRegistry.resolve(
 
 One resolved composition owns one global hot pool set plus optional cold pools.
 DMS is a retention topology; KVTC is a cold codec. Neither owns a second
-scheduler.
+scheduler. Device pools with a release provider can retract free trailing growth
+units after the configured idle grace period, never below their load-time floor.
+Reclamation holds the page-ledger lock through storage changes and ledger
+truncation; superseded pointer tables are freed after the ledger adopts their
+replacement. Live leases, cache
+references, pins and in-flight epochs prevent release. An unrecoverable mapping
+restoration fault makes the pool refuse further admission.
 
 ### Why No Scheduler Changes
 

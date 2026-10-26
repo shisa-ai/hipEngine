@@ -105,3 +105,145 @@ def test_copy_on_write_preserves_appended_chunk_identity(monkeypatch):
     assert fork.pool_page_capacity == 8
     assert fork.backing is allocation.backing
     assert fork.first_divergent_token == 256
+
+
+def _chunk_provider_pool(monkeypatch):
+    """Build a chunk-confined pool over a fake device allocator.
+
+    Returns the pool, the live-pointer set, and the recorded uploads so a shrink
+    can be checked against the storage the provider actually holds.
+    """
+
+    next_pointer = 0x100000
+    uploaded: dict[int, bytes] = {}
+    live: set[int] = set()
+
+    def malloc(nbytes, **kwargs):
+        nonlocal next_pointer
+        buffer = DeviceBuffer(ptr=next_pointer, nbytes=int(nbytes))
+        next_pointer += int(nbytes) + 256
+        live.add(buffer.ptr)
+        return buffer
+
+    def free(buffer, **kwargs):
+        live.remove(buffer.ptr)
+
+    def upload(buffer, host, nbytes, **kwargs):
+        uploaded[buffer.ptr] = ctypes.string_at(host, nbytes)
+
+    monkeypatch.setattr(runner, 'malloc', malloc)
+    monkeypatch.setattr(runner, 'free', free)
+    monkeypatch.setattr(gguf_kv, 'malloc', malloc)
+    monkeypatch.setattr(gguf_kv, 'free', free)
+    monkeypatch.setattr(runner, 'copy_host_to_device', upload)
+    session = object.__new__(runner.Qwen35GGUFResidentSession)
+    session.defer_kv_allocation = True
+    session.runner = _allocator_fake_runner()
+    session.scratch = SimpleNamespace()
+    session.runtime = SimpleNamespace(memset=lambda *args: None)
+    session._device_kv_layout = _int8_kv_layout()
+    session.kv_pool_memory_budget_mib = 128
+    session.model_path = 'test.gguf'
+    session.kv_storage_dtype = runner.DType.INT8_PER_TOKEN_HEAD
+    session.kv_storage_layout = 'uniform'
+    pool = session.create_global_device_kv_pool(page_capacity=2, generation=1)
+    return pool, live, uploaded
+
+
+def test_runtime_shrink_releases_the_appended_chunk_and_republishes_tables(
+    monkeypatch,
+):
+    """A chunk-confined provider frees only the chunks above the retained capacity."""
+
+    pool, live, uploaded = _chunk_provider_pool(monkeypatch)
+    try:
+        pool.grow(3)
+        assert pool.current_pages == 5
+        assert len(pool._chunks) == 2
+        appended = pool._chunks[-1][2]
+        appended_buffers = {int(buffer.ptr) for buffer in appended.buffers}
+        assert appended_buffers <= live
+
+        released = pool.shrink_idle(now_seconds=1.0)
+
+        assert released == 3
+        assert pool.current_pages == 2
+        assert len(pool._chunks) == 1
+        assert pool.stats.shrink_events == 1
+        # The appended chunk's plane buffers are freed, and only the republished
+        # tables remain beyond the load-time chunk.
+        assert appended_buffers.isdisjoint(live)
+        descriptor = np.frombuffer(
+            uploaded[int(pool.global_pool.storage_view().metadata_descriptor_ptr)],
+            dtype=np.uint64,
+        )
+        assert int(descriptor[1]) == 2
+        for role, pointer in pool.global_pool._pointer_table_pointers.items():
+            table = np.frombuffer(uploaded[pointer], dtype=np.uint64)
+            expected = tuple(
+                pool.global_pool.page_pointer(role, page)
+                for page in range(pool.current_pages)
+            )
+            assert tuple(int(value) for value in table) == expected
+
+        # The load-time chunk is the floor and is never retracted.
+        assert pool.shrink_idle(now_seconds=2.0) == 0
+        assert pool.current_pages == 2
+    finally:
+        pool.close()
+    assert not live
+
+
+def test_runtime_shrink_keeps_a_chunk_a_live_allocation_still_uses(monkeypatch):
+    pool, live, _uploaded = _chunk_provider_pool(monkeypatch)
+    try:
+        pool.grow(3)
+        allocation = pool.allocate(1, 3)
+        assert allocation.chunk_start_block_id == 2
+
+        assert pool.shrink_idle(now_seconds=1.0) == 0
+        assert pool.current_pages == 5
+
+        pool.release(1)
+        assert pool.shrink_idle(now_seconds=1.0) == 3
+        assert pool.current_pages == 2
+    finally:
+        pool.close()
+    assert not live
+
+
+def test_runtime_shrink_reports_a_device_free_failure_without_double_freeing(
+    monkeypatch,
+):
+    """A free failure after retraction leaks; it must not corrupt the pool."""
+
+    pool, live, _uploaded = _chunk_provider_pool(monkeypatch)
+    fake_free = gguf_kv.free
+    appended_buffers: set[int] = set()
+    try:
+        pool.grow(3)
+        appended = pool._chunks[-1][2]
+        appended_buffers = {int(buffer.ptr) for buffer in appended.buffers}
+
+        def failing_free(buffer, **kwargs):
+            if int(buffer.ptr) in appended_buffers:
+                raise RuntimeError("hipFree failed")
+            return fake_free(buffer, **kwargs)
+
+        monkeypatch.setattr(runner, 'free', failing_free)
+        monkeypatch.setattr(gguf_kv, 'free', failing_free)
+        with pytest.raises(RuntimeError, match="device free"):
+            pool.shrink_idle(now_seconds=1.0)
+
+        # The pool retracted the chunk before freeing it, so it no longer tracks
+        # the storage and close cannot free it a second time.
+        assert pool.current_pages == 2
+        assert len(pool._chunks) == 1
+        assert pool.stats.shrink_events == 1
+        assert appended_buffers <= live
+    finally:
+        monkeypatch.setattr(runner, 'free', fake_free)
+        monkeypatch.setattr(gguf_kv, 'free', fake_free)
+        pool.close()
+    # The failed frees leaked exactly the released chunk's plane buffers.
+    assert live == appended_buffers

@@ -12,6 +12,7 @@ from hipengine.kvcache.pool import (
     DeviceKVContiguityError,
     DeviceKVPoolAllocation,
     DeviceKVPoolStats,
+    KVStorageFault,
     KVPoolChunk,
 )
 
@@ -47,6 +48,14 @@ class GlobalDeviceKVPool:
         ]
         | None = None,
         before_grow: Callable[[], None] | None = None,
+        shrink_storage: Callable[
+            [int], tuple[Mapping[str, int], Any, Any]
+        ]
+        | None = None,
+        release_storage: Callable[[Any], None] | None = None,
+        abort_shrink: Callable[[Any], None] | None = None,
+        before_shrink: Callable[[], None] | None = None,
+        idle_grace_seconds: float = 0.0,
         max_pages: int | None = None,
         growth_chunk_pages: int | None = None,
         on_pressure: Callable[[int], None] | None = None,
@@ -83,7 +92,9 @@ class GlobalDeviceKVPool:
             if growth_chunk_pages is None
             else max(1, int(growth_chunk_pages))
         )
-        self.idle_grace_seconds = 0.0
+        self.idle_grace_seconds = float(idle_grace_seconds)
+        if self.idle_grace_seconds < 0:
+            raise ValueError("idle_grace_seconds must be non-negative")
         self._backing = backing
         # Storage chunks in page-id order: (start_page, page_count, backing).
         # Growth appends a chunk with its own device buffers, and consumers
@@ -91,6 +102,11 @@ class GlobalDeviceKVPool:
         self._chunks: list[tuple[int, int, Any]] = [
             (0, int(self.global_pool.page_capacity), backing)
         ]
+        # Page capacities at which the provider can retract storage again: the
+        # initial commit, then one per appended growth. A shrink target must be
+        # one of these, because a provider can only release a unit it allocated
+        # (one appended chunk, or one committed VMM segment).
+        self._release_points: list[int] = [int(self.global_pool.page_capacity)]
         self._close_storage = close_storage
         self._grow_storage = grow_storage
         # Only stable-address providers may merge growth into one binding.
@@ -102,6 +118,27 @@ class GlobalDeviceKVPool:
         # never silently free. A plain ``hipMalloc`` provider leaves it None.
         self._physical_bytes_for_pages = physical_bytes_for_pages
         self._before_grow = before_grow
+        # Physical release of an idle grown tail, in two phases. The provider's
+        # ``shrink_storage`` publishes the retained pointer tables and reports an
+        # opaque handle without freeing anything, so the pool can retract its
+        # ledger against storage that is still fully mapped. ``release_storage``
+        # then frees what the pool no longer owns; a failure there leaks device
+        # memory but cannot leave the ledger pointing at freed tables. Without a
+        # provider nothing can be released.
+        self._shrink_storage = shrink_storage
+        self._release_storage = release_storage
+        # Frees only what a prepare allocated, for a retraction the pool could not
+        # adopt. It never undoes the prepare: the VMM provider has already
+        # unmapped the arena by then, so the pool reports a storage fault instead.
+        self._abort_shrink = abort_shrink
+        # Graphs that captured the previous pointer tables must be invalidated
+        # before those tables are freed, exactly as for growth.
+        self._before_shrink = before_shrink
+        # Set when a provider reported that it could not restore backing it had
+        # already unmapped. The pages this pool still advertises above that point
+        # are not backed by device memory, so admission fails closed rather than
+        # serving a write that faults.
+        self._storage_fault: KVStorageFault | None = None
         self._max_pages = None if max_pages is None else int(max_pages)
         if self._max_pages is not None and self._max_pages < self.global_pool.page_capacity:
             raise ValueError("max_pages cannot be below the initial pool capacity")
@@ -124,6 +161,8 @@ class GlobalDeviceKVPool:
         self._cow_forked_pages = 0
         self._allocation_failures = 0
         self._grow_events = 0
+        self._shrink_events = 0
+        self._retired_pages = 0
         self._closed = False
         self._lock = threading.RLock()
 
@@ -326,11 +365,13 @@ class GlobalDeviceKVPool:
                 pinned_pages=sum(record.session_pins > 0 for record in records),
                 grow_events=self._grow_events,
                 grow_failures=self._allocation_failures,
-                shrink_events=0,
+                shrink_events=self._shrink_events,
                 prefix_reuse_events=self._prefix_reuse_events,
                 prefix_reused_pages=self._prefix_reused_pages,
                 cow_fork_events=self._cow_fork_events,
                 cow_forked_pages=self._cow_forked_pages,
+                retired_pages=self._retired_pages,
+                retired_bytes=self._retired_pages * self.page_bytes,
             )
 
     def storage_view(self):
@@ -656,8 +697,132 @@ class GlobalDeviceKVPool:
             return allocation
 
     def shrink_idle(self, *, now_seconds: float) -> int:
-        del now_seconds
-        return 0
+        """Release grown storage that nothing has referenced since the grace period.
+
+        Only a whole growth unit is retracted: one appended chunk, or one
+        committed arena segment. A unit is released only when every page in it
+        and every page above it is free in the ledger, which excludes active
+        leases, cache references, session/graph pins, growth credit and in-flight
+        graph epochs. The initial capacity is the floor, so the load-time backing
+        is never retracted.
+
+        That free-page test is also what protects a bound session: a request's
+        session detaches the allocation (``unbind_device_kv_allocation``) before
+        the request releases its lease, so a chunk that any live session still
+        addresses always has an active lease and is never retracted.
+
+        Ordering, all under the pool lock and the ledger lock:
+
+        1. the provider publishes the retained pointer tables and descriptor and
+           returns a release handle, without freeing anything;
+        2. the ledger drops the pages and the pool drops the matching chunk and
+           release point, so the pool now owns exactly what is still mapped;
+        3. the provider frees the tables and chunks the pool no longer owns.
+
+        A failure in step 1 leaves the pool untouched. A failure in step 3 leaks
+        device memory but cannot leave the ledger pointing at freed storage, and
+        is reported rather than swallowed. A provider that reports it could not
+        restore backing it already unmapped, and a failure adopting the prepared
+        publication in step 2, both leave the pool advertising pages the provider
+        no longer backs, so every later admission fails closed instead of writing
+        to unbacked pages.
+        """
+
+        shrink_storage = getattr(self, "_shrink_storage", None)
+        if not callable(shrink_storage):
+            return 0
+        if float(now_seconds) - float(self._last_active_seconds) < float(
+            self.idle_grace_seconds
+        ):
+            return 0
+        with self._lock:
+            self._require_open()
+            # The ledger lock spans the whole retraction: a page the boundary
+            # test found free must stay free until the ledger drops it, including
+            # against callers that reach the ledger directly rather than through
+            # this pool.
+            with self.global_pool.locked():
+                target = self._reclaimable_capacity()
+                if target is None:
+                    return 0
+                released = int(self.current_pages) - int(target)
+                before_shrink = getattr(self, "_before_shrink", None)
+                if callable(before_shrink):
+                    before_shrink()
+                try:
+                    pointer_tables, root_backing, handle = shrink_storage(target)
+                except KVStorageFault as fault:
+                    # The provider unmapped backing it could not restore. The
+                    # ledger still advertises those pages, so refuse to serve
+                    # anything from this pool again.
+                    self._storage_fault = fault
+                    raise
+                try:
+                    self.global_pool.truncate_pages(
+                        target,
+                        pointer_table_pointers=dict(pointer_tables),
+                    )
+                    self._release_points = [
+                        point for point in self._release_points if int(point) <= target
+                    ]
+                    if self._contiguous_growth:
+                        backing = (
+                            self._backing if root_backing is None else root_backing
+                        )
+                        self._backing = backing
+                        self._chunks[:] = [(0, target, backing)]
+                    else:
+                        self._chunks[:] = [
+                            chunk
+                            for chunk in self._chunks
+                            if int(chunk[0]) + int(chunk[1]) <= target
+                        ]
+                    self._shrink_events += 1
+                    self._retired_pages += int(released)
+                except BaseException as exc:
+                    # A prepare already published the retained tables and, for the
+                    # VMM provider, unmapped the arena above the target. If the
+                    # pool cannot adopt that publication its ledger still names
+                    # pages the provider no longer backs, so admission must fail
+                    # closed rather than write into the unmapped range.
+                    fault = KVStorageFault(
+                        "global device KV pool could not adopt a prepared shrink"
+                    )
+                    fault.__cause__ = exc
+                    self._storage_fault = fault
+                    abort_shrink = getattr(self, "_abort_shrink", None)
+                    if callable(abort_shrink):
+                        # Cleanup never raises over the failure being unwound, and
+                        # cannot undo the prepare: the arena is already retracted.
+                        abort_shrink(handle)
+                    raise
+                release_storage = getattr(self, "_release_storage", None)
+                if callable(release_storage):
+                    # The pool is already consistent here; a free failure below
+                    # leaks storage and is reported, not hidden.
+                    release_storage(handle)
+            return int(released)
+
+    def _reclaimable_capacity(self) -> int | None:
+        """Lowest growth release point whose page range and every page above are free.
+
+        ``None`` when the pool is already at its floor or when the free suffix
+        does not reach back to a capacity the provider allocated.
+        """
+
+        floor = max(1, int(self.low_water_pages))
+        current = int(self.current_pages)
+        if current <= floor:
+            return None
+        boundary = int(self.global_pool.free_tail_boundary(floor=floor))
+        candidates = [
+            int(point)
+            for point in self._release_points
+            if boundary <= int(point) < current
+        ]
+        if not candidates:
+            return None
+        return min(candidates)
 
     def grow(
         self,
@@ -698,6 +863,7 @@ class GlobalDeviceKVPool:
                 self.global_pool.append_pages(plane_pointers, pointer_tables)
                 added = int(self.global_pool.page_capacity) - chunk_start
                 if added > 0:
+                    self._release_points.append(int(self.global_pool.page_capacity))
                     if self._contiguous_growth:
                         if chunk_backing is not None:
                             self._backing = chunk_backing
@@ -850,6 +1016,11 @@ class GlobalDeviceKVPool:
     def _require_open(self) -> None:
         if self._closed:
             raise RuntimeError("global device KV pool is closed")
+        if self._storage_fault is not None:
+            raise RuntimeError(
+                "global device KV pool is unusable: a storage release could not "
+                "restore its backing"
+            ) from self._storage_fault
 
 
 __all__ = ["GlobalDeviceKVPool"]
