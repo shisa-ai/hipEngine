@@ -3208,25 +3208,6 @@ should be removed or collapsed.
   regex/quoted-substring capability mirror and the local raw-IQ predicate copy
   are removed. The stamp-switch hazard itself stays open until U1 binds policy
   to the actual role/shape/type/layout manifest.
-- ~~Residual cold-path import chain (not fixed here)~~ Fixed 2026-09-07 (UD-U0
-  review blocker): the engine root `hipengine/__init__.py` eagerly imported
-  `hipengine.llm`, whose speculative package chain loads
-  `hipengine.kernels.hip_gfx1100`, so importing any `hipengine.loading.*`
-  module (the metadata audit, its tests, any no-ROCm CI) loaded a GPU backend
-  package. The root package now resolves `LLM` and `SamplingParams` lazily via
-  PEP 562 module `__getattr__` (`ExecutionProfile` stays eager; it is pure), so
-  a bare `import hipengine` is CPU-safe while `from hipengine import LLM,
-  SamplingParams` and the runtime kernel-registration chain are unchanged.
-  Guarded by
-  `tests/test_unit_scripts_gguf_quant_route_audit.py::test_fresh_process_audit_never_imports_gpu_backend_packages`
-  (fresh subprocess, meta-path guard rejects `hipengine.kernels.hip_*` /
-  `cuda_*` / torch before any import, then runs the real CLI) and
-  `tests/test_integration_hipengine_public_api.py` (lazy-export identity/caching/`dir`
-  contracts). Remaining honest limitation: actually touching `LLM` or importing
-  `hipengine.llm` still loads the speculative package and kernel modules -- by
-  design, that is the runtime registration path -- so anything needing true
-  llm-free operation must keep using only pure modules
-  (`hipengine.loading.qwen35_gguf_policy`, `hipengine.execution_profiles`).
 - Analysis and the wider campaign this sits inside:
   [`UD-QUANTS.md`](campaigns/UD-QUANTS.md), sections 2, 7.3 and U0/U1.
 

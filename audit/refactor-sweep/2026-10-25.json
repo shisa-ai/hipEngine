@@ -4232,7 +4232,8 @@
         {
           "line": 3798,
           "text": "- ~~Residual cold-path import chain (not fixed here)~~ Fixed 2026-09-07 (UD-U0",
-          "status": "pending"
+          "status": "resolved-removed",
+          "evidence": ["R0139-owned subitem extracted under R0163 in the base inventory. Verified lazy __getattr__ source, fresh-process audit guard and public API tests pass; retired completed narrative. Runtime imports remain documented in hipengine/__init__.py."]
         },
         {
           "line": 3817,
