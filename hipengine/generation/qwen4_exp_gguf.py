@@ -1947,21 +1947,20 @@ def make_qwen4_exp_ud_q4_k_xl_generator_gfx1151(
     resident_capacity: int | None = None,
     prefill_chunk_size: int | None = None,
 ) -> Qwen4ExpGGUFTextGenerator:
-    generator = make_qwen4_exp_gguf_generator_gfx1151(
+    return make_qwen4_exp_gguf_generator_gfx1151(
         model_path=model_path,weight_index=weight_index,model_plugin=model_plugin,
         vision_model_path=vision_model_path,max_sequence_length=max_sequence_length,
         resident_capacity=resident_capacity,
         # `None` asks the generator's capacity guard to take the largest chunk
         # whose admission still yields the requested context (ledger RT-1/RT-3),
         # falling back 4096 -> 2048 -> 1024 when the device cannot afford it.
-        # The guard runs on the residency plan before any weight is
-        # materialized, so it costs no device memory and no time, and it keeps
-        # the pre-binding allocation consistent with what the profile will
-        # bind - the binder can only lower the runner's chunk afterwards.
-        prefill_chunk_size=None if prefill_chunk_size is None else prefill_chunk_size,
+        # The guard evaluates the residency plan before any weight is
+        # materialized, so a fallback costs no device allocation; it is host
+        # arithmetic, not a free operation. The constructor sizes the PLE
+        # staging ring, the plan and the resident session from this one value
+        # and passes it to the runner, so no later step restates or narrows it.
+        prefill_chunk_size=prefill_chunk_size,
     )
-    generator._implicit_profile_chunk_size = prefill_chunk_size is None
-    return generator
 
 
 register_text_generator(

@@ -961,28 +961,6 @@ def _report_prebinder_conflicts() -> None:
     warnings.warn(message, RuntimeWarning, stacklevel=3)
 
 
-def _bind_default_chunk(generator: Any, *, production: bool) -> None:
-    if getattr(generator,"_implicit_profile_chunk_size",False):
-        # The qualified factory allocated the caller's chunk before profile
-        # binding; the profile owns the production default.
-        #
-        # PRODUCTION CHUNK (2026-10-04): the generator's capacity guard picks
-        # the largest chunk the device can afford at the requested context and
-        # records it as `admitted_prefill_chunk_size` (ledger RT-1/RT-3). The
-        # binder binds THAT value rather than a fixed constant, so a device that
-        # cannot afford 4096 falls back to 2048 or 1024 instead of
-        # under-reserving. Evidence for the 1024 -> 4096 step:
-        # benchmarks/results/2026-10-04-qwen4exp-prefill-chunk-4096/ - +8.43%
-        # prefill and +1.68% decode at code-p4096, bit-identical token ids
-        # across strict and production at both chunk sizes, and the layer2 gate
-        # at 4096 reproducing the 1024 gate numbers digit for digit.
-        admitted = getattr(generator,"admitted_prefill_chunk_size",None)
-        if admitted:
-            generator.runner.prefill_chunk_size = int(admitted)
-        else:
-            generator.runner.prefill_chunk_size = 1024 if production else 512
-
-
 def _bind_f16_routes(*, enabled: bool) -> None:
     """Bind composition selectors, including strict disablement.
 
@@ -1003,7 +981,12 @@ def _bind(
     production: bool,
 ) -> None:
     _last_prebinder_conflicts.clear()
-    _bind_default_chunk(generator,production=production)
+    # The prefill chunk is not a profile decision: the generator's constructor
+    # sizes the PLE staging ring, the residency plan and the resident session
+    # from one value (the explicit argument, or the capacity guard's admitted
+    # rung when the caller left it unset) and hands that same value to the
+    # runner. Nothing here restates it, so a caller-supplied runner keeps its
+    # own chunk.
     table = getattr(getattr(generator, "_resident", None), "ple_table", None)
     if table is not None:
         # Sparse PLE mmap reads must not trigger sequential readahead. The

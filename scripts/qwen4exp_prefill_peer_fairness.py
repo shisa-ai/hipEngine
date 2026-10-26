@@ -9,11 +9,13 @@ interchangeable and the ledger has conflated them:
 ``session.prefill_chunk_size``
     The *runner-internal* chunk. ``prefill_chunked`` picks the prefill
     workspace whose ``prefill_chunk_size`` fits the token count, swaps it in,
-    and runs the whole prompt inside one call. Production binds this to 1024
-    at ``qwen4_exp_profiles.py:_bind_default_chunk``. **This is the knob the
-    measured -4.94% on ``code-p4096`` belongs to**, because
-    ``qwen4exp_profile_gap.py`` calls ``runner.prefill(ids)`` directly with
-    the whole prompt.
+    and runs the whole prompt inside one call. The generator's constructor owns
+    this value: with no explicit chunk the capacity guard admits the largest
+    rung of ``(4096, 2048, 1024)`` whose admission still yields the requested
+    context, and that one value sizes the PLE staging ring, the residency plan
+    and the resident session. **This is the knob the measured -4.94% on
+    ``code-p4096`` belongs to**, because ``qwen4exp_profile_gap.py`` calls
+    ``runner.prefill(ids)`` directly with the whole prompt.
 
 ``HIPENGINE_MAX_PREFILL_CHUNK_TOKENS``
     The *engine-loop scheduling* cap (default 1024,
@@ -139,27 +141,22 @@ def _install_chunk_override(chunk: int) -> None:
     """Force the chunk at *construction* on the generator.
 
     ``Qwen4ExpGGUFTextGenerator.__init__`` is the single owner of the chunk:
-    it sizes the PLE staging ring (``staging_token_capacity=prefill_chunk_size``)
-    and hands the same value to the resident session, whose base prefill
-    workspace is allocated in ``__init__``.  Patching only the session forces a
-    4096-token chunk against a 1024-row PLE staging ring and fails with "PLE row
-    request exceeds staging capacity"; patching the generator keeps them
-    consistent. A post-construction chunk assignment does not resize the base
-    owner's PLE staging allocation.
+    it sizes the PLE staging ring (``staging_token_capacity=prefill_chunk_size``),
+    builds the residency plan for that rung, and hands the same value to the
+    resident session, whose base prefill workspace is allocated in ``__init__``.
+    Patching only the session forces a 4096-token chunk against a 1024-row PLE
+    staging ring and fails with "PLE row request exceeds staging capacity";
+    patching the generator keeps them consistent. A post-construction chunk
+    assignment does not resize the base owner's PLE staging allocation.
 
-    The generator patch alone is **not** sufficient.  ``LLM`` reaches the
-    generator through the registry factory, which sets
-    ``_implicit_profile_chunk_size = prefill_chunk_size is None`` - True whenever
-    no chunk is passed, which is always here - and
-    ``qwen4_exp_profiles._bind_default_chunk`` then runs *after* construction and
-    resets ``generator.runner.prefill_chunk_size`` to 1024.  That silently
-    reverted the override: the workspace stayed 1024 rows and the chunk-4096 arms
-    died in ``copy_host_to_device`` with "copy size 32768 exceeds device buffer
-    size 8192".  ``_bind_default_chunk`` is therefore neutralised too, so the
-    chunk survives to the workspace allocation.
+    The generator patch is also **sufficient**: no later step owns the chunk.
+    The profile binder never writes ``runner.prefill_chunk_size``, so the value
+    supplied here is the one the staging ring, the plan and the workspace are
+    built from and the one the runner keeps. A future binding-time reset would
+    trip the per-session assertion in ``_run_child`` rather than silently
+    measuring the other chunk.
     """
 
-    from hipengine.generation import qwen4_exp_profiles
     from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
 
     original_init = Qwen4ExpGGUFTextGenerator.__init__
@@ -169,12 +166,6 @@ def _install_chunk_override(chunk: int) -> None:
         return original_init(self, *positional, **keyword)
 
     Qwen4ExpGGUFTextGenerator.__init__ = patched_init
-
-    def patched_bind_default_chunk(generator, *, production):  # type: ignore[no-untyped-def]
-        # Re-assert the requested chunk rather than the factory's implicit 1024.
-        generator.runner.prefill_chunk_size = int(chunk)
-
-    qwen4_exp_profiles._bind_default_chunk = patched_bind_default_chunk
 
 
 def _install_instrumentation(trace: dict[str, list[dict[str, Any]]]) -> None:
@@ -275,15 +266,20 @@ def _run_child(args: argparse.Namespace) -> int:
             )
             serving = adapter._runner
             sessions = _session_runners(serving)
-            # The profile binder re-asserts 1024 on the base runner after
-            # construction; keep the attribute consistent with the workspace
-            # that prefill_chunked will actually select.
+            # The constructor owns the chunk, so every session it built already
+            # carries the arm's value. Assert that instead of writing it: a
+            # future binding-time reset then fails here rather than silently
+            # measuring the other chunk.
             for session in sessions:
-                session.prefill_chunk_size = int(args.generator_chunk)
+                if int(session.prefill_chunk_size) != int(args.generator_chunk):
+                    raise RuntimeError(
+                        f"{args.arm}: session chunk "
+                        f"{session.prefill_chunk_size} != requested "
+                        f"{args.generator_chunk}")
             report["session_type"] = type(sessions[0]).__name__
             report["serving_type"] = type(serving).__name__
             report["session_count"] = len(sessions)
-            report["session_chunks_after_set"] = [
+            report["session_chunks_after_construction"] = [
                 int(s.prefill_chunk_size) for s in sessions
             ]
             report["session_workspace_chunks"] = [
@@ -513,7 +509,14 @@ def _summarize_arm(row: dict[str, Any]) -> dict[str, Any]:
         "order": row.get("order"),
         "generator_chunk_requested": row["generator_chunk_requested"],
         "loop_cap_requested": row["loop_cap_requested"],
-        "session_chunks_after_set": row.get("session_chunks_after_set"),
+        "session_chunks_after_construction": (
+            row["session_chunks_after_construction"]
+            if "session_chunks_after_construction" in row
+            # Archived artifacts predate the construction-only override and
+            # record the same list under the post-set name. Read the legacy key
+            # so an old child trace still summarizes; fresh rows never write it.
+            else row.get("session_chunks_after_set")
+        ),
         "session_workspace_chunks": row.get("session_workspace_chunks"),
         "session_count": row.get("session_count"),
         "workspace_chunk_observed_at_prefill": workspace_chunks,

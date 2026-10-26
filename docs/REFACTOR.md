@@ -2743,21 +2743,6 @@ the allocation repair. The observations and proposal below are historical.
   Replace these with device-resident tails only after the same whole/chunk,
   60-second transition, recording-reset and post-join-noise tests pass.
 
-## Qwen4Exp chunk allocation before profile binding
-
-- The UD-Q4_K_XL gfx1151 factory passes an omitted chunk size to the
-  capacity guard before profile binding. The guard selects an affordable
-  chunk; `_bind_default_chunk` uses `admitted_prefill_chunk_size` rather than
-  assuming a fixed allocation. Only owners without an admitted value use the
-  fallback of 1024 for production or 512 for strict.
-- `_implicit_profile_chunk_size` remains factory/profile coordination.
-  Replace it when runtime profile plans can convey allocation defaults before
-  construction. Preserve explicit chunk overrides and the admitted capacity;
-  do not grow workspace after allocation.
-- Historical fixed-512/1024 benchmark arms are not descriptions of today's
-  automatic allocation. New captures must record the admitted chunk and
-  selected profile rather than infer either from an omitted argument.
-
 ## Qwen4Exp mapped Q8 down rollback
 
 - Production `HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN` reuses the existing

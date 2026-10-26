@@ -3107,25 +3107,26 @@
       "start_line": 3019,
       "end_line": 3031,
       "sha256": "0967f81b015ad4f4142aef21b80984baae1cc69a09ac30a418524dfdf1f8f9dc",
-      "status": "partial-docs-corrected",
+      "status": "resolved-constructor-owned",
       "evidence": [
+        "Removed redundant binder chunk write and implicit marker; constructor already owns admission/staging/runner value. Explicit/auto/caller-runner tests, CPU bundle and public admitted4096 before/after bind pass. Fairness harness construction-only override and legacy report reading tested. worklog/entries/20261026T203749.801471Z-cleanup-refactor-r0115-51b378.md.",
         "Corrected obsolete fixed allocation/default claims. generation/qwen4_exp_gguf.py factory passes None for auto admission; qwen4_exp_profiles.py _bind_default_chunk binds admitted_prefill_chunk_size, with fixed fallback only when unavailable. Temporary implicit-profile coordination remains;12 chunk tests pass."
       ],
       "subitems": [
         {
           "line": 3021,
           "text": "- The qualified UD-Q4_K_XL gfx1151 factory allocates1024-capacity scratch",
-          "status": "reviewed-cleanup-remains"
+          "status": "resolved-constructor-owned"
         },
         {
           "line": 3025,
           "text": "- `_implicit_profile_chunk_size` is temporary factory/profile coordination.",
-          "status": "reviewed-cleanup-remains"
+          "status": "resolved-constructor-owned"
         },
         {
           "line": 3028,
           "text": "- Benchmark512/1024 arms intentionally share larger scratch;do not call",
-          "status": "reviewed-cleanup-remains"
+          "status": "historical-evidence-preserved"
         }
       ]
     },
