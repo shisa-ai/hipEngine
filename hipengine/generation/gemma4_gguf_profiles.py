@@ -1,14 +1,13 @@
 """Gemma 4 GGUF execution-profile plans.
 
-Production requests ``gemma4_staged``, an FP32 score/softmax/PV implementation
-that preserves the strict reduction order while moving scores out of LDS.
-Strict requests ``gemma4_plain``. Both plans declare sliding (head_dim 256) and
-full (head_dim 512) geometries. A layer matches capabilities against its own
+Production requests the promoted BF16 WMMA prefill variants, with strict-parity
+staged attention appended for eligible decode shapes. Strict requests
+``gemma4_plain``. Both plans declare sliding (head_dim 256) and full
+(head_dim 512) geometries. A layer matches capabilities against its own
 geometry; model identities and measured-artifact lists do not gate execution.
 
-The BF16 WMMA variants remain registered for explicit candidate evaluation.
-Their saved teacher-chain KL failures are recorded in the staged repair
-worklog; they are not the production default.
+Historical candidate failures and the later promotion describe different
+compositions; see docs/REFACTOR.md for the current routing and evidence.
 
 Plans and variants are registered in the authoring ``hip_gfx1100`` key space
 and the ``hip_gfx1151`` alias used by the Strix Halo generator. Registering the
@@ -47,8 +46,8 @@ PREFILL_ATTENTION_STAGED = "gemma4_staged"
 PREFILL_ATTENTION_WMMA_FLASH = "gemma4_wmma_flash"
 PREFILL_ATTENTION_WMMA_FLASH_FULL = "gemma4_wmma_flash_full"
 
-# Historical WMMA candidate evidence for explicit evaluation; the staged
-# production selections below do not claim these candidates' performance.
+# Historical per-geometry candidate evidence; current promotion and composition
+# decisions are recorded in docs/REFACTOR.md.
 PREFILL_ATTENTION_EVIDENCE = (
     "benchmarks/results/2026-09-29-gemma4-gfx1151-prefill-attention-wmma-candidate.json"
 )
@@ -57,8 +56,8 @@ PREFILL_ATTENTION_EVIDENCE_FULL = (
 )
 
 # Production prefill attention: the WMMA candidates per geometry, with the
-# strict-parity staged variant appended last so single-token decode keeps the
-# pipelined staged singleton (the measured decode lead) while multi-row
+# staged variant appended for eligible singleton decode; the layer selector
+# keeps strict decode through its key-count crossover. Multi-row
 # prefill resolves to the WMMA entries first. Order matters: the selector
 # matches in request order. Promoted 2026-10-07 under the section 2.11
 # router-routing-scoped envelope (EXECUTION-PROFILES); strict remains the
@@ -146,12 +145,10 @@ def _selections(*, production: bool) -> tuple[VariantSelection, ...]:
 def _with_decode_fallback(variants: tuple[str, ...]) -> tuple[str, ...]:
     """Append the strict-parity staged variant after promoted prefill entries.
 
-    A plan that promotes a reassociated prefill candidate keeps the staged
-    singleton for single-token decode: it is strict-parity arithmetic (no
-    additional numerical surface) and it is the measured decode path. Order is
-    load-bearing -- the selector matches in request order, so the WMMA
-    entries must come first for multi-row prefill while the appended staged
-    entry is what a one-token block resolves to.
+    A plan that promotes reassociated prefill keeps staged singleton available
+    for decode above the layer selector's strict-decode crossover. Order is
+    load-bearing: WMMA entries come first for multi-row prefill, while narrow
+    or single-token blocks follow the selector's shape and key-count policy.
     """
 
     if (PREFILL_ATTENTION_STAGED in variants
@@ -167,7 +164,8 @@ def _binder(generator: Any, resolved: Any) -> None:
 
     The request is the ordered set of variants the plan selected for this layer,
     deduplicated. A strict plan binds plain attention and a production plan
-    binds staged attention. Each layer resolves capabilities for its geometry.
+    binds the promoted prefill entries plus the staged decode fallback. Each
+    layer resolves capabilities for its geometry.
     """
 
     variants = tuple(

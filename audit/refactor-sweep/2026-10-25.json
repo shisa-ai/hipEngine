@@ -1396,8 +1396,10 @@
       "start_line": 1437,
       "end_line": 1452,
       "sha256": "8a6ee83ab30a30532a482ec37db8c7cb18d21796444959894f034059ce2f6670",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "T16 rollback removed with harness-local control, real on/off engagement and public parity validated; attention routing prose corrected, assistant-reachable flash fallback retained. Worklog:worklog/entries/20261026T053816.467794Z-lhl-cleanup-refactor-r0049-r0052-542fd1.md."
+      ],
       "subitems": []
     },
     {
@@ -1419,8 +1421,10 @@
       "start_line": 1475,
       "end_line": 1538,
       "sha256": "0ceab8be95fcf508fcfb3674b07287ae5bb0375480211401c22e379af76a95d9",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "T16 rollback removed with harness-local control, real on/off engagement and public parity validated; attention routing prose corrected, assistant-reachable flash fallback retained. Worklog:worklog/entries/20261026T053816.467794Z-lhl-cleanup-refactor-r0049-r0052-542fd1.md."
+      ],
       "subitems": []
     },
     {
@@ -1429,8 +1433,10 @@
       "start_line": 1539,
       "end_line": 1559,
       "sha256": "03d60951fdbfcdc5b16aca7e1918d8d2b9d364a694d08d0b7c3d1ac3fad776ce",
-      "status": "pending",
-      "evidence": [],
+      "status": "not-debt-retained",
+      "evidence": [
+        "T16 rollback removed with harness-local control, real on/off engagement and public parity validated; attention routing prose corrected, assistant-reachable flash fallback retained. Worklog:worklog/entries/20261026T053816.467794Z-lhl-cleanup-refactor-r0049-r0052-542fd1.md."
+      ],
       "subitems": []
     },
     {

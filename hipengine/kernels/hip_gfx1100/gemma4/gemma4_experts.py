@@ -2732,12 +2732,8 @@ def _gemma4_project_experts_down_wmma_t16(
     the raw-block WMMA owner.
     """
 
-    import os
-
     quant_key = getattr(getattr(weight, "spec", None), "quant_key", None)
     if quant_key != "gguf_q5_1":
-        return False
-    if os.environ.get("HIPENGINE_GEMMA4_Q5_1_DOWN_T16", "1") in {"", "0", "false", "False"}:
         return False
     if in_features % 32 or out_features % 16:
         return False

@@ -1590,21 +1590,50 @@ raising capture, and the absence of an environment read in both files.
 
 ## Q5_1T16 down-prefill rollback lever (added 2026-10-08)
 
-`HIPENGINE_GEMMA4_Q5_1_DOWN_T16` (default on) rolls the Gemma 4 expert down
-prefill from the Q5_1T16 tile route back to the raw-block grouped WMMA
-kernel, in `_gemma4_project_experts_down_wmma_t16`
-(`hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py`). The tile leaf is
-bit-identical to the raw-block leaf, so the lever exists only to A/B the two
-owners inside one process on the shared-memory iGPU, where mid-band session
-variance (~10 percent) is larger than the expected step-level delta.
+Cleanup status (2026-10-26, R0049): removed. The environment read is gone from
+`_gemma4_project_experts_down_wmma_t16`
+(`hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py`), with the
+function-local `import os` it needed and its `docs/ENVS.md` row. The leaf now
+decides on the weight's own facts alone: the `gguf_q5_1` quant key, the
+`in_features % 32` / `out_features % 16` geometry, and whether the weight
+carries the `t16_down` tile allocation. Each decline falls through to
+`gemma4_project_experts_wmma`, the raw-block grouped WMMA owner, which stays
+for weights that carry no tile allocation; the strict compensated variant
+resolves through that owner by the call site's `not compensated` guard, so no
+isolated path was deleted with the lever.
 
-Removal condition: once the tile route has been measured through a published
-paired ladder (in-process A/B plus the standard verify) and one release cycle
-passes without a rollback, delete the env check and this entry together. The
-raw-block WMMA owner itself stays: it is the fallback for weights that carry
-no tile allocation, and the strict compensated variant resolves through it.
+The lever existed only to A/B the two owners inside one process on the
+shared-memory iGPU, where mid-band session variance (~10 percent) is larger
+than the expected step-level delta. Both halves of its removal condition were
+on file. The paired ladder is the 2026-10-08 entry
+`worklog/entries/20261008T211640.994270Z-lhl-gemma4-q51-t16-down-5bc7e4.md`:
+the interleaved leaf A/B at the in-situ geometry (2.817 -> 1.714 ms, 1.6435x,
+40 alternating iterations) and two paired end-to-end rounds at 8192 with fresh
+processes and the arm order reversed (prefill 1163.9/1166.0 -> 1244.3/1245.3
+tok/s, 1.069x and 1.068x, both arms `status: ok` and `public_path_parity:
+True`). The lever shipped in `v0.8.0` (2026-10-20) and survived `v0.8.1`
+through `v0.8.3`; it is absent at `v0.7.1`, and no rollback is recorded. A
+numerical gate is not owed: the tile value byte is the integer the raw decoder
+derives and the arithmetic is the raw kernel's, so the two leaves are
+bit-identical, pinned by
+`tests/test_gpu_gguf_q5_1_t16_grouped_prefill.py` at uniform and ragged expert
+loads.
 
-## Gemma 4 WMMA attention candidates were promoted to the production prefill default (updated 2026-10-07)
+The comparison control moved into the harness rather than being lost.
+`scripts/gemma4_p3_down_ab.py --down-t16 {on,off}` pins the raw-block owner
+in-process by pointing `_gemma4_down_t16_tiles_ready` at a constant `False` --
+the guard the leaf itself reads, so there is no second selector -- and
+restores it, with the run's HIP-event timing wrappers, from `main`'s `finally`.
+Both down owners are timed on every call because the tile leaf launches outside
+`gemma4_project_experts_wmma`; the run prints each owner's launch count and the
+`gemma4_moe_expert_route_counts()` delta, and exits nonzero when the selected
+arm's own owner never launched. Two fresh processes with the arm order reversed
+are the paired ladder.
+`tests/test_unit_gemma4_down_t16_control.py` pins the arm, its restore after a
+raising run, the leaf's selection and fall-through, and the absence of an
+environment read.
+
+## Gemma 4 WMMA attention candidates were promoted to the production prefill default (updated 2026-10-15)
 
 Production routes multi-row prefill to `gemma4_wmma_flash` (sliding) and
 `gemma4_wmma_flash_full` (head_dim 512) on both gfx1151 and gfx1100. Each
@@ -1612,23 +1641,29 @@ backend's plan passed the section 2.11 router-routing-scoped envelope
 (EXECUTION-PROFILES, 2026-10-07 lead decision) on its own hardware: on the
 8060S median row KL 3.8e-6, p90 6.0e-3, flip-damage 1.3% against a 3% budget,
 top-1 98.4%; on the W7900 median 2.5e-6, p90 5.8e-3, flip-damage 0.62%, top-1
-98.94%; tasks non-inferior on all 18 packet cases with repeats and isolation
-green on both.
+98.94%; repeats and isolation green on both, and the gfx1151 packet also
+records task non-inferiority on all 18 cases (the gfx1100 packet's case rows
+record repeats and isolation only).
 
 Single-token decode differs by plan. The gfx1151 plan appends `gemma4_staged`
-to the prefill request, so a one-token block resolves to the strict-parity
-staged singleton. The gfx1100 plan declares a decode scope, and the runner
-forwards no prefill request on a decode step when one exists: the layer's
-decode selector serves it, with `gemma4_flash_long` (`gemma4_flash` with more
-slices past 8192 keys) for the untrimmed global step
-past the resident-logit bound, and for a step on either packing from 256 keys
-up to the 1024 where the native launch asks for flash itself, and
-`gemma4_staged` as that scope's rollback lever. Strict requests `gemma4_plain` on gfx1151; the gfx1100 strict plan
-declares it as each scope's rollback key and forwards no prefill request, so
-strict prefill there stays on the layer's own route chain. Unifying the two
-backends' decode routing and binding plain for gfx1100 strict are the open
-cleanups here. The profile remains the rollback lever:
-`HIPENGINE_EXECUTION_PROFILE=strict` selects plain attention.
+to the prefill request, so a one-token block resolves through that entry: to
+the strict decode kernel below the measured strict/flash crossover (4096 keys,
+`_STRICT_DECODE_WINS_UNTIL_KEYS`), and to the strict-parity staged singleton
+above it. The gfx1100 plan declares a decode scope, and the runner forwards no
+prefill request on a decode step when one exists: the layer's decode selector
+serves it, with `gemma4_flash_long` (`gemma4_flash` with more slices past 8192
+keys) for the untrimmed global step past the resident-logit bound, and for a
+step on either packing from 256 keys up to the 1024 where the native launch
+asks for flash itself. `gemma4_staged` stays registered behind that route, but
+it is not the scope's rollback lever: no plan selects it for decode any more,
+the plan's rollback key is `gemma4_plain`, and on gfx1100 the flash wrapper's
+own fallback is the only route to it (see the flash-decode section below).
+Strict requests `gemma4_plain` on gfx1151; the gfx1100 strict plan declares it
+as each scope's rollback key and forwards no prefill request, so strict prefill
+there stays on the layer's own route chain. Unifying the two backends' decode
+routing and binding plain for gfx1100 strict are the open cleanups here. The
+profile remains the rollback lever: `HIPENGINE_EXECUTION_PROFILE=strict`
+selects plain attention.
 
 Before the section 2.11 envelope the WMMA candidates were held out of the
 default: the multicategory teacher-chain packet found KL failures against the
@@ -1643,13 +1678,14 @@ The 2026-09-29 single-chain result in
 `benchmarks/results/2026-09-29-gemma4-teacher-forced-gate-prefill-attention.json`
 is historical evidence, not coverage of the failing categories or a performance
 claim for staged attention. Its original kernel-speed artifacts likewise measure
-WMMA, not the staged default.
+WMMA, not the staged chain they were compared against.
 
 **Diagnostic timing (2026-10-04; interpretation corrected 2026-10-05).**
 The same-process A/B in
 `benchmarks/results/2026-10-04-gemma4-gfx1151-prefill-attention-variant-ab.json`
 measures staged/WMMA prefill at 93.3/477.8 tok/s at 131072 tokens (5.121x).
-The candidate remains an arithmetic evaluation path, not a production default.
+The WMMA candidate was held out of the default when this was measured; it has
+been the production prefill default since 2026-10-07.
 The stage trace at 32768 attributes 59.5% of attention time to scores, 37.8%
 to P*V and 2.7% to softmax.
 
@@ -1668,26 +1704,54 @@ staged decode entry and the strict plain fallback stay registered, and the
 execution-profile selection is a product API, not a candidate-only flag. A
 revert is a profile decision, not a file deletion.
 
-## Gemma flash decode keeps a fallback the current scope cannot reach (found 2026-10-08)
+## Gemma flash decode keeps a fallback the current scope cannot reach (found 2026-10-08; kept 2026-10-26)
 
-`gemma4_attention_decode_flash_bf16` asks the launcher's own admission before it
-requests the flash route, and delegates to the staged singleton when that
-admission rejects the shape. The delegate is the chain the decode scope used
-before flash, and the launcher's own fallback -- the owned-scratch class kernel
--- is far slower at long context: measured 2026-10-08 at a 128K prefix, a
-global row that left the flash route took **225.3 ms** per decode step against
-the staged singleton's **73.4 ms** on the same teacher token and KV prefix
+Cleanup status (2026-10-26, R0052): keep, not debt. The wrapper's admission is
+the route decision for two callers, only one of which goes through a selector,
+so the recorded removal condition could not be executed as written.
+
+`gemma4_attention_decode_flash_bf16`
+(`hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:1346`) and its
+long-row sibling (`:1395`) share `_decode_flash_bf16` (`:1241`), which asks the
+launcher's own exported admission -- `flash_request_slices` (`:541`) and
+`flash_serves` (`:510`) -- before it requests the flash route (`:1266`, `:1274`)
+and delegates to the staged singleton when that admission rejects the shape.
+The delegate is the chain the decode scope used before flash, and the
+launcher's own fallback -- the owned-scratch class kernel -- is far slower at
+long context: measured 2026-10-08 at a 128K prefix, a global row that left the
+flash route took **225.3 ms** per decode step against the staged singleton's
+**73.4 ms** on the same teacher token and KV prefix
 (`/tmp/gemma4-pv/flashvar-decode-attrib.json`, `baseline-decode-attrib.json`,
-both at `308c4c38c`). Nothing the selector admits currently reaches the
-fallback: for the scope (one token, head_dim 512, GQA ratio 8, past the
-15,616-key resident bound) the fitted slice count always exists and is always
-admitted, which the fitting unit tests pin.
+both at `308c4c38c`).
 
-Removal condition: move the admission into the selector that chooses the variant
--- so a shape flash cannot serve resolves to `gemma4_staged` there -- and drop
-the wrapper's own check. That needs the selector to answer with the kernel's
-fitted slice count, which is a device-library call on the route-decision path;
-until that is measured, keep the wrapper's check as the single authority.
+Two callers reach the wrapper. The layer's decode selector
+(`_select_exact_decode_attention`,
+`hipengine/kernels/hip_gfx1100/gemma4/gemma4_layer.py:880`) resolves it for the
+production decode scope, and nothing that selector admits reaches the fallback:
+for the one-token global scope the fitted slice count always exists and is
+always admitted, which the fitting unit tests pin
+(`tests/test_unit_gemma4_decode_attention_selection.py:536`, `:556`). The MTP
+assistant head calls the long-row wrapper directly, with no selector in front
+of it -- `hipengine/runtime/gemma4_assistant.py:730` and `:1277` launch
+`gemma4_attention_decode_flash_long_bf16` for every draft row -- and its
+geometry comes from the assistant artifact. A packing the flash kernel does not
+instantiate (`flash_admits`, `gemma4_attention.py:579`: head_dim 256 with GQA
+ratio 2, or head_dim 512 with ratio 8) therefore reaches the wrapper with no
+route decision but this one, and would land on the class kernel if the check
+were dropped. The unit battery pins the same contract for a shape no selector
+can admit: `head_dim=128` falls to the staged chain
+(`tests/test_unit_gemma4_decode_attention_selection.py:580`).
+
+The recorded removal condition was also mis-costed. Moving the admission into
+the selector is not a new device-library call on the route-decision path: the
+launcher already makes the same two ctypes calls on the same launch
+(`gemma4_attention.py:1036`), so the move is cost-neutral per launch. The
+reason to keep the wrapper's check is that the selector is one caller among
+two, not that the call is expensive.
+
+Keep the wrapper's check. If the assistant head should share the layer's route
+decision, give that path its own selector call; that is a draft-routing change
+with its own measurement, not a cleanup of this wrapper.
 
 ## Plain Gemma attention needs raw-coordinate boundary validation (found 2026-10-03)
 
