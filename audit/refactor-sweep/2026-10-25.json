@@ -2416,8 +2416,10 @@
       "start_line": 2692,
       "end_line": 2717,
       "sha256": "8237398ea872f750eeb89292d9d29123e7f1f93384f1e980d1d13717914809d5",
-      "status": "partial-kernel-wrappers-migrated",
+      "status": "resolved-owning-uploads",
       "evidence": [
+        "Final caller census and DFlash2 persistent staging migration complete; CPU bundle, focused staging tests, real-device readbacks and native composite GPU tests pass. Remaining synchronous raw pointers are named ctypes/bytes owners; async contracts unchanged. Helper source owns API contract; completed ledger section removed. worklog/entries/20261026T173114.324139Z-cleanup-refactor-r0089-staging-c70f55.md.",
+        "NextN wrapper uploads and quantized projection staging repaired in f9b5dc6aa; CPU, real-weight and Q8/Q6 multi-row GPU regressions pass. worklog/entries/20261026T172019.487565Z-cleanup-refactor-r0089-nextn-kernel-a0441b.md.",
         "Graph restore and subset ID uploads migrated in b83e9553f; CPU, GPU parity and public Qwen MTP trace passed. worklog/entries/20261026T170413.931974Z-cleanup-refactor-r0089-direct-071dd0.md.",
         "Gemma expert identity, dense IQ metadata and VibeVoice Q4 context uploads migrated in b4f0cd140; CPU bundle, real-device readbacks and explicit MMQ public Gemma route passed. Full VibeVoice Q4 model unavailable. worklog/entries/20261026T171222.482594Z-cleanup-refactor-r0089-kernel-metadata-4ed3c3.md.",
         "Qwen4Exp batch state, runner and QSA index synchronous array uploads migrated with preserved byte offsets; GPU upload/lifetime and batch tests, CPU bundle and real HTTP physical width2 execution with traced owning helpers pass. Other model array callers and separate async contracts remain open. worklog/entries/20261026T112905.064466Z-cleanup-refactor-r0089-batch-uploads-f58cab.md.",
@@ -2441,22 +2443,22 @@
         {
           "line": 2694,
           "text": "- `copy_host_array_to_device(buffer, array, nbytes=None)` retains a contiguous",
-          "status": "pending"
+          "status": "resolved-owning-uploads"
         },
         {
           "line": 2700,
           "text": "- The reviewed temporary-array uploads in the GGUF, PARO, Moonshine, Evie,",
-          "status": "pending"
+          "status": "resolved-owning-uploads"
         },
         {
           "line": 2705,
           "text": "- Remaining cleanup: named-local array uploads still use the raw-address",
-          "status": "pending"
+          "status": "resolved-owning-uploads"
         },
         {
           "line": 2712,
           "text": "- `_copy_array_to_tensor`-style helpers may also carry defensive per-copy",
-          "status": "pending"
+          "status": "resolved-census"
         }
       ]
     },

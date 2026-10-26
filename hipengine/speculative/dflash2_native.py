@@ -19,9 +19,11 @@ import numpy as np
 from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     copy_device_to_host,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
+    DeviceBuffer,
 )
 from hipengine.kernels.hip_gfx1100.speculative.dflash2 import (
     build_dflash2,
@@ -115,7 +117,6 @@ class DFlash2NativeDrafter:
         max_wbytes = max((int(np.ascontiguousarray(a).nbytes) for a in weights.values()), default=0)
         staging_bytes = int(np.ceil(max(max_wbytes, 16 * 1024 * 1024) / 4)) * 4
         self._staging_np = np.empty(staging_bytes // 4, dtype=np.float32)
-        self._staging_ptr = int(self._staging_np.ctypes.data)
         self._staging_nbytes = staging_bytes
 
         self._bufs: list = []
@@ -232,20 +233,35 @@ class DFlash2NativeDrafter:
     def _staged_h2d(self, dst_ptr: int, arr: np.ndarray) -> None:
         """Upload ``arr`` to ``dst_ptr`` through the persistent host staging
         buffer (avoids the post-hipMalloc H2D segfault quirk).  Arrays larger
-        than the staging buffer are uploaded in contiguous chunks."""
+        than the staging buffer are uploaded in contiguous chunks.
+
+        The copy source is a byte view of ``_staging_np``, so the array that
+        owns those bytes stays alive until the synchronous copy returns. The
+        destination is a non-owning ``DeviceBuffer`` view of exactly the bytes
+        this call writes, which is what the helper bounds-checks the count
+        against; ``dst_ptr`` arrives as a bare address, so this method cannot
+        verify the caller's allocation size beyond that.
+        """
         arr_c = np.ascontiguousarray(arr)
         nbytes = arr_c.nbytes
+        source = arr_c.reshape(-1).view(np.uint8)
+        staging = self._staging_np.view(np.uint8)
         if nbytes <= self._staging_nbytes:
-            staging_view = self._staging_np.view(np.uint8)[:nbytes]
-            staging_view[:] = arr_c.view(np.uint8).ravel()
-            self.runtime.memcpy(dst_ptr, self._staging_ptr, nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+            staging_view = staging[:nbytes]
+            staging_view[:] = source
+            copy_host_array_to_device(
+                DeviceBuffer(dst_ptr, nbytes), staging_view, nbytes, runtime=self.runtime
+            )
             return
         chunk = self._staging_nbytes
         for offset in range(0, nbytes, chunk):
             size = min(chunk, nbytes - offset)
-            staging_view = self._staging_np.view(np.uint8)[:size]
-            staging_view[:] = arr_c.view(np.uint8).ravel()[offset : offset + size]
-            self.runtime.memcpy(dst_ptr + offset, self._staging_ptr, size, HipMemcpyKind.HOST_TO_DEVICE)
+            staging_view = staging[:size]
+            staging_view[:] = source[offset : offset + size]
+            copy_host_array_to_device(
+                DeviceBuffer(dst_ptr + offset, size), staging_view, size,
+                runtime=self.runtime,
+            )
 
     def _d2h(self, buf, shape: tuple[int, ...], dtype) -> np.ndarray:
         arr = np.empty(shape, dtype=dtype)
