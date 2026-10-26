@@ -419,6 +419,47 @@ def q51_pair2_control_record(*, environment=os.environ):
     }
 
 
+def q51_register_cache_control_record(runner=None, *, environment=os.environ):
+    """The recorded control for the register-cache arm.
+
+    The arm moves one decision - the register-cache fallback - and holds two
+    others fixed: the preempting owners are closed and the downstream
+    row-publish sibling is bound off, because that sibling replaces the leaf the
+    arm counts. Both are recorded with the value the arm forced and the value it
+    replaced, so a reader cannot mistake the production binding for the arm's
+    own state.
+    """
+
+    return {
+        "runner_field": "q51_register_cache",
+        "before": False,
+        "after": True,
+        "scope": "per measured run; restored on exit",
+        **q51_pair2_control_record(environment=environment),
+        "downstream_row_publish": {
+            "runner_field": "q51_row_publish",
+            "bound_value": False,
+            "published_value": (
+                None if runner is None
+                else getattr(runner, "q51_row_publish", None)),
+            "reason": (
+                "the row-publish sibling replaces the register-cache leaf this "
+                "arm counts, so both arms hold it off; the plan's value comes "
+                "back on exit"),
+        },
+        "published_value": (
+            None if runner is None
+            else getattr(runner, "q51_register_cache", None)),
+        "reason": (
+            "the register-cache leaf is the fallback parent of the row-publish "
+            "sibling, and the routed F16 WMMA down plus the exact iu8, "
+            "grouped-WMMA/grouped-MoE, MMQ and T16 owners preempt the pair2 "
+            "chain that contains it; both arms close those owners, hold the "
+            "downstream sibling off and record the pair2 gate because it must "
+            "stay on"),
+    }
+
+
 @contextlib.contextmanager
 def q51_pair2_scope(*, environment=os.environ):
     """Close the owners that preempt the grouped pair2 Q5_1 down chain.
@@ -876,6 +917,27 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         # arms so the counted serial leaf is the one that runs.
         return _combined_scope(
             gdn_serial_scope(environment=environment), variant)
+    if route_package == "q51-register-cache":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            # Binding nothing would measure whatever the plan published and
+            # report it as the arm, so the diagnostic must name its runner.
+            raise ValueError(
+                f"{route_package} needs the owning runner; binding no selection "
+                "would measure the plan's own Q5_1 down owner")
+        from hipengine.runtime.qwen4_exp_runner import (
+            q51_register_cache, q51_row_publish)
+
+        # The same owners that preempt the pair2 chain preempt this leaf, and
+        # the downstream row-publish sibling replaces it outright, so both arms
+        # close the preemptors and hold that sibling off; the profile's own
+        # values come back on exit. ``Q51_PAIR2_GATE_ENV`` must stay on and is
+        # recorded, not forced.
+        return _combined_scope(
+            q51_pair2_scope(environment=environment),
+            q51_register_cache(runner, mode == "after"),
+            q51_row_publish(runner, False))
     if route_package == "q51-row-publish":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
@@ -1037,7 +1099,9 @@ def _apply_mode(
         if route_package == "q51-fold-pair":
             flag = "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"
         if route_package == "q51-register-cache":
-            flag = "HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE"
+            # Request-local on the runner; ``route_scope`` binds the arm, closes
+            # the preemptors and holds the downstream row-publish sibling off.
+            return
         if route_package == "q51-row-publish":
             # Request-local on the runner; ``route_scope`` binds the arm.
             return
@@ -1720,6 +1784,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "layer, so the counted serial leaf only launches with the "
                 "tiled branch closed"),
         }
+    if args.route_package == "q51-register-cache":
+        artifact["selection_control"] = q51_register_cache_control_record(
+            generator.runner)
     if args.route_package == "q51-row-publish":
         artifact["arms"] = {
             "before": {"q51_down": "selected_grouped_prefill_pair2_register_cache_bf16_bf16_out"},

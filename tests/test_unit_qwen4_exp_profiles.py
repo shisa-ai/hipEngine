@@ -80,7 +80,6 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL",
-        "HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL",
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256",
         "HIPENGINE_QWEN4_EXP_ROUTED_F16",
@@ -413,7 +412,12 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert mapped["strict_fallback_variant"] == "selected_gemv_bf16_bf16_out"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE"] == "1"
+    # The Q5_1 register-cache fallback is request-local runner state published
+    # from the binder's own fallback policy, so the binder writes no
+    # process-wide switch for it.
+    assert "HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE" not in os.environ
+    assert production_generator.q51_register_cache is True
+    assert fake_runner.q51_register_cache is True
     # The Q5_1 row-publish selection is request-local runner state published
     # from the plan's own rows>=512 K640 row, so the binder writes no
     # process-wide switch for it.
@@ -514,7 +518,8 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert strict_generator.q8_down_register is False
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE"] == "0"
+    assert "HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE" not in os.environ
+    assert strict_generator.q51_register_cache is False
     assert strict_generator.q51_row_publish is False
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"] == "0"
@@ -598,6 +603,53 @@ def test_shipped_ud_plan_publishes_the_production_row_publish_fallback() -> None
 
     clone = _inherit_lane_decisions(generator, SimpleNamespace())
     assert clone.q51_row_publish is True
+
+
+def test_shipped_ud_plan_publishes_the_production_register_cache_fallback() -> None:
+    """The register-cache fallback must survive the plan's routed-F16 row.
+
+    The shipped plan replaced the pair2 down row with the newer routed F16
+    owner, so the row no longer names the register-cache leaf. The retired
+    switch was bound production-only, so the effective publication stays True
+    on a production plan, where it is the parent the published row-publish
+    sibling builds on; the strict binder publishes False.
+    """
+
+    from hipengine.kernels.registry import KernelKey
+    from hipengine.runtime import qwen4_exp_runner as runner
+
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    resolved = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
+    generator = resolved.construct_generator(lambda: SimpleNamespace())
+    row = next(
+        selection for selection in resolved.manifest["selections"]
+        if selection["layer"] == "moe_linear"
+        and selection["scope"]
+        == "prefill_rows_ge512_k640_exact_grouped_q5_1_down"
+    )
+    assert row["selected_variant"] == "selected_routed_f16_wmma_prefill_bf16_bf16_out"
+    assert generator.q51_register_cache is True
+    assert "HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE" not in os.environ
+    # Through the runtime selector that publication moves the folded-pair parent
+    # to the register-cache leaf, which the row-publish sibling then builds on.
+    parent = KernelKey(
+        "hip_gfx1151", "moe_linear", "gguf_q5_1",
+        "selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out")
+    leaf = runner._qwen4_exp_q51_register_cache_key(
+        parent, rows=1024, in_features=640,
+        published=generator.q51_register_cache,
+    )
+    assert leaf.variant == "selected_grouped_prefill_pair2_register_cache_bf16_bf16_out"
+    assert runner._qwen4_exp_q51_row_publish_key(
+        leaf, rows=1024, in_features=640,
+        published=generator.q51_row_publish,
+    ).variant == "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out"
+    # And a c1 runner cloned from that generator carries the same decision.
+    from hipengine.generation.qwen4_exp_gguf import _inherit_lane_decisions
+
+    clone = _inherit_lane_decisions(generator, SimpleNamespace())
+    assert clone.q51_register_cache is True
 
 
 def test_shipped_ud_plan_publishes_the_production_down_register_fallback() -> None:

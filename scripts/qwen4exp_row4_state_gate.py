@@ -32,7 +32,7 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     gdn_wave_norm_expected_calls,mmq_token64_expected_calls,gr_dpp_expected_calls,
     router_dpp_expected_calls,route_scope,GDN_COLWARPS_ENV,
     Q51_IU8_EXACT_ENV,Q51_PAIR2_PREEMPTING_ENV,Q51_PAIR2_GATE_ENV,
-    q51_pair2_control_record,
+    q51_pair2_control_record,q51_register_cache_control_record,
     Q8_DOWN_CHAIN_GATES,q8_down_control_record,Q8_MAPPED_DOWN_MAP_GATE,
     q8_mapped_down_control_record,
     MMQ_VECTOR_ROUTE_PACKAGES,mmq_token64_control_record,mmq_vector_control_record)
@@ -62,6 +62,11 @@ def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.envi
     if package in {"gdn-narrow", "gdn-wave-norm"}:
         # Request-local on the runner; ``route_scope`` binds the arm around the
         # measured prefill and restores the profile's decision on exit.
+        return
+    if package == "q51-register-cache":
+        # Request-local on the runner; ``route_scope`` binds the arm around the
+        # measured prefill, closes the owners that preempt the pair2 chain and
+        # holds the downstream row-publish sibling off.
         return
     if package == "q51-row-publish":
         # Request-local on the runner, like the GDN serial owner; the arm also
@@ -213,7 +218,8 @@ def main():
     if args.route_package == "q51-fold-pair":
         flag = "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"
     if args.route_package == "q51-register-cache":
-        flag = "HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE"
+        # Request-local on the runner; no env key names this selection.
+        flag = ""
     if args.route_package == "q51-row-publish":
         # Request-local on the runner; no env key names this selection.
         flag = ""
@@ -505,6 +511,17 @@ def main():
                     "GDN layer, so the counted serial leaf only launches with "
                     "the tiled branch closed"),
             }
+        if args.route_package == "q51-register-cache":
+            # The plan publishes the register-cache fallback on the runner, but
+            # the same preemptors hold the pair2 chain closed and the published
+            # row-publish sibling replaces the leaf this arm counts, so both
+            # arms close them, hold the sibling off and record the pair2 gate.
+            assert generator.runner.q51_register_cache is True, (
+                "production must publish the register-cache fallback")
+            assert os.environ.get(Q51_PAIR2_GATE_ENV, "") not in {"", "0"}, (
+                "the pair2 chain's own gate must be on")
+            report["selection_control"] = q51_register_cache_control_record(
+                generator.runner)
         if args.route_package == "q51-row-publish":
             # The plan publishes the row-publish selection on the runner, but
             # the routed F16 WMMA down (and, behind it, the exact iu8 down and
@@ -855,8 +872,9 @@ def main():
         else:
             if args.route_package not in {
                 "dense-wide-padded", "gdn-wave-norm", "gdn-narrow",
-                "q51-row-publish", "q8-down-register", "q8-mapped-down",
-                "q8-mmq-raw-vector", "q8-mmq-vec4", "mmq-token64",
+                "q51-row-publish", "q51-register-cache", "q8-down-register",
+                "q8-mapped-down", "q8-mmq-raw-vector", "q8-mmq-vec4",
+                "mmq-token64",
             }:
                 os.environ[flag] = ("f32_hidden_token_tile4_dense_exact"
                                     if args.route_package == "router-dpp" else "1")

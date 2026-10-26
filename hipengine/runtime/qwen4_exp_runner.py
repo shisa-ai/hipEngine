@@ -3957,10 +3957,24 @@ def _qwen4_exp_fullattn_context_legacy_enabled() -> bool:
     ) not in {"", "0", "false", "False"}
 
 
-def _qwen4_exp_q51_register_cache_key(key: KernelKey, *, rows: int, in_features: int) -> KernelKey:
+def _qwen4_exp_q51_register_cache_key(
+    key: KernelKey, *, rows: int, in_features: int, published: bool = False,
+) -> KernelKey:
+    """Select the Q5_1 register-cache sibling of the folded-pair owner.
+
+    ``published`` is the owning runner's plan-published decision (see
+    :func:`q51_register_cache`), not a process-wide switch: the production plan
+    publishes the register-cache fallback for the rows>=512 K640 scope, and
+    every plan that keeps the folded-pair parent publishes ``False``. The
+    guards stay dispatch-time - rows, in_features, the folded-pair parent
+    variant, and a registry that must actually carry the leaf - so an unbound
+    runner or a missing registration keeps the parent. The downstream
+    row-publish sibling is a separate decision that reads this leaf's variant.
+    """
+
     if (rows < 512 or in_features != 640
             or key.variant != "selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out"
-            or os.environ.get("HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE", "0") != "1"):
+            or not published):
         return key
     candidate = KernelKey(key.backend,key.layer,key.quant,
                           "selected_grouped_prefill_pair2_register_cache_bf16_bf16_out")
@@ -4008,6 +4022,39 @@ def gdn_prefill_variant(runner: Any, variant: str | None | object = _GDN_PREFILL
 # rows/K640/parent-variant/registration guards. It is request-local state, so a
 # diagnostic arm binds it on the runner it measures instead of writing a
 # process-wide switch.
+# Q5_1 register-cache selection. The production plan publishes the
+# register-cache fallback owner for the rows>=512 K640 grouped Q5_1 down scope;
+# the binder publishes that decision to the owning runner, and the dispatch-time
+# selector keeps its rows/K640/folded-pair-parent/registration guards. It is the
+# parent of the row-publish sibling, which replaces it wherever that plan
+# publishes the row-publish decision. It is request-local state, so a diagnostic
+# arm binds it on the runner it measures instead of writing a process-wide
+# switch.
+_Q51_REGISTER_CACHE_UNSET = object()
+
+
+@contextlib.contextmanager
+def q51_register_cache(
+    runner: Any, enabled: bool | object = _Q51_REGISTER_CACHE_UNSET,
+):
+    """Bind the Q5_1 register-cache selection for a diagnostic arm.
+
+    ``True`` selects the register-cache sibling of the folded-pair owner inside
+    its rows>=512 K640 scope and ``False`` keeps that scalar parent; leaving
+    ``enabled`` unset keeps whatever the plan published. The binding is a
+    mutable runner field, so it stays in force for as long as the scope is open
+    and the published value is restored on exit, including on an exception.
+    """
+
+    prior = getattr(runner, "q51_register_cache", False)
+    if enabled is not _Q51_REGISTER_CACHE_UNSET:
+        runner.q51_register_cache = bool(enabled)
+    try:
+        yield prior
+    finally:
+        runner.q51_register_cache = prior
+
+
 _Q51_ROW_PUBLISH_UNSET = object()
 
 
@@ -5043,11 +5090,17 @@ def run_qwen4_exp_moe(
     runtime: HipRuntime | None = None,
     graph_cache: MoeGraphCache | None = None,
     graph_key: object | None = None,
+    q51_register_cache: bool = False,
     q51_row_publish: bool = False,
     q8_down_register: bool = False,
     q8_mapped_down: bool = False,
 ) -> Qwen4ExpMoEDeviceResult:
     """Run normalized softmax top-k routed experts plus gated shared expert.
+
+    ``q51_register_cache`` is the owning runner's plan-published Q5_1
+    register-cache fallback decision (see :func:`q51_register_cache`); it only
+    selects inside the grouped pair2 chain's rows>=512 K640 scope and never on
+    decode.
 
     ``q51_row_publish`` is the owning runner's plan-published Q5_1 row-publish
     decision (see :func:`q51_row_publish`); it only selects inside the grouped
@@ -5087,6 +5140,7 @@ def run_qwen4_exp_moe(
                 top_k=top_k,
                 stream=graph_stream,
                 runtime=active_runtime,
+                q51_register_cache=q51_register_cache,
                 q51_row_publish=q51_row_publish,
                 q8_down_register=q8_down_register,
                 q8_mapped_down=q8_mapped_down,
@@ -6181,7 +6235,8 @@ def run_qwen4_exp_moe(
                                   grouped_q5_variant), rows=rows)
                     grouped_q5_key = _qwen4_exp_q51_fold_pair_key(grouped_q5_key, rows=rows)
                     grouped_q5_key = _qwen4_exp_q51_register_cache_key(
-                        grouped_q5_key, rows=rows, in_features=ffn)
+                        grouped_q5_key, rows=rows, in_features=ffn,
+                        published=q51_register_cache)
                     grouped_q5_key = _qwen4_exp_q51_row_publish_key(
                         grouped_q5_key, rows=rows, in_features=ffn,
                         published=q51_row_publish)
@@ -6805,6 +6860,7 @@ def run_qwen4_exp_dense_qsa_layer(
     moe_graph_cache: MoeGraphCache | None = None,
     moe_graph_key: object | None = None,
     cache_only: bool = False,
+    q51_register_cache: bool = False,
     q51_row_publish: bool = False,
     q8_down_register: bool = False,
     q8_mapped_down: bool = False,
@@ -6869,6 +6925,7 @@ def run_qwen4_exp_dense_qsa_layer(
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=active_runtime,
         graph_cache=moe_graph_cache, graph_key=moe_graph_key,
+        q51_register_cache=q51_register_cache,
         q51_row_publish=q51_row_publish,
         q8_down_register=q8_down_register,
         q8_mapped_down=q8_mapped_down,
@@ -6912,6 +6969,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     runtime: HipRuntime | None = None,
     pending_write: tuple[int, int, int, bool] | None = None,
     defer_write: list | None = None,
+    q51_register_cache: bool = False,
     q51_row_publish: bool = False,
     q8_down_register: bool = False,
     q8_mapped_down: bool = False,
@@ -6922,6 +6980,10 @@ def run_qwen4_exp_qsa_prefill_layer(
     the scalar rows owner and is forwarded unchanged to the token mixer, which
     resolves that leaf but launches it only when WMMA attention does not own the
     chunk.
+
+    ``q51_register_cache`` is the owning runner's plan-published Q5_1
+    register-cache fallback decision, forwarded to the MoE down dispatch; it
+    only selects inside the grouped pair2 chain's rows>=512 K640 scope.
 
     ``q51_row_publish`` is the owning runner's plan-published Q5_1 row-publish
     decision, forwarded to the MoE down dispatch; it only selects inside the
@@ -7023,6 +7085,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         top_k=top_k,
         stream=stream,
         runtime=active_runtime,
+        q51_register_cache=q51_register_cache,
         q51_row_publish=q51_row_publish,
         q8_down_register=q8_down_register,
         q8_mapped_down=q8_mapped_down,
@@ -7072,6 +7135,7 @@ def run_qwen4_exp_gdn_layer(
     pending_write: tuple[int, int, int, bool] | None = None,
     defer_write: list | None = None,
     prefill_variant: str | None = None,
+    q51_register_cache: bool = False,
     q51_row_publish: bool = False,
     q8_down_register: bool = False,
     q8_mapped_down: bool = False,
@@ -7081,6 +7145,9 @@ def run_qwen4_exp_gdn_layer(
     ``prefill_variant`` is the owning runner's GDN serial-prefill owner (see
     :func:`gdn_prefill_variant`): it selects the narrow/wide wave-norm leaf for
     multi-row chunks and leaves the register parent and decode untouched.
+
+    ``q51_register_cache`` is the owning runner's plan-published Q5_1
+    register-cache fallback decision, forwarded to the MoE down dispatch.
 
     ``q51_row_publish`` is the owning runner's plan-published Q5_1 row-publish
     decision, forwarded to the MoE down dispatch.
@@ -7242,6 +7309,7 @@ def run_qwen4_exp_gdn_layer(
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=active_runtime,
         graph_cache=moe_graph_cache, graph_key=moe_graph_key,
+        q51_register_cache=q51_register_cache,
         q51_row_publish=q51_row_publish,
         q8_down_register=q8_down_register,
         q8_mapped_down=q8_mapped_down,
@@ -8035,6 +8103,12 @@ class Qwen4ExpGGUFResidentModelRunner:
     # wave-norm leaf where that admission applies, and None (the register
     # parent) everywhere else. A diagnostic scope may outrank it.
     gdn_prefill_variant: str | None = None
+    # Q5_1 register-cache fallback selection, published by the profile binder for
+    # the rows>=512 K640 grouped Q5_1 down scope: True on a production plan,
+    # False on every plan that keeps the folded-pair parent. It is the parent of
+    # the row-publish sibling, so a plan that publishes row-publish replaces the
+    # leaf this selects. A diagnostic scope may outrank it.
+    q51_register_cache: bool = False
     # Q5_1 row-publish selection, published by the profile binder from the plan's
     # own rows>=512 K640 row: True where that plan declares the row-publish
     # sibling of the register-cache prefill owner, False on every plan that
@@ -9303,6 +9377,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                             "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS", ""
                         ),
                     ),
+                    q51_register_cache=self.q51_register_cache,
                     q51_row_publish=self.q51_row_publish,
                     q8_down_register=self.q8_down_register,
                     q8_mapped_down=self.q8_mapped_down,
@@ -9340,6 +9415,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                             "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS", ""
                         ),
                     ),
+                    q51_register_cache=self.q51_register_cache,
                     q51_row_publish=self.q51_row_publish,
                     q8_down_register=self.q8_down_register,
                     q8_mapped_down=self.q8_mapped_down,
@@ -9639,6 +9715,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     pending_write=pending_write,
                     defer_write=deferred,
                     prefill_variant=self.gdn_prefill_variant,
+                    q51_register_cache=self.q51_register_cache,
                     q51_row_publish=self.q51_row_publish,
                     q8_down_register=self.q8_down_register,
                     q8_mapped_down=self.q8_mapped_down,
@@ -9667,6 +9744,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     index_rotary_dim=cfg.rope_dimension_count,
                     rope_positions_ptr=rope_positions_ptr,
                     head_mode=self.qsa_prefill_head_mode,
+                    q51_register_cache=self.q51_register_cache,
                     q51_row_publish=self.q51_row_publish,
                     q8_down_register=self.q8_down_register,
                     q8_mapped_down=self.q8_mapped_down,

@@ -918,7 +918,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL` | production profile | Selected grouped pair2 prefill for Q5_1 (rows>=64). |
 | `HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL` | production profile | Fold128 sibling of the Q5_1 pair2 prefill (rows>=64). |
 | `HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL` | production profile | Fold-pair sibling of the Q5_1 fold128 prefill (rows>=512). |
-| `HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE` | production profile | Register-cache sibling of the Q5_1 fold-pair prefill (rows>=512, in_features==640). |
+| `HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE` | retired | No longer read. The owning runner carries the register-cache fallback decision, with rows>=512, K640 and folded-pair parent guards unchanged. |
 | `HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH` | retired | No longer read. The owning runner carries the profile's row-publication decision; the register-cache parent and shape guards remain. |
 | `HIPENGINE_QWEN4_EXP_Q51_IU8_RISK_MULT` | `16.0` | Risk multiplier for the Q5_1 iu8 route. |
 | `HIPENGINE_QWEN4_EXP_Q4_TILE_M` / `HIPENGINE_QWEN4_EXP_Q4_TILE_N` | `16` / `16` (production pins 64/16 at rows>=512) | WMMA tile override for the Q4_K iu8 prefill build. |

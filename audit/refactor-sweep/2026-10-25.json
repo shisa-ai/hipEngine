@@ -3201,18 +3201,18 @@
       "start_line": 3060,
       "end_line": 3069,
       "sha256": "99836129a17ad047b180bad3eef23de8e98a29c4e2f4f3ba9887c54075213b0e",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-runner-local",
+      "evidence": ["Register-cache fallback runner-owned; folded-pair/row/K640 guards and downstream row-publication dependency preserved. Explicit diagnostics isolate leaf and restore controls. Full CPU,GPU17,focused tests and public register-cache launch pass; docs/audit/worklog pass. worklog/entries/20261026T211316.136673Z-cleanup-refactor-r0119-6693f4.md."],
       "subitems": [
         {
           "line": 3062,
           "text": "- `selected_grouped_prefill_pair2_register_cache_bf16_bf16_out` is",
-          "status": "pending"
+          "status": "resolved-runner-local"
         },
         {
           "line": 3066,
           "text": "- Five invocation/full-logit/state/KV cases and canonical12-case A/B pass.",
-          "status": "pending"
+          "status": "resolved-runner-local"
         }
       ]
     },

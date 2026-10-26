@@ -314,6 +314,7 @@ class Qwen4ExpGGUFTextGenerator:
         self.dense_mmq_token64_enabled = False
         self.dense_mmq_raw_vector_enabled = False
         self.dense_mmq_vec4_enabled = False
+        self.q51_register_cache = False
         self.q51_row_publish = False
         self.q8_down_register = False
         self.q8_mapped_down = False
@@ -1047,6 +1048,8 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     runner.qsa_prefill_head_mode = str(
         getattr(generator, "qsa_prefill_head_mode", "parent"))
     runner.gdn_prefill_variant = getattr(generator, "gdn_prefill_variant", None)
+    runner.q51_register_cache = bool(
+        getattr(generator, "q51_register_cache", False))
     runner.q51_row_publish = bool(getattr(generator, "q51_row_publish", False))
     runner.q8_down_register = bool(getattr(generator, "q8_down_register", False))
     runner.q8_mapped_down = bool(getattr(generator, "q8_mapped_down", False))

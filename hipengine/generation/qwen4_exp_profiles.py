@@ -1055,6 +1055,19 @@ def _bind(
     # manifest names that WMMA owner for the same scope, which is why this value
     # follows the binder rather than the manifest row.
     qsa_prefill_head_mode = "quad" if production else "parent"
+    # Q5_1 register-cache fallback sibling of the folded-pair grouped prefill
+    # owner, published as request-local state on the owning runner rather than a
+    # process-wide switch. It is the fallback selection for its scope, not the
+    # owner that runs: the row-publish sibling below replaces it wherever a plan
+    # publishes that decision, and the routed F16 WMMA down, the exact
+    # iu8-risk+repair down and the grouped-WMMA/MoE/MMQ/T16 owners preempt the
+    # pair2 chain that contains it. The manifest row therefore cannot carry this
+    # decision, so the binder publishes the value the retired switch bound,
+    # production-only, for every production plan. The dispatch-time selector
+    # still guards the leaf on rows, K640, the folded-pair parent variant and the
+    # registry carrying it, and the strict binder (which every plan that falls
+    # back to it runs) publishes False.
+    q51_register_cache = bool(production)
     # Q5_1 row-publish sibling of the register-cache grouped prefill owner,
     # published as request-local state on the owning runner rather than a
     # process-wide switch. It is the fallback selection for its scope, not the
@@ -1189,7 +1202,6 @@ def _bind(
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256" if production else "0",
         # ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
@@ -1356,6 +1368,7 @@ def _bind(
     generator.dense_mmq_vec4_enabled = dense_mmq_vec4_enabled
     generator.qsa_prefill_head_mode = qsa_prefill_head_mode
     generator.gdn_prefill_variant = gdn_prefill_variant
+    generator.q51_register_cache = q51_register_cache
     generator.q51_row_publish = q51_row_publish
     generator.q8_down_register = q8_down_register
     generator.q8_mapped_down = q8_mapped_down
@@ -1367,6 +1380,7 @@ def _bind(
         runner.dense_mmq_vec4_enabled = dense_mmq_vec4_enabled
         runner.qsa_prefill_head_mode = qsa_prefill_head_mode
         runner.gdn_prefill_variant = gdn_prefill_variant
+        runner.q51_register_cache = q51_register_cache
         runner.q51_row_publish = q51_row_publish
         runner.q8_down_register = q8_down_register
         runner.q8_mapped_down = q8_mapped_down
