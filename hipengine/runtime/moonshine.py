@@ -16,7 +16,6 @@ from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     copy_device_to_host,
     copy_host_array_to_device,
-    copy_host_to_device,
     host_array_ptr,
     memory_stats,
 )
@@ -313,14 +312,14 @@ class MoonshineResidentRuntime:
             rotary_dim=self.spec.rotary_dim,
             theta=self.spec.rope_theta,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("rope_cos").buffer,
-            host_array_ptr(cos),
+            np.ascontiguousarray(cos),
             runtime=self.runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("rope_sin").buffer,
-            host_array_ptr(sin),
+            np.ascontiguousarray(sin),
             runtime=self.runtime,
         )
 
@@ -722,14 +721,14 @@ class MoonshineResidentRuntime:
             raise ValueError("decode position is outside self-cache capacity")
         token = np.asarray([token_id], dtype=np.int64)
         position_array = np.asarray([position], dtype=np.int64)
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("token").buffer,
-            host_array_ptr(token),
+            token,
             runtime=self.runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("position").buffer,
-            host_array_ptr(position_array),
+            position_array,
             runtime=self.runtime,
         )
         self.decode_position = position

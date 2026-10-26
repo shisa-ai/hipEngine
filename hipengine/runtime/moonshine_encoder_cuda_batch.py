@@ -25,7 +25,7 @@ import numpy as np
 from hipengine.core.cuda import CudaRuntime, get_cuda_runtime
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
-from hipengine.core.memory import copy_host_to_device, host_array_ptr, memory_stats
+from hipengine.core.memory import copy_host_array_to_device, memory_stats
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.cpu_reference.moonshine import moonshine_rope_tables
 from hipengine.loading.moonshine import MoonshineLoadedModel, load_moonshine_model
@@ -253,14 +253,14 @@ class MoonshineCudaBatchEncoderRuntime:
             rotary_dim=self.spec.rotary_dim,
             theta=self.spec.rope_theta,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("rope_cos").buffer,
-            host_array_ptr(cos),
+            np.ascontiguousarray(cos),
             runtime=self.runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("rope_sin").buffer,
-            host_array_ptr(sin),
+            np.ascontiguousarray(sin),
             runtime=self.runtime,
         )
 
@@ -675,9 +675,9 @@ class MoonshineCudaBatchEncoderRuntime:
         if not bool(np.isfinite(values.astype(np.float32)).all()):
             raise ValueError("input_values must contain only finite values")
         values = np.ascontiguousarray(values)
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("audio").buffer,
-            host_array_ptr(values),
+            values,
             nbytes=values.nbytes,
             runtime=self.runtime,
         )
@@ -712,9 +712,9 @@ class MoonshineCudaBatchEncoderRuntime:
         )
         output = np.zeros((self.max_batch, self.encoder_frames), dtype=np.int32)
         output[:, :real_frames] = downsampled
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("encoder_attention_mask").buffer,
-            host_array_ptr(output),
+            output,
             runtime=self.runtime,
         )
 

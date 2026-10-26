@@ -26,9 +26,10 @@ from hipengine.core.cuda import CudaRuntime, get_cuda_runtime
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.memory import (
+    DeviceBuffer,
     MemcpyKind,
     copy_device_to_host,
-    copy_host_to_device,
+    copy_host_array_to_device,
     host_array_ptr,
     memory_stats,
 )
@@ -314,14 +315,14 @@ class MoonshineCudaResidentRuntime:
             rotary_dim=self.spec.rotary_dim,
             theta=self.spec.rope_theta,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("rope_cos").buffer,
-            host_array_ptr(cos),
+            np.ascontiguousarray(cos),
             runtime=self.runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("rope_sin").buffer,
-            host_array_ptr(sin),
+            np.ascontiguousarray(sin),
             runtime=self.runtime,
         )
 
@@ -474,17 +475,17 @@ class MoonshineCudaResidentRuntime:
                     f"layer {layer} cross cache shape {key.shape} != {expected}"
                 )
             view = self.cross_cache(layer)
-            self.runtime.memcpy(
-                view.key.ptr,
-                host_array_ptr(key),
+            copy_host_array_to_device(
+                DeviceBuffer(view.key.ptr, key.nbytes),
+                key,
                 key.nbytes,
-                MemcpyKind.HOST_TO_DEVICE,
+                runtime=self.runtime,
             )
-            self.runtime.memcpy(
-                view.value.ptr,
-                host_array_ptr(value),
+            copy_host_array_to_device(
+                DeviceBuffer(view.value.ptr, value.nbytes),
+                value,
                 value.nbytes,
-                MemcpyKind.HOST_TO_DEVICE,
+                runtime=self.runtime,
             )
         if mask is not None:
             flat = np.ascontiguousarray(mask, dtype=np.int32).reshape(-1)
@@ -492,18 +493,18 @@ class MoonshineCudaResidentRuntime:
                 raise ValueError(
                     f"encoder mask size {flat.size} != encoder frames {self.encoder_frames}"
                 )
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self.workspace.allocation("encoder_attention_mask").buffer,
-                host_array_ptr(flat),
+                flat,
                 runtime=self.runtime,
             )
         else:
             # An omitted mask must mean "every encoder frame is valid", never
             # the zero-initialized (all-frames-masked) buffer left from setup.
             ones = np.ones(self.encoder_frames, dtype=np.int32)
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self.workspace.allocation("encoder_attention_mask").buffer,
-                host_array_ptr(ones),
+                ones,
                 runtime=self.runtime,
             )
         self.runtime.stream_synchronize(self.stream)
@@ -688,14 +689,14 @@ class MoonshineCudaResidentRuntime:
         self.runtime.stream_synchronize(self.stream)
         token = np.asarray([token_id], dtype=np.int64)
         position_array = np.asarray([position], dtype=np.int64)
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("token").buffer,
-            host_array_ptr(token),
+            token,
             runtime=self.runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("position").buffer,
-            host_array_ptr(position_array),
+            position_array,
             runtime=self.runtime,
         )
         self.decode_position = position
@@ -743,21 +744,21 @@ class MoonshineCudaResidentRuntime:
             )
         token = np.asarray([token_id], dtype=np.int64)
         position_array = np.asarray([0], dtype=np.int64)
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("token").buffer,
-            host_array_ptr(token),
+            token,
             runtime=self.runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("position").buffer,
-            host_array_ptr(position_array),
+            position_array,
             runtime=self.runtime,
         )
         # Clear the sticky device EOS flag so a fresh generation starts clean.
         eos_array = np.asarray([0], dtype=np.int64)
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("result_eos").buffer,
-            host_array_ptr(eos_array),
+            eos_array,
             runtime=self.runtime,
         )
         self.runtime.stream_synchronize(self.stream)

@@ -30,9 +30,10 @@ from hipengine.core.cuda import CudaRuntime, get_cuda_runtime
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.memory import (
+    DeviceBuffer,
     MemcpyKind,
     copy_device_to_host,
-    copy_host_to_device,
+    copy_host_array_to_device,
     host_array_ptr,
     memory_stats,
 )
@@ -262,14 +263,14 @@ class MoonshineCudaBatchRuntime:
             rotary_dim=self.spec.rotary_dim,
             theta=self.spec.rope_theta,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("rope_cos").buffer,
-            host_array_ptr(cos),
+            np.ascontiguousarray(cos),
             runtime=self.runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("rope_sin").buffer,
-            host_array_ptr(sin),
+            np.ascontiguousarray(sin),
             runtime=self.runtime,
         )
 
@@ -414,17 +415,17 @@ class MoonshineCudaBatchRuntime:
                     f"layer {layer} batch cross cache shape {key.shape} != {expected}"
                 )
             view = self.cross_cache(layer)
-            self.runtime.memcpy(
-                view.key.ptr,
-                host_array_ptr(key),
+            copy_host_array_to_device(
+                DeviceBuffer(view.key.ptr, key.nbytes),
+                key,
                 key.nbytes,
-                MemcpyKind.HOST_TO_DEVICE,
+                runtime=self.runtime,
             )
-            self.runtime.memcpy(
-                view.value.ptr,
-                host_array_ptr(value),
+            copy_host_array_to_device(
+                DeviceBuffer(view.value.ptr, value.nbytes),
+                value,
                 value.nbytes,
-                MemcpyKind.HOST_TO_DEVICE,
+                runtime=self.runtime,
             )
         if masks is not None:
             flat = np.ascontiguousarray(masks, dtype=np.int32)
@@ -433,18 +434,18 @@ class MoonshineCudaBatchRuntime:
                     f"batch mask shape {flat.shape} != "
                     f"{(self.max_batch, self.encoder_frames)}"
                 )
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self.workspace.allocation("encoder_attention_mask").buffer,
-                host_array_ptr(flat),
+                flat,
                 runtime=self.runtime,
             )
         else:
             ones = np.ones(
                 (self.max_batch, self.encoder_frames), dtype=np.int32
             )
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self.workspace.allocation("encoder_attention_mask").buffer,
-                host_array_ptr(ones),
+                ones,
                 runtime=self.runtime,
             )
         self.runtime.stream_synchronize(self.stream)
@@ -493,17 +494,17 @@ class MoonshineCudaBatchRuntime:
             view = self.cross_cache(layer)
             row_nbytes = key.nbytes
             row_offset = row * row_nbytes
-            self.runtime.memcpy(
-                view.key.ptr + row_offset,
-                host_array_ptr(key),
+            copy_host_array_to_device(
+                DeviceBuffer(view.key.ptr + row_offset, row_nbytes),
+                key,
                 row_nbytes,
-                MemcpyKind.HOST_TO_DEVICE,
+                runtime=self.runtime,
             )
-            self.runtime.memcpy(
-                view.value.ptr + row_offset,
-                host_array_ptr(value),
+            copy_host_array_to_device(
+                DeviceBuffer(view.value.ptr + row_offset, row_nbytes),
+                value,
                 row_nbytes,
-                MemcpyKind.HOST_TO_DEVICE,
+                runtime=self.runtime,
             )
         mask_row = np.ascontiguousarray(mask, dtype=np.int32).reshape(-1)
         if mask_row.shape != (self.encoder_frames,):
@@ -514,12 +515,15 @@ class MoonshineCudaBatchRuntime:
         if not bool(((mask_row == 0) | (mask_row == 1)).all()):
             raise ValueError("cross-cache mask must be binary")
         mask_offset = row * mask_row.nbytes
-        self.runtime.memcpy(
-            self.workspace.allocation("encoder_attention_mask").buffer.ptr
-            + mask_offset,
-            host_array_ptr(mask_row),
+        copy_host_array_to_device(
+            DeviceBuffer(
+                self.workspace.allocation("encoder_attention_mask").buffer.ptr
+                + mask_offset,
+                mask_row.nbytes,
+            ),
+            mask_row,
             mask_row.nbytes,
-            MemcpyKind.HOST_TO_DEVICE,
+            runtime=self.runtime,
         )
         self.cross_cache_valid = True
         self.encoder_state_valid = True
@@ -881,14 +885,14 @@ class MoonshineCudaBatchRuntime:
         self.runtime.stream_synchronize(self.stream)
         token = np.asarray(token_list, dtype=np.int64)
         position_array = np.full(self.max_batch, position, dtype=np.int64)
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("token").buffer,
-            host_array_ptr(token),
+            token,
             runtime=self.runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("position").buffer,
-            host_array_ptr(position_array),
+            position_array,
             runtime=self.runtime,
         )
         self.decode_position = position
@@ -941,17 +945,17 @@ class MoonshineCudaBatchRuntime:
         token_array = np.asarray(token_list, dtype=np.int64)
         position_array = np.asarray(position_list, dtype=np.int64)
         self.runtime.stream_synchronize(self.stream)
-        self.runtime.memcpy(
-            self.workspace.allocation("token").buffer.ptr,
-            host_array_ptr(token_array),
+        copy_host_array_to_device(
+            self.workspace.allocation("token").buffer,
+            token_array,
             token_array.nbytes,
-            MemcpyKind.HOST_TO_DEVICE,
+            runtime=self.runtime,
         )
-        self.runtime.memcpy(
-            self.workspace.allocation("position").buffer.ptr,
-            host_array_ptr(position_array),
+        copy_host_array_to_device(
+            self.workspace.allocation("position").buffer,
+            position_array,
             position_array.nbytes,
-            MemcpyKind.HOST_TO_DEVICE,
+            runtime=self.runtime,
         )
 
     def set_batch_device_owned_decode(self, enabled: bool = True) -> None:
@@ -987,14 +991,14 @@ class MoonshineCudaBatchRuntime:
             raise ValueError("set_batch_decode_seed requires a fresh generation")
         token = np.asarray(token_list, dtype=np.int64)
         position_array = np.zeros(self.max_batch, dtype=np.int64)
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("token").buffer,
-            host_array_ptr(token),
+            token,
             runtime=self.runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.workspace.allocation("position").buffer,
-            host_array_ptr(position_array),
+            position_array,
             runtime=self.runtime,
         )
         self.runtime.stream_synchronize(self.stream)

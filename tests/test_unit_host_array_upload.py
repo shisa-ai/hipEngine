@@ -40,6 +40,15 @@ QWEN35_PARO_RUNNER_UPLOAD_MODULES = (
     "runtime/qwen35_paro_runner",
 )
 
+MOONSHINE_RUNTIME_UPLOAD_MODULES = (
+    "runtime/moonshine",
+    "runtime/moonshine_cuda",
+    "runtime/moonshine_cuda_batch",
+    "runtime/moonshine_cuda_continuous",
+    "runtime/moonshine_encoder_cuda",
+    "runtime/moonshine_encoder_cuda_batch",
+)
+
 
 @pytest.mark.parametrize("module", [
     "runtime/evie", "runtime/timesfm_decode", "runtime/timesfm3_decode",
@@ -199,6 +208,48 @@ def test_qwen35_paro_runner_synchronous_array_uploads_use_the_owning_helper(modu
     This is a bounded syntax guard over ``qwen35_paro_runner``, not a proof of
     arbitrary pointer lifetimes. Asynchronous uploads, raw pointer uploads, and
     D2H/D2D copies are outside this guard.
+    """
+    path = Path(__file__).parents[1] / "hipengine" / f"{module}.py"
+    tree = ast.parse(path.read_text())
+    hazards = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Name) and node.func.id == "copy_host_to_device":
+            source = (
+                node.args[1]
+                if len(node.args) > 1
+                else next((kw.value for kw in node.keywords if kw.arg == "host_ptr"), None)
+            )
+            if source is not None and _is_array_pointer_expression(source):
+                hazards.append((node.lineno, "copy_host_to_device"))
+            continue
+        if not (isinstance(node.func, ast.Attribute) and node.func.attr == "memcpy"):
+            continue
+        kind = (
+            node.args[3]
+            if len(node.args) > 3
+            else next((kw.value for kw in node.keywords if kw.arg == "kind"), None)
+        )
+        if not (isinstance(kind, ast.Attribute) and kind.attr == "HOST_TO_DEVICE"):
+            continue
+        source = (
+            node.args[1]
+            if len(node.args) > 1
+            else next((kw.value for kw in node.keywords if kw.arg == "src"), None)
+        )
+        if source is not None and _is_array_pointer_expression(source):
+            hazards.append((node.lineno, "runtime.memcpy"))
+    assert not hazards, f"{path.name}: use copy_host_array_to_device at {hazards}"
+
+
+@pytest.mark.parametrize("module", MOONSHINE_RUNTIME_UPLOAD_MODULES)
+def test_moonshine_runtime_synchronous_array_uploads_use_the_owning_helper(module):
+    """No synchronous array upload may erase its source owner.
+
+    This is a bounded syntax guard over the Moonshine runtime family, not a
+    proof of arbitrary pointer lifetimes. Asynchronous uploads, raw pointer
+    uploads, and D2H/D2D copies are outside this guard.
     """
     path = Path(__file__).parents[1] / "hipengine" / f"{module}.py"
     tree = ast.parse(path.read_text())
@@ -640,6 +691,92 @@ def test_qwen35_paro_runner_copy_zero_keeps_destination_count_with_unequal_templ
     assert array is zeros
     assert nbytes == 16
     assert call_runtime is runtime
+
+
+def test_moonshine_batch_cross_cache_row_uploads_owning_offsets(monkeypatch):
+    from hipengine.runtime import moonshine_cuda_batch as runner_mod
+
+    calls = []
+
+    def upload(buffer, array, nbytes=None, *, runtime):
+        calls.append((buffer, array, nbytes, runtime))
+
+    monkeypatch.setattr(runner_mod, "copy_host_array_to_device", upload)
+    mask_buffer = memory.DeviceBuffer(0x3000, 3 * 4)
+    workspace = SimpleNamespace(
+        allocation=lambda name: SimpleNamespace(buffer=mask_buffer)
+    )
+    runtime = SimpleNamespace(
+        stream_synchronize=lambda stream: None,
+        memcpy=lambda *args: None,
+    )
+    session = object.__new__(runner_mod.MoonshineCudaBatchRuntime)
+    session.closed = False
+    session.spec = SimpleNamespace(decoder_layers=1, decoder_kv_heads=2, head_dim=4)
+    session.max_batch = 3
+    session.encoder_frames = 3
+    session.runtime = runtime
+    session.stream = 0
+    session.workspace = workspace
+    session.cross_cache = lambda layer: SimpleNamespace(
+        key=SimpleNamespace(ptr=0x1000),
+        value=SimpleNamespace(ptr=0x2000),
+    )
+    session.cross_cache_valid = False
+    session.encoder_state_valid = False
+    key = np.arange(2 * 3 * 4, dtype=np.float16).reshape(2, 3, 4)
+    value = (key + 1).astype(np.float16)
+    mask = np.array([1, 0, 1], dtype=np.int32)
+
+    session.load_cross_cache_row(1, [key], [value], mask=mask)
+
+    assert [(call[0].ptr, call[2]) for call in calls] == [
+        (0x1030, 48),
+        (0x2030, 48),
+        (0x300C, 12),
+    ]
+    assert calls[0][1].tolist() == key.tolist()
+    assert calls[1][1].tolist() == value.tolist()
+    assert calls[2][1].tolist() == mask.tolist()
+    assert session.cross_cache_valid is True
+    assert session.encoder_state_valid is True
+
+
+def test_moonshine_encoder_audio_upload_keeps_exact_bucket_bytes(monkeypatch):
+    from hipengine.runtime import moonshine_encoder_cuda as runner_mod
+
+    calls = []
+
+    def upload(buffer, array, nbytes=None, *, runtime):
+        calls.append((buffer, array, nbytes, runtime))
+
+    monkeypatch.setattr(runner_mod, "copy_host_array_to_device", upload)
+    audio_buffer = memory.DeviceBuffer(0x4000, 16000 * 2)
+    workspace = SimpleNamespace(
+        allocation=lambda name: SimpleNamespace(buffer=audio_buffer)
+    )
+    runtime = object()
+    session = object.__new__(runner_mod.MoonshineCudaEncoderRuntime)
+    session.closed = False
+    session.audio_samples = 16000
+    session.encoder_frames = 40
+    session.workspace = workspace
+    session.runtime = runtime
+    session._upload_mask = lambda *args, **kwargs: None
+    audio = np.ones((1, 9727), dtype=np.float32)
+
+    session.upload_input(audio)
+
+    assert len(calls) == 1
+    buffer, array, nbytes, call_runtime = calls[0]
+    assert buffer is audio_buffer
+    assert array.dtype == np.float16
+    assert array.flags.c_contiguous
+    assert nbytes == 9727 * np.dtype(np.float16).itemsize
+    assert call_runtime is runtime
+    assert session._last_real_samples == 9727
+    assert session._last_real_frames == 24
+    assert session._input_uploaded is True
 
 
 def test_qwen35_gguf_runner_zero_upload_keeps_destination_count(monkeypatch):

@@ -2416,11 +2416,12 @@
       "start_line": 2692,
       "end_line": 2717,
       "sha256": "8237398ea872f750eeb89292d9d29123e7f1f93384f1e980d1d13717914809d5",
-      "status": "partial-paro-runner-migrated",
+      "status": "partial-moonshine-runtime-migrated",
       "evidence": [
         "Qwen4Exp batch state, runner and QSA index synchronous array uploads migrated with preserved byte offsets; GPU upload/lifetime and batch tests, CPU bundle and real HTTP physical width2 execution with traced owning helpers pass. Other model array callers and separate async contracts remain open. worklog/entries/20261026T112905.064466Z-cleanup-refactor-r0089-batch-uploads-f58cab.md.",
         "Dense/MoE MTP2 synchronous array uploads migrated; CPU bundle, focused native sampler GPU test and public ngram owning upload trace passed. Public acceptance helper not exercised by the initial probe; apparent concurrent fallback was later traced to probe TypeError, not a product restriction. Clean concurrent MTP requests pass; correction: worklog/entries/20261026T121319.257732Z-cleanup-refactor-mtp-probe-correction-7f7df7.md. worklog/entries/20261026T115712.267620Z-cleanup-refactor-r0089-mtp-uploads-039bde.md.",
         "Qwen4Exp auxiliary batch and MTP uploads migrated; focused CPU, full CPU bundle, gfx1151 GPU bundle and public batch/MTP routes passed. Mixed-target has unit-only coverage. Direct QSA row-array runtime copy remains. worklog/entries/20261026T122414.076540Z-cleanup-refactor-r0089-aux-uploads-fcbf45.md.",
+        "Moonshine runtime family migrated; CPU161 and gfx1151 model/runtime graph smoke pass. No public generator is implemented; CUDA changes have fake-runtime coverage only. worklog/entries/20261026T134821.924520Z-cleanup-refactor-r0089-moonshine-31e749.md.",
         "PARO runner migrated with destination-sized zero copies preserved; CPU160, focused real-device uploads and traced public AR/MTP pass. worklog/entries/20261026T133858.617595Z-cleanup-refactor-r0089-paro-39c5fd.md.",
         "Qwen35 GGUF runner migrated with destination-sized zero copies preserved; CPU159, focused repaired test bundle, GPU checks and traced real dense AR/concurrent MTP pass. Missing Q3_K_M target-row fixture skips remain. worklog/entries/20261026T132618.511208Z-cleanup-refactor-r0089-gguf-runner-06ace7.md.",
         "Maple runtime span/token/graph and CUDA prefill upload callers migrated; CPU158, real gfx1151 public generation and graph checks pass after checkpoint provisioning. CUDA hardware unavailable. worklog/entries/20261026T130636.018959Z-cleanup-refactor-r0089-maple-e52d71.md.",

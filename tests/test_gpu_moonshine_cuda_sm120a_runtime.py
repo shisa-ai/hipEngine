@@ -532,8 +532,6 @@ def test_cuda_resident_runtime_rejects_nonmatching_cross_cache_shapes() -> None:
 
 
 def test_cuda_resident_runtime_load_cross_cache_optional_mask_means_all_valid() -> None:
-    import ctypes
-
     import hipengine.runtime.moonshine_cuda as runtime_module
 
     runtime = FakeCudaRuntime()
@@ -544,18 +542,14 @@ def test_cuda_resident_runtime_load_cross_cache_optional_mask_means_all_valid() 
     )
     mask_buffer = resident.workspace.allocation("encoder_attention_mask").buffer
     uploaded: list[np.ndarray] = []
-    real_copy = runtime_module.copy_host_to_device
+    real_copy = runtime_module.copy_host_array_to_device
 
-    def spy_copy(buffer, host_ptr, nbytes=None, *, runtime=None):
-        count = buffer.nbytes if nbytes is None else nbytes
+    def spy_copy(buffer, array, nbytes=None, *, runtime=None):
         if buffer.ptr == mask_buffer.ptr:
-            array_type = ctypes.c_int32 * (count // ctypes.sizeof(ctypes.c_int32))
-            uploaded.append(
-                np.ctypeslib.as_array(array_type.from_address(int(host_ptr))).copy()
-            )
-        real_copy(buffer, host_ptr, nbytes, runtime=runtime)
+            uploaded.append(np.asarray(array, dtype=np.int32).reshape(-1).copy())
+        real_copy(buffer, array, nbytes, runtime=runtime)
 
-    runtime_module.copy_host_to_device = spy_copy  # type: ignore[assignment]
+    runtime_module.copy_host_array_to_device = spy_copy  # type: ignore[assignment]
     try:
         good = np.zeros((1, 8, 4, 52), dtype=np.float16)
         # Omitted mask must install an all-valid (all-ones) encoder mask, never
@@ -566,7 +560,7 @@ def test_cuda_resident_runtime_load_cross_cache_optional_mask_means_all_valid() 
         assert resident.cross_cache_valid is True
         assert resident.encoder_state_valid is True
     finally:
-        runtime_module.copy_host_to_device = real_copy
+        runtime_module.copy_host_array_to_device = real_copy
         resident.close()
 
 
