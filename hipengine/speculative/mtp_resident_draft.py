@@ -20,7 +20,6 @@ from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
     copy_host_array_to_device,
-    copy_host_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -1077,7 +1076,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         hidden = np.ascontiguousarray(hidden_seed, dtype=np.float32)
         if hidden.shape != (1, self.hidden_size):
             raise ValueError("hidden_seed must have shape [1, hidden_size]")
-        copy_host_to_device(self.seed_a, host_array_ptr(hidden), hidden.nbytes, runtime=self.runtime)
+        copy_host_array_to_device(self.seed_a, hidden, hidden.nbytes, runtime=self.runtime)
         if stage_timings is not None:
             _stage_add(stage_timings, "draft_seed_upload", (time.perf_counter() - t_seed0) * 1000)
         return self._propose_chain_from_seed_buffer(
@@ -1525,15 +1524,15 @@ class Qwen35GGUFResidentMTPDraftRunner:
             if current_token < 0 or current_token >= int(self.token_embd_f32.shape[0]):
                 raise ValueError("draft token id outside embedding table")
             embed = np.ascontiguousarray(self.token_embd_f32[current_token:current_token + 1], dtype=np.float32)
-            copy_host_to_device(self.token_embed, host_array_ptr(embed), embed.nbytes, runtime=self.runtime)
+            copy_host_array_to_device(self.token_embed, embed, embed.nbytes, runtime=self.runtime)
             pos = np.asarray([current_pos], dtype=np.int64)
             ctx = np.asarray([current_cache_len + 1], dtype=np.int64)
             cos = np.ascontiguousarray(rope_cos[pos], dtype=np.float32)
             sin = np.ascontiguousarray(rope_sin[pos], dtype=np.float32)
-            copy_host_to_device(self.cos, host_array_ptr(cos), cos.nbytes, runtime=self.runtime)
-            copy_host_to_device(self.sin, host_array_ptr(sin), sin.nbytes, runtime=self.runtime)
-            copy_host_to_device(self.position_i64, host_array_ptr(pos), pos.nbytes, runtime=self.runtime)
-            copy_host_to_device(self.context_i64, host_array_ptr(ctx), ctx.nbytes, runtime=self.runtime)
+            copy_host_array_to_device(self.cos, cos, cos.nbytes, runtime=self.runtime)
+            copy_host_array_to_device(self.sin, sin, sin.nbytes, runtime=self.runtime)
+            copy_host_array_to_device(self.position_i64, pos, pos.nbytes, runtime=self.runtime)
+            copy_host_array_to_device(self.context_i64, ctx, ctx.nbytes, runtime=self.runtime)
             if stage_timings is not None:
                 _stage_add(stage_timings, "draft_prepare_inputs", (time.perf_counter() - t_prepare0) * 1000)
             t_forward0 = time.perf_counter() if stage_timings is not None else 0.0
@@ -1958,7 +1957,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         # Depth-0 embedding: single host gather + upload (start_token may exceed
         # the capped resident table; depths 1+ are device-gathered).
         embed0 = np.ascontiguousarray(self.token_embd_f32[start_token:start_token + 1], dtype=np.float32)
-        copy_host_to_device(self.token_embed, host_array_ptr(embed0), embed0.nbytes, runtime=runtime)
+        copy_host_array_to_device(self.token_embed, embed0, embed0.nbytes, runtime=runtime)
         # Precompute per-depth rope / position / context once; upload once.
         rope_w = int(np.asarray(rope_cos).shape[1])
         rotary_dim = self._rotary_dim_from_rope_table(rope_cos)

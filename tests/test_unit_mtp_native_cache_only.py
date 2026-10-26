@@ -255,9 +255,9 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> _Harness:
     monkeypatch.setattr(mtp_native, "free", lambda buffer, *, runtime=None: None)
     monkeypatch.setattr(
         mtp_native,
-        "copy_host_to_device",
-        lambda buffer, host_ptr, nbytes=None, *, runtime=None: rec.h2d.append(
-            (int(buffer.ptr), int(nbytes if nbytes is not None else buffer.nbytes))
+        "copy_host_array_to_device",
+        lambda buffer, array, nbytes=None, *, runtime=None: rec.h2d.append(
+            (int(buffer.ptr), int(nbytes if nbytes is not None else array.nbytes))
         ),
     )
     monkeypatch.setattr(

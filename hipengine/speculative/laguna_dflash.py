@@ -17,7 +17,7 @@ from hipengine.core.hip import HipRuntime
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
-    copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -384,9 +384,9 @@ class LagunaDFlashResidentDrafter:
             libraries={"dense": self._dense_library, "norm": self._draft_library},
         )
         positions_i32 = np.ascontiguousarray(row_positions, dtype=np.int32)
-        copy_host_to_device(
+        copy_host_array_to_device(
             self._buffer_for(self.append_positions),
-            host_array_ptr(positions_i32),
+            positions_i32,
             positions_i32.nbytes,
             runtime=self.runtime,
         )
@@ -434,15 +434,15 @@ class LagunaDFlashResidentDrafter:
         positions = np.arange(position, position + self.query_rows, dtype=np.int32)
         if int(positions[-1]) >= self.target.context_length:
             raise ValueError("DFlash query block exceeds target context admission")
-        copy_host_to_device(
+        copy_host_array_to_device(
             self._buffer_for(self.query_token_ids),
-            host_array_ptr(tokens),
+            tokens,
             tokens.nbytes,
             runtime=self.runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self._buffer_for(self.query_positions),
-            host_array_ptr(positions),
+            positions,
             positions.nbytes,
             runtime=self.runtime,
         )
@@ -629,9 +629,9 @@ class LagunaDFlashResidentDrafter:
                 (host_bf16.astype(np.uint32) << 16).view(np.float32)
             )
             expanded = self._empty(source.shape, DType.FP32)
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self._buffer_for(expanded),
-                host_array_ptr(host_f32),
+                host_f32,
                 host_f32.nbytes,
                 runtime=self.runtime,
             )
@@ -677,9 +677,9 @@ class LagunaDFlashResidentDrafter:
         self.query_embedding_bf16 = self._empty((qr, h), DType.BF16)
         self.query_zero_f32 = self._empty((qr, h), DType.FP32)
         zeros = np.zeros((qr, h), dtype=np.float32)
-        copy_host_to_device(
+        copy_host_array_to_device(
             self._buffer_for(self.query_zero_f32),
-            host_array_ptr(zeros),
+            zeros,
             zeros.nbytes,
             runtime=self.runtime,
         )

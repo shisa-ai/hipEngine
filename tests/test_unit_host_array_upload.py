@@ -68,6 +68,13 @@ GGUF_RUNTIME_SYNCHRONOUS_ARRAY_UPLOAD_MODULES = (
     "runtime/native_sampler",
 )
 
+SPECULATIVE_RUNTIME_SYNCHRONOUS_ARRAY_UPLOAD_MODULES = (
+    "speculative/mtp_native",
+    "speculative/mtp_resident_draft",
+    "speculative/mtp_cached_draft",
+    "speculative/laguna_dflash",
+)
+
 
 @pytest.mark.parametrize("module", [
     "runtime/evie", "runtime/timesfm_decode", "runtime/timesfm3_decode",
@@ -2504,3 +2511,328 @@ def test_vibevoice_qwen2_batched_prefill_publishes_owning_context_length(
     assert context_array is runtime._ctx_len_host
     assert uploads[2][2] == runtime._ctx_len.nbytes == 8
     assert runtime._ctx_len_host.tolist() == [7]
+
+
+@pytest.mark.parametrize("module", SPECULATIVE_RUNTIME_SYNCHRONOUS_ARRAY_UPLOAD_MODULES)
+def test_speculative_runtime_synchronous_array_uploads_use_the_owning_helper(
+    module,
+):
+    """MTP native/resident/cached drafts and the Laguna DFlash drafter.
+
+    A bounded syntax guard over synchronous H2D uploads, not a proof of
+    arbitrary pointer lifetimes. Asynchronous ``memcpy_async`` staging, raw
+    pointer staging, and D2H/D2D copies are outside this guard.
+    """
+    path = Path(__file__).parents[1] / "hipengine" / f"{module}.py"
+    tree = ast.parse(path.read_text())
+    hazards = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Name) and node.func.id == "copy_host_to_device":
+            source = (
+                node.args[1]
+                if len(node.args) > 1
+                else next((kw.value for kw in node.keywords if kw.arg == "host_ptr"), None)
+            )
+            if source is not None and _is_array_pointer_expression(source):
+                hazards.append((node.lineno, "copy_host_to_device"))
+            continue
+        if not (isinstance(node.func, ast.Attribute) and node.func.attr == "memcpy"):
+            continue
+        kind = (
+            node.args[3]
+            if len(node.args) > 3
+            else next((kw.value for kw in node.keywords if kw.arg == "kind"), None)
+        )
+        if not (isinstance(kind, ast.Attribute) and kind.attr == "HOST_TO_DEVICE"):
+            continue
+        source = (
+            node.args[1]
+            if len(node.args) > 1
+            else next((kw.value for kw in node.keywords if kw.arg == "src"), None)
+        )
+        if source is not None and _is_array_pointer_expression(source):
+            hazards.append((node.lineno, "runtime.memcpy"))
+    assert not hazards, f"{path.name}: use copy_host_array_to_device at {hazards}"
+
+
+def test_mtp_native_device_array_uploads_owning_contiguous_source(monkeypatch):
+    """``_device_array`` retains its own contiguous copy through the upload."""
+
+    from hipengine.speculative import mtp_native as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    _fake_malloc(monkeypatch, mod)
+    runtime = object()
+    source = np.arange(8, dtype=np.float32)[::2]
+    buffers: list[object] = []
+
+    buffer = mod._device_array(source, buffers, runtime=runtime)
+
+    assert legacy == []
+    assert buffers == [buffer]
+    assert buffer.nbytes == 16
+    (call,) = uploads
+    assert call[0] is buffer
+    assert call[1].flags["C_CONTIGUOUS"]
+    assert call[1].tolist() == [0.0, 2.0, 4.0, 6.0]
+    assert call[2] == 16
+    assert call[3] is runtime
+
+
+def test_mtp_resident_draft_seed_upload_owns_contiguous_seed(monkeypatch):
+    """``propose_chain`` uploads its own float32 copy of the seed rows."""
+
+    from hipengine.speculative import mtp_resident_draft as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    runner = object.__new__(mod.Qwen35GGUFResidentMTPDraftRunner)
+    runner.runtime = object()
+    runner.hidden_size = 4
+    runner.seed_a = memory.DeviceBuffer(0x9000, 16)
+    sentinel = object()
+    runner._propose_chain_from_seed_buffer = lambda **_kwargs: sentinel
+
+    seed = np.arange(8, dtype=np.float32)[::2].reshape(1, 4)
+    result = runner.propose_chain(
+        seed,
+        start_token=1,
+        start_position=2,
+        draft_n_max=1,
+        top_k=2,
+        rope_cos=np.zeros((4, 4), dtype=np.float32),
+        rope_sin=np.zeros((4, 4), dtype=np.float32),
+    )
+
+    assert result is sentinel
+    assert legacy == []
+    (call,) = uploads
+    assert call[0] is runner.seed_a
+    assert call[1].dtype == np.float32
+    assert call[1].shape == (1, 4)
+    assert call[1].tolist() == [[0.0, 2.0, 4.0, 6.0]]
+    assert call[2] == 16
+    assert call[3] is runner.runtime
+
+
+class _StopDraftForward(Exception):
+    """Sentinel raised by the stubbed layer forward."""
+
+
+def test_mtp_resident_draft_prepare_uploads_owning_arrays_in_order(monkeypatch):
+    """Per-depth prepare staging uploads five owning arrays in kernel order."""
+
+    from hipengine.speculative import mtp_resident_draft as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    runner = object.__new__(mod.Qwen35GGUFResidentMTPDraftRunner)
+    runtime = object()
+    runner.runtime = runtime
+    runner.qk_head_dim = 4
+    runner._device_chain_enabled = False
+    runner.seed_a = memory.DeviceBuffer(0x9500, 16)
+    runner.seed_b = memory.DeviceBuffer(0x9600, 16)
+    runner.token_embd_f32 = np.arange(32, dtype=np.float32).reshape(8, 4)
+    runner.token_embed = memory.DeviceBuffer(0x9000, 16)
+    runner.cos = memory.DeviceBuffer(0x9100, 16)
+    runner.sin = memory.DeviceBuffer(0x9200, 16)
+    runner.position_i64 = memory.DeviceBuffer(0x9300, 8)
+    runner.context_i64 = memory.DeviceBuffer(0x9400, 8)
+
+    def stop_forward(*_args, **_kwargs):
+        raise _StopDraftForward
+
+    runner._run_one = stop_forward
+    rope_cos = np.arange(16, dtype=np.float32).reshape(4, 4)
+    rope_sin = rope_cos + 100.0
+
+    with pytest.raises(_StopDraftForward):
+        runner._propose_chain_from_seed_buffer(
+            start_token=2,
+            start_position=3,
+            draft_n_max=1,
+            top_k=2,
+            rope_cos=rope_cos,
+            rope_sin=rope_sin,
+            dense_key_cache=None,
+            dense_value_cache=None,
+            dense_cache_len=5,
+            draft_p_min=0.0,
+        )
+
+    assert legacy == []
+    assert [
+        (call[0].ptr, call[2], call[3] is runtime) for call in uploads
+    ] == [
+        (0x9000, 16, True),
+        (0x9100, 16, True),
+        (0x9200, 16, True),
+        (0x9300, 8, True),
+        (0x9400, 8, True),
+    ]
+    embed, cos, sin, pos, ctx = (call[1] for call in uploads)
+    assert embed.tolist() == runner.token_embd_f32[2:3].tolist()
+    assert cos.tolist() == [[12.0, 13.0, 14.0, 15.0]]
+    assert sin.tolist() == [[112.0, 113.0, 114.0, 115.0]]
+    assert pos.tolist() == [3]
+    assert ctx.tolist() == [6]
+    assert [call[1].dtype for call in uploads] == [
+        np.float32,
+        np.float32,
+        np.float32,
+        np.int64,
+        np.int64,
+    ]
+
+
+def test_mtp_cached_draft_shared_head_upload_owns_dequantized_array(monkeypatch):
+    """The Q6_K shared-head dequant upload publishes its own float32 copy."""
+
+    from hipengine.speculative import mtp_cached_draft as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    _fake_malloc(monkeypatch, mod)
+    tensors = [
+        SimpleNamespace(name="blk.40.attn_q.weight", ggml_type=0, shape=(4,)),
+        SimpleNamespace(
+            name="output.weight",
+            ggml_type=mod.GGMLQuantizationType.Q6_K,
+            shape=(4,),
+        ),
+    ]
+    reader = SimpleNamespace(
+        info=SimpleNamespace(tensors=tensors),
+        tensor_data=lambda _name: np.zeros(4, dtype=np.uint8),
+    )
+    monkeypatch.setattr(mod, "GGUFReader", lambda _path: reader)
+    monkeypatch.setattr(
+        mod,
+        "dequantize_gguf_data",
+        lambda _data, _quant: np.arange(4, dtype=np.float32),
+    )
+    runtime = SimpleNamespace(device_synchronize=lambda: None)
+
+    runner = mod.MtpCachedDraftRunner("/unused.gguf", runtime=runtime)
+
+    assert legacy == []
+    # Both cached tensors upload first, then the dequantized shared head.
+    weight_uploads, shared_head_upload = uploads[:2], uploads[2]
+    assert [call[0].ptr for call in weight_uploads] == [
+        runner._dev_weights["blk.40.attn_q.weight"].ptr,
+        runner._dev_weights["output.weight"].ptr,
+    ]
+    assert [call[1].dtype for call in weight_uploads] == [np.uint8, np.uint8]
+    assert [call[2] for call in weight_uploads] == [None, None]
+    assert shared_head_upload[0] is runner._dev_shared_head_f32
+    assert shared_head_upload[1].dtype == np.float32
+    assert shared_head_upload[1].tolist() == [0.0, 1.0, 2.0, 3.0]
+    assert shared_head_upload[2] == runner._dev_shared_head_f32.nbytes == 16
+    assert shared_head_upload[3] is runtime
+    assert runner._buffers == [
+        runner._dev_weights["blk.40.attn_q.weight"],
+        runner._dev_weights["output.weight"],
+        runner._dev_shared_head_f32,
+    ]
+
+
+def test_laguna_dflash_expanded_norm_upload_owns_contiguous_f32(monkeypatch):
+    """The BF16 norm expansion uploads the FP32 array it just materialized."""
+
+    from hipengine.core.dtype import DType
+    from hipengine.speculative import laguna_dflash as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+
+    def fake_copy_device_to_host(dst, _src, nbytes, *, runtime=None):
+        out = (ctypes.c_uint16 * (int(nbytes) // 2)).from_address(int(dst))
+        for index in range(len(out)):
+            out[index] = 0x3F80
+
+    monkeypatch.setattr(mod, "copy_device_to_host", fake_copy_device_to_host)
+    drafter = object.__new__(mod.LagunaDFlashResidentDrafter)
+    drafter.runtime = object()
+    drafter.config = SimpleNamespace(num_hidden_layers=1)
+    drafter.weights = SimpleNamespace(
+        tensor=lambda _name: SimpleNamespace(
+            ptr=0xA000,
+            dtype=DType.BF16,
+            ndim=1,
+            shape=(4,),
+        )
+    )
+    expanded = []
+
+    def empty(shape, dtype):
+        tensor = SimpleNamespace(ptr=0xB000 + 0x100 * len(expanded), shape=shape, dtype=dtype)
+        expanded.append(tensor)
+        return tensor
+
+    drafter._empty = empty
+    drafter._buffer_for = lambda tensor: memory.DeviceBuffer(
+        tensor.ptr,
+        int(np.prod(tensor.shape)) * tensor.dtype.itemsize,
+    )
+    drafter._f32_norm_weights = {}
+
+    drafter._materialize_f32_norm_weights()
+
+    assert legacy == []
+    assert len(expanded) == 3
+    assert len(uploads) == 3
+    for upload, tensor in zip(uploads, expanded):
+        assert upload[0].ptr == tensor.ptr
+        assert upload[0].nbytes == tensor.shape[0] * 4
+        assert upload[1].dtype == np.float32
+        assert upload[1].tolist() == [1.0, 1.0, 1.0, 1.0]
+        assert upload[2] == tensor.shape[0] * 4 == 16
+        assert upload[3] is drafter.runtime
+
+
+def test_laguna_dflash_scratch_zero_upload_owns_contiguous_zeros(monkeypatch):
+    """The query zero buffer is published from the owning float32 array."""
+
+    from hipengine.core.dtype import DType
+    from hipengine.speculative import laguna_dflash as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    drafter = object.__new__(mod.LagunaDFlashResidentDrafter)
+    runtime = object()
+    drafter.runtime = runtime
+    drafter.query_rows = 2
+    drafter.max_append_rows = 3
+    drafter.candidate_budget = 2
+    drafter.top_k = 2
+    drafter.config = SimpleNamespace(
+        hidden_size=4,
+        q_features=4,
+        kv_features=4,
+        intermediate_size=8,
+        vocab_size=8,
+        num_attention_heads=2,
+        target_hidden_concat_size=8,
+    )
+    allocated = []
+
+    def empty(shape, dtype):
+        tensor = SimpleNamespace(ptr=0xB000 + 0x100 * len(allocated), shape=shape, dtype=dtype)
+        allocated.append(tensor)
+        return tensor
+
+    drafter._empty = empty
+    drafter._buffer_for = lambda tensor: memory.DeviceBuffer(
+        tensor.ptr,
+        int(np.prod(tensor.shape)) * tensor.dtype.itemsize,
+    )
+
+    drafter._allocate_scratch()
+
+    assert legacy == []
+    (call,) = uploads
+    assert call[0].ptr == drafter.query_zero_f32.ptr
+    assert call[0].nbytes == 2 * 4 * 4
+    assert call[1].dtype == np.float32
+    assert call[1].shape == (2, 4)
+    assert call[1].tolist() == [[0.0] * 4, [0.0] * 4]
+    assert call[2] == 2 * 4 * 4
+    assert call[3] is runtime

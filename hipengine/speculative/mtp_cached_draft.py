@@ -14,8 +14,8 @@ from __future__ import annotations
 import numpy as np
 from hipengine.core.hip import get_hip_runtime, HipRuntime
 from hipengine.core.memory import (
-    malloc, copy_host_array_to_device, copy_host_to_device, copy_device_to_host,
-    host_array_ptr, free, DeviceBuffer,
+    malloc, copy_host_array_to_device, copy_device_to_host,
+    free, DeviceBuffer,
 )
 from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
 from hipengine.loading.gguf import GGUFReader
@@ -56,8 +56,12 @@ class MtpCachedDraftRunner:
                 np.asarray(sh_raw, dtype=np.uint8), sh_qt
             ).astype(np.float32)
             self._dev_shared_head_f32 = malloc(sh_f32.nbytes, runtime=self.runtime)
-            copy_host_to_device(self._dev_shared_head_f32,
-                               host_array_ptr(sh_f32), runtime=self.runtime)
+            copy_host_array_to_device(
+                self._dev_shared_head_f32,
+                sh_f32,
+                self._dev_shared_head_f32.nbytes,
+                runtime=self.runtime,
+            )
             self._buffers.append(self._dev_shared_head_f32)
         else:
             self._dev_shared_head_f32 = None

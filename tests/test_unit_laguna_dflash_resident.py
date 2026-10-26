@@ -136,7 +136,7 @@ def test_laguna_dflash_proposal_uses_target_embedding_library_map(
             embedding_libraries=embedding_libraries,
         ),
     )
-    monkeypatch.setattr(laguna_dflash_module, "copy_host_to_device", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(laguna_dflash_module, "copy_host_array_to_device", lambda *_args, **_kwargs: None)
     captured: dict[str, object] = {}
 
     class _StopAfterEmbedding(RuntimeError):

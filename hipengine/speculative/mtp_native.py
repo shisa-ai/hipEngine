@@ -18,7 +18,7 @@ import numpy as np
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
-from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_array_to_device, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import build_dense_gemv, dense_dual_gemv_out_bf16_wmma
 from hipengine.kernels.hip_gfx1100.linear.lm_head import (
@@ -102,7 +102,7 @@ def _normalized_infos(model: str | Path) -> tuple[Any, dict[str, TensorInfo]]:
 def _device_array(array: np.ndarray, buffers: list[DeviceBuffer], *, runtime: HipRuntime) -> DeviceBuffer:
     contiguous = np.ascontiguousarray(array)
     buf = malloc(contiguous.nbytes, runtime=runtime)
-    copy_host_to_device(buf, host_array_ptr(contiguous), contiguous.nbytes, runtime=runtime)
+    copy_host_array_to_device(buf, contiguous, contiguous.nbytes, runtime=runtime)
     buffers.append(buf)
     return buf
 

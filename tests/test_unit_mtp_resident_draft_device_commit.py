@@ -95,7 +95,7 @@ def test_write_kv_rows_from_device_seed_base_uses_d2d_hidden_rows(monkeypatch) -
 
 
 def test_record_top1_probs_resets_and_records_resident_draft_confidence(monkeypatch) -> None:
-    monkeypatch.setattr(resident_draft_mod, "copy_host_to_device", lambda *args, **kwargs: None)
+    monkeypatch.setattr(resident_draft_mod, "copy_host_array_to_device", lambda *args, **kwargs: None)
 
     runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
     runner.runtime = None
@@ -145,7 +145,7 @@ def test_record_top1_probs_resets_and_records_resident_draft_confidence(monkeypa
 
 
 def test_record_hidden_stats_uses_host_chain_and_records_seed_summaries(monkeypatch) -> None:
-    monkeypatch.setattr(resident_draft_mod, "copy_host_to_device", lambda *args, **kwargs: None)
+    monkeypatch.setattr(resident_draft_mod, "copy_host_array_to_device", lambda *args, **kwargs: None)
 
     runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
     runner.runtime = None
@@ -204,7 +204,7 @@ def test_record_hidden_stats_uses_host_chain_and_records_seed_summaries(monkeypa
 
 
 def test_record_stage_stats_passes_requested_cache_rows(monkeypatch) -> None:
-    monkeypatch.setattr(resident_draft_mod, "copy_host_to_device", lambda *args, **kwargs: None)
+    monkeypatch.setattr(resident_draft_mod, "copy_host_array_to_device", lambda *args, **kwargs: None)
 
     runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
     runner.runtime = None
@@ -651,7 +651,6 @@ def test_device_chain_stage_timings_split_drain_and_d2h(monkeypatch) -> None:
         for index in range(len(out)):
             out[index] = 3 + index
 
-    monkeypatch.setattr(resident_draft_mod, "copy_host_to_device", lambda *args, **kwargs: None)
     monkeypatch.setattr(resident_draft_mod, "copy_host_array_to_device", lambda *args, **kwargs: None)
     monkeypatch.setattr(resident_draft_mod, "copy_device_to_host", fake_copy_device_to_host)
 

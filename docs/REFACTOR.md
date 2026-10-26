@@ -2897,6 +2897,8 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   arrays, with allocation cleanup and explicit copy lengths unchanged. Gemma
   INT8 KV page tables, Surya span/input uploads, and YuE2/VibeVoice context
   uploads use the owning helper; asynchronous Gemma metadata stays unchanged.
+  Native/resident/cached MTP and Laguna DFlash synchronous uploads retain their
+  arrays too; their stream-ordered asynchronous staging remains separate.
 - Remaining cleanup: named-local array uploads still use the raw-address
   `copy_host_to_device` API in other paths. Named locals are safe through a
   synchronous copy, but future edits must not replace them with temporary
