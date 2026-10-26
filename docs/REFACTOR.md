@@ -1554,18 +1554,39 @@ lever in the current tree.
 
 ## Router full-block SGEMM rollback lever (added 2026-10-08)
 
-`HIPENGINE_GEMMA4_ROUTER_SGEMM` (default on) pins the Gemma 4 router
-logits projection back to the backend's declared tile schedule when set to
-`0`, in `laguna_router_logits` (`hipengine/kernels/hip_gfx1100/gemma4/
-gemma4_router.py`). Full 1024-row prefill blocks otherwise route through the
-F32 rocBLAS SGEMM tier on every backend (1.68x the tile on gfx1151), a
-reordering-class change gated under the section 2.11 router-routing-scoped
-envelope rather than the superseded absolute-kl_max reading.
+Cleanup status (2026-10-26, R0048): removed. `HIPENGINE_GEMMA4_ROUTER_SGEMM`
+and its `getenv` are gone; `gemma4_router_topk_bf16`
+(`hipengine/kernels/hip_gfx1100/gemma4/gemma4_router.py:443`) selects on
+`tokens >= _ROUTER_SGEMM_MIN_TOKENS` (`:155`, 1024) alone. Full blocks take the
+F32 rocBLAS SGEMM tier ahead of any declared mode (1.68x the tile on gfx1151 at
+the in-situ geometry); narrower blocks keep the pre-tier schedule -- the
+backend's declared tiled mode where it has one (`token_tile_8` on gfx1151,
+`:471-488`), otherwise the shared `token_tile_16` fallback above 32 rows
+(`:489-499`), which is what gfx1100's `token_tile_4` mode reached at 1024 rows
+before the tier landed.
 
-Removal condition: once the section 2.11 packet for the router candidate
-is recorded and one release cycle passes without a rollback, delete the env
-check and this entry together. The declared tile schedule stays: it is the
-sub-1024-block path and the strict-arm owner for gate captures.
+Both halves of the removal condition were on file: the section 2.11 packet
+`benchmarks/results/2026-10-09-gemma4-router-sgemm-section211-packet.json`
+(18 cases / 1,134 rows; global median 1.21e-07, p90 3.68e-03, flip-damage
+0.79%, top-1 98.68%, all cases passed) and four tagged releases (`v0.8.0`
+through `v0.8.3`) with no recorded rollback. What the condition could not
+satisfy as written was its own last clause -- the tile schedule stays "the
+strict-arm owner for gate captures" -- because the env read was the only route
+to it at full-block geometry.
+
+The comparison control moved into the harness rather than being lost.
+`scripts/gemma4_wmma_promotion_packet.py --candidate-kind router` pins the
+strict arm in-process by raising `gemma4_router._ROUTER_SGEMM_MIN_TOKENS` above
+any block width, and restores the shipped threshold for the candidate arm and
+from the run's `finally` -- the mechanism
+`scratch/p8_baseline_route_wrapper.py` and
+`scratch/p8_gate_baseline_wrapper.py` already use for the teacher-forced gate.
+Both arms still share one runner, so they differ in the router projection
+alone. Re-running the packet needs the same artifact and command; the recorded
+packet was produced by the env lever and remains the tier's evidence.
+`tests/test_unit_gemma4_router_sgemm_control.py` pins the strict threshold
+against the production block width, the candidate restore, the restore after a
+raising capture, and the absence of an environment read in both files.
 
 ## Q5_1T16 down-prefill rollback lever (added 2026-10-08)
 

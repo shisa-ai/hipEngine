@@ -26,10 +26,12 @@ Guarded on HIP and the campaign artifact.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
@@ -44,11 +46,13 @@ from scripts.gemma4_production_quality import (
 from scripts.gemma4_router_margin_diagnostic import router_scores, top8
 from scripts.gemma4_teacher_forced_gate import row_kl_divergence
 
-# Candidate kinds that are one env lever read per call: strict arm "0",
-# candidate arm "1", on a single shared runner.
-_LEVER_KINDS = {
-    "router": "HIPENGINE_GEMMA4_ROUTER_SGEMM",
-}
+# Candidate kinds the packet can separate into two arms on one runner.
+_CANDIDATE_KINDS = ("wmma", "flash_shallow", "router")
+
+# Above any prefill block this packet can present, so the router SGEMM tier's
+# own guard (`tokens >= _ROUTER_SGEMM_MIN_TOKENS`) is false and the projection
+# takes the tile schedule the tree ran before the tier landed.
+ROUTER_STRICT_MIN_TOKENS = 1 << 30
 
 # The binding bars, per EXECUTION-PROFILES section 2.11 (2026-10-07 lead decision):
 # robust statistics over all rows plus a bounded flip-damage budget.
@@ -117,6 +121,45 @@ def verdict(strict_rows, candidate_rows, kls_all, *, scope: bool) -> dict:
     }
 
 
+class RouterThresholdArm:
+    """Strict/candidate switch for the router full-block SGEMM tier.
+
+    The tier selects itself from ``tokens >= _ROUTER_SGEMM_MIN_TOKENS`` in
+    ``gemma4_router``, so raising that threshold above every block the packet
+    presents is the strict arm: full blocks take the pre-tier tile schedule.
+    Restoring the shipped value is the candidate arm. ``main`` restores from
+    its ``finally``, so a failed run cannot leave the process pinned.
+    """
+
+    def __init__(self) -> None:
+        from hipengine.kernels.hip_gfx1100.gemma4 import gemma4_router
+
+        self._router = gemma4_router
+        self.baseline = int(gemma4_router._ROUTER_SGEMM_MIN_TOKENS)
+
+    def select(self, *, candidate: bool) -> None:
+        """Pin the pre-tier schedule (strict) or the shipped tier (candidate)."""
+
+        self._router._ROUTER_SGEMM_MIN_TOKENS = (
+            self.baseline if candidate else ROUTER_STRICT_MIN_TOKENS
+        )
+
+    def restore(self) -> None:
+        """Put the shipped threshold back; safe to call more than once."""
+
+        self._router._ROUTER_SGEMM_MIN_TOKENS = self.baseline
+
+    @contextlib.contextmanager
+    def strict(self) -> Iterator["RouterThresholdArm"]:
+        """Pin the pre-tier schedule for the body, restoring on any exit."""
+
+        self.select(candidate=False)
+        try:
+            yield self
+        finally:
+            self.restore()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--artifact", type=Path, required=True)
@@ -128,12 +171,13 @@ def main() -> int:
                              "a scope that only exists in a key-count band names "
                              "depths inside it")
     parser.add_argument("--candidate-kind",
-                        choices=("wmma", "flash_shallow", *sorted(_LEVER_KINDS)),
+                        choices=_CANDIDATE_KINDS,
                         default="wmma",
                         help="router: both arms on the default attention, "
-                             "differing only in one env lever (strict=0, candidate=1): "
-                             "HIPENGINE_GEMMA4_ROUTER_SGEMM (tile vs SGEMM full-block "
-                             "tier). flash_shallow: both "
+                             "differing only in the router SGEMM tier threshold "
+                             "(_ROUTER_SGEMM_MIN_TOKENS: strict pins the pre-tier "
+                             "tile schedule in-process, candidate is the shipped "
+                             "value). flash_shallow: both "
                              "arms on the production runner, differing only in "
                              "FLASH_DECODE_PREFERRED_MIN_KEYS (strict: never below "
                              "the split policy's 1024 keys; candidate: the shipped "
@@ -154,14 +198,13 @@ def main() -> int:
     generator = llm._get_text_generator()
     reader = GGUFReader(str(args.artifact))
     candidate_variants = tuple(args.candidate_variants.split(","))
-    import os
-    lever = _LEVER_KINDS.get(args.candidate_kind)
+    router_arm = RouterThresholdArm() if args.candidate_kind == "router" else None
 
     def set_lever_arm(*, candidate: bool) -> None:
-        """Select the strict (0) or candidate (1) side of an env-lever kind."""
+        """Select the strict or candidate side of this kind's arm switch."""
 
-        if lever is not None:
-            os.environ[lever] = "1" if candidate else "0"
+        if router_arm is not None:
+            router_arm.select(candidate=candidate)
         if args.candidate_kind == "flash_shallow":
             flash_attention.FLASH_DECODE_PREFERRED_MIN_KEYS = (
                 shipped_flash_min_keys if candidate else 1 << 30
@@ -175,12 +218,12 @@ def main() -> int:
         shipped_flash_min_keys = flash_attention.FLASH_DECODE_PREFERRED_MIN_KEYS
         strict = candidate = production
         set_lever_arm(candidate=False)
-    elif lever is not None:
+    elif router_arm is not None:
         # Both arms share one runner on the default attention; the only
-        # difference is the lever, which its call site reads per call.
+        # difference is the router tier threshold, which the projection reads
+        # per call.
         strict = Gemma4Runner(weights=production.weights, capacity=max(depths) + args.rows)
         candidate = strict
-        set_lever_arm(candidate=False)
     else:
         strict = Gemma4Runner(weights=production.weights, capacity=max(depths) + args.rows,
                               prefill_attention_variants=("gemma4_plain",))
@@ -247,7 +290,9 @@ def main() -> int:
                         step_captures.append(captures)
                 return own_chain, np.stack(logits_rows), step_captures
 
-            chain, strict_logits, strict_caps = forced_capture(strict)
+            with (router_arm.strict() if router_arm is not None
+                  else contextlib.nullcontext()):
+                chain, strict_logits, strict_caps = forced_capture(strict)
             set_lever_arm(candidate=True)
             _, candidate_logits, candidate_caps = forced_capture(candidate, forced_chain=chain)
             set_lever_arm(candidate=False)
@@ -366,6 +411,8 @@ def main() -> int:
               f"promotion_eligible={report['promotion_eligible']}", flush=True)
         return 0 if report["passed"] else 1
     finally:
+        if router_arm is not None:
+            router_arm.restore()
         strict.close()
         candidate.close()
         llm.close()

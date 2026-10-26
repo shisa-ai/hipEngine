@@ -1384,8 +1384,10 @@
       "start_line": 1422,
       "end_line": 1436,
       "sha256": "018204df4d3e2ddd1b009dd5ffd05324958a27c95a847fe28d89fe31c9aee712",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Runtime router env read removed; isolated strict/candidate control moved into harness threshold transaction with restore. Real paired packet/CPU/public parity and SGEMM engagement pass. Worklog:worklog/entries/20261026T050154.951963Z-cleanup-refactor-r0048-8ea240.md."
+      ],
       "subitems": []
     },
     {

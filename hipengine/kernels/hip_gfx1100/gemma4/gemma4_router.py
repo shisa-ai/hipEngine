@@ -436,11 +436,11 @@ def gemma4_router_topk_bf16(
     mode = resolve_laguna_router_logits_mode(
         backend if backend is not None else "hip_gfx1100"
     )
-    # Rollback lever for the full-block SGEMM tier (default on):
-    # HIPENGINE_GEMMA4_ROUTER_SGEMM=0 pins the declared tile schedule.
-    import os as _os
-    sgemm_enabled = _os.environ.get("HIPENGINE_GEMMA4_ROUTER_SGEMM", "1") != "0"
-    if tokens >= _ROUTER_SGEMM_MIN_TOKENS and sgemm_enabled:
+    # The tier's threshold is its comparison seam: the promotion packet's
+    # strict arm raises _ROUTER_SGEMM_MIN_TOKENS above the block width
+    # (scripts/gemma4_wmma_promotion_packet.py), so this path reads no
+    # environment.
+    if tokens >= _ROUTER_SGEMM_MIN_TOKENS:
         # A full 1024-row block routes through the F32 SGEMM on every
         # backend, ahead of any declared tile schedule: on gfx1151 the
         # declared ``token_tile_8`` mode would otherwise bypass the tier
@@ -470,8 +470,8 @@ def gemma4_router_topk_bf16(
         )
     elif mode != "token_tile_4":
         # The backend names a tiled schedule, so run exactly that one at the
-        # binding's default width (also the pinned arm when the SGEMM tier
-        # is rolled back).
+        # binding's default width (also the arm the promotion packet pins
+        # strict by raising the SGEMM tier's threshold).
         logits_kernel = {
             "token_tile_8": qwen35_router_logits_bf16_f32w_token_tile_8,
             "token_tile_16": qwen35_router_logits_bf16_f32w_token_tile_16,
