@@ -1263,23 +1263,25 @@
       "start_line": 1297,
       "end_line": 1309,
       "sha256": "1dd44d45f7d53d0759deeac7bd2a0c87d877918be5251d6450849499e72488bf",
-      "status": "pending",
-      "evidence": [],
+      "status": "not-debt-retained",
+      "evidence": [
+        "Verified PLE retention, Q4 arm removal and registry test-baseline resolution. Gemma draft-law comparison completed; switch removed, sampled and greedy public probes pass with sampled token IDs unchanged. Worklog:worklog/entries/20261026T033350.946305Z-cleanup-refactor-r0041-r0044-dispositions-cd7bdd.md; evidence:benchmarks/results/2026-10-26-gemma4-draft-law-cleanup.json."
+      ],
       "subitems": [
         {
           "line": 1299,
           "text": "- gfx1151 production now selects instance-owned mapping-only random advice.",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 1304,
           "text": "- Existing `configure_random_access` combines per-gather prefetch/range work",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 1307,
           "text": "- Exploratory sorted-dedup/pread/worker algorithms live only in the experiment",
-          "status": "pending"
+          "status": "not-debt"
         }
       ]
     },
@@ -1289,28 +1291,30 @@
       "start_line": 1310,
       "end_line": 1337,
       "sha256": "3c4284430563415003002fac437dac1b8766f21173f4e7302f72831d105d21e2",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Verified PLE retention, Q4 arm removal and registry test-baseline resolution. Gemma draft-law comparison completed; switch removed, sampled and greedy public probes pass with sampled token IDs unchanged. Worklog:worklog/entries/20261026T033350.946305Z-cleanup-refactor-r0041-r0044-dispositions-cd7bdd.md; evidence:benchmarks/results/2026-10-26-gemma4-draft-law-cleanup.json."
+      ],
       "subitems": [
         {
           "line": 1312,
           "text": "- `dense_dual_wmma_prefill_col16_row256_bf16_bf16_out`,",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1321,
           "text": "- Review correction: neither the original instruction-count ranking nor the",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1325,
           "text": "- The screen's occupancy arm (16 columns x 256 rows with",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1332,
           "text": "- Open directions that the removal leaves untouched, with their prerequisites:",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
@@ -1320,8 +1324,10 @@
       "start_line": 1338,
       "end_line": 1353,
       "sha256": "2452e2e5f4ef681b9b81e4f76fcb6efe4d5f375d000cdcfb79575618a14ec881",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Verified PLE retention, Q4 arm removal and registry test-baseline resolution. Gemma draft-law comparison completed; switch removed, sampled and greedy public probes pass with sampled token IDs unchanged. Worklog:worklog/entries/20261026T033350.946305Z-cleanup-refactor-r0041-r0044-dispositions-cd7bdd.md; evidence:benchmarks/results/2026-10-26-gemma4-draft-law-cleanup.json."
+      ],
       "subitems": []
     },
     {
@@ -1330,8 +1336,10 @@
       "start_line": 1354,
       "end_line": 1372,
       "sha256": "b9d1ae28fa1d66a2c3c19c0ab52ca5ac2c017f359fd01e98ccbee87fa4c36751",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Verified PLE retention, Q4 arm removal and registry test-baseline resolution. Gemma draft-law comparison completed; switch removed, sampled and greedy public probes pass with sampled token IDs unchanged. Worklog:worklog/entries/20261026T033350.946305Z-cleanup-refactor-r0041-r0044-dispositions-cd7bdd.md; evidence:benchmarks/results/2026-10-26-gemma4-draft-law-cleanup.json."
+      ],
       "subitems": []
     },
     {

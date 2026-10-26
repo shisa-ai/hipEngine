@@ -32,6 +32,7 @@ import numpy as np
 import pytest
 
 from hipengine.generation.gemma4_mtp import Gemma4MTPTextProvider
+from hipengine.generation.gemma4_sampling import Gemma4Sampler
 from hipengine.generation.registry import GenerationRequest
 from hipengine.speculative.registry import SpeculativeProviderConfig
 
@@ -405,8 +406,25 @@ class _SampledDrafter:
         return drafts
 
 
+@dataclass
+class _OwnRowDrafter:
+    """A head that hands its own spread row to the provider's draft selection."""
+
+    runner: _FakeRunner
+    max_drafts: int = 4
+    calls: int = 0
+
+    def draft(self, token: int, *, hidden_row: int = -1, select=None) -> list[int]:
+        del token, hidden_row
+        self.calls += 1
+        rows = [self.runner._row(self.runner.position + index)
+                for index in range(self.max_drafts)]
+        return [int(np.argmax(row)) if select is None else int(select(row))
+                for row in rows]
+
+
 def _run_sampled(*, seed: int, budget: int = 3, max_tokens: int = 7, noise: float = 0.0,
-                 draft_sampling: bool = True, temperature: float = 0.9, **options):
+                 temperature: float = 0.9, **options):
     runner = _SampledRunner()
     provider = Gemma4MTPTextProvider(
         target_generator=_FakeGenerator(runner),
@@ -416,7 +434,6 @@ def _run_sampled(*, seed: int, budget: int = 3, max_tokens: int = 7, noise: floa
         ),
         drafter=_SampledDrafter(runner=runner, noise=noise),
     )
-    provider.draft_sampling = draft_sampling
     request = GenerationRequest(
         prompts=(_PROMPT,), max_tokens=max_tokens, temperature=temperature,
         ignore_eos=True, seed=seed, **({"top_p": 1.0} | options),
@@ -439,22 +456,53 @@ def test_a_sampled_request_is_served_seeded_and_labelled() -> None:
     assert diagnostics["draft_acceptance"] == 1.0
 
 
-def test_a_point_mass_draft_is_accepted_less_often_than_a_sampled_one() -> None:
-    def acceptance(draft_sampling: bool) -> float:
-        proposed = accepted = 0
-        for seed in range(150):
-            _, provider = _run_sampled(seed=seed, draft_sampling=draft_sampling)
-            proposed += sum(len(cycle.candidates) for cycle in provider.last_cycles)
-            accepted += sum(cycle.accepted for cycle in provider.last_cycles)
-        return accepted / proposed
+def test_a_greedy_request_drafts_the_heads_point_mass_without_a_draw(monkeypatch) -> None:
+    """A greedy request keeps the point-mass arm; every other request draws.
 
-    assert acceptance(True) == 1.0
-    assert acceptance(False) < 0.9
+    ``Gemma4Sampler.greedy`` guarantees a greedy row's law is a point mass, so
+    the provider offers that token directly. Spending a draft draw on a
+    one-token law would leave the draft stream one draw ahead without changing
+    the token, so the count pins the no-draw path as well as the token.
+    """
+
+    draws: list[float] = []
+    original = Gemma4Sampler.draft_unit
+
+    def counting(self) -> float:
+        unit = original(self)
+        draws.append(unit)
+        return unit
+
+    monkeypatch.setattr(Gemma4Sampler, "draft_unit", counting)
+    runner = _SampledRunner()
+    provider = Gemma4MTPTextProvider(
+        target_generator=_FakeGenerator(runner),
+        config=SpeculativeProviderConfig(
+            provider="gemma4_mtp", draft_model="/nonexistent/sidecar.gguf",
+            candidate_budget=3,
+        ),
+        drafter=_OwnRowDrafter(runner=runner),
+    )
+    request = GenerationRequest(
+        prompts=(_PROMPT,), max_tokens=7, temperature=0.0, ignore_eos=True,
+        seed=4, top_p=1.0,
+    )
+    output = provider.generate_detailed(request)[0]
+
+    assert output.telemetry.diagnostics["draft_law"] == "point_mass"
+    assert draws == [], "a greedy request spent a draft draw on a one-token law"
+    assert provider.last_cycles
+    for cycle in provider.last_cycles:
+        wanted = [int(np.argmax(_SampledRunner._row(cycle.start_position + index)))
+                  for index in range(len(cycle.candidates))]
+        assert list(cycle.candidates) == wanted, (
+            "a greedy request drafted something other than the head's most "
+            "likely token at that position"
+        )
 
 
-@pytest.mark.parametrize("draft_sampling", [True, False])
 @pytest.mark.parametrize("noise", [0.0, 1.5])
-def test_every_committed_position_follows_the_targets_own_law(draft_sampling, noise) -> None:
+def test_every_committed_position_follows_the_targets_own_law(noise) -> None:
     """Whatever the head proposes, each position is drawn from the target's row.
 
     The fake target's row depends only on the position, so the token at each
@@ -466,7 +514,7 @@ def test_every_committed_position_follows_the_targets_own_law(draft_sampling, no
     counts = np.zeros((max_tokens, _VOCAB))
     for seed in range(trials):
         output, _ = _run_sampled(
-            seed=seed, noise=noise, draft_sampling=draft_sampling,
+            seed=seed, noise=noise,
             max_tokens=max_tokens, temperature=temperature,
         )
         for index, token in enumerate(output.generated_token_ids):

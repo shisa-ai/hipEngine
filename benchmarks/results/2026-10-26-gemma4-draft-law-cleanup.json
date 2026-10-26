@@ -1,0 +1,1196 @@
+{
+  "purpose": "R0043 diagnostic draft-law removal comparison",
+  "performance_claim": false,
+  "limits": [
+    "Aggregate acceptance comparison, not a universal or per-category non-inferiority claim.",
+    "Different draft laws can produce different target trajectories; no same-seed token equality required.",
+    "Historical diagnostic switch removal does not alter the target acceptance law."
+  ],
+  "arms": {
+    "sampled": {
+      "passed": true,
+      "sampler": {
+        "temperature": 1.0,
+        "top_k": 64,
+        "top_p": 0.95,
+        "seed": 0,
+        "draft_law": "sampled"
+      },
+      "candidate_budget": 2,
+      "provenance": {
+        "kind": "hipengine_artifact_provenance",
+        "schema_version": 3,
+        "collected_at": "2026-10-26T03:39:47.488202+00:00",
+        "host_name": "gfx1151",
+        "repo_root": "/home/lhl/hipEngine",
+        "hipengine_commit": "dde23c307219fa46da5c7375de9781fda819a3d8",
+        "git_branch": "main",
+        "staged_dirty": false,
+        "unstaged_dirty": true,
+        "untracked_dirty": true,
+        "untracked_count": 1,
+        "dirty": true,
+        "dirty_paths": [
+          "audit/triage/stub.jsonl",
+          "docs/REFACTOR.md"
+        ],
+        "dirty_path_count": 2,
+        "untracked_paths": [
+          "worklog/entries/20261026T033350.946305Z-cleanup-refactor-r0041-r0044-dispositions-cd7bdd.md"
+        ],
+        "execution_affecting_dirty": true,
+        "execution_affecting_paths": [
+          "audit/triage/stub.jsonl"
+        ],
+        "configured_backend": "auto",
+        "resolved_backend": "hip_gfx1151",
+        "target_arch": "gfx1151",
+        "device_name": "AMD Radeon 8060S Graphics",
+        "model_path": "/home/lhl/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+        "model_revision": null,
+        "model_fingerprint": {
+          "algorithm": "sha256-sampled-v1",
+          "value": "f28cfd664022342bce241e6236474be472a6133a1fbbf9c6c48f8db9153f0e99",
+          "size_bytes": 17010980576,
+          "sampled_bytes": 3145728,
+          "sample_offsets": [
+            0,
+            8504966000,
+            17009932000
+          ],
+          "exists": true,
+          "path_type": "file"
+        },
+        "quant": null,
+        "kv_dtype": "bf16",
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python",
+          "scripts/gemma4_mtp_probe.py",
+          "--artifact",
+          "/home/lhl/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+          "--draft",
+          "/home/lhl/models/gguf/gemma-4-26B-A4B-it-GGUF/MTP/mtp-gemma-4-26B-A4B-it-Q8_0.gguf",
+          "--suite",
+          "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "--suite",
+          "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+          "--tokens",
+          "64",
+          "--samples",
+          "2",
+          "--budget",
+          "2",
+          "--temperature",
+          "1.0",
+          "--top-k",
+          "64",
+          "--top-p",
+          "0.95",
+          "--draft-law",
+          "sampled",
+          "--json",
+          "/tmp/refactor-R0043-sampled.json"
+        ],
+        "environment": {
+          "HIPENGINE_BACKEND": null,
+          "HIPENGINE_HIP_ARCH": "gfx1151",
+          "GPU_MAX_HW_QUEUES": "2",
+          "HIPENGINE_BUILD_CACHE_ROOT": null,
+          "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+          "HIP_VISIBLE_DEVICES": null,
+          "ROCR_VISIBLE_DEVICES": null,
+          "CUDA_VISIBLE_DEVICES": null,
+          "GPU_DEVICE_ORDINAL": null
+        },
+        "rocm_version": "HIP version: 7.15.26333-0000000",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "build_profile": null,
+        "timing_protocol": "plain-first whole public call including prefill; emitted tokens",
+        "warmups": 1,
+        "repetitions": 2,
+        "profiler": null
+      },
+      "draft_provenance": {
+        "path": "/home/lhl/models/gguf/gemma-4-26B-A4B-it-GGUF/MTP/mtp-gemma-4-26B-A4B-it-Q8_0.gguf",
+        "revision": null,
+        "fingerprint": {
+          "algorithm": "sha256-sampled-v1",
+          "value": "d1a1c31a0af001d83777ca084e8b0b6a02ab1c16bfa77666cac61eebc5b9feec",
+          "size_bytes": 461766816,
+          "sampled_bytes": 3145728,
+          "sample_offsets": [
+            0,
+            230359120,
+            460718240
+          ],
+          "exists": true,
+          "path_type": "file"
+        }
+      },
+      "categories": {
+        "all": {
+          "rows": 36,
+          "accepted": 1396,
+          "proposed": 1705,
+          "acceptance": 0.8187683284457478
+        },
+        "code": {
+          "rows": 12,
+          "accepted": 474,
+          "proposed": 552,
+          "acceptance": 0.8586956521739131
+        },
+        "general_en": {
+          "rows": 8,
+          "accepted": 299,
+          "proposed": 400,
+          "acceptance": 0.7475
+        },
+        "general_ja": {
+          "rows": 8,
+          "accepted": 306,
+          "proposed": 387,
+          "acceptance": 0.7906976744186046
+        },
+        "mixed_ja_en": {
+          "rows": 8,
+          "accepted": 317,
+          "proposed": 366,
+          "acceptance": 0.8661202185792349
+        }
+      },
+      "cases": [
+        {
+          "id": "code_merge_intervals",
+          "category": "code",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 39,
+          "proposed_draft_tokens": 46
+        },
+        {
+          "id": "code_merge_intervals",
+          "category": "code",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 40,
+          "proposed_draft_tokens": 44
+        },
+        {
+          "id": "code_topological_sort",
+          "category": "code",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 41,
+          "proposed_draft_tokens": 44
+        },
+        {
+          "id": "code_topological_sort",
+          "category": "code",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 40,
+          "proposed_draft_tokens": 46
+        },
+        {
+          "id": "code_lru_cache",
+          "category": "code",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 39,
+          "proposed_draft_tokens": 47
+        },
+        {
+          "id": "code_lru_cache",
+          "category": "code",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 39,
+          "proposed_draft_tokens": 47
+        },
+        {
+          "id": "code_markdown_table",
+          "category": "code",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 38,
+          "proposed_draft_tokens": 50
+        },
+        {
+          "id": "code_markdown_table",
+          "category": "code",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 41,
+          "proposed_draft_tokens": 43
+        },
+        {
+          "id": "general_en_plan",
+          "category": "general_en",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 38,
+          "proposed_draft_tokens": 48
+        },
+        {
+          "id": "general_en_plan",
+          "category": "general_en",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 36,
+          "proposed_draft_tokens": 53
+        },
+        {
+          "id": "general_en_explain",
+          "category": "general_en",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 38,
+          "proposed_draft_tokens": 47
+        },
+        {
+          "id": "general_en_explain",
+          "category": "general_en",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 34,
+          "proposed_draft_tokens": 57
+        },
+        {
+          "id": "general_ja_plan",
+          "category": "general_ja",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 40,
+          "proposed_draft_tokens": 44
+        },
+        {
+          "id": "general_ja_plan",
+          "category": "general_ja",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 35,
+          "proposed_draft_tokens": 53
+        },
+        {
+          "id": "general_ja_explain",
+          "category": "general_ja",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 39,
+          "proposed_draft_tokens": 47
+        },
+        {
+          "id": "general_ja_explain",
+          "category": "general_ja",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 37,
+          "proposed_draft_tokens": 51
+        },
+        {
+          "id": "mixed_ja_en_translate",
+          "category": "mixed_ja_en",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 41,
+          "proposed_draft_tokens": 43
+        },
+        {
+          "id": "mixed_ja_en_translate",
+          "category": "mixed_ja_en",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 41,
+          "proposed_draft_tokens": 43
+        },
+        {
+          "id": "mixed_ja_en_review",
+          "category": "mixed_ja_en",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 36,
+          "proposed_draft_tokens": 51
+        },
+        {
+          "id": "mixed_ja_en_review",
+          "category": "mixed_ja_en",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 40,
+          "proposed_draft_tokens": 45
+        },
+        {
+          "id": "heldout_code_rate_limiter",
+          "category": "code",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 40,
+          "proposed_draft_tokens": 44
+        },
+        {
+          "id": "heldout_code_rate_limiter",
+          "category": "code",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 39,
+          "proposed_draft_tokens": 46
+        },
+        {
+          "id": "heldout_code_interval_schedule",
+          "category": "code",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 39,
+          "proposed_draft_tokens": 47
+        },
+        {
+          "id": "heldout_code_interval_schedule",
+          "category": "code",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 39,
+          "proposed_draft_tokens": 48
+        },
+        {
+          "id": "heldout_general_en_incident",
+          "category": "general_en",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 40,
+          "proposed_draft_tokens": 46
+        },
+        {
+          "id": "heldout_general_en_incident",
+          "category": "general_en",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 39,
+          "proposed_draft_tokens": 46
+        },
+        {
+          "id": "heldout_general_en_quant",
+          "category": "general_en",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 37,
+          "proposed_draft_tokens": 52
+        },
+        {
+          "id": "heldout_general_en_quant",
+          "category": "general_en",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 37,
+          "proposed_draft_tokens": 51
+        },
+        {
+          "id": "heldout_general_ja_migration",
+          "category": "general_ja",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 38,
+          "proposed_draft_tokens": 50
+        },
+        {
+          "id": "heldout_general_ja_migration",
+          "category": "general_ja",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 38,
+          "proposed_draft_tokens": 49
+        },
+        {
+          "id": "heldout_general_ja_speculative",
+          "category": "general_ja",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 40,
+          "proposed_draft_tokens": 46
+        },
+        {
+          "id": "heldout_general_ja_speculative",
+          "category": "general_ja",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 39,
+          "proposed_draft_tokens": 47
+        },
+        {
+          "id": "heldout_mixed_summary",
+          "category": "mixed_ja_en",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 41,
+          "proposed_draft_tokens": 44
+        },
+        {
+          "id": "heldout_mixed_summary",
+          "category": "mixed_ja_en",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 40,
+          "proposed_draft_tokens": 45
+        },
+        {
+          "id": "heldout_mixed_review",
+          "category": "mixed_ja_en",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 38,
+          "proposed_draft_tokens": 49
+        },
+        {
+          "id": "heldout_mixed_review",
+          "category": "mixed_ja_en",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "sampled",
+          "accepted_draft_tokens": 40,
+          "proposed_draft_tokens": 46
+        }
+      ]
+    },
+    "point_mass": {
+      "passed": true,
+      "sampler": {
+        "temperature": 1.0,
+        "top_k": 64,
+        "top_p": 0.95,
+        "seed": 0,
+        "draft_law": "point_mass"
+      },
+      "candidate_budget": 2,
+      "provenance": {
+        "kind": "hipengine_artifact_provenance",
+        "schema_version": 3,
+        "collected_at": "2026-10-26T03:42:12.041057+00:00",
+        "host_name": "gfx1151",
+        "repo_root": "/home/lhl/hipEngine",
+        "hipengine_commit": "dde23c307219fa46da5c7375de9781fda819a3d8",
+        "git_branch": "main",
+        "staged_dirty": false,
+        "unstaged_dirty": true,
+        "untracked_dirty": true,
+        "untracked_count": 1,
+        "dirty": true,
+        "dirty_paths": [
+          "audit/triage/stub.jsonl",
+          "docs/REFACTOR.md"
+        ],
+        "dirty_path_count": 2,
+        "untracked_paths": [
+          "worklog/entries/20261026T033350.946305Z-cleanup-refactor-r0041-r0044-dispositions-cd7bdd.md"
+        ],
+        "execution_affecting_dirty": true,
+        "execution_affecting_paths": [
+          "audit/triage/stub.jsonl"
+        ],
+        "configured_backend": "auto",
+        "resolved_backend": "hip_gfx1151",
+        "target_arch": "gfx1151",
+        "device_name": "AMD Radeon 8060S Graphics",
+        "model_path": "/home/lhl/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+        "model_revision": null,
+        "model_fingerprint": {
+          "algorithm": "sha256-sampled-v1",
+          "value": "f28cfd664022342bce241e6236474be472a6133a1fbbf9c6c48f8db9153f0e99",
+          "size_bytes": 17010980576,
+          "sampled_bytes": 3145728,
+          "sample_offsets": [
+            0,
+            8504966000,
+            17009932000
+          ],
+          "exists": true,
+          "path_type": "file"
+        },
+        "quant": null,
+        "kv_dtype": "bf16",
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python",
+          "scripts/gemma4_mtp_probe.py",
+          "--artifact",
+          "/home/lhl/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+          "--draft",
+          "/home/lhl/models/gguf/gemma-4-26B-A4B-it-GGUF/MTP/mtp-gemma-4-26B-A4B-it-Q8_0.gguf",
+          "--suite",
+          "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "--suite",
+          "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+          "--tokens",
+          "64",
+          "--samples",
+          "2",
+          "--budget",
+          "2",
+          "--temperature",
+          "1.0",
+          "--top-k",
+          "64",
+          "--top-p",
+          "0.95",
+          "--draft-law",
+          "point_mass",
+          "--json",
+          "/tmp/refactor-R0043-point_mass.json"
+        ],
+        "environment": {
+          "HIPENGINE_BACKEND": null,
+          "HIPENGINE_HIP_ARCH": "gfx1151",
+          "GPU_MAX_HW_QUEUES": "2",
+          "HIPENGINE_BUILD_CACHE_ROOT": null,
+          "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+          "HIP_VISIBLE_DEVICES": null,
+          "ROCR_VISIBLE_DEVICES": null,
+          "CUDA_VISIBLE_DEVICES": null,
+          "GPU_DEVICE_ORDINAL": null
+        },
+        "rocm_version": "HIP version: 7.15.26333-0000000",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "build_profile": null,
+        "timing_protocol": "plain-first whole public call including prefill; emitted tokens",
+        "warmups": 1,
+        "repetitions": 2,
+        "profiler": null
+      },
+      "draft_provenance": {
+        "path": "/home/lhl/models/gguf/gemma-4-26B-A4B-it-GGUF/MTP/mtp-gemma-4-26B-A4B-it-Q8_0.gguf",
+        "revision": null,
+        "fingerprint": {
+          "algorithm": "sha256-sampled-v1",
+          "value": "d1a1c31a0af001d83777ca084e8b0b6a02ab1c16bfa77666cac61eebc5b9feec",
+          "size_bytes": 461766816,
+          "sampled_bytes": 3145728,
+          "sample_offsets": [
+            0,
+            230359120,
+            460718240
+          ],
+          "exists": true,
+          "path_type": "file"
+        }
+      },
+      "categories": {
+        "all": {
+          "rows": 36,
+          "accepted": 1382,
+          "proposed": 1731,
+          "acceptance": 0.7983824378971692
+        },
+        "code": {
+          "rows": 12,
+          "accepted": 474,
+          "proposed": 549,
+          "acceptance": 0.8633879781420765
+        },
+        "general_en": {
+          "rows": 8,
+          "accepted": 293,
+          "proposed": 412,
+          "acceptance": 0.7111650485436893
+        },
+        "general_ja": {
+          "rows": 8,
+          "accepted": 296,
+          "proposed": 408,
+          "acceptance": 0.7254901960784313
+        },
+        "mixed_ja_en": {
+          "rows": 8,
+          "accepted": 319,
+          "proposed": 362,
+          "acceptance": 0.8812154696132597
+        }
+      },
+      "cases": [
+        {
+          "id": "code_merge_intervals",
+          "category": "code",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 39,
+          "proposed_draft_tokens": 48
+        },
+        {
+          "id": "code_merge_intervals",
+          "category": "code",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 40,
+          "proposed_draft_tokens": 46
+        },
+        {
+          "id": "code_topological_sort",
+          "category": "code",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 40,
+          "proposed_draft_tokens": 44
+        },
+        {
+          "id": "code_topological_sort",
+          "category": "code",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 40,
+          "proposed_draft_tokens": 46
+        },
+        {
+          "id": "code_lru_cache",
+          "category": "code",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 39,
+          "proposed_draft_tokens": 47
+        },
+        {
+          "id": "code_lru_cache",
+          "category": "code",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 40,
+          "proposed_draft_tokens": 45
+        },
+        {
+          "id": "code_markdown_table",
+          "category": "code",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 41,
+          "proposed_draft_tokens": 42
+        },
+        {
+          "id": "code_markdown_table",
+          "category": "code",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 40,
+          "proposed_draft_tokens": 44
+        },
+        {
+          "id": "general_en_plan",
+          "category": "general_en",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 38,
+          "proposed_draft_tokens": 48
+        },
+        {
+          "id": "general_en_plan",
+          "category": "general_en",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 37,
+          "proposed_draft_tokens": 51
+        },
+        {
+          "id": "general_en_explain",
+          "category": "general_en",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 36,
+          "proposed_draft_tokens": 53
+        },
+        {
+          "id": "general_en_explain",
+          "category": "general_en",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 36,
+          "proposed_draft_tokens": 52
+        },
+        {
+          "id": "general_ja_plan",
+          "category": "general_ja",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 36,
+          "proposed_draft_tokens": 51
+        },
+        {
+          "id": "general_ja_plan",
+          "category": "general_ja",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 36,
+          "proposed_draft_tokens": 53
+        },
+        {
+          "id": "general_ja_explain",
+          "category": "general_ja",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 38,
+          "proposed_draft_tokens": 49
+        },
+        {
+          "id": "general_ja_explain",
+          "category": "general_ja",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 33,
+          "proposed_draft_tokens": 58
+        },
+        {
+          "id": "mixed_ja_en_translate",
+          "category": "mixed_ja_en",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 41,
+          "proposed_draft_tokens": 44
+        },
+        {
+          "id": "mixed_ja_en_translate",
+          "category": "mixed_ja_en",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 41,
+          "proposed_draft_tokens": 43
+        },
+        {
+          "id": "mixed_ja_en_review",
+          "category": "mixed_ja_en",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 39,
+          "proposed_draft_tokens": 46
+        },
+        {
+          "id": "mixed_ja_en_review",
+          "category": "mixed_ja_en",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 38,
+          "proposed_draft_tokens": 50
+        },
+        {
+          "id": "heldout_code_rate_limiter",
+          "category": "code",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 39,
+          "proposed_draft_tokens": 46
+        },
+        {
+          "id": "heldout_code_rate_limiter",
+          "category": "code",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 38,
+          "proposed_draft_tokens": 48
+        },
+        {
+          "id": "heldout_code_interval_schedule",
+          "category": "code",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 39,
+          "proposed_draft_tokens": 46
+        },
+        {
+          "id": "heldout_code_interval_schedule",
+          "category": "code",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 39,
+          "proposed_draft_tokens": 47
+        },
+        {
+          "id": "heldout_general_en_incident",
+          "category": "general_en",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 39,
+          "proposed_draft_tokens": 48
+        },
+        {
+          "id": "heldout_general_en_incident",
+          "category": "general_en",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 39,
+          "proposed_draft_tokens": 46
+        },
+        {
+          "id": "heldout_general_en_quant",
+          "category": "general_en",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 37,
+          "proposed_draft_tokens": 52
+        },
+        {
+          "id": "heldout_general_en_quant",
+          "category": "general_en",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 31,
+          "proposed_draft_tokens": 62
+        },
+        {
+          "id": "heldout_general_ja_migration",
+          "category": "general_ja",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 40,
+          "proposed_draft_tokens": 45
+        },
+        {
+          "id": "heldout_general_ja_migration",
+          "category": "general_ja",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 37,
+          "proposed_draft_tokens": 52
+        },
+        {
+          "id": "heldout_general_ja_speculative",
+          "category": "general_ja",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 37,
+          "proposed_draft_tokens": 52
+        },
+        {
+          "id": "heldout_general_ja_speculative",
+          "category": "general_ja",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 39,
+          "proposed_draft_tokens": 48
+        },
+        {
+          "id": "heldout_mixed_summary",
+          "category": "mixed_ja_en",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 41,
+          "proposed_draft_tokens": 44
+        },
+        {
+          "id": "heldout_mixed_summary",
+          "category": "mixed_ja_en",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 40,
+          "proposed_draft_tokens": 45
+        },
+        {
+          "id": "heldout_mixed_review",
+          "category": "mixed_ja_en",
+          "sample": 0,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 40,
+          "proposed_draft_tokens": 44
+        },
+        {
+          "id": "heldout_mixed_review",
+          "category": "mixed_ja_en",
+          "sample": 1,
+          "passed": true,
+          "draft_law": "point_mass",
+          "accepted_draft_tokens": 39,
+          "proposed_draft_tokens": 46
+        }
+      ]
+    }
+  },
+  "post_removal_validation": {
+    "1.0": {
+      "passed": true,
+      "rows": 36,
+      "sampler": {
+        "temperature": 1.0,
+        "top_k": 64,
+        "top_p": 0.95,
+        "seed": 0,
+        "draft_law": "sampled"
+      },
+      "provenance": {
+        "kind": "hipengine_artifact_provenance",
+        "schema_version": 3,
+        "collected_at": "2026-10-26T03:53:13.464270+00:00",
+        "host_name": "gfx1151",
+        "repo_root": "/home/lhl/hipEngine",
+        "hipengine_commit": "dde23c307219fa46da5c7375de9781fda819a3d8",
+        "git_branch": "main",
+        "staged_dirty": false,
+        "unstaged_dirty": true,
+        "untracked_dirty": true,
+        "untracked_count": 2,
+        "dirty": true,
+        "dirty_paths": [
+          "audit/triage/stub.jsonl",
+          "docs/REFACTOR.md",
+          "hipengine/generation/gemma4_mtp.py",
+          "scripts/gemma4_mtp_probe.py",
+          "tests/test_unit_gemma4_mtp_cycle_accounting.py"
+        ],
+        "dirty_path_count": 5,
+        "untracked_paths": [
+          "benchmarks/results/2026-10-26-gemma4-draft-law-cleanup.json",
+          "worklog/entries/20261026T033350.946305Z-cleanup-refactor-r0041-r0044-dispositions-cd7bdd.md"
+        ],
+        "execution_affecting_dirty": true,
+        "execution_affecting_paths": [
+          "audit/triage/stub.jsonl",
+          "hipengine/generation/gemma4_mtp.py",
+          "scripts/gemma4_mtp_probe.py",
+          "tests/test_unit_gemma4_mtp_cycle_accounting.py"
+        ],
+        "configured_backend": "auto",
+        "resolved_backend": "hip_gfx1151",
+        "target_arch": "gfx1151",
+        "device_name": "AMD Radeon 8060S Graphics",
+        "model_path": "/home/lhl/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+        "model_revision": null,
+        "model_fingerprint": {
+          "algorithm": "sha256-sampled-v1",
+          "value": "f28cfd664022342bce241e6236474be472a6133a1fbbf9c6c48f8db9153f0e99",
+          "size_bytes": 17010980576,
+          "sampled_bytes": 3145728,
+          "sample_offsets": [
+            0,
+            8504966000,
+            17009932000
+          ],
+          "exists": true,
+          "path_type": "file"
+        },
+        "quant": null,
+        "kv_dtype": "bf16",
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python",
+          "scripts/gemma4_mtp_probe.py",
+          "--artifact",
+          "/home/lhl/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+          "--draft",
+          "/home/lhl/models/gguf/gemma-4-26B-A4B-it-GGUF/MTP/mtp-gemma-4-26B-A4B-it-Q8_0.gguf",
+          "--suite",
+          "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "--suite",
+          "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+          "--tokens",
+          "64",
+          "--samples",
+          "2",
+          "--budget",
+          "2",
+          "--temperature",
+          "1.0",
+          "--top-k",
+          "64",
+          "--top-p",
+          "0.95",
+          "--json",
+          "/tmp/refactor-R0043-final-1.0.json"
+        ],
+        "environment": {
+          "HIPENGINE_BACKEND": null,
+          "HIPENGINE_HIP_ARCH": "gfx1151",
+          "GPU_MAX_HW_QUEUES": "2",
+          "HIPENGINE_BUILD_CACHE_ROOT": null,
+          "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+          "HIP_VISIBLE_DEVICES": null,
+          "ROCR_VISIBLE_DEVICES": null,
+          "CUDA_VISIBLE_DEVICES": null,
+          "GPU_DEVICE_ORDINAL": null
+        },
+        "rocm_version": "HIP version: 7.15.26333-0000000",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "build_profile": null,
+        "timing_protocol": "plain-first whole public call including prefill; emitted tokens",
+        "warmups": 1,
+        "repetitions": 2,
+        "profiler": null
+      },
+      "draft_laws": [
+        "sampled"
+      ],
+      "sampled_tokens_identical_to_before": true
+    },
+    "0.0": {
+      "passed": true,
+      "rows": 36,
+      "sampler": {
+        "temperature": 0.0,
+        "top_k": 64,
+        "top_p": 0.95,
+        "seed": 0,
+        "draft_law": "point_mass"
+      },
+      "provenance": {
+        "kind": "hipengine_artifact_provenance",
+        "schema_version": 3,
+        "collected_at": "2026-10-26T03:55:33.763794+00:00",
+        "host_name": "gfx1151",
+        "repo_root": "/home/lhl/hipEngine",
+        "hipengine_commit": "dde23c307219fa46da5c7375de9781fda819a3d8",
+        "git_branch": "main",
+        "staged_dirty": false,
+        "unstaged_dirty": true,
+        "untracked_dirty": true,
+        "untracked_count": 2,
+        "dirty": true,
+        "dirty_paths": [
+          "audit/triage/stub.jsonl",
+          "docs/REFACTOR.md",
+          "hipengine/generation/gemma4_mtp.py",
+          "scripts/gemma4_mtp_probe.py",
+          "tests/test_unit_gemma4_mtp_cycle_accounting.py"
+        ],
+        "dirty_path_count": 5,
+        "untracked_paths": [
+          "benchmarks/results/2026-10-26-gemma4-draft-law-cleanup.json",
+          "worklog/entries/20261026T033350.946305Z-cleanup-refactor-r0041-r0044-dispositions-cd7bdd.md"
+        ],
+        "execution_affecting_dirty": true,
+        "execution_affecting_paths": [
+          "audit/triage/stub.jsonl",
+          "hipengine/generation/gemma4_mtp.py",
+          "scripts/gemma4_mtp_probe.py",
+          "tests/test_unit_gemma4_mtp_cycle_accounting.py"
+        ],
+        "configured_backend": "auto",
+        "resolved_backend": "hip_gfx1151",
+        "target_arch": "gfx1151",
+        "device_name": "AMD Radeon 8060S Graphics",
+        "model_path": "/home/lhl/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+        "model_revision": null,
+        "model_fingerprint": {
+          "algorithm": "sha256-sampled-v1",
+          "value": "f28cfd664022342bce241e6236474be472a6133a1fbbf9c6c48f8db9153f0e99",
+          "size_bytes": 17010980576,
+          "sampled_bytes": 3145728,
+          "sample_offsets": [
+            0,
+            8504966000,
+            17009932000
+          ],
+          "exists": true,
+          "path_type": "file"
+        },
+        "quant": null,
+        "kv_dtype": "bf16",
+        "command": [
+          "/home/lhl/miniforge3/envs/therock/bin/python",
+          "scripts/gemma4_mtp_probe.py",
+          "--artifact",
+          "/home/lhl/models/gguf/gemma-4-26B-A4B-it-GGUF/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+          "--draft",
+          "/home/lhl/models/gguf/gemma-4-26B-A4B-it-GGUF/MTP/mtp-gemma-4-26B-A4B-it-Q8_0.gguf",
+          "--suite",
+          "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "--suite",
+          "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+          "--tokens",
+          "64",
+          "--samples",
+          "2",
+          "--budget",
+          "2",
+          "--temperature",
+          "0.0",
+          "--top-k",
+          "64",
+          "--top-p",
+          "0.95",
+          "--json",
+          "/tmp/refactor-R0043-final-0.0.json"
+        ],
+        "environment": {
+          "HIPENGINE_BACKEND": null,
+          "HIPENGINE_HIP_ARCH": "gfx1151",
+          "GPU_MAX_HW_QUEUES": "2",
+          "HIPENGINE_BUILD_CACHE_ROOT": null,
+          "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+          "HIP_VISIBLE_DEVICES": null,
+          "ROCR_VISIBLE_DEVICES": null,
+          "CUDA_VISIBLE_DEVICES": null,
+          "GPU_DEVICE_ORDINAL": null
+        },
+        "rocm_version": "HIP version: 7.15.26333-0000000",
+        "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+        "build_profile": null,
+        "timing_protocol": "plain-first whole public call including prefill; emitted tokens",
+        "warmups": 1,
+        "repetitions": 2,
+        "profiler": null
+      },
+      "draft_laws": [
+        "point_mass"
+      ]
+    }
+  }
+}

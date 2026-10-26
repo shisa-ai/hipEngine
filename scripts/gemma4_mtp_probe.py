@@ -9,9 +9,7 @@ envelope: it reports where it diverged instead of failing on it.
 ``--temperature`` above zero compares sampled plain decoding with sampled MTP.
 The two arms then draw different tokens by design, so token identity is not
 checked; the row carries the MTP arm's draft acceptance and tokens per cycle
-instead. ``--draft-law point_mass`` makes the head offer its most likely token
-rather than a draw from its own distribution, which is the comparison arm for
-what a sampled draft gains. A single prompt is diagnostic;
+instead. A single prompt is diagnostic;
 use category suites and heldouts before making a general speedup claim.
 """
 from __future__ import annotations
@@ -152,8 +150,6 @@ def main() -> int:
     ap.add_argument("--top-p", type=float, default=1.0)
     ap.add_argument("--seed", type=int, default=0,
                     help="base seed; each sample of a prompt adds its index")
-    ap.add_argument("--draft-law", choices=("sampled", "point_mass"), default="sampled",
-                    help="how a sampled request's drafts are proposed")
     ap.add_argument("--json", type=Path, help="write paired results and full model provenance")
     args = ap.parse_args()
     if args.tokens <= 0 or args.budget <= 0 or args.samples <= 0:
@@ -164,12 +160,8 @@ def main() -> int:
     llm = hipengine.LLM(model=args.artifact, speculative_provider=args.provider,
                         draft_model=args.draft, speculative_candidate_budget=args.budget)
     generator = llm._get_text_generator()
+    # A greedy request's draft law is a point mass; every other request draws.
     sampled = args.temperature > 0.0 and args.top_k != 1
-    if args.draft_law == "point_mass":
-        provider = getattr(generator, "_speculative_provider", None)
-        if provider is None or not hasattr(provider, "draft_sampling"):
-            ap.error("this provider has no point-mass draft arm")
-        provider.draft_sampling = False
     print(f"provider: {args.provider}; candidate_budget: {args.budget}")
     print("timing scope: whole public call including prefill; emitted-token denominator")
     results = []
@@ -215,7 +207,7 @@ def main() -> int:
               "passed": passed, "candidate_budget": args.budget, "results": results,
               "sampler": {"temperature": args.temperature, "top_k": args.top_k,
                           "top_p": args.top_p, "seed": args.seed,
-                          "draft_law": args.draft_law if sampled else "point_mass"},
+                          "draft_law": "sampled" if sampled else "point_mass"},
               "limitations": ["Whole-call timing is not isolated decode throughput.",
                               "Token equality is a greedy self-consistency check, not a task-quality gate.",
                               "Plain-first ordering checks inherited state but is not order-balanced timing."]}

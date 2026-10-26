@@ -129,11 +129,6 @@ class Gemma4MTPTextProvider:
     """MTP with a batched verify and exact speculative accept on the backbone's logits."""
 
     provider_name = _PROVIDER
-    #: Whether a sampled request draws each draft from the head's law. False
-    #: offers the head's most likely token as a point-mass draft instead, which
-    #: is the comparison arm for the acceptance a sampled draft gains; both are
-    #: exact. A greedy request's draft is a point mass either way.
-    draft_sampling = True
 
     def __init__(
         self,
@@ -353,7 +348,10 @@ class Gemma4MTPTextProvider:
         sampler = Gemma4Sampler(
             request, token_ids, eos_token_ids=tuple(sorted(configured_eos))
         )
-        sampled_drafts = self.draft_sampling and not sampler.greedy
+        # The law this request's drafts are proposed under, as the telemetry
+        # reports it. A greedy request's law is a point mass; a sampled one
+        # draws from its own distribution. Both are exact under the accept rule.
+        draft_law = "point_mass" if sampler.greedy else "sampled"
         wants_logprobs = sampler.wants_logprobs
         selection = sampler.select_row(logits)
         token = selection.token_id
@@ -383,7 +381,7 @@ class Gemma4MTPTextProvider:
                 request=request, tokenizer=tokenizer, token_ids=token_ids,
                 generated=generated, token_logprobs=token_logprobs, sampler=sampler,
                 cycles=cycles, reason=reason, stop_sequence=stop_sequence, runner=runner,
-                phase_ms=phase_ms, phase_calls=phase_calls, sampled_drafts=sampled_drafts,
+                phase_ms=phase_ms, phase_calls=phase_calls, draft_law=draft_law,
             )
 
         yield Gemma4MTPOperation("commit", runner, output=output(),
@@ -406,15 +404,16 @@ class Gemma4MTPTextProvider:
 
             def propose(head_logits: np.ndarray) -> int:
                 # The law is the request's own sampler applied to the head's
-                # row, conditioned on the drafts before it. A sampled draft is
-                # drawn from it; otherwise its most likely token is offered as
-                # a point mass. The law kept is the one the token came from.
+                # row, conditioned on the drafts before it. A sampled request
+                # draws its draft from that law. A greedy request's law is
+                # already a point mass (``Gemma4Sampler.greedy``), so its draft
+                # is the head's most likely token and costs no draw. The law
+                # kept is the one the token came from.
                 law = sampler.draft_distribution(head_logits)
-                if sampled_drafts:
-                    drafted = law.sample(sampler.draft_unit())
+                if sampler.greedy:
+                    drafted = int(law.token_ids[0])
                 else:
-                    drafted = int(law.token_ids[int(np.argmax(law.probabilities))])
-                    law = Gemma4Distribution.point_mass(drafted)
+                    drafted = law.sample(sampler.draft_unit())
                 draft_laws.append(law)
                 if sampler.pending_forced_token() is not None:
                     sampler.pop_forced_token()
@@ -585,7 +584,7 @@ class Gemma4MTPTextProvider:
 
     def _cycle_output(self, *, request, tokenizer, token_ids, generated,
                       token_logprobs, sampler, cycles, reason, stop_sequence,
-                      runner, phase_ms, phase_calls, sampled_drafts):
+                      runner, phase_ms, phase_calls, draft_law):
         self.last_cycles = tuple(cycles)
         verify_exact = bool(getattr(runner, "verify_dense_exact", True))
         proposed = sum(len(cycle.candidates) for cycle in cycles)
@@ -628,7 +627,7 @@ class Gemma4MTPTextProvider:
                 ),
                 "draft_rollback": "cursor_rewind",
                 "accept_rule": "min(1, p/q) with residual resampling",
-                "draft_law": "sampled" if sampled_drafts else "point_mass",
+                "draft_law": draft_law,
                 "verify_equivalence": (
                     _VERIFY_EXACT if verify_exact else _VERIFY_ENVELOPE
                 ),

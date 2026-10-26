@@ -1382,6 +1382,15 @@ multi-column engagement evidence, so it stays.
 
 ## gfx1151 Q4 dual-SiLU prefill 16-column arms: removed (2026-09-13)
 
+Cleanup status (2026-10-26, R0042): resolved and verified at HEAD. No
+`col16_row256`/`col16_row512` export, wrapper, registry entry, test, or
+`out_tiles_per_block` template parameter remains in `hipengine/` or `tests/`;
+the remaining occurrences are this record, its worklog entries, the rejected-arm
+artifact, the 2026-09-13 prefill-kernel profile artifact, the benchmark
+changelog and the audit sweep inventory. The arms are reproducible only from
+the pre-removal source named in the rejected-arm artifact. The open directions
+below are unstarted hypotheses, not cleanup debt.
+
 - `dense_dual_wmma_prefill_col16_row256_bf16_bf16_out`,
   `dense_dual_wmma_prefill_col16_row512_bf16_bf16_out`, and the
   `out_tiles_per_block` template parameter they were built on were added,
@@ -1410,38 +1419,49 @@ multi-column engagement evidence, so it stays.
 
 ## `Gemma4MTPTextProvider.draft_sampling` keeps a most-likely-token draft arm (open 2026-10-13)
 
-A sampled Gemma 4 MTP request draws each draft from the assistant head's
-distribution. `Gemma4MTPTextProvider.draft_sampling = False` makes it offer the
-head's most likely token instead; both are exact under the accept rule. The
-attribute is a class default of `True`, is read by no environment variable or
-request field, and is set only by `scripts/gemma4_mtp_probe.py --draft-law
-point_mass`, which is how the two were compared on the W7900 (acceptance 63.4%
-against 65.9% at temperature 1.0 with top-k 64;
-`benchmarks/results/2026-10-13-gemma4-gfx1100-mtp-sampled.json`).
+Cleanup status (2026-10-26): removed; the heading identifies the historical item.
+R0043's comparison condition is met. On gfx1151, the full category suite plus
+heldouts at temperature 1.0, top-k 64, top-p 0.95, budget 2 and 64 output tokens
+favored sampled drafts in aggregate. Both arms passed the probe's correctness
+checks; category results were mixed, not a universal non-inferiority result.
+The counts, model/host provenance and commands are recorded in
+`benchmarks/results/2026-10-26-gemma4-draft-law-cleanup.json`.
 
-Remove the attribute, the probe option and the `else` branch in the provider's
-`propose` once the same comparison has been run on `hip_gfx1151` and the drawn
-draft is no worse there. If it is worse there, the choice becomes a backend
-capability rather than an attribute.
+`Gemma4MTPTextProvider.draft_sampling` and the probe's `--draft-law` option are
+removed. Non-greedy requests always draw drafts from the assistant distribution;
+greedy requests still propose its point mass without spending a draft RNG draw.
+The exact speculative acceptance rule and effective `draft_law` telemetry remain.
+Historical two-law comparison commands require the pre-removal revision.
 
 ## gfx1100 has no kernel-registration refresh hook (found 2026-10-12)
+
+Cleanup status (2026-10-26, R0044): resolved by the test baseline, not by a
+hook. `tests/conftest.py` imports every `hip_gfx1100` module before snapshotting
+the collection-time registry (`pytest_collection_finish`, lines 80-101), so the
+teardown restore now carries the lazily imported Gemma 4 owners. The recorded
+GPU-visible `--suite all` run on the gfx1100 host passes in one invocation
+(26,811 tests, 0 failures;
+`worklog/entries/20261023T015203.261216Z-lhl-gpu-suite-health-eb4ac4.md`), and
+that run includes `tests/test_gpu_gemma4_decode_graph_capture.py`. The hook is
+still absent from `hipengine/kernels/hip_gfx1100/__init__.py`; it is not needed
+because no route clears the registry outside tests and the baseline is the
+refresh. Do not add a replay hook only to satisfy the withdrawn condition.
 
 `load_backend_kernel_package` refills registrations a test's registry isolation
 removed by calling the backend package's `register_backend_kernels(replace=False)`.
 `hipengine/kernels/hip_gfx1151/__init__.py` exports that hook;
 `hipengine/kernels/hip_gfx1100/__init__.py` does not, because its kernels
-register when their modules are first imported. Under pytest on gfx1100 a
-second model load in one process therefore fails with
-`MissingRuntimeProfilePlanError` once an earlier test's teardown has restored
-the collection-time registry. `tests/test_gpu_gemma4_decode_graph_capture.py`
-is the file that shows it: each of its three tests passes when run as its own
-pytest invocation, and the second and third fail after the first in one
-invocation. Product loads are unaffected; nothing clears the registry outside
-tests.
+register when their modules are first imported. Before the baseline fix, a
+second model load in one pytest process failed with
+`MissingRuntimeProfilePlanError` once an earlier test's teardown had restored
+the collection-time registry; `tests/test_gpu_gemma4_decode_graph_capture.py`
+was the file that showed it. Product loads were unaffected; nothing clears the
+registry outside tests.
 
-Removal condition: `hip_gfx1100` exports `register_backend_kernels`, and
-`pytest tests/test_gpu_gemma4_decode_graph_capture.py` passes in one invocation
-on a gfx1100 device.
+Removal condition (superseded 2026-10-26): the observed failure is gone under
+the baseline capture above, and no caller needs a gfx1100 replay hook. If a
+future test needs to clear the registry inside its body and reload a model, add
+a real replay hook then, with that test as its gate.
 
 ## Q8_0 T16 f16w tiles are found through a pointer table (added 2026-10-10)
 
