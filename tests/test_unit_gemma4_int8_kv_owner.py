@@ -43,8 +43,9 @@ class _FakeAllocator:
     def free(self, buffer: DeviceBuffer) -> None:
         self.freed.append(buffer)
 
-    def copy(self, buffer, host_ptr, nbytes, **kwargs) -> None:
-        self.copies.append((buffer.ptr, int(nbytes)))
+    def copy(self, buffer, array, nbytes=None, **kwargs) -> None:
+        count = array.nbytes if nbytes is None else int(nbytes)
+        self.copies.append((buffer.ptr, int(count)))
 
     def enqueue(self, buffer, host_ptr, nbytes, **kwargs) -> None:
         self.enqueues.append((buffer.ptr, int(nbytes), int(kwargs.get("stream", 0))))
@@ -53,7 +54,7 @@ class _FakeAllocator:
 def _install(monkeypatch: pytest.MonkeyPatch, allocator: _FakeAllocator) -> None:
     monkeypatch.setattr(owner_module, "malloc", allocator.malloc)
     monkeypatch.setattr(owner_module, "free", allocator.free)
-    monkeypatch.setattr(owner_module, "copy_host_to_device", allocator.copy)
+    monkeypatch.setattr(owner_module, "copy_host_array_to_device", allocator.copy)
     monkeypatch.setattr(owner_module, "enqueue_host_to_device", allocator.enqueue)
 
 

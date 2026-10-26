@@ -2242,3 +2242,265 @@ def test_qwen35_gguf_probe_uploads_owning_arrays_with_exact_counts(monkeypatch):
     assert token_array.tolist() == [760]
     assert hidden_array.dtype == np.uint16
     assert hidden_array.shape == (1, 8)
+
+
+AUDIO_KV_RUNTIME_SYNCHRONOUS_ARRAY_UPLOAD_MODULES = (
+    "runtime/gemma4_int8_kv",
+    "runtime/surya",
+    "runtime/yue2_ar",
+    "runtime/vibevoice_qwen2",
+)
+
+
+@pytest.mark.parametrize("module", AUDIO_KV_RUNTIME_SYNCHRONOUS_ARRAY_UPLOAD_MODULES)
+def test_audio_kv_runtime_synchronous_array_uploads_use_the_owning_helper(module):
+    """Audio/KV H2D arrays must retain their owner through the copy.
+
+    This is a bounded syntax guard over the Gemma 4 INT8 KV owner, Surya, YuE2
+    AR and VibeVoice Qwen2 runtimes, not a proof of arbitrary pointer lifetimes.
+    Asynchronous uploads, raw pointer uploads, and D2H/D2D copies are outside
+    this guard.
+    """
+    path = Path(__file__).parents[1] / "hipengine" / f"{module}.py"
+    tree = ast.parse(path.read_text())
+    hazards = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Name) and node.func.id == "copy_host_to_device":
+            source = (
+                node.args[1]
+                if len(node.args) > 1
+                else next((kw.value for kw in node.keywords if kw.arg == "host_ptr"), None)
+            )
+            if source is not None and _is_array_pointer_expression(source):
+                hazards.append((node.lineno, "copy_host_to_device"))
+            continue
+        if not (isinstance(node.func, ast.Attribute) and node.func.attr == "memcpy"):
+            continue
+        kind = (
+            node.args[3]
+            if len(node.args) > 3
+            else next((kw.value for kw in node.keywords if kw.arg == "kind"), None)
+        )
+        if not (isinstance(kind, ast.Attribute) and kind.attr == "HOST_TO_DEVICE"):
+            continue
+        source = (
+            node.args[1]
+            if len(node.args) > 1
+            else next((kw.value for kw in node.keywords if kw.arg == "src"), None)
+        )
+        if source is not None and _is_array_pointer_expression(source):
+            hazards.append((node.lineno, "runtime.memcpy"))
+    assert not hazards, f"{path.name}: use copy_host_array_to_device at {hazards}"
+
+
+def test_gemma4_int8_kv_page_table_upload_uses_owning_array(monkeypatch):
+    from hipengine.core.dtype import DType
+    from hipengine.runtime import gemma4_int8_kv as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    _fake_malloc(monkeypatch, mod)
+    monkeypatch.setattr(mod, "free", lambda *args, **kwargs: None)
+    monkeypatch.setattr(mod, "enqueue_host_to_device", lambda *args, **kwargs: None)
+
+    cache = mod.Gemma4Int8KVCache(
+        capacity=512,
+        max_block=8,
+        attentions=((16, 8, 256),),
+        scale_dtype=DType.FP16,
+        block_size=64,
+    )
+
+    identity = np.tile(
+        np.arange(cache.blocks, dtype=np.int32), (cache.max_block, 1)
+    ).reshape(-1)
+    assert legacy == []
+    assert len(uploads) == 1
+    call_buffer, array, nbytes, call_runtime = uploads[0]
+    assert call_buffer is cache._page_table
+    assert call_buffer.nbytes == identity.nbytes
+    assert array.tolist() == identity.tolist()
+    assert nbytes == identity.nbytes
+    assert call_runtime is None
+    cache.close()
+
+
+def _fake_surya_runner():
+    from hipengine.runtime import surya as mod
+
+    runner = object.__new__(mod.SuryaGpuRunner)
+    runner._span_live_counts = memory.DeviceBuffer(0x5000, 8)
+    runner._span_row_positions = memory.DeviceBuffer(0x5100, 8)
+    runner._span_live_host = np.zeros(1, dtype=np.int64)
+    runner._span_row_host = np.zeros(1, dtype=np.int64)
+    return runner
+
+
+def test_surya_span_extent_uploads_owning_scalars(monkeypatch):
+    from hipengine.runtime import surya as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    runner = _fake_surya_runner()
+
+    runner._set_span_extent(7, 3)
+
+    assert legacy == []
+    assert [(call[0].ptr, call[2], call[3]) for call in uploads] == [
+        (0x5000, 8, None),
+        (0x5100, 8, None),
+    ]
+    live_array, row_array = (call[1] for call in uploads)
+    assert live_array.tolist() == [7]
+    assert row_array.tolist() == [3]
+    assert runner._span_live_host.tolist() == [7]
+    assert runner._span_row_host.tolist() == [3]
+
+
+def test_surya_upload_converts_owning_contiguous_source(monkeypatch):
+    from hipengine.runtime import surya as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    synchronizations = []
+    runner = SimpleNamespace(
+        runtime=SimpleNamespace(
+            device_synchronize=lambda: synchronizations.append(True)
+        )
+    )
+    buffer = memory.DeviceBuffer(0x5200, 16)
+
+    mod.SuryaGpuRunner._upload(runner, buffer, np.arange(8)[::2])
+
+    assert legacy == []
+    assert synchronizations == []
+    assert len(uploads) == 1
+    call_buffer, array, nbytes, call_runtime = uploads[0]
+    assert call_buffer is buffer
+    assert array.flags.c_contiguous
+    assert array.dtype == np.float32
+    assert array.tolist() == [0.0, 2.0, 4.0, 6.0]
+    assert nbytes == 16
+    assert call_runtime is None
+
+
+def test_yue2_ar_push_token_uploads_owning_context_length(monkeypatch):
+    from hipengine.runtime import yue2_ar as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    runtime = object.__new__(mod.Yue2ArRuntime)
+    runtime.branches = 1
+    runtime.max_context = 16
+    runtime.spec = SimpleNamespace(hidden_size=4)
+    runtime._hidden = [memory.DeviceBuffer(0x6000, 8)]
+    runtime._ctx_len = [memory.DeviceBuffer(0x6100, 8)]
+    runtime._ctx_len_host = [np.zeros(1, dtype=np.int64)]
+    runtime._logits_pair_cache = object()
+    runtime._logits_window_filled = True
+
+    runtime.push_token(np.zeros(4, dtype=np.float32), 0)
+
+    assert legacy == []
+    # The hidden row keeps the helper's source-sized default; the context length
+    # passes the former destination-sized default explicitly.
+    assert [
+        (call[0].ptr, call[1].nbytes if call[2] is None else call[2], call[3])
+        for call in uploads
+    ] == [(0x6000, 8, None), (0x6100, 8, None)]
+    hidden_array, context_array = (call[1] for call in uploads)
+    assert hidden_array.dtype == np.uint16
+    assert context_array.tolist() == [1]
+    assert runtime._ctx_len_host[0].tolist() == [1]
+    assert runtime._logits_pair_cache is None
+    assert runtime._logits_window_filled is False
+
+
+def test_vibevoice_qwen2_push_token_uploads_owning_hidden_and_context(monkeypatch):
+    from hipengine.runtime import vibevoice_qwen2 as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    runtime = object.__new__(mod.VibevoiceQwen2Runtime)
+    runtime.max_context = 16
+    runtime.spec = SimpleNamespace(hidden_size=4)
+    runtime._hidden = memory.DeviceBuffer(0x7000, 8)
+    runtime._ctx_len = memory.DeviceBuffer(0x7100, 8)
+    runtime._ctx_len_host = np.zeros(1, dtype=np.int64)
+
+    runtime.push_token(np.zeros(4, dtype=np.float32), 0)
+
+    assert legacy == []
+    assert [(call[0].ptr, call[2], call[3]) for call in uploads] == [
+        (0x7000, 8, None),
+        (0x7100, 8, None),
+    ]
+    hidden_array, context_array = (call[1] for call in uploads)
+    assert hidden_array.dtype == np.uint16
+    assert context_array.tolist() == [1]
+    assert runtime._ctx_len_host[0] == 1
+
+
+def test_vibevoice_qwen2_batched_prefill_publishes_owning_context_length(
+    monkeypatch,
+):
+    """The batched prefill tail publishes the new context length from the owner.
+
+    ``layers`` is empty so the test exercises the prefill entry validation, the
+    arena scratch request, the position/count staging and the final context
+    publication without any kernel, model, or hipBLASLt problem.
+    """
+    from hipengine.runtime import vibevoice_qwen2 as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    runtime = object.__new__(mod.VibevoiceQwen2Runtime)
+    runtime.max_context = 16
+    runtime.spec = SimpleNamespace(
+        hidden_size=4,
+        num_attention_heads=2,
+        num_key_value_heads=1,
+        head_dim=2,
+        intermediate_size=8,
+        rms_norm_eps=1e-6,
+    )
+    scratch = []
+
+    def take(sizes):
+        views = [
+            memory.DeviceBuffer(0x8000 + 0x100 * index, int(size))
+            for index, size in enumerate(sizes)
+        ]
+        scratch.extend(views)
+        return views
+
+    runtime._prefill_scratch = SimpleNamespace(take=take)
+    runtime._spans = lambda positions, counts, rows: object()
+    runtime.layers = ()
+    runtime._ctx_len = memory.DeviceBuffer(0x8100, 8)
+    runtime._ctx_len_host = np.zeros(1, dtype=np.int64)
+    hidden_rows = memory.DeviceBuffer(0x8200, 4 * 4 * 2)
+
+    # The rejected window must not stage or publish anything.
+    with pytest.raises(ValueError, match="prefill exceeds max_context"):
+        runtime._prefill_batched(hidden_rows, 14, 3)
+    assert uploads == []
+    assert legacy == []
+    assert runtime._ctx_len_host.tolist() == [0]
+
+    runtime._prefill_batched(hidden_rows, 4, 3)
+
+    assert legacy == []
+    positions, counts = scratch[0], scratch[1]
+    assert [
+        (call[0].ptr, call[1].nbytes if call[2] is None else call[2], call[3])
+        for call in uploads
+    ] == [
+        (positions.ptr, 4 * 8, None),
+        (counts.ptr, 4 * 8, None),
+        (0x8100, 8, None),
+    ]
+    position_array, count_array, context_array = (call[1] for call in uploads)
+    assert position_array.tolist() == [3, 4, 5, 6]
+    assert count_array.tolist() == [4, 5, 6, 7]
+    # The publication retains the runtime-owned host scalar and passes the
+    # former destination-sized default explicitly.
+    assert context_array is runtime._ctx_len_host
+    assert uploads[2][2] == runtime._ctx_len.nbytes == 8
+    assert runtime._ctx_len_host.tolist() == [7]

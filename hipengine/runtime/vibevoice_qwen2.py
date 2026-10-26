@@ -31,7 +31,6 @@ from hipengine.core.memory import (
     DeviceMemoryArena,
     copy_device_to_host,
     copy_host_array_to_device,
-    copy_host_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -295,9 +294,10 @@ class VibevoiceQwen2Runtime:
         if row.shape[0] != self.spec.hidden_size:
             raise ValueError("token row must be hidden-sized fp32")
         f32_to_bf16_bits_row = f32_to_bf16_bits(row)
-        copy_host_to_device(self._hidden, host_array_ptr(f32_to_bf16_bits_row))
+        copy_host_array_to_device(
+            self._hidden, f32_to_bf16_bits_row, self._hidden.nbytes)
         self._ctx_len_host[0] = position + 1
-        copy_host_to_device(self._ctx_len, host_array_ptr(self._ctx_len_host))
+        copy_host_array_to_device(self._ctx_len, self._ctx_len_host, self._ctx_len.nbytes)
 
     def forward_layers(self, position: int) -> None:
         """Run the staged hidden row through all layers; result in ``_hidden``."""
@@ -629,7 +629,7 @@ class VibevoiceQwen2Runtime:
                                    hidden_rows.ptr, rows * hidden, hidden,
                                    library=self.library, runtime=self.runtime)
         self._ctx_len_host[0] = start_pos + rows
-        copy_host_to_device(self._ctx_len, host_array_ptr(self._ctx_len_host))
+        copy_host_array_to_device(self._ctx_len, self._ctx_len_host, self._ctx_len.nbytes)
 
     def close(self) -> None:
         if getattr(self, "_closed", False):

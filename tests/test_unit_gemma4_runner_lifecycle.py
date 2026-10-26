@@ -154,7 +154,7 @@ def _fake_allocated_runner(
     monkeypatch.setattr(int8_kv_module, "malloc", owner_allocator.malloc)
     monkeypatch.setattr(int8_kv_module, "free", owner_allocator.free)
     monkeypatch.setattr(
-        int8_kv_module, "copy_host_to_device", lambda *args, **kwargs: None
+        int8_kv_module, "copy_host_array_to_device", lambda *args, **kwargs: None
     )
     monkeypatch.setattr(
         int8_kv_module, "enqueue_host_to_device", lambda *args, **kwargs: None
@@ -330,7 +330,7 @@ def test_int8_storage_allocates_the_owner_instead_of_bf16_caches(
     monkeypatch.setattr(int8_kv_module, "malloc", owner_allocator.malloc)
     monkeypatch.setattr(int8_kv_module, "free", owner_allocator.free)
     monkeypatch.setattr(
-        int8_kv_module, "copy_host_to_device", lambda *args, **kwargs: None
+        int8_kv_module, "copy_host_array_to_device", lambda *args, **kwargs: None
     )
 
     runner = Gemma4Runner(
@@ -399,7 +399,7 @@ def test_int8_reset_rewinds_the_owner(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(int8_kv_module, "malloc", _FakeAllocator().malloc)
     monkeypatch.setattr(int8_kv_module, "free", _FakeAllocator().free)
     monkeypatch.setattr(
-        int8_kv_module, "copy_host_to_device", lambda *args, **kwargs: None
+        int8_kv_module, "copy_host_array_to_device", lambda *args, **kwargs: None
     )
     monkeypatch.setattr(
         int8_kv_module, "enqueue_host_to_device", lambda *args, **kwargs: None

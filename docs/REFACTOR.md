@@ -2894,7 +2894,9 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   Gemma and Qwen vision uploads retain their arrays as well, preserving input,
   position and learned-embedding copy sizes and runtime selection. Safetensors
   materialization and the GGUF one-layer diagnostic probe also retain their
-  arrays, with allocation cleanup and explicit copy lengths unchanged.
+  arrays, with allocation cleanup and explicit copy lengths unchanged. Gemma
+  INT8 KV page tables, Surya span/input uploads, and YuE2/VibeVoice context
+  uploads use the owning helper; asynchronous Gemma metadata stays unchanged.
 - Remaining cleanup: named-local array uploads still use the raw-address
   `copy_host_to_device` API in other paths. Named locals are safe through a
   synchronous copy, but future edits must not replace them with temporary

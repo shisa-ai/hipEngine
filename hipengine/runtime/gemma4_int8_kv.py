@@ -42,7 +42,7 @@ from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.memory import (
     DeviceBuffer,
-    copy_host_to_device,
+    copy_host_array_to_device,
     enqueue_host_to_device,
     free,
     host_array_ptr,
@@ -287,7 +287,7 @@ class Gemma4Int8KVCache:
             np.arange(self.blocks, dtype=np.int32), (self.max_block, 1)
         ).reshape(-1)
         page_table = self._alloc(identity.nbytes)
-        copy_host_to_device(page_table, host_array_ptr(identity), identity.nbytes)
+        copy_host_array_to_device(page_table, identity, identity.nbytes)
         self._page_table = page_table
         self._base_offsets_1d = Tensor.from_handle(
             page_table.ptr, (self.blocks,), DType.INT32, self.device

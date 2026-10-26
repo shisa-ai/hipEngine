@@ -36,7 +36,6 @@ from hipengine.core.memory import (
     DeviceMemoryArena,
     copy_device_to_host,
     copy_host_array_to_device,
-    copy_host_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -412,7 +411,10 @@ class Yue2ArRuntime:
         copy_host_array_to_device(self._hidden[branch], f32_to_bf16_bits(row))
         self._reset_logits_cache()
         self._ctx_len_host[branch][0] = position + 1
-        copy_host_to_device(self._ctx_len[branch], host_array_ptr(self._ctx_len_host[branch]))
+        copy_host_array_to_device(
+            self._ctx_len[branch], self._ctx_len_host[branch],
+            self._ctx_len[branch].nbytes,
+        )
 
     def reset(self, branch: int | None = None) -> None:
         self._reset_logits_cache()

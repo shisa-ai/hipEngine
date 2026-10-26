@@ -42,7 +42,7 @@ from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
-    copy_host_to_device,
+    copy_host_array_to_device,
     host_array_ptr,
     malloc,
 )
@@ -712,10 +712,10 @@ class SuryaGpuRunner:
 
         self._span_live_host[0] = int(live_count)
         self._span_row_host[0] = int(row_position)
-        copy_host_to_device(
-            self._span_live_counts, host_array_ptr(self._span_live_host), 8)
-        copy_host_to_device(
-            self._span_row_positions, host_array_ptr(self._span_row_host), 8)
+        copy_host_array_to_device(
+            self._span_live_counts, self._span_live_host, 8)
+        copy_host_array_to_device(
+            self._span_row_positions, self._span_row_host, 8)
 
     def _spans(self) -> KVLiveSpans:
         """The request's dense uniform spans over the persistent KV planes."""
@@ -747,7 +747,7 @@ class SuryaGpuRunner:
         synchronous H2D API does not require a device-wide drain afterward.
         """
         src = np.ascontiguousarray(arr, dtype=dtype)
-        copy_host_to_device(buf, host_array_ptr(src), src.nbytes)
+        copy_host_array_to_device(buf, src, src.nbytes)
 
     def _k(self, symbol: str, argtypes: list) -> ctypes._FuncPtr:
         fn = getattr(self.library, symbol, None)

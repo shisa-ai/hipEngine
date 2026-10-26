@@ -2416,11 +2416,12 @@
       "start_line": 2692,
       "end_line": 2717,
       "sha256": "8237398ea872f750eeb89292d9d29123e7f1f93384f1e980d1d13717914809d5",
-      "status": "partial-materializer-migrated",
+      "status": "partial-runtime-migrated",
       "evidence": [
         "Qwen4Exp batch state, runner and QSA index synchronous array uploads migrated with preserved byte offsets; GPU upload/lifetime and batch tests, CPU bundle and real HTTP physical width2 execution with traced owning helpers pass. Other model array callers and separate async contracts remain open. worklog/entries/20261026T112905.064466Z-cleanup-refactor-r0089-batch-uploads-f58cab.md.",
         "Dense/MoE MTP2 synchronous array uploads migrated; CPU bundle, focused native sampler GPU test and public ngram owning upload trace passed. Public acceptance helper not exercised by the initial probe; apparent concurrent fallback was later traced to probe TypeError, not a product restriction. Clean concurrent MTP requests pass; correction: worklog/entries/20261026T121319.257732Z-cleanup-refactor-mtp-probe-correction-7f7df7.md. worklog/entries/20261026T115712.267620Z-cleanup-refactor-r0089-mtp-uploads-039bde.md.",
         "Qwen4Exp auxiliary batch and MTP uploads migrated; focused CPU, full CPU bundle, gfx1151 GPU bundle and public batch/MTP routes passed. Mixed-target has unit-only coverage. Direct QSA row-array runtime copy remains. worklog/entries/20261026T122414.076540Z-cleanup-refactor-r0089-aux-uploads-fcbf45.md.",
+        "Gemma INT8 KV, Surya, YuE2 and VibeVoice runtime uploads migrated; CPU bundle, focused publication tests, real-device upload readbacks and public Gemma INT8 request pass. Full Surya/VibeVoice models unavailable. worklog/entries/20261026T164712.840745Z-cleanup-refactor-r0089-runtime-4689b8.md.",
         "Materializer and GGUF probe uploads migrated with allocator cleanup preserved; focused and full CPU bundle, real public generation and deterministic finite probe passed. worklog/entries/20261026T164104.071037Z-cleanup-refactor-r0089-materialize-a1c746.md.",
         "Gemma and Qwen vision uploads migrated; focused and full CPU checks, real HIP vision regression, public Gemma color responses with owning upload traces, and real Qwen vision runner pass. worklog/entries/20261026T163504.852419Z-cleanup-refactor-r0089-vision-e8de48.md.",
         "GGUF graph/native sampler synchronous uploads migrated with byte counts preserved; CPU suite, real HIP sampler/spec graph and public sampled generation pass. worklog/entries/20261026T162618.507110Z-cleanup-refactor-r0089-graph-sampler-3912d8.md.",
