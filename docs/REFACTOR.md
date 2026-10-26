@@ -2948,7 +2948,6 @@ should be removed or collapsed.
   registered/executed adapter and every resident/physical owner are represented
   in the shared call plan. Eager/c1 placement behavior is separate and unchanged.
 
-## 2026-09-06 GGUF file-type stamp switches — open
 ## 2026-09-05 Qwen4Exp PF-5 GDN tile-16 prefill opt-out — promoted default
 
 - `qwen4_exp_gdn_tile16_prefill_selected` in
@@ -3303,6 +3302,8 @@ should be removed or collapsed.
   compatibility handling when the verifier configuration is consolidated;
   widen AR admission only after independent long-prefill/stateful gates.
 
+## 2026-09-06 GGUF file-type stamp switches — open
+
 - The initial audit found two gfx1151 switches that choose behavior from the header
   (`general.file_type`) instead of the file's actual per-tensor format mix:
   `GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES` and
@@ -3341,7 +3342,7 @@ should be removed or collapsed.
   a bare `import hipengine` is CPU-safe while `from hipengine import LLM,
   SamplingParams` and the runtime kernel-registration chain are unchanged.
   Guarded by
-  `tests/test_scripts_gguf_quant_route_audit.py::test_fresh_process_audit_never_imports_gpu_backend_packages`
+  `tests/test_unit_scripts_gguf_quant_route_audit.py::test_fresh_process_audit_never_imports_gpu_backend_packages`
   (fresh subprocess, meta-path guard rejects `hipengine.kernels.hip_*` /
   `cuda_*` / torch before any import, then runs the real CLI) and
   `tests/test_integration_hipengine_public_api.py` (lazy-export identity/caching/`dir`

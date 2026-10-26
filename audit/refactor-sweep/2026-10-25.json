@@ -3753,7 +3753,7 @@
       "end_line": 3415,
       "sha256": "ceb994ec061fc73afa13cf0dc88044b5c8f0ddff6c920d0bafd5993bbb41870b",
       "status": "pending",
-      "evidence": [],
+      "evidence": ["Repaired orphaned heading: its six bullets had been merged into R0163. Heading now immediately precedes the file-type stamp discussion. Source inventory subitems at base lines3770,3777,3780,3786,3798,3817 belong to R0139 and remain pending substantive review, not speculative-MTP migration. Corrected migrated audit-test path."],
       "subitems": []
     },
     {
@@ -4196,7 +4196,7 @@
       "end_line": 3819,
       "sha256": "dc38454613d528768ea2e6dbab1859dedc650128e2a6ea2527c64fbef5381598",
       "status": "pending",
-      "evidence": [],
+      "evidence": ["Ownership correction: only base-line3758 and3764 bullets belong to this speculative-MTP section. Base-line3770,3777,3780,3786,3798,3817 bullets belong to R0139; its orphaned heading was restored above them. Original inventory text is preserved below for coverage, and those pending subitems must be reviewed under R0139."],
       "subitems": [
         {
           "line": 3758,
