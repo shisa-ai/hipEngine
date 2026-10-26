@@ -2737,18 +2737,20 @@
       "start_line": 2853,
       "end_line": 2859,
       "sha256": "6f06774566cc0511679af04a44b353591e25df68c6618595acb5d6cc9eb3d065",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "Read-only candidate triage and parent source search verify candidate kernel/flag/harness absent or never landed; production siblings remain. Removal or record commit and archived evidence: dcc347b36; mmq-bank-first-rejected. Historical results stay in benchmarks/results and CHANGELOG; active ledger section removed, no runtime change."
+      ],
       "subitems": [
         {
           "line": 2855,
           "text": "- Output-bank-first compute gives mixed order results despite small",
-          "status": "pending"
+          "status": "historical-removed"
         },
         {
           "line": 2857,
           "text": "- Do not repeat unchanged bank/scale loop reorderings. Production",
-          "status": "pending"
+          "status": "historical-removed"
         }
       ]
     },
@@ -2825,18 +2827,20 @@
       "start_line": 2918,
       "end_line": 2924,
       "sha256": "3b8823c3716ef8272ca78786023bc05cca851843630a0ed1626b756a4b0b1554",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "Read-only candidate triage and parent source search verify candidate kernel/flag/harness absent or never landed; production siblings remain. Removal or record commit and archived evidence: 6874147e4; mmq-scale-cache-rejected. Historical results stay in benchmarks/results and CHANGELOG; active ledger section removed, no runtime change."
+      ],
       "subitems": [
         {
           "line": 2920,
           "text": "- Hoisting16 scales across token groups triggers VGPR184->256 and",
-          "status": "pending"
+          "status": "historical-removed"
         },
         {
           "line": 2922,
           "text": "- Candidate removed,raw-vector production unchanged. Do not repeat this",
-          "status": "pending"
+          "status": "historical-removed"
         }
       ]
     },
@@ -2846,18 +2850,20 @@
       "start_line": 2925,
       "end_line": 2931,
       "sha256": "ec5a486f2a468116ab816297287922d9cd9eb6701e567b94d406197327f3912d",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "Read-only candidate triage and parent source search verify candidate kernel/flag/harness absent or never landed; production siblings remain. Removal or record commit and archived evidence: 68f4378b0; q51-row16-rejected. Historical results stay in benchmarks/results and CHANGELOG; active ledger section removed, no runtime change."
+      ],
       "subitems": [
         {
           "line": 2927,
           "text": "- Row16 after spill-free row publication loses0.429x/0.412x at512/1024",
-          "status": "pending"
+          "status": "historical-removed"
         },
         {
           "line": 2929,
           "text": "- Candidate removed; no model admission. Keep row8 production and do not",
-          "status": "pending"
+          "status": "historical-removed"
         }
       ]
     },
@@ -2929,18 +2935,20 @@
       "start_line": 2966,
       "end_line": 2972,
       "sha256": "8e88aa282f8a41e87bc6ed7a048580d1cd31f7eba0a1fa12dbb51ca308c2df0e",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "Read-only candidate triage and parent source search verify candidate kernel/flag/harness absent or never landed; production siblings remain. Removal or record commit and archived evidence: eaded1f16; q4-block-pair-rejected. Historical results stay in benchmarks/results and CHANGELOG; active ledger section removed, no runtime change."
+      ],
       "subitems": [
         {
           "line": 2968,
           "text": "- Two-block weight prefetch loses ~10% at512/1024 tokens,exact outputs;",
-          "status": "pending"
+          "status": "historical-removed"
         },
         {
           "line": 2970,
           "text": "- Do not repeat unchanged paired-block/full-weight caches or row retiles.",
-          "status": "pending"
+          "status": "historical-removed"
         }
       ]
     },
@@ -2976,18 +2984,20 @@
       "start_line": 2986,
       "end_line": 2992,
       "sha256": "c53664b5a7c574350a78525bcd87d1c280a288b3da54a0be08cd3b7b2b70caa8",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "Read-only candidate triage and parent source search verify candidate kernel/flag/harness absent or never landed; production siblings remain. Removal or record commit and archived evidence: 20c05baed; q51-wave-tail-rejected. Historical results stay in benchmarks/results and CHANGELOG; active ledger section removed, no runtime change."
+      ],
       "subitems": [
         {
           "line": 2988,
           "text": "- Exact first-wave stride64/32 plus shuffle tail loses at512/1024 tokens",
-          "status": "pending"
+          "status": "historical-removed"
         },
         {
           "line": 2990,
           "text": "- Candidate kernel/key/wrapper/screen/tests removed before runtime admission.",
-          "status": "pending"
+          "status": "historical-removed"
         }
       ]
     },
@@ -2997,18 +3007,20 @@
       "start_line": 2993,
       "end_line": 3000,
       "sha256": "75aab7e62fd0f2a8544c8f9674f53c6affbf3d882174ed583c773264eb892205",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "Read-only candidate triage and parent source search verify candidate kernel/flag/harness absent or never landed; production siblings remain. Removal or record commit and archived evidence: f39da3c71; q8-prefetch2-rejected. Historical results stay in benchmarks/results and CHANGELOG; active ledger section removed, no runtime change."
+      ],
       "subitems": [
         {
           "line": 2995,
           "text": "- Full12-case A/B retains72 exact trajectories but one prefill/nine",
-          "status": "pending"
+          "status": "historical-removed"
         },
         {
           "line": 2997,
           "text": "- Kernel/key/selector/flag/harness routes and candidate-only tests removed.",
-          "status": "pending"
+          "status": "historical-removed"
         }
       ]
     },
@@ -3044,13 +3056,15 @@
       "start_line": 3013,
       "end_line": 3018,
       "sha256": "da0b097476152b3fcf2ac6e8a1b9d7f41f873a998ab2203f4db28bb386643256",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "Read-only candidate triage and parent source search verify candidate kernel/flag/harness absent or never landed; production siblings remain. Removal or record commit and archived evidence: 846806168; router-shuffle-rejected. Historical results stay in benchmarks/results and CHANGELOG; active ledger section removed, no runtime change."
+      ],
       "subitems": [
         {
           "line": 3015,
           "text": "- Closed after mixed full-model A/B:one prefill/four request cases lose.",
-          "status": "pending"
+          "status": "historical-removed"
         }
       ]
     },
@@ -3128,18 +3142,20 @@
       "start_line": 3050,
       "end_line": 3059,
       "sha256": "dce2657ebfd8bff37f5340938ad9f879e37614931ee6547c8051ae48ad1ff6ca",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "Read-only candidate triage and parent source search verify candidate kernel/flag/harness absent or never landed; production siblings remain. Removal or record commit and archived evidence: 88c5853c4 and its immutable cleanup worklog. Historical results stay in benchmarks/results and CHANGELOG; active ledger section removed, no runtime change."
+      ],
       "subitems": [
         {
           "line": 3052,
           "text": "- Closed September6 UTC after both raw and cooperative implementations",
-          "status": "pending"
+          "status": "historical-removed"
         },
         {
           "line": 3056,
           "text": "- Reproduction source20e39e32e and the residual/cooperative artifacts",
-          "status": "pending"
+          "status": "historical-removed"
         }
       ]
     },
@@ -3222,18 +3238,20 @@
       "start_line": 3104,
       "end_line": 3113,
       "sha256": "fab40b2ff06d40d14afdfd9bd051c832e93761e60b525adfea2c384893ba397d",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": [
+        "Read-only candidate triage and parent source search verify candidate kernel/flag/harness absent or never landed; production siblings remain. Removal or record commit and archived evidence: b71949383; q5k-bundle-rejected. Historical results stay in benchmarks/results and CHANGELOG; active ledger section removed, no runtime change."
+      ],
       "subitems": [
         {
           "line": 3106,
           "text": "- Closed September6 UTC: all72 canonical trajectories exact, but five",
-          "status": "pending"
+          "status": "historical-removed"
         },
         {
           "line": 3110,
           "text": "- Do not reopen unchanged bundled publication on the strength of its",
-          "status": "pending"
+          "status": "historical-removed"
         }
       ]
     },

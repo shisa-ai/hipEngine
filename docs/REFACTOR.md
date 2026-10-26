@@ -3012,13 +3012,6 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   -0.183% retained under prefill-first policy. Strict binds0.
   Keep opt-out for bisection;remove flag chain when profile plans own scope.
 
-## Qwen4Exp MMQ bank-first order: removed
-
-- Output-bank-first compute gives mixed order results despite small
-  positive1024 medians. VGPR184->192,scratch0;candidate removed.
-- Do not repeat unchanged bank/scale loop reorderings. Production
-  raw-vector schedule remains; larger architectural work still open.
-
 ## Qwen4Exp DP-2 two-consumer F16 ownership
 
 - `HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR` is a temporary, default-off opt-in for
@@ -3077,20 +3070,6 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   is rejected, remove only that lane's unused integration; do not delete the
   Qwen3.5/3.6 workspace or shared dispatch helpers.
 
-## Qwen4Exp MMQ output-scale hoist: removed
-
-- Hoisting16 scales across token groups triggers VGPR184->256 and
-  scratch0->1132B;operation-complete ratios0.319-0.338x.
-- Candidate removed,raw-vector production unchanged. Do not repeat this
-  hoist without a materially different accumulator/register schedule.
-
-## Qwen4Exp Q5_1 row16 publication: removed
-
-- Row16 after spill-free row publication loses0.429x/0.412x at512/1024
-  tokens,40 exact pairs. Dynamic LDS8672->16864B,VGPR96->88,scratch0.
-- Candidate removed; no model admission. Keep row8 production and do not
-  repeat unchanged row16 on the assumption that spill removal makes it faster.
-
 ## Qwen4Exp GDN checked-index production leaf
 
 - `qwen4exp_sigmoid_wave_norm_narrow_prefill` is the gfx1151 UD production
@@ -3125,13 +3104,6 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
 - Strict binds0. Retain parent opt-out for bisection; remove flag chain when
   profile plans own selection. No headline throughput speedup claim.
 
-## Qwen4Exp Q4 paired-block pipeline: removed
-
-- Two-block weight prefetch loses ~10% at512/1024 tokens,exact outputs;
-  VGPR88->112,LDS4608B/scratch0 unchanged. Candidate removed.
-- Do not repeat unchanged paired-block/full-weight caches or row retiles.
-  Production pair2 and all prior promotions remain.
-
 ## Qwen4Exp Q5_1 per-row partial publication production
 
 - Production-bound `HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH=1` selects
@@ -3145,21 +3117,6 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
 - Strict binds0. Keep register-cache parent for bisection; remove temporary
   flag chain when profile plans own the scoped K640 selection.
 
-## Qwen4Exp Q5_1 first-wave reduction: removed
-
-- Exact first-wave stride64/32 plus shuffle tail loses at512/1024 tokens
-  (0.809x/0.798x), despite scratch36->24B and unchanged VGPR96.
-- Candidate kernel/key/wrapper/screen/tests removed before runtime admission.
-  Register-cache production unchanged; no unchanged rescreen.
-
-## Qwen4Exp Q8 coltile paired-load candidate: removed
-
-- Full12-case A/B retains72 exact trajectories but one prefill/nine
-  request cases regress; aggregate p4096 decode -14.822%.
-- Kernel/key/selector/flag/harness routes and candidate-only tests removed.
-  Existing wave-scale production stays. Reproduce at067a9bcc0; no unchanged
-  favorable rerun. Decode slowdown cause remains unproven, not labeled thermal.
-
 ## Qwen4Exp Q8 down register-weight production
 
 - Production-bound `HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER=1` selects
@@ -3171,12 +3128,6 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   prefill/request cases improve; PP gains0.851%/0.701%/0.647%.
 - Strict binds0. Retain the opt-out/bundle for bisection; remove temporary
   flag coordination when profile plans own this qualified K640 selection.
-
-## Qwen4Exp router shuffle-tail: removed
-
-- Closed after mixed full-model A/B:one prefill/four request cases lose.
-  Kernel/key/flag/harness routes and candidate-only tests removed;strict
-  shared-tree tile4 stays. Reproduce at db929145c;no unchanged rescreen.
 
 ## Qwen4Exp chunk allocation before profile binding
 
@@ -3208,16 +3159,6 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
 - Five full-model invocation/state/KV cases and canonical A/B pass.
   Remove the rollback selector after next qualified MMQ change or release
   window;prepacked vector path and strict/scalar raw fallbacks remain.
-
-## Qwen4Exp Q4 residual WMMA diagnostic: removed
-
-- Closed September6 UTC after both raw and cooperative implementations
-  failed timing. Removed residual template branches,export/wrapper/key,
-  diagnostic harness and candidate-only tests. Original Q4 code restored
-  byte-for-byte to24934b692;all retained production paths unchanged.
-- Reproduction source20e39e32e and the residual/cooperative artifacts
-  preserve numerical findings and losses. Do not revive unchanged
-  candidates or relax production quality thresholds.
 
 ## Qwen4Exp Q5_1 register weight-cache rollback
 
@@ -3262,16 +3203,6 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   raw MMQ rollback and strict coltile fallback remain.
 - Remove the rollback selector after the next qualified MMQ change or
   release window. Keep strict coltile and the raw-weight fallback.
-
-## Qwen4Exp Q5_K bundled row4 candidate: removed
-
-- Closed September6 UTC: all72 canonical trajectories exact, but five
-  prefill and six request-wall cases regress. Removed candidate kernel,
-  registry key, flag and harness routes; original row4 and strict fallback
-  remain. The separately retained Q8 bundle is unaffected.
-- Do not reopen unchanged bundled publication on the strength of its
-  isolated1.02x screen. Evidence:
-  `benchmarks/results/2026-09-06-framework-qwen4exp-q5k-bundle-rejected.json`.
 
 ## Qwen4Exp folded Q5_1 pair-reduction rollback
 
