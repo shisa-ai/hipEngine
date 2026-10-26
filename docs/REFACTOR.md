@@ -2932,24 +2932,6 @@ should be removed or collapsed.
   device-side reproduction of the 1024-thread occupancy loss measured in
   `benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf5-gdn-w32-prefill-ab.json`.
 
-## 2026-09-02 Qwen4Exp P11 compact draft output — selector closed
-
-The old `HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT` selector is removed, but
-`compact_output=True` is not a rejected-only diagnostic leaf: public text MTP
-uses it by default through `HIPENGINE_QWEN4_EXP_MTP_COMPACT_PROPOSAL=1`, and
-mixed resident serving passes it directly. The target still scores the full
-vocabulary and owns output decisions.
-
-Remaining cleanup: remove the process-environment compact-proposal rollback
-from the text provider and use the same explicit proposal contract as mixed
-serving. Preserve the runner's full-output interface for callers that need its
-logits. The clearing checks are proposal token/hidden-state parity, cancellation
-and replay ownership, and a public MTP request that confirms compact proposals
-actually ran. Use `tests/test_unit_qwen4_exp_mtp_stages.py`,
-`tests/test_unit_qwen4_exp_resident_serving.py` and
-`tests/test_live_qwen4_exp_mtp_runner.py`; the historical P11 replay-window
-phrase is not a removal condition.
-
 ## 2026-09-02 Qwen4Exp P9 load drop-behind
 
 - `HIPENGINE_QWEN4_EXP_LOAD_DROP_BEHIND=1` is an explicit default-off one-shot

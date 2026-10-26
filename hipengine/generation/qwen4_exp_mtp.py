@@ -420,11 +420,12 @@ class Qwen4ExpMTPTextProvider:
                 root_token=root_token,
                 target_hidden_seed=root_hidden,
                 draft_n_max=budget,
-                # Device-resident deterministic proposals. The target still
-                # scores the full vocabulary and owns every output decision.
-                compact_output=os.environ.get(
-                    "HIPENGINE_QWEN4_EXP_MTP_COMPACT_PROPOSAL", "1"
-                ) not in {"", "0", "false", "False"},
+                # Device-resident deterministic proposals, the same explicit
+                # contract mixed resident serving uses: the draft returns token
+                # ids only. The target still scores the full vocabulary and owns
+                # every output decision, and the runner keeps its full-output
+                # interface for diagnostic callers that need the logits.
+                compact_output=True,
             )
             record_phase("proposal", proposal_started)
             for name, elapsed_ms in getattr(

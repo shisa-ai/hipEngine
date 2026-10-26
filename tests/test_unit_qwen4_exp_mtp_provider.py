@@ -4,6 +4,12 @@ from types import SimpleNamespace
 
 import numpy as np
 
+import pytest
+
+from hipengine.generation.deadline import (
+    GenerationCancelled,
+    GenerationCancellationToken,
+)
 from hipengine.generation.qwen4_exp_mtp import Qwen4ExpMTPTextProvider
 from hipengine.generation.registry import GenerationRequest
 from hipengine.speculative.registry import (
@@ -63,6 +69,7 @@ class _DraftRunner:
         self.proposals = [(11, 98), (13, 14)]
         self.proposal_index = 0
         self.trimmed = []
+        self.calls = []
         self.last_proposal_stage_timings_ms = {}
 
     def prime_prompt(self, token_ids, hidden_rows):
@@ -82,6 +89,17 @@ class _DraftRunner:
         values = self.proposals[self.proposal_index][:draft_n_max]
         self.proposal_index += 1
         self.position += len(values)
+        self.calls.append(
+            {
+                "start_token": int(start_token),
+                "draft_n_max": int(draft_n_max),
+                "compact_output": bool(compact_output),
+                "hidden_seed": (
+                    None if target_hidden_seed is None
+                    else tuple(float(value) for value in np.asarray(target_hidden_seed).reshape(-1))
+                ),
+            }
+        )
         self.last_proposal_stage_timings_ms = {
             "draft_input_fusion": 1.0,
             "draft_layer": 2.0,
@@ -90,6 +108,10 @@ class _DraftRunner:
             "draft_hidden_d2h": 5.0,
             "draft_sampler": 0.5,
         }
+        if compact_output:
+            # The runner's compact contract: token ids only, no logits and no
+            # per-candidate hidden seed.
+            return tuple(_CompactRow(token) for token in values)
         return tuple(
             SimpleNamespace(
                 token_id=token,
@@ -106,6 +128,22 @@ class _DraftRunner:
         pass
 
 
+class _CompactRow:
+    """A compact draft row: token id only, and reading anything else fails.
+
+    The runtime's ``compact_output`` path returns
+    ``Qwen4ExpMTPDraftResult(token_id, None, None)``. Raising on the unused
+    fields proves the provider consumes nothing but the token id.
+    """
+
+    def __init__(self, token_id: int) -> None:
+        self.token_id = int(token_id)
+
+    def __getattr__(self, name):
+        raise AssertionError(
+            f"the provider read {name!r} from a compact proposal row")
+
+
 class _TargetGenerator:
     backend = "hip_gfx1151"
 
@@ -114,7 +152,7 @@ class _TargetGenerator:
         self.tokenizer = _Tokenizer()
 
 
-def _request() -> GenerationRequest:
+def _request(**overrides) -> GenerationRequest:
     return GenerationRequest(
         prompts=((1, 2),),
         max_tokens=5,
@@ -122,6 +160,7 @@ def _request() -> GenerationRequest:
         top_p=1.0,
         ignore_eos=True,
         top_k=1,
+        **overrides,
     )
 
 
@@ -217,3 +256,78 @@ def test_qwen4_exp_mtp_provider_is_registered_for_operational_quant() -> None:
         quant="gguf_ud_q4_k_xl",
     )
     assert callable(factory)
+
+
+# --- compact proposals are the provider's own contract ----------------------
+
+
+def _provider():
+    target = _TargetGenerator()
+    draft = _DraftRunner()
+    provider = Qwen4ExpMTPTextProvider(
+        target_generator=target,
+        config=SpeculativeProviderConfig(
+            provider="qwen4_exp_mtp", draft_model="/tmp/fake.gguf",
+            candidate_budget=2),
+        draft_runner=draft,
+        draft_resident=object(),
+    )
+    return provider, target, draft
+
+
+@pytest.mark.parametrize("value", [None, "", "0", "false", "False", "1", "yes"])
+def test_provider_proposals_are_compact_independent_of_the_process_env(
+        monkeypatch, value):
+    # The rollback lever is gone: the provider states the contract itself, so a
+    # leftover process value cannot select the logits path.
+    if value is None:
+        monkeypatch.delenv("HIPENGINE_QWEN4_EXP_MTP_COMPACT_PROPOSAL", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_QWEN4_EXP_MTP_COMPACT_PROPOSAL", value)
+    provider, target, draft = _provider()
+    output = provider.generate_detailed(_request())[0]
+    assert [call["compact_output"] for call in draft.calls] == [True, True]
+    # Token behaviour is unchanged by the contract: the target still owns
+    # every emitted token, and the acceptance accounting is the same.
+    assert output.generated_token_ids == (10, 11, 12, 13, 14)
+    assert [cycle.accepted for cycle in provider.last_cycles] == [1, 2]
+    assert output.telemetry.diagnostics["proposed_draft_tokens"] == 4
+    assert output.telemetry.diagnostics["accepted_draft_tokens"] == 3
+    assert draft.position == target.runner.position
+
+
+def test_compact_proposal_rows_are_consumed_by_token_id_alone():
+    # ``_CompactRow`` raises on any read other than ``token_id``, which is the
+    # runtime's compact contract (``Qwen4ExpMTPDraftResult(token, None, None)``).
+    provider, _target, draft = _provider()
+    output = provider.generate_detailed(_request())[0]
+    assert all(call["compact_output"] for call in draft.calls)
+    assert output.generated_token_ids == (10, 11, 12, 13, 14)
+
+
+def test_each_compact_proposal_receives_the_previous_accepted_target_hidden():
+    provider, _target, draft = _provider()
+    provider.generate_detailed(_request())[0]
+    # Cycle one seeds from the last prompt hidden; cycle two seeds from the
+    # hidden of the token the target accepted as the next root.
+    assert [call["start_token"] for call in draft.calls] == [10, 12]
+    assert [set(call["hidden_seed"]) for call in draft.calls] == [
+        {2.0}, {11.0}]
+
+
+def test_cancellation_between_compact_cycles_leaves_the_draft_at_the_trim():
+    token = GenerationCancellationToken()
+    provider, target, draft = _provider()
+    steps = provider.iter_generate(
+        (1, 2), _request(cancellation_token=token))
+    assert next(steps).token_ids == (10,)
+    assert draft.calls == []
+
+    token.cancel()
+    with pytest.raises(GenerationCancelled):
+        next(steps)
+    # No proposal ran for the cancelled cycle, and the cursor still matches the
+    # target's committed position, so a replay starts from the same state.
+    assert draft.calls == []
+    assert draft.position == target.runner.position == 2
+    steps.close()

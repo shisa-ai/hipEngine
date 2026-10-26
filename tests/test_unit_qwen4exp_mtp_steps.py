@@ -122,6 +122,7 @@ class _DraftRunner:
         self.proposal_index = 0
         self.prime_calls = 0
         self.propose_calls = 0
+        self.compact_calls: list[bool] = []
         self.forward_calls: list[int] = []
         self.trimmed: list[int] = []
         self.last_proposal_stage_timings_ms: dict[str, float] = {}
@@ -141,6 +142,7 @@ class _DraftRunner:
         compact_output=False,
     ):
         self.propose_calls += 1
+        self.compact_calls.append(bool(compact_output))
         values = self.proposals[self.proposal_index][:draft_n_max]
         self.proposal_index += 1
         self.position += len(values)
@@ -352,6 +354,8 @@ def test_iter_generate_yields_the_initial_root_then_one_cycle_per_step() -> None
     assert second_cycle.mismatch_token is None
     assert second_cycle.committed_position == 6
     assert [step.finished for step in steps] == [False, False, True]
+    # Both cycles used the provider's own compact proposal contract.
+    assert draft.compact_calls == [True, True]
     assert tuple(token for step in steps for token in step.token_ids) == (
         10,
         11,
@@ -615,6 +619,9 @@ def test_iter_generate_observes_cancellation_between_steps() -> None:
     with pytest.raises(GenerationCancelled):
         next(steps)
     assert draft.propose_calls == 0
+    # The provider states the compact proposal contract itself, so every cycle
+    # it does run is compact regardless of the process environment.
+    assert draft.compact_calls == []
 
 
 def test_scheduler_can_interleave_provider_synced_k0_with_planned_cycles():

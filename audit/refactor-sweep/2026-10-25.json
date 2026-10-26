@@ -3810,13 +3810,13 @@
       "start_line": 3450,
       "end_line": 3462,
       "sha256": "d063636a210e6defb8c9f1b27d6b59905bb3f95907085818357f30a080396a92",
-      "status": "pending",
-      "evidence": ["Corrected obsolete rejected-only claim: text provider defaults MTP_COMPACT_PROPOSAL on and mixed serving passes compact_output=True directly. Replaced undefined replay-window trigger with explicit remaining rollback cleanup and validation requirements; no runtime change. Old selector is removed, successor environment rollback remains open."],
+      "status": "resolved-removed",
+      "evidence": ["Removed successor MTP_COMPACT_PROPOSAL env read; text provider explicitly requests compact proposals like mixed serving. Runner full-output API preserved. Token/hidden/cancellation regressions, full CPU bundle and public MTP compact engagement with legacy env0 passed. See worklog/entries/20261026T224007.259974Z-cleanup-refactor-r0142-compact-proposal-b36f3c.md."],
       "subitems": [
         {
           "line": 3452,
           "text": "- The public `HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT` selector and resident-hidden",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
