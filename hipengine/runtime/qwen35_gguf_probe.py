@@ -21,7 +21,7 @@ from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
-    copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -113,7 +113,9 @@ class Qwen35GGUFOneLayerProbe:
             buffers.append(gate_buf)
             out_buf = malloc(out_bits.nbytes, runtime=runtime)
             buffers.append(out_buf)
-            copy_host_to_device(token_buf, host_array_ptr(token_ids), runtime=runtime)
+            copy_host_array_to_device(
+                token_buf, token_ids, token_buf.nbytes, runtime=runtime
+            )
 
             launch_gguf_embedding(
                 self.weights.root("token_embedding"),
@@ -176,7 +178,9 @@ class Qwen35GGUFOneLayerProbe:
             buffers.append(hidden_buf)
             logits_buf = malloc(logits.nbytes, runtime=runtime)
             buffers.append(logits_buf)
-            copy_host_to_device(hidden_buf, host_array_ptr(hidden), runtime=runtime)
+            copy_host_array_to_device(
+                hidden_buf, hidden, hidden_buf.nbytes, runtime=runtime
+            )
             launch_gguf_linear(
                 self.weights.root("lm_head"),
                 hidden_buf.ptr,

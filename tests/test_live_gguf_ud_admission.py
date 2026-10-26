@@ -1392,7 +1392,7 @@ def _cpu_allocation_fakes(monkeypatch):
         copied.append((getattr(host_array, "name", "?"), int(nbytes)))
 
     monkeypatch.setattr(host_materialize, "malloc", fake_malloc)
-    monkeypatch.setattr(host_materialize, "copy_host_to_device", fake_copy)
+    monkeypatch.setattr(host_materialize, "copy_host_array_to_device", fake_copy)
     monkeypatch.setattr(loader, "malloc", fake_malloc)
     return copied
 

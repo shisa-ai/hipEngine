@@ -8,7 +8,6 @@ failure point without a GPU, model file, or kernel build.
 from __future__ import annotations
 
 import ast
-import ctypes
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -79,11 +78,11 @@ class _FakeDevice:
         self.frees.append(buffer)
         self.events.record("free", buffer.ptr)
 
-    def copy_host_to_device(
-        self, buffer: DeviceBuffer, host_ptr: int, nbytes: int | None = None, *, runtime: object
+    def copy_host_array_to_device(
+        self, buffer: DeviceBuffer, array: object, nbytes: int | None = None, *, runtime: object
     ) -> None:
         count = buffer.nbytes if nbytes is None else int(nbytes)
-        self.events.record("copy_h2d", buffer.ptr, int(host_ptr), count)
+        self.events.record("copy_h2d", buffer.ptr, int(array.ctypes.data), count)
 
     def copy_device_to_host(
         self, host_ptr: int, buffer: DeviceBuffer, nbytes: int | None = None, *, runtime: object
@@ -222,7 +221,9 @@ class _Harness:
         monkeypatch.setattr(probe_module, "get_hip_runtime", lambda: self.runtime)
         monkeypatch.setattr(probe_module, "malloc", self.device.malloc)
         monkeypatch.setattr(probe_module, "free", self.device.free)
-        monkeypatch.setattr(probe_module, "copy_host_to_device", self.device.copy_host_to_device)
+        monkeypatch.setattr(
+            probe_module, "copy_host_array_to_device", self.device.copy_host_array_to_device
+        )
         monkeypatch.setattr(probe_module, "copy_device_to_host", self.device.copy_device_to_host)
         monkeypatch.setattr(probe_module, "launch_gguf_embedding", fake_embed)
         monkeypatch.setattr(probe_module, "gguf_rmsnorm_bf16_f32_weight", fake_rmsnorm)
@@ -354,12 +355,12 @@ def test_run_token_stages_one_int64_token_id(monkeypatch: pytest.MonkeyPatch) ->
     seen: list[int] = []
 
     def capture_host_token(
-        buffer: DeviceBuffer, host_ptr: int, nbytes: int | None = None, *, runtime: object
+        buffer: DeviceBuffer, array: object, nbytes: int | None = None, *, runtime: object
     ) -> None:
-        seen.append(ctypes.cast(host_ptr, ctypes.POINTER(ctypes.c_int64))[0])
-        harness.device.copy_host_to_device(buffer, host_ptr, nbytes, runtime=runtime)
+        seen.append(int(array[0]))
+        harness.device.copy_host_array_to_device(buffer, array, nbytes, runtime=runtime)
 
-    monkeypatch.setattr(probe_module, "copy_host_to_device", capture_host_token)
+    monkeypatch.setattr(probe_module, "copy_host_array_to_device", capture_host_token)
 
     probe.run_token(760)
 

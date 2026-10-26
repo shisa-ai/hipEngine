@@ -2020,3 +2020,225 @@ def test_qwen4_exp_vision_encode_pair_uploads_owning_arrays_in_order(monkeypatch
     assert [call[1] for call in uploads] == [initial, pos_h, pos_w]
     assert features.grid_thw == (1, 2, 4)
     assert features.embeddings.shape == (2, 2560)
+
+
+LOADING_RUNTIME_SYNCHRONOUS_ARRAY_UPLOAD_MODULES = (
+    "loading/materialize",
+    "runtime/qwen35_gguf_probe",
+)
+
+
+@pytest.mark.parametrize("module", LOADING_RUNTIME_SYNCHRONOUS_ARRAY_UPLOAD_MODULES)
+def test_loading_runtime_synchronous_array_uploads_use_the_owning_helper(module):
+    """Materializer and probe H2D arrays must retain their owner through the copy.
+
+    This is a bounded syntax guard over the safetensors materializer and the
+    Qwen3.5 GGUF one-layer probe, not a proof of arbitrary pointer lifetimes.
+    Asynchronous uploads, raw pointer uploads, and D2H/D2D copies are outside
+    this guard.
+    """
+    path = Path(__file__).parents[1] / "hipengine" / f"{module}.py"
+    tree = ast.parse(path.read_text())
+    hazards = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Name) and node.func.id == "copy_host_to_device":
+            source = (
+                node.args[1]
+                if len(node.args) > 1
+                else next((kw.value for kw in node.keywords if kw.arg == "host_ptr"), None)
+            )
+            if source is not None and _is_array_pointer_expression(source):
+                hazards.append((node.lineno, "copy_host_to_device"))
+            continue
+        if not (isinstance(node.func, ast.Attribute) and node.func.attr == "memcpy"):
+            continue
+        kind = (
+            node.args[3]
+            if len(node.args) > 3
+            else next((kw.value for kw in node.keywords if kw.arg == "kind"), None)
+        )
+        if not (isinstance(kind, ast.Attribute) and kind.attr == "HOST_TO_DEVICE"):
+            continue
+        source = (
+            node.args[1]
+            if len(node.args) > 1
+            else next((kw.value for kw in node.keywords if kw.arg == "src"), None)
+        )
+        if source is not None and _is_array_pointer_expression(source):
+            hazards.append((node.lineno, "runtime.memcpy"))
+    assert not hazards, f"{path.name}: use copy_host_array_to_device at {hazards}"
+
+
+def test_materialize_tensor_info_upload_uses_owning_contiguous_array(monkeypatch):
+    from hipengine.loading import materialize as mod
+    from hipengine.loading.safetensors import TensorInfo
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    mallocs = _fake_malloc(monkeypatch, mod)
+    freed = []
+    monkeypatch.setattr(mod, "free", lambda buffer, *, runtime=None: freed.append(buffer))
+    source = np.arange(12, dtype=np.float32).reshape(3, 4)[:, ::2]
+    assert not source.flags.c_contiguous
+    monkeypatch.setattr(mod, "_read_numpy_tensor", lambda info: source)
+    info = TensorInfo(
+        name="model.weight",
+        shard_path=Path("/models/fake/model.safetensors"),
+        dtype="F32",
+        shape=(3, 2),
+    )
+    runtime = object()
+
+    allocation = mod.load_tensor_info_to_device(info, runtime=runtime)
+
+    assert freed == []
+    assert legacy == []
+    assert len(uploads) == 1
+    call_buffer, array, nbytes, call_runtime = uploads[0]
+    assert call_buffer is allocation.buffer is mallocs[0]
+    assert call_buffer.nbytes == 24
+    assert array.flags.c_contiguous
+    assert array.tolist() == [[0.0, 2.0], [4.0, 6.0], [8.0, 10.0]]
+    assert nbytes == 24
+    assert call_runtime is runtime
+
+
+def test_materialize_tensor_info_upload_failure_frees_the_buffer(monkeypatch):
+    from hipengine.loading import materialize as mod
+    from hipengine.loading.safetensors import TensorInfo
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    mallocs = _fake_malloc(monkeypatch, mod)
+    freed = []
+    monkeypatch.setattr(mod, "free", lambda buffer, *, runtime=None: freed.append(buffer))
+    monkeypatch.setattr(
+        mod,
+        "_read_numpy_tensor",
+        lambda info: np.zeros((2,), dtype=np.float32),
+    )
+    info = TensorInfo(
+        name="model.weight",
+        shard_path=Path("/models/fake/model.safetensors"),
+        dtype="F32",
+        shape=(2,),
+    )
+
+    def fail_upload(*args, **kwargs):
+        raise RuntimeError("injected upload failure")
+
+    monkeypatch.setattr(mod, "copy_host_array_to_device", fail_upload, raising=False)
+    monkeypatch.setattr(mod, "copy_host_to_device", fail_upload, raising=False)
+
+    with pytest.raises(RuntimeError, match="injected upload failure"):
+        mod.load_tensor_info_to_device(info, runtime=object())
+
+    assert freed == [mallocs[0]]
+    assert uploads == []
+    assert legacy == []
+
+
+def test_materialize_as_dtype_upload_uses_owning_array_and_borrowed_cleanup(
+    monkeypatch,
+):
+    from hipengine.core.dtype import DType
+    from hipengine.loading import materialize as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    buffer = memory.DeviceBuffer(0x3100, 16)
+    released = []
+    allocator = SimpleNamespace(
+        allocate=lambda nbytes: buffer,
+        owns=lambda candidate: True,
+        release=lambda candidate: released.append(candidate),
+    )
+    runtime = object()
+    source = np.arange(8, dtype=np.int32)[::2]
+
+    allocation = mod.load_host_array_to_device_as_dtype(
+        "arena_prepared",
+        source,
+        DType.INT32,
+        runtime=runtime,
+        allocator=allocator,
+    )
+
+    assert released == []
+    assert allocation.owns_buffer is False
+    assert legacy == []
+    assert len(uploads) == 1
+    call_buffer, array, nbytes, call_runtime = uploads[0]
+    assert call_buffer is buffer
+    assert array.flags.c_contiguous
+    assert array.tolist() == [0, 2, 4, 6]
+    assert nbytes == 16
+    assert call_runtime is runtime
+
+    def fail_upload(*args, **kwargs):
+        raise RuntimeError("injected upload failure")
+
+    monkeypatch.setattr(mod, "copy_host_array_to_device", fail_upload, raising=False)
+    monkeypatch.setattr(mod, "copy_host_to_device", fail_upload, raising=False)
+
+    with pytest.raises(RuntimeError, match="injected upload failure"):
+        mod.load_host_array_to_device_as_dtype(
+            "arena_prepared",
+            source,
+            DType.INT32,
+            runtime=runtime,
+            allocator=allocator,
+        )
+    assert released == [buffer]
+
+
+def _fake_qwen35_gguf_probe(runtime):
+    from hipengine.runtime import qwen35_gguf_probe as mod
+
+    weight = SimpleNamespace(
+        allocation=lambda: SimpleNamespace(tensor=SimpleNamespace(ptr=0xA000))
+    )
+    weights = SimpleNamespace(
+        config=SimpleNamespace(
+            hidden_size=8,
+            ssm_inner_size=4,
+            vocab_size=16,
+            rms_norm_eps=1e-6,
+        ),
+        root=lambda slot: weight,
+        layer=lambda layer_id: SimpleNamespace(weight=lambda name: weight),
+    )
+    probe = object.__new__(mod.Qwen35GGUFOneLayerProbe)
+    probe.runtime = runtime
+    probe.layer_id = 0
+    probe.weights = weights
+    return probe
+
+
+def test_qwen35_gguf_probe_uploads_owning_arrays_with_exact_counts(monkeypatch):
+    from hipengine.runtime import qwen35_gguf_probe as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    mallocs = _fake_malloc(monkeypatch, mod)
+    for name in (
+        "launch_gguf_embedding",
+        "gguf_rmsnorm_bf16_f32_weight",
+        "launch_gguf_linear",
+    ):
+        monkeypatch.setattr(mod, name, lambda *args, **kwargs: None)
+    monkeypatch.setattr(mod, "copy_device_to_host", lambda *args, **kwargs: None)
+    runtime = SimpleNamespace(device_synchronize=lambda: None)
+    probe = _fake_qwen35_gguf_probe(runtime)
+
+    probe.run_token(760)
+    probe.logits_from_hidden_bits(np.zeros((1, 8), dtype=np.uint16))
+
+    assert legacy == []
+    assert [(call[0].ptr, call[2], call[3]) for call in uploads] == [
+        (mallocs[0].ptr, 8, runtime),
+        (mallocs[5].ptr, 16, runtime),
+    ]
+    token_array, hidden_array = (call[1] for call in uploads)
+    assert token_array.dtype == np.int64
+    assert token_array.tolist() == [760]
+    assert hidden_array.dtype == np.uint16
+    assert hidden_array.shape == (1, 8)

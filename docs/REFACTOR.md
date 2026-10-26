@@ -2892,7 +2892,9 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   native speculative metadata and native sampler arrays also use the owning
   helper; graph record-index copies preserve the destination-sized byte count.
   Gemma and Qwen vision uploads retain their arrays as well, preserving input,
-  position and learned-embedding copy sizes and runtime selection.
+  position and learned-embedding copy sizes and runtime selection. Safetensors
+  materialization and the GGUF one-layer diagnostic probe also retain their
+  arrays, with allocation cleanup and explicit copy lengths unchanged.
 - Remaining cleanup: named-local array uploads still use the raw-address
   `copy_host_to_device` API in other paths. Named locals are safe through a
   synchronous copy, but future edits must not replace them with temporary

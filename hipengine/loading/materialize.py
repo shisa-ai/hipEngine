@@ -11,7 +11,7 @@ from safetensors import safe_open
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime
-from hipengine.core.memory import DeviceBuffer, copy_host_to_device, free, host_array_ptr, malloc
+from hipengine.core.memory import DeviceBuffer, copy_host_array_to_device, free, malloc
 from hipengine.core.tensor import Tensor
 from hipengine.loading.safetensors import TensorInfo, WeightIndex, read_tensor_storage_bytes
 
@@ -150,7 +150,7 @@ def load_tensor_info_to_device(
         )
     buffer = malloc(expected_nbytes, runtime=runtime)
     try:
-        copy_host_to_device(buffer, host_array_ptr(array), expected_nbytes, runtime=runtime)
+        copy_host_array_to_device(buffer, array, expected_nbytes, runtime=runtime)
     except Exception:
         free(buffer, runtime=runtime)
         raise
@@ -301,7 +301,7 @@ def load_host_array_to_device_as_dtype(
     )
     borrowed = allocator is not None and allocator.owns(buffer)
     try:
-        copy_host_to_device(buffer, host_array_ptr(array), nbytes, runtime=runtime)
+        copy_host_array_to_device(buffer, array, nbytes, runtime=runtime)
     except Exception:
         if borrowed:
             allocator.release(buffer)
