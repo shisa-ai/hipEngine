@@ -148,15 +148,17 @@ def _arguments(argv: Sequence[str] | None) -> argparse.Namespace:
 
 # c1's decode is graph-captured as a single-request optimization while the batch
 # runner is eager. Captured and eager execution are different profiles, so a
-# comparison that leaves capture on measures the profile difference too.
+# comparison that leaves capture on measures the profile difference too. The MoE
+# section is pinned per runner (its process env override was retired); the
+# per-layer graph cache keeps its diagnostic env lever.
+EAGER_MOE_GRAPH_ENABLED = False
 EAGER_PROFILE_ENV = {
-    "HIPENGINE_QWEN4_EXP_MOE_GRAPH": "0",
     "HIPENGINE_QWEN4_EXP_LAYER_GRAPHS": "0",
 }
 
 
 def _apply_eager_profile(environ: Any | None = None) -> dict[str, str]:
-    """Force the eager profile on both arms and return what was set."""
+    """Force the eager per-layer graph profile and return what was set."""
 
     target = os.environ if environ is None else environ
     target.update(EAGER_PROFILE_ENV)
@@ -1028,6 +1030,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             weight_index=index,
             model_plugin=plugin,
             backend=args.backend,
+            moe_graph_enabled=EAGER_MOE_GRAPH_ENABLED,
             max_sequence_length=context,
             resident_capacity=1,
             prefill_chunk_size=args.prefill_chunk_size,
@@ -1076,6 +1079,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 prefill_chunk_size=args.prefill_chunk_size,
                 backend=args.backend,
                 runtime=runtime,
+                moe_graph_enabled=EAGER_MOE_GRAPH_ENABLED,
             )
             for _ in prompts
         ]

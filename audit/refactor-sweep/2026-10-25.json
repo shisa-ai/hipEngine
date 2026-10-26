@@ -3958,13 +3958,13 @@
       "start_line": 3604,
       "end_line": 3610,
       "sha256": "e1af8cae6dc0b01f5bd04204e7acc93c04bacd1c57316a1a063312f2a354d145",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Retired process graph override; explicit optional owner control preserves eager/captured diagnostics and backend default. Fail-closed eager fallback unchanged. Fixture/harness migration, CPU286, public/GPU285 and ordinary-EOS eager/graph parity287 pass. See worklog/entries/20261026T231953.432264Z-cleanup-refactor-r0150-moe-graph-868a0c.md."],
       "subitems": [
         {
           "line": 3606,
           "text": "- `HIPENGINE_QWEN4_EXP_MOE_GRAPH=0` restores eager MoE despite the gfx1151",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

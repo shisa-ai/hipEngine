@@ -27,6 +27,7 @@ import pytest
 
 import scripts.qwen4exp_batch_sparse_threshold_check as threshold_check
 from scripts.qwen4exp_batch_sparse_threshold_check import (
+    EAGER_MOE_GRAPH_ENABLED,
     EAGER_PROFILE_ENV,
     Taps,
     _apply_eager_profile,
@@ -122,13 +123,16 @@ def test_slot_window_offset_keeps_slots_disjoint():
     )
 
 
-def test_eager_profile_forces_both_graph_switches():
+def test_eager_profile_pins_moe_graphs_per_runner_and_layer_graphs_by_env():
     """The reference arm must not keep c1's single-request graph capture on."""
 
     environ = {"HIPENGINE_UNRELATED": "keep"}
     applied = _apply_eager_profile(environ)
     assert applied == EAGER_PROFILE_ENV
-    assert environ["HIPENGINE_QWEN4_EXP_MOE_GRAPH"] == "0"
+    assert EAGER_PROFILE_ENV == {"HIPENGINE_QWEN4_EXP_LAYER_GRAPHS": "0"}
+    # The MoE section has no env switch any more; the harness pins it per runner.
+    assert EAGER_MOE_GRAPH_ENABLED is False
+    assert "HIPENGINE_QWEN4_EXP_MOE_GRAPH" not in environ
     assert environ["HIPENGINE_QWEN4_EXP_LAYER_GRAPHS"] == "0"
     assert environ["HIPENGINE_UNRELATED"] == "keep"
 

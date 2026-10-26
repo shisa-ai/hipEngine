@@ -886,7 +886,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL` | production profile | Uses the peer-wave GDN prefill variant for head_dim 128, gated by the `HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS` layer list. |
 | `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL` | production profile | Uses the columnwarp GDN prefill variant, gated by the `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS` layer list. |
 | `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS` | unset | Comma-separated layer list admitting the columnwarp GDN decode variant; empty under production. |
-| `HIPENGINE_QWEN4_EXP_MOE_GRAPH` | backend capability | Enables captured c1 MoE decode graphs on backends whose capability admits them. `0` forces eager MoE; the profile binder does not override this setting, including under strict. |
+| `HIPENGINE_QWEN4_EXP_MOE_GRAPH` | retired | No longer read. Backend capability selects the default c1 MoE graph path; explicit runner/generator `moe_graph_enabled` controls support eager/captured diagnostics. Automatic eager fallback remains. |
 | `HIPENGINE_QWEN4_EXP_PLE_WARM` | `0` | Warms the PLE mmap table page cache at load for long-lived serving; short-lived runners never amortize it. |
 | `HIPENGINE_QWEN4_EXP_LOAD_DROP_BEHIND` | `0` | Advise `DONTNEED` for non-PLE source ranges after their device copy succeeds. Lazy PLE and validation readers are excluded; intended for one-shot low-RSS loading, not repeated loads. |
 

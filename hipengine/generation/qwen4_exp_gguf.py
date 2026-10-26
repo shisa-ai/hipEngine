@@ -267,11 +267,17 @@ class Qwen4ExpGGUFTextGenerator:
         resident_capacity: int | None = None,
         prefill_chunk_size: int | None = 512,
         vision_model_path: str | Path | None = None,
+        moe_graph_enabled: bool | None = None,
     ) -> None:
         self.model_path = Path(model_path)
         self.weight_index = weight_index
         self.model_plugin = model_plugin
         self.backend = str(backend)
+        # Explicit control for harnesses that must pin the captured or eager c1
+        # MoE profile; ``None`` leaves the backend package's capability to
+        # decide. Every resident runner this generator constructs (its own and
+        # each c2 pool row) inherits it.
+        self.moe_graph_enabled = moe_graph_enabled
         batching = ar_batch_enabled()
         default_capacity = (
             QWEN4_EXP_DEFAULT_REQUEST_CAPACITY if batching else QWEN4_EXP_STAGING_RUNNERS
@@ -424,11 +430,11 @@ class Qwen4ExpGGUFTextGenerator:
                 _populate_t16_resident_stages_from_env(
                     self._resident, readers, runtime=runtime
                 )
-                runner = Qwen4ExpGGUFResidentModelRunner(
+                runner = self._new_resident_runner(
                     self._resident,
                     max_sequence_length=admission.context_tokens,
                     prefill_chunk_size=prefill_chunk_size,
-                    backend=self.backend,
+                    runtime=runtime,
                 )
             except Exception:
                 self._resident.close()
@@ -455,6 +461,25 @@ class Qwen4ExpGGUFTextGenerator:
                 self._vision_resident.close()
                 self._vision_resident = None
                 raise
+
+    def _new_resident_runner(
+        self,
+        resident,
+        *,
+        max_sequence_length: int,
+        prefill_chunk_size: int,
+        runtime=None,
+    ):
+        """Build one resident runner under this generator's explicit controls."""
+
+        return Qwen4ExpGGUFResidentModelRunner(
+            resident,
+            max_sequence_length=max_sequence_length,
+            prefill_chunk_size=prefill_chunk_size,
+            backend=self.backend,
+            runtime=runtime,
+            moe_graph_enabled=self.moe_graph_enabled,
+        )
 
     server_plain_ar_max_active_requests = QWEN4_EXP_DEFAULT_REQUEST_CAPACITY
     server_plain_ar_max_active_requests_by_max_sequence_length = {
@@ -1130,11 +1155,10 @@ class Qwen4ExpResidentServingRunner(
         if self.generator._resident is None and self.staging_capacity > 1:
             raise RuntimeError("Qwen4Exp c2 requires model-owned resident weights")
         while len(self._all_runners) < self.staging_capacity:
-            runner = Qwen4ExpGGUFResidentModelRunner(
+            runner = self.generator._new_resident_runner(
                 self.generator._resident,
                 max_sequence_length=self.generator.runner.max_sequence_length,
                 prefill_chunk_size=self.generator.runner.prefill_chunk_size,
-                backend=self.generator.backend,
                 runtime=self.generator.runner.runtime,
             )
             _inherit_lane_decisions(self.generator, runner)

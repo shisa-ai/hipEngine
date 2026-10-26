@@ -3019,13 +3019,6 @@ should be removed or collapsed.
   before restoring this arithmetic default. A two-trajectory screen does not
   clear the failure.
 
-## 2026-08-29 Qwen4Exp per-layer MoE graphs
-
-- `HIPENGINE_QWEN4_EXP_MOE_GRAPH=0` restores eager MoE despite the gfx1151
-  package default. Remove the env override after c1/c2 cancellation, reset,
-  repeated-graph, and teardown soak; retain `MoeGraphCache` fail-closed eager
-  fallback and keep stateful GDN/QSA outside graphs.
-
 ## 2026-08-28 Qwen4Exp native c2 runner pool
 
 - `Qwen4ExpResidentServingRunner` provides request-owned c2 residency and

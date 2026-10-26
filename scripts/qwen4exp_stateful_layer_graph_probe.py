@@ -46,7 +46,7 @@ def _first_mismatch(rows):
   if not row['output_exact']:return {'replay':row['replay'],'kind':'output','owner':None}
   if not row.get('token_exact',True):return {'replay':row['replay'],'kind':'token','owner':'root.token_id'}
  return None
-def _make_generator(args):
+def _make_generator(args,*,moe_graph_enabled=None):
  from hipengine.execution_profiles import ExecutionProfile,resolve_runtime_profile
  from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
  from hipengine.generation.qwen4_exp_profiles import QWEN4_EXP_BACKEND,QWEN4_EXP_MODEL,QWEN4_EXP_QUANTS
@@ -55,7 +55,7 @@ def _make_generator(args):
  index=load_gguf_index(discover_gguf_files(args.model_root)[0]);plugin=resolve_model(index.architecture or '')
  profile=ExecutionProfile.PRODUCTION if getattr(args,'profile','strict')=='production' else ExecutionProfile.STRICT
  resolved=resolve_runtime_profile(model=QWEN4_EXP_MODEL,backend=QWEN4_EXP_BACKEND,quant=QWEN4_EXP_QUANTS[1],profile=profile)
- return resolved.construct_generator(lambda:Qwen4ExpGGUFTextGenerator(model_path=args.model_root,weight_index=index,model_plugin=plugin,backend=QWEN4_EXP_BACKEND,max_sequence_length=args.max_sequence_length,prefill_chunk_size=args.prefill_chunk_size)),resolved
+ return resolved.construct_generator(lambda:Qwen4ExpGGUFTextGenerator(model_path=args.model_root,weight_index=index,model_plugin=plugin,backend=QWEN4_EXP_BACKEND,max_sequence_length=args.max_sequence_length,prefill_chunk_size=args.prefill_chunk_size,moe_graph_enabled=moe_graph_enabled)),resolved
 
 def run(args,*,command:Sequence[str])->dict[str,Any]:
  if not args.model_root.is_dir():raise ValueError('model root must exist')
@@ -65,7 +65,8 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
  if args.gdn_paired_timing and (not args.gdn_moe_baseline or args.samples%2):
   raise ValueError('--gdn-paired-timing requires gdn-moe-baseline and even samples')
  if args.replays<4 or args.samples<3 or args.segment_length<=0:raise ValueError('at least four replays, three samples, and one segment layer required')
- if args.profile=='strict':os.environ['HIPENGINE_QWEN4_EXP_MOE_GRAPH']='0'
+ if args.profile=='strict':moe_graph_enabled=False
+ else:moe_graph_enabled=None
  os.environ.setdefault('HIPENGINE_HIP_ARCH','gfx1151')
  from hipengine.core.hip import HipMemcpyKind
  from hipengine.core.memory import host_array_ptr,memory_stats,reset_memory_stats
@@ -85,7 +86,7 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
  )
  register_gfx1151_kernels(replace=True);register_qwen4_exp_gfx1151_profiles();reset_memory_stats();generator=None;graph=exec_=stream=0
  try:
-  generator,resolved=_make_generator(args);runner=generator.runner;rt=runner.runtime;cfg=runner.config
+  generator,resolved=_make_generator(args,moe_graph_enabled=moe_graph_enabled);runner=generator.runner;rt=runner.runtime;cfg=runner.config
   ids=_prompt_ids(args,generator)
   if not ids:raise ValueError('prompt tokenization is empty')
   runner.prefill(ids,capture_logits=False,capture_target_hidden=False)

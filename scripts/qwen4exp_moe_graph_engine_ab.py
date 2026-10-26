@@ -76,7 +76,6 @@ def main(argv=None) -> int:
 
     os.environ["HIPENGINE_HIP_ARCH"] = "gfx1151".replace("hip_", "")
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file.resolve())
-    os.environ["HIPENGINE_QWEN4_EXP_MOE_GRAPH"] = "1"
 
     fixture, fixture_sha = load_fixture(args.fixture)
     cases = list(fixture["cases"])
@@ -103,6 +102,10 @@ def main(argv=None) -> int:
         backend=QWEN4_EXP_BACKEND,
         max_sequence_length=max_len,
         prefill_chunk_size=CHUNK_SIZE,
+        # The A/B pins the captured arm instead of asking the backend whether it
+        # admits graphs; a capture that cannot run falls back to eager inside the
+        # cache, so the comparison never silently changes arithmetic.
+        moe_graph_enabled=True,
     ))
     runner = generator.runner
     moe_cache = runner.moe_graph_cache
@@ -112,7 +115,7 @@ def main(argv=None) -> int:
     def set_arm(arm: str) -> None:
         # The cache is constructed enabled; the eager arm forces the fallback
         # through the cache's own enabled flag (its run() checks it first).
-        moe_cache._enabled = arm == "after"  # noqa: SLF001 - diagnostic A/B toggle
+        moe_cache.set_enabled(arm == "after")
 
     prefill_kwargs, step_kwargs = _capture_kwargs("compact")
     report: dict = {

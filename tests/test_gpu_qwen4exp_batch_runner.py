@@ -309,8 +309,9 @@ def _release_bundle(bundle) -> None:
 def _module_monkeypatch() -> pytest.MonkeyPatch:
     monkey = pytest.MonkeyPatch()
     # The c1 reference is the eager committed path; graph capture is a c1
-    # single-request optimization these fixtures do not exercise.
-    monkey.setenv("HIPENGINE_QWEN4_EXP_MOE_GRAPH", "0")
+    # single-request optimization these fixtures do not exercise. The MoE
+    # section is pinned per runner (``_c1``) because its process env override
+    # was retired; per-layer graphs keep their diagnostic env lever.
     monkey.setenv("HIPENGINE_QWEN4_EXP_LAYER_GRAPHS", "0")
     monkey.delenv("HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL", raising=False)
     return monkey
@@ -357,6 +358,7 @@ def _c1(model, *, max_positions: int = fixture.MAX_POSITIONS):
         prefill_chunk_size=4,
         backend=model.backend,
         runtime=model.runtime,
+        moe_graph_enabled=False,
     )
 
 

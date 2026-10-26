@@ -2,7 +2,7 @@
 """Measure the named decode step at the P8 transition-graph probe's own context.
 
 The retained P8 full-transition artifact reports **194.758 -> 61.910 ms/step
-(3.15x)**, but its eager arm is probe-local: it forces
+(3.15x)**, but its eager arm is probe-local: it pinned the since-retired
 ``HIPENGINE_QWEN4_EXP_MOE_GRAPH=0`` and drives every layer from a script-level
 launch loop. Neither property belongs to the named decode path, so that ratio
 cannot be used to rank the P8 graph against other owners.
@@ -112,7 +112,7 @@ def run(args: argparse.Namespace, *, command: list[str]) -> dict[str, Any]:
             graph_on = mode.startswith("graph_on")
             device_argmax = mode.endswith("device_argmax")
             if cache is not None:
-                cache._enabled = graph_on
+                cache.set_enabled(graph_on)
             runner.reset()
             result = runner.prefill(list(ids))
             start_position = int(runner.position)

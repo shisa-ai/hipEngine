@@ -57,6 +57,20 @@ class MoeGraphCache:
     def enabled(self) -> bool:
         return self._enabled
 
+    def set_enabled(self, enabled: bool) -> None:
+        """Select the captured or the eager arm on one residency.
+
+        Diagnostic A/Bs flip this between arms; production never does. Graphs
+        already captured stay resident, so re-enabling replays them instead of
+        recapturing. A cache constructed disabled has no capture stream yet, so
+        enabling creates one here (HIP forbids capturing the NULL stream).
+        """
+
+        enabled = bool(enabled)
+        if enabled and not self._capture_stream:
+            self._capture_stream = self._runtime.stream_create(nonblocking=True)
+        self._enabled = enabled
+
     @property
     def stats(self) -> dict[str, int]:
         return dict(self._stats)

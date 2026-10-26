@@ -8387,6 +8387,24 @@ class Qwen4ExpTargetVerifyOutput:
         self.closed = True
 
 
+def qwen4_exp_moe_graph_enabled(
+    backend: str, explicit: bool | None = None
+) -> bool:
+    """Admit the captured c1 MoE decode section for ``backend``.
+
+    ``explicit`` is the harness/test control: a caller that must compare the
+    captured and eager profiles on one residency passes the arm it wants, and
+    every other caller leaves it ``None`` so the backend package's own
+    capability decides. There is deliberately no process env override; the
+    retired ``HIPENGINE_QWEN4_EXP_MOE_GRAPH`` switch made a fixture's eager
+    isolation silently inert once the read was gone.
+    """
+
+    if explicit is not None:
+        return bool(explicit)
+    return bool(backend_package_capability(backend, "QWEN4_EXP_MOE_GRAPH", False))
+
+
 @dataclass(frozen=True)
 class Qwen4ExpRunnerSnapshot:
     decode_state: Qwen4ExpDecodeStateSnapshot
@@ -8634,6 +8652,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         prefill_chunk_size: int = 512,
         backend: str = "hip_gfx1151",
         runtime: HipRuntime | None = None,
+        moe_graph_enabled: bool | None = None,
     ) -> None:
         self.resident = resident
         self.config = resident.plan.config
@@ -8695,16 +8714,11 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.closed = False
         try:
             self._allocate()
-            graph_override = os.environ.get("HIPENGINE_QWEN4_EXP_MOE_GRAPH")
-            graph_enabled = bool(
-                backend_package_capability(
-                    self.backend, "QWEN4_EXP_MOE_GRAPH", False
-                )
-                if graph_override is None
-                else graph_override not in {"", "0", "false", "False"}
-            )
             self.moe_graph_cache = MoeGraphCache(
-                self.runtime, enabled=graph_enabled
+                self.runtime,
+                enabled=qwen4_exp_moe_graph_enabled(
+                    self.backend, moe_graph_enabled
+                ),
             )
             layer_graph_override = os.environ.get(
                 "HIPENGINE_QWEN4_EXP_LAYER_GRAPHS"

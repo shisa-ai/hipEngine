@@ -528,10 +528,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     # runner is eager. Captured and eager execution are different profiles, and
     # with capture on the control pass is not reproducible (measured: reset and
     # re-prefill did not restore the captured state, so pass B differed from
-    # pass A on every slot). Off, the control pass is byte-identical. This is the
-    # same setting the synthetic GPU batch tests use.
-    os.environ["HIPENGINE_QWEN4_EXP_MOE_GRAPH"] = "0"
+    # pass A on every slot). Off, the control pass is byte-identical. The MoE
+    # section is pinned through each runner's explicit control (the retired
+    # process env would no longer reach it); per-layer graphs keep their
+    # diagnostic env lever.
     os.environ["HIPENGINE_QWEN4_EXP_LAYER_GRAPHS"] = "0"
+    eager_moe_graph = False
 
     generator = None
     batch = None
@@ -556,6 +558,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             max_sequence_length=args.context,
             resident_capacity=1,
             prefill_chunk_size=args.prefill_chunk_size,
+            moe_graph_enabled=eager_moe_graph,
         )
         report["execution_profile_env"] = {
             key: value
@@ -595,6 +598,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     prefill_chunk_size=args.prefill_chunk_size,
                     backend=args.backend,
                     runtime=runtime,
+                    moe_graph_enabled=eager_moe_graph,
                 )
             )
         # last_logits is the c1 teacher's own greedy source between steps.
