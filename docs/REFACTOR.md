@@ -2903,6 +2903,8 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   `tests/test_gpu_h2d_source_lifetime.py`. Qwen4Exp batch attention metadata,
   QSA-index publication and runner token/PLE uploads also use the owning API,
   including contiguous temporary arrays and offset member-index copies.
+  Dense/MoE MTP2 generation adapters use it for their synchronous array uploads,
+  with acceptance, padding, catch-up and checkpoint tests covering the migration.
 - Remaining cleanup: named-local array uploads still use the raw-address
   `copy_host_to_device` API in other paths. Named locals are safe through a
   synchronous copy, but future edits must not replace them with temporary

@@ -14,7 +14,7 @@ from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
-    copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -1224,9 +1224,9 @@ class Qwen35GGUFMoEMTP2Adapter:
         array = np.ascontiguousarray(values)
         if array.nbytes > tensor.numel * tensor.dtype.itemsize:
             raise ValueError("MoE physical accept upload exceeds capacity")
-        copy_host_to_device(
+        copy_host_array_to_device(
             DeviceBuffer(tensor.ptr, array.nbytes),
-            host_array_ptr(array),
+            array,
             array.nbytes,
             runtime=runtime,
         )

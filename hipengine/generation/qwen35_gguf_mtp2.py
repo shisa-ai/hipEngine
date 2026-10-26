@@ -16,7 +16,7 @@ from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
-    copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -3360,9 +3360,9 @@ class Qwen35GGUFMTP2Adapter:
         workspace = getattr(self, "_cycle_ngram_tokens", None)
         if workspace is None or values.size > workspace.numel:
             raise RuntimeError("n-gram candidate tokens exceed the fixed cycle workspace")
-        copy_host_to_device(
+        copy_host_array_to_device(
             DeviceBuffer(workspace.ptr, values.nbytes),
-            host_array_ptr(values),
+            values,
             values.nbytes,
             runtime=runtime,
         )
@@ -4711,9 +4711,9 @@ class Qwen35GGUFMTP2Adapter:
             0,
         )
         pads = np.zeros((int(pad_rows),), dtype=np.int32)
-        copy_host_to_device(
+        copy_host_array_to_device(
             DeviceBuffer(scratch.ptr + real * DType.INT32.itemsize, pads.nbytes),
-            host_array_ptr(pads),
+            pads,
             pads.nbytes,
             runtime=runtime,
         )
@@ -4790,9 +4790,9 @@ class Qwen35GGUFMTP2Adapter:
         array = np.ascontiguousarray(values)
         if array.nbytes > tensor.numel * tensor.dtype.itemsize:
             raise ValueError("physical accept upload exceeds tensor capacity")
-        copy_host_to_device(
+        copy_host_array_to_device(
             DeviceBuffer(tensor.ptr, array.nbytes),
-            host_array_ptr(array),
+            array,
             array.nbytes,
             runtime=runtime,
         )
@@ -4869,14 +4869,15 @@ class Qwen35GGUFMTP2Adapter:
     ) -> bool:
         """Enqueue one accept upload from page-locked memory; False if it must stay blocking.
 
-        ``copy_host_to_device`` is a blocking ``hipMemcpy`` from pageable numpy memory, which
-        synchronizes the device once per call: measured as 85.4-101.6 ms per lane-cycle, 96.5%
-        of the accept window at C5-C8 (worklog 20260830T155357). Bytes are copied into a
-        persistent registered arena and released with ``memcpy_async`` on the same stream the
-        device-to-device accept copies already use. The accept window ends in the blocking D2H
-        ``_read_target_batch_accept``, which drains these enqueued copies before the cycle
-        returns, so a slot cannot still be in flight when the next cycle reuses it. The source
-        ``array`` is never referenced by the transfer, so the temporary dying here is safe.
+        A blocking pageable host upload synchronizes the device once per call: measured
+        as 85.4-101.6 ms per lane-cycle, 96.5% of the accept window at C5-C8
+        (worklog 20260830T155357). Bytes are copied into a persistent registered arena
+        and released with ``memcpy_async`` on the same stream the device-to-device
+        accept copies already use. The accept window ends in the blocking D2H
+        ``_read_target_batch_accept``, which drains these enqueued copies before the
+        cycle returns, so a slot cannot still be in flight when the next cycle reuses
+        it. The source ``array`` is never referenced by the transfer, so the temporary
+        dying here is safe.
         """
         array = np.ascontiguousarray(values)
         if array.nbytes > tensor.numel * tensor.dtype.itemsize:
@@ -5481,8 +5482,12 @@ class Qwen35GGUFMTP2Adapter:
                 row.full_vocab_logits_d2h = True
                 row.logits_d2h_bytes = host_logits.nbytes
             selected = np.asarray(selected, dtype=np.int32)
-            copy_host_to_device(DeviceBuffer(result.target_top1.ptr, selected.nbytes),
-                                host_array_ptr(selected), selected.nbytes, runtime=owner.runtime)
+            copy_host_array_to_device(
+                DeviceBuffer(result.target_top1.ptr, selected.nbytes),
+                selected,
+                selected.nbytes,
+                runtime=owner.runtime,
+            )
 
     def _execute_target_frontier_batch(
         self,
@@ -7052,9 +7057,9 @@ class Qwen35GGUFMTP2Adapter:
                         )
                     )
                 hidden_bits = np.ascontiguousarray(np.stack(hidden_rows), dtype=np.uint16)
-                copy_host_to_device(
+                copy_host_array_to_device(
                     hidden_batch,
-                    host_array_ptr(hidden_bits),
+                    hidden_bits,
                     hidden_bits.nbytes,
                     runtime=targets[0].runtime,
                 )
@@ -7120,9 +7125,9 @@ class Qwen35GGUFMTP2Adapter:
                     dtype=np.uint16,
                 )
                 buffer = malloc(bits.nbytes, runtime=target.runtime)
-                copy_host_to_device(
+                copy_host_array_to_device(
                     buffer,
-                    host_array_ptr(bits),
+                    bits,
                     bits.nbytes,
                     runtime=target.runtime,
                 )
@@ -7230,9 +7235,9 @@ class Qwen35GGUFMTP2Adapter:
                         dtype=np.uint16,
                     )
                 )
-                copy_host_to_device(
+                copy_host_array_to_device(
                     DeviceBuffer(hidden_buffer.ptr, hidden_bits.nbytes),
-                    host_array_ptr(hidden_bits),
+                    hidden_bits,
                     hidden_bits.nbytes,
                     runtime=target.runtime,
                 )
@@ -7264,9 +7269,9 @@ class Qwen35GGUFMTP2Adapter:
                 float_array_to_bf16_bits(rows[-1]),
                 dtype=np.uint16,
             )
-            copy_host_to_device(
+            copy_host_array_to_device(
                 DeviceBuffer(hidden_buffer.ptr, final_hidden_bits.nbytes),
-                host_array_ptr(final_hidden_bits),
+                final_hidden_bits,
                 final_hidden_bits.nbytes,
                 runtime=target.runtime,
             )
@@ -7362,9 +7367,9 @@ class Qwen35GGUFMTP2Adapter:
                 float_array_to_bf16_bits(rows[boundary - 1]),
                 dtype=np.uint16,
             )
-            copy_host_to_device(
+            copy_host_array_to_device(
                 DeviceBuffer(hidden_buffer.ptr, boundary_bits.nbytes),
-                host_array_ptr(boundary_bits),
+                boundary_bits,
                 boundary_bits.nbytes,
                 runtime=target.runtime,
             )

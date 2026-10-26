@@ -4257,7 +4257,7 @@ def test_physical_prompt_catchup_skips_full_vocabulary_scoring(
     monkeypatch.setattr(mtp2_module, "free", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         mtp2_module,
-        "copy_host_to_device",
+        "copy_host_array_to_device",
         lambda *args, **kwargs: None,
     )
     adapter = object.__new__(Qwen35GGUFMTP2Adapter)
@@ -6315,14 +6315,10 @@ def _prefix_capture_adapter(monkeypatch, executor, *, capacity=2, block_size=4):
     )
     monkeypatch.setattr(mtp2_module, "free", lambda *args, **kwargs: None)
 
-    def _record_copy(destination, source_ptr, nbytes, **kwargs):
-        executor.staged.append(
-            np.frombuffer(
-                ctypes.string_at(int(source_ptr), int(nbytes)), dtype=np.uint16
-            ).copy()
-        )
+    def _record_copy(destination, array, nbytes, **kwargs):
+        executor.staged.append(np.asarray(array, dtype=np.uint16).copy())
 
-    monkeypatch.setattr(mtp2_module, "copy_host_to_device", _record_copy)
+    monkeypatch.setattr(mtp2_module, "copy_host_array_to_device", _record_copy)
     adapter = object.__new__(Qwen35GGUFMTP2Adapter)
     adapter._prompt_hidden_rows = {}
     adapter.prefix_checkpoint_capacity = capacity

@@ -2416,9 +2416,10 @@
       "start_line": 2692,
       "end_line": 2717,
       "sha256": "8237398ea872f750eeb89292d9d29123e7f1f93384f1e980d1d13717914809d5",
-      "status": "partial-qwen4exp-batch-migrated",
+      "status": "partial-mtp-generation-migrated",
       "evidence": [
-        "Qwen4Exp batch state, runner and QSA index synchronous array uploads migrated with preserved byte offsets; GPU upload/lifetime and batch tests, CPU bundle and real HTTP physical width2 execution with traced owning helpers pass. Other model array callers and separate async contracts remain open. worklog/entries/20261026T112905.064466Z-cleanup-refactor-r0089-batch-uploads-f58cab.md."
+        "Qwen4Exp batch state, runner and QSA index synchronous array uploads migrated with preserved byte offsets; GPU upload/lifetime and batch tests, CPU bundle and real HTTP physical width2 execution with traced owning helpers pass. Other model array callers and separate async contracts remain open. worklog/entries/20261026T112905.064466Z-cleanup-refactor-r0089-batch-uploads-f58cab.md.",
+        "Dense/MoE MTP2 synchronous array uploads migrated; CPU bundle, focused native sampler GPU test and public ngram owning upload trace passed. Public acceptance helper not exercised; concurrent explicit MTP no_provider fallback remains separate follow-up. worklog/entries/20261026T115712.267620Z-cleanup-refactor-r0089-mtp-uploads-039bde.md."
       ],
       "subitems": [
         {
