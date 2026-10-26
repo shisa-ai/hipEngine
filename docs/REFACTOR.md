@@ -2134,11 +2134,20 @@ Evidence: `benchmarks/results/2026-09-20-w7900-prefix-bf16-layout-repair.json`.
 HTTP and in-process prefix caching default to radix. `hipengine serve
 --prefix-cache off` or `HIPENGINE_PREFIX_CACHE=off` is the rollback.
 Eligibility fallbacks record `prefix_fallback_reason`; they do not detect
-numerical divergence. Remaining separate work: explicit no-mirror INT8 suffix
-prefill can allocate a BF16 oracle without restoring its cached prefix.
-Validate the retained INT8/scale attention source, suffix/reclaim/pressure,
-and user-facing requests before claiming that contract repaired.
-Decision: `worklog/entries/20260920T155434.502352Z-lhl-served-lane-boundaries-bc9b95.md`.
+numerical divergence. The separate no-mirror INT8 suffix ownership repair is
+also complete: resumed prefill reads retained INT8 payload and scales rather
+than a transient BF16 oracle whose prefix was never written. The current
+`tests/test_unit_gguf_prefix_int8_attention_source.py` pins the source choice,
+gapped pages, mirrored fallback, and unsupported-layout rejection before writes.
+
+The RX 7900 XTX packet records suffix/reclaim/pressure checks and public prefix
+hits, including actual INT8/FP32 storage with no mirrors:
+`benchmarks/results/2026-09-20-rx7900xtx-prefix-int8-ownership-repair.json` and
+`worklog/entries/20260920T214917.189511Z-lhl-close-int8-radix-prefix-ownership-validation-0f1633.md`.
+Its claim is cache-hit fidelity against independent same-schedule recomputation,
+not cross-schedule identity with a cold BF16-oracle prefill. The earlier open
+paragraph was superseded by that validation but left unchanged during
+shared-file coordination.
 
 ## Three qwen36-dense serving rows carry no execution identity (found 2026-09-20)
 

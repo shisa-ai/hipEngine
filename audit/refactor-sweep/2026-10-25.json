@@ -1543,9 +1543,9 @@
       "start_line": 1782,
       "end_line": 1847,
       "sha256": "4ebc772129b7a175ae64adb29f02d4efccd56d1ece9b4bf5cfb801c71d12cf09",
-      "status": "partial-original-resolved",
+      "status": "resolved",
       "evidence": [
-        "Existing shipping DMS repair verified; dormant pairs retained under unmet structural-redesign removal condition. Prefix packed-reference default verified; separate INT8 suffix-prefix concern remains open. Worklog:worklog/entries/20261026T070747.633871Z-cleanup-refactor-r0057-r0059-010c30.md."
+        "Original packed-reference oracle issue and separate INT8 suffix ownership repair both already closed. Verified current tests and September public/device closure; corrected shared-file stale paragraph. Worklog:worklog/entries/20261026T071359.781748Z-cleanup-refactor-r0059-569bbc.md."
       ],
       "subitems": []
     },
