@@ -879,8 +879,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q5_1_WMMA` | `0` (production binder) | Q5_1 grouped WMMA down-projection admission under the production grouped MoE route. |
 | `HIPENGINE_QWEN4_EXP_Q5_1_OUT8` | `1` | Uses the out8 Q5_1 grouped compact prefill variant. |
 | `HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN` | `0` | Opt-in Q5_1-style grouped WMMA down for Q8_0 experts. |
-| `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP` | `0` | Opt-in warp256 Q5_1 selected weighted-sum decode (free-running divergence routed to its packet per contract). |
-| `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN` | `0` | Opt-in down-leg-only warp256 weighted sum; the incumbent bit-exact weighted-sum stays the production default. |
+| `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_DOWN` | unset (F16 route sets `1`) | Warp-per-expert routed down decode owner (reduction order differs); the other half of the pair selected by `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP`. |
 | `HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT` | `0` (production-only binding) | Weight-exact iu8-WMMA Q5_1 down with risk+repair; bit-identical to the pair2 row-publish parent in practice at multiplier 16. |
 | `HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID` | `64` | Expert-grid mode for the exact grouped routes: `64` (admitted), plus `q4`/`q5` spellings at their call sites. |
 | `HIPENGINE_QWEN4_EXP_EXACT_CONV_PREFILL` | `1` | Uses the exact bulk conv prefill owner; `0` restores the generic chain. |

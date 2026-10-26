@@ -15,8 +15,8 @@ cd /home/lhl/hipEngine
 #
 # It bisected the warp256 gate/up max-KL flip by sweeping
 # HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS. The warp256 MoE decode route was removed
-# from production (see REFACTOR.md "Unread warp-route env vars"), so the flip it
-# localized no longer exists, and the probe it drove
+# from production at that time (see REFACTOR.md "MoE Decode warp256 GEMV Pair"),
+# and the probe it drove
 # (scripts/qwen4exp_moe_decode_warp_logits_probe.py) was deleted with that route
 # because its warp arms selected the route through env vars that are now unread
 # - they would silently measure the incumbent and report a clean bisect.
@@ -26,8 +26,8 @@ cd /home/lhl/hipEngine
 # them needs a NEW harness that selects them directly rather than through the
 # removed env vars - restoring this file unedited would restore the silent
 # mismeasurement, which is why it fails here instead.
-echo "qwen4exp_de1_layer_bisect.sh: RETIRED - its route is removed and its probe is deleted." >&2
-echo "See the header of this file and docs/REFACTOR.md 'Unread warp-route env vars'." >&2
+echo "qwen4exp_de1_layer_bisect.sh: RETIRED - its probe is deleted; use the current route harness." >&2
+echo "See the header of this file and docs/REFACTOR.md 'MoE Decode warp256 GEMV Pair'." >&2
 exit 2
 
 # --- retained below as documentation of the retired experiment ---

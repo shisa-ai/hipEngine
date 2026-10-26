@@ -1017,8 +1017,10 @@ condition stand. The reader-removal decision belongs to R0029 above, not here.
 
 > 2026-10-14: the two kernels this section retained are selected again for
 > the `gguf_ud_q4_k_xl` production plan after passing the layer2 gate; see
-> "Qwen4Exp decode routes of the UD production plan". The text below is the
-> 2026-09-30 record.
+> "Qwen4Exp decode routes of the UD production plan". The re-admitted
+> selectors are `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP_GATE_UP` and `_DOWN`; the
+> bare `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP` gate/up selector stays deleted.
+> The text below is the 2026-09-30 record.
 
 - **Both runtime routes and both flags are DELETED**
   (`HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP` gate/up and `_DOWN`). The removal
@@ -1067,28 +1069,25 @@ condition stand. The reader-removal decision belongs to R0029 above, not here.
   incumbent. **The fifth:** `scripts/qwen4exp_r2e_route_ablation.py` imported
   `FLAG`/`FLAG_DOWN` from the deleted probe and set both to `"0"` in its
   incumbent baseline; those writes are gone (they were no-ops once the flags
-  stopped being read). `grep` for `MOE_DECODE_WARP` across `scripts/` is now
-  empty. The kernel definitions stay registered, as the bullet below requires.
+  stopped being read). Those stale writes are removed; the surviving
+  `_GATE_UP`/`_DOWN` selectors in `scripts/qwen4exp_layer2_profile_gate.py`
+  arm the re-admitted pair and are not stale writes. The kernel
+  definitions stayed registered through the removal (both are registered for
+  `hip_gfx1151` as `selected_dual_q8_1_dp4a_silu_warp256_gemv_bf16_bf16_out`
+  and `selected_weighted_sum_warp256_fast_bf16_bf16_out`) and the UD production
+  binder selects them again.
 - **One harness the obligation did not list was retired rather than fixed.**
   `scripts/qwen4exp_de1_layer_bisect.sh` drove the deleted logits probe as a
   subprocess, so it became a dangling reference. Its subject - the warp256
   gate/up max-KL flip - went away with the route, and even with the probe
-  restored its arms would select the route through the now-unread env vars and
+  restored its arms would select the gate/up route through the removed
+  `HIPENGINE_QWEN4_EXP_MOE_DECODE_WARP` variable and
   **silently measure the incumbent, reporting a clean bisect.** It therefore
   exits 2 with the reason in its header, and the rest of the file is retained as
   documentation of the retired experiment. The measurement it produced is
   immutable in worklog `20260930T023729`. Revisiting the warp kernels needs a
   **new** harness that selects them directly; restoring that file unedited would
   restore the silent mismeasurement.
-- **What remains:** the kernel definitions stay registered (the probe scripts can
-  still select them directly for future work); only the production routes are
-  gone. `scripts/qwen4exp_moe_decode_warp_logits_probe.py`,
-  `scripts/qwen4exp_moe_decode_warp_state_gate.py`,
-  `scripts/qwen4exp_row4_state_gate.py` and
-  `scripts/qwen4exp_halo_box_campaign_ab.py` still set the two env vars; those
-  variables are now **unread**, so those scripts' warp arms would silently
-  measure the incumbent. **They must be deleted or made to fail loudly before
-  being used again.**
 - **The stale-owner obligation is also discharged `20260930T`.**
   `scripts/qwen4exp_de1_moe_per_kernel.py` hardcoded the gate/up owner as
   `gguf_q4_k_selected_dual_silu_logical128_t64`, which stopped matching once the
@@ -1119,8 +1118,7 @@ condition stand. The reader-removal decision belongs to R0029 above, not here.
   argument with `hipErrorInvalidValue` (measured), and the launcher already
   validates `gate != nullptr`. The removal path is a template instantiation
   (`template <bool WAVE_SCALE, bool WRITE_GATE>`) with a new `Q8_GR_SCALE_ENTRY`
-  symbol plus wrapper and registry plumbing for both the plain and the
-  wave-scale variant.
+  symbol plus a wrapper; the status below records what actually landed.
 - Remove the publication once such an instantiation lands and no diagnostic
   still reads the plane; size the win with a kernel microbenchmark first, since
   the kernel achieves only ~15 GB/s effective on this shape and is therefore not
@@ -1128,15 +1126,23 @@ condition stand. The reader-removal decision belongs to R0029 above, not here.
   `benchmarks/results/2026-09-22-gr-drift-localization/`.
 - **Status 2026-10-04: the instantiation landed and the microbenchmark was run; the
   store stays.** `q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel`
-  now takes `WRITE_GATE` as a template parameter and
-  `hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_no_gate_f32`
-  exports the `WRITE_GATE=false` instantiation with its wrapper, registry key and
-  test. Measured: `mixed` is bit-identical at four shapes, and the variant is
+  now takes `WRITE_GATE` as a template parameter, and
+  `Q8_GR_SCALE_ENTRY(..., false, false, 4)` exports the single
+  `WRITE_GATE=false` instantiation - `ROW_BATCH` 4, no wave scale - as
+  `hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_no_gate_f32`,
+  with a Python wrapper and a GPU test
+  (`tests/test_gpu_qwen4exp_gr_no_gate.py`). **No registry key
+  exists for it**: the variant is a direct-call export rather than a dispatch
+  variant. Its callers
+  are that test and `scripts/qwen4exp_gr_projection_screen.py`; the fused GR up
+  the runner dispatches resolves through the registered
+  `coltile2_branch4_rowbatch4_f32_exact` key, which is the gate-writing parent.
+  Measured: `mixed` is bit-identical at four shapes, and the variant is
   **6.6551 ms against 6.5198 ms, 0.9797x, a 2% regression** (ledger `HC-3`). So the
-  42 MB/layer publication is retained deliberately, and the no-gate variant stays as
-  the strict-chain alternative rather than the default. The "not bandwidth-bound"
-  framing above is now measured rather than inferred: widening this kernel's row
-  reuse to halve its weight re-read is 16% *slower* (ledger §7D).
+  42 MB/layer publication is retained deliberately, and the no-gate export stays
+  available as the strict comparison rather than as the default. The "not
+  bandwidth-bound" framing above is now measured rather than inferred: widening
+  this kernel's row reuse to halve its weight re-read is 16% *slower* (ledger §7D).
 - Removal condition: none. Keep both instantiations - the gate-writing one as the
   production default and the no-gate one as the strict comparison - and do not
   re-open the store removal without a differently-scheduled body.
@@ -1168,11 +1174,20 @@ condition stand. The reader-removal decision belongs to R0029 above, not here.
   weights; an empirical screen queues sparse strict-order corrections.
   Full short/depth gates and the shared-graph model comparison qualify the
   restoration. QSA-prefill grouping and ordered decode are restored too.
-- Keep the unguarded entry only for risk-screen diagnostics, not production.
-  Remove the environment selector when profile plans supply variant keys
-  directly; retain the registered strict fallback and other-quant legacy path.
+- The unguarded entry is not diagnostic-only. `selected_grouped_wmma_prefill_bf16_bf16_out`
+  is the registered generic owner, the profile binder's
+  `HIPENGINE_QWEN4_EXP_Q8_DOWN_VARIANT` default and the launcher's fallback when
+  that variable is unset. UD-Q4_K_XL's restored flags override it with the
+  guarded variant, so no plan binds the unguarded one for UD production today;
+  `gguf_q4_k_m` production is recorded as numerically unqualified and resolves
+  to strict, which keeps `Q8_0_SELECTED_WMMA_DOWN` off and runs the per-expert
+  selected GEMV. Remove the environment selector when profile plans supply
+  variant keys directly; retain the registered strict fallback and other-quant
+  legacy path.
 - Dense MMQ and dense/GR iu8 restoration attempts fail canonical numerical
-  gates and remain disabled. Do not infer their admission from the corrected
+  gates and remain disabled: UD-Q4_K_XL's arithmetic-recovery sweep zeroes
+  `Q8_MMQ_PREFILL`, `GR_IU8` and `GR_IU8_DOWN` and the restored flags do not
+  re-enable them. Do not infer their admission from the corrected
   selected-down kernel or from short-prompt gates.
 
 ## UD-Q4_K_XL Arithmetic Recovery (2026-09-14)

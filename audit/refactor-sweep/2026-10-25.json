@@ -973,58 +973,60 @@
       "start_line": 1003,
       "end_line": 1093,
       "sha256": "b96e71ad2be3c85d1c6e2c2ae5207cc098d4c487858aff41f2b96cbce906a6d8",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Verified current warp selectors, direct-call no-gate export, unregistered row-reuse diagnostics and guarded blockscale routing; obsolete prose/ENVS corrected. Worklog:worklog/entries/20261025T213453.803049Z-lhl-refactor-ledger-r0032-r0035-3ed298.md. Runtime/defaults unchanged; historical reopen conditions preserved."
+      ],
       "subitems": [
         {
           "line": 1010,
           "text": "- **Both runtime routes and both flags are DELETED**",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1016,
           "text": "- **The scope table that decided it** (full 18-case suite, both arms vs strict,",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1027,
           "text": "- **The 30-layer scope is the only passing one, and it is not adopted.** It",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1034,
           "text": "- **The warp is not what costs time.** At a fixed 30-layer scope the warp",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1038,
           "text": "- **The gate that had retained this flag never covered the failing case.** Its",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1043,
           "text": "- **CLOSED `20260930T` - the unread-env-var obligation is discharged.** All four",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1059,
           "text": "- **One harness the obligation did not list was retired rather than fixed.**",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1070,
           "text": "- **What remains:** the kernel definitions stay registered (the probe scripts can",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1079,
           "text": "- **The stale-owner obligation is also discharged `20260930T`.**",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1090,
           "text": "- Evidence: `benchmarks/results/2026-09-30-qwen4exp-moe-decode-warp-gateup-blocked/`,",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
@@ -1034,38 +1036,40 @@
       "start_line": 1094,
       "end_line": 1130,
       "sha256": "85996a6425f12fba0ecf1734336d409c1010426a7c533fee9a8f3a76ac1a2810",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Verified current warp selectors, direct-call no-gate export, unregistered row-reuse diagnostics and guarded blockscale routing; obsolete prose/ENVS corrected. Worklog:worklog/entries/20261025T213453.803049Z-lhl-refactor-ledger-r0032-r0035-3ed298.md. Runtime/defaults unchanged; historical reopen conditions preserved."
+      ],
       "subitems": [
         {
           "line": 1096,
           "text": "- `Qwen4ExpGRReadDeviceResult` has four fields and only `normalized`, `mixed`",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1101,
           "text": "- The store is `gate[index] = sigmoid_gate` in",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1105,
           "text": "- A runtime null check is not viable - HIP rejects a null kernel pointer",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1111,
           "text": "- Remove the publication once such an instantiation lands and no diagnostic",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1116,
           "text": "- **Status 2026-10-04: the instantiation landed and the microbenchmark was run; the",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1127,
           "text": "- Removal condition: none. Keep both instantiations - the gate-writing one as the",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
@@ -1075,23 +1079,25 @@
       "start_line": 1131,
       "end_line": 1150,
       "sha256": "037fb89e36bb75582870cd6cd5784380b36f8cf60c278b67c9bb09f6e9863877",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Verified current warp selectors, direct-call no-gate export, unregistered row-reuse diagnostics and guarded blockscale routing; obsolete prose/ENVS corrected. Worklog:worklog/entries/20261025T213453.803049Z-lhl-refactor-ledger-r0032-r0035-3ed298.md. Runtime/defaults unchanged; historical reopen conditions preserved."
+      ],
       "subitems": [
         {
           "line": 1133,
           "text": "- `gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch8_f32`,",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 1141,
           "text": "- They are deliberately **not registered**: a registry key would make a",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 1145,
           "text": "- Removal condition: drop the three exports, their wrappers, the `_row_batch`",
-          "status": "pending"
+          "status": "not-debt"
         }
       ]
     },
@@ -1101,23 +1107,25 @@
       "start_line": 1151,
       "end_line": 1164,
       "sha256": "1467869b05e1787575475f0baeb24c382b44477f348ab46d8ee6e04ba3e952d3",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Verified current warp selectors, direct-call no-gate export, unregistered row-reuse diagnostics and guarded blockscale routing; obsolete prose/ENVS corrected. Worklog:worklog/entries/20261025T213453.803049Z-lhl-refactor-ledger-r0032-r0035-3ed298.md. Runtime/defaults unchanged; historical reopen conditions preserved."
+      ],
       "subitems": [
         {
           "line": 1153,
           "text": "- UD-Q4_K_XL now selects guarded block-scale WMMA through the profile-owned",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1158,
           "text": "- Keep the unguarded entry only for risk-screen diagnostics, not production.",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 1161,
           "text": "- Dense MMQ and dense/GR iu8 restoration attempts fail canonical numerical",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
