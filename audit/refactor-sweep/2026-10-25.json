@@ -3299,7 +3299,7 @@
       "end_line": 3125,
       "sha256": "8e2e74dd915187736af127bea2c48ad3d5a7c85a4b92115b6be9b93f10077ccf",
       "status": "pending",
-      "evidence": [],
+      "evidence": ["Diagnostic isolation/engagement repair tracked in worklog/entries/20261026T215428.150337Z-cleanup-refactor-r0123-r0126-harness-62dd22.md. Selector ownership/removal remains open."],
       "subitems": [
         {
           "line": 3116,
@@ -3325,7 +3325,7 @@
       "end_line": 3135,
       "sha256": "7232a9023e5a6326691e7ee96c33a2e4e7ccc59c0a3f886459c9d6919001b657",
       "status": "pending",
-      "evidence": [],
+      "evidence": ["Diagnostic isolation/engagement repair tracked in worklog/entries/20261026T215428.150337Z-cleanup-refactor-r0123-r0126-harness-62dd22.md. Selector ownership/removal remains open."],
       "subitems": [
         {
           "line": 3128,
@@ -3346,7 +3346,7 @@
       "end_line": 3147,
       "sha256": "d9be7cbd415d1bcc81b447213c96178c7d04e2ad3ff367184f53c5ba1c285859",
       "status": "pending",
-      "evidence": [],
+      "evidence": ["Diagnostic isolation/engagement repair tracked in worklog/entries/20261026T215428.150337Z-cleanup-refactor-r0123-r0126-harness-62dd22.md. Selector ownership/removal remains open."],
       "subitems": [
         {
           "line": 3138,
@@ -3372,7 +3372,7 @@
       "end_line": 3160,
       "sha256": "63d5719bfb5f7c01bd26a579e0bd022633bd48438ad24bd664a5da5317cc3e99",
       "status": "pending",
-      "evidence": [],
+      "evidence": ["Diagnostic isolation/engagement repair tracked in worklog/entries/20261026T215428.150337Z-cleanup-refactor-r0123-r0126-harness-62dd22.md. Selector ownership/removal remains open."],
       "subitems": [
         {
           "line": 3150,

@@ -4,7 +4,7 @@ import argparse
 import hashlib
 import json
 import os
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 import sys
 import time
@@ -28,14 +28,19 @@ from scripts.qwen4exp_canonical_ar_bench import DEFAULT_FIXTURE, load_fixture, _
 from scripts.qwen4exp_layer2_profile_gate import _state_summary
 from scripts.qwen4exp_halo_box_campaign_ab import (
     q8_down_row4_expected_calls, q51_fold128_expected_calls, q51_fold_pair_expected_calls,
+    q8_down_bundle_expected_calls,q51_register_cache_expected_calls,
+    q51_row_publish_expected_calls,require_engaged_expectation,
     q8_mmq_vec4_expected_calls,q8_mmq_raw_vector_expected_calls,q8_mapped_down_expected_calls,
     q8_bundle_call_in_scope,apply_chunk_mode,validate_chunk_coverage,q8_down_register_expected_calls,
     gdn_wave_norm_expected_calls,mmq_token64_expected_calls,gr_dpp_expected_calls,
     router_dpp_expected_calls,route_scope,GDN_COLWARPS_ENV,
     Q51_IU8_EXACT_ENV,Q51_PAIR2_PREEMPTING_ENV,Q51_PAIR2_GATE_ENV,
+    Q51_PAIR_PREFILL_ENV,Q51_FOLD128_ENV,
     q51_pair2_control_record,q51_register_cache_control_record,
     Q8_DOWN_CHAIN_GATES,q8_down_control_record,Q8_MAPPED_DOWN_MAP_GATE,
+    Q8_DOWN_FORKB_ENV,Q8_DOWN_ROW4_ENV,
     q8_mapped_down_control_record,
+    q51_fold_control_record,q8_down_ladder_control_record,
     MMQ_VECTOR_ROUTE_PACKAGES,mmq_token64_control_record,mmq_vector_control_record)
 
 
@@ -102,6 +107,27 @@ def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.envi
                          allocated_chunk_size=1024)
     else:
         environment[flag] = "page256" if package=="qsa-h256-page256" and enabled=="1" else enabled
+
+
+@contextmanager
+def arm_control(package, enabled, runner, *, environment=os.environ):
+    """The live control for one measured arm, released on every exit path.
+
+    The caller keeps the control open for exactly the work it counts: every
+    prefill arm closes it as soon as the prefill returns, and the decode-only
+    ordered-v2 arm keeps it bound through the steps that count it. The stack
+    also closes when the block exits, including on a raise, so a failed prefill
+    or decode cannot leave the arm's env pins or runner bindings in place for
+    the next arm. ``ExitStack.close`` is idempotent, so the caller's early close
+    and this exit close agree.
+    """
+
+    with ExitStack() as scope:
+        scope.enter_context(route_scope(
+            package, "after" if enabled == "1" else "before", runner,
+            environment=environment,
+        ))
+        yield scope
 
 
 def main():
@@ -585,6 +611,33 @@ def main():
                 "published_value": generator.runner.q8_down_register,
                 "mapped_owner_runner_field": generator.runner.q8_mapped_down,
             }
+        if args.route_package in {"q51-fold128", "q51-fold-pair"}:
+            # The leaf is env-owned; ``route_scope`` closes the pair2
+            # preemptors, pins the ladder rung this arm does not count (or
+            # requires the parent it rides) and binds the published
+            # register-cache/row-publish siblings off. The record separates
+            # every forced value from what it replaced.
+            assert os.environ.get(Q51_PAIR_PREFILL_ENV, "") not in {"", "0"}, (
+                "production must bind the grouped pair2 Q5_1 selection")
+            assert os.environ.get(Q51_PAIR2_GATE_ENV, "") not in {"", "0"}, (
+                "the pair2 chain's own gate must be on")
+            if args.route_package == "q51-fold-pair":
+                assert os.environ.get(Q51_FOLD128_ENV, "") not in {"", "0"}, (
+                    "production must bind the fold128 parent this arm rides")
+            report["selection_control"] = q51_fold_control_record(
+                args.route_package, generator.runner)
+        if args.route_package in {"q8-down-row4", "q8-down-bundle"}:
+            # The leaf is env-owned; ``route_scope`` closes the owners that
+            # preempt the sorted chain, pins the rung this arm does not count
+            # (or requires the parent it rides) and binds the published
+            # register decision off.
+            assert os.environ.get(Q8_DOWN_FORKB_ENV, "") not in {"", "0"}, (
+                "production must bind the grouped Q8_0 down chain")
+            if args.route_package == "q8-down-bundle":
+                assert os.environ.get(Q8_DOWN_ROW4_ENV, "") not in {"", "0"}, (
+                    "production must bind the row4 parent this arm rides")
+            report["selection_control"] = q8_down_ladder_control_record(
+                args.route_package, generator.runner)
         if args.route_package in MMQ_VECTOR_ROUTE_PACKAGES:
             # The plan publishes the child on the runner and ``route_scope``
             # admits the parent prerequisite per arm, so the premise asserted
@@ -684,46 +737,49 @@ def main():
                 start_owners = dict(mapped_owner_calls)
                 start_qsa_calls = qsa_calls[0]
                 natural_start = len(natural_router.captures) if natural_router is not None else 0
-                case_scope = ExitStack()
-                case_scope.enter_context(route_scope(
-                    args.route_package, "after" if enabled == "1" else "before",
-                    generator.runner,
-                ))
-                first = generator.runner.prefill(case["prompt_token_ids"])
-                prefill_invoked = calls[0] - start_calls
-                # Every other arm's scope only covers its measured prefill. The
-                # ordered-v2 leaf is decode-only, so its binding stays in force
-                # through the steps that count it and closes after them; a
-                # closed stack keeps this branch's restore on the same path.
-                if args.route_package != "qsa-ordered-v2":
+                # The arm's live control must not survive a failed run, so
+                # the stack is entered under ``with``: a raise in the prefill
+                # or the decode steps releases every env pin and runner
+                # binding before the next arm starts.
+                with arm_control(
+                        args.route_package, enabled,
+                        generator.runner) as case_scope:
+                    first = generator.runner.prefill(case["prompt_token_ids"])
+                    prefill_invoked = calls[0] - start_calls
+                    # Every other arm's control only covers its measured
+                    # prefill. The ordered-v2 leaf is decode-only, so its
+                    # binding stays in force through the steps that count it
+                    # and closes after them; a closed stack keeps this
+                    # branch's restore on the same path.
+                    if args.route_package != "qsa-ordered-v2":
+                        case_scope.close()
+                    logits = first.logits.copy()
+                    token = int(first.token_id)
+                    prefill_state = (_state_summary(generator.runner)
+                                     if narrow_candidate is not None or gdn_narrow_key is not None
+                                     else None)
+                    step_logits = []
+                    step_seconds = []
+                    for _ in range(args.decode_steps):
+                        start = time.perf_counter()
+                        next_row = generator.runner.step(token)
+                        generator.runner.runtime.device_synchronize()
+                        step_seconds.append(time.perf_counter() - start)
+                        token = int(next_row.token_id)
+                        step_logits.append(next_row.logits.copy())
+                    next_logits = np.stack(step_logits)
+                    state = _state_summary(generator.runner)
+                    if args.full_kv:
+                        kv_digest = hashlib.sha256()
+                        for attention in generator.runner.attention_states:
+                            for buffer in (attention.key_cache, attention.value_cache):
+                                raw = np.empty(buffer.nbytes, dtype=np.uint8)
+                                copy_device_to_host(
+                                    host_array_ptr(raw), buffer, runtime=generator.runner.runtime)
+                                kv_digest.update(raw)
+                        state["full_kv_sha256"] = kv_digest.hexdigest()
+                    invoked = calls[0] - start_calls
                     case_scope.close()
-                logits = first.logits.copy()
-                token = int(first.token_id)
-                prefill_state = (_state_summary(generator.runner)
-                                 if narrow_candidate is not None or gdn_narrow_key is not None
-                                 else None)
-                step_logits = []
-                step_seconds = []
-                for _ in range(args.decode_steps):
-                    start = time.perf_counter()
-                    next_row = generator.runner.step(token)
-                    generator.runner.runtime.device_synchronize()
-                    step_seconds.append(time.perf_counter() - start)
-                    token = int(next_row.token_id)
-                    step_logits.append(next_row.logits.copy())
-                next_logits = np.stack(step_logits)
-                state = _state_summary(generator.runner)
-                if args.full_kv:
-                    kv_digest = hashlib.sha256()
-                    for attention in generator.runner.attention_states:
-                        for buffer in (attention.key_cache, attention.value_cache):
-                            raw = np.empty(buffer.nbytes, dtype=np.uint8)
-                            copy_device_to_host(
-                                host_array_ptr(raw), buffer, runtime=generator.runner.runtime)
-                            kv_digest.update(raw)
-                    state["full_kv_sha256"] = kv_digest.hexdigest()
-                invoked = calls[0] - start_calls
-                case_scope.close()
                 if args.route_package in {"qsa-head-pair","qsa-head-quad"}:
                     assert invoked==prefill_invoked,"head pair ran in decode"
                     expected_pair=24 if enabled=="1" and case["prompt_tokens"]==4096 else 0
@@ -757,7 +813,11 @@ def main():
                     assert prefill_invoked==expected_gdn,(prefill_invoked,expected_gdn)
                     assert invoked==prefill_invoked,"wave norm ran in decode"
                 if args.route_package=="q8-down-register":
-                    expected_register=q8_down_register_expected_calls(case["prompt_tokens"],1024) if enabled=="1" else 0
+                    expected_register=q8_down_register_expected_calls(
+                        generator.runner,case["prompt_tokens"],1024) if enabled=="1" else 0
+                    require_engaged_expectation(
+                        args.route_package, case, expected_register, 1024,
+                        arm_enabled=enabled == "1")
                     assert prefill_invoked==expected_register
                     assert invoked==prefill_invoked,"Q8 register ran during decode"
                     assert mapped_calls[0]-start_mapped==(q8_mapped_down_expected_calls(case["prompt_tokens"],1024) if enabled=="1" else 0)
@@ -781,15 +841,31 @@ def main():
                     assert prefill_invoked == expected_vec4_calls, (case["id"], prefill_invoked)
                     assert invoked == prefill_invoked, "MMQ vec4 ran during decode"
                 if args.route_package in {"q51-fold128", "q51-fold-pair", "q51-register-cache", "q51-row-publish"}:
-                    count_fn = (q51_fold_pair_expected_calls if args.route_package in {"q51-fold-pair", "q51-register-cache", "q51-row-publish"}
-                                else q51_fold128_expected_calls)
+                    count_fn = {
+                        "q51-fold128": q51_fold128_expected_calls,
+                        "q51-fold-pair": q51_fold_pair_expected_calls,
+                        "q51-register-cache": q51_register_cache_expected_calls,
+                        "q51-row-publish": q51_row_publish_expected_calls,
+                    }[args.route_package]
                     expected_fold_calls = count_fn(
-                        case["prompt_tokens"], 1024 if args.route_package == "q51-row-publish" else 512) if enabled == "1" else 0
+                        generator.runner, case["prompt_tokens"],
+                        1024 if args.route_package == "q51-row-publish" else 512) if enabled == "1" else 0
+                    require_engaged_expectation(
+                        args.route_package, case, expected_fold_calls,
+                        1024 if args.route_package == "q51-row-publish" else 512,
+                        arm_enabled=enabled == "1")
                     assert prefill_invoked == expected_fold_calls, (case["id"], prefill_invoked)
                     assert invoked == prefill_invoked, "fold128 ran during decode"
                 if args.route_package in {"q8-down-row4", "q8-down-bundle"}:
-                    expected_calls = q8_down_row4_expected_calls(
-                        case["prompt_tokens"], 512) if enabled == "1" else 0
+                    count_fn = (q8_down_row4_expected_calls
+                                if args.route_package == "q8-down-row4"
+                                else q8_down_bundle_expected_calls)
+                    expected_calls = count_fn(
+                        generator.runner, case["prompt_tokens"],
+                        512) if enabled == "1" else 0
+                    require_engaged_expectation(
+                        args.route_package, case, expected_calls, 512,
+                        arm_enabled=enabled == "1")
                     assert prefill_invoked == expected_calls, (case["id"], prefill_invoked)
                     assert invoked == prefill_invoked, "prefill candidate ran during decode"
                 expected = enabled == "1" and (

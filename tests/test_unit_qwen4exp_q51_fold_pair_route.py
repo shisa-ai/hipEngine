@@ -1,7 +1,9 @@
 import pytest
+from hipengine.kernels import registry
 from hipengine.kernels.registry import KernelKey
 from hipengine.runtime import qwen4_exp_runner as runner
 from scripts.qwen4exp_halo_box_campaign_ab import _apply_mode, q51_fold_pair_expected_calls
+from tests._qwen4exp_expert_down_fixtures import expert_down_runner
 
 
 def test_fold_pair_requires_large_folded_scope(monkeypatch):
@@ -28,7 +30,14 @@ def test_fold_pair_ab_one_flag(mode,value):
     assert env == {"other":"unchanged","HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL":value}
 
 
-@pytest.mark.parametrize("prompt,chunk,calls",[(512,512,25),(4096,512,200),
-    (576,512,25),(511,512,0),(4096,256,0),(1024,1024,25)])
-def test_large_chunk_counts(prompt,chunk,calls):
-    assert q51_fold_pair_expected_calls(prompt,chunk) == calls
+@pytest.mark.parametrize("prompt,chunk,calls",[(512,512,43),(4096,512,344),
+    (576,512,43),(511,512,0),(1024,1024,43)])
+def test_large_chunk_counts(monkeypatch, prompt,chunk,calls):
+    monkeypatch.setattr(registry, "is_registered", lambda key: True)
+    assert q51_fold_pair_expected_calls(expert_down_runner(),prompt,chunk) == calls
+
+
+def test_a_chunk_below_the_row_guard_is_a_named_failure(monkeypatch):
+    monkeypatch.setattr(registry, "is_registered", lambda key: True)
+    with pytest.raises(ValueError, match="rows>=512.*chunk is 256"):
+        q51_fold_pair_expected_calls(expert_down_runner(), 4096, 256)

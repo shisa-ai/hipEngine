@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from hipengine.kernels import registry
 from hipengine.kernels.registry import KernelKey
 from hipengine.runtime import qwen4_exp_runner as runner
 from scripts.qwen4exp_halo_box_campaign_ab import (
@@ -191,10 +192,16 @@ def test_route_scope_rejects_the_arm_without_its_runner():
         route_scope("q8-down-register", "after")
 
 
-@pytest.mark.parametrize("tokens,expected", [(512, 5), (1024, 5),
-                                            (4096, 20), (511, 0), (1536, 10)])
-def test_current_chunk_counts(tokens, expected):
-    assert q8_down_register_expected_calls(tokens, 1024) == expected
+@pytest.mark.parametrize("tokens,expected", [(512, 6), (1024, 6),
+                                            (4096, 24), (511, 0), (1536, 12)])
+def test_current_chunk_counts(monkeypatch, tokens, expected):
+    # The arm counts the grouped register leaf (the artifact's Q8_0 down layers
+    # per rows>=512 chunk) plus the token-major mapped path's own count.
+    from tests._qwen4exp_expert_down_fixtures import expert_down_runner
+
+    monkeypatch.setattr(registry, "is_registered", lambda key: True)
+    assert q8_down_register_expected_calls(
+        expert_down_runner(), tokens, 1024) == expected
 
 
 # --- forwarding: the runner field must reach run_qwen4_exp_moe ---------------
@@ -428,10 +435,14 @@ def test_control_record_separates_the_forced_value_from_the_previous_one():
     assert env["HIPENGINE_QWEN4_EXP_ROUTED_F16"] == "1"
 
 
-def test_mapped_and_compact_split_matches_the_shared_counts():
+def test_mapped_and_compact_split_matches_the_shared_counts(monkeypatch):
     # The arm counts both paths through one expectation; the mapped share is the
     # token-major path's own count.
+    from tests._qwen4exp_expert_down_fixtures import expert_down_runner
+
+    monkeypatch.setattr(registry, "is_registered", lambda key: True)
+    owner = expert_down_runner()
     for tokens in (512, 1024, 1536, 4096):
-        total = q8_down_register_expected_calls(tokens, 1024)
+        total = q8_down_register_expected_calls(owner, tokens, 1024)
         mapped = q8_mapped_down_expected_calls(tokens, 1024)
-        assert 0 <= mapped <= total
+        assert 0 < mapped <= total

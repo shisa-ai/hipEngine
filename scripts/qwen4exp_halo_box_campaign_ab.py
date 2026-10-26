@@ -230,25 +230,188 @@ def summarize_campaign_ab(
     return result
 
 
-def q8_down_row4_expected_calls(prompt_tokens: int, chunk_size: int) -> int:
+#: The routed expert-down slot suffix the grouped Q5_1 and Q8_0 chains dispatch
+#: on. Both chains read the loaded artifact's own quant split
+#: (``docs/QWEN4EXP-OPTIMIZATION-LEDGER.md`` records the shipped one); nothing
+#: here assumes a layer count.
+QWEN4EXP_EXPERT_DOWN_SLOT_SUFFIX = ".expert_down"
+
+
+def expert_down_layers(runner: Any, quant_key: str) -> int:
+    """Count the loaded layers whose routed expert-down weight is ``quant_key``.
+
+    Both grouped expert-down chains dispatch once per layer whose
+    ``layers.<n>.expert_down`` resident weight carries that quant, so the layer
+    count belongs to the artifact: a different quant split, block count, or
+    partially materialized plan counts its own layers instead of inheriting a
+    constant. An arm that cannot see the resident weights fails loudly rather
+    than reporting zero calls as engagement.
+    """
+
+    resident = getattr(runner, "resident", None)
+    weights = getattr(resident, "device_weights", None)
+    if not isinstance(weights, Mapping):
+        raise ValueError(
+            "an expert-down arm needs the owning runner's resident weights; "
+            f"{type(resident).__name__}.device_weights is "
+            f"{type(weights).__name__}")
+    layers = 0
+    for slot, weight in weights.items():
+        if not (slot.startswith("layers.")
+                and slot.endswith(QWEN4EXP_EXPERT_DOWN_SLOT_SUFFIX)):
+            continue
+        spec = getattr(weight, "spec", None)
+        if getattr(spec, "quant_key", None) == quant_key:
+            layers += 1
+    return layers
+
+
+def _grouped_expert_down_expected_calls(
+    runner: Any,
+    *,
+    quant_key: str,
+    layer: str,
+    variant: str,
+    prompt_tokens: int,
+    chunk_size: int,
+    min_rows: int,
+    in_features: int | None = None,
+    max_in_features: int | None = None,
+    requires: Sequence[tuple[str, str, str]] = (),
+) -> int:
+    """Calls one grouped expert-down leaf makes in a measured prefill.
+
+    The layer term is the loaded artifact's own quant split
+    (:func:`expert_down_layers`). The chunk term is the dispatch-time guard the
+    selector applies: a chunk only dispatches when it has at least ``min_rows``
+    rows.
+
+    Everything the count depends on is required and authoritative, because a
+    zero here is read as "the arm did not engage" by its caller. A missing
+    registry entry (the counted leaf, or any ``requires`` parent the ladder
+    selects through), a runner without a backend, a config without
+    ``expert_feed_forward_length``, a model whose expert width the leaf does not
+    serve, a plan whose chunk cannot clear the leaf's row guard, and an artifact
+    with no layer carrying ``quant_key`` all raise with a named reason instead
+    of reporting zero calls as a measured zero.
+    """
+
     if prompt_tokens < 1 or chunk_size < 1:
         raise ValueError("positive prompt and chunk sizes required")
+    backend = getattr(runner, "backend", None)
+    if not isinstance(backend, str) or not backend:
+        raise ValueError(
+            f"{variant} needs the owning runner's backend; got {backend!r}")
+    config = getattr(runner, "config", None)
+    ffn = getattr(config, "expert_feed_forward_length", None)
+    if not isinstance(ffn, int) or isinstance(ffn, bool) or ffn < 1:
+        raise ValueError(
+            f"{variant} needs the loaded model's expert_feed_forward_length; "
+            f"got {ffn!r} on {type(config).__name__}")
+    if in_features is not None and ffn != in_features:
+        raise ValueError(
+            f"{variant} serves expert K={in_features}; the model has K={ffn}")
+    if max_in_features is not None and ffn > max_in_features:
+        raise ValueError(
+            f"{variant} serves expert K<={max_in_features}; the model has "
+            f"K={ffn}")
+    if chunk_size < min_rows:
+        raise ValueError(
+            f"{variant} dispatches only chunks with rows>={min_rows}; the "
+            f"measured plan's chunk is {chunk_size}")
+    from hipengine.kernels.registry import KernelKey, is_registered
+
+    missing = [
+        (req_layer, req_quant, req_variant)
+        for req_layer, req_quant, req_variant in (
+            (layer, quant_key, variant), *requires)
+        if not is_registered(KernelKey(backend, req_layer, req_quant, req_variant))
+    ]
+    if missing:
+        raise ValueError(
+            f"{variant} is not registered on {backend}: missing "
+            + ", ".join(f"{l}/{q}/{v}" for l, q, v in missing))
+    layers = expert_down_layers(runner, quant_key)
+    if layers == 0:
+        raise ValueError(
+            f"{variant} cannot engage: no layers.<n>.expert_down resident "
+            f"weight carries {quant_key}")
     full, tail = divmod(prompt_tokens, chunk_size)
-    return 4 * (full * (chunk_size >= 512) + (tail >= 512))
+    return layers * (full + (tail >= min_rows))
 
 
-def q51_fold128_expected_calls(prompt_tokens: int, chunk_size: int) -> int:
-    if prompt_tokens < 1 or chunk_size < 1:
-        raise ValueError("positive prompt and chunk sizes required")
-    full, tail = divmod(prompt_tokens, chunk_size)
-    return 25 * (full * (chunk_size >= 64) + (tail >= 64))
+def q8_down_row4_expected_calls(runner: Any, prompt_tokens: int,
+                                chunk_size: int) -> int:
+    """Row4 Q8_0 down calls: one per Q8_0 expert-down layer per 512+ row chunk."""
+
+    return _grouped_expert_down_expected_calls(
+        runner, quant_key="gguf_q8_0", layer="linear",
+        variant="selected_grouped_row4_gemv_bf16_bf16_out",
+        prompt_tokens=prompt_tokens, chunk_size=chunk_size, min_rows=512)
 
 
-def q51_fold_pair_expected_calls(prompt_tokens: int, chunk_size: int) -> int:
-    if prompt_tokens < 1 or chunk_size < 1:
-        raise ValueError("positive prompt and chunk sizes required")
-    full, tail = divmod(prompt_tokens, chunk_size)
-    return 25 * (full * (chunk_size >= 512) + (tail >= 512))
+def q8_down_bundle_expected_calls(runner: Any, prompt_tokens: int,
+                                  chunk_size: int) -> int:
+    """Bundle Q8_0 down calls: the row4 ladder's rows>=512 sibling."""
+
+    return _grouped_expert_down_expected_calls(
+        runner, quant_key="gguf_q8_0", layer="linear",
+        variant="selected_grouped_row4_bundle_gemv_bf16_bf16_out",
+        prompt_tokens=prompt_tokens, chunk_size=chunk_size, min_rows=512)
+
+
+def q51_fold128_expected_calls(runner: Any, prompt_tokens: int,
+                               chunk_size: int) -> int:
+    """Fold128 Q5_1 down calls: one per Q5_1 expert-down layer per 64+ row chunk."""
+
+    return _grouped_expert_down_expected_calls(
+        runner, quant_key="gguf_q5_1", layer="moe_linear",
+        variant="selected_grouped_prefill_pair2_fold128_bf16_bf16_out",
+        prompt_tokens=prompt_tokens, chunk_size=chunk_size, min_rows=64,
+        max_in_features=4096,
+        requires=(("moe_linear", "gguf_q5_1",
+                   "selected_grouped_prefill_pair2_bf16_bf16_out"),))
+
+
+def q51_fold_pair_expected_calls(runner: Any, prompt_tokens: int,
+                                 chunk_size: int) -> int:
+    """Fold-pair Q5_1 down calls: the fold128 ladder's rows>=512 sibling."""
+
+    return _grouped_expert_down_expected_calls(
+        runner, quant_key="gguf_q5_1", layer="moe_linear",
+        variant="selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out",
+        prompt_tokens=prompt_tokens, chunk_size=chunk_size, min_rows=512,
+        max_in_features=4096,
+        requires=(("moe_linear", "gguf_q5_1",
+                   "selected_grouped_prefill_pair2_fold128_bf16_bf16_out"),
+                  ("moe_linear", "gguf_q5_1",
+                   "selected_grouped_prefill_pair2_bf16_bf16_out")))
+
+
+def q51_register_cache_expected_calls(runner: Any, prompt_tokens: int,
+                                     chunk_size: int) -> int:
+    """Register-cache Q5_1 down calls: rows>=512 K640 on the fold-pair parent."""
+
+    return _grouped_expert_down_expected_calls(
+        runner, quant_key="gguf_q5_1", layer="moe_linear",
+        variant="selected_grouped_prefill_pair2_register_cache_bf16_bf16_out",
+        prompt_tokens=prompt_tokens, chunk_size=chunk_size, min_rows=512,
+        in_features=640, max_in_features=4096,
+        requires=(("moe_linear", "gguf_q5_1",
+                   "selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out"),))
+
+
+def q51_row_publish_expected_calls(runner: Any, prompt_tokens: int,
+                                  chunk_size: int) -> int:
+    """Row-publish Q5_1 down calls: rows>=512 K640 on the register-cache parent."""
+
+    return _grouped_expert_down_expected_calls(
+        runner, quant_key="gguf_q5_1", layer="moe_linear",
+        variant="selected_grouped_prefill_pair2_row_publish_bf16_bf16_out",
+        prompt_tokens=prompt_tokens, chunk_size=chunk_size, min_rows=512,
+        in_features=640, max_in_features=4096,
+        requires=(("moe_linear", "gguf_q5_1",
+                   "selected_grouped_prefill_pair2_register_cache_bf16_bf16_out"),))
 
 
 def q8_mmq_vec4_expected_calls(prompt_tokens: int, chunk_size: int) -> int:
@@ -281,8 +444,45 @@ def q8_mapped_down_expected_calls(prompt_tokens: int, chunk_size: int) -> int:
     return full*(chunk_size>=512)+(tail>=512)
 
 
-def q8_down_register_expected_calls(tokens: int,chunk: int) -> int:
-    return q8_down_row4_expected_calls(tokens,chunk)+q8_mapped_down_expected_calls(tokens,chunk)
+def q8_down_register_expected_calls(runner: Any, tokens: int, chunk: int) -> int:
+    """Register down calls: the grouped ladder's leaf plus the mapped path.
+
+    The grouped term is the register leaf's own rows>=512 K640 scope; the
+    mapped term is the token-major path's own count, which this arm does not
+    close.
+    """
+
+    grouped = _grouped_expert_down_expected_calls(
+        runner, quant_key="gguf_q8_0", layer="linear",
+        variant="selected_grouped_row4_register_gemv_bf16_bf16_out",
+        prompt_tokens=tokens, chunk_size=chunk, min_rows=512, in_features=640)
+    return grouped + q8_mapped_down_expected_calls(tokens, chunk)
+
+
+def require_engaged_expectation(
+    route_package: str,
+    case: Mapping[str, Any],
+    expected: int,
+    chunk_size: int,
+    *,
+    arm_enabled: bool,
+) -> None:
+    """Refuse a zero expectation for an enabled arm on a measured row.
+
+    These arms verify a row by ``calls == expected``, which passes trivially at
+    ``0 == 0``: an enabled arm that expects nothing and observes nothing would
+    be recorded as engaged when no leaf ran. The count helpers already raise for
+    a missing implementation, a runner without the artifact's config, or a chunk
+    that cannot clear the leaf's guard; this closes the remaining case where the
+    row itself is too short for the arm's own guard.
+    """
+
+    if not arm_enabled or expected > 0:
+        return
+    raise AssertionError(
+        f"{route_package} expects no calls on {case['id']} "
+        f"({case['prompt_tokens']} tokens, chunk {chunk_size}); an enabled arm "
+        "cannot be verified by a zero expectation")
 
 
 def gdn_wave_norm_expected_calls(tokens: int, chunk: int) -> int:
@@ -398,6 +598,14 @@ Q51_PAIR2_PREEMPTING_ENV = (
 Q51_PAIR2_GATE_ENV = "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN"
 #: Kept for callers that name the single exact owner.
 Q51_IU8_EXACT_ENV = Q51_PAIR2_PREEMPTING_ENV[1]
+#: The pair2 chain's own selection gate. It decides whether the parent variant
+#: is the pair2 leaf at all, so a fold arm requires it and records it rather
+#: than forcing it: with the gate off neither fold can launch.
+Q51_PAIR_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"
+#: The two fold rungs. ``fold_pair`` replaces ``fold128`` on its rows>=512
+#: scope, so each arm pins or requires the other rung.
+Q51_FOLD128_ENV = "HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"
+Q51_FOLD_PAIR_ENV = "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"
 
 #: The ordered-decode route the v2 leaf rides. The leaf is request-local runner
 #: state now, but this v1 switch still decides whether any ordered decode runs,
@@ -425,6 +633,111 @@ def q51_pair2_control_record(*, environment=os.environ):
             key: environment.get(key) for key in Q51_PAIR2_PREEMPTING_ENV
         },
         "pair2_gate": {Q51_PAIR2_GATE_ENV: environment.get(Q51_PAIR2_GATE_ENV)},
+    }
+
+
+@contextlib.contextmanager
+def q51_fold_scope(route_package, *, environment=os.environ):
+    """Isolate one fold rung inside the grouped pair2 Q5_1 down chain.
+
+    The two folds are a ladder: ``fold_pair`` replaces ``fold128`` on its
+    rows>=512 scope, and the published register-cache/row-publish siblings
+    replace ``fold_pair`` in turn (the caller binds those runner fields). An arm
+    that counts ``fold128`` therefore holds ``fold_pair`` off in both arms; an
+    arm that counts ``fold_pair`` requires its ``fold128`` parent, because the
+    fold-pair selector keeps the parent when it is not selected and the arm
+    would count zero launches. The pair2 selection gate is a prerequisite in
+    both cases and is recorded, never forced. Every key is read per dispatch, so
+    the pin takes effect after construction, and every prior value - including
+    an absent key - comes back on exit.
+    """
+
+    if route_package == "q51-fold128":
+        pinned, required = Q51_FOLD_PAIR_ENV, ()
+    elif route_package == "q51-fold-pair":
+        pinned, required = None, (Q51_FOLD128_ENV,)
+    else:
+        raise ValueError(
+            f"not a Q5_1 fold route package: {route_package!r}")
+    closed = {"", "0", "false", "False"}
+    if environment.get(Q51_PAIR_PREFILL_ENV, "") in closed:
+        raise ValueError(
+            f"{Q51_PAIR_PREFILL_ENV} must be on for the grouped pair2 Q5_1 "
+            "down chain; without it the parent variant is never the pair2 "
+            "leaf and neither fold can launch")
+    for key in required:
+        if environment.get(key, "") in closed:
+            raise ValueError(
+                f"{key} must be on for the {route_package} arm; without its "
+                "parent rung the counted leaf cannot launch")
+    prior = None if pinned is None else environment.get(pinned)
+    if pinned is not None:
+        environment[pinned] = "0"
+    try:
+        yield prior
+    finally:
+        if pinned is not None:
+            if prior is None:
+                environment.pop(pinned, None)
+            else:
+                environment[pinned] = prior
+
+
+def q51_fold_control_record(route_package, runner=None, *, environment=os.environ):
+    """The recorded control for a Q5_1 fold arm.
+
+    The leaf itself is env-owned, so the record carries what the arm holds
+    fixed around it: the ladder rung it does not count (forced, with the value
+    it replaced) or the parent rung it rides (required, recorded as found), the
+    pair2 selection and chain gates, and the two runner-local siblings that
+    would replace the leaf.
+    """
+
+    if route_package == "q51-fold128":
+        rung = {
+            "held_off": Q51_FOLD_PAIR_ENV,
+            "forced": "0",
+            "previous": environment.get(Q51_FOLD_PAIR_ENV),
+        }
+    elif route_package == "q51-fold-pair":
+        rung = {
+            "prerequisite": Q51_FOLD128_ENV,
+            "value": environment.get(Q51_FOLD128_ENV),
+        }
+    else:
+        raise ValueError(
+            f"not a Q5_1 fold route package: {route_package!r}")
+    return {
+        "environment": (
+            Q51_FOLD128_ENV if route_package == "q51-fold128"
+            else Q51_FOLD_PAIR_ENV),
+        "rung": rung,
+        "prerequisite": {
+            Q51_PAIR_PREFILL_ENV: environment.get(Q51_PAIR_PREFILL_ENV),
+        },
+        "scope": "per measured run; restored on exit",
+        **q51_pair2_control_record(environment=environment),
+        "downstream_siblings": {
+            "q51_register_cache": {
+                "bound_value": False,
+                "published_value": (
+                    None if runner is None
+                    else getattr(runner, "q51_register_cache", None)),
+            },
+            "q51_row_publish": {
+                "bound_value": False,
+                "published_value": (
+                    None if runner is None
+                    else getattr(runner, "q51_row_publish", None)),
+            },
+        },
+        "reason": (
+            "the routed F16 WMMA down and the exact iu8, grouped-WMMA/grouped-"
+            "MoE, MMQ and T16 owners preempt the pair2 chain the fold rides; "
+            "both arms close them, hold the ladder rung they do not count (or "
+            "require the parent they ride), and bind the published register-"
+            "cache and row-publish siblings off because either would replace "
+            "the counted leaf"),
     }
 
 
@@ -568,15 +881,21 @@ Q8_DOWN_PREEMPTING_ENV = (
     "HIPENGINE_QWEN4_EXP_ROUTED_F16",
     "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN",
 )
+#: The sorted chain's own gate and its two ladder rungs. ``bundle`` replaces
+#: ``row4`` on its rows>=512 scope, so a row4 arm pins bundle off and a bundle
+#: arm requires row4.
+Q8_DOWN_FORKB_ENV = "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN"
+Q8_DOWN_ROW4_ENV = "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"
+Q8_DOWN_BUNDLE_ENV = "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"
 #: The chains' own gates. They must stay on for the counted leaf to run, so the
 #: arm records them instead of forcing them: ``FORKB_GROUPED_DOWN`` and the
 #: row4/bundle gates carry the sorted path. The token-major mapped path's own
 #: admission is the runner's ``q8_mapped_down`` decision, recorded in the mapped
 #: arm's control, not an env key.
 Q8_DOWN_CHAIN_GATES = (
-    "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN",
-    "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL",
-    "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL",
+    Q8_DOWN_FORKB_ENV,
+    Q8_DOWN_ROW4_ENV,
+    Q8_DOWN_BUNDLE_ENV,
 )
 #: The token-major mapped path's own prerequisite: the grouped row4 gate/up map
 #: this invocation builds. The arm fails loudly without it instead of measuring
@@ -616,20 +935,22 @@ def q8_down_control_record(*, environment=os.environ):
 
 
 @contextlib.contextmanager
-def q8_down_scope(*, environment=os.environ):
+def q8_down_scope(*, environment=os.environ, gates=Q8_DOWN_CHAIN_GATES):
     """Close the owners that preempt the Q8_0 expert-down chains.
 
     The register selection only exists inside those chains, so an arm that
     leaves a preemptor open counts zero launches and measures the other owner.
     Every key is read per dispatch, so closing them after construction takes
     effect; all prior values (including absent keys) come back on exit. The
-    chains' own gates are not preemptors and must already be on: without them
-    the counted leaf is skipped entirely, so the scope fails loudly rather than
-    reporting an engagement it cannot produce.
+    gates named in ``gates`` are not preemptors and must already be on: without
+    them the counted leaf is skipped entirely, so the scope fails loudly rather
+    than reporting an engagement it cannot produce. A ladder arm passes only
+    the gates its own rung needs, because the rung it pins off is one of the
+    default three.
     """
 
     closed = {"", "0", "false", "False"}
-    for key in Q8_DOWN_CHAIN_GATES:
+    for key in gates:
         if environment.get(key, "") in closed:
             raise ValueError(
                 f"{key} must be on for the Q8_0 expert-down chain; without it "
@@ -645,6 +966,96 @@ def q8_down_scope(*, environment=os.environ):
                 environment.pop(key, None)
             else:
                 environment[key] = value
+
+
+@contextlib.contextmanager
+def q8_down_ladder_scope(route_package, *, environment=os.environ):
+    """Isolate one rung of the sorted grouped Q8_0 down ladder.
+
+    ``bundle`` replaces ``row4`` on its rows>=512 scope, and the published
+    register decision replaces ``bundle`` in turn (the caller binds that runner
+    field off). The row4 arm therefore holds bundle off in both arms; the bundle
+    arm requires its row4 parent, because the bundle selector keeps the parent
+    when it is not selected and the arm would count zero launches. The chain's
+    ``FORKB_GROUPED_DOWN`` gate is required by :func:`q8_down_scope`; the rung
+    an arm does not count is not a prerequisite. Every prior value - including
+    an absent key - comes back on exit.
+    """
+
+    if route_package == "q8-down-row4":
+        pinned, required = Q8_DOWN_BUNDLE_ENV, ()
+    elif route_package == "q8-down-bundle":
+        pinned, required = None, (Q8_DOWN_ROW4_ENV,)
+    else:
+        raise ValueError(
+            f"not a sorted Q8_0 down ladder package: {route_package!r}")
+    closed = {"", "0", "false", "False"}
+    for key in required:
+        if environment.get(key, "") in closed:
+            raise ValueError(
+                f"{key} must be on for the {route_package} arm; without its "
+                "parent rung the counted leaf cannot launch")
+    prior = None if pinned is None else environment.get(pinned)
+    if pinned is not None:
+        environment[pinned] = "0"
+    try:
+        yield prior
+    finally:
+        if pinned is not None:
+            if prior is None:
+                environment.pop(pinned, None)
+            else:
+                environment[pinned] = prior
+
+
+def q8_down_ladder_control_record(route_package, runner=None, *,
+                                  environment=os.environ):
+    """The recorded control for a row4 or bundle arm.
+
+    The leaf itself is env-owned, so the record carries what the arm holds
+    fixed around it: the ladder rung it does not count (forced, with the value
+    it replaced) or the parent rung it rides (required, recorded as found), the
+    chain gates, and the published register decision that would replace the
+    leaf.
+    """
+
+    if route_package == "q8-down-row4":
+        rung = {
+            "held_off": Q8_DOWN_BUNDLE_ENV,
+            "forced": "0",
+            "previous": environment.get(Q8_DOWN_BUNDLE_ENV),
+        }
+    elif route_package == "q8-down-bundle":
+        rung = {
+            "prerequisite": Q8_DOWN_ROW4_ENV,
+            "value": environment.get(Q8_DOWN_ROW4_ENV),
+        }
+    else:
+        raise ValueError(
+            f"not a sorted Q8_0 down ladder package: {route_package!r}")
+    return {
+        "environment": (
+            Q8_DOWN_ROW4_ENV if route_package == "q8-down-row4"
+            else Q8_DOWN_BUNDLE_ENV),
+        "rung": rung,
+        "scope": "per measured run; restored on exit",
+        **q8_down_control_record(environment=environment),
+        "downstream_siblings": {
+            "q8_down_register": {
+                "bound_value": False,
+                "published_value": (
+                    None if runner is None
+                    else getattr(runner, "q8_down_register", None)),
+            },
+        },
+        "reason": (
+            "the routed F16 WMMA down owns the grouped chain and the Q8_0 "
+            "WMMA down sits in front of the sorted chain, so neither arm "
+            "reaches its rung in production; both arms close those owners, "
+            "hold the ladder rung they do not count (or require the parent "
+            "they ride), and bind the published register decision off "
+            "because it would replace the counted leaf"),
+    }
 
 
 def q8_mapped_down_control_record(*, environment=os.environ):
@@ -1087,6 +1498,53 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         return _combined_scope(
             q8_mapped_down_scope(environment=environment),
             q8_mapped_down(runner, mode == "after"))
+    if route_package in {"q51-fold128", "q51-fold-pair"}:
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            # The rung the arm does not count and the two downstream siblings
+            # are runner/env state; binding none of them would measure whatever
+            # the plan published and report it as the arm.
+            raise ValueError(
+                f"{route_package} needs the owning runner; the downstream "
+                "register-cache and row-publish siblings are runner state, and "
+                "binding nothing would measure whatever the plan published")
+        from hipengine.runtime.qwen4_exp_runner import (
+            q51_register_cache, q51_row_publish)
+
+        # Both folds sit inside the grouped pair2 chain, so both arms close the
+        # owners that preempt it. The fold128 arm holds its fold-pair rung off
+        # and the fold-pair arm requires its fold128 parent; the published
+        # register-cache and row-publish siblings would replace either counted
+        # leaf, so both arms bind them off. Every forced value comes back on
+        # exit and the gates are recorded, not forced.
+        return _combined_scope(
+            q51_pair2_scope(environment=environment),
+            q51_fold_scope(route_package, environment=environment),
+            q51_register_cache(runner, False),
+            q51_row_publish(runner, False))
+    if route_package in {"q8-down-row4", "q8-down-bundle"}:
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            # The published register decision would replace either counted
+            # leaf, and it is runner state, so the diagnostic must name the
+            # runner it measures.
+            raise ValueError(
+                f"{route_package} needs the owning runner; the published "
+                "register decision is runner state and would replace the "
+                "counted leaf")
+        from hipengine.runtime.qwen4_exp_runner import q8_down_register
+
+        # Both rungs sit inside the sorted grouped chain, so both arms close the
+        # owners that preempt it and require that chain's own gate. The row4 arm
+        # holds its bundle rung off and the bundle arm requires its row4
+        # parent; the published register decision replaces either counted leaf,
+        # so both arms bind it off. Every forced value comes back on exit.
+        return _combined_scope(
+            q8_down_scope(environment=environment, gates=(Q8_DOWN_FORKB_ENV,)),
+            q8_down_ladder_scope(route_package, environment=environment),
+            q8_down_register(runner, False))
     return contextlib.nullcontext()
 
 
@@ -1222,6 +1680,20 @@ def _apply_mode(
 def validate_row4_engagement(mode: str, calls: int) -> None:
     if (mode == "before" and calls != 0) or (mode == "after" and calls <= 0):
         raise ValueError(f"invalid row4 engagement: {mode} calls={calls}")
+
+
+#: Packages whose counted leaf is not the single ``row4_key`` wrapper, so the
+#: generic before==0/after>0 check cannot speak for them: the runner-local arms
+#: and the arms that assert exact per-chunk counts in their own branches. The
+#: fold and row4/bundle arms are not exempt - each counts exactly one leaf of
+#: its own ladder inside a scope that isolates that leaf.
+ROW4_ENGAGEMENT_EXEMPT = frozenset({
+    "norm-f16-publish", "dense-wide-padded", "gdn-narrow", "mmq-token64",
+    "gdn-wave-norm", "q8-down-register", "q8-mapped-down",
+    "q8-mmq-raw-vector", "q8-mmq-vec4",
+    "q51-register-cache", "q51-row-publish",
+    "qsa-ordered-v2", "gr-dpp-reduction", "gr-iu8-down", "gr-iu8",
+})
 
 
 def validate_qsa_h256_engagement(mode: str, calls: int, prompt_tokens: int) -> None:
@@ -1907,6 +2379,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "engages, and the pair2 gate is recorded because it must stay "
                 "on"),
         }
+    if args.route_package in {"q51-fold128", "q51-fold-pair"}:
+        artifact["selection_control"] = q51_fold_control_record(
+            args.route_package, generator.runner)
+    if args.route_package in {"q8-down-row4", "q8-down-bundle"}:
+        artifact["selection_control"] = q8_down_ladder_control_record(
+            args.route_package, generator.runner)
 
     def sample(mode, case, repetition):
         narrow_enabled[0] = mode == "after"
@@ -1959,7 +2437,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                     int(case["prompt_tokens"]),args.prefill_chunk_size) if mode=="after" else 0
                 assert calls==expected,(calls,expected)
             if args.route_package=="q8-down-register":
-                expected=q8_down_register_expected_calls(int(case["prompt_tokens"]),args.prefill_chunk_size) if mode=="after" else 0
+                expected=q8_down_register_expected_calls(
+                    generator.runner,int(case["prompt_tokens"]),args.prefill_chunk_size) if mode=="after" else 0
+                require_engaged_expectation(
+                    args.route_package, case, expected, args.prefill_chunk_size,
+                    arm_enabled=mode == "after")
                 mapped=register_mapped_calls[0]-start_mapped
                 assert calls==expected,(calls,expected)
                 assert mapped==(q8_mapped_down_expected_calls(int(case["prompt_tokens"]),args.prefill_chunk_size) if mode=="after" else 0)
@@ -1988,20 +2470,42 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if calls != expected_calls:
                     raise AssertionError(f"Q8 MMQ vec4 calls {calls} != {expected_calls}")
             elif args.route_package in {"q8-down-row4", "q8-down-bundle"}:
-                expected_calls = q8_down_row4_expected_calls(
-                    int(case["prompt_tokens"]), args.prefill_chunk_size) if mode == "after" else 0
+                count_fn = (q8_down_row4_expected_calls
+                            if args.route_package == "q8-down-row4"
+                            else q8_down_bundle_expected_calls)
+                expected_calls = count_fn(
+                    generator.runner, int(case["prompt_tokens"]),
+                    args.prefill_chunk_size) if mode == "after" else 0
+                require_engaged_expectation(
+                    args.route_package, case, expected_calls,
+                    args.prefill_chunk_size, arm_enabled=mode == "after")
                 if calls != expected_calls:
-                    raise AssertionError(f"Q8 down row4 calls {calls} != {expected_calls}")
+                    raise AssertionError(
+                        f"{args.route_package} calls {calls} != {expected_calls}")
             elif args.route_package == "q51-fold128":
                 expected_calls = q51_fold128_expected_calls(
-                    int(case["prompt_tokens"]), args.prefill_chunk_size) if mode == "after" else 0
+                    generator.runner, int(case["prompt_tokens"]),
+                    args.prefill_chunk_size) if mode == "after" else 0
+                require_engaged_expectation(
+                    args.route_package, case, expected_calls,
+                    args.prefill_chunk_size, arm_enabled=mode == "after")
                 if calls != expected_calls:
                     raise AssertionError(f"Q51 fold128 calls {calls} != {expected_calls}")
             elif args.route_package in {"q51-fold-pair", "q51-register-cache", "q51-row-publish"}:
-                expected_calls = q51_fold_pair_expected_calls(
-                    int(case["prompt_tokens"]), args.prefill_chunk_size) if mode == "after" else 0
+                count_fn = {
+                    "q51-fold-pair": q51_fold_pair_expected_calls,
+                    "q51-register-cache": q51_register_cache_expected_calls,
+                    "q51-row-publish": q51_row_publish_expected_calls,
+                }[args.route_package]
+                expected_calls = count_fn(
+                    generator.runner, int(case["prompt_tokens"]),
+                    args.prefill_chunk_size) if mode == "after" else 0
+                require_engaged_expectation(
+                    args.route_package, case, expected_calls,
+                    args.prefill_chunk_size, arm_enabled=mode == "after")
                 if calls != expected_calls:
-                    raise AssertionError(f"Q51 folded pair calls {calls} != {expected_calls}")
+                    raise AssertionError(
+                        f"{args.route_package} calls {calls} != {expected_calls}")
             elif args.route_package.startswith("qsa-h256-") or args.route_package in {"qsa-head-pair","qsa-head-quad"}:
                 validate_qsa_h256_engagement(mode, calls, int(case["prompt_tokens"]))
             elif args.route_package == "qsa-ordered-v2":
@@ -2035,13 +2539,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if calls != expected:
                     raise AssertionError(
                         f"GR iu8 calls {calls} != {expected}")
-            elif args.route_package not in {
-                "norm-f16-publish", "dense-wide-padded", "gdn-narrow", "mmq-token64",
-                "gdn-wave-norm", "q8-down-register", "q8-mapped-down",
-                "q8-mmq-raw-vector", "q8-mmq-vec4", "q8-down-row4", "q8-down-bundle",
-                "q51-fold128", "q51-fold-pair", "q51-register-cache", "q51-row-publish",
-                "qsa-ordered-v2", "gr-dpp-reduction", "gr-iu8-down", "gr-iu8",
-            }:
+            elif args.route_package not in ROW4_ENGAGEMENT_EXEMPT:
                 validate_row4_engagement(mode, calls)
             row["candidate_calls"] = calls
         return row

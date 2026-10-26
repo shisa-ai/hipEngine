@@ -90,7 +90,11 @@ def test_state_gate_leaves_the_head_arm_to_the_scoped_control(package, enabled):
 
 
 def test_state_gate_hands_the_runner_to_the_scoped_control():
-    """A gate that forgot the runner would silently measure the parent."""
+    """A gate that forgot the runner would silently measure the parent.
+
+    The gate enters the arm's control in ``main`` and the control builds the
+    scoped selection, so both hops have to carry the arm's runner.
+    """
 
     import ast
     import inspect
@@ -99,7 +103,7 @@ def test_state_gate_hands_the_runner_to_the_scoped_control():
 
     calls = [
         node
-        for node in ast.walk(ast.parse(inspect.getsource(qwen4exp_row4_state_gate.main)))
+        for node in ast.walk(ast.parse(inspect.getsource(qwen4exp_row4_state_gate)))
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
         and node.func.id == "route_scope"
@@ -107,6 +111,19 @@ def test_state_gate_hands_the_runner_to_the_scoped_control():
     assert calls, "the gate no longer uses the scoped control"
     for call in calls:
         assert len(call.args) == 3, "route_scope needs the arm's runner"
+        runner_arg = call.args[2]
+        assert isinstance(runner_arg, ast.Name) and runner_arg.id == "runner"
+
+    entered = [
+        node
+        for node in ast.walk(ast.parse(inspect.getsource(qwen4exp_row4_state_gate.main)))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "arm_control"
+    ]
+    assert entered, "the gate no longer enters the arm's control"
+    for call in entered:
+        assert len(call.args) == 3, "arm_control needs the arm's runner"
         runner_arg = call.args[2]
         assert isinstance(runner_arg, ast.Attribute) and runner_arg.attr == "runner"
 

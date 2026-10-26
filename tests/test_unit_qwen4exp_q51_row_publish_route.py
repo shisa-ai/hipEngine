@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from hipengine.kernels import registry
 from hipengine.kernels.registry import KernelKey
 from hipengine.runtime import qwen4_exp_runner as runner
 from scripts.qwen4exp_halo_box_campaign_ab import (
@@ -11,7 +12,7 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     Q51_PAIR2_GATE_ENV,
     Q51_PAIR2_PREEMPTING_ENV,
     _apply_mode,
-    q51_fold_pair_expected_calls,
+    q51_row_publish_expected_calls,
     q51_pair2_control_record,
     q51_pair2_scope,
     route_scope,
@@ -154,9 +155,15 @@ def test_route_scope_rejects_the_arm_without_its_runner():
         route_scope("q51-row-publish", "after")
 
 
-@pytest.mark.parametrize("tokens,expected", [(512, 25), (1024, 25), (4096, 100), (511, 0)])
-def test_current_chunk_counts(tokens, expected):
-    assert q51_fold_pair_expected_calls(tokens, 1024) == expected
+@pytest.mark.parametrize("tokens,expected", [(512, 43), (1024, 43), (4096, 172), (511, 0)])
+def test_current_chunk_counts(monkeypatch, tokens, expected):
+    # The gate runs this arm at a 1024-row chunk; 4096 tokens is four eligible
+    # chunks of the loaded Q5_1 down layers (the ledger's 172-call census).
+    from tests._qwen4exp_expert_down_fixtures import expert_down_runner
+
+    monkeypatch.setattr(registry, "is_registered", lambda key: True)
+    assert q51_row_publish_expected_calls(
+        expert_down_runner(), tokens, 1024) == expected
 
 
 # --- forwarding: the runner field must reach run_qwen4_exp_moe ---------------

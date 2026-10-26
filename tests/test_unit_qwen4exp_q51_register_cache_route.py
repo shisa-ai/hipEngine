@@ -4,13 +4,14 @@ from types import SimpleNamespace
 
 import pytest
 
+from hipengine.kernels import registry
 from hipengine.kernels.registry import KernelKey
 from hipengine.runtime import qwen4_exp_runner as runner
 from scripts.qwen4exp_halo_box_campaign_ab import (
     Q51_PAIR2_GATE_ENV,
     Q51_PAIR2_PREEMPTING_ENV,
     _apply_mode,
-    q51_fold_pair_expected_calls,
+    q51_register_cache_expected_calls,
     q51_register_cache_control_record,
     route_scope,
 )
@@ -289,11 +290,15 @@ def test_route_scope_leaves_the_preemptors_alone_for_other_packages():
     assert all(env[key] == "1" for key in Q51_PAIR2_PREEMPTING_ENV)
 
 
-@pytest.mark.parametrize("tokens,expected", [(512, 25), (1024, 50), (4096, 200), (511, 0)])
-def test_current_chunk_counts(tokens, expected):
-    # The arm's engagement assertion uses the folded-pair count at the gate's
-    # 512-row chunk, so the register-cache leaf cannot engage at zero calls.
-    assert q51_fold_pair_expected_calls(tokens, 512) == expected
+@pytest.mark.parametrize("tokens,expected", [(512, 43), (1024, 86), (4096, 344), (511, 0)])
+def test_current_chunk_counts(monkeypatch, tokens, expected):
+    # The arm's engagement assertion uses this leaf's own count at the gate's
+    # 512-row chunk: the loaded Q5_1 down layers times the eligible chunks.
+    from tests._qwen4exp_expert_down_fixtures import expert_down_runner
+
+    monkeypatch.setattr(registry, "is_registered", lambda key: True)
+    assert q51_register_cache_expected_calls(
+        expert_down_runner(), tokens, 512) == expected
 
 
 # --- forwarding: the runner field must reach run_qwen4_exp_moe ---------------

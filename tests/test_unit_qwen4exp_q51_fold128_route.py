@@ -1,7 +1,9 @@
 import pytest
+from hipengine.kernels import registry
 from hipengine.kernels.registry import KernelKey
 from hipengine.runtime import qwen4_exp_runner as runner
 from scripts.qwen4exp_halo_box_campaign_ab import _apply_mode, q51_fold128_expected_calls
+from tests._qwen4exp_expert_down_fixtures import expert_down_runner
 
 
 def test_fold128_scoped_to_pair_prefill(monkeypatch):
@@ -27,7 +29,16 @@ def test_fold128_ab_changes_one_flag(mode, value):
     assert env == {"other": "unchanged", "HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL": value}
 
 
-@pytest.mark.parametrize("prompt,chunk,calls", [(512,512,25),(4096,512,200),
-    (513,512,25),(576,512,50),(63,512,0),(64,512,25),(512,32,0)])
-def test_fold128_expected_calls(prompt,chunk,calls):
-    assert q51_fold128_expected_calls(prompt,chunk) == calls
+@pytest.mark.parametrize("prompt,chunk,calls", [(512,512,43),(4096,512,344),
+    (513,512,43),(576,512,86),(63,512,0),(64,512,43)])
+def test_fold128_expected_calls(monkeypatch, prompt,chunk,calls):
+    # The count is the loaded artifact's Q5_1 down layers times the chunks that
+    # clear the leaf's own rows>=64 guard - never a layer constant.
+    monkeypatch.setattr(registry, "is_registered", lambda key: True)
+    assert q51_fold128_expected_calls(expert_down_runner(), prompt,chunk) == calls
+
+
+def test_a_chunk_below_the_row_guard_is_a_named_failure(monkeypatch):
+    monkeypatch.setattr(registry, "is_registered", lambda key: True)
+    with pytest.raises(ValueError, match="rows>=64.*chunk is 32"):
+        q51_fold128_expected_calls(expert_down_runner(), 512, 32)

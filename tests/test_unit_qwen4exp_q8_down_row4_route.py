@@ -1,8 +1,10 @@
 import pytest
 
+from hipengine.kernels import registry
 from hipengine.kernels.registry import KernelKey
 from hipengine.runtime import qwen4_exp_runner as runner
 from scripts.qwen4exp_halo_box_campaign_ab import _apply_mode, q8_down_row4_expected_calls
+from tests._qwen4exp_expert_down_fixtures import expert_down_runner
 
 
 def test_q8_down_row4_scope(monkeypatch):
@@ -30,7 +32,18 @@ def test_q8_down_ab_one_flag(mode, value):
     assert env == {"other": "unchanged", "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL": value}
 
 
-@pytest.mark.parametrize("prompt,chunk,calls", [(512,512,4), (4096,512,32),
-    (513,512,4), (511,512,0), (4096,256,0), (1024,1024,4)])
-def test_q8_down_expected_calls(prompt, chunk, calls):
-    assert q8_down_row4_expected_calls(prompt, chunk) == calls
+@pytest.mark.parametrize("prompt,chunk,calls", [(512,512,5), (4096,512,40),
+    (513,512,5), (511,512,0), (1024,1024,5)])
+def test_q8_down_expected_calls(monkeypatch, prompt, chunk, calls):
+    # Five Q8_0 expert-down layers in the shipped artifact, once per chunk that
+    # clears the row4 leaf's rows>=512 guard.
+    monkeypatch.setattr(registry, "is_registered", lambda key: True)
+    assert q8_down_row4_expected_calls(expert_down_runner(), prompt, chunk) == calls
+
+
+def test_a_chunk_below_the_row_guard_is_a_named_failure(monkeypatch):
+    # A plan whose chunk can never clear the leaf's guard measures nothing, so it
+    # must not report zero calls as a measured zero.
+    monkeypatch.setattr(registry, "is_registered", lambda key: True)
+    with pytest.raises(ValueError, match="rows>=512.*chunk is 256"):
+        q8_down_row4_expected_calls(expert_down_runner(), 4096, 256)
