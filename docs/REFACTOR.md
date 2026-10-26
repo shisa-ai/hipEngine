@@ -2743,15 +2743,6 @@ the allocation repair. The observations and proposal below are historical.
   Replace these with device-resident tails only after the same whole/chunk,
   60-second transition, recording-reset and post-join-noise tests pass.
 
-## Qwen4Exp raw MMQ vector staging rollback
-
-- Production `HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR` selects
-  `mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out` in existing raw-weight
-  three-plane MMQ rows>=64 only. Production1/strict0;no sidecar.
-- Five full-model invocation/state/KV cases and canonical A/B pass.
-  Remove the rollback selector after next qualified MMQ change or release
-  window;prepacked vector path and strict/scalar raw fallbacks remain.
-
 ## Qwen4Exp Q5_1 register weight-cache rollback
 
 - `selected_grouped_prefill_pair2_register_cache_bf16_bf16_out` is
@@ -2783,18 +2774,6 @@ the allocation repair. The observations and proposal below are historical.
   request wall -4.535%; short-context and prefill neutral.
 - Remove the rollback selector after the next qualified QSA decode change or
   release window; the ordered parent and serialized strict fallback remain.
-
-## Qwen4Exp MMQ vector activation staging rollback
-
-- Production `mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out`
-  preserves the prepacked three-plane chain while vectorizing LDS staging.
-  `HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4` applies only in the existing prepacked
-  MMQ path at rows>=64;production binds1,strict0. Five full-model
-  logits/state/KV cases and canonical12-case A/B pass.
-  Existing scalar-stage prepacked parent,
-  raw MMQ rollback and strict coltile fallback remain.
-- Remove the rollback selector after the next qualified MMQ change or
-  release window. Keep strict coltile and the raw-weight fallback.
 
 ## Qwen4Exp folded Q5_1 pair-reduction rollback
 

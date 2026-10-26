@@ -8,12 +8,21 @@ import pytest
 from hipengine.kernels.registry import KernelKey
 from hipengine.runtime import gguf_linear as linear
 from hipengine.runtime.gguf_linear import (
-    q8_mmq_token64_diagnostic,
+    Q8MMQLaneSelection,
+    q8_mmq_lane_diagnostic,
+    q8_mmq_lane_selection,
+    q8_mmq_lane_session,
     q8_mmq_token64_enabled,
-    q8_mmq_token64_session,
 )
 from scripts.qwen4exp_allocation_census import simulated_runner
-from scripts.qwen4exp_halo_box_campaign_ab import mmq_token64_expected_calls, route_scope
+from scripts.qwen4exp_halo_box_campaign_ab import (
+    MMQ_PREPACK_ENV,
+    MMQ_PREFILL_ENV,
+    mmq_token64_control_record,
+    mmq_token64_expected_calls,
+    route_scope,
+)
+from tests.test_unit_qwen4exp_mmq_raw_vector_route import ProvisioningRunner
 from tests.test_unit_qwen4exp_scratch_plan import config
 
 PARENT = "mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out"
@@ -44,7 +53,7 @@ def test_the_unbound_default_is_the_raw_vec4_parent(monkeypatch):
     (512, True), (777, True), (1024, True), (4096, True),
 ])
 def test_the_threshold_is_512_rows(monkeypatch, rows, remapped):
-    with q8_mmq_token64_session():
+    with q8_mmq_lane_session(token64=True):
         selected = select(monkeypatch, rows=rows)
     assert (selected.variant == TOKEN64) is remapped
     assert selected.variant in {PARENT, TOKEN64}
@@ -54,7 +63,7 @@ def test_the_threshold_is_512_rows(monkeypatch, rows, remapped):
     (2560, 12288), (2560, 10240), (10240, 320), (1280, 12288), (2560, 12289),
 ])
 def test_only_the_measured_shape_is_remapped(monkeypatch, hidden, outputs):
-    with q8_mmq_token64_session():
+    with q8_mmq_lane_session(token64=True):
         selected = select(monkeypatch, hidden=hidden, outputs=outputs)
     assert (selected.variant == TOKEN64) is ((hidden, outputs) == (2560, 12288))
 
@@ -63,30 +72,48 @@ def test_only_the_measured_shape_is_remapped(monkeypatch, hidden, outputs):
 def test_the_remap_requires_the_raw_vector_parent(monkeypatch, variant):
     """The Q8 raw-vector remap owns the parent variant this leg builds on."""
 
-    with q8_mmq_token64_session():
+    with q8_mmq_lane_session(token64=True, raw_vector=True):
         assert select(monkeypatch, variant=variant).variant == variant
 
 
+def test_the_token64_leg_stays_inert_without_the_raw_vector_decision(monkeypatch):
+    """Binding token64 alone may not promote the scalar parent it sits behind."""
+
+    monkeypatch.setattr(linear, "is_registered", lambda candidate: True)
+    scalar = parent_key(PREFILL)
+    with q8_mmq_lane_session(token64=True, raw_vector=False):
+        assert q8_mmq_lane_selection() == Q8MMQLaneSelection(token64=True)
+        candidate = linear._q8_mmq_raw_vector_key(scalar, rows=1024)
+        assert candidate == scalar
+        assert linear._q8_mmq_token64_key(
+            candidate, rows=1024, hidden=2560, outputs=12288) == scalar
+    with q8_mmq_lane_session(token64=True, raw_vector=True):
+        candidate = linear._q8_mmq_raw_vector_key(scalar, rows=1024)
+        assert candidate.variant == PARENT
+        assert linear._q8_mmq_token64_key(
+            candidate, rows=1024, hidden=2560, outputs=12288).variant == TOKEN64
+
+
 def test_an_unregistered_candidate_keeps_the_parent(monkeypatch):
-    with q8_mmq_token64_session():
+    with q8_mmq_lane_session(token64=True, raw_vector=True):
         assert select(monkeypatch, registered=False) == parent_key()
 
 
 def test_the_session_binds_and_restores_the_policy():
-    with q8_mmq_token64_session():
+    with q8_mmq_lane_session(token64=True):
         assert q8_mmq_token64_enabled()
     assert not q8_mmq_token64_enabled()
-    with q8_mmq_token64_session(True):
-        with q8_mmq_token64_session(False):
+    with q8_mmq_lane_session(token64=True):
+        with q8_mmq_lane_session(token64=False):
             assert not q8_mmq_token64_enabled()
         assert q8_mmq_token64_enabled()
     assert not q8_mmq_token64_enabled()
 
 
 def test_an_exception_in_the_body_restores_the_enclosing_policy():
-    with q8_mmq_token64_session(True):
+    with q8_mmq_lane_session(token64=True):
         with pytest.raises(RuntimeError, match="chunk failed"):
-            with q8_mmq_token64_session(False):
+            with q8_mmq_lane_session(token64=False):
                 assert not q8_mmq_token64_enabled()
                 raise RuntimeError("chunk failed")
         assert q8_mmq_token64_enabled()
@@ -95,21 +122,21 @@ def test_an_exception_in_the_body_restores_the_enclosing_policy():
 
 def test_the_policy_does_not_cross_contexts():
     outside = copy_context()
-    with q8_mmq_token64_session(True):
+    with q8_mmq_lane_session(token64=True):
         assert q8_mmq_token64_enabled()
         assert not outside.run(q8_mmq_token64_enabled)
     assert not q8_mmq_token64_enabled()
 
 
 def test_the_diagnostic_outranks_the_request_and_restores_it():
-    with q8_mmq_token64_session(True):
-        with q8_mmq_token64_diagnostic(False):
+    with q8_mmq_lane_session(token64=True):
+        with q8_mmq_lane_diagnostic(token64=False):
             assert not q8_mmq_token64_enabled()
         assert q8_mmq_token64_enabled()
-        with q8_mmq_token64_diagnostic(None):
+        with q8_mmq_lane_diagnostic():
             assert q8_mmq_token64_enabled()
-    with q8_mmq_token64_session(False):
-        with q8_mmq_token64_diagnostic(True):
+    with q8_mmq_lane_session(token64=False):
+        with q8_mmq_lane_diagnostic(token64=True):
             assert q8_mmq_token64_enabled()
         assert not q8_mmq_token64_enabled()
 
@@ -120,7 +147,7 @@ def test_the_retired_switch_cannot_enable_the_remap(monkeypatch):
     monkeypatch.setenv(RETIRED_ENV, "1")
     assert not q8_mmq_token64_enabled()
     assert select(monkeypatch) == parent_key()
-    with q8_mmq_token64_session(True):
+    with q8_mmq_lane_session(token64=True, raw_vector=True):
         monkeypatch.setenv(RETIRED_ENV, "0")
         assert q8_mmq_token64_enabled()
 
@@ -171,13 +198,72 @@ def test_a_runner_cloned_after_the_bind_inherits_the_policy():
 
 
 def test_the_campaign_arm_is_a_scoped_control_not_an_env_write():
-    with route_scope("mmq-token64", "after"):
-        assert q8_mmq_token64_enabled()
-    with route_scope("mmq-token64", "before"):
-        assert not q8_mmq_token64_enabled()
-    with route_scope("q8-mmq-vec4", "after"):
+    """Both arms name the raw-vec4 parent and admit the workspace it needs."""
+
+    env = {MMQ_PREFILL_ENV: "0", MMQ_PREPACK_ENV: "1"}
+    owner = ProvisioningRunner(env)
+    with route_scope("mmq-token64", "after", owner, environment=env):
+        selection = q8_mmq_lane_selection()
+        assert env == {MMQ_PREFILL_ENV: "1", MMQ_PREPACK_ENV: "0"}
+        assert owner.provisions == [{MMQ_PREFILL_ENV: "1", MMQ_PREPACK_ENV: "0"}]
+    assert selection.token64 is True
+    assert selection.raw_vector is True
+    assert env == {MMQ_PREFILL_ENV: "0", MMQ_PREPACK_ENV: "1"}
+    with route_scope("mmq-token64", "before", owner, environment=env):
+        selection = q8_mmq_lane_selection()
+        assert env == {MMQ_PREFILL_ENV: "1", MMQ_PREPACK_ENV: "0"}
+    assert selection.token64 is False
+    assert selection.raw_vector is True
+    assert env == {MMQ_PREFILL_ENV: "0", MMQ_PREPACK_ENV: "1"}
+    with q8_mmq_lane_diagnostic(vec4=True):
         assert not q8_mmq_token64_enabled()
     assert RETIRED_ENV not in os.environ
+
+
+def test_the_campaign_arm_needs_the_owning_runner():
+    """A runnerless arm would measure the scalar owner at zero calls."""
+
+    with pytest.raises(ValueError, match="needs the owning runner"):
+        route_scope("mmq-token64", "after")
+
+
+def test_the_campaign_arm_refuses_a_runner_without_the_provisioner():
+    from types import SimpleNamespace
+
+    env = {}
+    with pytest.raises(ValueError, match="MMQ provisioner"):
+        with route_scope("mmq-token64", "after", SimpleNamespace(),
+                         environment=env):
+            pass
+    assert env == {}
+
+
+def test_the_campaign_arm_restores_the_switches_when_the_parent_fails():
+    env = {MMQ_PREFILL_ENV: "0"}
+    owner = ProvisioningRunner(env, workspace=False)
+    with pytest.raises(ValueError, match="did not provision a workspace"):
+        with route_scope("mmq-token64", "after", owner, environment=env):
+            pass
+    assert env == {MMQ_PREFILL_ENV: "0"}
+    assert MMQ_PREPACK_ENV not in env
+    assert not q8_mmq_token64_enabled()
+
+
+def test_the_campaign_arm_records_the_parent_it_admits():
+    env = {MMQ_PREFILL_ENV: "1", MMQ_PREPACK_ENV: "1"}
+    owner = ProvisioningRunner(env)
+    owner.dense_mmq_token64_enabled = True
+    record = mmq_token64_control_record(owner, environment=env)
+    assert record["runner_field"] == "dense_mmq_token64_enabled"
+    assert record["parent_field"] == "dense_mmq_raw_vector_enabled"
+    assert record["parent_bound_value"] is True
+    assert record["before"] is False and record["after"] is True
+    assert record["published_value"] is True
+    assert record["prerequisite_environment"] == {
+        MMQ_PREFILL_ENV: "1", MMQ_PREPACK_ENV: "0"}
+    assert record["prerequisite_previous"] == {
+        MMQ_PREFILL_ENV: "1", MMQ_PREPACK_ENV: "1"}
+    assert "zero calls" in record["reason"]
 
 
 @pytest.mark.parametrize("tokens,expected", [(511, 0), (512, 12), (1024, 12),

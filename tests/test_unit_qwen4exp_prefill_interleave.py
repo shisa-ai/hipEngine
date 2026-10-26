@@ -7,9 +7,9 @@ import pytest
 from hipengine.runtime.qwen4_exp_runner import Qwen4ExpGGUFResidentModelRunner
 from hipengine.runtime.gguf_linear import (
     _q8_mmq_prefill_session,
+    q8_mmq_lane_selection,
+    q8_mmq_lane_session,
     q8_mmq_prefill_session,
-    q8_mmq_token64_enabled,
-    q8_mmq_token64_session,
     raw_k_prefill_rowbatch,
     raw_k_prefill_rowbatch_session,
     resolve_q8_mmq_prefill_policy,
@@ -56,16 +56,17 @@ def test_prefill_resume_isolates_dispatch_context_and_returns_only_final_result(
 def _lane_state():
     """What the caller's own context sees for each prefill-owned lane."""
 
+    lane = q8_mmq_lane_selection()
     return (
         _q8_mmq_prefill_session.get() is not None,
-        q8_mmq_token64_enabled(),
+        (lane.token64, lane.raw_vector, lane.vec4),
         wide_f16_activation_workspace() is not None,
         wide_f16_pair_enabled(),
     )
 
 
 def test_a_suspended_prefill_owns_no_dispatch_lane_in_the_caller():
-    """The saved Context, not the caller's, holds MMQ/token64/pair while suspended.
+    """The saved Context, not the caller's, holds MMQ/lane/pair while suspended.
 
     ``_prefill_chunked_steps`` yields from inside ``_q8_mmq_prefill_context`` and
     ``_wide_f16_activation_context``. Without the copied Context each resume
@@ -87,7 +88,7 @@ def test_a_suspended_prefill_owns_no_dispatch_lane_in_the_caller():
                 risk_indices_ptr=3 << 32, risk_indices_nbytes=1 << 30,
                 policy=policy,
             ),
-            q8_mmq_token64_session(True),
+            q8_mmq_lane_session(token64=True, raw_vector=True, vec4=True),
             wide_f16_activation_session(
                 True, workspace_ptr=4 << 32, workspace_nbytes=1 << 20),
             wide_f16_pair_session(True),
@@ -98,7 +99,7 @@ def test_a_suspended_prefill_owns_no_dispatch_lane_in_the_caller():
             return SimpleNamespace(token_id=7)
 
     runner._prefill_chunked_steps = steps
-    clean = (False, False, False, False)
+    clean = (False, (False, False, False), False, False)
     assert _lane_state() == clean
     assert runner.prefill_append_resumable((1, 2), time_budget_seconds=1e-9) is None
     assert _lane_state() == clean
@@ -109,7 +110,10 @@ def test_a_suspended_prefill_owns_no_dispatch_lane_in_the_caller():
     result = runner.prefill_append_resumable((1, 2), time_budget_seconds=1e-9)
     assert result.token_id == 7
     assert _lane_state() == clean
-    assert inside == [(True, True, True, True), (True, True, True, True)]
+    assert inside == [
+        (True, (True, True, True), True, True),
+        (True, (True, True, True), True, True),
+    ]
     assert runner._pending_prefill_append is None
 
 

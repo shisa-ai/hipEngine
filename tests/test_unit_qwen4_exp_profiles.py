@@ -73,8 +73,6 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE",
         "HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK",
-        "HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4",
-        "HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR",
         "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN",
@@ -352,8 +350,12 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert os.environ["HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_GR_DPP_REDUCTION"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR"] == "1"
+    # The two vector children are request-local runner state: the production
+    # binder selects them without writing a process-wide switch.
+    assert fake_runner.dense_mmq_raw_vector_enabled is True
+    assert fake_runner.dense_mmq_vec4_enabled is True
+    assert "HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4" not in os.environ
+    assert "HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR" not in os.environ
     wave = _selection_map(production)[("linear", "prefill_exact_q8_f32_coltile")]
     assert wave["selected_variant"] == (
         "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out"
@@ -490,6 +492,8 @@ def test_historical_q4km_binder_structure_not_qualification(
     strict_generator = SimpleNamespace()
     strict.binder(strict_generator, strict)
     assert strict_generator.dense_mmq_token64_enabled is False
+    assert strict_generator.dense_mmq_raw_vector_enabled is False
+    assert strict_generator.dense_mmq_vec4_enabled is False
     assert os.environ[PRODUCTION_MOE_PREFILL_ENV] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "0"
@@ -502,8 +506,6 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"] == "0"
     assert "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN" not in os.environ
@@ -890,6 +892,8 @@ def test_dp2_pair_binding_reaches_a_runner_built_after_the_bind():
     late = _inherit_lane_decisions(generator, SimpleNamespace())
     assert late.dense_f16_pair_enabled is True
     assert late.dense_mmq_token64_enabled is True
+    assert late.dense_mmq_raw_vector_enabled is True
+    assert late.dense_mmq_vec4_enabled is True
     assert late.qsa_prefill_head_mode == "quad"
 
     strict = _resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl")
@@ -899,12 +903,16 @@ def test_dp2_pair_binding_reaches_a_runner_built_after_the_bind():
     strict_late = _inherit_lane_decisions(generator, SimpleNamespace())
     assert strict_late.dense_f16_pair_enabled is False
     assert strict_late.dense_mmq_token64_enabled is False
+    assert strict_late.dense_mmq_raw_vector_enabled is False
+    assert strict_late.dense_mmq_vec4_enabled is False
     assert strict_late.qsa_prefill_head_mode == "parent"
 
     # An unbound generator keeps the parent route for anything cloned from it.
     unbound = _inherit_lane_decisions(SimpleNamespace(), SimpleNamespace())
     assert unbound.dense_f16_pair_enabled is False
     assert unbound.dense_mmq_token64_enabled is False
+    assert unbound.dense_mmq_raw_vector_enabled is False
+    assert unbound.dense_mmq_vec4_enabled is False
     assert unbound.qsa_prefill_head_mode == "parent"
 
 
@@ -1014,6 +1022,54 @@ def test_token64_dense_leg_follows_the_q8_mmq_prefill_lane(profile, quant, enabl
     assert runner.dense_mmq_token64_enabled is enabled
     assert generator.dense_mmq_token64_enabled is enabled
     assert "HIPENGINE_QWEN4_EXP_MMQ_TOKEN64" not in os.environ
+
+
+@pytest.mark.parametrize("profile,quant,enabled", [
+    (ExecutionProfile.PRODUCTION, "gguf_ud_q4_k_xl", True),
+    # This plan falls back to the strict binder, which binds the scalar parents.
+    (ExecutionProfile.PRODUCTION, "gguf_q4_k_m", False),
+    (ExecutionProfile.FAST, "gguf_ud_q4_k_xl", True),
+    (ExecutionProfile.STRICT, "gguf_ud_q4_k_xl", False),
+    (ExecutionProfile.BATCH_INVARIANT, "gguf_ud_q4_k_xl", False),
+])
+def test_mmq_vector_children_follow_the_q8_mmq_lane(profile, quant, enabled):
+    """Both children ride the profile's lane, not a process-wide switch."""
+
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    resolved = _resolve(profile, quant=quant)
+    runner = SimpleNamespace()
+    generator = SimpleNamespace(runner=runner)
+    resolved.binder(generator, resolved)
+    assert runner.dense_mmq_raw_vector_enabled is enabled
+    assert runner.dense_mmq_vec4_enabled is enabled
+    assert generator.dense_mmq_raw_vector_enabled is enabled
+    assert generator.dense_mmq_vec4_enabled is enabled
+    assert "HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4" not in os.environ
+    assert "HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR" not in os.environ
+
+
+def test_ud_production_publishes_the_vector_children_while_the_parent_is_off():
+    """The supported diagnostic re-enables the parent after the bind.
+
+    The UD recovery zeroes ``HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`` after the
+    env table is published, so the parent stays off on the shipped lane. A
+    diagnostic that sets the parent back to 1 and provisions its resources must
+    still get the vectorized children the production plan selected; publishing
+    the children only when the parent is on would silently measure the scalar
+    owners instead.
+    """
+
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    resolved = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
+    runner = SimpleNamespace()
+    generator = SimpleNamespace(runner=runner)
+    resolved.binder(generator, resolved)
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "0"
+    assert runner.dense_mmq_raw_vector_enabled is True
+    assert runner.dense_mmq_vec4_enabled is True
+    assert runner.dense_mmq_token64_enabled is True
 
 
 def test_dp2_pair_decision_is_owned_by_the_runner_it_was_bound_to():

@@ -3157,18 +3157,18 @@
       "start_line": 3041,
       "end_line": 3049,
       "sha256": "4438bc632e60d6738af5f0c08f83d26efbdd849b9aac02db95cc6ffd390139ff",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-session-local",
+      "evidence": ["Raw/prepacked vector and token64 choices share runner-local MMQ selection context; retired env readers, preserved scalar teachers and raw dependency. GPU23,public raw+packed diagnostic selection,CPU broad plus focused source-inspection rerun and docs/audit pass. Parent recovery suppression unchanged. worklog/entries/20261026T205951.108479Z-cleanup-refactor-r0117-r0121-7022b5.md."],
       "subitems": [
         {
           "line": 3043,
           "text": "- Production `HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR` selects",
-          "status": "pending"
+          "status": "resolved-session-local"
         },
         {
           "line": 3046,
           "text": "- Five full-model invocation/state/KV cases and canonical A/B pass.",
-          "status": "pending"
+          "status": "resolved-session-local"
         }
       ]
     },
@@ -3253,18 +3253,18 @@
       "start_line": 3092,
       "end_line": 3103,
       "sha256": "144dba43e0da764edfff42f4f29d2982fdba31d7d81f9bf500bd5e8da537aa00",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-session-local",
+      "evidence": ["Prepacked vector selection migrated with R0117; mapping ownership and scalar parent preserved, diagnostics provision/restore prerequisites. worklog/entries/20261026T205951.108479Z-cleanup-refactor-r0117-r0121-7022b5.md."],
       "subitems": [
         {
           "line": 3094,
           "text": "- Production `mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out`",
-          "status": "pending"
+          "status": "resolved-session-local"
         },
         {
           "line": 3101,
           "text": "- Remove the rollback selector after the next qualified MMQ change or",
-          "status": "pending"
+          "status": "resolved-session-local"
         }
       ]
     },

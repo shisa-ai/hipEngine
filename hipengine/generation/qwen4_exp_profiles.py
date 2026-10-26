@@ -1028,6 +1028,20 @@ def _bind(
     # may remap the raw-vec4 parent, strict and batch-invariant may not. It is
     # request-local state on the owning runner, never a process-wide switch.
     dense_mmq_token64_enabled = bool(production)
+    # The two Q8 MMQ vector children ride the same lane: production (and the
+    # fast route that shares this binder) selects them, strict and
+    # batch-invariant keep the scalar parents. Request-local on the owning
+    # runner, never a process-wide switch. Publication is deliberately
+    # independent of HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL: the UD recovery zeroes
+    # that parent after this table is published, and the supported diagnostic -
+    # set the parent back to 1 after the bind, then
+    # configure_mmq_prefill_resources() - must still get the vectorized children
+    # the production plan selected. The dispatch-time selectors keep the
+    # rows>=64, parent-variant and registration guards, the prepacked child stays
+    # reachable only where a prepared sidecar is published, and the token64 leg
+    # stays behind the raw-vec4 parent it builds on.
+    dense_mmq_raw_vector_enabled = bool(production)
+    dense_mmq_vec4_enabled = bool(production)
     # H256 prefill head grouping for the scalar sparse-prefill rows owner, as
     # request-local state on the owning runner rather than a process-wide
     # switch. Same condition the retired switch published: the production
@@ -1170,8 +1184,6 @@ def _bind(
             else "0"
         ),
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL": "1" if production else "0",
@@ -1340,6 +1352,8 @@ def _bind(
     # parent route.
     generator.dense_f16_pair_enabled = dp2_pair_enabled
     generator.dense_mmq_token64_enabled = dense_mmq_token64_enabled
+    generator.dense_mmq_raw_vector_enabled = dense_mmq_raw_vector_enabled
+    generator.dense_mmq_vec4_enabled = dense_mmq_vec4_enabled
     generator.qsa_prefill_head_mode = qsa_prefill_head_mode
     generator.gdn_prefill_variant = gdn_prefill_variant
     generator.q51_row_publish = q51_row_publish
@@ -1349,6 +1363,8 @@ def _bind(
     if runner is not None:
         runner.dense_f16_pair_enabled = dp2_pair_enabled
         runner.dense_mmq_token64_enabled = dense_mmq_token64_enabled
+        runner.dense_mmq_raw_vector_enabled = dense_mmq_raw_vector_enabled
+        runner.dense_mmq_vec4_enabled = dense_mmq_vec4_enabled
         runner.qsa_prefill_head_mode = qsa_prefill_head_mode
         runner.gdn_prefill_variant = gdn_prefill_variant
         runner.q51_row_publish = q51_row_publish

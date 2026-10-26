@@ -34,12 +34,17 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     Q51_IU8_EXACT_ENV,Q51_PAIR2_PREEMPTING_ENV,Q51_PAIR2_GATE_ENV,
     q51_pair2_control_record,
     Q8_DOWN_CHAIN_GATES,q8_down_control_record,Q8_MAPPED_DOWN_MAP_GATE,
-    q8_mapped_down_control_record)
+    q8_mapped_down_control_record,
+    MMQ_VECTOR_ROUTE_PACKAGES,mmq_token64_control_record,mmq_vector_control_record)
 
 
 def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.environ):
     if package == "mmq-token64":
         # Request-local on the runner; the prefill call site binds the arm.
+        return
+    if package in {"q8-mmq-raw-vector", "q8-mmq-vec4"}:
+        # Request-local on the runner; ``route_scope`` admits the MMQ parent
+        # prerequisite and binds the arm around the measured prefill.
         return
     if package == "q5k-iu8-exact":
         # The q5k opt-out arm de-groups layer 2 entirely (its only grouped
@@ -184,9 +189,15 @@ def main():
     if args.route_package == "q8-mmq-prepack":
         flag = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"
     if args.route_package == "q8-mmq-vec4":
-        flag = "HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4"
+        # Request-local on the runner; no env key names this selection.
+        flag = ""
     if args.route_package == "q8-mmq-raw-vector":
-        flag = "HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR"
+        # Request-local on the runner; no env key names this selection.
+        flag = ""
+    if args.route_package == "mmq-token64":
+        # Request-local on the runner; no env key names this selection. The
+        # arm admits the MMQ parent it rides through ``route_scope``.
+        flag = ""
     if args.route_package == "q8-down-row4":
         flag = "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"
     if args.route_package == "q51-fold128":
@@ -551,6 +562,23 @@ def main():
                 "published_value": generator.runner.q8_down_register,
                 "mapped_owner_runner_field": generator.runner.q8_mapped_down,
             }
+        if args.route_package in MMQ_VECTOR_ROUTE_PACKAGES:
+            # The plan publishes the child on the runner and ``route_scope``
+            # admits the parent prerequisite per arm, so the premise asserted
+            # here is the published decision; the scope fails loudly if the
+            # parent or the prepacked mapping cannot be provisioned.
+            field = ("dense_mmq_raw_vector_enabled"
+                     if args.route_package == "q8-mmq-raw-vector"
+                     else "dense_mmq_vec4_enabled")
+            assert getattr(generator.runner, field) is True, (
+                "production must publish the MMQ vector child")
+            report["selection_control"] = mmq_vector_control_record(
+                args.route_package, generator.runner)
+        if args.route_package == "mmq-token64":
+            # ``route_scope`` admits the raw parent the leg rides and provisions
+            # it per arm; the published leg decision is what this gate measures.
+            report["selection_control"] = mmq_token64_control_record(
+                generator.runner)
         if args.route_package == "q8-mapped-down":
             # The plan publishes the token-major mapped admission on the runner
             # and the arm binds it per measured run. The current call's row4
@@ -828,6 +856,7 @@ def main():
             if args.route_package not in {
                 "dense-wide-padded", "gdn-wave-norm", "gdn-narrow",
                 "q51-row-publish", "q8-down-register", "q8-mapped-down",
+                "q8-mmq-raw-vector", "q8-mmq-vec4", "mmq-token64",
             }:
                 os.environ[flag] = ("f32_hidden_token_tile4_dense_exact"
                                     if args.route_package == "router-dpp" else "1")

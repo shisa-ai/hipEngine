@@ -44,6 +44,9 @@ ROW4_ENV = "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"
 QSA_H256_ENV = "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"
 Q4_BUNDLE_ENV = "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"
 Q51_PAIR_ENV = "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"
+MMQ_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"
+MMQ_PREPACK_ENV = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"
+MMQ_VECTOR_ROUTE_PACKAGES = ("q8-mmq-raw-vector", "q8-mmq-vec4")
 _BASE_SEQUENCE = ("before", "after", "after", "before", "before", "after")
 
 
@@ -594,6 +597,134 @@ def q8_mapped_down_scope(*, environment=os.environ):
 
 
 @contextlib.contextmanager
+def mmq_vector_prerequisite(runner, route_package, *, environment=os.environ):
+    """Admit the Q8 MMQ parent both vector arms measure inside.
+
+    The child is request-local runner state, but the parent it rides is not on
+    the shipped UD lane: the profile's recovery zeroes the parent switch after
+    the bind, and a prefill session with no workspace launches nothing. The arm
+    therefore admits the parent, provisions its workspace (and, for the vec4
+    arm, the prepacked mapping), restores the caller's switches on exit and
+    fails loudly when the prerequisite cannot be met - an arm that binds the
+    child without the parent measures the scalar owner at zero calls and would
+    report it as the candidate.
+
+    The raw arm counts every raw-weight launch, so the prepacked mapping must
+    stay unpublished for its window; the vec4 arm counts only the prepared
+    weights, so it needs the mapping and its sidecars. The allocations are
+    runner-owned and shared by both arms, not an arm difference.
+    """
+
+    if route_package not in MMQ_VECTOR_ROUTE_PACKAGES:
+        raise ValueError(f"{route_package} is not an MMQ vector arm")
+    raw = route_package == "q8-mmq-raw-vector"
+    forced = {
+        MMQ_PREFILL_ENV: "1",
+        MMQ_PREPACK_ENV: "0" if raw else "1",
+    }
+    previous = {key: environment.get(key) for key in forced}
+    for key, value in forced.items():
+        environment[key] = value
+    try:
+        configure = getattr(runner, "configure_mmq_prefill_resources", None)
+        if not callable(configure):
+            raise ValueError(
+                f"{route_package} needs the owning runner's MMQ provisioner; "
+                "binding the child alone would measure the scalar parent")
+        configure()
+        if not getattr(runner, "_q8_mmq_buffers", ()):
+            raise ValueError(
+                "the Q8 MMQ parent did not provision a workspace, so the arm "
+                "would measure the scalar owner at zero calls; admit it with "
+                f"{MMQ_PREFILL_ENV}=1 and configure_mmq_prefill_resources()")
+        if not raw:
+            sidecars = getattr(runner, "_q8_mmq_weight_sidecars", None)
+            if sidecars is None or not getattr(sidecars, "mapping", None):
+                raise ValueError(
+                    "the prepacked MMQ mapping did not provision, so the vec4 "
+                    "arm would measure the raw owner at zero calls; it needs "
+                    f"{MMQ_PREPACK_ENV}=1 and prepared sidecars")
+        yield {"forced": forced, "previous": previous}
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                environment.pop(key, None)
+            else:
+                environment[key] = value
+
+
+def mmq_vector_control_record(route_package, runner=None, *, environment=os.environ):
+    """The recorded control: the arm's field, and the prerequisite it forces."""
+
+    raw = route_package == "q8-mmq-raw-vector"
+    field = "dense_mmq_raw_vector_enabled" if raw else "dense_mmq_vec4_enabled"
+    forced = {MMQ_PREFILL_ENV: "1", MMQ_PREPACK_ENV: "0" if raw else "1"}
+    record = {
+        "runner_field": field,
+        "before": False,
+        "after": True,
+        "scope": "per measured run; restored on exit",
+        "prerequisite_environment": forced,
+        "prerequisite_previous": {key: environment.get(key) for key in forced},
+        "published_value": (
+            None if runner is None else getattr(runner, field, None)),
+        "provisioning": (
+            "runner.configure_mmq_prefill_resources(); the workspace and any "
+            "prepacked sidecars are runner-owned and shared by both arms"),
+        "reason": (
+            "the child is request-local runner state, but the MMQ parent it "
+            "rides is recovery-disabled on the shipped UD lane and the "
+            "prepacked mapping decides which arm can count launches, so each "
+            "arm admits and provisions its own prerequisite and restores it"),
+    }
+    if raw:
+        # A sibling decision can move this arm's own count, so it is pinned in
+        # both arms and recorded next to the field the arm does move.
+        record["sibling_pins"] = {
+            "dense_mmq_token64_enabled": {
+                "bound_value": False,
+                "published_value": (
+                    None if runner is None
+                    else getattr(runner, "dense_mmq_token64_enabled", None)),
+                "reason": (
+                    "the token64 leg remaps a matching raw-vec4 parent "
+                    "(K2560/N12288, rows>=512) onto its own owner, so an "
+                    "inherited token64 decision would count the token64 owner "
+                    "inside this arm's raw-vec4 window and would replace the "
+                    "scalar teacher the before arm measures; both arms pin it "
+                    "off"),
+            },
+        }
+    return record
+
+
+def mmq_token64_control_record(runner=None, *, environment=os.environ):
+    """The recorded control for the token64 leg and the parent it rides."""
+
+    forced = {MMQ_PREFILL_ENV: "1", MMQ_PREPACK_ENV: "0"}
+    return {
+        "runner_field": "dense_mmq_token64_enabled",
+        "before": False,
+        "after": True,
+        "scope": "per measured run; restored on exit",
+        "parent_field": "dense_mmq_raw_vector_enabled",
+        "parent_bound_value": True,
+        "prerequisite_environment": forced,
+        "prerequisite_previous": {key: environment.get(key) for key in forced},
+        "published_value": (
+            None if runner is None
+            else getattr(runner, "dense_mmq_token64_enabled", None)),
+        "provisioning": (
+            "runner.configure_mmq_prefill_resources(); the raw workspace is "
+            "runner-owned and shared by both arms"),
+        "reason": (
+            "the leg only exists on the raw-vec4 parent, and the shipped UD "
+            "lane zeroes the MMQ parent switch after the bind, so an arm that "
+            "binds the child alone measures the scalar owner at zero calls"),
+    }
+
+
+@contextlib.contextmanager
 def gdn_serial_scope(*, environment=os.environ):
     """Close the tiled GDN branch for the measured window of a serial arm.
 
@@ -638,15 +769,17 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
 
     Most packages are selected through profile-owned env keys, which
     ``_apply_mode`` binds before the run. A package whose route is request-local
-    state on the runner (the Q8 token64 dense leg, the QSA prefill head
+    state on the runner (the Q8 MMQ lane children, the QSA prefill head
     grouping) is selected here instead, so neither arm writes a process-wide
-    switch and the profile's own decision comes back on exit. The serial GDN
-    arms are the exception that needs both: the leaf is runner state, but
-    whether it serves the chunk at all is the profile's tiled branch, so the
-    scope closes that branch for the measured window and restores it.
+    switch and the profile's own decision comes back on exit. The Q8 MMQ vector
+    arms also admit and provision the parent lane they ride, because the child
+    alone measures nothing. The serial GDN arms are the exception that needs
+    both: the leaf is runner state, but whether it serves the chunk at all is
+    the profile's tiled branch, so the scope closes that branch for the measured
+    window and restores it.
     """
 
-    from hipengine.runtime.gguf_linear import q8_mmq_token64_diagnostic
+    from hipengine.runtime.gguf_linear import q8_mmq_lane_diagnostic
     from hipengine.runtime.qwen4_exp_runner import (
         GDN_PREFILL_NARROW_VARIANT, GDN_PREFILL_WIDE_VARIANT, gdn_prefill_variant,
         qsa_prefill_head_mode,
@@ -655,7 +788,52 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
     if route_package == "mmq-token64":
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
-        return q8_mmq_token64_diagnostic(mode == "after")
+        if runner is None:
+            # The leg only exists on the raw-vec4 parent, which the shipped UD
+            # lane does not leave provisioned, so an arm without the owning
+            # runner would measure the scalar owner at zero calls.
+            raise ValueError(
+                "mmq-token64 needs the owning runner; the leg only exists on "
+                "the raw-vec4 parent and that parent is recovery-disabled on "
+                "the shipped UD lane")
+        # The parent the leg rides is not provisioned on the shipped lane: the
+        # recovery zeroes the parent switch after the bind, and a prefill
+        # session with no workspace launches nothing. Both arms admit the same
+        # raw prerequisite the raw-vector package uses - the prepacked mapping
+        # must stay unpublished or the raw-vec4 parents the leg remaps never
+        # appear - and then move only the token64 decision.
+        return _combined_scope(
+            mmq_vector_prerequisite(
+                runner, "q8-mmq-raw-vector", environment=environment),
+            q8_mmq_lane_diagnostic(token64=mode == "after", raw_vector=True))
+    if route_package in MMQ_VECTOR_ROUTE_PACKAGES:
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            # Binding nothing would measure whatever the plan published and
+            # report it as the arm, so the diagnostic must name its runner.
+            raise ValueError(
+                f"{route_package} needs the owning runner; binding no selection "
+                "would measure the plan's own MMQ owner")
+        raw = route_package == "q8-mmq-raw-vector"
+        # The parent and the prepacked mapping decide whether the counted child
+        # can launch at all, so the arm admits them and restores the caller's
+        # values on exit. The diagnostic moves exactly one decision: the raw arm
+        # leaves the prepacked child at the plan's value and the vec4 arm leaves
+        # the raw child at it, because the two paths are exclusive per weight.
+        # The raw arm additionally pins the token64 leg off in both arms: that
+        # leg remaps a matching raw-vec4 parent onto its own owner, which would
+        # count a different kernel inside this arm's window and would replace
+        # the scalar teacher the before arm measures. The vec4 arm counts the
+        # prepared weights, which the token64 leg never remaps, so it keeps the
+        # plan's token64 value.
+        return _combined_scope(
+            mmq_vector_prerequisite(
+                runner, route_package, environment=environment),
+            q8_mmq_lane_diagnostic(
+                token64=False if raw else None,
+                raw_vector=(mode == "after") if raw else None,
+                vec4=None if raw else (mode == "after")))
     if route_package in {"qsa-head-pair", "qsa-head-quad"}:
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
@@ -815,6 +993,10 @@ def _apply_mode(
         if route_package == "mmq-token64":
             # Request-local on the runner; ``route_scope`` binds the arm.
             return
+        if route_package in MMQ_VECTOR_ROUTE_PACKAGES:
+            # Request-local on the runner; ``route_scope`` admits the parent
+            # prerequisite and binds the arm.
+            return
         if route_package in {"qsa-head-pair", "qsa-head-quad"}:
             # Request-local on the runner; ``route_scope`` binds the arm.
             return
@@ -840,10 +1022,6 @@ def _apply_mode(
             flag = "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"
         if route_package == "q8-mmq-prepack":
             flag = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"
-        if route_package == "q8-mmq-vec4":
-            flag = "HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4"
-        if route_package == "q8-mmq-raw-vector":
-            flag = "HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR"
         if route_package == "q8-down-row4":
             flag = "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"
         if route_package == "q51-fold128":
@@ -1498,6 +1676,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
     artifact["diagnostic_subset"] = bool(args.case_id)
     artifact["screen_only"] = args.screen_only
+    if args.route_package in MMQ_VECTOR_ROUTE_PACKAGES:
+        artifact["selection_control"] = mmq_vector_control_record(
+            args.route_package, generator.runner)
+    if args.route_package == "mmq-token64":
+        artifact["selection_control"] = mmq_token64_control_record(
+            generator.runner)
     if args.route_package=="qsa-head-quad":
         artifact["arms"]={
             "before":{"sparse_attention":"strict_h256_page256_wave_rows_spans"},

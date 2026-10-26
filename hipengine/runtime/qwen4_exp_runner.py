@@ -214,8 +214,8 @@ from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_F32,
     launch_gguf_linear,
     launch_gguf_linear_decode_rows,
+    q8_mmq_lane_session,
     q8_mmq_prefill_session,
-    q8_mmq_token64_session,
     resolve_q8_mmq_prefill_policy,
 )
 from hipengine.kernels.cpu_reference.qwen4_exp import (
@@ -8018,9 +8018,14 @@ class Qwen4ExpGGUFResidentModelRunner:
     # runner; an unbound runner keeps the parent route. This is the request's
     # own decision, not the effective one: a diagnostic scope may outrank it.
     dense_f16_pair_enabled: bool = False
-    # Same shape for the Q8 raw-MMQ dense leg: the profile publishes whether the
-    # token64 owner may replace the raw-vec4 parent for this runner's prefill.
+    # Same shape for the Q8 MMQ lane: the profile publishes which variant
+    # siblings this runner's prefill may select. Publication is independent of
+    # the MMQ parent's own switch, so a diagnostic that re-enables
+    # HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL after the bind still gets the children
+    # the production plan selected.
     dense_mmq_token64_enabled: bool = False
+    dense_mmq_raw_vector_enabled: bool = False
+    dense_mmq_vec4_enabled: bool = False
     # H256 QSA prefill head grouping, published from the plan's own selection
     # ("quad" on the UD lane). "pair" is diagnostic-only and never published; an
     # unbound runner keeps the single-head parent.
@@ -8445,10 +8450,19 @@ class Qwen4ExpGGUFResidentModelRunner:
                 prepacked_weights=prepacked,
             ),
             token64=bool(self.dense_mmq_token64_enabled),
+            raw_vector=bool(self.dense_mmq_raw_vector_enabled),
+            vec4=bool(self.dense_mmq_vec4_enabled),
         )
 
     @contextlib.contextmanager
-    def _q8_mmq_scopes(self, session_scope, *, token64: bool):
+    def _q8_mmq_scopes(
+        self,
+        session_scope,
+        *,
+        token64: bool,
+        raw_vector: bool,
+        vec4: bool,
+    ):
         """Bind this runner's MMQ lane decisions around the workspace it owns.
 
         Both scopes open on ``__enter__`` and unwind in reverse order, so a
@@ -8456,7 +8470,9 @@ class Qwen4ExpGGUFResidentModelRunner:
         exception inside the body restores both.
         """
 
-        with session_scope, q8_mmq_token64_session(token64):
+        with session_scope, q8_mmq_lane_session(
+            token64=token64, raw_vector=raw_vector, vec4=vec4,
+        ):
             yield
 
     def target_verify_output(self, rows: int) -> Qwen4ExpTargetVerifyOutput:

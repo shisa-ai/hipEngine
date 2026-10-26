@@ -939,8 +939,8 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL` | production profile | Admits the MMQ prefill session for Q8_0 dense projections. |
 | `HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES` | unset (`2` or `3`) | Plane count override for the raw Q8 MMQ policy. |
 | `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK` | production profile | Uses prepacked weight sidecars in the Q8 MMQ prefill session. |
-| `HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4` | production profile | Remaps the prepacked MMQ variant to its vec4 sibling. |
-| `HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR` | production profile | Remaps the guarded MMQ prefill to the raw-vec4 variant (rows>=64). |
+| `HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4` | retired | No longer read. The owning MMQ session carries prepacked vector selection; explicit scoped diagnostics preserve the scalar comparison. |
+| `HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR` | retired | No longer read. The owning MMQ session carries raw vector selection, preserving the rows>=64 parent-variant guard and token64 dependency. |
 | `HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE` | unset | Production keeps off; admits the MMQ route for the attention gate projection. |
 
 ## Build-ablation variables

@@ -2273,59 +2273,142 @@ def q8_mmq_prefill_session(
         _q8_mmq_prefill_session.reset(token)
 
 
-# The token64 dense leg is a property of the prefill that owns this workspace,
-# not a process-wide switch: the execution profile publishes the decision to the
-# runner, and the runner binds it around its own chunked prefill. The raw-vec4
-# parent stays the unbound default.
-_q8_mmq_token64_session: ContextVar[bool] = ContextVar(
-    "gguf_q8_mmq_token64_session", default=False,
+# The Q8 MMQ variant selections are properties of the prefill that owns this
+# workspace, not process-wide switches: the execution profile publishes the
+# decisions to the runner, and the runner binds them around its own chunked
+# prefill. One context carries all three because they are one selection over the
+# same lane - the token64 leg only exists on the raw-vec4 parent, and the
+# prepacked child only exists where a prepared sidecar is published. The scalar
+# parent set is the unbound default.
+@dataclass(frozen=True)
+class Q8MMQLaneSelection:
+    """Which Q8 MMQ variant siblings the enclosing prefill may select."""
+
+    token64: bool = False
+    raw_vector: bool = False
+    vec4: bool = False
+
+
+_PARENT_Q8_MMQ_LANE = Q8MMQLaneSelection()
+
+_q8_mmq_lane_session: ContextVar[Q8MMQLaneSelection] = ContextVar(
+    "gguf_q8_mmq_lane_session", default=_PARENT_Q8_MMQ_LANE,
 )
-_q8_mmq_token64_control: ContextVar[bool | None] = ContextVar(
-    "gguf_q8_mmq_token64_control", default=None,
+
+
+@dataclass(frozen=True)
+class _Q8MMQLaneOverride:
+    """A diagnostic arm's per-field replacement; ``None`` keeps the request."""
+
+    token64: bool | None = None
+    raw_vector: bool | None = None
+    vec4: bool | None = None
+
+    def is_empty(self) -> bool:
+        return (self.token64 is None and self.raw_vector is None
+                and self.vec4 is None)
+
+    def applied_to(self, lane: Q8MMQLaneSelection) -> Q8MMQLaneSelection:
+        return Q8MMQLaneSelection(
+            token64=lane.token64 if self.token64 is None else bool(self.token64),
+            raw_vector=(
+                lane.raw_vector if self.raw_vector is None
+                else bool(self.raw_vector)),
+            vec4=lane.vec4 if self.vec4 is None else bool(self.vec4),
+        )
+
+    def merged_with(self, inner: "_Q8MMQLaneOverride") -> "_Q8MMQLaneOverride":
+        """This override with ``inner``'s named fields replacing it."""
+
+        return _Q8MMQLaneOverride(
+            token64=self.token64 if inner.token64 is None else inner.token64,
+            raw_vector=(
+                self.raw_vector if inner.raw_vector is None
+                else inner.raw_vector),
+            vec4=self.vec4 if inner.vec4 is None else inner.vec4,
+        )
+
+
+_q8_mmq_lane_control: ContextVar[_Q8MMQLaneOverride | None] = ContextVar(
+    "gguf_q8_mmq_lane_control", default=None,
 )
+
+
+def q8_mmq_lane_selection() -> Q8MMQLaneSelection:
+    """The lane this prefill may use, with any diagnostic override applied."""
+
+    lane = _q8_mmq_lane_session.get()
+    control = _q8_mmq_lane_control.get()
+    return lane if control is None else control.applied_to(lane)
 
 
 def q8_mmq_token64_enabled() -> bool:
-    """Whether this prefill may remap the raw MMQ dense leg to the token64 owner.
+    """Whether this prefill may remap the raw MMQ dense leg to token64."""
 
-    An unbound context is the raw-vec4 parent; a diagnostic scope may outrank
-    the request's decision so an A/B can still run both arms.
-    """
+    return q8_mmq_lane_selection().token64
 
-    control = _q8_mmq_token64_control.get()
-    return _q8_mmq_token64_session.get() if control is None else bool(control)
+
+def q8_mmq_raw_vector_enabled() -> bool:
+    """Whether this prefill may use the raw-vec4 MMQ sibling."""
+
+    return q8_mmq_lane_selection().raw_vector
+
+
+def q8_mmq_vec4_enabled() -> bool:
+    """Whether this prefill may use the prepacked-vec4 MMQ sibling."""
+
+    return q8_mmq_lane_selection().vec4
 
 
 @contextlib.contextmanager
-def q8_mmq_token64_session(enabled: bool = True) -> Iterator[None]:
-    """Bind the owning prefill's lane decision for the enclosed launches.
+def q8_mmq_lane_session(
+    *,
+    token64: bool = False,
+    raw_vector: bool = False,
+    vec4: bool = False,
+) -> Iterator[None]:
+    """Bind the owning prefill's lane decisions for the enclosed launches.
 
     A nested scope replaces the enclosing one and restores it on exit, so an
     explicit ``False`` keeps the parent route inside an enabled prefill.
     """
 
-    token = _q8_mmq_token64_session.set(bool(enabled))
+    token = _q8_mmq_lane_session.set(Q8MMQLaneSelection(
+        token64=bool(token64),
+        raw_vector=bool(raw_vector),
+        vec4=bool(vec4),
+    ))
     try:
         yield
     finally:
-        _q8_mmq_token64_session.reset(token)
+        _q8_mmq_lane_session.reset(token)
 
 
 @contextlib.contextmanager
-def q8_mmq_token64_diagnostic(enabled: bool | None) -> Iterator[None]:
+def q8_mmq_lane_diagnostic(
+    *,
+    token64: bool | None = None,
+    raw_vector: bool | None = None,
+    vec4: bool | None = None,
+) -> Iterator[None]:
     """Explicit scoped control for A/B harnesses; it outranks the lane decision.
 
-    ``None`` leaves the request's own decision in force.
+    ``None`` leaves that field's request decision in force, and a nested scope
+    keeps the fields it does not name.
     """
 
-    if enabled is None:
+    override = _Q8MMQLaneOverride(
+        token64=token64, raw_vector=raw_vector, vec4=vec4)
+    if override.is_empty():
         yield
         return
-    token = _q8_mmq_token64_control.set(bool(enabled))
+    enclosing = _q8_mmq_lane_control.get()
+    token = _q8_mmq_lane_control.set(
+        override if enclosing is None else enclosing.merged_with(override))
     try:
         yield
     finally:
-        _q8_mmq_token64_control.reset(token)
+        _q8_mmq_lane_control.reset(token)
 
 
 def resolve_q8_mmq_prefill_policy(
@@ -9680,7 +9763,7 @@ def _q8_mmq_token64_key(key: KernelKey, *, rows: int, hidden: int, outputs: int)
 
 def _q8_mmq_raw_vector_key(key: KernelKey, *, rows: int) -> KernelKey:
     if (rows < 64 or key.variant != "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out"
-            or os.environ.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR","0") != "1"):
+            or not q8_mmq_raw_vector_enabled()):
         return key
     candidate = KernelKey(key.backend,key.layer,key.quant,
                           "mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out")
@@ -9688,8 +9771,9 @@ def _q8_mmq_raw_vector_key(key: KernelKey, *, rows: int) -> KernelKey:
 
 
 def _q8_mmq_vec4_key(key: KernelKey, *, rows: int) -> KernelKey:
-    if (rows < 64 or key.variant != "mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out"
-            or os.environ.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4", "0") != "1"):
+    if (rows < 64
+            or key.variant != "mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out"
+            or not q8_mmq_vec4_enabled()):
         return key
     candidate = KernelKey(key.backend, key.layer, key.quant,
                           "mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out")
