@@ -118,9 +118,7 @@ def simulated_runner(config, *, context, chunk):
     tracker = memory._MemoryStatsTracker()
     with patch.object(memory, "_MEMORY_STATS", tracker), patch.object(
         memory, "get_hip_runtime", side_effect=RuntimeError("unexpected GPU runtime")
-    ), patch.object(module, "get_hip_runtime", side_effect=RuntimeError("unexpected GPU runtime")), patch.object(
-        module, "_configure_qwen4_exp_moe_mmq_scratch", lambda *args, **kwargs: None
-    ):
+    ), patch.object(module, "get_hip_runtime", side_effect=RuntimeError("unexpected GPU runtime")):
         try:
             module.Qwen4ExpGGUFResidentModelRunner._allocate(runner)
             yield runner, runtime

@@ -321,13 +321,13 @@ def test_pair2_scope_changes_nothing_until_entered():
 
 def test_pair2_control_names_every_preemptor():
     # The routed F16 down is the production owner; the rest sit behind it. The
-    # pair2 gate is deliberately not in the forced list.
+    # pair2 gate is deliberately not in the forced list, and the retired
+    # ds4-MMQ Q5_1 suffix is no longer a preemptor because nothing reads it.
     assert Q51_PAIR2_PREEMPTING_ENV == (
         "HIPENGINE_QWEN4_EXP_ROUTED_F16",
         "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT",
         "HIPENGINE_QWEN4_EXP_Q5_1_WMMA",
         "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
-        "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL",
         "HIPENGINE_QWEN4_EXP_T16_DOWN",
     )
     assert Q51_PAIR2_GATE_ENV not in Q51_PAIR2_PREEMPTING_ENV

@@ -19,8 +19,6 @@ from hipengine.generation.qwen4_exp_profiles import (
     PRODUCTION_MOE_PREFILL_ENV,
     PRODUCTION_Q4_DP4A_DECODE_LAYERS,
     PRODUCTION_Q4_IU8_PREFILL_LAYERS,
-    PRODUCTION_Q4_K_MMQ_PREFILL_LAYERS,
-    PRODUCTION_Q5_1_MMQ_PREFILL_LAYERS,
     PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS,
     PRODUCTION_Q8_WMMA_PREFILL_LAYERS,
     QWEN4_EXP_BACKEND,
@@ -41,6 +39,14 @@ from hipengine.runtime.qwen4_exp_runner import (
 # DP-2's shared-cast loan is a request-local runner decision. The gfx1151 pair
 # policy still owns which rows, layers and ordered pairs may use it.
 DP2_PAIR_ENV = "HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR"
+# The ds4-MMQ MoE suffixes were superseded by the certified WMMA-MoE27 route and
+# retired: no profile binds them and no runner reads them.
+RETIRED_DS4_MMQ_ENV = (
+    "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL",
+    "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS",
+    "HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL",
+    "HIPENGINE_QWEN4_EXP_Q4_K_MMQ_LAYERS",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -50,10 +56,6 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         PRODUCTION_MOE_PREFILL_ENV,
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE",
-        "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL",
-        "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS",
-        "HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL",
-        "HIPENGINE_QWEN4_EXP_Q4_K_MMQ_LAYERS",
         "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL",
         "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS",
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS",
@@ -114,6 +116,24 @@ def test_removed_dense_split_env_has_no_profile_or_manifest_binding(profile, mon
     assert os.environ[name] == "0,1,2"  # inert legacy value; no runtime reader
     assert name not in last_prebinder_conflicts()
     assert _resolve(profile, quant="gguf_ud_q4_k_xl").manifest_sha256 == original_manifest
+
+
+def test_retired_ds4_mmq_selectors_leave_no_runtime_reader() -> None:
+    """The suffixes were superseded; their selectors, layer lists and scratch
+    plumbing are gone rather than pinned off."""
+
+    import inspect
+
+    from hipengine.runtime import qwen4_exp_runner
+
+    source = inspect.getsource(qwen4_exp_runner)
+    for retired in RETIRED_DS4_MMQ_ENV:
+        for line in source.splitlines():
+            if retired in line:
+                assert "environ" not in line and "getenv" not in line, line
+    assert not hasattr(qwen4_exp_runner, "_configure_qwen4_exp_moe_mmq_scratch")
+    assert not hasattr(qwen4_exp_runner, "_qwen4_exp_q5_1_mmq_layer_allowed")
+    assert not hasattr(qwen4_exp_runner, "_qwen4_exp_q4_k_mmq_layer_allowed")
 
 
 def _selection_map(resolved):
@@ -447,12 +467,10 @@ def test_historical_q4km_binder_structure_not_qualification(
     row4 = _selection_map(production)[("linear", "ungrouped_prefill_rows_ge64_q5k_gate_up")]
     assert row4["selected_variant"] == "selected_grouped_row4_gemv_bf16_bf16_out"
     assert row4["strict_fallback_variant"] == "selected_gemv_bf16_bf16_out"
-    # The ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
-    # route; their envs stay off so they cannot preempt it.
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS"] == ""
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_K_MMQ_LAYERS"] == ""
+    # The ds4-MMQ MoE suffixes were superseded by the certified WMMA-MoE27
+    # route and retired outright; no profile names them any more.
+    for retired in RETIRED_DS4_MMQ_ENV:
+        assert retired not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_TILE_M"] == "16"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_TILE_N"] == "16"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL"] == "1"
@@ -542,10 +560,8 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert strict_generator.qsa_prefill_head_mode == "parent"
     assert "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR" not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS"] == ""
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_K_MMQ_LAYERS"] == ""
+    for retired in RETIRED_DS4_MMQ_ENV:
+        assert retired not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS"] == ""

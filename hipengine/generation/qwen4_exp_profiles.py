@@ -135,8 +135,6 @@ PRODUCTION_Q8_WMMA_PREFILL_LAYERS = tuple(range(16, 48))
 # that route's gate artifact byte for byte.
 PRODUCTION_Q8_DENSE_WIDE_PREFILL_LAYERS = tuple(range(13, 48))
 PRODUCTION_Q4_IU8_PREFILL_LAYERS = tuple(range(35, 48))
-PRODUCTION_Q5_1_MMQ_PREFILL_LAYERS = tuple(range(32, 48))
-PRODUCTION_Q4_K_MMQ_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_Q4_DP4A_DECODE_LAYERS = (
     0, 2, 5, 6, 8, 9, 10, 11
 ) + tuple(range(13, 48))
@@ -1259,12 +1257,9 @@ def _bind(
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256" if production else "0",
-        # ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
-        # routing on layers 27-47.
-        "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL": "0",
-        "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS": "",
-        "HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL": "0",
-        "HIPENGINE_QWEN4_EXP_Q4_K_MMQ_LAYERS": "",
+        # The ds4-MMQ MoE suffixes (Q5_1/Q4_K selected prefill) were superseded
+        # by the certified WMMA-MoE27 routing on layers 27-47 and retired, so no
+        # profile binds them and no runner reads them.
         "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS": (
             ",".join(map(str, PRODUCTION_GDN_PEER_PREFILL_LAYERS))
@@ -1628,8 +1623,6 @@ __all__ = [
     "PRODUCTION_GDN_PEER_PREFILL_LAYERS",
     "PRODUCTION_MOE_PREFILL_ENV",
     "PRODUCTION_Q4_DP4A_DECODE_LAYERS",
-    "PRODUCTION_Q4_K_MMQ_PREFILL_LAYERS",
-    "PRODUCTION_Q5_1_MMQ_PREFILL_LAYERS",
     "QWEN4_EXP_BACKEND",
     "QWEN4_EXP_MODEL",
     "QWEN4_EXP_QUANTS",

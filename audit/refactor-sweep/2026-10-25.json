@@ -3938,7 +3938,8 @@
         {
           "line": 3557,
           "text": "- The named production manifest now owns `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`,",
-          "status": "pending"
+          "status": "pending",
+          "evidence": ["Removed superseded Q5_1/Q4_K MMQ selectors/layer constants/workspace+dispatch plumbing; registered kernels remain. Q8 MMQ environment transport still open. CPU288+focused, GPU289, public290 and final gates pass. Worklog: worklog/entries/20261026T233425.920612Z-cleanup-refactor-r0149-mmq-0b7fec.md."]
         },
         {
           "line": 3565,

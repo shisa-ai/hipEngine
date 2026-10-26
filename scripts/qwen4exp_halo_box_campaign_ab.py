@@ -586,22 +586,21 @@ GDN_COLWARPS_ENV = "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"
 #: Owners that preempt the grouped pair2 Q5_1 down chain - and with it the
 #: row-publish selection - on the shipped lane: the routed F16 WMMA down (the
 #: actual production owner), the exact iu8-risk+repair down, grouped WMMA,
-#: grouped MoE prefill, the ds4 MMQ suffix and the T16 expert-major down. A
-#: row-publish arm holds every one of them off for both
-#: arms; the profile's own values come back on exit.
+#: grouped MoE prefill, and the T16 expert-major down. A row-publish arm holds
+#: every one of them off for both arms; the profile's own values come back on
+#: exit. The retired ds4-MMQ Q5_1 suffix is not a preemptor: nothing reads it.
 Q51_PAIR2_PREEMPTING_ENV = (
     "HIPENGINE_QWEN4_EXP_ROUTED_F16",
     "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT",
     "HIPENGINE_QWEN4_EXP_Q5_1_WMMA",
     "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
-    "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL",
     "HIPENGINE_QWEN4_EXP_T16_DOWN",
 )
 #: The pair2 chain's own gate. It must stay on for the counted leaf to run, so
 #: the arm records it instead of forcing it.
 Q51_PAIR2_GATE_ENV = "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN"
 #: Kept for callers that name the single exact owner.
-Q51_IU8_EXACT_ENV = Q51_PAIR2_PREEMPTING_ENV[1]
+Q51_IU8_EXACT_ENV = "HIPENGINE_QWEN4_EXP_Q51_IU8_EXACT"
 #: The pair2 chain's own selection gate. It decides whether the parent variant
 #: is the pair2 leaf at all, so a fold arm requires it and records it rather
 #: than forcing it: with the gate off neither fold can launch.

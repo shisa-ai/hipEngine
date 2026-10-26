@@ -908,10 +908,8 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT` | production profile | Exact iu8-risk Q4 gate/up route (the layer-2 Q4 route). |
 | `HIPENGINE_QWEN4_EXP_Q4_IU8_PLANES` | `3` | Plane count for the iu8-risk Q4 gate/up variant: `3` (default) or `2` (the p2 variant). |
 | `HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT` | `4.0` | Risk multiplier margin for the iu8 risk+repair Q4 route; the default keeps a >=4x margin at the measured 1.50-1.82x operation-complete speedup. |
-| `HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL` | `0` (production keeps off) | Builds the Q4_K ds4-MMQ selected prefill library and workspace. |
-| `HIPENGINE_QWEN4_EXP_Q4_K_MMQ_LAYERS` | unset | Comma-separated layer list admitting the Q4_K MMQ route. |
-| `HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL` | `0` (production keeps off) | Builds the Q5_1 ds4-MMQ selected prefill library and workspace. |
-| `HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS` | unset | Comma-separated layer list admitting the Q5_1 MMQ route. |
+| `HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL` / `HIPENGINE_QWEN4_EXP_Q4_K_MMQ_LAYERS` | retired | No longer read. Superseded Q4_K ds4-MMQ selection and workspace plumbing are removed; registered kernels remain available for explicit diagnostics. |
+| `HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL` / `HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS` | retired | No longer read. Superseded Q5_1 ds4-MMQ selection and workspace plumbing are removed; active Q8 MMQ and strict fallback paths are unchanged. |
 | `HIPENGINE_QWEN4_EXP_Q5_1_WAVE64` | unset | Uses the wave64 Q5_1 selected GEMV decode variant. |
 | `HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT` | `0` | Default-off exact iu8-risk+repair selected Q5_K gate/up route (the layer-2 Q5_K layer). |
 | `HIPENGINE_QWEN4_EXP_Q5_K_IU8_RISK_MULT` | `16.0` | Risk multiplier for the Q5_K iu8 route; 16.0 keeps the route bit-identical to the strict parent in practice. |

@@ -93,7 +93,6 @@ from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
     qwen35_moe_group_prefix_active,
     qwen35_moe_group_scatter_gather_lowp,
     qwen35_moe_group_scatter,
-    qwen35_moe_mmq32_tile_map,
     qwen35_moe_wmma_tile_map,
 )
 from hipengine.kernels.hip_gfx1100.moe.router import (
@@ -145,14 +144,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
     gguf_q8_0_selected_grouped_prefill_compact_bf16_bf16_out,
     gguf_q8_0_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
     gguf_q8_0_wmma_prefill_bf16_bf16_out,
-)
-from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
-    gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out,
-    gguf_q8_1_mmq_ds4_pack_bf16 as gguf_q4_k_q8_1_mmq_ds4_pack_bf16,
-    gguf_q8_1_mmq_ds4_pack_bf16_d4x3 as gguf_q8_1_mmq_ds4_pack_bf16,
-)
-from hipengine.kernels.hip_gfx1100.quant.gguf_q5_1_mmq_selected_prefill import (
-    gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
     qwen4_exp_gather_bf16_lanes,
@@ -306,26 +297,6 @@ def _qwen4_exp_layer_allowed(
     return False
 
 
-def _qwen4_exp_q5_1_mmq_layer_allowed(weights: Mapping[str, GGUFDeviceWeight]) -> bool:
-    """Certified Q5_1-MMQ prefill layer set (suffix 32-47 by default)."""
-
-    return _qwen4_exp_layer_allowed(
-        weights["expert_gate"],
-        env_name="HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS",
-        default="32-47",
-    )
-
-
-def _qwen4_exp_q4_k_mmq_layer_allowed(weights: Mapping[str, GGUFDeviceWeight]) -> bool:
-    """Certified Q4_K-MMQ prefill layer set (suffix 35-47 by default)."""
-
-    return _qwen4_exp_layer_allowed(
-        weights["expert_gate"],
-        env_name="HIPENGINE_QWEN4_EXP_Q4_K_MMQ_LAYERS",
-        default="35-47",
-    )
-
-
 def _qwen4_exp_q4_iu8_layer_allowed(weights: Mapping[str, GGUFDeviceWeight]) -> bool:
     """iu8-WMMA selected-dual prefill layer set (dp4a class, screened suffix)."""
 
@@ -389,57 +360,6 @@ def qwen4_exp_gdn_tile16_prefill_selected(
         and num_v_heads in (32, 48)
         and head_dim == 128
     )
-
-
-def _configure_qwen4_exp_moe_mmq_scratch(
-    moe: object,
-    *,
-    rows: int,
-    hidden: int,
-    ffn: int,
-    top_k: int,
-    runtime: HipRuntime,
-) -> None:
-    compact_capacity = rows * top_k
-    if (
-        os.environ.get("HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL", "0")
-        not in {"", "0", "false", "False"}
-        and ffn % 128 == 0
-        and getattr(moe, "q5_1_mmq_ds4_workspace", None) is None
-    ):
-        from hipengine.kernels.hip_gfx1100.quant.gguf_q5_1_mmq_selected_prefill import (
-            build_gguf_q5_1_mmq_selected_prefill,
-            ds4_workspace_nbytes,
-        )
-
-        moe.q5_1_mmq_ds4_workspace = malloc(
-            ds4_workspace_nbytes(compact_capacity, ffn), runtime=runtime
-        )
-        moe.q5_1_mmq_library = build_gguf_q5_1_mmq_selected_prefill(load=True)
-    if (
-        os.environ.get("HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL", "0")
-        not in {"", "0", "false", "False"}
-        and hidden % 128 == 0
-        and getattr(moe, "q4_k_mmq_ds4_workspace", None) is None
-    ):
-        from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
-            build_gguf_q4_k_q8_1_selected_prefill,
-        )
-
-        moe.q4_k_mmq_ds4_workspace = malloc(
-            compact_capacity * (hidden // 128) * 144, runtime=runtime
-        )
-        moe.q4_k_mmq_identity = malloc(
-            compact_capacity * DType.INT64.itemsize, runtime=runtime
-        )
-        identity = np.arange(compact_capacity, dtype=np.int64)
-        copy_host_array_to_device(
-            moe.q4_k_mmq_identity,
-            identity,
-            identity.nbytes,
-            runtime=runtime,
-        )
-        moe.q4_k_mmq_library = build_gguf_q4_k_q8_1_selected_prefill(load=True)
 
 
 def stage_qwen4_exp_ple_rows(
@@ -1808,14 +1728,6 @@ class Qwen4ExpQSALayerScratch:
                 runtime=active_runtime,
             )
             owners.append(moe)
-            _configure_qwen4_exp_moe_mmq_scratch(
-                moe,
-                rows=rows,
-                hidden=hidden,
-                ffn=ffn,
-                top_k=top_k,
-                runtime=active_runtime,
-            )
             after_attention = malloc(rows * branches * hidden * 2, runtime=active_runtime)
             owners.append(after_attention)
             moe_f32 = malloc(rows * hidden * 4, runtime=active_runtime)
@@ -1955,14 +1867,6 @@ class Qwen4ExpGDNLayerScratch:
                 runtime=active_runtime,
             )
             owners.append(moe)
-            _configure_qwen4_exp_moe_mmq_scratch(
-                moe,
-                rows=rows,
-                hidden=hidden,
-                ffn=ffn,
-                top_k=top_k,
-                runtime=active_runtime,
-            )
             after_attention = malloc(rows * branches * hidden * 2, runtime=active_runtime)
             owners.append(after_attention)
             moe_f32 = malloc(rows * hidden * 4, runtime=active_runtime)
@@ -2094,11 +1998,6 @@ class Qwen4ExpMoEScratch:
     group_active_count: DeviceBuffer
     runtime: HipRuntime
     closed: bool = False
-    q5_1_mmq_ds4_workspace: DeviceBuffer | None = None
-    q5_1_mmq_library: object | None = None
-    q4_k_mmq_ds4_workspace: DeviceBuffer | None = None
-    q4_k_mmq_identity: DeviceBuffer | None = None
-    q4_k_mmq_library: object | None = None
     group_risk_count: DeviceBuffer | None = None
     group_risk_indices: DeviceBuffer | None = None
 
@@ -2199,15 +2098,6 @@ class Qwen4ExpMoEScratch:
             )
         ):
             free(buffer, runtime=self.runtime)
-        if self.q5_1_mmq_ds4_workspace is not None:
-            free(self.q5_1_mmq_ds4_workspace, runtime=self.runtime)
-            self.q5_1_mmq_ds4_workspace = None
-        if self.q4_k_mmq_identity is not None:
-            free(self.q4_k_mmq_identity, runtime=self.runtime)
-            self.q4_k_mmq_identity = None
-        if self.q4_k_mmq_ds4_workspace is not None:
-            free(self.q4_k_mmq_ds4_workspace, runtime=self.runtime)
-            self.q4_k_mmq_ds4_workspace = None
         if self.group_risk_indices is not None:
             free(self.group_risk_indices, runtime=self.runtime)
             self.group_risk_indices = None
@@ -5056,9 +4946,8 @@ def _run_qwen4_exp_q51_wmma_down(
     The owner consumes a 16-row tile map and requires a positive multiple-of-16
     host row count. Only the non-exact gate/up paths build that map for the
     current invocation, so a down-only configuration (production exact gate/up
-    with the F16 down owner) would otherwise pass a stale zero, and a preceding
-    ``q4_k_mmq_prefill`` map carries 32-row geometry the F16 owner cannot
-    consume. Rebuilding the map here from this invocation's compact expert
+    with the F16 down owner) would otherwise pass a stale zero. Rebuilding the
+    map here from this invocation's compact expert
     starts makes the map and count current by construction, independent of
     which gate/up route ran. The extra map launch and D2H readback are charged
     only on this F16 down route.
@@ -5651,18 +5540,6 @@ def run_qwen4_exp_moe(
     production_grouped_moe = _qwen4_exp_production_moe_prefill_enabled(
         weights["expert_gate"], rows=rows
     )
-    q4_k_mmq_prefill = (
-        os.environ.get("HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL", "0")
-        not in {"", "0", "false", "False"}
-        and scratch.q4_k_mmq_ds4_workspace is not None
-        and scratch.q4_k_mmq_identity is not None
-        and rows >= 2
-        and hidden % 256 == 0
-        and ffn % 32 == 0
-        and weights["expert_gate"].spec.quant_key == "gguf_q4_k"
-        and weights["expert_up"].spec.quant_key == "gguf_q4_k"
-        and _qwen4_exp_q4_k_mmq_layer_allowed(weights)
-    )
     exact_grouped_down = (
         not production_grouped_moe
         and weights["expert_down"].spec.quant_key == "gguf_q5_1"
@@ -5831,18 +5708,7 @@ def run_qwen4_exp_moe(
             )
         tile_capacity = scratch.group_tile_expert.nbytes // DType.INT64.itemsize
         wmma_total_rows = 0
-        if q4_k_mmq_prefill:
-            qwen35_moe_mmq32_tile_map(
-                scratch.group_expert_start.ptr,
-                scratch.group_wmma_expert_start.ptr,
-                scratch.group_tile_expert.ptr,
-                scratch.group_wmma_total.ptr,
-                experts,
-                tile_capacity=tile_capacity,
-                stream=stream,
-                runtime=active_runtime,
-            )
-        elif not exact_grouped_down and not exact_grouped_q4_gate:
+        if not exact_grouped_down and not exact_grouped_q4_gate:
             qwen35_moe_wmma_tile_map(
                 scratch.group_expert_start.ptr,
                 scratch.group_wmma_expert_start.ptr,
@@ -5853,9 +5719,6 @@ def run_qwen4_exp_moe(
                 stream=stream,
                 runtime=active_runtime,
             )
-        if q4_k_mmq_prefill or (
-            not exact_grouped_down and not exact_grouped_q4_gate
-        ):
             wmma_total_host = np.empty(1, dtype=np.int64)
             if stream:
                 active_runtime.stream_synchronize(stream)
@@ -5866,8 +5729,7 @@ def run_qwen4_exp_moe(
                 runtime=active_runtime,
             )
             wmma_total_rows = int(wmma_total_host[0])
-            tile_rows = 32 if q4_k_mmq_prefill else 16
-            if wmma_total_rows <= 0 or wmma_total_rows > tile_capacity * tile_rows:
+            if wmma_total_rows <= 0 or wmma_total_rows > tile_capacity * 16:
                 raise RuntimeError("Qwen4Exp grouped MoE tile row count is invalid")
         if routed_f16:
             gate_quant = weights["expert_gate"].spec.quant_key
@@ -5899,43 +5761,6 @@ def run_qwen4_exp_moe(
                 tile_capacity=gate_up_capacity,
                 row_lanes_ptr=scratch.group_sorted_lanes.ptr if routed_indexed else 0,
                 top_k=top_k,
-                stream=stream,
-                runtime=active_runtime,
-            )
-        elif q4_k_mmq_prefill:
-            gguf_q4_k_q8_1_mmq_ds4_pack_bf16(
-                scratch.expert_down.ptr,
-                scratch.q4_k_mmq_ds4_workspace.ptr,
-                compact,
-                hidden,
-                stream=stream,
-                runtime=active_runtime,
-                library=scratch.q4_k_mmq_library,
-            )
-            gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out(
-                scratch.q4_k_mmq_ds4_workspace.ptr,
-                scratch.q4_k_mmq_identity.ptr,
-                scratch.group_expert_start.ptr,
-                scratch.group_wmma_expert_start.ptr,
-                scratch.group_tile_expert.ptr,
-                weights["expert_gate"].allocation("raw").tensor.ptr,
-                weights["expert_up"].allocation("raw").tensor.ptr,
-                scratch.group_gate_up.ptr,
-                compact,
-                hidden,
-                ffn,
-                ffn,
-                experts,
-                wmma_total_rows,
-                stream=stream,
-                runtime=active_runtime,
-                library=scratch.q4_k_mmq_library,
-            )
-            silu_mul_dual_out_bf16(
-                scratch.group_gate_up.ptr,
-                scratch.expert_intermediate.ptr,
-                rows=compact,
-                features=ffn,
                 stream=stream,
                 runtime=active_runtime,
             )
@@ -6406,14 +6231,6 @@ def run_qwen4_exp_moe(
             q5_wmma = production_grouped_moe or os.environ.get(
                 "HIPENGINE_QWEN4_EXP_Q5_1_WMMA", ""
             ) not in {"", "0", "false", "False"}
-            q5_mmq = (
-                os.environ.get("HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL", "0")
-                not in {"", "0", "false", "False"}
-                and scratch.q5_1_mmq_ds4_workspace is not None
-                and rows >= 2
-                and ffn % 128 == 0
-                and _qwen4_exp_q5_1_mmq_layer_allowed(weights)
-            )
             if t16_down:
                 # T16 Q5_1 expert-major down (down-leg build step 4):
                 # F16 WMMA over the bit-lossless Q5_1 tiles with the
@@ -6423,11 +6240,7 @@ def run_qwen4_exp_moe(
                 # plus the tile-cache key keep the default path untouched.
                 down_input_ptr = (
                     scratch.expert_intermediate.ptr
-                    if (
-                        exact_grouped_q4_gate
-                        or production_grouped_moe
-                        or q4_k_mmq_prefill
-                    )
+                    if (exact_grouped_q4_gate or production_grouped_moe)
                     else scratch.expert_gate.ptr
                 )
                 gguf_q5_1_t16_selected_expert_major_wmma_comp_bf16_bf16_out(
@@ -6443,38 +6256,6 @@ def run_qwen4_exp_moe(
                     experts,
                     stream=stream,
                     runtime=active_runtime,
-                )
-            elif q5_mmq:
-                down_input_ptr = (
-                    scratch.expert_intermediate.ptr
-                    if (
-                        exact_grouped_q4_gate
-                        or production_grouped_moe
-                        or q4_k_mmq_prefill
-                    )
-                    else scratch.expert_gate.ptr
-                )
-                gguf_q8_1_mmq_ds4_pack_bf16(
-                    down_input_ptr,
-                    scratch.q5_1_mmq_ds4_workspace.ptr,
-                    compact,
-                    ffn,
-                    stream=stream,
-                    runtime=active_runtime,
-                )
-                gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out(
-                    scratch.q5_1_mmq_ds4_workspace.ptr,
-                    scratch.group_expert_start.ptr,
-                    weights["expert_down"].allocation("raw").tensor.ptr,
-                    scratch.expert_down.ptr,
-                    compact,
-                    experts,
-                    ffn,
-                    hidden,
-                    3,
-                    stream=stream,
-                    runtime=active_runtime,
-                    library=scratch.q5_1_mmq_library,
                 )
             elif exact_grouped_down:
                 # PF-3 production: fused single-loop logical256 Q5_1 down
@@ -8991,19 +8772,6 @@ class Qwen4ExpGGUFResidentModelRunner:
             raise RuntimeError("Qwen4Exp runner is closed")
         self._configure_q8_mmq_prefill_resources()
         self._configure_q8_mmq_weight_sidecars()
-        cfg = self.config
-        prefill_rows = min(self.prefill_chunk_size, self.max_sequence_length)
-        for owner in (self.gdn_prefill_scratch, self.qsa_prefill_scratch):
-            if owner is None:
-                continue
-            _configure_qwen4_exp_moe_mmq_scratch(
-                owner.moe,
-                rows=prefill_rows,
-                hidden=cfg.hidden_size,
-                ffn=cfg.expert_feed_forward_length,
-                top_k=cfg.expert_used_count,
-                runtime=self.runtime,
-            )
 
     def _q8_mmq_prefill_context(self):
         """Expose the guarded Q8 MMQ session while a chunked prefill runs."""

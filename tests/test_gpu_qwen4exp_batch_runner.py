@@ -313,7 +313,6 @@ def _module_monkeypatch() -> pytest.MonkeyPatch:
     # section is pinned per runner (``_c1``) because its process env override
     # was retired; per-layer graphs keep their diagnostic env lever.
     monkey.setenv("HIPENGINE_QWEN4_EXP_LAYER_GRAPHS", "0")
-    monkey.delenv("HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL", raising=False)
     return monkey
 
 

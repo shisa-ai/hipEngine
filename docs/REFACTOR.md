@@ -2972,14 +2972,13 @@ should be removed or collapsed.
 
 ## 2026-08-29 Qwen4Exp late-layer production prefill
 
-- The named production manifest now owns `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`,
-  `HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL` (layers 32–47), and
-  `HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL` (layers 35–47). These process-global
-  env values are internal binder bridges, not independent public profiles;
-  strict binds them off and route checks fail closed even when workspaces were
-  allocated earlier in the process. Remove the env transport once resolved
-  profile state is request-local. Retain exact coltile-Q8 and grouped Q4/Q5
-  fallbacks; the Q8 (320,10240) hc-down and K%256!=0 shapes remain strict.
+- The remaining `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL` process bridge controls
+  Q8 MMQ resources; UD arithmetic recovery keeps it off. Remove its environment
+  transport when resolved profile state is request-local. Superseded Q5_1/Q4_K
+  MMQ selector/layer-list transport and workspace branches are removed; their
+  registered kernels remain available for explicit diagnostics. Preserve exact
+  coltile-Q8 and grouped Q4/Q5 fallbacks; the Q8 (320,10240) hc-down and
+  K%256!=0 shapes remain strict.
 - `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` and
   `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` were superseded for the named production
   profile by the faster admitted MMQ stack, but `PRODUCTION_MOE_PREFILL` is
