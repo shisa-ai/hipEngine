@@ -2416,11 +2416,12 @@
       "start_line": 2692,
       "end_line": 2717,
       "sha256": "8237398ea872f750eeb89292d9d29123e7f1f93384f1e980d1d13717914809d5",
-      "status": "partial-qwen4exp-runner-migrated",
+      "status": "partial-nextn-mtp-runtime-migrated",
       "evidence": [
         "Qwen4Exp batch state, runner and QSA index synchronous array uploads migrated with preserved byte offsets; GPU upload/lifetime and batch tests, CPU bundle and real HTTP physical width2 execution with traced owning helpers pass. Other model array callers and separate async contracts remain open. worklog/entries/20261026T112905.064466Z-cleanup-refactor-r0089-batch-uploads-f58cab.md.",
         "Dense/MoE MTP2 synchronous array uploads migrated; CPU bundle, focused native sampler GPU test and public ngram owning upload trace passed. Public acceptance helper not exercised by the initial probe; apparent concurrent fallback was later traced to probe TypeError, not a product restriction. Clean concurrent MTP requests pass; correction: worklog/entries/20261026T121319.257732Z-cleanup-refactor-mtp-probe-correction-7f7df7.md. worklog/entries/20261026T115712.267620Z-cleanup-refactor-r0089-mtp-uploads-039bde.md.",
         "Qwen4Exp auxiliary batch and MTP uploads migrated; focused CPU, full CPU bundle, gfx1151 GPU bundle and public batch/MTP routes passed. Mixed-target has unit-only coverage. Direct QSA row-array runtime copy remains. worklog/entries/20261026T122414.076540Z-cleanup-refactor-r0089-aux-uploads-fcbf45.md.",
+        "Qwen35 NextN/MTP runtime synchronous uploads migrated; CPU157, focused checkpoint tests, available GPU/live checks and public concurrent MTP owning trace pass. Missing Qwen3.6 fixture checks skipped; prefix/clone paths have unit coverage. worklog/entries/20261026T124729.425455Z-cleanup-refactor-r0089-nextn-runtime-c20a3c.md.",
         "Main Qwen4Exp runner and direct QSA row-array copy migrated; CPU156, focused GPU and public batch/MTP pass. Public short prompts did not reach dirty-row upload, covered by GPU/unit tests. worklog/entries/20261026T123224.531168Z-cleanup-refactor-r0089-runner-uploads-876471.md."
       ],
       "subitems": [

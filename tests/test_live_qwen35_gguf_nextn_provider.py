@@ -1600,7 +1600,7 @@ def test_nextn_executor_batch_kv_only_reaches_packed_model_step(
     executor._batch_session = SimpleNamespace(
         step_hidden_batch_native=lambda *args, **kwargs: calls.append(kwargs),
     )
-    monkeypatch.setattr(nextn_mod, "copy_host_to_device", lambda *a, **k: None)
+    monkeypatch.setattr(nextn_mod, "copy_host_array_to_device", lambda *a, **k: None)
     monkeypatch.setattr(nextn_mod, "launch_gguf_embedding", lambda *a, **k: None)
     monkeypatch.setattr(nextn_mod, "gguf_rmsnorm_bf16_f32_weight", lambda *a, **k: None)
     monkeypatch.setattr(nextn_mod, "launch_gguf_linear", lambda *a, **k: None)

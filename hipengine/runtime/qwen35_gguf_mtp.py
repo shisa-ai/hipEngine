@@ -18,7 +18,7 @@ from hipengine.core.hip import HipMemcpyKind, HipRuntime
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
-    copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -883,9 +883,9 @@ class _StateJournal:
                 (snapshot_table, snapshot_host),
                 (row_zero_i32, row_zero_host),
             ):
-                copy_host_to_device(
+                copy_host_array_to_device(
                     destination,
-                    host_array_ptr(source),
+                    source,
                     source.nbytes,
                     runtime=runtime,
                 )
@@ -955,9 +955,9 @@ class _StateJournal:
         if rows.shape[0] <= 0 or rows.shape[0] > self.max_rows:
             raise ValueError("native verifier trunk rows exceed journal capacity")
         hidden_bits = np.ascontiguousarray(float_array_to_bf16_bits(rows), dtype=np.uint16)
-        copy_host_to_device(
+        copy_host_array_to_device(
             DeviceBuffer(self.row_hidden.ptr, hidden_bits.nbytes),
-            host_array_ptr(hidden_bits),
+            hidden_bits,
             hidden_bits.nbytes,
             runtime=self.target.runtime,
         )
@@ -2821,9 +2821,9 @@ def _copy_array(tensor: Tensor, array: np.ndarray, runtime: HipRuntime | None) -
     contiguous = np.ascontiguousarray(array)
     if contiguous.nbytes != tensor.numel * tensor.dtype.itemsize:
         raise ValueError("host metadata bytes do not match target tensor")
-    copy_host_to_device(
+    copy_host_array_to_device(
         DeviceBuffer(tensor.ptr, contiguous.nbytes),
-        host_array_ptr(contiguous),
+        contiguous,
         contiguous.nbytes,
         runtime=runtime,
     )

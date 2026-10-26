@@ -21,6 +21,11 @@ QWEN4_EXP_AUXILIARY_UPLOAD_MODULES = (
     "runtime/qwen4_exp_runner",
 )
 
+QWEN35_GGUF_MTP_NEXTN_UPLOAD_MODULES = (
+    "runtime/qwen35_gguf_nextn",
+    "runtime/qwen35_gguf_mtp",
+)
+
 
 @pytest.mark.parametrize("module", [
     "runtime/evie", "runtime/timesfm_decode", "runtime/timesfm3_decode",
@@ -28,6 +33,7 @@ QWEN4_EXP_AUXILIARY_UPLOAD_MODULES = (
     "speculative/mtp_cached_draft", "speculative/mtp_resident_draft",
     "kernels/hip_gfx1100/speculative/mtp_nextn",
     *QWEN4_EXP_AUXILIARY_UPLOAD_MODULES,
+    *QWEN35_GGUF_MTP_NEXTN_UPLOAD_MODULES,
 ])
 def test_reviewed_runners_do_not_erase_temporary_array_owners(module):
     """Bounded syntax guard, not a proof of arbitrary pointer lifetimes."""
@@ -82,6 +88,107 @@ def test_qwen4exp_auxiliary_uploads_use_the_owning_helper(module):
         if source is not None and _is_array_pointer_expression(source):
             hazards.append(node.lineno)
     assert not hazards, f"{path.name}: use copy_host_array_to_device at lines {hazards}"
+
+
+@pytest.mark.parametrize("module", QWEN35_GGUF_MTP_NEXTN_UPLOAD_MODULES)
+def test_qwen35_gguf_mtp_nextn_synchronous_array_uploads_use_the_owning_helper(module):
+    """No synchronous array upload may erase its source owner.
+
+    This is a bounded syntax guard over the reviewed Qwen3.5 GGUF NextN/MTP
+    runtime modules, not a proof of arbitrary pointer lifetimes. Direct
+    runtime ``memcpy`` calls and asynchronous uploads are outside this syntax
+    guard; that exclusion does not establish their ownership safety.
+    """
+    path = Path(__file__).parents[1] / "hipengine" / f"{module}.py"
+    tree = ast.parse(path.read_text())
+    hazards = []
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "copy_host_to_device"
+        ):
+            continue
+        source = (
+            node.args[1]
+            if len(node.args) > 1
+            else next((kw.value for kw in node.keywords if kw.arg == "host_ptr"), None)
+        )
+        if source is not None and _is_array_pointer_expression(source):
+            hazards.append(node.lineno)
+    assert not hazards, f"{path.name}: use copy_host_array_to_device at lines {hazards}"
+
+
+def test_qwen35_gguf_mtp_copy_array_uses_the_owning_upload(monkeypatch):
+    from hipengine.runtime import qwen35_gguf_mtp as mtp
+
+    calls = []
+
+    def upload(buffer, array, nbytes=None, *, runtime=None):
+        calls.append((buffer, array, nbytes, runtime))
+
+    monkeypatch.setattr(mtp, "copy_host_array_to_device", upload)
+    tensor = SimpleNamespace(ptr=0x4000, numel=4, dtype=SimpleNamespace(itemsize=4))
+    values = np.arange(8, dtype=np.int32)[::2]
+    runtime = object()
+
+    mtp._copy_array(tensor, values, runtime)
+
+    assert len(calls) == 1
+    buffer, array, nbytes, call_runtime = calls[0]
+    assert (buffer.ptr, buffer.nbytes, nbytes, call_runtime) == (
+        0x4000,
+        16,
+        16,
+        runtime,
+    )
+    assert array.flags.c_contiguous
+    assert array.tolist() == [0, 2, 4, 6]
+
+
+def test_qwen35_gguf_nextn_restore_checkpoint_uploads_owning_cursor_arrays(
+    monkeypatch,
+):
+    from hipengine.runtime import qwen35_gguf_nextn as nextn
+
+    calls = []
+
+    def upload(buffer, array, nbytes=None, *, runtime=None):
+        calls.append((buffer, array, nbytes, runtime))
+
+    monkeypatch.setattr(nextn, "copy_host_array_to_device", upload)
+    position_host = np.zeros(1, dtype=np.int64)
+    context_host = np.zeros(1, dtype=np.int64)
+    slot = SimpleNamespace(
+        position_host=position_host,
+        context_host=context_host,
+        position_buf=memory.DeviceBuffer(0x3000, 8),
+        context_buf=memory.DeviceBuffer(0x4000, 8),
+    )
+    executor = object.__new__(nextn.Qwen35GGUFNextNExecutor)
+    executor._request_slots = {7: 0}
+    executor._batch_sessions = None
+    executor.scratch = SimpleNamespace(
+        for_slot=lambda index, span_role="decode": slot
+    )
+    executor.runtime = object()
+    checkpoint = SimpleNamespace(
+        released=False,
+        request_id=7,
+        slot=0,
+        state_pairs=(),
+        position=17,
+        context_length=18,
+    )
+
+    executor.restore_request_checkpoint(checkpoint)
+
+    assert [call[0].ptr for call in calls] == [0x3000, 0x4000]
+    assert [call[1] for call in calls] == [position_host, context_host]
+    assert [call[2] for call in calls] == [8, 8]
+    assert all(call[3] is executor.runtime for call in calls)
+    assert position_host[0] == 17
+    assert context_host[0] == 18
 
 
 def test_qwen4exp_qsa_row_upload_uses_the_owning_helper():

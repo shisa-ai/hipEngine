@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ctypes
 from types import SimpleNamespace
 
 import numpy as np
@@ -140,24 +139,21 @@ def test_state_journal_initial_snapshot_and_rollback_use_one_pointer_table_launc
         _ = runtime
         freed.append(int(buffer.ptr))
 
-    def fake_copy_host_to_device(buffer, host_ptr: int, nbytes: int, *, runtime) -> None:
+    def fake_copy_host_array_to_device(buffer, array, nbytes=None, *, runtime) -> None:
         _ = runtime
-        if int(nbytes) == np.dtype(np.int32).itemsize:
-            c_array = (ctypes.c_int32 * (int(nbytes) // np.dtype(np.int32).itemsize)).from_address(
-                int(host_ptr)
-            )
-        else:
-            c_array = (ctypes.c_uint64 * (int(nbytes) // np.dtype(np.uint64).itemsize)).from_address(
-                int(host_ptr)
-            )
-        h2d.append((int(buffer.ptr), np.ctypeslib.as_array(c_array).copy()))
+        count = int(array.nbytes if nbytes is None else nbytes)
+        raw = np.asarray(array).view(np.uint8)[:count]
+        dtype = np.int32 if count == np.dtype(np.int32).itemsize else np.uint64
+        h2d.append((int(buffer.ptr), raw.view(dtype).copy()))
 
     def fake_copy(*args, **kwargs) -> None:
         launches.append((args, kwargs))
 
     monkeypatch.setattr(mtp_module, "malloc", fake_malloc)
     monkeypatch.setattr(mtp_module, "free", fake_free)
-    monkeypatch.setattr(mtp_module, "copy_host_to_device", fake_copy_host_to_device)
+    monkeypatch.setattr(
+        mtp_module, "copy_host_array_to_device", fake_copy_host_array_to_device
+    )
     register(key, fake_copy, replace=True)
     try:
         target = _fake_target(backend=backend)
@@ -314,7 +310,9 @@ def test_state_journal_producer_capture_preserves_post_commit_rollback(monkeypat
         _ = runtime
         freed.append(int(buffer.ptr))
 
-    def fake_copy_host_to_device(_buffer, _host_ptr: int, _nbytes: int, *, runtime) -> None:
+    def fake_copy_host_array_to_device(
+        _buffer, _array, _nbytes=None, *, runtime
+    ) -> None:
         _ = runtime
 
     def fake_copy(*args, **kwargs) -> None:
@@ -338,7 +336,9 @@ def test_state_journal_producer_capture_preserves_post_commit_rollback(monkeypat
 
     monkeypatch.setattr(mtp_module, "malloc", fake_malloc)
     monkeypatch.setattr(mtp_module, "free", fake_free)
-    monkeypatch.setattr(mtp_module, "copy_host_to_device", fake_copy_host_to_device)
+    monkeypatch.setattr(
+        mtp_module, "copy_host_array_to_device", fake_copy_host_array_to_device
+    )
     register(key, fake_copy, replace=True)
     try:
         journal = _StateJournal.allocate(

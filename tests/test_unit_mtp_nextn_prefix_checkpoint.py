@@ -156,9 +156,10 @@ def _executor(monkeypatch, device: _FakeDevice, scratches: dict[int, SimpleNames
         del runtime
         device.free(buffer.ptr)
 
-    def fake_copy_host_to_device(buffer, host_ptr, nbytes, *, runtime) -> None:
+    def fake_copy_host_array_to_device(buffer, array, nbytes=None, *, runtime) -> None:
         del runtime
-        device.memcpy(buffer.ptr, host_ptr, buffer.nbytes if nbytes is None else nbytes,
+        count = array.nbytes if nbytes is None else int(nbytes)
+        device.memcpy(buffer.ptr, int(array.ctypes.data), count,
                       HipMemcpyKind.HOST_TO_DEVICE)
 
     def fake_copy_device_to_host(host_ptr, buffer, nbytes=None, *, runtime) -> None:
@@ -168,7 +169,9 @@ def _executor(monkeypatch, device: _FakeDevice, scratches: dict[int, SimpleNames
 
     monkeypatch.setattr(nextn_module, "malloc", fake_malloc)
     monkeypatch.setattr(nextn_module, "free", fake_free)
-    monkeypatch.setattr(nextn_module, "copy_host_to_device", fake_copy_host_to_device)
+    monkeypatch.setattr(
+        nextn_module, "copy_host_array_to_device", fake_copy_host_array_to_device
+    )
     monkeypatch.setattr(nextn_module, "copy_device_to_host", fake_copy_device_to_host)
 
     executor = object.__new__(Qwen35GGUFNextNExecutor)
@@ -367,6 +370,76 @@ def test_restore_writes_into_a_different_request_slot(monkeypatch) -> None:
     ]
     # The source slot is untouched by a restore.
     assert int(source.position_host[0]) == 4
+
+
+def test_clone_request_state_uploads_position_and_context_through_the_owning_helper(
+    monkeypatch,
+) -> None:
+    source = _slot_scratch(position=4, context=5, ptr_base=0x1000)
+    destination = _slot_scratch(position=0, context=0, ptr_base=0x5000)
+    device = _FakeDevice()
+    executor = _executor(monkeypatch, device, {7: source, 8: destination})
+    executor._provider_root_state_metadata = {}
+
+    uploads = []
+    fake_upload = nextn_module.copy_host_array_to_device
+
+    def recording_upload(buffer, array, nbytes=None, *, runtime):
+        uploads.append((buffer, array, nbytes, runtime))
+        return fake_upload(buffer, array, nbytes, runtime=runtime)
+
+    monkeypatch.setattr(
+        nextn_module, "copy_host_array_to_device", recording_upload
+    )
+    device.calls.clear()
+
+    executor.clone_request_state(7, 8)
+
+    # The clone publishes the source cursor into the destination slot while
+    # leaving the source untouched.
+    assert int(destination.position_host[0]) == 4
+    assert int(destination.context_host[0]) == 5
+    assert int(source.position_host[0]) == 4
+    assert int(source.context_host[0]) == 5
+
+    # Only the two cursor cells cross the owning upload boundary. Each upload
+    # carries the destination buffer, the live host owner, and its exact size.
+    assert len(uploads) == 2
+    assert [buffer for buffer, _array, _nbytes, _runtime in uploads] == [
+        destination.position_buf,
+        destination.context_buf,
+    ]
+    assert [array for _buffer, array, _nbytes, _runtime in uploads] == [
+        destination.position_host,
+        destination.context_host,
+    ]
+    assert [nbytes for _buffer, _array, nbytes, _runtime in uploads] == [8, 8]
+    assert all(runtime is device for _buffer, _array, _nbytes, runtime in uploads)
+
+    assert [
+        call
+        for call in device.calls
+        if call[3] == int(HipMemcpyKind.HOST_TO_DEVICE)
+    ] == [
+        (
+            int(destination.position_buf.ptr),
+            int(destination.position_host.ctypes.data),
+            8,
+            int(HipMemcpyKind.HOST_TO_DEVICE),
+        ),
+        (
+            int(destination.context_buf.ptr),
+            int(destination.context_host.ctypes.data),
+            8,
+            int(HipMemcpyKind.HOST_TO_DEVICE),
+        ),
+    ]
+    assert device.read(destination.position_buf.ptr, 8) == np.asarray(
+        [4], dtype=np.int64
+    ).tobytes()
+    assert device.read(destination.context_buf.ptr, 8) == np.asarray(
+        [5], dtype=np.int64
+    ).tobytes()
 
 
 def test_restore_reproduces_the_prefix_kv_bytes_in_another_slot(monkeypatch) -> None:

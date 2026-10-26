@@ -13,7 +13,14 @@ import numpy as np
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
-from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+from hipengine.core.memory import (
+    DeviceBuffer,
+    copy_device_to_host,
+    copy_host_array_to_device,
+    free,
+    host_array_ptr,
+    malloc,
+)
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.backends import resolve_backend
 from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
@@ -1087,9 +1094,9 @@ class Qwen35GGUFNextNExecutor:
 
         if not token_ready:
             token_host = np.asarray([int(token_id)], dtype=np.int64)
-            copy_host_to_device(
+            copy_host_array_to_device(
                 DeviceBuffer(token_ptr, token_host.nbytes),
-                host_array_ptr(token_host),
+                token_host,
                 token_host.nbytes,
                 runtime=self.runtime,
             )
@@ -1266,9 +1273,9 @@ class Qwen35GGUFNextNExecutor:
             )
         if device_tokens is None:
             self._token_host[:rows] = np.asarray(tokens, dtype=np.int64)
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self._token_buf,
-                host_array_ptr(self._token_host),
+                self._token_host,
                 rows * DType.INT64.itemsize,
                 runtime=self.runtime,
             )
@@ -1766,9 +1773,9 @@ class Qwen35GGUFNextNExecutor:
                     else self._token_buf.ptr
                     + self._slot(ids[active[0]]) * DType.INT64.itemsize
                 )
-                copy_host_to_device(
+                copy_host_array_to_device(
                     DeviceBuffer(destination, root_tokens.nbytes),
-                    host_array_ptr(root_tokens),
+                    root_tokens,
                     root_tokens.nbytes,
                     runtime=self.runtime,
                 )
@@ -2951,15 +2958,15 @@ class Qwen35GGUFNextNExecutor:
         slot_scratch.position_host[0] = int(consumed_position)
         slot_scratch.context_host[0] = int(context_length)
         self._set_batch_session_position(slot, int(context_length))
-        copy_host_to_device(
+        copy_host_array_to_device(
             slot_scratch.position_buf,
-            host_array_ptr(slot_scratch.position_host),
+            slot_scratch.position_host,
             slot_scratch.position_host.nbytes,
             runtime=self.runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             slot_scratch.context_buf,
-            host_array_ptr(slot_scratch.context_host),
+            slot_scratch.context_host,
             slot_scratch.context_host.nbytes,
             runtime=self.runtime,
         )
@@ -3037,15 +3044,15 @@ class Qwen35GGUFNextNExecutor:
         # The session cursor is the *next* position to consume, which is the
         # consumed count, not the last consumed position.
         self._set_batch_session_position(slot, int(checkpoint.context_length))
-        copy_host_to_device(
+        copy_host_array_to_device(
             slot_scratch.position_buf,
-            host_array_ptr(slot_scratch.position_host),
+            slot_scratch.position_host,
             slot_scratch.position_host.nbytes,
             runtime=self.runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             slot_scratch.context_buf,
-            host_array_ptr(slot_scratch.context_host),
+            slot_scratch.context_host,
             slot_scratch.context_host.nbytes,
             runtime=self.runtime,
         )
@@ -3291,24 +3298,24 @@ class Qwen35GGUFNextNExecutor:
                 HipMemcpyKind.DEVICE_TO_DEVICE,
             )
         for destination, host, nbytes in uploads:
-            copy_host_to_device(
+            copy_host_array_to_device(
                 destination,
-                host_array_ptr(host),
+                host,
                 nbytes,
                 runtime=self.runtime,
             )
         slot_scratch.position_host[0] = int(checkpoint.position)
         slot_scratch.context_host[0] = int(checkpoint.context_length)
         self._set_batch_session_position(slot, int(checkpoint.position))
-        copy_host_to_device(
+        copy_host_array_to_device(
             slot_scratch.position_buf,
-            host_array_ptr(slot_scratch.position_host),
+            slot_scratch.position_host,
             slot_scratch.position_host.nbytes,
             runtime=self.runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             slot_scratch.context_buf,
-            host_array_ptr(slot_scratch.context_host),
+            slot_scratch.context_host,
             slot_scratch.context_host.nbytes,
             runtime=self.runtime,
         )
@@ -3412,15 +3419,15 @@ class Qwen35GGUFNextNExecutor:
         destination.position_host[0] = position
         destination.context_host[0] = context
         self._set_batch_session_position(destination_slot, position)
-        copy_host_to_device(
+        copy_host_array_to_device(
             destination.position_buf,
-            host_array_ptr(destination.position_host),
+            destination.position_host,
             destination.position_host.nbytes,
             runtime=self.runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             destination.context_buf,
-            host_array_ptr(destination.context_host),
+            destination.context_host,
             destination.context_host.nbytes,
             runtime=self.runtime,
         )
