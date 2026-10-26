@@ -2899,6 +2899,8 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   uploads use the owning helper; asynchronous Gemma metadata stays unchanged.
   Native/resident/cached MTP and Laguna DFlash synchronous uploads retain their
   arrays too; their stream-ordered asynchronous staging remains separate.
+  MoE graph validation restores and subset-head ID appends use owning uploads
+  over exact destination views, preserving replay order and row offsets.
 - Remaining cleanup: named-local array uploads still use the raw-address
   `copy_host_to_device` API in other paths. Named locals are safe through a
   synchronous copy, but future edits must not replace them with temporary

@@ -169,3 +169,41 @@ def test_padding_may_not_overrun_full_logits_buffer(owner):
         assert head.diagnostics()['full_reasons'] == {'subset_not_smaller': 1}
     finally:
         head.close()
+
+
+def test_extra_id_upload_owns_the_named_row_array(owner, monkeypatch):
+    """Row ids upload through the owning helper at the row's byte offset."""
+
+    _, rt, _, raw = owner
+    uploads = []
+    legacy = []
+
+    def upload(buffer, array, nbytes=None, *, runtime=None):
+        uploads.append((buffer, array, nbytes, runtime))
+
+    def old_upload(*args, **kwargs):
+        legacy.append((args, kwargs))
+
+    monkeypatch.setattr(module, 'copy_host_array_to_device', upload, raising=False)
+    monkeypatch.setattr(module, 'copy_host_to_device', old_upload, raising=False)
+    weight = Weight(SimpleNamespace(layout='raw_gguf'), {'raw': raw})
+    head = module.MTPSubsetHead(weight, vocab_size=64, hidden_size=4, special_ids=(63,),
+                                runtime=rt, prefix_size=16, extra_capacity=8)
+    try:
+        # The constructor publishes the initial special row at offset zero.
+        assert legacy == []
+        assert [(call[0].ptr, call[2], call[3] is rt) for call in uploads] == [
+            (head.extra_ids_buffer.ptr, 8, True),
+        ]
+        head.prepare([0, 29, 1], anchor=1)
+        # The appended row lands at its own 8-byte slot, with its own count.
+        assert [(call[0].ptr, call[2], call[3] is rt) for call in uploads] == [
+            (head.extra_ids_buffer.ptr, 8, True),
+            (head.extra_ids_buffer.ptr + 8, 8, True),
+        ]
+        assert [call[0].nbytes for call in uploads] == [8, 8]
+        assert [call[1].dtype for call in uploads] == [np.int64, np.int64]
+        assert [call[1].tolist() for call in uploads] == [[63], [29]]
+        assert head.policy.extra_ids == (63, 29)
+    finally:
+        head.close()

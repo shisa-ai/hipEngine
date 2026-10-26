@@ -33,6 +33,7 @@ from typing import Callable, Hashable
 import numpy as np
 
 from hipengine.core.hip import HipMemcpyKind, HipRuntime
+from hipengine.core.memory import DeviceBuffer, copy_host_array_to_device
 
 # hipStreamCaptureModeRelaxed — matches tests/test_hip_graph_capture_replay.py.
 _CAPTURE_MODE_RELAXED = 2
@@ -172,11 +173,11 @@ class MoeGraphCache:
         # ordinary replays receive a freshly produced input from the preceding
         # eager attention/layer boundary and need no host copy.
         for input_ptr, snapshot in input_snapshots:
-            rt.memcpy(
-                input_ptr,
-                int(snapshot.ctypes.data),
+            copy_host_array_to_device(
+                DeviceBuffer(int(input_ptr), int(snapshot.nbytes)),
+                snapshot,
                 int(snapshot.nbytes),
-                HipMemcpyKind.HOST_TO_DEVICE,
+                runtime=rt,
             )
         rt.graph_launch(graph_exec, stream)
         self._sync(stream)

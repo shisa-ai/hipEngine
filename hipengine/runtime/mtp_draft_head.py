@@ -7,7 +7,7 @@ import numpy as np
 
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind
-from hipengine.core.memory import free, host_array_ptr, malloc
+from hipengine.core.memory import DeviceBuffer, copy_host_array_to_device, free, malloc
 from hipengine.core.tensor import Tensor
 from hipengine.runtime.gguf_linear import (
     GGUF_ACTIVATION_F32, GGUF_OUTPUT_F32, launch_gguf_linear,
@@ -93,8 +93,12 @@ class MTPSubsetHead:
                                 source + token * self.row_bytes, self.row_bytes,
                                 HipMemcpyKind.DEVICE_TO_DEVICE)
         host = np.asarray(ids, dtype=np.int64)
-        self.runtime.memcpy(self.extra_ids_buffer.ptr + first * 8, host_array_ptr(host),
-                            host.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+        copy_host_array_to_device(
+            DeviceBuffer(self.extra_ids_buffer.ptr + first * 8, host.nbytes),
+            host,
+            host.nbytes,
+            runtime=self.runtime,
+        )
 
     def prepare(self, committed, *, anchor):
         """Select one cycle using only this request's append-only history."""

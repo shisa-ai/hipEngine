@@ -2836,3 +2836,170 @@ def test_laguna_dflash_scratch_zero_upload_owns_contiguous_zeros(monkeypatch):
     assert call[1].tolist() == [[0.0] * 4, [0.0] * 4]
     assert call[2] == 2 * 4 * 4
     assert call[3] is runtime
+
+
+GRAPH_REPLAY_RESTORE_UPLOAD_MODULES = (
+    "runtime/moe_graph",
+    "runtime/mtp_draft_head",
+)
+
+
+@pytest.mark.parametrize("module", GRAPH_REPLAY_RESTORE_UPLOAD_MODULES)
+def test_graph_replay_restore_synchronous_array_uploads_use_the_owning_helper(
+    module,
+):
+    """Graph replay restoration and draft-head row staging.
+
+    A bounded syntax guard over synchronous H2D uploads, not a proof of
+    arbitrary pointer lifetimes. Device-to-device row copies, D2H readbacks and
+    graph launch ordering are outside this guard.
+    """
+    path = Path(__file__).parents[1] / "hipengine" / f"{module}.py"
+    tree = ast.parse(path.read_text())
+    hazards = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Name) and node.func.id == "copy_host_to_device":
+            source = (
+                node.args[1]
+                if len(node.args) > 1
+                else next((kw.value for kw in node.keywords if kw.arg == "host_ptr"), None)
+            )
+            if source is not None and _is_array_pointer_expression(source):
+                hazards.append((node.lineno, "copy_host_to_device"))
+            continue
+        if not (isinstance(node.func, ast.Attribute) and node.func.attr == "memcpy"):
+            continue
+        kind = (
+            node.args[3]
+            if len(node.args) > 3
+            else next((kw.value for kw in node.keywords if kw.arg == "kind"), None)
+        )
+        if not (isinstance(kind, ast.Attribute) and kind.attr == "HOST_TO_DEVICE"):
+            continue
+        source = (
+            node.args[1]
+            if len(node.args) > 1
+            else next((kw.value for kw in node.keywords if kw.arg == "src"), None)
+        )
+        if source is not None and _is_array_pointer_expression(source):
+            hazards.append((node.lineno, "runtime.memcpy"))
+    assert not hazards, f"{path.name}: use copy_host_array_to_device at {hazards}"
+
+
+class _GraphRuntime:
+    """CPU stand-in for the HIP stream/graph surface ``MoeGraphCache`` uses."""
+
+    def __init__(self, unit) -> None:
+        self.unit = unit
+        self.events: list[tuple] = []
+
+    def stream_create(self, *, nonblocking=False):
+        self.events.append(("stream_create", bool(nonblocking)))
+        return 0x51
+
+    def stream_destroy(self, stream):
+        self.events.append(("stream_destroy", int(stream)))
+
+    def stream_begin_capture(self, stream, mode):
+        self.events.append(("begin_capture", int(stream), int(mode)))
+
+    def stream_end_capture(self, stream):
+        self.events.append(("end_capture", int(stream)))
+        return 0x6001
+
+    def graph_instantiate(self, graph):
+        self.events.append(("instantiate", int(graph)))
+        return 0x7001
+
+    def graph_launch(self, graph_exec, stream):
+        self.events.append(("launch", int(graph_exec), int(stream)))
+        self.unit(stream)
+
+    def graph_exec_destroy(self, graph_exec):
+        self.events.append(("exec_destroy", int(graph_exec)))
+
+    def graph_destroy(self, graph):
+        self.events.append(("graph_destroy", int(graph)))
+
+    def device_synchronize(self):
+        self.events.append(("sync",))
+
+    def stream_synchronize(self, stream):
+        self.events.append(("stream_sync", int(stream)))
+
+    def memcpy(self, dst, src, nbytes, kind):
+        self.events.append(("memcpy", int(dst), int(nbytes), kind))
+        ctypes.memmove(int(dst), int(src), int(nbytes))
+
+
+def test_moe_graph_capture_restore_uploads_owning_snapshot(monkeypatch):
+    """The replay restore publishes the capture-time snapshot it still owns.
+
+    The unit reuses its input scratch for the next layer's output, so the
+    restore is what makes the validating replay bit-exact: a replay reading the
+    mutated scratch would fail parity and demote the key to eager.
+    """
+
+    from hipengine.runtime import moe_graph as mod
+
+    uploads = []
+    legacy = []
+    hidden = np.asarray([1.0, 2.0, 3.0, 4.0], dtype=np.float32)
+    input_buffer = ctypes.create_string_buffer(hidden.nbytes)
+    out_buffer = ctypes.create_string_buffer(hidden.nbytes)
+    ctypes.memmove(input_buffer, hidden.ctypes.data, hidden.nbytes)
+    input_ptr = ctypes.addressof(input_buffer)
+    out_ptr = ctypes.addressof(out_buffer)
+
+    def unit(_stream):
+        current = np.frombuffer(
+            ctypes.string_at(input_ptr, hidden.nbytes), dtype=np.float32
+        ).copy()
+        scaled = np.ascontiguousarray(current * 3.0, dtype=np.float32)
+        ctypes.memmove(input_ptr, scaled.ctypes.data, hidden.nbytes)
+        ctypes.memmove(out_ptr, scaled.ctypes.data, hidden.nbytes)
+
+    runtime = _GraphRuntime(unit)
+    events = runtime.events
+    real_upload = memory.copy_host_array_to_device
+
+    def upload(buffer, array, nbytes=None, *, runtime=None):
+        # Record, then delegate: the restore must still reach device memory for
+        # the validating replay to reproduce the eager reference.
+        uploads.append((buffer, array, nbytes, runtime))
+        events.append(("upload", int(buffer.ptr), int(buffer.nbytes)))
+        real_upload(buffer, array, nbytes, runtime=runtime)
+
+    def old_upload(*args, **kwargs):
+        legacy.append((args, kwargs))
+
+    monkeypatch.setattr(mod, "copy_host_array_to_device", upload, raising=False)
+    monkeypatch.setattr(mod, "copy_host_to_device", old_upload, raising=False)
+
+    cache = mod.MoeGraphCache(runtime, enabled=True)
+    status = cache.run(
+        ("ffn", 0),
+        eager=unit,
+        out_ptr=out_ptr,
+        out_nbytes=hidden.nbytes,
+        mutable_inputs=((input_ptr, hidden.nbytes),),
+        stream=0,
+    )
+
+    # Parity only holds if the restore re-published the capture-time input.
+    assert status == "capture"
+    assert legacy == []
+    assert [call[0].ptr for call in uploads] == [input_ptr]
+    buffer, array, nbytes, call_runtime = uploads[0]
+    assert buffer.nbytes == hidden.nbytes
+    assert array.dtype == np.uint8
+    assert array.tobytes() == hidden.tobytes()
+    assert nbytes == hidden.nbytes
+    assert call_runtime is runtime
+    kinds = [event[0] for event in events]
+    assert kinds.index("instantiate") < kinds.index("upload") < kinds.index("launch")
+    replayed = np.frombuffer(ctypes.string_at(out_ptr, hidden.nbytes), dtype=np.float32)
+    np.testing.assert_array_equal(replayed, hidden * 3.0)
+    cache.close()
