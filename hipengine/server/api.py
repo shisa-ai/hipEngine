@@ -97,7 +97,10 @@ from hipengine.speculative.policy import (
     DEFAULT_AUTO_DEPTH_POLICY,
     select_offline_speculative_depth,
 )
-from hipengine.speculative.registry import DEFAULT_PROVIDER_CANDIDATE_BUDGET
+from hipengine.speculative.registry import (
+    SpeculativeProviderBudgetAmbiguousError,
+    resolve_speculative_provider_candidate_budget,
+)
 from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
 from hipengine.tokenization.identity import token_ids_sha256
 
@@ -15750,8 +15753,8 @@ def _candidate_budget_resolution(
 
     An operator-pinned depth is used unchanged. An omitted one is reported by
     the loaded engine (which resolves it from model-plugin evidence); before
-    that resolution a configured generic provider declares its own shape, and
-    without either the depth stays unresolved rather than guessed.
+    that resolution a configured provider declares its own shape in the
+    registry, and without either the depth stays unresolved rather than guessed.
     """
 
     requested = config.speculative_candidate_budget
@@ -15777,9 +15780,23 @@ def _candidate_budget_resolution(
                 "source": "pending",
             }
     if config.speculative_provider is not None:
+        try:
+            resolved = resolve_speculative_provider_candidate_budget(
+                config.speculative_provider
+            )
+        except SpeculativeProviderBudgetAmbiguousError:
+            # The provider is runnable, but it declares different depths for
+            # different registry axes and pre-load capability has no axes yet.
+            # The loaded engine resolves the concrete declaration; report pending
+            # instead of guessing a depth or refusing the provider.
+            return {
+                "requested": requested,
+                "resolved": None,
+                "source": "pending",
+            }
         return {
             "requested": requested,
-            "resolved": int(DEFAULT_PROVIDER_CANDIDATE_BUDGET),
+            "resolved": resolved,
             "source": "provider_default",
         }
     return {"requested": requested, "resolved": None, "source": "unresolved"}

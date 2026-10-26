@@ -42,6 +42,9 @@ from hipengine.speculative.registry import (
 
 _PROVIDER = "qwen4_exp_mtp"
 _SIDECAR_SHA256 = "9db03a687670608286e99b563fcc86d0ee76c8dd863f64b2afc0b54eb0eb975d"
+# The depth an omitted caller gets. The adapter accepts 1..4; the registration
+# carries this default so server capability reads need no load.
+_DEFAULT_CANDIDATE_BUDGET = 4
 
 
 @dataclass(frozen=True)
@@ -690,6 +693,7 @@ def register_qwen4_exp_mtp_providers(*, replace: bool = True) -> None:
             ),
             make_qwen4_exp_mtp_provider,
             replace=replace,
+            candidate_budget=_DEFAULT_CANDIDATE_BUDGET,
         )
 
 

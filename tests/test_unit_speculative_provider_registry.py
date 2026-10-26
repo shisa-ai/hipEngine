@@ -3,12 +3,15 @@ from __future__ import annotations
 import pytest
 
 from hipengine.speculative.registry import (
+    DEFAULT_PROVIDER_CANDIDATE_BUDGET,
+    SpeculativeProviderBudgetAmbiguousError,
     SpeculativeProviderConfig,
     SpeculativeProviderKey,
     register_builtin_speculative_providers,
     register_speculative_provider,
     registered_speculative_providers,
     resolve_speculative_provider,
+    resolve_speculative_provider_candidate_budget,
 )
 
 
@@ -44,6 +47,88 @@ def test_speculative_provider_registry_resolves_all_concrete_axes() -> None:
         )
 
 
+def test_provider_declared_budget_resolves_without_model_axes() -> None:
+    key = SpeculativeProviderKey(
+        provider="test_declared_budget",
+        target_model="test_model",
+        backend="test_backend",
+        quant="test_quant",
+    )
+    register_speculative_provider(
+        key, _factory, replace=True, candidate_budget=7
+    )
+
+    assert resolve_speculative_provider_candidate_budget("test_declared_budget") == 7
+    assert (
+        resolve_speculative_provider_candidate_budget(
+            "test_declared_budget",
+            target_model="test_model",
+            backend="test_backend",
+            quant="test_quant",
+        )
+        == 7
+    )
+
+
+def test_provider_registration_without_a_budget_keeps_the_generic_default() -> None:
+    key = SpeculativeProviderKey(
+        provider="test_default_budget",
+        target_model="test_model",
+        backend="test_backend",
+        quant="test_quant",
+    )
+    register_speculative_provider(key, _factory, replace=True)
+
+    assert (
+        resolve_speculative_provider_candidate_budget("test_default_budget")
+        == DEFAULT_PROVIDER_CANDIDATE_BUDGET
+    )
+
+
+def test_provider_declared_budget_requires_axes_when_declarations_differ() -> None:
+    for suffix, budget in (("a", 3), ("b", 7)):
+        register_speculative_provider(
+            SpeculativeProviderKey(
+                provider="test_axis_budget",
+                target_model=f"model_{suffix}",
+                backend=f"backend_{suffix}",
+                quant=f"quant_{suffix}",
+            ),
+            _factory,
+            replace=True,
+            candidate_budget=budget,
+        )
+
+    with pytest.raises(
+        SpeculativeProviderBudgetAmbiguousError, match="multiple candidate budgets"
+    ):
+        resolve_speculative_provider_candidate_budget("test_axis_budget")
+    assert (
+        resolve_speculative_provider_candidate_budget(
+            "test_axis_budget", target_model="model_a"
+        )
+        == 3
+    )
+    assert (
+        resolve_speculative_provider_candidate_budget(
+            "test_axis_budget",
+            target_model="model_b",
+            backend="backend_b",
+            quant="quant_b",
+        )
+        == 7
+    )
+    with pytest.raises(KeyError, match="unregistered speculative provider"):
+        resolve_speculative_provider_candidate_budget(
+            "test_axis_budget", target_model="model_c"
+        )
+
+
+def test_provider_declared_budget_rejects_an_unregistered_provider() -> None:
+    with pytest.raises(KeyError, match="unregistered speculative provider"):
+        resolve_speculative_provider_candidate_budget("test_not_registered")
+
+
 def test_builtin_registry_contains_laguna_dflash_concrete_key() -> None:
     register_builtin_speculative_providers()
 
@@ -53,6 +138,28 @@ def test_builtin_registry_contains_laguna_dflash_concrete_key() -> None:
         backend="hip_gfx1151",
         quant="gguf_q4_k_m",
     ) in registered_speculative_providers()
+
+
+@pytest.mark.parametrize(
+    ("provider", "target_model", "backend", "quant"),
+    (
+        ("dflash", "laguna_gguf", "hip_gfx1151", "gguf_q4_k_m"),
+        ("gemma4_mtp", "gemma4_gguf", "hip_gfx1151", "gguf_q4_k_m"),
+        ("qwen4_exp_mtp", "qwen4_exp_gguf", "hip_gfx1151", "gguf_q4_k_m"),
+    ),
+)
+def test_builtin_provider_declarations_resolve_by_axes(
+    provider, target_model, backend, quant
+) -> None:
+    assert (
+        resolve_speculative_provider_candidate_budget(
+            provider,
+            target_model=target_model,
+            backend=backend,
+            quant=quant,
+        )
+        == 4
+    )
 
 
 def test_speculative_provider_config_requires_explicit_drafter_and_budget() -> None:

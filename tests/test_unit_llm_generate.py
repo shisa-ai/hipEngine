@@ -505,6 +505,121 @@ def test_llm_attaches_explicit_speculative_provider_without_changing_default_rou
     assert events[-2:] == ["provider_close", "generator_close"]
 
 
+def test_llm_construction_resolves_heterogeneous_provider_budget_with_registry_axes(
+    monkeypatch,
+) -> None:
+    """Construction passes the known axes, so per-quant provider depths resolve."""
+
+    import hipengine.generation as generation
+    import hipengine.loading as loading
+    import hipengine.models as models
+    import hipengine.speculative.registry as speculative_registry
+    from hipengine.generation import GenerationOutput
+    from hipengine.speculative.registry import (
+        SpeculativeProviderKey,
+        register_speculative_provider,
+    )
+
+    budgets: list[int] = []
+
+    class FakeProvider:
+        provider_name = "test_hetero_budget"
+
+        def __init__(self, config) -> None:
+            budgets.append(int(config.candidate_budget))
+
+        def generate_detailed(self, request: GenerationRequest):
+            return [
+                GenerationOutput(text=f"spec:{prompt}")
+                for prompt in request.prompts
+            ]
+
+        def stream_detailed(self, request: GenerationRequest):
+            yield GenerationStreamChunk(text="spec-stream")
+
+        def capabilities(self):
+            return {"provider": self.provider_name, "candidate_budget": budgets[-1]}
+
+        def close(self) -> None:
+            pass
+
+    class FakeGenerator:
+        def __init__(self) -> None:
+            self.provider = None
+
+        def attach_speculative_provider(self, provider) -> None:
+            self.provider = provider
+
+        @property
+        def supports_speculative(self) -> bool:
+            return self.provider is not None
+
+        def speculative_capabilities(self):
+            return {} if self.provider is None else self.provider.capabilities()
+
+        def generate_speculative_detailed(self, request: GenerationRequest):
+            return self.provider.generate_detailed(request)
+
+        def stream_speculative_detailed(self, request: GenerationRequest):
+            return self.provider.stream_detailed(request)
+
+        def generate(self, request: GenerationRequest) -> list[str]:
+            return [f"ar:{prompt}" for prompt in request.prompts]
+
+        def close(self) -> None:
+            if self.provider is not None:
+                self.provider.close()
+
+    fake_index = SimpleNamespace(
+        config={"architectures": ["FakeHeteroForCausalLM"]},
+        model_path="/tmp/fake-model",
+    )
+    fake_plugin = SimpleNamespace(name="fake_hetero_model")
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    monkeypatch.setattr(loading, "load_weight_index", lambda model: fake_index)
+    monkeypatch.setattr(models, "resolve_model", lambda architecture: fake_plugin)
+    monkeypatch.setattr(
+        speculative_registry,
+        "register_builtin_speculative_providers",
+        lambda: None,
+    )
+    register_text_generator(
+        model="fake_hetero_model",
+        backend="fake_backend",
+        quant="fake_quant",
+        factory=lambda **kwargs: FakeGenerator(),
+        replace=True,
+    )
+    for quant, budget in (("fake_quant", 3), ("other_quant", 7)):
+        register_speculative_provider(
+            SpeculativeProviderKey(
+                "test_hetero_budget",
+                "fake_hetero_model",
+                "fake_backend",
+                quant,
+            ),
+            lambda *, target_generator, config: FakeProvider(config),
+            replace=True,
+            candidate_budget=budget,
+        )
+
+    llm = LLM(
+        "/tmp/fake-model",
+        backend="fake_backend",
+        quant="fake_quant",
+        speculative_provider="test_hetero_budget",
+        draft_model="/tmp/fake-drafter",
+    )
+
+    assert llm.supports_speculative is True
+    assert budgets == [3]
+    assert llm.speculative_candidate_budget_resolution == {
+        "requested_candidate_budget": None,
+        "candidate_budget": 3,
+        "candidate_budget_source": "provider_default",
+    }
+
+
 def test_generation_request_rejects_invalid_token_prompt_rows() -> None:
     import pytest
 

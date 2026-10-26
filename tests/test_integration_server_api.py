@@ -2570,6 +2570,149 @@ def test_mtp_capability_reports_an_explicit_candidate_budget() -> None:
     }
 
 
+def test_candidate_budget_reads_the_providers_declared_default_before_load() -> None:
+    """A configured provider owns its depth before the target model loads."""
+
+    from hipengine.server.api import _candidate_budget_resolution
+    from hipengine.speculative.registry import (
+        SpeculativeProviderKey,
+        register_speculative_provider,
+    )
+
+    register_speculative_provider(
+        SpeculativeProviderKey(
+            provider="test_server_declared_budget",
+            target_model="test_model",
+            backend="test_backend",
+            quant="test_quant",
+        ),
+        lambda **kwargs: None,
+        replace=True,
+        candidate_budget=7,
+    )
+    config = ServerConfig(
+        model="target",
+        speculative_provider="test_server_declared_budget",
+        draft_model="drafter",
+    )
+
+    assert _candidate_budget_resolution(config) == {
+        "requested": None,
+        "resolved": 7,
+        "source": "provider_default",
+    }
+
+
+def test_candidate_budget_reports_pending_for_ambiguous_provider_declarations() -> None:
+    """Pre-load capability reports pending, then the loaded engine resolves it."""
+
+    from hipengine.server.api import _candidate_budget_resolution
+    from hipengine.speculative.registry import (
+        SpeculativeProviderKey,
+        register_speculative_provider,
+    )
+
+    for quant, budget in (("quant_a", 3), ("quant_b", 7)):
+        register_speculative_provider(
+            SpeculativeProviderKey(
+                provider="test_server_ambiguous_budget",
+                target_model="test_model",
+                backend="test_backend",
+                quant=quant,
+            ),
+            lambda **kwargs: None,
+            replace=True,
+            candidate_budget=budget,
+        )
+    config = ServerConfig(
+        model="target",
+        speculative_provider="test_server_ambiguous_budget",
+        draft_model="drafter",
+    )
+
+    assert _candidate_budget_resolution(config) == {
+        "requested": None,
+        "resolved": None,
+        "source": "pending",
+    }
+
+    class LoadedEngine:
+        @property
+        def speculative_candidate_budget_resolution(self) -> dict[str, Any]:
+            return {
+                "requested_candidate_budget": None,
+                "candidate_budget": 3,
+                "candidate_budget_source": "provider_default",
+            }
+
+    assert _candidate_budget_resolution(config, engine=LoadedEngine()) == {
+        "requested": None,
+        "resolved": 3,
+        "source": "provider_default",
+    }
+
+
+def test_candidate_budget_rejects_an_unregistered_configured_provider() -> None:
+    """A configured provider with no declaration is a miss, not a guess."""
+
+    from hipengine.server.api import _candidate_budget_resolution
+
+    config = ServerConfig(
+        model="target",
+        speculative_provider="test_server_unregistered_provider",
+        draft_model="drafter",
+    )
+
+    with pytest.raises(KeyError, match="unregistered speculative provider"):
+        _candidate_budget_resolution(config)
+
+
+def test_candidate_budget_pending_engine_precedes_the_provider_default() -> None:
+    """An engine that has not loaded its artifact is pending, not provider-default."""
+
+    from hipengine.server.api import _candidate_budget_resolution
+
+    class UnloadedEngine:
+        @property
+        def speculative_candidate_budget_resolution(self) -> dict[str, Any]:
+            return {
+                "requested_candidate_budget": None,
+                "candidate_budget": None,
+                "candidate_budget_source": "pending",
+            }
+
+    config = ServerConfig(
+        model="target",
+        speculative_provider="dflash",
+        draft_model="drafter",
+    )
+
+    assert _candidate_budget_resolution(config, engine=UnloadedEngine()) == {
+        "requested": None,
+        "resolved": None,
+        "source": "pending",
+    }
+
+
+def test_candidate_budget_explicit_precedes_the_provider_default() -> None:
+    """An operator-pinned depth wins over the provider's declaration."""
+
+    from hipengine.server.api import _candidate_budget_resolution
+
+    config = ServerConfig(
+        model="target",
+        speculative_provider="dflash",
+        draft_model="drafter",
+        speculative_candidate_budget=5,
+    )
+
+    assert _candidate_budget_resolution(config) == {
+        "requested": 5,
+        "resolved": 5,
+        "source": "explicit",
+    }
+
+
 def test_candidate_budget_reports_pending_before_the_engine_loads() -> None:
     """An engine that has not loaded its artifact reports pending, not a depth."""
 

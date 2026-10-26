@@ -109,9 +109,10 @@ class SpeculativeProviderCapabilities:
         )
 
 
-# Shape a generic speculative provider declares when the caller pins no depth.
-# The adapter validates the depth it was built for, so an omitted server budget
-# must resolve to this declared value instead of inventing one.
+# Generic fallback for a provider registration or a directly constructed
+# SpeculativeProviderConfig that declares no depth. Built-in providers declare
+# their own value at registration; server and LLM resolution reads that
+# declaration instead of this constant.
 DEFAULT_PROVIDER_CANDIDATE_BUDGET = 4
 
 # The ``quant`` axis value a provider registers under when its behaviour does not
@@ -160,7 +161,40 @@ class SpeculativeTextProvider(Protocol):
 
 SpeculativeProviderFactory = Callable[..., SpeculativeTextProvider]
 
-_REGISTRY: dict[SpeculativeProviderKey, SpeculativeProviderFactory] = {}
+
+@dataclass(frozen=True, slots=True)
+class SpeculativeProviderRegistration:
+    """One provider factory plus the shape it declares before model load.
+
+    ``candidate_budget`` is the depth the provider owns when the caller pins
+    none. Keeping it on the registration rather than on a loaded adapter lets
+    server capability reads report the provider's own default without scanning
+    or materializing the target artifact.
+    """
+
+    factory: SpeculativeProviderFactory
+    candidate_budget: int = DEFAULT_PROVIDER_CANDIDATE_BUDGET
+
+    def __post_init__(self) -> None:
+        if not callable(self.factory):
+            raise TypeError("speculative provider factory must be callable")
+        budget = int(self.candidate_budget)
+        if budget <= 0:
+            raise ValueError("speculative provider candidate_budget must be positive")
+        object.__setattr__(self, "candidate_budget", budget)
+
+
+class SpeculativeProviderBudgetAmbiguousError(ValueError):
+    """A provider declares different depths for different registry axes.
+
+    The caller supplied too few axes to select one registration. This is a
+    distinct condition from an unregistered provider, which remains a
+    ``KeyError``: the provider is known and runnable, but the pre-load caller
+    cannot yet choose its declaration.
+    """
+
+
+_REGISTRY: dict[SpeculativeProviderKey, SpeculativeProviderRegistration] = {}
 _BUILTINS_REGISTERED = False
 
 
@@ -169,16 +203,23 @@ def register_speculative_provider(
     factory: SpeculativeProviderFactory,
     *,
     replace: bool = False,
+    candidate_budget: int | None = None,
 ) -> None:
-    """Register one concrete provider factory."""
+    """Register one concrete provider factory and its declared default depth."""
 
     if not isinstance(key, SpeculativeProviderKey):
         raise TypeError("key must be a SpeculativeProviderKey")
-    if not callable(factory):
-        raise TypeError("speculative provider factory must be callable")
+    registration = SpeculativeProviderRegistration(
+        factory=factory,
+        candidate_budget=(
+            DEFAULT_PROVIDER_CANDIDATE_BUDGET
+            if candidate_budget is None
+            else candidate_budget
+        ),
+    )
     if key in _REGISTRY and not replace:
         raise KeyError(f"speculative provider already registered: {key}")
-    _REGISTRY[key] = factory
+    _REGISTRY[key] = registration
 
 
 def resolve_speculative_provider(
@@ -211,7 +252,7 @@ def resolve_speculative_provider(
         quant=quant,
     )
     try:
-        return _REGISTRY[key]
+        return _REGISTRY[key].factory
     except KeyError:
         pass
     agnostic = SpeculativeProviderKey(
@@ -221,9 +262,81 @@ def resolve_speculative_provider(
         quant=QUANT_AGNOSTIC,
     )
     try:
-        return _REGISTRY[agnostic]
+        return _REGISTRY[agnostic].factory
     except KeyError as exc:
         raise KeyError(f"unregistered speculative provider: {key}") from exc
+
+
+def resolve_speculative_provider_candidate_budget(
+    provider: str,
+    *,
+    target_model: str | None = None,
+    backend: str | None = None,
+    quant: str | None = None,
+) -> int:
+    """Return the candidate depth a provider declares before model load.
+
+    The declaration lives on the registration, so this reads registry metadata
+    only: it never constructs a provider, loads weights, or inspects an
+    artifact. With all registry axes supplied it follows the same
+    exact-then-quantization-agnostic lookup as ``resolve_speculative_provider``.
+    With an axis unknown, every matching registration must agree; otherwise the
+    caller gets an error naming the axis it must supply instead of a guessed
+    depth. An unregistered provider is a loud miss, not an unresolved value.
+    """
+
+    register_builtin_speculative_providers()
+    name = str(provider).strip()
+    if not name:
+        raise ValueError("speculative provider must be non-empty")
+    if target_model is not None and backend is not None and quant is not None:
+        key = SpeculativeProviderKey(
+            provider=name,
+            target_model=target_model,
+            backend=backend,
+            quant=quant,
+        )
+        registration = _REGISTRY.get(key)
+        if registration is None:
+            agnostic = SpeculativeProviderKey(
+                provider=name,
+                target_model=target_model,
+                backend=backend,
+                quant=QUANT_AGNOSTIC,
+            )
+            registration = _REGISTRY.get(agnostic)
+        if registration is None:
+            raise KeyError(f"unregistered speculative provider: {key}")
+        return registration.candidate_budget
+    target = None if target_model is None else str(target_model).strip()
+    host = None if backend is None else str(backend).strip()
+    storage = None if quant is None else str(quant).strip()
+    matching = [
+        registration
+        for key, registration in _REGISTRY.items()
+        if key.provider == name
+        and (target is None or key.target_model == target)
+        and (host is None or key.backend == host)
+        and (storage is None or key.quant in {storage, QUANT_AGNOSTIC})
+    ]
+    if not matching:
+        raise KeyError(f"unregistered speculative provider: {name}")
+    declared = {registration.candidate_budget for registration in matching}
+    if len(declared) == 1:
+        return next(iter(declared))
+    missing = [
+        axis
+        for axis, value in (
+            ("target_model", target),
+            ("backend", host),
+            ("quant", storage),
+        )
+        if value is None
+    ]
+    raise SpeculativeProviderBudgetAmbiguousError(
+        f"speculative provider {name} declares multiple candidate budgets "
+        f"({sorted(declared)}); supply {', '.join(missing)} to select one"
+    )
 
 
 def registered_speculative_providers() -> tuple[SpeculativeProviderKey, ...]:
@@ -246,13 +359,16 @@ def register_builtin_speculative_providers() -> None:
 __all__ = [
     "DEFAULT_PROVIDER_CANDIDATE_BUDGET",
     "QUANT_AGNOSTIC",
+    "SpeculativeProviderBudgetAmbiguousError",
     "SpeculativeProviderCapabilities",
     "SpeculativeProviderConfig",
     "SpeculativeProviderFactory",
     "SpeculativeProviderKey",
+    "SpeculativeProviderRegistration",
     "SpeculativeTextProvider",
     "register_builtin_speculative_providers",
     "register_speculative_provider",
     "registered_speculative_providers",
     "resolve_speculative_provider",
+    "resolve_speculative_provider_candidate_budget",
 ]

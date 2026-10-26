@@ -98,6 +98,9 @@ _VERIFY_ENVELOPE = "production_envelope_of_target_ar_greedy"
 # The assistant head is a small sidecar, so its scratch is sized by the same
 # context the backbone runs at rather than by a bring-up ceiling.
 _MAX_CANDIDATES = 8
+# The depth an omitted caller gets. The adapter accepts 1.._MAX_CANDIDATES; the
+# registration carries this default so server capability reads need no load.
+_DEFAULT_CANDIDATE_BUDGET = 4
 
 
 @dataclass(frozen=True)
@@ -741,6 +744,7 @@ def register_gemma4_mtp_providers(*, replace: bool = True) -> None:
             ),
             make_gemma4_mtp_provider,
             replace=replace,
+            candidate_budget=_DEFAULT_CANDIDATE_BUDGET,
         )
 
 

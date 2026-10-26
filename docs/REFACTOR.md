@@ -2718,10 +2718,12 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   generator callers migrate to an owner-published budget. Preserve their
   explicit settings during that migration; deleting the variable alone would
   silently change diagnostic and harness requests.
-- Remaining debt: `_candidate_budget_resolution` keeps a three-source ladder
-  (explicit / engine-resolved / provider-declared). Once every generator
-  publishes a resolution, the provider branch is only needed for pre-load
-  capability reads and can be reduced to a declared provider field.
+- Resolved 2026-10-26: provider registrations declare their candidate budget.
+  Server pre-load reporting and `LLM` use the same registry accessor. Explicit
+  and engine-resolved depths take precedence. A declaration that varies by
+  registry axes reports pending before load; construction uses its known axes
+  to choose the depth. An unregistered provider still fails by name.
+  The generic config default remains for direct provider construction.
 
 ## MTP output attribution: two AR-in-plan paths and a duplicated telemetry write (found 2026-09-17)
 

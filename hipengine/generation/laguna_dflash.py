@@ -657,6 +657,7 @@ register_speculative_provider(
     ),
     make_laguna_dflash_text_provider,
     replace=True,
+    candidate_budget=LAGUNA_DFLASH_CANDIDATE_BUDGET,
 )
 
 

@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from hipengine.kvcache.dms_config import DMSConfig
-from hipengine.speculative.registry import DEFAULT_PROVIDER_CANDIDATE_BUDGET
+from hipengine.speculative.registry import resolve_speculative_provider_candidate_budget
 from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
 
 AUTO_QUANT = "auto"
@@ -911,21 +911,37 @@ class LLM:
             )
         )
 
-    def _resolve_candidate_budget(self, generator: Any) -> tuple[int | None, str]:
+    def _resolve_candidate_budget(
+        self,
+        generator: Any,
+        *,
+        target_model: str | None = None,
+        backend: str | None = None,
+        quant: str | None = None,
+    ) -> tuple[int | None, str]:
         """Resolve an omitted candidate budget from capability data.
 
         An explicit caller value is used unchanged. An omitted one comes from
         the resident artifact's own serving evidence (the deepest depth it
         qualifies for the default physical cell), from an attached speculative
         provider's declared default, or from the generator's own dense-MTP
-        default. No backend or model name is consulted.
+        default. Registry axes select a provider declaration; they do not become
+        backend-specific branches.
         """
 
         requested = self.speculative_candidate_budget_requested
         if requested is not None:
             return int(requested), "explicit"
         if self.speculative_provider is not None:
-            return int(DEFAULT_PROVIDER_CANDIDATE_BUDGET), "provider_default"
+            return (
+                resolve_speculative_provider_candidate_budget(
+                    self.speculative_provider,
+                    target_model=target_model,
+                    backend=backend,
+                    quant=quant,
+                ),
+                "provider_default",
+            )
         evidence_resolver = getattr(
             generator, "max_qualified_speculative_candidate_budget", None
         )
@@ -946,7 +962,14 @@ class LLM:
             return int(default_resolver()), "generator_default"
         return None, "unresolved"
 
-    def _publish_candidate_budget(self, generator: Any | None = None) -> None:
+    def _publish_candidate_budget(
+        self,
+        generator: Any | None = None,
+        *,
+        target_model: str | None = None,
+        backend: str | None = None,
+        quant: str | None = None,
+    ) -> None:
         """Publish the resolved candidate depth on the loaded owner.
 
         Evidence describes a physical cell, so an evidence lookup waits until
@@ -954,7 +977,10 @@ class LLM:
         is constructed but not yet prepared has no resident runner and only a
         fallback capacity. A provider default and a generator's own declared
         default do not depend on that, so they publish as soon as the owner is
-        constructed.
+        constructed. Registry axes are passed when the construction path already
+        knows them, so a provider that declares different depths per target or
+        quantization resolves its own declaration instead of failing as
+        ambiguous.
         """
 
         owner = generator if generator is not None else self._get_text_generator()
@@ -972,7 +998,12 @@ class LLM:
         ):
             if getattr(owner, "resident_capacity", None) is None:
                 return
-        budget, source = self._resolve_candidate_budget(owner)
+        budget, source = self._resolve_candidate_budget(
+            owner,
+            target_model=target_model,
+            backend=backend,
+            quant=quant,
+        )
         self.speculative_candidate_budget = budget
         self.speculative_candidate_budget_source = source
         if budget is not None:
@@ -1598,7 +1629,12 @@ class LLM:
             if not callable(configure_dms):
                 raise ValueError("this model generator has no compact DMS serving adapter")
             configure_dms(self.dms)
-        self._publish_candidate_budget(generator)
+        self._publish_candidate_budget(
+            generator,
+            target_model=model_plugin.name,
+            backend=backend,
+            quant=quant,
+        )
         effective_provider, effective_draft_model = _resolve_speculative_owner(
             provider=self.speculative_provider,
             draft_model=self.draft_model,
@@ -1609,7 +1645,12 @@ class LLM:
         if effective_provider is not None:
             provider_budget = self.speculative_candidate_budget
             if provider_budget is None:
-                provider_budget = int(DEFAULT_PROVIDER_CANDIDATE_BUDGET)
+                provider_budget = resolve_speculative_provider_candidate_budget(
+                    effective_provider,
+                    target_model=model_plugin.name,
+                    backend=backend,
+                    quant=quant,
+                )
             self.speculative_candidate_budget = provider_budget
             from hipengine.speculative.registry import (
                 SpeculativeProviderConfig,

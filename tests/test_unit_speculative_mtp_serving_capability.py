@@ -1364,6 +1364,57 @@ def test_omitted_budget_keeps_the_provider_declared_depth() -> None:
     assert llm._resolve_candidate_budget(Generator()) == (4, "provider_default")
 
 
+def test_omitted_budget_reads_the_registered_provider_declaration() -> None:
+    """The provider's registration owns the default, not a server constant."""
+
+    from hipengine.speculative.registry import (
+        SpeculativeProviderKey,
+        register_speculative_provider,
+    )
+
+    register_speculative_provider(
+        SpeculativeProviderKey(
+            provider="test_llm_declared_budget",
+            target_model="test_model",
+            backend="test_backend",
+            quant="test_quant",
+        ),
+        lambda **kwargs: None,
+        replace=True,
+        candidate_budget=7,
+    )
+
+    class Generator:
+        resident_capacity = 1
+
+        def max_qualified_speculative_candidate_budget(self, **kwargs):
+            raise AssertionError("provider depth is not model-plugin evidence")
+
+    llm = _budget_resolution_llm(
+        Generator(),
+        speculative_provider="test_llm_declared_budget",
+        draft_model="draft.gguf",
+    )
+
+    assert llm._resolve_candidate_budget(Generator()) == (7, "provider_default")
+
+
+def test_omitted_budget_with_an_unregistered_provider_fails_loudly() -> None:
+    """A configured provider with no registration is a miss, not a guess."""
+
+    class Generator:
+        resident_capacity = 1
+
+    llm = _budget_resolution_llm(
+        Generator(),
+        speculative_provider="test_llm_unregistered_provider",
+        draft_model="draft.gguf",
+    )
+
+    with pytest.raises(KeyError, match="unregistered speculative provider"):
+        llm._resolve_candidate_budget(Generator())
+
+
 def test_explicit_budget_is_never_rewritten() -> None:
     """An operator-pinned depth passes through capability resolution intact."""
 
