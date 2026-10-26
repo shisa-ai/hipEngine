@@ -10,7 +10,7 @@ from hipengine.execution_profiles import (
     clear_runtime_profile_registry_for_tests,
     resolve_runtime_profile,
 )
-from hipengine.generation.qwen38_gguf_profiles import (
+from hipengine.generation.qwen35_dense_gfx1151_profiles import (
     FP16_RECURRENT_STATE_ENV,
     PRODUCTION_Q4_VERIFIER_ROWTILE_ENV,
     QWEN38_GGUF_BACKEND,

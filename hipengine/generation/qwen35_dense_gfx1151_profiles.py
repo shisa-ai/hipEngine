@@ -1,4 +1,4 @@
-"""Qwen3.8 dense GGUF gfx1151 strict/production profile plans.
+"""Qwen3.5 dense GGUF gfx1151 strict and production profile plans.
 
 Both plans own FP32 recurrent state. The FP16 storage candidate failed the
 long-horizon C1 and packed production envelopes; short verifier evidence cannot
@@ -223,7 +223,7 @@ def register_qwen38_gguf_gfx1151_profiles() -> bool:
     if wanted <= existing:
         return False
     if existing & wanted:
-        raise RuntimeError("Qwen3.8 gfx1151 profile registry is partially populated")
+        raise RuntimeError("Qwen3.5 dense gfx1151 profile registry is partially populated")
     register_runtime_profile_plan(
         model=QWEN38_GGUF_MODEL,
         backend=QWEN38_GGUF_BACKEND,

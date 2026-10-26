@@ -5,22 +5,24 @@ from types import SimpleNamespace
 import pytest
 
 from hipengine.execution_profiles import resolve_runtime_profile
-from hipengine.generation import qwen36_gguf_gfx1100_profiles as _profiles
+from hipengine.generation import qwen35_dense_gfx1100_profiles as _profiles
 from hipengine.runtime import qwen35_gguf_runner as _qwen35_gguf_runner  # noqa: F401
-from hipengine.generation.qwen36_gguf_gfx1100_profiles import (
+from hipengine.generation.qwen35_dense_gfx1100_profiles import (
     FP16_RECURRENT_STATE_ENV,
     Q4_FUSED_R28_ENV,
     Q6_DP4A_GROUPED_ENV,
     QWEN36_DENSE_GGUF_BACKEND,
     QWEN36_DENSE_GGUF_MODEL,
     QWEN36_DENSE_GGUF_QUANT,
-    QWEN36_MOE_GGUF_MODEL,
     VERIFY_CAPTURE_PREFILL_GDN_ENV,
     VERIFY_F32_POST_NORM_ENV,
     VERIFY_F32_RESIDUAL_ENV,
     qwen36_dense_gguf_gfx1100_strict_registered,
-    qwen36_moe_gguf_gfx1100_strict_registered,
     register_qwen36_dense_gguf_gfx1100_profiles,
+)
+from hipengine.generation.qwen35_moe_gfx1100_profiles import (
+    QWEN36_MOE_GGUF_MODEL,
+    qwen36_moe_gguf_gfx1100_strict_registered,
     register_qwen36_moe_gguf_gfx1100_profiles,
 )
 

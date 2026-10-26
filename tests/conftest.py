@@ -19,7 +19,7 @@ _BASELINE_HIPENGINE_ENV: dict[str, str] | None = None
 
 def _profile_env_names() -> tuple[str, ...]:
     """Environment selectors written process-globally by profile binders."""
-    from hipengine.generation import qwen36_gguf_gfx1100_profiles as profiles
+    from hipengine.generation import qwen35_dense_gfx1100_profiles as profiles
 
     return tuple(dict.fromkeys(getattr(profiles, name) for name in (
         "FP16_RECURRENT_STATE_ENV", "Q4_FUSED_R28_ENV", "Q6_DP4A_GROUPED_ENV",

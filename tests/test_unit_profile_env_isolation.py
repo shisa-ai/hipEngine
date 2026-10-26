@@ -11,7 +11,7 @@ def test_profile_environment_restores_collection_baseline(monkeypatch, baseline)
     spec = spec_from_file_location("isolated_conftest", Path(__file__).with_name("conftest.py"))
     hooks = module_from_spec(spec)
     spec.loader.exec_module(hooks)
-    from hipengine.generation import qwen36_gguf_gfx1100_profiles as profiles
+    from hipengine.generation import qwen35_dense_gfx1100_profiles as profiles
 
     names = [getattr(profiles, name) for name in (
         "FP16_RECURRENT_STATE_ENV", "Q4_FUSED_R28_ENV", "Q6_DP4A_GROUPED_ENV",

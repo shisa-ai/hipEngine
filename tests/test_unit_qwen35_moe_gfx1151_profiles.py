@@ -1,7 +1,7 @@
-"""RED/GREEN tests for the Qwen3.6 GGUF gfx1151 execution-profile plans.
+"""RED/GREEN tests for the Qwen3.5 MoE GGUF gfx1151 execution-profile plans.
 
 These cover PN1 registration semantics of
-``hipengine/generation/qwen36_gguf_profiles.py``:
+``hipengine/generation/qwen35_moe_gfx1151_profiles.py``:
 
 - idempotent registration of strict + production plans;
 - strict resolution produces the exact/unfused manifest;
@@ -31,7 +31,7 @@ from hipengine.execution_profiles import (
     register_runtime_profile_plan,
     resolve_runtime_profile,
 )
-from hipengine.generation.qwen36_gguf_profiles import (
+from hipengine.generation.qwen35_moe_gfx1151_profiles import (
     QWEN36_GGUF_BACKEND,
     QWEN36_GGUF_MODEL,
     QWEN36_GGUF_QUANT,

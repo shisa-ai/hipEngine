@@ -592,7 +592,7 @@ def main() -> int:
     from hipengine.runtime.prefill import PrefillConfig
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
     from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
-    from hipengine.generation.qwen36_gguf_profiles import (
+    from hipengine.generation.qwen35_moe_gfx1151_profiles import (
         QWEN36_GGUF_BACKEND,
         QWEN36_GGUF_MODEL,
         QWEN36_GGUF_QUANT,

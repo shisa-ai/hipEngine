@@ -1,10 +1,10 @@
-"""Qwen3.6-35B-A3B GGUF gfx1151 execution-profile cold-path plans.
+"""Qwen3.5 MoE GGUF gfx1151 execution-profile cold-path plans.
 
 Registers the ``strict`` and ``production`` ``RuntimeProfilePlan`` entries for
-``(qwen3_5_moe_gguf, hip_gfx1151, gguf_q4_k_m)`` so an explicit
-``HIPENGINE_EXECUTION_PROFILE`` resolves to one immutable variant manifest at
-LLM construction and applies the incumbent cold-path policy to the generated
-runtime.
+the architecture-scoped ``(qwen3_5_moe_gguf, hip_gfx1151, gguf_q4_k_m)`` key so
+an explicit ``HIPENGINE_EXECUTION_PROFILE`` resolves to one immutable variant
+manifest at LLM construction and applies the incumbent cold-path policy to the
+generated runtime.
 
 The ``strict`` profile is the fully-exact/unfused baseline: the base
 (non-cooperative) F32 router, the exact Q8T16 decode selection, the strict GDN
@@ -60,7 +60,7 @@ ROWTILE_ALL_ENV = "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL"
 _ROUTER_REGISTRY_QUANT = "f32"
 _GDN_REGISTRY_QUANT = "gguf_qwen35"
 
-# Registered gfx1151 variants for the Qwen3.6 GGUF model.
+# Registered gfx1151 variants for the Qwen3.5 MoE GGUF model.
 _STRICT_ROUTER_VARIANT = "f32_hidden"  # f32 | router_logits | f32_hidden
 _STRICT_LINEAR_VARIANT = "pack8_full_k_grid_y_native_exact_bf16_bf16_out"
 _ATTN_DECODE_VARIANT = "bf16_context_batch_shared_native_exact_spans"

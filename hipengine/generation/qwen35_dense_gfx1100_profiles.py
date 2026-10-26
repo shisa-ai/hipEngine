@@ -1,4 +1,9 @@
-"""Qwen3.6 dense GGUF gfx1100 strict SPECDEC2 profile."""
+"""Qwen3.5 dense GGUF gfx1100 strict and production SPECDEC2 profile plans.
+
+The plans register the architecture-scoped ``qwen3_5_gguf`` plugin key for
+``hip_gfx1100``. Dense model families that share the Qwen3.5 geometry resolve
+the same plans; the module does not register a plan per model name.
+"""
 
 from __future__ import annotations
 
@@ -16,7 +21,6 @@ from hipengine.execution_profiles import (
 )
 
 QWEN36_DENSE_GGUF_MODEL = "qwen3_5_gguf"
-QWEN36_MOE_GGUF_MODEL = "qwen3_5_moe_gguf"
 QWEN36_DENSE_GGUF_BACKEND = "hip_gfx1100"
 QWEN36_DENSE_GGUF_QUANT = "gguf_q4_k_m"
 FP16_RECURRENT_STATE_ENV = "HIPENGINE_GGUF_FP16_RECURRENT_STATE"
@@ -37,12 +41,6 @@ _DENSE_STRICT_EVIDENCE = (
 _DENSE_FUSED_R28_EVIDENCE = (
     "benchmarks/results/"
     "2026-09-02-w7900-q4km-k3-c7-fused-r28-periodic-strict-retained.json"
-)
-_MOE_STRICT_EVIDENCE = (
-    "benchmarks/results/2026-08-27-w7900-dual-concurrency2-mtp-current-state-audit.json"
-)
-_MOE_CANDIDATE_EVIDENCE = (
-    "benchmarks/results/2026-08-27-w7900-35b-moe-generation2-mtp-c1-owner.json"
 )
 
 # Process-global profile binding must not mistake a value written by an earlier
@@ -177,36 +175,10 @@ def register_qwen36_dense_gguf_gfx1100_profiles() -> bool:
     return bool(strict or production)
 
 
-def register_qwen36_moe_gguf_gfx1100_profiles() -> bool:
-    """Register strict fallback and the explicit non-default MoE candidate."""
-
-    strict = _register_profile(
-        model=QWEN36_MOE_GGUF_MODEL,
-        profile=ExecutionProfile.STRICT,
-        evidence=_MOE_STRICT_EVIDENCE,
-        graph_policy="specdec2_eager_c1",
-    )
-    production = _register_profile(
-        model=QWEN36_MOE_GGUF_MODEL,
-        profile=ExecutionProfile.PRODUCTION,
-        evidence=_MOE_CANDIDATE_EVIDENCE,
-        graph_policy="specdec2_moe_bulk_f32_k2_strict_k1_candidate",
-        binder=_production_binder,
-    )
-    return bool(strict or production)
-
-
 def qwen36_dense_gguf_gfx1100_strict_registered() -> bool:
     return _key(
         ExecutionProfile.STRICT,
         model=QWEN36_DENSE_GGUF_MODEL,
-    ) in registered_runtime_profile_keys()
-
-
-def qwen36_moe_gguf_gfx1100_strict_registered() -> bool:
-    return _key(
-        ExecutionProfile.STRICT,
-        model=QWEN36_MOE_GGUF_MODEL,
     ) in registered_runtime_profile_keys()
 
 
@@ -217,12 +189,9 @@ __all__ = [
     "QWEN36_DENSE_GGUF_QUANT",
     "Q4_FUSED_R28_ENV",
     "Q6_DP4A_GROUPED_ENV",
-    "QWEN36_MOE_GGUF_MODEL",
     "VERIFY_CAPTURE_PREFILL_GDN_ENV",
     "VERIFY_F32_POST_NORM_ENV",
     "VERIFY_F32_RESIDUAL_ENV",
     "qwen36_dense_gguf_gfx1100_strict_registered",
-    "qwen36_moe_gguf_gfx1100_strict_registered",
     "register_qwen36_dense_gguf_gfx1100_profiles",
-    "register_qwen36_moe_gguf_gfx1100_profiles",
 ]
