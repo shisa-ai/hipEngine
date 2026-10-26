@@ -295,10 +295,9 @@ def test_decode_graph_key_serializes_complete_shape_state_axes() -> None:
     assert len(payload["key_sha256"]) == 64
 
 
-def test_decode_graph_admits_bf16_and_tail4_hadamard_only(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH", raising=False)
+def test_decode_graph_admits_every_capturable_kv_policy() -> None:
+    """Admission is a capability answer for exactly these three policies."""
+
     session = _session()
     assert _decode_graph_kv_layout_admitted(session) is True
 
@@ -307,28 +306,27 @@ def test_decode_graph_admits_bf16_and_tail4_hadamard_only(
     session.kv_scale_granularity = "hadamard_group32"
     assert _decode_graph_kv_layout_admitted(session) is True
 
-    session.kv_storage_layout = "uniform"
+    # A mismatched granularity is not the declared tail4 policy.
+    session.kv_scale_granularity = "per_token_head"
     assert _decode_graph_kv_layout_admitted(session) is False
 
+    session.kv_storage_layout = "uniform"
+    session.kv_scale_granularity = "per_token_head"
+    assert _decode_graph_kv_layout_admitted(session) is True
 
-def test_decode_graph_int8_per_token_head_layout_needs_the_opt_in(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The IKV-C2 production layout is off by default and on behind the flag."""
+
+def test_decode_graph_int8_per_token_head_layout_is_admitted_by_capability() -> None:
+    """The IKV-C2 production layout captures without an opt-in flag."""
 
     session = _session()
     session.kv_storage_dtype = DType.INT8_PER_TOKEN_HEAD
     session.kv_storage_layout = "uniform"
     session.kv_scale_granularity = "per_token_head"
 
-    monkeypatch.delenv("HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH", raising=False)
-    assert _decode_graph_kv_layout_admitted(session) is False
-
-    monkeypatch.setenv("HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH", "1")
     assert _decode_graph_kv_layout_admitted(session) is True
 
-    # The flag admits only the layout it names: a different granularity under
-    # uniform layout stays rejected, so the opt-in cannot widen by accident.
+    # Admission names only the layout it declares: a different granularity
+    # under uniform layout stays rejected, so capability cannot widen.
     session.kv_scale_granularity = "block16"
     assert _decode_graph_kv_layout_admitted(session) is False
 
@@ -558,12 +556,13 @@ def test_resident_session_reuses_one_submission_context_across_graph_generations
 
 
 def test_decode_graph_capability_uses_runner_resolved_backend(monkeypatch) -> None:
-    observed: list[str] = []
+    observed: list[tuple[str, str]] = []
 
-    def capability(backend: str, name: str):
-        observed.append(backend)
-        assert name == "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS"
-        return 128
+    def capability(backend: str, name: str, default=None):
+        observed.append((backend, name))
+        if name == "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS":
+            return 128
+        return default
 
     monkeypatch.setattr(gguf_runner, "backend_package_capability", capability)
     monkeypatch.delenv("HIPENGINE_GGUF_MOE_GRAPH", raising=False)
@@ -578,20 +577,30 @@ def test_decode_graph_capability_uses_runner_resolved_backend(monkeypatch) -> No
     session.scratch = SimpleNamespace()
     session.host_token_embedding_enabled = False
     session.kv_storage_dtype = DType.BF16
+    session.kv_storage_layout = "uniform"
+    session.kv_scale_granularity = "per_token_head"
     session.use_gemv_decode = True
 
     assert session._resolve_decode_graph_min_replay_steps() == 128
-    assert observed == ["hip_gfx1151"]
+    assert observed == [
+        ("hip_gfx1151", "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS"),
+        ("hip_gfx1151", "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_KV_STORAGE"),
+    ]
 
 
-def test_decode_graph_eligibility_rejects_int8_kv_unless_opted_in(
+def test_decode_graph_eligibility_admits_int8_kv_without_a_flag(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Pin the gate that has always kept the IKV-C2 C1 decode eager."""
+    """The IKV-C2 layout is a capture capability; the horizon is the gate."""
 
-    monkeypatch.setattr(
-        gguf_runner, "backend_package_capability", lambda backend, name, default=None: 128
-    )
+    def capability(backend: str, name: str, default=None):
+        if name == "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS":
+            return 24
+        if name == "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_KV_STORAGE":
+            return {("int8_per_token_head", "uniform", "per_token_head"): 128}
+        return default
+
+    monkeypatch.setattr(gguf_runner, "backend_package_capability", capability)
     monkeypatch.delenv("HIPENGINE_GGUF_MOE_GRAPH", raising=False)
     session = object.__new__(Qwen35GGUFResidentSession)
     session.backend = "auto"
@@ -608,23 +617,16 @@ def test_decode_graph_eligibility_rejects_int8_kv_unless_opted_in(
     session.kv_storage_layout = "uniform"
     session.kv_scale_granularity = "per_token_head"
 
-    monkeypatch.delenv("HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH", raising=False)
-    assert session._resolve_decode_graph_min_replay_steps() is None
-
-    monkeypatch.setenv("HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH", "1")
     assert session._resolve_decode_graph_min_replay_steps() == 128
 
 
 def test_decode_graph_eligibility_still_rejects_unadmitted_int8_layout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The opt-in must not admit a layout the capture path would reject."""
+    """An admitted storage policy must not admit an unbindable layout."""
 
-    monkeypatch.setattr(
-        gguf_runner, "backend_package_capability", lambda backend, name, default=None: 128
-    )
+    monkeypatch.setattr(gguf_runner, "backend_package_capability", _graph_capability)
     monkeypatch.delenv("HIPENGINE_GGUF_MOE_GRAPH", raising=False)
-    monkeypatch.setenv("HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH", "1")
     session = object.__new__(Qwen35GGUFResidentSession)
     session.backend = "auto"
     session.runner = SimpleNamespace(
@@ -668,88 +670,46 @@ def _graph_storage_session(
     return session
 
 
-# label, storage, layout, granularity, flag, admitted
+# label, storage, layout, granularity, admitted
 _GRAPH_STORAGE_MATRIX = [
-    ("bf16-flag-unset", DType.BF16, "uniform", "per_token_head", None, True),
-    ("bf16-flag-off", DType.BF16, "uniform", "per_token_head", "0", True),
-    ("bf16-flag-on", DType.BF16, "uniform", "per_token_head", "1", True),
+    ("bf16", DType.BF16, "uniform", "per_token_head", True),
     (
-        "tail4-flag-unset",
+        "tail4-hadamard-group32",
         DType.INT8_PER_TOKEN_HEAD,
         "tail4_hadamard_group32",
         "hadamard_group32",
-        None,
         True,
     ),
+    ("uniform-per-token-head", DType.INT8_PER_TOKEN_HEAD, "uniform", "per_token_head", True),
+    ("uniform-block16", DType.INT8_PER_TOKEN_HEAD, "uniform", "block16", False),
+    ("uniform-hadamard-group32", DType.INT8_PER_TOKEN_HEAD, "uniform", "hadamard_group32", False),
     (
-        "tail4-flag-off",
-        DType.INT8_PER_TOKEN_HEAD,
-        "tail4_hadamard_group32",
-        "hadamard_group32",
-        "0",
-        True,
-    ),
-    (
-        "tail4-flag-on",
-        DType.INT8_PER_TOKEN_HEAD,
-        "tail4_hadamard_group32",
-        "hadamard_group32",
-        "1",
-        True,
-    ),
-    (
-        "uniform-per-token-head-flag-unset",
-        DType.INT8_PER_TOKEN_HEAD,
-        "uniform",
-        "per_token_head",
-        None,
-        False,
-    ),
-    (
-        "uniform-per-token-head-flag-off",
-        DType.INT8_PER_TOKEN_HEAD,
-        "uniform",
-        "per_token_head",
-        "0",
-        False,
-    ),
-    (
-        "uniform-per-token-head-flag-on",
-        DType.INT8_PER_TOKEN_HEAD,
-        "uniform",
-        "per_token_head",
-        "1",
-        True,
-    ),
-    (
-        "uniform-block16-flag-on",
-        DType.INT8_PER_TOKEN_HEAD,
-        "uniform",
-        "block16",
-        "1",
-        False,
-    ),
-    (
-        "uniform-hadamard-group32-flag-on",
-        DType.INT8_PER_TOKEN_HEAD,
-        "uniform",
-        "hadamard_group32",
-        "1",
-        False,
-    ),
-    (
-        "tail4-block16-flag-on",
+        "tail4-block16",
         DType.INT8_PER_TOKEN_HEAD,
         "tail4_hadamard_group32",
         "block16",
-        "1",
+        False,
+    ),
+    (
+        "tail4-per-token-head",
+        DType.INT8_PER_TOKEN_HEAD,
+        "tail4_hadamard_group32",
+        "per_token_head",
         False,
     ),
 ]
 
 
+def _graph_capability(backend: str, name: str, default=None):
+    if name == "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS":
+        return 128
+    if name == "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_KV_STORAGE":
+        return {("int8_per_token_head", "uniform", "per_token_head"): 128}
+    return default
+
+
 @pytest.mark.parametrize(
-    "label,storage,layout,granularity,flag,admitted",
+    "label,storage,layout,granularity,admitted",
     _GRAPH_STORAGE_MATRIX,
     ids=[case[0] for case in _GRAPH_STORAGE_MATRIX],
 )
@@ -759,19 +719,12 @@ def test_decode_graph_storage_admission_matrix(
     storage: DType,
     layout: str,
     granularity: str,
-    flag: str | None,
     admitted: bool,
 ) -> None:
     """Storage admission and the capture-path layout check are one predicate."""
 
-    monkeypatch.setattr(
-        gguf_runner, "backend_package_capability", lambda backend, name, default=None: 128
-    )
+    monkeypatch.setattr(gguf_runner, "backend_package_capability", _graph_capability)
     monkeypatch.delenv("HIPENGINE_GGUF_MOE_GRAPH", raising=False)
-    if flag is None:
-        monkeypatch.delenv("HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH", raising=False)
-    else:
-        monkeypatch.setenv("HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH", flag)
 
     session = _graph_storage_session(storage, layout=layout, granularity=granularity)
 
@@ -788,11 +741,10 @@ def test_decode_graph_storage_admission_delegates_to_the_shared_predicate(
 
     import hipengine.runtime.gguf_decode_graph as graph_module
 
-    monkeypatch.delenv("HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH", raising=False)
     session = _graph_storage_session(
         DType.INT8_PER_TOKEN_HEAD,
         layout="uniform",
-        granularity="per_token_head",
+        granularity="block16",
     )
     assert session._decode_graph_storage_admitted() is False
 
@@ -819,6 +771,7 @@ def test_packed_decode_graph_minimum_uses_model_width_policy(monkeypatch) -> Non
             file_type_name=identity[1],
         ),
     )
+    session.kv_storage_dtype = DType.BF16
     session._decode_graph_min_replay_steps_cache = 128
 
     assert session.packed_decode_graph_min_replay_steps(1) == 128

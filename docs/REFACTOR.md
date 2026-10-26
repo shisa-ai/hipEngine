@@ -2742,49 +2742,6 @@ the allocation repair. The observations and proposal below are historical.
   Replace these with device-resident tails only after the same whole/chunk,
   60-second transition, recording-reset and post-join-noise tests pass.
 
-## `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` (INT8 KV C1 decode graph)
-
-- Admitted 2026-09-11 so the INT8 KV C1 decode graph could be measured instead
-  of assumed unusable. The graph itself was never missing: it was gated by
-  `_resolve_decode_graph_min_replay_steps` (BF16 storage only) and by
-  `_decode_graph_kv_layout_admitted` (INT8 admitted only for
-  `tail4_hadamard_group32`), so the IKV-C2 production layout
-  (`int8_per_token_head` + uniform + `per_token_head` FP32 scales) always decoded
-  eagerly.
-- Session eligibility now shares the capture predicate: BF16 and the declared
-  `tail4_hadamard_group32` layout are admitted without this flag. Uniform
-  `int8_per_token_head` with `per_token_head` scales still uses the flag.
-  Capacity planning resolves layout names through the KV policy resolver.
-- Measured on the W7900, 27B `Q4_K_M`, full 10-prompt mtp-bench category suite,
-  128 decode tokens: numerically exact (10/10 prompts, all 129 generated tokens
-  sha256-identical to eager) and non-regressive but small, -0.53% decode wall
-  with capture cost included and -2.48% replay-only. Artifacts:
-  `benchmarks/results/2026-09-11-w7900-ikv-c2-c1-decode-graph-int8-{eager,replay}.json`.
-- Removal condition: the INT8 admission is kept behind this flag because its sign
-  depends on the decode horizon, and the shared eligibility floor does not encode
-  that. Measured on the full 10-prompt mtp-bench suite, 10/10 byte-identical every
-  time: at 128 decode tokens (the `pm4` transport) the graph is a real win - five
-  pairs, mean -0.73%, range -1.36% to -0.49%, 0.05 pp spread across the three
-  forward pairs, and a reversed-order control gives -1.08% graph-first versus
-  -0.50% graph-second, so the win is not an order artifact. At 64 tokens
-  (`hipgraph`) it is +0.81% / +0.68%, and at 32 tokens +1.36% / +1.40% - also
-  repeatable. The mechanism is transport economics, not replay overhead: capture
-  is ~82 ms per request under `pm4` and ~18 ms under `hipgraph`, while the replay
-  saves ~2.5% under `pm4` and is neutral under `hipgraph`. So the win exists
-  exactly where `GGUF_DECODE_GRAPH_SUBMISSION_POLICIES` already selects `pm4`
-  (>=128 replay steps for this geometry at one row).
-  To promote: add an INT8-specific capture-aware floor near 128 steps, or admit
-  the graph only when the resolved submission transport is `pm4`. The generation
-  capture sites know the remaining output-token budget and already compare it
-  with their capture floor; the remaining work is to apply the storage-specific
-  policy consistently there. Then re-measure at 128 steps and promote to
-  default, keeping `=0` as rollback. If no floor mechanism is wanted, delete the
-  flag and the INT8 admission with it, since a default-on graph at a floor of 24
-  would regress every 24-127-step generation.
-  Note also that the earlier claim of a scalar-vs-packed floor inconsistency was
-  wrong and was corrected in
-  `worklog/entries/20260912T000826.517239Z-lhl-p3-c1-graph-floor-correction-5a1217.md`.
-
 ## Qwen4Exp H256 QSA head-pair candidate
 
 - Kernel-only `strict_h256_head_pair_rows_spans`:two heads/wave,

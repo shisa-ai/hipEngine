@@ -40,6 +40,18 @@ def _enum_value(value: Any) -> str:
     return str(getattr(value, "value", value))
 
 
+def _packed_decode_graph_kv_storage_admitted(session: Any) -> bool:
+    """True when packed capture can bind this session's KV storage.
+
+    Packed capture stages every lane through BF16 physical KV planes, so a
+    non-BF16 session is a named capability miss at capture, not a horizon
+    question. The session's packed floor consults this predicate so an INT8
+    session never attempts a capture that cannot succeed.
+    """
+
+    return _enum_value(getattr(session, "kv_storage_dtype", None)) == DType.BF16.value
+
+
 def _model_identity(model_path: str | Path) -> dict[str, Any]:
     path = Path(model_path).expanduser()
     try:
@@ -421,7 +433,7 @@ def capture_qwen35_gguf_packed_decode_graph(
         raise RuntimeError("GGUF resident packed decode buffers are closed")
     if owner.host_token_embedding_enabled:
         owner._device_token_embedding_weight(reason="packed_decode_graph")
-    if _enum_value(owner.kv_storage_dtype) != DType.BF16.value:
+    if not _packed_decode_graph_kv_storage_admitted(owner):
         raise NotImplementedError("packed decode graphs currently support BF16 KV only")
     if owner.use_expert_sidecar:
         raise NotImplementedError("packed decode graphs do not support expert sidecars")

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -52,50 +51,31 @@ def _enum_value(value: Any) -> str:
     return str(getattr(value, "value", value))
 
 
-_GGUF_INT8_KV_DECODE_GRAPH_ENV = "HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH"
+def _decode_graph_kv_layout_admitted(session: Any) -> bool:
+    """True when the capture path supports this session's KV storage policy.
 
-
-def _gguf_int8_kv_decode_graph_enabled() -> bool:
-    """Admit the IKV-C2 INT8 KV layout to the C1 decode graph (default off).
-
-    The C1 decode graph is admitted for BF16 KV and for the
-    ``tail4_hadamard_group32`` INT8 layout. The IKV-C2 production default
+    This is a capability answer, not a performance gate. BF16, the declared
+    ``tail4_hadamard_group32`` INT8 layout, and the IKV-C2 production layout
     (``int8_per_token_head`` storage, ``uniform`` layout, ``per_token_head``
-    fp32 scales) is not admitted unless this flag is set, so this route has
-    always decoded eagerly. That gate was introduced as a conservative scope
-    restriction ("keep eager for unmeasured shapes") rather than from a measured
-    capture-safety limit, so this flag exists to measure the INT8 route in the
-    graph instead of assuming it cannot work.
-
-    Env "1" opts the INT8 layouts into capture; the eager step is the
-    registered fallback and remains the default.
+    scales) all capture and replay exactly. *When* capture is worth doing is a
+    separate horizon decision owned by the backend floor
+    (``GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS``) plus, where a backend measured a
+    storage-specific crossover, the backend's
+    ``GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_KV_STORAGE`` table.
     """
 
-    return os.environ.get(_GGUF_INT8_KV_DECODE_GRAPH_ENV, "0").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-
-
-def _decode_graph_kv_layout_admitted(session: Any) -> bool:
     storage = _enum_value(session.kv_storage_dtype)
     if storage == DType.BF16.value:
         return True
-    if (
-        storage == DType.INT8_PER_TOKEN_HEAD.value
-        and str(getattr(session, "kv_storage_layout", "uniform"))
-        == KV_STORAGE_TAIL4_HADAMARD_GROUP32
-        and str(getattr(session, "kv_scale_granularity", "")) == "hadamard_group32"
-    ):
-        return True
-    return bool(
-        _gguf_int8_kv_decode_graph_enabled()
-        and storage == DType.INT8_PER_TOKEN_HEAD.value
-        and str(getattr(session, "kv_storage_layout", "uniform")) == "uniform"
-        and str(getattr(session, "kv_scale_granularity", "")) == "per_token_head"
-    )
+    if storage != DType.INT8_PER_TOKEN_HEAD.value:
+        return False
+    layout = str(getattr(session, "kv_storage_layout", "uniform"))
+    granularity = str(getattr(session, "kv_scale_granularity", ""))
+    if layout == KV_STORAGE_TAIL4_HADAMARD_GROUP32:
+        return granularity == "hadamard_group32"
+    if layout == "uniform":
+        return granularity == "per_token_head"
+    return False
 
 
 def _buffer_ptr(buffer: Any) -> int | None:
@@ -383,7 +363,8 @@ def capture_qwen35_gguf_decode_graph(
         session._device_token_embedding_weight(reason="decode_graph")
     if not _decode_graph_kv_layout_admitted(session):
         raise RuntimeError(
-            "GGUF decode graph requires BF16 KV or the admitted tail4_hadamard_group32 layout"
+            "GGUF decode graph requires BF16 KV, the tail4_hadamard_group32 layout, "
+            "or int8_per_token_head storage with uniform/per_token_head scales"
         )
     if steps_per_replay <= 0:
         raise ValueError("steps_per_replay must be positive")

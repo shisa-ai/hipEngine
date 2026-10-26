@@ -414,9 +414,6 @@ def main() -> int:
         "effective_decode_graph_min_replay_steps": (
             session.decode_graph_min_replay_steps()
         ),
-        "int8_kv_decode_graph_env": os.environ.get(
-            "HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH"
-        ),
         "fastpath_safety": None if session.fastpath_safety is None else session.fastpath_safety.as_dict(),
     }
     prompt_metrics: list[dict[str, Any]] = []

@@ -1527,6 +1527,12 @@ LAGUNA_SWA_LOCAL1024 = True
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
+# No per-KV-policy override: the backend floor above is already the horizon the
+# INT8 uniform/per_token_head capture was screened at, and that screen was flat
+# against eager decode, so a storage-specific floor would only restate 128.
+# Declaring nothing keeps BF16, tail4_hadamard_group32, and the INT8 production
+# layout on the same 128-transition gate.
+GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_KV_STORAGE = {}
 # gfx1100 PM4 evidence does not admit architecture-specific packets on gfx1151.
 GGUF_DECODE_GRAPH_SUBMISSION_POLICIES = {
     (QWEN35_MOE_H2048_E256_GEOMETRY, "MOSTLY_Q4_K_M"): {

@@ -3062,6 +3062,9 @@ def test_packed_decode_graph_min_replay_steps_survives_preset_bound_identity(
         fake_session = SimpleNamespace(
             runner=SimpleNamespace(backend="hip_gfx1151", weights=weights),
             _decode_graph_min_replay_steps_cache=5,
+            # Packed capture binds BF16 KV planes; the floor resolver reads the
+            # session's storage to refuse a capture that cannot succeed.
+            kv_storage_dtype=DType.BF16,
         )
         # The real method, called with a mocked resident session.
         return lambda rows: Qwen35GGUFResidentSession.packed_decode_graph_min_replay_steps(

@@ -173,6 +173,22 @@ GGUF_Q4_K_M_FAIR_PREFILL_BURST_CHUNKS = 1
 # Clean W7900 SOL-G5 p512/d24 evidence admits the state-bound composite GGUF
 # graph when at least 24 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 24
+# Per-KV-policy capture floor, applied on top of the backend floor above. The
+# backend floor answers "when does capture amortize"; this table answers the
+# narrower question a measured storage policy raises: "from which horizon is
+# capture not a regression for this KV policy". The IKV-C2 production layout
+# (``int8_per_token_head`` storage, ``uniform`` layout, ``per_token_head``
+# scales) captures and replays exactly, but on the dense 27B Q4_K_M artifact it
+# lost 1.36%/0.81% at 32/64 decode transitions and gained 0.73% (mean) at 128,
+# i.e. the crossover is the pm4 transport threshold below, not the 24-step
+# amortization floor. 128 is that threshold for the dense 5120 geometry at one
+# physical row; the consistency test pins the two numbers together so a policy
+# edit cannot silently re-open the regression zone. BF16 and the
+# tail4_hadamard_group32 layout declare nothing and keep the backend floor.
+# HIPENGINE_GGUF_DECODE_GRAPH=0 remains the explicit eager rollback.
+GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_KV_STORAGE = {
+    ("int8_per_token_head", "uniform", "per_token_head"): 128,
+}
 # Full PM4 attribution admits only measured model/quant/physical-row horizons.
 # The 35B-A3B c1 floor includes >10% margin over its clean p4096 break-even at
 # 143 transitions; packed-width floors retain their independent margins. The

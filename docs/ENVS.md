@@ -382,7 +382,6 @@ independent workload gates.
 | `HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY` | true | Retained default with rollback opt-out | Next-N accepted-tail KV write-only path; `0` rolls back to the full write. |
 | `HIPENGINE_GGUF_PACKED_LAYER_OUTER` | true | Retained default with rollback opt-out | Session-paired (one pair per session) packed layer-outer executor; `0` restores the per-layer-keyed chunk-outer rollback owner. |
 | `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED` | unset | Unsafe diagnostic | Shorter spelling accepted alongside `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG` in the INT8-KV diagnostic override set. |
-| `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` | unset | Diagnostic | Admits INT8 KV storage into decode graph capture, and only for layouts the capture path accepts; BF16 is always admitted. |
 | `HIPENGINE_GGUF_INT8_PREFILL_DIRECT` | unset | Correctness/perf gate | Selects the oracle-free direct INT8 prefill attention route (`twopass` candidate) instead of the oracle-bridge strict path (write-through BF16 oracle pair via AOTriton). |
 | `HIPENGINE_GGUF_INT8_PREFILL_KERNEL` | `flash` | Route selector | Direct INT8 prefill attention kernel implementation: `flash`, `wmma`, or `sequential`; other values are errors. |
 | `HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON` | unset | Diagnostic | Slot-local AOTriton variant of the INT8 prefill route (gate provenance key). |
@@ -1162,6 +1161,9 @@ harnesses read them but do not own them.
 
 These names appear in the tree but must not be confused with env knobs:
 
+- `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` is retired. Capture APIs admit
+  implemented KV layouts; automatic capture uses backend-declared replay
+  floors instead. Historical harness artifacts and regression tests may name it.
 - `HIPENGINE_YUE2_NAR_ATTENTION` is retired and appears only in regression
   tests. Attention selection uses kernel geometry; setting it has no effect.
 

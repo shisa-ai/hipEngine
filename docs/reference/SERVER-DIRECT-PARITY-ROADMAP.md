@@ -63,7 +63,7 @@ which records how each stage got here rather than what is shipping now.
 | Native sampling on that route | **blocked** | `HIPENGINE_QWEN35_NATIVE_SAMPLER=1` leaves the packed native sampler at capacity 0, so the request fails with `invalid_request` and the engine then times out and closes. This is an unresolved production-path defect, not missing test coverage |
 | Prefix-suffix (shared-prefix) resumable prefill | **intentionally unsupported** | the layer-outer executor provides no incremental prefill, so admission declines these rounds by design |
 | IKV-C2 row-batched INT8 decode | **promoted to physical C4** | eager decode; concurrent requests share one packed model step |
-| INT8 KV decode graphs | **default-off** | `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH=1` admits them. Measured as a repeatable win above the `pm4` transport threshold and a repeatable regression below it, so promotion needs transport-aware or horizon-aware admission first |
+| INT8 KV decode graphs | Horizon-aware | Uniform per-token-head INT8 is capture-capable without an opt-in. Automatic capture uses the backend's replay floor, raised to 128 for this storage policy on gfx1100; BF16 and tail-four policy floors are unchanged. Explicit capture remains available below the automatic floor. |
 | C8, decode graphs, MTP, batched INT8 prefill | **not promoted** | measured or diagnostic only |
 
 Two consequences worth stating plainly, because they are easy to lose in the

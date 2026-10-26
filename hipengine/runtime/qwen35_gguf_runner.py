@@ -9644,6 +9644,43 @@ def _resolve_gguf_packed_decode_graph_min_replay_steps(
     return minimum
 
 
+def _resolve_gguf_decode_graph_kv_storage_floor(
+    backend: str,
+    *,
+    kv_storage_dtype: str,
+    kv_storage_layout: str,
+    kv_scale_granularity: str,
+) -> int | None:
+    """Resolve a backend's declared per-KV-policy decode-graph floor.
+
+    ``GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS`` is the amortization floor and applies
+    to every admitted storage policy. This table is the narrower, measured
+    answer for a policy whose capture crossover is not that floor — gfx1100's
+    INT8 ``uniform``/``per_token_head`` layout, which regresses below the pm4
+    transport threshold and wins above it. A backend that has not measured a
+    storage-specific horizon declares nothing (or an empty mapping) and keeps
+    its backend floor.
+    """
+
+    policies = backend_package_capability(
+        backend,
+        "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_KV_STORAGE",
+        {},
+    )
+    if not isinstance(policies, Mapping):
+        raise RuntimeError("backend decode graph KV storage floors must be a mapping")
+    raw = policies.get(
+        (str(kv_storage_dtype), str(kv_storage_layout), str(kv_scale_granularity))
+    )
+    if raw is None:
+        return None
+    if not isinstance(raw, int) or isinstance(raw, bool):
+        raise RuntimeError("backend decode graph KV storage floor must be an int")
+    if raw <= 0:
+        raise RuntimeError("backend decode graph KV storage floor must be positive")
+    return int(raw)
+
+
 def _resolve_gguf_decode_graph_submission_transport(
     backend: str,
     *,
@@ -17048,11 +17085,12 @@ class Qwen35GGUFResidentSession:
         """True when this session's KV storage may use the decode graph.
 
         Delegates to ``gguf_decode_graph._decode_graph_kv_layout_admitted`` so
-        the eligibility resolver and the capture path share one predicate: BF16
-        and the declared ``tail4_hadamard_group32`` INT8 layout are admitted by
-        default, the ``uniform``/``per_token_head`` INT8 layout needs
-        ``HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH``, and every other layout or
-        granularity stays eager.
+        the eligibility resolver and the capture path share one predicate: BF16,
+        the declared ``tail4_hadamard_group32`` INT8 layout, and the IKV-C2
+        production layout (``uniform``/``per_token_head``) are admitted by
+        capability, and every other layout or granularity stays eager. When
+        capture is worth doing is the horizon question, answered by the backend
+        floor and ``GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_KV_STORAGE``.
         """
 
         from hipengine.runtime.gguf_decode_graph import _decode_graph_kv_layout_admitted
@@ -17063,10 +17101,22 @@ class Qwen35GGUFResidentSession:
         self,
         physical_rows: int,
     ) -> int | None:
-        """Return the model/quant/width-qualified packed graph break-even."""
+        """Return the model/quant/width-qualified packed graph break-even.
+
+        ``None`` means the packed graph cannot run for this session at all:
+        packed capture binds BF16 KV planes only, so an INT8 session must not
+        inherit the scalar floor here and then attempt a capture that raises.
+        The horizon policy below applies only to admitted storage.
+        """
 
         default = self._decode_graph_min_replay_steps_cache
         if default is None or self.runner is None or self.runner.weights is None:
+            return None
+        from hipengine.runtime.gguf_packed_decode_graph import (
+            _packed_decode_graph_kv_storage_admitted,
+        )
+
+        if not _packed_decode_graph_kv_storage_admitted(self):
             return None
         identity = _gguf_policy_identity(self.runner.weights)
         # Identity is a 2-tuple for plain artifacts and a 3-tuple when a UD
@@ -17094,13 +17144,14 @@ class Qwen35GGUFResidentSession:
     def _resolve_decode_graph_min_replay_steps(self) -> int | None:
         """Resolve backend graph capability once after resident initialization.
 
-        BF16 KV and the declared ``tail4_hadamard_group32`` INT8 layout are
-        admitted unconditionally. The ``uniform``/``per_token_head`` INT8
-        production layout stays eager by default because this resolver was
-        introduced as a conservative scope restriction ("keep eager for
-        unmeasured shapes"); ``HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH=1`` admits
-        it, so the C1 decode graph can be measured on the INT8 KV route instead
-        of assumed unusable. The eager step remains the registered fallback.
+        Every admitted KV storage policy (BF16, ``tail4_hadamard_group32``, and
+        the IKV-C2 ``uniform``/``per_token_head`` INT8 layout) is gated on a
+        horizon, never on a flag. The backend floor answers amortization; a
+        backend that measured a storage-specific crossover declares it in
+        ``GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_KV_STORAGE`` and the higher of
+        the two applies. gfx1100 declares 128 for the INT8 production layout
+        because capture regressed below the pm4 transport threshold and won
+        above it. The eager step remains the registered fallback.
         """
 
         if (
@@ -17124,7 +17175,17 @@ class Qwen35GGUFResidentSession:
         minimum = int(raw)
         if minimum <= 0:
             raise RuntimeError("backend GGUF decode graph minimum must be positive")
-        return minimum
+        from hipengine.runtime.gguf_decode_graph import _enum_value
+
+        storage_floor = _resolve_gguf_decode_graph_kv_storage_floor(
+            str(self.runner.backend),
+            kv_storage_dtype=_enum_value(self.kv_storage_dtype),
+            kv_storage_layout=str(getattr(self, "kv_storage_layout", "uniform")),
+            kv_scale_granularity=str(getattr(self, "kv_scale_granularity", "")),
+        )
+        if storage_floor is None:
+            return minimum
+        return max(minimum, storage_floor)
 
     @property
     def last_pre_output_norm_hidden(self) -> np.ndarray | None:
