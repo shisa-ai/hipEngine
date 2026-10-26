@@ -18,6 +18,7 @@ QWEN4_EXP_AUXILIARY_UPLOAD_MODULES = (
     "runtime/qwen4_exp_mixed_target",
     "runtime/qwen4_exp_mtp",
     "runtime/qwen4_exp_mtp_prefill",
+    "runtime/qwen4_exp_runner",
 )
 
 
@@ -79,6 +80,31 @@ def test_qwen4exp_auxiliary_uploads_use_the_owning_helper(module):
             else next((kw.value for kw in node.keywords if kw.arg == "host_ptr"), None)
         )
         if source is not None and _is_array_pointer_expression(source):
+            hazards.append(node.lineno)
+    assert not hazards, f"{path.name}: use copy_host_array_to_device at lines {hazards}"
+
+
+def test_qwen4exp_qsa_row_upload_uses_the_owning_helper():
+    """A direct row-array H2D memcpy must not erase its host row view."""
+    path = (
+        Path(__file__).parents[1]
+        / "hipengine/runtime/qwen4_exp_batch_qsa.py"
+    )
+    tree = ast.parse(path.read_text())
+    hazards = []
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "memcpy"
+        ):
+            continue
+        kind = (
+            node.args[3]
+            if len(node.args) > 3
+            else next((kw.value for kw in node.keywords if kw.arg == "kind"), None)
+        )
+        if isinstance(kind, ast.Attribute) and kind.attr == "HOST_TO_DEVICE":
             hazards.append(node.lineno)
     assert not hazards, f"{path.name}: use copy_host_array_to_device at lines {hazards}"
 

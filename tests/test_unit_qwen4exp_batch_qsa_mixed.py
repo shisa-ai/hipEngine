@@ -139,6 +139,55 @@ def test_selection_staging_is_writable_for_every_width(rows):
         scratch.close()
 
 
+def test_sparse_row_upload_owns_the_row_view(monkeypatch):
+    """The dirty-row H2D copy carries a row view, not a transient raw pointer."""
+
+    runtime = FakeRuntime()
+    scratch = Qwen4ExpBatchQsaSelectionScratch.allocate(
+        rows=2, stride=OUTPUT_STRIDE, index_heads=INDEX_HEADS,
+        index_dim=INDEX_DIM, runtime=runtime,
+    )
+    runtime.copies.clear()
+    calls = []
+    real_upload = batch_qsa.copy_host_array_to_device
+
+    def record(buffer, array, nbytes=None, *, runtime=None):
+        calls.append((buffer, array, nbytes, runtime))
+        return real_upload(buffer, array, nbytes, runtime=runtime)
+
+    monkeypatch.setattr(batch_qsa, "copy_host_array_to_device", record)
+    row_bytes = OUTPUT_STRIDE * np.dtype(np.int64).itemsize
+    try:
+        batch_qsa._stage_selection(
+            scratch, rows=2, contexts=np.full(2, 3), sparse_rows=(1,),
+            sparse_counts=np.array([2], dtype=np.int32),
+            sparse_positions=np.array([[1, 2]], dtype=np.int64),
+            runtime=scratch.runtime,
+        )
+        row_calls = [
+            call for call in calls
+            if call[0].nbytes == row_bytes and call[0].ptr != scratch.positions.ptr
+        ]
+        assert len(row_calls) == 1, row_calls
+        buffer, array, nbytes, used_runtime = row_calls[0]
+        assert buffer.ptr == scratch.positions.ptr + row_bytes
+        assert buffer.nbytes == row_bytes
+        assert nbytes == row_bytes
+        assert used_runtime is scratch.runtime
+        assert array.shape == (OUTPUT_STRIDE,)
+        assert array.dtype == np.int64
+        assert array.flags.c_contiguous
+        assert array.base is scratch.positions_host
+        assert array[:2].tolist() == [1, 2]
+        assert runtime.copies[0] == (
+            scratch.positions.ptr + row_bytes,
+            row_bytes,
+            batch_qsa.MemcpyKind.HOST_TO_DEVICE,
+        )
+    finally:
+        scratch.close()
+
+
 @pytest.fixture
 def recorder(monkeypatch) -> Recorder:
     record = Recorder()

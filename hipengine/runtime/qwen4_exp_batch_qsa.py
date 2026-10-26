@@ -63,7 +63,6 @@ from hipengine.core.memory import (
     DeviceBuffer,
     copy_host_array_to_device,
     free,
-    host_array_ptr,
     malloc,
 )
 from hipengine.core.runtime import MemcpyKind
@@ -954,11 +953,16 @@ def _stage_selection(
         selection.row_is_arange[row] = False
         dirty.append(row)
     for row in dirty:
-        runtime.memcpy(
-            selection.positions.ptr + row * row_bytes,
-            host_array_ptr(selection.positions_host[row]),
+        # The row view owns the source for the duration of the synchronous copy;
+        # DeviceBuffer carries the interior device offset.
+        copy_host_array_to_device(
+            DeviceBuffer(
+                selection.positions.ptr + row * row_bytes,
+                row_bytes,
+            ),
+            selection.positions_host[row],
             row_bytes,
-            MemcpyKind.HOST_TO_DEVICE,
+            runtime=runtime,
         )
     if not np.array_equal(counts, selection.device_counts):
         copy_host_array_to_device(

@@ -2906,7 +2906,8 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   Dense/MoE MTP2 generation adapters use it for their synchronous array uploads,
   with acceptance, padding, catch-up and checkpoint tests covering the migration.
   Qwen4Exp auxiliary batch GDN/PLE/QSA, mixed-target and MTP/prefill uploads
-  use the owning helper as well; direct QSA row-array runtime copies remain.
+  and main-runner uploads use the owning helper as well, including offset
+  QSA row-array copies.
 - Remaining cleanup: named-local array uploads still use the raw-address
   `copy_host_to_device` API in other paths. Named locals are safe through a
   synchronous copy, but future edits must not replace them with temporary

@@ -26,7 +26,7 @@ def metadata(monkeypatch):
     def copy(buf, host, nbytes, **kwargs):
         calls.append((buf.ptr, nbytes))
 
-    monkeypatch.setattr(module, "copy_host_to_device", copy)
+    monkeypatch.setattr(module, "copy_host_array_to_device", copy)
     return owner, calls, copy
 
 
@@ -57,11 +57,11 @@ def test_failed_upload_invalidates_previous_chunk(metadata, monkeypatch, failed_
         if buf.ptr == failed_ptr:
             raise RuntimeError("copy failed")
 
-    monkeypatch.setattr(module, "copy_host_to_device", fail)
+    monkeypatch.setattr(module, "copy_host_array_to_device", fail)
     with pytest.raises(RuntimeError, match="copy failed"):
         owner.set_contiguous(1025, 4)
     assert owner._uploaded_contiguous is None
-    monkeypatch.setattr(module, "copy_host_to_device", copy)
+    monkeypatch.setattr(module, "copy_host_array_to_device", copy)
     calls.clear()
     owner.set_contiguous(17, 4)
     assert calls == [(11, 32), (22, 32)]

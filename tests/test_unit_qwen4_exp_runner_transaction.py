@@ -90,8 +90,12 @@ class _CompactAttention:
         self.positions.append(position)
         self.position_host[0] = position
         self.context_host[0] = position + 1
-        runner_module.copy_host_to_device(self.position, 0, runtime=self.runtime)
-        runner_module.copy_host_to_device(self.context, 0, runtime=self.runtime)
+        runner_module.copy_host_array_to_device(
+            self.position, self.position_host, runtime=self.runtime
+        )
+        runner_module.copy_host_array_to_device(
+            self.context, self.context_host, runtime=self.runtime
+        )
 
 
 class _CompactIndex:
@@ -124,10 +128,10 @@ def uploads(monkeypatch):
 
     calls: list[tuple[int, int]] = []
 
-    def record(buffer, host_ptr, nbytes=None, *, runtime=None):
-        calls.append((int(buffer.ptr), buffer.nbytes if nbytes is None else int(nbytes)))
+    def record(buffer, array, nbytes=None, *, runtime=None):
+        calls.append((int(buffer.ptr), array.nbytes if nbytes is None else int(nbytes)))
 
-    monkeypatch.setattr(runner_module, "copy_host_to_device", record)
+    monkeypatch.setattr(runner_module, "copy_host_array_to_device", record)
     return calls
 
 

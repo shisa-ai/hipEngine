@@ -25,7 +25,7 @@ from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
-    copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -432,9 +432,9 @@ def _configure_qwen4_exp_moe_mmq_scratch(
             compact_capacity * DType.INT64.itemsize, runtime=runtime
         )
         identity = np.arange(compact_capacity, dtype=np.int64)
-        copy_host_to_device(
+        copy_host_array_to_device(
             moe.q4_k_mmq_identity,
-            host_array_ptr(identity),
+            identity,
             identity.nbytes,
             runtime=runtime,
         )
@@ -739,7 +739,7 @@ class Qwen4ExpDecodeState:
             host = np.ascontiguousarray(snapshot.buffers[name], dtype=np.uint8)
             if host.nbytes != buffer.nbytes:
                 raise ValueError(f"Qwen4Exp state snapshot size mismatch for {name}")
-            copy_host_to_device(buffer, host_array_ptr(host), runtime=self.runtime)
+            copy_host_array_to_device(buffer, host, runtime=self.runtime)
 
     def close(self) -> None:
         if self.closed:
@@ -818,9 +818,9 @@ class Qwen4ExpDenseAttentionState:
                 position = position_view
                 context = context_view
                 owns_position_context = False
-            copy_host_to_device(block_table, host_array_ptr(block_host), runtime=active_runtime)
-            copy_host_to_device(position, host_array_ptr(position_host), runtime=active_runtime)
-            copy_host_to_device(context, host_array_ptr(context_host), runtime=active_runtime)
+            copy_host_array_to_device(block_table, block_host, runtime=active_runtime)
+            copy_host_array_to_device(position, position_host, runtime=active_runtime)
+            copy_host_array_to_device(context, context_host, runtime=active_runtime)
             active_runtime.memset(key_cache.ptr, 0, key_cache.nbytes)
             active_runtime.memset(value_cache.ptr, 0, value_cache.nbytes)
         except Exception:
@@ -902,11 +902,11 @@ class Qwen4ExpDenseAttentionState:
             raise ValueError("attention position exceeds state capacity")
         self.position_host[0] = position
         self.context_host[0] = position + 1
-        copy_host_to_device(
-            self.position, host_array_ptr(self.position_host), runtime=self.runtime
+        copy_host_array_to_device(
+            self.position, self.position_host, runtime=self.runtime
         )
-        copy_host_to_device(
-            self.context, host_array_ptr(self.context_host), runtime=self.runtime
+        copy_host_array_to_device(
+            self.context, self.context_host, runtime=self.runtime
         )
 
     def close(self) -> None:
@@ -1012,8 +1012,8 @@ class Qwen4ExpQSAPrefillMetadata:
             for host in hosts:
                 buffer = malloc(host.nbytes, runtime=attention_state.runtime)
                 buffers.append(buffer)
-                copy_host_to_device(
-                    buffer, host_array_ptr(host), runtime=attention_state.runtime
+                copy_host_array_to_device(
+                    buffer, host, runtime=attention_state.runtime
                 )
             buffers.append(
                 malloc(
@@ -1055,15 +1055,15 @@ class Qwen4ExpQSAPrefillMetadata:
             return
         # A partial copy failure invalidates even the previous cached pair.
         self._uploaded_contiguous = None
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.positions,
-            host_array_ptr(self.positions_host),
+            self.positions_host,
             count * np.dtype(np.int64).itemsize,
             runtime=self.runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.context_counts,
-            host_array_ptr(self.context_counts_host),
+            self.context_counts_host,
             count * np.dtype(np.int64).itemsize,
             runtime=self.runtime,
         )
@@ -1101,15 +1101,15 @@ class Qwen4ExpQSAPrefillMetadata:
         count = int(rows)
         if count <= 0 or count > self.rows:
             raise ValueError("selection rows exceed QSA prefill metadata capacity")
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.selected_positions,
-            host_array_ptr(self.selected_positions_host),
+            self.selected_positions_host,
             count * self.selection_capacity * np.dtype(np.int64).itemsize,
             runtime=self.runtime,
         )
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.selected_counts,
-            host_array_ptr(self.selected_counts_host),
+            self.selected_counts_host,
             count * np.dtype(np.int32).itemsize,
             runtime=self.runtime,
         )
@@ -1239,18 +1239,18 @@ class Qwen4ExpQSAIndexDeviceState:
         try:
             for size in sizes:
                 buffers.append(malloc(size, runtime=active_runtime))
-            copy_host_to_device(buffers[1], host_array_ptr(member_host), runtime=active_runtime)
-            copy_host_to_device(
-                buffers[2], host_array_ptr(block_starts_host), runtime=active_runtime
+            copy_host_array_to_device(buffers[1], member_host, runtime=active_runtime)
+            copy_host_array_to_device(
+                buffers[2], block_starts_host, runtime=active_runtime
             )
-            copy_host_to_device(
-                buffers[5], host_array_ptr(selected_starts_host), runtime=active_runtime
+            copy_host_array_to_device(
+                buffers[5], selected_starts_host, runtime=active_runtime
             )
-            copy_host_to_device(
-                buffers[6], host_array_ptr(selected_count_host), runtime=active_runtime
+            copy_host_array_to_device(
+                buffers[6], selected_count_host, runtime=active_runtime
             )
-            copy_host_to_device(
-                buffers[7], host_array_ptr(query_position_host), runtime=active_runtime
+            copy_host_array_to_device(
+                buffers[7], query_position_host, runtime=active_runtime
             )
             active_runtime.memset(buffers[0].ptr, 0, buffers[0].nbytes)
         except Exception:
@@ -1486,9 +1486,9 @@ class Qwen4ExpQSAIndexDeviceState:
         if blocks <= self.block_budget:
             raise ValueError("native QSA selection requires more blocks than the budget")
         self.query_position_host[0] = position
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.query_position,
-            host_array_ptr(self.query_position_host),
+            self.query_position_host,
             runtime=self.runtime,
         )
         self.prepare_complete_blocks(
@@ -7874,9 +7874,9 @@ class Qwen4ExpGGUFResidentModelRunner:
                 2 * state_count, dtype=np.int64
             )
             self._shared_position_context_host[1::2] = 1
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self._shared_position_context,
-                host_array_ptr(self._shared_position_context_host),
+                self._shared_position_context_host,
                 runtime=self.runtime,
             )
         self.attention_states = tuple(
@@ -8724,9 +8724,9 @@ class Qwen4ExpGGUFResidentModelRunner:
         host = self._shared_position_context_host
         host[0::2] = position
         host[1::2] = position + 1
-        copy_host_to_device(
+        copy_host_array_to_device(
             self._shared_position_context,
-            host_array_ptr(host),
+            host,
             runtime=self.runtime,
         )
         for state in self.attention_states:
@@ -8761,9 +8761,9 @@ class Qwen4ExpGGUFResidentModelRunner:
                 raise ValueError(
                     "Qwen4Exp decode MRoPE positions must be three nonnegative values"
                 )
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self.rope_position_buffer,
-                host_array_ptr(rope_host),
+                rope_host,
                 rope_host.nbytes,
                 runtime=self.runtime,
             )
@@ -8771,9 +8771,9 @@ class Qwen4ExpGGUFResidentModelRunner:
         if token_host[0] < 0 or token_host[0] >= cfg.vocab_size:
             raise ValueError("token_id is outside Qwen4Exp vocabulary")
         if not token_id_resident:
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self.token_id_buffer,
-                host_array_ptr(token_host),
+                token_host,
                 runtime=self.runtime,
             )
         token_weight = self.resident.weight("root.token_embedding")
@@ -8835,9 +8835,9 @@ class Qwen4ExpGGUFResidentModelRunner:
                     0,
                 )
             else:
-                copy_host_to_device(
+                copy_host_array_to_device(
                     self.ple_embedding_buffer,
-                    host_array_ptr(staged),
+                    staged,
                     staged.nbytes,
                     runtime=self.runtime,
                 )
@@ -9066,9 +9066,9 @@ class Qwen4ExpGGUFResidentModelRunner:
         token_host = np.ascontiguousarray(token_ids, dtype=np.int64)
         if np.any(token_host < 0) or np.any(token_host >= cfg.vocab_size):
             raise ValueError("token_id is outside Qwen4Exp vocabulary")
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.prefill_token_ids,
-            host_array_ptr(token_host),
+            token_host,
             token_host.nbytes,
             runtime=self.runtime,
         )
@@ -9080,9 +9080,9 @@ class Qwen4ExpGGUFResidentModelRunner:
                     "Qwen4Exp prompt MRoPE positions must have shape [3, rows] "
                     "and be nonnegative"
                 )
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self.prefill_rope_positions,
-                host_array_ptr(rope_host),
+                rope_host,
                 rope_host.nbytes,
                 runtime=self.runtime,
             )
@@ -9114,13 +9114,13 @@ class Qwen4ExpGGUFResidentModelRunner:
                 if row.shape != (cfg.hidden_size,):
                     raise ValueError("Qwen4Exp embedding override must have hidden_size values")
                 bits = np.ascontiguousarray(float_array_to_bf16_bits(row), dtype=np.uint16)
-                copy_host_to_device(
+                copy_host_array_to_device(
                     DeviceBuffer(
                         self.prefill_embeddings.ptr
                         + (position - start) * row_nbytes,
                         row_nbytes,
                     ),
-                    host_array_ptr(bits),
+                    bits,
                     bits.nbytes,
                     runtime=self.runtime,
                 )
@@ -9152,9 +9152,9 @@ class Qwen4ExpGGUFResidentModelRunner:
         )
         ple_telemetry = self.resident.ple_table.telemetry() is not None
         ple_h2d_started = time.perf_counter_ns() if ple_telemetry else 0
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.prefill_ple_embeddings,
-            host_array_ptr(staged),
+            staged,
             staged.nbytes,
             runtime=self.runtime,
         )
