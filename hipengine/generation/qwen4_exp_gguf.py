@@ -314,6 +314,7 @@ class Qwen4ExpGGUFTextGenerator:
         self.dense_mmq_token64_enabled = False
         self.q51_row_publish = False
         self.q8_down_register = False
+        self.q8_mapped_down = False
         self._lock = threading.RLock()
         self._closed = False
         if tokenizer is None:
@@ -1042,6 +1043,7 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     runner.gdn_prefill_variant = getattr(generator, "gdn_prefill_variant", None)
     runner.q51_row_publish = bool(getattr(generator, "q51_row_publish", False))
     runner.q8_down_register = bool(getattr(generator, "q8_down_register", False))
+    runner.q8_mapped_down = bool(getattr(generator, "q8_mapped_down", False))
     return runner
 
 

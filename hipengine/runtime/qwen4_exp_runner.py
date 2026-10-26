@@ -4063,6 +4063,35 @@ def q8_down_register(runner: Any, enabled: bool | object = _Q8_DOWN_REGISTER_UNS
         runner.q8_down_register = prior
 
 
+# The token-major mapped Q8_0 expert-down owner is the same kind of
+# request-local decision: the plan publishes whether the bundle leaf may serve
+# the rows>=512 scope, the dispatch-time selector keeps the current call's map,
+# the row count and the registration guards, and a diagnostic arm binds the
+# field on the runner it measures instead of writing a process-wide switch.
+_Q8_MAPPED_DOWN_UNSET = object()
+
+
+@contextlib.contextmanager
+def q8_mapped_down(runner: Any, enabled: bool | object = _Q8_MAPPED_DOWN_UNSET):
+    """Bind the Q8_0 token-major mapped down owner for a diagnostic arm.
+
+    ``True`` admits the row4 bundle leaf through the token-major mapped path
+    when this call built the Q5_K row4 map and ``rows>=512``; ``False`` keeps
+    the token-major parent, and leaving ``enabled`` unset keeps whatever the
+    plan published. The binding is a mutable runner field, so it stays in force
+    for as long as the scope is open and the published value is restored on
+    exit, including on an exception.
+    """
+
+    prior = getattr(runner, "q8_mapped_down", False)
+    if enabled is not _Q8_MAPPED_DOWN_UNSET:
+        runner.q8_mapped_down = bool(enabled)
+    try:
+        yield prior
+    finally:
+        runner.q8_mapped_down = prior
+
+
 def _qwen4_exp_gdn_prefill_key(
     key: KernelKey, *, rows: int = 0, num_k_heads: int = 0,
     num_v_heads: int = 0, head_dim: int = 0, variant: str | None = None,
@@ -4124,9 +4153,20 @@ def _qwen4_exp_q51_fold128_key(key: KernelKey, *, rows: int) -> KernelKey:
 
 
 def _qwen4_exp_mapped_down_key(*, backend: str, quant: str, rows: int,
-                              map_ready: bool) -> KernelKey | None:
-    if (not map_ready or rows < 512
-            or os.environ.get("HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN","0") != "1"):
+                              map_ready: bool, published: bool = False) -> KernelKey | None:
+    """Select the token-major mapped Q8_0 expert-down owner for this call.
+
+    ``published`` is the owning runner's plan-published decision (see
+    :func:`q8_mapped_down`), not a process-wide switch: the production plan
+    declares the mapped owner for the rows>=512 token-major scope, and every
+    plan that keeps the token-major parent publishes ``False``. ``map_ready``
+    is this invocation's own ownership proof - the Q5_K row4 map it just built -
+    so allocated scratch never admits the key. The guards stay dispatch-time -
+    rows, the current call's map, and a registry that must actually carry the
+    leaf - so an unbound runner or a missing registration keeps the parent.
+    """
+
+    if not published or not map_ready or rows < 512:
         return None
     key = KernelKey(backend,"linear",quant,"selected_grouped_row4_bundle_gemv_bf16_bf16_out")
     return key if is_registered(key) else None
@@ -5005,6 +5045,7 @@ def run_qwen4_exp_moe(
     graph_key: object | None = None,
     q51_row_publish: bool = False,
     q8_down_register: bool = False,
+    q8_mapped_down: bool = False,
 ) -> Qwen4ExpMoEDeviceResult:
     """Run normalized softmax top-k routed experts plus gated shared expert.
 
@@ -5016,6 +5057,11 @@ def run_qwen4_exp_moe(
     register decision (see :func:`q8_down_register`); it selects inside the
     sorted grouped chain and the token-major mapped path for the same
     rows>=512 K640 scope, and never on decode.
+
+    ``q8_mapped_down`` is the owning runner's plan-published Q8_0 token-major
+    mapped down decision (see :func:`q8_mapped_down`); it only admits the
+    bundle leaf when this call built the Q5_K row4 map and rows>=512, and never
+    on decode.
     """
 
     if scratch.closed:
@@ -5043,6 +5089,7 @@ def run_qwen4_exp_moe(
                 runtime=active_runtime,
                 q51_row_publish=q51_row_publish,
                 q8_down_register=q8_down_register,
+                q8_mapped_down=q8_mapped_down,
             )
 
         graph_cache.run(
@@ -6615,7 +6662,7 @@ def run_qwen4_exp_moe(
         else:
             mapped_key = _qwen4_exp_mapped_down_key(
                 backend=backend,quant=down_weight.spec.quant_key,rows=rows,
-                map_ready=mapped_gate_up_ready)
+                map_ready=mapped_gate_up_ready,published=q8_mapped_down)
             if mapped_key is not None:
                 mapped_key = _qwen4_exp_q8_down_register_key(
                     mapped_key, rows=rows, in_features=ffn,
@@ -6760,6 +6807,7 @@ def run_qwen4_exp_dense_qsa_layer(
     cache_only: bool = False,
     q51_row_publish: bool = False,
     q8_down_register: bool = False,
+    q8_mapped_down: bool = False,
 ) -> DeviceBuffer | None:
     """Execute a QSA+MoE layer, or only its independent cache-state writes."""
 
@@ -6823,6 +6871,7 @@ def run_qwen4_exp_dense_qsa_layer(
         graph_cache=moe_graph_cache, graph_key=moe_graph_key,
         q51_row_publish=q51_row_publish,
         q8_down_register=q8_down_register,
+        q8_mapped_down=q8_mapped_down,
     )
     qwen4_exp_gr_write_bf16_bf16(
         scratch.after_attention.ptr,
@@ -6865,6 +6914,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     defer_write: list | None = None,
     q51_row_publish: bool = False,
     q8_down_register: bool = False,
+    q8_mapped_down: bool = False,
 ) -> DeviceBuffer:
     """Execute one complete Qwen4Exp QSA+MoE prompt chunk.
 
@@ -6880,6 +6930,9 @@ def run_qwen4_exp_qsa_prefill_layer(
     ``q8_down_register`` is the owning runner's plan-published Q8_0 down
     register decision, forwarded to the same dispatch for the sorted and
     mapped paths.
+
+    ``q8_mapped_down`` is the owning runner's plan-published Q8_0 token-major
+    mapped down decision, forwarded to the same dispatch.
 
     ``pending_write`` is the previous layer's deferred residual write (its
     output is ``residual_ptr``). With ``defer_write`` this layer's own final
@@ -6972,6 +7025,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         runtime=active_runtime,
         q51_row_publish=q51_row_publish,
         q8_down_register=q8_down_register,
+        q8_mapped_down=q8_mapped_down,
     )
     if not _qwen4_exp_gr_defer_write(
         defer_write, rows, scratch.after_attention.ptr, moe.output.ptr,
@@ -7020,6 +7074,7 @@ def run_qwen4_exp_gdn_layer(
     prefill_variant: str | None = None,
     q51_row_publish: bool = False,
     q8_down_register: bool = False,
+    q8_mapped_down: bool = False,
 ) -> DeviceBuffer:
     """Execute one complete strict Qwen4Exp GDN+MoE physical layer.
 
@@ -7032,6 +7087,9 @@ def run_qwen4_exp_gdn_layer(
 
     ``q8_down_register`` is the owning runner's plan-published Q8_0 down
     register decision, forwarded to the same dispatch.
+
+    ``q8_mapped_down`` is the owning runner's plan-published Q8_0 token-major
+    mapped down decision, forwarded to the same dispatch.
 
     ``pending_write`` / ``defer_write`` as for the QSA prefill layer; only
     multi-row (uncaptured) chunks use them.
@@ -7186,6 +7244,7 @@ def run_qwen4_exp_gdn_layer(
         graph_cache=moe_graph_cache, graph_key=moe_graph_key,
         q51_row_publish=q51_row_publish,
         q8_down_register=q8_down_register,
+        q8_mapped_down=q8_mapped_down,
     )
     if layer_graph is not None:
         def _segment_epilogue(graph_stream: int) -> None:
@@ -7982,6 +8041,11 @@ class Qwen4ExpGGUFResidentModelRunner:
     # the token-major mapped path both read it. A diagnostic scope may outrank
     # it.
     q8_down_register: bool = False
+    # Q8_0 token-major mapped down owner, published by the profile binder for
+    # the rows>=512 scope: True on a production plan, False on every plan that
+    # keeps the token-major parent. It admits the row4 bundle leaf only when the
+    # current call built the Q5_K row4 map. A diagnostic scope may outrank it.
+    q8_mapped_down: bool = False
 
     def __init__(
         self,
@@ -9225,6 +9289,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     ),
                     q51_row_publish=self.q51_row_publish,
                     q8_down_register=self.q8_down_register,
+                    q8_mapped_down=self.q8_mapped_down,
                 ).ptr
             else:
                 binding = self.qsa_bindings[layer]
@@ -9261,6 +9326,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     ),
                     q51_row_publish=self.q51_row_publish,
                     q8_down_register=self.q8_down_register,
+                    q8_mapped_down=self.q8_mapped_down,
                 ).ptr
         if capture_target_hidden:
             self.runtime.memcpy(
@@ -9559,6 +9625,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     prefill_variant=self.gdn_prefill_variant,
                     q51_row_publish=self.q51_row_publish,
                     q8_down_register=self.q8_down_register,
+                    q8_mapped_down=self.q8_mapped_down,
                 ).ptr
             else:
                 binding = self.qsa_bindings[layer]
@@ -9586,6 +9653,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     head_mode=self.qsa_prefill_head_mode,
                     q51_row_publish=self.q51_row_publish,
                     q8_down_register=self.q8_down_register,
+                    q8_mapped_down=self.q8_mapped_down,
                     ffn=cfg.expert_feed_forward_length,
                     experts=cfg.expert_count,
                     top_k=cfg.expert_used_count,

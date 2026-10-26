@@ -926,7 +926,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA` | unset | Grouped WMMA prefill owner for Q8_0 experts (reads `expert_start` on device via a fixed worker grid). |
 | `HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL` | production profile | Row4 GEMV down-projection variant (rows>=512). |
 | `HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL` | production profile | Bundle GEMV down-projection variant (rows>=512). |
-| `HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN` | production profile | Admits the mapped-down key when the mmap table is ready (rows>=512). |
+| `HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN` | retired | No longer read. The owning runner carries the mapped-down decision; admission still requires a map built by the current invocation and rows>=512. |
 | `HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER` | retired | No longer read. The owning runner carries the register-down fallback decision; the rows>=512, K640 and bundle-parent guards remain. |
 | `HIPENGINE_QWEN4_EXP_FUSED_COMBINE` | unset | Opt-in fused PF-4 lever-2 combine; default stays unfused after the whole-model A/B measured a loss. |
 | `HIPENGINE_QWEN4_EXP_Q4_DP4A64` | `0` in UD production/fast | Profile-owned Q4 gate/up decode selector. The strict owner is selected after an observed long-context numerical failure. Setting `1` after profile binding selects the registered one-plane DP4A diagnostic; see the clearing gates in `REFACTOR.md`. |

@@ -2743,15 +2743,6 @@ the allocation repair. The observations and proposal below are historical.
   Replace these with device-resident tails only after the same whole/chunk,
   60-second transition, recording-reset and post-join-noise tests pass.
 
-## Qwen4Exp mapped Q8 down rollback
-
-- Production `HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN` reuses the existing
-  grouped bundled Q8 kernel only when this invocation built the Q5_K
-  row4 map,rows>=512. Token-major outputs and combine order unchanged.
-- Five full-logit/state/KV cases and canonical A/B pass;production1/strict0.
-  Remove rollback flag after next qualified down change or release window.
-  Keep map-ready guard permanently;allocated scratch is not valid ownership.
-
 ## Qwen4Exp raw MMQ vector staging rollback
 
 - Production `HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR` selects

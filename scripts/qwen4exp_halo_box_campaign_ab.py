@@ -332,7 +332,7 @@ def validate_chunk_coverage(chunks: Sequence[int], tokens: int, size: int) -> No
 
 #: Route packages whose arm is request-local runner state rather than an env key.
 RUNNER_SCOPED_ROUTE_PACKAGES = frozenset(
-    {"mmq-token64", "qsa-head-pair", "qsa-head-quad"})
+    {"mmq-token64", "qsa-head-pair", "qsa-head-quad", "q8-mapped-down"})
 #: Route packages whose counted leaf is the scalar sparse-prefill rows owner.
 HEAD_ROUTE_PACKAGES = frozenset({"qsa-head-pair", "qsa-head-quad"})
 QSA_WMMA_ENV = "HIPENGINE_QWEN4_EXP_QSA_WMMA"
@@ -457,13 +457,26 @@ Q8_DOWN_PREEMPTING_ENV = (
 )
 #: The chains' own gates. They must stay on for the counted leaf to run, so the
 #: arm records them instead of forcing them: ``FORKB_GROUPED_DOWN`` and the
-#: row4/bundle gates carry the sorted path, ``Q8_MAPPED_DOWN`` the token-major
-#: mapped path the same arm counts.
+#: row4/bundle gates carry the sorted path. The token-major mapped path's own
+#: admission is the runner's ``q8_mapped_down`` decision, recorded in the mapped
+#: arm's control, not an env key.
 Q8_DOWN_CHAIN_GATES = (
     "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN",
     "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL",
     "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL",
-    "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN",
+)
+#: The token-major mapped path's own prerequisite: the grouped row4 gate/up map
+#: this invocation builds. The arm fails loudly without it instead of measuring
+#: a neutral A/B.
+Q8_MAPPED_DOWN_MAP_GATE = "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"
+#: Owners that preempt the token-major mapped path. The routed F16 WMMA down and
+#: the Q8_0 WMMA down preempt the expert-down chains the same arm counts; the
+#: grouped Q5_K IU8 gate/up owner additionally sets ``grouped_prefill`` and keeps
+#: the token-major Q5_K map producer from running, so the mapped arm closes it
+#: in both arms too. The register/bundle arms must not: there the grouped chain
+#: is the one they count.
+Q8_MAPPED_DOWN_PREEMPTING_ENV = Q8_DOWN_PREEMPTING_ENV + (
+    "HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT",
 )
 
 
@@ -507,9 +520,68 @@ def q8_down_scope(*, environment=os.environ):
         if environment.get(key, "") in closed:
             raise ValueError(
                 f"{key} must be on for the Q8_0 expert-down chain; without it "
-                "the counted register leaf cannot launch")
+                "the counted Q8_0 down leaf cannot launch")
     previous = {key: environment.get(key) for key in Q8_DOWN_PREEMPTING_ENV}
     for key in Q8_DOWN_PREEMPTING_ENV:
+        environment[key] = "0"
+    try:
+        yield previous
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                environment.pop(key, None)
+            else:
+                environment[key] = value
+
+
+def q8_mapped_down_control_record(*, environment=os.environ):
+    """The mapped arm's control: forced preemptors, prior values and gates.
+
+    The forced value is what the scope writes, not what the environment held
+    before it, so a reader cannot mistake the production binding for the arm's
+    own state. The map gate is recorded, never forced.
+    """
+
+    return {
+        "preempting_owners_closed": {
+            key: "0" for key in Q8_MAPPED_DOWN_PREEMPTING_ENV
+        },
+        "preempting_owners_previous": {
+            key: environment.get(key) for key in Q8_MAPPED_DOWN_PREEMPTING_ENV
+        },
+        "chain_gates": {
+            key: environment.get(key) for key in Q8_DOWN_CHAIN_GATES
+        },
+        "mapped_gate_up_map": environment.get(Q8_MAPPED_DOWN_MAP_GATE),
+    }
+
+
+@contextlib.contextmanager
+def q8_mapped_down_scope(*, environment=os.environ):
+    """Close the owners that preempt the token-major mapped path.
+
+    The mapped selector needs the current call's row4 gate/up map, which only
+    the token-major path builds. The routed F16 WMMA down, the Q8_0 WMMA down
+    and the grouped Q5_K IU8 gate/up owner all keep that path from running, so
+    the arm closes them for both arms and restores every prior value on exit.
+    The map gate itself is a prerequisite, never forced: without it the arm
+    cannot produce the owner it counts, so the scope fails loudly rather than
+    reporting a neutral A/B.
+    """
+
+    closed = {"", "0", "false", "False"}
+    for key in Q8_DOWN_CHAIN_GATES:
+        if environment.get(key, "") in closed:
+            raise ValueError(
+                f"{key} must be on for the Q8_0 expert-down chain; without it "
+                "the counted Q8_0 down leaf cannot launch")
+    if environment.get(Q8_MAPPED_DOWN_MAP_GATE, "") in closed:
+        raise ValueError(
+            f"{Q8_MAPPED_DOWN_MAP_GATE} must be on for the token-major mapped "
+            "down arm; without it the current call builds no row4 map and the "
+            "mapped owner cannot engage")
+    previous = {key: environment.get(key) for key in Q8_MAPPED_DOWN_PREEMPTING_ENV}
+    for key in Q8_MAPPED_DOWN_PREEMPTING_ENV:
         environment[key] = "0"
     try:
         yield previous
@@ -662,6 +734,25 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         return _combined_scope(
             q8_down_scope(environment=environment),
             q8_down_register(runner, mode == "after"))
+    if route_package == "q8-mapped-down":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            # Binding nothing would measure whatever the plan published and
+            # report it as the arm, so the diagnostic must name its runner.
+            raise ValueError(
+                f"{route_package} needs the owning runner; binding no selection "
+                "would measure the plan's own token-major Q8_0 down owner")
+        from hipengine.runtime.qwen4_exp_runner import q8_mapped_down
+
+        # The routed F16 WMMA down, the Q8_0 WMMA down and the grouped Q5_K IU8
+        # gate/up owner all keep the token-major map producer from running, so
+        # both arms close them and the profile's own values come back on exit.
+        # The map gate is a prerequisite, never forced: the scope fails loudly
+        # without it rather than measuring a neutral A/B.
+        return _combined_scope(
+            q8_mapped_down_scope(environment=environment),
+            q8_mapped_down(runner, mode == "after"))
     return contextlib.nullcontext()
 
 
@@ -760,7 +851,8 @@ def _apply_mode(
         if route_package == "q8-down-bundle":
             flag = "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"
         if route_package == "q8-mapped-down":
-            flag = "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN"
+            # Request-local on the runner; ``route_scope`` binds the arm.
+            return
         if route_package == "q8-down-register":
             # Request-local on the runner; ``route_scope`` binds the arm.
             return
@@ -995,7 +1087,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             "A mismatch requires full declared production numerical/state gates, not relaxed checks.")
     row4_calls = [0]
     register_mapped_calls = [0]
+    mapped_owner_calls = {"bundle": 0, "register": 0}
     original_row4 = None
+    original_register = None
+    register_key = None
     narrow_original = None
     narrow_key = None
     narrow_enabled = [False]
@@ -1244,7 +1339,35 @@ def main(argv: Sequence[str] | None = None) -> int:
                 row4_calls[0] += 1
             return original_row4(*call_args, **call_kwargs)
 
-        register(row4_key, counted_row4, replace=True)
+        if args.route_package == "q8-mapped-down":
+            # The mapped path admits the bundle key and the published register
+            # decision may then move the call to the register sibling, so the
+            # arm instruments both owners and counts only the mapped path's
+            # map-pointer calls. The split is recorded per sample so a reader
+            # sees which owner actually served the arm.
+            register_key = KernelKey(
+                row4_key.backend, row4_key.layer, row4_key.quant,
+                "selected_grouped_row4_register_gemv_bf16_bf16_out")
+            original_register = resolve(
+                backend=register_key.backend, layer=register_key.layer,
+                quant=register_key.quant, variant=register_key.variant)
+
+            def counted_bundle(*call_args, **call_kwargs):
+                if q8_bundle_call_in_scope("q8-mapped-down", call_args):
+                    row4_calls[0] += 1
+                    mapped_owner_calls["bundle"] += 1
+                return original_row4(*call_args, **call_kwargs)
+
+            def counted_register(*call_args, **call_kwargs):
+                if q8_bundle_call_in_scope("q8-mapped-down", call_args):
+                    row4_calls[0] += 1
+                    mapped_owner_calls["register"] += 1
+                return original_register(*call_args, **call_kwargs)
+
+            register(row4_key, counted_bundle, replace=True)
+            register(register_key, counted_register, replace=True)
+        else:
+            register(row4_key, counted_row4, replace=True)
         artifact["arms"] = {
             "before": {"q5_k_gate_up": "selected_gemv_bf16_bf16_out"},
             "after": {"q5_k_gate_up": row4_key.variant},
@@ -1345,8 +1468,33 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "WMMA down sits in front of the sorted chain, so neither "
                 "counted path reaches the register leaf in production; both "
                 "arms close those owners and the chain gates (FORKB grouped "
-                "down, row4/bundle, mapped down) are recorded because they "
-                "must stay on"),
+                "down, row4/bundle) are recorded because they must stay on"),
+            "mapped_owner_runner_field": bool(
+                getattr(generator.runner, "q8_mapped_down", False)),
+            "published_value": bool(
+                getattr(generator.runner, "q8_down_register", False)),
+        }
+    if args.route_package=="q8-mapped-down":
+        artifact["selection_control"] = {
+            "runner_field": "q8_mapped_down",
+            "before": False,
+            "after": True,
+            "scope": "per measured run; restored on exit",
+            **q8_mapped_down_control_record(),
+            "counted_owners": ["bundle", "register"],
+            "counted_owner_rule": (
+                "the mapped path admits the bundle key and the published "
+                "register decision may rewrite it; the arm counts the owner "
+                "that actually launched, filtered to the map pointer"),
+            "published_value": bool(
+                getattr(generator.runner, "q8_mapped_down", False)),
+            "reason": (
+                "the token-major mapped path admits the bundle leaf only from "
+                "the grouped row4 gate/up map this invocation builds; the "
+                "routed F16 WMMA down, the Q8_0 WMMA down and the grouped "
+                "Q5_K IU8 gate/up owner all preempt that map producer, so "
+                "both arms close them and the chain gates and map gate are "
+                "recorded because they must stay on"),
         }
     artifact["diagnostic_subset"] = bool(args.case_id)
     artifact["screen_only"] = args.screen_only
@@ -1415,6 +1563,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             observed_chunks.clear()
         start_calls = row4_calls[0]
         start_mapped = register_mapped_calls[0]
+        start_owners = dict(mapped_owner_calls)
         with route_scope(args.route_package, mode, generator.runner):
             row = _hipengine_case_sample(
                 generator.runner, case=case, repetition=repetition, transitions=transitions)
@@ -1468,6 +1617,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                     int(case["prompt_tokens"]),args.prefill_chunk_size) if mode=="after" else 0
                 if calls != expected_calls:
                     raise AssertionError(f"Mapped Q8 down calls {calls} != {expected_calls}")
+                owners = {name: mapped_owner_calls[name] - start_owners[name]
+                          for name in mapped_owner_calls}
+                if sum(owners.values()) != calls:
+                    raise AssertionError(
+                        f"Mapped Q8 down owner split {owners} does not cover "
+                        f"{calls} calls")
+                row["mapped_owner_calls"] = owners
             elif args.route_package == "q8-mmq-raw-vector":
                 expected_calls = q8_mmq_raw_vector_expected_calls(
                     int(case["prompt_tokens"]),args.prefill_chunk_size) if mode=="after" else 0
@@ -1644,6 +1800,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 os.environ["HIPENGINE_QWEN4_EXP_GR_IU8_DOWN"] = "0"
         elif original_row4 is not None:
             register(row4_key, original_row4, replace=True)
+        if original_register is not None:
+            register(register_key, original_register, replace=True)
         if narrow_original is not None:
             register(narrow_key, narrow_original, replace=True)
         if args.route_package == "router-dpp":

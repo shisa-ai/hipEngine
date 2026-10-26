@@ -394,7 +394,12 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "page256"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN"] == "1"
+    # The token-major mapped Q8_0 down owner is request-local runner state
+    # published from the binder's own fallback policy, so the binder writes no
+    # process-wide switch for it.
+    assert "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN" not in os.environ
+    assert production_generator.q8_mapped_down is True
+    assert fake_runner.q8_mapped_down is True
     # The Q8_0 down register selection is request-local runner state published
     # from the binder's own fallback policy, so the binder writes no
     # process-wide switch for it.
@@ -501,7 +506,8 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN"] == "0"
+    assert "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN" not in os.environ
+    assert strict_generator.q8_mapped_down is False
     assert "HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER" not in os.environ
     assert strict_generator.q8_down_register is False
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"] == "0"
@@ -622,7 +628,9 @@ def test_shipped_ud_plan_publishes_the_production_down_register_fallback() -> No
     assert mapped_row["selected_variant"] == (
         "selected_grouped_row4_register_gemv_bf16_bf16_out")
     assert generator.q8_down_register is True
+    assert generator.q8_mapped_down is True
     assert "HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER" not in os.environ
+    assert "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN" not in os.environ
     bundle = KernelKey(
         "hip_gfx1151", "linear", "gguf_q8_0",
         "selected_grouped_row4_bundle_gemv_bf16_bf16_out")
@@ -630,11 +638,18 @@ def test_shipped_ud_plan_publishes_the_production_down_register_fallback() -> No
         bundle, rows=1024, in_features=640,
         published=generator.q8_down_register,
     ).variant == "selected_grouped_row4_register_gemv_bf16_bf16_out"
-    # And a c1 runner cloned from that generator carries the same decision.
+    # The token-major mapped path resolves the same bundle key from the map it
+    # built on this call, so the one mapped publication admits it.
+    assert runner._qwen4_exp_mapped_down_key(
+        backend="hip_gfx1151", quant="gguf_q8_0", rows=1024, map_ready=True,
+        published=generator.q8_mapped_down,
+    ).variant == "selected_grouped_row4_bundle_gemv_bf16_bf16_out"
+    # And a c1 runner cloned from that generator carries the same decisions.
     from hipengine.generation.qwen4_exp_gguf import _inherit_lane_decisions
 
     clone = _inherit_lane_decisions(generator, SimpleNamespace())
     assert clone.q8_down_register is True
+    assert clone.q8_mapped_down is True
 
 
 def test_qwen4_exp_profiles_cover_both_registered_quant_names() -> None:

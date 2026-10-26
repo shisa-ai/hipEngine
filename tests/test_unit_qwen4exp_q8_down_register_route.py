@@ -72,7 +72,6 @@ def test_sorted_and_mapped_paths_share_one_published_decision(monkeypatch):
     monkeypatch.setattr(runner, "is_registered", lambda key: True)
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL", "1")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL", "1")
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN", "1")
     sorted_key = runner._qwen4_exp_q8_down_bundle_key(
         runner._qwen4_exp_q8_down_row4_key(
             KernelKey("hip_gfx1151", "linear", "gguf_q8_0",
@@ -80,7 +79,8 @@ def test_sorted_and_mapped_paths_share_one_published_decision(monkeypatch):
         rows=1024)
     assert sorted_key.variant == BUNDLE
     mapped_key = runner._qwen4_exp_mapped_down_key(
-        backend="hip_gfx1151", quant="gguf_q8_0", rows=1024, map_ready=True)
+        backend="hip_gfx1151", quant="gguf_q8_0", rows=1024, map_ready=True,
+        published=True)
     assert mapped_key is not None and mapped_key.variant == BUNDLE
     select = runner._qwen4_exp_q8_down_register_key
     for published, expected in ((True, REGISTER), (False, BUNDLE)):
@@ -356,7 +356,6 @@ def test_q8_down_control_names_every_preemptor():
         "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN",
         "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL",
-        "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN",
     )
     assert not set(Q8_DOWN_CHAIN_GATES) & set(Q8_DOWN_PREEMPTING_ENV)
 

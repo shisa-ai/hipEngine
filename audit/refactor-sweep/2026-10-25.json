@@ -3136,18 +3136,18 @@
       "start_line": 3032,
       "end_line": 3040,
       "sha256": "9341a659e4a0ecf632832847809eaa4005708e02b5f4ee558e3a7cfeff1461dc",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-runner-local",
+      "evidence": ["Mapped Q8 decision runner-owned with current-call map readiness preserved. Scoped diagnostics close/restore actual preemptors and count mapped bundle/register consumers. Full CPU,focused readiness/forwarding/harness,GPU18 and public fallback with real ready map pass. worklog/entries/20261026T204543.086592Z-cleanup-refactor-r0116-48dbcc.md."],
       "subitems": [
         {
           "line": 3034,
           "text": "- Production `HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN` reuses the existing",
-          "status": "pending"
+          "status": "resolved-runner-local"
         },
         {
           "line": 3037,
           "text": "- Five full-logit/state/KV cases and canonical A/B pass;production1/strict0.",
-          "status": "pending"
+          "status": "resolved-runner-local"
         }
       ]
     },

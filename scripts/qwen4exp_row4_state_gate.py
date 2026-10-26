@@ -33,7 +33,8 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     router_dpp_expected_calls,route_scope,GDN_COLWARPS_ENV,
     Q51_IU8_EXACT_ENV,Q51_PAIR2_PREEMPTING_ENV,Q51_PAIR2_GATE_ENV,
     q51_pair2_control_record,
-    Q8_DOWN_CHAIN_GATES,q8_down_control_record)
+    Q8_DOWN_CHAIN_GATES,q8_down_control_record,Q8_MAPPED_DOWN_MAP_GATE,
+    q8_mapped_down_control_record)
 
 
 def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.environ):
@@ -65,6 +66,11 @@ def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.envi
         # Request-local on the runner; ``route_scope`` binds the arm around the
         # measured prefill and closes the owners that preempt both Q8_0
         # expert-down chains.
+        return
+    if package == "q8-mapped-down":
+        # Request-local on the runner; ``route_scope`` binds the arm around the
+        # measured prefill and closes the owners that preempt the token-major
+        # mapped path.
         return
     if package == "router-dpp":
         environment[flag] = (
@@ -188,7 +194,8 @@ def main():
     if args.route_package == "q8-down-bundle":
         flag = "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"
     if args.route_package == "q8-mapped-down":
-        flag = "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN"
+        # Request-local on the runner; no env key names this selection.
+        flag = ""
     if args.route_package=="q8-down-register":
         # Request-local on the runner; no env key names this selection.
         flag=""
@@ -295,8 +302,22 @@ def main():
         key = KernelKey("hip_gfx1151", "linear", "gguf_q8_0", PARENT)
     original = (None if args.route_package=="chunk1024" else
                 resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant))
+    if args.route_package == "q8-mapped-down":
+        # The mapped path admits the bundle key and the published register
+        # decision may rewrite it, so both owners are instrumented.
+        mapped_register_key = KernelKey(
+            key.backend, key.layer, key.quant,
+            "selected_grouped_row4_register_gemv_bf16_bf16_out")
+        mapped_register_original = resolve(
+            backend=mapped_register_key.backend,
+            layer=mapped_register_key.layer,
+            quant=mapped_register_key.quant,
+            variant=mapped_register_key.variant)
     calls = [0]
     mapped_calls=[0]
+    mapped_owner_calls = {"bundle": 0, "register": 0}
+    mapped_register_key = None
+    mapped_register_original = None
     narrow_enabled = [False]
     narrow_candidate = None
     gdn_narrow_key = None
@@ -366,7 +387,26 @@ def main():
             return original_chunk(token_ids,**kwargs)
         generator.runner._prefill_chunk = counted_chunk
     else:
-        register(key, counted, replace=True)
+        if args.route_package == "q8-mapped-down":
+            # The mapped path admits the bundle key and the published register
+            # decision may rewrite it, so both owners are instrumented and only
+            # the mapped path's map-pointer calls count.
+            def counted_mapped_bundle(*a, **kw):
+                if a[2]:
+                    calls[0] += 1
+                    mapped_owner_calls["bundle"] += 1
+                return original(*a, **kw)
+
+            def counted_mapped_register(*a, **kw):
+                if a[2]:
+                    calls[0] += 1
+                    mapped_owner_calls["register"] += 1
+                return mapped_register_original(*a, **kw)
+
+            register(key, counted_mapped_bundle, replace=True)
+            register(mapped_register_key, counted_mapped_register, replace=True)
+        else:
+            register(key, counted, replace=True)
     qsa_calls = [0]
     qsa_original = None
     if args.route_package == "prefill-bundle":
@@ -508,6 +548,46 @@ def main():
                     "neither counted path reaches the register leaf in "
                     "production; both arms close those owners and the chain "
                     "gates are recorded because they must stay on"),
+                "published_value": generator.runner.q8_down_register,
+                "mapped_owner_runner_field": generator.runner.q8_mapped_down,
+            }
+        if args.route_package == "q8-mapped-down":
+            # The plan publishes the token-major mapped admission on the runner
+            # and the arm binds it per measured run. The current call's row4
+            # map is the ownership proof, so the map gate is recorded beside
+            # the preemptors the scope closes.
+            assert generator.runner.q8_mapped_down is True, (
+                "production must publish the token-major mapped down owner")
+            assert os.environ.get(
+                Q8_MAPPED_DOWN_MAP_GATE, "") not in {
+                "", "0"}, (
+                "production must build the grouped row4 gate/up map")
+            assert all(os.environ.get(key, "") not in {"", "0"}
+                       for key in Q8_DOWN_CHAIN_GATES), (
+                "the Q8_0 expert-down chain gates must be on")
+            assert os.environ.get(
+                "HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT", "") not in {"", "0"}, (
+                "production must bind the grouped Q5_K IU8 owner the mapped "
+                "arm closes")
+            report["selection_control"] = {
+                "runner_field": "q8_mapped_down",
+                "before": False, "after": True,
+                "scope": "per measured run; restored on exit",
+                **q8_mapped_down_control_record(),
+                "counted_owners": ["bundle", "register"],
+                "counted_owner_rule": (
+                    "the mapped path admits the bundle key and the published "
+                    "register decision may rewrite it; the arm counts the "
+                    "owner that actually launched, filtered to the map pointer"),
+                "reason": (
+                    "the token-major mapped path admits the bundle leaf only "
+                    "from the grouped row4 gate/up map this invocation "
+                    "builds; the routed F16 WMMA down, the Q8_0 WMMA down "
+                    "and the grouped Q5_K IU8 gate/up owner all preempt that "
+                    "map producer, so both arms close them and the chain "
+                    "gates and map gate are recorded because they must stay "
+                    "on"),
+                "published_value": generator.runner.q8_mapped_down,
             }
         if args.route_package == "q8-dpp-reduction":
             # The DPP leaf's flag is read with a "1" default rather than bound by
@@ -550,6 +630,7 @@ def main():
                         "page256" if enabled == "1" else "0")
                 start_calls = calls[0]
                 start_mapped=mapped_calls[0]
+                start_owners = dict(mapped_owner_calls)
                 start_qsa_calls = qsa_calls[0]
                 natural_start = len(natural_router.captures) if natural_router is not None else 0
                 with route_scope(
@@ -626,6 +707,10 @@ def main():
                         case["prompt_tokens"],512) if enabled=="1" else 0
                     assert prefill_invoked == expected_mapped_calls,(case["id"],prefill_invoked)
                     assert invoked == prefill_invoked,"mapped Q8 down ran during decode"
+                    owners = {name: mapped_owner_calls[name] - start_owners[name]
+                              for name in mapped_owner_calls}
+                    assert sum(owners.values()) == prefill_invoked, (
+                        case["id"], owners)
                 if args.route_package == "q8-mmq-raw-vector":
                     expected_raw_calls = q8_mmq_raw_vector_expected_calls(
                         case["prompt_tokens"],512) if enabled=="1" else 0
@@ -725,6 +810,8 @@ def main():
                 if args.route_package=="q8-down-register":
                     summaries[-1].update(mapped_candidate_calls=mapped_calls[0]-start_mapped,
                                          compact_candidate_calls=invoked-(mapped_calls[0]-start_mapped))
+                if args.route_package=="q8-mapped-down":
+                    summaries[-1]["mapped_owner_calls"] = owners
             report["cases"].append({"id": case["id"], "prompt_tokens": case["prompt_tokens"],
                                     "exact": True, "captures": summaries})
             print(case["id"], "full logits/state exact", flush=True)
@@ -740,11 +827,13 @@ def main():
         else:
             if args.route_package not in {
                 "dense-wide-padded", "gdn-wave-norm", "gdn-narrow",
-                "q51-row-publish", "q8-down-register",
+                "q51-row-publish", "q8-down-register", "q8-mapped-down",
             }:
                 os.environ[flag] = ("f32_hidden_token_tile4_dense_exact"
                                     if args.route_package == "router-dpp" else "1")
             register(key, original, replace=True)
+        if mapped_register_original is not None:
+            register(mapped_register_key, mapped_register_original, replace=True)
         if gdn_narrow_original is not None:
             register(gdn_narrow_key, gdn_narrow_original, replace=True)
         if qsa_original is not None:
