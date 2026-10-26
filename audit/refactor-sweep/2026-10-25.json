@@ -3444,7 +3444,8 @@
         {
           "line": 3184,
           "text": "- The unused `bf16_compressed_index_bytes_per_token` remains an estimate, not",
-          "status": "pending"
+          "status": "resolved-removed",
+          "evidence": ["Removed unused property and its sole test assertion; actual fp32_raw_index_bytes_per_token accounting remains unchanged. See worklog/entries/20261026T214452.680459Z-cleanup-refactor-r0128-index-estimate-4e8565.md."]
         },
         {
           "line": 3187,

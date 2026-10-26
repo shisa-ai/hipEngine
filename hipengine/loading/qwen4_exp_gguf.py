@@ -129,16 +129,6 @@ class Qwen4ExpGGUFConfig:
         )
 
     @property
-    def bf16_compressed_index_bytes_per_token(self) -> int:
-        dtype_bytes = 2
-        return (
-            self.qsa_layer_count
-            * self.indexer_key_length
-            * dtype_bytes
-            // self.qsa_compression_ratio
-        )
-
-    @property
     def fp32_raw_index_bytes_per_token(self) -> int:
         """Current correctness-first raw index-key payload across QSA layers."""
 

@@ -2797,9 +2797,6 @@ the allocation repair. The observations and proposal below are historical.
   MMQ sidecars, plus4GiB reserve and separately reserved vision payload. Replace
   this conservative allowance with exact composed scratch planning before new
   scratch/sidecar growth exceeds its envelope; never silently over-admit.
-- The unused `bf16_compressed_index_bytes_per_token` remains an estimate, not
-  the actual raw-FP32 index allocation. Remove or explicitly implement it when
-  index quantization is independently qualified; never use it to admit memory.
 - Device-position-owned QSA remains dense-regime probe-only; promotion requires
   native sparse selection support, not raising or bypassing the2051 guard.
 - Full KV zeroing occurs on reset too. Any live-span-only clearing optimization
