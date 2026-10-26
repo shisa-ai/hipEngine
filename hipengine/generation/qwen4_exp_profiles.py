@@ -1024,6 +1024,11 @@ def _bind(
         and not resolved.fell_back_to_strict
         and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
     )
+    # The token64 dense leg follows the Q8 raw-MMQ prefill lane the profile
+    # already binds: production (and the fast route that shares this binder)
+    # may remap the raw-vec4 parent, strict and batch-invariant may not. It is
+    # request-local state on the owning runner, never a process-wide switch.
+    dense_mmq_token64_enabled = bool(production)
     for key, value in {
         "HIPENGINE_GGUF_WMMA_PREFILL": "0",
         # Publish the router producer the manifest declares, so the runner's
@@ -1119,7 +1124,6 @@ def _bind(
                 _GDN_WIDE_VARIANT,
             ) if production else _GDN_WIDE_VARIANT
         ),
-        "HIPENGINE_QWEN4_EXP_MMQ_TOKEN64": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256" if production else "0",
         "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR": "quad" if production else "0",
         # ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
@@ -1281,9 +1285,11 @@ def _bind(
     # decision, and any c1 runner it clones inherits it; an unbound one keeps the
     # parent route.
     generator.dense_f16_pair_enabled = dp2_pair_enabled
+    generator.dense_mmq_token64_enabled = dense_mmq_token64_enabled
     runner = getattr(generator, "runner", None)
     if runner is not None:
         runner.dense_f16_pair_enabled = dp2_pair_enabled
+        runner.dense_mmq_token64_enabled = dense_mmq_token64_enabled
     if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl":
         _apply_profile_env(
             {

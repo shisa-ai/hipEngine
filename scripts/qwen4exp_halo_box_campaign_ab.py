@@ -11,6 +11,7 @@ occupies every timing slot equally across the four canonical categories.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import shlex
@@ -324,6 +325,24 @@ def validate_chunk_coverage(chunks: Sequence[int], tokens: int, size: int) -> No
         raise ValueError(f"chunk coverage {list(chunks)} != {expected}")
 
 
+def route_scope(route_package: str, mode: str):
+    """The live control a route package needs around its measured run.
+
+    Most packages are selected through profile-owned env keys, which
+    ``_apply_mode`` binds before the run. A package whose route is request-local
+    state on the runner (the Q8 token64 dense leg) is selected here instead, so
+    neither arm writes a process-wide switch.
+    """
+
+    from hipengine.runtime.gguf_linear import q8_mmq_token64_diagnostic
+
+    if route_package == "mmq-token64":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        return q8_mmq_token64_diagnostic(mode == "after")
+    return contextlib.nullcontext()
+
+
 def _apply_mode(
     mode: str,
     *,
@@ -382,7 +401,8 @@ def _apply_mode(
         if route_package == "gdn-wave-norm":
             flag = "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"
         if route_package == "mmq-token64":
-            flag = "HIPENGINE_QWEN4_EXP_MMQ_TOKEN64"
+            # Request-local on the runner; ``route_scope`` binds the arm.
+            return
         if route_package in {"qsa-head-pair","qsa-head-quad"}:
             flag = "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR"
         if route_package == "q4-pair":
@@ -1021,8 +1041,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             observed_chunks.clear()
         start_calls = row4_calls[0]
         start_mapped = register_mapped_calls[0]
-        row = _hipengine_case_sample(
-            generator.runner, case=case, repetition=repetition, transitions=transitions)
+        with route_scope(args.route_package, mode):
+            row = _hipengine_case_sample(
+                generator.runner, case=case, repetition=repetition, transitions=transitions)
         if args.route_package == "chunk1024":
             validate_chunk_coverage(observed_chunks,int(case["prompt_tokens"]),
                                     generator.runner.prefill_chunk_size)

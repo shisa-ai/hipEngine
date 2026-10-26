@@ -1,10 +1,23 @@
 """A suspended layer iterator preserves dispatch context and prompt identity."""
+import contextvars
 from types import SimpleNamespace
 
 import pytest
 
 from hipengine.runtime.qwen4_exp_runner import Qwen4ExpGGUFResidentModelRunner
-from hipengine.runtime.gguf_linear import raw_k_prefill_rowbatch, raw_k_prefill_rowbatch_session
+from hipengine.runtime.gguf_linear import (
+    _q8_mmq_prefill_session,
+    q8_mmq_prefill_session,
+    q8_mmq_token64_enabled,
+    q8_mmq_token64_session,
+    raw_k_prefill_rowbatch,
+    raw_k_prefill_rowbatch_session,
+    resolve_q8_mmq_prefill_policy,
+    wide_f16_activation_session,
+    wide_f16_activation_workspace,
+    wide_f16_pair_enabled,
+    wide_f16_pair_session,
+)
 
 
 def _runner(monkeypatch):
@@ -37,6 +50,66 @@ def test_prefill_resume_isolates_dispatch_context_and_returns_only_final_result(
         assert result.token_id == 7
         assert raw_k_prefill_rowbatch() == 0
     assert runner.calls == [(0, 32), (1, 32), (2, 32)]
+    assert runner._pending_prefill_append is None
+
+
+def _lane_state():
+    """What the caller's own context sees for each prefill-owned lane."""
+
+    return (
+        _q8_mmq_prefill_session.get() is not None,
+        q8_mmq_token64_enabled(),
+        wide_f16_activation_workspace() is not None,
+        wide_f16_pair_enabled(),
+    )
+
+
+def test_a_suspended_prefill_owns_no_dispatch_lane_in_the_caller():
+    """The saved Context, not the caller's, holds MMQ/token64/pair while suspended.
+
+    ``_prefill_chunked_steps`` yields from inside ``_q8_mmq_prefill_context`` and
+    ``_wide_f16_activation_context``. Without the copied Context each resume
+    would leave those ContextVars set for whatever the scheduler runs next,
+    pointing another request's Q8_0 launches at this request's workspace and
+    token64 policy.
+    """
+
+    runner = object.__new__(Qwen4ExpGGUFResidentModelRunner)
+    runner.closed = False
+    policy = resolve_q8_mmq_prefill_policy("gguf_ud_q4_k_xl")
+    inside = []
+
+    def steps(tokens, **kwargs):
+        with (
+            q8_mmq_prefill_session(
+                workspace_ptr=1 << 32, workspace_nbytes=1 << 30,
+                risk_count_ptr=2 << 32, risk_count_nbytes=4,
+                risk_indices_ptr=3 << 32, risk_indices_nbytes=1 << 30,
+                policy=policy,
+            ),
+            q8_mmq_token64_session(True),
+            wide_f16_activation_session(
+                True, workspace_ptr=4 << 32, workspace_nbytes=1 << 20),
+            wide_f16_pair_session(True),
+        ):
+            for _ in range(2):
+                inside.append(_lane_state())
+                yield None
+            return SimpleNamespace(token_id=7)
+
+    runner._prefill_chunked_steps = steps
+    clean = (False, False, False, False)
+    assert _lane_state() == clean
+    assert runner.prefill_append_resumable((1, 2), time_budget_seconds=1e-9) is None
+    assert _lane_state() == clean
+    context, pending, _ = runner._pending_prefill_append
+    assert isinstance(context, contextvars.Context)
+    assert runner.prefill_append_resumable((1, 2), time_budget_seconds=1e-9) is None
+    assert _lane_state() == clean
+    result = runner.prefill_append_resumable((1, 2), time_budget_seconds=1e-9)
+    assert result.token_id == 7
+    assert _lane_state() == clean
+    assert inside == [(True, True, True, True), (True, True, True, True)]
     assert runner._pending_prefill_append is None
 
 

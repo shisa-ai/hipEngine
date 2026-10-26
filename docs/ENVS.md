@@ -935,7 +935,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_GR_IU8_DOWN` | `0` | iu8 WMM prefill remap for the down projection of the rows>256 route. |
 | `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` | unset | Comma-separated layer list admitting the Q8 WMMA dense prefill. |
 | `HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE` / `HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE` | production profile | Wave-scaled variants of the Q8 coltile prefill and the raw-Q route. |
-| `HIPENGINE_QWEN4_EXP_MMQ_TOKEN64` | production profile | Remaps the raw-vec4 MMQ prefill to the token64 variant (rows>=512, 2560x12288 shape). |
+| `HIPENGINE_QWEN4_EXP_MMQ_TOKEN64` | retired | No longer read. The profile publishes token64 selection to the owning runner; scoped diagnostics retain explicit A/B control. |
 | `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL` | production profile | Admits the MMQ prefill session for Q8_0 dense projections. |
 | `HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES` | unset (`2` or `3`) | Plane count override for the raw Q8 MMQ policy. |
 | `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK` | production profile | Uses prepacked weight sidecars in the Q8 MMQ prefill session. |

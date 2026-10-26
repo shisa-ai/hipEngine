@@ -30,10 +30,13 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     q8_mmq_vec4_expected_calls,q8_mmq_raw_vector_expected_calls,q8_mapped_down_expected_calls,
     q8_bundle_call_in_scope,apply_chunk_mode,validate_chunk_coverage,q8_down_register_expected_calls,
     gdn_wave_norm_expected_calls,mmq_token64_expected_calls,gr_dpp_expected_calls,
-    router_dpp_expected_calls)
+    router_dpp_expected_calls,route_scope)
 
 
 def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.environ):
+    if package == "mmq-token64":
+        # Request-local on the runner; the prefill call site binds the arm.
+        return
     if package == "q5k-iu8-exact":
         # The q5k opt-out arm de-groups layer 2 entirely (its only grouped
         # entry is the q5k flag), which also changes that layer's Q8_0 down
@@ -130,8 +133,6 @@ def main():
         flag = "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"
     if args.route_package in {"gdn-wave-norm", "gdn-narrow"}:
         flag = "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"
-    if args.route_package == "mmq-token64":
-        flag = "HIPENGINE_QWEN4_EXP_MMQ_TOKEN64"
     if args.route_package in {"qsa-head-pair","qsa-head-quad"}:
         flag="HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR"
     if args.route_package == "q4-pair":
@@ -425,7 +426,8 @@ def main():
                 start_mapped=mapped_calls[0]
                 start_qsa_calls = qsa_calls[0]
                 natural_start = len(natural_router.captures) if natural_router is not None else 0
-                first = generator.runner.prefill(case["prompt_token_ids"])
+                with route_scope(args.route_package, "after" if enabled == "1" else "before"):
+                    first = generator.runner.prefill(case["prompt_token_ids"])
                 prefill_invoked = calls[0] - start_calls
                 logits = first.logits.copy()
                 token = int(first.token_id)

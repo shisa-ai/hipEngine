@@ -2273,6 +2273,61 @@ def q8_mmq_prefill_session(
         _q8_mmq_prefill_session.reset(token)
 
 
+# The token64 dense leg is a property of the prefill that owns this workspace,
+# not a process-wide switch: the execution profile publishes the decision to the
+# runner, and the runner binds it around its own chunked prefill. The raw-vec4
+# parent stays the unbound default.
+_q8_mmq_token64_session: ContextVar[bool] = ContextVar(
+    "gguf_q8_mmq_token64_session", default=False,
+)
+_q8_mmq_token64_control: ContextVar[bool | None] = ContextVar(
+    "gguf_q8_mmq_token64_control", default=None,
+)
+
+
+def q8_mmq_token64_enabled() -> bool:
+    """Whether this prefill may remap the raw MMQ dense leg to the token64 owner.
+
+    An unbound context is the raw-vec4 parent; a diagnostic scope may outrank
+    the request's decision so an A/B can still run both arms.
+    """
+
+    control = _q8_mmq_token64_control.get()
+    return _q8_mmq_token64_session.get() if control is None else bool(control)
+
+
+@contextlib.contextmanager
+def q8_mmq_token64_session(enabled: bool = True) -> Iterator[None]:
+    """Bind the owning prefill's lane decision for the enclosed launches.
+
+    A nested scope replaces the enclosing one and restores it on exit, so an
+    explicit ``False`` keeps the parent route inside an enabled prefill.
+    """
+
+    token = _q8_mmq_token64_session.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _q8_mmq_token64_session.reset(token)
+
+
+@contextlib.contextmanager
+def q8_mmq_token64_diagnostic(enabled: bool | None) -> Iterator[None]:
+    """Explicit scoped control for A/B harnesses; it outranks the lane decision.
+
+    ``None`` leaves the request's own decision in force.
+    """
+
+    if enabled is None:
+        yield
+        return
+    token = _q8_mmq_token64_control.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _q8_mmq_token64_control.reset(token)
+
+
 def resolve_q8_mmq_prefill_policy(
     quant: str,
     *,
@@ -9614,12 +9669,12 @@ def _launch_raw_mmq_d4x3(fn, weight, x_ptr, out_ptr, rows, in_features, out_feat
 
 
 def _q8_mmq_token64_key(key: KernelKey, *, rows: int, hidden: int, outputs: int) -> KernelKey:
-    if (rows<512 or (hidden,outputs)!=(2560,12288)
-            or key.variant!="mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out"
-            or os.environ.get("HIPENGINE_QWEN4_EXP_MMQ_TOKEN64","0")!="1"):
+    if (rows < 512 or (hidden, outputs) != (2560, 12288)
+            or key.variant != "mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out"
+            or not q8_mmq_token64_enabled()):
         return key
-    candidate=KernelKey(key.backend,key.layer,key.quant,
-                       "mmq128_token64_q8_1_d4x3_guarded_f32_f32_out")
+    candidate = KernelKey(key.backend, key.layer, key.quant,
+                          "mmq128_token64_q8_1_d4x3_guarded_f32_f32_out")
     return candidate if is_registered(candidate) else key
 
 

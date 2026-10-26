@@ -2736,28 +2736,28 @@
       "start_line": 2840,
       "end_line": 2852,
       "sha256": "fc08d53b32ee276c0ed9348af0bfd0a890ccc2268da4283d78bc37a41c17ff0a",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-runner-local",
+      "evidence": ["Token64 policy now runner/session-local; shape/raw-parent dependency unchanged, scoped harness controls and lazy-clone inheritance tested. Full CPU and GPU exactness pass. Default UD generation keeps MMQ parent disabled; explicitly diagnostic public MMQ run reached token64. Resumable contexts isolate policy while suspended. worklog/entries/20261026T191326.912201Z-cleanup-refactor-r0101-502907.md."],
       "subitems": [
         {
           "line": 2842,
           "text": "- `mmq128_token64_q8_1_d4x3_guarded_f32_f32_out` reduces",
-          "status": "pending"
+          "status": "resolved-runner-local"
         },
         {
           "line": 2844,
           "text": "- Large raw Q projection wins across two tensors;short Q and long-row GR",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 2846,
           "text": "- Production-bound `HIPENGINE_QWEN4_EXP_MMQ_TOKEN64=1` admits only parent",
-          "status": "pending"
+          "status": "resolved-runner-local"
         },
         {
           "line": 2849,
           "text": "- All12 PP means improve;11 request means improve,Japanese4096 request",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         }
       ]
     },

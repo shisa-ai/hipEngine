@@ -87,7 +87,6 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL",
         "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM",
         "HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT",
-        "HIPENGINE_QWEN4_EXP_MMQ_TOKEN64",
         "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR",
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256",
         "HIPENGINE_QWEN4_EXP_ROUTED_F16",
@@ -363,7 +362,7 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_MMQ_TOKEN64"] == "1"
+    assert fake_runner.dense_mmq_token64_enabled is True
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR"] == "quad"
     raw_q = _selection_map(production)[("linear","prefill_rows_ge512_k2560_n12288_raw_q")]
     assert raw_q["selected_variant"] == "mmq128_token64_q8_1_d4x3_guarded_f32_f32_out"
@@ -460,7 +459,9 @@ def test_historical_q4km_binder_structure_not_qualification(
 
     strict = _resolve(ExecutionProfile.STRICT)
     assert strict.binder is not None
-    strict.binder(SimpleNamespace(), strict)
+    strict_generator = SimpleNamespace()
+    strict.binder(strict_generator, strict)
+    assert strict_generator.dense_mmq_token64_enabled is False
     assert os.environ[PRODUCTION_MOE_PREFILL_ENV] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "0"
@@ -486,7 +487,6 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_MMQ_TOKEN64"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL"] == "0"
@@ -743,7 +743,7 @@ def test_dp2_pair_is_bound_only_for_ud_production(profile, quant, enabled):
 def test_dp2_pair_binding_reaches_a_runner_built_after_the_bind():
     """The generator carries the decision; late c1 runners inherit it."""
 
-    from hipengine.generation.qwen4_exp_gguf import _inherit_pair_lane
+    from hipengine.generation.qwen4_exp_gguf import _inherit_lane_decisions
 
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
@@ -751,16 +751,43 @@ def test_dp2_pair_binding_reaches_a_runner_built_after_the_bind():
     generator = SimpleNamespace(runner=None)
     production.binder(generator, production)
     assert generator.dense_f16_pair_enabled is True
-    assert _inherit_pair_lane(generator, SimpleNamespace()).dense_f16_pair_enabled is True
+    late = _inherit_lane_decisions(generator, SimpleNamespace())
+    assert late.dense_f16_pair_enabled is True
+    assert late.dense_mmq_token64_enabled is True
 
     strict = _resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl")
     strict.binder(generator, strict)
     assert generator.dense_f16_pair_enabled is False
-    assert _inherit_pair_lane(generator, SimpleNamespace()).dense_f16_pair_enabled is False
+    strict_late = _inherit_lane_decisions(generator, SimpleNamespace())
+    assert strict_late.dense_f16_pair_enabled is False
+    assert strict_late.dense_mmq_token64_enabled is False
 
     # An unbound generator keeps the parent route for anything cloned from it.
-    assert _inherit_pair_lane(
-        SimpleNamespace(), SimpleNamespace()).dense_f16_pair_enabled is False
+    unbound = _inherit_lane_decisions(SimpleNamespace(), SimpleNamespace())
+    assert unbound.dense_f16_pair_enabled is False
+    assert unbound.dense_mmq_token64_enabled is False
+
+
+@pytest.mark.parametrize("profile,quant,enabled", [
+    (ExecutionProfile.PRODUCTION, "gguf_ud_q4_k_xl", True),
+    # This plan falls back to the strict binder, which binds the parent leg.
+    (ExecutionProfile.PRODUCTION, "gguf_q4_k_m", False),
+    (ExecutionProfile.FAST, "gguf_ud_q4_k_xl", True),
+    (ExecutionProfile.STRICT, "gguf_ud_q4_k_xl", False),
+    (ExecutionProfile.BATCH_INVARIANT, "gguf_ud_q4_k_xl", False),
+])
+def test_token64_dense_leg_follows_the_q8_mmq_prefill_lane(profile, quant, enabled):
+    """The leg rides the profile's Q8 raw-MMQ lane, not a process-wide switch."""
+
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    resolved = _resolve(profile, quant=quant)
+    runner = SimpleNamespace()
+    generator = SimpleNamespace(runner=runner)
+    resolved.binder(generator, resolved)
+    assert runner.dense_mmq_token64_enabled is enabled
+    assert generator.dense_mmq_token64_enabled is enabled
+    assert "HIPENGINE_QWEN4_EXP_MMQ_TOKEN64" not in os.environ
 
 
 def test_dp2_pair_decision_is_owned_by_the_runner_it_was_bound_to():

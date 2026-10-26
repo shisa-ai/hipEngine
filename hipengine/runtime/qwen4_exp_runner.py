@@ -215,6 +215,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear,
     launch_gguf_linear_decode_rows,
     q8_mmq_prefill_session,
+    q8_mmq_token64_session,
     resolve_q8_mmq_prefill_policy,
 )
 from hipengine.kernels.cpu_reference.qwen4_exp import (
@@ -7724,6 +7725,9 @@ class Qwen4ExpGGUFResidentModelRunner:
     # runner; an unbound runner keeps the parent route. This is the request's
     # own decision, not the effective one: a diagnostic scope may outrank it.
     dense_f16_pair_enabled: bool = False
+    # Same shape for the Q8 raw-MMQ dense leg: the profile publishes whether the
+    # token64 owner may replace the raw-vec4 parent for this runner's prefill.
+    dense_mmq_token64_enabled: bool = False
 
     def __init__(
         self,
@@ -8106,21 +8110,36 @@ class Qwen4ExpGGUFResidentModelRunner:
             if self._q8_mmq_weight_sidecars is None:
                 raise RuntimeError("Q8 MMQ prepacked route requires prepared sidecar ownership")
             prepacked = self._q8_mmq_weight_sidecars.mapping
-        return q8_mmq_prefill_session(
-            workspace_ptr=0 if workspace is None else workspace.ptr,
-            workspace_nbytes=0 if workspace is None else workspace.nbytes,
-            risk_count_ptr=0 if risk_count is None else risk_count.ptr,
-            risk_count_nbytes=0 if risk_count is None else risk_count.nbytes,
-            risk_indices_ptr=0 if risk_indices is None else risk_indices.ptr,
-            risk_indices_nbytes=0 if risk_indices is None else risk_indices.nbytes,
-            policy=(
-                _qwen4_exp_q8_mmq_policy(self._q8_mmq_policy)
-                if enabled
-                else None
+        return self._q8_mmq_scopes(
+            q8_mmq_prefill_session(
+                workspace_ptr=0 if workspace is None else workspace.ptr,
+                workspace_nbytes=0 if workspace is None else workspace.nbytes,
+                risk_count_ptr=0 if risk_count is None else risk_count.ptr,
+                risk_count_nbytes=0 if risk_count is None else risk_count.nbytes,
+                risk_indices_ptr=0 if risk_indices is None else risk_indices.ptr,
+                risk_indices_nbytes=0 if risk_indices is None else risk_indices.nbytes,
+                policy=(
+                    _qwen4_exp_q8_mmq_policy(self._q8_mmq_policy)
+                    if enabled
+                    else None
+                ),
+                library=self._q8_mmq_library if enabled else None,
+                prepacked_weights=prepacked,
             ),
-            library=self._q8_mmq_library if enabled else None,
-            prepacked_weights=prepacked,
+            token64=bool(self.dense_mmq_token64_enabled),
         )
+
+    @contextlib.contextmanager
+    def _q8_mmq_scopes(self, session_scope, *, token64: bool):
+        """Bind this runner's MMQ lane decisions around the workspace it owns.
+
+        Both scopes open on ``__enter__`` and unwind in reverse order, so a
+        context that is constructed and dropped leaves no state behind, and an
+        exception inside the body restores both.
+        """
+
+        with session_scope, q8_mmq_token64_session(token64):
+            yield
 
     def target_verify_output(self, rows: int) -> Qwen4ExpTargetVerifyOutput:
         """Return lazily allocated rows<=8 verifier output storage."""

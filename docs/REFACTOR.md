@@ -2764,19 +2764,6 @@ selection, then remove the reader and binder publication together. Validate
 `tests/test_unit_qwen4exp_qsa_head_pair_route.py`, profile tests and real
 batch/prefill attention paths; batch head-pair selection must stay independent.
 
-## Qwen4Exp raw MMQ token64 production
-
-- `mmq128_token64_q8_1_d4x3_guarded_f32_f32_out` reduces
-  token tile128->64;VGPR184->160,scratch0,exact output/repair set.
-- Large raw Q projection wins across two tensors;short Q and long-row GR
-  have mixed order results. No blanket replacement or prepacked claim.
-- Production-bound `HIPENGINE_QWEN4_EXP_MMQ_TOKEN64=1` admits only parent
-  raw-vector K2560/N12288 rows>=512. Five chunk1024 full-logit/state/KV
-  cases pass,12/48 calls,zero decode/final owners.72 trajectories exact.
-- All12 PP means improve;11 request means improve,Japanese4096 request
-  -0.183% retained under prefill-first policy. Strict binds0.
-  Keep opt-out for bisection;remove flag chain when profile plans own scope.
-
 ## Qwen4Exp GDN checked-index production leaf
 
 - `qwen4exp_sigmoid_wave_norm_narrow_prefill` is the gfx1151 UD production
