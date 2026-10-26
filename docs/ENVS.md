@@ -888,7 +888,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS` | unset | Comma-separated layer list admitting the columnwarp GDN decode variant; empty under production. |
 | `HIPENGINE_QWEN4_EXP_MOE_GRAPH` | backend capability | Enables the captured MoE decode graph on backends whose capability admits it; the strict profile forces `0`. |
 | `HIPENGINE_QWEN4_EXP_PLE_WARM` | `0` | Warms the PLE mmap table page cache at load for long-lived serving; short-lived runners never amortize it. |
-| `HIPENGINE_QWEN4_EXP_LOAD_DROP_BEHIND` | `0` | Drop-behind for the PLE mmap load path (release page cache after materialization). |
+| `HIPENGINE_QWEN4_EXP_LOAD_DROP_BEHIND` | `0` | Advise `DONTNEED` for non-PLE source ranges after their device copy succeeds. Lazy PLE and validation readers are excluded; intended for one-shot low-RSS loading, not repeated loads. |
 
 ### Qwen4Exp MoE prefill routes
 
