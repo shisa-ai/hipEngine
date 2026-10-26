@@ -2419,7 +2419,7 @@
       "status": "partial-mtp-generation-migrated",
       "evidence": [
         "Qwen4Exp batch state, runner and QSA index synchronous array uploads migrated with preserved byte offsets; GPU upload/lifetime and batch tests, CPU bundle and real HTTP physical width2 execution with traced owning helpers pass. Other model array callers and separate async contracts remain open. worklog/entries/20261026T112905.064466Z-cleanup-refactor-r0089-batch-uploads-f58cab.md.",
-        "Dense/MoE MTP2 synchronous array uploads migrated; CPU bundle, focused native sampler GPU test and public ngram owning upload trace passed. Public acceptance helper not exercised; concurrent explicit MTP no_provider fallback remains separate follow-up. worklog/entries/20261026T115712.267620Z-cleanup-refactor-r0089-mtp-uploads-039bde.md."
+        "Dense/MoE MTP2 synchronous array uploads migrated; CPU bundle, focused native sampler GPU test and public ngram owning upload trace passed. Public acceptance helper not exercised by the initial probe; apparent concurrent fallback was later traced to probe TypeError, not a product restriction. Clean concurrent MTP requests pass; correction: worklog/entries/20261026T121319.257732Z-cleanup-refactor-mtp-probe-correction-7f7df7.md. worklog/entries/20261026T115712.267620Z-cleanup-refactor-r0089-mtp-uploads-039bde.md."
       ],
       "subitems": [
         {
