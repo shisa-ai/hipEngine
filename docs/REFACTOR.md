@@ -3047,23 +3047,22 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   from the owner screen alone, and do not interpolate the p4096 result to
   p1024/p512. Keep DP-5's single-use contract unchanged.
 
-## Qwen4Exp wide-F16 activation hoist: opt-in runner integration
+## Qwen4Exp wide-F16 activation hoist: runner-owned staging
 
-- `qwen4_exp_runner.py` now binds a lazy, runner-owned staging buffer during
-  chunked prefill when the wide route is selected and
-  `HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT=1`. The default remains the F32-input
-  owner until integrated GPU correctness, census and same-host A/B checks pass.
+- `qwen4_exp_runner.py` binds a lazy, runner-owned staging buffer during
+  chunked prefill when the wide route is selected. Production enables staging
+  unless the profile fell back to strict; other profiles keep the F32-input
+  owner. `HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT` explicitly overrides that
+  default, and `0` remains the bisection control.
 - The buffer is bounded by the original chunk capacity, clamped to context,
   and a conservative maximum dense input width from model configuration.
   It is reused across resets, not resized for a selected smaller workspace,
   and freed with the runner. Per-launch size checks still preserve the F32
   fallback. Public context admission reserves the optional owner per runner
-  before profile binding; default/off paths allocate no additional buffer.
-- The 553.9 ms estimate is not measured engine recovery. Validation is blocked
-  by a concurrent DMS GPU job in `~/hipEngine-main` observed on
-  2026-09-26; do not measure alongside it or stop another worker's process.
-  Once the GPU is available, run the integrated gate and A/B, then enable the
-  default only for a correct, non-regressive result.
+  before profile binding; disabled paths allocate no additional buffer.
+- The historical concurrent DMS job is not a current validation blocker.
+  Integrated validation is recorded in
+  `benchmarks/results/2026-09-26-qwen4exp-f16-integration/README.md`.
 - Keep the shared helpers and opt-out while other model lanes use them.
   Removing the flag requires passing integrated correctness and a same-host
   non-regressive A/B, plus review of all consumers. If the Qwen4Exp binding
@@ -3131,16 +3130,18 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
 
 ## Qwen4Exp chunk allocation before profile binding
 
-- The qualified UD-Q4_K_XL gfx1151 factory allocates1024-capacity scratch
-  before the profile binder runs. Its implicit strict profile executes512;
-  explicit chunk arguments bypass this default selection. Other quant/
-  direct constructors keep512. No runtime growth after allocation.
-- `_implicit_profile_chunk_size` is temporary factory/profile coordination.
-  Replace it when runtime profile plans can convey allocation defaults
-  before construction. Preserve explicit overrides and strict512 behavior.
-- Benchmark512/1024 arms intentionally share larger scratch;do not call
-  that allocation-size neutrality. Future current-default captures must
-  explicitly select1024 until benchmark defaults are separately revised.
+- The UD-Q4_K_XL gfx1151 factory passes an omitted chunk size to the
+  capacity guard before profile binding. The guard selects an affordable
+  chunk; `_bind_default_chunk` uses `admitted_prefill_chunk_size` rather than
+  assuming a fixed allocation. Only owners without an admitted value use the
+  fallback of 1024 for production or 512 for strict.
+- `_implicit_profile_chunk_size` remains factory/profile coordination.
+  Replace it when runtime profile plans can convey allocation defaults before
+  construction. Preserve explicit chunk overrides and the admitted capacity;
+  do not grow workspace after allocation.
+- Historical fixed-512/1024 benchmark arms are not descriptions of today's
+  automatic allocation. New captures must record the admitted chunk and
+  selected profile rather than infer either from an omitted argument.
 
 ## Qwen4Exp mapped Q8 down rollback
 

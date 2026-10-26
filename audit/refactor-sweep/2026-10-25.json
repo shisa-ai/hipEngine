@@ -2796,28 +2796,30 @@
       "start_line": 2895,
       "end_line": 2917,
       "sha256": "e7f7bdcb3b7e17e80e8f14b2b5743f9a664c3e74142b5e7df92d663327f2347e",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-docs-corrected",
+      "evidence": [
+        "Corrected stale default-off and historical concurrent-job blocker. runtime/gguf_linear.py wide_f16_activation_for enables production without strict fallback; explicit env overrides remain. Integrated evidence exists at benchmarks/results/2026-09-26-qwen4exp-f16-integration/README.md. Consumer review and shared override removal remain open; no new numerical claim."
+      ],
       "subitems": [
         {
           "line": 2897,
           "text": "- `qwen4_exp_runner.py` now binds a lazy, runner-owned staging buffer during",
-          "status": "pending"
+          "status": "reviewed-cleanup-remains"
         },
         {
           "line": 2901,
           "text": "- The buffer is bounded by the original chunk capacity, clamped to context,",
-          "status": "pending"
+          "status": "reviewed-cleanup-remains"
         },
         {
           "line": 2907,
           "text": "- The 553.9 ms estimate is not measured engine recovery. Validation is blocked",
-          "status": "pending"
+          "status": "reviewed-cleanup-remains"
         },
         {
           "line": 2912,
           "text": "- Keep the shared helpers and opt-out while other model lanes use them.",
-          "status": "pending"
+          "status": "reviewed-cleanup-remains"
         }
       ]
     },
@@ -3074,23 +3076,25 @@
       "start_line": 3019,
       "end_line": 3031,
       "sha256": "0967f81b015ad4f4142aef21b80984baae1cc69a09ac30a418524dfdf1f8f9dc",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-docs-corrected",
+      "evidence": [
+        "Corrected obsolete fixed allocation/default claims. generation/qwen4_exp_gguf.py factory passes None for auto admission; qwen4_exp_profiles.py _bind_default_chunk binds admitted_prefill_chunk_size, with fixed fallback only when unavailable. Temporary implicit-profile coordination remains;12 chunk tests pass."
+      ],
       "subitems": [
         {
           "line": 3021,
           "text": "- The qualified UD-Q4_K_XL gfx1151 factory allocates1024-capacity scratch",
-          "status": "pending"
+          "status": "reviewed-cleanup-remains"
         },
         {
           "line": 3025,
           "text": "- `_implicit_profile_chunk_size` is temporary factory/profile coordination.",
-          "status": "pending"
+          "status": "reviewed-cleanup-remains"
         },
         {
           "line": 3028,
           "text": "- Benchmark512/1024 arms intentionally share larger scratch;do not call",
-          "status": "pending"
+          "status": "reviewed-cleanup-remains"
         }
       ]
     },
