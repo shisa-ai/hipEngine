@@ -124,15 +124,17 @@ class Weight:
 
 
 @pytest.mark.parametrize("workspace_bytes,enabled,registered,expected", [
-    (512 * 10240 * 2, "1", True, PADDED),
-    (512 * 10240 * 2, "1", False, PARENT),
-    (512 * 10240 * 2 - 1, "1", True, None),
-    (512 * 10240 * 2, "0", True, None),
+    (512 * 10240 * 2, True, True, PADDED),
+    (512 * 10240 * 2, True, False, PARENT),
+    (512 * 10240 * 2 - 1, True, True, None),
+    (512 * 10240 * 2, False, True, None),
 ])
 def test_launch_stage_abi_library_and_fail_closed(workspace_bytes, enabled, registered, expected, monkeypatch):
     profile()
     monkeypatch.setenv(ENV, PADDED)
-    monkeypatch.setenv(linear.WIDE_F16_ACTIVATION_ENV, enabled)
+    if not enabled:
+        # The profile/session own the switch; the retired env cannot move it.
+        monkeypatch.setattr(linear, "wide_f16_activation_enabled", lambda default=True: False)
     monkeypatch.setattr(linear, "is_registered", lambda key: registered or key.variant == PARENT)
     monkeypatch.setattr(linear, "_ensure_linear_kernel_registered", lambda key: None)
     seen, casts = [], []

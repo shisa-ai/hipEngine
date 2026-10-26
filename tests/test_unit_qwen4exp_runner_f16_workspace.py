@@ -17,7 +17,6 @@ from tests.test_unit_qwen4exp_scratch_plan import config
 @pytest.fixture
 def enabled(monkeypatch):
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
-    monkeypatch.setenv("HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT", "1")
 
 
 @pytest.mark.parametrize("chunk", [257, 1024, 2048, 4096])
@@ -46,10 +45,8 @@ def test_owner_is_bounded_reused_and_freed(enabled, chunk):
                 pass
 
 
-@pytest.mark.parametrize("key", ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE",
-                                  "HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT"])
-def test_disabled_context_does_not_allocate_and_shadows_outer(enabled, monkeypatch, key):
-    monkeypatch.setenv(key, "0")
+def test_disabled_context_does_not_allocate_and_shadows_outer(enabled, monkeypatch):
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "0")
     with simulated_runner(config(), context=256, chunk=16) as (runner, runtime):
         before = dict(runtime.live)
         with wide_f16_activation_session(workspace_ptr=123, workspace_nbytes=456):
@@ -68,8 +65,7 @@ def test_capacity_clamps_to_context(enabled):
             assert runtime.live[owner.ptr] == owner.nbytes
 
 
-def test_default_allocates_qualified_workspace(enabled, monkeypatch):
-    monkeypatch.delenv("HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT")
+def test_default_allocates_qualified_workspace(enabled):
     with simulated_runner(config(), context=256, chunk=16) as (runner, runtime):
         before = dict(runtime.live)
         with runner._wide_f16_activation_context():

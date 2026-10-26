@@ -18,14 +18,19 @@ from __future__ import annotations
 
 import pytest
 
+from hipengine.execution_profiles import ExecutionProfile
 from hipengine.kernels.registry import KernelKey, register
 from hipengine.runtime.gguf_linear import (
-    WIDE_F16_ACTIVATION_ENV,
     _wide_f16_activation_target_variant,
     wide_f16_activation_enabled,
+    wide_f16_activation_for,
     wide_f16_activation_session,
     wide_f16_activation_workspace,
 )
+
+# Retired override name. The profile and session own the decision now; these
+# tests assert the old variable cannot move it in either direction.
+RETIRED_ENV = "HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT"
 
 BACKEND = "hip_gfx1151"
 QUANT = "gguf_q8_0"
@@ -56,7 +61,7 @@ class _Weight:
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
-    monkeypatch.delenv(WIDE_F16_ACTIVATION_ENV, raising=False)
+    monkeypatch.delenv(RETIRED_ENV, raising=False)
 
 
 def _staged_launch(monkeypatch, *, variant=SOURCE, rows=ROWS, in_features=K, libraries=None):
@@ -175,17 +180,76 @@ def test_larger_workspace_is_usable(monkeypatch):
     assert swapped is True
 
 
-def test_env_override_disables_the_hoist(monkeypatch):
-    monkeypatch.setenv(WIDE_F16_ACTIVATION_ENV, "0")
+def test_profile_owns_the_hoist_decision():
+    """Production without a strict fallback is the only enabling profile."""
+
+    assert wide_f16_activation_for(ExecutionProfile.PRODUCTION) is True
+    assert wide_f16_activation_for("production") is True
+    assert wide_f16_activation_for(ExecutionProfile.STRICT) is False
+    assert wide_f16_activation_for(ExecutionProfile.BATCH_INVARIANT) is False
+    assert wide_f16_activation_for(ExecutionProfile.FAST) is False
+    assert wide_f16_activation_for(None) is False
+    assert wide_f16_activation_for("") is False
+    assert (
+        wide_f16_activation_for(
+            ExecutionProfile.PRODUCTION, profile_fell_back_to_strict=True
+        )
+        is False
+    )
+
+
+def test_retired_env_cannot_override_the_profile(monkeypatch):
+    """The retired override is inert in both directions."""
+
+    monkeypatch.setenv(RETIRED_ENV, "1")
+    assert wide_f16_activation_for(ExecutionProfile.STRICT) is False
+    assert (
+        wide_f16_activation_for(
+            ExecutionProfile.PRODUCTION, profile_fell_back_to_strict=True
+        )
+        is False
+    )
+    assert wide_f16_activation_for(None) is False
+
+    monkeypatch.setenv(RETIRED_ENV, "0")
+    assert wide_f16_activation_for(ExecutionProfile.PRODUCTION) is True
+    assert wide_f16_activation_enabled(True) is True
+
+
+def test_retired_env_cannot_reenable_a_disabled_session(monkeypatch):
+    monkeypatch.setenv(RETIRED_ENV, "1")
+    assert wide_f16_activation_enabled(False) is False
     with wide_f16_activation_session(
-        True, workspace_ptr=0x5000, workspace_nbytes=REQUIRED_NBYTES
+        False, workspace_ptr=0x5000, workspace_nbytes=REQUIRED_NBYTES
     ):
-        swapped, converter, _ = _staged_launch(monkeypatch)
+        assert wide_f16_activation_workspace() is None
+        swapped, converter, sibling = _staged_launch(monkeypatch)
 
     assert swapped is False
     assert converter == []
-    monkeypatch.setenv(WIDE_F16_ACTIVATION_ENV, "1")
-    assert wide_f16_activation_enabled(False) is True
+    assert sibling == []
+
+
+def test_explicit_false_session_nesting_shadows_the_outer_workspace(monkeypatch):
+    """A nested ``enabled=False`` scope owns its shadow for that launch only."""
+
+    with wide_f16_activation_session(
+        True, workspace_ptr=0x5000, workspace_nbytes=REQUIRED_NBYTES
+    ):
+        outer = wide_f16_activation_workspace()
+        assert outer is not None
+        with wide_f16_activation_session(
+            False, workspace_ptr=0x6000, workspace_nbytes=REQUIRED_NBYTES
+        ):
+            assert wide_f16_activation_workspace() is None
+            swapped, converter, _ = _staged_launch(monkeypatch)
+            assert swapped is False
+            assert converter == []
+        assert wide_f16_activation_workspace() is outer
+        swapped, converter, _ = _staged_launch(monkeypatch)
+        assert swapped is True
+        assert len(converter) == 1
+    assert wide_f16_activation_workspace() is None
 
 
 def test_session_clears_the_workspace_on_exit():

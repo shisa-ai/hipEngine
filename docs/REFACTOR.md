@@ -2824,28 +2824,6 @@ the allocation repair. The observations and proposal below are historical.
   from the owner screen alone, and do not interpolate the p4096 result to
   p1024/p512. Keep DP-5's single-use contract unchanged.
 
-## Qwen4Exp wide-F16 activation hoist: runner-owned staging
-
-- `qwen4_exp_runner.py` binds a lazy, runner-owned staging buffer during
-  chunked prefill when the wide route is selected. Production enables staging
-  unless the profile fell back to strict; other profiles keep the F32-input
-  owner. `HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT` explicitly overrides that
-  default, and `0` remains the bisection control.
-- The buffer is bounded by the original chunk capacity, clamped to context,
-  and a conservative maximum dense input width from model configuration.
-  It is reused across resets, not resized for a selected smaller workspace,
-  and freed with the runner. Per-launch size checks still preserve the F32
-  fallback. Public context admission reserves the optional owner per runner
-  before profile binding; disabled paths allocate no additional buffer.
-- The historical concurrent DMS job is not a current validation blocker.
-  Integrated validation is recorded in
-  `benchmarks/results/2026-09-26-qwen4exp-f16-integration/README.md`.
-- Keep the shared helpers and opt-out while other model lanes use them.
-  Removing the flag requires passing integrated correctness and a same-host
-  non-regressive A/B, plus review of all consumers. If the Qwen4Exp binding
-  is rejected, remove only that lane's unused integration; do not delete the
-  Qwen3.5/3.6 workspace or shared dispatch helpers.
-
 ## Qwen4Exp GDN checked-index production leaf
 
 - `qwen4exp_sigmoid_wave_norm_narrow_prefill` is the gfx1151 UD production
@@ -9868,16 +9846,6 @@ because the packet that records the dead end uses them, and because the bitmap
 pass is the natural input to a pipelined repair. Removal trigger: no packet or
 test refers to them, or a pipelined/async-copy repair lands that supersedes the
 whole family.
-
-### The wide route's F16 activation hoist keeps an env opt-out
-
-`HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT=0` restores the f32-input owner for the
-wide-row Q8_0 dense prefill route. The hoist is arithmetic-preserving (both ABIs
-put the same f16 bytes in LDS, pinned bit-identical on GPU in
-`tests/test_gpu_qwen4exp_dense_wide_f16_activation_hoist.py`), so the flag exists
-for bisection and for a route-level rollback, not for correctness. Removal
-trigger: the hoisted path has passed a full qualification run and no bisection
-has needed it since.
 
 ### The 32-row MoE M-tile variants are registered but unused
 

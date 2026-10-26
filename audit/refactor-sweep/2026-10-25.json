@@ -2826,30 +2826,31 @@
       "start_line": 2895,
       "end_line": 2917,
       "sha256": "e7f7bdcb3b7e17e80e8f14b2b5743f9a664c3e74142b5e7df92d663327f2347e",
-      "status": "partial-docs-corrected",
+      "status": "resolved-shared-override-retired",
       "evidence": [
+        "Removed environment override while retaining profile/session defaults and both consumers. CPU bundle, GPU exactness/pair/publication and Qwen4Exp public staged engagement pass; dense public request uses non-wide variants and succeeds. Shared helper coverage remains. worklog/entries/20261026T182839.863045Z-cleanup-refactor-r0104-af3658.md.",
         "Corrected stale default-off and historical concurrent-job blocker. runtime/gguf_linear.py wide_f16_activation_for enables production without strict fallback; explicit env overrides remain. Integrated evidence exists at benchmarks/results/2026-09-26-qwen4exp-f16-integration/README.md. Consumer review and shared override removal remain open; no new numerical claim."
       ],
       "subitems": [
         {
           "line": 2897,
           "text": "- `qwen4_exp_runner.py` now binds a lazy, runner-owned staging buffer during",
-          "status": "reviewed-cleanup-remains"
+          "status": "resolved-shared-override-retired"
         },
         {
           "line": 2901,
           "text": "- The buffer is bounded by the original chunk capacity, clamped to context,",
-          "status": "reviewed-cleanup-remains"
+          "status": "resolved-shared-override-retired"
         },
         {
           "line": 2907,
           "text": "- The 553.9 ms estimate is not measured engine recovery. Validation is blocked",
-          "status": "reviewed-cleanup-remains"
+          "status": "resolved-shared-override-retired"
         },
         {
           "line": 2912,
           "text": "- Keep the shared helpers and opt-out while other model lanes use them.",
-          "status": "reviewed-cleanup-remains"
+          "status": "resolved-shared-override-retired"
         }
       ]
     },
@@ -12046,7 +12047,7 @@
         {
           "line": 9997,
           "text": "### The wide route's F16 activation hoist keeps an env opt-out",
-          "status": "pending"
+          "status": "resolved-shared-override-retired"
         },
         {
           "line": 10007,

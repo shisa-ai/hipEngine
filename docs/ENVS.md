@@ -850,7 +850,6 @@ use.
 | Variable | Default | Values / notes |
 | --- | --- | --- |
 | `HIPENGINE_GGUF_PACK8_GEMV_WIDE` | unset | Wide-thread pack8 GEMV grid for eligible projections. |
-| `HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT` | `1` | Dense-wide Q8_0 launches read a staged F16 activation; `0` for bisection. |
 | `HIPENGINE_GGUF_Q8_DENSE_WIDE_LONG_K` | profile-selected | Long-K dense-wide 128x128 WGP variant in place of the 256 parent. |
 | `HIPENGINE_GGUF_Q8_DENSE_WIDE_WGP_MAX_ROWS` | `1024` | Upper row bound of the WGP-mode dense-wide build (`0` disables it). |
 | `HIPENGINE_GGUF_SELECTED_Q4_GATE_UP_TILE8` | `1` | Tile8 ownership for the selected Q4_K T16 gate+up pair (byte-identical); `0` uses the 16-column owner. |
@@ -1161,6 +1160,8 @@ harnesses read them but do not own them.
 
 These names appear in the tree but must not be confused with env knobs:
 
+- `HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT` is retired. Profile and session
+  selection own activation staging; the old environment value has no effect.
 - `HIPENGINE_GGUF_INT8_KV_DECODE_GRAPH` is retired. Capture APIs admit
   implemented KV layouts; automatic capture uses backend-declared replay
   floors instead. Historical harness artifacts and regression tests may name it.

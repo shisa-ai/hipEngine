@@ -28,7 +28,6 @@ def fake_pair(monkeypatch):
     casts, calls = [], []
     a, b = weight("attn_qkv", WA, NA), weight("attn_gate", WB, NB)
     monkeypatch.setenv(ENV, "1")
-    monkeypatch.setenv(linear.WIDE_F16_ACTIVATION_ENV, "1")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", ",".join(map(str, range(13, 48))))
     monkeypatch.setattr(linear, "_wide_f16_consumer_key", lambda *a, **kw: KEY)
@@ -227,7 +226,6 @@ def test_native_dispatch_probe_and_backend_policy_admit_only_measured_pairs(monk
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
     register_gfx1151_kernels(replace=True)
     monkeypatch.setenv(ENV, "1")
-    monkeypatch.setenv(linear.WIDE_F16_ACTIVATION_ENV, "1")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", ",".join(map(str, range(13, 48))))
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS", raising=False)

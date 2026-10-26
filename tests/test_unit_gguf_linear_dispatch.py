@@ -7726,8 +7726,11 @@ def test_launch_gguf_linear_swaps_the_wide_route_to_its_f16_sibling() -> None:
         assert calls == ["f32in", "f16in"]
         assert conversions == [(0x10000000, 0x50000000, rows * in_features)]
 
-        # The env opt-out restores the owner even with a workspace bound.
-        os.environ["HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT"] = "0"
+        # A launch the switch declines restores the owner even with a workspace
+        # bound. The profile/session own that switch; the retired env cannot.
+        monkeypatch.setattr(
+            gguf_linear_module, "wide_f16_activation_enabled", lambda default=True: False
+        )
         with wide_f16_activation_session(
             True, workspace_ptr=0x50000000, workspace_nbytes=required
         ):
@@ -7746,7 +7749,6 @@ def test_launch_gguf_linear_swaps_the_wide_route_to_its_f16_sibling() -> None:
         assert len(conversions) == 1
     finally:
         monkeypatch.undo()
-        os.environ.pop("HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT", None)
         os.environ.pop("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", None)
         dw_module.f32_to_f16 = original_dw_cast
         register(f32in_key, original_f32in, replace=True)

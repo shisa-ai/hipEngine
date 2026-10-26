@@ -28,7 +28,6 @@ def publish(**kw):
 @pytest.fixture
 def fake_launch(monkeypatch):
     casts, calls = [], []
-    monkeypatch.setenv(linear.WIDE_F16_ACTIVATION_ENV, "1")
     monkeypatch.setenv(linear.DENSE_WIDE_TAIL_VARIANT_ENV, TARGET)
     monkeypatch.setattr(linear, "is_registered", lambda key: True)
     monkeypatch.setattr(linear, "resolve", lambda **key: lambda *a, **k: calls.append((key, a, k)))
@@ -76,9 +75,10 @@ def test_consumer_mismatch_casts_then_cannot_restore_loan(fake_launch, change):
 def test_failed_registration_or_disabled_launch_invalidates(fake_launch, monkeypatch):
     launch, casts, calls = fake_launch
     with session(), publish():
-        monkeypatch.setenv(linear.WIDE_F16_ACTIVATION_ENV, "0")
+        # The profile/session own the switch; the retired env cannot move it.
+        monkeypatch.setattr(linear, "wide_f16_activation_enabled", lambda default=True: False)
         assert not launch()
-        monkeypatch.setenv(linear.WIDE_F16_ACTIVATION_ENV, "1")
+        monkeypatch.setattr(linear, "wide_f16_activation_enabled", lambda default=True: True)
         assert launch()
         assert len(casts) == 1
     with session(), publish():

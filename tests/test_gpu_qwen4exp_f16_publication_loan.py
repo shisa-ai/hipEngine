@@ -29,7 +29,6 @@ def test_native_norm_consumer_single_use_and_nondefault_stream(monkeypatch):
 
     runtime = get_hip_runtime()
     register_gfx1151_kernels(replace=True)
-    monkeypatch.setenv(linear.WIDE_F16_ACTIVATION_ENV, "1")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", ",".join(map(str,range(13,48))))
     monkeypatch.setenv(linear.DENSE_WIDE_TAIL_VARIANT_ENV, "dense_wide256_padded_f16in_f32_f32_out")

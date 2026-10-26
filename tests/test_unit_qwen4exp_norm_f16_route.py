@@ -25,7 +25,6 @@ def weight(backend="hip_gfx1151", quant="gguf_q8_0", role="layers.16.hc_attn_dow
 def setup(monkeypatch):
     register_gfx1151_kernels(replace=True)
     monkeypatch.setenv(ENV, "1")
-    monkeypatch.setenv(linear.WIDE_F16_ACTIVATION_ENV, "1")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", ",".join(map(str, range(13,48))))
     monkeypatch.setenv(linear.DENSE_WIDE_TAIL_VARIANT_ENV, PADDED)
@@ -74,11 +73,21 @@ def test_scope_miss_keeps_parent(setup, monkeypatch, change):
     assert [v[0] for v in setup] == ["parent", "down"]
 
 
-@pytest.mark.parametrize("env,value", [(ENV,"0"), (linear.WIDE_F16_ACTIVATION_ENV,"0"),
+@pytest.mark.parametrize("env,value", [(ENV,"0"),
     ("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE","0"),
     ("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", ",".join(map(str, range(17,48))))])
 def test_disabled_keeps_parent(setup, monkeypatch, env, value):
     monkeypatch.setenv(env,value)
+    monkeypatch.setattr(runner, "launch_gguf_linear", lambda *a, **k: setup.append(("down",a,k)))
+    with linear.wide_f16_activation_session(workspace_ptr=HALF, workspace_nbytes=COUNT*2):
+        run()
+    assert [v[0] for v in setup] == ["parent", "down"]
+
+
+def test_hoist_switch_off_keeps_parent(setup, monkeypatch):
+    """The profile/session switch owns the hoist; the retired env does not."""
+
+    monkeypatch.setattr(linear, "wide_f16_activation_enabled", lambda default=True: False)
     monkeypatch.setattr(runner, "launch_gguf_linear", lambda *a, **k: setup.append(("down",a,k)))
     with linear.wide_f16_activation_session(workspace_ptr=HALF, workspace_nbytes=COUNT*2):
         run()

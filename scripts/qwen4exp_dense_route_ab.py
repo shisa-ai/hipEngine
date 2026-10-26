@@ -7,9 +7,11 @@ Three arms, one process, one model load, interleaved:
 ``exact``        both selectors cleared -> the exact coltile chain
 ``wmma-16-47``   the named production default -> ``wmma_prefill_*``
 ``wide-16-47``   ``HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE=1`` at 16-47
-``wide-f32in``   the same route with its activation hoist off (f32-in owner)
-``wide-f16in``   the same route with its activation hoist on (f16-in sibling)
 ===============  ==================================================
+
+The wide arm's activation hoist is owned by the execution profile, so it is
+not a post-binder switch: the arm's launch census shows whether the profile's
+resolution engaged the f16-in sibling or kept the f32-in owner.
 
 The selectors are post-binder: the named production binder writes them during
 its own pass, so they are flipped after the generator is constructed and a
@@ -61,10 +63,6 @@ WMMA_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"
 DENSE_WIDE_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"
 DENSE_WIDE_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"
 LAYER_SCOPE = ",".join(str(layer) for layer in range(16, 48))
-# The wide route's activation hoist: f32-in owner vs the f16-in sibling fed by
-# one bounded conversion pass. Arithmetic-preserving either way, so the two arms
-# must produce the same logits digest and differ only in wall.
-F16_ACTIVATION_ENV = "HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT"
 
 
 @dataclass(frozen=True)
@@ -95,39 +93,14 @@ ARMS: tuple[Arm, ...] = (
             WMMA_LAYERS_ENV: LAYER_SCOPE,
             DENSE_WIDE_ENV: "1",
             DENSE_WIDE_LAYERS_ENV: LAYER_SCOPE,
-            # Empty = no override: this is the shipped default, whose activation
-            # hoist is resolved from the execution profile. Its census is what
-            # shows whether that resolution engaged.
-            F16_ACTIVATION_ENV: "",
         },
         chain="dense_wide256_f32_f32_out",
-    ),
-    Arm(
-        name="wide-f32in",
-        env={
-            WMMA_LAYERS_ENV: LAYER_SCOPE,
-            DENSE_WIDE_ENV: "1",
-            DENSE_WIDE_LAYERS_ENV: LAYER_SCOPE,
-            F16_ACTIVATION_ENV: "0",
-        },
-        chain="dense_wide256_f32_f32_out",
-    ),
-    Arm(
-        name="wide-f16in",
-        env={
-            WMMA_LAYERS_ENV: LAYER_SCOPE,
-            DENSE_WIDE_ENV: "1",
-            DENSE_WIDE_LAYERS_ENV: LAYER_SCOPE,
-            F16_ACTIVATION_ENV: "1",
-        },
-        chain="dense_wide256_f16in_f32_f32_out",
     ),
 )
 ARM_ENV_KEYS = (
     WMMA_LAYERS_ENV,
     DENSE_WIDE_ENV,
     DENSE_WIDE_LAYERS_ENV,
-    F16_ACTIVATION_ENV,
 )
 
 

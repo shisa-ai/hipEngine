@@ -32,7 +32,6 @@ def test_native_pair_nondefault_stream_exact_and_bounded(monkeypatch, rows, role
 
     runtime = get_hip_runtime()
     register_gfx1151_kernels(replace=True)
-    monkeypatch.setenv(linear.WIDE_F16_ACTIVATION_ENV, "1")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "1")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", ",".join(map(str, range(13, 48))))
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS", raising=False)

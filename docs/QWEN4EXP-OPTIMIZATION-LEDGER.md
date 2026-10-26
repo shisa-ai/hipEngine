@@ -658,7 +658,7 @@ halo-box PR #91 / #87 / #104 descriptions, pwilkin `40a9f4d01`, and the
 | Router and small F32 weights | hipBLAS SGEMM (router and shared-expert gate in one GEMM) | activations rounded to F16 on WMMA ("every F32 weight of these GGUFs is F16-exact") | exact F32 tile4 producer |
 | Attention | `WmmaCausalAttentionKernel`: **F16 K/V cache**, WMMA QK and PV, four queries x twelve heads packed over the union of their selections | HS256 WMMA flash attention; WMMA indexer scoring | BF16 KV; scalar exact FMA sparse attention (`__fmul_rn` with a contraction barrier) |
 | GDN | F32 row-split recurrence, four tokens staged in LDS, three windows of loads in flight | chunked fp16 WMMA chunk scan (NMSE ~2e-7) with fused conv/SiLU, q/k norm and gated RMS norm | exact F32 register-state / tile-16 recurrence |
-| Activation conversion | producers write the F16 (and tiled Q8) copy their consumer reads; no separate conversion pass on the wide route | producers write the BF16 copy themselves | one bounded staging cast per consumer set (`HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT`) |
+| Activation conversion | producers write the F16 (and tiled Q8) copy their consumer reads; no separate conversion pass on the wide route | producers write the BF16 copy themselves | one bounded staging cast per consumer set (profile/session-owned) |
 | Prefill chunk | 2048 | `-ub 4096` in the published benchmarks | 1024 |
 
 Their quality evidence is not our gate. gufo's is consistency (batched against

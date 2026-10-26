@@ -558,8 +558,8 @@ def _launch_prefill_f16_staged(
 # The workspace is a caller-owned bounded device buffer, the same shape as the
 # B2 prefill F16-staging workspace: a launch whose activation does not fit runs
 # the f32-input owner instead, which costs the saving and never correctness.
-# Set ``HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT=0`` for bisection.
-WIDE_F16_ACTIVATION_ENV = "HIPENGINE_GGUF_Q8_DENSE_WIDE_F16_ACT"
+# The execution profile and the session own whether the hoist runs; there is no
+# process-wide override.
 WIDE_F16_PAIR_ENV = "HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR"
 NORM_F16_PUBLICATION_ENV = "HIPENGINE_QWEN4_EXP_GR_NORM_F16_PUBLISH"
 _WIDE_F16_ACTIVATION_SOURCE_SUFFIX = "_f32_f32_out"
@@ -966,17 +966,14 @@ def wide_f16_activation_for(
     *,
     profile_fell_back_to_strict: bool = False,
 ) -> bool:
-    """Resolve the profile default while preserving explicit env overrides.
+    """Resolve the profile default for the wide route's activation hoist.
 
     The hoist is arithmetic-preserving (bit-identical output), so the profile
     scope here is the shipped lane's, not a numerical contract: the production
     profile without strict fallback gets it, and everything else keeps the
-    f32-input owner unless the env names it explicitly.
+    f32-input owner. A session may still decline it per launch.
     """
 
-    override = os.environ.get(WIDE_F16_ACTIVATION_ENV, "").strip().lower()
-    if override:
-        return override in {"1", "true", "yes", "on"}
     profile_value = getattr(profile, "value", profile)
     if profile_value is None or str(profile_value) == "":
         return False
@@ -988,14 +985,11 @@ def wide_f16_activation_for(
 def wide_f16_activation_enabled(default: bool = True) -> bool:
     """Whether the wide route's activation hoist may run for this launch.
 
-    Resolution order: explicit env override, then the caller's default. A
-    workspace is still required, so an enabled route without one keeps the
-    f32-input owner.
+    The caller's ``default`` is the profile-derived decision; a session that
+    binds no workspace already keeps the f32-input owner, so this switch only
+    reports that decision. There is no process-wide override.
     """
 
-    override = os.environ.get(WIDE_F16_ACTIVATION_ENV, "").strip().lower()
-    if override:
-        return override in {"1", "true", "yes", "on"}
     return bool(default)
 
 
