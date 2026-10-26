@@ -1549,8 +1549,10 @@
       "start_line": 1848,
       "end_line": 1868,
       "sha256": "a399913531355615ae75c11b1694d97994f8ad9047be1a24232c64da8966530a",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Historical identities remain unknown; both automatic and explicit requests run on implementation capability, verified by serving-capability tests. Stale refusal description/test reference corrected without inventing fingerprints. Worklog:worklog/entries/20261026T070317.847391Z-cleanup-refactor-r0060-61ff7b.md."
+      ],
       "subitems": []
     },
     {

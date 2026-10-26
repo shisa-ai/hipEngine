@@ -2145,19 +2145,23 @@ Decision: `worklog/entries/20260920T155434.502352Z-lhl-served-lane-boundaries-bc
 The three `qwen36-dense-q4km-gfx1100-*` rows in
 `hipengine/models/qwen35.py` describe Qwen3.6-27B-Q4_K_M
 (`/models/gguf/Qwen3.6-27B-Q4_K_M.gguf`, sha256 `a7cbd3ec…`, 17,106,773,120
-bytes) and record its measured gfx1100 scope. That artifact is not on this host,
-so `artifact_execution_fingerprint` is empty on all three and they match no
-resident file: their automatic authorization is inert until someone records the
-identity.
+bytes) and record its measured gfx1100 scope. Their
+`artifact_execution_fingerprint` fields are still empty, so the rows cannot
+supply matching evidence for a resident file. They do not control runnability:
+automatic and explicit requests both resolve through the implementation
+capability declaration when no evidence row matches.
 
 **Clearing command.** `python3 scripts/gguf_execution_identity.py <artifact.gguf>`
-prints the fingerprint to paste into the three rows. `tests/test_unit_speculative_mtp_serving_capability.py::
-test_qwen36_dense_rows_authorize_nothing_until_their_identity_is_recorded` pins
-the current inert state and fails once the rows bind, which is the signal to
-update it.
+prints an execution fingerprint if the historical artifact is available. Record
+it only after verifying that it belongs to the measured artifact; do not invent
+an identity or substitute a newer file. The regression
+`tests/test_unit_speculative_mtp_serving_capability.py::test_qwen36_dense_rows_without_identity_still_run_on_capability`
+pins both request modes running with `admission_basis="implementation"`.
+Recording a verified identity can improve evidence attribution without changing
+which implementation executes.
 
-Explicit requests on that cell are unaffected: they resolve through the dense
-BF16 implementation declaration, which does not read evidence rows. The
+Both request modes resolve through the dense BF16 implementation declaration,
+which does not require evidence rows. The
 `qwen36-dense` and `qwen38` rows cannot be conflated by a byte-digest match
 because the artifact axis is the execution identity, not the SHA-256.
 
