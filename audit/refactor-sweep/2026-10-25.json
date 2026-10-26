@@ -3418,7 +3418,8 @@
         {
           "line": 3170,
           "text": "- XML schema coverage is explicit; unsupported string/schema combinations fail",
-          "status": "pending"
+          "status": "resolved",
+          "evidence": ["Corrected obsolete blanket speculative rejection: attached Qwen4Exp MTP provider supports request-owned grammar; multimodal rejection and unsupported-schema errors remain. Existing structured and mask tests pass. Worklog: worklog/entries/20261026T214808.638787Z-cleanup-refactor-r0127-r0128-status-c04382.md."]
         }
       ]
     },
@@ -3439,7 +3440,8 @@
         {
           "line": 3180,
           "text": "- Public admission uses4GiB per resident runner for scratch including current",
-          "status": "pending"
+          "status": "pending",
+          "evidence": ["Corrected fixed-floor description: resolve_qwen4_exp_context uses max(floor, mandatory scratch + staging). Optional resource composition remains open; see worklog/entries/20261026T214808.638787Z-cleanup-refactor-r0127-r0128-status-c04382.md."]
         },
         {
           "line": 3184,
@@ -3455,7 +3457,8 @@
         {
           "line": 3189,
           "text": "- Full KV zeroing occurs on reset too. Any live-span-only clearing optimization",
-          "status": "pending"
+          "status": "resolved-removed",
+          "evidence": ["Bounded clearing is already default-on in runner.reset(), with full-clear rollback and tests/test_gpu_qwen4exp_kv_reset_bounded.py. Removed obsolete future-work bullet; no runtime change. Worklog: worklog/entries/20261026T214808.638787Z-cleanup-refactor-r0127-r0128-status-c04382.md."]
         }
       ]
     },

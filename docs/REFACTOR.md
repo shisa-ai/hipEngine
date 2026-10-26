@@ -2785,22 +2785,23 @@ the allocation repair. The observations and proposal below are historical.
   route. Required/named tool choice is enforced by its grammar.
 - XML schema coverage is explicit; unsupported string/schema combinations fail
   rather than being silently ignored. Broader XML parameter schema forms require
-  additional lexer/parser tests. Speculative/multimodal grammar support remains
-  rejected until it applies the same masks at every relevant token decision.
+  additional lexer/parser tests. Text MTP applies request-owned masks through
+  the attached provider's `supports_grammar` contract; multimodal grammar
+  remains rejected. See `tests/test_unit_qwen4exp_mtp_structured.py` for
+  committed-token, cancellation and grammar-completion coverage.
 
 ## Qwen4Exp context capacity policy
 
 - `native_context_length` is now consumed by public memory admission, bounded
   by artifact context metadata. Keep `qsa_dense_equivalent_max_tokens` and
   selected-position capacity independent and unchanged.
-- Public admission uses4GiB per resident runner for scratch including current
-  MMQ sidecars, plus4GiB reserve and separately reserved vision payload. Replace
-  this conservative allowance with exact composed scratch planning before new
-  scratch/sidecar growth exceeds its envelope; never silently over-admit.
+- Public admission reserves the larger of the4GiB per-runner floor and mandatory
+  runner scratch plus cast staging for the requested context/chunk, with a
+  separate4GiB reserve and vision payload. Optional MMQ/graph/verification
+  growth still needs composed accounting before it exceeds that envelope;
+  never silently over-admit.
 - Device-position-owned QSA remains dense-regime probe-only; promotion requires
   native sparse selection support, not raising or bypassing the2051 guard.
-- Full KV zeroing occurs on reset too. Any live-span-only clearing optimization
-  needs isolation/rollback tests; context enablement does not change clearing.
 
 ## Qwen4Exp prepacked Q8 MMQ admission
 
