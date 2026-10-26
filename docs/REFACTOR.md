@@ -2738,9 +2738,9 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
 
 ## VibeVoice ASR prefill and legacy dense attention
 
-- The Q4_K_M batched prefill in `kernels/hip_gfx1100/vibevoice/q4.py`
+- The Q4_K_M batched prefill in `hipengine/kernels/hip_gfx1100/vibevoice/q4.py`
   (`q4_prefill`) mirrors the orchestration in
-  `runtime/vibevoice_qwen2.py::_prefill_batched` — the same norm / rope /
+  `hipengine/runtime/vibevoice_qwen2.py::_prefill_batched` — the same norm / rope /
   KV-write / attention / silu / residual sequence with different GEMMs and
   activation dtypes. Unify them behind overridable GEMM, activation-staging
   and scratch hooks once the Q4 prefill has a production-profile numerical
@@ -2749,19 +2749,11 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   prefill kernel (only the naive raw-block `gguf_q5_k_prefill_*`, ~100x
   slower) and raises rather than mis-decoding. Add a Q5_K WMMA prefill before
   any Q5_K_M GGUF is put on this route.
-- `q4_prefill` allocates ~19 scratch buffers per call. Hoist them into the
-  runner (like the decode scratch) once prefill is on the production path and
-  per-request allocation shows up in a profile.
-
 - `prefill_variant=hipblaslt` and `frontend_variant=wmma` expose the arithmetic
   candidates to the production evaluator. Keep their registered strict chains
   as debugging oracles. Bind the public production profile only after the full
   model-specific numerical/task gate; remove standalone candidate-selection
   plumbing when profile construction owns that selection.
-- The old raw `vv_prefill_attention_f32` wrapper remains for parent comparison.
-  Runtime attention and KV writes now use `KVLiveSpans`. Remove the raw wrapper
-  after profile qualification and migration of any external diagnostic caller;
-  do not reintroduce it as an implicit fallback.
 - Convolution tails currently use owned host snapshots at chunk boundaries.
   Replace these with device-resident tails only after the same whole/chunk,
   60-second transition, recording-reset and post-join-noise tests pass.

@@ -564,36 +564,6 @@ extern "C" int hipengine_vv_rope_positions_f32(
   return static_cast<int>(hipGetLastError());
 }
 
-extern "C" int hipengine_vv_prefill_attention_f32(
-    const float* q,
-    const uint16_t* key_cache,
-    const uint16_t* value_cache,
-    const int64_t* positions,
-    float* out,
-    int64_t rows,
-    int64_t num_q_heads,
-    int64_t num_kv_heads,
-    int64_t head_dim,
-    int64_t max_ctx,
-    float scale,
-    hipStream_t stream) {
-  if (rows <= 0 || num_q_heads <= 0 || num_kv_heads <= 0 || head_dim <= 0 || max_ctx <= 0 || scale <= 0.0f) {
-    return static_cast<int>(hipErrorInvalidValue);
-  }
-  const int64_t shared_bytes = (max_ctx + 256) * sizeof(float);
-  if (shared_bytes > 64 * 1024) {
-    return static_cast<int>(hipErrorInvalidValue);
-  }
-  hipLaunchKernelGGL(
-      vv_prefill_attention_kernel,
-      dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
-      dim3(256),
-      static_cast<unsigned int>(shared_bytes),
-      stream, q, key_cache, value_cache, positions, out,
-      rows, num_q_heads, num_kv_heads, head_dim, max_ctx, scale, nullptr, nullptr, nullptr, nullptr);
-  return static_cast<int>(hipGetLastError());
-}
-
 extern "C" int hipengine_vv_im2col_bf16(
     const uint16_t* x,
     uint16_t* out,

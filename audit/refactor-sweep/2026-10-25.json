@@ -2243,8 +2243,8 @@
       "start_line": 2541,
       "end_line": 2570,
       "sha256": "287f9608bf4dc4237c5ea1f8adc187340e1ecf086af45aacf2b90214c8086848",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-raw-entry-removed",
+      "evidence": ["Removed uncalled raw attention Python wrapper/C launcher, preserving span entry and shared kernel. Retired stale per-call scratch debt because reusable arena already exists. CPU bundle, focused ABI checks and available span/encoder GPU tests pass; full-model tests skip without checkpoint. Remaining orchestration, Q5_K and convolution-tail work stays open. worklog/entries/20261026T180226.744006Z-cleanup-refactor-r0083-raw-attention-502e20.md."],
       "subitems": [
         {
           "line": 2543,
@@ -2259,7 +2259,7 @@
         {
           "line": 2554,
           "text": "- `q4_prefill` allocates ~19 scratch buffers per call. Hoist them into the",
-          "status": "pending"
+          "status": "resolved-stale"
         },
         {
           "line": 2558,
@@ -2269,7 +2269,7 @@
         {
           "line": 2563,
           "text": "- The old raw `vv_prefill_attention_f32` wrapper remains for parent comparison.",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 2567,

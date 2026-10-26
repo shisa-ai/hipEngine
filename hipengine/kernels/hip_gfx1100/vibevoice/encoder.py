@@ -35,7 +35,6 @@ _ARGTYPES_DEPTHWISE = (_P, _P, _P, _P, _P, _P, _P, _I, _I, _I, _I, _S)
 _ARGTYPES_CONV_GEMM = (_P, _P, _P, _P, _P, _I, _I, _I, _I, _I, _I, _I, _S)
 _ARGTYPES_ADD_NOISE = (_P, _P, _P, _P, _I, _I, _S)
 _ARGTYPES_ROPE_POS = (_P, _P, _P, _P, _P, _P, _P, _I, _I, _I, _I, _S)
-_ARGTYPES_PREFILL_ATTN = (_P, _P, _P, _P, _P, _I, _I, _I, _I, _I, _F, _S)
 _ARGTYPES_IM2COL = (_P, _P, _I, _I, _I, _I, _I, _I, _S)
 
 
@@ -296,35 +295,6 @@ def vv_im2col_bf16(
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, "hipengine_vv_im2col_bf16", _ARGTYPES_IM2COL, ctypes.c_int)
     err = fn(x_ptr, out_ptr, rows_out, c_in, k_len, stride, prefix_rows, rows_in, stream)
-    if int(err) != HIP_SUCCESS:
-        runtime.check(int(err))
-
-
-def vv_prefill_attention_f32(
-    q_ptr: int,
-    key_cache_ptr: int,
-    value_cache_ptr: int,
-    positions_ptr: int,
-    out_ptr: int,
-    rows: int,
-    num_q_heads: int,
-    num_kv_heads: int,
-    head_dim: int,
-    max_ctx: int,
-    scale: float,
-    *,
-    stream: int = 0,
-    library: ctypes.CDLL | None = None,
-    runtime: HipRuntime | None = None,
-) -> None:
-    """Causal prefill attention over a dense contiguous bf16 KV cache."""
-    if max_ctx > 16000:
-        raise ValueError("max_ctx exceeds the shared-memory score window")
-    library = library or _library()
-    runtime = runtime or get_hip_runtime()
-    fn = signed_kernel_fn(library, "hipengine_vv_prefill_attention_f32", _ARGTYPES_PREFILL_ATTN, ctypes.c_int)
-    err = fn(q_ptr, key_cache_ptr, value_cache_ptr, positions_ptr, out_ptr,
-             rows, num_q_heads, num_kv_heads, head_dim, max_ctx, scale, stream)
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
