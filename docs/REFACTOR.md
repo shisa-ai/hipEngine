@@ -3353,16 +3353,6 @@ should be removed or collapsed.
   override after the next stable milestone audit; keep the registered row48
   parent and padded composition.
 
-## 2026-09-02 gfx1100 packed verifier model graph — closed (rejected)
-
-- Removed `HIPENGINE_GGUF_PACKED_VERIFY_MODEL_GRAPH` and all cache/runtime/test
-  paths. Exact same-build C8 tracing showed only 0.19–0.62% target-wall gains on
-  cache hits, while a naturally changing physical geometry forced a new
-  1,500-node capture and regressed that cycle by 19.53% and complete wall by
-  2.47%. Per-layer graph granularity had already regressed target wall by 0.52%.
-- Rejection evidence:
-  `benchmarks/results/2026-09-02-w7900-q4km-k3-packed-verifier-graphs-rejected.json`.
-
 ## 2026-09-02 gfx1100 direct resident verifier linear state — closed
 
 - Promoted through gfx1100 capability metadata after exact same-build C8 tracing

@@ -4501,18 +4501,18 @@
       "start_line": 3961,
       "end_line": 3970,
       "sha256": "1ac14bb22c39d8b0030d67f15737d2cd5a7cfcbd35dbc17db0bba058f440ccb1",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Verified no PACKED_VERIFY_MODEL_GRAPH/packed_verify_model_graph references remain in hipengine/scripts/tests. Removed completed rejection receipt; preserved benchmarks/results/2026-09-02-w7900-q4km-k3-packed-verifier-graphs-rejected.json (rejected_exact, remove decision)."],
       "subitems": [
         {
           "line": 3963,
           "text": "- Removed `HIPENGINE_GGUF_PACKED_VERIFY_MODEL_GRAPH` and all cache/runtime/test",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 3968,
           "text": "- Rejection evidence:",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
