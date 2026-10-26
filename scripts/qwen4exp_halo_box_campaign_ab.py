@@ -38,8 +38,12 @@ from scripts.qwen4exp_canonical_ar_bench import (  # noqa: E402
 
 
 BEFORE_COMMIT = "0436e138b5fe6a43b1b1bae5df6c33fff2110148"
-FORKB_ENV = "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN"
-Q5_M1_ENV = "HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1"
+#: The PF-1/PF-3 package's two leaves are request-local runner state now
+#: (``runner.forkb_grouped_down`` / ``runner.q51_down_m1``), so no process key
+#: names them and the ``pf13`` arm binds them on the runner it measures.
+FORKB_FIELD = "forkb_grouped_down"
+Q5_M1_FIELD = "q51_down_m1"
+PF13_FIELDS = (FORKB_FIELD, Q5_M1_FIELD)
 ROW4_ENV = "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"
 QSA_H256_ENV = "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"
 Q4_BUNDLE_ENV = "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"
@@ -909,18 +913,20 @@ Q8_DOWN_PREEMPTING_ENV = (
 )
 #: The sorted chain's own gate and its two ladder rungs. ``bundle`` replaces
 #: ``row4`` on its rows>=512 scope, so a row4 arm pins bundle off and a bundle
-#: arm requires row4. Both rungs are request-local runner state
-#: (``runner.q8_down_row4_prefill`` / ``runner.q8_down_bundle_prefill``).
-Q8_DOWN_FORKB_ENV = "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN"
+#: arm requires row4. All three are request-local runner state
+#: (``runner.forkb_grouped_down`` / ``runner.q8_down_row4_prefill`` /
+#: ``runner.q8_down_bundle_prefill``).
+Q8_DOWN_FORKB_FIELD = FORKB_FIELD
 Q8_DOWN_ROW4_FIELD = "q8_down_row4_prefill"
 Q8_DOWN_BUNDLE_FIELD = "q8_down_bundle_prefill"
-#: The chains' own gates. They must stay on for the counted leaf to run, so the
-#: arm records them instead of forcing them: ``FORKB_GROUPED_DOWN`` carries the
-#: sorted path, and the row4/bundle rungs it gates are runner fields recorded in
-#: the ladder's control. The token-major mapped path's own admission is the
-#: runner's ``q8_mapped_down`` decision, recorded in the mapped arm's control,
-#: not an env key.
-Q8_DOWN_CHAIN_GATES = (Q8_DOWN_FORKB_ENV,)
+#: The chains' own gates. The sorted chain's gate is request-local runner state
+#: (``runner.forkb_grouped_down``), required by :func:`q8_down_scope` and
+#: recorded in the ladder's control; no process key gates either chain now. The
+#: row4/bundle rungs it gates are runner fields recorded in the ladder's
+#: control. The token-major mapped path's own admission is the runner's
+#: ``q8_mapped_down`` decision, recorded in the mapped arm's control, not an env
+#: key.
+Q8_DOWN_CHAIN_GATES: tuple[str, ...] = ()
 #: The token-major mapped path's own prerequisite: the grouped row4 gate/up map
 #: this invocation builds. The arm fails loudly without it instead of measuring
 #: a neutral A/B.
@@ -936,13 +942,13 @@ Q8_MAPPED_DOWN_PREEMPTING_ENV = Q8_DOWN_PREEMPTING_ENV + (
 )
 
 
-def q8_down_control_record(*, environment=os.environ):
+def q8_down_control_record(*, runner=None, environment=os.environ):
     """The recorded control: the value both arms force, and what it replaced.
 
     The forced value is what the scope writes, not what the environment held
     before it, so a reader cannot mistake the production binding for the arm's
     own state. The previous values are recorded beside it, and the chain's own
-    gates are recorded as found.
+    gate - request-local runner state - is recorded as the plan published it.
     """
 
     return {
@@ -952,33 +958,33 @@ def q8_down_control_record(*, environment=os.environ):
         "preempting_owners_previous": {
             key: environment.get(key) for key in Q8_DOWN_PREEMPTING_ENV
         },
-        "chain_gates": {
-            key: environment.get(key) for key in Q8_DOWN_CHAIN_GATES
+        "chain_gate": {
+            "runner_field": Q8_DOWN_FORKB_FIELD,
+            "published_value": (
+                None if runner is None
+                else getattr(runner, Q8_DOWN_FORKB_FIELD, None)),
         },
     }
 
 
 @contextlib.contextmanager
-def q8_down_scope(*, environment=os.environ, gates=Q8_DOWN_CHAIN_GATES):
+def q8_down_scope(*, environment=os.environ, runner=None):
     """Close the owners that preempt the Q8_0 expert-down chains.
 
     The register selection only exists inside those chains, so an arm that
     leaves a preemptor open counts zero launches and measures the other owner.
     Every key is read per dispatch, so closing them after construction takes
     effect; all prior values (including absent keys) come back on exit. The
-    gates named in ``gates`` are not preemptors and must already be on: without
-    them the counted leaf is skipped entirely, so the scope fails loudly rather
-    than reporting an engagement it cannot produce. A ladder arm passes only
-    the gates its own rung needs, because the rung it pins off is one of the
-    default three.
+    chains' own gate is request-local runner state, so it is required through
+    ``runner``: without it the counted leaf is skipped entirely, and the scope
+    fails loudly rather than reporting an engagement it cannot produce.
     """
 
-    closed = {"", "0", "false", "False"}
-    for key in gates:
-        if environment.get(key, "") in closed:
-            raise ValueError(
-                f"{key} must be on for the Q8_0 expert-down chain; without it "
-                "the counted Q8_0 down leaf cannot launch")
+    if not getattr(runner, Q8_DOWN_FORKB_FIELD, False):
+        raise ValueError(
+            f"runner.{Q8_DOWN_FORKB_FIELD} must be on for the Q8_0 "
+            "expert-down chain; without it the counted Q8_0 down leaf cannot "
+            "launch")
     previous = {key: environment.get(key) for key in Q8_DOWN_PREEMPTING_ENV}
     for key in Q8_DOWN_PREEMPTING_ENV:
         environment[key] = "0"
@@ -1003,8 +1009,8 @@ def q8_down_ladder_scope(route_package, mode, runner, *, environment=os.environ)
     the parent - and the plan's own values come back on exit. The row4 arm also
     holds bundle off in both arms; the bundle arm requires its published row4
     parent, because the bundle selector keeps the parent when it is not selected
-    and the arm would count zero launches. The chain's ``FORKB_GROUPED_DOWN``
-    gate is still a process key, required by :func:`q8_down_scope`.
+    and the arm would count zero launches. The chain's own gate is runner state
+    too, required by :func:`q8_down_scope`.
     """
 
     from hipengine.runtime.qwen4_exp_runner import q8_down_bundle_prefill
@@ -1070,7 +1076,7 @@ def q8_down_ladder_control_record(route_package, runner=None, *,
             else Q8_DOWN_BUNDLE_FIELD),
         "rung": rung,
         "scope": "per measured run; restored on exit",
-        **q8_down_control_record(environment=environment),
+        **q8_down_control_record(runner=runner, environment=environment),
         "downstream_siblings": {
             "q8_down_register": {
                 "bound_value": False,
@@ -1089,12 +1095,13 @@ def q8_down_ladder_control_record(route_package, runner=None, *,
     }
 
 
-def q8_mapped_down_control_record(*, environment=os.environ):
+def q8_mapped_down_control_record(*, runner=None, environment=os.environ):
     """The mapped arm's control: forced preemptors, prior values and gates.
 
     The forced value is what the scope writes, not what the environment held
     before it, so a reader cannot mistake the production binding for the arm's
-    own state. The map gate is recorded, never forced.
+    own state. The sorted chain's gate is request-local runner state and is
+    recorded as published; the map gate is recorded, never forced.
     """
 
     return {
@@ -1104,15 +1111,209 @@ def q8_mapped_down_control_record(*, environment=os.environ):
         "preempting_owners_previous": {
             key: environment.get(key) for key in Q8_MAPPED_DOWN_PREEMPTING_ENV
         },
-        "chain_gates": {
-            key: environment.get(key) for key in Q8_DOWN_CHAIN_GATES
+        "chain_gate": {
+            "runner_field": Q8_DOWN_FORKB_FIELD,
+            "published_value": (
+                None if runner is None
+                else getattr(runner, Q8_DOWN_FORKB_FIELD, None)),
         },
         "mapped_gate_up_map": environment.get(Q8_MAPPED_DOWN_MAP_GATE),
     }
 
 
+#: The two PF-1/PF-3 leaves the package counts. Both are dispatch-time
+#: selections inside the grouped expert-down chain, and each is replaced by a
+#: downstream sibling when that sibling is published, so the arm binds every
+#: sibling off and counts the leaf's own variant.
+PF13_M1_VARIANT = (
+    "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_"
+    "bf16_bf16_out")
+PF13_FORKB_VARIANT = "selected_grouped_gemv_bf16_bf16_out"
+#: leaf name -> (registry layer, quant, counted variant).
+PF13_LEAF_KEYS = {
+    "q51_down_m1": ("moe_linear", "gguf_q5_1", PF13_M1_VARIANT),
+    "forkb_grouped_down": ("linear", "gguf_q8_0", PF13_FORKB_VARIANT),
+}
+#: Owners that keep either leaf from being selected. The Q5_1 side is the pair2
+#: preemptor set plus the pair2 selection itself (the M1 leaf sits below it); the
+#: Q8_0 side is the two owners in front of the sorted chain plus the two grouped
+#: owners below it, so the ``before`` arm falls through to the strict per-expert
+#: selected down rather than to a third grouped owner. Every key is read per
+#: dispatch, so closing them after construction takes effect.
+PF13_PREEMPTING_ENV = tuple(dict.fromkeys(
+    Q51_PAIR2_PREEMPTING_ENV
+    + Q8_DOWN_PREEMPTING_ENV
+    + (
+        Q51_PAIR_PREFILL_ENV,
+        "HIPENGINE_QWEN4_EXP_Q8_0_GROUPED",
+        "HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA",
+    )
+))
+#: The replacement siblings each leaf's ladder applies while published: fold128
+#: -> fold_pair -> register_cache -> row_publish on the Q5_1 side, and row4 ->
+#: bundle -> register on the Q8_0 side. Both arms hold every one off so the
+#: counted variant is the leaf itself and not the sibling that would replace it.
+PF13_SIBLING_FIELDS = (
+    Q51_FOLD128_FIELD,
+    Q51_FOLD_PAIR_FIELD,
+    "q51_register_cache",
+    "q51_row_publish",
+    Q8_DOWN_ROW4_FIELD,
+    Q8_DOWN_BUNDLE_FIELD,
+    "q8_down_register",
+)
+#: The grouped chain's own gates. They decide whether the chain runs at all, so
+#: the arm records them and refuses to measure with either off: a closed gate
+#: makes both leaves count zero and would be reported as a neutral A/B.
+PF13_GATE_ENV = (Q51_PAIR2_GATE_ENV, "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4")
+#: The exact expert-grid family the M1 leaf belongs to. Its parent rung is what
+#: the ``before`` arm measures, so any other family would compare two unrelated
+#: owners and select no M1 leaf at all.
+PF13_EXPERT_GRID_ENV = "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID"
+
+
 @contextlib.contextmanager
-def q8_mapped_down_scope(*, environment=os.environ):
+def pf13_scope(mode: str, runner: Any, *, environment=os.environ):
+    """Isolate both PF-1/PF-3 expert-down leaves for one measured arm.
+
+    The package's claim is that the ``after`` arm runs the Q5_1 down M1 leaf and
+    the PF-1 fork-b grouped down leaf, and that the ``before`` arm runs neither.
+    Neither claim holds while the shipped lane's own owners are published: the
+    Q5_1 leaf sits below the exact iu8 chain and the pair2 selection, and the
+    Q8_0 leaf sits behind the routed F16 and WMMA down owners, with the row4
+    ladder replacing it below. So both arms close every one of those owners and
+    bind every replacement sibling off, and only then bind the two leaves - on
+    the runner it measures, for the measured window only.
+
+    The grouped chain's gates are prerequisites, never forced: with either off
+    no grouped expert-down dispatch happens and both leaves would count zero, so
+    the scope raises instead of reporting a neutral A/B. Every forced value is
+    recorded with the value it replaced, and all of them come back on exit,
+    including on an exception.
+    """
+
+    if mode not in {"before", "after"}:
+        raise ValueError(f"invalid campaign A/B mode {mode!r}")
+    if runner is None:
+        raise ValueError(
+            "pf13 needs the owning runner; both leaves are request-local state "
+            "and binding nothing would measure the plan's own PF-1/PF-3 "
+            "decisions")
+    closed = {"", "0", "false", "False"}
+    for key in PF13_GATE_ENV:
+        if environment.get(key, "") in closed:
+            raise ValueError(
+                f"{key} must be on for the grouped expert-down chain; without "
+                "it neither counted leaf can launch")
+    if environment.get(PF13_EXPERT_GRID_ENV, "64") not in {"64", "q5"}:
+        raise ValueError(
+            f"{PF13_EXPERT_GRID_ENV} must select the exact expert-grid family "
+            "(64 or q5); otherwise the M1 leaf is never selected and the "
+            "before arm measures a different parent")
+    from hipengine.runtime.qwen4_exp_runner import (
+        forkb_grouped_down,
+        q51_down_m1,
+        q51_fold128_prefill,
+        q51_fold_pair_prefill,
+        q51_register_cache,
+        q51_row_publish,
+        q8_down_bundle_prefill,
+        q8_down_register,
+        q8_down_row4_prefill,
+    )
+
+    previous_env = {key: environment.get(key) for key in PF13_PREEMPTING_ENV}
+    previous_fields = {
+        field: getattr(runner, field, None) for field in PF13_SIBLING_FIELDS}
+    for key in PF13_PREEMPTING_ENV:
+        environment[key] = "0"
+    try:
+        with contextlib.ExitStack() as scope:
+            for manager in (q51_fold128_prefill, q51_fold_pair_prefill,
+                            q51_register_cache, q51_row_publish,
+                            q8_down_row4_prefill, q8_down_bundle_prefill,
+                            q8_down_register):
+                scope.enter_context(manager(runner, False))
+            scope.enter_context(q51_down_m1(runner, mode == "after"))
+            scope.enter_context(forkb_grouped_down(runner, mode == "after"))
+            yield {
+                "environment": previous_env,
+                "runner_fields": previous_fields,
+            }
+    finally:
+        for key, value in previous_env.items():
+            if value is None:
+                environment.pop(key, None)
+            else:
+                environment[key] = value
+
+
+def pf13_expected_calls(runner: Any, prompt_tokens: int, chunk_size: int) -> dict:
+    """Calls each PF-1/PF-3 leaf makes in a measured prefill, per leaf.
+
+    Both leaves are grouped-prefill selectors, so each launches once per layer
+    carrying its quant per chunk with at least two rows; the layer term is the
+    loaded artifact's own quant split. A missing registration, a runner without
+    the model config, or a chunk that cannot clear the grouped guard raises
+    through :func:`_grouped_expert_down_expected_calls` instead of returning a
+    zero the caller would read as "the arm did not engage".
+    """
+
+    return {
+        name: _grouped_expert_down_expected_calls(
+            runner,
+            quant_key=quant,
+            layer=layer,
+            variant=variant,
+            prompt_tokens=prompt_tokens,
+            chunk_size=chunk_size,
+            min_rows=2,
+        )
+        for name, (layer, quant, variant) in PF13_LEAF_KEYS.items()
+    }
+
+
+def pf13_control_record(runner=None, *, environment=os.environ):
+    """The recorded control for the PF-1/PF-3 package arm.
+
+    Every forced value sits beside the value it replaced, so a reader cannot
+    mistake the production binding for the arm's own state: the two leaves are
+    bound on the runner, the replacement siblings are held off on the runner,
+    and the preempting owners are closed as process keys. The grouped chain's
+    gates are recorded as published because the scope requires them rather than
+    forcing them.
+    """
+
+    def _value(field):
+        return None if runner is None else getattr(runner, field, None)
+
+    return {
+        "runner_fields": {field: _value(field) for field in PF13_FIELDS},
+        "bound": {"before": False, "after": True},
+        "scope": "per measured run; restored on exit",
+        "replacement_siblings": {
+            "bound_value": False,
+            "published_value": {
+                field: _value(field) for field in PF13_SIBLING_FIELDS},
+        },
+        "preempting_owners": {
+            "forced_value": "0",
+            "previous": {
+                key: environment.get(key) for key in PF13_PREEMPTING_ENV},
+        },
+        "gates": {key: environment.get(key) for key in PF13_GATE_ENV},
+        "expert_grid": {
+            "published": environment.get(PF13_EXPERT_GRID_ENV),
+            "effective": environment.get(PF13_EXPERT_GRID_ENV) or "64",
+        },
+        "counted_leaves": {
+            name: {"layer": layer, "quant": quant, "variant": variant}
+            for name, (layer, quant, variant) in PF13_LEAF_KEYS.items()
+        },
+    }
+
+@contextlib.contextmanager
+def q8_mapped_down_scope(*, environment=os.environ, runner=None):
     """Close the owners that preempt the token-major mapped path.
 
     The mapped selector needs the current call's row4 gate/up map, which only
@@ -1121,15 +1322,16 @@ def q8_mapped_down_scope(*, environment=os.environ):
     the arm closes them for both arms and restores every prior value on exit.
     The map gate itself is a prerequisite, never forced: without it the arm
     cannot produce the owner it counts, so the scope fails loudly rather than
-    reporting a neutral A/B.
+    reporting a neutral A/B. The sorted chain's own gate is request-local runner
+    state and is required through ``runner``.
     """
 
     closed = {"", "0", "false", "False"}
-    for key in Q8_DOWN_CHAIN_GATES:
-        if environment.get(key, "") in closed:
-            raise ValueError(
-                f"{key} must be on for the Q8_0 expert-down chain; without it "
-                "the counted Q8_0 down leaf cannot launch")
+    if not getattr(runner, Q8_DOWN_FORKB_FIELD, False):
+        raise ValueError(
+            f"runner.{Q8_DOWN_FORKB_FIELD} must be on for the Q8_0 "
+            "expert-down chain; without it the counted Q8_0 down leaf cannot "
+            "launch")
     if environment.get(Q8_MAPPED_DOWN_MAP_GATE, "") in closed:
         raise ValueError(
             f"{Q8_MAPPED_DOWN_MAP_GATE} must be on for the token-major mapped "
@@ -1333,9 +1535,22 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
 
     from hipengine.runtime.gguf_linear import q8_mmq_lane_diagnostic
     from hipengine.runtime.qwen4_exp_runner import (
-        GDN_PREFILL_NARROW_VARIANT, GDN_PREFILL_WIDE_VARIANT, gdn_prefill_variant,
-        qsa_ordered_decode_v2, qsa_prefill_head_mode,
+        GDN_PREFILL_NARROW_VARIANT, GDN_PREFILL_WIDE_VARIANT,
+        gdn_prefill_variant, qsa_ordered_decode_v2, qsa_prefill_head_mode,
     )
+
+    if route_package == "pf13":
+        if runner is None:
+            # Binding nothing would measure whatever the plan published and
+            # report it as the arm, so the diagnostic must name its runner.
+            raise ValueError(
+                "pf13 needs the owning runner; both leaves are request-local "
+                "state and binding nothing would measure the plan's own "
+                "PF-1/PF-3 decisions")
+        # The package's claim is an A/B between the two production leaves and
+        # their parents, so both arms close the owners that preempt either leaf
+        # and hold its replacement siblings off; see :func:`pf13_scope`.
+        return pf13_scope(mode, runner, environment=environment)
 
     if route_package == "mmq-token64":
         if mode not in {"before", "after"}:
@@ -1523,7 +1738,7 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         # come back on exit. The chains' own gates must stay on and are
         # recorded, not forced.
         return _combined_scope(
-            q8_down_scope(environment=environment),
+            q8_down_scope(environment=environment, runner=runner),
             q8_down_register(runner, mode == "after"))
     if route_package == "q8-mapped-down":
         if mode not in {"before", "after"}:
@@ -1542,7 +1757,7 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         # The map gate is a prerequisite, never forced: the scope fails loudly
         # without it rather than measuring a neutral A/B.
         return _combined_scope(
-            q8_mapped_down_scope(environment=environment),
+            q8_mapped_down_scope(environment=environment, runner=runner),
             q8_mapped_down(runner, mode == "after"))
     if route_package in {"q51-fold128", "q51-fold-pair"}:
         if mode not in {"before", "after"}:
@@ -1589,7 +1804,7 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         # parent; the published register decision replaces either counted leaf,
         # so both arms bind it off. Every forced value comes back on exit.
         return _combined_scope(
-            q8_down_scope(environment=environment, gates=(Q8_DOWN_FORKB_ENV,)),
+            q8_down_scope(environment=environment, runner=runner),
             q8_down_ladder_scope(route_package, mode, runner,
                                  environment=environment),
             q8_down_register(runner, False))
@@ -1638,6 +1853,12 @@ def _apply_mode(
     if route_package == "chunk1024":
         if mode not in {"before","after"}:
             raise ValueError("invalid chunk mode")
+        return
+    if route_package == "q8-mmq-planes2":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        environment["HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES"] = (
+            "2" if mode == "after" else "3")
         return
     if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad", "q4-iu8-exact", "q51-iu8-exact", "q5k-iu8-exact", "qsa-ordered-v2", "gr-iu8", "gr-iu8-down", "q8-wmma-down"}:
         if mode not in {"before", "after"}:
@@ -1705,21 +1926,17 @@ def _apply_mode(
             # Request-local on the runner; ``route_scope`` binds the arm.
             return
         environment[flag] = "1" if mode == "after" else "0"
-        if route_package == "q8-mmq-planes2":
-            environment["HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES"] = (
-                "2" if mode == "after" else "3")
         if route_package == "qsa-h256-page256" and mode == "after":
             environment[flag] = "page256"
         return
-    if mode == "before":
-        environment[Q5_M1_ENV] = "0"
-        environment[FORKB_ENV] = "0"
+    if route_package == "pf13":
+        # Both leaves are request-local on the runner, so no process key carries
+        # either one; ``route_scope`` binds the package around the measured
+        # prefill and restores the plan's values.
         return
-    if mode == "after":
-        environment[Q5_M1_ENV] = "1"
-        environment[FORKB_ENV] = "1"
-        return
-    raise ValueError(f"invalid campaign A/B mode {mode!r}")
+    raise ValueError(
+        f"{route_package!r} has no environment route; the pf13 package and the "
+        "runner-owned arms are bound by route_scope")
 
 
 def validate_row4_engagement(mode: str, calls: int) -> None:
@@ -1949,6 +2166,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     narrow_original = None
     narrow_key = None
     narrow_enabled = [False]
+    #: Per-leaf launch counters for the PF-1/PF-3 package. Each key is counted
+    #: on its own: with every replacement sibling bound off, the two variants
+    #: are only resolved by their own selector, so a launch of either key is
+    #: that leaf's launch and nothing else.
+    pf13_calls = {name: 0 for name in PF13_LEAF_KEYS}
+    pf13_originals = {}
+    if args.route_package == "pf13":
+        from hipengine.kernels.registry import KernelKey, register, resolve
+
+        for name, (layer, quant, variant) in PF13_LEAF_KEYS.items():
+            key = KernelKey("hip_gfx1151", layer, quant, variant)
+            original = resolve(backend=key.backend, layer=key.layer,
+                               quant=key.quant, variant=key.variant)
+            pf13_originals[name] = (key, original)
+
+            def counted(*call_args, _name=name, _original=original,
+                        **call_kwargs):
+                pf13_calls[_name] += 1
+                return _original(*call_args, **call_kwargs)
+
+            register(key, counted, replace=True)
     if args.route_package == "gdn-narrow":
         from hipengine.kernels.registry import KernelKey, register, resolve
         from scripts.qwen4exp_gdn_narrow_gate_support import expected_calls as gdn_narrow_expected_calls, validate_call
@@ -2317,7 +2555,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "before": False,
             "after": True,
             "scope": "per measured run; restored on exit",
-            **q8_down_control_record(),
+            **q8_down_control_record(runner=generator.runner),
             "reason": (
                 "the routed F16 WMMA down owns the grouped chain and the Q8_0 "
                 "WMMA down sits in front of the sorted chain, so neither "
@@ -2335,7 +2573,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "before": False,
             "after": True,
             "scope": "per measured run; restored on exit",
-            **q8_mapped_down_control_record(),
+            **q8_mapped_down_control_record(runner=generator.runner),
             "counted_owners": ["bundle", "register"],
             "counted_owner_rule": (
                 "the mapped path admits the bundle key and the published "
@@ -2430,6 +2668,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.route_package in {"q8-down-row4", "q8-down-bundle"}:
         artifact["selection_control"] = q8_down_ladder_control_record(
             args.route_package, generator.runner)
+    if args.route_package == "pf13":
+        artifact["selection_control"] = pf13_control_record(
+            generator.runner)
 
     def sample(mode, case, repetition):
         narrow_enabled[0] = mode == "after"
@@ -2440,6 +2681,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         start_calls = row4_calls[0]
         start_mapped = register_mapped_calls[0]
         start_owners = dict(mapped_owner_calls)
+        start_leaves = dict(pf13_calls)
         with route_scope(args.route_package, mode, generator.runner):
             row = _hipengine_case_sample(
                 generator.runner, case=case, repetition=repetition, transitions=transitions)
@@ -2587,6 +2829,30 @@ def main(argv: Sequence[str] | None = None) -> int:
             elif args.route_package not in ROW4_ENGAGEMENT_EXEMPT:
                 validate_row4_engagement(mode, calls)
             row["candidate_calls"] = calls
+        if args.route_package == "pf13":
+            # Both leaves are verified independently. The expectation is the
+            # artifact's own quant split times the chunks that clear the grouped
+            # guard, so a leaf that never launches, or launches in the parent
+            # arm, fails here instead of being averaged into the timing.
+            observed = {
+                name: pf13_calls[name] - start_leaves[name]
+                for name in PF13_LEAF_KEYS
+            }
+            expected = pf13_expected_calls(
+                generator.runner, int(case["prompt_tokens"]),
+                args.prefill_chunk_size)
+            for name in PF13_LEAF_KEYS:
+                want = expected[name] if mode == "after" else 0
+                if mode == "after":
+                    require_engaged_expectation(
+                        f"pf13/{name}", case, want, args.prefill_chunk_size,
+                        arm_enabled=True)
+                if observed[name] != want:
+                    raise AssertionError(
+                        f"pf13 {name} calls {observed[name]} != {want} "
+                        f"({mode} arm)")
+            row["leaf_calls"] = observed
+            row["candidate_calls"] = sum(observed.values())
         return row
 
     head_configuration = None
@@ -2700,6 +2966,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             register(register_key, original_register, replace=True)
         if narrow_original is not None:
             register(narrow_key, narrow_original, replace=True)
+        if pf13_originals:
+            from hipengine.kernels.registry import register as _register_pf13
+            for key, original in pf13_originals.values():
+                _register_pf13(key, original, replace=True)
         if args.route_package == "router-dpp":
             register(router_key, router_original, replace=True)
             _apply_mode("before", route_package=args.route_package)

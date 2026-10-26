@@ -28,7 +28,8 @@ def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
         if flag != "GDN_COLWARPS_PREFILL")
     monkeypatch.setattr(os, "environ", os.environ.copy())
     profile = resolve("gguf_ud_q4_k_xl")
-    profile.binder(SimpleNamespace(), profile)
+    generator = SimpleNamespace()
+    profile.binder(generator, profile)
     # GR_WIDE is closed by the recovery pass and reopened by the F16 route
     # composition this quant's production plan carries.
     expected = {**PRODUCTION_Q8_QSA_RESTORED_FLAGS, "GR_WIDE": "1"}
@@ -44,9 +45,12 @@ def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
     # published on the runner, not as an environment key.
     assert "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM" not in os.environ
     assert "HIPENGINE_QWEN4_EXP_GDN_PREFILL_VARIANT" not in os.environ
-    for flag in ("Q4_IU8_EXACT", "Q51_IU8_EXACT", "GDN_REGISTER_PREFILL",
-                 "FORKB_GROUPED_DOWN"):
+    for flag in ("Q4_IU8_EXACT", "Q51_IU8_EXACT", "GDN_REGISTER_PREFILL"):
         assert os.environ["HIPENGINE_QWEN4_EXP_" + flag] == "1"
+    # The PF-1 fork-b leaf is request-local runner state too, so the recovery
+    # pass publishes it on the runner and writes no process key.
+    assert generator.forkb_grouped_down is True
+    assert "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN" not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "0"
     variants = {row["selected_variant"] for row in profile.manifest["selections"]}
     assert "qwen4exp_sigmoid_wave_norm_prefill" in variants

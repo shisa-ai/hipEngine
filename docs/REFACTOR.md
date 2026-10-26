@@ -2956,31 +2956,6 @@ should be removed or collapsed.
   > default until a re-audited tile/grid version (weight reuse + output tiling
   > + empty-expert skip) beats `strict_ms`; see worklog entry 20260830T202256.
 
-## 2026-09-04 Qwen4Exp PF-1 fork-b grouped selected down (T0)
-
-- `HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN=1` routes the Qwen4-exp
-  grouped-prefill Q8_0 down through
-  `gguf_q8_0_selected_grouped_gemv_bf16_bf16_out` (one block per
-  (expert, out_col) pair, weight row read once, consuming the existing
-  `group_expert_start` + `group_sorted_lanes` map). Setting the flag to `0`
-  restores the strict per-expert selected gemv. The bit-parity contract is
-  pinned by `tests/test_gpu_qwen4exp_pf1_forkb_selected_down.py`.
-- Promotion review resolved (2026-09-04): a committed one-process,
-  one-residency ABBA gate measured the combined PF-1/PF-3 package at
-  **+3.13%/+3.09%/+2.51% prefill** for p512/p1024/p4096, with all 12 cases
-  positive and all 72 measured outputs exact across modes. Named production
-  now binds this flag to `1`; strict binds `0`. Retain the opt-out and strict
-  owner for one release checkpoint, then remove the process-global PF-1 bridge
-  if no rollback uses it. The legacy `Q8_0_GROUPED`/`Q8_0_GROUPED_WMMA` flags
-  remain governed by their own entry. Evidence:
-  `benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-halo-pf13-production-refresh.json`.
-- The same packet promotes
-  `HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1=1` for production and keeps `0`
-  for strict. After the same release checkpoint, replace this process-global
-  binder bridge with direct profile/registry resolution while preserving
-  `selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out`
-  as the registered strict fallback.
-
 ## 2026-08-31 Qwen4Exp P3 Q8 MMQ attention-gate scope
 
 - `HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE=1` adds the omitted

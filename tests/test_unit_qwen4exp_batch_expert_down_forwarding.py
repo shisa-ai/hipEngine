@@ -2,12 +2,13 @@
 
 Two contracts are under test:
 
-* ``step`` forwards the four plan-published expert-down decisions to both layer
-  owners unchanged, so the batch decode path selects the same leaves the c1
-  path selects.
+* ``step`` forwards the six plan-published expert-down decisions - the Q5_1
+  down M1 leaf, the two Q5_1 fold rungs, the PF-1 fork-b grouped down and the
+  two Q8_0 row4 rungs - to both layer owners unchanged, so the batch decode
+  path selects the same leaves the c1 path selects.
 * The captured ``post_mixer`` segment records the MoE launches, and the MoE runs
   eager inside it, so the selection is baked into the graph. The capture key
-  therefore carries the four decisions: a runner whose selection changes
+  therefore carries all six decisions: a runner whose selection changes
   captures a new segment instead of replaying one built under the old
   selection.
 """
@@ -21,10 +22,15 @@ from hipengine.runtime import qwen4_exp_batch_runner as runner_module
 from hipengine.runtime.qwen4_exp_batch_runner import Qwen4ExpGGUFBatchRunner
 from tests.test_unit_qwen4exp_batch_runner import _fake_runner, _install_step_fakes
 
-#: The four decisions, in the order the runner publishes them.
+#: The six decisions, in the order the runner publishes them. The order is the
+#: contract: ``_expert_down_policy`` and the ``(layer, rows) + policy`` capture
+#: key both read this sequence, and ``test_the_policy_tuple_is_boolean_normalized``
+#: pins it against the runner's own tuple.
 POLICY_FIELDS = (
+    "q51_down_m1",
     "q51_fold128_prefill",
     "q51_fold_pair_prefill",
+    "forkb_grouped_down",
     "q8_down_row4_prefill",
     "q8_down_bundle_prefill",
 )
@@ -91,7 +97,10 @@ def test_step_forwards_every_rung_to_both_layer_owners(
 def test_the_production_batch_width_is_the_only_width_that_reaches_fold128():
     # The fold128 rung selects at rows>=64 and a batch tops out at 64 rows, so
     # batch64 is the one production width where the forwarded value is live.
+    # The Q5_1 down M1 and PF-1 fork-b decisions are grouped-prefill selectors,
+    # so they are live at every multi-row width and inert at rows==1.
     assert QWEN4_EXP_MAX_BATCH_ROWS == 64
+    assert len(POLICY_FIELDS) == 6
 
 
 def test_step_keys_each_capture_on_the_expert_down_policy(monkeypatch):
@@ -134,11 +143,18 @@ def test_an_unbound_runner_forwards_every_parent():
 
 def test_the_policy_tuple_is_boolean_normalized():
     runner = object.__new__(Qwen4ExpGGUFBatchRunner)
-    runner.q51_fold128_prefill = 1
-    runner.q51_fold_pair_prefill = "yes"
-    runner.q8_down_row4_prefill = None
-    runner.q8_down_bundle_prefill = 0
-    assert runner._expert_down_policy() == (True, True, False, False)
+    runner.q51_down_m1 = 1
+    runner.q51_fold128_prefill = "yes"
+    runner.q51_fold_pair_prefill = None
+    runner.forkb_grouped_down = 0
+    runner.q8_down_row4_prefill = 1
+    runner.q8_down_bundle_prefill = ""
+    assert runner._expert_down_policy() == (
+        True, True, False, False, True, False)
+    # The tuple is the capture key's tail, so its length is the contract a
+    # reader of a recorded segment relies on.
+    assert runner._expert_down_policy() == tuple(
+        bool(getattr(runner, field)) for field in POLICY_FIELDS)
 
 
 # --- target/draft sharing: one publication, every owner reads it -------------

@@ -286,7 +286,8 @@ def test_pf1_forkb_runner_default_matches_strict_flag_off(monkeypatch) -> None:
     The fork-b kernel is bit-exact per output and everything downstream of
     ``expert_down`` in ``run_qwen4_exp_moe`` is deterministic given the same
     input bits, so the full MoE output bits must match exactly between the
-    default (fork-b) and ``HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN=0`` runs.
+    default (fork-b) and the fork-b-off runs. The selection is request-local
+    runner state, so each run passes it to ``run_qwen4_exp_moe`` directly.
     """
 
     from hipengine.core.hip import get_hip_runtime
@@ -326,8 +327,7 @@ def test_pf1_forkb_runner_default_matches_strict_flag_off(monkeypatch) -> None:
     shared_down = rng.normal(0.0, 0.1, size=(hidden, ffn)).astype(np.float32)
     shared_scalar = rng.normal(0.0, 0.1, size=(hidden,)).astype(np.float32)
 
-    def run(flag_value: str) -> tuple[np.ndarray, np.ndarray]:
-        monkeypatch.setenv("HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN", flag_value)
+    def run(forkb: bool) -> tuple[np.ndarray, np.ndarray]:
         allocations = []
         scratch = None
         try:
@@ -358,6 +358,7 @@ def test_pf1_forkb_runner_default_matches_strict_flag_off(monkeypatch) -> None:
                 experts=experts,
                 top_k=top_k,
                 runtime=runtime,
+                forkb_grouped_down=forkb,
             )
             runtime.device_synchronize()
             output = _download(result.output, (rows, hidden), np.uint16, runtime)
@@ -371,8 +372,8 @@ def test_pf1_forkb_runner_default_matches_strict_flag_off(monkeypatch) -> None:
             for allocation in reversed(allocations):
                 free(allocation, runtime=runtime)
 
-    default_bits, default_down = run("1")
-    strict_bits, strict_down = run("0")
+    default_bits, default_down = run(True)
+    strict_bits, strict_down = run(False)
     # NOTE: expert_down buffers are NOT compared across the two runs: the
     # group scatter uses atomicAdd, so the within-expert lane order (and thus
     # the down row layout) varies run to run even for identical math. The
@@ -381,7 +382,7 @@ def test_pf1_forkb_runner_default_matches_strict_flag_off(monkeypatch) -> None:
     np.testing.assert_array_equal(
         default_bits,
         strict_bits,
-        err_msg="fork-b default MoE output bits vs FORKB_GROUPED_DOWN=0 strict",
+        err_msg="fork-b default MoE output bits vs the fork-b-off strict owner",
     )
     # Value gate vs the CPU oracle for the fork-b default path (catches wrong
     # row/expert pairing that a bit-comparison against a scattered run cannot).
@@ -422,7 +423,7 @@ def test_pf1_forkb_runner_default_matches_strict_flag_off(monkeypatch) -> None:
         err_msg="fork-b default MoE oracle deviation vs incumbent strict deviation",
     )
     # Run-to-run determinism of the fork-b default final output.
-    default_bits_again, _ = run("1")
+    default_bits_again, _ = run(True)
     np.testing.assert_array_equal(
         default_bits,
         default_bits_again,

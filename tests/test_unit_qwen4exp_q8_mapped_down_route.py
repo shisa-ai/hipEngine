@@ -7,7 +7,7 @@ import pytest
 from hipengine.kernels.registry import KernelKey
 from hipengine.runtime import qwen4_exp_runner as runner
 from scripts.qwen4exp_halo_box_campaign_ab import (
-    Q8_DOWN_CHAIN_GATES,
+    Q8_DOWN_FORKB_FIELD,
     Q8_DOWN_PREEMPTING_ENV,
     Q8_MAPPED_DOWN_MAP_GATE,
     Q8_MAPPED_DOWN_PREEMPTING_ENV,
@@ -24,6 +24,12 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
 #: The retired process switch. Nothing reads it any more; the tests keep the
 #: literal so a leftover value can be proven inert.
 RETIRED_MAPPED_DOWN_ENV = "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN"
+
+def _owner(**fields):
+    """A runner with the sorted chain's own gate published."""
+
+    return SimpleNamespace(**{Q8_DOWN_FORKB_FIELD: True, **fields})
+
 
 BUNDLE = "selected_grouped_row4_bundle_gemv_bf16_bf16_out"
 REGISTER = "selected_grouped_row4_register_gemv_bf16_bf16_out"
@@ -159,11 +165,11 @@ def test_campaign_arm_writes_no_process_switch():
 
 @pytest.mark.parametrize("mode,expected", [("before", False), ("after", True)])
 def test_route_scope_binds_the_runner_selection(mode, expected):
-    owner = SimpleNamespace(q8_mapped_down=None, q8_down_register=True)
+    owner = SimpleNamespace(q8_mapped_down=None, q8_down_register=True,
+                            forkb_grouped_down=True)
     env = {
         RETIRED_MAPPED_DOWN_ENV: "1",
         Q8_MAPPED_DOWN_MAP_GATE: "1",
-        **{key: "1" for key in Q8_DOWN_CHAIN_GATES},
         **{key: "1" for key in Q8_MAPPED_DOWN_PREEMPTING_ENV},
     }
     with route_scope("q8-mapped-down", mode, owner, environment=env):
@@ -173,15 +179,15 @@ def test_route_scope_binds_the_runner_selection(mode, expected):
         assert owner.q8_down_register is True
         # Every preempting owner is closed so the counted path can run.
         assert all(env[key] == "0" for key in Q8_MAPPED_DOWN_PREEMPTING_ENV)
-        # The chain's own gates, the map gate and the retired switch are
+        # The chain's own gate, the map gate and the retired switch are
         # untouched.
-        assert all(env[key] == "1" for key in Q8_DOWN_CHAIN_GATES)
+        assert owner.forkb_grouped_down is True
         assert env[Q8_MAPPED_DOWN_MAP_GATE] == "1"
         assert env[RETIRED_MAPPED_DOWN_ENV] == "1"
     assert owner.q8_mapped_down is None
     assert owner.q8_down_register is True
     assert env[RETIRED_MAPPED_DOWN_ENV] == "1"
-    assert all(env[key] == "1" for key in Q8_DOWN_CHAIN_GATES)
+    assert owner.forkb_grouped_down is True
     assert all(env[key] == "1" for key in Q8_MAPPED_DOWN_PREEMPTING_ENV)
 
 
@@ -194,10 +200,9 @@ def test_building_the_route_scope_enters_nothing():
     # The campaign builds one scope per arm and enters it around the measured
     # run; an eager ExitStack would bind the arm before the run and leave it
     # bound when the caller never enters.
-    owner = SimpleNamespace(q8_mapped_down=True)
+    owner = SimpleNamespace(q8_mapped_down=True, forkb_grouped_down=True)
     env = {Q8_MAPPED_DOWN_MAP_GATE: "1"}
     env.update({key: "1" for key in Q8_MAPPED_DOWN_PREEMPTING_ENV})
-    env.update({key: "1" for key in Q8_DOWN_CHAIN_GATES})
     scope = route_scope("q8-mapped-down", "before", owner, environment=env)
     assert all(env[key] == "1" for key in Q8_MAPPED_DOWN_PREEMPTING_ENV)
     assert owner.q8_mapped_down is True
@@ -212,9 +217,8 @@ def test_building_the_route_scope_enters_nothing():
 def test_route_scope_fails_loudly_without_the_row4_map_gate(gate):
     # Without the gate the invocation builds no row4 map, so the mapped owner
     # cannot engage and the arm would report a neutral A/B as the comparison.
-    owner = SimpleNamespace(q8_mapped_down=True)
+    owner = SimpleNamespace(q8_mapped_down=True, forkb_grouped_down=True)
     env = {key: "1" for key in Q8_MAPPED_DOWN_PREEMPTING_ENV}
-    env.update({key: "1" for key in Q8_DOWN_CHAIN_GATES})
     if gate is None:
         env.pop(Q8_MAPPED_DOWN_MAP_GATE, None)
     else:
@@ -231,9 +235,8 @@ def test_mapped_scope_closes_the_grouped_iu8_preemptor():
     # token-major Q5_K map producer from running, so the mapped arm closes it.
     assert "HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT" in Q8_MAPPED_DOWN_PREEMPTING_ENV
     env = {Q8_MAPPED_DOWN_MAP_GATE: "1"}
-    env.update({key: "1" for key in Q8_DOWN_CHAIN_GATES})
     env.update({key: "1" for key in Q8_MAPPED_DOWN_PREEMPTING_ENV})
-    with q8_mapped_down_scope(environment=env):
+    with q8_mapped_down_scope(environment=env, runner=_owner()):
         assert env["HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT"] == "0"
         assert all(env[key] == "0" for key in Q8_MAPPED_DOWN_PREEMPTING_ENV)
     assert env["HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT"] == "1"
@@ -244,9 +247,8 @@ def test_register_scope_leaves_the_grouped_iu8_gate_alone():
     # count, so closing it belongs to the mapped arm only.
     assert "HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT" not in Q8_DOWN_PREEMPTING_ENV
     env = {"HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT": "1"}
-    env.update({key: "1" for key in Q8_DOWN_CHAIN_GATES})
     env.update({key: "1" for key in Q8_DOWN_PREEMPTING_ENV})
-    with q8_down_scope(environment=env):
+    with q8_down_scope(environment=env, runner=_owner()):
         assert env["HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT"] == "1"
     assert env["HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT"] == "1"
 
@@ -254,10 +256,10 @@ def test_register_scope_leaves_the_grouped_iu8_gate_alone():
 def test_route_scope_leaves_the_register_selector_alone():
     # The mapped admission is not the register rewrite; a mapped arm must not
     # move the register decision it inherits from the plan.
-    owner = SimpleNamespace(q8_mapped_down=True, q8_down_register=True)
+    owner = SimpleNamespace(q8_mapped_down=True, q8_down_register=True,
+                            forkb_grouped_down=True)
     env = {Q8_MAPPED_DOWN_MAP_GATE: "1"}
     env.update({key: "1" for key in Q8_DOWN_PREEMPTING_ENV})
-    env.update({key: "1" for key in Q8_DOWN_CHAIN_GATES})
     with route_scope("q8-mapped-down", "before", owner, environment=env):
         assert owner.q8_down_register is True
     assert owner.q8_down_register is True
@@ -417,35 +419,34 @@ def test_moe_graph_capture_forwards_the_selection(monkeypatch):
 
 
 def test_q8_down_scope_restores_absent_and_present_values():
-    env = {Q8_DOWN_PREEMPTING_ENV[0]: "1", **{key: "1" for key in Q8_DOWN_CHAIN_GATES}}
-    with q8_down_scope(environment=env):
+    env = {Q8_DOWN_PREEMPTING_ENV[0]: "1"}
+    with q8_down_scope(environment=env, runner=_owner()):
         assert all(env[key] == "0" for key in Q8_DOWN_PREEMPTING_ENV)
-    assert env == {Q8_DOWN_PREEMPTING_ENV[0]: "1",
-                   **{key: "1" for key in Q8_DOWN_CHAIN_GATES}}
+    assert env == {Q8_DOWN_PREEMPTING_ENV[0]: "1"}
 
 
 def test_control_record_separates_the_forced_value_from_the_previous_one():
     env = {
         "HIPENGINE_QWEN4_EXP_ROUTED_F16": "1",
         "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": "1",
-        **{key: "1" for key in Q8_DOWN_CHAIN_GATES},
     }
-    record = q8_down_control_record(environment=env)
+    record = q8_down_control_record(runner=_owner(), environment=env)
     assert record["preempting_owners_closed"] == {
         key: "0" for key in Q8_DOWN_PREEMPTING_ENV}
-    assert record["chain_gates"] == {key: "1" for key in Q8_DOWN_CHAIN_GATES}
+    assert record["chain_gate"] == {
+        "runner_field": Q8_DOWN_FORKB_FIELD, "published_value": True}
     assert env["HIPENGINE_QWEN4_EXP_ROUTED_F16"] == "1"
 
 
 def test_mapped_control_record_separates_prior_and_effective():
     env = {Q8_MAPPED_DOWN_MAP_GATE: "1"}
-    env.update({key: "1" for key in Q8_DOWN_CHAIN_GATES})
     env.update({key: "1" for key in Q8_MAPPED_DOWN_PREEMPTING_ENV})
-    record = q8_mapped_down_control_record(environment=env)
+    record = q8_mapped_down_control_record(runner=_owner(), environment=env)
     assert record["preempting_owners_closed"] == {
         key: "0" for key in Q8_MAPPED_DOWN_PREEMPTING_ENV}
     assert record["preempting_owners_previous"] == {
         key: "1" for key in Q8_MAPPED_DOWN_PREEMPTING_ENV}
-    assert record["chain_gates"] == {key: "1" for key in Q8_DOWN_CHAIN_GATES}
+    assert record["chain_gate"] == {
+        "runner_field": Q8_DOWN_FORKB_FIELD, "published_value": True}
     assert record["mapped_gate_up_map"] == "1"
     assert env[Q8_MAPPED_DOWN_MAP_GATE] == "1"

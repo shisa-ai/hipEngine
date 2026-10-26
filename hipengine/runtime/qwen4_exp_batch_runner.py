@@ -412,8 +412,10 @@ def run_qwen4_exp_batch_gdn_layer(
     runtime: HipRuntime | None = None,
     graph_cache: MoeGraphCache | None = None,
     graph_key: Hashable | None = None,
+    q51_down_m1: bool = False,
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
+    forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
 ) -> DeviceBuffer:
@@ -495,8 +497,10 @@ def run_qwen4_exp_batch_gdn_layer(
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
             ffn=ffn, experts=experts, top_k=top_k,
             stream=segment_stream, runtime=active_runtime,
+            q51_down_m1=q51_down_m1,
             q51_fold128_prefill=q51_fold128_prefill,
             q51_fold_pair_prefill=q51_fold_pair_prefill,
+            forkb_grouped_down=forkb_grouped_down,
             q8_down_row4_prefill=q8_down_row4_prefill,
             q8_down_bundle_prefill=q8_down_bundle_prefill,
         )
@@ -597,18 +601,22 @@ def _run_layer_ffn(
     top_k: int,
     stream: int,
     runtime: HipRuntime,
+    q51_down_m1: bool = False,
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
+    forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
 ) -> None:
     """GR write after the mixer, FFN GR read, MoE, and the final GR write.
 
-    The four expert-down ladder decisions are the owning runner's
+    The six expert-down decisions (``q51_down_m1``, the two Q5_1 fold rungs,
+    ``forkb_grouped_down`` and the two Q8_0 row4 rungs) are the owning runner's
     plan-published selections, forwarded to the MoE dispatch unchanged. A batch
-    tops out at ``QWEN4_EXP_MAX_BATCH_ROWS`` rows, so only the fold128 rung's
-    rows>=64 scope is reachable from here; the rows>=512 rungs are carried for
-    uniformity and stay on their parents.
+    tops out at ``QWEN4_EXP_MAX_BATCH_ROWS`` rows, so fold128 is reachable at
+    exactly its own threshold and the rows>=512 rungs stay on their parents;
+    the Q5_1 down M1 and PF-1 fork-b decisions are reachable at every multi-row
+    batch width.
     """
 
     attention_inject = scratch.attention_gr.inject_logits
@@ -639,8 +647,10 @@ def _run_layer_ffn(
         scratch=scratch.moe,
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=runtime,
+        q51_down_m1=q51_down_m1,
         q51_fold128_prefill=q51_fold128_prefill,
         q51_fold_pair_prefill=q51_fold_pair_prefill,
+        forkb_grouped_down=forkb_grouped_down,
         q8_down_row4_prefill=q8_down_row4_prefill,
         q8_down_bundle_prefill=q8_down_bundle_prefill,
     )
@@ -686,8 +696,10 @@ def run_qwen4_exp_batch_qsa_layer(
     runtime: HipRuntime | None = None,
     graph_cache: MoeGraphCache | None = None,
     graph_key: Hashable | None = None,
+    q51_down_m1: bool = False,
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
+    forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
 ) -> DeviceBuffer:
@@ -769,8 +781,10 @@ def run_qwen4_exp_batch_qsa_layer(
             rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
             ffn=ffn, experts=experts, top_k=top_k,
             stream=segment_stream, runtime=active_runtime,
+            q51_down_m1=q51_down_m1,
             q51_fold128_prefill=q51_fold128_prefill,
             q51_fold_pair_prefill=q51_fold_pair_prefill,
+            forkb_grouped_down=forkb_grouped_down,
             q8_down_row4_prefill=q8_down_row4_prefill,
             q8_down_bundle_prefill=q8_down_bundle_prefill,
         )
@@ -836,14 +850,17 @@ class Qwen4ExpGGUFBatchRunner:
     # row here. Owners that do not declare it keep the c1 MTP path.
     supports_mixed_target = True
 
-    # The expert-down ladder rungs are the owning runner's plan-published
-    # decisions. They are class defaults so an owner built without the binder's
+    # The expert-down decisions are the owning runner's plan-published
+    # selections. They are class defaults so an owner built without the binder's
     # publish keeps every parent, exactly like an unbound c1 runner. A batch
-    # tops out at ``QWEN4_EXP_MAX_BATCH_ROWS`` rows, so only the fold128 rung's
-    # rows>=64 scope is reachable here; the rows>=512 rungs are carried for
-    # uniformity and stay on their parents.
+    # tops out at ``QWEN4_EXP_MAX_BATCH_ROWS`` (64) rows: fold128 is reachable at
+    # exactly its own threshold while the rows>=512 rungs stay on their parents,
+    # and the Q5_1 down M1 and PF-1 fork-b decisions select from rows>=2, so they
+    # are reachable here too.
+    q51_down_m1: bool = False
     q51_fold128_prefill: bool = False
     q51_fold_pair_prefill: bool = False
+    forkb_grouped_down: bool = False
     q8_down_row4_prefill: bool = False
     q8_down_bundle_prefill: bool = False
 
@@ -1730,19 +1747,21 @@ class Qwen4ExpGGUFBatchRunner:
 
     # -- decode step ------------------------------------------------------
 
-    def _expert_down_policy(self) -> tuple[bool, bool, bool, bool]:
-        """The expert-down rungs a captured layer segment depends on.
+    def _expert_down_policy(self) -> tuple[bool, ...]:
+        """The expert-down decisions a captured layer segment depends on.
 
         The MoE runs eager inside the layer's captured ``post_mixer`` segment,
         so the expert-down selectors resolve at capture time and their launches
-        are baked into the graph. Every capture key therefore carries these four
+        are baked into the graph. Every capture key therefore carries these six
         plan-published decisions: a runner whose selection changes captures a
         new segment instead of replaying one built under the old selection.
         """
 
         return (
+            bool(self.q51_down_m1),
             bool(self.q51_fold128_prefill),
             bool(self.q51_fold_pair_prefill),
+            bool(self.forkb_grouped_down),
             bool(self.q8_down_row4_prefill),
             bool(self.q8_down_bundle_prefill),
         )
@@ -2007,8 +2026,10 @@ class Qwen4ExpGGUFBatchRunner:
                     runtime=self.runtime,
                     graph_cache=self._graphs,
                     graph_key=(layer, rows) + self._expert_down_policy(),
+                    q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
+                    forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
                 ).ptr
@@ -2039,8 +2060,10 @@ class Qwen4ExpGGUFBatchRunner:
                     runtime=self.runtime,
                     graph_cache=self._graphs,
                     graph_key=(layer, rows) + self._expert_down_policy(),
+                    q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
+                    forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
                 ).ptr

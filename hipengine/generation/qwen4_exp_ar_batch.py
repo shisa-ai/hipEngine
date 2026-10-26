@@ -653,13 +653,19 @@ def make_qwen4_exp_ar_batch_runner(
         runtime=getattr(runner, "runtime", None),
         pool_blocks="auto",
     )
-    # The expert-down ladder rungs are request-local on the owning runner, so a
-    # batch owner that never receives them would keep the parents on a
-    # rows>=64 pass. Only fold128 is reachable at the batch row cap.
+    # The expert-down rungs are request-local on the owning runner, so a batch
+    # owner that never receives them would keep the parents on a rows>=64 pass.
+    # The batch row cap is 64, so fold128 is reachable at exactly its own
+    # threshold while the rows>=512 rungs stay on their parents; the Q5_1 down
+    # M1 and PF-1 fork-b decisions select from rows>=2, so they are reachable
+    # here too and must travel with the rest.
+    batch.q51_down_m1 = bool(getattr(generator, "q51_down_m1", False))
     batch.q51_fold128_prefill = bool(
         getattr(generator, "q51_fold128_prefill", False))
     batch.q51_fold_pair_prefill = bool(
         getattr(generator, "q51_fold_pair_prefill", False))
+    batch.forkb_grouped_down = bool(
+        getattr(generator, "forkb_grouped_down", False))
     batch.q8_down_row4_prefill = bool(
         getattr(generator, "q8_down_row4_prefill", False))
     batch.q8_down_bundle_prefill = bool(

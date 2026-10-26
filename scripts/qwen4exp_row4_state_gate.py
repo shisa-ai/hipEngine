@@ -37,8 +37,8 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     Q51_IU8_EXACT_ENV,Q51_PAIR2_PREEMPTING_ENV,Q51_PAIR2_GATE_ENV,
     Q51_PAIR_PREFILL_ENV,Q51_FOLD128_FIELD,Q51_FOLD_PAIR_FIELD,
     q51_pair2_control_record,q51_register_cache_control_record,
-    Q8_DOWN_CHAIN_GATES,q8_down_control_record,Q8_MAPPED_DOWN_MAP_GATE,
-    Q8_DOWN_FORKB_ENV,Q8_DOWN_ROW4_FIELD,Q8_DOWN_BUNDLE_FIELD,
+    q8_down_control_record,Q8_MAPPED_DOWN_MAP_GATE,
+    Q8_DOWN_FORKB_FIELD,Q8_DOWN_ROW4_FIELD,Q8_DOWN_BUNDLE_FIELD,
     q8_mapped_down_control_record,
     q51_fold_control_record,q8_down_ladder_control_record,
     MMQ_VECTOR_ROUTE_PACKAGES,mmq_token64_control_record,mmq_vector_control_record)
@@ -604,14 +604,13 @@ def main():
                 "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN", "") not in {
                 "", "0"}, (
                 "production must bind the preempting Q8_0 WMMA down")
-            assert all(os.environ.get(key, "") not in {"", "0"}
-                       for key in Q8_DOWN_CHAIN_GATES), (
-                "the Q8_0 expert-down chain gates must be on")
+            assert getattr(generator.runner, Q8_DOWN_FORKB_FIELD, False), (
+                "the Q8_0 expert-down chain gate must be on")
             report["selection_control"] = {
                 "runner_field": "q8_down_register",
                 "before": False, "after": True,
                 "scope": "per measured run; restored on exit",
-                **q8_down_control_record(),
+                **q8_down_control_record(runner=generator.runner),
                 "reason": (
                     "the routed F16 WMMA down owns the grouped chain and the "
                     "Q8_0 WMMA down sits in front of the sorted chain, so "
@@ -641,7 +640,7 @@ def main():
             # the owners that preempt the sorted chain, binds the rung this arm
             # does not count off (or requires the parent it rides) and binds
             # the published register decision off.
-            assert os.environ.get(Q8_DOWN_FORKB_ENV, "") not in {"", "0"}, (
+            assert getattr(generator.runner, Q8_DOWN_FORKB_FIELD, False), (
                 "production must bind the grouped Q8_0 down chain")
             if args.route_package == "q8-down-bundle":
                 assert getattr(generator.runner, Q8_DOWN_ROW4_FIELD, False), (
@@ -676,9 +675,8 @@ def main():
                 Q8_MAPPED_DOWN_MAP_GATE, "") not in {
                 "", "0"}, (
                 "production must build the grouped row4 gate/up map")
-            assert all(os.environ.get(key, "") not in {"", "0"}
-                       for key in Q8_DOWN_CHAIN_GATES), (
-                "the Q8_0 expert-down chain gates must be on")
+            assert getattr(generator.runner, Q8_DOWN_FORKB_FIELD, False), (
+                "the Q8_0 expert-down chain gate must be on")
             assert os.environ.get(
                 "HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT", "") not in {"", "0"}, (
                 "production must bind the grouped Q5_K IU8 owner the mapped "
@@ -687,7 +685,7 @@ def main():
                 "runner_field": "q8_mapped_down",
                 "before": False, "after": True,
                 "scope": "per measured run; restored on exit",
-                **q8_mapped_down_control_record(),
+                **q8_mapped_down_control_record(runner=generator.runner),
                 "counted_owners": ["bundle", "register"],
                 "counted_owner_rule": (
                     "the mapped path admits the bundle key and the published "

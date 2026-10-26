@@ -863,7 +863,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_BATCHED_POSITION` | `1` | One shared 192B H2D position upload instead of 24 per-layer 8B blocking `set_position` copies per decode step (bit-exact, ~1.3% median TG gain). `0` restores per-layer copies. |
 | `HIPENGINE_QWEN4_EXP_QSA_BATCHED_SELECTION` | `1` | Uses the batched QSA selection owner for multi-row decode; `0` restores the per-row selection. |
 | `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` | `0` (production binder sets `1`) | Master gate for the production grouped MoE prefill session (rows >= 16, supported quant shapes). |
-| `HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1` | `0` (production-only binding) | Q5_1 down M1 expert-grid64 variant binding. |
+| `HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1` | retired | No longer read. The profile publishes the Q5_1 down M1 choice on its runner; registered strict fallback kernels remain. |
 | `HIPENGINE_QWEN4_EXP_Q5_1_WMMA` | `0` (production binder) | Q5_1 grouped WMMA down-projection admission under the production grouped MoE route. |
 | `HIPENGINE_QWEN4_EXP_Q5_1_OUT8` | `1` | Uses the out8 Q5_1 grouped compact prefill variant. |
 | `HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN` | `0` | Opt-in Q5_1-style grouped WMMA down for Q8_0 experts. |
@@ -886,7 +886,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL` | production profile | Uses the peer-wave GDN prefill variant for head_dim 128, gated by the `HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS` layer list. |
 | `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL` | production profile | Uses the columnwarp GDN prefill variant, gated by the `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS` layer list. |
 | `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS` | unset | Comma-separated layer list admitting the columnwarp GDN decode variant; empty under production. |
-| `HIPENGINE_QWEN4_EXP_MOE_GRAPH` | backend capability | Enables the captured MoE decode graph on backends whose capability admits it; the strict profile forces `0`. |
+| `HIPENGINE_QWEN4_EXP_MOE_GRAPH` | backend capability | Enables captured c1 MoE decode graphs on backends whose capability admits them. `0` forces eager MoE; the profile binder does not override this setting, including under strict. |
 | `HIPENGINE_QWEN4_EXP_PLE_WARM` | `0` | Warms the PLE mmap table page cache at load for long-lived serving; short-lived runners never amortize it. |
 | `HIPENGINE_QWEN4_EXP_LOAD_DROP_BEHIND` | `0` | Advise `DONTNEED` for non-PLE source ranges after their device copy succeeds. Lazy PLE and validation readers are excluded; intended for one-shot low-RSS loading, not repeated loads. |
 
@@ -898,7 +898,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN` | `1` | Exact grouped down-projection for Q5_1 expert weights at rows>=2. |
 | `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4` | `1` | Exact grouped Q4_K gate/up route at rows>=2. |
 | `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL` | `1` | Extends the exact grouped Q4 route to all shapes (not only where the grouped-down route already applies). |
-| `HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN` | `0` | ForkB grouped down-projection kernel serving sorted-lane rows. Production sets `1`. |
+| `HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN` | retired | No longer read. The profile publishes grouped Q8_0 down selection on its runner; scoped diagnostics preserve the strict comparison. |
 | `HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL` | production profile | Grouped row4 GEMV prefill variant. |
 | `HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL` | production profile | Selected-dual grouped rowbatch8/out4 expertgrid64 bundle prefill for Q4_K. |
 | `HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL` | production profile | Selected-dual grouped pair2 prefill for Q4_K (rows>=64, in_features<=4096). |

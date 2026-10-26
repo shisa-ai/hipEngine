@@ -37,8 +37,6 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
 ROUTES = {
     "moe_wmma_27_47": (("HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",), "0"),
     "q8_mmq": (("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL",), "0"),
-    "q51_down_m1": (("HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1",), "0"),
-    "forkb_grouped_down": (("HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN",), "0"),
     "row4_gemv": (("HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL",), "0"),
     "q4_iu8": (("HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT",
                 "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL"), "0"),
@@ -49,6 +47,14 @@ ROUTES = {
 # state on the runner, so the ablation binds the mode instead of an env key.
 RUNNER_ROUTE_MODES = {
     "qsa_h256_quad": "parent",
+}
+
+# route -> runner-scoped leaf the ablation binds off. The PF-1 fork-b grouped
+# down and Q5_1 down M1 selectors are request-local state on the runner, so the
+# ablation binds the field instead of writing a process key nothing reads.
+RUNNER_ROUTE_OFF = {
+    "q51_down_m1": "q51_down_m1",
+    "forkb_grouped_down": "forkb_grouped_down",
 }
 
 # The scalar sparse-prefill rows owner and its head-grouped leaves. Launches of
@@ -95,6 +101,7 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--route", required=True,
                    choices=(sorted(ROUTES) + sorted(RUNNER_ROUTE_MODES)
+                            + sorted(RUNNER_ROUTE_OFF)
                             + ["strict_baseline"]))
     p.add_argument("--teacher", required=True)
     p.add_argument("--decode-steps", type=int, default=82)
@@ -119,17 +126,21 @@ def main() -> None:
 
     # incumbent arm + route ablation, applied AFTER construction
     runner_mode = RUNNER_ROUTE_MODES.get(a.route)
-    if a.route == "strict_baseline" or runner_mode is not None:
+    runner_off = RUNNER_ROUTE_OFF.get(a.route)
+    if (a.route == "strict_baseline" or runner_mode is not None
+            or runner_off is not None):
         envs, off = (), "0"
     else:
         envs, off = ROUTES[a.route]
     for name in envs:
         os.environ[name] = off
     engagement_asserts = {name: os.environ[name] for name in envs}
-    scope = (
-        qsa_prefill_head_mode(generator.runner, runner_mode)
-        if runner_mode is not None else contextlib.nullcontext()
-    )
+    if runner_mode is not None:
+        scope = qsa_prefill_head_mode(generator.runner, runner_mode)
+    elif runner_off is not None:
+        scope = getattr(runner_module, runner_off)(generator.runner, False)
+    else:
+        scope = contextlib.nullcontext()
     # The head leaf is the scalar fallback, so the ablation needs WMMA off for
     # its launches to happen at all. Both the override and the launch counter
     # are registered on the stack that unwinds on any failure below.
@@ -168,6 +179,10 @@ def main() -> None:
         # engagement guard: the ablation envs must still hold the disabled value
         for name in envs:
             assert os.environ.get(name) == off, f"engagement lost: {name}"
+        if runner_off is not None:
+            # Configuration: the ablated leaf stayed bound off for the run.
+            assert getattr(generator.runner, runner_off) is False, (
+                f"configuration lost: {runner_off}")
         if runner_mode is not None:
             # Configuration: the arm's own decision stayed bound.
             assert generator.runner.qsa_prefill_head_mode == runner_mode, (
@@ -182,6 +197,8 @@ def main() -> None:
         report = {
             "schema": 1, "kind": "r2e_route_drift_ablation",
             "route": a.route, "ablated_envs": list(envs),
+            "ablated_runner_fields": (
+                {runner_off: False} if runner_off is not None else {}),
             "env_values_at_end": engagement_asserts,
             "head_engagement": (
                 {

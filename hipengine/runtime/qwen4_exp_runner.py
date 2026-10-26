@@ -4194,6 +4194,41 @@ def q8_down_register(runner: Any, enabled: bool | object = _Q8_DOWN_REGISTER_UNS
         runner.q8_down_register = prior
 
 
+# Q5_1 down M1 selection. The production plan declares the M1 owner for the
+# exact grouped Q5_1 down chain's small-chunk scope; the binder publishes that
+# decision to the owning runner, and the dispatch-time selector keeps its exact
+# expert-grid gate and the pair2/fold ladder that preempts it at rows>=64. It is
+# the parent rung of that ladder, so every fold plan reads the variant this
+# decision selects. It is request-local state, so a diagnostic arm binds it on
+# the runner it measures instead of writing a process-wide switch.
+_Q51_DOWN_M1_UNSET = object()
+
+
+@contextlib.contextmanager
+def q51_down_m1(
+    runner: Any, enabled: bool | object = _Q51_DOWN_M1_UNSET,
+):
+    """Bind the Q5_1 down M1 selection for a diagnostic arm.
+
+    ``True`` selects the M1 sibling of the expertgrid64 exact grouped Q5_1 down
+    owner inside its small-chunk scope and ``False`` keeps the preceding
+    expertgrid64 owner; leaving ``enabled`` unset keeps whatever the plan
+    published. The pair2/fold ladder above it still preempts it at rows>=64 and
+    the exact expert-grid gate still decides whether that family is selected at
+    all. The binding is a mutable runner field, so it stays in force for as long
+    as the scope is open and the published value is restored on exit, including
+    on an exception.
+    """
+
+    prior = getattr(runner, "q51_down_m1", False)
+    if enabled is not _Q51_DOWN_M1_UNSET:
+        runner.q51_down_m1 = bool(enabled)
+    try:
+        yield prior
+    finally:
+        runner.q51_down_m1 = prior
+
+
 # Q5_1 fold128 selection. The production plan declares the fold128 owner for
 # the grouped pair2 chain's rows>=64 scope; the binder publishes that decision
 # to the owning runner, and the dispatch-time selector keeps its rows/
@@ -4255,6 +4290,40 @@ def q51_fold_pair_prefill(
         yield prior
     finally:
         runner.q51_fold_pair_prefill = prior
+
+
+# PF-1 fork-b grouped Q8_0 down selection. The production plan declares the
+# grouped selected-gemv owner for the sorted chain's Q8_0 down scope; the binder
+# publishes that decision to the owning runner, and the dispatch-time selector
+# keeps its position in the chain - the Q8_0 WMMA down owner, when a plan binds
+# one, preempts it outright. It is request-local state, so a diagnostic arm
+# binds it on the runner it measures instead of writing a process-wide switch.
+_FORKB_GROUPED_DOWN_UNSET = object()
+
+
+@contextlib.contextmanager
+def forkb_grouped_down(
+    runner: Any, enabled: bool | object = _FORKB_GROUPED_DOWN_UNSET,
+):
+    """Bind the PF-1 fork-b grouped Q8_0 down selection for a diagnostic arm.
+
+    ``True`` routes the sorted chain's Q8_0 down through the grouped selected
+    gemv (one block per (expert, out_col) pair) and ``False`` keeps the strict
+    per-expert selected gemv; leaving ``enabled`` unset keeps whatever the plan
+    published. It only selects when no Q8_0 WMMA down owner is bound and the
+    grouped chain is active, so a plan that binds that owner leaves it inert.
+    The binding is a mutable runner field, so it stays in force for as long as
+    the scope is open and the published value is restored on exit, including on
+    an exception.
+    """
+
+    prior = getattr(runner, "forkb_grouped_down", False)
+    if enabled is not _FORKB_GROUPED_DOWN_UNSET:
+        runner.forkb_grouped_down = bool(enabled)
+    try:
+        yield prior
+    finally:
+        runner.forkb_grouped_down = prior
 
 
 # Q8_0 down row4 selection. The production plan declares the row4 GEMV owner
@@ -5354,16 +5423,28 @@ def run_qwen4_exp_moe(
     runtime: HipRuntime | None = None,
     graph_cache: MoeGraphCache | None = None,
     graph_key: object | None = None,
+    q51_down_m1: bool = False,
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
     q51_register_cache: bool = False,
     q51_row_publish: bool = False,
+    forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
     q8_down_register: bool = False,
     q8_mapped_down: bool = False,
 ) -> Qwen4ExpMoEDeviceResult:
     """Run normalized softmax top-k routed experts plus gated shared expert.
+
+    ``q51_down_m1`` is the owning runner's plan-published Q5_1 down M1 decision
+    (see :func:`q51_down_m1`); it only selects inside the exact grouped Q5_1
+    down chain's small-chunk scope, below the pair2/fold ladder that preempts it
+    at rows>=64, and never on decode.
+
+    ``forkb_grouped_down`` is the owning runner's plan-published PF-1 fork-b
+    decision (see :func:`forkb_grouped_down`); it only selects the sorted
+    chain's Q8_0 down owner when no Q8_0 WMMA down owner is bound, and never on
+    decode.
 
     ``q51_fold128_prefill`` is the owning runner's plan-published Q5_1 fold128
     decision (see :func:`q51_fold128_prefill`); it only selects inside the
@@ -5424,10 +5505,12 @@ def run_qwen4_exp_moe(
                 top_k=top_k,
                 stream=graph_stream,
                 runtime=active_runtime,
+                q51_down_m1=q51_down_m1,
                 q51_fold128_prefill=q51_fold128_prefill,
                 q51_fold_pair_prefill=q51_fold_pair_prefill,
                 q51_register_cache=q51_register_cache,
                 q51_row_publish=q51_row_publish,
+                forkb_grouped_down=forkb_grouped_down,
                 q8_down_row4_prefill=q8_down_row4_prefill,
                 q8_down_bundle_prefill=q8_down_bundle_prefill,
                 q8_down_register=q8_down_register,
@@ -6490,10 +6573,7 @@ def run_qwen4_exp_moe(
                         grouped_q5_variant = (
                             "selected_grouped_prefill_compact_rowbatch8_out8_"
                             "expertgrid64_m1_bf16_bf16_out"
-                            if os.environ.get(
-                                "HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1", "0"
-                            )
-                            not in {"", "0", "false", "False"}
+                            if q51_down_m1
                             else "selected_grouped_prefill_compact_rowbatch8_out8_"
                             "expertgrid64_bf16_bf16_out"
                         )
@@ -6646,9 +6726,7 @@ def run_qwen4_exp_moe(
                     owner=q8_wmma_down,
                     risk_kwargs=q8_kwargs,
                 )
-            elif os.environ.get("HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN", "0") not in {
-                "", "0", "false", "False",
-            }:
+            elif forkb_grouped_down:
                 # x (expert_intermediate) and out (expert_down) are already in
                 # sorted-lane order here, so the kernel serves row = sorted
                 # position directly (lane_to_row=nullptr).
@@ -7150,10 +7228,12 @@ def run_qwen4_exp_dense_qsa_layer(
     moe_graph_key: object | None = None,
     cache_only: bool = False,
     qsa_ordered_decode_v2: bool = False,
+    q51_down_m1: bool = False,
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
     q51_register_cache: bool = False,
     q51_row_publish: bool = False,
+    forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
     q8_down_register: bool = False,
@@ -7166,8 +7246,8 @@ def run_qwen4_exp_dense_qsa_layer(
     :func:`qsa_ordered_decode_v2`); it selects nothing on a cache-only call and
     only inside the ordered route's own guards.
 
-    The four expert-down decisions (``q51_fold128_prefill``,
-    ``q51_fold_pair_prefill``, ``q8_down_row4_prefill``,
+    The six expert-down decisions (``q51_down_m1``, ``q51_fold128_prefill``,
+    ``q51_fold_pair_prefill``, ``forkb_grouped_down``, ``q8_down_row4_prefill``,
     ``q8_down_bundle_prefill``) and the register/row-publish/mapped siblings are
     the owning runner's plan-published MoE down selections, forwarded to the MoE
     dispatch unchanged; they select nothing on a cache-only call.
@@ -7232,10 +7312,12 @@ def run_qwen4_exp_dense_qsa_layer(
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=active_runtime,
         graph_cache=moe_graph_cache, graph_key=moe_graph_key,
+        q51_down_m1=q51_down_m1,
         q51_fold128_prefill=q51_fold128_prefill,
         q51_fold_pair_prefill=q51_fold_pair_prefill,
         q51_register_cache=q51_register_cache,
         q51_row_publish=q51_row_publish,
+        forkb_grouped_down=forkb_grouped_down,
         q8_down_row4_prefill=q8_down_row4_prefill,
         q8_down_bundle_prefill=q8_down_bundle_prefill,
         q8_down_register=q8_down_register,
@@ -7280,10 +7362,12 @@ def run_qwen4_exp_qsa_prefill_layer(
     runtime: HipRuntime | None = None,
     pending_write: tuple[int, int, int, bool] | None = None,
     defer_write: list | None = None,
+    q51_down_m1: bool = False,
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
     q51_register_cache: bool = False,
     q51_row_publish: bool = False,
+    forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
     q8_down_register: bool = False,
@@ -7296,6 +7380,10 @@ def run_qwen4_exp_qsa_prefill_layer(
     resolves that leaf but launches it only when WMMA attention does not own the
     chunk.
 
+    ``q51_down_m1`` is the owning runner's plan-published Q5_1 down M1 decision,
+    forwarded to the MoE down dispatch; it only selects inside the exact grouped
+    Q5_1 down chain's small-chunk scope, below the pair2/fold ladder.
+
     ``q51_fold128_prefill`` is the owning runner's plan-published Q5_1 fold128
     decision, forwarded to the MoE down dispatch; it only selects inside the
     grouped pair2 chain's rows>=64 scope.
@@ -7303,6 +7391,10 @@ def run_qwen4_exp_qsa_prefill_layer(
     ``q51_fold_pair_prefill`` is the owning runner's plan-published Q5_1
     folded-pair decision, forwarded to the same dispatch; it only selects
     inside the fold128 ladder's rows>=512 scope.
+
+    ``forkb_grouped_down`` is the owning runner's plan-published PF-1 fork-b
+    decision, forwarded to the same dispatch; it only selects the sorted chain's
+    Q8_0 down owner when no Q8_0 WMMA down owner is bound.
 
     ``q8_down_row4_prefill`` is the owning runner's plan-published Q8_0 down
     row4 decision, forwarded to the same dispatch; it only selects inside the
@@ -7416,10 +7508,12 @@ def run_qwen4_exp_qsa_prefill_layer(
         top_k=top_k,
         stream=stream,
         runtime=active_runtime,
+        q51_down_m1=q51_down_m1,
         q51_fold128_prefill=q51_fold128_prefill,
         q51_fold_pair_prefill=q51_fold_pair_prefill,
         q51_register_cache=q51_register_cache,
         q51_row_publish=q51_row_publish,
+        forkb_grouped_down=forkb_grouped_down,
         q8_down_row4_prefill=q8_down_row4_prefill,
         q8_down_bundle_prefill=q8_down_bundle_prefill,
         q8_down_register=q8_down_register,
@@ -7470,10 +7564,12 @@ def run_qwen4_exp_gdn_layer(
     pending_write: tuple[int, int, int, bool] | None = None,
     defer_write: list | None = None,
     prefill_variant: str | None = None,
+    q51_down_m1: bool = False,
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
     q51_register_cache: bool = False,
     q51_row_publish: bool = False,
+    forkb_grouped_down: bool = False,
     q8_down_row4_prefill: bool = False,
     q8_down_bundle_prefill: bool = False,
     q8_down_register: bool = False,
@@ -7485,11 +7581,17 @@ def run_qwen4_exp_gdn_layer(
     :func:`gdn_prefill_variant`): it selects the narrow/wide wave-norm leaf for
     multi-row chunks and leaves the register parent and decode untouched.
 
+    ``q51_down_m1`` is the owning runner's plan-published Q5_1 down M1
+    decision, forwarded to the MoE down dispatch.
+
     ``q51_fold128_prefill`` is the owning runner's plan-published Q5_1 fold128
     decision, forwarded to the MoE down dispatch.
 
     ``q51_fold_pair_prefill`` is the owning runner's plan-published Q5_1
     folded-pair decision, forwarded to the same dispatch.
+
+    ``forkb_grouped_down`` is the owning runner's plan-published PF-1 fork-b
+    decision, forwarded to the same dispatch.
 
     ``q8_down_row4_prefill`` is the owning runner's plan-published Q8_0 down
     row4 decision, forwarded to the same dispatch.
@@ -7660,10 +7762,12 @@ def run_qwen4_exp_gdn_layer(
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=active_runtime,
         graph_cache=moe_graph_cache, graph_key=moe_graph_key,
+        q51_down_m1=q51_down_m1,
         q51_fold128_prefill=q51_fold128_prefill,
         q51_fold_pair_prefill=q51_fold_pair_prefill,
         q51_register_cache=q51_register_cache,
         q51_row_publish=q51_row_publish,
+        forkb_grouped_down=forkb_grouped_down,
         q8_down_row4_prefill=q8_down_row4_prefill,
         q8_down_bundle_prefill=q8_down_bundle_prefill,
         q8_down_register=q8_down_register,
@@ -8464,6 +8568,13 @@ class Qwen4ExpGGUFResidentModelRunner:
     # wave-norm leaf where that admission applies, and None (the register
     # parent) everywhere else. A diagnostic scope may outrank it.
     gdn_prefill_variant: str | None = None
+    # Q5_1 down M1 selection, published by the profile binder for the exact
+    # grouped Q5_1 down chain's small-chunk scope: True on a production plan,
+    # False on every plan that keeps the preceding expertgrid64 owner. The
+    # pair2/fold ladder above it preempts it at rows>=64, and the exact expert
+    # grid gate still decides whether that family is selected at all. A
+    # diagnostic scope may outrank it.
+    q51_down_m1: bool = False
     # Q5_1 fold128 selection, published by the profile binder for the grouped
     # pair2 chain's rows>=64 scope: True on a production plan, False on every
     # plan that keeps the pair2 parent. It is the parent of the folded-pair,
@@ -8486,6 +8597,12 @@ class Qwen4ExpGGUFResidentModelRunner:
     # sibling of the register-cache prefill owner, False on every plan that
     # keeps the parent. A diagnostic scope may outrank it.
     q51_row_publish: bool = False
+    # PF-1 fork-b grouped Q8_0 down selection, published by the profile binder
+    # for the sorted chain's Q8_0 down scope: True on a production plan, False
+    # on every plan that keeps the strict per-expert selected gemv. A plan that
+    # binds the Q8_0 WMMA down owner preempts it, so it is inert there. A
+    # diagnostic scope may outrank it.
+    forkb_grouped_down: bool = False
     # Q8_0 down row4 selection, published by the profile binder for the sorted
     # grouped chain's rows>=512 scope: True on a production plan, False on every
     # plan that keeps the sorted parent. It is the parent of the bundle and
@@ -9760,10 +9877,12 @@ class Qwen4ExpGGUFResidentModelRunner:
                             "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS", ""
                         ),
                     ),
+                    q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
                     q51_register_cache=self.q51_register_cache,
                     q51_row_publish=self.q51_row_publish,
+                    forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
                     q8_down_register=self.q8_down_register,
@@ -9804,10 +9923,12 @@ class Qwen4ExpGGUFResidentModelRunner:
                     ),
                     cache_only=False,
                     qsa_ordered_decode_v2=self.qsa_ordered_decode_v2,
+                    q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
                     q51_register_cache=self.q51_register_cache,
                     q51_row_publish=self.q51_row_publish,
+                    forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
                     q8_down_register=self.q8_down_register,
@@ -10108,10 +10229,12 @@ class Qwen4ExpGGUFResidentModelRunner:
                     pending_write=pending_write,
                     defer_write=deferred,
                     prefill_variant=self.gdn_prefill_variant,
+                    q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
                     q51_register_cache=self.q51_register_cache,
                     q51_row_publish=self.q51_row_publish,
+                    forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
                     q8_down_register=self.q8_down_register,
@@ -10141,10 +10264,12 @@ class Qwen4ExpGGUFResidentModelRunner:
                     index_rotary_dim=cfg.rope_dimension_count,
                     rope_positions_ptr=rope_positions_ptr,
                     head_mode=self.qsa_prefill_head_mode,
+                    q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,
                     q51_register_cache=self.q51_register_cache,
                     q51_row_publish=self.q51_row_publish,
+                    forkb_grouped_down=self.forkb_grouped_down,
                     q8_down_row4_prefill=self.q8_down_row4_prefill,
                     q8_down_bundle_prefill=self.q8_down_bundle_prefill,
                     q8_down_register=self.q8_down_register,

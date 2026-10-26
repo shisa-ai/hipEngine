@@ -10,13 +10,20 @@ from hipengine.runtime import qwen4_exp_runner as runner
 
 def test_row4_benchmark_arm_and_engagement():
     from scripts.qwen4exp_halo_box_campaign_ab import (
-        _apply_mode, validate_row4_engagement, ROW4_ENV, FORKB_ENV, Q5_M1_ENV,
+        _apply_mode, validate_row4_engagement, PF13_FIELDS, ROW4_ENV,
     )
-    env = {FORKB_ENV: "1", Q5_M1_ENV: "1"}
+    env = {}
     _apply_mode("before", environment=env, route_package="q5k-row4")
-    assert env == {FORKB_ENV: "1", Q5_M1_ENV: "1", ROW4_ENV: "0"}
+    assert env == {ROW4_ENV: "0"}
     _apply_mode("after", environment=env, route_package="q5k-row4")
     assert env[ROW4_ENV] == "1"
+    # The PF-1/PF-3 package's two leaves are runner state now, so neither mode
+    # writes a process key for either one.
+    assert PF13_FIELDS == ("forkb_grouped_down", "q51_down_m1")
+    for mode in ("before", "after"):
+        pf13_env = {}
+        _apply_mode(mode, environment=pf13_env, route_package="pf13")
+        assert pf13_env == {}, (mode, pf13_env)
     validate_row4_engagement("before", 0)
     validate_row4_engagement("after", 2)
     with pytest.raises(ValueError):

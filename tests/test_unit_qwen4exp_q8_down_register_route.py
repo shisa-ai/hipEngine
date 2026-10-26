@@ -9,6 +9,7 @@ from hipengine.kernels.registry import KernelKey
 from hipengine.runtime import qwen4_exp_runner as runner
 from scripts.qwen4exp_halo_box_campaign_ab import (
     Q8_DOWN_CHAIN_GATES,
+    Q8_DOWN_FORKB_FIELD,
     Q8_DOWN_PREEMPTING_ENV,
     _apply_mode,
     q8_down_control_record,
@@ -28,6 +29,12 @@ REGISTER = "selected_grouped_row4_register_gemv_bf16_bf16_out"
 
 def _key(variant: str = BUNDLE) -> KernelKey:
     return KernelKey("hip_gfx1151", "linear", "gguf_q8_0", variant)
+
+
+def _owner(**fields):
+    """A runner with the sorted chain's own gate published."""
+
+    return SimpleNamespace(**{Q8_DOWN_FORKB_FIELD: True, **fields})
 
 
 def test_route_selects_register_only_when_the_plan_published_it(monkeypatch):
@@ -170,22 +177,22 @@ def test_route_scope_binds_the_runner_selection(mode, expected):
     # The register leaf rides both Q8_0 ladder rungs, which are runner state.
     owner = SimpleNamespace(q8_down_register=None,
                             q8_down_row4_prefill=True,
-                            q8_down_bundle_prefill=True)
+                            q8_down_bundle_prefill=True,
+                            forkb_grouped_down=True)
     env = {
         RETIRED_DOWN_REGISTER_ENV: "1",
-        **{key: "1" for key in Q8_DOWN_CHAIN_GATES},
         **{key: "1" for key in Q8_DOWN_PREEMPTING_ENV},
     }
     with route_scope("q8-down-register", mode, owner, environment=env):
         assert owner.q8_down_register is expected
         # Every preempting owner is closed so the counted chain can run.
         assert all(env[key] == "0" for key in Q8_DOWN_PREEMPTING_ENV)
-        # The chain's own gates and the retired switch are untouched.
-        assert all(env[key] == "1" for key in Q8_DOWN_CHAIN_GATES)
+        # The chain's own gate and the retired switch are untouched.
+        assert owner.forkb_grouped_down is True
         assert env[RETIRED_DOWN_REGISTER_ENV] == "1"
     assert owner.q8_down_register is None
     assert env[RETIRED_DOWN_REGISTER_ENV] == "1"
-    assert all(env[key] == "1" for key in Q8_DOWN_CHAIN_GATES)
+    assert owner.forkb_grouped_down is True
     assert all(env[key] == "1" for key in Q8_DOWN_PREEMPTING_ENV)
 
 
@@ -327,26 +334,23 @@ def test_moe_graph_capture_forwards_the_selection(monkeypatch):
 
 
 def test_q8_down_scope_restores_absent_and_present_values():
-    env = {Q8_DOWN_PREEMPTING_ENV[0]: "1", **{key: "1" for key in Q8_DOWN_CHAIN_GATES}}
-    with q8_down_scope(environment=env):
+    env = {Q8_DOWN_PREEMPTING_ENV[0]: "1"}
+    with q8_down_scope(environment=env, runner=_owner()):
         assert all(env[key] == "0" for key in Q8_DOWN_PREEMPTING_ENV)
-    assert env == {Q8_DOWN_PREEMPTING_ENV[0]: "1",
-                   **{key: "1" for key in Q8_DOWN_CHAIN_GATES}}
+    assert env == {Q8_DOWN_PREEMPTING_ENV[0]: "1"}
 
 
 def test_q8_down_scope_restores_after_an_exception():
     env = {key: "1" for key in Q8_DOWN_PREEMPTING_ENV}
-    env.update({key: "1" for key in Q8_DOWN_CHAIN_GATES})
     with pytest.raises(RuntimeError, match="arm failed"):
-        with q8_down_scope(environment=env):
+        with q8_down_scope(environment=env, runner=_owner()):
             raise RuntimeError("arm failed")
     assert all(env[key] == "1" for key in Q8_DOWN_PREEMPTING_ENV)
 
 
 def test_q8_down_scope_changes_nothing_until_entered():
     env = {key: "1" for key in Q8_DOWN_PREEMPTING_ENV}
-    env.update({key: "1" for key in Q8_DOWN_CHAIN_GATES})
-    scope = q8_down_scope(environment=env)
+    scope = q8_down_scope(environment=env, runner=_owner())
     assert all(env[key] == "1" for key in Q8_DOWN_PREEMPTING_ENV)
     with scope:
         assert all(env[key] == "0" for key in Q8_DOWN_PREEMPTING_ENV)
@@ -356,16 +360,15 @@ def test_q8_down_scope_changes_nothing_until_entered():
 def test_q8_down_control_names_every_preemptor():
     # The routed F16 down is the production owner of the grouped chain and the
     # WMMA down sits in front of the sorted chain; both are forced closed. The
-    # chain's own gates are recorded, never forced.
+    # chain's own gate is runner state, recorded never forced.
     assert Q8_DOWN_PREEMPTING_ENV == (
         "HIPENGINE_QWEN4_EXP_ROUTED_F16",
         "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN",
     )
-    # The ladder rungs are request-local runner state, so the only process key
-    # the chain needs is its own gate.
-    assert Q8_DOWN_CHAIN_GATES == (
-        "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN",
-    )
+    # Both ladder rungs and the chain's own gate are request-local runner state,
+    # so no process key gates either chain any more.
+    assert Q8_DOWN_CHAIN_GATES == ()
+    assert Q8_DOWN_FORKB_FIELD == "forkb_grouped_down"
     assert not set(Q8_DOWN_CHAIN_GATES) & set(Q8_DOWN_PREEMPTING_ENV)
 
 
@@ -379,9 +382,9 @@ def test_route_scope_leaves_the_preemptors_alone_for_other_packages():
 
 def test_building_a_q8_down_route_scope_binds_nothing():
     owner = SimpleNamespace(q8_down_register=True, q8_down_row4_prefill=True,
-                            q8_down_bundle_prefill=True)
+                            q8_down_bundle_prefill=True,
+                            forkb_grouped_down=True)
     env = {key: "1" for key in Q8_DOWN_PREEMPTING_ENV}
-    env.update({key: "1" for key in Q8_DOWN_CHAIN_GATES})
     scope = route_scope("q8-down-register", "after", owner, environment=env)
     assert all(env[key] == "1" for key in Q8_DOWN_PREEMPTING_ENV)
     assert owner.q8_down_register is True
@@ -392,19 +395,16 @@ def test_building_a_q8_down_route_scope_binds_nothing():
     assert owner.q8_down_register is True
 
 
-@pytest.mark.parametrize("gate", [None, "", "0", "false", "False"])
-@pytest.mark.parametrize("gate_key", Q8_DOWN_CHAIN_GATES)
-def test_q8_down_scope_fails_loudly_without_a_chain_gate(gate, gate_key):
+@pytest.mark.parametrize("gate", [None, False])
+def test_q8_down_scope_fails_loudly_without_a_chain_gate(gate):
     # Without the chain's own gate the counted leaf cannot launch, so an arm
-    # would report an engagement it cannot produce.
+    # would report an engagement it cannot produce. The gate is runner state,
+    # so the scope refuses an unpublish or an explicit off value alike.
     env = {key: "1" for key in Q8_DOWN_PREEMPTING_ENV}
-    env.update({key: "1" for key in Q8_DOWN_CHAIN_GATES})
-    if gate is None:
-        env.pop(gate_key)
-    else:
-        env[gate_key] = gate
-    with pytest.raises(ValueError, match=gate_key):
-        with q8_down_scope(environment=env):
+    owner = SimpleNamespace() if gate is None else SimpleNamespace(
+        **{Q8_DOWN_FORKB_FIELD: gate})
+    with pytest.raises(ValueError, match=Q8_DOWN_FORKB_FIELD):
+        with q8_down_scope(environment=env, runner=owner):
             pass
     assert all(env[key] == "1" for key in Q8_DOWN_PREEMPTING_ENV)
 
@@ -416,7 +416,7 @@ def test_route_scope_fails_loudly_without_a_chain_gate(mode):
                             q8_down_row4_prefill=True,
                             q8_down_bundle_prefill=True)
     env = {key: "1" for key in Q8_DOWN_PREEMPTING_ENV}
-    with pytest.raises(ValueError, match=Q8_DOWN_CHAIN_GATES[0]):
+    with pytest.raises(ValueError, match=Q8_DOWN_FORKB_FIELD):
         with route_scope("q8-down-register", mode, owner, environment=env):
             pass
     assert owner.q8_down_register is None
@@ -429,14 +429,14 @@ def test_control_record_separates_the_forced_value_from_the_previous_one():
     env = {
         "HIPENGINE_QWEN4_EXP_ROUTED_F16": "1",
         "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": "1",
-        **{key: "1" for key in Q8_DOWN_CHAIN_GATES},
     }
-    record = q8_down_control_record(environment=env)
+    record = q8_down_control_record(runner=_owner(), environment=env)
     assert record["preempting_owners_closed"] == {
         key: "0" for key in Q8_DOWN_PREEMPTING_ENV}
     assert record["preempting_owners_previous"][
         "HIPENGINE_QWEN4_EXP_ROUTED_F16"] == "1"
-    assert record["chain_gates"] == {key: "1" for key in Q8_DOWN_CHAIN_GATES}
+    assert record["chain_gate"] == {
+        "runner_field": Q8_DOWN_FORKB_FIELD, "published_value": True}
     # Recording changes nothing.
     assert env["HIPENGINE_QWEN4_EXP_ROUTED_F16"] == "1"
 

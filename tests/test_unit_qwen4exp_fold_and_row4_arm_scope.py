@@ -21,8 +21,7 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     Q51_PAIR2_PREEMPTING_ENV,
     Q51_PAIR_PREFILL_ENV,
     Q8_DOWN_BUNDLE_FIELD,
-    Q8_DOWN_CHAIN_GATES,
-    Q8_DOWN_FORKB_ENV,
+    Q8_DOWN_FORKB_FIELD,
     Q8_DOWN_PREEMPTING_ENV,
     Q8_DOWN_ROW4_FIELD,
     QSA_ORDERED_DECODE_ENV,
@@ -52,7 +51,6 @@ def _production_env():
     env = {
         Q51_PAIR2_GATE_ENV: "1",
         Q51_PAIR_PREFILL_ENV: "1",
-        Q8_DOWN_FORKB_ENV: "1",
     }
     env.update({key: "1" for key in Q51_PAIR2_PREEMPTING_ENV})
     env.update({key: "1" for key in Q8_DOWN_PREEMPTING_ENV})
@@ -65,6 +63,7 @@ def _published_runner():
     return SimpleNamespace(
         q51_fold128_prefill=True, q51_fold_pair_prefill=True,
         q51_register_cache=True, q51_row_publish=True,
+        forkb_grouped_down=True,
         q8_down_row4_prefill=True, q8_down_bundle_prefill=True,
         q8_down_register=True)
 
@@ -186,7 +185,7 @@ def test_q8_ladder_arm_restores_env_and_runner_state(package):
     before = dict(env)
     with route_scope(package, "after", owner, environment=env):
         assert all(env[key] == "0" for key in Q8_DOWN_PREEMPTING_ENV)
-        assert env[Q8_DOWN_FORKB_ENV] == "1"
+        assert owner.forkb_grouped_down is True
         assert owner.q8_down_register is False
     assert env == before
     assert owner.q8_down_row4_prefill is True
@@ -330,9 +329,9 @@ def test_row4_arm_does_not_require_bundle_or_its_own_rung():
 @pytest.mark.parametrize("package", ["q8-down-row4", "q8-down-bundle"])
 def test_q8_ladder_arm_requires_the_forkb_chain_gate(package):
     env = _production_env()
-    env[Q8_DOWN_FORKB_ENV] = "0"
     owner = _published_runner()
-    with pytest.raises(ValueError, match=Q8_DOWN_FORKB_ENV):
+    owner.forkb_grouped_down = False
+    with pytest.raises(ValueError, match=Q8_DOWN_FORKB_FIELD):
         with route_scope(package, "after", owner, environment=env):
             pass
     assert owner.q8_down_register is True
@@ -444,7 +443,8 @@ def test_q8_ladder_control_record_separates_bound_and_published_values():
         "bound_value": False,
         "published_value": True,
     }
-    assert record["chain_gates"] == {key: "1" for key in Q8_DOWN_CHAIN_GATES}
+    assert record["chain_gate"] == {
+        "runner_field": Q8_DOWN_FORKB_FIELD, "published_value": True}
     assert record["downstream_siblings"]["q8_down_register"] == {
         "bound_value": False, "published_value": True}
     assert env == _production_env()

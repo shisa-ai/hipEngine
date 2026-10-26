@@ -35,7 +35,6 @@ _last_prebinder_conflicts: dict[str, tuple[str, str]] = {}
 _binder_written: dict[str, str] = {}
 
 
-PROFILE_Q5_1_DOWN_M1_ENV = "HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1"
 # Quants whose production plan runs the F16-operand route composition: F16
 # operands with F32 accumulation and no exact repair, layered on the
 # arithmetic-recovery plan. The complete composition passes the calibrated
@@ -1066,6 +1065,15 @@ def _bind(
     # production plan, the v1 parent on the strict binder that every plan
     # falling back to it runs.
     qsa_ordered_decode_v2 = bool(production)
+    # Q5_1 down M1 sibling of the expertgrid64 exact grouped down owner,
+    # published as request-local state on the owning runner rather than a
+    # process-wide switch. It is the parent rung of the pair2/fold ladder that
+    # preempts it at rows>=64, so it publishes the value the retired switch
+    # bound, production-only, for every production plan. The dispatch-time
+    # selector still guards it on the exact expert-grid gate and the chain that
+    # reaches it, and the strict binder (which every plan that falls back to it
+    # runs) publishes False.
+    q51_down_m1 = bool(production)
     # Q5_1 fold128 sibling of the grouped pair2 prefill owner, published as
     # request-local state on the owning runner rather than a process-wide
     # switch. It is the parent of the folded-pair, register-cache and
@@ -1110,6 +1118,13 @@ def _bind(
     # it, and the strict binder (which every plan that falls back to it runs)
     # publishes False.
     q51_row_publish = bool(production)
+    # PF-1 fork-b grouped Q8_0 down owner, published as request-local state on
+    # the owning runner rather than a process-wide switch. It publishes the
+    # value the retired switch bound, production-only, for every production
+    # plan; a plan that binds the Q8_0 WMMA down owner preempts it, and the
+    # strict binder (which every plan that falls back to it runs) publishes
+    # False so the strict per-expert selected gemv stays the fallback.
+    forkb_grouped_down = bool(production)
     # Q8_0 down row4 sibling of the sorted grouped expert-down owner, published
     # as request-local state on the owning runner rather than a process-wide
     # switch. It is the parent of the bundle and register siblings, so it
@@ -1179,10 +1194,10 @@ def _bind(
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE": "0",
         # PF-3 Q5_1 M1 and PF-1 grouped Q8_0 down are T0 exact production
-        # owners after the one-process/one-residency canonical gate. Strict
+        # owners after the one-process/one-residency canonical gate, and their
+        # selections are request-local runner state now (``q51_down_m1`` /
+        # ``forkb_grouped_down`` above), so no process key names them. Strict
         # keeps the preceding owners as registered fallbacks.
-        PROFILE_Q5_1_DOWN_M1_ENV: "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN": (
             "1" if production else "0"
         ),
@@ -1408,10 +1423,12 @@ def _bind(
     generator.qsa_prefill_head_mode = qsa_prefill_head_mode
     generator.qsa_ordered_decode_v2 = qsa_ordered_decode_v2
     generator.gdn_prefill_variant = gdn_prefill_variant
+    generator.q51_down_m1 = q51_down_m1
     generator.q51_fold128_prefill = q51_fold128_prefill
     generator.q51_fold_pair_prefill = q51_fold_pair_prefill
     generator.q51_register_cache = q51_register_cache
     generator.q51_row_publish = q51_row_publish
+    generator.forkb_grouped_down = forkb_grouped_down
     generator.q8_down_row4_prefill = q8_down_row4_prefill
     generator.q8_down_bundle_prefill = q8_down_bundle_prefill
     generator.q8_down_register = q8_down_register
@@ -1425,10 +1442,12 @@ def _bind(
         runner.qsa_prefill_head_mode = qsa_prefill_head_mode
         runner.qsa_ordered_decode_v2 = qsa_ordered_decode_v2
         runner.gdn_prefill_variant = gdn_prefill_variant
+        runner.q51_down_m1 = q51_down_m1
         runner.q51_fold128_prefill = q51_fold128_prefill
         runner.q51_fold_pair_prefill = q51_fold_pair_prefill
         runner.q51_register_cache = q51_register_cache
         runner.q51_row_publish = q51_row_publish
+        runner.forkb_grouped_down = forkb_grouped_down
         runner.q8_down_row4_prefill = q8_down_row4_prefill
         runner.q8_down_bundle_prefill = q8_down_bundle_prefill
         runner.q8_down_register = q8_down_register
@@ -1608,7 +1627,6 @@ __all__ = [
     "FAST_QUANTS",
     "PRODUCTION_GDN_PEER_PREFILL_LAYERS",
     "PRODUCTION_MOE_PREFILL_ENV",
-    "PROFILE_Q5_1_DOWN_M1_ENV",
     "PRODUCTION_Q4_DP4A_DECODE_LAYERS",
     "PRODUCTION_Q4_K_MMQ_PREFILL_LAYERS",
     "PRODUCTION_Q5_1_MMQ_PREFILL_LAYERS",

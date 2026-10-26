@@ -86,6 +86,7 @@ def _runner(**overrides):
         "q8_down_bundle_prefill": True,
         "q8_down_register": True,
         "q8_mapped_down": True,
+        "forkb_grouped_down": True,
     }
     published.update(overrides)
     return SimpleNamespace(**published)
@@ -116,11 +117,15 @@ def stubs(registry):
 
 @pytest.fixture
 def premise_env(monkeypatch):
-    """The chain gates the four arms ride in production."""
+    """The chain gates the four arms ride in production.
+
+    The Q8_0 chain's own gate is request-local runner state, so only the Q5_1
+    pair2 process keys are set here; the Q8_0 arms read the gate off the runner
+    the fixture builds.
+    """
 
     monkeypatch.setenv(gate.Q51_PAIR_PREFILL_ENV, "1")
     monkeypatch.setenv(gate.Q51_PAIR2_GATE_ENV, "1")
-    monkeypatch.setenv(gate.Q8_DOWN_FORKB_ENV, "1")
 
 
 def _install_generator(monkeypatch, runner):
@@ -231,16 +236,24 @@ def test_main_still_refuses_a_missing_published_parent(
      ("q51-fold128", gate.Q51_PAIR2_GATE_ENV,
       "the pair2 chain's own gate must be on"),
      ("q51-fold-pair", gate.Q51_PAIR_PREFILL_ENV,
-      "production must bind the grouped pair2 Q5_1 selection"),
-     ("q8-down-row4", gate.Q8_DOWN_FORKB_ENV,
-      "production must bind the grouped Q8_0 down chain"),
-     ("q8-down-bundle", gate.Q8_DOWN_FORKB_ENV,
-      "production must bind the grouped Q8_0 down chain")])
+      "production must bind the grouped pair2 Q5_1 selection")])
 def test_main_still_refuses_a_closed_chain_gate(
         stubs, premise_env, monkeypatch, tmp_path, package, key, message):
     monkeypatch.setenv(key, "0")
     with pytest.raises(AssertionError, match=message):
         _run_main(monkeypatch, tmp_path, package, _runner())
+    assert "" not in os.environ
+
+
+@pytest.mark.parametrize("package", ["q8-down-row4", "q8-down-bundle"])
+def test_main_refuses_an_unpublished_q8_chain_gate(
+        stubs, premise_env, monkeypatch, tmp_path, package):
+    # The sorted chain's own gate is request-local runner state now, so the
+    # premise is the runner's published decision, not a process key.
+    with pytest.raises(AssertionError,
+                       match="production must bind the grouped Q8_0 down chain"):
+        _run_main(monkeypatch, tmp_path, package,
+                  _runner(forkb_grouped_down=False))
     assert "" not in os.environ
 
 

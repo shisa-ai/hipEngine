@@ -17,7 +17,6 @@ from hipengine.generation.qwen4_exp_profiles import (
     PRODUCTION_QSA_FLASH_PREFILL_LAYERS,
     PRODUCTION_GDN_PEER_PREFILL_LAYERS,
     PRODUCTION_MOE_PREFILL_ENV,
-    PROFILE_Q5_1_DOWN_M1_ENV,
     PRODUCTION_Q4_DP4A_DECODE_LAYERS,
     PRODUCTION_Q4_IU8_PREFILL_LAYERS,
     PRODUCTION_Q4_K_MMQ_PREFILL_LAYERS,
@@ -49,7 +48,6 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
     clear_runtime_profile_registry_for_tests()
     environment_names = (
         PRODUCTION_MOE_PREFILL_ENV,
-        PROFILE_Q5_1_DOWN_M1_ENV,
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE",
         "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL",
@@ -64,7 +62,6 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS",
         "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE",
         "HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS",
-        "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN",
         "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL",
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL",
@@ -342,8 +339,12 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"] == "0"
-    assert os.environ[PROFILE_Q5_1_DOWN_M1_ENV] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN"] == "1"
+    # The PF-1 fork-b and Q5_1 down M1 leaves are request-local runner state:
+    # the binder selects them without writing a process-wide switch.
+    assert fake_runner.q51_down_m1 is True
+    assert fake_runner.forkb_grouped_down is True
+    assert "HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1" not in os.environ
+    assert "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN" not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"] == "1"
@@ -511,8 +512,10 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"] == "0"
-    assert os.environ[PROFILE_Q5_1_DOWN_M1_ENV] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN"] == "0"
+    assert strict_generator.q51_down_m1 is False
+    assert strict_generator.forkb_grouped_down is False
+    assert "HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1" not in os.environ
+    assert "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN" not in os.environ
     assert os.environ["HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"] == "0"

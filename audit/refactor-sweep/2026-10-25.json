@@ -3858,23 +3858,23 @@
       "start_line": 3498,
       "end_line": 3522,
       "sha256": "38ef971a1617ed4712e733074e47468ca407c1f1b19b5f69853b5586b573823e",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Removed fork-b and Q5_1 M1 environment bridges in favor of runner publication, with c1/batch/mixed forwarding and policy-keyed capture. Strict owners preserved; PF13 diagnostics isolate/count both leaves with restored controls. GPU278/public280/clean-snapshot CLI282 pass; CPU279 plus focused source-inspection repair and fixture/smoke checks pass. See worklog/entries/20261026T230142.708820Z-cleanup-refactor-r0145-pf13-policy-2e71b6.md."],
       "subitems": [
         {
           "line": 3500,
           "text": "- `HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN=1` routes the Qwen4-exp",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 3507,
           "text": "- Promotion review resolved (2026-09-04): a committed one-process,",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 3516,
           "text": "- The same packet promotes",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
