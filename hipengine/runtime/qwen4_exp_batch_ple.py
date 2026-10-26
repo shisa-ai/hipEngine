@@ -57,9 +57,8 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     DeviceBuffer,
-    copy_host_to_device,
+    copy_host_array_to_device,
     free,
-    host_array_ptr,
     malloc,
 )
 from hipengine.core.tensor import Tensor
@@ -185,8 +184,8 @@ class Qwen4ExpBatchPleState:
             buffers.append(history)
             indices = malloc(indices_host.nbytes, runtime=active_runtime)
             buffers.append(indices)
-            copy_host_to_device(
-                indices, host_array_ptr(indices_host), runtime=active_runtime
+            copy_host_array_to_device(
+                indices, indices_host, runtime=active_runtime
             )
             # A slot no request owns reads as zero history, so "never written" and
             # "fresh request" are the same, checkable value.
@@ -270,9 +269,9 @@ class Qwen4ExpBatchPleState:
             slots, rows=len(slots), state_slots=self.state_slots
         )
         try:
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self.indices,
-                host_array_ptr(indices),
+                indices,
                 indices.nbytes,
                 runtime=self.runtime,
             )

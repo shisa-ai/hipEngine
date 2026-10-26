@@ -61,7 +61,7 @@ import numpy as np
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     DeviceBuffer,
-    copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -181,12 +181,12 @@ class Qwen4ExpBatchQsaSelectionScratch:
         try:
             for name in ("positions", "counts", "queries"):
                 buffers.append(malloc(sizes[name], runtime=active_runtime))
-            copy_host_to_device(
-                buffers[0], host_array_ptr(positions_host), positions_host.nbytes,
+            copy_host_array_to_device(
+                buffers[0], positions_host, positions_host.nbytes,
                 runtime=active_runtime,
             )
-            copy_host_to_device(
-                buffers[1], host_array_ptr(counts_host), counts_host.nbytes,
+            copy_host_array_to_device(
+                buffers[1], counts_host, counts_host.nbytes,
                 runtime=active_runtime,
             )
         except BaseException:
@@ -961,9 +961,9 @@ def _stage_selection(
             MemcpyKind.HOST_TO_DEVICE,
         )
     if not np.array_equal(counts, selection.device_counts):
-        copy_host_to_device(
+        copy_host_array_to_device(
             selection.counts,
-            host_array_ptr(counts),
+            counts,
             selection.counts.nbytes,
             runtime=runtime,
         )

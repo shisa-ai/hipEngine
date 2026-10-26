@@ -658,18 +658,18 @@ def _record_copies(monkeypatch):
     """Record every host/device copy the pass issues and its byte count."""
 
     calls: list[tuple[str, object, int | None]] = []
-    real_h2d = mixed_target.copy_host_to_device
+    real_h2d = mixed_target.copy_host_array_to_device
     real_d2h = mixed_target.copy_device_to_host
 
-    def h2d(buffer, host_ptr, nbytes=None, *, runtime=None):
+    def h2d(buffer, array, nbytes=None, *, runtime=None):
         calls.append(("h2d", buffer, nbytes))
-        return real_h2d(buffer, host_ptr, nbytes, runtime=runtime)
+        return real_h2d(buffer, array, nbytes, runtime=runtime)
 
     def d2h(host_ptr, buffer, nbytes=None, *, runtime=None):
         calls.append(("d2h", buffer, nbytes))
         return real_d2h(host_ptr, buffer, nbytes, runtime=runtime)
 
-    monkeypatch.setattr(mixed_target, "copy_host_to_device", h2d)
+    monkeypatch.setattr(mixed_target, "copy_host_array_to_device", h2d)
     monkeypatch.setattr(mixed_target, "copy_device_to_host", d2h)
     return calls
 
@@ -677,11 +677,11 @@ def _record_copies(monkeypatch):
 def test_every_copy_names_the_pass_row_extent_not_the_capacity(monkeypatch):
     """A borrowed slab is wider than the pass, so no copy may default to it.
 
-    ``copy_host_to_device``/``copy_device_to_host`` size a copy from the device
-    buffer when no length is given. The scratch is allocated at the widest
-    capacity admitted, so a defaulted length copies past the ``rows``-shaped host
-    array -- an out-of-bounds host write that corrupts the heap instead of
-    raising.
+    ``copy_device_to_host`` defaults to the device buffer extent, whereas
+    ``copy_host_array_to_device`` defaults to the host source extent. The
+    scratch is allocated at the widest capacity admitted. Explicit row-sized
+    lengths keep both directions bounded to the pass; a capacity-sized D2H
+    copy would write past the host array.
     """
 
     device = _FakeDevice()

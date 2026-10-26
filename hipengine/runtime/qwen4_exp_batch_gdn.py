@@ -55,9 +55,8 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     DeviceBuffer,
-    copy_host_to_device,
+    copy_host_array_to_device,
     free,
-    host_array_ptr,
     malloc,
 )
 from hipengine.core.tensor import Tensor
@@ -201,8 +200,8 @@ class Qwen4ExpBatchGdnState:
             buffers.append(conv_state)
             indices = malloc(indices_host.nbytes, runtime=active_runtime)
             buffers.append(indices)
-            copy_host_to_device(
-                indices, host_array_ptr(indices_host), runtime=active_runtime
+            copy_host_array_to_device(
+                indices, indices_host, runtime=active_runtime
             )
             # A slot that no request owns reads as zero state, so "never written"
             # and "fresh request" are the same, checkable value.
@@ -295,9 +294,9 @@ class Qwen4ExpBatchGdnState:
         # (every decode step between admissions) needs no upload.
         if not np.array_equal(self.indices_host[: indices.size], indices):
             try:
-                copy_host_to_device(
+                copy_host_array_to_device(
                     self.indices,
-                    host_array_ptr(indices),
+                    indices,
                     indices.nbytes,
                     runtime=self.runtime,
                 )

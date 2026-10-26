@@ -22,7 +22,7 @@ from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
-    copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -382,9 +382,9 @@ class Qwen4ExpGGUFMTPDraftRunner:
                 f"({self.config.residual_width},)"
             )
         bits = np.ascontiguousarray(float_array_to_bf16_bits(values), dtype=np.uint16)
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.last_hidden,
-            host_array_ptr(bits),
+            bits,
             bits.nbytes,
             runtime=self.runtime,
         )
@@ -402,9 +402,9 @@ class Qwen4ExpGGUFMTPDraftRunner:
             if token < 0 or token >= self.config.vocab_size:
                 raise ValueError("Qwen4Exp MTP token is outside the vocabulary")
             token_host = np.asarray([token], dtype=np.int64)
-            copy_host_to_device(
+            copy_host_array_to_device(
                 self.token_id_buffer,
-                host_array_ptr(token_host),
+                token_host,
                 runtime=self.runtime,
             )
         if not hidden_seed_resident:

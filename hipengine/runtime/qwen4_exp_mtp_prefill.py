@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 from hipengine.core.hip import HipMemcpyKind
-from hipengine.core.memory import copy_host_to_device, free, host_array_ptr, malloc
+from hipengine.core.memory import copy_host_array_to_device, free, malloc
 from hipengine.kernels.hip_gfx1100.fused.gguf_ops import gguf_rmsnorm_bf16_f32_weight
 from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import qwen4_exp_gather_bf16_lanes
 from hipengine.kernels.registry import resolve
@@ -96,7 +96,7 @@ class Qwen4ExpMTPPrefillWorkspace:
         if owner.position != owner.index.count or owner.position + count > owner.max_sequence_length:
             raise ValueError("MTP prompt tile exceeds the contiguous cache capacity")
         if bits is not None:
-            copy_host_to_device(self.buffers["hidden"], host_array_ptr(bits), bits.nbytes, runtime=self.runtime)
+            copy_host_array_to_device(self.buffers["hidden"], bits, bits.nbytes, runtime=self.runtime)
         if target_hidden_buffer is not None:
             first = int(row_offset == 0)
             if count > first:
@@ -105,7 +105,7 @@ class Qwen4ExpMTPPrefillWorkspace:
                     (count - first) * stride, HipMemcpyKind.DEVICE_TO_DEVICE)
         indices = prompt_fusion_indices(count, c.residual_branch_count)
         for name, array in (("tokens", tokens), ("indices", indices)):
-            copy_host_to_device(self.buffers[name], host_array_ptr(array), array.nbytes, runtime=self.runtime)
+            copy_host_array_to_device(self.buffers[name], array, array.nbytes, runtime=self.runtime)
         embedding = owner.resident.weight("root.token_embedding")
         resolve(backend=owner.backend, layer="embedding", quant=embedding.spec.quant_key,
                 variant="lookup_bf16_out")(

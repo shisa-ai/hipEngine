@@ -22,7 +22,8 @@ from typing import Sequence
 import numpy as np
 
 from hipengine.core.memory import (
-    DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr,
+    DeviceBuffer, copy_device_to_host, copy_host_array_to_device, free,
+    host_array_ptr,
 )
 from hipengine.kernels.cpu_reference.qwen4_exp import ple_hash_rows
 from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple import (
@@ -270,8 +271,8 @@ class Qwen4ExpMixedTargetPass:
             embeddings[[row.physical_row for row in wave]] = staged
             for row in wave:
                 self.hash_snapshots[row.physical_row] = states[row.slot]
-        copy_host_to_device(
-            self.ple_embedding, host_array_ptr(embeddings), embeddings.nbytes,
+        copy_host_array_to_device(
+            self.ple_embedding, embeddings, embeddings.nbytes,
             runtime=self.runtime,
         )
 
@@ -286,8 +287,8 @@ class Qwen4ExpMixedTargetPass:
         embedding = resolve(backend=batch.backend, layer='embedding',
                             quant=token_weight.spec.quant_key, variant='lookup_bf16_out')
         try:
-            copy_host_to_device(
-                self.token_ids, host_array_ptr(tokens), tokens.nbytes, runtime=self.runtime,
+            copy_host_array_to_device(
+                self.token_ids, tokens, tokens.nbytes, runtime=self.runtime,
             )
             embedding(self.token_ids.ptr, token_weight.allocation('raw').tensor.ptr,
                       self.embedding.ptr, rows, cfg.hidden_size, cfg.vocab_size, runtime=self.runtime)

@@ -11,11 +11,22 @@ import pytest
 from hipengine.core import memory
 
 
+QWEN4_EXP_AUXILIARY_UPLOAD_MODULES = (
+    "runtime/qwen4_exp_batch_gdn",
+    "runtime/qwen4_exp_batch_ple",
+    "runtime/qwen4_exp_batch_qsa",
+    "runtime/qwen4_exp_mixed_target",
+    "runtime/qwen4_exp_mtp",
+    "runtime/qwen4_exp_mtp_prefill",
+)
+
+
 @pytest.mark.parametrize("module", [
     "runtime/evie", "runtime/timesfm_decode", "runtime/timesfm3_decode",
     "runtime/qwen35_gguf_runner", "runtime/moonshine", "runtime/qwen35_paro_runner",
     "speculative/mtp_cached_draft", "speculative/mtp_resident_draft",
     "kernels/hip_gfx1100/speculative/mtp_nextn",
+    *QWEN4_EXP_AUXILIARY_UPLOAD_MODULES,
 ])
 def test_reviewed_runners_do_not_erase_temporary_array_owners(module):
     """Bounded syntax guard, not a proof of arbitrary pointer lifetimes."""
@@ -27,6 +38,49 @@ def test_reviewed_runners_do_not_erase_temporary_array_owners(module):
                and node.func.id == "host_array_ptr"
                and node.args and isinstance(node.args[0], ast.Call)]
     assert not hazards, f"{path.name}: retain array owners at lines {hazards}"
+
+
+def _is_array_pointer_expression(node):
+    if isinstance(node, ast.Call):
+        if isinstance(node.func, ast.Name) and node.func.id == "host_array_ptr":
+            return True
+        return (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"data_as", "ctypes"}
+        )
+    if isinstance(node, ast.Attribute) and node.attr == "data":
+        owner = node.value
+        return isinstance(owner, ast.Attribute) and owner.attr == "ctypes"
+    return False
+
+
+@pytest.mark.parametrize("module", QWEN4_EXP_AUXILIARY_UPLOAD_MODULES)
+def test_qwen4exp_auxiliary_uploads_use_the_owning_helper(module):
+    """No synchronous array upload may erase its source owner.
+
+    This is a bounded syntax guard over the reviewed Qwen4Exp auxiliary
+    modules, not a proof of arbitrary pointer lifetimes. Direct runtime
+    ``memcpy`` calls and asynchronous uploads are outside this syntax guard;
+    that exclusion does not establish their ownership safety.
+    """
+    path = Path(__file__).parents[1] / "hipengine" / f"{module}.py"
+    tree = ast.parse(path.read_text())
+    hazards = []
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "copy_host_to_device"
+        ):
+            continue
+        source = (
+            node.args[1]
+            if len(node.args) > 1
+            else next((kw.value for kw in node.keywords if kw.arg == "host_ptr"), None)
+        )
+        if source is not None and _is_array_pointer_expression(source):
+            hazards.append(node.lineno)
+    assert not hazards, f"{path.name}: use copy_host_array_to_device at lines {hazards}"
 
 
 def test_upload_retains_temporary_through_copy():

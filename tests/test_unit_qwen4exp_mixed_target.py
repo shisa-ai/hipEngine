@@ -359,7 +359,7 @@ def test_verify_failure_keeps_its_primary_error_and_notes_the_failed_discard(mon
     def failing_abort(self):
         raise RuntimeError('rollback failed')
 
-    monkeypatch.setattr(mixed_target, 'copy_host_to_device', failing_copy)
+    monkeypatch.setattr(mixed_target, 'copy_host_array_to_device', failing_copy)
     monkeypatch.setattr(Qwen4ExpMixedTargetPass, 'abort', failing_abort)
 
     with pytest.raises(RuntimeError, match='device copy failed') as info:
