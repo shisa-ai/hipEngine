@@ -3644,8 +3644,8 @@
       "start_line": 3305,
       "end_line": 3344,
       "sha256": "07d89f80393bd5fc649cec4b0f39cb69f12554e74680aebd1a906c5eb64bdbd4",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["W4A16 promotion is already implemented on both HIP backends; stale narrative removed. Deliberately retained integer-MMQ comparison alternative consolidated with R0136 at the bottom of REFACTOR.md with decision and clearing action. Source: backend GGUF_IQ_DENSE_PREFILL_POLICY and worklog/entries/20260908T191409.775774Z-lhl-ud-w4a16-default-6c43c5.md. CPU policy-parity tests pass."],
       "subitems": []
     },
     {
@@ -3654,38 +3654,38 @@
       "start_line": 3345,
       "end_line": 3379,
       "sha256": "c8fc6b6783b5a56978005f8ef9ba8f4a2efc35d58bb97443176e80d107f6f452",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred",
+      "evidence": ["Obsolete four-quant default and teacher-referenced table removed; W4A16 now owns the default. Historical measurements remain in Git and existing evidence. The deliberate integer-MMQ comparison-path retention decision is consolidated with R0135 at the bottom of REFACTOR.md with a clearing action; no runtime change."],
       "subitems": [
         {
           "line": 3354,
           "text": "| arm | prefill | mean | p95 | max | top-1 |",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 3355,
           "text": "| --- | --- | --- | --- | --- | --- |",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 3356,
           "text": "| IQ4_XS + IQ3_XXS | 127.2 | 0.0010796 | 0.0051188 | 0.0354152 | 162/162 |",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 3357,
           "text": "| + IQ3_S | 137.7 | 0.0012985 | 0.0044588 | 0.0403417 | 161/162 |",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 3358,
           "text": "| + IQ4_NL | 155.2 | 0.0013457 | 0.0071143 | 0.0412277 | 161/162 |",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 3359,
           "text": "| **all four (retained)** | **171.9** | 0.0014707 | 0.0077991 | **0.0297407** | 161/162 |",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

@@ -2913,81 +2913,6 @@ should be removed or collapsed.
   the record's artifact fingerprint must match. Evaluation-only status is observability,
   not a prerequisite for executing an explicitly requested codec.
 
-## 2026-09-09 W4A16 IQ prefill — registered, unrouted
-
-**State.** `gguf_iq_wmma_prefill.hip` implements a W4A16 prefill route for all
-seven dense IQ quants and is registered on both HIP backends under
-`dense_wmma_w4a16_prefill_bf16_bf16_out`. **No dispatch policy selects it**, and
-a test asserts that.
-
-**Why it is kept unrouted — and why that rationale is now weak.** It was
-retained as "the only route that reaches exact-path accuracy at GEMM speed".
-**Measured end to end, it does not.** The context512 gate puts it at mean
-0.0014384, level with the integer MMQ's 0.0014707 and nowhere near the
-two-quant policy's 0.0010796, while running 150.9 tok/s against the integer
-MMQ's 171.9 — 12% slower for no mean benefit.
-
-The original claim came from a leaf comparison reporting GEMV 1.66e-03 and
-W4A16 1.67e-03. Both kernels write bf16, and bf16 rounding alone contributes
-exactly 1.66e-03, so that comparison was measuring the output format and could
-not resolve the two paths. Only the integer MMQ (5.60e-03) sat far enough above
-the floor to be distinguished.
-
-What survives is a different error *shape*: W4A16's p95 of 0.0037423 is the
-best of all three arms, better even than the two-quant policy, while its p99
-and max are the worst.
-
-**Second correction (2026-09-09): keep it, and consider promoting it.** The
-"dominated" reading above was itself scored against the llama.cpp teacher.
-Against hipEngine strict - the reference `EXECUTION-PROFILES.md` section 6
-actually specifies - W4A16 **passes every threshold in the calibrated
-envelope** (mean 0.000827, p95 0.004547, p99 0.012475, max 0.023513, top-1
-100%), while the shipped four-quant integer MMQ **breaches the 5e-2 absolute
-maximum-row ceiling** at 0.170390. W4A16 is not dominated; on the correct
-reference it is the only measured arm that is admissible, at 150.9 tok/s
-against 171.9.
-
-**Removal trigger.** Only if the default is re-taken on strict-referenced data
-and the integer MMQ is made admissible some other way, or a desktop
-re-measure overturns the ranking. Until then this is a promotion candidate, not
-a deletion candidate. See
-`benchmarks/results/2026-09-09-zbook-ud-production-gate-reference.json`.
-
-## 2026-09-09 Dense IQ MMQ four-quant policy — retained with a recorded trade
-
-**State.** `GGUF_IQ_DENSE_MMQ_PREFILL_POLICY` routes all four quants whose K32
-groups are expressible as `scale * int8`: IQ4_XS, IQ3_XXS, IQ3_S, IQ4_NL.
-Q3_K, IQ2_S and IQ2_XS carry a scale per 16 elements and stay on the strict
-GEMV; that needs a per-16-scale MMQ contract, i.e. a kernel redesign.
-
-**The trade, measured at 512/128 on the published protocol.**
-
-| arm | prefill | mean | p95 | max | top-1 |
-| --- | --- | --- | --- | --- | --- |
-| IQ4_XS + IQ3_XXS | 127.2 | 0.0010796 | 0.0051188 | 0.0354152 | 162/162 |
-| + IQ3_S | 137.7 | 0.0012985 | 0.0044588 | 0.0403417 | 161/162 |
-| + IQ4_NL | 155.2 | 0.0013457 | 0.0071143 | 0.0412277 | 161/162 |
-| **all four (retained)** | **171.9** | 0.0014707 | 0.0077991 | **0.0297407** | 161/162 |
-
-Mean regresses 36% and p95 52% against the two-quant policy, while the
-**maximum improves** to the best of the four and both binding gates pass with
-margin (max 0.0297 against 0.05, top-1 100%). IQ4_NL and IQ3_S were each held
-out briefly on the mean regression before the combined arm was measured.
-
-**Why it is not a defect to chase.** A per-tensor localization of the IQ4_NL
-cost was attempted and failed: excluding the three early `ffn_down` tensors -
-which a single-prompt probe blamed for 71% of the divergence - measured no
-better against the teacher (mean 0.0013632 vs 0.0013457 for all seven). Against
-the teacher the cost is not attributable to particular tensors. It is a
-systematic mean/tail-shape trade of the Q8_1 activation plane.
-
-**Removal trigger.** If a task or repeat/serving gate later shows the mean
-regression matters, roll back per quant by deleting its entry - IQ3_S and
-IQ4_NL are the two to drop first, in that order of cost-effectiveness
-(IQ4_NL buys +22%, IQ3_S +8.3%). If instead the trade proves harmless, delete
-this ledger entry. The open improvement is a finer activation quantization for
-these quants than the shared DS4 plane, which would likely recover the mean.
-
 ## 2026-09-07 UD cleanup — reduce authorization surface
 
 - Removed generic profile qualifiers, custom-factory rollback and the cancelled
@@ -12171,3 +12096,25 @@ The existing promotion artifacts are
 and `benchmarks/results/2026-09-11-w7900-p3-promotion-server-c1-{off,on}.json`.
 The harness catalogue's stale default-off and failing-proof statements are
 corrected; this cleanup does not change runtime selection.
+
+### R0135/R0136 — Unselected dense integer-MMQ alternative
+
+W4A16 is the dense raw-IQ prefill default in `GGUF_IQ_DENSE_PREFILL_POLICY`
+on both HIP backends, including the cooperative variants on gfx1100. The
+former W4A16 promotion and four-quant integer-MMQ policy entries are obsolete;
+the strict-referenced comparison and default change are recorded in
+`worklog/entries/20260908T191409.775774Z-lhl-ud-w4a16-default-6c43c5.md`.
+
+The integer alternative
+`dense_mmq_i128_j128_k256_q8_1_ds4_prefill_bf16_bf16_out` remains registered
+but unselected. Its workspace is allocated only when a policy selects it.
+**Decision needed:** retain this explicit comparison alternative or remove it.
+The original default-change record deliberately kept it for comparisons;
+this sweep does not silently reverse that decision.
+**Clearing action:** if retired, remove its registrations and route-specific
+workspace/build plumbing, migrate the route-swap tests, then run
+`tests/test_gpu_gguf_iq_dense_mmq_route.py` and
+`tests/test_unit_gfx1151_iq_dense_policy_parity.py`. Preserve W4A16 and strict
+fallbacks. If retained, record its diagnostic owner and close the cleanup.
+The recorded integer-MMQ numerical failure is in
+`benchmarks/results/2026-09-09-zbook-ud-production-gate-reference.json`.
