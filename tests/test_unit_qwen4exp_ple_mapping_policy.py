@@ -75,6 +75,7 @@ def test_missing_mapping_capability_is_a_safe_fallback():
 
 
 def test_production_binder_selects_random_with_strict_and_explicit_rollback(monkeypatch):
+    from hipengine.execution_profiles import ExecutionProfile
     from hipengine.generation.qwen4_exp_profiles import (
         _bind, _production_selections, _strict_selections,
     )
@@ -85,12 +86,15 @@ def test_production_binder_selects_random_with_strict_and_explicit_rollback(monk
     calls = []
     table = SimpleNamespace(configure_mapping_access=lambda mode: calls.append(mode))
     generator = SimpleNamespace(_resident=SimpleNamespace(ple_table=table))
-    profile = SimpleNamespace(manifest_sha256="test", manifest={
-        "quant": "gguf_ud_q4_k_xl", "selections": [
-            {"layer": r.layer, "scope": r.scope, "selected_variant": r.selected_variant}
-            for r in _production_selections(recovery=True)
-        ],
-    })
+    profile = SimpleNamespace(
+        manifest_sha256="test", profile=ExecutionProfile.PRODUCTION,
+        fell_back_to_strict=False, manifest={
+            "quant": "gguf_ud_q4_k_xl", "selections": [
+                {"layer": r.layer, "scope": r.scope, "selected_variant": r.selected_variant}
+                for r in _production_selections(recovery=True)
+            ],
+        },
+    )
     _bind(generator, profile, production=True)
     # The UD production composition enables the direct F16 route, whose
     # binder owns the row-split GDN variant. The multi-column route remains

@@ -114,14 +114,18 @@ class SharedTree(unittest.TestCase):
     """Several agents share one checkout and merge each other's decisions."""
 
     def test_an_untracked_file_is_not_part_of_the_tree(self):
-        scratch = pathlib.Path(__file__).with_name("_untracked_scratch_probe.py")
+        with tempfile.NamedTemporaryFile(
+            prefix="_untracked_scratch_probe_", suffix=".py",
+            dir=pathlib.Path(__file__).parent, delete=False,
+        ) as handle:
+            scratch = pathlib.Path(handle.name)
         scratch.write_text("x = 1\n")
         try:
             core._tracked.cache_clear()
             listed = core.tree_files(scratch.parent)
             self.assertNotIn(scratch, listed)
             self.assertIn(pathlib.Path(__file__).resolve(), listed)
-            self.assertFalse(core.in_tree("audit/tests/_untracked_scratch_probe.py"))
+            self.assertFalse(core.in_tree(f"audit/tests/{scratch.name}"))
             self.assertTrue(core.in_tree("audit/tests"))
         finally:
             scratch.unlink()

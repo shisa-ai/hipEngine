@@ -4,6 +4,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from hipengine.kernels.hip_gfx1100.linear.f16_mirror import (
+    declare_f16_mirror,
+    invalidate_f16_mirror,
+)
 from hipengine.kernels.registry import KernelKey
 from hipengine.runtime import gguf_linear as linear
 
@@ -208,6 +212,54 @@ def test_pair_does_not_expand_single_use_dp5_publication(fake_pair):
                 assert loan.accepted == 2 and len(p.casts) == 1
             assert p.launch(True)
             assert len(p.casts) == 2
+
+
+def test_producer_f16_mirror_declines_the_loan_and_casts_nothing(fake_pair):
+    """A producer-supplied F16 image already serves both consumers.
+
+    The loan exists to share one conversion; when the producer wrote the
+    image there is no conversion to share, so the scope must not open and
+    neither launch may cast.
+    """
+
+    p = fake_pair
+    mirror = 7 << 32
+    declare_f16_mirror(X, ROWS * K, mirror)
+    try:
+        with p.session(), p.pair() as loan:
+            assert loan is None
+            assert p.launch() and p.launch(True)
+            assert not p.casts
+            assert [call[1][0] for call in p.calls] == [mirror, mirror]
+    finally:
+        invalidate_f16_mirror()
+
+
+def test_mirror_arriving_after_admission_retires_the_loan(fake_pair):
+    """A late image read cannot leave a half-open loan behind it.
+
+    The first consumer reads the image instead of the stage, so the pair never
+    advances. Retiring the loan there keeps the second consumer from treating
+    the first read as staging it may consume: once the image is gone it
+    converts its own bytes.
+    """
+
+    p = fake_pair
+    mirror = 7 << 32
+    with p.session(), p.pair() as loan:
+        assert loan is not None
+        declare_f16_mirror(X, ROWS * K, mirror)
+        try:
+            assert p.launch()
+            assert loan.valid is False and loan.accepted == 0
+            assert not p.casts and p.calls[-1][1][0] == mirror
+            invalidate_f16_mirror()
+            assert p.launch(True)
+            assert len(p.casts) == 1
+            assert p.calls[-1][1][0] == HALF
+        finally:
+            invalidate_f16_mirror()
+    assert loan.accepted == 0
 
 
 def test_failed_consumer_launch_never_commits_or_restores_pair(fake_pair, monkeypatch):

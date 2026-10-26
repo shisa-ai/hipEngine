@@ -2791,11 +2791,14 @@ the allocation repair. The observations and proposal below are historical.
 
 ## Qwen4Exp DP-2 two-consumer F16 ownership
 
-- `HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR` is a temporary, default-off opt-in for
-  one immediate ordered pair of Q8 dense-wide consumers. The existing bounded
+- `HIPENGINE_QWEN4_EXP_DENSE_F16_PAIR` is profile-selected for UD production
+  without strict fallback, for one immediate ordered pair of Q8 dense-wide
+  consumers. Other profiles keep the parent. The existing bounded
   runner workspace is borrowed once: the first consumer casts F32 to F16 and
   the second consumes the same bytes. It is not a persistent activation cache,
   adds no device allocation or synchronization, and does not change arithmetic.
+  A producer-supplied F16 mirror takes precedence and declines the staging
+  loan because both consumers already have their F16 input.
 - gfx1151 registry policy now admits only layers13–47, rows4096, and the
   measured `attn_qkv`→`attn_gate` and `shared_gate`→`shared_up` pairs. The
   complete native owner screen charges scope admission, normal dispatch,
@@ -2819,10 +2822,13 @@ the allocation repair. The observations and proposal below are historical.
   restore, eviction and c2 tests. Reopen only if raw-key memory becomes binding;
   then qualify a declared ring variant against full state/lifecycle gates.
   Evidence: `benchmarks/results/2026-10-06-qwen4exp-qa6-raw-key-ring/audit.json`.
-- **Remove or promote when:** a tracked-clean full-engine A/B qualifies the
-  narrowed rows4096-only policy against the unchanged parent. Do not promote
-  from the owner screen alone, and do not interpolate the p4096 result to
-  p1024/p512. Keep DP-5's single-use contract unchanged.
+- The tracked-clean narrowed-policy full-engine A/B is recorded in
+  `benchmarks/results/2026-10-06-qwen4exp-dp2-shared-cast/narrowed-engine-ab.json`;
+  its cross-arm output and within-arm determinism checks passed. The production
+  binder now selects this existing narrowed policy; DP-5's single-use contract
+  is unchanged. Remaining cleanup: replace the environment publication with
+  request-local profile state shared by the runner and pair context, then
+  remove both environment reads and the binder emission together.
 
 ## Qwen4Exp GDN checked-index production leaf
 

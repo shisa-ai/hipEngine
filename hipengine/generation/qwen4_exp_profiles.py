@@ -20,6 +20,7 @@ from hipengine.execution_profiles import (
 from hipengine.runtime.gguf_linear import (
     DENSE_WIDE_TAIL_VARIANT_ENV,
     NORM_F16_PUBLICATION_ENV,
+    WIDE_F16_PAIR_ENV,
 )
 
 QWEN4_EXP_MODEL = "qwen4_exp_gguf"
@@ -1008,6 +1009,22 @@ def _bind(
     # exact-grouped guards (`not production_grouped_moe`) keep layers 0-26 on
     # their separately manifested exact grouped owners.
     profile_env: dict[str, str] = {}
+    # DP-2 loans one F16 staging plane to two immediate consumers of the wide
+    # route. It selects no variant, so the manifest needs no new row: the wide
+    # route and its F16-input sibling are already dispatch-time owners of the
+    # lane this profile binds, and only the cast ownership between two launches
+    # changes. The switch therefore follows that lane - UD production, no strict
+    # fallback - while the gfx1151 `GGUF_DENSE_WIDE_F16_PAIR_POLICIES` entry
+    # keeps owning which rows, layers and ordered pairs may use it. Strict,
+    # fast, batch-invariant and Q4_K_M bind "0" and keep the parent, and every
+    # bind writes this key so a later one cannot inherit the lane it does not
+    # have.
+    dp2_pair_enabled = (
+        production
+        and resolved.profile is ExecutionProfile.PRODUCTION
+        and not resolved.fell_back_to_strict
+        and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
+    )
     for key, value in {
         "HIPENGINE_GGUF_WMMA_PREFILL": "0",
         # Publish the router producer the manifest declares, so the runner's
@@ -1159,6 +1176,7 @@ def _bind(
                 for row in resolved.manifest["selections"]
             ) else "0"
         ),
+        WIDE_F16_PAIR_ENV: "1" if dp2_pair_enabled else "0",
         "HIPENGINE_GGUF_Q8_0_WMMA_TILE_M": "64",
         "HIPENGINE_GGUF_Q8_0_WMMA_TILE_N": "32",
         "HIPENGINE_QWEN4_EXP_Q4_TILE_M": "16",

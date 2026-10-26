@@ -129,7 +129,7 @@ def main():
     check_host()
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file.resolve())
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
-    os.environ[linear.WIDE_F16_PAIR_ENV] = "0"
+    # The profile owns this switch now; each replay below sets it per arm.
     gate.register_gfx1151_kernels(replace=True)
     gate.register_qwen4_exp_gfx1151_profiles()
     profile = gate.resolve_runtime_profile(model=gate.QWEN4_EXP_MODEL, backend=gate.QWEN4_EXP_BACKEND,

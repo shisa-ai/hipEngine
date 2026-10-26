@@ -2790,8 +2790,8 @@
       "start_line": 2860,
       "end_line": 2894,
       "sha256": "4e06265beebe4ffdd48100bb1f8a16ec117150d97c9642b75f83c163ded2eaf9",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-production-bound",
+      "evidence": ["Bound narrowed pair policy in UD production; mirror-served inputs decline unnecessary loans, no-mirror public configuration consumes both members. Repaired latent final-key probe mismatch. CPU broad run plus focused temporary-fixture repair,10 GPU ownership checks and public two-arm engagement pass. Environment publication cleanup remains. worklog/entries/20261026T184121.228376Z-cleanup-refactor-r0103-4407b8.md."],
       "subitems": [
         {
           "line": 2862,

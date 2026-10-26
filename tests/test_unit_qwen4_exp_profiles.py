@@ -33,9 +33,15 @@ from hipengine.generation.qwen4_exp_profiles import (
     register_qwen4_exp_gfx1151_profiles,
 )
 from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+from hipengine.kernels.registry import KernelKey
+from hipengine.runtime import gguf_linear as linear
 from hipengine.runtime.qwen4_exp_runner import (
     _qwen4_exp_production_moe_prefill_enabled,
 )
+
+# DP-2's shared-cast loan. The profile binder publishes it; the gfx1151 pair
+# policy still owns which rows, layers and ordered pairs may use it.
+DP2_PAIR_ENV = linear.WIDE_F16_PAIR_ENV
 
 
 @pytest.fixture(autouse=True)
@@ -89,6 +95,7 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_DENSE_F16_GEMM",
         "HIPENGINE_QWEN4_EXP_QSA_WMMA",
         NORM_F16_PUBLICATION_ENV,
+        DP2_PAIR_ENV,
     )
     for name in environment_names:
         monkeypatch.delenv(name, raising=False)
@@ -669,6 +676,99 @@ def test_strict_leaves_the_q8_dense_prefill_scopes_empty() -> None:
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS"] == ""
     assert os.environ[NORM_F16_PUBLICATION_ENV] == "0"
+
+
+# DP-2 loans one F16 staging plane to two immediate consumers of the wide route.
+# Binding cannot widen the scope: admission still reads the backend policy.
+_DP2_K, _DP2_NA, _DP2_NB = 2560, 10240, 6144
+_DP2_KEY = KernelKey("hip_gfx1151", "linear", "gguf_q8_0", "dense_wide256_f16in_f32_f32_out")
+
+
+def _dp2_weight(role: str, ptr: int, n: int, *, layer: int = 24):
+    return SimpleNamespace(
+        backend=_DP2_KEY.backend,
+        spec=SimpleNamespace(
+            layout="raw_gguf",
+            quant_key=_DP2_KEY.quant,
+            slot_path=f"layers.{layer}.{role}",
+            source=SimpleNamespace(shape=(n, _DP2_K)),
+        ),
+        allocation=lambda _: SimpleNamespace(
+            tensor=SimpleNamespace(ptr=ptr),
+            buffer=SimpleNamespace(nbytes=n * (_DP2_K // 32) * 34),
+        ),
+    )
+
+
+def _dp2_pair_admitted(monkeypatch, *, layer: int = 24, rows: int = 4096,
+                       pair=("attn_qkv", "attn_gate", _DP2_NA, _DP2_NB)) -> bool:
+    """Open the scope the runner opens around one ordered projection pair."""
+
+    monkeypatch.setattr(linear, "_wide_f16_consumer_key", lambda *a, **kw: _DP2_KEY)
+    weight_a = _dp2_weight(pair[0], 5 << 32, pair[2], layer=layer)
+    weight_b = _dp2_weight(pair[1], 6 << 32, pair[3], layer=layer)
+    with linear.wide_f16_activation_session(
+        workspace_ptr=1 << 32, workspace_nbytes=4096 * _DP2_K * 2,
+    ):
+        with linear.wide_f16_activation_pair(
+            weight_a, weight_b, 2 << 32, 3 << 32, 4 << 32,
+            rows=rows, in_features=_DP2_K, out_features_a=pair[2],
+            out_features_b=pair[3], stream=7, runtime=object(),
+        ) as loan:
+            return loan is not None
+
+
+@pytest.mark.parametrize("profile,quant,enabled", [
+    (ExecutionProfile.PRODUCTION, "gguf_ud_q4_k_xl", "1"),
+    (ExecutionProfile.STRICT, "gguf_ud_q4_k_xl", "0"),
+    (ExecutionProfile.BATCH_INVARIANT, "gguf_ud_q4_k_xl", "0"),
+    (ExecutionProfile.PRODUCTION, "gguf_q4_k_m", "0"),
+    (ExecutionProfile.FAST, "gguf_ud_q4_k_xl", "0"),
+])
+def test_dp2_pair_is_bound_only_for_ud_production(profile, quant, enabled):
+    """The wide route's lane owns the loan; every other profile keeps parent."""
+
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    resolved = _resolve(profile, quant=quant)
+    resolved.binder(SimpleNamespace(runner=None), resolved)
+    assert os.environ[DP2_PAIR_ENV] == enabled
+
+
+def test_dp2_pair_rebinding_cannot_leak_between_profiles_or_quants():
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    for profile, quant, enabled in (
+        (ExecutionProfile.PRODUCTION, "gguf_ud_q4_k_xl", "1"),
+        (ExecutionProfile.FAST, "gguf_ud_q4_k_xl", "0"),
+        (ExecutionProfile.PRODUCTION, "gguf_ud_q4_k_xl", "1"),
+        (ExecutionProfile.STRICT, "gguf_ud_q4_k_xl", "0"),
+        (ExecutionProfile.PRODUCTION, "gguf_q4_k_m", "0"),
+        (ExecutionProfile.PRODUCTION, "gguf_ud_q4_k_xl", "1"),
+    ):
+        resolved = _resolve(profile, quant=quant)
+        resolved.binder(SimpleNamespace(runner=None), resolved)
+        assert os.environ[DP2_PAIR_ENV] == enabled
+
+
+def test_dp2_pair_binding_reaches_the_route_only_for_eligible_pairs(monkeypatch):
+    """Binding opens the loan for the measured pair and nothing else."""
+
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    production = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
+    production.binder(SimpleNamespace(runner=None), production)
+
+    assert _dp2_pair_admitted(monkeypatch)
+    assert _dp2_pair_admitted(monkeypatch, layer=13)
+    assert _dp2_pair_admitted(monkeypatch, pair=("shared_gate", "shared_up", 640, 640))
+    assert not _dp2_pair_admitted(monkeypatch, layer=12)
+    assert not _dp2_pair_admitted(monkeypatch, rows=1024)
+    assert not _dp2_pair_admitted(monkeypatch, pair=("shared_gate", "shared_down", 640, 2560))
+
+    strict = _resolve(ExecutionProfile.STRICT, quant="gguf_ud_q4_k_xl")
+    strict.binder(SimpleNamespace(runner=None), strict)
+    assert not _dp2_pair_admitted(monkeypatch)
 
 
 def test_the_shipped_default_routes_the_certified_window_to_the_wide_kernel() -> None:

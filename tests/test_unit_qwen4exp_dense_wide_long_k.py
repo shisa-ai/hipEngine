@@ -86,3 +86,65 @@ def test_qwen4exp_short_rows_stay_exact_without_profile_selector(monkeypatch):
     )
     assert selected.key.variant == "prefill_f32_f32_out"
 
+
+
+def test_pair_probe_and_staged_launch_resolve_the_same_long_k_sibling(monkeypatch):
+    """The cold probe must return the key its own launch will compute.
+
+    ``_wide_f16_consumer_key`` admits a loan by predicting the launch's key;
+    the staged launcher then compares that prediction against the key it
+    resolved. A probe that stops before the long-K rewrite predicts the parent
+    and can never match, so a policy-qualified pair would silently never
+    engage.
+    """
+
+    from types import SimpleNamespace
+
+    from hipengine.runtime.gguf_linear import GGUFLinearDispatch
+
+    weight = SimpleNamespace(
+        spec=SimpleNamespace(slot_path="layers.24.attn_qkv"),
+        allocation=lambda _: SimpleNamespace(
+            tensor=SimpleNamespace(ptr=5 << 32),
+            buffer=SimpleNamespace(nbytes=1 << 20),
+        ),
+    )
+    monkeypatch.setattr(
+        linear, "resolve_gguf_linear_dispatch",
+        lambda *a, **kw: GGUFLinearDispatch(_key("dense_wide256_f32_f32_out"), "raw"),
+    )
+    for name in ("_q8_mmq_prefill_dispatch", "_raw_k_prefill_rowbatch_dispatch",
+                 "_q8_dense_wide_dispatch", "_raw_k_staged_f32_dispatch"):
+        monkeypatch.setattr(linear, name, lambda dispatch, **kw: dispatch)
+    monkeypatch.setattr(linear, "is_registered", lambda key: True)
+    monkeypatch.setattr(
+        "hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dense_wide.f32_to_f16",
+        lambda *a, **kw: None,
+    )
+    launched = []
+    monkeypatch.setattr(
+        linear, "resolve",
+        lambda **kw: launched.append(kw) or (lambda *a, **k: None),
+    )
+
+    def launch():
+        return linear._launch_dense_wide_f16_staged(
+            None, weight, 2 << 32, 3 << 32, 4096, 6144, 2560, {"stream": 7},
+            backend="hip_gfx1100", quant="gguf_q8_0", layer="linear",
+            variant="dense_wide256_f32_f32_out", runtime=object(),
+        )
+
+    for env, expected in ((None, LONG_K), ("0", PARENT)):
+        if env is None:
+            monkeypatch.delenv("HIPENGINE_GGUF_Q8_DENSE_WIDE_LONG_K", raising=False)
+        else:
+            monkeypatch.setenv("HIPENGINE_GGUF_Q8_DENSE_WIDE_LONG_K", env)
+        launched.clear()
+        with linear.wide_f16_activation_session(
+            workspace_ptr=1 << 32, workspace_nbytes=4096 * 6144 * 2,
+        ):
+            assert launch()
+        probe = linear._wide_f16_consumer_key(
+            weight, rows=4096, in_features=6144, out_features=2560)
+        assert probe.variant == expected
+        assert launched[-1]["variant"] == probe.variant

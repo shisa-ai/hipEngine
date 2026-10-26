@@ -838,7 +838,7 @@ def _multi_turn_dataset(path: Path) -> Path:
     return path
 
 
-def test_multi_turn_expansion_makes_every_turn_extend_the_previous(monkeypatch) -> None:
+def test_multi_turn_expansion_makes_every_turn_extend_the_previous(monkeypatch, tmp_path) -> None:
     """A multi-turn load is a prefix chain, which is what a cache can reuse.
 
     Turn ``t`` must open with turn ``t - 1``'s prompt verbatim, or a prefix
@@ -846,7 +846,7 @@ def test_multi_turn_expansion_makes_every_turn_extend_the_previous(monkeypatch) 
     """
 
     module = _module()
-    dataset = _multi_turn_dataset(Path("/tmp/sharegpt-recorder-multi-turn.json"))
+    dataset = _multi_turn_dataset(tmp_path / "sharegpt-recorder-multi-turn.json")
     monkeypatch.setattr(
         module,
         "_tokenizer",

@@ -867,9 +867,15 @@ def wide_f16_activation_pair(
         raise ValueError("pair requires the workspace's owning context")
     _invalidate_wide_f16_publication()
     workspace = wide_f16_activation_workspace()
+    count = int(rows) * int(in_features)
+    # A live producer image for exactly this source already supplies the F16
+    # operand to both consumers, so the loan would share no conversion. Decline
+    # it here instead of opening a scope that stages nothing; the pair still
+    # serves every source that carries no image.
     if (os.environ.get(WIDE_F16_PAIR_ENV, "0").strip().lower() not in {"1", "true", "yes", "on"}
             or workspace is None or not wide_f16_activation_enabled()
-            or workspace.nbytes < int(rows) * int(in_features) * 2):
+            or workspace.nbytes < count * 2
+            or lookup_f16_mirror(source_ptr, count)):
         yield None
         return
     consumers = []
@@ -896,7 +902,6 @@ def wide_f16_activation_pair(
             or consumers[0].key != consumers[1].key):
         yield None
         return
-    count = int(rows) * int(in_features)
     ranges = [(int(source_ptr), count * 4), (int(out_a_ptr), int(rows) * int(out_features_a) * 4),
               (int(out_b_ptr), int(rows) * int(out_features_b) * 4)]
     for weight in (weight_a, weight_b):
@@ -1076,7 +1081,10 @@ def _launch_dense_wide_f16_staged(
     mirror_ptr = lookup_f16_mirror(x_ptr, count)
     if mirror_ptr:
         # A producer already wrote half(x) for this exact buffer; read it in
-        # place of the conversion. Neither the stage nor a loan is touched.
+        # place of the conversion. Nothing is staged, so any loan opened for
+        # this launch is retired rather than left half-consumed: its second
+        # consumer must convert its own bytes, never reuse this read.
+        _invalidate_wide_f16_publication()
         _LAUNCH_ABI["raw"](
             sibling, weight, mirror_ptr, out_ptr, rows, in_features, out_features,
             stage_kwargs,
@@ -1117,7 +1125,13 @@ def wide_f16_activation_publication_enabled() -> bool:
 def _wide_f16_consumer_key(
     weight: GGUFDeviceWeight, *, rows: int, in_features: int, out_features: int,
 ) -> KernelKey | None:
-    """Cold pair-admission probe; the live launcher rechecks the resolved key."""
+    """Cold pair-admission probe; the live launcher rechecks the resolved key.
+
+    The result must be the key the launch will compare against, so it carries
+    every rewrite the staged launcher applies -- the bounded tail leaf and the
+    long-K leaf -- or a policy-qualified pair would predict the parent and
+    silently never engage.
+    """
     dispatch = resolve_gguf_linear_dispatch(weight, activation_dtype=GGUF_ACTIVATION_F32,
         output_dtype=GGUF_OUTPUT_F32, rows=rows)
     dispatch = _q8_mmq_prefill_dispatch(dispatch, rows=rows, in_features=in_features,
@@ -1136,7 +1150,10 @@ def _wide_f16_consumer_key(
         _ensure_linear_kernel_registered(key)
     if not is_registered(key):
         return None
-    return _dense_wide_f16_tail_key(key, rows=rows, in_features=in_features, out_features=out_features)
+    key = _dense_wide_f16_tail_key(key, rows=rows, in_features=in_features, out_features=out_features)
+    return _dense_wide_f16_long_k_key(
+        key, rows=rows, in_features=in_features, out_features=out_features,
+    )
 
 
 def wide_f16_publication_keys(
@@ -1183,6 +1200,9 @@ def wide_f16_publication_keys(
     if not is_registered(key):
         return None
     key = _dense_wide_f16_tail_key(key, rows=rows, in_features=in_features, out_features=out_features)
+    key = _dense_wide_f16_long_k_key(
+        key, rows=rows, in_features=in_features, out_features=out_features,
+    )
     producer = KernelKey(dispatch.key.backend, *policy["producer"])
     if not is_registered(producer):
         return None
