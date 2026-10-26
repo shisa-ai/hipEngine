@@ -61,6 +61,13 @@ DMS_SYNCHRONOUS_ARRAY_UPLOAD_MODULES = (
     "runtime/dms_prefill_cache",
 )
 
+GGUF_RUNTIME_SYNCHRONOUS_ARRAY_UPLOAD_MODULES = (
+    "runtime/gguf_decode_graph",
+    "runtime/gguf_packed_decode_graph",
+    "runtime/gguf_native_spec_cycle",
+    "runtime/native_sampler",
+)
+
 
 @pytest.mark.parametrize("module", [
     "runtime/evie", "runtime/timesfm_decode", "runtime/timesfm3_decode",
@@ -391,6 +398,49 @@ def test_dms_synchronous_array_uploads_use_the_owning_helper(module):
             else next((kw.value for kw in node.keywords if kw.arg == "src"), None)
         )
         if source is not None and _is_named_host_array_pointer(source):
+            hazards.append((node.lineno, "runtime.memcpy"))
+    assert not hazards, f"{path.name}: use copy_host_array_to_device at {hazards}"
+
+
+@pytest.mark.parametrize("module", GGUF_RUNTIME_SYNCHRONOUS_ARRAY_UPLOAD_MODULES)
+def test_gguf_runtime_synchronous_array_uploads_use_the_owning_helper(module):
+    """GGUF graph and sampler H2D arrays must retain their owner through the copy.
+
+    This is a bounded syntax guard over the GGUF decode graph, packed decode
+    graph, native speculative cycle, and native sampler modules, not a proof of
+    arbitrary pointer lifetimes. Asynchronous uploads, raw pointer uploads, and
+    D2H/D2D copies are outside this guard.
+    """
+    path = Path(__file__).parents[1] / "hipengine" / f"{module}.py"
+    tree = ast.parse(path.read_text())
+    hazards = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Name) and node.func.id == "copy_host_to_device":
+            source = (
+                node.args[1]
+                if len(node.args) > 1
+                else next((kw.value for kw in node.keywords if kw.arg == "host_ptr"), None)
+            )
+            if source is not None and _is_array_pointer_expression(source):
+                hazards.append((node.lineno, "copy_host_to_device"))
+            continue
+        if not (isinstance(node.func, ast.Attribute) and node.func.attr == "memcpy"):
+            continue
+        kind = (
+            node.args[3]
+            if len(node.args) > 3
+            else next((kw.value for kw in node.keywords if kw.arg == "kind"), None)
+        )
+        if not (isinstance(kind, ast.Attribute) and kind.attr == "HOST_TO_DEVICE"):
+            continue
+        source = (
+            node.args[1]
+            if len(node.args) > 1
+            else next((kw.value for kw in node.keywords if kw.arg == "src"), None)
+        )
+        if source is not None and _is_array_pointer_expression(source):
             hazards.append((node.lineno, "runtime.memcpy"))
     assert not hazards, f"{path.name}: use copy_host_array_to_device at {hazards}"
 
@@ -1380,3 +1430,392 @@ def test_dms_prefill_cache_write_prefix_uploads_owning_array(monkeypatch):
         mod.write_prefix(buffer, np.zeros(33, dtype=np.uint8))
     assert len(uploads) == 1
     assert legacy == []
+
+
+def _capture_uploads(monkeypatch, module):
+    """Install owning/legacy upload recorders on ``module``."""
+
+    uploads = []
+    legacy = []
+
+    def upload(buffer, array, nbytes=None, *, runtime=None):
+        uploads.append((buffer, array, nbytes, runtime))
+
+    def old_upload(*args, **kwargs):
+        legacy.append((args, kwargs))
+
+    monkeypatch.setattr(module, "copy_host_array_to_device", upload, raising=False)
+    monkeypatch.setattr(module, "copy_host_to_device", old_upload, raising=False)
+    return uploads, legacy
+
+
+def _fake_malloc(monkeypatch, module, base_ptr=0x7000):
+    mallocs = []
+
+    def fake_malloc(nbytes, *, runtime=None):
+        buffer = memory.DeviceBuffer(base_ptr + 0x10 * len(mallocs), int(nbytes))
+        mallocs.append(buffer)
+        return buffer
+
+    monkeypatch.setattr(module, "malloc", fake_malloc)
+    monkeypatch.setattr(module, "free", lambda *args, **kwargs: None)
+    return mallocs
+
+
+def test_native_sampler_named_upload_uses_owning_contiguous_array(monkeypatch):
+    from hipengine.runtime import native_sampler as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    mallocs = _fake_malloc(monkeypatch, mod)
+    workspace = object.__new__(mod.NativeSamplerWorkspace)
+    workspace.runtime = object()
+    workspace._buffers = []
+    workspace._named_buffers = {}
+    workspace._cached_uploads = {}
+    source = np.arange(8, dtype=np.int32)[::2]
+
+    buffer = workspace._upload("min_tokens", source)
+
+    assert legacy == []
+    assert len(uploads) == 1
+    call_buffer, array, nbytes, call_runtime = uploads[0]
+    assert call_buffer is buffer is mallocs[0]
+    assert array.flags.c_contiguous
+    assert array.tolist() == [0, 2, 4, 6]
+    assert nbytes == 16
+    assert call_runtime is workspace.runtime
+
+
+def test_native_sampler_cached_upload_uses_owning_contiguous_array(monkeypatch):
+    from hipengine.runtime import native_sampler as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    mallocs = _fake_malloc(monkeypatch, mod)
+    workspace = object.__new__(mod.NativeSamplerWorkspace)
+    workspace.runtime = object()
+    workspace._buffers = []
+    workspace._named_buffers = {}
+    workspace._cached_uploads = {}
+    source = np.arange(8, dtype=np.int32)[::2]
+
+    first = workspace._cached_upload(("bias",), source)
+    second = workspace._cached_upload(("bias",), source)
+
+    assert second is first
+    assert legacy == []
+    assert len(uploads) == 1
+    call_buffer, array, nbytes, call_runtime = uploads[0]
+    assert call_buffer is first is mallocs[0]
+    assert array.flags.c_contiguous
+    assert array.tolist() == [0, 2, 4, 6]
+    assert nbytes == 16
+    assert call_runtime is workspace.runtime
+
+
+def test_gguf_native_spec_cycle_copy_array_uploads_owning_contiguous_array(
+    monkeypatch,
+):
+    from hipengine.runtime import gguf_native_spec_cycle as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    runtime = object()
+    tensor = SimpleNamespace(ptr=0x4000, numel=4, dtype=SimpleNamespace(itemsize=4))
+    values = np.arange(8, dtype=np.int32)[::2]
+
+    mod._copy_array_to_tensor(tensor, values, runtime=runtime)
+
+    assert legacy == []
+    assert len(uploads) == 1
+    call_buffer, array, nbytes, call_runtime = uploads[0]
+    assert (call_buffer.ptr, call_buffer.nbytes) == (0x4000, 16)
+    assert array.flags.c_contiguous
+    assert array.tolist() == [0, 2, 4, 6]
+    assert nbytes == 16
+    assert call_runtime is runtime
+
+    with pytest.raises(ValueError, match="does not match tensor capacity"):
+        mod._copy_array_to_tensor(tensor, np.zeros(3, dtype=np.int32), runtime=runtime)
+    assert len(uploads) == 1
+    assert legacy == []
+
+
+def _fake_decode_graph_session(runtime):
+    def buffer(ptr):
+        return memory.DeviceBuffer(ptr, 16)
+
+    scratch = SimpleNamespace(
+        block_size=256,
+        max_positions=768,
+        position_buf=buffer(1),
+        context_buf=buffer(2),
+        hidden_seed_fp32=buffer(3),
+        norm=buffer(4),
+        attn_out=buffer(5),
+        layer_conv_states=(buffer(6), None),
+        layer_recurrent_states=(buffer(7), None),
+        full_key_caches=(None, buffer(8)),
+        full_value_caches=(None, buffer(9)),
+        full_k_scale_caches=(None, buffer(10)),
+        full_v_scale_caches=(None, buffer(11)),
+    )
+    weight = SimpleNamespace(
+        spec=SimpleNamespace(
+            slot_path="layers.0.attn_q",
+            quant_key="gguf_q8_0_t16_v1",
+            source=SimpleNamespace(shape=(2048, 2048)),
+        ),
+        allocations={"t16": SimpleNamespace(tensor=buffer(200))},
+    )
+    from hipengine.core.dtype import DType
+    import contextlib
+
+    return SimpleNamespace(
+        backend="hip_gfx1151",
+        model_path="/models/example.gguf",
+        position=4,
+        runtime=runtime,
+        runner=SimpleNamespace(
+            target_arch="gfx1151",
+            hidden_size=2048,
+            vocab_size=248320,
+            weights=SimpleNamespace(
+                weights=[weight],
+                config=SimpleNamespace(
+                    layer_types=("linear_attention", "full_attention"),
+                    context_length=4096,
+                ),
+            ),
+        ),
+        scratch=scratch,
+        kv_storage_dtype=DType.BF16,
+        kv_storage_layout="uniform",
+        kv_scale_dtype=DType.FP16,
+        kv_scale_granularity="per_token_head",
+        use_wmma_prefill=True,
+        use_gemv_decode=True,
+        host_token_embedding_enabled=False,
+        _hidden_a=buffer(100),
+        _hidden_b=buffer(101),
+        _token_buf=buffer(102),
+        _logits_buf=buffer(103),
+        _lm_block_values=buffer(104),
+        _lm_block_indices=buffer(105),
+        _lm_out_index=buffer(106),
+        _lm_out_value=buffer(107),
+        _lm_head_threads=128,
+        _lm_head_stage1_blocks=970,
+        _decode_graphs=[],
+        _set_full_attention_position_device=lambda position, *, stream: None,
+        _iq_dense_mmq_context=contextlib.nullcontext,
+    )
+
+
+def test_gguf_decode_graph_record_index_zero_upload_uses_owning_array(monkeypatch):
+    import contextlib
+
+    from hipengine.runtime import gguf_decode_graph as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    mallocs = _fake_malloc(monkeypatch, mod)
+    monkeypatch.setattr(mod, "_enqueue_decode_step", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        mod,
+        "gemv_decode_session",
+        lambda *args, **kwargs: contextlib.nullcontext(),
+    )
+    monkeypatch.setattr(
+        mod,
+        "create_graph_submission",
+        lambda **kwargs: SimpleNamespace(graph_exec=0x55, close=lambda: None),
+    )
+    runtime = SimpleNamespace(
+        stream_create=lambda: 0x31,
+        stream_synchronize=lambda stream: None,
+        stream_begin_capture=lambda stream: None,
+        stream_end_capture=lambda stream: 0x77,
+        stream_destroy=lambda stream: None,
+        graph_destroy=lambda graph: None,
+        memset=lambda *args, **kwargs: None,
+    )
+    session = _fake_decode_graph_session(runtime)
+
+    graph = mod.capture_qwen35_gguf_decode_graph(
+        session,
+        position=4,
+        steps_per_replay=1,
+        max_replay_steps=4,
+        record_steps=1,
+    )
+
+    assert graph.generated_index is mallocs[1]
+    assert legacy == []
+    assert len(uploads) == 1
+    call_buffer, array, nbytes, call_runtime = uploads[0]
+    assert call_buffer is mallocs[1]
+    assert (call_buffer.ptr, call_buffer.nbytes) == (mallocs[1].ptr, 8)
+    # The pointer-only default copied the destination size; keep it explicit.
+    assert array.dtype == np.int64
+    assert array.tolist() == [0]
+    assert nbytes == 8
+    assert call_runtime is runtime
+
+
+def test_gguf_packed_decode_graph_capture_uploads_owning_inputs_in_order(
+    monkeypatch,
+):
+    from hipengine.core.dtype import DType
+    from hipengine.runtime import gguf_packed_decode_graph as mod
+
+    uploads, legacy = _capture_uploads(monkeypatch, mod)
+    mallocs = _fake_malloc(monkeypatch, mod)
+    monkeypatch.setattr(mod, "replace", lambda obj, **kwargs: obj)
+    monkeypatch.setattr(
+        mod,
+        "_singleton_layout",
+        lambda *args, **kwargs: SimpleNamespace(blocks_per_slot=1),
+    )
+    monkeypatch.setattr(
+        mod,
+        "_packed_graph_buffer_ptrs",
+        lambda *args, **kwargs: (0x3000,),
+    )
+    monkeypatch.setattr(
+        mod,
+        "_resolve_packed_graph_kernels",
+        lambda *args, **kwargs: (
+            lambda *a, **k: None,
+            lambda *a, **k: None,
+            lambda *a, **k: None,
+        ),
+    )
+    monkeypatch.setattr(
+        mod,
+        "build_qwen35_gguf_packed_decode_graph_key",
+        lambda *args, **kwargs: SimpleNamespace(
+            as_dict=lambda: {"stub": True},
+            key_sha256="stub",
+        ),
+    )
+    monkeypatch.setattr(
+        mod,
+        "build_packed_decode_execution_manifest",
+        lambda **kwargs: {"layer_families": {"sampler": {}}},
+    )
+    monkeypatch.setattr(
+        mod,
+        "create_graph_submission",
+        lambda **kwargs: SimpleNamespace(
+            graph_exec=0x55,
+            close=lambda: None,
+            provenance=lambda: {"stub": True},
+        ),
+    )
+    import hipengine.runtime.qwen35_gguf_runner as runner_mod
+
+    monkeypatch.setattr(
+        runner_mod,
+        "_rebind_packed_verify_layout_pages",
+        lambda layout, packed_state: layout,
+        raising=False,
+    )
+    runtime = SimpleNamespace(
+        stream_create=lambda: 0x31,
+        stream_synchronize=lambda stream: None,
+        stream_begin_capture=lambda stream: None,
+        stream_end_capture=lambda stream: 0x77,
+        stream_destroy=lambda stream: None,
+        graph_destroy=lambda graph: None,
+        memset=lambda *args, **kwargs: None,
+    )
+
+    def buffer(ptr):
+        return memory.DeviceBuffer(ptr, 64)
+
+    packed_scratch = SimpleNamespace(
+        block_size=256,
+        max_positions=1024,
+        block_table=buffer(0x401),
+        positions=buffer(0x402),
+        context_counts=buffer(0x403),
+        cu_q=buffer(0x404),
+        cu_k=buffer(0x405),
+        atomic=buffer(0x406),
+        gdn_cu_seqlens=buffer(0x407),
+        gdn_state_indices=buffer(0x408),
+        append_spans=SimpleNamespace(max_live_count=0),
+        prefill_spans=SimpleNamespace(max_live_count=0),
+        buffers=(),
+    )
+    owner = SimpleNamespace(
+        runner=SimpleNamespace(
+            backend="hip_gfx1100",
+            target_arch="gfx1100",
+            hidden_size=64,
+            vocab_size=128,
+            _packed_decode_metadata_kernel=lambda: (lambda *a, **k: None),
+            weights=SimpleNamespace(
+                weights=(),
+                config=SimpleNamespace(
+                    layer_types=("full_attention",),
+                    is_moe=False,
+                    expert_used_count=0,
+                ),
+            ),
+        ),
+        scratch=SimpleNamespace(),
+        runtime=runtime,
+        host_token_embedding_enabled=False,
+        kv_storage_dtype=DType.BF16,
+        use_expert_sidecar=False,
+        _packed_decode_state_dirty=False,
+        _prefill_token_buf=memory.DeviceBuffer(0x1000, 16),
+        _bulk_prefill_scratch=object(),
+        _prefill_hidden_a=None,
+        _prefill_hidden_b=None,
+        _verify_logits_buf=None,
+        _verify_lm_block_values=None,
+        _verify_lm_block_indices_i32=None,
+        _verify_lm_out_indices_i32=memory.DeviceBuffer(0x2000, 8),
+        _verify_lm_out_values=None,
+        _runtime_state_library=object(),
+        _last_packed_lm_head_decode_path="stub",
+        _last_packed_sampler_decode_path="stub",
+        _decode_graphs=[],
+        _normalize_layer_output_capture=lambda value: tuple(value),
+        _sync_packed_decode_initial_state=lambda *args, **kwargs: (),
+        _ensure_verify_lm_head_buffers=lambda *args, **kwargs: None,
+        _enqueue_packed_decode_model_step=lambda **kwargs: ({"strict"}, {"strict"}),
+    )
+    owner._ensure_packed_verify_workspace = lambda **kwargs: (
+        SimpleNamespace(buffers=(), layer_conv_states=(), layer_recurrent_states=()),
+        SimpleNamespace(for_packed_verify_layout=lambda *a, **k: packed_scratch),
+    )
+    sessions = (
+        SimpleNamespace(position=4, runner=owner.runner, scratch=owner.scratch),
+        SimpleNamespace(position=8, runner=owner.runner, scratch=owner.scratch),
+    )
+
+    graph = mod.capture_qwen35_gguf_packed_decode_graph(
+        owner,
+        token_ids=(11, 22),
+        sessions=sessions,
+        steps_per_replay=4,
+        max_replay_steps=4,
+        record_steps=4,
+    )
+
+    assert graph.generated_tokens is mallocs[1]
+    assert graph.record_index is mallocs[2]
+    assert graph.active_mask_device is mallocs[0]
+    assert legacy == []
+    assert [(call[0].ptr, call[2], call[3]) for call in uploads] == [
+        (0x1000, 16, runtime),
+        (mallocs[0].ptr, 2, runtime),
+        (mallocs[2].ptr, 8, runtime),
+    ]
+    token_array, mask_array, zero = (call[1] for call in uploads)
+    assert token_array.dtype == np.int64
+    assert token_array.tolist() == [11, 22]
+    assert mask_array.dtype == np.uint8
+    assert mask_array.tolist() == [1, 1]
+    assert zero.tolist() == [0]

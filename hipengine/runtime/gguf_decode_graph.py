@@ -24,7 +24,7 @@ from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
-    copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -417,7 +417,12 @@ def capture_qwen35_gguf_decode_graph(
             )
             runtime.memset(generated_hidden_seeds.ptr, 0, generated_hidden_seeds.nbytes)
         zero = np.zeros((1,), dtype=np.int64)
-        copy_host_to_device(generated_index, host_array_ptr(zero), runtime=runtime)
+        copy_host_array_to_device(
+            generated_index,
+            zero,
+            generated_index.nbytes,
+            runtime=runtime,
+        )
 
     graph = 0
     stream = 0

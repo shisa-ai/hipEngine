@@ -26,7 +26,7 @@ from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
-    copy_host_to_device,
+    copy_host_array_to_device,
     host_array_ptr,
     malloc,
 )
@@ -309,9 +309,9 @@ def _copy_array_to_tensor(tensor: Tensor, values: np.ndarray, *, runtime) -> Non
         raise ValueError(
             f"host metadata byte size {array.nbytes} does not match tensor capacity {expected_nbytes}"
         )
-    copy_host_to_device(
+    copy_host_array_to_device(
         _tensor_buffer(tensor),
-        host_array_ptr(array),
+        array,
         array.nbytes,
         runtime=runtime,
     )

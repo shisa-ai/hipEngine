@@ -15,7 +15,7 @@ from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
-    copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -503,17 +503,17 @@ def capture_qwen35_gguf_packed_decode_graph(
         )
         owner._ensure_verify_lm_head_buffers(rows, runtime=runtime)
         token_array = np.ascontiguousarray(physical_tokens, dtype=np.int64)
-        copy_host_to_device(
+        copy_host_array_to_device(
             owner._prefill_token_buf,
-            host_array_ptr(token_array),
+            token_array,
             token_array.nbytes,
             runtime=runtime,
         )
         mask_array = np.ascontiguousarray(mask, dtype=np.uint8)
         active_mask_device = malloc(mask_array.nbytes, runtime=runtime)
-        copy_host_to_device(
+        copy_host_array_to_device(
             active_mask_device,
-            host_array_ptr(mask_array),
+            mask_array,
             mask_array.nbytes,
             runtime=runtime,
         )
@@ -525,9 +525,9 @@ def capture_qwen35_gguf_packed_decode_graph(
             record_index = malloc(DType.INT64.itemsize, runtime=runtime)
             runtime.memset(generated_tokens.ptr, 0xFF, generated_tokens.nbytes)
             zero = np.zeros((1,), dtype=np.int64)
-            copy_host_to_device(
+            copy_host_array_to_device(
                 record_index,
-                host_array_ptr(zero),
+                zero,
                 zero.nbytes,
                 runtime=runtime,
             )

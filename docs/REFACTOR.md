@@ -2888,7 +2888,9 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   TimesFM decode named-local uploads also use the owning helper, preserving
   explicit copy lengths into padded allocations. DMS payload-store, recurrent
   prefix and cold-prefill cache uploads retain their arrays, preserving restore
-  offsets, explicit byte counts and copy order.
+  offsets, explicit byte counts and copy order. GGUF decode/packed graph capture,
+  native speculative metadata and native sampler arrays also use the owning
+  helper; graph record-index copies preserve the destination-sized byte count.
 - Remaining cleanup: named-local array uploads still use the raw-address
   `copy_host_to_device` API in other paths. Named locals are safe through a
   synchronous copy, but future edits must not replace them with temporary

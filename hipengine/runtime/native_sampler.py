@@ -15,7 +15,7 @@ from hipengine.core.hip import HipRuntime, MemcpyKind
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
-    copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -729,9 +729,9 @@ class NativeSamplerWorkspace:
     def _upload(self, name: str, array: np.ndarray) -> DeviceBuffer:
         host = np.ascontiguousarray(array)
         buffer = self._buffer(name, int(host.nbytes))
-        copy_host_to_device(
+        copy_host_array_to_device(
             buffer,
-            host_array_ptr(host),
+            host,
             int(host.nbytes),
             runtime=self.runtime,
         )
@@ -752,9 +752,9 @@ class NativeSamplerWorkspace:
         buffer = self._cached_uploads.get(key)
         if buffer is None:
             buffer = self._alloc(int(host.nbytes))
-            copy_host_to_device(
+            copy_host_array_to_device(
                 buffer,
-                host_array_ptr(host),
+                host,
                 int(host.nbytes),
                 runtime=self.runtime,
             )
