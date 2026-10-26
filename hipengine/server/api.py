@@ -18450,36 +18450,77 @@ def _mtp_counted_int(value: Any) -> int:
         return 0
 
 
+def _mtp_draft_counts(
+    detail: GenerationOutput,
+) -> tuple[int | None, int | None, int | None] | None:
+    """Return one output's accepted, generated, and cycle counts.
+
+    The per-request ``diagnostics.specdec2_mtp2`` block is authoritative.
+    Legacy providers still publish counts directly in provider diagnostics
+    (the Gemma assistant head and qwen4_exp) or as scalar ``mtp_*`` timing
+    fields (``speculative_mtp_server``), so those remain fallbacks.
+    """
+
+    block = _mtp_execution_accounting(detail)
+    if block is not None:
+        return (
+            _mtp_counted_int(block.get("accepted_draft_tokens")),
+            _mtp_counted_int(block.get("generated_draft_tokens")),
+            _mtp_counted_int(block.get("cycles")),
+        )
+    telemetry = getattr(detail, "telemetry", None)
+    diagnostics = (
+        telemetry.get("diagnostics")
+        if isinstance(telemetry, Mapping)
+        else getattr(telemetry, "diagnostics", None)
+    )
+    if isinstance(diagnostics, Mapping) and diagnostics.get("speculative_provider"):
+        provider_cycles = diagnostics.get("cycles")
+        if isinstance(provider_cycles, Sequence) and not isinstance(
+            provider_cycles, (str, bytes, bytearray)
+        ):
+            cycle_count = len(provider_cycles)
+        else:
+            cycle_count = _mtp_counted_int(diagnostics.get("cycle_count"))
+        return (
+            _mtp_counted_int(diagnostics.get("accepted_draft_tokens")),
+            _mtp_counted_int(diagnostics.get("proposed_draft_tokens")),
+            cycle_count,
+        )
+    timing, _, timing_owner = _mtp_telemetry_parts(detail)
+    if timing is None or not timing_owner:
+        return None
+    accepted = timing.get("mtp_accepted_draft_tokens")
+    generated = timing.get("mtp_generated_draft_tokens")
+    cycles = timing.get("mtp_cycles_count")
+    if accepted is None and generated is None and cycles is None:
+        return None
+    return (
+        None if accepted is None else _mtp_counted_int(accepted),
+        None if generated is None else _mtp_counted_int(generated),
+        None if cycles is None else _mtp_counted_int(cycles),
+    )
+
+
 def _mtp_accepted_rejected_counts(
     details: Sequence[GenerationOutput] | None,
 ) -> tuple[int, int] | None:
     """Sum owned MTP draft acceptance from generation telemetry.
 
     Mirrors vLLM's ``usage.completion_tokens_details.accepted_prediction_tokens``
-    and ``rejected_prediction_tokens`` fields while honoring batch timing
-    ownership so copied non-owner payloads are not counted more than once.
-    Returns ``None`` when no owned payload carries MTP telemetry.
+    and ``rejected_prediction_tokens`` fields. The per-request execution block
+    is read first, then legacy provider diagnostics and scalar timing. Returns
+    ``None`` when no owned payload carries MTP telemetry.
     """
 
     accepted = 0
     generated = 0
     found = False
     for detail in (details or ()):
-        timing, _, timing_owner = _mtp_telemetry_parts(detail)
-        if timing is not None and not timing_owner:
+        counts = _mtp_draft_counts(detail)
+        if counts is None:
             continue
-        row_accepted = None if timing is None else timing.get("mtp_accepted_draft_tokens")
-        row_generated = None if timing is None else timing.get("mtp_generated_draft_tokens")
-        if row_accepted is None and row_generated is None:
-            telemetry = getattr(detail, "telemetry", None)
-            diagnostics = (
-                telemetry.get("diagnostics")
-                if isinstance(telemetry, Mapping)
-                else getattr(telemetry, "diagnostics", None)
-            )
-            if isinstance(diagnostics, Mapping) and diagnostics.get("speculative_provider"):
-                row_accepted = diagnostics.get("accepted_draft_tokens", 0)
-                row_generated = diagnostics.get("proposed_draft_tokens", 0)
+        row_accepted, row_generated, _ = counts
         if row_accepted is None and row_generated is None:
             continue
         found = True
@@ -18621,7 +18662,7 @@ def _mtp_response_summary(
     first_fallback_position: int | None = None
     selected_route = "unknown" if route is None else str(route)
     for detail in (details or ()):
-        timing, decode_state, timing_owner = _mtp_telemetry_parts(detail)
+        timing, decode_state, _timing_owner = _mtp_telemetry_parts(detail)
         if isinstance(decode_state, Mapping):
             execution_path = decode_state.get("execution_path")
         else:
@@ -18703,59 +18744,21 @@ def _mtp_response_summary(
             position = block.get("first_fallback_position")
             if position is not None and first_fallback_position is None:
                 first_fallback_position = _mtp_counted_int(position)
-        if block is not None and _mtp_counted_int(block.get("cycles")) > 0:
+        if block is not None:
             # A per-row execution block is the authoritative cycle record and is
             # available to streaming outputs too, where batch timing ownership
-            # would otherwise hide it.
-            accepted += _mtp_counted_int(block.get("accepted_draft_tokens"))
-            generated += _mtp_counted_int(block.get("generated_draft_tokens"))
-            cycles += _mtp_counted_int(block.get("cycles"))
+            # would otherwise hide it. A zero-cycle block still reports intent,
+            # but contributes no draft counts; do not fall through to legacy
+            # timing for the same request.
+            if _mtp_counted_int(block.get("cycles")) > 0:
+                accepted += _mtp_counted_int(block.get("accepted_draft_tokens"))
+                generated += _mtp_counted_int(block.get("generated_draft_tokens"))
+                cycles += _mtp_counted_int(block.get("cycles"))
             continue
-        timing_generated = (
-            None if timing is None else timing.get("mtp_generated_draft_tokens")
-        )
-        timing_accepted = (
-            None if timing is None else timing.get("mtp_accepted_draft_tokens")
-        )
-        if timing_generated is None and timing_accepted is None:
-            # Gemma's assistant-head provider predates the normalized
-            # ``specdec2_mtp2`` block and publishes its counts directly in
-            # provider diagnostics. Keep the response extension truthful for
-            # that route instead of returning draft_tokens=0 while usage has
-            # already reported the same counts.
-            telemetry = getattr(detail, "telemetry", None)
-            diagnostics = (
-                telemetry.get("diagnostics")
-                if isinstance(telemetry, Mapping)
-                else getattr(telemetry, "diagnostics", None)
-            )
-            if (
-                isinstance(diagnostics, Mapping)
-                and diagnostics.get("speculative_provider")
-            ):
-                provider_cycles = diagnostics.get("cycles")
-                if isinstance(provider_cycles, Sequence) and not isinstance(
-                    provider_cycles, (str, bytes, bytearray)
-                ):
-                    provider_cycle_count = len(provider_cycles)
-                else:
-                    provider_cycle_count = _mtp_counted_int(
-                        diagnostics.get("cycle_count")
-                    )
-                accepted += _mtp_counted_int(
-                    diagnostics.get("accepted_draft_tokens")
-                )
-                generated += _mtp_counted_int(
-                    diagnostics.get("proposed_draft_tokens")
-                )
-                cycles += provider_cycle_count
-                used = True
-                continue
-        if timing is None or not timing_owner:
+        counts = _mtp_draft_counts(detail)
+        if counts is None:
             continue
-        row_accepted = timing.get("mtp_accepted_draft_tokens")
-        row_generated = timing.get("mtp_generated_draft_tokens")
-        row_cycles = timing.get("mtp_cycles_count")
+        row_accepted, row_generated, row_cycles = counts
         if any(
             value is not None
             for value in (row_accepted, row_generated, row_cycles)

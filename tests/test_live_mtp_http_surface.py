@@ -188,7 +188,13 @@ def _ids(body, index=0):
 
 
 def _cycles(body, index=0):
-    timing = body["choices"][index]["hipengine"].get("timing", {})
+    hipengine = body["choices"][index]["hipengine"]
+    summary = hipengine.get("speculative_mtp") or {}
+    if "draft_cycles" in summary:
+        return int(summary["draft_cycles"] or 0)
+    # Legacy providers still publish scalar MTP timing; resident MTP2 reports
+    # the same count in the response summary without a timing mirror.
+    timing = hipengine.get("timing", {})
     return int(timing.get("mtp_cycles_count", 0))
 
 

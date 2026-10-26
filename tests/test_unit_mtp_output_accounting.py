@@ -16,7 +16,6 @@ from hipengine.speculative.accounting import (
     PROVIDER_DECLINED,
     PROVIDER_PROMPT_BUFFERED,
     PROVIDER_READY,
-    accounting_timing_fields,
     record_autoregressive_step,
     record_provider_readiness,
     record_speculative_outputs,
@@ -34,8 +33,6 @@ def test_accounting_is_absent_for_a_request_without_speculative_intent() -> None
     row = SimpleNamespace(mtp2_cycles=0, mtp2_candidate_budget=0)
 
     assert speculative_output_accounting(row) is None
-    assert accounting_timing_fields(None) == {}
-    assert accounting_timing_fields(speculative_output_accounting(row)) == {}
 
 
 def test_accounting_is_absent_for_plain_autoregressive_decoding() -> None:
@@ -90,14 +87,6 @@ def test_accounting_splits_speculative_and_autoregressive_output() -> None:
         "target_graph_context_bucket_miss": 1
     }
     assert accounting["prompt_fallback_reason"] is None
-    assert accounting_timing_fields(accounting) == {
-        "mtp_cycles_count": 3.0,
-        "mtp_generated_draft_tokens": 6.0,
-        "mtp_accepted_draft_tokens": 3.0,
-        "mtp_visible_output_tokens": 7.0,
-        "mtp_ar_output_tokens": 1.0,
-        "mtp_accept_per_draft": 0.5,
-    }
 
 
 def test_accounting_publishes_the_four_refusal_facts_separately() -> None:
@@ -416,8 +405,28 @@ def test_accounting_does_not_attribute_cycle_tokens_twice() -> None:
     assert sum(accounting["ar_step_reason_counts"].values()) == 1
 
 
-def test_accounting_reports_a_refusal_without_publishing_timing_mirrors() -> None:
-    """A refused activation stays AR in ``timing`` and reports why in its block."""
+def test_ar_only_cycle_and_ar_step_share_one_counter() -> None:
+    row = _intent_row()
+    record_speculative_outputs(
+        row,
+        candidate_count=0,
+        accepted_count=0,
+        visible_count=1,
+        output_position=1,
+        plan_reason="ar_cycle",
+    )
+    record_autoregressive_step(row, plan_reason="k0_ar", output_position=2)
+
+    assert row.mtp2_ar_step_output_tokens == 2
+    assert not hasattr(row, "mtp2_ar_output_tokens")
+    accounting = speculative_output_accounting(row)
+    assert accounting is not None
+    assert accounting["ar_output_tokens_in_cycles"] == 2
+    assert accounting["ar_step_reason_counts"] == {"ar_cycle": 1, "k0_ar": 1}
+
+
+def test_accounting_reports_a_refusal_with_zero_cycles() -> None:
+    """A refused activation stays AR and reports why in its block."""
 
     row = _intent_row()
     row.mtp2_candidate_budget = 0
@@ -431,8 +440,6 @@ def test_accounting_reports_a_refusal_without_publishing_timing_mirrors() -> Non
     assert accounting["mtp_output_tokens"] == 0
     assert accounting["prompt_fallback_reason"] == "target_context_k0"
     assert accounting["ar_step_reason_counts"] == {"no_provider": 1}
-    # Zero committed cycles must not look like realized MTP to the response.
-    assert accounting_timing_fields(accounting) == {}
 
 
 def test_accounting_counts_failure_reason_pairs_by_category() -> None:
@@ -717,7 +724,6 @@ def test_span_recording_never_breaks_a_row_that_cannot_hold_spans(
             "mtp2_candidate_counts",
             "mtp2_accepted_counts",
             "mtp2_mtp_output_tokens",
-            "mtp2_ar_output_tokens",
             "mtp2_ar_step_output_tokens",
             "mtp2_first_fallback_position",
             "mtp2_ar_step_reasons",
@@ -730,7 +736,6 @@ def test_span_recording_never_breaks_a_row_that_cannot_hold_spans(
             self.mtp2_candidate_counts = []
             self.mtp2_accepted_counts = []
             self.mtp2_mtp_output_tokens = 0
-            self.mtp2_ar_output_tokens = 0
             self.mtp2_ar_step_output_tokens = 0
             self.mtp2_first_fallback_position = None
             self.mtp2_ar_step_reasons = {}
@@ -775,7 +780,6 @@ def test_resident_loop_row_declares_the_diagnostic_span_field() -> None:
     # reporting the fact. That is how mtp2_provider_state_present was found.
     for name in (
         "mtp2_mtp_output_tokens",
-        "mtp2_ar_output_tokens",
         "mtp2_ar_step_output_tokens",
         "mtp2_first_fallback_position",
         "mtp2_ar_step_reasons",

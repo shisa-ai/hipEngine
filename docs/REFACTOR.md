@@ -2729,27 +2729,18 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
 
 ## MTP output attribution: two AR-in-plan paths and a duplicated telemetry write (found 2026-09-17)
 
-- Resolved 2026-09-17: a request no longer reports `used: true` as if it were
-  full coverage. Every response with speculative intent carries an
-  `output_accounting` block splitting emitted tokens into MTP-committed and
-  autoregressive output, plus the selected-depth histogram, per-reason fallback
-  counts, and the first fallback position. See
-  `worklog/entries/20260917T121319.033073Z-lhl-mtp-output-accounting-e77e00.md`.
-- Remaining debt: autoregressive tokens emitted while the request is still
-  owned by the speculative plan arrive through two paths - a depth-zero cycle
-  commit (`record_speculative_outputs`) and a K0 step of an AR-only cycle
-  (`record_autoregressive_step`, recorded at the decode that emits the token
-  since `worklog/entries/20260917T155308.311295Z-lhl-mtp-ar-commit-attribution-3efe2f.md`)
-  - and are summed into one `ar_output_tokens_in_cycles` field. Collapse them
-  once the resident owner routes every row through a single commit path, which
-  would also remove the `emitted_tokens=0` call that exists only to avoid double
-  attribution.
-- Remaining debt: the per-request execution counters are published twice, as
-  the `diagnostics.specdec2_mtp2` block and as `mtp_*` scalar entries in the
-  response `timing` map. The scalars exist because the server's draft-usage and
-  metrics paths read ownership-bearing `timing` fields; once those read the
-  diagnostics block directly, `accounting_timing_fields` and its streaming
-  mirror in `qwen35_gguf.py` can go.
+- Resident dense and MoE MTP adapters attribute AR-in-plan output through one
+  counter and one AR-step function, including depth-zero cycle commits.
+  `ar_output_tokens_in_cycles` keeps its public meaning; no zero-token call is
+  needed to avoid double attribution.
+- Resident streaming and blocking outputs publish draft counts once in
+  `diagnostics.specdec2_mtp2`. Server usage, metrics and response summaries read
+  this per-request record independently of batch timing ownership. The public
+  `output_accounting` block still separates MTP and AR output.
+- Legacy providers still publish provider diagnostics or scalar `mtp_*` timing.
+  These remain compatibility readers, not duplicate resident publication.
+  Remove each fallback when its provider publishes the common per-request
+  diagnostics contract and its streaming and blocking consumers are migrated.
 
 ## Speculative-MTP serving evidence rows (shape-axis removal, 2026-09-17)
 

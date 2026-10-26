@@ -526,6 +526,343 @@ def test_record_from_hipengine_mtp_telemetry_uses_backend_draft_counts() -> None
     }
 
 
+def test_record_from_hipengine_execution_block_overrides_legacy_draft_scalars() -> None:
+    tool = _load_tool()
+
+    record = tool.record_from_response(
+        "code_python",
+        {
+            "usage": {"completion_tokens": 24},
+            "timings": {"predicted_per_second": 12.5, "draft_n": 99, "draft_n_accepted": 88},
+            "choices": [
+                {
+                    "hipengine": {
+                        "timing": {
+                            "mtp_generated_draft_tokens": 18.0,
+                            "mtp_accepted_draft_tokens": 11.0,
+                        },
+                        "diagnostics": {
+                            "specdec2_mtp2": {
+                                "cycles": 4,
+                                "generated_draft_tokens": 7,
+                                "accepted_draft_tokens": 5,
+                            }
+                        },
+                    }
+                }
+            ],
+        },
+        wall_s=1.0,
+    )
+
+    assert record["draft_n"] == 7
+    assert record["draft_n_accepted"] == 5
+    assert record["accept_rate"] == 0.7143
+
+
+def test_record_sums_every_execution_block_row_regardless_of_timing_owner() -> None:
+    tool = _load_tool()
+
+    record = tool.record_from_response(
+        "batch",
+        {
+            "usage": {"completion_tokens": 24},
+            "choices": [
+                {
+                    "hipengine": {
+                        "timing": {"batch_decode_ms": 1.0},
+                        "timing_scope": "batch",
+                        "batch_id": "batch-1",
+                        "group_rows": 2,
+                        "timing_owner": False,
+                        "diagnostics": {
+                            "specdec2_mtp2": {
+                                "generated_draft_tokens": 100,
+                                "accepted_draft_tokens": 50,
+                            }
+                        },
+                    }
+                },
+                {
+                    "hipengine": {
+                        "timing": {"batch_decode_ms": 1.0},
+                        "timing_scope": "batch",
+                        "batch_id": "batch-1",
+                        "group_rows": 2,
+                        "timing_owner": True,
+                        "diagnostics": {
+                            "specdec2_mtp2": {
+                                "generated_draft_tokens": 4,
+                                "accepted_draft_tokens": 3,
+                            }
+                        },
+                    }
+                },
+            ],
+        },
+        wall_s=1.0,
+    )
+
+    assert record["draft_n"] == 104
+    assert record["draft_n_accepted"] == 53
+
+
+def test_record_sums_blocks_when_choices_without_hipengine_shift_payload_indices() -> None:
+    tool = _load_tool()
+
+    record = tool.record_from_response(
+        "omitted-choice",
+        {
+            "usage": {"completion_tokens": 24},
+            "choices": [
+                {"text": "choice without hipengine metadata"},
+                {
+                    "hipengine": {
+                        "timing": {"batch_decode_ms": 1.0},
+                        "timing_scope": "batch",
+                        "batch_id": "batch-1",
+                        "group_rows": 2,
+                        "timing_owner": False,
+                        "diagnostics": {
+                            "specdec2_mtp2": {
+                                "generated_draft_tokens": 4,
+                                "accepted_draft_tokens": 3,
+                            }
+                        },
+                    }
+                },
+                {
+                    "hipengine": {
+                        "timing": {"batch_decode_ms": 1.0},
+                        "timing_scope": "batch",
+                        "batch_id": "batch-1",
+                        "group_rows": 2,
+                        "timing_owner": True,
+                        "diagnostics": {
+                            "specdec2_mtp2": {
+                                "generated_draft_tokens": 6,
+                                "accepted_draft_tokens": 5,
+                            }
+                        },
+                    }
+                },
+            ],
+        },
+        wall_s=1.0,
+    )
+
+    assert record["draft_n"] == 10
+    assert record["draft_n_accepted"] == 8
+
+
+def test_record_legacy_scalar_fallback_still_uses_only_timing_owner() -> None:
+    tool = _load_tool()
+
+    record = tool.record_from_response(
+        "legacy-batch",
+        {
+            "usage": {"completion_tokens": 24},
+            "choices": [
+                {
+                    "hipengine": {
+                        "timing": {
+                            "batch_decode_ms": 1.0,
+                            "mtp_generated_draft_tokens": 100.0,
+                            "mtp_accepted_draft_tokens": 50.0,
+                        },
+                        "timing_scope": "batch",
+                        "batch_id": "batch-1",
+                        "group_rows": 2,
+                        "timing_owner": False,
+                    }
+                },
+                {
+                    "hipengine": {
+                        "timing": {
+                            "batch_decode_ms": 1.0,
+                            "mtp_generated_draft_tokens": 4.0,
+                            "mtp_accepted_draft_tokens": 3.0,
+                        },
+                        "timing_scope": "batch",
+                        "batch_id": "batch-1",
+                        "group_rows": 2,
+                        "timing_owner": True,
+                    }
+                },
+            ],
+        },
+        wall_s=1.0,
+    )
+
+    assert record["draft_n"] == 4
+    assert record["draft_n_accepted"] == 3
+
+
+def test_record_prefers_public_speculative_mtp_summary_aggregate() -> None:
+    tool = _load_tool()
+
+    record = tool.record_from_response(
+        "summary",
+        {
+            "usage": {"completion_tokens": 24},
+            "timings": {"draft_n": 99, "draft_n_accepted": 88},
+            "hipengine": {
+                "speculative_mtp": {
+                    "used": True,
+                    "draft_tokens": 9,
+                    "accepted_draft_tokens": 6,
+                    "draft_cycles": 3,
+                }
+            },
+            "choices": [
+                {
+                    "hipengine": {
+                        "timing": {
+                            "mtp_generated_draft_tokens": 18.0,
+                            "mtp_accepted_draft_tokens": 11.0,
+                        },
+                        "diagnostics": {
+                            "specdec2_mtp2": {
+                                "cycles": 4,
+                                "generated_draft_tokens": 100,
+                                "accepted_draft_tokens": 50,
+                            }
+                        },
+                    }
+                }
+            ],
+        },
+        wall_s=1.0,
+    )
+
+    assert record["draft_n"] == 9
+    assert record["draft_n_accepted"] == 6
+    assert record["accept_rate"] == 0.6667
+
+
+def test_record_ignores_incomplete_public_summary_and_reads_blocks() -> None:
+    tool = _load_tool()
+
+    record = tool.record_from_response(
+        "summary-incomplete",
+        {
+            "usage": {"completion_tokens": 24},
+            "hipengine": {
+                "speculative_mtp": {
+                    "used": True,
+                    "draft_tokens": 9,
+                    "draft_cycles": 3,
+                }
+            },
+            "choices": [
+                {
+                    "hipengine": {
+                        "diagnostics": {
+                            "specdec2_mtp2": {
+                                "cycles": 2,
+                                "generated_draft_tokens": 4,
+                                "accepted_draft_tokens": 3,
+                            }
+                        }
+                    }
+                }
+            ],
+        },
+        wall_s=1.0,
+    )
+
+    assert record["draft_n"] == 4
+    assert record["draft_n_accepted"] == 3
+
+
+def test_record_zero_public_summary_is_a_valid_aggregate() -> None:
+    tool = _load_tool()
+
+    record = tool.record_from_response(
+        "summary-zero",
+        {
+            "usage": {"completion_tokens": 24},
+            "hipengine": {
+                "speculative_mtp": {
+                    "used": False,
+                    "draft_tokens": 0,
+                    "accepted_draft_tokens": 0,
+                    "draft_cycles": 0,
+                }
+            },
+            "choices": [
+                {
+                    "hipengine": {
+                        "timing": {
+                            "mtp_generated_draft_tokens": 18.0,
+                            "mtp_accepted_draft_tokens": 11.0,
+                        }
+                    }
+                }
+            ],
+        },
+        wall_s=1.0,
+    )
+
+    assert record["draft_n"] == 0
+    assert record["draft_n_accepted"] == 0
+    assert record["accept_rate"] is None
+
+
+def test_record_zero_execution_block_does_not_fall_back_to_stale_scalars() -> None:
+    tool = _load_tool()
+
+    record = tool.record_from_response(
+        "refused",
+        {
+            "usage": {"completion_tokens": 24},
+            "choices": [
+                {
+                    "hipengine": {
+                        "timing": {
+                            "mtp_generated_draft_tokens": 18.0,
+                            "mtp_accepted_draft_tokens": 11.0,
+                        },
+                        "diagnostics": {
+                            "specdec2_mtp2": {
+                                "cycles": 0,
+                                "generated_draft_tokens": 0,
+                                "accepted_draft_tokens": 0,
+                            }
+                        },
+                    }
+                }
+            ],
+        },
+        wall_s=1.0,
+    )
+
+    assert record["draft_n"] == 0
+    assert record["draft_n_accepted"] == 0
+    assert record["accept_rate"] is None
+
+
+def test_record_rejects_malformed_execution_block_draft_counts() -> None:
+    tool = _load_tool()
+
+    with pytest.raises(tool.BenchError, match="generated_draft_tokens"):
+        tool.record_from_response(
+            "malformed",
+            {
+                "choices": [
+                    {
+                        "hipengine": {
+                            "diagnostics": {
+                                "specdec2_mtp2": {"generated_draft_tokens": 4}
+                            }
+                        }
+                    }
+                ]
+            },
+            wall_s=1.0,
+        )
+
+
 def test_record_from_hipengine_response_uses_exact_all_choice_token_ids() -> None:
     tool = _load_tool()
     token_rows = [[101, 102], [201], [301, 302, 303], [], [501, 502], [601]]

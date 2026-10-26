@@ -100,7 +100,6 @@ from hipengine.kernels.backends import (
 )
 from hipengine.quant.gguf import dequantize_gguf_data
 from hipengine.speculative.accounting import (
-    accounting_timing_fields,
     record_provider_readiness,
     record_speculative_plan,
     speculative_output_accounting,
@@ -7169,7 +7168,6 @@ class _GGUFResidentLoopRow:
     mtp2_plan_ar_only: bool | None = None
     mtp2_plan_reason: str | None = None
     mtp2_mtp_output_tokens: int = 0
-    mtp2_ar_output_tokens: int = 0
     mtp2_ar_step_output_tokens: int = 0
     mtp2_first_fallback_position: int | None = None
     mtp2_ar_step_reasons: dict[str, int] = field(default_factory=dict)
@@ -12942,10 +12940,10 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             else None
         )
         timing = dict(slot.timing)
-        # Streaming keeps the same per-request MTP counters as the blocking
-        # output, so a live/done chunk reports realized speculation rather than
-        # only the admission intent.
-        timing.update(accounting_timing_fields(speculative_output_accounting(row)))
+        # Resident MTP2 publishes per-request counts in
+        # diagnostics.specdec2_mtp2 for both streaming and blocking chunks.
+        # Scalar ``mtp_*`` timing remains a legacy-provider fallback, not a
+        # second copy of these counters.
         execution_path = (
             "gguf_specdec2_mtp2"
             if row.mtp2_cycles > 0
@@ -13070,7 +13068,8 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                 }
             )
         if row.mtp2_cycles > 0:
-            timing.update(accounting_timing_fields(speculative_output_accounting(row)))
+            # Counts live in diagnostics.specdec2_mtp2; only non-duplicate
+            # phase fields are mirrored into timing.
             timing.update(
                 {
                     "specdec2_mtp2_cycles": float(row.mtp2_cycles),

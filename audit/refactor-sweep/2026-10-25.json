@@ -2182,28 +2182,30 @@
       "start_line": 2494,
       "end_line": 2517,
       "sha256": "221530478c39d9de16871e4159f54bf3b94b144ddbdfcbd6b1212e90d1784d15",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-resident-accounting",
+      "evidence": [
+        "Unified AR attribution and per-request diagnostics publication; removed scalar mirror and migrated server usage/metrics plus benchmark reader with per-row ownership regression. CPU bundle, focused tests and real resident gfx1151 dense HTTP blocking/streaming pass. Legacy provider readers remain compatibility only. worklog/entries/20261026T103336.457816Z-cleanup-refactor-r0081-accounting-906c03.md."
+      ],
       "subitems": [
         {
           "line": 2496,
           "text": "- Resolved 2026-09-17: a request no longer reports `used: true` as if it were",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2502,
           "text": "- Remaining debt: autoregressive tokens emitted while the request is still",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2507,
           "text": "  - and are summed into one `ar_output_tokens_in_cycles` field. Collapse them",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2511,
           "text": "- Remaining debt: the per-request execution counters are published twice, as",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },

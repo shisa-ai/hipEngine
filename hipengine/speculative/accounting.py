@@ -15,11 +15,10 @@ adapter records them the same way:
 
 * ``mtp2_mtp_output_tokens`` - visible tokens emitted by committed speculative
   cycles (accepted drafts plus the target-verified bonus token),
-* ``mtp2_ar_output_tokens`` - visible tokens emitted by a non-speculative
-  cycle that still ran through the speculative owner (a K0 row inside a mixed
-  plan),
-* ``mtp2_ar_step_output_tokens`` - visible tokens emitted by a K0 step of an
-  AR-only cycle of the speculative owner,
+* ``mtp2_ar_step_output_tokens`` - visible tokens emitted by an
+  autoregressive cycle or K0 step while the request was still owned by the
+  speculative plan. Both paths write this one counter, so a token cannot be
+  attributed twice,
 * ``mtp2_first_fallback_position`` - output index of the first token produced
   after the request left the speculative path,
 * ``mtp2_ar_step_reasons`` - non-speculative steps counted under the planner
@@ -33,6 +32,10 @@ reconcile against the emitted token list by construction.
 
 Rows are duck-typed: the dense and MoE GGUF adapters use the resident loop row
 dataclass, while seam tests drive them with attribute-only doubles.
+
+The ``diagnostics.specdec2_mtp2`` block is the authoritative per-request record.
+Legacy providers may still publish scalar ``mtp_*`` entries in ``timing``; the
+server accepts those as a fallback, but this module does not synthesize them.
 """
 
 from __future__ import annotations
@@ -43,7 +46,6 @@ from typing import Any, Mapping, Sequence
 
 REQUESTED_BUDGET_ATTRIBUTE = "mtp2_requested_budget"
 MTP_OUTPUT_ATTRIBUTE = "mtp2_mtp_output_tokens"
-AR_OUTPUT_ATTRIBUTE = "mtp2_ar_output_tokens"
 AR_STEP_OUTPUT_ATTRIBUTE = "mtp2_ar_step_output_tokens"
 FIRST_FALLBACK_ATTRIBUTE = "mtp2_first_fallback_position"
 AR_STEP_REASON_ATTRIBUTE = "mtp2_ar_step_reasons"
@@ -167,6 +169,43 @@ def _row_float(row: Any, name: str) -> float:
         return 0.0
 
 
+def _attribute_ar_tokens(
+    row: Any,
+    *,
+    tokens: int,
+    plan_reason: Any | None,
+    output_position: int | None,
+) -> None:
+    """Add autoregressive-in-plan output to the row's single AR counter."""
+
+    count = max(0, int(tokens))
+    if count == 0:
+        return
+    setattr(
+        row,
+        AR_STEP_OUTPUT_ATTRIBUTE,
+        _row_int(row, AR_STEP_OUTPUT_ATTRIBUTE) + count,
+    )
+    if output_position is not None:
+        _record_span(
+            row,
+            mode="ar",
+            reason=plan_reason,
+            position=output_position,
+            tokens=count,
+        )
+    if (
+        output_position is not None
+        and _row_int(row, MTP_OUTPUT_ATTRIBUTE) > 0
+        and getattr(row, FIRST_FALLBACK_ATTRIBUTE, None) is None
+    ):
+        setattr(
+            row,
+            FIRST_FALLBACK_ATTRIBUTE,
+            max(0, int(output_position)),
+        )
+
+
 # Per-row cycle phase windows, all measured around host wall on the serving
 # thread. They are the phase split of a committed cycle, and they are host wall
 # rather than device-busy: a window that ends by reading a result includes the
@@ -236,26 +275,12 @@ def record_speculative_outputs(
             tokens=visible,
         )
         return
-    setattr(
+    record_autoregressive_step(
         row,
-        AR_OUTPUT_ATTRIBUTE,
-        _row_int(row, AR_OUTPUT_ATTRIBUTE) + visible,
+        plan_reason=plan_reason,
+        emitted_tokens=visible,
+        output_position=output_position,
     )
-    _record_span(
-        row,
-        mode="ar",
-        reason=plan_reason,
-        position=output_position,
-        tokens=visible,
-    )
-    if (
-        _row_int(row, MTP_OUTPUT_ATTRIBUTE) > 0
-        and getattr(row, FIRST_FALLBACK_ATTRIBUTE, None) is None
-    ):
-        setattr(row, FIRST_FALLBACK_ATTRIBUTE, max(0, int(output_position)))
-    # The visible tokens of this cycle are attributed above, so the step record
-    # must not attribute them a second time.
-    record_autoregressive_step(row, plan_reason=plan_reason, emitted_tokens=0)
 
 
 def record_speculative_plan(
@@ -339,29 +364,12 @@ def record_autoregressive_step(
 
     tokens = max(0, int(emitted_tokens))
     if tokens:
-        setattr(
+        _attribute_ar_tokens(
             row,
-            AR_STEP_OUTPUT_ATTRIBUTE,
-            _row_int(row, AR_STEP_OUTPUT_ATTRIBUTE) + tokens,
+            tokens=tokens,
+            plan_reason=plan_reason,
+            output_position=output_position,
         )
-        if output_position is not None:
-            _record_span(
-                row,
-                mode="ar",
-                reason=plan_reason,
-                position=output_position,
-                tokens=tokens,
-            )
-        if (
-            output_position is not None
-            and _row_int(row, MTP_OUTPUT_ATTRIBUTE) > 0
-            and getattr(row, FIRST_FALLBACK_ATTRIBUTE, None) is None
-        ):
-            setattr(
-                row,
-                FIRST_FALLBACK_ATTRIBUTE,
-                max(0, int(output_position)),
-            )
     reason = None if plan_reason is None else str(plan_reason).strip()
     if not reason:
         return
@@ -584,12 +592,10 @@ def speculative_output_accounting(row: Any) -> dict[str, Any] | None:
         "mtp_output_tokens": _row_int(row, MTP_OUTPUT_ATTRIBUTE),
         # Every autoregressive token this request emitted while it was still
         # owned by the speculative plan: committed by a depth-zero cycle or by
-        # a K0 step of an AR-only cycle. The remainder of the response's
-        # autoregressive output was emitted after it left the plan.
-        "ar_output_tokens_in_cycles": (
-            _row_int(row, AR_OUTPUT_ATTRIBUTE)
-            + _row_int(row, AR_STEP_OUTPUT_ATTRIBUTE)
-        ),
+        # a K0 step of an AR-only cycle. Both paths write the same counter. The
+        # remainder of the response's autoregressive output was emitted after it
+        # left the plan.
+        "ar_output_tokens_in_cycles": _row_int(row, AR_STEP_OUTPUT_ATTRIBUTE),
         "first_fallback_position": (
             None if first_fallback is None else max(0, int(first_fallback))
         ),
@@ -653,33 +659,3 @@ def speculative_output_accounting(row: Any) -> dict[str, Any] | None:
         # counters above, so a response read without it is unchanged.
         block["output_spans"] = _row_spans(row)
     return block
-
-
-def accounting_timing_fields(accounting: Mapping[str, Any] | None) -> dict[str, float]:
-    """Scalar timing mirrors for the response ``timing`` map.
-
-    Only committed cycles publish these fields: a request that carried
-    speculative intent but ran no speculative cycle must stay indistinguishable
-    from plain AR in ``timing``, or a zero-cycle refusal would be reported as
-    realized MTP.
-    """
-
-    if not accounting:
-        return {}
-    cycles = max(0, int(accounting.get("cycles") or 0))
-    if cycles <= 0:
-        return {}
-    generated = max(0, int(accounting.get("generated_draft_tokens") or 0))
-    accepted = max(0, int(accounting.get("accepted_draft_tokens") or 0))
-    return {
-        "mtp_cycles_count": float(cycles),
-        "mtp_generated_draft_tokens": float(generated),
-        "mtp_accepted_draft_tokens": float(accepted),
-        "mtp_visible_output_tokens": float(
-            max(0, int(accounting.get("mtp_output_tokens") or 0))
-        ),
-        "mtp_ar_output_tokens": float(
-            max(0, int(accounting.get("ar_output_tokens_in_cycles") or 0))
-        ),
-        "mtp_accept_per_draft": (float(accepted) / float(generated) if generated else 0.0),
-    }

@@ -516,15 +516,8 @@ class AccountingSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
                 phase="answer",
                 sampler_mode="greedy_fast",
                 execution_path="gguf_specdec2_mtp2",
-                timing={
-                    "mtp_cycles_count": 3.0,
-                    "mtp_generated_draft_tokens": 9.0,
-                    "mtp_accepted_draft_tokens": 6.0,
-                    "mtp_visible_output_tokens": 9.0,
-                    "mtp_accept_per_draft": 2 / 3,
-                },
-                timing_scope="choice",
-                timing_owner=True,
+                # Resident MTP2 publishes these counters only in diagnostics;
+                # the server must not need a scalar timing mirror.
                 diagnostics={
                     "specdec2_mtp2": {
                         "requested_budget": 3,
@@ -9545,6 +9538,67 @@ def test_mtp_summary_honors_batch_timing_ownership() -> None:
     }
 
 
+def test_mtp_usage_reads_execution_accounting_without_timing_mirror() -> None:
+    detail = _mtp_accounting_detail(
+        generated_tokens=24,
+        accounting=_full_coverage_accounting(),
+        timing={},
+    )
+
+    assert _mtp_accepted_rejected_counts([detail]) == (15, 9)
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+    assert summary["used"] is True
+    assert summary["draft_cycles"] == 8
+    assert summary["draft_tokens"] == 24
+    assert summary["accepted_draft_tokens"] == 15
+
+
+def test_mtp_usage_reads_zero_cycle_execution_accounting() -> None:
+    detail = _mtp_accounting_detail(
+        generated_tokens=1,
+        accounting=_full_coverage_accounting(
+            cycles=0,
+            generated_draft_tokens=0,
+            accepted_draft_tokens=0,
+            selected_depth_histogram={},
+            mtp_output_tokens=0,
+            ar_output_tokens_in_cycles=0,
+            ar_step_reason_counts={"no_provider": 1},
+        ),
+        execution_path="gguf_packed_ar_server_decode",
+        timing={},
+    )
+
+    assert _mtp_accepted_rejected_counts([detail]) == (0, 0)
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+    assert summary["used"] is False
+    assert summary["draft_cycles"] == 0
+
+
+def test_mtp_usage_reads_fallback_accounting_without_timing_mirror() -> None:
+    detail = _mtp_accounting_detail(
+        generated_tokens=24,
+        accounting=_full_coverage_accounting(
+            cycles=3,
+            generated_draft_tokens=6,
+            accepted_draft_tokens=3,
+            selected_depth_histogram={"0": 1, "3": 2},
+            mtp_output_tokens=7,
+            ar_output_tokens_in_cycles=2,
+            first_fallback_position=8,
+            ar_step_reason_counts={"target_graph_output_room_miss": 1},
+        ),
+        timing={},
+    )
+
+    assert _mtp_accepted_rejected_counts([detail]) == (3, 3)
+    summary = _mtp_response_summary("speculative_mtp", [detail])
+    assert summary["draft_cycles"] == 3
+    assert summary["draft_tokens"] == 6
+    assert summary["accepted_draft_tokens"] == 3
+    assert summary["first_fallback_position"] == 8
+
+
 def test_mtp_summary_uses_provider_diagnostics_when_no_normalized_timing_exists() -> None:
     details = [
         GenerationOutput(
@@ -9563,6 +9617,7 @@ def test_mtp_summary_uses_provider_diagnostics_when_no_normalized_timing_exists(
         )
     ]
 
+    assert _mtp_accepted_rejected_counts(details) == (4, 3)
     assert _mtp_response_summary("speculative_mtp", details) == {
         "effective_route": "speculative_mtp",
         "used": True,

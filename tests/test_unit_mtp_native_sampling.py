@@ -160,6 +160,54 @@ def test_sampled_mtp_output_decodes_all_committed_tokens(monkeypatch):
     assert runner._native_stream_chunk(row).text == "C"
 
 
+def test_native_mtp_output_publishes_counts_only_in_diagnostics(monkeypatch):
+    import hipengine.generation.qwen35_gguf as gguf
+    from hipengine.generation import GenerationRequest
+    from hipengine.speculative.accounting import speculative_output_accounting
+
+    tokenizer = SimpleNamespace(decode=lambda ids, **kwargs: "".join(chr(64 + i) for i in ids))
+    runner = gguf.Qwen35GGUFResidentModelRunner.__new__(gguf.Qwen35GGUFResidentModelRunner)
+    runner.generator = SimpleNamespace(tokenizer=tokenizer)
+    runner._request_diagnostics = lambda row, **kwargs: {
+        "specdec2_mtp2": speculative_output_accounting(row)
+    }
+    captured = []
+    monkeypatch.setattr(gguf, "_gguf_telemetry", lambda *args, **kwargs: captured.append(kwargs))
+    monkeypatch.setattr(gguf, "_gguf_finish_details", lambda *args, **kwargs: None)
+    row = gguf._GGUFResidentLoopRow(
+        request_id=1, batch_id=1, row_index=0, prompt_ids=(7,),
+        request=GenerationRequest(
+            prompts=("p",), max_tokens=3, temperature=0.7, top_p=0.95, ignore_eos=True,
+        ),
+        native_greedy=False, native_sampled=True, native_sampler=True, submitted_at=0.0,
+    )
+    row.slot = SimpleNamespace(
+        generated_ids=[1, 2, 3], timing={}, done=True,
+        native_compact_prefill=True, native_decode_steps=1, serial_decode_steps=0,
+    )
+    row.mtp2_requested_budget = 3
+    row.mtp2_candidate_budget = 3
+    row.mtp2_cycles = 1
+    row.mtp2_candidate_counts = [3]
+    row.mtp2_accepted_counts = [2]
+    row.mtp2_mtp_output_tokens = 3
+
+    runner._native_stream_chunk(row)
+    stream_timing = captured[-1]["timing"]
+    stream_diagnostics = captured[-1]["diagnostics"]
+    assert "mtp_cycles_count" not in stream_timing
+    assert stream_diagnostics["specdec2_mtp2"]["cycles"] == 1
+    assert stream_diagnostics["specdec2_mtp2"]["accepted_draft_tokens"] == 2
+
+    runner._native_output(row, SimpleNamespace(finish_reason="length"))
+    output_timing = captured[-1]["timing"]
+    output_diagnostics = captured[-1]["diagnostics"]
+    assert "mtp_cycles_count" not in output_timing
+    assert output_timing["specdec2_mtp2_cycles"] == 1.0
+    assert output_diagnostics["specdec2_mtp2"]["cycles"] == 1
+    assert output_diagnostics["specdec2_mtp2"]["generated_draft_tokens"] == 3
+
+
 def test_eager_native_accept_reads_device_logits_without_uploading_or_advancing_state():
     from hipengine.core.memory import DeviceBuffer
     from hipengine.generation.sampling import RowSamplingState

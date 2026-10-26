@@ -3447,7 +3447,6 @@ def test_eager_cycle_commit_attributes_visible_tokens_to_their_execution_mode() 
         mtp2_candidate_counts=[],
         mtp2_accepted_counts=[],
         mtp2_mtp_output_tokens=0,
-        mtp2_ar_output_tokens=0,
         mtp2_first_fallback_position=None,
         mtp2_ar_step_reasons={},
     )
@@ -3523,7 +3522,6 @@ def test_eager_cycle_commit_reports_eos_and_max_tokens_completion() -> None:
         mtp2_candidate_counts=[],
         mtp2_accepted_counts=[],
         mtp2_mtp_output_tokens=0,
-        mtp2_ar_output_tokens=0,
         mtp2_first_fallback_position=None,
         mtp2_ar_step_reasons={},
     )
@@ -3567,7 +3565,6 @@ def test_eager_cycle_commit_reports_eos_and_max_tokens_completion() -> None:
         mtp2_candidate_counts=[],
         mtp2_accepted_counts=[],
         mtp2_mtp_output_tokens=0,
-        mtp2_ar_output_tokens=0,
         mtp2_first_fallback_position=None,
         mtp2_ar_step_reasons={},
     )
@@ -3608,7 +3605,6 @@ def _cycle_commit_row(**request_overrides) -> SimpleNamespace:
         mtp2_candidate_counts=[],
         mtp2_accepted_counts=[],
         mtp2_mtp_output_tokens=0,
-        mtp2_ar_output_tokens=0,
         mtp2_first_fallback_position=None,
         mtp2_ar_step_reasons={},
     )

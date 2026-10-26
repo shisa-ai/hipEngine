@@ -744,6 +744,77 @@ def merged_timing(records: list[dict[str, Any]]) -> dict[str, float]:
     return merged
 
 
+def public_mtp_summary_draft_counts(
+    response: dict[str, Any],
+) -> tuple[int, int] | None:
+    """Return the public per-response MTP aggregate when it is usable.
+
+    ``hipengine.speculative_mtp`` is computed by the server from every row's
+    execution block, independent of batch timing ownership. It is therefore the
+    best source when present. A summary without numeric draft counts is not a
+    usable aggregate and falls through to the per-row blocks.
+    """
+
+    hipengine = response.get("hipengine")
+    if not isinstance(hipengine, dict):
+        return None
+    summary = hipengine.get("speculative_mtp")
+    if not isinstance(summary, dict):
+        return None
+    generated = first_number(summary.get("draft_tokens"))
+    accepted = first_number(summary.get("accepted_draft_tokens"))
+    if generated is None or accepted is None:
+        return None
+    generated_count = max(0, int(generated))
+    accepted_count = max(0, int(accepted))
+    if accepted_count > generated_count:
+        raise BenchError(
+            "hipEngine speculative_mtp accepted_draft_tokens exceeds draft_tokens"
+        )
+    return generated_count, accepted_count
+
+
+def execution_block_draft_counts(
+    payloads: list[dict[str, Any]],
+) -> tuple[int, int] | None:
+    """Sum every per-row execution block, independent of timing ownership.
+
+    ``diagnostics.specdec2_mtp2`` is a per-row record, not batch timing data.
+    A batch-scoped response still has one block per choice, each with its own
+    draft counts, so filtering by ``timing_owner`` would drop real rows.
+
+    ``choice_hipengine_payloads`` omits choices that carry no ``hipengine``
+    object, so a payload's position is not the response's choice index. Blocks
+    are summed directly and never joined back to timing records by index.
+    """
+
+    counts: tuple[int, int] | None = None
+    for payload in payloads:
+        diagnostics = payload.get("diagnostics")
+        if not isinstance(diagnostics, dict):
+            continue
+        block = diagnostics.get("specdec2_mtp2")
+        if not isinstance(block, dict):
+            continue
+        generated = first_number(block.get("generated_draft_tokens"))
+        accepted = first_number(block.get("accepted_draft_tokens"))
+        if generated is None or accepted is None:
+            raise BenchError(
+                "hipEngine diagnostics.specdec2_mtp2 requires numeric "
+                "generated_draft_tokens and accepted_draft_tokens"
+            )
+        generated_count = max(0, int(generated))
+        accepted_count = max(0, int(accepted))
+        if counts is None:
+            counts = (generated_count, accepted_count)
+        else:
+            counts = (
+                counts[0] + generated_count,
+                counts[1] + accepted_count,
+            )
+    return counts
+
+
 def record_from_response(name: str, response: dict[str, Any], wall_s: float) -> dict[str, Any]:
     usage = response.get("usage") or {}
     timings = response.get("timings") or {}
@@ -782,18 +853,22 @@ def record_from_response(name: str, response: dict[str, Any], wall_s: float) -> 
     if generation_shape is not None:
         record["generation_shape"] = generation_shape
     hipengine_payloads = choice_hipengine_payloads(response)
+    mtp_counts = public_mtp_summary_draft_counts(response)
     if hipengine_payloads:
         record["hipengine"] = hipengine_payloads
         timing_records = backend_timing_records(hipengine_payloads)
         if timing_records:
             record["backend_timing_records"] = timing_records
         timing = merged_timing(selected_timing_records(timing_records))
+        if mtp_counts is None:
+            mtp_counts = execution_block_draft_counts(hipengine_payloads)
         if timing:
             record["backend_timing_ms"] = {key: round(value, 3) for key, value in timing.items()}
-            if record["draft_n"] == 0 and "mtp_generated_draft_tokens" in timing:
-                record["draft_n"] = int(timing["mtp_generated_draft_tokens"])
-            if record["draft_n_accepted"] == 0 and "mtp_accepted_draft_tokens" in timing:
-                record["draft_n_accepted"] = int(timing["mtp_accepted_draft_tokens"])
+            if mtp_counts is None:
+                if record["draft_n"] == 0 and "mtp_generated_draft_tokens" in timing:
+                    record["draft_n"] = int(timing["mtp_generated_draft_tokens"])
+                if record["draft_n_accepted"] == 0 and "mtp_accepted_draft_tokens" in timing:
+                    record["draft_n_accepted"] = int(timing["mtp_accepted_draft_tokens"])
         decode_state = hipengine_payloads[0].get("decode_state")
         if isinstance(decode_state, dict):
             record["backend_decode_state"] = {
@@ -822,6 +897,8 @@ def record_from_response(name: str, response: dict[str, Any], wall_s: float) -> 
         record["backend_generated_per_second"] = (
             round(float(exact_generated) / wall_s, 2) if wall_s > 0 else 0.0
         )
+    if mtp_counts is not None:
+        record["draft_n"], record["draft_n_accepted"] = mtp_counts
     record["accept_rate"] = (
         round(record["draft_n_accepted"] / record["draft_n"], 4) if record["draft_n"] else None
     )
