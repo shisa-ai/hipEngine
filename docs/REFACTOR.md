@@ -3033,15 +3033,6 @@ phrase is not a removal condition.
   correction state is localized or at P3 cleanup; never promote by ignoring the
   first same-schedule run. Exact raw-Q8 coltile8/rowbatch4 remains fallback.
 
-## 2026-08-31 Qwen4Exp P2 exact grouped scheduling screens
-
-- Temporary expertgrid128, Q4 output8, Q5_1 output16, and Q4 team2 selectors
-  were removed after exact but neutral/regressive complete-p508 screens. Keep
-  the incumbent output4/output8 expertgrid64 owners. Do not add another env
-  selector for this schedule family without a materially new data-reuse
-  mechanism; if such a mechanism lands, give it one scoped candidate selector
-  and remove that selector immediately after admission/rejection.
-
 ## 2026-08-29 Qwen4Exp late-layer production prefill
 
 - The named production manifest now owns `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`,

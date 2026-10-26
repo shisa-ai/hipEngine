@@ -3916,13 +3916,13 @@
       "start_line": 3546,
       "end_line": 3554,
       "sha256": "07f6783e73f87349690574dc37d9f0b2e96bc35caeb092488a3ad291df4af6bc",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Verified obsolete expertgrid128/output16/team2 selector spellings absent from current Qwen runtime/scripts/tests; retired completed screen narrative. Incumbent output4/output8 expertgrid64 owners and separately governed selectors are unchanged. Future candidate advice is covered by AGENTS.md flag and optimization rules."],
       "subitems": [
         {
           "line": 3548,
           "text": "- Temporary expertgrid128, Q4 output8, Q5_1 output16, and Q4 team2 selectors",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
