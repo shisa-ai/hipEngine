@@ -3063,23 +3063,23 @@
       "start_line": 3001,
       "end_line": 3012,
       "sha256": "2338b61bee580a845d41e6c28b42dc5aee4c982e7567919773c79ab9e313ba46",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-runner-local",
+      "evidence": ["Q8 register-down fallback selection runner-owned and threaded through mapped/compact MoE paths; original production/strict policy and parent/shape guards preserved. Full CPU, focused lifecycle/harness, GPU compact/mapped parity and public fallback engagement pass. worklog/entries/20261026T202620.453663Z-cleanup-refactor-r0113-07e741.md."],
       "subitems": [
         {
           "line": 3003,
           "text": "- Production-bound `HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER=1` selects",
-          "status": "pending"
+          "status": "resolved-runner-local"
         },
         {
           "line": 3007,
           "text": "- Five chunk1024 full-logit/state/KV cases pass, including compact/mapped",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 3010,
           "text": "- Strict binds0. Retain the opt-out/bundle for bisection; remove temporary",
-          "status": "pending"
+          "status": "resolved-runner-local"
         }
       ]
     },

@@ -395,7 +395,12 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER"] == "1"
+    # The Q8_0 down register selection is request-local runner state published
+    # from the binder's own fallback policy, so the binder writes no
+    # process-wide switch for it.
+    assert "HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER" not in os.environ
+    assert production_generator.q8_down_register is True
+    assert fake_runner.q8_down_register is True
     mapped = _selection_map(production)[("linear","prefill_rows_ge512_token_major_mapped_q8_down")]
     assert mapped["selected_variant"] == "selected_grouped_row4_register_gemv_bf16_bf16_out"
     assert mapped["strict_fallback_variant"] == "selected_gemv_bf16_bf16_out"
@@ -497,7 +502,8 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER"] == "0"
+    assert "HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER" not in os.environ
+    assert strict_generator.q8_down_register is False
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE"] == "0"
@@ -584,6 +590,51 @@ def test_shipped_ud_plan_publishes_the_production_row_publish_fallback() -> None
 
     clone = _inherit_lane_decisions(generator, SimpleNamespace())
     assert clone.q51_row_publish is True
+
+
+def test_shipped_ud_plan_publishes_the_production_down_register_fallback() -> None:
+    """The down-register publication must not narrow to either manifest row.
+
+    The shipped plan replaced the sorted chain's row
+    (``grouped_prefill_rows_ge512_q8_0_expert_down``) with the routed F16 owner
+    while the mapped row still names the register leaf, so the manifest cannot
+    carry one decision for both paths. The retired switch was bound
+    production-only, so the effective fallback publication stays True on a
+    production plan and both MoE paths select the register owner.
+    """
+
+    from hipengine.kernels.registry import KernelKey
+    from hipengine.runtime import qwen4_exp_runner as runner
+
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    resolved = _resolve(ExecutionProfile.PRODUCTION, quant="gguf_ud_q4_k_xl")
+    generator = resolved.construct_generator(lambda: SimpleNamespace())
+    selections = _selection_map(resolved)
+    sorted_row = selections[
+        ("linear", "grouped_prefill_rows_ge512_q8_0_expert_down")]
+    mapped_row = selections[
+        ("linear", "prefill_rows_ge512_token_major_mapped_q8_down")]
+    # The sorted chain's row now names its preemptor; the mapped row still names
+    # the register leaf. One published value has to serve both.
+    assert sorted_row["selected_variant"] == (
+        "selected_routed_f16_wmma_prefill_bf16_bf16_out")
+    assert mapped_row["selected_variant"] == (
+        "selected_grouped_row4_register_gemv_bf16_bf16_out")
+    assert generator.q8_down_register is True
+    assert "HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER" not in os.environ
+    bundle = KernelKey(
+        "hip_gfx1151", "linear", "gguf_q8_0",
+        "selected_grouped_row4_bundle_gemv_bf16_bf16_out")
+    assert runner._qwen4_exp_q8_down_register_key(
+        bundle, rows=1024, in_features=640,
+        published=generator.q8_down_register,
+    ).variant == "selected_grouped_row4_register_gemv_bf16_bf16_out"
+    # And a c1 runner cloned from that generator carries the same decision.
+    from hipengine.generation.qwen4_exp_gguf import _inherit_lane_decisions
+
+    clone = _inherit_lane_decisions(generator, SimpleNamespace())
+    assert clone.q8_down_register is True
 
 
 def test_qwen4_exp_profiles_cover_both_registered_quant_names() -> None:

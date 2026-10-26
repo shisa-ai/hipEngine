@@ -32,7 +32,8 @@ from scripts.qwen4exp_halo_box_campaign_ab import (
     gdn_wave_norm_expected_calls,mmq_token64_expected_calls,gr_dpp_expected_calls,
     router_dpp_expected_calls,route_scope,GDN_COLWARPS_ENV,
     Q51_IU8_EXACT_ENV,Q51_PAIR2_PREEMPTING_ENV,Q51_PAIR2_GATE_ENV,
-    q51_pair2_control_record)
+    q51_pair2_control_record,
+    Q8_DOWN_CHAIN_GATES,q8_down_control_record)
 
 
 def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.environ):
@@ -59,6 +60,11 @@ def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.envi
     if package == "q51-row-publish":
         # Request-local on the runner, like the GDN serial owner; the arm also
         # closes the exact iu8 Q5_1 down that would preempt the pair2 chain.
+        return
+    if package == "q8-down-register":
+        # Request-local on the runner; ``route_scope`` binds the arm around the
+        # measured prefill and closes the owners that preempt both Q8_0
+        # expert-down chains.
         return
     if package == "router-dpp":
         environment[flag] = (
@@ -184,7 +190,8 @@ def main():
     if args.route_package == "q8-mapped-down":
         flag = "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN"
     if args.route_package=="q8-down-register":
-        flag="HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER"
+        # Request-local on the runner; no env key names this selection.
+        flag=""
     if args.route_package == "q51-fold-pair":
         flag = "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"
     if args.route_package == "q51-register-cache":
@@ -472,6 +479,36 @@ def main():
                     "grouped-MoE, MMQ and T16 owners also preempt the pair2 "
                     "chain the arm counts; both arms close all of them"),
             }
+        if args.route_package == "q8-down-register":
+            # The plan publishes the down-register selection on the runner, but
+            # the routed F16 WMMA down (and, in front of the sorted chain, the
+            # Q8_0 WMMA down) preempts both chains this arm counts, so both
+            # arms close them and the record separates the forced value from
+            # what it replaced.
+            assert generator.runner.q8_down_register is True, (
+                "production must publish the down-register selection")
+            assert os.environ.get("HIPENGINE_QWEN4_EXP_ROUTED_F16", "") not in {
+                "", "0"}, (
+                "production must bind the preempting routed F16 down")
+            assert os.environ.get(
+                "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN", "") not in {
+                "", "0"}, (
+                "production must bind the preempting Q8_0 WMMA down")
+            assert all(os.environ.get(key, "") not in {"", "0"}
+                       for key in Q8_DOWN_CHAIN_GATES), (
+                "the Q8_0 expert-down chain gates must be on")
+            report["selection_control"] = {
+                "runner_field": "q8_down_register",
+                "before": False, "after": True,
+                "scope": "per measured run; restored on exit",
+                **q8_down_control_record(),
+                "reason": (
+                    "the routed F16 WMMA down owns the grouped chain and the "
+                    "Q8_0 WMMA down sits in front of the sorted chain, so "
+                    "neither counted path reaches the register leaf in "
+                    "production; both arms close those owners and the chain "
+                    "gates are recorded because they must stay on"),
+            }
         if args.route_package == "q8-dpp-reduction":
             # The DPP leaf's flag is read with a "1" default rather than bound by
             # the profile, so its production default is asserted through the
@@ -701,7 +738,10 @@ def main():
             generator.runner._prefill_chunk = original_chunk
             generator.runner.prefill_chunk_size = 1024
         else:
-            if args.route_package not in {"dense-wide-padded", "gdn-wave-norm", "gdn-narrow"}:
+            if args.route_package not in {
+                "dense-wide-padded", "gdn-wave-norm", "gdn-narrow",
+                "q51-row-publish", "q8-down-register",
+            }:
                 os.environ[flag] = ("f32_hidden_token_tile4_dense_exact"
                                     if args.route_package == "router-dpp" else "1")
             register(key, original, replace=True)

@@ -2743,18 +2743,6 @@ the allocation repair. The observations and proposal below are historical.
   Replace these with device-resident tails only after the same whole/chunk,
   60-second transition, recording-reset and post-join-noise tests pass.
 
-## Qwen4Exp Q8 down register-weight production
-
-- Production-bound `HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER=1` selects
-  `selected_grouped_row4_register_gemv_bf16_bf16_out`,
-  K640/128 threads, rows>=512, parent bundle only. Existing compact/mapped
-  bundled row4 remains fallback. No extra LDS or private scratch.
-- Five chunk1024 full-logit/state/KV cases pass, including compact/mapped
-  engagement and zero decode calls. Canonical72 trajectories exact, all12
-  prefill/request cases improve; PP gains0.851%/0.701%/0.647%.
-- Strict binds0. Retain the opt-out/bundle for bisection; remove temporary
-  flag coordination when profile plans own this qualified K640 selection.
-
 ## Qwen4Exp chunk allocation before profile binding
 
 - The UD-Q4_K_XL gfx1151 factory passes an omitted chunk size to the

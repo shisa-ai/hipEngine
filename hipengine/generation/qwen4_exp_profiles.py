@@ -1073,6 +1073,20 @@ def _bind(
     # it, and the strict binder (which every plan that falls back to it runs)
     # publishes False.
     q51_row_publish = bool(production)
+    # Q8_0 down register sibling of the row4 bundle expert-down owner, published
+    # as request-local state on the owning runner rather than a process-wide
+    # switch. It is the fallback selection for its scope, not the owner that
+    # runs: the shipped plan replaced the sorted chain's manifest row
+    # (``grouped_prefill_rows_ge512_q8_0_expert_down``) with the routed F16 WMMA
+    # owner, while the token-major mapped row still names the register leaf, and
+    # the routed F16 down plus the Q8_0 WMMA down preempt both chains that
+    # contain it. One row therefore cannot carry this decision for both paths, so
+    # the binder publishes the value the retired switch bound, production-only,
+    # for every production plan. The dispatch-time selector still guards the leaf
+    # on rows, K640, the bundle parent variant and the registry carrying it, and
+    # the strict binder (which every plan that falls back to it runs) publishes
+    # False.
+    q8_down_register = bool(production)
     # GDN serial-prefill owner, published as request-local state on the owning
     # runner rather than a process-wide switch. The production binder publishes
     # the manifest row the plan already declares for the checked-index scope -
@@ -1168,7 +1182,6 @@ def _bind(
         "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL": "1" if production else "0",
@@ -1338,6 +1351,7 @@ def _bind(
     generator.qsa_prefill_head_mode = qsa_prefill_head_mode
     generator.gdn_prefill_variant = gdn_prefill_variant
     generator.q51_row_publish = q51_row_publish
+    generator.q8_down_register = q8_down_register
     runner = getattr(generator, "runner", None)
     if runner is not None:
         runner.dense_f16_pair_enabled = dp2_pair_enabled
@@ -1345,6 +1359,7 @@ def _bind(
         runner.qsa_prefill_head_mode = qsa_prefill_head_mode
         runner.gdn_prefill_variant = gdn_prefill_variant
         runner.q51_row_publish = q51_row_publish
+        runner.q8_down_register = q8_down_register
     if production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl":
         _apply_profile_env(
             {

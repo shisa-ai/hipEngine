@@ -446,6 +446,81 @@ def q51_pair2_scope(*, environment=os.environ):
                 environment[key] = value
 
 
+#: Owners that preempt the Q8_0 expert-down chains - and with them the register
+#: selection - on the shipped lane: the routed F16 WMMA down (which owns the
+#: grouped chain in production) and the Q8_0 WMMA down, which sits in front of
+#: the sorted chain. A down-register arm closes both for both arms; the
+#: profile's own values come back on exit.
+Q8_DOWN_PREEMPTING_ENV = (
+    "HIPENGINE_QWEN4_EXP_ROUTED_F16",
+    "HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN",
+)
+#: The chains' own gates. They must stay on for the counted leaf to run, so the
+#: arm records them instead of forcing them: ``FORKB_GROUPED_DOWN`` and the
+#: row4/bundle gates carry the sorted path, ``Q8_MAPPED_DOWN`` the token-major
+#: mapped path the same arm counts.
+Q8_DOWN_CHAIN_GATES = (
+    "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN",
+    "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL",
+    "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL",
+    "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN",
+)
+
+
+def q8_down_control_record(*, environment=os.environ):
+    """The recorded control: the value both arms force, and what it replaced.
+
+    The forced value is what the scope writes, not what the environment held
+    before it, so a reader cannot mistake the production binding for the arm's
+    own state. The previous values are recorded beside it, and the chain's own
+    gates are recorded as found.
+    """
+
+    return {
+        "preempting_owners_closed": {
+            key: "0" for key in Q8_DOWN_PREEMPTING_ENV
+        },
+        "preempting_owners_previous": {
+            key: environment.get(key) for key in Q8_DOWN_PREEMPTING_ENV
+        },
+        "chain_gates": {
+            key: environment.get(key) for key in Q8_DOWN_CHAIN_GATES
+        },
+    }
+
+
+@contextlib.contextmanager
+def q8_down_scope(*, environment=os.environ):
+    """Close the owners that preempt the Q8_0 expert-down chains.
+
+    The register selection only exists inside those chains, so an arm that
+    leaves a preemptor open counts zero launches and measures the other owner.
+    Every key is read per dispatch, so closing them after construction takes
+    effect; all prior values (including absent keys) come back on exit. The
+    chains' own gates are not preemptors and must already be on: without them
+    the counted leaf is skipped entirely, so the scope fails loudly rather than
+    reporting an engagement it cannot produce.
+    """
+
+    closed = {"", "0", "false", "False"}
+    for key in Q8_DOWN_CHAIN_GATES:
+        if environment.get(key, "") in closed:
+            raise ValueError(
+                f"{key} must be on for the Q8_0 expert-down chain; without it "
+                "the counted register leaf cannot launch")
+    previous = {key: environment.get(key) for key in Q8_DOWN_PREEMPTING_ENV}
+    for key in Q8_DOWN_PREEMPTING_ENV:
+        environment[key] = "0"
+    try:
+        yield previous
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                environment.pop(key, None)
+            else:
+                environment[key] = value
+
+
 @contextlib.contextmanager
 def gdn_serial_scope(*, environment=os.environ):
     """Close the tiled GDN branch for the measured window of a serial arm.
@@ -569,6 +644,24 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
         return _combined_scope(
             q51_pair2_scope(environment=environment),
             q51_row_publish(runner, mode == "after"))
+    if route_package == "q8-down-register":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            # Binding nothing would measure whatever the plan published and
+            # report it as the arm, so the diagnostic must name its runner.
+            raise ValueError(
+                f"{route_package} needs the owning runner; binding no selection "
+                "would measure the plan's own Q8_0 down owner")
+        from hipengine.runtime.qwen4_exp_runner import q8_down_register
+
+        # The routed F16 WMMA down and the Q8_0 WMMA down preempt the two chains
+        # the arm counts, so both arms close them and the profile's own values
+        # come back on exit. The chains' own gates must stay on and are
+        # recorded, not forced.
+        return _combined_scope(
+            q8_down_scope(environment=environment),
+            q8_down_register(runner, mode == "after"))
     return contextlib.nullcontext()
 
 
@@ -669,7 +762,8 @@ def _apply_mode(
         if route_package == "q8-mapped-down":
             flag = "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN"
         if route_package == "q8-down-register":
-            flag = "HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER"
+            # Request-local on the runner; ``route_scope`` binds the arm.
+            return
         if route_package == "q51-fold-pair":
             flag = "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"
         if route_package == "q51-register-cache":
@@ -1240,6 +1334,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         artifact["arms"] = {
             "before":{"q8_down":"selected_grouped_row4_bundle_gemv_bf16_bf16_out"},
             "after":{"q8_down":"selected_grouped_row4_register_gemv_bf16_bf16_out"}}
+        artifact["selection_control"] = {
+            "runner_field": "q8_down_register",
+            "before": False,
+            "after": True,
+            "scope": "per measured run; restored on exit",
+            **q8_down_control_record(),
+            "reason": (
+                "the routed F16 WMMA down owns the grouped chain and the Q8_0 "
+                "WMMA down sits in front of the sorted chain, so neither "
+                "counted path reaches the register leaf in production; both "
+                "arms close those owners and the chain gates (FORKB grouped "
+                "down, row4/bundle, mapped down) are recorded because they "
+                "must stay on"),
+        }
     artifact["diagnostic_subset"] = bool(args.case_id)
     artifact["screen_only"] = args.screen_only
     if args.route_package=="qsa-head-quad":
