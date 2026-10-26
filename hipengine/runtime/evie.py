@@ -35,7 +35,6 @@ from hipengine.core.runtime import MemcpyKind
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
-    copy_host_to_device,
     copy_host_array_to_device,
     host_array_ptr,
     malloc,
@@ -82,7 +81,7 @@ def _malloc_committed(nbytes: int) -> DeviceBuffer:
 
     buf = malloc(nbytes)
     zeros = np.zeros(nbytes, dtype=np.uint8)
-    copy_host_to_device(buf, host_array_ptr(zeros), nbytes)
+    copy_host_array_to_device(buf, zeros, nbytes)
     return buf
 
 
@@ -316,7 +315,7 @@ class EvieRunner:
     def _to_dev(self, host: np.ndarray) -> DeviceBuffer:
         host = np.ascontiguousarray(host, dtype=np.float32)
         buf = _malloc_committed(host.nbytes + _GEMM_PAD_BYTES)
-        copy_host_to_device(buf, host_array_ptr(host), host.nbytes)
+        copy_host_array_to_device(buf, host, host.nbytes)
         self._misc_buffers.append(buf)
         return buf
 
@@ -356,7 +355,7 @@ class EvieRunner:
         if buf is None:
             buf = _malloc_committed(nbytes + _GEMM_PAD_BYTES)
             host = np.array(ptrs, dtype=np.uint64)
-            copy_host_to_device(buf, host_array_ptr(host), nbytes)
+            copy_host_array_to_device(buf, host, nbytes)
             self._ptr_array_bufs[key] = buf
         return buf.ptr
 
@@ -953,7 +952,7 @@ class EvieRunner:
         h = spec.hidden_size
         ids_host = np.ascontiguousarray(input_ids, dtype=np.int64)
         ids_buf = _malloc_committed(ids_host.nbytes)
-        copy_host_to_device(ids_buf, host_array_ptr(ids_host))
+        copy_host_array_to_device(ids_buf, ids_host)
         self._misc_buffers.append(ids_buf)
         x_ptr = scratch.buffers["x"].ptr
         table_ptr = self._w["language_model.embed_tokens.weight"]
@@ -1282,7 +1281,7 @@ class EvieRunner:
             # GPU->CPU->GPU roundtrip was removed)
             bias_host = self._read_bias()[:head_dim].copy()
             buf = _malloc_committed(head_dim * 4 + _GEMM_PAD_BYTES)
-            copy_host_to_device(buf, host_array_ptr(bias_host), head_dim * 4)
+            copy_host_array_to_device(buf, bias_host, head_dim * 4)
             self._head_bias = buf
             self._misc_buffers.append(buf)
         err = self._k("hipengine_evie_add_bias_f32", [_P, _P, _I, _I, _S])(
@@ -1444,7 +1443,7 @@ class EvieRunner:
         copy_host_array_to_device(cu_buf, np.ascontiguousarray(cu), cu.nbytes)
         state_idx = np.arange(len(seqs), dtype=np.int64)
         si_buf = _malloc_committed(state_idx.nbytes)
-        copy_host_to_device(si_buf, host_array_ptr(state_idx), state_idx.nbytes)
+        copy_host_array_to_device(si_buf, state_idx, state_idx.nbytes)
         conv_slab = _malloc_committed(
             len(seqs) * self.GDN_QKV_DIM * 4 * 4 + _GEMM_PAD_BYTES
         )
@@ -1584,7 +1583,7 @@ class EvieRunner:
         copy_host_array_to_device(cu_buf, np.ascontiguousarray(cu), cu.nbytes)
         state_idx = np.arange(len(seqs), dtype=np.int64)
         si_buf = _malloc_committed(state_idx.nbytes)
-        copy_host_to_device(si_buf, host_array_ptr(state_idx), state_idx.nbytes)
+        copy_host_array_to_device(si_buf, state_idx, state_idx.nbytes)
         conv_slab = _malloc_committed(
             len(seqs) * self.GDN_QKV_DIM * 4 * 4 + _GEMM_PAD_BYTES
         )

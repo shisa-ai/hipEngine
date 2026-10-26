@@ -237,13 +237,13 @@ def test_cached_dev_ptr_array_uploads_once_and_keeps_its_source_alive(
     from hipengine.runtime.evie import EvieRunner
 
     uploads: list[int] = []
-    real_copy = evie_module.copy_host_to_device
+    real_copy = evie_module.copy_host_array_to_device
 
-    def counting_copy(buffer, source, nbytes=None, **kwargs):
-        uploads.append(int(nbytes if nbytes is not None else buffer.nbytes))
-        return real_copy(buffer, source, nbytes, **kwargs)
+    def counting_copy(buffer, source, nbytes=None, *, runtime=None):
+        uploads.append(int(nbytes if nbytes is not None else source.nbytes))
+        return real_copy(buffer, source, nbytes, runtime=runtime)
 
-    monkeypatch.setattr(evie_module, "copy_host_to_device", counting_copy)
+    monkeypatch.setattr(evie_module, "copy_host_array_to_device", counting_copy)
 
     runner = object.__new__(EvieRunner)
     runner.runtime = get_hip_runtime()

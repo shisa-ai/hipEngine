@@ -49,6 +49,12 @@ MOONSHINE_RUNTIME_UPLOAD_MODULES = (
     "runtime/moonshine_encoder_cuda_batch",
 )
 
+EVIE_TIMESFM_NAMED_LOCAL_UPLOAD_MODULES = (
+    "runtime/evie",
+    "runtime/timesfm_decode",
+    "runtime/timesfm3_decode",
+)
+
 
 @pytest.mark.parametrize("module", [
     "runtime/evie", "runtime/timesfm_decode", "runtime/timesfm3_decode",
@@ -68,6 +74,18 @@ def test_reviewed_runners_do_not_erase_temporary_array_owners(module):
                and node.func.id == "host_array_ptr"
                and node.args and isinstance(node.args[0], ast.Call)]
     assert not hazards, f"{path.name}: retain array owners at lines {hazards}"
+
+
+def _is_named_host_array_pointer(node):
+    """Return whether ``node`` is ``host_array_ptr(named_local)``."""
+
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "host_array_ptr"
+        and len(node.args) == 1
+        and isinstance(node.args[0], ast.Name)
+    )
 
 
 def _is_array_pointer_expression(node):
@@ -281,6 +299,50 @@ def test_moonshine_runtime_synchronous_array_uploads_use_the_owning_helper(modul
             else next((kw.value for kw in node.keywords if kw.arg == "src"), None)
         )
         if source is not None and _is_array_pointer_expression(source):
+            hazards.append((node.lineno, "runtime.memcpy"))
+    assert not hazards, f"{path.name}: use copy_host_array_to_device at {hazards}"
+
+
+@pytest.mark.parametrize("module", EVIE_TIMESFM_NAMED_LOCAL_UPLOAD_MODULES)
+def test_evie_timesfm_named_local_uploads_use_the_owning_helper(module):
+    """Named-local H2D arrays must also retain their owner through the copy.
+
+    The general temporary-owner guard covers allocating expressions in the
+    pointer argument. These modules bind the array to a local first, which is
+    sufficient for lifetime but still uses the pointer-only API. This guard
+    pins the owning-helper migration for that named-local form, including
+    direct ``runtime.memcpy(..., HOST_TO_DEVICE)`` calls.
+    """
+    path = Path(__file__).parents[1] / "hipengine" / f"{module}.py"
+    tree = ast.parse(path.read_text())
+    hazards = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Name) and node.func.id == "copy_host_to_device":
+            source = (
+                node.args[1]
+                if len(node.args) > 1
+                else next((kw.value for kw in node.keywords if kw.arg == "host_ptr"), None)
+            )
+            if source is not None and _is_named_host_array_pointer(source):
+                hazards.append((node.lineno, "copy_host_to_device"))
+            continue
+        if not (isinstance(node.func, ast.Attribute) and node.func.attr == "memcpy"):
+            continue
+        kind = (
+            node.args[3]
+            if len(node.args) > 3
+            else next((kw.value for kw in node.keywords if kw.arg == "kind"), None)
+        )
+        if not (isinstance(kind, ast.Attribute) and kind.attr == "HOST_TO_DEVICE"):
+            continue
+        source = (
+            node.args[1]
+            if len(node.args) > 1
+            else next((kw.value for kw in node.keywords if kw.arg == "src"), None)
+        )
+        if source is not None and _is_named_host_array_pointer(source):
             hazards.append((node.lineno, "runtime.memcpy"))
     assert not hazards, f"{path.name}: use copy_host_array_to_device at {hazards}"
 
@@ -510,16 +572,156 @@ def test_evie_pointer_cache_uploads_only_new_content(monkeypatch):
         allocations.append(buffer)
         return buffer
 
-    def upload(buffer, ptr, nbytes=None, **kwargs):
-        uploads.append(list((ctypes.c_uint64 * (nbytes // 8)).from_address(ptr)))
+    def upload(buffer, array, nbytes=None, *, runtime=None):
+        uploads.append(np.asarray(array).tolist())
 
     monkeypatch.setattr(evie, "_malloc_committed", allocate)
-    monkeypatch.setattr(evie, "copy_host_to_device", upload)
+    monkeypatch.setattr(evie, "copy_host_array_to_device", upload, raising=False)
     runner = object.__new__(evie.EvieRunner)
     a = runner._dev_ptr_array([123, 456])
     assert runner._dev_ptr_array([123, 456]) == a
     assert runner._dev_ptr_array([456, 123]) != a
     assert uploads == [[123, 456], [456, 123]]
+
+
+def test_evie_to_dev_uploads_owning_named_array(monkeypatch):
+    from hipengine.runtime import evie
+
+    calls = []
+
+    def upload(buffer, array, nbytes=None, *, runtime=None):
+        calls.append((buffer, array, nbytes, runtime))
+
+    monkeypatch.setattr(
+        evie,
+        "_malloc_committed",
+        lambda nbytes: memory.DeviceBuffer(0x9000, nbytes),
+    )
+    monkeypatch.setattr(evie, "copy_host_array_to_device", upload, raising=False)
+    runner = object.__new__(evie.EvieRunner)
+    runner._misc_buffers = []
+    source = np.arange(4, dtype=np.float32)
+
+    buffer = runner._to_dev(source)
+
+    assert buffer.ptr == 0x9000
+    assert len(calls) == 1
+    call_buffer, array, nbytes, call_runtime = calls[0]
+    assert call_buffer is buffer
+    assert nbytes == source.nbytes
+    assert call_runtime is None
+    assert array.flags.c_contiguous
+    assert array.tolist() == source.tolist()
+    assert runner._misc_buffers == [buffer]
+
+
+def _fake_timesfm_loaded(names, *, head_dim, layers=0):
+    tensors = {}
+    for index, name in enumerate(names):
+        tensors[name] = SimpleNamespace(
+            source=SimpleNamespace(shape=(1, 1)),
+            buffer=memory.DeviceBuffer(0x8000 + index * 4, 4),
+        )
+    return SimpleNamespace(
+        spec=SimpleNamespace(
+            head_dim=head_dim,
+            num_hidden_layers=layers,
+            num_layers=layers,
+            model_dims=4,
+        ),
+        weights=SimpleNamespace(tensors=tensors),
+    )
+
+
+def test_timesfm_decode_constructor_uploads_owning_named_arrays(monkeypatch):
+    from hipengine.runtime import timesfm_decode as mod
+
+    uploads = []
+
+    def upload(buffer, array, nbytes=None, *, runtime=None):
+        uploads.append((buffer, array, nbytes, runtime))
+
+    allocations = []
+
+    def allocate(nbytes):
+        buffer = memory.DeviceBuffer(0x1000 + len(allocations) * 0x100, nbytes)
+        allocations.append(buffer)
+        return buffer
+
+    monkeypatch.setattr(mod, "malloc", allocate)
+    monkeypatch.setattr(mod, "copy_device_to_host", lambda *args, **kwargs: None)
+    monkeypatch.setattr(mod, "copy_host_array_to_device", upload, raising=False)
+    loaded = _fake_timesfm_loaded(
+        (
+            *mod._GEMM_WEIGHT_NAMES,
+            "tokenizer.hidden_layer.bias",
+            "tokenizer.output_layer.bias",
+            "tokenizer.residual_layer.bias",
+        ),
+        head_dim=4,
+    )
+
+    decoder = mod.TimesFMGPUDecoder(loaded, rocblas=object(), precision="fp16")
+
+    assert len(uploads) == 1 + len(mod._GEMM_WEIGHT_NAMES)
+    timescale_buffer, timescale, timescale_nbytes, timescale_runtime = uploads[0]
+    assert timescale_buffer is decoder._timescale
+    assert timescale.dtype == np.float32
+    assert timescale.nbytes == 8
+    assert timescale_nbytes is None
+    assert timescale_runtime is None
+    for buffer, array, nbytes, call_runtime in uploads[1:]:
+        assert nbytes is None
+        assert call_runtime is None
+        assert array.dtype == np.float16
+        assert array.flags.c_contiguous
+        assert array.nbytes == 2
+        assert buffer.nbytes == 2
+
+
+def test_timesfm3_decode_constructor_uploads_owning_named_arrays(monkeypatch):
+    from hipengine.runtime import timesfm3_decode as mod
+
+    uploads = []
+
+    def upload(buffer, array, nbytes=None, *, runtime=None):
+        uploads.append((buffer, array, nbytes, runtime))
+
+    allocations = []
+
+    def allocate(nbytes):
+        buffer = memory.DeviceBuffer(0x2000 + len(allocations) * 0x100, nbytes)
+        allocations.append(buffer)
+        return buffer
+
+    names = (
+        "pre_transformer_resblock.hidden_layer.weight",
+        "pre_transformer_resblock.output_layer.weight",
+        "pre_transformer_resblock.residual_layer.weight",
+        "output_head.weight",
+        "output_head.bias",
+    )
+    monkeypatch.setattr(mod, "malloc", allocate)
+    monkeypatch.setattr(mod, "copy_device_to_host", lambda *args, **kwargs: None)
+    monkeypatch.setattr(mod, "copy_host_array_to_device", upload, raising=False)
+    loaded = _fake_timesfm_loaded(names, head_dim=4)
+
+    decoder = mod.TimesFM3GPUDecoder(loaded, rocblas=object(), precision="fp16")
+
+    assert len(uploads) == 1 + 4
+    timescale_buffer, timescale, timescale_nbytes, timescale_runtime = uploads[0]
+    assert timescale_buffer is decoder._timescale
+    assert timescale.dtype == np.float32
+    assert timescale.nbytes == 8
+    assert timescale_nbytes is None
+    assert timescale_runtime is None
+    for buffer, array, nbytes, call_runtime in uploads[1:]:
+        assert nbytes is None
+        assert call_runtime is None
+        assert array.dtype == np.float16
+        assert array.flags.c_contiguous
+        assert array.nbytes == 2
+        assert buffer.nbytes == 2
 
 
 def test_qwen35_gguf_runner_packed_verify_token_upload_uses_owning_array(monkeypatch):

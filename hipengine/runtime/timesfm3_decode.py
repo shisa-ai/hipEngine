@@ -28,7 +28,6 @@ import numpy as np
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
-    copy_host_to_device,
     copy_host_array_to_device,
     free,
     host_array_ptr,
@@ -144,7 +143,7 @@ class TimesFM3GPUDecoder:
             ** (2.0 * np.arange(half_dim, dtype=np.float32) / spec.head_dim)
         ).astype(np.float32)
         self._timescale = malloc(timescale.nbytes)
-        copy_host_to_device(self._timescale, host_array_ptr(timescale))
+        copy_host_array_to_device(self._timescale, timescale)
 
         raw = {name: alloc.buffer.ptr for name, alloc in loaded.weights.tensors.items()}
         info = loaded.weights.tensors
@@ -161,7 +160,7 @@ class TimesFM3GPUDecoder:
             if precision == "fp16":
                 host = np.ascontiguousarray(host.astype(host_dtype))
                 target = malloc(host.nbytes)
-                copy_host_to_device(target, host_array_ptr(host))
+                copy_host_array_to_device(target, host)
                 self._fp16_weights[name] = target
                 return target.ptr
             # fp32: GEMMs read the loader's resident FP32 buffers directly.
@@ -188,7 +187,7 @@ class TimesFM3GPUDecoder:
                 np.concatenate(pieces, axis=0).astype(host_dtype)
             )
             target = malloc(concat.nbytes)
-            copy_host_to_device(target, host_array_ptr(concat))
+            copy_host_array_to_device(target, concat)
             self._fp16_weights[f"{name_prefix}.__qkv_concat"] = target
             return target.ptr
 
@@ -217,7 +216,7 @@ class TimesFM3GPUDecoder:
                 _read_f32(raw[f"{prefix}.seq_attn.key_ln.weight"], hd) * k_scale
             ).astype(np.float32)
             k_ln_buf = malloc(k_ln_h.nbytes)
-            copy_host_to_device(k_ln_buf, host_array_ptr(k_ln_h))
+            copy_host_array_to_device(k_ln_buf, k_ln_h)
             self._fp16_weights[f"__k_ln_scaled.{i}"] = k_ln_buf
             # Fold q_ln * factor * softplus(per_dim) into one qscale vector
             # (applied after the QK-normalize inside the fused kernel).
@@ -227,7 +226,7 @@ class TimesFM3GPUDecoder:
                 q_ln_h * qscale_factor * np.logaddexp(per_dim_h, np.zeros_like(per_dim_h))
             ).astype(np.float32)
             qscale_buf = malloc(qscale_h.nbytes)
-            copy_host_to_device(qscale_buf, host_array_ptr(qscale_h))
+            copy_host_array_to_device(qscale_buf, qscale_h)
             self._fp16_weights[f"__qscale.{i}"] = qscale_buf
             # Folded per-dim scale for the variate-attention queries.
             var_q_ln_h = _read_f32(raw[f"{prefix}.var_attn.query_ln.weight"], hd)
@@ -236,7 +235,7 @@ class TimesFM3GPUDecoder:
                 var_q_ln_h * qscale_factor * np.logaddexp(var_per_dim_h, np.zeros_like(var_per_dim_h))
             ).astype(np.float32)
             var_qscale_buf = malloc(var_qscale_h.nbytes)
-            copy_host_to_device(var_qscale_buf, host_array_ptr(var_qscale_h))
+            copy_host_array_to_device(var_qscale_buf, var_qscale_h)
             self._fp16_weights[f"__var_qscale.{i}"] = var_qscale_buf
             self._layers.append({
                 # q/k/v projections concatenated into one [3d, d] GEMM weight.
@@ -656,7 +655,7 @@ class TimesFM3GPUDecoder:
         tok_in = np.ascontiguousarray(resblock_input.astype(host_dt)).reshape(
             rows, spec.tokenizer_input_dims
         )
-        copy_host_to_device(bufs.tok_in, host_array_ptr(tok_in))
+        copy_host_array_to_device(bufs.tok_in, tok_in)
         self._forward(bufs, batch_size, num_variates, n, front_masked)
 
         logits_host = np.empty((rows, spec.output_head_dims), dtype=host_dt)

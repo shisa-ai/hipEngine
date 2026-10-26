@@ -21,7 +21,6 @@ import numpy as np
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
-    copy_host_to_device,
     copy_host_array_to_device,
     free,
     host_array_ptr,
@@ -166,7 +165,7 @@ class TimesFMGPUDecoder:
             1.0 * (10_000.0 / 1.0) ** (2.0 * np.arange(half_dim, dtype=np.float32) / self.spec.head_dim)
         ).astype(np.float32)
         self._timescale = malloc(timescale.nbytes)
-        copy_host_to_device(self._timescale, host_array_ptr(timescale))
+        copy_host_array_to_device(self._timescale, timescale)
         self._gemm_solutions: dict[tuple[int, int, int], int] = {}
         self._autotune_gemm = autotune_gemm
         self._fp16_weights: dict[str, DeviceBuffer] = {}
@@ -194,7 +193,7 @@ class TimesFMGPUDecoder:
                 )
                 host16 = np.ascontiguousarray(host.astype(np.float16))
                 target = malloc(host16.nbytes)
-                copy_host_to_device(target, host_array_ptr(host16))
+                copy_host_array_to_device(target, host16)
                 self._fp16_weights[name] = target
                 gemm_ptr[name] = target.ptr
         self._w = {
@@ -228,7 +227,7 @@ class TimesFMGPUDecoder:
                 * (np.log1p(np.exp(-np.abs(per_dim_h))) + np.maximum(per_dim_h, 0.0))
             ).astype(np.float32)
             qscale_buf = malloc(qscale_h.nbytes)
-            copy_host_to_device(qscale_buf, host_array_ptr(qscale_h))
+            copy_host_array_to_device(qscale_buf, qscale_h)
             self._fp16_weights[f"__qscale.{i}"] = qscale_buf
             self._layers.append({
                 "qkv": gemm_ptr[f"stacked_xf.{i}.attn.qkv_proj.weight"],
@@ -492,7 +491,7 @@ class TimesFMGPUDecoder:
         normed_inputs = np.where(patched_masks, 0.0, normed_inputs).astype(host_dt)
         tok_in = np.concatenate([normed_inputs, patched_masks.astype(host_dt)], axis=-1)
         tok_in = np.ascontiguousarray(tok_in).reshape(batch * num_input_patches, self.spec.tokenizer_input_dims)
-        copy_host_to_device(bufs.tok_in, host_array_ptr(tok_in))
+        copy_host_array_to_device(bufs.tok_in, tok_in)
 
         num_masked_seg = np.sum(patched_masks[:, :, -1], axis=1).astype(np.int32)
         next_index = np.zeros(batch, dtype=np.int32)
@@ -556,7 +555,11 @@ class TimesFMGPUDecoder:
                 [new_normed_input.astype(host_dt), new_mask.astype(host_dt)], axis=-1
             )
             tok_in = np.ascontiguousarray(tok_in).reshape(batch * m, self.spec.tokenizer_input_dims)
-            copy_host_to_device(bufs.tok_in, host_array_ptr(tok_in), batch * m * self.spec.tokenizer_input_dims * itemsize)
+            copy_host_array_to_device(
+                bufs.tok_in,
+                tok_in,
+                batch * m * self.spec.tokenizer_input_dims * itemsize,
+            )
 
             start = int(next_index[0])
             self._forward(
