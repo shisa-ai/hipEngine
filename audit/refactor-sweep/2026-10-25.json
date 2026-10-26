@@ -3598,7 +3598,7 @@
       "end_line": 3294,
       "sha256": "a5ae1a7010255e93cd6271ef69fa442725b225c24a33c1f95630666f51bc96be",
       "status": "pending",
-      "evidence": [],
+      "evidence": ["Corrected false claim that serving INT8 requires a qualification record. Verified DMSCompactBackend.__init__ and create_dms_int8_backend; tests/test_gpu_dms_codec_evaluation.py passes with device payloads disabled. Evaluation factory consolidation remains open."],
       "subitems": [
         {
           "line": 3284,

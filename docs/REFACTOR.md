@@ -2904,7 +2904,9 @@ should be removed or collapsed.
 - Keep the evaluation factory only while it is needed to qualify new artifacts
   or codecs. Consolidate it into a shared evaluator capability when one exists;
   never replace its explicit unqualified status with fabricated passing scores.
-  Production INT8 construction continues to require artifact qualification.
+  Serving INT8 construction accepts no qualification record; if one is supplied,
+  its artifact fingerprint must match. Evaluation-only status is observability,
+  not a prerequisite for executing an explicitly requested codec.
 
 ## 2026-09-09 W4A16 IQ prefill — registered, unrouted
 
