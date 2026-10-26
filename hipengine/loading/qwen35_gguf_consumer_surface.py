@@ -377,6 +377,14 @@ LINEAR_WEIGHT_OPERANDS = MappingProxyType({
     "pack8": (("qweight", "i32", "read"), ("scales", "f32", "read"), ("mins", "f32", "read")),
     "raw": (("raw", "i8", "read"),),
     "t16": (("tiles", "i8", "read"),),
+    # Explicit two-operand form of ``t16``: the same resident tiles plus the
+    # weight's own pre-converted half operand. No dispatch-surface row carries
+    # this abi -- it is selected from the weight's capability at launch, like
+    # the resident-plane raw siblings -- so this entry is read by
+    # ``linear_weight_pointers`` alone. Declaring the operand order here is
+    # what keeps the runtime adapter's argument list and the abi name one
+    # fact.
+    "t16_f16w": (("tiles", "i8", "read"), ("f16w", "fp16", "read")),
     "dense_bf16": (("raw", "resident_dense", "read"),),
 })
 

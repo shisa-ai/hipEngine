@@ -38,7 +38,7 @@ other quants, norms) keeps raw residency alone.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
@@ -131,6 +131,14 @@ class Gemma4GGUFDeviceWeight:
     spec: Gemma4GGUFWeightSpec
     allocations: Mapping[str, DeviceTensorAllocation]
     backend: str
+    # Extra operands this weight owns that its GGUF layout does not describe:
+    # today the dense Q8_0 projections' pre-converted f16 prefill operand.
+    # They are resident bytes like any other, so ``nbytes`` counts them and
+    # ``free()`` releases them, but ``allocations`` keeps meaning "what the
+    # planned layout holds" so no other consumer changes.
+    sidecars: dict[str, DeviceTensorAllocation] = field(
+        default_factory=dict, repr=False, compare=False
+    )
 
     def allocation(self, name: str | None = None) -> DeviceTensorAllocation:
         """The resident allocation ``name``, or the spec's primary one.
@@ -143,14 +151,20 @@ class Gemma4GGUFDeviceWeight:
 
         if name is None:
             name = self.spec.allocation_names[0]
+        sidecar = self.sidecars.get(name)
+        if sidecar is not None:
+            return sidecar
         return self.allocations[name]
 
     def has_allocation(self, name: str) -> bool:
-        return name in self.allocations
+        return name in self.sidecars or name in self.allocations
 
     @property
     def nbytes(self) -> int:
-        return sum(int(allocation.buffer.nbytes) for allocation in self.allocations.values())
+        return sum(
+            int(allocation.buffer.nbytes)
+            for allocation in (*self.allocations.values(), *self.sidecars.values())
+        )
 
     @property
     def expert_stride_bytes(self) -> int:
@@ -181,6 +195,10 @@ class Gemma4GGUFDeviceWeight:
         return nbytes // experts
 
     def free(self, *, runtime=None) -> None:
+        # Sidecars first: they are derived from the planned allocations, so a
+        # copy built from those bytes is never outlived by its source.
+        for allocation in reversed(tuple(self.sidecars.values())):
+            allocation.free(runtime=runtime)
         for allocation in reversed(tuple(self.allocations.values())):
             allocation.free(runtime=runtime)
 

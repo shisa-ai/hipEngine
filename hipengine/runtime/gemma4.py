@@ -448,7 +448,6 @@ class Gemma4DeviceWeights:
         if self._freed:
             return
         self._freed = True
-        self._release_dense_f16w()
         for item in self._owned:
             item.free()
         self._owned.clear()
@@ -466,8 +465,9 @@ class Gemma4DeviceWeights:
         that carries T16 ``tiles`` gets a second, f16 copy of that operand
         (``in * out * 2`` bytes, 3.3 GB over Gemma 4 26B-A4B's 1.645 G dense
         elements), built on the device from the tiles with the kernel's own
-        expression and registered so the two-wave launch loads it instead. The
-        output is bit-identical either way.
+        expression and kept as an ``f16w`` sidecar of the weight it belongs to.
+        The weight's ``free()`` releases it, and dispatch reaches it through
+        ``weight.allocation("f16w")``. The output is bit-identical either way.
 
         This is a memory-for-speed trade the caller did not ask for, so it is
         taken only when the device keeps ``DENSE_F16W_RESERVE_BYTES`` free
@@ -480,7 +480,6 @@ class Gemma4DeviceWeights:
         status = self.__dict__.get("dense_f16w_status")
         if status is not None:
             return status
-        self.__dict__["_dense_f16w"] = []
         targets = []
         for item in self._owned:
             checker = getattr(item, "has_allocation", None)
@@ -489,11 +488,16 @@ class Gemma4DeviceWeights:
                 continue
             if getattr(spec, "quant_key", None) != "gguf_q8_0":
                 continue
+            # Selected only if the weight can take the operand: a weight type
+            # without a mutable sidecar map is not a target, so the publish
+            # below has no way to fail halfway through the list.
+            if not isinstance(getattr(item, "sidecars", None), dict):
+                continue
             tiles = item.allocation("tiles")
             shape = tuple(int(dim) for dim in tiles.tensor.shape)
             if len(shape) != 3:
                 continue
-            targets.append((tiles.buffer.ptr, shape[1] * 32, shape[0] * 16))
+            targets.append((item, shape[1] * 32, shape[0] * 16))
         if not targets:
             return self._set_dense_f16w_status("none: no dense Q8_0 projection carries T16 tiles")
 
@@ -505,8 +509,8 @@ class Gemma4DeviceWeights:
         from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
             gguf_q8_0_t16_f16w_bytes,
             gguf_q8_0_t16_tiles_to_f16w,
-            register_gguf_q8_0_t16_f16w,
         )
+        from hipengine.loading.materialize import device_allocation_from_buffer
 
         runtime = get_hip_runtime()
         need = sum(gguf_q8_0_t16_f16w_bytes(i, o) for _, i, o in targets)
@@ -516,21 +520,49 @@ class Gemma4DeviceWeights:
                 f"skipped: insufficient memory, {need} bytes needed with "
                 f"{self.DENSE_F16W_RESERVE_BYTES} to stay free and {free_bytes} free"
             )
+        filled: list[tuple[Any, Any, int, int]] = []
         try:
-            for tiles_ptr, in_features, out_features in targets:
+            for item, in_features, out_features in targets:
                 buffer = device_memory.malloc(gguf_q8_0_t16_f16w_bytes(in_features, out_features))
-                self._dense_f16w.append((tiles_ptr, buffer))
+                filled.append((item, buffer, in_features, out_features))
                 gguf_q8_0_t16_tiles_to_f16w(
-                    tiles_ptr, buffer.ptr, in_features, out_features, runtime=runtime
+                    item.allocation("tiles").tensor.ptr,
+                    buffer.ptr,
+                    in_features,
+                    out_features,
+                    runtime=runtime,
                 )
             # The conversions are queued on the default stream; they are
-            # complete before any launch that could read them is registered.
+            # complete before any launch that could read them is dispatched.
             runtime.device_synchronize()
         except HipError as error:
-            self._release_dense_f16w()
+            for _, buffer, _, _ in filled:
+                device_memory.free(buffer)
             return self._set_dense_f16w_status(f"skipped: allocation failed ({error})")
-        for (tiles_ptr, buffer), (_, in_features, out_features) in zip(self._dense_f16w, targets):
-            register_gguf_q8_0_t16_f16w(tiles_ptr, buffer.ptr, in_features, out_features)
+        # Attached only after the sync: no launch can observe a half-written
+        # operand, and the weight owns it from here on. The wrappers are built
+        # before any is published so a rejected wrapper cannot leave the copies
+        # attached to some weights and the remaining buffers unreferenced;
+        # nothing reads a sidecar until the publish loop below.
+        try:
+            built = [
+                (
+                    item,
+                    device_allocation_from_buffer(
+                        f"{item.spec.source.name}:f16w",
+                        buffer,
+                        (out_features, in_features),
+                        "fp16",
+                    ),
+                )
+                for item, buffer, in_features, out_features in filled
+            ]
+        except (TypeError, ValueError) as error:
+            for _, buffer, _, _ in filled:
+                device_memory.free(buffer)
+            return self._set_dense_f16w_status(f"skipped: sidecar rejected ({error})")
+        for item, allocation in built:
+            item.sidecars["f16w"] = allocation
         return self._set_dense_f16w_status(
             f"resident: {len(targets)} projections, {need} bytes"
         )
@@ -538,22 +570,6 @@ class Gemma4DeviceWeights:
     def _set_dense_f16w_status(self, status: str) -> str:
         self.__dict__["dense_f16w_status"] = status
         return status
-
-    def _release_dense_f16w(self) -> None:
-        """Unregister and free the pre-converted dense weights, if any."""
-
-        held = self.__dict__.get("_dense_f16w")
-        if not held:
-            return
-        from hipengine.core import memory as device_memory
-        from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
-            unregister_gguf_q8_0_t16_f16w,
-        )
-
-        for tiles_ptr, buffer in held:
-            unregister_gguf_q8_0_t16_f16w(tiles_ptr)
-            device_memory.free(buffer)
-        held.clear()
 
 
 def _tensor_values(reader: GGUFReader, spec: Gemma4GGUFWeightSpec) -> np.ndarray:

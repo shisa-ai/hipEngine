@@ -29,12 +29,19 @@ _ALLOWED_TILES = {(16, 16), (32, 16), (16, 32), (32, 32), (64, 16), (64, 32)}
 
 _TWO_WAVE_VARIANT = "wmma_prefill_2wave_bf16_bf16_out"
 _FOUR_WAVE_VARIANT = "wmma_prefill_4wave_bf16_bf16_out"
+# The decoding variant the wide-wave policy keys on, and its explicit
+# two-operand form: the same launch over a weight that also owns its
+# pre-converted half operand. Both spellings enter ``_wide_wave_launch``, so
+# the two-wave/four-wave policy and its tile selection have one owner.
+_DECODING_VARIANT = "wmma_prefill_bf16_bf16_out"
+_F16W_VARIANT = "wmma_prefill_f16w_bf16_bf16_out"
+_WIDE_WAVE_VARIANTS = (_DECODING_VARIANT, _F16W_VARIANT)
 _TWO_WAVE_ENV = "HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE"
 _FOUR_WAVE_ENV = "HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE"
 _wide_wave_session_enabled: bool | None = None
 
 _VARIANTS: tuple[str, ...] = (
-    "wmma_prefill_bf16_bf16_out",
+    _DECODING_VARIANT,
     "wmma_prefill_bf16_fp16_out",
     "wmma_prefill_bf16_f32_out",
     "wmma_prefill_fp16_bf16_out",
@@ -205,6 +212,81 @@ def _symbol_for_variant(variant: str) -> str:
     return f"hipengine_gguf_q8_0_t16_{variant}"
 
 
+def _wide_wave_launch(
+    *,
+    variant: str,
+    x_ptr: int,
+    tiles_ptr: int,
+    f16w_ptr: int | None,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    tile_m: int | None,
+    tile_n: int | None,
+    two_wave_default: bool,
+    four_wave_default: bool,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> bool:
+    """Take the wide-wave schedule this shape resolves to, if the policy covers it.
+
+    ``tile_m``/``tile_n`` are the caller's overrides, if any. ``f16w_ptr``
+    selects the pre-converted-operand form of the same schedule; without it the
+    schedule decodes the weight as it always has. Returns whether a wide-wave
+    launch happened -- the caller owns the decoding fallback, which is the only
+    form the sub-2048 widths and the narrow tiles have.
+    """
+
+    if variant not in _WIDE_WAVE_VARIANTS:
+        return False
+    resolved_tile_m, resolved_tile_n = _default_tiles(rows, in_features, out_features)
+    if tile_m is not None:
+        resolved_tile_m = tile_m
+    if tile_n is not None:
+        resolved_tile_n = tile_n
+    if _four_wave_prefill_applies(
+        tile_m=resolved_tile_m,
+        tile_n=resolved_tile_n,
+        out_features=out_features,
+        default=four_wave_default,
+    ):
+        if f16w_ptr is not None:
+            gguf_q8_0_t16_wmma_prefill_4wave_f16w_bf16_bf16_out(
+                x_ptr, tiles_ptr, f16w_ptr, out_ptr, rows, in_features, out_features,
+                stream=stream, library=library, runtime=runtime,
+            )
+            return True
+        _launch(
+            _symbol_for_variant(_FOUR_WAVE_VARIANT),
+            x_ptr, tiles_ptr, out_ptr, rows, in_features, out_features,
+            tile_m=128, tile_n=resolved_tile_n,
+            stream=stream, library=library, runtime=runtime,
+        )
+        return True
+    if _two_wave_prefill_applies(
+        tile_m=resolved_tile_m,
+        tile_n=resolved_tile_n,
+        out_features=out_features,
+        default=two_wave_default,
+    ):
+        if f16w_ptr is not None:
+            gguf_q8_0_t16_wmma_prefill_2wave_f16w_bf16_bf16_out(
+                x_ptr, tiles_ptr, f16w_ptr, out_ptr, rows, in_features, out_features,
+                stream=stream, library=library, runtime=runtime,
+            )
+            return True
+        _launch(
+            _symbol_for_variant(_TWO_WAVE_VARIANT),
+            x_ptr, tiles_ptr, out_ptr, rows, in_features, out_features,
+            tile_m=64, tile_n=resolved_tile_n,
+            stream=stream, library=library, runtime=runtime,
+        )
+        return True
+    return False
+
+
 def _make_wrapper(
     variant: str,
     *,
@@ -227,60 +309,34 @@ def _make_wrapper(
         library: ctypes.CDLL | None = None,
         runtime: HipRuntime | None = None,
     ) -> None:
-        resolved_tile_m, resolved_tile_n = _default_tiles(rows, in_features, out_features)
-        if tile_m is not None:
-            resolved_tile_m = tile_m
-        if tile_n is not None:
-            resolved_tile_n = tile_n
-        selected_symbol = symbol
-        if variant == "wmma_prefill_bf16_bf16_out" and _four_wave_prefill_applies(
-            tile_m=resolved_tile_m,
-            tile_n=resolved_tile_n,
+        if _wide_wave_launch(
+            variant=variant,
+            x_ptr=x_ptr,
+            tiles_ptr=tiles_ptr,
+            f16w_ptr=None,
+            out_ptr=out_ptr,
+            rows=rows,
+            in_features=in_features,
             out_features=out_features,
-            default=four_wave_default,
+            tile_m=tile_m,
+            tile_n=tile_n,
+            two_wave_default=two_wave_default,
+            four_wave_default=four_wave_default,
+            stream=stream,
+            library=library,
+            runtime=runtime,
         ):
-            selected_symbol = _symbol_for_variant(_FOUR_WAVE_VARIANT)
-            resolved_tile_m = 128
-            f16w_ptr = (
-                gguf_q8_0_t16_f16w_for(tiles_ptr, in_features, out_features)
-                if resolved_tile_n == 32 else None
-            )
-            if f16w_ptr is not None:
-                gguf_q8_0_t16_wmma_prefill_4wave_f16w_bf16_bf16_out(
-                    x_ptr, tiles_ptr, f16w_ptr, out_ptr, rows, in_features, out_features,
-                    stream=stream, library=library, runtime=runtime,
-                )
-                return
-        elif variant == "wmma_prefill_bf16_bf16_out" and _two_wave_prefill_applies(
-            tile_m=resolved_tile_m,
-            tile_n=resolved_tile_n,
-            out_features=out_features,
-            default=two_wave_default,
-        ):
-            selected_symbol = _symbol_for_variant(_TWO_WAVE_VARIANT)
-            resolved_tile_m = 64
-            # The same launch over pre-converted weights, when the weight's
-            # owner registered them for this shape; likewise four-wave above.
-            f16w_ptr = (
-                gguf_q8_0_t16_f16w_for(tiles_ptr, in_features, out_features)
-                if resolved_tile_n == 32 else None
-            )
-            if f16w_ptr is not None:
-                gguf_q8_0_t16_wmma_prefill_2wave_f16w_bf16_bf16_out(
-                    x_ptr, tiles_ptr, f16w_ptr, out_ptr, rows, in_features, out_features,
-                    stream=stream, library=library, runtime=runtime,
-                )
-                return
+            return
         _launch(
-            selected_symbol,
+            symbol,
             x_ptr,
             tiles_ptr,
             out_ptr,
             rows,
             in_features,
             out_features,
-            tile_m=resolved_tile_m,
-            tile_n=resolved_tile_n,
+            tile_m=tile_m,
+            tile_n=tile_n,
             stream=stream,
             library=library,
             runtime=runtime,
@@ -289,6 +345,77 @@ def _make_wrapper(
     wrapper.__name__ = f"gguf_q8_0_t16_{variant}"
     wrapper.__qualname__ = wrapper.__name__
     wrapper.__doc__ = f"Launch Q8_0 T16 dense WMMA prefill ({variant})."
+    return wrapper
+
+
+def _make_f16w_wrapper(
+    variant: str,
+    *,
+    two_wave_default: bool = False,
+    four_wave_default: bool = False,
+):
+    """Build the explicit two-operand form of the wide-wave prefill launch.
+
+    The third positional is the weight's owned f16 operand, so the abi carries
+    it instead of the wrapper looking it up. Below the wide-wave schedule the
+    operand is unused and the launch is the decoding one: there is no f16w
+    kernel for those tile shapes, and inventing a decoding launch that reads a
+    second operand would change the certified arithmetic for no gain.
+    """
+
+    decoding_symbol = _symbol_for_variant(_DECODING_VARIANT)
+
+    def wrapper(
+        x_ptr: int,
+        tiles_ptr: int,
+        f16w_ptr: int,
+        out_ptr: int,
+        rows: int,
+        in_features: int,
+        out_features: int,
+        *,
+        tile_m: int | None = None,
+        tile_n: int | None = None,
+        stream: int = 0,
+        library: ctypes.CDLL | None = None,
+        runtime: HipRuntime | None = None,
+    ) -> None:
+        if _wide_wave_launch(
+            variant=variant,
+            x_ptr=x_ptr,
+            tiles_ptr=tiles_ptr,
+            f16w_ptr=f16w_ptr,
+            out_ptr=out_ptr,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            tile_m=tile_m,
+            tile_n=tile_n,
+            two_wave_default=two_wave_default,
+            four_wave_default=four_wave_default,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        ):
+            return
+        _launch(
+            decoding_symbol,
+            x_ptr,
+            tiles_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            tile_m=tile_m,
+            tile_n=tile_n,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+
+    wrapper.__name__ = f"gguf_q8_0_t16_{variant}"
+    wrapper.__qualname__ = wrapper.__name__
+    wrapper.__doc__ = f"Launch Q8_0 T16 dense WMMA prefill ({variant}) over owned f16w tiles."
     return wrapper
 
 
@@ -348,7 +475,7 @@ def gguf_q8_0_t16_dual_wmma_prefill_bf16_bf16_out(
 _WRAPPER_CACHE: dict[str, object] = {variant: _make_wrapper(variant) for variant in _VARIANTS}
 
 gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out = _make_wrapper(
-    "wmma_prefill_bf16_bf16_out",
+    _DECODING_VARIANT,
     two_wave_default=True,
 )
 gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out.__name__ = (
@@ -358,7 +485,7 @@ gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out.__qualname__ = (
     gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out.__name__
 )
 gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out = _make_wrapper(
-    "wmma_prefill_bf16_bf16_out",
+    _DECODING_VARIANT,
     two_wave_default=True,
     four_wave_default=True,
 )
@@ -367,6 +494,30 @@ gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out.__name__ = (
 )
 gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out.__qualname__ = (
     gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out.__name__
+)
+# The explicit two-operand forms of the same two wrappers. They are not in
+# ``_WRAPPER_CACHE``: that loop builds the nine output-dtype decoding wrappers
+# and would register these under their decoding signature.
+gguf_q8_0_t16_wmma_prefill_f16w_bf16_bf16_out = _make_f16w_wrapper(
+    _F16W_VARIANT,
+    two_wave_default=True,
+)
+gguf_q8_0_t16_wmma_prefill_f16w_bf16_bf16_out.__name__ = (
+    "gguf_q8_0_t16_wmma_prefill_f16w_bf16_bf16_out"
+)
+gguf_q8_0_t16_wmma_prefill_f16w_bf16_bf16_out.__qualname__ = (
+    gguf_q8_0_t16_wmma_prefill_f16w_bf16_bf16_out.__name__
+)
+gguf_q8_0_t16_wmma_prefill_auto_4wave_f16w_bf16_bf16_out = _make_f16w_wrapper(
+    _F16W_VARIANT,
+    two_wave_default=True,
+    four_wave_default=True,
+)
+gguf_q8_0_t16_wmma_prefill_auto_4wave_f16w_bf16_bf16_out.__name__ = (
+    "gguf_q8_0_t16_wmma_prefill_auto_4wave_f16w_bf16_bf16_out"
+)
+gguf_q8_0_t16_wmma_prefill_auto_4wave_f16w_bf16_bf16_out.__qualname__ = (
+    gguf_q8_0_t16_wmma_prefill_auto_4wave_f16w_bf16_bf16_out.__name__
 )
 
 
@@ -519,12 +670,9 @@ def _launch(
 # into the half operand WMMA consumes. A weight owner with device memory to
 # spare can hold that operand already converted: ``gguf_q8_0_t16_tiles_to_f16w``
 # writes it from the resident T16 tiles with the kernel's own expression, and
-# the owner registers the result against the tiles pointer it was built from.
-# The two-wave ``wmma_prefill_bf16_bf16_out`` launch then reads it instead of
-# decoding. The table is keyed by the tiles pointer because that is the only
-# operand the registered launch signature carries; the owner that registers an
-# entry must unregister it before freeing either buffer.
-_F16W_TILES: dict[int, tuple[int, int, int]] = {}
+# the owner keeps the result as a second operand of the same weight. The
+# ``t16_f16w`` abi carries that pointer, so a launch reads the operand it was
+# dispatched with rather than looking one up by tiles pointer.
 
 
 def gguf_q8_0_t16_f16w_bytes(in_features: int, out_features: int) -> int:
@@ -564,32 +712,6 @@ def gguf_q8_0_t16_tiles_to_f16w(
     )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
-
-
-def register_gguf_q8_0_t16_f16w(
-    tiles_ptr: int, f16w_ptr: int, in_features: int, out_features: int
-) -> None:
-    """Make the wide-wave prefill read ``f16w_ptr`` for the weight at ``tiles_ptr``."""
-
-    gguf_q8_0_t16_f16w_bytes(in_features, out_features)
-    if not tiles_ptr or not f16w_ptr:
-        raise ValueError("f16w registration needs non-null tiles and f16w pointers")
-    _F16W_TILES[int(tiles_ptr)] = (int(f16w_ptr), int(in_features), int(out_features))
-
-
-def unregister_gguf_q8_0_t16_f16w(tiles_ptr: int) -> None:
-    """Drop the f16w entry for ``tiles_ptr``; a missing entry is not an error."""
-
-    _F16W_TILES.pop(int(tiles_ptr), None)
-
-
-def gguf_q8_0_t16_f16w_for(tiles_ptr: int, in_features: int, out_features: int) -> int | None:
-    """The registered f16w pointer for this weight and shape, or ``None``."""
-
-    entry = _F16W_TILES.get(int(tiles_ptr))
-    if entry is None or entry[1:] != (int(in_features), int(out_features)):
-        return None
-    return entry[0]
 
 
 def _launch_f16w(
@@ -722,6 +844,19 @@ def register_gguf_q8_0_t16_prefill_kernels(*, replace: bool = True) -> None:
         gguf_q8_0_t16_wmma_prefill_4wave_bf16_bf16_out,
         replace=replace,
     )
+    # The explicit two-operand variant. Only the ``t16_`` rewrite spelling is
+    # registered: the dispatch step that selects it builds that key, and no
+    # rows>1 alias produces the bare spelling for it.
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q8_0_t16_v1",
+            f"t16_{_F16W_VARIANT}",
+        ),
+        gguf_q8_0_t16_wmma_prefill_f16w_bf16_bf16_out,
+        replace=replace,
+    )
 
     for variant in _VARIANTS:
         fn = (
@@ -766,12 +901,11 @@ __all__ = [
     "gguf_q8_0_t16_wmma_prefill_2wave_bf16_bf16_out",
     "gguf_q8_0_t16_wmma_prefill_2wave_f16w_bf16_bf16_out",
     "gguf_q8_0_t16_f16w_bytes",
-    "gguf_q8_0_t16_f16w_for",
     "gguf_q8_0_t16_tiles_to_f16w",
-    "register_gguf_q8_0_t16_f16w",
-    "unregister_gguf_q8_0_t16_f16w",
     "gguf_q8_0_t16_wmma_prefill_4wave_bf16_bf16_out",
     "gguf_q8_0_t16_wmma_prefill_4wave_f16w_bf16_bf16_out",
     "gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out",
     "gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out",
+    "gguf_q8_0_t16_wmma_prefill_auto_4wave_f16w_bf16_bf16_out",
+    "gguf_q8_0_t16_wmma_prefill_f16w_bf16_bf16_out",
 ] + [f"gguf_q8_0_t16_{variant}" for variant in _VARIANTS]

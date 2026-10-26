@@ -1348,8 +1348,10 @@
       "start_line": 1373,
       "end_line": 1390,
       "sha256": "20dd23d2f1badcea8b11e13a3cdb40f956e9a817a7664443462f2bccf14b6d3a",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Pointer table removed; explicit registered t16_f16w operand, weight-owned sidecars and capability/cache isolation implemented. CPU suite,6GPU parity cases,36 public parity rows and process-wide dispatch engagement passed. Worklog:worklog/entries/20261026T042627.970475Z-cleanup-refactor-r0045-d34ae0.md."
+      ],
       "subitems": []
     },
     {

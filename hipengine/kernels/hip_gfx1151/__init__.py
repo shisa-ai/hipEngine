@@ -33,6 +33,7 @@ from hipengine.kernels.hip_gfx1100.moe.router import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out,
+    gguf_q8_0_t16_wmma_prefill_auto_4wave_f16w_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
     gguf_q4_k_pack8_wmma_prefill_gfx1151_bf16_bf16_out,
@@ -3520,6 +3521,14 @@ _GFX1151_OVERRIDES = {
         "gguf_q8_0_t16_v1",
         "t16_wmma_prefill_bf16_bf16_out",
     ): gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out,
+    # The explicit two-operand form of the same launch: the schedule must stay
+    # the four-wave one on this backend, or the f16w route would silently fall
+    # back to the gfx1100 two-wave default.
+    (
+        "linear",
+        "gguf_q8_0_t16_v1",
+        "t16_wmma_prefill_f16w_bf16_bf16_out",
+    ): gguf_q8_0_t16_wmma_prefill_auto_4wave_f16w_bf16_bf16_out,
     (
         "linear",
         "gguf_q4_k",

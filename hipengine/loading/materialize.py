@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Mapping, Protocol
+from typing import Iterable, Mapping, Protocol, Sequence
 
 from safetensors import safe_open
 
@@ -221,6 +221,43 @@ def alias_device_allocation(
     source = TensorInfo(name=name, shard_path=index_virtual_path(name), dtype=safetensors_dtype, shape=shape)
     tensor = Tensor.from_handle(owner.buffer.ptr + byte_offset, shape, parsed, device or owner.tensor.device)
     return DeviceTensorAllocation(name=name, source=source, buffer=owner.buffer, tensor=tensor, owns_buffer=False)
+
+
+def device_allocation_from_buffer(
+    name: str,
+    buffer: DeviceBuffer,
+    shape: Sequence[int],
+    dtype: str | DType,
+    *,
+    device: Device | None = None,
+) -> DeviceTensorAllocation:
+    """Wrap an already-filled device buffer as an owning allocation.
+
+    For a side copy a kernel wrote in place: the bytes exist, so this only
+    builds the tensor view and metadata. The returned allocation owns
+    ``buffer``; a caller that hands a buffer here must not free it separately.
+    """
+
+    if not name:
+        raise ValueError("tensor name must be non-empty")
+    parsed = DType.parse(dtype)
+    shape = tuple(int(dim) for dim in shape)
+    expected_nbytes = parsed.itemsize
+    for dim in shape:
+        if dim < 0:
+            raise ValueError("allocation dimensions must be non-negative")
+        expected_nbytes *= dim
+    if int(buffer.nbytes) != expected_nbytes:
+        raise ValueError(
+            f"allocation {name!r} declares {expected_nbytes} bytes for shape {shape} "
+            f"and dtype {parsed.value!r}, but its buffer holds {buffer.nbytes}"
+        )
+    safetensors_dtype = _DTYPE_TO_SAFETENSORS.get(parsed)
+    if safetensors_dtype is None:
+        raise ValueError(f"dtype {parsed.value!r} cannot be represented as safetensors metadata")
+    source = TensorInfo(name=name, shard_path=index_virtual_path(name), dtype=safetensors_dtype, shape=shape)
+    tensor = Tensor.from_handle(buffer.ptr, shape, parsed, device or Device("hip", 0))
+    return DeviceTensorAllocation(name=name, source=source, buffer=buffer, tensor=tensor)
 
 
 def load_host_array_to_device_as_dtype(

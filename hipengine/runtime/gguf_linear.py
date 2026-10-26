@@ -4855,6 +4855,14 @@ def launch_gguf_linear(
     except KeyError:
         raw_weight_ptr = None
     has_raw_weight_sidecar = raw_weight_ptr is not None and raw_weight_ptr > 0
+    # The pre-converted f16 prefill operand is a second weight allocation, and
+    # the rewrite that consumes it is selected by its presence *and* its shape.
+    # Both belong in the key for the same reason the raw sidecar pointer does:
+    # the memo is process-global and keyed on the launch shape, so without them
+    # a second weight -- or a second runner whose owner skipped the operand, a
+    # supported outcome -- would replay a dispatch that reads an allocation it
+    # does not have.
+    f16w_sidecar = _weight_f16w_sidecar(weight)
     # The wide route's decision depends on an enable flag, a layer scope, and
     # which layer owns this weight. All three must be in the memoization key or
     # the first resolution for a shape is replayed for every layer and the
@@ -4950,6 +4958,7 @@ def launch_gguf_linear(
         _iq_dense_dispatch_cache_state(),
         raw_weight_ptr,
         has_raw_weight_sidecar,
+        f16w_sidecar,
         os.environ.get(_DENSE_F16_GEMM_ENV, "0"),
     )
     cached = _DISPATCH_RESOLVE_CACHE.get(cache_key)
@@ -5023,6 +5032,12 @@ def launch_gguf_linear(
             in_features=in_features, out_features=out_features,
         )
         dispatch = _q8_t16_tiles_small_rows_dispatch(
+            dispatch, weight=weight, rows=rows,
+            in_features=in_features, out_features=out_features,
+        )
+        # After the small-row GEMV, so only a launch that stayed on the
+        # wide-wave WMMA variant can take the weight's owned f16 operand.
+        dispatch = _q8_t16_f16w_prefill_dispatch(
             dispatch, weight=weight, rows=rows,
             in_features=in_features, out_features=out_features,
         )
@@ -9188,6 +9203,22 @@ def _launch_t16(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwa
     )
 
 
+def _launch_t16_f16w(
+    fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs
+) -> None:
+    """Explicit two-operand T16 launch: resident tiles plus the owned f16 operand."""
+
+    fn(
+        x_ptr,
+        *linear_weight_pointers("t16_f16w", weight),
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
+
+
 def _device_ranges_overlap(
     left_ptr: int,
     left_nbytes: int,
@@ -9827,6 +9858,9 @@ def _pack8_gemv_decode_threads(
 
 
 _Q8_T16_TILES_QUANT = "gguf_q8_0_t16_v1"
+# The explicit two-operand prefill variant: the same wide-wave launch over the
+# weight's own pre-converted f16 operand instead of decoding its tiles.
+_Q8_T16_F16W_VARIANT = "t16_wmma_prefill_f16w_bf16_bf16_out"
 # Above this many rows of an output wider than the second bound, a call that
 # asked for WMMA prefill keeps it instead of the per-row T16 GEMV.
 _Q8_T16_SMALL_ROWS_WIDE_MAX_ROWS = 4
@@ -9852,6 +9886,37 @@ def _weight_has_tiles_allocation(weight) -> bool:
         return bool(checker("tiles"))
     except Exception:
         return False
+
+
+def _weight_f16w_sidecar(weight) -> tuple[int, tuple[int, ...]] | None:
+    """The weight's pre-converted f16 prefill operand, as ``(ptr, shape)``.
+
+    ``None`` when the weight does not own one -- the common case, and the
+    supported one: an owner that could not fit the copy keeps the decoding
+    launch. Same capability shape as ``_weight_has_tiles_allocation``: ask the
+    weight, never infer the operand from a layout or a quant name. The shape is
+    returned with the pointer because the rewrite that consumes it admits only
+    an exact ``(out_features, in_features)`` match, and a launch must not read
+    an operand sized for a different projection.
+    """
+
+    checker = getattr(weight, "has_allocation", None)
+    if not callable(checker):
+        return None
+    try:
+        if not checker("f16w"):
+            return None
+        tensor = weight.allocation("f16w").tensor
+    except Exception:
+        return None
+    try:
+        ptr = int(tensor.ptr)
+        # ``tuple`` returns the stored tuple itself when it already is one, so
+        # this stays allocation-free on the per-launch path.
+        shape = tuple(tensor.shape)
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return (ptr, shape) if ptr > 0 else None
 
 
 def _q8_t16_tiles_prefill_dispatch(
@@ -9939,6 +10004,54 @@ def _q8_t16_tiles_small_rows_dispatch(
     if not is_registered(candidate):
         return dispatch
     return GGUFLinearDispatch(candidate, "t16")
+
+
+def _q8_t16_f16w_prefill_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    weight,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Route a dual-resident Q8_0 T16 prefill over the weight's owned f16 operand.
+
+    The wide-wave prefill spends about half its time converting int8 weights
+    into the half operand WMMA consumes. An owner that could spare the memory
+    holds that operand already converted as an ``f16w`` sidecar of the weight
+    it was built from, and this step turns that capability into the registered
+    two-operand variant, whose abi (``t16_f16w``) carries the extra pointer.
+
+    Runs after :func:`_q8_t16_tiles_small_rows_dispatch` so the 2-8 row GEMV
+    route keeps the calls it already owns; only a launch that stayed on the
+    wide-wave WMMA variant can be rewritten here. The shape test is exact
+    because the operand is one projection's operand: a mismatched sidecar is a
+    decline, never a guess. A weight without one -- including an owner whose
+    reserve check failed, a supported outcome -- keeps the decoding launch, so
+    this rewrite never keys on a model name, a path, or a quant family.
+
+    The candidate keeps the dispatch's own quant: this step supplies an
+    operand, it does not change which quant family the launch belongs to. A
+    quant whose two-operand variant nobody registered is not registered here
+    either, and the call keeps the variant it resolved.
+    """
+
+    if (
+        dispatch.abi != "t16"
+        or dispatch.key.variant != "t16_wmma_prefill_bf16_bf16_out"
+    ):
+        return dispatch
+    sidecar = _weight_f16w_sidecar(weight)
+    if sidecar is None or sidecar[1] != (int(out_features), int(in_features)):
+        return dispatch
+    candidate = KernelKey(
+        dispatch.key.backend, dispatch.key.layer, dispatch.key.quant,
+        _Q8_T16_F16W_VARIANT,
+    )
+    _ensure_linear_kernel_registered(candidate)
+    if not is_registered(candidate):
+        return dispatch
+    return GGUFLinearDispatch(candidate, "t16_f16w")
 
 
 def _q8_t16_tiles_decode_dispatch(
@@ -11153,6 +11266,7 @@ _LAUNCH_ABI = {
         _launch_raw_k_f32_resident_activation_tile_k_row
     ),
     "t16": _launch_t16,
+    "t16_f16w": _launch_t16_f16w,
     "t16_q4_f16_rocblas": lambda *args: _launch_t16_f16_rocblas(
         "gguf_q4_k_t16_v1", *args
     ),

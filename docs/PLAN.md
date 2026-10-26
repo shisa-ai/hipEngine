@@ -1193,6 +1193,13 @@ key. Explicit quant strings bypass the plugin default. GGUF text-generator
 factories are registered separately for `hip_gfx1100` and `hip_gfx1151`, and the
 resolved backend supplies the JIT target architecture.
 
+Gemma 4's pre-converted Q8 T16 half-weight operands are weight-owned sidecars,
+counted in resident bytes and freed with the weight. The `t16_f16w` launch ABI
+passes both tiles and the half-weight pointer explicitly; a registered
+capability rewrite selects it only for a matching owned operand. The original
+`t16` ABI remains unchanged for weights without that sidecar. No global
+pointer-to-sidecar lookup participates in dispatch.
+
 ### Qwen hybrid GGUF runtime ownership
 
 The `qwen35`/`qwen35moe` architecture family keeps full-stack composition and resident
