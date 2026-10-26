@@ -446,12 +446,12 @@ def _install_step_fakes(monkeypatch) -> list[tuple]:
     )
     monkeypatch.setattr(
         runner_module,
-        "copy_host_to_device",
-        lambda buffer, host_ptr, nbytes=None, runtime=None: events.append(
+        "copy_host_array_to_device",
+        lambda buffer, array, nbytes=None, runtime=None: events.append(
             (
                 "h2d",
                 int(buffer.ptr),
-                int(nbytes if nbytes is not None else buffer.nbytes),
+                int(nbytes if nbytes is not None else array.nbytes),
             )
         ),
     )
@@ -568,8 +568,8 @@ def _packed_uploads(
 ) -> list[int]:
     """Byte counts of every device copy that targeted the packed buffer.
 
-    Read from the runtime rather than the runner module's ``copy_host_to_device``
-    name, because the packed owner lives in its own module and reaches the device
+    Read from the runtime rather than the runner module's upload helper,
+    because the packed owner lives in its own module and reaches the device
     through the same ``runtime.memcpy`` the real path uses.
     """
 
@@ -1458,14 +1458,14 @@ def _install_head_graph_fakes(monkeypatch, runner: Qwen4ExpGGUFBatchRunner) -> N
     def d2h(host_ptr, buffer, nbytes=None, runtime=None):
         runtime.calls.append(("d2h", int(buffer.ptr)))
 
-    def h2d(buffer, host_ptr, nbytes=None, runtime=None):
+    def h2d(buffer, array, nbytes=None, runtime=None):
         runtime.calls.append(("h2d", int(buffer.ptr)))
 
     monkeypatch.setattr(runner_module, "run_qwen4_exp_gr_read", gr_read)
     monkeypatch.setattr(runner_module, "launch_gguf_linear", lm_head)
     monkeypatch.setattr(runner_module, "argmax_f32_rows_i32", argmax)
     monkeypatch.setattr(runner_module, "copy_device_to_host", d2h)
-    monkeypatch.setattr(runner_module, "copy_host_to_device", h2d)
+    monkeypatch.setattr(runner_module, "copy_host_array_to_device", h2d)
 
 
 def _graph_runner(
@@ -1734,3 +1734,80 @@ def test_batch_owner_declares_mixed_target_support() -> None:
     assert getattr(runner, "supports_mixed_target", False) is True
     # An owner that does not declare it keeps the c1 MTP path.
     assert getattr(SimpleNamespace(), "supports_mixed_target", False) is False
+
+
+# -- host-source ownership ---------------------------------------------------
+
+
+def test_step_routes_token_and_ple_uploads_through_the_owning_array_api(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_step_fakes(monkeypatch)
+    calls: list[tuple[object, np.ndarray, int | None]] = []
+    real_upload = runner_module.copy_host_array_to_device
+
+    def recording_upload(buffer, array, nbytes=None, *, runtime=None):
+        calls.append((buffer, array, nbytes))
+        real_upload(buffer, array, nbytes, runtime=runtime)
+
+    monkeypatch.setattr(
+        runner_module, "copy_host_array_to_device", recording_upload
+    )
+    runner = _fake_runner(slots=2)
+    owner = runner.admit(0)
+    runner.step([3], slots=[0], owners=[owner], capture_logits=False)
+
+    assert len(calls) == 2
+    token_buffer, tokens, token_nbytes = calls[0]
+    assert token_buffer is runner.token_ids
+    assert tokens.tolist() == [3]
+    assert tokens.flags.c_contiguous
+    assert token_nbytes == tokens.nbytes == 8
+    ple_buffer, ple_rows, ple_nbytes = calls[1]
+    assert ple_buffer is runner.ple_embedding
+    assert ple_rows.flags.c_contiguous
+    assert ple_rows.shape[0] == 1
+    assert ple_nbytes == ple_rows.nbytes
+
+
+def test_step_contiguizes_a_strided_ple_stage_without_changing_its_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_step_fakes(monkeypatch)
+    staged_ref: list[np.ndarray] = []
+
+    def strided_stage(staging, rows, *, hidden):
+        base = np.arange(len(rows) * hidden * 2, dtype=np.float32).reshape(
+            len(rows), hidden * 2
+        )
+        staged = base[:, ::2]
+        staged_ref.append(staged)
+        return staged
+
+    monkeypatch.setattr(
+        runner_module, "stage_qwen4_exp_ple_rows", strided_stage
+    )
+    calls: list[tuple[object, np.ndarray, int | None]] = []
+    real_upload = runner_module.copy_host_array_to_device
+
+    def recording_upload(buffer, array, nbytes=None, *, runtime=None):
+        calls.append((buffer, array, nbytes))
+        real_upload(buffer, array, nbytes, runtime=runtime)
+
+    monkeypatch.setattr(
+        runner_module, "copy_host_array_to_device", recording_upload
+    )
+    runner = _fake_runner(slots=2)
+    owner = runner.admit(0)
+    runner.step([3], slots=[0], owners=[owner], capture_logits=False)
+
+    assert len(staged_ref) == 1
+    staged = staged_ref[0]
+    assert not staged.flags.c_contiguous
+    ple_calls = [call for call in calls if call[0] is runner.ple_embedding]
+    assert len(ple_calls) == 1
+    _, uploaded, nbytes = ple_calls[0]
+    assert uploaded.flags.c_contiguous
+    assert nbytes == staged.nbytes
+    assert uploaded.nbytes == staged.nbytes
+    assert np.array_equal(uploaded, staged)

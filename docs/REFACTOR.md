@@ -2900,7 +2900,9 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
   TimesFM, and MTP runners use the owning API. Ownership and strided-input
   regressions live in `tests/test_unit_host_array_upload.py`; real copies and
   source reuse are covered by `tests/test_gpu_host_array_upload.py` and
-  `tests/test_gpu_h2d_source_lifetime.py`.
+  `tests/test_gpu_h2d_source_lifetime.py`. Qwen4Exp batch attention metadata,
+  QSA-index publication and runner token/PLE uploads also use the owning API,
+  including contiguous temporary arrays and offset member-index copies.
 - Remaining cleanup: named-local array uploads still use the raw-address
   `copy_host_to_device` API in other paths. Named locals are safe through a
   synchronous copy, but future edits must not replace them with temporary

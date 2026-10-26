@@ -927,3 +927,111 @@ def test_attention_allocate_rejects_a_packed_view_of_the_wrong_width() -> None:
             )
     finally:
         metadata.close()
+
+
+# -- host-source ownership ---------------------------------------------------
+#
+# These pin the call-site half of ``copy_host_array_to_device``: array uploads
+# pass the owner, not a bare address, so the source stays alive through the
+# synchronous copy. The helper's own bounds/lifetime tests live in
+# ``tests/test_unit_host_array_upload.py``.
+
+
+def test_attention_and_packed_uploads_route_through_the_owning_array_api(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[object, np.ndarray, int | None]] = []
+    real_upload = batch_state_module.copy_host_array_to_device
+
+    def recording_upload(buffer, array, nbytes=None, *, runtime=None):
+        calls.append((buffer, array, nbytes))
+        real_upload(buffer, array, nbytes, runtime=runtime)
+
+    monkeypatch.setattr(
+        batch_state_module, "copy_host_array_to_device", recording_upload
+    )
+    state, _ = _allocate()
+    try:
+        # Allocation publishes three zero-filled metadata arrays. Each is a
+        # C-contiguous owner, and the default byte count is its source size.
+        assert len(calls) == 3
+        for _, array, nbytes in calls:
+            assert isinstance(array, np.ndarray)
+            assert array.flags.c_contiguous
+            assert nbytes is None or nbytes == array.nbytes
+
+        plan = state.validate_rows([0, 1], [4, 5])
+        calls.clear()
+        state.publish(plan)
+        assert len(calls) == 3
+        assert calls[0][1] is plan.block_table
+        assert calls[1][1] is plan.positions
+        assert calls[2][1] is plan.contexts
+        assert calls[0][2] == plan.block_table.nbytes
+        assert calls[1][2] == plan.positions.nbytes
+        assert calls[2][2] == plan.contexts.nbytes
+    finally:
+        state.close()
+
+    metadata, _ = _allocate_packed()
+    try:
+        metadata.stage(
+            0,
+            positions=[4, 9],
+            contexts=[5, 10],
+            index_positions=[3, 8],
+        )
+        calls.clear()
+        metadata.upload()
+        assert len(calls) == 1
+        assert calls[0][1] is metadata.host
+        assert calls[0][2] == metadata.host.nbytes
+    finally:
+        metadata.close()
+
+
+def test_publish_rejects_a_strided_page_table_before_any_copy() -> None:
+    state, runtime = _allocate()
+    try:
+        plan = state.validate_rows([0, 1], [4, 5])
+        strided = Qwen4ExpBatchAttentionRowPlan(
+            slot_ids=plan.slot_ids,
+            positions=plan.positions,
+            contexts=plan.contexts,
+            block_table=plan.block_table[:, ::-1],
+            max_context_len=plan.max_context_len,
+        )
+        copies_before = len(runtime.copies)
+        with pytest.raises(ValueError, match="C-contiguous"):
+            state.publish(strided)
+        assert len(runtime.copies) == copies_before
+        assert state.active is None
+    finally:
+        state.close()
+
+
+def test_packed_metadata_upload_rejects_a_strided_host_before_any_copy() -> None:
+    metadata, runtime = _allocate_packed()
+    try:
+        metadata.host = metadata.host[:, :, ::2]
+        copies_before = len(runtime.copies)
+        with pytest.raises(ValueError, match="C-contiguous"):
+            metadata.upload()
+        assert len(runtime.copies) == copies_before
+    finally:
+        metadata.close()
+
+
+def test_packed_metadata_upload_rejects_an_oversized_source_before_any_copy() -> None:
+    metadata, runtime = _allocate_packed()
+    try:
+        metadata.host = np.zeros(
+            metadata.buffer.nbytes // np.dtype(np.int64).itemsize + 1,
+            dtype=np.int64,
+        )
+        copies_before = len(runtime.copies)
+        with pytest.raises(ValueError, match="exceeds"):
+            metadata.upload()
+        assert len(runtime.copies) == copies_before
+    finally:
+        metadata.close()

@@ -53,9 +53,8 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     DeviceBuffer,
-    copy_host_to_device,
+    copy_host_array_to_device,
     free,
-    host_array_ptr,
     malloc,
 )
 from hipengine.core.tensor import Tensor
@@ -297,9 +296,9 @@ class Qwen4ExpBatchStepMetadata:
         self._require_open()
         if not self.host.size:
             return
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.buffer,
-            host_array_ptr(self.host),
+            self.host,
             self.host.nbytes,
             runtime=self.runtime,
         )
@@ -500,14 +499,14 @@ class Qwen4ExpBatchAttentionState:
             buffers.append(context)
             # Publish known-zero metadata so an inactive row can never address a
             # stale table, then zero K/V so "never written" is a checkable value.
-            copy_host_to_device(
-                block_table, host_array_ptr(block_table_host), runtime=active_runtime
+            copy_host_array_to_device(
+                block_table, block_table_host, runtime=active_runtime
             )
-            copy_host_to_device(
-                position, host_array_ptr(position_host), runtime=active_runtime
+            copy_host_array_to_device(
+                position, position_host, runtime=active_runtime
             )
-            copy_host_to_device(
-                context, host_array_ptr(context_host), runtime=active_runtime
+            copy_host_array_to_device(
+                context, context_host, runtime=active_runtime
             )
             active_runtime.memset(key_cache.ptr, 0, key_cache.nbytes)
             active_runtime.memset(value_cache.ptr, 0, value_cache.nbytes)
@@ -683,22 +682,22 @@ class Qwen4ExpBatchAttentionState:
             # ``block_table_host`` mirrors the device table, and a row's blocks
             # change only with its slot, so steady decode skips this upload.
             if not np.array_equal(self.block_table_host[:rows], table):
-                copy_host_to_device(
+                copy_host_array_to_device(
                     self.block_table,
-                    host_array_ptr(table),
+                    table,
                     table.nbytes,
                     runtime=self.runtime,
                 )
             if packed is None:
-                copy_host_to_device(
+                copy_host_array_to_device(
                     self.position,
-                    host_array_ptr(plan.positions),
+                    plan.positions,
                     plan.positions.nbytes,
                     runtime=self.runtime,
                 )
-                copy_host_to_device(
+                copy_host_array_to_device(
                     self.context,
-                    host_array_ptr(plan.contexts),
+                    plan.contexts,
                     plan.contexts.nbytes,
                     runtime=self.runtime,
                 )

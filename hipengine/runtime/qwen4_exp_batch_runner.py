@@ -74,7 +74,7 @@ from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
-    copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -1825,9 +1825,9 @@ class Qwen4ExpGGUFBatchRunner:
         head_scratch = self.head_scratch
         rows = plan.rows
         position_host = np.ascontiguousarray(plan.positions)
-        copy_host_to_device(
+        copy_host_array_to_device(
             self.token_ids,
-            host_array_ptr(tokens),
+            tokens,
             tokens.nbytes,
             runtime=self.runtime,
         )
@@ -1864,9 +1864,10 @@ class Qwen4ExpGGUFBatchRunner:
             staged = stage_qwen4_exp_ple_rows(
                 self.resident.ple_staging, ple_rows, hidden=cfg.hidden_size
             )
-            copy_host_to_device(
+            ple_upload = np.ascontiguousarray(staged)
+            copy_host_array_to_device(
                 self.ple_embedding,
-                host_array_ptr(np.ascontiguousarray(staged)),
+                ple_upload,
                 staged.nbytes,
                 runtime=self.runtime,
             )

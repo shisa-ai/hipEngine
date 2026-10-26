@@ -1133,14 +1133,14 @@ def test_packed_step_metadata_uses_one_upload_and_stable_views(two_qsa_model, mo
 
     batch = _batch(two_qsa_model, slots=3)
     uploads = []
-    original_copy = metadata_module.copy_host_to_device
+    original_copy = metadata_module.copy_host_array_to_device
 
-    def record_copy(destination, *args, **kwargs):
+    def record_copy(destination, array, nbytes=None, *, runtime=None):
         if destination.ptr == batch.step_metadata.buffer.ptr:
             uploads.append(destination.ptr)
-        return original_copy(destination, *args, **kwargs)
+        return original_copy(destination, array, nbytes, runtime=runtime)
 
-    monkeypatch.setattr(metadata_module, "copy_host_to_device", record_copy)
+    monkeypatch.setattr(metadata_module, "copy_host_array_to_device", record_copy)
     try:
         owners = {slot: batch.admit(slot) for slot in (0, 1, 2)}
         pointers = [

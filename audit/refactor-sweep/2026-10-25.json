@@ -2416,8 +2416,10 @@
       "start_line": 2692,
       "end_line": 2717,
       "sha256": "8237398ea872f750eeb89292d9d29123e7f1f93384f1e980d1d13717914809d5",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-qwen4exp-batch-migrated",
+      "evidence": [
+        "Qwen4Exp batch state, runner and QSA index synchronous array uploads migrated with preserved byte offsets; GPU upload/lifetime and batch tests, CPU bundle and real HTTP physical width2 execution with traced owning helpers pass. Other model array callers and separate async contracts remain open. worklog/entries/20261026T112905.064466Z-cleanup-refactor-r0089-batch-uploads-f58cab.md."
+      ],
       "subitems": [
         {
           "line": 2694,

@@ -104,11 +104,11 @@ import numpy as np
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
-from hipengine.core.hip import HipMemcpyKind, HipRuntime
+from hipengine.core.hip import HipRuntime
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
-    copy_host_to_device,
+    copy_host_array_to_device,
     free,
     host_array_ptr,
     malloc,
@@ -400,14 +400,14 @@ class Qwen4ExpBatchQsaIndexState:
         try:
             for size in sizes:
                 buffers.append(malloc(size, runtime=active_runtime))
-            copy_host_to_device(
-                buffers[1], host_array_ptr(member_flat), runtime=active_runtime
+            copy_host_array_to_device(
+                buffers[1], member_flat, runtime=active_runtime
             )
-            copy_host_to_device(
-                buffers[2], host_array_ptr(block_starts_host), runtime=active_runtime
+            copy_host_array_to_device(
+                buffers[2], block_starts_host, runtime=active_runtime
             )
-            copy_host_to_device(
-                buffers[7], host_array_ptr(selected_counts_host), runtime=active_runtime
+            copy_host_array_to_device(
+                buffers[7], selected_counts_host, runtime=active_runtime
             )
             # A key that was never appended must read as a checkable value.
             active_runtime.memset(buffers[0].ptr, 0, buffers[0].nbytes)
@@ -560,10 +560,11 @@ class Qwen4ExpBatchQsaIndexState:
         rows = _require_row_plan(plan, state_slots=self.state_slots)
         positions_buffer = self.positions
         if packed is None:
+            positions = np.ascontiguousarray(plan.positions)
             try:
-                copy_host_to_device(
+                copy_host_array_to_device(
                     self.positions,
-                    host_array_ptr(np.ascontiguousarray(plan.positions)),
+                    positions,
                     plan.positions.nbytes,
                     runtime=self.runtime,
                 )
@@ -999,11 +1000,12 @@ class Qwen4ExpBatchQsaIndexState:
         self.member_host[parsed, :complete] = rows
         row_bytes = self.compression_ratio * DType.INT32.itemsize
         offset = parsed * self.complete_blocks * row_bytes
-        self.runtime.memcpy(
-            self.member_indices.ptr + offset,
-            host_array_ptr(np.ascontiguousarray(self.member_host[parsed, :complete])),
+        member_flat = np.ascontiguousarray(self.member_host[parsed, :complete])
+        copy_host_array_to_device(
+            DeviceBuffer(self.member_indices.ptr + offset, complete * row_bytes),
+            member_flat,
             complete * row_bytes,
-            HipMemcpyKind.HOST_TO_DEVICE,
+            runtime=self.runtime,
         )
 
     def reset_slot(self, slot: int) -> None:

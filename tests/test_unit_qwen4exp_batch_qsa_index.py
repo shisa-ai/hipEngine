@@ -70,7 +70,11 @@ class FakeRuntime:
 
     def memcpy(self, dst: int, src: int, nbytes: int, kind) -> None:
         # One side is a host pointer; the device side must be an owned buffer.
-        assert dst in self.allocations or src in self.allocations, (dst, src)
+        # A destination may be an offset view into a larger owned slab.
+        owned = any(
+            base <= dst < base + size for base, size in self.allocations.items()
+        )
+        assert owned or src in self.allocations, (dst, src)
         self.copies.append((dst, int(nbytes), kind))
 
 
@@ -1084,3 +1088,92 @@ def test_index_allocate_rejects_a_packed_view_of_the_wrong_width() -> None:
     finally:
         attention.close()
         metadata.close()
+
+
+# -- host-source ownership ---------------------------------------------------
+
+
+def test_index_allocate_routes_metadata_uploads_through_the_owning_array_api(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[object, np.ndarray, int | None]] = []
+    real_upload = batch_index.copy_host_array_to_device
+
+    def recording_upload(buffer, array, nbytes=None, *, runtime=None):
+        calls.append((buffer, array, nbytes))
+        real_upload(buffer, array, nbytes, runtime=runtime)
+
+    monkeypatch.setattr(
+        batch_index, "copy_host_array_to_device", recording_upload
+    )
+    fixture = Fixture()
+    try:
+        assert len(calls) == 3
+        for _, array, nbytes in calls:
+            assert isinstance(array, np.ndarray)
+            assert array.flags.c_contiguous
+            assert nbytes is None or nbytes == array.nbytes
+    finally:
+        fixture.close()
+
+
+def test_publish_contiguizes_a_strided_positions_plan_before_upload(
+    fixture: Fixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fill(fixture.state, 0, 4)
+    _fill(fixture.state, 1, 5)
+    plan = fixture.state.validate_rows([0, 1])
+    # Same values, non-contiguous stride: the old inline
+    # ``np.ascontiguousarray`` was the only owner of the upload source.
+    strided = Qwen4ExpBatchQsaIndexRowPlan(
+        slot_ids=plan.slot_ids,
+        slots=plan.slots,
+        positions=np.repeat(plan.positions, 2)[::2],
+        blocks=plan.blocks,
+    )
+    calls: list[tuple[object, np.ndarray, int | None]] = []
+    real_upload = batch_index.copy_host_array_to_device
+
+    def recording_upload(buffer, array, nbytes=None, *, runtime=None):
+        calls.append((buffer, array, nbytes))
+        real_upload(buffer, array, nbytes, runtime=runtime)
+
+    monkeypatch.setattr(
+        batch_index, "copy_host_array_to_device", recording_upload
+    )
+    active = fixture.state.publish(strided)
+    assert active.positions.tolist() == plan.positions.tolist()
+    assert len(calls) == 1
+    uploaded = calls[0][1]
+    assert uploaded.flags.c_contiguous
+    assert uploaded.nbytes == plan.positions.nbytes
+    assert uploaded.tolist() == plan.positions.tolist()
+    assert calls[0][2] == plan.positions.nbytes
+
+
+def test_map_slot_upload_preserves_its_device_offset_and_uses_an_owner(
+    fixture: Fixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[object, np.ndarray, int | None]] = []
+    real_upload = batch_index.copy_host_array_to_device
+
+    def recording_upload(buffer, array, nbytes=None, *, runtime=None):
+        calls.append((buffer, array, nbytes))
+        real_upload(buffer, array, nbytes, runtime=runtime)
+
+    monkeypatch.setattr(
+        batch_index, "copy_host_array_to_device", recording_upload
+    )
+    fixture.state.map_slot(1, 2)
+    assert len(calls) == 1
+    destination, uploaded, nbytes = calls[0]
+    complete = fixture.state.complete_blocks
+    row_bytes = fixture.state.compression_ratio * 4
+    expected_offset = 1 * complete * row_bytes
+    assert destination.ptr == fixture.state.member_indices.ptr + expected_offset
+    assert destination.nbytes == complete * row_bytes
+    assert nbytes == complete * row_bytes
+    assert uploaded.flags.c_contiguous
+    assert uploaded.nbytes == complete * row_bytes
+    assert uploaded is not fixture.state.member_host[1, :complete]
+    assert uploaded.tolist() == fixture.state.member_host[1, :complete].tolist()
