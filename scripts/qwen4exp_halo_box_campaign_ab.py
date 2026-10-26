@@ -399,6 +399,15 @@ Q51_PAIR2_GATE_ENV = "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN"
 #: Kept for callers that name the single exact owner.
 Q51_IU8_EXACT_ENV = Q51_PAIR2_PREEMPTING_ENV[1]
 
+#: The ordered-decode route the v2 leaf rides. The leaf is request-local runner
+#: state now, but this v1 switch still decides whether any ordered decode runs,
+#: so both arms of the v2 package record it and it must stay on.
+QSA_ORDERED_DECODE_ENV = "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE"
+#: The fused coefficients+values sibling of the v2 leaf. It is a separate
+#: diagnostic over the same decision, so an arm that claims the three-pass v2
+#: owner holds it off in both arms.
+QSA_ORDERED_V2_FUSED_ENV = "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2_FUSED"
+
 
 def q51_pair2_control_record(*, environment=os.environ):
     """The recorded control: the value both arms force, and what it replaced.
@@ -458,6 +467,66 @@ def q51_register_cache_control_record(runner=None, *, environment=os.environ):
             "downstream sibling off and record the pair2 gate because it must "
             "stay on"),
     }
+
+
+def qsa_ordered_decode_v2_control_record(runner=None, *, environment=os.environ):
+    """The recorded control for the ordered-v2 sparse decode arm.
+
+    The arm moves one decision - the v2 three-pass leaf - and holds the v1
+    ordered route fixed: the leaf only exists inside it, so both arms record
+    that switch instead of forcing it. The value the arm binds is recorded
+    beside the plan's own published value, so a reader cannot mistake the
+    production binding for the arm's own state.
+    """
+
+    return {
+        "runner_field": "qsa_ordered_decode_v2",
+        "before": False,
+        "after": True,
+        "scope": "per measured run; restored on exit",
+        "prerequisite": {
+            QSA_ORDERED_DECODE_ENV: environment.get(QSA_ORDERED_DECODE_ENV),
+        },
+        "fused_sibling": {
+            "environment": QSA_ORDERED_V2_FUSED_ENV,
+            "effective": "0",
+            "previous": environment.get(QSA_ORDERED_V2_FUSED_ENV),
+            "reason": (
+                "the fused coefficients+values sibling is a separate diagnostic "
+                "over the same decision; an arm that reports the three-pass v2 "
+                "owner holds it off in both arms and restores the caller's "
+                "value on exit"),
+        },
+        "published_value": (
+            None if runner is None
+            else getattr(runner, "qsa_ordered_decode_v2", None)),
+        "reason": (
+            "the v2 leaf is the c1 H256 indexed sparse decode owner inside the "
+            "ordered route, so both arms record the v1 switch as the "
+            "prerequisite they ride; the before arm keeps the registered v1 "
+            "ordered parent and the plan's value comes back on exit"),
+    }
+
+
+@contextlib.contextmanager
+def qsa_ordered_v2_fused_off(*, environment=os.environ):
+    """Hold the fused coefficients+values sibling off for a measured arm.
+
+    The fused kernel is a separate, bit-identical diagnostic over the same v2
+    decision. An arm that reports the three-pass v2 owner must not launch it,
+    so both arms close it and the caller's value - including an absent key -
+    comes back on exit.
+    """
+
+    prior = environment.get(QSA_ORDERED_V2_FUSED_ENV)
+    environment[QSA_ORDERED_V2_FUSED_ENV] = "0"
+    try:
+        yield prior
+    finally:
+        if prior is None:
+            environment.pop(QSA_ORDERED_V2_FUSED_ENV, None)
+        else:
+            environment[QSA_ORDERED_V2_FUSED_ENV] = prior
 
 
 @contextlib.contextmanager
@@ -823,7 +892,7 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
     from hipengine.runtime.gguf_linear import q8_mmq_lane_diagnostic
     from hipengine.runtime.qwen4_exp_runner import (
         GDN_PREFILL_NARROW_VARIANT, GDN_PREFILL_WIDE_VARIANT, gdn_prefill_variant,
-        qsa_prefill_head_mode,
+        qsa_ordered_decode_v2, qsa_prefill_head_mode,
     )
 
     if route_package == "mmq-token64":
@@ -890,6 +959,31 @@ def route_scope(route_package: str, mode: str, runner: Any = None, *,
             ("pair" if route_package == "qsa-head-pair" else "quad")
             if mode == "after"
             else "parent",
+        )
+    if route_package == "qsa-ordered-v2":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        if runner is None:
+            # Binding nothing would measure whatever the plan published and
+            # report it as the arm, so the diagnostic must name its runner.
+            raise ValueError(
+                f"{route_package} needs the owning runner; binding no selection "
+                "would measure the plan's own ordered decode route")
+        # The v2 leaf only exists inside the ordered route, whose v1 switch the
+        # profile owns. Both arms record it; an arm that left it off would
+        # measure the unordered decode parent at zero counted launches.
+        if environment.get(QSA_ORDERED_DECODE_ENV, "0") in {
+                "", "0", "false", "False"}:
+            raise ValueError(
+                f"{route_package} needs the ordered v1 route the leaf rides; "
+                f"{QSA_ORDERED_DECODE_ENV} is off, so both arms would measure "
+                "the unordered decode parent")
+        # The fused sibling is a separate diagnostic over the same decision, so
+        # both arms hold it off: otherwise the after arm could launch it while
+        # the artifact reports the three-pass v2 owner.
+        return _combined_scope(
+            qsa_ordered_v2_fused_off(environment=environment),
+            qsa_ordered_decode_v2(runner, mode == "after"),
         )
     if route_package in {"gdn-narrow", "gdn-wave-norm"}:
         if mode not in {"before", "after"}:
@@ -1071,7 +1165,9 @@ def _apply_mode(
         if route_package == "q5k-iu8-exact":
             flag = "HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT"
         if route_package == "qsa-ordered-v2":
-            flag = "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2"
+            # Request-local on the runner; ``route_scope`` records the ordered
+            # v1 prerequisite and binds the leaf.
+            return
         if route_package == "gr-iu8":
             flag = "HIPENGINE_QWEN4_EXP_GR_IU8"
         if route_package == "gr-iu8-down":
@@ -1786,6 +1882,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
     if args.route_package == "q51-register-cache":
         artifact["selection_control"] = q51_register_cache_control_record(
+            generator.runner)
+    if args.route_package == "qsa-ordered-v2":
+        artifact["arms"] = {
+            "before":{"qsa_decode":"strict_ordered_three_pass_spans"},
+            "after":{"qsa_decode":"strict_ordered_three_pass_v2_spans"}}
+        artifact["selection_control"] = qsa_ordered_decode_v2_control_record(
             generator.runner)
     if args.route_package == "q51-row-publish":
         artifact["arms"] = {

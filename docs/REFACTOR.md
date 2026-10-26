@@ -679,7 +679,7 @@ condition are in "Prefill chunk capacity guard"; they are not repeated here.
 Cleanup status (2026-10-25, R0023): membership and binding precedence are
 corrected below. No runtime cleanup remains in this section; individual routes
 keep their recorded repair or removal conditions. `PRODUCTION_ARITHMETIC_RECOVERY_FLAGS`
-in `hipengine/generation/qwen4_exp_profiles.py` holds 13 flags, and the sweep
+in `hipengine/generation/qwen4_exp_profiles.py` holds 12 flags, and the sweep
 that zeroes them runs for the `gguf_ud_q4_k_xl` quant, whose production and fast
 plans share this binder. A binding plus a sweep entry means "the plan says on,
 the sweep says off".
@@ -688,8 +688,8 @@ Three paths re-open a swept flag, or keep a flag out of the sweep entirely:
 
 - `PRODUCTION_Q8_QSA_RESTORED_FLAGS` is applied immediately after the sweep and
   restores `Q8_0_SELECTED_WMMA_DOWN`, `QSA_H256_WAVE_PREFILL`,
-  `QSA_ORDERED_DECODE` and `QSA_ORDERED_DECODE_V2`. Prefill head grouping
-  is published separately as runner-local state by the resolved profile binder.
+  `QSA_ORDERED_DECODE`. Prefill head grouping and ordered-v2 decode selection
+  are published separately as runner-local state by the resolved profile binder.
 - `_F16_ROUTE_SELECTORS` is applied after both passes, so the F16 composition
   restores `GR_WIDE` on the same plan.
 - `GDN_COLWARPS_PREFILL` is bound `"1" if production` and is deliberately absent
@@ -2742,28 +2742,6 @@ the allocation repair. The observations and proposal below are historical.
 - Convolution tails currently use owned host snapshots at chunk boundaries.
   Replace these with device-resident tails only after the same whole/chunk,
   60-second transition, recording-reset and post-join-noise tests pass.
-
-## Qwen4Exp QSA ordered-v2 decode rollback
-
-- Production `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2` selects
-  `strict_ordered_three_pass_v2_spans` for c1 H256 indexed-sparse decode
-  (head_dim256, selected_count<=4096, block256, Hq24/Hkv2). Production1/
-  strict0;it rewrites the retained ordered three-pass while preserving the
-  exact arithmetic and parent operand order: warp-tree scores, exact fmaxf
-  max-scan coefficients with pointwise expf, staged-tile values with clamped
-  unconditional loads. VGPR32/40/96, scratch0.
-- Named kernel durations at clean source, cache-only build: scores
-  399.7->33.5us, coefficients176.1->14.3us, values533.0->100.7us
-  (kernel-duration evidence:
-  `2026-09-08-framework-qwen4exp-qsa-ordered-v2-kernels.json`).
-- Six full-model off/on/off logits/4-step/state/full-KV cases pass at
-  committed source with exact engagement accounting (48 sparse decode calls
-  per enabled p4096 arm, zero prefill/short-context). Canonical 12-case
-  chunk1024 A/B: 72 exact trajectories, p4096 weighted TG +14.705%
-  (arithmetic-mean-rate ratio +16.516%, per-case median +7.1..+24.8%),
-  request wall -4.535%; short-context and prefill neutral.
-- Remove the rollback selector after the next qualified QSA decode change or
-  release window; the ordered parent and serialized strict fallback remain.
 
 ## Qwen4Exp folded Q5_1 pair-reduction rollback
 

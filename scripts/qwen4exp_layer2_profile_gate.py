@@ -46,7 +46,7 @@ if str(ROOT) not in sys.path:
 
 from hipengine.benchmark.execution_profiles import EvaluationThresholds
 from hipengine.runtime.qwen4_exp_runner import (
-    gdn_prefill_variant, qsa_prefill_head_mode,
+    gdn_prefill_variant, qsa_ordered_decode_v2, qsa_prefill_head_mode,
 )
 from scripts.execution_profile_gdn_calibration import (
     PromptCalibrationCapture,
@@ -101,6 +101,11 @@ class CandidateSpec:
     # keeps the base profile's published variant (the register parent on a
     # strict base); a wide/narrow name binds that leaf for the measured rows.
     gdn_prefill_variant: str | None = None
+    # Explicit QSA ordered-v2 sparse decode selection for this arm, same
+    # protocol. ``None`` keeps the base profile's published decision (on for a
+    # production base, the ordered v1 parent on a strict one); the gate binds a
+    # non-None value around the measured rows and restores it after.
+    qsa_ordered_decode_v2: bool | None = None
 
     @property
     def requires_dispatch_count(self) -> bool:
@@ -112,10 +117,12 @@ CONSERVATIVE_ARITHMETIC_FLAGS = (
     "Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN",
     "GDN_PEER_PREFILL", "GDN_COLWARPS_PREFILL", "Q4_DP4A64",
     "QSA_H256_WAVE_PREFILL", "QSA_FLASH_PREFILL",
-    "QSA_ORDERED_DECODE", "QSA_ORDERED_DECODE_V2", "GR_WIDE",
+    "QSA_ORDERED_DECODE", "GR_WIDE",
 )
-# The QSA prefill head grouping is request-local runner state, so this gate
-# arms it through CandidateSpec.qsa_prefill_head_mode, not an env switch.
+# The QSA prefill head grouping and the ordered-v2 sparse decode leaf are
+# request-local runner state, so this gate arms them through
+# CandidateSpec.qsa_prefill_head_mode and CandidateSpec.qsa_ordered_decode_v2,
+# not through environment switches.
 
 _F16_ROUTES_OFF = {
     "HIPENGINE_QWEN4_EXP_ROUTED_F16": "0",
@@ -226,6 +233,10 @@ CANDIDATES = {
         scenario_id="qwen4exp-ud-q4-k-xl-conservative-repair",
         candidate_key=None,
         fallback_key=None,
+        # The conservative arm keeps the ordered v1 parent the env zeroing above
+        # selects, so the v2 leaf it rides is bound off explicitly rather than
+        # left at the production base's published value.
+        qsa_ordered_decode_v2=False,
     ),
     # The risk multiplier as a CONFIGURATION.  The production repair is a
     # bit-parity mechanism, and `HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT` sets the
@@ -766,15 +777,15 @@ CANDIDATES["q8_blockscale_guarded_restore"] = replace(
         "HIPENGINE_QWEN4_EXP_GR_IU8": "1",
         "HIPENGINE_QWEN4_EXP_GR_IU8_DOWN": "1",
         "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE": "1",
-        "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2": "1",
     },
+    qsa_ordered_decode_v2=True,
 )
 CANDIDATES["q8_blockscale_guarded_ordered"] = replace(
     CANDIDATES["q8_blockscale_guarded_quad"], name="q8_blockscale_guarded_ordered",
     scenario_id="qwen4exp-q8-blockscale-guarded-qsa-ordered",
     environment={**CANDIDATES["q8_blockscale_guarded_quad"].environment,
-                 "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE": "1",
-                 "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2": "1"},
+                 "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE": "1"},
+    qsa_ordered_decode_v2=True,
 )
 CANDIDATES["production_gdn_restore"] = replace(
     CANDIDATES["gdn_isolated"],
@@ -1662,6 +1673,11 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         # the base profile's published variant is restored on exit.
         dispatch_stack.enter_context(gdn_prefill_variant(
             candidate_generator.runner, candidate_spec.gdn_prefill_variant))
+    if candidate_spec.qsa_ordered_decode_v2 is not None:
+        # And for the ordered-v2 sparse decode leaf: request-local state, so the
+        # arm binds it and the profile's own decision comes back on unwind.
+        dispatch_stack.enter_context(qsa_ordered_decode_v2(
+            candidate_generator.runner, candidate_spec.qsa_ordered_decode_v2))
     counter = {"calls": 0, "shapes": {}}
     batch_evidence = None
     batch_runs: dict[str, list[tuple[Mapping[str, Any], ...]]] = {}

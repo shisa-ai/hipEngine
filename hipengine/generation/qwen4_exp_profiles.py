@@ -146,11 +146,12 @@ PRODUCTION_ARITHMETIC_RECOVERY_FLAGS = (
     "Q8_MMQ_PREFILL", "GR_IU8", "GR_IU8_DOWN",
     "GDN_PEER_PREFILL", "Q4_DP4A64",
     "QSA_H256_WAVE_PREFILL", "QSA_FLASH_PREFILL",
-    "QSA_ORDERED_DECODE", "QSA_ORDERED_DECODE_V2", "GR_WIDE",
+    "QSA_ORDERED_DECODE", "GR_WIDE",
 )
-# The QSA prefill head grouping is request-local runner state published from
-# the plan's own selection below, so it is not an environment flag the
-# arithmetic-recovery or restoration passes can rewrite.
+# The QSA prefill head grouping and the ordered-v2 sparse decode leaf are
+# request-local runner state published from the plan's own selection below, so
+# they are not environment flags the arithmetic-recovery or restoration passes
+# can rewrite.
 _ARITHMETIC_RECOVERY_EVIDENCE = (
     "benchmarks/results/2026-09-14-q8-prefill-numerics/artifact.json"
 )
@@ -163,7 +164,6 @@ PRODUCTION_Q8_QSA_RESTORED_FLAGS = {
     "Q8_DOWN_VARIANT": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",
     "QSA_H256_WAVE_PREFILL": "page256",
     "QSA_ORDERED_DECODE": "1",
-    "QSA_ORDERED_DECODE_V2": "1",
 }
 _Q8_QSA_RESTORATION_EVIDENCE = (
     "benchmarks/results/2026-09-15-q8-blockscale-restoration/artifact.json"
@@ -1055,6 +1055,17 @@ def _bind(
     # manifest names that WMMA owner for the same scope, which is why this value
     # follows the binder rather than the manifest row.
     qsa_prefill_head_mode = "quad" if production else "parent"
+    # QSA ordered-v2 sparse decode, published as request-local state on the
+    # owning runner rather than a process-wide switch. It is the c1 H256
+    # indexed sparse decode leaf of the ordered route: the v1 ordered switch
+    # above it stays the prerequisite that decides whether any ordered decode
+    # runs, the fused coefficients+values sibling stays a separate diagnostic,
+    # and the dispatch-time selector still guards the leaf on head_dim 256 and a
+    # selection of 1..4096 positions with the registered v1 parent as fallback.
+    # The binder publishes what the retired switch bound - on for every
+    # production plan, the v1 parent on the strict binder that every plan
+    # falling back to it runs.
+    qsa_ordered_decode_v2 = bool(production)
     # Q5_1 register-cache fallback sibling of the folded-pair grouped prefill
     # owner, published as request-local state on the owning runner rather than a
     # process-wide switch. It is the fallback selection for its scope, not the
@@ -1350,7 +1361,6 @@ def _bind(
             else ""
         ),
         "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN": "1",
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": "1",
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL": "1",
@@ -1367,6 +1377,7 @@ def _bind(
     generator.dense_mmq_raw_vector_enabled = dense_mmq_raw_vector_enabled
     generator.dense_mmq_vec4_enabled = dense_mmq_vec4_enabled
     generator.qsa_prefill_head_mode = qsa_prefill_head_mode
+    generator.qsa_ordered_decode_v2 = qsa_ordered_decode_v2
     generator.gdn_prefill_variant = gdn_prefill_variant
     generator.q51_register_cache = q51_register_cache
     generator.q51_row_publish = q51_row_publish
@@ -1379,6 +1390,7 @@ def _bind(
         runner.dense_mmq_raw_vector_enabled = dense_mmq_raw_vector_enabled
         runner.dense_mmq_vec4_enabled = dense_mmq_vec4_enabled
         runner.qsa_prefill_head_mode = qsa_prefill_head_mode
+        runner.qsa_ordered_decode_v2 = qsa_ordered_decode_v2
         runner.gdn_prefill_variant = gdn_prefill_variant
         runner.q51_register_cache = q51_register_cache
         runner.q51_row_publish = q51_row_publish

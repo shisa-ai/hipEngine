@@ -314,6 +314,9 @@ class Qwen4ExpGGUFTextGenerator:
         self.dense_mmq_token64_enabled = False
         self.dense_mmq_raw_vector_enabled = False
         self.dense_mmq_vec4_enabled = False
+        # QSA ordered-v2 sparse decode is request-local too; the binder
+        # republishes it with the rest.
+        self.qsa_ordered_decode_v2 = False
         self.q51_register_cache = False
         self.q51_row_publish = False
         self.q8_down_register = False
@@ -1047,6 +1050,8 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
         getattr(generator, "dense_mmq_vec4_enabled", False))
     runner.qsa_prefill_head_mode = str(
         getattr(generator, "qsa_prefill_head_mode", "parent"))
+    runner.qsa_ordered_decode_v2 = bool(
+        getattr(generator, "qsa_ordered_decode_v2", False))
     runner.gdn_prefill_variant = getattr(generator, "gdn_prefill_variant", None)
     runner.q51_register_cache = bool(
         getattr(generator, "q51_register_cache", False))

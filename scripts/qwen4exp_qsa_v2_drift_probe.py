@@ -9,6 +9,7 @@ including slow ones; this is a diagnostic, not a promotion gate.
 """
 
 import argparse
+import contextlib
 import gc
 import hashlib
 import json
@@ -34,9 +35,37 @@ from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
 from hipengine.models import resolve_model
+from hipengine.runtime.qwen4_exp_runner import qsa_ordered_decode_v2
 from scripts.qwen4exp_canonical_ar_bench import DEFAULT_FIXTURE, load_fixture
+from scripts.qwen4exp_halo_box_campaign_ab import (
+    QSA_ORDERED_V2_FUSED_ENV, qsa_ordered_v2_fused_off,
+)
 
-FLAG = "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2"
+# The v2 leaf is request-local runner state now: the probe binds the owning
+# runner's ``qsa_ordered_decode_v2`` per measured arm instead of writing a
+# process-wide switch. The ordered v1 route it rides is still the profile's
+# process-wide decision, so the probe records it and refuses to measure an arm
+# that would run the unordered decode parent at zero counted launches.
+CONTROL_FIELD = "qsa_ordered_decode_v2"
+PREREQUISITE_ENV = "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE"
+
+
+@contextlib.contextmanager
+def decode_arm_scope(runner, arm, *, environment=os.environ):
+    """The measured window for one decode arm.
+
+    The arm binds the owning runner's leaf selection and holds the fused
+    coefficients+values sibling off: the fused kernel is a separate diagnostic
+    over the same decision, so an arm reported as the three-pass v2 owner must
+    not launch it. Both bindings are scoped, so the plan's published value and
+    the caller's fused setting come back on exit.
+    """
+
+    if arm not in {"off", "on"}:
+        raise ValueError(f"invalid decode arm {arm!r}")
+    with qsa_ordered_v2_fused_off(environment=environment):
+        with qsa_ordered_decode_v2(runner, arm == "on"):
+            yield
 
 
 def telemetry():
@@ -89,6 +118,11 @@ def main():
         backend="hip_gfx1151", max_sequence_length=4352,
         prefill_chunk_size=1024))
     runner = generator.runner
+    if os.environ.get(PREREQUISITE_ENV, "0") in {"", "0", "false", "False"}:
+        raise ValueError(
+            "qsa-ordered-v2 needs the ordered v1 route the leaf rides; "
+            f"{PREREQUISITE_ENV} is off, so both arms would measure the "
+            "unordered decode parent")
     key = KernelKey("hip_gfx1151", "qsa_sparse_attention", "bf16_kv",
                     "strict_ordered_three_pass_v2_spans")
     original = resolve(backend=key.backend, layer=key.layer, quant=key.quant,
@@ -108,7 +142,24 @@ def main():
         "host": None,
         "fixture_sha256": digest,
         "manifest_sha256": resolved.manifest_sha256,
-        "flag": FLAG,
+        "selection_control": {
+            "runner_field": CONTROL_FIELD,
+            "off": False,
+            "on": True,
+            "scope": "per measured arm; the plan's value is restored on exit",
+            "prerequisite": {
+                PREREQUISITE_ENV: os.environ.get(PREREQUISITE_ENV),
+            },
+            "fused_sibling": {
+                "environment": QSA_ORDERED_V2_FUSED_ENV,
+                "effective": "0",
+                "previous": os.environ.get(QSA_ORDERED_V2_FUSED_ENV),
+                "reason": (
+                    "the fused coefficients+values sibling is a separate "
+                    "diagnostic over the same decision; both arms hold it off "
+                    "and restore the caller's value on exit"),
+            },
+        },
         "protocol": (
             "Fresh prefill per repetition; off/on decode arms counterbalanced and "
             "interleaved per repetition; every per-step wall preserved; GPU "
@@ -130,45 +181,48 @@ def main():
                 order = ("off", "on") if repetition % 2 == 0 else ("on", "off")
                 for arm in order:
                     telemetry_before = telemetry()
-                    os.environ[FLAG] = "0"
-                    prefill_start = time.perf_counter()
-                    root = runner.prefill(case["prompt_token_ids"], capture_logits=False,
-                                          capture_target_hidden=False)
-                    runner.runtime.device_synchronize()
-                    prefill_seconds = time.perf_counter() - prefill_start
-                    os.environ[FLAG] = "1" if arm == "on" else "0"
-                    # warmup steps (not recorded)
-                    token = root.token_id
-                    for _ in range(args.warmup_steps):
-                        token = runner.step(token, capture_logits=False,
-                                            capture_target_hidden=False).token_id
-                    runner.runtime.device_synchronize()
-                    initial_calls = calls[0]
-                    step_seconds = []
-                    frequency_steps = []
-                    decode_start = time.perf_counter()
-                    for _ in range(args.steps):
-                        frequency_before = frequency.sample()
-                        step_start = time.perf_counter()
-                        token = runner.step(token, capture_logits=args.capture_logits,
-                                            capture_target_hidden=False).token_id
-                        step_seconds.append(time.perf_counter() - step_start)
-                        frequency_steps.append((frequency_before, frequency.sample()))
-                    runner.runtime.device_synchronize()
-                    decode_seconds = time.perf_counter() - decode_start
-                    telemetry_after = telemetry()
-                    state = gate._state_summary(runner)
-                    result = (token, state["state_sha256"], state["layout_sha256"])
-                    if expected is None:
-                        expected = result
-                    if result != expected or not state["finite"]:
-                        raise AssertionError(f"arm {arm} altered state/output")
-                    engaged = calls[0] - initial_calls
-                    if arm == "on" and case["prompt_tokens"] == 4096:
-                        if engaged != args.steps * 12:
-                            raise AssertionError(f"v2 engagement mismatch: {engaged}")
-                    if arm == "off" and engaged != 0:
-                        raise AssertionError("v2 engaged in off arm")
+                    # Prefill runs with the leaf off in both arms, exactly as the
+                    # recorded protocol says; the binding is scoped so the
+                    # plan's published value comes back for the decode window.
+                    with qsa_ordered_decode_v2(runner, False):
+                        prefill_start = time.perf_counter()
+                        root = runner.prefill(case["prompt_token_ids"], capture_logits=False,
+                                              capture_target_hidden=False)
+                        runner.runtime.device_synchronize()
+                        prefill_seconds = time.perf_counter() - prefill_start
+                    with decode_arm_scope(runner, arm):
+                        # warmup steps (not recorded)
+                        token = root.token_id
+                        for _ in range(args.warmup_steps):
+                            token = runner.step(token, capture_logits=False,
+                                                capture_target_hidden=False).token_id
+                        runner.runtime.device_synchronize()
+                        initial_calls = calls[0]
+                        step_seconds = []
+                        frequency_steps = []
+                        decode_start = time.perf_counter()
+                        for _ in range(args.steps):
+                            frequency_before = frequency.sample()
+                            step_start = time.perf_counter()
+                            token = runner.step(token, capture_logits=args.capture_logits,
+                                                capture_target_hidden=False).token_id
+                            step_seconds.append(time.perf_counter() - step_start)
+                            frequency_steps.append((frequency_before, frequency.sample()))
+                        runner.runtime.device_synchronize()
+                        decode_seconds = time.perf_counter() - decode_start
+                        telemetry_after = telemetry()
+                        state = gate._state_summary(runner)
+                        result = (token, state["state_sha256"], state["layout_sha256"])
+                        if expected is None:
+                            expected = result
+                        if result != expected or not state["finite"]:
+                            raise AssertionError(f"arm {arm} altered state/output")
+                        engaged = calls[0] - initial_calls
+                        if arm == "on" and case["prompt_tokens"] == 4096:
+                            if engaged != args.steps * 12:
+                                raise AssertionError(f"v2 engagement mismatch: {engaged}")
+                        if arm == "off" and engaged != 0:
+                            raise AssertionError("v2 engaged in off arm")
                     rows.append({
                         "repetition": repetition, "arm": arm,
                         "prefill_seconds": prefill_seconds,

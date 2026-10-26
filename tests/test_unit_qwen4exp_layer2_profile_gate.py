@@ -221,6 +221,21 @@ def test_conservative_repair_disables_arithmetic_not_exact_owners() -> None:
         assert "HIPENGINE_QWEN4_EXP_" + suffix not in candidate.environment
 
 
+def test_ordered_v2_candidates_bind_the_runner_field() -> None:
+    module = _load_script()
+    for name in ("q8_blockscale_guarded_restore", "q8_blockscale_guarded_ordered"):
+        candidate = module.CANDIDATES[name]
+        assert candidate.qsa_ordered_decode_v2 is True
+        # The leaf is request-local, so the arm names the field, not a switch.
+        assert "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2" not in candidate.environment
+        # The v1 route it rides is still an ordinary environment decision.
+        assert candidate.environment["HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE"] == "1"
+    # The conservative arm keeps the ordered v1 parent its env zeroing selects.
+    assert module.CANDIDATES["production_conservative"].qsa_ordered_decode_v2 is False
+    # A candidate that does not name it keeps the base profile's decision.
+    assert module.CANDIDATES["q8_blockscale"].qsa_ordered_decode_v2 is None
+
+
 def test_q8_mmq_attn_gate_candidate_is_explicit_and_fail_closed() -> None:
     module = _load_script()
     candidate = module.CANDIDATES["q8_mmq_attn_gate"]

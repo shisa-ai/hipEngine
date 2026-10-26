@@ -40,7 +40,7 @@ SHARED_DECODE_SAFE_FLAGS = frozenset(
     "HIPENGINE_QWEN4_EXP_" + flag for flag in (
         "Q8_0_SELECTED_WMMA_DOWN", "Q8_DOWN_VARIANT",
         "QSA_H256_WAVE_PREFILL",
-        "QSA_ORDERED_DECODE", "QSA_ORDERED_DECODE_V2",
+        "QSA_ORDERED_DECODE",
     )
 )
 

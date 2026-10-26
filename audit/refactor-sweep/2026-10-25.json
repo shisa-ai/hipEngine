@@ -3222,28 +3222,28 @@
       "start_line": 3070,
       "end_line": 3091,
       "sha256": "d2dd8a453c76a719ae9aa057cec2c96026b1e4075fe1c3b1094c7a165a884cd1",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-runner-local",
+      "evidence": ["Ordered-v2 selection now target/draft runner-owned with v1/count/registration guards and separate fused diagnostic preserved. Full CPU,GPU14,provider/pool/forwarding tests and explicit c1 public ordered-v2 launches pass; default batch path unchanged. Harness controls restored; docs/audit pass. worklog/entries/20261026T212313.058102Z-cleanup-refactor-r0120-9842a8.md."],
       "subitems": [
         {
           "line": 3072,
           "text": "- Production `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2` selects",
-          "status": "pending"
+          "status": "resolved-runner-local"
         },
         {
           "line": 3079,
           "text": "- Named kernel durations at clean source, cache-only build: scores",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 3083,
           "text": "- Six full-model off/on/off logits/4-step/state/full-KV cases pass at",
-          "status": "pending"
+          "status": "historical-evidence-preserved"
         },
         {
           "line": 3089,
           "text": "- Remove the rollback selector after the next qualified QSA decode change or",
-          "status": "pending"
+          "status": "resolved-runner-local"
         }
       ]
     },

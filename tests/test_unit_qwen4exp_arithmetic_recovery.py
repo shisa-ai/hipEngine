@@ -37,6 +37,9 @@ def test_ud_profile_recovers_arithmetic_but_keeps_exact_owners(monkeypatch):
     # The QSA prefill head leaf is request-local state now, so the recovery
     # pass must not write a process-wide switch for it.
     assert "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR" not in os.environ
+    # Same for the ordered-v2 sparse decode leaf: the plan publishes it on the
+    # runner, so neither the recovery pass nor the restoration writes a key.
+    assert "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2" not in os.environ
     # Same for the GDN serial-prefill owner: the plan's own selection is
     # published on the runner, not as an environment key.
     assert "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM" not in os.environ

@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+from contextlib import ExitStack
 from pathlib import Path
 import sys
 import time
@@ -92,6 +93,10 @@ def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.envi
         # Request-local on the runner; ``route_scope`` binds the arm around the
         # measured prefill and restores the profile's decision on exit.
         return
+    if package == "qsa-ordered-v2":
+        # Request-local on the runner; ``route_scope`` binds the leaf and the
+        # case keeps the binding open through the decode steps that count it.
+        return
     if package == "chunk1024":
         apply_chunk_mode(runner,"after" if enabled=="1" else "before",
                          allocated_chunk_size=1024)
@@ -174,7 +179,8 @@ def main():
     if args.route_package == "q5k-iu8-exact":
         flag = "HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT"
     if args.route_package == "qsa-ordered-v2":
-        flag = "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2"
+        # Request-local on the runner; no env key names this selection.
+        flag = ""
     if args.route_package == "gr-iu8":
         flag = "HIPENGINE_QWEN4_EXP_GR_IU8"
     if args.route_package == "gr-iu8-down":
@@ -678,12 +684,19 @@ def main():
                 start_owners = dict(mapped_owner_calls)
                 start_qsa_calls = qsa_calls[0]
                 natural_start = len(natural_router.captures) if natural_router is not None else 0
-                with route_scope(
+                case_scope = ExitStack()
+                case_scope.enter_context(route_scope(
                     args.route_package, "after" if enabled == "1" else "before",
                     generator.runner,
-                ):
-                    first = generator.runner.prefill(case["prompt_token_ids"])
+                ))
+                first = generator.runner.prefill(case["prompt_token_ids"])
                 prefill_invoked = calls[0] - start_calls
+                # Every other arm's scope only covers its measured prefill. The
+                # ordered-v2 leaf is decode-only, so its binding stays in force
+                # through the steps that count it and closes after them; a
+                # closed stack keeps this branch's restore on the same path.
+                if args.route_package != "qsa-ordered-v2":
+                    case_scope.close()
                 logits = first.logits.copy()
                 token = int(first.token_id)
                 prefill_state = (_state_summary(generator.runner)
@@ -710,6 +723,7 @@ def main():
                             kv_digest.update(raw)
                     state["full_kv_sha256"] = kv_digest.hexdigest()
                 invoked = calls[0] - start_calls
+                case_scope.close()
                 if args.route_package in {"qsa-head-pair","qsa-head-quad"}:
                     assert invoked==prefill_invoked,"head pair ran in decode"
                     expected_pair=24 if enabled=="1" and case["prompt_tokens"]==4096 else 0
