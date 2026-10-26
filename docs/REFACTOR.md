@@ -3147,16 +3147,16 @@ should be removed or collapsed.
 
 ## 2026-08-27 Qwen4Exp bounded chunked prefill
 
-- `Qwen4ExpGGUFResidentModelRunner.prefill()` remains the strict serial default;
-  `prefill_chunked()` is a bounded size-2 candidate and the logits comparator
-  exposes `--prefill-mode` for qualification. Remove the duplicate public
-  methods by promoting chunked prefill only after the complete multi-prompt
-  production numerical/task gate passes, including category/shape tails and
-  2,052+ QSA transition coverage. If that gate fails, remove the candidate
-  path and retain only the serial strict owner. A nine-token real Q4-XL smoke
-  passes (`KL_teacher=0.00510`, `KL_serial=0.00410`, top-1 exact, teardown
-  clean) at 1.210 s versus 2.193 s serial; size 9 remains rejected at
-  `KL_serial=0.09754` despite a faster 0.801 s wall.
+- `Qwen4ExpGGUFResidentModelRunner.prefill()` delegates to the shipped
+  `prefill_chunked()` path using the runner's admitted chunk capacity.
+  `prefill_serial()` is the separate token-by-token reference, not the public
+  default. The old size-2 candidate and nine-token timing narrative describe
+  early bring-up and do not define current admission.
+- Remaining cleanup: consolidate redundant public entry points without removing
+  the serial oracle or changing chunk/cancellation ownership. Verify all callers
+  of `prefill_chunked()` before making it private, and preserve the public
+  `prefill()` interface and 2,052+ QSA transition coverage. Current chunk policy
+  is documented in the exact-chunked bisection entry above.
 
 ## 2026-08-27 Qwen4Exp scalable device top-512 selection
 
