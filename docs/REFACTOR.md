@@ -2744,15 +2744,15 @@ in `tests/test_unit_prefix_cache_multiturn_bench.py`.
 
 ## Speculative-MTP serving evidence rows (shape-axis removal, 2026-09-17)
 
-- Serving admission is physical only (see `docs/EXECUTION-PROFILES.md` §2.9).
-  Three retained rows now describe a physical cell that an earlier-declared row
-  already owns and are therefore unreachable:
+- The three shadowed physical-cell rows were removed after checking resolver
+  selection and default depths:
   `qwen38-q4km-gfx1151-production-bf16-c1-b3-context128`,
   `qwen38-q4km-gfx1151-production-bf16-cap4-c1-intent-k3-d24`, and
-  `qwen36-dense-q4km-gfx1100-strict-bf16-c2-k2-d24`. Their benchmark artifacts
-  and reason strings are still valid provenance, so prune them only after
-  confirming no rollup or external reference depends on the evidence keys;
-  do not re-add a shape or profile check to make them reachable again.
+  `qwen36-dense-q4km-gfx1100-strict-bf16-c2-k2-d24`. Their artifact links remain
+  on surviving evidence rows. Sampled c1–c4 declarations now derive from the
+  automatic cap4-realized row; their physical axes and default depth are
+  unchanged. The explicit-versus-automatic resolver test uses a synthetic
+  duplicate instead of requiring a redundant production declaration.
 - `scripts/gguf_mtp_c1c8_server_bench.py::_diagnostic_plan` and
   `scripts/qwen38_packet5_k4_watchdog_probe.py::_inject_k4_evidence_row` keep
   their own diagnostic scopes. The watchdog probe injects a row for the width

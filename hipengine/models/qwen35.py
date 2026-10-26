@@ -111,32 +111,6 @@ _QWEN36_DENSE_Q4KM_MTP_SERVING_EVIDENCE = (
         automatic_eligible=True,
     ),
     SpeculativeMTPServingEvidence(
-        evidence_key="qwen36-dense-q4km-gfx1100-strict-bf16-c2-k2-d24",
-        artifact_sha256=(
-            "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
-        ),
-        artifact_size_bytes=17_106_773_120,
-        # Execution identity unresolved: this artifact is not present on
-        # this host, so the row cannot admit until it is recorded with
-        # python3 scripts/gguf_execution_identity.py <artifact.gguf>.
-        backend="hip_gfx1100",
-        target_arch="gfx1100",
-        weight_quant="gguf_q4_k_m",
-        kv_storage="bf16",
-        kv_layout="uniform",
-        realized_group_rows=2,
-        resident_capacity=2,
-        candidate_budget=2,
-        sampling_modes=("greedy_fast",),
-        reason="qualified_explicit_dense_c2_k2_d24",
-        evidence_artifacts=(
-            "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-c2-explicit-ownership.json",
-            "benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json",
-        ),
-        strict_fallback_key="gguf_target_ar",
-        automatic_eligible=False,
-    ),
-    SpeculativeMTPServingEvidence(
         evidence_key="qwen36-dense-q4km-gfx1100-production-bf16-c2-k2-d24",
         artifact_sha256=(
             "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
@@ -266,6 +240,14 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
             "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s1.json",
             "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s2.json",
             "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s3.json",
+            # Retired duplicate row: the production context128 row described
+            # this same physical cell (c1/B3/BF16/gfx1151, resident capacity 1)
+            # and could never win over this automatic row. Its artifacts stay
+            # here as provenance for the cell.
+            "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t04-production-suite.json",
+            "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t11-t13-ownership.json",
+            "benchmarks/results/2026-08-27-gfx1151-qwen38-postcampaign-mtp-c1-c8.json",
+            "benchmarks/results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json",
             "benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json",
         ),
         strict_fallback_key="gguf_target_ar",
@@ -298,62 +280,6 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         ),
         strict_fallback_key="gguf_target_ar",
         automatic_eligible=True,
-    ),
-    SpeculativeMTPServingEvidence(
-        evidence_key="qwen38-q4km-gfx1151-production-bf16-c1-b3-context128",
-        artifact_sha256=(
-            "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
-        ),
-        artifact_size_bytes=17_106_775_008,
-        artifact_execution_fingerprint=(
-            "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
-        ),
-        backend="hip_gfx1151",
-        target_arch="gfx1151",
-        weight_quant="gguf_q4_k_m",
-        kv_storage="bf16",
-        kv_layout="uniform",
-        realized_group_rows=1,
-        resident_capacity=1,
-        candidate_budget=3,
-        sampling_modes=("greedy_fast",),
-        reason="qualified_explicit_production_c1_b3_context128",
-        evidence_artifacts=(
-            "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t04-production-suite.json",
-            "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t11-t13-ownership.json",
-            "benchmarks/results/2026-08-27-gfx1151-qwen38-postcampaign-mtp-c1-c8.json",
-            "benchmarks/results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json",
-        ),
-        strict_fallback_key="gguf_target_ar",
-        automatic_eligible=False,
-    ),
-    SpeculativeMTPServingEvidence(
-        evidence_key="qwen38-q4km-gfx1151-production-bf16-cap4-c1-intent-k3-d24",
-        artifact_sha256=(
-            "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
-        ),
-        artifact_size_bytes=17_106_775_008,
-        artifact_execution_fingerprint=(
-            "4c4268886f225fba3675e32a521fba1d6ff1db4562bd06416c89fd22b6f90faa"
-        ),
-        backend="hip_gfx1151",
-        target_arch="gfx1151",
-        weight_quant="gguf_q4_k_m",
-        kv_storage="bf16",
-        kv_layout="uniform",
-        realized_group_rows=1,
-        resident_capacity=4,
-        candidate_budget=3,
-        sampling_modes=("greedy_fast",),
-        reason="diagnostic_production_cap4_c1_or_c2_after_ar_rebase",
-        evidence_artifacts=(
-            "benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json",
-            "benchmarks/results/2026-08-27-gfx1151-qwen38-realized-singleton-auto.json",
-            "benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json",
-        ),
-        max_realized_group_rows=2,
-        strict_fallback_key="gguf_target_ar",
-        automatic_eligible=False,
     ),
     SpeculativeMTPServingEvidence(
         evidence_key="qwen38-q4km-gfx1151-production-bf16-c2-k3-d24",
@@ -468,11 +394,13 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
 )
 
 
-# Sampled selection is independent of the older greedy C2 timing policy.
+# Sampled selection is independent of the older greedy C2 timing policy. The
+# retired diagnostic cap4/c1 row described the same physical axes as the
+# retained automatic cap4-realized row, which is now the explicit template.
 _QWEN38_Q4KM_MTP_SERVING_EVIDENCE += tuple(
     replace(
         next(row for row in _QWEN38_Q4KM_MTP_SERVING_EVIDENCE
-             if row.evidence_key == "qwen38-q4km-gfx1151-production-bf16-cap4-c1-intent-k3-d24"),
+             if row.evidence_key == "qwen38-q4km-gfx1151-strict-bf16-cap4-realized-c1-b3"),
         evidence_key=f"qwen38-q4km-gfx1151-native-sampled-c{width}-k3",
         realized_group_rows=width,
         sampling_modes=("sampled",),

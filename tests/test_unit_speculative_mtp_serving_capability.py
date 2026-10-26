@@ -58,8 +58,8 @@ def _evidence() -> SpeculativeMTPServingEvidence:
     )
 
 
-# The Qwen3.6-27B-Q4_K_M artifact the three qwen36-dense rows measured is not on
-# this host, so those rows record no execution identity and authorize nothing.
+# The Qwen3.6-27B-Q4_K_M artifact the qwen36-dense rows measured is not on this
+# host, so those rows record no execution identity and authorize nothing.
 # Tests that exercise their scope bind them to this stand-in, which is the only
 # missing piece; the real value comes from
 # `python3 scripts/gguf_execution_identity.py /models/gguf/Qwen3.6-27B-Q4_K_M.gguf`.
@@ -162,6 +162,97 @@ def test_qwen38_q4km_gfx1151_c1_b3_cell_takes_the_strongest_authorization() -> N
         "benchmarks/results/"
         "2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json"
     )
+
+
+_RETIRED_DUPLICATE_SERVING_ROWS = (
+    "qwen38-q4km-gfx1151-production-bf16-c1-b3-context128",
+    "qwen38-q4km-gfx1151-production-bf16-cap4-c1-intent-k3-d24",
+    "qwen36-dense-q4km-gfx1100-strict-bf16-c2-k2-d24",
+)
+
+_RETIRED_DUPLICATE_EVIDENCE_ARTIFACTS = (
+    "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t04-production-suite.json",
+    "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t11-t13-ownership.json",
+    "benchmarks/results/2026-08-27-gfx1151-qwen38-postcampaign-mtp-c1-c8.json",
+    "benchmarks/results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json",
+    "benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json",
+    "benchmarks/results/2026-08-27-gfx1151-qwen38-realized-singleton-auto.json",
+    "benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json",
+    "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-c2-explicit-ownership.json",
+    "benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json",
+)
+
+
+def test_retired_duplicate_serving_rows_are_absent_and_links_survive() -> None:
+    evidence = Qwen35GGUFModel().speculative_mtp_serving_evidence
+    keys = {row.evidence_key for row in evidence}
+
+    assert keys.isdisjoint(_RETIRED_DUPLICATE_SERVING_ROWS)
+
+    artifacts = {
+        path for row in evidence for path in row.evidence_artifacts
+    }
+    assert set(_RETIRED_DUPLICATE_EVIDENCE_ARTIFACTS) <= artifacts
+
+    # The c1 and capacity-4 cells still resolve to their automatic survivors.
+    c1 = resolve_speculative_mtp_serving_plan(evidence, key=_key())
+    assert c1.evidence_key == "qwen38-q4km-gfx1151-strict-bf16-c1-b3-natural25-s0"
+    assert c1.selected_candidate_count == 3
+    assert c1.automatic_eligible is True
+
+    cap4 = resolve_speculative_mtp_serving_plan(
+        evidence, key=_key(resident_capacity=4)
+    )
+    assert cap4.evidence_key == (
+        "qwen38-q4km-gfx1151-strict-bf16-cap4-realized-c1-b3"
+    )
+    assert cap4.selected_candidate_count == 3
+    assert cap4.automatic_eligible is True
+
+    # The qwen36 dense c2/k2 cell keeps its production automatic row.
+    dense_evidence = _bound_rows()
+    dense_row = next(
+        row for row in dense_evidence
+        if row.evidence_key == "qwen36-dense-q4km-gfx1100-production-bf16-c2-k2-d24"
+    )
+    dense = resolve_speculative_mtp_serving_plan(
+        dense_evidence, key=_row_key(dense_row)
+    )
+    assert dense.evidence_key == (
+        "qwen36-dense-q4km-gfx1100-production-bf16-c2-k2-d24"
+    )
+    assert dense.selected_candidate_count == 2
+    assert dense.automatic_eligible is True
+
+
+@pytest.mark.parametrize("width", [1, 2, 3, 4])
+def test_sampled_serving_rows_resolve_c1_c4_and_default_depth(width) -> None:
+    plugin = Qwen35GGUFModel()
+    evidence = plugin.speculative_mtp_serving_evidence
+    key = _key(
+        resident_capacity=4,
+        realized_group_rows=width,
+        sampling_mode="sampled",
+        candidate_budget=1,
+    )
+
+    decision = plugin.resolve_speculative_mtp_serving_plan(key=key)
+    assert decision.admitted is True
+    assert decision.automatic_eligible is True
+    assert decision.evidence_key == f"qwen38-q4km-gfx1151-native-sampled-c{width}-k3"
+    assert decision.reason == "automatic_native_sampled_c1_c4"
+    assert decision.selected_candidate_count == 1
+    assert decision.static_max_realized_group_rows == 4
+    assert decision.evidence_artifacts == (
+        "worklog/entries/"
+        "20260920T200240.750746Z-sampling-mtp-mtp-sampled-concurrency-6667be.md",
+    )
+
+    default_key = replace(key, candidate_budget=3)
+    assert plugin.max_qualified_candidate_budget(key=default_key) == 3
+    assert resolve_max_qualified_candidate_budget(
+        evidence, key=default_key
+    ) == 3
 
 
 def test_qwen38_q4km_production_c2_k3_d24_is_explicit_after_ar_rebase() -> None:
@@ -414,6 +505,10 @@ def test_qwen38_q4km_strict_c1_b3_plan_is_automatic_product_scope() -> None:
         "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s1.json",
         "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s2.json",
         "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s3.json",
+        "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t04-production-suite.json",
+        "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t11-t13-ownership.json",
+        "benchmarks/results/2026-08-27-gfx1151-qwen38-postcampaign-mtp-c1-c8.json",
+        "benchmarks/results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json",
         "benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json",
     )
     assert decision.plan_fingerprint.startswith("sha256:")
@@ -643,8 +738,8 @@ def test_qwen36_dense_production_row_resolves_after_qwen38_evidence() -> None:
 def test_qwen36_dense_rows_without_identity_still_run_on_capability() -> None:
     """A row that measures nothing on this host never withholds the cell.
 
-    The three qwen36-dense rows carry no execution identity because their
-    artifact is absent here.  That makes them unable to *certify* the cell; it
+    The qwen36-dense rows carry no execution identity because their artifact is
+    absent here.  That makes them unable to *certify* the cell; it
     does not make them able to refuse it.  Both request modes run on the
     implementation declaration, and recording the identity later upgrades the
     basis to evidence without changing what executes.
@@ -673,23 +768,30 @@ def test_qwen36_dense_rows_without_identity_still_run_on_capability() -> None:
 
 
 def test_qwen36_dense_c2_k2_cell_prefers_the_automatic_row() -> None:
-    """The strict row is shadowed by the production row for the same cell.
+    """An explicit duplicate cannot shadow the automatic row for the same cell.
 
-    Both rows describe identical physical axes.  The cell keeps the automatic
-    authorization instead of taking whichever row happens to be declared first.
+    The retired strict row had identical physical axes.  Keep that resolver
+    contract covered with a synthetic explicit row instead of a second retained
+    declaration.
     """
 
-    plugin = Qwen35GGUFModel(speculative_mtp_serving_evidence=_bound_rows())
-    evidence = next(
-        row
-        for row in plugin.speculative_mtp_serving_evidence
+    production = next(
+        row for row in _bound_rows()
         if row.evidence_key
-        == "qwen36-dense-q4km-gfx1100-strict-bf16-c2-k2-d24"
+        == "qwen36-dense-q4km-gfx1100-production-bf16-c2-k2-d24"
     )
+    explicit_duplicate = replace(
+        production,
+        evidence_key="synthetic-explicit-dense-c2-k2-d24",
+        reason="qualified_explicit_dense_c2_k2_d24",
+        automatic_eligible=False,
+    )
+    plugin = Qwen35GGUFModel(
+        speculative_mtp_serving_evidence=(explicit_duplicate, production)
+    )
+    key = _row_key(production)
 
-    decision = plugin.resolve_speculative_mtp_serving_plan(
-        key=_row_key(evidence),
-    )
+    decision = plugin.resolve_speculative_mtp_serving_plan(key=key)
 
     assert decision.admitted is True
     assert decision.evidence_key == (
@@ -702,7 +804,7 @@ def test_qwen36_dense_c2_k2_cell_prefers_the_automatic_row() -> None:
     # selecting the row -- and runs on the implementation declaration instead
     # of being refused.
     narrower = plugin.resolve_speculative_mtp_serving_plan(
-        key=replace(evidence and _row_key(evidence), realized_group_rows=1)
+        key=replace(key, realized_group_rows=1)
     )
     assert narrower.admitted is True
     assert narrower.as_dict()["admission_basis"] == "implementation"

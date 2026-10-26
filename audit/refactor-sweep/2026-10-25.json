@@ -2215,23 +2215,25 @@
       "start_line": 2518,
       "end_line": 2540,
       "sha256": "00f4853e9a28ded3a6210fc65a313f6997846710c974a01c347845c87eb158f1",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-duplicate-rows",
+      "evidence": [
+        "Three shadowed rows removed with artifact links preserved and sampled template migrated to automatic survivor; physical selections and candidate defaults unchanged.94 focused tests and full CPU bundle pass, docs/audit pass. worklog/entries/20261026T104604.591425Z-cleanup-refactor-r0082-evidence-74531c.md."
+      ],
       "subitems": [
         {
           "line": 2520,
           "text": "- Serving admission is physical only (see `docs/EXECUTION-PROFILES.md` \u00a72.9).",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2529,
           "text": "- `scripts/gguf_mtp_c1c8_server_bench.py::_diagnostic_plan` and",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 2535,
           "text": "- Campaign documents written before 2026-09-17 (`docs/CONCURRENCY2-*.md`,",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
