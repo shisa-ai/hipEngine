@@ -338,28 +338,51 @@ def qwen4_exp_gdn_tile16_prefill_selected(
     num_v_heads: int,
     head_dim: int,
 ) -> bool:
-    """Select the exact tile-16 GDN prefill owner inside the colwarps gate.
+    """Does the binding Hk16/Hv48/D128 envelope fit the tile-16 owner?
 
-    PF-5 production default after the engaged one-process/one-residency
-    canonical A/B (2026-09-05, 72/72 cross-mode exact, prefill
-    +0.49%/+0.47%/+0.37% at p512/p1024/p4096). Non-envelope shapes and the
-    ``HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL=0`` opt-out use the columnwarp
-    parent; the serial strict route stays registered below both.
+    Geometry only. Which owner serves the chunk is the owning runner's
+    ``gdn_tile16_prefill`` decision (see :func:`gdn_tile16_prefill`), so a
+    diagnostic arm binds the columnwarp parent on the runner it measures
+    instead of writing a process-wide switch. Non-envelope shapes keep that
+    parent either way, and the serial strict route stays registered below both.
     """
 
-    if os.environ.get("HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL", "1") in {
-        "",
-        "0",
-        "false",
-        "False",
-    }:
-        return False
     return (
         rows >= 16
         and num_k_heads == 16
         and num_v_heads in (32, 48)
         and head_dim == 128
     )
+
+
+def qwen4_exp_gdn_tile16_owner_admitted(
+    *,
+    rows: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_dim: int,
+    supports_any_rows: bool,
+    enabled: bool = True,
+) -> bool:
+    """Does the tile-16 branch own this chunk, or the columnwarp parent?
+
+    The envelope predicate covers the tile-16 bodies, which need at least 16
+    rows. A row-split owner serves any width from two rows up, so it also takes
+    verifier and small-batch chunks where the columnwarp parent costs 147 us per
+    layer at four rows. ``enabled`` is the owning runner's decision: False
+    leaves every shape to that parent, including the row-split widths.
+    """
+
+    if not enabled:
+        return False
+    if qwen4_exp_gdn_tile16_prefill_selected(
+        rows=rows,
+        num_k_heads=num_k_heads,
+        num_v_heads=num_v_heads,
+        head_dim=head_dim,
+    ):
+        return True
+    return rows >= 2 and head_dim == 128 and bool(supports_any_rows)
 
 
 def stage_qwen4_exp_ple_rows(
@@ -3990,6 +4013,35 @@ def gdn_prefill_variant(runner: Any, variant: str | None | object = _GDN_PREFILL
         runner.gdn_prefill_variant = prior
 
 
+# GDN tile-16 prefill selection. The production plan opens the columnwarp gate
+# and the runner's own decision admits the tile-16 owner inside it for the
+# binding Hk16/Hv48/D128 envelope; the columnwarp parent serves everything else
+# and remains the immediate rollback, with the serial strict route registered
+# below both. Diagnostics bind the parent on the runner they measure instead
+# of changing process-wide state.
+_GDN_TILE16_UNSET = object()
+
+
+@contextlib.contextmanager
+def gdn_tile16_prefill(runner: Any, enabled: bool | object = _GDN_TILE16_UNSET):
+    """Bind the tile-16 GDN prefill branch for a diagnostic arm.
+
+    ``False`` pins the columnwarp parent for the measured window and ``True``
+    restores the production owner; leaving ``enabled`` unset keeps whatever the
+    runner carries. The binding is a mutable runner field, so it stays in force
+    across a prefill that suspends between layer yields, and the prior value is
+    restored on exit, including on an exception.
+    """
+
+    prior = getattr(runner, "gdn_tile16_prefill", True)
+    if enabled is not _GDN_TILE16_UNSET:
+        runner.gdn_tile16_prefill = bool(enabled)
+    try:
+        yield prior
+    finally:
+        runner.gdn_tile16_prefill = prior
+
+
 # Q5_1 row-publish selection. The production plan declares the row-publish
 # owner for the rows>=512 K640 grouped Q5_1 down scope; the binder publishes
 # that decision to the owning runner, and the dispatch-time selector keeps its
@@ -7345,6 +7397,7 @@ def run_qwen4_exp_gdn_layer(
     pending_write: tuple[int, int, int, bool] | None = None,
     defer_write: list | None = None,
     prefill_variant: str | None = None,
+    gdn_tile16_prefill: bool = True,
     q51_down_m1: bool = False,
     q51_fold128_prefill: bool = False,
     q51_fold_pair_prefill: bool = False,
@@ -7478,6 +7531,7 @@ def run_qwen4_exp_gdn_layer(
         num_k_heads=num_k_heads, num_v_heads=num_v_heads, head_dim=head_dim,
         conv_kernel=conv_kernel, stream=stream, runtime=active_runtime,
         prefill_variant=prefill_variant,
+        gdn_tile16_prefill=gdn_tile16_prefill,
     )
     if layer_graph is not None:
         def _segment_gr_write_ffn_read(graph_stream: int) -> None:
@@ -7762,12 +7816,16 @@ def run_qwen4_exp_gdn_token_mixer(
     stream: int = 0,
     runtime: HipRuntime | None = None,
     prefill_variant: str | None = None,
+    gdn_tile16_prefill: bool = True,
 ) -> DeviceBuffer:
     """Execute strict Qwen4Exp GDN projections, Conv, recurrence, and output.
 
     ``prefill_variant`` is the owning runner's GDN serial-prefill owner (see
     :func:`gdn_prefill_variant`); it selects the narrow/wide wave-norm leaf for
     multi-row chunks and leaves the register parent and decode untouched.
+    ``gdn_tile16_prefill`` is the owning runner's tile-16 decision (see
+    :func:`gdn_tile16_prefill`): False pins the columnwarp parent inside the
+    columnwarp gate for a diagnostic arm.
     """
 
     if scratch.closed:
@@ -7920,19 +7978,13 @@ def run_qwen4_exp_gdn_token_mixer(
                 )
                 if tile16_variant else qwen4_exp_gdn_prefill_tiled16_f32
             )
-            if qwen4_exp_gdn_tile16_prefill_selected(
+            if qwen4_exp_gdn_tile16_owner_admitted(
                 rows=rows,
                 num_k_heads=num_k_heads,
                 num_v_heads=num_v_heads,
                 head_dim=head_dim,
-            ) or (
-                # An owner that serves any row count (the row-split
-                # recurrence) also takes verifier and small-batch widths,
-                # where the column-warp parent costs 147 us per layer at
-                # four rows.
-                rows >= 2
-                and head_dim == 128
-                and getattr(tile16, "supports_any_rows", False)
+                supports_any_rows=getattr(tile16, "supports_any_rows", False),
+                enabled=gdn_tile16_prefill,
             ):
                 # PF-5 production: exact token-tile-16 owner, bit-exact to
                 # the columnwarp parent at the binding Hk16/Hv48/D128 shape.
@@ -8367,6 +8419,13 @@ class Qwen4ExpGGUFResidentModelRunner:
     # wave-norm leaf where that admission applies, and None (the register
     # parent) everywhere else. A diagnostic scope may outrank it.
     gdn_prefill_variant: str | None = None
+    # GDN tile-16 prefill owner inside the columnwarp gate, for the binding
+    # Hk16/Hv48/D128 envelope. True on every runner the profile constructs, and
+    # the prefill chunk path is its only reader: decode runs one row, and the
+    # batch GDN mixer is decode-only. A diagnostic scope binds the columnwarp
+    # parent on the one runner it measures; a fresh runner or a serving clone
+    # inherits this default, never that binding.
+    gdn_tile16_prefill: bool = True
     # Q5_1 down M1 selection, published by the profile binder for the exact
     # grouped Q5_1 down chain's small-chunk scope: True on a production plan,
     # False on every plan that keeps the preceding expertgrid64 owner. The
@@ -10011,6 +10070,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     pending_write=pending_write,
                     defer_write=deferred,
                     prefill_variant=self.gdn_prefill_variant,
+                    gdn_tile16_prefill=self.gdn_tile16_prefill,
                     q51_down_m1=self.q51_down_m1,
                     q51_fold128_prefill=self.q51_fold128_prefill,
                     q51_fold_pair_prefill=self.q51_fold_pair_prefill,

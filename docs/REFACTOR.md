@@ -692,9 +692,14 @@ Three paths re-open a swept flag, or keep a flag out of the sweep entirely:
   are published separately as runner-local state by the resolved profile binder.
 - `_F16_ROUTE_SELECTORS` is applied after both passes, so the F16 composition
   restores `GR_WIDE` on the same plan.
-- `GDN_COLWARPS_PREFILL` is bound `"1" if production` and is deliberately absent
-  from the sweep, because the 2026-10-08 tiled16 admission passed the layer2
-  envelope on the UD lane.
+- `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL` is bound `"1" if production` and
+  is deliberately absent from the sweep, because the 2026-10-08 tiled16
+  admission passed the layer2 envelope on the UD lane. Its remaining cleanup
+  is process transport: publish this gate with the runner's resolved profile
+  state, migrate serial-owner diagnostics to scoped controls, and preserve the
+  columnwarp/tiled and strict serial branches. Clear it with profile/forwarding
+  tests and public generation that confirms both the default and diagnostic
+  parent routes actually run.
 
 Eight flags stay held off there, with their recorded withdrawal reason and
 reopen condition:
@@ -1330,8 +1335,8 @@ gate's `gdn_isolated` arm and a bisection incumbent. The only interception left
 is the diagnostic `scripts/qwen4exp_gdn_multicolumn_route_probe.py`, which
 wraps the selection predicate to count dispatches and reproduces the
 multi-column engagement evidence, so it stays.
-`HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT` is profile-owned and
-`HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL=0` is the opt-out.
+`HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT` is profile-owned; diagnostics use
+`gdn_tile16_prefill(runner, False)` to compare the columnwarp parent.
 
 - The `qwen4_exp_gdn_dpp` build family and gfx1151
   `qwen4exp_gdn_tiled16_dpp_prefill` key passed the previous
@@ -2898,22 +2903,6 @@ should be removed or collapsed.
   registered/executed adapter and every resident/physical owner are represented
   in the shared call plan. Eager/c1 placement behavior is separate and unchanged.
 
-## 2026-09-05 Qwen4Exp PF-5 GDN tile-16 prefill opt-out — promoted default
-
-- `qwen4_exp_gdn_tile16_prefill_selected` in
-  `hipengine/runtime/qwen4_exp_runner.py` makes the exact token-tile-16 owner
-  (`qwen4exp_gdn_tiled16_prefill`, Hk16/Hv32-or-48/D128, rows>=16) the
-  production default inside the existing `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL`
-  gate.
-- `HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL=0` (or empty/false) forces the
-  columnwarp `<4, 4>` parent for rollback and bisection; non-envelope shapes
-  always use columnwarp, and the serial strict route stays registered below
-  both.
-- Removal trigger: after the gfx1151 stable-clock closure verify (five-pair
-  same-thermal 12-case comparison) confirms the promotion, drop the flag and
-  call tile-16 unconditionally inside the colwarps gate. Keep the registered
-  columnwarp and serial strict fallbacks per `EXECUTION-PROFILES.md`.
-
 ## 2026-09-04 Qwen4Exp PF-5 GDN w32 prefill variant — retained rejected lever
 
 - `qwen4exp_gdn_w32_prefill` (`hipengine_qwen4_exp_gdn_prefill_w32_f32`,
@@ -3335,7 +3324,7 @@ should be removed or collapsed.
 
 - Explicit `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28=0` restores exact
   R28 on every layer; explicit production otherwise fuses layers whose ID is
-  not divisible by 8 while layers 0/8/…/64 remain exact. Omitted-profile
+  not divisible by 8 while layers 0/8/…/56 remain exact. Omitted-profile
   behavior stays unchanged.
 - The fixed schedule is correctness- and performance-qualified. Remove the
   environment override and its cache/test after the next stable milestone;

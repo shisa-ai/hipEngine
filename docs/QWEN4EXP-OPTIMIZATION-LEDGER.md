@@ -632,9 +632,10 @@ recorded for the human owner. Same-residency engine A/B: prefill
 0.9937x, decode unchanged within noise, engagement 15 multi calls per prefill
 at every depth. Promotion: GDN_COLWARPS_PREFILL no longer recovery-zeroed for
 UD; the tile16 variant binds for every production quant; the UD manifest 27-47
-row declares the multi variant; opt-out
-`HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL=0`; the columnwarps/wave_norm/serial
-chain stays registered as the runtime fallback. This is the first
+row declares the multi variant. The original
+`HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL=0` opt-out is retired; diagnostics now
+use `gdn_tile16_prefill(runner, False)` on the measured owner. The
+columnwarps/wave_norm/serial chain stays registered as the runtime fallback. This is the first
 arithmetic-changing candidate to pass the full envelope on this lane where
 the F16 class failed - reassociation at fp32 round-off, not an operand-class
 change.

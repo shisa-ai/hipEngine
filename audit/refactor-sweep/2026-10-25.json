@@ -3763,23 +3763,23 @@
       "start_line": 3416,
       "end_line": 3431,
       "sha256": "55d966c76ffa6e33c0708bbaf388c0b8abe232aec51ba198a6356e687c21f459",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Retired process opt-out after existing X10 closure; explicit owner scope preserves columnwarp comparison and serial fallback. Small-row rowsplit guard and counter attribute preservation covered. GPU291/CPU293/public292 and route-pair294 pass with actual owners and exact logits. Worklog: worklog/entries/20261026T234453.438237Z-cleanup-refactor-r0140-gdn-tile16-da3ad8.md."],
       "subitems": [
         {
           "line": 3418,
           "text": "- `qwen4_exp_gdn_tile16_prefill_selected` in",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 3423,
           "text": "- `HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL=0` (or empty/false) forces the",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 3427,
           "text": "- Removal trigger: after the gfx1151 stable-clock closure verify (five-pair",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

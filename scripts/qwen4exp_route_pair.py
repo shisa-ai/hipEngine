@@ -3,14 +3,19 @@
 
 The named production profile is constructed once. ``--override`` values define
 one diagnostic route and are toggled against the values bound by the profile.
-Each pair reverses its first route, so monotonic thermal drift cannot masquerade
-as a route win. Decode mode excludes prefill from timing and hashes the complete
-generated token sequence. Override runs are never named-profile evidence.
+A route that is request-local runner state is named with its own flag instead
+(``--gdn-tile16-parent``), because a retired process switch would leave the
+measured route running and report a self-comparison. Each pair reverses its
+first route, so monotonic thermal drift cannot masquerade as a route win.
+Decode mode excludes prefill from timing and hashes the complete generated token
+sequence. Override runs are never named-profile evidence.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
+import functools
 import hashlib
 import json
 import math
@@ -159,6 +164,162 @@ def _set_environment(values: dict[str, str | None]) -> None:
             os.environ[key] = value
 
 
+RETIRED_OVERRIDES = {
+    "HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL": "--gdn-tile16-parent",
+}
+
+
+def _reject_retired_overrides(overrides: dict[str, str | None]) -> None:
+    """Refuse an override the runtime no longer reads.
+
+    The retired GDN tile-16 switch is still set by old command lines and by
+    archived artifact recipes. Accepting it would leave both arms on the
+    production owner and publish a self-comparison as a route A/B, so the
+    harness names its replacement instead.
+    """
+
+    for key in overrides:
+        replacement = RETIRED_OVERRIDES.get(key)
+        if replacement is not None:
+            raise SystemExit(
+                f"{key} is retired; the runtime no longer reads it. "
+                f"Use {replacement} to measure the parent arm."
+            )
+
+
+def _require_arm_control(
+    overrides: dict[str, str | None],
+    *,
+    gdn_tile16_parent: bool,
+    mode: str = "prefill",
+) -> None:
+    """Both routes must differ: an arm with no control measures itself."""
+
+    if gdn_tile16_parent and mode != "prefill":
+        raise SystemExit("--gdn-tile16-parent applies to prefill mode only")
+    if not overrides and not gdn_tile16_parent:
+        raise SystemExit("--override or --gdn-tile16-parent is required")
+
+
+def _arm_scope(route: str, runner: Any, *, gdn_tile16_parent: bool):
+    """The runner-local control an arm needs; env overrides are already set."""
+
+    if route != "override" or not gdn_tile16_parent:
+        return contextlib.nullcontext()
+    from hipengine.runtime.qwen4_exp_runner import gdn_tile16_prefill
+
+    return gdn_tile16_prefill(runner, False)
+
+
+# The GDN prefill owners the tile16 branch and the columnwarp parent reach. The
+# branch calls a named variant through the registry and the default tile-16 body
+# directly, and the parent directly, so both routes are wrapped: an arm then
+# reports a counted launch instead of a status over a route that never ran.
+GDN_PREFILL_OWNERS = {
+    "qwen4exp_gdn_tiled16_prefill": "qwen4_exp_gdn_prefill_tiled16_f32",
+    "qwen4exp_gdn_columnwarps_prefill": "qwen4_exp_gdn_prefill_columnwarps_f32",
+    "qwen4exp_sigmoid_strict_prefill": "qwen4_exp_gdn_prefill_f32",
+}
+TILE16_FAMILY = {
+    "qwen4exp_gdn_tiled16_prefill",
+    "qwen4exp_gdn_tiled16_multi_prefill",
+    "qwen4exp_gdn_tiled16_dpp_prefill",
+    "qwen4exp_gdn_rowsplit_prefill",
+}
+COLUMNWARP_OWNER = "qwen4exp_gdn_columnwarps_prefill"
+
+
+@contextlib.contextmanager
+def _count_prefill_dispatches(counts: dict[str, int]):
+    """Count the GDN prefill owner that actually launches inside the window.
+
+    The registry resolver is keyword-only, so the owner is named from its own
+    arguments. Every wrapper carries the owner's attributes through
+    ``functools.wraps``: the mixer reads ``supports_any_rows``,
+    ``publishes_f16_image`` and ``supports_state_rows`` off the resolved
+    callable, and a bare wrapper would silently turn the row-split owner into a
+    fixed-width one and change what this instrumentation measures.
+    """
+
+    from hipengine.runtime import qwen4_exp_runner as runner_module
+
+    def counted(name: str, function: Any) -> Any:
+        @functools.wraps(function)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            counts[name] = counts.get(name, 0) + 1
+            return function(*args, **kwargs)
+
+        return wrapper
+
+    saved = {
+        attribute: getattr(runner_module, attribute)
+        for attribute in GDN_PREFILL_OWNERS.values()
+    }
+    for name, attribute in GDN_PREFILL_OWNERS.items():
+        setattr(runner_module, attribute, counted(name, saved[attribute]))
+    original_resolve = runner_module.resolve
+
+    def resolve(*args: Any, **kwargs: Any) -> Any:
+        function = original_resolve(*args, **kwargs)
+        if (
+            kwargs.get("layer") == "gdn_recurrence_norm_gate"
+            and callable(function)
+        ):
+            return counted(str(kwargs.get("variant") or "default"), function)
+        return function
+
+    runner_module.resolve = resolve
+    try:
+        yield counts
+    finally:
+        runner_module.resolve = original_resolve
+        for attribute, function in saved.items():
+            setattr(runner_module, attribute, function)
+
+
+def _sum_prefill_dispatches(samples: list[dict[str, Any]], route: str) -> dict[str, int]:
+    total: dict[str, int] = {}
+    for row in samples:
+        if row["route"] != route:
+            continue
+        for name, count in row.get("prefill_dispatches", {}).items():
+            total[name] = total.get(name, 0) + int(count)
+    return total
+
+
+def _parent_arm_counted(dispatches: dict[str, dict[str, int]]) -> bool:
+    """A parent arm is an arm only if the counted production owner moved."""
+
+    return (
+        bool(set(dispatches["bound"]) & TILE16_FAMILY)
+        and not (set(dispatches["override"]) & TILE16_FAMILY)
+        and dispatches["override"].get(COLUMNWARP_OWNER, 0) > 0
+    )
+
+
+def _measure_route(
+    route: str,
+    runner: Any,
+    token_ids: list[int],
+    *,
+    mode: str,
+    decode_transitions: int,
+    gdn_tile16_parent: bool,
+) -> dict[str, Any]:
+    """Run one arm sample under its controls, counting the prefill owner."""
+
+    counts: dict[str, int] = {}
+    with (
+        _arm_scope(route, runner, gdn_tile16_parent=gdn_tile16_parent),
+        _count_prefill_dispatches(counts),
+    ):
+        sample = _run_route(
+            runner, token_ids, mode=mode, decode_transitions=decode_transitions,
+        )
+    sample["prefill_dispatches"] = dict(counts)
+    return sample
+
+
 def _run_route(
     runner: Any,
     token_ids: list[int],
@@ -239,8 +400,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--override",
         action="append",
-        required=True,
+        default=[],
         metavar="HIPENGINE_KEY=VALUE",
+    )
+    parser.add_argument(
+        "--gdn-tile16-parent",
+        action="store_true",
+        help=(
+            "Pin the columnwarp GDN prefill parent on the owning runner for "
+            "the override arm; replaces the retired "
+            "HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL override"
+        ),
     )
     parser.add_argument("--output", type=Path, required=True)
     return parser
@@ -252,6 +422,10 @@ def main() -> int:
         overrides = _parse_overrides(args.override)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
+    _reject_retired_overrides(overrides)
+    _require_arm_control(
+        overrides, gdn_tile16_parent=args.gdn_tile16_parent, mode=args.mode
+    )
     if args.pairs <= 0:
         raise SystemExit("--pairs must be positive")
     if args.warmups < 0:
@@ -347,6 +521,9 @@ def main() -> int:
             "override_stage": "post_profile_binder_pre_warmup_and_measurement",
         },
         "overrides": dict(overrides),
+        "runner_controls": (
+            {"gdn_tile16_prefill": False} if args.gdn_tile16_parent else {}
+        ),
         "bound_override_env": {},
         "effective_override_env": {},
         "warmups": [],
@@ -424,17 +601,20 @@ def main() -> int:
     ]
 
     route_values = {"bound": bound_values, "override": overrides}
+    invalid_arms = False
     try:
         for case_index, case in enumerate(cases):
             ids = case["token_ids"]
             for warmup in range(args.warmups):
                 for route in _counterbalanced_order(warmup + case_index):
                     _set_environment(route_values[route])
-                    sample = _run_route(
+                    sample = _measure_route(
+                        route,
                         generator.runner,
                         ids,
                         mode=args.mode,
                         decode_transitions=int(args.decode_transitions),
+                        gdn_tile16_parent=args.gdn_tile16_parent,
                     )
                     report["warmups"].append(
                         {
@@ -451,11 +631,13 @@ def main() -> int:
                     _counterbalanced_order(pair + case_index)
                 ):
                     _set_environment(route_values[route])
-                    sample = _run_route(
+                    sample = _measure_route(
+                        route,
                         generator.runner,
                         ids,
                         mode=args.mode,
                         decode_transitions=int(args.decode_transitions),
+                        gdn_tile16_parent=args.gdn_tile16_parent,
                     )
                     row = {
                         "case_id": case["id"],
@@ -508,14 +690,30 @@ def main() -> int:
                 for summary in report["case_summaries"].values()
             ),
         }
-        report["status"] = "completed"
+        dispatches = {
+            route: _sum_prefill_dispatches(report["samples"], route)
+            for route in ("bound", "override")
+        }
+        report["summary"]["prefill_dispatches"] = dispatches
+        if args.gdn_tile16_parent:
+            counted = _parent_arm_counted(dispatches)
+            report["summary"]["parent_arm_counted"] = counted
+            invalid_arms = not counted
+            if invalid_arms:
+                print(
+                    "the parent arm did not move the GDN prefill owner; "
+                    f"bound={dispatches['bound']} "
+                    f"override={dispatches['override']}",
+                    flush=True,
+                )
+        report["status"] = "invalid_arms" if invalid_arms else "completed"
     finally:
         _set_environment(bound_values)
         generator.close()
     report["memory_after_close"] = memory_stats()
     _write_json(args.output, report)
     print(json.dumps(report["summary"], indent=2))
-    return 0
+    return 1 if invalid_arms else 0
 
 
 if __name__ == "__main__":

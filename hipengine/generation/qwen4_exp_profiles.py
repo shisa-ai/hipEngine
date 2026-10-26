@@ -778,8 +778,11 @@ def _production_selections(
             # (2026-10-08: all aggregates and scopes, prefill_to_c1 top-1 18/18,
             # eligible for automatic admission; engine A/B +0.68% prefill with
             # 12/12 cases positive). The columnwarps/wave_norm chain stays
-            # registered as the runtime fallback and HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL=0
-            # is the opt-out.
+            # registered as the runtime fallback, and a diagnostic arm pins the
+            # columnwarp parent on the runner it measures
+            # (``gdn_tile16_prefill(runner, False)``); no process switch carries
+            # the arm. The 2026-10-15 five-pair same-thermal 12-case
+            # leave-one-out found no non-regressive win for removing the owner.
             "qwen4exp_gdn_tiled16_multi_prefill",
             "qwen4exp_sigmoid_strict_prefill",
             "f32_state",
@@ -1378,9 +1381,9 @@ def _bind(
         # admission passed the full layer2 production envelope on the UD lane
         # (2026-10-08, all aggregates and scopes, prefill_to_c1 top-1 18/18,
         # eligible for automatic admission; wave_norm remains the registered
-        # strict fallback and HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL=0 is the
-        # opt-out), GDN_COLWARPS_PREFILL is no longer recovery-zeroed for UD and
-        # the multi variant is named for every production quant.
+        # strict fallback and a diagnostic arm pins the columnwarp parent on the
+        # runner it measures), GDN_COLWARPS_PREFILL is no longer recovery-zeroed
+        # for UD and the multi variant is named for every production quant.
         "HIPENGINE_QWEN4_EXP_GDN_TILE16_VARIANT": (
             "qwen4exp_gdn_tiled16_multi_prefill"
             if production
