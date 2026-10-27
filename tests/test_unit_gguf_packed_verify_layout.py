@@ -284,11 +284,25 @@ def test_gguf_direct_resident_linear_state_maps_owner_slots(monkeypatch) -> None
     monkeypatch.setenv(
         "HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE", "0"
     )
-    assert owner._direct_resident_verify_linear_state(jobs) is None
+    assert owner._direct_resident_verify_linear_state(jobs) == ((0, 5), slab)
     monkeypatch.setenv(
         "HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE", "1"
     )
     assert owner._direct_resident_verify_linear_state(jobs) == ((0, 5), slab)
+
+
+def test_direct_resident_verify_uses_backend_policy_without_environment(monkeypatch) -> None:
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.backend = "hip_gfx1100"
+    peer = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    sentinel = object()
+    owner._direct_resident_linear_state = lambda sessions, **kwargs: sentinel
+    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE", "0")
+    jobs = ({"session": owner}, {"session": peer})
+    assert owner._direct_resident_verify_linear_state(jobs) is sentinel
+    assert owner._direct_resident_verify_linear_state(jobs[:1]) is None
+    owner.backend = "hip_gfx1151"
+    assert owner._direct_resident_verify_linear_state(jobs) is None
 
 
 def test_gguf_packed_verify_initial_state_uses_fused_pair_copy_when_enabled() -> None:

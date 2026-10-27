@@ -1814,7 +1814,6 @@ def test_gfx1151_backend_declares_generation2_physical_widths() -> None:
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_DIRECT_RESIDENT_VERIFY_LINEAR_STATE_POLICY", {}
     ) == {
-        "enabled_env": "HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE",
         "enabled_default": True,
     }
     assert backend_package_capability(
@@ -3674,11 +3673,9 @@ def test_gfx1151_capability_ledger_covers_gfx1100_only_live_reads() -> None:
         for name in gfx1100_only & live_read
         if name.startswith("GGUF_")
     }
-    # 25 before campaign UD-GFX1151-OPTIMIZE2 E2a (2026-09-24) declared
-    # three of these on gfx1151 (GGUF_IQ_DENSE_{PREFILL,DECODE}_STRICT_SLOTS,
-    # GGUF_IQ_DENSE_VERIFY_POLICY), which removes them from the gfx1100-only
-    # set and their ledger rows with them: 25 -> 22.
-    assert len(expected) == 22
+    # Direct resident verification now reads its capability at the call site,
+    # rather than passing the name through the environment-policy helper.
+    assert len(expected) == 23
 
     ledger_path = (
         Path(__file__).resolve().parents[1]

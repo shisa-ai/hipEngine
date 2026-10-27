@@ -2791,29 +2791,6 @@ should be removed or collapsed.
   keep the backend policy, production manifest selection, and registered exact
   fallback.
 
-## R0174 — Public exact C8 target-row validation
-
-The C8-specific environment opt-out is removed from backend policy. Production
-profile and global exact-target-row scope still control admission; padded R36
-and the registered row48 parent remain available.
-
-**Dependency:** public gfx1100 C8/K3 physical target execution.
-**Clearing action:** run `hipengine serve` with eight live MTP requests, confirm
-R32 target packets and the selected fused row32 owner, and compare output,
-acceptance and cleanup with global exact-target rows disabled. Include a
-non-C8 request count to confirm unchanged padding outside this policy.
-
-## 2026-09-02 gfx1100 direct resident verifier linear state — closed
-
-- Promoted through gfx1100 capability metadata after exact same-build C8 tracing
-  and a positive complete C5-C8 category/heldout gate. Packed target verification
-  indexes the resident batch owner's Conv/GDN slabs directly, while captured
-  state rows remain read-only and the existing GPU-selected row kernel remains
-  the sole exact post-accept commit owner.
-- `HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE=0` restores the fused
-  resident-to-packed import for bisection. Remove the environment override after
-  the next stable milestone audit; keep the copy-in route as strict fallback.
-
 ## 2026-09-02 gfx1100 planar-Q6 root R8 rollback — closed
 
 - The planar-Q6 F32 R8 root owner is promoted on gfx1100 and gfx1151.
@@ -10540,3 +10517,27 @@ grouped-Q5 R8 launches, and compare output/acceptance and teardown with the
 registered padded-prefix/strict-tail parent composition. The direct numerical
 gate is `tests/test_gpu_gguf_t16_selected_gemv_decode.py::test_q5_t16_grouped_rows8_matches_repeated_rows8_bits`;
 it does not establish public engagement.
+
+### R0174 — Public exact C8 target-row validation
+
+The C8-specific environment opt-out is removed from backend policy. Production
+profile and global exact-target-row scope still control admission; padded R36
+and the registered row48 parent remain available.
+
+**Dependency:** public gfx1100 C8/K3 physical target execution.
+**Clearing action:** run `hipengine serve` with eight live MTP requests, confirm
+R32 target packets and the selected fused row32 owner, and compare output,
+acceptance and cleanup with global exact-target rows disabled. Include a
+non-C8 request count to confirm unchanged padding outside this policy.
+
+### R0176 — Public direct resident verifier validation
+
+The direct-resident verifier environment opt-out is removed. Backend capability
+owns selection; single-session verification keeps its packed import following
+the recorded single-session regression. Incompatible owners also retain imports.
+
+**Dependency:** public gfx1100 multi-session physical target execution.
+**Clearing action:** run `hipengine serve` with multi-session MTP requests,
+confirm direct resident slab indexing, and check captured state remains read-only
+until acceptance commits. Compare output and accepted-state ownership with the
+packed-import parent and include single-session and cancellation/cleanup cases.

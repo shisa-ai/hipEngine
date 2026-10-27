@@ -4528,18 +4528,18 @@
       "start_line": 3971,
       "end_line": 3981,
       "sha256": "7fb4f39dedee48d581484a6a74a30628414f324fe8062a388373c58b800f4d0e",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Removed direct-resident verifier environment override via direct capability-default read; single-session and incompatible-owner packed imports preserved. RED/GREEN slot mapping, real backend policy, full packed-layout/backend/MTP2 seam tests, CPU fixtures/smoke and docs/audit pass. Public multi-session state ownership/acceptance/cleanup validation remains open. Worklog: worklog/entries/20261027T143547.149081Z-cleanup-refactor-r0176-57e7c7.md."],
       "subitems": [
         {
           "line": 3973,
           "text": "- Promoted through gfx1100 capability metadata after exact same-build C8 tracing",
-          "status": "pending"
+          "status": "deferred-public-validation"
         },
         {
           "line": 3978,
           "text": "- `HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE=0` restores the fused",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },

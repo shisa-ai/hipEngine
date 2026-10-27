@@ -26623,9 +26623,10 @@ class Qwen35GGUFResidentSession:
     ) -> tuple[tuple[int, ...], _FullStackScratch] | None:
         """Resolve a qualified target-verifier route onto resident state slabs."""
 
-        if not self._backend_environment_policy_enabled(
-            "GGUF_DIRECT_RESIDENT_VERIFY_LINEAR_STATE_POLICY"
-        ):
+        policy = backend_package_capability(
+            self.backend, "GGUF_DIRECT_RESIDENT_VERIFY_LINEAR_STATE_POLICY", {}
+        )
+        if not isinstance(policy, Mapping) or not bool(policy.get("enabled_default", False)):
             return None
         sessions = tuple(job.get("session") for job in jobs)
         if not all(

@@ -981,6 +981,7 @@ condition. Reachability is stated against the two in-scope artifacts: Qwen3.8-27
 | `GGUF_T16_F16_ROCBLAS_SOLUTION_VERSION_PREFIX` | `""` → guard fails | the F16 rocBLAS pair route is not selected; its kernel is not registered on gfx1151 | N/A |
 | `GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES` | `{}` | as above; the indices are keyed to one rocBLAS build hash | N/A |
 | `GGUF_T16_F16_ROCBLAS_PAIR_ONLY_POLICIES` | `{}` | as above | N/A |
+| `GGUF_DIRECT_RESIDENT_VERIFY_LINEAR_STATE_POLICY` | `{}` | Direct resident verifier indexing is disabled on gfx1151; resident-to-packed import remains the owner. R0176 makes this existing difference a direct capability read. | declined |
 | `GGUF_C8_Q5_RAW_MMQ_SSM_OUT` | `False` | C8 Q5-K MMQ SSM-out route closed; `q5_raw_mmq_target_session` gets no library and the retained owner runs | declined |
 | `GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS_BY_MAX_SEQUENCE_LENGTH` | `{}` | gfx1151's own flat `GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS = 8` | N/A |
 | `GGUF_SPECDEC2_MTP2_PHYSICAL_C1` | `False` | legacy singleton; the call site's own comment records that gfx1151 evidence retains it | declined |
