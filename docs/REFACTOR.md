@@ -3764,10 +3764,10 @@ fallback count is not a success metric.
 ## gfx1100 fused Q4-T16 prefill row-retile bisection
 
 - Added 2026-08-31 with task #37. The separately registered standard-Q4
-  gate/up+SiLU row64 and row128 siblings preserve the 256-row parent's K16
-  WMMA, FP32 accumulation, BF16 projection boundary, and SiLU association.
-  Actual-weight crossover evidence selects row64 only at rows33-64 and row128
-  only at rows65-128; rows129+ and every quant/shape/backend miss retain the
+  gate/up+SiLU row48, row64 and row128 siblings preserve the 256-row parent's
+  K16 WMMA, FP32 accumulation, BF16 projection boundary, and SiLU association.
+  Backend policy selects row48 at rows33-48, row64 at rows49-64 and row128
+  at rows65-128; rows129+ and every quant/shape/backend miss retain the
   parent. `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE=0` restores that parent on
   the same build; the exact retiles are now the default after the complete
   counterbalanced C1-C3 category+heldout gate passed. The resolved value is
@@ -3781,8 +3781,9 @@ fallback count is not a success metric.
 - Added 2026-08-31 with task #11. The exact `(17408,5120)` rows33-192 owner is
   selected by backend shape/range policy; the separately registered 256-row
   shared-B parent remains the strict fallback.
-  `HIPENGINE_GGUF_Q4_T16_SHARED_B_ROW64_MAX_ROWS=0` restores that parent on the
-  same build for performance bisection. The resolved value is cached because
+  `HIPENGINE_GGUF_Q4_T16_SHARED_B_ROW64_MAX_ROWS=0` restores the prior route:
+  the 256-row shared-B parent for rows33-128 and the 64-column wide-N owner for
+  rows129-192. The resolved value is cached because
   selection runs on every projection launch and the knob cannot widen beyond
   the qualified 33..192 range.
 - Removal trigger: after one release window with the row64 default and a clean
