@@ -6145,28 +6145,28 @@
       "start_line": 5133,
       "end_line": 5158,
       "sha256": "6903cfeab3ba8543cafbae09d4f63e9ea571799e4362a767009fa97f422dd966",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Retired environment override, preserving programmatic disable and all allocation/capability fallbacks. RED/GREEN admission tests, full CPU328, public329, private policy equivalence331 and docs/audit pass. UD artifact uses capability fallback; no new arena allocation/performance claim. Worklog: worklog/entries/20261027T020217.970546Z-cleanup-refactor-r0238-arena-f4567a.md."],
       "subitems": [
         {
           "line": 5135,
           "text": "- Added 2026-08-14 as an architecture/geometry/quant/backend-policy-scoped",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5142,
           "text": "- Full-engine XTX qualification saves **55.98/94.30/97.99/98.02 MiB** of",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5147,
           "text": "- Removal trigger: delete the environment seam after one release window if the",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5152,
           "text": "- Task 24 independently enables the same allocator contract for gfx1151 dense",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

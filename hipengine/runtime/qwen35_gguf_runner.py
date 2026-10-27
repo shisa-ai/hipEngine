@@ -9466,9 +9466,6 @@ def _gguf_bulk_prefill_initial_hidden_capacity(
 _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
 _GGUF_HOST_TOKEN_EMBEDDING_ENV = "HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING"
 _GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_ENV = "HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA"
-_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_ENV = (
-    "HIPENGINE_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA"
-)
 _GGUF_IQ_GROUPED_PREFILL_ENV = "HIPENGINE_GGUF_IQ_GROUPED_PREFILL"
 _GGUF_MOE_TAIL_NEXT_RMS_ENV = "HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS"
 _GGUF_Q4K_SELECTED_DUAL_DP4A_ENV = "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A"
@@ -10707,14 +10704,7 @@ def _resolve_gguf_private_c1_decode_scratch_arena(
     preset-keyed row (none ship today) and otherwise keep dedicated owners.
     """
 
-    if requested is None:
-        raw = _env_value(_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_ENV)
-        enabled = True if raw is None else _env_flag(
-            _GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_ENV,
-            True,
-        )
-    else:
-        enabled = bool(requested)
+    enabled = True if requested is None else bool(requested)
     if not enabled:
         return False, "disabled"
     if int(max_batch_size) != 1:

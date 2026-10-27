@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -163,10 +164,6 @@ def test_private_c1_decode_scratch_arena_is_geometry_policy_scoped(monkeypatch) 
     policy = {
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {"enabled": True},
     }
-    monkeypatch.delenv(
-        "HIPENGINE_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA",
-        raising=False,
-    )
     monkeypatch.setattr(
         gguf_runner,
         "backend_package_capability",
@@ -205,9 +202,36 @@ def test_private_c1_decode_scratch_arena_is_geometry_policy_scoped(monkeypatch) 
         has_shared_runner=False,
         requested=True,
     ) == (False, "backend_capability_fallback")
-    monkeypatch.setenv("HIPENGINE_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA", "0")
     assert gguf_runner._resolve_gguf_private_c1_decode_scratch_arena(
         **common,
         max_batch_size=1,
         has_shared_runner=False,
+        requested=False,
     ) == (False, "disabled")
+
+
+def test_private_c1_decode_scratch_arena_env_seam_is_retired(monkeypatch) -> None:
+    """The arena is selected by the geometry policy alone, not by an env seam."""
+
+    seam = "HIPENGINE_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA"
+    assert seam not in inspect.getsource(gguf_runner)
+    assert not hasattr(gguf_runner, "_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_ENV")
+
+    policy = {
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {"enabled": True},
+    }
+    monkeypatch.setattr(
+        gguf_runner,
+        "backend_package_capability",
+        lambda backend, name, default=None: policy
+        if name == "GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES"
+        else default,
+    )
+    monkeypatch.setenv(seam, "0")
+    assert gguf_runner._resolve_gguf_private_c1_decode_scratch_arena(
+        backend="hip_gfx1100",
+        geometry=QWEN35_DENSE_H5120_GEOMETRY,
+        file_type_name="MOSTLY_Q4_K_M",
+        max_batch_size=1,
+        has_shared_runner=False,
+    ) == (True, "private_c1_geometry_policy")
