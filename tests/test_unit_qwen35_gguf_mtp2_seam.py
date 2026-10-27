@@ -1376,10 +1376,10 @@ def test_exact_target_rows_are_production_defaults_with_rollbacks(
         target_verify_mode="native",
         candidate_budget=3,
     )
-    assert c8_rollback.production_exact_target_row_counts == (8, 28)
+    assert c8_rollback.production_exact_target_row_counts == (8, 28, 32)
     assert c8_rollback._target_group_pad_rows(
         request_count=8, candidate_rows=24
-    ) == 4
+    ) == 0
     c8_rollback.close()
 
     monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS", "0")
@@ -1389,7 +1389,7 @@ def test_exact_target_rows_are_production_defaults_with_rollbacks(
         target_verify_mode="native",
         candidate_budget=3,
     )
-    assert c7_rollback.production_exact_target_row_counts == (8, 28)
+    assert c7_rollback.production_exact_target_row_counts == (8, 28, 32)
     assert c7_rollback._target_group_pad_rows(
         request_count=7, candidate_rows=21
     ) == 0

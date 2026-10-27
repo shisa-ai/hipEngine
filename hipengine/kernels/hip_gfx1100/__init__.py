@@ -455,9 +455,9 @@ GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY = {
     "rows": frozenset({28}),
 }
 # Exact C8 R32 is admitted only together with the exact two-active-wave fused
-# gate/up owner; explicit zero retains padded R36 + row48.
+# gate/up owner; the global exact-target-row scope retains padded R36 + row48
+# when disabled.
 GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS_POLICY = {
-    "enabled_env": "HIPENGINE_GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS",
     "enabled_default": True,
     "rows": frozenset({32}),
 }

@@ -485,7 +485,6 @@ not by backend-branched runtime code.
 | `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6` | true | Grouped-rows6 variant of the rowtile16 W2 Q4_T16 prefill owner (kernel-side seam of the backend capability policy). |
 | `HIPENGINE_GGUF_Q5_T16_ROWTILE_SINGLE_WAVE` | true | Q5_T16 single-wave rowtile owner; `0` restores the four-wave owner for rollback and bisection. |
 | `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6` | true | Grouped-grid ownership for the rowtile16 W2 grouped pair at rows 6; `0` restores repeated R6 pair fallback. |
-| `HIPENGINE_GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS` | true | Exact C8 R32 with the exact two-active-wave fused gate/up owner; `0` retains padded R36 plus row48. |
 | `HIPENGINE_GGUF_ROUNDED_NORM_FIXED5120` | true | Fixed-5120 rounded-norm residual decode sibling (rows 2-8); `0` restores the generic rounded-norm tree. |
 
 ### Gemma 4 MoE prefill routes
@@ -1137,6 +1136,10 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS` is retired and ignored.
+  Backend policy supplies C8 exact target rows within the production profile
+  and global exact-target-row scope; padded composition remains available.
 
 - `HIPENGINE_GGUF_Q5_T16_GROUPED_ROWS8_C8` is retired and ignored. Backend
   policy and physical exact-row scope select grouped Q5 R8; other rows keep

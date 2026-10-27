@@ -4486,18 +4486,18 @@
       "start_line": 3950,
       "end_line": 3960,
       "sha256": "d76b065397cc3183d86b96498156850b2cd76f989a05d9eacdfd0ded59e7a880",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Removed C8-specific environment metadata; production/global exact-row admission, padded composition and registered row48 parent preserved. RED/GREEN seam regression, full seam/linear unit files and full CPU bundle pass. Docs/audit pass. Public gfx1100 C8/K3 packet and fused-owner engagement remains open. Worklog: worklog/entries/20261027T142751.311949Z-cleanup-refactor-r0174-6bb4bb.md."],
       "subitems": [
         {
           "line": 3952,
           "text": "- Promoted exact physical C8/K3 R32 and its two-active-wave fused gate/up+SiLU",
-          "status": "pending"
+          "status": "deferred-public-validation"
         },
         {
           "line": 3956,
           "text": "- `HIPENGINE_GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS=0` retains padded R36 plus the",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },

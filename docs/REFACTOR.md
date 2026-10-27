@@ -2791,16 +2791,17 @@ should be removed or collapsed.
   keep the backend policy, production manifest selection, and registered exact
   fallback.
 
-## 2026-09-02 gfx1100 fused Q4 row32 / exact C8 target rows — closed
+## R0174 — Public exact C8 target-row validation
 
-- Promoted exact physical C8/K3 R32 and its two-active-wave fused gate/up+SiLU
-  owner together after both process orders and every category/heldout slice
-  passed. This removes four inactive target rows without losing the fused FFN
-  transition.
-- `HIPENGINE_GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS=0` retains padded R36 plus the
-  fused row48 owner as atomic same-build rollback. Remove the environment
-  override after the next stable milestone audit; keep the registered row48
-  parent and padded composition.
+The C8-specific environment opt-out is removed from backend policy. Production
+profile and global exact-target-row scope still control admission; padded R36
+and the registered row48 parent remain available.
+
+**Dependency:** public gfx1100 C8/K3 physical target execution.
+**Clearing action:** run `hipengine serve` with eight live MTP requests, confirm
+R32 target packets and the selected fused row32 owner, and compare output,
+acceptance and cleanup with global exact-target rows disabled. Include a
+non-C8 request count to confirm unchanged padding outside this policy.
 
 ## 2026-09-02 gfx1100 direct resident verifier linear state — closed
 
