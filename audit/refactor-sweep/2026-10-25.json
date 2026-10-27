@@ -4397,23 +4397,23 @@
       "start_line": 3892,
       "end_line": 3918,
       "sha256": "fae75a489ae7c8443eb21671b75340e24164634866ed1584bc78bd265c420c58",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Source-Q5 runtime env removed; existing C8/raw capability and shape prerequisites preserved. Verifier diagnostic uses scoped selector restoration and distinct control provenance. RED/GREEN, nested/error restoration, full CPU bundle and source-Q5 GPU outer-floor checks pass. Public gfx1100 C8/R32 engagement deferred at bottom. Worklog: worklog/entries/20261027T135723.565957Z-cleanup-refactor-r0170-be7d9c.md."],
       "subitems": [
         {
           "line": 3894,
           "text": "- `HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ` now defaults on for the R32-only K-major",
-          "status": "pending"
+          "status": "deferred-public-validation"
         },
         {
           "line": 3899,
           "text": "- The original source-faithful DS4 R24/R32 route passed strict-teacher numerics",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 3906,
           "text": "- The replacement passes its strict-teacher gate over 240 rows at 0.000158 mean",
-          "status": "pending"
+          "status": "verified-current"
         }
       ]
     },

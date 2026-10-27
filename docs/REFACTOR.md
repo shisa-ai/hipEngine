@@ -2780,33 +2780,6 @@ should be removed or collapsed.
   fields after lifecycle coverage proves the cleanup. Shared capacity is not
   permission to widen Qwen3.6/gfx1151 public evidence.
 
-## 2026-09-02 gfx1100 C8 adaptive source-Q5 MMQ — closed
-
-- `HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ` now defaults on for the R32-only K-major
-  D4S4-FP32 I64/J32 integer-WMMA consumer inside the existing gfx1100
-  eight-request raw-Q5 owner. R24, explicit zero, and shape misses retain the
-  qualified D4S4 raw MMQ; disabling `HIPENGINE_GGUF_C8_Q5_RAW_MMQ` retains
-  grouped T16.
-- The original source-faithful DS4 R24/R32 route passed strict-teacher numerics
-  and improved pooled task throughput by 0.99%, but changed one acceptance
-  decision and regressed `general_en` by 1.38%/1.90% across the two orders, so
-  it is superseded. The replacement retains FP32 activation and weight
-  metadata; its fast-math R32 operation screen wins all 48 weights by 2.77%
-  with max KL below 3e-9 versus raw MMQ, while the bit-exact baseline build
-  loses all 48 R32 weights by 4.34%.
-- The replacement passes its strict-teacher gate over 240 rows at 0.000158 mean
-  KL, 0.005678 max KL, and 99.583% top-1. Its staged counterbalanced task gate
-  improves pooled throughput 88.932→90.082 tok/s (+1.29%), and the
-  post-promotion same-build default-versus-explicit-zero gate confirms
-  88.953→90.139 tok/s (+1.33%). Both gates win every prompt cell and every
-  category/heldout slice in both orders with identical generated IDs, identical
-  acceptance ledgers, and clean teardown. Marker attribution for the retained
-  route is Q5 operation wall 12.794→10.940 ms/cycle (-14.49%) at identical
-  launch counts; the earlier 11.215→10.760 ms/cycle "complete wall" quote came
-  from proposal-phase kernel-family values and is superseded. Retain explicit
-  zero for same-build rollback and remove the environment read after the next
-  stable milestone audit.
-
 ## 2026-09-02 gfx1100 C8 raw-Q5 MMQ — closed
 
 - The gfx1100-only eight-request physical R24/R32 `ssm_out` route is now the
@@ -10549,3 +10522,16 @@ C8 policy and strict profile behavior remain available.
 physical MTP profile, confirm R28 target work rather than padded R30, and compare
 full state/output/acceptance and teardown against the padded composition.
 Mocked prefix/tail routing tests do not replace this public gate.
+
+### R0170 — Public source-Q5 MMQ validation
+
+The source-Q5 environment opt-out is removed; raw-MMQ capability, request-count
+and shape admission remain. The verifier numerical tool retains a scoped parent
+control and records it separately from environment provenance.
+
+**Dependency:** gfx1100 public C8 physical MTP execution reaching the R32 source-Q5
+owner. **Clearing action:** run `hipengine serve` with that configuration, trace
+source-Q5 selection at R32 and raw-MMQ fallback on R24/shape misses, then compare
+output/acceptance and teardown with the retained parent. Use
+`tests/test_gpu_gguf_q5_k_mmq_wmma_prefill.py::test_c8_q5_i64_j32_source_mmq_passes_production_outer_floor`
+as the separate numerical gate, not a substitute for public engagement.

@@ -113,7 +113,7 @@ def test_c8_source_q5_mmq_is_exact_width_default_with_rollback(
     assert _gguf_c8_q5_source_mmq_enabled("hip_gfx1151", request_count=8) is False
 
     monkeypatch.setenv("HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ", "0")
-    assert _gguf_c8_q5_source_mmq_enabled("hip_gfx1100", request_count=8) is False
+    assert _gguf_c8_q5_source_mmq_enabled("hip_gfx1100", request_count=8) is True
 
     monkeypatch.setenv("HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ", "1")
     monkeypatch.setenv("HIPENGINE_GGUF_C8_Q5_RAW_MMQ", "0")
@@ -145,7 +145,7 @@ def test_q4_verifier_session_environment_lives_until_stack_close(
         gate.FP16_STATE_ENV,
         gate.TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV,
         gate.Q5_RAW_MMQ_ENV,
-        gate.Q5_SOURCE_MMQ_ENV,
+        "HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ",
     ):
         monkeypatch.delenv(name, raising=False)
     args = gate.build_parser().parse_args(
@@ -164,13 +164,14 @@ def test_q4_verifier_session_environment_lives_until_stack_close(
     assert os.environ[gate.FP16_STATE_ENV] == "1"
     assert os.environ[gate.TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV] == "1"
     assert os.environ[gate.Q5_RAW_MMQ_ENV] == "1"
-    assert os.environ[gate.Q5_SOURCE_MMQ_ENV] == "1"
+    assert "HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ" not in os.environ
+    assert runner_module._gguf_c8_q5_source_mmq_enabled('hip_gfx1100', request_count=8)
 
     stack.close()
     assert gate.FP16_STATE_ENV not in os.environ
     assert gate.TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV not in os.environ
     assert gate.Q5_RAW_MMQ_ENV not in os.environ
-    assert gate.Q5_SOURCE_MMQ_ENV not in os.environ
+    assert "HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ" not in os.environ
 
 
 def test_q4_verifier_environment_restores_caller(

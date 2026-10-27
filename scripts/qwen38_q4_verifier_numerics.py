@@ -57,7 +57,6 @@ DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
 DEFAULT_PROMPTS = ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
 VERIFY_CAPTURE_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
 Q5_RAW_MMQ_ENV = "HIPENGINE_GGUF_C8_Q5_RAW_MMQ"
-Q5_SOURCE_MMQ_ENV = "HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ"
 
 
 class GateError(RuntimeError):
@@ -75,6 +74,20 @@ def _environment(name: str, value: str) -> Iterator[None]:
             os.environ.pop(name, None)
         else:
             os.environ[name] = previous
+
+
+@contextmanager
+def source_mmq_control(enabled: bool):
+    """Diagnostic-only selection, restored with the session stack."""
+    from hipengine.runtime import qwen35_gguf_runner as runner
+
+    original = runner._gguf_c8_q5_source_mmq_enabled
+    if not enabled:
+        runner._gguf_c8_q5_source_mmq_enabled = lambda *args, **kwargs: False
+    try:
+        yield
+    finally:
+        runner._gguf_c8_q5_source_mmq_enabled = original
 
 
 def _make_sessions(
@@ -106,9 +119,7 @@ def _make_sessions(
         stack.enter_context(
             _environment(Q5_RAW_MMQ_ENV, "1" if q5_raw_mmq else "0")
         )
-        stack.enter_context(
-            _environment(Q5_SOURCE_MMQ_ENV, "1" if q5_source_mmq else "0")
-        )
+        stack.enter_context(source_mmq_control(q5_source_mmq))
         owner = stack.enter_context(
             Qwen35GGUFResidentSession(
                 args.model,
@@ -445,7 +456,6 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
                 FP16_STATE_ENV: "0",
                 TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV: "0",
                 Q5_RAW_MMQ_ENV: "0",
-                Q5_SOURCE_MMQ_ENV: "0",
             },
             "candidate": {
                 FP16_STATE_ENV: "1",
@@ -458,9 +468,6 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
                     )
                     else "0"
                 ),
-                Q5_SOURCE_MMQ_ENV: (
-                    "1" if bool(args.candidate_q5_source_mmq) else "0"
-                ),
             },
         },
         build_profile="qwen38_q4_verifier_numerics",
@@ -469,6 +476,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
         repetitions=int(args.repeat_runs),
         profiler={"enabled": False, "kind": None, "command": None},
     )
+    provenance["diagnostic_controls"] = {
+        "source_mmq": {"strict": False, "candidate": bool(args.candidate_q5_source_mmq)},
+    }
     tracked_clean = not bool(
         provenance.get("staged_dirty") or provenance.get("unstaged_dirty")
     )
