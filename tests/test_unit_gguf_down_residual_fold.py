@@ -22,7 +22,10 @@ from hipengine.runtime.gguf_linear import (
     _resolve_registered_linear_residual,
     resolve_gguf_linear_dispatch,
 )
-from hipengine.runtime.qwen35_gguf_runner import _gguf_policy_identity
+from hipengine.runtime.qwen35_gguf_runner import (
+    _gguf_dense_down_residual_decode_fused,
+    _gguf_policy_identity,
+)
 
 BACKEND = "hip_gfx1151"
 # The runtime policy identity for the resident Qwen3.8-27B UD-Q4_K_M
@@ -47,6 +50,32 @@ def _weight(quant_key: str, layout: str) -> SimpleNamespace:
 def _backend_package() -> object:
     load_backend_kernel_package(BACKEND)
     yield
+
+
+@pytest.mark.parametrize("retired_value", ("0", "false", "invalid"))
+def test_down_residual_policy_ignores_retired_environment_override(
+    monkeypatch: pytest.MonkeyPatch, retired_value: str,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_DENSE_DOWN_RESIDUAL_DECODE", retired_value)
+    runner = SimpleNamespace(
+        backend=BACKEND,
+        weights=SimpleNamespace(
+            geometry=QWEN35_DENSE_H5120_GEOMETRY,
+            config=SimpleNamespace(is_moe=False),
+            file_type_name="MOSTLY_Q4_K_M",
+            artifact_preset_key="gguf-unqualified-manifest",
+        ),
+    )
+    assert _gguf_dense_down_residual_decode_fused(
+        runner, rows=1, in_features=17_408, out_features=5_120,
+    )
+    assert not _gguf_dense_down_residual_decode_fused(
+        runner, rows=2, in_features=17_408, out_features=5_120,
+    )
+    runner.backend = "hip_gfx1100"
+    assert not _gguf_dense_down_residual_decode_fused(
+        runner, rows=1, in_features=17_408, out_features=5_120,
+    )
 
 
 def test_q5_down_rows1_resolves_exact_residual_sibling() -> None:

@@ -5624,18 +5624,20 @@
       "start_line": 4727,
       "end_line": 4739,
       "sha256": "f100b5845c7d7bba6a049c304b87a3795d660fc752033524c1fdbfc428c4dca8",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved",
+      "evidence": [
+        "Removed process environment reader; backend/geometry/shape policy and primitive fallbacks unchanged. RED old 0/false values, focused GREEN, full CPU bundle/fixtures/smokes pass. Real gfx1151 Qwen3.8-27B UD-Q4_K_M public generation default and retired-zero each execute 896 fused c1 launches; scoped primitive control executes zero, all repeated output IDs equal, zero tracked allocation bytes after every close. /tmp/r0216-public.json and worklog/entries/20261027T174749.840623Z-cleanup-refactor-r0216-58487a.md. Capability-miss memo remains necessary, not obsolete environment fallback."
+      ],
       "subitems": [
         {
           "line": 4729,
           "text": "- Added 2026-08-16 for the exact Q4T16/Q6-qmicro K17,408/N5,120",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 4735,
           "text": "- Removal trigger: after one release window with 512/1K/4K graph decode,",
-          "status": "pending"
+          "status": "resolved"
         }
       ]
     },
