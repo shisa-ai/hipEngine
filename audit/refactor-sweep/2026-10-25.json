@@ -10610,28 +10610,28 @@
       "start_line": 8196,
       "end_line": 8216,
       "sha256": "62b6172088dd1a672f9126889b7b66e3d0ad34215368d629b8f3df2aa6a11c0a",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Setter/profiling CLI/one-off harness absent; required constructor rollback and stream capability/path preserved. Completed receipt removed. Worklog: worklog/entries/20261027T043953.393816Z-cleanup-refactor-r0366-4ca3b0.md."],
       "subitems": [
         {
           "line": 8198,
           "text": "- Added 2026-07-31 as",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8204,
           "text": "- Seven exact same-session p512/d128 pairs all improve",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8208,
           "text": "- Remove the session setter, direct profiling CLI/protocol field, and focused",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 8212,
           "text": "- Tracked-clean publication passes at",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

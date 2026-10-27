@@ -6925,27 +6925,6 @@ should be boring.
   retain the constructor override, capability, registered quad, and unfused
   fallback.
 
-## Laguna gfx1151 decode shared-stream priority selector
-
-- Added 2026-07-31 as
-  `LagunaGGUFResidentSession.set_moe_decode_shared_normal_priority(...)`,
-  `--moe-decode-shared-normal-priority`, and the focused
-  `scripts/laguna_moe_shared_priority_ab.py` harness. The gfx1151 capability
-  defaults on; false routes c=1 back to the retained least-priority prefill
-  stream.
-- Seven exact same-session p512/d128 pairs all improve
-  **22.869628 -> 22.891888 tok/s (+0.09733%)**, saving
-  **0.038251 ms/token** by paired median, while both arms keep prefill on the
-  least-priority stream.
-- Remove the session setter, direct profiling CLI/protocol field, and focused
-  one-off harness after tracked-clean selector-unset publication. Retain the
-  constructor rollback, gfx1151 capability, separate c=1 stream, and the
-  all-low-priority fallback.
-- Tracked-clean publication passes at
-  **22.891692 tok/s / 43.683971 ms/token**. The setter, direct CLI/protocol
-  field, and one-off harness are removed. Retain only the constructor rollback,
-  gfx1151 capability, separate c=1 stream, and all-low-priority fallback.
-
 ## Laguna gfx1151 selected gate/up halfdot rollback
 
 - Added 2026-07-31 as constructor override
