@@ -5222,18 +5222,18 @@
       "start_line": 4423,
       "end_line": 4435,
       "sha256": "d7cf596177ef02c229eaa67d46363d9d6c64b7ad6485899c80d1ecd9bc2a2641",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Removed redundant row64 environment cap/cache and selector check; shape/range/parents unchanged. Cache-cleared RED/GREEN routing, full linear units, GPU row64-parent parity and docs/audit pass. Public same-protocol serving refresh remains open. Worklog: worklog/entries/20261027T160757.885029Z-cleanup-refactor-r0200-422bb0.md."],
       "subitems": [
         {
           "line": 4425,
           "text": "- Added 2026-08-31 with task #11. The exact `(17408,5120)` rows33-192 owner is",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 4432,
           "text": "- Removal trigger: after one release window with the row64 default and a clean",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },

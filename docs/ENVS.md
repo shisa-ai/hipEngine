@@ -390,7 +390,6 @@ independent workload gates.
 | `HIPENGINE_GGUF_DENSE_DOWN_RESIDUAL_DECODE` | true | Retained default with rollback opt-out | Exact model/backend/shape-qualified c1 down+residual owner; `0` restores the generic owner. |
 | `HIPENGINE_GGUF_Q4K_ROWTILE` | true | Retained default with rollback opt-out | Small-B weight-amortized row-tile GEMV for raw K-quants and resident-pack8 Q4_K verifier continuation blocks; `0` disables for bisection. |
 | `HIPENGINE_GGUF_Q4_T16_SINGLE_WAVE_MAX_ROWS` | unset | Kernel R&D | Row cap for the Q4_T16 single-wave rowtile variant. |
-| `HIPENGINE_GGUF_Q4_T16_SHARED_B_ROW64_MAX_ROWS` | unset | Kernel R&D | Row cap for the Q4_T16 shared-B row64 variant. |
 | `HIPENGINE_GGUF_Q8_T16_PAIR_COL8` | unset | Diagnostic | Col8 pair-helper variant for Q8T16 decode (batch-route gate provenance key). |
 | `HIPENGINE_GGUF_Q8_T16_ROWTILE_SHAPES` | `(5120,1024)` | Rollback seam | Shape-explicit Q8T16 rowtile admission set for the UD verifier. |
 | `HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE` / `HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE` | unset | Diagnostic | Select the two-/four-wave Q8T16 wide WMMA prefill session variants (shape-scoped). |
@@ -1124,6 +1123,10 @@ harnesses read them but do not own them.
   thread width.
 
 These names appear in the tree but must not be confused with env knobs:
+
+- `HIPENGINE_GGUF_Q4_T16_SHARED_B_ROW64_MAX_ROWS` is retired and ignored.
+  Backend shape/range policy owns row64 down-projection admission; other shapes
+  and row counts retain their registered parent routes.
 
 - `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE` is retired and ignored. Backend
   shape/range policy selects exact prefill retiles; diagnostic comparisons use
