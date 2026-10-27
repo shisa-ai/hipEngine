@@ -95,8 +95,8 @@ def _bf16_bits_to_f32(value: np.ndarray) -> np.ndarray:
 def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2", "0")
-    monkeypatch.setattr(t16_prefill, "_Q4_ROWTILE16_W2_RESOLVED", None)
+    # Explicit primitive control; the retired environment no longer selects it.
+    monkeypatch.setitem(t16_prefill.GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT["gguf_q4_k_t16_v1"], "enabled_default", False)
     selector = getattr(
         t16_prefill,
         "gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out",
@@ -330,12 +330,6 @@ def test_gfx1100_physical_r6_two_wave_policy_routes_target_wrapper(
     )
     monkeypatch.setattr(
         t16_prefill,
-        "_Q4_ROWTILE16_W2_RESOLVED",
-        None,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        t16_prefill,
         "_Q4_ROWTILE16_W2_GROUPED_ROWS6_RESOLVED",
         None,
         raising=False,
@@ -346,8 +340,8 @@ def test_gfx1100_physical_r6_two_wave_policy_routes_target_wrapper(
         selector(1, 2, 3, 36, 5_120, 17_408)
     selector(1, 2, 3, 6, 17_408, 5_120)
 
-    monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2", "0")
-    monkeypatch.setattr(t16_prefill, "_Q4_ROWTILE16_W2_RESOLVED", None)
+    # Explicit primitive control; the retired environment no longer selects it.
+    monkeypatch.setitem(t16_prefill.GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT["gguf_q4_k_t16_v1"], "enabled_default", False)
     with q4_t16_physical_extra_rowtiles_session(True):
         selector(1, 2, 3, 6, 5_120, 17_408)
 
@@ -385,7 +379,6 @@ def test_gfx1100_grouped_rows6_policy_consolidates_physical_q4_launches(
         "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6",
         raising=False,
     )
-    monkeypatch.setattr(t16_prefill, "_Q4_ROWTILE16_W2_RESOLVED", None)
     monkeypatch.setattr(
         t16_prefill,
         "_Q4_ROWTILE16_W2_GROUPED_ROWS6_RESOLVED",
@@ -512,12 +505,11 @@ def test_gfx1100_physical_r6_two_wave_qkv_shape_defaults_on(
         lambda *args, **kwargs: calls.append("two_wave"),
     )
     monkeypatch.delenv("HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2", raising=False)
-    monkeypatch.setattr(t16_prefill, "_Q4_ROWTILE16_W2_RESOLVED", None)
 
     with q4_t16_physical_extra_rowtiles_session(True):
         selector(1, 2, 3, 6, 5_120, 10_240)
-        monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2", "0")
-        monkeypatch.setattr(t16_prefill, "_Q4_ROWTILE16_W2_RESOLVED", None)
+        # Explicit primitive control; the retired environment no longer selects it.
+        monkeypatch.setitem(t16_prefill.GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT["gguf_q4_k_t16_v1"], "enabled_default", False)
         selector(1, 2, 3, 6, 5_120, 10_240)
 
     assert calls == ["two_wave", "parent"]
@@ -541,12 +533,11 @@ def test_gfx1100_physical_r6_two_wave_ffn_down_shape_defaults_on(
         lambda *args, **kwargs: calls.append("two_wave"),
     )
     monkeypatch.delenv("HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2", raising=False)
-    monkeypatch.setattr(t16_prefill, "_Q4_ROWTILE16_W2_RESOLVED", None)
 
     with q4_t16_physical_extra_rowtiles_session(True):
         selector(1, 2, 3, 6, 17_408, 5_120)
-        monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2", "0")
-        monkeypatch.setattr(t16_prefill, "_Q4_ROWTILE16_W2_RESOLVED", None)
+        # Explicit primitive control; the retired environment no longer selects it.
+        monkeypatch.setitem(t16_prefill.GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT["gguf_q4_k_t16_v1"], "enabled_default", False)
         selector(1, 2, 3, 6, 17_408, 5_120)
 
     assert calls == ["two_wave", "parent"]

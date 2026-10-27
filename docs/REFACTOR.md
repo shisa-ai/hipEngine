@@ -2780,19 +2780,6 @@ should be removed or collapsed.
   fields after lifecycle coverage proves the cleanup. Shared capacity is not
   permission to widen Qwen3.6/gfx1151 public evidence.
 
-## 2026-09-01 gfx1100 Q4 row6 two-wave screen — closed
-
-- The first unrouted claim remains retracted as invalid history. The corrected
-  physical-wrapper route is independently retained after marker-scoped
-  candidate ownership plus a complete positive C5-C8 category/heldout gate.
-- `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2=0` remains same-build rollback. Remove
-  the environment/cache policy after the next stable milestone audit; keep the
-  registered WG32 strict parent. A separate physical-registry-key extension was
-  removed after marker-scoped C8 evidence showed no ownership change.
-- The row48 environment opt-out is removed. Backend metadata and physical
-  scope still select the owner; the registered row64 strict parent remains.
-  The separate two-wave control above remains unfinished.
-
 ## 2026-09-02 NextN accepted-tail K/V-only integration — closed
 
 - The existing exact K/V-only full-attention branch is now the default singleton,
@@ -10558,14 +10545,14 @@ The existing numerical gate is
 `tests/test_gpu_qwen35_gguf_gdn_prefill_correctness.py::test_gdn_prefill_segments_state_rows_wave_reduce_is_parent_bit_exact`.
 Do not substitute successful c1 or unrelated-backend generation for engagement.
 
-### R0166 — Public physical Q4 row48 validation
+### R0166 — Public physical Q4 rowtile validation
 
-The row48 opt-out is removed; the separate two-wave control remains above.
-Scoped dispatch and production-shape GPU parity pass.
+The row48 and two-wave opt-outs are removed. Scoped dispatch and production-shape
+GPU parity pass; backend geometry and registered strict parents remain.
 
-**Dependency:** gfx1100 public physical target execution reaching R36.
+**Dependency:** gfx1100 public physical target execution reaching R6 and R36.
 **Clearing action:** run `hipengine serve` with the physical dense-GGUF MTP
-profile, record the row48 fused gate/up+SiLU launch, and compare outputs,
-acceptance and teardown against the registered row64 parent. Use
+profile, record the R6 two-wave rowtile and R36 row48 fused gate/up+SiLU launches,
+and compare outputs, acceptance and teardown against their registered parents. Use
 `tests/test_gpu_gguf_q4_k_t16_dense.py::test_q4_t16_dense_dual_wmma_silu_matches_unfused_chain_at_production_shape`
 for the independent numerical gate; it does not replace public engagement.

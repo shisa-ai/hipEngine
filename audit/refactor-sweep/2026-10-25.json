@@ -4308,18 +4308,18 @@
       "start_line": 3846,
       "end_line": 3859,
       "sha256": "2522c3433a5890ffd6221d3a507ff3711db13bd641e4ba7931a715a9b85d4629",
-      "status": "partial-row48-optout-removed",
-      "evidence": ["Row48 environment control removed from backend policy; intrinsic-enabled policy preserves physical scope and parent fallback. Full CPU, focused dispatch and production-shape GPU parity pass; obsolete invalid-env test repaired. Public physical-R36 engagement deferred at bottom. Separate two-wave flag remains pending. Worklog: worklog/entries/20261027T130404.357161Z-cleanup-refactor-r0166-row48-a93c17.md."],
+      "status": "deferred-public-validation",
+      "evidence": ["Row48 and two-wave environment controls removed from backend/wrapper policy; physical/state/geometry selection and registered parents preserved. RED/GREEN, full CPU bundles and targeted production-shape/R6 GPU parity pass. Public gfx1100 R6/R36 engagement remains deferred with bottom clearing action. Worklogs: worklog/entries/20261027T130404.357161Z-cleanup-refactor-r0166-row48-a93c17.md and worklog/entries/20261027T131415.927096Z-cleanup-refactor-r0166-w2-f52205.md."],
       "subitems": [
         {
           "line": 3848,
           "text": "- The first unrouted claim remains retracted as invalid history. The corrected",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 3851,
           "text": "- `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2=0` remains same-build rollback. Remove",
-          "status": "pending"
+          "status": "deferred-public-validation"
         },
         {
           "line": 3855,

@@ -6207,7 +6207,7 @@ def test_gfx1100_q4_k_decode_row6_two_wave_defaults_on(
     "backend,enabled,expected_variant",
     [
         ("hip_gfx1100", True, "dense_rowtile16_w2_bf16_bf16_out"),
-        ("hip_gfx1100", False, "dense_rowtile_bf16_bf16_out"),
+        ("hip_gfx1100", False, "dense_rowtile16_w2_bf16_bf16_out"),
         ("hip_gfx1151", True, "dense_rowtile_bf16_bf16_out"),
     ],
 )

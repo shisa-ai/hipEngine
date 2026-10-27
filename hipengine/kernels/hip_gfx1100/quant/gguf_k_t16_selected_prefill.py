@@ -209,8 +209,6 @@ _ENV_SINGLE_WAVE_MAX_ROWS = "HIPENGINE_GGUF_Q4_T16_SINGLE_WAVE_MAX_ROWS"
 _SINGLE_WAVE_MAX_ROWS_RESOLVED: int | None = None
 _ENV_SHARED_B_ROW64_MAX_ROWS = "HIPENGINE_GGUF_Q4_T16_SHARED_B_ROW64_MAX_ROWS"
 _SHARED_B_ROW64_MAX_ROWS_RESOLVED: int | None = None
-_ENV_Q4_ROWTILE16_W2 = "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2"
-_Q4_ROWTILE16_W2_RESOLVED: bool | None = None
 _ENV_Q4_ROWTILE16_W2_GROUPED_ROWS6 = (
     "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6"
 )
@@ -219,27 +217,6 @@ _ENV_Q4_ROWTILE16_W2_GROUPED_ROWS8_C5C6 = str(
     GGUF_Q4_T16_GROUPED_ROWS8_C5C6_POLICY["enabled_env"]
 )
 _Q4_ROWTILE16_W2_GROUPED_ROWS8_C5C6_RESOLVED: bool | None = None
-
-
-def _q4_rowtile16_w2_enabled() -> bool:
-    """Resolve the physical-wrapper two-wave screen once per process."""
-
-    global _Q4_ROWTILE16_W2_RESOLVED
-    if _Q4_ROWTILE16_W2_RESOLVED is None:
-        policy = GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT["gguf_q4_k_t16_v1"]
-        default = bool(policy.get("enabled_default", False))
-        raw = os.environ.get(
-            _ENV_Q4_ROWTILE16_W2,
-            "1" if default else "0",
-        ).strip().lower()
-        if raw in {"1", "true", "yes", "on"}:
-            value = True
-        elif raw in {"0", "false", "no", "off"}:
-            value = False
-        else:
-            raise ValueError(f"{_ENV_Q4_ROWTILE16_W2} must be a boolean value")
-        _Q4_ROWTILE16_W2_RESOLVED = value
-    return _Q4_ROWTILE16_W2_RESOLVED
 
 
 def _q4_rowtile16_w2_grouped_rows6_enabled() -> bool:
@@ -292,7 +269,7 @@ def _q4_physical_rowtile(
     policy = GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT["gguf_q4_k_t16_v1"]
     preferred = policy.get("shapes", {}).get(shape)
     admitted_rows = policy.get("rows_by_shape", {}).get(shape, ())
-    if not _q4_rowtile16_w2_enabled():
+    if not bool(policy.get("enabled_default", False)):
         return gguf_q4_k_t16_dense_rowtile_bf16_bf16_out
     if (
         preferred == "dense_rowtile16_w2_bf16_bf16_out"
