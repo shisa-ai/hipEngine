@@ -62,6 +62,59 @@ def test_runtime_growth_preserves_every_previous_device_page_pointer(monkeypatch
     assert not live
 
 
+def test_pool_growth_closes_a_self_owning_session_graphs(monkeypatch):
+    """The factory's grow callback invalidates the session that owns the pool.
+
+    ``create_global_device_kv_pool`` is called on the session that owns the
+    pool, and at capacity 1 that session is the resident batch owner: it holds
+    the leased packed workspace and its replay graphs while never having a
+    ``_resident_batch_owner`` of its own. Growth frees the per-plane pointer
+    tables a replay captured, so the callback must invalidate here instead of
+    reading the missing attribute as nothing to do.
+    """
+
+    next_pointer = 0x900000
+
+    def malloc(nbytes, **kwargs):
+        nonlocal next_pointer
+        buffer = DeviceBuffer(ptr=next_pointer, nbytes=int(nbytes))
+        next_pointer += int(nbytes) + 256
+        return buffer
+
+    monkeypatch.setattr(runner, 'malloc', malloc)
+    monkeypatch.setattr(runner, 'free', lambda buffer, **kwargs: None)
+    monkeypatch.setattr(gguf_kv, 'malloc', malloc)
+    monkeypatch.setattr(gguf_kv, 'free', lambda buffer, **kwargs: None)
+    monkeypatch.setattr(
+        runner, 'copy_host_array_to_device', lambda *args, **kwargs: None
+    )
+
+    session = object.__new__(runner.Qwen35GGUFResidentSession)
+    session.defer_kv_allocation = True
+    session.runner = _allocator_fake_runner()
+    session.scratch = SimpleNamespace()
+    session.runtime = SimpleNamespace(memset=lambda *args: None)
+    session._device_kv_layout = _int8_kv_layout()
+    session.kv_pool_memory_budget_mib = 128
+    session.model_path = 'test.gguf'
+    session.kv_storage_dtype = runner.DType.INT8_PER_TOKEN_HEAD
+    session.kv_storage_layout = 'uniform'
+    assert not hasattr(session, '_resident_batch_owner')
+
+    closed: list[str] = []
+    session._decode_graphs = [
+        SimpleNamespace(closed=False, close=lambda: closed.append('packed')),
+    ]
+
+    pool = session.create_global_device_kv_pool(page_capacity=2, generation=1)
+    try:
+        assert closed == []
+        pool.grow(1)
+        assert closed == ['packed']
+    finally:
+        pool.close()
+
+
 def test_auto_budget_shrinks_the_initial_floor_before_allocation(monkeypatch):
     session = object.__new__(runner.Qwen35GGUFResidentSession)
     session.defer_kv_allocation = True

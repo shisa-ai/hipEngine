@@ -1679,7 +1679,12 @@ def test_gguf_packed_decode_graph_capture_uploads_owning_inputs_in_order(
     monkeypatch.setattr(
         mod,
         "_singleton_layout",
-        lambda *args, **kwargs: SimpleNamespace(blocks_per_slot=1),
+        lambda *args, **kwargs: SimpleNamespace(
+            blocks_per_slot=1,
+            rows=2,
+            active_mask=np.asarray((True, True)),
+            block_table=np.asarray(((0,), (1,)), dtype=np.int32),
+        ),
     )
     monkeypatch.setattr(
         mod,

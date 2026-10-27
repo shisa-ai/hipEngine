@@ -5463,12 +5463,12 @@
       "end_line": 4636,
       "sha256": "287da3e5aa0008630e2825deb71f6c62a07b00af2c914b1bd1518ea377e8f3dd",
       "status": "pending",
-      "evidence": [],
+      "evidence": ["Repaired graph metadata overwriting leased page maps using graph-owned discard target, preserved host-staged table, and fixed own-pool growth/shrink invalidation. CPU capture/lifetime tests, GPU312 real masked replay/commit controls, CPU314 plus focused repair, public315 packed identity capture/replay and gates pass. Private workspace fallback consolidation remains open. Worklog: worklog/entries/20261027T005813.069045Z-cleanup-refactor-r0210-packed-map-c7e7be.md."],
       "subitems": [
         {
           "line": 4622,
           "text": "- Added 2026-08-18 (task #5 stages S1b/S1c). `_GGUFPackedTargetState` carries",
-          "status": "pending"
+          "status": "resolved"
         },
         {
           "line": 4631,

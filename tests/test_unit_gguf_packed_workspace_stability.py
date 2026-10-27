@@ -1325,37 +1325,54 @@ def test_sufficient_lease_still_prefers_the_arena(monkeypatch) -> None:
 
 
 def test_pool_pressure_callbacks_tolerate_a_session_without_a_batch_owner() -> None:
-    """A pool-owning session has no ``_resident_batch_owner`` and must not raise.
+    """A pool-owning session has no ``_resident_batch_owner`` and still invalidates.
 
     The attribute is only ever assigned onto the per-slot views a resident batch
-    owner creates. A session that owns its own device KV pool never has it, so
-    the grow/pressure callbacks have to read it defensively. They did not, and a
-    prefix-cache run raised ``AttributeError: 'Qwen35GGUFResidentSession' object
-    has no attribute '_resident_batch_owner'`` from
-    ``GlobalDeviceKVPool._ensure_free_pages`` the moment retained snapshots
-    pinned enough pages to trigger pressure.
+    owner creates. A session that owns its own device KV pool never has it, and
+    that session is the graph owner: the capacity-1 resident batch owner holds
+    the leased packed workspace and its replay graphs while ``_resident_batch_owner``
+    stays unset on it. The pool's grow/shrink callbacks used to guard on the
+    attribute and skip the call for exactly that session, leaving replay graphs
+    live across a grow or shrink that frees the per-plane pointer tables they
+    captured. They also raised ``AttributeError`` before the guard existed, so
+    both the raise and the silent skip are pinned here. The callback wiring that
+    now calls this method is pinned by
+    ``test_pool_growth_closes_a_self_owning_session_graphs`` in
+    ``test_unit_gguf_global_pool_growth.py``.
     """
 
     session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
     assert not hasattr(session, "_resident_batch_owner")
 
-    before_grow = lambda: (  # noqa: E731 - mirrors the callback shape under test
-        owner._invalidate_live_packed_decode_graphs()
-        if (owner := getattr(session, "_resident_batch_owner", None)) is not None
-        else None
-    )
-    assert before_grow() is None
     # Pressure never reads ``_resident_batch_owner``: it resolves the published
     # prefix-cache owner instead (see the published-owner contract below).
     assert session._on_device_kv_pool_pressure(8) is None
 
-    # With an owner attached the grow callback delegates.
-    calls: list[object] = []
+    # A session with nothing bound closes nothing and must not raise.
+    assert session._invalidate_live_packed_decode_graphs() == 0
+
+    # The self-owning case is the regression: the callback must close its own
+    # graphs rather than treat the missing attribute as "nothing to do".
+    closed: list[str] = []
+    session._decode_graphs = [
+        SimpleNamespace(closed=False, close=lambda: closed.append("packed")),
+    ]
+    session._device_kv_graph_handles = {
+        "bucket": SimpleNamespace(closed=False, close=lambda: closed.append("device")),
+    }
+    assert session._invalidate_live_packed_decode_graphs() == 2
+    assert closed == ["packed", "device"]
+
+    # With an owner attached a view still delegates, and closes exactly once.
+    delegated: list[str] = []
     session._resident_batch_owner = SimpleNamespace(
-        _invalidate_live_packed_decode_graphs=lambda: calls.append("invalidate"),
+        _invalidate_live_packed_decode_graphs=lambda: (
+            delegated.append("invalidate") or 1
+        ),
     )
-    before_grow()
-    assert calls == ["invalidate"]
+    session._invalidate_live_packed_decode_graphs()
+    assert delegated == ["invalidate"]
+    assert closed == ["packed", "device"]
 
 
 def test_pool_pressure_reclaims_through_the_published_prefix_cache_owner() -> None:

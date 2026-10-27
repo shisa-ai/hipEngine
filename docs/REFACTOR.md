@@ -3963,17 +3963,18 @@ fallback count is not a success metric.
 - Added 2026-08-18 (task #5 stages S1b/S1c). `_GGUFPackedTargetState` carries
   slot-major `page_ids` + `copy_segments()`, and
   `_rebind_packed_verify_layout_pages` fills layout block tables from them.
-  Production page IDs are still identity (private chunk), so
-  `prepare_packed_decode_metadata*` device kernels (which write identity block
-  tables on device) and packed decode graph replay (which refreshes metadata
-  through them) remain correct; the `_packed_decode_metadata_device_eligible`
-  gate already falls back to host upload for non-identity tables, but the
-  graph-replay refresh path has no such fallback.
-- Removal trigger: with S1d (pool-leased workspace pages), either extend the
-  device metadata kernels to consume a device-resident page table and rebind
-  graphs against it, or fail closed on graph capture when `page_ids` are
-  non-identity. Delete the private-chunk allocation path from
-  `_GGUFPackedTargetState` once the lease-backed path is the only producer.
+  Production includes pool-leased, non-identity page IDs. Eager metadata
+  preparation uploads those tables rather than rebuilding identity mappings.
+  Packed decode graphs now preserve the staged authoritative table and redirect
+  the identity-writing refresh output to graph-owned discard storage; positions
+  and counts still update on device. Identity layouts keep the original path.
+- Pool growth/shrink invalidates captured graphs for both self-owning sessions
+  and borrowed views before pointer tables can move. Discard storage is released
+  on failed capture and graph close.
+- Remaining cleanup: delete private-chunk allocation from
+  `_GGUFPackedTargetState` only once lease-backed allocation supports every
+  current producer and fallback case. Arbitrary-page graph execution is no
+  longer blocked on a future metadata-kernel extension.
 
 ## Generation-1 prefill/decode policy compatibility choices
 

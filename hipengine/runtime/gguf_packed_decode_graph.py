@@ -298,6 +298,36 @@ def _resolve_packed_graph_kernels(owner: Any, *, rows: int) -> tuple[Any, Any, A
     return resolved  # type: ignore[return-value]
 
 
+def _packed_graph_block_table_is_device_rebuildable(layout: Any) -> bool:
+    """Whether the in-graph metadata kernel reproduces this block table exactly.
+
+    ``prepare_packed_decode_metadata_from_positions`` writes the slot-local
+    identity table (``row * blocks_per_slot + page``) and ``-1`` for inactive
+    rows. That is exact for a private packed chunk, whose ``page_ids`` are the
+    identity. A ``GlobalDeviceKVPool`` workspace lease rebinds the table to
+    arbitrary arena pages instead, so the same refresh would clobber the
+    authoritative mapping on every replay step. Capture keeps that table and
+    redirects the refresh's block-table output to a discard buffer.
+    """
+
+    rows = int(layout.rows)
+    blocks_per_slot = int(layout.blocks_per_slot)
+    if rows <= 0 or blocks_per_slot <= 0:
+        return False
+    rebuildable = np.arange(rows * blocks_per_slot, dtype=np.int32).reshape(
+        rows, blocks_per_slot
+    )
+    inactive = ~np.asarray(layout.active_mask, dtype=np.bool_)
+    if np.any(inactive):
+        rebuildable[inactive, :] = -1
+    return bool(
+        np.array_equal(
+            np.asarray(layout.block_table, dtype=np.int32),
+            rebuildable,
+        )
+    )
+
+
 def _singleton_layout(
     token_ids: Sequence[int],
     positions: Sequence[int],
@@ -479,6 +509,7 @@ def capture_qwen35_gguf_packed_decode_graph(
         runtime=runtime,
     )
     layout = _rebind_packed_verify_layout_pages(layout, packed_state)
+    device_block_table = _packed_graph_block_table_is_device_rebuildable(layout)
     graph = 0
     graph_exec = 0
     submission: GraphSubmission | None = None
@@ -487,6 +518,7 @@ def capture_qwen35_gguf_packed_decode_graph(
     generated_hidden: DeviceBuffer | None = None
     record_index: DeviceBuffer | None = None
     active_mask_device: DeviceBuffer | None = None
+    discard_block_table: DeviceBuffer | None = None
     try:
         imported_slot_indices = owner._sync_packed_decode_initial_state(
             physical_session_tuple,
@@ -501,6 +533,18 @@ def capture_qwen35_gguf_packed_decode_graph(
             stream=stream,
             metadata_prepare_fn=owner.runner._packed_decode_metadata_kernel(),
         )
+        # A leased page map is staged by the host upload above. The in-graph
+        # refresh kernel can only rebuild the identity table, so its block-table
+        # output is discarded rather than allowed to overwrite the mapping the
+        # packed KV write and paged decode attention read.
+        if not device_block_table:
+            discard_block_table = malloc(
+                int(layout.block_table.nbytes),
+                runtime=runtime,
+            )
+        metadata_block_table_ptr = int(packed_scratch.block_table.ptr)
+        if discard_block_table is not None:
+            metadata_block_table_ptr = int(discard_block_table.ptr)
         replay_context_limit = max_active_position + replay_span
         packed_scratch = replace(
             packed_scratch,
@@ -590,7 +634,7 @@ def capture_qwen35_gguf_packed_decode_graph(
         try:
             for _ in range(step_width):
                 metadata_kernel(
-                    packed_scratch.block_table.ptr,
+                    metadata_block_table_ptr,
                     packed_scratch.positions.ptr,
                     packed_scratch.context_counts.ptr,
                     packed_scratch.cu_q.ptr,
@@ -689,7 +733,13 @@ def capture_qwen35_gguf_packed_decode_graph(
                 pass
         if stream:
             runtime.stream_destroy(stream)
-        for buffer in (active_mask_device, record_index, generated_hidden, generated_tokens):
+        for buffer in (
+            active_mask_device,
+            record_index,
+            generated_hidden,
+            generated_tokens,
+            discard_block_table,
+        ):
             if buffer is not None:
                 free(buffer, runtime=runtime)
         if submission_close_error is not None:
@@ -727,7 +777,11 @@ def capture_qwen35_gguf_packed_decode_graph(
         ),
         lm_head_decode_path=owner._last_packed_lm_head_decode_path,
         sampler_decode_path=owner._last_packed_sampler_decode_path,
-        metadata_prepare_path="device_positions_persistent",
+        metadata_prepare_path=(
+            "device_positions_persistent"
+            if device_block_table
+            else "device_positions_persistent_host_block_table"
+        ),
     )
     linear_layers = sum(
         layer_type == "linear_attention"
@@ -775,6 +829,10 @@ def capture_qwen35_gguf_packed_decode_graph(
         "device_metadata_prepare_launches": 1,
         "device_to_device_state_import_copies": state_import_copies,
         "imported_slot_indices": list(imported_slot_indices),
+        "staged_block_table": not device_block_table,
+        "staged_block_table_bytes": (
+            0 if device_block_table else int(layout.block_table.nbytes)
+        ),
     }
     manifest["graph"] = {
         "captured": True,
@@ -819,6 +877,7 @@ def capture_qwen35_gguf_packed_decode_graph(
         generated_hidden=generated_hidden,
         record_index=record_index,
         active_mask_device=active_mask_device,
+        discard_block_table=discard_block_table,
         record_steps=record_capacity,
         record_layer_ids=layer_ids,
         bucket_key=key,
@@ -851,6 +910,9 @@ class Qwen35GGUFPackedDecodeGraph:
     bucket_key: Qwen35GGUFPackedDecodeGraphKey
     execution_manifest: dict[str, Any]
     submission: GraphSubmission | None = None
+    #: Discard target for the in-graph metadata refresh when the packed page map
+    #: is a workspace lease rather than the identity the kernel rebuilds.
+    discard_block_table: DeviceBuffer | None = None
     replayed_steps: int = 0
     replay_count: int = 0
     flushed: bool = False
@@ -1038,6 +1100,7 @@ class Qwen35GGUFPackedDecodeGraph:
             "record_index",
             "generated_hidden",
             "generated_tokens",
+            "discard_block_table",
         ):
             buffer = getattr(self, name)
             if buffer is not None:

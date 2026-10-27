@@ -17047,24 +17047,17 @@ class Qwen35GGUFResidentSession:
             shrink_storage=shrink_storage,
             release_storage=release_storage,
             abort_shrink=abort_shrink,
-            # `_resident_batch_owner` is only ever assigned onto the per-slot
-            # views a resident batch owner creates, so a session that owns its
-            # own pool never has the attribute at all. Every other reader in
-            # this file already guards with getattr; this callback did not, and
-            # raised AttributeError the first time the pool hit a grow event on
-            # such a session.
-            before_grow=lambda: (
-                owner._invalidate_live_packed_decode_graphs()
-                if (owner := getattr(self, "_resident_batch_owner", None)) is not None
-                else None
-            ),
-            # A shrink frees the pointer tables those graphs captured, so it
-            # needs the same invalidation growth does.
-            before_shrink=lambda: (
-                owner._invalidate_live_packed_decode_graphs()
-                if (owner := getattr(self, "_resident_batch_owner", None)) is not None
-                else None
-            ),
+            # A grow or shrink frees the per-plane pointer tables a replay
+            # graph captured, so the graphs must close first. Call the session
+            # method unconditionally: it resolves ``_resident_batch_owner``
+            # itself, delegating for a slot view and invalidating directly for
+            # the session that owns the graphs. Guarding here instead skipped
+            # the self-owning case, and that case is the capacity-1 resident
+            # batch owner -- it holds the leased packed workspace and its
+            # replay graphs while never having a ``_resident_batch_owner`` of
+            # its own.
+            before_grow=self._invalidate_live_packed_decode_graphs,
+            before_shrink=self._invalidate_live_packed_decode_graphs,
             idle_grace_seconds=float(getattr(self, "kv_pool_idle_grace_seconds", 0.0)),
             max_pages=max_pages,
             growth_chunk_pages=growth_chunk_pages,
