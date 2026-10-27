@@ -3430,28 +3430,6 @@ category and control/ownership gates before closing this entry.
   current producer and fallback case. Arbitrary-page graph execution is no
   longer blocked on a future metadata-kernel extension.
 
-## gfx1151 Qwen3.8 Q4 host embedding and bounded 4K scratch
-
-- Added 2026-08-17 for private-c1 dense-H5120/Q4_K_S memory parity. Automatic
-  Q4 placement uses a byte-for-byte anonymous copy of the 715,161,600-byte
-  compressed embedding and HIP-registers that copy. Direct registration of the
-  file-backed GGUF mmap changed complete-model trajectories and is forbidden on
-  gfx1151. Q8_0 retains its existing CPU-copy route; shared/wider/device-forced
-  sessions retain device ownership.
-- `HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=device` is the temporary common rollback.
-  Adjacent exact natural-suite measurement puts mapped host versus device at
-  **+0.012% true AR / -0.027% B3** while removing exactly 715,161,600 tracked
-  bytes. Remove the rollback only after task 26's clean shape/B3 refresh and one
-  release window; keep explicit device fallback for shared and wider sessions.
-- The Q4_K_S prefill policy keeps all bulk-prefill fields dedicated and is
-  capacity-conditional (4K-class grows to the natural 4,096-row full-attention
-  plateau to admit the Q5 source-F16 route, +2.95%; 8K and larger keep
-  1,024-row chunks because 4,096-row chunks measured -2.3% slower at 8K). Do
-  not replace the dedicated fields with owner-slot, single-arena, priority,
-  hidden-buffer, or short-session aliases: stronger gates found final-logit or
-  trajectory corruption. Revisit the 4,096-row plateau only if a later exact
-  owner is non-regressive at 8K+ and keeps memory flat.
-
 ## Laguna exact grouped-IQ prefill selector
 
 - Added 2026-07-29. WPF-2 first exported paired `grouped_exact`, preserving
@@ -10398,3 +10376,32 @@ then `python scripts/maple_public_batch_bench.py --backend cuda_sm120a --out /tm
 Extend those gates to cover the new owner rather than counting serialized c1
 calls as batching. This is implementation work, not a missing-evidence gate;
 working c1 execution and its oracle remain unchanged.
+
+### R0239 — Host-token embedding placement control
+
+`HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING` is a live placement override, not an
+unused off switch. `scripts/qwen35_08b_cumulative_semantic.py`,
+`scripts/qwen35_08b_threshold_sweep.py` and `scripts/qwen35_08b_three_way.py`
+force device placement; `scripts/qwen35_08b_graph_rerank.py` reports the value.
+The shared runner now maps supported Q4 tables automatically, including on
+gfx1151 through an anonymous copy. The old statement that every shared runner
+keeps device ownership is obsolete. External ownership and unsupported types
+still preserve their device fallback. Private sessions retain their own
+width/shared-runner checks and Q8 host-copy route.
+
+**Decision needed:** retain this host-memory/VRAM placement override as a
+supported resource policy, or replace it with an explicit public placement
+option and migrate diagnostic callers before retiring the environment read.
+**Clearing action:** if retained, document it as supported policy and close
+this cleanup; if retired, migrate the named callers without changing their
+device control arms, then run
+`tests/test_gpu_qwen35_gguf_host_token_embedding.py`,
+`tests/test_unit_qwen35_gguf_serving_width_sidecar.py` and
+`tests/test_unit_qwen35_08b_cumulative_semantic.py`. Compare real public auto
+and device placement, eager/graph outputs, selected storage and teardown on
+each applicable backend. Preserve gfx1151's anonymous-copy requirement:
+direct file-backed registration has an observed trajectory failure. Dedicated
+dense-prefill fields and context-dependent chunk policy are supported safety
+policy, not duplicate allocations to remove here; R0220 owns the unresolved
+alias failures and R0219 the packed source-F16 integration. No placement,
+chunk-size or allocation behavior changes in this disposition.

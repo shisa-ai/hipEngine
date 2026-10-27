@@ -6232,23 +6232,25 @@
       "start_line": 5159,
       "end_line": 5180,
       "sha256": "c9fee2319882ac559b94cf742269c20bcc71b2622bee5bc4901b1903aace13cb",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-lead-decision",
+      "evidence": [
+        "Live placement override has three device-control harness callers, not unused rollback. Defer retain-as-resource-policy versus explicit-public-option/migrate decision with named tests/public checks. Correct shared-runner mapped-Q4 documentation for both HIP backends, preserve anonymous-copy observed-failure boundary and dedicated chunk/scratch policy; alias work belongs to R0220/R0219. Focused CPU-safe placement/harness tests and docs/audit/worklog pass, optional GPU cases skip; no runtime change. Worklog: worklog/entries/20261027T194424.478502Z-cleanup-refactor-r0239-b91221.md."
+      ],
       "subitems": [
         {
           "line": 5161,
           "text": "- Added 2026-08-17 for private-c1 dense-H5120/Q4_K_S memory parity. Automatic",
-          "status": "pending"
+          "status": "not-debt"
         },
         {
           "line": 5167,
           "text": "- `HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING=device` is the temporary common rollback.",
-          "status": "pending"
+          "status": "deferred-lead-decision"
         },
         {
           "line": 5172,
           "text": "- The Q4_K_S prefill policy keeps all bulk-prefill fields dedicated and is",
-          "status": "pending"
+          "status": "not-debt"
         }
       ]
     },
