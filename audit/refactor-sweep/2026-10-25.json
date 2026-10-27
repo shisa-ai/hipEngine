@@ -6988,18 +6988,18 @@
       "start_line": 5861,
       "end_line": 5871,
       "sha256": "64441def4af86d18fd32f39fd97c115c1539a4461d5c2f71d96dffb5cbc6c89d",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Verified runtime/profile matrix ceiling2048 and rejected4096/8192 choices absent. Completed receipt removed; no behavior change. Worklog: worklog/entries/20261027T040446.954213Z-cleanup-refactor-r0268-9514d1.md."],
       "subitems": [
         {
           "line": 5863,
           "text": "- LC-5 lifts the constructor/profile validation ceiling to M8,192 but keeps",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5867,
           "text": "- **Closed 2026-07-28:** LC-6 did not reproduce a capacity-dependent short",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },

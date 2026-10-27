@@ -4875,17 +4875,6 @@ fallback count is not a success metric.
   complete `KVLiveSpans` fallback for continuation, verifier, eviction, SWA,
   decode, or unmeasured backends.
 
-## Laguna M4096/M8192 explicit matrix diagnostics
-
-- LC-5 lifts the constructor/profile validation ceiling to M8,192 but keeps
-  gfx1151 production at M2,048. M4,096 fails mandatory 128K
-  **149.684 -> 147.939 tok/s (-1.166%)** while adding **1.756 GB** scratch;
-  M8,192 is directionally dominated and adds **5.268 GB**.
-- **Closed 2026-07-28:** LC-6 did not reproduce a capacity-dependent short
-  prefill loss, so no bucketed policy is justified. M4,096/M8,192 constructor,
-  profile, and test support is removed; production and the validation ceiling
-  are both M2,048. The LC-5 artifact preserves the rejected evidence.
-
 ## Laguna MoE shared/routed branch-concurrency candidate
 
 - Added 2026-07-26 as an exact, default-off session and profile-harness
