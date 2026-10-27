@@ -7421,6 +7421,7 @@
       "sha256": "fa4fc7b5d9b3973d3951bc2f103a04fb5ec9cea147d2bdc5c6be9bff7fe5cdb4",
       "status": "in-progress-row-triage",
       "evidence": [
+        "Token4/wave32/qrow2 attention rows 6164-6168 consolidate into bottom R0281-ATTN. Current qrow4 package defaults and later cache/BLAS overlays differ from old history; accepted variants, comparison callers and exact fallbacks live. Runner/category/target-AR/DFlash units and docs/audit/worklog pass, no runtime change. Worklog: worklog/entries/20261027T203537.603068Z-cleanup-refactor-r0281-attention-3a1070.md.",
         "Source-F16 rows 6163/6170 consolidate one live environment override into bottom R0281-F16. Category/leaf/target consumers remain; retain-vs-scoped-migration decision explicit, exact/compensated scope unchanged. Three harness unit files and docs/audit/worklog pass; no runtime change. Worklog: worklog/entries/20261027T203251.721201Z-cleanup-refactor-r0281-f16-d7e9e5.md. Remaining rows still require individual disposition."
       ],
       "subitems": [
@@ -7442,27 +7443,27 @@
         {
           "line": 6164,
           "text": "| Laguna SWA token4-exact decode rollback | `LagunaGGUFResidentSession(..., swa_decode_variant=...)` and `allocate_laguna_kv_cache(..., swa_decode_variant=...)` retain baseline `swa_context_spans` beside gfx1100's backend-qualified `swa_context_token4_exact_spans` default. | Promoted on gfx1100. The exact 4-wave/4-slot schedule passes all focused wrap/eviction/KV/runner gates; clean SWA improves 49.60% short and 52.80-53.03% at 512/1K/near-4K. The full category gate moves h32 decode 38.840->43.081 tok/s and E2E 11.448->11.760 with prefill within -0.223%; gfx1151 and unmeasured backends remain baseline. | After one release window and a defaults-only gfx1100 refresh, remove public positive candidate selection and keep at most explicit baseline rollback. Never remove the registered baseline or change unmeasured backend defaults without independent evidence. |",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement-R0281-ATTN"
         },
         {
           "line": 6165,
           "text": "| Laguna SWA wave32-exact prefill rollback | `LagunaGGUFResidentSession(..., swa_prefill_variant=...)` and `allocate_laguna_kv_cache(..., swa_prefill_variant=...)` retain explicit wave32 selection beneath gfx1151's online-qrow2 default. | LPF-5 first promoted wave32 on gfx1151: it reconstructs the original stride-64/32/16..1 FP32 tree, passes the 508..515 fixture byte-exactly, improves the leaf 20.434->9.229 ms (2.214x), and moves exact full-model 512/1K/4K prefill +8.31%/+12.85%/+14.06%. Exact context-qualified qrow2 later overlaid only M128/start>=128 slices; online qrow2 now owns measured gfx1151 SWA prefill after its full quality gate. Wave32 remains explicit rollback and the exact short/partial fallback inside context-qualified qrow2. Unmeasured backends retain prior defaults. | After one release window plus the post-prefill DFlash refresh, remove redundant public positive wave32 selection if the exact-qrow2 rollback no longer needs it; keep the registered wave32 fallback for unsupported/short rows. Never remove unmeasured-backend fallbacks without independent evidence. |",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement-R0281-ATTN"
         },
         {
           "line": 6166,
           "text": "| Laguna SWA exact-qrow2 prefill rollback | Explicit `swa_context_rows_qrow2_exact_spans`, context-qualified `swa_context_rows_qrow2_m128_c128_exact_spans`, and retained wave32 variants coexist beneath the promoted online-qrow2 default. | The exact context-qualified route applies qrow2 only to complete M128 attention slices at absolute start>=128. Its final exact three-repeat gate improves 512/1K/4K prefill 0.893%/1.212%/1.040%; its complete category gate is exact and non-regressive at 0.999652x prefill and 0.999917/0.999999x h16/h32 E2E. It now serves as the primary exact rollback; empty-context, short, partial, and verifier rows delegate to wave32. gfx1100 and unmeasured backends are unchanged. | After one release window and a defaults-only gfx1151 512/1K/4K refresh, remove redundant positive direct-qrow2 selection if no bisection needs it; keep wave32 as the unsupported/short-row fallback and context-qualified exact qrow2 as the primary numerical rollback. Never broaden exact qrow2 below M128 or before start 128 without independent crossover and full gates. |",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement-R0281-ATTN"
         },
         {
           "line": 6167,
           "text": "| Laguna global qrow2 online-prefill rollback | Explicit `global_context_rows_spans` remains beside gfx1151's promoted `global_context_rows_qrow2_online_spans` default. | The online route streams one BF16 K/V row across two adjacent queries without whole-context score LDS. It improves repeated 512/1K/4K **2.472%/5.444%/21.854%**; the complete category gate improves weighted prefill **0.315%** and h16/h32 E2E **0.184%/0.125%** with max KL `0.030836`, top-1 317/320, every category positive, and Poolside/repeats/lifecycle passing. gfx1100/unmeasured backends stay exact. Evidence: `benchmarks/results/2026-07-23-gfx1151-laguna-global-qrow2-online-retained.json`. | After one release window and a defaults-only 512/1K/4K plus category refresh, remove redundant positive explicit-online selection if no bisection needs it; keep `global_context_rows_spans` as the required exact fallback and explicit rollback. Never enable on another backend without independent quality/performance evidence. |",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement-R0281-ATTN"
         },
         {
           "line": 6168,
           "text": "| Laguna SWA qrow2 online-prefill rollback | Explicit context-qualified exact qrow2 and wave32 routes coexist beneath gfx1151's promoted `swa_context_rows_qrow2_online_spans` default. | One wave replaces exact qrow2's two ring scans with online max/denominator/output state. M128/full-window and start508 wrap improve **3.093x/2.904x**; repeated 512/1K/4K improves **6.828%/9.364%/10.766%**. The complete category gate improves weighted prefill **1.086%** and h16/h32 E2E **0.616%/0.420%** with max KL `0.042924`, top-1 316/320, every category positive, and Poolside/repeats/lifecycle passing. gfx1100/unmeasured backends retain prior defaults. Evidence: `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-online-retained.json`. | After one release window and a defaults-only 512/1K/4K plus category refresh, remove redundant positive explicit-online selection if no bisection needs it; keep exact context-qualified qrow2 and wave32 as rollback/fallback. Never enable on another backend without independent quality/performance evidence. |",
-          "status": "pending"
+          "status": "deferred-diagnostic-retirement-R0281-ATTN"
         },
         {
           "line": 6169,
