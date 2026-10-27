@@ -983,11 +983,11 @@ class Qwen35GGUFMTP2Adapter:
                 wide_exact_policy = backend_package_capability(
                     str(self.generator.backend), capability, {}
                 )
-                if wide_exact_policy and _env_enabled(
-                    str(wide_exact_policy["enabled_env"]),
-                    default=bool(
-                        wide_exact_policy.get("enabled_default", False)
-                    ),
+                enabled_env = wide_exact_policy.get("enabled_env")
+                enabled_default = bool(wide_exact_policy.get("enabled_default", False))
+                if wide_exact_policy and (
+                    enabled_default if enabled_env is None
+                    else _env_enabled(str(enabled_env), default=enabled_default)
                 ):
                     exact_target_rows.update(
                         int(value)

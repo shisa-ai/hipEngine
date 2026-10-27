@@ -2780,17 +2780,6 @@ should be removed or collapsed.
   fields after lifecycle coverage proves the cleanup. Shared capacity is not
   permission to widen Qwen3.6/gfx1151 public evidence.
 
-## 2026-09-02 gfx1100 exact physical C7 target rows — closed
-
-- Promoted exact physical C7/K3 R28 through gfx1100 capability metadata after
-  both process orders and every category/heldout slice passed. It removes two
-  inactive padding rows and composes exact Q4/Q5/Q6 prefixes and tails. C8
-  remains padded R36 because its unpadded R32 screen loses the fused gate/up
-  owner and regresses complete wall.
-- `HIPENGINE_GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS=0` retains padded R30 for
-  same-build rollback. Remove the environment override after the next stable
-  milestone audit; keep the exact padded composition available.
-
 ## 2026-09-02 gfx1100 C8 adaptive source-Q5 MMQ — closed
 
 - `HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ` now defaults on for the R32-only K-major
@@ -10548,3 +10537,15 @@ trace grouped-R8 at R24 for C5/C6 and grouped-R6 on the corresponding C7/C8 scop
 misses, and compare outputs/acceptance/teardown with the strict parent. Preserve
 `tests/test_gpu_gguf_t16_selected_gemv_decode.py::test_q4_t16_dense_rowtile16_w2_grouped_rows8_matches_grouped_rows6_bits`
 as the separate numerical gate.
+
+### R0169 — Public exact C7 target-row validation
+
+The dedicated C7 environment override is removed. Backend policy still selects
+R28 only inside the existing production physical-row scope; padded composition,
+C8 policy and strict profile behavior remain available.
+
+**Dependency:** gfx1100 public C7/K3 physical MTP execution.
+**Clearing action:** run `hipengine serve` with seven live requests and the
+physical MTP profile, confirm R28 target work rather than padded R30, and compare
+full state/output/acceptance and teardown against the padded composition.
+Mocked prefix/tail routing tests do not replace this public gate.

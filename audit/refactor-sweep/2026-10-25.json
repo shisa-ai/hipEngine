@@ -4376,18 +4376,18 @@
       "start_line": 3881,
       "end_line": 3891,
       "sha256": "d4d2884ab9b1181f7ebef7aa86c4c49d1da123604c834db5f34fbdfcd902acd6",
-      "status": "pending",
-      "evidence": [],
+      "status": "deferred-public-validation",
+      "evidence": ["Dedicated C7 env override removed from backend policy; adapter honors intrinsic default while keeping C8/global physical controls and padded composition. RED/GREEN adapter/dispatch, full CPU bundle and mocked prefix/tail composition contracts pass. Public gfx1100 C7/K3 state/output/acceptance/teardown gate deferred at bottom. Worklog: worklog/entries/20261027T134329.923876Z-cleanup-refactor-r0169-dcad79.md."],
       "subitems": [
         {
           "line": 3883,
           "text": "- Promoted exact physical C7/K3 R28 through gfx1100 capability metadata after",
-          "status": "pending"
+          "status": "verified-current"
         },
         {
           "line": 3888,
           "text": "- `HIPENGINE_GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS=0` retains padded R30 for",
-          "status": "pending"
+          "status": "deferred-public-validation"
         }
       ]
     },

@@ -452,7 +452,6 @@ GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS = frozenset({8})
 # this policy without backend branches and leaves padded R30 as rollback. C8
 # remains padded R36 because unpadded R32 loses its fused gate/up owner.
 GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY = {
-    "enabled_env": "HIPENGINE_GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS",
     "enabled_default": True,
     "rows": frozenset({28}),
 }
