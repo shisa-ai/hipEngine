@@ -6020,23 +6020,23 @@
       "start_line": 5033,
       "end_line": 5053,
       "sha256": "a1c0c0d585669bbe0b9d2ff9aa763a15a76d9e88a233708c16bea4a8bcf2587c",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Verified runtime direct row-reuse selection, registered all-row fallback, and no old selector reader. Removed closed receipt; historical evidence remains in Git and worklogs. See worklog/entries/20261027T020830.749191Z-cleanup-refactor-r0233-r0236-d791bb.md."],
       "subitems": [
         {
           "line": 5035,
           "text": "- Added and promoted 2026-08-08. The c2/c4/c8 leaf assigns one block to one",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5042,
           "text": "- The clean helper gate improves c2/c4/c8 aggregate throughput",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5048,
           "text": "- **Closed at the final roadmap audit:** removed the",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
@@ -6046,18 +6046,18 @@
       "start_line": 5054,
       "end_line": 5068,
       "sha256": "47221e8563b1f704e06fe684e6d18b66a2a28607646c54a4368c3a00a36dbe40",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Verified direct wave32 head selection, group64 fallback registration and retired selector. Closed receipt removed; see worklog/entries/20261027T020830.749191Z-cleanup-refactor-r0233-r0236-d791bb.md."],
       "subitems": [
         {
           "line": 5056,
           "text": "- Added and promoted 2026-08-08. One wave emulates all four production virtual",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5063,
           "text": "- The clean selector-unset profile is complete at **199.772 tok/s / 5.006-ms",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
@@ -6067,18 +6067,18 @@
       "start_line": 5069,
       "end_line": 5083,
       "sha256": "336e91fb12d2578a522133467d37e3bacd409096fd9ea6453ebd087b5ec868f0",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Verified direct composite router selection and separately registered numerical fallbacks; no selector reader. Closed receipt removed; see worklog/entries/20261027T020830.749191Z-cleanup-refactor-r0233-r0236-d791bb.md."],
       "subitems": [
         {
           "line": 5071,
           "text": "- Added and promoted 2026-08-08. One grid-over-experts launch uses a four-byte",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5079,
           "text": "- **Closed at the final roadmap audit:** removed the",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
@@ -6088,18 +6088,18 @@
       "start_line": 5084,
       "end_line": 5097,
       "sha256": "5126037161205b850669472cc74d86bf3866251d41734a078e40995fdf19c01c",
-      "status": "pending",
-      "evidence": [],
+      "status": "resolved-removed",
+      "evidence": ["Verified geometry selection and both GQA4/local128 registrations, no retired selector reader. Closed receipt removed; see worklog/entries/20261027T020830.749191Z-cleanup-refactor-r0233-r0236-d791bb.md."],
       "subitems": [
         {
           "line": 5086,
           "text": "- Added 2026-08-08 and promoted to the prefill default after the complete dirty",
-          "status": "pending"
+          "status": "resolved-removed"
         },
         {
           "line": 5092,
           "text": "- Clean qualified publication passes at **749.175/741.368/754.000 tok/s** with",
-          "status": "pending"
+          "status": "resolved-removed"
         }
       ]
     },
