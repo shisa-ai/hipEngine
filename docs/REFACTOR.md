@@ -3434,7 +3434,6 @@ category and control/ownership gates before closing this entry.
 
 | Area | Debt | Current status | Removal trigger |
 | --- | --- | --- | --- |
-| GGUF public AR profile | `HIPENGINE_GGUF_DECODE_REPACK=0` remains a rollback opt-out; low-level WMMA/GEMV selectors remain available for benchmark bisection. | Release default: T16 decode-repack is on, and public generate/stream sessions pass the resolved backend plus `use_wmma_prefill=True` and `use_gemv_decode=True`. A no-env gfx1151 Q4_K_M smoke generated one token through `LLM(model)`. | Remove the decode-repack opt-out after one release window and a defaults-only gfx1100 refresh. Keep raw layouts only where a quant/kernel lacks a T16 fallback or a retained diagnostic requires them. |
 | GGUF fused dual+SiLU gate/up prefill floor | `hipengine/runtime/gguf_linear.py::_Q4_T16_DUAL_WMMA_SILU_MIN_ROWS = 33` (was 512) for the dense H5120 K5120/N17408 `linear_pair_silu` owner. | Bit-identical to the unfused chain at that shape for rows 45/96/192/511/512 (fixture from rows 2), and W7900 Qwen3.8-27B-Q4_K_M measured **+4.2%/+4.2%/+4.9%** prefill at 45/96/192 rows. The same owner is 8.2% slower per cycle inside captured target-verify groups (16/32 rows, C4-C8 K3, replications 3/3), which is why the floor sits at 33 rather than at the small-B boundary: row count is a proxy for prefill-vs-verify context. | Replace the proxy with an explicit prefill-context selector: a session-scoped floor whose value participates in `_DISPATCH_RESOLVE_CACHE` / `_PAIR_DISPATCH_RESOLVE_CACHE` keys (a scope that does not would leak decisions across scopes). Then lower the bulk-prefill floor to the rows<=8 small-B boundary, qualify target verification separately at its own group widths, and delete the row-count proxy. |
 | GGUF prefill route-session stack | `Qwen35GGUFResidentSession.prefill` opens the wmma/q8/pack8/unequal-pair/F16 route sessions as one stack, while the packed admission entry `prefill_batch_native` now opens only `q4_t16_unequal_pair_prefill_session` (the route whose row floor was qualified). | Sessions are added per qualified route because each needed its own W7900 bit-parity + A/B evidence; the shipping AR route admits through `prefill_batch_native` (bound in `hipengine/generation/qwen35_gguf.py` 5 times), so a route enabled only in `prefill` is invisible to it - that is how the rows16 QKV dual landed with a flat topline until the packed entry was wired. | Extract one `_prefill_route_sessions(...)` context stack used by both entries (and by `_prefill_batch_native_impl` if a caller ever reaches it directly), then delete the per-entry session lists. Route-eligibility stays in the capability policies, not in call sites. |
 | GGUF bench shipping-route alias | `scripts/qwen35_gguf_bench.py --public-ar-profile` (plus the recorded `public_ar_profile` / `shipping_ar_route_mismatch` protocol fields and the stderr warning) selects `use_wmma_prefill=True` + `use_gemv_decode=True` instead of the low-level env-default-off selectors. | W7900 Qwen3.8-27B-Q4_K_M measured 45-token prefill 0.4577 s unset vs 0.2818 s shipping (+62.4%), 512 tokens +1.7%, identical generated id, final logit 22.1395 -> 21.9644. Without the alias the harness default route silently measures a route the product never runs; see worklog `20260829T215206.066388Z-lhl-w7900-qwen38-submodule-parity-1921c9`. | Collapse once the bench resolves its default through the same session-profile helper the product uses (so no separate alias is needed), or once every retained short-prompt prefill artifact has been re-measured on the shipping route and the low-level selectors are gone from the bench surface. |
@@ -10604,3 +10603,33 @@ continuation, EOS/cancellation and cleanup on each applicable backend. Run
 `tests/test_unit_qwen35_batch_partition_bench.py`, then public ragged
 `LLM.generate()` requests with the selected path confirmed. No prefill policy,
 flag, arithmetic or runtime implementation changes in this disposition.
+
+### R0281-GGUF-REPACK — Decode layout control and comparison callers
+
+`resolve_gguf_decode_repack()` is the shared default-on resolver for admission
+and materialization; an explicit API value takes precedence over the environment.
+`HIPENGINE_GGUF_DECODE_REPACK=0` selects raw materialization for diagnostics and
+memory/layout comparisons. The GDN trajectory, semantic/profile, true-AR category
+and MTP harnesses still request that control. Repacking is per-tensor: raw IQ
+leaves whose optimized layout is unimplemented remain raw even with the model
+request on. Do not conflate this resource/layout policy with public
+`use_wmma_prefill` / `use_gemv_decode` launch selectors or remove raw quant support.
+The separate bench shipping-route alias row owns its selector-default issue.
+
+**Decision needed:** keep environment/API layout selection as supported resource
+and diagnostic policy, or migrate comparison callers to an explicit load owner
+before retiring the environment reader. A passed release window alone does not
+migrate those callers. **Clearing action:** preserve one resolver meaning across
+admission and materialization, explicit-value precedence, per-tensor capability,
+byte planning, cleanup and the existing observed raw-fastpath containment. Do
+not turn layout selection into an artifact/measurement allowlist or change the
+activation math as a side effect of repacking. Run
+`tests/test_unit_qwen35_gguf_decode_repack_semantics.py`,
+`tests/test_unit_qwen35_gguf_decode_repack_dispatch.py`,
+`tests/test_unit_qwen35_gguf_fastpath_safety.py`,
+`tests/test_unit_gguf_gdn_semantic_gate.py` and
+`tests/test_unit_qwen35_gguf_bench_metadata.py`; then exercise actual public
+`LLM.generate()` default/raw requests and migrated harness comparisons with
+compatible local quants on each applicable backend. Confirm actual layouts,
+effective selectors, no duplicate raw/T16 residency, bounded allocation and
+cleanup. No layout, default, API or environment behavior changes here.
