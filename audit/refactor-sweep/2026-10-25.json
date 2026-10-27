@@ -368,18 +368,18 @@
       "start_line": 357,
       "end_line": 371,
       "sha256": "c91694ec0ddf91ee2c4bf913c665acd6d202328e956fd1379cfab8c1d83e9e89",
-      "status": "pending",
-      "evidence": [],
+      "status": "not-debt-retained",
+      "evidence": ["Intentional diagnostic bounds/reference leaf: no runtime/generation binding; direct qwen4exp_q4_narrow_owner consumer and independent overflow, map, stream, risk-capacity and CPU-floor tests remain. Focused unit index/owner tests pass. Preserve wide parent, strict grouped chain and int64 host ABI; remove this reference only when equivalent independent bounds/oracle coverage replaces it. No kernel change or new GPU/performance claim."],
       "subitems": [
         {
           "line": 359,
           "text": "- `selected_dual_wmma_iu8_risk_narrow_prefill_bf16_bf16_out` is a",
-          "status": "pending"
+          "status": "not-debt-retained"
         },
         {
           "line": 365,
           "text": "- `scripts/qwen4exp_q4_narrow_owner.py` uses temporary registry substitution",
-          "status": "pending"
+          "status": "not-debt-retained"
         }
       ]
     },
