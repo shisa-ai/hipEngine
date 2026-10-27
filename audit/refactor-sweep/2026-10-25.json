@@ -5390,18 +5390,20 @@
       "start_line": 4559,
       "end_line": 4588,
       "sha256": "fb3f8e40ec5c81287380e184668694c84bb400d2616130dd2f0c0ee0f1b36fdd",
-      "status": "pending",
-      "evidence": [],
+      "status": "partial-current-consumers-reconciled",
+      "evidence": ["Reconciled stale fixed/no-growth allocator claim against current global growth/shrink and arena identity implementation. Concrete remaining consumers: non-VMM chunk-local base-pointer execution, active DMS dense_pool transient storage, and legacy-only session factories. Ledger now names replacement work and focused clearing command, not a missing-evidence refusal. Global/device binding/prefix unit bundle, docs and audit pass. Worklog: worklog/entries/20261027T171236.772115Z-cleanup-refactor-r0207-b69c32.md."],
       "subitems": [
         {
           "line": 4561,
           "text": "- Added 2026-08-17 with C2-3. Generation-2 dense backends use one load-time",
-          "status": "pending"
+          "status": "resolved-stale-growth-claim",
+          "evidence": "Global pool supports on-demand growth and idle-tail shrink; existing pointer/growth/shrink tests passed."
         },
         {
           "line": 4568,
           "text": "- `DeviceChunkedKVPool` and base-pointer identity binding remain as explicit",
-          "status": "pending"
+          "status": "partial-concrete-consumers-recorded",
+          "evidence": "DMS dense_pool, non-VMM chunk storage and legacy-only factories remain implemented consumers; do not delete allocator or identity safety checks before replacing them."
         },
         {
           "line": 4572,

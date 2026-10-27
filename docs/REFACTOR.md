@@ -3333,33 +3333,34 @@ category and control/ownership gates before closing this entry.
 
 ## Generation-1 GGUF single-backing KV compatibility path
 
-- Added 2026-08-17 with C2-3. Generation-2 dense backends use one load-time
-  `GlobalKVPoolSet`, stable per-plane arbitrary-page pointer tables,
-  `KVStorageView`, typed leases, and KV-aware execution. C2-6 migrates the
-  gfx1100 Qwen3.6 GGUF BF16 package through `GlobalDeviceKVPool`: one stable
-  arena and per-layer/per-plane pointer tables back arbitrary free-page leases;
-  no request-local chunk, contiguous-run admission, growth, or shrink remains
-  on that selected path.
-- `DeviceChunkedKVPool` and base-pointer identity binding remain as explicit
-  numerical/peer-package fallbacks for unported GGUF layouts and backends. They
-  must not leak same-chunk constraints into the Generation-2 scheduler, ledger,
-  or new backend contracts.
-- Shared-slot physical c4/c8 were first held unregistered after their old
-  direct-top1 route emitted sentinel `2147483647`. The exact promoted package
-  scoped Q8_1 direct-top1 to c1, registered physical `(1, 2)`, flushed canonical
-  state between c2 groups, and decomposed logical c1-c32 honestly. On 2026-08-17
-  the packed lm-head/state paths were re-proven byte-exact at c4/c8 (steady,
-  masked-lane shrink-sparse, fixed-width graph, and p512 state-oracle gates), so
-  the registered shared-slot widths are now `(1, 2, 3, 4, 5, 6, 7, 8)`:
-  logical c4/c8 lower to one physical c4/c8 bucket. Matched W7900 p128/d8 c8 improved exact serial-c1
-  **27.634 -> 44.031 tok/s (+59.27%)** (was +29.68% at c2), and p512/d128 c8
-  reaches ~0.973x the old design. Serial remains the required numerical fallback.
-- Removal trigger: after BF16 long-context and artifact-qualified no-mirror INT8
-  global adapters execute the C2-6 graph-pointer, lifecycle, cancellation,
-  pressure, SLO, and production-load gates on both gfx1100 and gfx1151, migrate
-  every remaining registered GGUF package and remove the chunk allocator,
-  same-backing admission/identity branches, and compatibility-only fixtures.
-  Keep a separately registered unfused/serial numerical fallback as required.
+- Ordinary resident serving selects `create_global_device_kv_pool` when the
+  session implements it. Its `GlobalDeviceKVPool` wraps `GlobalKVPoolSet` and
+  stable per-plane page tables. The pool grows on demand and releases wholly
+  idle grown tails; it is not a fixed allocation with no growth or shrink.
+- With working HIP virtual memory, growth extends stable per-plane arenas and
+  rebuilt backing objects retain their arena identity. Without that capability,
+  the same global adapter appends ordinary device chunks. Base-pointer consumers
+  then need each allocation within one backing chunk; pointer tables alone do
+  not remove that execution constraint. Unsupported VMM symbols or a driver
+  returning `hipErrorNotSupported` select this implemented fallback.
+- `DeviceChunkedKVPool` also has an active DMS `dense_pool` consumer: the session
+  allocates transient dense prefill storage before compact KV is built. DMS
+  `layer_outer` does not use that pool. The generation runner retains a
+  legacy-factory branch for session providers that implement only
+  `create_device_kv_pool`.
+- Removal work: migrate remaining base-pointer consumers to page-table storage
+  views across appended chunks, replace the DMS transient-pool owner, and then
+  remove unused legacy factory and identity branches. Preserve same-arena checks
+  until snapshot restore can establish equivalent storage ownership. Missing
+  benchmark coverage does not prevent these paths from running.
+- Validate replacements with
+  `uv run pytest tests/test_unit_kvcache_global_device_pool.py
+  tests/test_unit_gguf_vmm_kv_pool.py tests/test_unit_gguf_global_pool_growth.py
+  tests/test_unit_gguf_device_kv_binding.py
+  tests/test_unit_gguf_prefix_cache_runner.py -q`, then real ordinary and DMS
+  public requests covering growth, prefix reuse, cancellation and teardown.
+  Keep registered strict/serial numerical fallbacks independently of allocator
+  cleanup. Shared-slot width selection is tracked separately above.
 
 ## C2-6 production oracle process-partition seam
 
