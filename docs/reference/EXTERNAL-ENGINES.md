@@ -37,6 +37,7 @@ lives in
 | Engine | Repository | Hardware | Model format | How you get it | License | Best at |
 | --- | --- | --- | --- | --- | --- | --- |
 | strix-llama.cpp | [halo-box/strix-llama.cpp](https://github.com/halo-box/strix-llama.cpp) | Strix Halo only (`gfx1151`) | GGUF | Source build | MIT | Deepest public llama.cpp tuning for one APU, without giving up llama.cpp's surface. |
+| strixite | [shawnshekari/strixite](https://github.com/shawnshekari/strixite) | Strix Halo (`gfx1151`), Linux, 128 GB | Own `.strixw` weights and n-gram table | Source build or container image | AGPL-3.0 | A single-model HIP engine with long-context serving and native multi-token prediction. |
 | Gufo | [gufo-org/gufo](https://github.com/gufo-org/gufo) · [gufo.blog](https://gufo.blog/) | Strix Halo only (`gfx1151`) | GGUF | Podman image, Nix flake, or CMake source build | MIT | Per-model kernel specialization, with quality reports to match. |
 | halogen | [peonist-ai/halogen-flash-server](https://github.com/peonist-ai/halogen-flash-server) · [docs](https://peonist-ai.github.io/halogen-flash-server/) | Strix Halo only (`gfx1151`) | Own checkpoint, or a llama.cpp GGUF of the same model | Container image only | Proprietary EULA | One model family tuned to the last kernel, with agent-session serving built in. |
 | hipfire | [warpfront/hipfire](https://github.com/warpfront/hipfire) · [hipfire.dev](https://hipfire.dev/) | AMD RDNA first (`gfx1100`/`gfx1151`/`gfx1201`), CDNA supported | Own MQ/MFP4 formats | Source build, container image, prebuilt kernels | Apache-2.0 | A torch-free engine with its own transport layer (Redline), shipped end to end. |
@@ -117,6 +118,33 @@ Limits that matter for comparison:
 
 hipEngine has reviewed its kernel deltas commit by commit in
 [QWEN4EXP-EXTERNAL-FORKS-REVIEW.md](../archive/QWEN4EXP-EXTERNAL-FORKS-REVIEW.md).
+
+### strixite
+
+[`shawnshekari/strixite`](https://github.com/shawnshekari/strixite) — a
+from-scratch HIP engine for Qwen3.8-Flash-Next on Linux and Strix Halo
+(`gfx1151`), AGPL-3.0. The published setup requires 128 GB of system memory and
+fast NVMe storage; model weights have a separate license.
+
+Strengths:
+
+- **Model-specific kernels and weights.** Hand-written HIP kernels run the
+  model's mixture of experts, Gated DeltaNet, and sparse attention; its n-gram
+  table streams from SSD. The project provides converted weights and a tool to
+  make them from the original checkpoint.
+- **Long-context serving.** The server supports 512k context, an 8-bit KV
+  cache, and prompt caching in RAM and on disk.
+- **Native multi-token prediction** using the model's own draft head, plus
+  concurrent conversations whose decode steps share a forward pass.
+- **OpenAI-compatible chat serving**, including streaming, tool calls,
+  structured output, and image inputs from a separate weights file.
+
+Limits that matter for comparison:
+
+- One model and one tested hardware configuration; arbitrary GGUF models and
+  other GPUs are not the target.
+- Its own weight format and SSD-resident n-gram table differ from a standard
+  GGUF setup, so comparisons need to account for model artifacts and storage.
 
 ### Gufo
 
